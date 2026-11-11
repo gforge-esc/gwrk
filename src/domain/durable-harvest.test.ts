@@ -1,0 +1,406 @@
+import { describe, expect, it } from "vitest";
+import {
+  DeliverySourceSchema,
+  type HarvestCandidateInput,
+  HarvestOperationStatusSchema,
+  HarvestStageNameSchema,
+  type HarvestStageReceipt,
+  HarvestStageStatusSchema,
+  HarvestTerminalEventSchema,
+  OutboxStatusSchema,
+  computeHarvestWorkKey,
+  deriveHarvestTerminalStatus,
+  evaluateBranchCleanupSafety,
+  planHarvestStages,
+  verifyHarvestTarget,
+} from "./durable-harvest.js";
+
+const featureId = "049-durable-dispatch-harvest";
+const phaseId = "phase-01";
+const sha = "a".repeat(40);
+const now = "2026-11-11T12:00:00.000Z";
+const project: Parameters<typeof verifyHarvestTarget>[0] = {
+  projectId: "project-a",
+  slug: "a",
+  name: "A",
+  repoSlug: "acme/a",
+  trunkBranch: "develop",
+  localRoot: "/repos/a",
+  mirrorPath: null,
+  runnerPolicy: { allowedKinds: ["local"] },
+  slack: null,
+  legacyProjectIds: [],
+  createdAt: now,
+  updatedAt: now,
+};
+function candidate(
+  overrides: Partial<HarvestCandidateInput> = {},
+): HarvestCandidateInput {
+  return {
+    source: "github_webhook",
+    deliveryId: "delivery-1",
+    repoSlug: "acme/a",
+    baseBranch: "develop",
+    headBranch: `phase/${featureId}-${phaseId}`,
+    expectedHeadSha: sha,
+    prNumber: 42,
+    prUrl: "https://github.com/acme/a/pull/42",
+    terminalEvent: "merged",
+    mergeCommitSha: sha,
+    terminalAt: now,
+    ...overrides,
+  };
+}
+function receipt(
+  stage: HarvestStageReceipt["stage"],
+  status: HarvestStageReceipt["status"] = "succeeded",
+): HarvestStageReceipt {
+  return {
+    operationId: "harvest-1",
+    phaseKey: phaseId,
+    stage,
+    status,
+    leaseEpoch: 2,
+    attemptCount: 1,
+    evidenceJson: null,
+    error: null,
+    updatedAt: now,
+    completedAt: status === "succeeded" ? now : null,
+  };
+}
+const stageNames = [
+  "git_sync",
+  "gate_verify",
+  "learning_record",
+  "slack_delivery",
+  "branch_cleanup",
+] as const;
+const cleanup = {
+  projectRepoSlug: "acme/a",
+  candidateRepoSlug: "acme/a",
+  trunkBranch: "develop",
+  headBranch: `phase/${featureId}-${phaseId}`,
+  expectedHeadSha: sha,
+  observedRemoteHeadSha: sha,
+};
+
+describe("FR-002 harvest identity and target verification", () => {
+  it("TR-002 converges transports and arrival order on the same verified work key", () => {
+    const inputs = (
+      ["manual_cli", "github_poller", "github_webhook"] as const
+    ).map((source, i) =>
+      candidate({
+        source,
+        deliveryId: `delivery-${i}`,
+        terminalAt: `2026-11-${11 + i}T12:00:00.000Z`,
+      }),
+    );
+    const results = inputs.map((input) => verifyHarvestTarget(project, input));
+    const expected = {
+      ok: true,
+      featureId,
+      phaseId,
+      workKey: computeHarvestWorkKey({
+        prNumber: 42,
+        terminalEvent: "merged",
+        mergeCommitSha: sha,
+        featureId,
+        phaseId,
+      }),
+    };
+    expect(results).toEqual([expected, expected, expected]);
+    expect(
+      inputs.reverse().map((input) => verifyHarvestTarget(project, input)),
+    ).toEqual([expected, expected, expected]);
+  });
+  it("TR-002 distinguishes terminal events and separate merges", () => {
+    const input = {
+      prNumber: 42,
+      terminalEvent: "merged" as const,
+      mergeCommitSha: sha,
+      featureId,
+      phaseId,
+    };
+    const key = computeHarvestWorkKey(input);
+    expect(key).not.toBe(computeHarvestWorkKey({ ...input, prNumber: 43 }));
+    expect(key).not.toBe(
+      computeHarvestWorkKey({ ...input, mergeCommitSha: "b".repeat(40) }),
+    );
+    expect(key).not.toBe(
+      computeHarvestWorkKey({
+        ...input,
+        terminalEvent: "closed_unmerged",
+        mergeCommitSha: null,
+      }),
+    );
+  });
+  it("TR-002 keeps matching PR numbers scoped to their enrolled repository", () => {
+    const other = { ...project, projectId: "project-b", repoSlug: "acme/b" };
+    const a = verifyHarvestTarget(project, candidate());
+    const b = verifyHarvestTarget(
+      other,
+      candidate({
+        repoSlug: "acme/b",
+        prUrl: "https://github.com/acme/b/pull/42",
+      }),
+    );
+    expect(a.ok).toBe(true);
+    expect(b.ok).toBe(true);
+    if (!a.ok || !b.ok) throw new Error("Expected valid targets");
+    expect([project.projectId, a.workKey]).not.toEqual([
+      other.projectId,
+      b.workKey,
+    ]);
+    expect(verifyHarvestTarget(other, candidate())).toMatchObject({
+      ok: false,
+      code: "REPO_MISMATCH",
+    });
+  });
+  it.each([
+    [{ repoSlug: "acme/b" }, "REPO_MISMATCH"],
+    [{ repoSlug: null }, "REPO_MISMATCH"],
+    [{ baseBranch: "main" }, "NOT_CONFIGURED_TRUNK"],
+    [{ headBranch: "unrelated" }, "NOT_FEATURE_BRANCH"],
+    [{ headBranch: null }, "NOT_FEATURE_BRANCH"],
+    [{ mergeCommitSha: null }, "MISSING_MERGE_SHA"],
+    [{ mergeCommitSha: "" }, "MISSING_MERGE_SHA"],
+    [{ explicitPhaseId: "phase-02" }, "PHASE_MISMATCH"],
+  ] as const)("TR-002 rejects invalid target %j", (override, code) => {
+    expect(verifyHarvestTarget(project, candidate(override))).toEqual({
+      ok: false,
+      code,
+      reason: expect.any(String),
+    });
+  });
+  it("TR-002 accepts a verified close without a merge SHA", () => {
+    expect(
+      verifyHarvestTarget(
+        project,
+        candidate({ terminalEvent: "closed_unmerged", mergeCommitSha: null }),
+      ),
+    ).toMatchObject({
+      ok: true,
+      featureId,
+      phaseId,
+      workKey: expect.any(String),
+    });
+  });
+});
+
+describe("FR-003 independent harvest stages", () => {
+  it("TR-003 plans five ordered stages for each phase", () => {
+    const phases = Object.freeze(["phase-01", "phase-02"]);
+    const plan = planHarvestStages({
+      terminalEvent: "merged",
+      phaseIds: phases,
+      hasSlackTarget: true,
+      hasRemoteBranchTarget: true,
+    });
+    for (const phaseKey of phases) {
+      expect(plan.filter((item) => item.phaseKey === phaseKey)).toEqual(
+        stageNames.map((stage) => ({
+          phaseKey,
+          stage,
+          initialStatus: "pending",
+        })),
+      );
+    }
+    expect(plan).toHaveLength(10);
+    expect(phases).toEqual(["phase-01", "phase-02"]);
+  });
+  it("TR-003 skips absent external targets without skipping gates or learning", () => {
+    expect(
+      planHarvestStages({
+        terminalEvent: "merged",
+        phaseIds: [phaseId],
+        hasSlackTarget: false,
+        hasRemoteBranchTarget: false,
+      }),
+    ).toEqual(
+      stageNames.map((stage) => ({
+        phaseKey: phaseId,
+        stage,
+        initialStatus:
+          stage === "slack_delivery" || stage === "branch_cleanup"
+            ? "skipped_no_target"
+            : "pending",
+      })),
+    );
+  });
+  it("TR-003 completes only when all stage receipts have succeeded", () => {
+    const stages = stageNames.map((stage) => receipt(stage));
+    expect(
+      deriveHarvestTerminalStatus({ terminalEvent: "merged", stages }),
+    ).toBe("completed");
+    stages[4] = receipt("branch_cleanup", "skipped_no_target");
+    stages[3] = receipt("slack_delivery", "skipped_no_target");
+    expect(
+      deriveHarvestTerminalStatus({ terminalEvent: "merged", stages }),
+    ).toBe("completed");
+  });
+  it.each([
+    ["gate_verify", "gate_failed", "gate_failed"],
+    ["slack_delivery", "uncertain", "delivery_pending"],
+    ["branch_cleanup", "blocked_tip_mismatch", "cleanup_blocked"],
+    ["git_sync", "failed", "failed"],
+  ] as const)(
+    "TR-003 preserves unresolved %s status %s",
+    (stage, status, expected) => {
+      const stages = stageNames.map((name) =>
+        receipt(name, name === stage ? status : "succeeded"),
+      );
+      expect(
+        deriveHarvestTerminalStatus({ terminalEvent: "merged", stages }),
+      ).toBe(expected);
+    },
+  );
+  it.each(["pending", "running"] as const)(
+    "TR-003 does not report completion for %s gates",
+    (status) => {
+      expect(
+        deriveHarvestTerminalStatus({
+          terminalEvent: "merged",
+          stages: stageNames.map((stage) =>
+            receipt(stage, stage === "gate_verify" ? status : "succeeded"),
+          ),
+        }),
+      ).not.toBe("completed");
+    },
+  );
+});
+
+describe("FR-005 closed attempts and branch cleanup", () => {
+  it("TR-004 records closed attempts without gate verification or phase promotion", () => {
+    expect(
+      planHarvestStages({
+        terminalEvent: "closed_unmerged",
+        phaseIds: [phaseId],
+        hasSlackTarget: true,
+        hasRemoteBranchTarget: true,
+      }),
+    ).toEqual([
+      { phaseKey: phaseId, stage: "learning_record", initialStatus: "pending" },
+    ]);
+    expect(
+      deriveHarvestTerminalStatus({
+        terminalEvent: "closed_unmerged",
+        stages: [receipt("learning_record")],
+      }),
+    ).toBe("closed_unmerged");
+    expect(
+      deriveHarvestTerminalStatus({
+        terminalEvent: "merged",
+        stages: [receipt("gate_verify", "gate_failed")],
+      }),
+    ).toBe("gate_failed");
+  });
+  it("TR-004 permits compare-and-delete only at the expected tip", () => {
+    expect(evaluateBranchCleanupSafety(cleanup)).toEqual({
+      action: "delete_at_tip",
+      branch: cleanup.headBranch,
+      expectedSha: sha,
+    });
+  });
+  it("TR-004 reconciles an already deleted remote branch", () => {
+    expect(
+      evaluateBranchCleanupSafety({ ...cleanup, observedRemoteHeadSha: null }),
+    ).toEqual({ action: "already_deleted" });
+  });
+  it.each([
+    [{ candidateRepoSlug: "acme/b" }, "REPO_MISMATCH"],
+    [{ headBranch: "develop" }, "PROTECTED_BRANCH"],
+    [{ expectedHeadSha: null }, "MISSING_EXPECTED_TIP"],
+    [{ expectedHeadSha: "" }, "MISSING_EXPECTED_TIP"],
+    [{ observedRemoteHeadSha: "b".repeat(40) }, "TIP_MOVED"],
+  ] as const)("TR-004 blocks unsafe branch cleanup %j", (override, code) => {
+    expect(evaluateBranchCleanupSafety({ ...cleanup, ...override })).toEqual({
+      action: "block_cleanup",
+      code,
+    });
+  });
+});
+
+describe("FR-006 pure harvest policy", () => {
+  it("TR-002 returns equal results for equal facts without changing inputs", () => {
+    const input = candidate();
+    const before = structuredClone({ project, input });
+    const first = verifyHarvestTarget(project, input);
+    expect(first.ok).toBe(true);
+    expect(verifyHarvestTarget(project, input)).toEqual(first);
+    expect({ project, input }).toEqual(before);
+    expect(
+      verifyHarvestTarget(project, { ...input, baseBranch: "wrong" }),
+    ).toMatchObject({ ok: false, code: "NOT_CONFIGURED_TRUNK" });
+  });
+});
+
+describe("FR-006 durable status schemas", () => {
+  it("TR-005 validates DeliverySourceSchema values and rejects unknown or missing status", () => {
+    for (const value of ["github_webhook", "github_poller", "manual_cli"])
+      expect(DeliverySourceSchema.parse(value)).toBe(value);
+    for (const value of ["unknown", "", null, undefined, 42])
+      expect(DeliverySourceSchema.safeParse(value).success).toBe(false);
+  });
+  it("TR-005 validates HarvestTerminalEventSchema values and rejects unknown or missing status", () => {
+    for (const value of ["merged", "closed_unmerged"])
+      expect(HarvestTerminalEventSchema.parse(value)).toBe(value);
+    for (const value of ["unknown", "", null, undefined, 42])
+      expect(HarvestTerminalEventSchema.safeParse(value).success).toBe(false);
+  });
+  it("TR-005 validates HarvestOperationStatusSchema values and rejects unknown or missing status", () => {
+    for (const value of [
+      "accepted",
+      "running",
+      "completed",
+      "gate_failed",
+      "delivery_pending",
+      "cleanup_blocked",
+      "closed_unmerged",
+      "failed",
+    ])
+      expect(HarvestOperationStatusSchema.parse(value)).toBe(value);
+    for (const value of ["unknown", "", null, undefined, 42])
+      expect(HarvestOperationStatusSchema.safeParse(value).success).toBe(false);
+  });
+  it("TR-005 validates HarvestStageNameSchema values and rejects unknown or missing status", () => {
+    for (const value of [
+      "git_sync",
+      "gate_verify",
+      "learning_record",
+      "slack_delivery",
+      "branch_cleanup",
+    ])
+      expect(HarvestStageNameSchema.parse(value)).toBe(value);
+    for (const value of ["unknown", "", null, undefined, 42])
+      expect(HarvestStageNameSchema.safeParse(value).success).toBe(false);
+  });
+  it("TR-005 validates HarvestStageStatusSchema values and rejects unknown or missing status", () => {
+    for (const value of [
+      "pending",
+      "running",
+      "succeeded",
+      "gate_failed",
+      "forecast_missing",
+      "uncertain",
+      "blocked_tip_mismatch",
+      "skipped_no_target",
+      "failed",
+    ])
+      expect(HarvestStageStatusSchema.parse(value)).toBe(value);
+    for (const value of ["unknown", "", null, undefined, 42])
+      expect(HarvestStageStatusSchema.safeParse(value).success).toBe(false);
+  });
+  it("TR-005 validates OutboxStatusSchema values and rejects unknown or missing status", () => {
+    for (const value of [
+      "pending",
+      "sending",
+      "uncertain",
+      "delivered",
+      "skipped_no_target",
+      "failed",
+    ])
+      expect(OutboxStatusSchema.parse(value)).toBe(value);
+    for (const value of ["unknown", "", null, undefined, 42])
+      expect(OutboxStatusSchema.safeParse(value).success).toBe(false);
+  });
+});
