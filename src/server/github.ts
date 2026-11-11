@@ -15,12 +15,21 @@ import type { GwrkConfig } from "../utils/config.js";
 import { parseFeatureBranch } from "../utils/feature-branch.js";
 import { syncTrunkForHarvest } from "../utils/git.js";
 import { resolveProjectId } from "../utils/project-id.js";
+import type { DispatchLedgerScope } from "./dispatch.js";
 
 export async function githubWebhookPlugin(
   fastify: FastifyInstance,
-  options: { config: GwrkConfig; projectRoot: string },
+  options: {
+    config: GwrkConfig;
+    projectRoot: string;
+    ledger?: DispatchLedgerScope;
+  },
 ) {
-  const { config, projectRoot } = options;
+  const { config, projectRoot, ledger } = options;
+  const inFlight = new Set<Promise<void>>();
+  fastify.addHook("onClose", async () => {
+    await Promise.all(inFlight);
+  });
 
   fastify.post("/webhook/github", async (request, reply) => {
     const signature = request.headers["x-hub-signature-256"] as string;
@@ -86,20 +95,22 @@ export async function githubWebhookPlugin(
           author: issue.user?.login || "unknown",
         };
 
-        const projectId = resolveProjectId(projectRoot);
+        const projectId = ledger?.projectId ?? resolveProjectId(projectRoot);
 
         // FR-H14: Record in issues table
         if (action === "opened" || action === "labeled") {
-          upsertIssue(record, projectId);
+          upsertIssue(record, projectId, ledger?.db);
           // FR-H15: Slack notification
           if (action === "opened") {
             await notifyIssueOpened(record);
           }
         } else if (action === "closed") {
-          updateIssue(issue.number, projectId, {
-            state: "closed",
-            closed_at: issue.closed_at,
-          });
+          updateIssue(
+            issue.number,
+            projectId,
+            { state: "closed", closed_at: issue.closed_at },
+            ledger?.db,
+          );
         }
 
         return reply
@@ -162,13 +173,15 @@ export async function githubWebhookPlugin(
 
     // 5. Trigger Harvest (FR-H01)
     syncTrunkForHarvest(projectRoot, baseRef);
-    harvestFeature(projectRoot, record)
-      .then(async (_report) => {
+    const harvest = harvestFeature(projectRoot, record, ledger)
+      .then(() => {
         fastify.log.info(`Harvest complete for ${featureId}`);
       })
       .catch((err) => {
         fastify.log.error(`Harvest failed for ${featureId}: ${err.message}`);
-      });
+      })
+      .finally(() => inFlight.delete(harvest));
+    inFlight.add(harvest);
 
     return reply.status(200).send({ status: "accepted", featureId, phaseId });
   });

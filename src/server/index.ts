@@ -224,7 +224,11 @@ export async function startServer(
     await healthRoutes(server, lifecycle, network, sandbox);
     await statusRoutes(server, monitor, queue, sandbox, lifecycle, network);
     await dispatchRoutes(server, queue);
-    await githubWebhookPlugin(server, { config, projectRoot });
+    await githubWebhookPlugin(server, {
+      config,
+      projectRoot,
+      ledger: options.ledger,
+    });
     await notifyRoutes(server);
 
     const address = await server.listen({

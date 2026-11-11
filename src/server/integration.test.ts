@@ -3,14 +3,16 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { execFileSync, execSync } from "node:child_process";
+import { createHmac } from "node:crypto";
 import {
   existsSync,
   mkdirSync,
+  mkdtempSync,
   readFileSync,
   rmSync,
   writeFileSync,
 } from "node:fs";
-import { homedir } from "node:os";
+import { homedir, tmpdir } from "node:os";
 import { join, sep } from "node:path";
 import fastify from "fastify";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -22,6 +24,7 @@ import {
 import { getCompressionRecord } from "../db/compression.js";
 import { getGateResults } from "../db/gates.js";
 import { getDb } from "../db/index.js";
+import { listIssues } from "../db/issues.js";
 import { listRuns, recordHistory, startRun } from "../db/runs.js";
 import { gatherDeliveryActuals } from "../engine/compression.js";
 import { ShipOrchestrator } from "../engine/ship-orchestrator.js";
@@ -103,6 +106,25 @@ function stubListener() {
   const app = fastify();
   vi.mocked(fastify).mockReturnValueOnce(app);
   vi.spyOn(app, "listen").mockResolvedValue("http://127.0.0.1:0");
+}
+
+function injectGitHub(
+  fixture: ServerFixture,
+  event: string,
+  payload: Record<string, unknown>,
+) {
+  const signature = createHmac("sha256", "fixture-secret")
+    .update(JSON.stringify(payload))
+    .digest("hex");
+  return fixture.app.inject({
+    method: "POST",
+    url: "/webhook/github",
+    headers: {
+      "x-github-event": event,
+      "x-hub-signature-256": `sha256=${signature}`,
+    },
+    payload,
+  });
 }
 
 describe("Server E2E Integration", () => {
@@ -455,6 +477,86 @@ describe("Server E2E Integration", () => {
     }
   });
 
+  it("uses scoped SQLite for signed labeled and closed GitHub issues", async () => {
+    stubListener();
+    const fixture = await createServerFixture("listen");
+    const featureId = "webhook-issue";
+    const issue = {
+      number: 7,
+      title: "Fixture issue",
+      labels: [{ name: `gwrk:${featureId}` }],
+      state: "open",
+      created_at: "2026-01-01T00:00:00Z",
+    };
+    const closedAt = "2026-01-02T00:00:00Z";
+    const rows = () => listIssues(featureId, fixture.projectId, fixture.db);
+    try {
+      const labeled = await injectGitHub(fixture, "issues", {
+        action: "labeled",
+        issue,
+      });
+      expect(labeled.statusCode).toBe(200);
+      expect(rows()).toEqual([
+        expect.objectContaining({ issue_number: 7, state: "open" }),
+      ]);
+
+      const closed = await injectGitHub(fixture, "issues", {
+        action: "closed",
+        issue: { ...issue, state: "closed", closed_at: closedAt },
+      });
+      expect(closed.statusCode).toBe(200);
+      expect(rows()).toEqual([
+        expect.objectContaining({ state: "closed", closed_at: closedAt }),
+      ]);
+      expect(getDb).not.toHaveBeenCalled();
+    } finally {
+      await fixture.close();
+    }
+  });
+
+  it("harvests a signed merged GitHub pull request in scoped SQLite", async () => {
+    stubListener();
+    const fixture = await createServerFixture("listen");
+    const featureId = "webhook-merge";
+    const phaseId = "phase-01";
+    const mergedAt = "2026-01-01T00:00:00Z";
+    try {
+      startRun(
+        {
+          feature_id: featureId,
+          phase_id: phaseId,
+          project_id: fixture.projectId,
+          command: "ship",
+        },
+        fixture.db,
+      );
+      const response = await injectGitHub(fixture, "pull_request", {
+        action: "closed",
+        pull_request: {
+          number: 8,
+          merged: true,
+          merged_at: mergedAt,
+          merge_commit_sha: "abcdef",
+          html_url: "https://example.invalid/pr/8",
+          base: { ref: "develop" },
+          head: { ref: `feat/${featureId}-${phaseId}` },
+        },
+      });
+      expect(response.statusCode).toBe(200);
+      await fixture.app.close();
+      expect(getDb).not.toHaveBeenCalled();
+      expect(listRuns(featureId, fixture.projectId, fixture.db)).toEqual([
+        expect.objectContaining({
+          merge_commit_sha: "abcdef",
+          status: "merged",
+          finished_at: mergedAt,
+        }),
+      ]);
+    } finally {
+      await fixture.close();
+    }
+  });
+
   it("releases a dispatch worktree and reports a failed ledger update on close", async () => {
     stubListener();
     const fixture = await createServerFixture("listen");
@@ -635,6 +737,8 @@ describe("Server E2E Integration", () => {
     try {
       mkdirSync(journal);
       expect((await fixture.app.inject(request)).statusCode).toBe(500);
+      const queue = await fixture.app.inject("/api/dispatch/queue");
+      expect(queue.json()).toMatchObject({ active: [], queued: [] });
       rmSync(journal, { recursive: true });
 
       const retry = await fixture.app.inject(request);
@@ -652,6 +756,116 @@ describe("Server E2E Integration", () => {
       expect(ShipOrchestrator).toHaveBeenCalledOnce();
     } finally {
       await fixture.close();
+    }
+  });
+
+  it("retains a locked dispatch worktree and reports the removal failure on close", async () => {
+    const fixture = await createServerFixture("routes", {
+      routes: ["dispatch"],
+    });
+    let lockedWorktree: string | undefined;
+    const run = vi.fn(async () => {
+      const workDir = fixture.journal().at(-1)?.workDir;
+      if (!workDir) throw new Error("Expected a dispatch worktree");
+      fixtureGit(fixture.projectRoot, "worktree", "lock", workDir);
+      lockedWorktree = workDir;
+      return 0;
+    });
+    vi.mocked(ShipOrchestrator).mockImplementationOnce(
+      () => ({ run, getResult: () => ({}) }) as unknown as ShipOrchestrator,
+    );
+    try {
+      const response = await fixture.app.inject({
+        method: "POST",
+        url: "/api/dispatch",
+        payload: { featureId: "locked-worktree", phaseId: "phase-01" },
+      });
+      expect(response.statusCode).toBe(201);
+      const { id } = response.json();
+      await vi.waitFor(() => {
+        expect(fixture.journal().at(-1)).toMatchObject({
+          id,
+          status: "completed",
+        });
+      });
+      expect(lockedWorktree).toBeDefined();
+      expect(fixture.journal().at(-1)?.workDir).toBe(lockedWorktree);
+      expect(existsSync(lockedWorktree ?? "")).toBe(true);
+      expect(
+        fixtureGit(fixture.projectRoot, "worktree", "list", "--porcelain"),
+      ).toContain(`worktree ${lockedWorktree}\n`);
+      const queue = await fixture.app.inject("/api/dispatch/queue");
+      expect(queue.json().active).toEqual([]);
+      await expect(fixture.app.close()).rejects.toMatchObject({
+        message: expect.stringContaining(
+          `Failed to remove worktree ${lockedWorktree}`,
+        ),
+        cause: expect.objectContaining({
+          message: expect.stringContaining(
+            "cannot remove a locked working tree",
+          ),
+        }),
+      });
+    } finally {
+      try {
+        if (lockedWorktree) {
+          fixtureGit(fixture.projectRoot, "worktree", "unlock", lockedWorktree);
+          fixtureGit(
+            fixture.projectRoot,
+            "worktree",
+            "remove",
+            "--force",
+            lockedWorktree,
+          );
+        }
+      } finally {
+        await fixture.close();
+      }
+    }
+  });
+
+  it("completes a dispatch with spaces in its temporary directory", async () => {
+    const parent = mkdtempSync(join(tmpdir(), "gwrk fixture space "));
+    let fixture: ServerFixture | undefined;
+    const run = vi.fn(async () => 0);
+    vi.mocked(ShipOrchestrator).mockImplementationOnce(
+      () => ({ run, getResult: () => ({}) }) as unknown as ShipOrchestrator,
+    );
+    try {
+      vi.stubEnv("TMPDIR", parent);
+      fixture = await createServerFixture("routes", { routes: ["dispatch"] });
+      const response = await fixture.app.inject({
+        method: "POST",
+        url: "/api/dispatch",
+        payload: { featureId: "spaces", phaseId: "phase-01" },
+      });
+      expect(response.statusCode).toBe(201);
+      await fixture.app.close();
+      expect(run).toHaveBeenCalledOnce();
+      expect(fixture.journal().at(-1)).toMatchObject({
+        id: response.json().id,
+        status: "completed",
+      });
+      const workDir = fixture
+        .journal()
+        .find((record) => record.workDir)?.workDir;
+      expect(workDir).toContain("gwrk fixture space ");
+      expect(existsSync(workDir ?? "")).toBe(false);
+      expect(
+        fixtureGit(
+          fixture.projectRoot,
+          "worktree",
+          "list",
+          "--porcelain",
+        ).match(/^worktree .+$/gm),
+      ).toEqual([`worktree ${fixture.projectRoot}`]);
+    } finally {
+      try {
+        await fixture?.close();
+      } finally {
+        vi.unstubAllEnvs();
+        rmSync(parent, { recursive: true, force: true });
+      }
     }
   });
 
