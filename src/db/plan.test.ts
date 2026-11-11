@@ -183,7 +183,7 @@ describe("src/db/plan.ts (DM-018-001/002/003)", () => {
   );
 
   it.each([false, true])(
-    "reads the latest phase and proposal through both IDs with enrollment first = %s",
+    "keeps a phase move and proposal retarget through both IDs with enrollment first = %s",
     (enrollmentFirst) => {
       const checkout = mkdtempSync(join(tmpdir(), "gwrk-plan-child-order-"));
       onTestFinished(() => rmSync(checkout, { recursive: true, force: true }));
@@ -227,7 +227,7 @@ describe("src/db/plan.ts (DM-018-001/002/003)", () => {
         });
       const phase = {
         id: "phase",
-        feature_id: "feature",
+        feature_id: "old-feature",
         name: "Phase",
         status: "PENDING",
         health: "CLEAN",
@@ -240,6 +240,13 @@ describe("src/db/plan.ts (DM-018-001/002/003)", () => {
         proposal_type: "UPDATE",
         status: "PENDING",
       };
+      const destination = "current-feature";
+      const previousTarget = { ...phase, id: "previous-target", seq: 2 };
+      insertFeature(
+        { id: destination, name: "Current", status: "PLANNED", sp_total: 1 },
+        localId,
+        writer,
+      );
       for (const owner of [localId, remoteId]) {
         insertFeature(
           {
@@ -252,11 +259,20 @@ describe("src/db/plan.ts (DM-018-001/002/003)", () => {
           writer,
         );
         insertPhase(phase, owner, writer);
-        insertProposal(proposal, owner, writer);
       }
+      insertPhase(previousTarget, remoteId, reader);
+      insertProposal(proposal, localId, writer);
+      insertProposal(
+        { ...proposal, target_phase_id: previousTarget.id },
+        remoteId,
+        reader,
+      );
+
       if (enrollmentFirst) enroll();
-      insertPhase({ ...phase, status: "DONE" }, localId, writer);
-      insertProposal({ ...proposal, status: "ACCEPTED" }, localId, writer);
+      const movedPhase = { ...phase, feature_id: destination, status: "DONE" };
+      const acceptedProposal = { ...proposal, status: "ACCEPTED" };
+      insertPhase(movedPhase, localId, writer);
+      insertProposal(acceptedProposal, localId, writer);
       // The two histories can share the same wall-clock second.
       for (const table of ["plan_phases", "plan_proposals"]) {
         writer
@@ -266,16 +282,20 @@ describe("src/db/plan.ts (DM-018-001/002/003)", () => {
       if (!enrollmentFirst) enroll();
 
       for (const owner of [localId, remoteId]) {
-        expect.soft(getPhase(phase.id, owner, reader)?.status).toBe("DONE");
+        const effectivePhase = getPhase(phase.id, owner, reader);
+        expect.soft(effectivePhase).toMatchObject(movedPhase);
+        expect
+          .soft(listPhases(destination, owner, reader))
+          .toEqual([effectivePhase]);
         expect
           .soft(listPhases(phase.feature_id, owner, reader))
-          .toMatchObject([{ id: phase.id, status: "DONE" }]);
+          .toMatchObject([previousTarget]);
         expect
-          .soft(getProposal(proposal.id, owner, reader)?.status)
-          .toBe("ACCEPTED");
+          .soft(getProposal(proposal.id, owner, reader))
+          .toMatchObject(acceptedProposal);
         expect
           .soft(listProposals(owner, reader))
-          .toMatchObject([{ id: proposal.id, status: "ACCEPTED" }]);
+          .toMatchObject([acceptedProposal]);
       }
       expect(reader.pragma("foreign_key_check")).toEqual([]);
     },
