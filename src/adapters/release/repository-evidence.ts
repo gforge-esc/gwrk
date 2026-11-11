@@ -35,6 +35,7 @@ export function readRepositoryEvidence(
     Object.entries(process.env).filter(([name]) => !name.startsWith("GIT_")),
   );
   env.GIT_OPTIONAL_LOCKS = "0";
+  env.GIT_NO_REPLACE_OBJECTS = "1";
   env.GIT_TERMINAL_PROMPT = "0";
   const options = {
     cwd: root,

@@ -306,6 +306,33 @@ describe("installed ledger commands outside a checkout", () => {
     ]);
   });
 
+  it("uses original Git objects when the checkout contains a replacement ref", async () => {
+    const checkout = join(root, "enrolled");
+    const contents = '{"status":"completed"}\n';
+    const original = await seedRepository(checkout, contents);
+    const replacement = await seedRepository(checkout, '{"status":"open"}\n');
+    const git = (...args: string[]) =>
+      execFileSync("git", ["-C", checkout, ...args], { stdio: "ignore" });
+    git("reset", "--hard", original);
+    git("replace", original, replacement);
+    const db = seedLedger();
+    db.prepare("UPDATE projects SET path = ?").run(checkout);
+    db.close();
+
+    const result = runLedgerCommand("backup", "--out", "backup");
+    expect(result.status, result.stderr).toBe(0);
+    const { metadata } = await verifyLedgerBackup(join(root, "backup"));
+    expect(metadata.repositories[0]).toMatchObject({
+      head: original,
+      evidence: [
+        {
+          path: trackedTask,
+          sha256: createHash("sha256").update(contents).digest("hex"),
+        },
+      ],
+    });
+  });
+
   it("preserves the digest for an enrolled __proto__ ID on disk", async () => {
     const checkout = join(root, "enrolled");
     await seedRepository(checkout, '{"status":"completed"}\n');

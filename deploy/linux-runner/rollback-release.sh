@@ -64,6 +64,13 @@ check_rollback() {
 check_rollback
 timeout --kill-after=5s 15s "${as_service[@]}" node "$target/dist/cli.js" --version </dev/null >/dev/null 2>&1 ||
   fail "Rollback target CLI could not start as $service_user: $target/dist/cli.js"
+timeout --kill-after=5s 15s "${as_service[@]}" node -e '
+  const { createRequire } = require("node:module");
+  const Database = createRequire(process.argv[1])("better-sqlite3");
+  const database = new Database(":memory:");
+  database.close();
+' "$target/package.json" </dev/null >/dev/null 2>&1 ||
+  fail "Rollback target SQLite could not open as $service_user: $target"
 
 scratch=$(mktemp -d "$release_root/.rollback.XXXXXXXX")
 switched=false

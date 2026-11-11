@@ -224,6 +224,20 @@ test "$(readlink /opt/gwrk/current)" = "$current_before"
 test "$(readlink /opt/gwrk/previous)" = "$previous_before"
 mv /tmp/prior-node-modules "$prior/node_modules"
 
+mv "$prior/node_modules" /tmp/prior-shared-node-modules
+cp -a "$active/node_modules" "$prior/node_modules"
+find "$prior/node_modules" -name better_sqlite3.node -type f -delete
+: > /tmp/supervisor.calls
+expect_rejection 'Rollback target SQLite could not open' bash "$rollback" /opt/gwrk /var/lib/gwrk
+if grep -Eq '^(stop|start)$' /tmp/supervisor.calls; then
+  printf 'Rollback stopped the service before rejecting a missing SQLite binding.\n' >&2
+  exit 1
+fi
+test "$(readlink /opt/gwrk/current)" = "$current_before"
+test "$(readlink /opt/gwrk/previous)" = "$previous_before"
+mv "$prior/node_modules" /tmp/prior-without-sqlite
+mv /tmp/prior-shared-node-modules "$prior/node_modules"
+
 printf 'SELECT 1;\n' > "$prior/dist/db/migrations/999-fixture.sql"
 write_prior_manifest
 expect_rejection '999-fixture.sql' bash "$rollback" /opt/gwrk /var/lib/gwrk
