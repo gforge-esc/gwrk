@@ -161,15 +161,18 @@ describe("Project registry upgrade", () => {
           ('feature-one/phase-01', 'feature-one', 'Phase 1', 1, 'alpha'),
           ('conflict/phase-01', 'conflict', 'Phase 1', 1, 'beta'),
           ('placeholder/phase-01', 'placeholder', 'Phase 1', 1, 'alpha');
+        INSERT INTO runs (id, project_id, feature_id, phase_id, command, started_at, finished_at)
+        VALUES (41, 'alpha', 'feature-one', 'phase-01', 'ship', '2023-11-13 22:13:20', '2023-11-13 22:14:20');
         INSERT INTO runs (id, project_id, feature_id, phase_id, command) VALUES
-          (41, 'alpha', 'feature-one', 'phase-01', 'ship'),
           (42, 'beta', 'conflict', 'phase-01', 'ship'),
           (43, 'beta', 'run-conflict', 'phase-01', 'ship'),
           (44, 'beta', 'feature-one', 'phase-01', 'research'),
           (45, 'beta', 'feature-one', 'phase-02', 'ship'),
           (46, 'beta', 'runs-only', 'phase-01', 'ship');
+        INSERT INTO routing_decisions (run_id, feature, phase, selected_backend, reason, probe_status, created_at)
+        VALUES ('ship-feature-one-1700000000000', 'feature-one', 'phase-01', 'beta-backend',
+          'unlinked decision after an older run', 'fresh', datetime(1700000000, 'unixepoch'));
         INSERT INTO routing_decisions (run_id, feature, phase, selected_backend, reason, probe_status) VALUES
-          ('ship-feature-one-1700000000000', 'feature-one', 'phase-01', 'fixture', 'unlinked decision after an older run', 'fresh'),
           ('ship-conflict-1700000000000', 'conflict', 'phase-01', 'fixture', 'phase conflict', 'fresh'),
           ('ship-run-conflict-1700000000000', 'run-conflict', 'phase-01', 'fixture', 'run conflict', 'fresh'),
           ('ship-missing-1700000000000', 'missing', 'phase-01', 'fixture', 'missing', 'fresh'),
