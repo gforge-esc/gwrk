@@ -415,6 +415,8 @@ export function qualificationStaleness(
 
 const credentialHeaders =
   "(?:authorization|proxy-authorization|cookie|set-cookie)";
+const secretMaterialMessage =
+  "Secret material found in model qualification evidence.";
 const secretPattern = new RegExp(
   String.raw`(?:^|[^a-z0-9])(?:bearer\s+[^\s"]+|sk-|AIza|gh[pousr]_|github_pat_|xox[baprs]-|xapp-)|"(?:${credentialHeaders}|api[_-]?key|access[_-]?token|password)"\s*:`,
   "i",
@@ -557,6 +559,34 @@ function inspectedRecordAsJson(token: string): string {
   );
 }
 
+function isInspectedCredentialHeader(record: string): boolean {
+  const tokens = /"(?:[^"\\]|\\[\s\S])*"|[{}[\](),]/g;
+  const property = /\s*"(name|key|value)"\s*:\s*("(?:[^"\\]|\\[\s\S])*")?/y;
+  const header: { name?: string; key?: string; value?: undefined } = {};
+  let depth = 0;
+  for (const token of record.matchAll(tokens)) {
+    const [text] = token;
+    if (text === "{" || text === "[" || text === "(") depth += 1;
+    if (text === "}" || text === "]" || text === ")") depth -= 1;
+    if (depth !== 1 || (text !== "{" && text !== ",")) continue;
+
+    property.lastIndex = token.index + 1;
+    const match = property.exec(record);
+    if (!match) continue;
+    const [, field, literal] = match;
+    if (field === "value") {
+      header.value = undefined;
+    } else if ((field === "name" || field === "key") && literal) {
+      const name = JSON.parse(literal) as string;
+      if (isCredentialHeaderName(name)) header[field] = name;
+    }
+  }
+  return (
+    isCredentialHeaderRecord(header, "name") ||
+    isCredentialHeaderRecord(header, "key")
+  );
+}
+
 function assertUniqueJsonKeys(record: string): void {
   const tokens = /("(?:[^"\\]|\\.)*")(\s*:)?|[{}[\]]/g;
   const scopes: Array<Set<string> | null> = [];
@@ -595,16 +625,25 @@ function scanEmbeddedJson(
     if (end === undefined) continue;
     let token = text.slice(opening.index, end);
     let decoded: unknown;
+    let inspectedObject: string | undefined;
     try {
       decoded = JSON.parse(token);
     } catch {
       if (!token.startsWith("[") && !token.startsWith("{")) continue;
       try {
         token = inspectedRecordAsJson(token);
+        if (token.startsWith("{")) inspectedObject = token;
         decoded = JSON.parse(token);
+        inspectedObject = undefined;
       } catch {
-        continue;
+        if (inspectedObject === undefined) continue;
       }
+    }
+    if (inspectedObject !== undefined) {
+      if (isInspectedCredentialHeader(inspectedObject)) {
+        throw new Error(secretMaterialMessage);
+      }
+      continue;
     }
     if (typeof decoded !== "string") {
       assertUniqueJsonKeys(token);
@@ -714,6 +753,6 @@ function scanEvidence(
         serialized.includes(JSON.stringify(secret).slice(1, -1)),
     )
   ) {
-    throw new Error("Secret material found in model qualification evidence.");
+    throw new Error(secretMaterialMessage);
   }
 }

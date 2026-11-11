@@ -629,6 +629,52 @@ describe("credential guard", () => {
     expect(() => assertNoSecretMaterial({ sanitizedOutput })).not.toThrow();
   });
 
+  it.each([
+    {
+      name: "Authorization",
+      value: "Basic Zml4dHVyZQ==",
+      source: undefined,
+    },
+    {
+      key: "Set-Cookie",
+      value: "session=fixture-session",
+      timestamp: 1n,
+    },
+    {
+      metadata: { name: "Content-Type", value: undefined },
+      value: "session=fixture-session",
+      key: "Set-Cookie",
+    },
+  ])(
+    "rejects inspected credential header records with metadata %#",
+    (record) => {
+      const sanitizedOutput = inspect({ headers: [record] });
+      expect(() => assertNoSecretMaterial({ sanitizedOutput })).toThrow(
+        /secret material/i,
+      );
+    },
+  );
+
+  it("allows inspected Content-Type header records with metadata", () => {
+    const sanitizedOutput = inspect({
+      headers: [
+        { name: "Content-Type", value: "text/plain", source: undefined },
+      ],
+    });
+    expect(() => assertNoSecretMaterial({ sanitizedOutput })).not.toThrow();
+  });
+
+  it("does not combine fields from separate inspected records", () => {
+    const sanitizedOutput = inspect({
+      headers: [
+        { name: "Authorization", metadata: { value: undefined } },
+        { key: "Set-Cookie", metadata: "value: ignored", source: undefined },
+        { value: "text/plain" },
+      ],
+    });
+    expect(() => assertNoSecretMaterial({ sanitizedOutput })).not.toThrow();
+  });
+
   it("allows ordinary inspected tuples and multi-value Vary field names", () => {
     const sanitizedOutput = inspect({
       headers: [
