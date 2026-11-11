@@ -281,6 +281,21 @@ describe("credential guard", () => {
       expect(() => assertNoSecretMaterial(evidence(response))).not.toThrow();
     });
 
+    it.each(["name", "key"])(
+      "allows Cookie as a field name in a %s header record",
+      (field) => {
+        const response = {
+          headers: [
+            {
+              [field]: "Access-Control-Allow-Headers",
+              value: ["Cookie", "Accept-Encoding"],
+            },
+          ],
+        };
+        expect(() => assertNoSecretMaterial(evidence(response))).not.toThrow();
+      },
+    );
+
     it.each(["headers", "rawHeaders"])(
       "rejects a singleton Cookie key in %s",
       (collection) => {
@@ -381,6 +396,39 @@ describe("credential guard", () => {
       }),
     },
   ])("standalone headers in $form", ({ evidence }) => {
+    it.each(["name", "key"])(
+      "rejects a credential tuple in the value of an ordinary %s record",
+      (field) => {
+        const record = {
+          [field]: "fixture.stdout",
+          value: ["Set-Cookie", "session=fixture-only"],
+        };
+        expect(() => assertNoSecretMaterial(evidence(record))).toThrow(
+          /secret material/i,
+        );
+      },
+    );
+
+    describe.each(["name", "key"])("standalone %s records", (field) => {
+      it.each([
+        ["Cookie", "Accept-Encoding"],
+        ["Accept-Encoding", "Cookie"],
+      ])("allows Vary values %s and %s", (first, second) => {
+        const record = { [field]: "vArY", value: [first, second] };
+        expect(() => assertNoSecretMaterial(evidence(record))).not.toThrow();
+      });
+
+      it("rejects credential text in a Vary value", () => {
+        const record = {
+          [field]: "Vary",
+          value: ["Cookie", "Bearer\tfixture-token"],
+        };
+        expect(() => assertNoSecretMaterial(evidence(record))).toThrow(
+          /secret material/i,
+        );
+      });
+    });
+
     it("rejects a keyed Set-Cookie header outside a header collection", () => {
       expect(() =>
         assertNoSecretMaterial(

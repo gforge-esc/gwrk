@@ -463,16 +463,22 @@ function isFlatHeaderList(entries: unknown[]): boolean {
   );
 }
 
-function isStandaloneVaryTuple(entries: unknown[]): boolean {
-  const [name, values] = entries;
+function isVaryFieldNameList(name: unknown, values: unknown[]): boolean {
   const fieldName = /^[!#$%&'*+.^_\x60|~0-9A-Za-z-]+$/;
   return (
-    entries.length === 2 &&
     typeof name === "string" &&
     name.toLowerCase() === "vary" &&
-    Array.isArray(values) &&
     values.length > 0 &&
     values.every((value) => typeof value === "string" && fieldName.test(value))
+  );
+}
+
+function isStandaloneVaryTuple(entries: unknown[]): boolean {
+  const [name, values] = entries;
+  return (
+    entries.length === 2 &&
+    Array.isArray(values) &&
+    isVaryFieldNameList(name, values)
   );
 }
 
@@ -578,6 +584,7 @@ function scanEvidence(
   const flatHeaderLists = new WeakSet<unknown[]>();
   const headerTupleParents = new WeakSet<unknown[]>();
   const headerMaps = new WeakSet<object>();
+  const headerRecords = new WeakSet<object>();
   const serialized =
     JSON.stringify(value, function (this: unknown, key, entry: unknown) {
       const isHeaderCollection = isRoot
@@ -588,16 +595,20 @@ function scanEvidence(
         Array.isArray(this) &&
         flatHeaderLists.has(this) &&
         Number(key) % 2 === 1;
+      const isHeaderTupleOrRecord =
+        Array.isArray(this) && headerTupleParents.has(this);
       const isStructuredHeaderValue =
         typeof this === "object" &&
         this !== null &&
         Array.isArray(entry) &&
         entry.every((value) => typeof value === "string") &&
-        (headerMaps.has(this) || (key === "value" && hasHeaderName(this)));
+        (headerMaps.has(this) ||
+          (key === "value" &&
+            (headerRecords.has(this) ||
+              isVaryFieldNameList(Reflect.get(this, "name"), entry) ||
+              isVaryFieldNameList(Reflect.get(this, "key"), entry))));
       const isHeaderValue = isFlatHeaderValue || isStructuredHeaderValue;
       if (Array.isArray(entry)) {
-        const isHeaderTuple =
-          Array.isArray(this) && headerTupleParents.has(this);
         // The same array can appear under both a header field and ordinary evidence.
         flatHeaderLists.delete(entry);
         headerTupleParents.delete(entry);
@@ -606,7 +617,7 @@ function scanEvidence(
             headerTupleParents.add(entry);
           }
           if (
-            ((isHeaderCollection || isHeaderTuple) &&
+            ((isHeaderCollection || isHeaderTupleOrRecord) &&
               isFlatHeaderList(entry)) ||
             isStandaloneVaryTuple(entry)
           ) {
@@ -615,7 +626,11 @@ function scanEvidence(
         }
       } else if (typeof entry === "object" && entry !== null) {
         headerMaps.delete(entry);
+        headerRecords.delete(entry);
         if (isHeaderCollection) headerMaps.add(entry);
+        if (isHeaderTupleOrRecord && hasHeaderName(entry)) {
+          headerRecords.add(entry);
+        }
       }
       if (
         headerPattern.test(key) ||
