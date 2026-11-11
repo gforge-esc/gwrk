@@ -196,7 +196,7 @@ describe("Project registry upgrade", () => {
     }
   });
 
-  it("assigns ownerless compression and routing history to legacy-local", () => {
+  it("creates legacy-local for ownerless compression without other legacy ledgers", () => {
     const upgraded = upgrade((legacy) => {
       legacy.exec(`
         INSERT INTO projects (id, name, path) VALUES ('alpha', 'Alpha', '/alpha');
@@ -207,28 +207,68 @@ describe("Project registry upgrade", () => {
           (1, NULL, 'shared', 'phase-01', 8, 1, 1, 1, 8, 8, '2026-11-11'),
           (2, NULL, 'shared', 'phase-01', 8, 2, 1, 1, 4, 4, '2026-11-11'),
           (3, 'alpha', 'shared', 'phase-01', 8, 4, 1, 1, 2, 2, '2026-11-11');
+      `);
+    });
+    try {
+      expect
+        .soft(
+          upgraded
+            .prepare("SELECT id FROM projects WHERE id = ?")
+            .pluck()
+            .get("legacy-local"),
+        )
+        .toBe("legacy-local");
+      expect
+        .soft(listCompressionRecords("shared", "legacy-local", upgraded))
+        .toMatchObject([{ project_id: "legacy-local", point_compression: 4 }]);
+      expect
+        .soft(listCompressionRecords("shared", "alpha", upgraded))
+        .toMatchObject([{ project_id: "alpha", point_compression: 2 }]);
+      expect
+        .soft(
+          upgraded
+            .prepare("SELECT id, project_id FROM compression ORDER BY id")
+            .all(),
+        )
+        .toEqual([
+          { id: 1, project_id: "legacy-local" },
+          { id: 2, project_id: "legacy-local" },
+          { id: 3, project_id: "alpha" },
+        ]);
+      expect(upgraded.pragma("foreign_key_check")).toEqual([]);
+    } finally {
+      upgraded.close();
+    }
+  });
+
+  it("creates legacy-local for ownerless routing history without other legacy ledgers", () => {
+    const upgraded = upgrade((legacy) => {
+      legacy.exec(`
+        INSERT INTO projects (id, name, path) VALUES ('alpha', 'Alpha', '/alpha');
         INSERT INTO routing_history (project_id, task_type, selected_backend, outcome)
         VALUES (NULL, 'implement', 'legacy-backend', 'success'),
                ('alpha', 'implement', 'alpha-backend', 'success');
       `);
     });
     try {
-      expect.soft(upgraded.prepare("SELECT id FROM projects WHERE id = 'legacy-local'").pluck().get())
+      expect
+        .soft(
+          upgraded
+            .prepare("SELECT id FROM projects WHERE id = ?")
+            .pluck()
+            .get("legacy-local"),
+        )
         .toBe("legacy-local");
-      expect.soft(listCompressionRecords("shared", "legacy-local", upgraded))
-        .toMatchObject([{ project_id: "legacy-local", point_compression: 4 }]);
-      expect.soft(listCompressionRecords("shared", "alpha", upgraded))
-        .toMatchObject([{ project_id: "alpha", point_compression: 2 }]);
-      expect.soft(upgraded.prepare("SELECT id, project_id FROM compression ORDER BY id").all())
-        .toEqual([
-          { id: 1, project_id: "legacy-local" },
-          { id: 2, project_id: "legacy-local" },
-          { id: 3, project_id: "alpha" },
+      expect
+        .soft(getRoutingHistory("implement", "legacy-local", 10, upgraded))
+        .toMatchObject([
+          { project_id: "legacy-local", selected_backend: "legacy-backend" },
         ]);
-      expect.soft(getRoutingHistory("implement", "legacy-local", 10, upgraded))
-        .toMatchObject([{ project_id: "legacy-local", selected_backend: "legacy-backend" }]);
-      expect.soft(getRoutingHistory("implement", "alpha", 10, upgraded))
-        .toMatchObject([{ project_id: "alpha", selected_backend: "alpha-backend" }]);
+      expect
+        .soft(getRoutingHistory("implement", "alpha", 10, upgraded))
+        .toMatchObject([
+          { project_id: "alpha", selected_backend: "alpha-backend" },
+        ]);
       expect(upgraded.pragma("foreign_key_check")).toEqual([]);
     } finally {
       upgraded.close();
