@@ -68,22 +68,42 @@ export function isConcreteModel(modelId: string): boolean {
   );
 }
 
+function isCompleteRunnerScope(
+  scope: RunnerScope | null | undefined,
+): scope is RunnerScope {
+  return (
+    scope !== null &&
+    scope !== undefined &&
+    isNonBlankString(scope.workspaceId) &&
+    isNonBlankString(scope.runnerProfile) &&
+    isNonBlankString(scope.platform) &&
+    isNonBlankString(scope.arch)
+  );
+}
+
 export function checkCandidate(
   snapshot: DiscoverySnapshot,
   scope: RunnerScope,
   candidate: ModelCandidate,
 ): CandidateCheck {
+  const snapshotScope = snapshot?.scope;
   if (
-    snapshot.scope.workspaceId !== scope.workspaceId ||
-    snapshot.scope.runnerProfile !== scope.runnerProfile ||
-    snapshot.scope.platform !== scope.platform ||
-    snapshot.scope.arch !== scope.arch
+    !isCompleteRunnerScope(snapshotScope) ||
+    !isCompleteRunnerScope(scope) ||
+    snapshotScope.workspaceId !== scope.workspaceId ||
+    snapshotScope.runnerProfile !== scope.runnerProfile ||
+    snapshotScope.platform !== scope.platform ||
+    snapshotScope.arch !== scope.arch
   ) {
     return { ok: false, reason: "runner-mismatch" };
   }
   if (!isConcreteModel(candidate.modelId))
     return { ok: false, reason: "model-alias" };
-  if (!Array.isArray(snapshot.adapters))
+  if (
+    !isNonBlankString(candidate.provider) ||
+    !isNonBlankString(candidate.family) ||
+    !Array.isArray(snapshot.adapters)
+  )
     return { ok: false, reason: "model-unavailable" };
   const reports = snapshot.adapters.filter(
     (report) => report?.backend === candidate.backend,

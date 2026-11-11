@@ -124,6 +124,79 @@ describe("model qualification policy", () => {
 
   const report = snapshot.adapters[0];
   const model = report.models[0];
+
+  describe.each(["snapshot", "requested"] as const)(
+    "%s runner scope",
+    (side) => {
+      it.each([
+        ["omitted scope", undefined],
+        ["null scope", null],
+        ["omitted workspace ID", { ...scope, workspaceId: undefined }],
+        ["omitted runner profile", { ...scope, runnerProfile: undefined }],
+        ["omitted platform", { ...scope, platform: undefined }],
+        ["omitted architecture", { ...scope, arch: undefined }],
+        ["blank runner profile", { ...scope, runnerProfile: " " }],
+        ["numeric workspace ID", { ...scope, workspaceId: 42 }],
+      ])("rejects %s in persisted input", (_label, invalidScope) => {
+        const input = JSON.parse(
+          JSON.stringify({
+            snapshot: {
+              ...snapshot,
+              scope: side === "snapshot" ? invalidScope : scope,
+            },
+            scope: side === "requested" ? invalidScope : scope,
+          }),
+        );
+        expect(checkCandidate(input.snapshot, input.scope, candidate)).toEqual({
+          ok: false,
+          reason: "runner-mismatch",
+        });
+      });
+    },
+  );
+
+  it.each([
+    ["empty scopes", {}],
+    ["omitted workspace ID", { ...scope, workspaceId: undefined }],
+    ["omitted runner profile", { ...scope, runnerProfile: undefined }],
+    ["omitted platform", { ...scope, platform: undefined }],
+    ["omitted architecture", { ...scope, arch: undefined }],
+    ["blank runner profile", { ...scope, runnerProfile: " " }],
+    ["numeric workspace ID", { ...scope, workspaceId: 42 }],
+  ])("rejects matching persisted scopes with %s", (_label, invalidScope) => {
+    const input = JSON.parse(
+      JSON.stringify({
+        snapshot: { ...snapshot, scope: invalidScope },
+        scope: invalidScope,
+      }),
+    );
+    expect(checkCandidate(input.snapshot, input.scope, candidate)).toEqual({
+      ok: false,
+      reason: "runner-mismatch",
+    });
+  });
+
+  describe.each(["provider", "family"] as const)("model %s", (field) => {
+    it.each([undefined, " "])(
+      "rejects matching identities with persisted value %j",
+      (value) => {
+        const input = JSON.parse(
+          JSON.stringify({
+            snapshot: {
+              ...snapshot,
+              adapters: [{ ...report, models: [{ ...model, [field]: value }] }],
+            },
+            candidate: { ...candidate, [field]: value },
+          }),
+        );
+        expect(checkCandidate(input.snapshot, scope, input.candidate)).toEqual({
+          ok: false,
+          reason: "model-unavailable",
+        });
+      },
+    );
+  });
+
   it.each([
     ["omitted CLI version", [{ ...report, cliVersion: undefined }]],
     ["blank CLI version", [{ ...report, cliVersion: " " }]],
