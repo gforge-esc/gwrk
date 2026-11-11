@@ -62,7 +62,7 @@ function discoverVerifiedMirror(root: string) {
   }
 }
 
-function discoverStoredRepository(root: string, projectId: string) {
+export function discoverStoredRepository(root: string, projectId: string) {
   const facts = discoverVerifiedCheckout(root) ?? discoverVerifiedMirror(root);
   const suffix = `#${projectId}`;
   if (facts || !root.endsWith(suffix)) return facts;
@@ -398,7 +398,6 @@ export function createProjectRegistry(
           (root): root is string => Boolean(root),
         ),
       );
-      let verifiedStoredCheckout = false;
       for (const root of roots) {
         const facts = discoverStoredRepository(root, projectId);
         if (!facts) continue;
@@ -408,17 +407,9 @@ export function createProjectRegistry(
         ) {
           throw conflict();
         }
-        verifiedStoredCheckout = true;
+        for (const id of computeLegacyProjectIds(facts)) verifiedIds.add(id);
       }
-      const occupied = roots.size > 0 || hasRecords.get({ id: projectId });
-      if (
-        occupied &&
-        !verifiedProject &&
-        !verifiedStoredCheckout &&
-        existingRepos.length === 0
-      ) {
-        throw conflict();
-      }
+      if (verifiedIds.size === 0) throw conflict();
     }
 
     for (const alias of aliases) {

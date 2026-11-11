@@ -47,6 +47,20 @@ import {
 } from "./plan.js";
 import { listRuns, registerProject, startRun } from "./runs.js";
 
+function initCheckout(parent: string, name: string, repoSlug: string): string {
+  const checkout = join(parent, name);
+  execFileSync("git", ["init", "--quiet", checkout], { stdio: "ignore" });
+  execFileSync("git", [
+    "-C",
+    checkout,
+    "remote",
+    "add",
+    "origin",
+    `https://github.com/${repoSlug}.git`,
+  ]);
+  return checkout;
+}
+
 describe("Database Scoping (US-030 / FR-037 / FR-038 / TR-036)", () => {
   let db: Database.Database;
 
@@ -106,7 +120,8 @@ describe("Database Scoping (US-030 / FR-037 / FR-038 / TR-036)", () => {
 });
 
 describe("Shared ledger project isolation", () => {
-  const projectIds = ["project-one", "project-two"];
+  let projectIds: string[];
+  let root: string;
   const featureId = "001-shared-feature";
   const phaseId = "phase-01";
   let db: Database.Database;
@@ -114,14 +129,18 @@ describe("Shared ledger project isolation", () => {
   beforeEach(() => {
     db = getTestDb();
     const registry = createSqliteProjectRegistryAdapter({ db });
-    for (const id of projectIds) {
+    root = mkdtempSync(join(tmpdir(), "gwrk-shared-ledger-"));
+    projectIds = ["project-one", "project-two"].map((name) => {
+      const repoSlug = `fixtures/${name}`;
+      const localRoot = initCheckout(root, name, repoSlug);
+      const id = resolveProjectId(localRoot);
       registry.enrollProject({
         projectId: id,
-        slug: id,
-        name: id,
-        repoSlug: `fixtures/${id}`,
+        slug: name,
+        name,
+        repoSlug,
         trunkBranch: "develop",
-        localRoot: `/fixtures/${id}`,
+        localRoot,
         mirrorPath: null,
         runnerPolicy: { allowedKinds: ["local"] },
         slack: null,
@@ -134,10 +153,14 @@ describe("Shared ledger project isolation", () => {
         id,
         db,
       );
-    }
+      return id;
+    });
   });
 
-  afterEach(() => db.close());
+  afterEach(() => {
+    db.close();
+    rmSync(root, { recursive: true, force: true });
+  });
 
   it("keeps identical feature and phase IDs in both projects", () => {
     for (const id of projectIds) {
@@ -240,20 +263,30 @@ describe("Shared ledger project isolation", () => {
 
 describe("Project registry storage", () => {
   const now = "2026-11-11T12:00:00.000Z";
-  const project: EnrolledProject = {
-    projectId: "canonical-project",
-    slug: "pilot",
-    name: "Pilot",
-    repoSlug: "example/pilot",
-    trunkBranch: "develop",
-    localRoot: "/fixtures/pilot",
-    mirrorPath: null,
-    runnerPolicy: { allowedKinds: ["local"] },
-    slack: null,
-    legacyProjectIds: ["legacy-project"],
-    createdAt: now,
-    updatedAt: now,
-  };
+  let root: string;
+  let project: EnrolledProject;
+
+  beforeEach(() => {
+    root = mkdtempSync(join(tmpdir(), "gwrk-registry-fixtures-"));
+    const repoSlug = "example/pilot";
+    const localRoot = initCheckout(root, "pilot", repoSlug);
+    project = {
+      projectId: resolveProjectId(localRoot),
+      slug: "pilot",
+      name: "Pilot",
+      repoSlug,
+      trunkBranch: "develop",
+      localRoot,
+      mirrorPath: null,
+      runnerPolicy: { allowedKinds: ["local"] },
+      slack: null,
+      legacyProjectIds: ["legacy-project"],
+      createdAt: now,
+      updatedAt: now,
+    };
+  });
+
+  afterEach(() => rmSync(root, { recursive: true, force: true }));
 
   it("reads a legacy feature through the canonical enrollment", async () => {
     const { createSqliteProjectRegistryAdapter } = await import(
@@ -265,7 +298,7 @@ describe("Project registry storage", () => {
         {
           id: "legacy-project",
           name: "Pilot",
-          path: "/fixtures/pilot",
+          path: project.localRoot!,
           github_repo: project.repoSlug,
         },
         db,
@@ -335,6 +368,53 @@ describe("Project registry storage", () => {
       expect.soft(registry.getProject(alpha.projectId)).toBeNull();
       expect.soft(registry.getProject(beta.projectId)).toBeNull();
       expect(registry.enrollProject(beta).projectId).toBe(beta.projectId);
+    } finally {
+      db.close();
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("rejects a foreign canonical ID claimed from a missing checkout", () => {
+    const root = mkdtempSync(join(tmpdir(), "gwrk-unverified-canonical-"));
+    const db = getTestDb();
+    try {
+      const localRoot = join(root, "beta");
+      execFileSync("git", ["init", "--quiet", localRoot], { stdio: "ignore" });
+      execFileSync("git", [
+        "-C",
+        localRoot,
+        "remote",
+        "add",
+        "origin",
+        "https://github.com/example/beta.git",
+      ]);
+      const projectId = resolveProjectId(localRoot);
+      const registry = createSqliteProjectRegistryAdapter({ db });
+
+      expect
+        .soft(() =>
+          registry.enrollProject({
+            ...project,
+            projectId,
+            localRoot: join(root, "missing"),
+            legacyProjectIds: [],
+          }),
+        )
+        .toThrow(/different repository or checkout/);
+      expect.soft(registry.getProject(projectId)).toBeNull();
+      expect.soft(db.prepare("SELECT id FROM projects").all()).toEqual([]);
+      expect
+        .soft(db.prepare("SELECT alias_id FROM project_aliases").all())
+        .toEqual([]);
+      expect(
+        registry.enrollProject({
+          ...project,
+          projectId,
+          localRoot,
+          repoSlug: "example/beta",
+          legacyProjectIds: [],
+        }).projectId,
+      ).toBe(projectId);
     } finally {
       db.close();
       rmSync(root, { recursive: true, force: true });
@@ -439,7 +519,9 @@ describe("Project registry storage", () => {
 
   it("transitions a verified local enrollment to its remote identity", () => {
     const checkout = mkdtempSync(join(tmpdir(), "gwrk-enrollment-"));
-    const db = getTestDb();
+    const dbPath = join(root, "transition.sqlite");
+    const db = openDatabase({ dbPath });
+    const other = openDatabase({ dbPath });
     try {
       execFileSync("git", ["init", "--quiet", checkout], { stdio: "ignore" });
       const localId = resolveProjectId(checkout);
@@ -458,9 +540,16 @@ describe("Project registry storage", () => {
         legacyProjectIds: [legacyAlias],
         slack,
       });
+      const unrelatedRoot = initCheckout(
+        root,
+        "unrelated",
+        "example/unrelated",
+      );
+      const unrelatedId = resolveProjectId(unrelatedRoot);
       registry.enrollProject({
         ...project,
-        projectId: "unrelated",
+        projectId: unrelatedId,
+        localRoot: unrelatedRoot,
         slug: "unrelated",
         repoSlug: "example/unrelated",
         legacyProjectIds: [],
@@ -554,25 +643,26 @@ describe("Project registry storage", () => {
         .soft(() =>
           registry.enrollProject({
             ...remote,
-            legacyProjectIds: [localId, "unrelated"],
+            legacyProjectIds: [localId, unrelatedId],
           }),
         )
-        .toThrow(/already owned: unrelated/);
+        .toThrow(`already owned: ${unrelatedId}`);
       expect(registry.getProject(localId)?.projectId).toBe(localId);
       expect(registry.getProject(remoteId)).toBeNull();
       expect(registry.getProject(legacyAlias)?.projectId).toBe(localId);
-      expect(registry.getProject("unrelated")?.projectId).toBe("unrelated");
+      expect(registry.getProject(unrelatedId)?.projectId).toBe(unrelatedId);
 
       expect(registry.enrollProject(remote).projectId).toBe(remoteId);
       expect(registry.enrollProject(remote).projectId).toBe(remoteId);
+      const replayRegistry = createSqliteProjectRegistryAdapter({ db: other });
       const replay = receipt(remoteId);
       expect
-        .soft(registry.getActionReceipt(replay.receiptKey)?.outcome)
+        .soft(replayRegistry.getActionReceipt(replay.receiptKey)?.outcome)
         .toBe("executed");
-      expect.soft(registry.claimActionReceipt(replay)).toBe(false);
+      expect.soft(replayRegistry.claimActionReceipt(replay)).toBe(false);
       expect
         .soft(
-          registry.completeActionReceipt(
+          replayRegistry.completeActionReceipt(
             receipt(remoteId, pendingClaim.messageTs).receiptKey,
             "executed",
           ),
@@ -581,7 +671,7 @@ describe("Project registry storage", () => {
       expect
         .soft(registry.getActionReceipt(pendingClaim.receiptKey)?.outcome)
         .toBe("executed");
-      expect(registry.claimActionReceipt(receipt("unrelated"))).toBe(true);
+      expect(registry.claimActionReceipt(receipt(unrelatedId))).toBe(true);
       for (const id of [localId, remoteId, legacyAlias]) {
         expect(registry.getProject(id)?.projectId).toBe(remoteId);
         expect(getFeature("shared", id, db)?.project_id).toBe(localId);
@@ -610,23 +700,25 @@ describe("Project registry storage", () => {
           .listProjects()
           .map(({ projectId }) => projectId)
           .sort(),
-      ).toEqual([remoteId, "unrelated"].sort());
+      ).toEqual([remoteId, unrelatedId].sort());
       expect(db.pragma("foreign_key_check")).toEqual([]);
     } finally {
+      other.close();
       db.close();
       rmSync(checkout, { recursive: true, force: true });
     }
   });
 
   it.each([
-    { path: "/fixtures/other", repo: "example/other" },
-    { path: "/fixtures/pilot", repo: "example/other" },
-    { path: "/fixtures/other", repo: null },
-    { path: "/fixtures/pilot", repo: null },
+    { samePath: false, repo: "example/other" },
+    { samePath: true, repo: "example/other" },
+    { samePath: false, repo: null },
+    { samePath: true, repo: null },
   ])(
-    "rejects a legacy alias owned by another checkout at $path",
-    ({ path, repo }) => {
+    "rejects a legacy alias with the same checkout path $samePath and provenance $repo",
+    ({ samePath, repo }) => {
       const db = getTestDb();
+      const path = samePath ? project.localRoot! : join(root, "missing");
       try {
         registerProject(
           { id: "legacy-project", name: "Other", path, github_repo: repo },
@@ -768,7 +860,11 @@ describe("Project registry storage", () => {
         { id: run, command: "alpha-history" },
       ]);
       expect(
-        registry.enrollProject({ ...project, legacyProjectIds: [] }).repoSlug,
+        registry.enrollProject({
+          ...project,
+          localRoot: join(root, "unavailable"),
+          legacyProjectIds: [],
+        }).repoSlug,
       ).toBe(repoSlug);
     } finally {
       db.close();
@@ -848,12 +944,13 @@ describe("Project registry storage", () => {
           },
           db,
         );
+        const localRoot = initCheckout(root, "gamma", "example/gamma");
         const gamma = {
           ...project,
-          projectId: "gamma",
+          projectId: resolveProjectId(localRoot),
           slug: "route",
           repoSlug: "example/gamma",
-          localRoot: "/fixtures/gamma",
+          localRoot,
           legacyProjectIds: [],
         };
         for (const item of aliasFirst ? [alpha, gamma] : [gamma, alpha]) {
@@ -1054,12 +1151,13 @@ describe("Project registry storage", () => {
         db,
       );
       const first = registry.enrollProject({ ...project, slack });
+      const localRoot = initCheckout(root, "second", "example/second");
       const second = registry.enrollProject({
         ...project,
-        projectId: "second",
+        projectId: resolveProjectId(localRoot),
         slug: "second",
         repoSlug: "example/second",
-        localRoot: "/fixtures/second",
+        localRoot,
         legacyProjectIds: [],
         slack: { ...slack, workspaceId: "T2" },
       });
@@ -1264,7 +1362,8 @@ describe("Migration 014", () => {
         ).toHaveLength(1);
         expect(listRoutingDecisions("local", "1", upgraded)).toHaveLength(1);
 
-        const checkout = "/fixtures/legacy";
+        const checkout = initCheckout(root, "legacy", "fixtures/legacy");
+        const projectId = resolveProjectId(checkout);
         const [pathAlias] = computeLegacyProjectIds({ projectRoot: checkout });
         registerProject(
           {
@@ -1277,7 +1376,7 @@ describe("Migration 014", () => {
         );
         const registry = createSqliteProjectRegistryAdapter({ db: upgraded });
         registry.enrollProject({
-          projectId: "remote",
+          projectId,
           slug: "legacy",
           name: "Legacy checkout",
           repoSlug: "fixtures/legacy",
@@ -1290,18 +1389,18 @@ describe("Migration 014", () => {
           createdAt: "2026-11-11T12:00:00.000Z",
           updatedAt: "2026-11-11T12:00:00.000Z",
         });
-        expect(registry.getProject(pathAlias)?.projectId).toBe("remote");
-        expect(listRuns("feature", "remote", upgraded)).toHaveLength(1);
+        expect(registry.getProject(pathAlias)?.projectId).toBe(projectId);
+        expect(listRuns("feature", projectId, upgraded)).toHaveLength(1);
         expect(
-          getCompressionRecord("feature", "phase", "remote", upgraded)
+          getCompressionRecord("feature", "phase", projectId, upgraded)
             ?.point_compression,
         ).toBe(8);
         expect(
-          getGateResult("feature", "phase", "T001", "remote", upgraded)
+          getGateResult("feature", "phase", "T001", projectId, upgraded)
             ?.gate_script,
         ).toBe("verify.sh");
-        expect(listRoutingDecisions("remote", "1", upgraded)).toHaveLength(1);
-        expect(listIssues("unattributed", "remote", upgraded)).toEqual([]);
+        expect(listRoutingDecisions(projectId, "1", upgraded)).toHaveLength(1);
+        expect(listIssues("unattributed", projectId, upgraded)).toEqual([]);
       } finally {
         upgraded.close();
       }

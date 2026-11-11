@@ -16,6 +16,7 @@ import {
 import { getDb } from "./index.js";
 import {
   canonicalProjectId,
+  discoverStoredRepository,
   normalizeRegistryRepo,
   projectScope,
 } from "./project-registry.js";
@@ -111,11 +112,15 @@ function resolveCheckoutOwner(conn: Database.Database, root: string) {
   const findProject = conn.prepare<
     [string],
     {
+      path: string;
+      local_root: string | null;
+      mirror_path: string | null;
       repo_slug: string | null;
       github_repo: string | null;
       updated_at: string | null;
     }
-  >("SELECT repo_slug, github_repo, updated_at FROM projects WHERE id = ?");
+  >(`SELECT path, local_root, mirror_path, repo_slug, github_repo, updated_at
+     FROM projects WHERE id = ?`);
 
   function storedRepos(id: string) {
     const row = findProject.get(id);
@@ -161,6 +166,32 @@ function resolveCheckoutOwner(conn: Database.Database, root: string) {
     return resolved(checkoutId);
   }
 
+  if (
+    origin &&
+    localGitId &&
+    canonicalProjectId(conn, localGitId) === localGitId &&
+    !hasConflictingRepo(localGitId)
+  ) {
+    const local = findProject.get(localGitId);
+    const sharesRepository = [
+      local?.path,
+      local?.local_root,
+      local?.mirror_path,
+    ].some((storedRoot) => {
+      if (!storedRoot) return false;
+      const storedFacts = discoverStoredRepository(storedRoot, localGitId);
+      if (storedFacts?.gitCommonDir !== facts.gitCommonDir) return false;
+      const storedOrigin = normalizeRegistryRepo(
+        storedFacts?.remoteOriginUrl ?? null,
+      );
+      return storedOrigin === null || storedOrigin === origin;
+    });
+    if (sharesRepository) {
+      const unboundLocal = storedRepos(localGitId).length === 0;
+      return resolved(localGitId, unboundLocal ? localGitId : undefined);
+    }
+  }
+
   function checkoutOwner(id: string): string | null {
     const owner = canonicalProjectId(conn, id);
     if (hasConflictingRepo(id) || hasConflictingRepo(owner)) return null;
@@ -178,19 +209,12 @@ function resolveCheckoutOwner(conn: Database.Database, root: string) {
     SELECT id FROM projects WHERE path = @root OR local_root = @root OR mirror_path = @root
   `)
     .pluck()
-    .all({ root: facts.projectRoot }) as string[];
+    .all({ root: facts.projectRoot })
+    .filter((id) => !origin || id !== localGitId) as string[];
   for (const id of computeLegacyProjectIds(facts)) {
     if (id === checkoutId || !atCheckout.includes(id)) continue;
     const owner = checkoutOwner(id);
     if (owner) return resolved(owner);
-    if (
-      origin &&
-      id === localGitId &&
-      canonicalProjectId(conn, id) === id &&
-      storedRepos(id).length === 0
-    ) {
-      return resolved(id, id);
-    }
   }
 
   const owners = new Set(

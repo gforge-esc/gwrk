@@ -139,17 +139,45 @@ describe("runs db", () => {
     expect(historyId).toBeGreaterThan(0);
   });
 
-  it("retains local run history through the first origin and separates a later origin", () => {
-    const checkout = realpathSync(
+  it("retains pre-origin runs across linked worktrees and separates a later origin", () => {
+    const root = realpathSync(
       mkdtempSync(join(tmpdir(), "gwrk-first-origin-")),
     );
+    const checkout = join(root, "primary");
+    const linked = join(root, "linked");
     const cwd = vi.spyOn(process, "cwd").mockReturnValue(checkout);
-    const ids = () =>
-      listCheckoutRuns("shared", checkout, db).map(({ id }) => id);
+    const ids = (worktree: string) =>
+      listCheckoutRuns("shared", worktree, db).map(({ id }) => id);
     try {
       execFileSync("git", ["init", "--quiet", checkout]);
+      execFileSync("git", [
+        "-C",
+        checkout,
+        "-c",
+        "user.name=Test",
+        "-c",
+        "user.email=test@example.com",
+        "-c",
+        "core.hooksPath=/dev/null",
+        "commit",
+        "--quiet",
+        "--allow-empty",
+        "--no-gpg-sign",
+        "-m",
+        "Initial commit",
+      ]);
+      execFileSync("git", [
+        "-C",
+        checkout,
+        "worktree",
+        "add",
+        "--quiet",
+        "--detach",
+        linked,
+      ]);
+      const localId = computeProjectId(discoverGitIdentityFacts(checkout));
       const local = startRun({ feature_id: "shared", command: "local" }, db);
-      expect(ids()).toEqual([local]);
+      expect(ids(checkout)).toEqual([local]);
       execFileSync("git", [
         "-C",
         checkout,
@@ -158,9 +186,26 @@ describe("runs db", () => {
         "origin",
         "https://github.com/org/alpha.git",
       ]);
-      expect.soft(ids()).toEqual([local]);
+      expect.soft(ids(checkout)).toEqual([local]);
+      expect.soft(ids(linked)).toEqual([local]);
+      cwd.mockReturnValue(linked);
+      const linkedRun = startRun(
+        { feature_id: "shared", command: "linked" },
+        db,
+      );
+      cwd.mockReturnValue(checkout);
       const alpha = startRun({ feature_id: "shared", command: "alpha" }, db);
-      expect.soft(ids()).toEqual([alpha, local]);
+      expect.soft(ids(checkout)).toEqual([alpha, linkedRun, local]);
+      expect.soft(ids(linked)).toEqual([alpha, linkedRun, local]);
+      expect(
+        db.prepare("SELECT DISTINCT project_id FROM runs").pluck().all(),
+      ).toEqual([localId]);
+      expect(
+        db
+          .prepare("SELECT github_repo FROM projects WHERE id = ?")
+          .pluck()
+          .get(localId),
+      ).toBe("org/alpha");
       const registry = createProjectRegistry(db, () => {});
       const remoteId = computeProjectId(discoverGitIdentityFacts(checkout));
       const now = "2026-11-11T12:00:00.000Z";
@@ -178,7 +223,8 @@ describe("runs db", () => {
         createdAt: now,
         updatedAt: now,
       });
-      expect.soft(ids()).toEqual([alpha, local]);
+      expect.soft(ids(checkout)).toEqual([alpha, linkedRun, local]);
+      expect.soft(ids(linked)).toEqual([alpha, linkedRun, local]);
       execFileSync("git", [
         "-C",
         checkout,
@@ -188,10 +234,11 @@ describe("runs db", () => {
         "https://github.com/org/beta.git",
       ]);
       const beta = startRun({ feature_id: "shared", command: "beta" }, db);
-      expect(ids()).toEqual([beta]);
+      expect(ids(checkout)).toEqual([beta]);
+      expect(ids(linked)).toEqual([beta]);
     } finally {
       cwd.mockRestore();
-      rmSync(checkout, { recursive: true, force: true });
+      rmSync(root, { recursive: true, force: true });
     }
   });
 
@@ -345,13 +392,24 @@ describe("runs db", () => {
         "git@github.com:example/beta.git",
       ]);
       const betaId = computeProjectId(discoverGitIdentityFacts(checkout));
+      const alphaRoot = join(checkout, "alpha");
+      execFileSync("git", ["init", "--quiet", alphaRoot], { stdio: "ignore" });
+      execFileSync("git", [
+        "-C",
+        alphaRoot,
+        "remote",
+        "add",
+        "origin",
+        "https://github.com/example/alpha.git",
+      ]);
+      const alphaId = computeProjectId(discoverGitIdentityFacts(alphaRoot));
       createProjectRegistry(db, () => {}).enrollProject({
-        projectId: "alpha",
+        projectId: alphaId,
         slug: "alpha",
         name: "Alpha",
         repoSlug: "example/alpha",
         trunkBranch: "develop",
-        localRoot: "/fixtures/alpha",
+        localRoot: alphaRoot,
         mirrorPath: null,
         runnerPolicy: { allowedKinds: ["local"] },
         slack: null,
@@ -360,12 +418,12 @@ describe("runs db", () => {
         updatedAt: "2026-11-11T12:00:00.000Z",
       });
       startRun(
-        { feature_id: "shared", command: "alpha-history", project_id: "alpha" },
+        { feature_id: "shared", command: "alpha-history", project_id: alphaId },
         db,
       );
       db.prepare(
-        "INSERT INTO project_aliases (alias_id, project_id) VALUES (?, 'alpha')",
-      ).run(betaId);
+        "INSERT INTO project_aliases (alias_id, project_id) VALUES (?, ?)",
+      ).run(betaId, alphaId);
       const cwd = vi.spyOn(process, "cwd").mockReturnValue(checkout);
       try {
         expect
@@ -377,7 +435,7 @@ describe("runs db", () => {
           )
           .toThrow(/Project ownership conflict/);
         expect(
-          listRuns("shared", "alpha", db).map(({ command }) => command),
+          listRuns("shared", alphaId, db).map(({ command }) => command),
         ).toEqual(["alpha-history"]);
       } finally {
         cwd.mockRestore();

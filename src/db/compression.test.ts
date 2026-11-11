@@ -2,8 +2,13 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import { execFileSync } from "node:child_process";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import type Database from "better-sqlite3";
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, onTestFinished } from "vitest";
+import { resolveProjectId } from "../adapters/git/project-id.js";
 import type { CompressionReport } from "../engine/types.js";
 import {
   getCompressionRecord,
@@ -108,13 +113,25 @@ describe("FR-H06: Compression recording", () => {
     expect(records.length).toBe(1);
     expect(records[0].feature_id).toBe("list-feat");
 
+    const checkout = mkdtempSync(join(tmpdir(), "gwrk-compression-checkout-"));
+    onTestFinished(() => rmSync(checkout, { recursive: true, force: true }));
+    execFileSync("git", ["init", "--quiet", checkout], { stdio: "ignore" });
+    execFileSync("git", [
+      "-C",
+      checkout,
+      "remote",
+      "add",
+      "origin",
+      "https://github.com/example/checkout.git",
+    ]);
+    const canonicalId = resolveProjectId(checkout);
     createProjectRegistry(db, () => {}).enrollProject({
-      projectId: "canonical",
+      projectId: canonicalId,
       slug: "checkout",
       name: "Checkout",
       repoSlug: "example/checkout",
       trunkBranch: "develop",
-      localRoot: "/fixtures/checkout",
+      localRoot: checkout,
       mirrorPath: null,
       runnerPolicy: { allowedKinds: ["local"] },
       slack: null,
@@ -122,8 +139,8 @@ describe("FR-H06: Compression recording", () => {
       createdAt: report.generatedAt,
       updatedAt: report.generatedAt,
     });
-    const id = recordCompression(report, "canonical", db);
-    for (const projectId of ["test-project", "canonical"]) {
+    const id = recordCompression(report, canonicalId, db);
+    for (const projectId of ["test-project", canonicalId]) {
       const winner = getCompressionRecord("list-feat", "p1", projectId, db);
       expect(winner?.id).toBe(id);
       expect(listCompressionRecords("list-feat", projectId, db)).toEqual([
