@@ -795,7 +795,9 @@ Examples:
                 `  🤖 Would build with backend: ${implementation.backend}, model: ${implementation.model}, effort: ${implementation.effort ?? "default"} (router: ${implementation.reason})`,
               );
             } catch (error) {
-              logCliOutput(`  🤖 Could not select an implementation route: ${error}`);
+              logCliOutput(
+                `  🤖 Could not select an implementation route: ${error}`,
+              );
             }
             if (opts.worktree) {
               dryRunFmt(

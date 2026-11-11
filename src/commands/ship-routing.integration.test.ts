@@ -172,7 +172,7 @@ describe("ship with the real AgentPort router", () => {
     process.exitCode = 0;
   });
 
-  function seedQuota(codexPercent: number) {
+  function seedQuota(codexPercent: number, claudePercent = 90) {
     const reading = (percent: number) => ({
       percent,
       resetsIn: "unknown",
@@ -183,7 +183,7 @@ describe("ship with the real AgentPort router", () => {
       path.join(root, ".runs", "quota-cache.json"),
       JSON.stringify({
         codex: reading(codexPercent),
-        claude: reading(90),
+        claude: reading(claudePercent),
       }),
     );
   }
@@ -232,6 +232,17 @@ describe("ship with the real AgentPort router", () => {
         model_failover_used: 0,
       },
     ]);
+  });
+
+  it("stops when every configured backend is depleted even if another CLI is installed", async () => {
+    seedQuota(0, 0);
+    const { createShipCommand } = await import("./ship.js");
+
+    await createShipCommand().parseAsync([feature, "phase-01"], { from: "user" });
+
+    expect(process.exitCode).toBe(1);
+    expect(ShipOrchestrator).not.toHaveBeenCalled();
+    expect(await decisions()).toEqual([]);
   });
 
   it("uses the alternate model during cooldown and records model failover", async () => {

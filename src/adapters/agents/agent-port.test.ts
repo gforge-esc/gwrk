@@ -16,6 +16,16 @@ vi.mock("../../utils/project-id.js", () => ({
   resolveProjectId: () => "project",
 }));
 vi.mock("../../utils/agent.js", () => ({ dispatchToAgent: vi.fn() }));
+vi.mock("../../server/quota-prober.js", () => ({
+  QuotaProber: class {
+    async probeQuota() {
+      return { percent: 100, status: "fresh" };
+    }
+    isModelInCooldown() {
+      return false;
+    }
+  },
+}));
 vi.mock("./registry-loader.js", () => ({
   tryLoadRegistry: () => ({
     ok: true,

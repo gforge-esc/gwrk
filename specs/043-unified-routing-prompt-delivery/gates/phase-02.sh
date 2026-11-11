@@ -6,6 +6,7 @@
 set -euo pipefail
 pnpm build
 pnpm exec vitest run \
+  src/adapters/agents/agent-port.test.ts \
   src/commands/ship.test.ts \
   src/commands/ship-routing.integration.test.ts \
   src/commands/ship-preflight.test.ts \

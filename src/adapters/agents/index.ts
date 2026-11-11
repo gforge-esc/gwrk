@@ -98,16 +98,22 @@ async function selectAvailableRoute(
     defaultBackend:
       context.type === "implement" && !agentRegistry ? "agy" : undefined,
   };
+  const restrictToRegistry =
+    context.type === "implement" &&
+    !context.explicitBackend &&
+    agentRegistry !== undefined;
   const candidates = new Set(
-    [
-      context.explicitBackend,
-      preferredAgent,
-      ...history.map(({ backend }) => backend),
-      ...(typeof configured === "string" ? [configured] : []),
-      facts.defaultBackend,
-      ...fallbackOrder,
-      ...Object.keys(facts.registry?.backends ?? {}),
-    ].filter((backend): backend is string => Boolean(backend)),
+    restrictToRegistry
+      ? Object.keys(agentRegistry.backends)
+      : [
+          context.explicitBackend,
+          preferredAgent,
+          ...history.map(({ backend }) => backend),
+          ...(typeof configured === "string" ? [configured] : []),
+          facts.defaultBackend,
+          ...fallbackOrder,
+          ...Object.keys(facts.registry?.backends ?? {}),
+        ].filter((backend): backend is string => Boolean(backend)),
   );
   const readings: Record<string, QuotaReading> = {};
   const quotas: Record<string, BackendQuotaSnapshot> = {};
@@ -144,7 +150,7 @@ async function selectAvailableRoute(
     }
   }
   const probed = new Set<string>();
-  let loadedAll = false;
+  let loadedAll = restrictToRegistry;
   while (candidates.size > 0 || !loadedAll) {
     if (candidates.size === 0) {
       loadedAll = true;
