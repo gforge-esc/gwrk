@@ -29,6 +29,27 @@ interface AgentPortAdapterOptions {
   registry?: AgentBackendRegistry;
 }
 
+const NATIVE_SHIP_QUOTA_TIMEOUT_MS = 5_000;
+
+async function probeNativeShipQuota(
+  backend: AgentBackend,
+): ReturnType<typeof quotaProbe> {
+  let timeout: ReturnType<typeof setTimeout> | undefined;
+  const deadline = new Promise<Awaited<ReturnType<typeof quotaProbe>>>(
+    (resolve) => {
+      timeout = setTimeout(
+        () => resolve({ status: "unknown" }),
+        NATIVE_SHIP_QUOTA_TIMEOUT_MS,
+      );
+    },
+  );
+  try {
+    return await Promise.race([quotaProbe(backend), deadline]);
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
 function routingHistory(
   taskType: string,
   projectRoot: string,
@@ -216,9 +237,10 @@ async function selectAvailableRoute(
           !(restrictToRegistry || availabilityOnly) ||
           (await backend.isAvailable())
         ) {
+          const probe = restrictToRegistry ? probeNativeShipQuota : quotaProbe;
           const nativeQuota = availabilityOnly
             ? undefined
-            : await quotaProbe(backend);
+            : await probe(backend);
           available =
             availabilityOnly ||
             nativeQuota?.status === "available" ||
