@@ -433,8 +433,8 @@ export interface OperationsStorePort {
   }): OutboxItem[];
   /**
    * Bind the resolved destination and existing metadata key in the atomic send claim.
-   * For harvest_gate_failed, use the notice's complete saved Slack recipient on the first send claim.
-   * Reject a gate failure send claim if the saved workspace or channel is missing.
+   * For a pending harvest_gate_failed notice, bind the destination from its saved Slack recipient.
+   * Reject the send claim if that recipient lacks a workspace or channel.
    * For other notices, a null destination on a first claim permits a skip without sending.
    * Reconcile abandoned sending and uncertain items at the stored destination.
    * Keep the stored destination on later claims.

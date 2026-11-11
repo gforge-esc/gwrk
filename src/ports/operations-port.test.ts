@@ -656,13 +656,13 @@ function restoreRecoveryStore(persisted: {
         .find((row) => row.outboxId === outboxId);
       if (!row) return null;
       const action = row.status === "pending" ? "send" : "reconcile";
-      if (action === "send" && row.channelId === null) {
+      if (action === "send") {
         if (row.eventType === "harvest_gate_failed") {
           if (!isHarvestSlackRecipient(row.recipient)) return null;
           row.workspaceId = row.recipient.workspaceId;
           row.channelId = row.recipient.channelId;
           row.threadTs = row.recipient.threadTs ?? null;
-        } else if (destination) {
+        } else if (row.channelId === null && destination) {
           Object.assign(row, destination);
         }
       }
@@ -2047,43 +2047,67 @@ it.each([
     ).toEqual({ ok: true });
     expect(restarted.snapshot()).toEqual(restartState);
     if (hasSlackTarget) {
+      const savedDestination = {
+        workspaceId: notice.recipient.workspaceId,
+        channelId: notice.recipient.channelId,
+        threadTs: notice.recipient.threadTs,
+      };
+      const changedDestination = {
+        workspaceId: "W3",
+        channelId: "C3",
+        threadTs: "3.1",
+      };
       expect(
         restarted.claimOutboxItem({
           outboxId: notice.outboxId,
           nowIso,
-          destination: { workspaceId: "W3", channelId: "C3", threadTs: "3.1" },
+          destination: changedDestination,
         }),
       ).toMatchObject({
         action: "send",
         item: {
-          workspaceId: notice.recipient.workspaceId,
-          channelId: notice.recipient.channelId,
-          threadTs: notice.recipient.threadTs,
+          ...savedDestination,
           clientMetadataKey: notice.clientMetadataKey,
         },
+      });
+      const afterSend = restoreRecoveryStore(restarted.snapshot());
+      expect(
+        afterSend.claimOutboxItem({
+          outboxId: notice.outboxId,
+          nowIso: leaseExpiresAt,
+          destination: changedDestination,
+        }),
+      ).toMatchObject({
+        action: "reconcile",
+        claim: { clientMetadataKey: notice.clientMetadataKey },
+        item: savedDestination,
       });
     }
   },
 );
 
-it("does not send an incomplete saved gate notice to the caller's destination", () => {
-  const notice = outbox("incomplete", "pending", {
-    eventType: "harvest_gate_failed",
-  });
-  const store = restoreRecoveryStore({
-    harvests: [],
-    stages: [],
-    outboxItems: [notice],
-  });
-  expect(
-    store.claimOutboxItem({
-      outboxId: notice.outboxId,
-      nowIso,
-      destination: { workspaceId: "W1", channelId: "C1", threadTs: "1.2" },
-    }),
-  ).toBeNull();
-  expect(store.snapshot().outboxItems).toEqual([notice]);
-});
+it.each([null, "C1"])(
+  "rejects an incomplete saved gate notice with channel %s",
+  (channelId) => {
+    const notice = outbox("incomplete", "pending", {
+      eventType: "harvest_gate_failed",
+      channelId,
+    });
+    const store = restoreRecoveryStore({
+      harvests: [],
+      stages: [],
+      outboxItems: [notice],
+    });
+    expect(
+      store.claimOutboxItem({
+        outboxId: notice.outboxId,
+        nowIso,
+        destination: { workspaceId: "W1", channelId: "C1", threadTs: "1.2" },
+      }),
+    ).toBeNull();
+    expect(store.snapshot().outboxItems).toEqual([notice]);
+  },
+);
 
 it("rejects a saved recipient outside the enrolled Slack binding", () => {
   const recipient = outbox("foreign", "pending").recipient;
