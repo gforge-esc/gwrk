@@ -291,6 +291,27 @@ describe("ship with the real AgentPort router", () => {
     expect(await decisions()).toEqual([]);
   });
 
+  it("labels automatic preview provisional when execution can select another backend", async () => {
+    seedQuota(100, 50);
+    vi.mocked(codex.checkQuota).mockResolvedValue({ status: "rate-limited" });
+
+    await ship("--dry-run");
+
+    const preview = vi.mocked(console.log).mock.calls.flat().join("\n");
+    expect(preview).toContain("Provisional route with backend: codex, model: codex-primary");
+    expect(preview).toContain("Live quota checks can change the backend and model.");
+    expect(codex.checkQuota).not.toHaveBeenCalled();
+    expect(await decisions()).toEqual([]);
+
+    await ship();
+
+    expect(codex.checkQuota).toHaveBeenCalledOnce();
+    expect(ShipOrchestrator).toHaveBeenCalledWith(
+      expect.objectContaining({ backend: "claude", selectedModel: "claude-primary" }),
+      undefined,
+    );
+  });
+
   it("previews an installed backend without calling its native quota hook", async () => {
     configureAgents("goose", ["goose"]);
     const goose = provider("goose");

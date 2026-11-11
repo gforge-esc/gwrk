@@ -830,9 +830,18 @@ Examples:
                 : adapterModel === null
                   ? "default"
                   : adapterModel;
+              const provisional = explicitBackend === undefined;
+              const label = provisional
+                ? "Provisional route with"
+                : "Would build with";
               logCliOutput(
-                `  🤖 Would build with backend: ${implementation.backend}, model: ${previewModel ?? implementation.model}, effort: ${implementation.effort ?? "default"} (router: ${implementation.reason})`,
+                `  🤖 ${label} backend: ${implementation.backend}, model: ${previewModel ?? implementation.model}, effort: ${implementation.effort ?? "default"} (router: ${implementation.reason})`,
               );
+              if (provisional) {
+                logCliOutput(
+                  "  Live quota checks can change the backend and model.",
+                );
+              }
             } catch (error) {
               if (error instanceof InvalidAgentRegistryError) throw error;
               logCliOutput(
