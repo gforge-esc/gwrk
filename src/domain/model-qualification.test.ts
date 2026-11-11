@@ -245,6 +245,28 @@ describe("credential guard", () => {
     expect(() => assertNoSecretMaterial({ sanitizedOutput })).not.toThrow();
   });
 
+  it.each([
+    { headers: { "Proxy-Authorization": "Basic Zml4dHVyZQ==" } },
+    { rawHeaders: ["proxy-authorization", "Basic Zml4dHVyZQ=="] },
+    { headers: [["Proxy-Authorization", "Basic Zml4dHVyZQ=="]] },
+    { headers: [{ name: "Proxy-Authorization", value: "Basic Zml4dHVyZQ==" }] },
+  ])("rejects proxy credentials in structured evidence %j", (evidence) => {
+    expect(() => assertNoSecretMaterial(evidence)).toThrow(/secret material/i);
+    expect(() =>
+      assertNoSecretMaterial({
+        sanitizedOutput: JSON.stringify(
+          JSON.stringify(JSON.stringify(evidence)),
+        ),
+      }),
+    ).toThrow(/secret material/i);
+  });
+
+  it("allows noncredential proxy headers", () => {
+    expect(() =>
+      assertNoSecretMaterial({ rawHeaders: ["Proxy-Status", "fixture-proxy"] }),
+    ).not.toThrow();
+  });
+
   it("rejects Set-Cookie headers in doubly encoded JSON fixture output", () => {
     const payload = {
       headers: [{ name: "Set-Cookie", value: "session=fixture-only" }],
