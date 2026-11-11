@@ -73,6 +73,9 @@ async function selectAvailableRoute(
   const config = loadConfig(projectRoot);
   const quotaFirst = context.historyMode === "quota-tiebreak";
   const installedOnly = context.backendEligibility === "installed";
+  const scriptOwned =
+    context.backendEligibility === "script-owned" &&
+    context.explicitBackend !== undefined;
   const history = context.explicitBackend
     ? []
     : quotaFirst
@@ -208,23 +211,25 @@ async function selectAvailableRoute(
     probed.add(route.backend);
     candidates.delete(route.backend);
     let backend: AgentBackend | undefined;
-    let available = explicitPreview;
-    try {
-      backend = await registry.getAgentBackend(route.backend);
-      if (!explicitPreview) {
-        const availabilityOnly = context.preview || installedOnly;
-        if (
-          (restrictToRegistry || availabilityOnly) &&
-          !(await backend.isAvailable())
-        ) {
-          continue;
+    let available = scriptOwned || explicitPreview;
+    if (!scriptOwned) {
+      try {
+        backend = await registry.getAgentBackend(route.backend);
+        if (!explicitPreview) {
+          const availabilityOnly = context.preview || installedOnly;
+          if (
+            (restrictToRegistry || availabilityOnly) &&
+            !(await backend.isAvailable())
+          ) {
+            continue;
+          }
+          available =
+            availabilityOnly ||
+            (await quotaProbe(backend)).status === "available";
         }
-        available =
-          availabilityOnly ||
-          (await quotaProbe(backend)).status === "available";
+      } catch {
+        // An explicit preview can display the route even if the adapter is missing.
       }
-    } catch {
-      // An explicit preview can display the route even if the adapter is missing.
     }
     if (available) {
       const useAdapterModelDefaults =

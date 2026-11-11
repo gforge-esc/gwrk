@@ -815,7 +815,9 @@ Examples:
             backendEligibility:
               explicitBackend === undefined
                 ? undefined
-                : ("installed" as const),
+                : opts.legacy
+                  ? ("script-owned" as const)
+                  : ("installed" as const),
           };
 
           if (opts.dryRun) {

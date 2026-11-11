@@ -298,16 +298,24 @@ describe("ship with the real AgentPort router", () => {
     await ship("--dry-run");
 
     const preview = vi.mocked(console.log).mock.calls.flat().join("\n");
-    expect(preview).toContain("Provisional route with backend: codex, model: codex-primary");
-    expect(preview).toContain("Live quota checks can change the backend and model.");
+    expect(preview).toContain(
+      "Provisional route with backend: codex, model: codex-primary",
+    );
+    expect(preview).toContain(
+      "Live quota checks can change the backend and model.",
+    );
     expect(codex.checkQuota).not.toHaveBeenCalled();
+    expect(ShipOrchestrator).not.toHaveBeenCalled();
     expect(await decisions()).toEqual([]);
 
     await ship();
 
     expect(codex.checkQuota).toHaveBeenCalledOnce();
-    expect(ShipOrchestrator).toHaveBeenCalledWith(
-      expect.objectContaining({ backend: "claude", selectedModel: "claude-primary" }),
+    expect(ShipOrchestrator).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({
+        backend: "claude",
+        selectedModel: "claude-primary",
+      }),
       undefined,
     );
   });
@@ -674,6 +682,37 @@ describe("ship with the real AgentPort router", () => {
       ]);
     },
   );
+
+  it("previews and ships an explicit backend owned by the legacy script", async () => {
+    const { AgentBackendRegistry } = await import(
+      "../plugins/agent-registry.js"
+    );
+    const lookup = vi.mocked(AgentBackendRegistry.prototype.getAgentBackend);
+    lookup.mockRejectedValue(new Error("No native adapter for legacy-wrapper"));
+    vi.stubEnv("GEMINI_MODEL", "legacy-wrapper-model");
+
+    await ship("--dry-run", "--legacy", "--agent", "legacy-wrapper");
+    expect(console.log).toHaveBeenCalledWith(
+      expect.stringContaining(
+        "backend: legacy-wrapper, model: legacy-wrapper-model",
+      ),
+    );
+    expect(run).not.toHaveBeenCalled();
+    expect(fs.existsSync(dbPath)).toBe(false);
+
+    await ship("--legacy", "--agent", "legacy-wrapper");
+
+    const scriptCalls = vi.mocked(run).mock.calls.filter(([command]) =>
+      command.endsWith("/work-until-done.sh"),
+    );
+    expect(scriptCalls).toHaveLength(1);
+    const [, args, options] = scriptCalls[0];
+    expect(args).toEqual([feature, "01"]);
+    expect(options?.env?.AGENT_BACKEND).toBe("legacy-wrapper");
+    expect(options?.env?.GEMINI_MODEL).toBe("legacy-wrapper-model");
+    expect(lookup).not.toHaveBeenCalled();
+    expect(ShipOrchestrator).not.toHaveBeenCalled();
+  });
 
   it("uses the alternate model during cooldown and records model failover", async () => {
     seedQuota(90);
