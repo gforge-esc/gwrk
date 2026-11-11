@@ -398,6 +398,29 @@ describe("FR-001: architecture-aware workspace profiles (044 phase p01)", () => 
     },
   );
 
+  it("uses the detected workspace runner over the root command", async () => {
+    write("pnpm-workspace.yaml", "");
+    write(
+      ".gwrkrc.json",
+      JSON.stringify({
+        project: {
+          name: "fixture",
+          design,
+          toolchain: { testCommand: "pnpm exec vitest run {files}" },
+        },
+        workspaces: { "services/api": { toolchain: { build: null } } },
+      }),
+    );
+
+    const result = await detectProfile(path.join(root, "services/api"));
+    expect(result).toMatchObject({
+      design,
+      stack: { language: "Python" },
+      toolchain: { test: "pytest", build: null },
+    });
+    expect(getTestCommand(result, ["test_api.py"])).toBe("pytest test_api.py -v");
+  });
+
   it("keeps the inferred test runner when only the workspace framework is set", async () => {
     write("services/api/pyproject.toml", '[project]\nname = "fixture-api"\n');
     write(
