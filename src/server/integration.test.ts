@@ -28,11 +28,13 @@ import { listIssues } from "../db/issues.js";
 import { listRuns, recordHistory, startRun } from "../db/runs.js";
 import { gatherDeliveryActuals } from "../engine/compression.js";
 import { ShipOrchestrator } from "../engine/ship-orchestrator.js";
+import { GwrkConfigSchema } from "../utils/config.js";
 import { execCommand } from "../utils/exec.js";
 import * as gateExec from "../utils/gate-exec.js";
 import { syncTrunkForHarvest } from "../utils/git.js";
 import { HarvestWatcher } from "./harvest-watcher.js";
 import { PlanHeartbeat } from "./heartbeat.js";
+import { startServer } from "./index.js";
 import { SystemMonitor } from "./monitor.js";
 import { NetworkMonitor } from "./network.js";
 import * as persistence from "./persistence.js";
@@ -1061,6 +1063,7 @@ setInterval(() => {}, 1000);
       const original = snapshot();
       vi.stubEnv("GIT_DIR", join(external.projectRoot, ".git"));
       vi.stubEnv("GIT_WORK_TREE", external.projectRoot);
+      vi.stubEnv("GIT_DEFAULT_HASH", "invalid-gwrk-probe");
       vi.stubEnv("GIT_COMMITTER_DATE", "invalid-fixture-date");
       vi.stubEnv("GIT_AUTHOR_DATE", "invalid-fixture-date");
       vi.stubEnv("GIT_AUTHOR_NAME", "Inherited Author");
@@ -1345,6 +1348,49 @@ setInterval(() => {}, 1000);
         vi.unstubAllEnvs();
         rmSync(parent, { recursive: true, force: true });
       }
+    }
+  });
+
+  it("keeps an existing PID record when a second startup cannot acquire it", async () => {
+    const fixture = await createServerFixture("routes", {
+      routes: ["dispatch"],
+    });
+    const first = fastify();
+    const second = fastify();
+    for (const app of [first, second]) {
+      vi.spyOn(app, "listen").mockResolvedValue("http://127.0.0.1:0");
+    }
+    vi.mocked(fastify).mockReturnValueOnce(first).mockReturnValueOnce(second);
+    const config = GwrkConfigSchema.parse({
+      project: { name: "pid ownership" },
+      server: { host: "127.0.0.1", port: 0 },
+    });
+    const pid = {
+      writePid(pid: number) {
+        writeFileSync(fixture.pidPath, String(pid), { flag: "wx" });
+      },
+      removePid() {
+        if (readIfPresent(fixture.pidPath) === String(process.pid)) {
+          rmSync(fixture.pidPath);
+        }
+      },
+    };
+    const options = {
+      projectRoot: fixture.projectRoot,
+      handleSignals: false,
+      pid,
+    };
+    try {
+      await startServer(config, options);
+      await expect(startServer(config, options)).rejects.toMatchObject({
+        code: "EEXIST",
+      });
+      expect.soft(readIfPresent(fixture.pidPath)).toBe(String(process.pid));
+      await first.close();
+      expect(existsSync(fixture.pidPath)).toBe(false);
+    } finally {
+      await first.close();
+      await fixture.close();
     }
   });
 

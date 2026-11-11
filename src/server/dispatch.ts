@@ -294,33 +294,6 @@ export class DispatchQueue {
           this.ledger?.db,
         );
       }
-
-      try {
-        if (exitCode === 0) {
-          // The unified engine already opened the PR (PR_CI → develop). Notify with
-          // the review/merge CTA. Harvest runs the Done-Done finalizer post-merge.
-          await notifySlack(MessageBuilder.reviewReady(record), {
-            type: "review_ready",
-            feature: record.featureId,
-            phase: record.phaseId,
-            payload: record as unknown as Record<string, unknown>,
-            timestamp: new Date().toISOString(),
-          });
-        } else {
-          await notifySlack(MessageBuilder.phaseFail(record, stderr), {
-            type: "phase_fail",
-            feature: record.featureId,
-            phase: record.phaseId,
-            payload: { ...record, stderr } as unknown as Record<
-              string,
-              unknown
-            >,
-            timestamp: new Date().toISOString(),
-          });
-        }
-      } catch (error) {
-        logCliError("Failed to notify dispatch outcome:", error);
-      }
     } finally {
       try {
         if (record.workDir) {
@@ -344,6 +317,35 @@ export class DispatchQueue {
       } finally {
         this.processNext();
       }
+    }
+    let timeout: ReturnType<typeof setTimeout> | undefined;
+    try {
+      const reviewReady = exitCode === 0;
+      const message = reviewReady
+        ? MessageBuilder.reviewReady(record)
+        : MessageBuilder.phaseFail(record, stderr);
+      const delivery = notifySlack(message, {
+        type: reviewReady ? "review_ready" : "phase_fail",
+        feature: record.featureId,
+        phase: record.phaseId,
+        payload: (reviewReady
+          ? record
+          : { ...record, stderr }) as unknown as Record<string, unknown>,
+        timestamp: new Date().toISOString(),
+      });
+      await Promise.race([
+        delivery,
+        new Promise<never>((_, reject) => {
+          timeout = setTimeout(
+            () => reject(new Error("Dispatch notification timed out")),
+            5_000,
+          );
+        }),
+      ]);
+    } catch (error) {
+      logCliError("Failed to notify dispatch outcome:", error);
+    } finally {
+      clearTimeout(timeout);
     }
   }
 

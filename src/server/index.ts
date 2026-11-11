@@ -194,7 +194,7 @@ export async function startServer(
     await reconnect();
   });
 
-  let pidWriteAttempted = false;
+  let ownsPidRecord = false;
   const cleanup: Array<() => void | Promise<void>> = [() => queue.close()];
 
   const shutdown = async () => {
@@ -215,8 +215,8 @@ export async function startServer(
     process.off("SIGINT", shutdown);
     const errors: unknown[] = [];
     const releases = cleanup.splice(0);
-    if (pidWriteAttempted) {
-      pidWriteAttempted = false;
+    if (ownsPidRecord) {
+      ownsPidRecord = false;
       releases.push(() => pid.removePid());
     }
     for (const release of releases) {
@@ -255,8 +255,8 @@ export async function startServer(
     const stopNetwork = () => network.stop();
     cleanup.push(stopPolling, stopLifecycle, stopNetwork);
 
-    pidWriteAttempted = true;
     pid.writePid(process.pid);
+    ownsPidRecord = true;
 
     // FR-002: Prune worktrees on startup
     await sandbox.pruneSandboxes();
