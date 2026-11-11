@@ -360,6 +360,66 @@ describe("Project registry storage", () => {
     }
   });
 
+  it.each([
+    { path: "/fixtures/other", repo: "example/other" },
+    { path: "/fixtures/pilot", repo: "example/other" },
+    { path: "/fixtures/other", repo: null },
+  ])(
+    "rejects a legacy alias owned by another checkout at $path",
+    ({ path, repo }) => {
+      const db = getTestDb();
+      try {
+        registerProject(
+          { id: "legacy-project", name: "Other", path, github_repo: repo },
+          db,
+        );
+        insertFeature(
+          {
+            id: "001-pilot",
+            name: "Other feature",
+            status: "open",
+            sp_total: 1,
+          },
+          "legacy-project",
+          db,
+        );
+        const registry = createSqliteProjectRegistryAdapter({ db });
+
+        expect(() => registry.enrollProject(project)).toThrow(
+          /different repository or checkout/,
+        );
+        expect(registry.getProject(project.projectId)).toBeNull();
+        expect(listFeatures(project.projectId, db)).toEqual([]);
+        expect(
+          listFeatures("legacy-project", db).map(({ name }) => name),
+        ).toEqual(["Other feature"]);
+      } finally {
+        db.close();
+      }
+    },
+  );
+
+  it("accepts a legacy alias from a moved checkout of the same repository", () => {
+    const db = getTestDb();
+    try {
+      registerProject(
+        {
+          id: "legacy-project",
+          name: "Pilot",
+          path: "/fixtures/previous",
+          github_repo: "example/pilot",
+        },
+        db,
+      );
+      const registry = createSqliteProjectRegistryAdapter({ db });
+      expect(registry.enrollProject(project).legacyProjectIds).toContain(
+        "legacy-project",
+      );
+    } finally {
+      db.close();
+    }
+  });
+
   it("keeps roles, feature threads and routing decisions in project scope", () => {
     const db = getTestDb();
     try {

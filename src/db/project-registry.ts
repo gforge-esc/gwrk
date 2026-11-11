@@ -10,6 +10,7 @@ import { discoverGitIdentityFacts } from "../adapters/git/project-id.js";
 import {
   computeLegacyProjectIds,
   computeProjectId,
+  normalizeGitRemoteSlug,
 } from "../domain/project-id.js";
 import {
   type EnrolledProject,
@@ -23,6 +24,12 @@ import {
 import type { ProjectRegistryPort } from "../ports/store-port.js";
 
 const LEGACY_LOCAL = "legacy-local";
+
+function normalizeRegistryRepo(repo: string | null): string | null {
+  return repo
+    ? (normalizeGitRemoteSlug(repo)?.replace(/^github\.com\//, "") ?? null)
+    : null;
+}
 
 export function discoverVerifiedCheckout(root: string) {
   if (!isAbsolute(root)) return null;
@@ -211,19 +218,36 @@ export function createProjectRegistry(
       );
     }
     aliases.delete(projectId);
+    const findAlias = db.prepare(
+      "SELECT path, github_repo, updated_at FROM projects WHERE id = ?",
+    );
     for (const alias of aliases) {
       const owner = canonicalProjectId(db, alias);
-      const enrolled = db
-        .prepare(
-          "SELECT 1 FROM projects WHERE id = ? AND updated_at IS NOT NULL",
-        )
-        .get(alias);
+      const legacy = findAlias.get(alias) as
+        | {
+            path: string;
+            github_repo: string | null;
+            updated_at: string | null;
+          }
+        | undefined;
       if (
         alias === LEGACY_LOCAL ||
-        (enrolled && !transitions.has(alias)) ||
+        (legacy?.updated_at != null && !transitions.has(alias)) ||
         (owner !== alias && owner !== projectId && !transitions.has(owner))
       ) {
         throw new Error(`Project alias is reserved or already owned: ${alias}`);
+      }
+      if (legacy && owner === alias) {
+        const legacyRepo = normalizeRegistryRepo(legacy.github_repo);
+        const ownsLegacy = legacyRepo
+          ? legacyRepo === normalizeRegistryRepo(project.repoSlug)
+          : transitions.has(alias) ||
+            [project.localRoot, project.mirrorPath].includes(legacy.path);
+        if (!ownsLegacy) {
+          throw new Error(
+            `Project alias belongs to a different repository or checkout: ${alias}`,
+          );
+        }
       }
     }
 
