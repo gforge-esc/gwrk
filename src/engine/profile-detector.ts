@@ -62,6 +62,17 @@ function detectProfileInDirectory(
     workspaceRoot,
   );
   if (scoped) return scoped;
+  if (
+    localProject?.design &&
+    !detected.profile._isGwrk &&
+    detected.profile.type !== "gwrk-native"
+  ) {
+    return resolveWorkspacePolicyProfile("", detected.profile, undefined, {
+      localProject,
+      detectedStacks: detected.signals,
+      detectedToolchains: detected.toolchains,
+    });
+  }
   return localProject
     ? mergeLocalProject(detected.profile, localProject)
     : detected.profile;
@@ -468,7 +479,11 @@ function resolveDetectedProfile(
   detectedRoot: string,
   detected: FilesystemProfile,
   localProject?: WorkspaceProfileConfig,
-  workspaceRoot?: { directory: string; config?: WorkspaceRootConfig },
+  workspaceRoot?: {
+    directory: string;
+    config?: WorkspaceRootConfig;
+    configuredLookup?: boolean;
+  },
 ): ProjectProfile | undefined {
   const start = path.resolve(detectedRoot);
   const configPath = path.join(start, ".gwrkrc.json");
@@ -496,6 +511,7 @@ function resolveDetectedProfile(
     if (!matchedWorkspace) continue;
     const scoped = applyWorkspaceConfig(directory, start, detected, config, {
       requireDesign: true,
+      configuredLookup: workspaceRoot?.configuredLookup,
       localProject,
     });
     if (scoped !== detected.profile) return scoped;
@@ -507,7 +523,11 @@ function resolveDetectedProfile(
       start,
       detected,
       workspaceRoot.config,
-      { localProject },
+      {
+        localProject,
+        requireDesign: workspaceRoot.configuredLookup,
+        configuredLookup: workspaceRoot.configuredLookup,
+      },
     );
   }
 
@@ -759,16 +779,11 @@ export function resolveWorkspaceProfile(
       stack: wsConfig.stack || {},
       layout: wsConfig.layout || "flat",
     };
-    return applyWorkspaceConfig(
-      projectRoot,
+    return resolveDetectedProfile(
       cwd,
       { profile: workspace, signals: [] },
-      config,
-      {
-        requireDesign: true,
-        configuredLookup: true,
-        localProject: readLocalProject(cwd),
-      },
+      readLocalProject(cwd),
+      { directory: projectRoot, config, configuredLookup: true },
     );
   }
 

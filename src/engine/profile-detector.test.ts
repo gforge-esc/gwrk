@@ -960,6 +960,50 @@ describe("FR-001: architecture-aware workspace profiles (044 phase p01)", () => 
     expect(explicit).toEqual(direct);
   });
 
+  it("resolves a local architecture with the selected language toolchain", async () => {
+    fs.rmSync(path.join(root, ".gwrkrc.json"));
+    write("services/api/package.json", JSON.stringify({
+      devDependencies: { typescript: "5.0.0", vitest: "3.2.4" },
+    }));
+    write("services/api/vitest.config.ts", "");
+    write("services/api/pyproject.toml", '[project]\ndependencies = ["fastapi", "pytest"]\n');
+    write("services/api/uv.lock", "");
+    write("services/api/.gwrkrc.json", JSON.stringify({
+      project: { name: "api", design, stack: { language: "Python" } },
+    }));
+    const direct = await detectProfile(path.join(root, "services/api"));
+    const explicit = await resolveWorkspaceProfile(root, "services/api");
+    expect.soft(direct).toMatchObject({
+      design,
+      stack: { language: "Python", framework: "FastAPI", buildSystem: "uv" },
+      toolchain: { test: "pytest" },
+    });
+    expect(getTestCommand(direct, ["test_api.py"])).toBe("pytest test_api.py -v");
+    expect(explicit).toEqual(direct);
+  });
+
+  it("uses the nearer registered workspace in every resolver", async () => {
+    const nearerDesign = { ...design, architecture: "layered", principles: ["clean-code"] };
+    const outer = {
+      project: { name: "fixture", design },
+      workspaces: { "services/api": { stack: { framework: "Django" } } },
+    };
+    write(".gwrkrc.json", JSON.stringify(outer));
+    write("services/.gwrkrc.json", JSON.stringify({
+      project: { name: "services", design: nearerDesign },
+      workspaces: { api: { stack: { framework: "FastAPI" }, toolchain: { build: null } } },
+    }));
+    const cwd = path.join(root, "services/api");
+    const direct = await detectProfile(cwd);
+    expect.soft(direct).toMatchObject({
+      design: nearerDesign,
+      stack: { framework: "FastAPI" },
+      toolchain: { build: null },
+    });
+    expect(await resolveWorkspaceProfile(root, "services/api")).toEqual(direct);
+    expect(resolveWorkspaceProfile(cwd, root, outer)).toEqual(direct);
+  });
+
   it("finds the registered workspace under a nearer local design", async () => {
     const localDesign = { ...design, architecture: "layered" };
     const config = {
