@@ -645,6 +645,23 @@ describe("credential guard", () => {
     expect(() => assertNoSecretMaterial({ sanitizedOutput })).not.toThrow();
   });
 
+  it("rejects a colored inline credential header", () => {
+    const sanitizedOutput = "\u001b[32mSet-Cookie\u001b[39m: session=fixture";
+    expect(() => assertNoSecretMaterial({ sanitizedOutput })).toThrow(
+      /secret material/i,
+    );
+  });
+
+  it.each(["fixture-value", "fixture\u001b[32m-value"])(
+    "rejects a known secret in colored output %#",
+    (secret) => {
+      const sanitizedOutput = "fixture\u001b[32m-value\u001b[39m";
+      expect(() =>
+        assertNoSecretMaterial({ sanitizedOutput }, [secret]),
+      ).toThrow(/secret material/i);
+    },
+  );
+
   it("allows inspected header records with noncredential values", () => {
     const sanitizedOutput = inspect({
       headers: [

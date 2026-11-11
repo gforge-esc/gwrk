@@ -3,7 +3,6 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { createHash, createHmac } from "node:crypto";
-import { stripVTControlCharacters } from "node:util";
 
 export type ModelRole = "define" | "implement" | "review";
 export type BlindedOption = "A" | "B";
@@ -611,15 +610,21 @@ function assertUniqueJsonKeys(record: string): void {
   }
 }
 
+// Match terminal control sequences for formatting and hyperlinks in fixture logs.
+const terminalControlPattern =
+  // biome-ignore lint/suspicious/noControlCharactersInRegex: Terminal escape bytes are intentional.
+  /(?:\x1b\[|\x9b)[0-?]*[ -/]*[@-~]|(?:\x1b\]|\x9d)[^\x07\x1b\x9c]*(?:\x07|\x1b\\|\x9c)/g;
+
 function scanEmbeddedJson(
   raw: string,
   knownSecrets: readonly string[],
   isHeaderCollection = false,
 ): void {
-  const text = stripVTControlCharacters(raw);
+  const text = raw.replace(terminalControlPattern, "");
   if (
     text !== raw &&
-    (containsSensitiveText(text) ||
+    (headerPattern.test(text) ||
+      containsSensitiveText(text) ||
       knownSecrets.some((secret) => Boolean(secret) && text.includes(secret)))
   ) {
     throw new Error(secretMaterialMessage);
