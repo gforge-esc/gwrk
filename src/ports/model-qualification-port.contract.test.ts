@@ -4,7 +4,11 @@
 
 import { expect, expectTypeOf, it } from "vitest";
 import { evaluateModelPromotion } from "../application/models/evaluate-models.js";
-import type { AdapterDiscoveryReport } from "../domain/model-qualification.js";
+import type {
+  AdapterDiscoveryReport,
+  DiscoveredModel,
+  RunnerScope,
+} from "../domain/model-qualification.js";
 import type {
   ModelCatalogPort,
   PromotionJudgePort,
@@ -28,26 +32,45 @@ const judgeRoute = {
   modelId: "judge-v1",
 };
 
+interface PublishedDiscoverySnapshot {
+  readonly scope: RunnerScope;
+  readonly adapters: readonly AdapterDiscoveryReport[];
+}
+
+interface PublishedRouteLockReads {
+  readDiscoverySnapshot(
+    scope: RunnerScope,
+  ): Promise<PublishedDiscoverySnapshot | null>;
+  readRouteLock(
+    scope: RunnerScope,
+  ): Promise<{ digest: string; document: unknown } | null>;
+}
+
 it("exposes the documented catalog and lock store contracts to consumers", async () => {
   const catalog: ModelCatalogPort = {
     async discoverCatalog() {
       return [];
     },
   };
+  const snapshot = { scope, adapters: [] };
+  const incumbent = { digest: "incumbent-digest", document: { routes: {} } };
+  const reader: PublishedRouteLockReads = {
+    async readDiscoverySnapshot() {
+      return snapshot;
+    },
+    async readRouteLock() {
+      return incumbent;
+    },
+  };
   const store: RouteLockStorePort = {
+    ...reader,
     async writeDiscoverySnapshot() {
       return "snapshot-digest";
-    },
-    async readDiscoverySnapshot() {
-      return null;
     },
     async writeEvaluationBundle() {
       return "evaluation-digest";
     },
     async readEvaluationBundle() {
-      return null;
-    },
-    async readRouteLock() {
       return null;
     },
     async writeRouteLockAtomic() {
@@ -61,7 +84,16 @@ it("exposes the documented catalog and lock store contracts to consumers", async
   });
   expect(reports).toEqual([]);
 
-  const snapshot: unknown = { scope, adapters: reports };
+  expectTypeOf<AdapterDiscoveryReport["models"]>().toEqualTypeOf<
+    readonly DiscoveredModel[]
+  >();
+  expectTypeOf<DiscoveredModel["supportedEfforts"]>().toEqualTypeOf<
+    readonly string[]
+  >();
+  const consumer: PublishedRouteLockReads = store;
+  expect(await consumer.readDiscoverySnapshot(scope)).toEqual(snapshot);
+  expect(await consumer.readRouteLock(scope)).toEqual(incumbent);
+
   const snapshotDigest: string = await store.writeDiscoverySnapshot(
     scope,
     snapshot,

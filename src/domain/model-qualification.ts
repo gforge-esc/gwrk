@@ -181,16 +181,16 @@ export function evaluatePromotion(input: PromotionEvidence): PromotionDecision {
     !Array.isArray(input.requiredFixtures) ||
     input.requiredFixtures.length === 0 ||
     input.requiredFixtures.some((fixture) => !isNonBlankString(fixture)) ||
-    input.repeats.some((repeat) => !isNonBlankString(repeat.fixtureId)) ||
+    input.repeats.some(
+      (repeat) =>
+        !isNonBlankString(repeat.fixtureId) ||
+        !Number.isSafeInteger(repeat.repeatIndex) ||
+        repeat.repeatIndex < 0,
+    ) ||
     input.requiredFixtures.some((fixture) => {
       const indices = new Set(
         input.repeats
-          .filter(
-            (repeat) =>
-              repeat.fixtureId === fixture &&
-              Number.isSafeInteger(repeat.repeatIndex) &&
-              repeat.repeatIndex >= 0,
-          )
+          .filter((repeat) => repeat.fixtureId === fixture)
           .map((repeat) => repeat.repeatIndex),
       );
       return indices.size < 3;

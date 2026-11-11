@@ -30,7 +30,7 @@ export interface DiscoveredModel {
   provider: string;
   family: string;
   modelId: string;
-  supportedEfforts: string[];
+  supportedEfforts: readonly string[];
   isDefault: boolean;
   hidden: boolean;
 }
@@ -41,8 +41,13 @@ export interface AdapterDiscoveryReport {
   cliVersion: string | "unknown";
   adapterVersion: string;
   supportsModelForwarding: boolean;
-  models: DiscoveredModel[];
+  models: readonly DiscoveredModel[];
   error?: string;
+}
+
+export interface DiscoverySnapshot {
+  readonly scope: RunnerScope;
+  readonly adapters: readonly AdapterDiscoveryReport[];
 }
 
 export interface SmokeProbeRequest {
@@ -131,8 +136,8 @@ export interface StructuredJudgeVerdict {
 export interface ModelCatalogPort {
   discoverCatalog(input: {
     scope: RunnerScope;
-    backends?: string[];
-    explicitCandidates?: DiscoveredModel[];
+    backends?: readonly string[];
+    explicitCandidates?: readonly DiscoveredModel[];
     nowIso: string;
   }): Promise<AdapterDiscoveryReport[]>;
 }
@@ -164,10 +169,12 @@ export interface PromotionJudgePort {
 
 export interface RouteLockStorePort {
   writeDiscoverySnapshot(scope: RunnerScope, snapshot: unknown): Promise<string>;
-  readDiscoverySnapshot(scope: RunnerScope): Promise<unknown | null>;
+  readDiscoverySnapshot(scope: RunnerScope): Promise<DiscoverySnapshot | null>;
   writeEvaluationBundle(evaluationId: string, bundle: unknown): Promise<string>;
-  readEvaluationBundle(idOrPath: string): Promise<unknown>;
-  readRouteLock(scope: RunnerScope): Promise<unknown | null>;
+  readEvaluationBundle(evaluationId: string): Promise<unknown>;
+  readRouteLock(
+    scope: RunnerScope,
+  ): Promise<{ digest: string; document: unknown } | null>;
   writeRouteLockAtomic(scope: RunnerScope, lock: unknown): Promise<string>;
 }
 ```
