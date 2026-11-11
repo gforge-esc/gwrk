@@ -108,7 +108,6 @@ const migrationBaseline: Record<string, string[]> = {
     "domain/agent-config.ts -> ambient:process.exit",
     "domain/agent-config.ts -> package:node:fs",
     "domain/agent-config.ts -> package:node:os",
-    "domain/project-id.ts -> package:node:child_process",
     "domain/toolchain.ts -> package:node:fs",
   ],
   engine: [

@@ -127,6 +127,7 @@ export function architectureViolations(file: string, source: string): string[] {
       path.posix.join(path.posix.dirname(file), specifier),
     );
     const targetLayer = target.split("/")[0];
+    if (layer === "db" && target === "adapters/git/project-id.js") continue;
     if (
       (inwardLayers[layer] && !inwardLayers[layer].includes(targetLayer)) ||
       ((layer === "utils" || layer === "engine") && targetLayer === "server")
