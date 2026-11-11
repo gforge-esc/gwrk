@@ -327,6 +327,24 @@ describe("credential guard", () => {
     ).toThrow(/secret material/i);
   });
 
+  describe("a bare JSON record after adjacent quoted log fragments", () => {
+    const prefix = 'stdout: "first" "second ';
+
+    it("rejects a Set-Cookie header pair", () => {
+      const record = { headers: [["Set-Cookie", "session=fixture-only"]] };
+      const sanitizedOutput = prefix + JSON.stringify(record);
+      expect(() => assertNoSecretMaterial({ sanitizedOutput })).toThrow(
+        /secret material/i,
+      );
+    });
+
+    it("allows a Content-Type header pair", () => {
+      const record = { headers: [["Content-Type", "text/plain"]] };
+      const sanitizedOutput = prefix + JSON.stringify(record);
+      expect(() => assertNoSecretMaterial({ sanitizedOutput })).not.toThrow();
+    });
+  });
+
   it.each(["rawHeaders", String.raw`raw\u0048eaders`])(
     "rejects duplicate embedded header keys with spelling %s",
     (key) => {
