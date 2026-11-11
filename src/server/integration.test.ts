@@ -26,6 +26,7 @@ import { getGateResults } from "../db/gates.js";
 import { getDb } from "../db/index.js";
 import { listIssues } from "../db/issues.js";
 import { listRuns, recordHistory, startRun } from "../db/runs.js";
+import type { ShipStageResult } from "../domain/ship-types.js";
 import { gatherDeliveryActuals } from "../engine/compression.js";
 import { ShipOrchestrator } from "../engine/ship-orchestrator.js";
 import { GwrkConfigSchema } from "../utils/config.js";
@@ -1071,9 +1072,12 @@ setInterval(() => {}, 1000);
     const branchSetup = vi.fn();
     vi.mocked(ShipOrchestrator).mockImplementationOnce((config) => {
       const orchestrator = new RealShipOrchestrator(config);
+      const branchStage = orchestrator as unknown as {
+        stageBranchSetup(): Promise<ShipStageResult>;
+      };
       return {
         async run() {
-          const result = await orchestrator["stageBranchSetup"]();
+          const result = await branchStage.stageBranchSetup();
           branchSetup(result);
           return result.success ? ship : result.exitCode;
         },
