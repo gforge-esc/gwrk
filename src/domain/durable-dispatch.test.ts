@@ -116,6 +116,7 @@ describe("FR-001 dispatch work identity and acceptance", () => {
       featureId,
       phaseId,
       workKey: `ship:${featureId}:${phaseId}`,
+      branchName: `feat/${featureId}-${phaseId}`,
       status: "accepted",
       attemptCount: 0,
       leaseEpoch: 0,
@@ -321,7 +322,22 @@ describe("FR-006 pure dispatch policy", () => {
     expect(input).toEqual(before);
     expect(
       evaluateDispatchAcceptance({ ...input, existingActive: operation() }),
-    ).not.toEqual(first);
+    ).toEqual(first);
+  });
+
+  it("binds a fence to the operation when its identity is available", () => {
+    const current = operation({
+      leaseOwner: "worker-a",
+      leaseEpoch: 1,
+      leaseExpiresAt: "2026-11-11T12:01:00.000Z",
+    });
+    expect(
+      validateLeaseFence(
+        current,
+        { operationId: "other-op", leaseOwner: "worker-a", leaseEpoch: 1 },
+        now,
+      ),
+    ).toEqual({ ok: false, code: "LEASE_FENCED" });
   });
 });
 

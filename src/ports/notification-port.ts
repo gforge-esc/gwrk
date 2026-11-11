@@ -15,6 +15,7 @@ export interface NotificationPayload {
   blocks?: unknown[];
   opsOnly?: boolean;
   ephemeralUserId?: string;
+  clientMetadataKey?: string;
 }
 
 export interface NotificationReceipt {
@@ -32,6 +33,19 @@ export interface SlackDeliveryStatus {
   lastError?: string;
 }
 
+export interface NotificationReconcileQuery {
+  projectId: string;
+  workspaceId?: string;
+  channelId: string;
+  threadTs?: string;
+  clientMetadataKey: string;
+}
+
+export type NotificationReconcileResult =
+  | { status: "found"; receipt: NotificationReceipt }
+  | { status: "confirmed_absent" }
+  | { status: "indeterminate"; reason: string };
+
 export interface NotificationPort {
   // biome-ignore lint/suspicious/noConfusingVoidType: Existing adapters return Promise<void>.
   notify(payload: NotificationPayload): Promise<void | NotificationReceipt>;
@@ -40,4 +54,7 @@ export interface NotificationPort {
     userId: string,
   ): Promise<"active" | "away">;
   getDeliveryStatus?(): Promise<SlackDeliveryStatus>;
+  reconcileDelivery?(
+    query: NotificationReconcileQuery,
+  ): Promise<NotificationReconcileResult>;
 }

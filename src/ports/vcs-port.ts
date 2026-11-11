@@ -9,7 +9,36 @@ export interface PullRequestSummary {
   prUrl: string | null;
 }
 
-export interface VcsPort {
+export interface DetachedCheckoutHandle {
+  checkoutDir: string;
+  commitSha: string;
+}
+
+export interface VcsHarvestExtensions {
+  fetchBranch(cwd: string, branchName: string): Promise<void> | void;
+  resolveRefSha(
+    cwd: string,
+    ref: string,
+  ): Promise<string | null> | string | null;
+  isCommitAncestorOfRef(
+    cwd: string,
+    ancestorSha: string,
+    descendantRef: string,
+  ): Promise<boolean> | boolean;
+  createDetachedCheckout(
+    cwd: string,
+    commitSha: string,
+  ): Promise<DetachedCheckoutHandle>;
+  removeDetachedCheckout(cwd: string, checkoutDir: string): Promise<void>;
+  getRemoteBranchSha(cwd: string, branchName: string): Promise<string | null>;
+  deleteRemoteBranchAtTip(
+    cwd: string,
+    branchName: string,
+    expectedSha: string,
+  ): Promise<{ deleted: boolean; reason?: "tip_moved" | "missing" }>;
+}
+
+export interface VcsPort extends VcsHarvestExtensions {
   getCurrentBranch(cwd: string): Promise<string> | string;
   isDirty(cwd: string): Promise<boolean> | boolean;
   createBranch(branchName: string, cwd: string): Promise<void> | void;

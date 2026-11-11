@@ -3,25 +3,34 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { z } from "zod";
-// RED scaffolding. Signatures copied from the Phase 1 contract.
-export interface DeliveryRecipient {
-  projectId: string;
-  surface: "slack" | "local_cli" | "http";
-  workspaceId?: string;
-  channelId?: string;
-  threadTs?: string;
-  actorUserId?: string;
-  opsOnly?: boolean;
-}
+import type { DeliveryRecipient } from "./project-registry.js";
 
-export type DispatchOperationStatus =
-  | "accepted"
-  | "leased"
-  | "running"
-  | "reconciling"
-  | "completed"
-  | "failed"
-  | "superseded";
+export const EvidenceLevelSchema = z.enum([
+  "durable_verified",
+  "legacy_unverified",
+]);
+
+export const DispatchOperationStatusSchema = z.enum([
+  "accepted",
+  "leased",
+  "running",
+  "reconciling",
+  "completed",
+  "failed",
+  "superseded",
+]);
+export type DispatchOperationStatus = z.infer<
+  typeof DispatchOperationStatusSchema
+>;
+
+export const DispatchAttemptStatusSchema = z.enum([
+  "running",
+  "completed",
+  "failed",
+  "interrupted",
+  "reconciled_completed",
+]);
+export type DispatchAttemptStatus = z.infer<typeof DispatchAttemptStatusSchema>;
 
 export interface LeaseFence {
   operationId: string;
@@ -53,7 +62,7 @@ export interface DurableDispatchOperation {
   createdAt: string;
   updatedAt: string;
   completedAt: string | null;
-  evidenceLevel: "durable_verified" | "legacy_unverified";
+  evidenceLevel: z.infer<typeof EvidenceLevelSchema>;
 }
 
 export interface DispatchReceipt {
@@ -93,45 +102,138 @@ export type StaleLeaseDecision =
   | { action: "requeue_attempt"; reason: string }
   | { action: "fail_exhausted"; reason: string };
 
-export function computeDispatchWorkKey(input: {
+interface DispatchWork {
   featureId: string;
   phaseId: string;
   taskIds?: readonly string[];
-}): string {
-  throw new Error("Not implemented");
 }
 
-export function evaluateDispatchAcceptance(input: {
-  existingActive: DurableDispatchOperation | null;
+export interface DispatchAcceptanceRequest extends DispatchWork {
   projectId: string;
-  featureId: string;
-  phaseId: string;
-  taskIds?: readonly string[];
   backend: string;
   trunkBranch: string;
   recipient?: DeliveryRecipient | null;
   newOperationId: string;
   nowIso: string;
-}):
+}
+
+function normalizeTaskIds(taskIds: readonly string[] | undefined): string[] {
+  return [...new Set(taskIds)].sort();
+}
+
+export function computeDispatchWorkKey(input: DispatchWork): string {
+  const taskIds = normalizeTaskIds(input.taskIds);
+  const phaseKey = `ship:${input.featureId}:${input.phaseId}`;
+  return taskIds.length ? `${phaseKey}:${JSON.stringify(taskIds)}` : phaseKey;
+}
+
+function dispatchReceipt(
+  operation: DurableDispatchOperation,
+  deduplicated: boolean,
+): DispatchReceipt {
+  return {
+    operationId: operation.operationId,
+    projectId: operation.projectId,
+    workKey: operation.workKey,
+    featureId: operation.featureId,
+    phaseId: operation.phaseId,
+    branchName: operation.branchName,
+    status: operation.status,
+    attemptCount: operation.attemptCount,
+    deduplicated,
+    recipient: operation.recipient && { ...operation.recipient },
+    createdAt: operation.createdAt,
+  };
+}
+
+const activeStatuses: readonly DispatchOperationStatus[] = [
+  "accepted",
+  "leased",
+  "running",
+  "reconciling",
+];
+
+export function evaluateDispatchAcceptance(
+  input: DispatchAcceptanceRequest & {
+    existingActive: DurableDispatchOperation | null;
+  },
+):
   | { kind: "deduplicated"; receipt: DispatchReceipt }
   | {
       kind: "create_new";
       operation: DurableDispatchOperation;
       receipt: DispatchReceipt;
     } {
-  throw new Error("Not implemented");
+  const workKey = computeDispatchWorkKey(input);
+  const existing = input.existingActive;
+  if (
+    existing?.projectId === input.projectId &&
+    existing.workKey === workKey &&
+    activeStatuses.includes(existing.status)
+  ) {
+    return { kind: "deduplicated", receipt: dispatchReceipt(existing, true) };
+  }
+
+  const operation: DurableDispatchOperation = {
+    operationId: input.newOperationId,
+    projectId: input.projectId,
+    workKey,
+    featureId: input.featureId,
+    phaseId: input.phaseId,
+    taskIds: normalizeTaskIds(input.taskIds),
+    backend: input.backend,
+    branchName: `feat/${input.featureId}-${input.phaseId}`,
+    trunkBranch: input.trunkBranch,
+    recipient: input.recipient ? { ...input.recipient } : null,
+    status: "accepted",
+    attemptCount: 0,
+    leaseOwner: null,
+    leaseEpoch: 0,
+    leaseExpiresAt: null,
+    heartbeatAt: null,
+    prNumber: null,
+    prUrl: null,
+    lastRunId: null,
+    lastError: null,
+    createdAt: input.nowIso,
+    updatedAt: input.nowIso,
+    completedAt: null,
+    evidenceLevel: "durable_verified",
+  };
+  return {
+    kind: "create_new",
+    operation,
+    receipt: dispatchReceipt(operation, false),
+  };
 }
+
+export type LeaseRejectionCode = "LEASE_FENCED" | "LEASE_EXPIRED";
 
 export function validateLeaseFence(
   current: {
+    operationId?: string;
     leaseOwner: string | null;
     leaseEpoch: number;
     leaseExpiresAt: string | null;
   },
   candidate: LeaseFence,
   nowIso: string,
-): { ok: true } | { ok: false; code: "LEASE_FENCED" | "LEASE_EXPIRED" } {
-  throw new Error("Not implemented");
+): { ok: true } | { ok: false; code: LeaseRejectionCode } {
+  if (
+    (current.operationId !== undefined &&
+      current.operationId !== candidate.operationId) ||
+    current.leaseOwner !== candidate.leaseOwner ||
+    current.leaseEpoch !== candidate.leaseEpoch
+  ) {
+    return { ok: false, code: "LEASE_FENCED" };
+  }
+  if (
+    !current.leaseExpiresAt ||
+    !(Date.parse(nowIso) < Date.parse(current.leaseExpiresAt))
+  ) {
+    return { ok: false, code: "LEASE_EXPIRED" };
+  }
+  return { ok: true };
 }
 
 export function evaluateStaleDispatchReconciliation(input: {
@@ -139,11 +241,36 @@ export function evaluateStaleDispatchReconciliation(input: {
   evidence: WorkerRecoveryEvidence;
   maxCrashRecoveryAttempts: number;
 }): StaleLeaseDecision {
-  throw new Error("Not implemented");
+  const { evidence, operation, maxCrashRecoveryAttempts } = input;
+  if (evidence.mergedPullRequest) {
+    const { prNumber, prUrl, mergeCommitSha } = evidence.mergedPullRequest;
+    return {
+      action: "complete_from_pr",
+      prNumber,
+      prUrl,
+      triggerHarvestMergeSha: mergeCommitSha,
+    };
+  }
+  if (evidence.openPullRequest) {
+    return { action: "complete_from_pr", ...evidence.openPullRequest };
+  }
+  if (
+    evidence.workerState === "running" ||
+    evidence.workerState === "unknown"
+  ) {
+    return {
+      action: "await_worker_stop",
+      reason: "Worker termination has not been confirmed",
+    };
+  }
+  if (operation.attemptCount >= maxCrashRecoveryAttempts) {
+    return {
+      action: "fail_exhausted",
+      reason: "Crash recovery attempts exhausted",
+    };
+  }
+  return {
+    action: "requeue_attempt",
+    reason: "No active worker or pull request remains",
+  };
 }
-
-export const EvidenceLevelSchema = z.never();
-
-export const DispatchOperationStatusSchema = z.never();
-
-export const DispatchAttemptStatusSchema = z.never();

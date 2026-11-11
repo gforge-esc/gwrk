@@ -296,6 +296,15 @@ describe("FR-006 durable operation boundaries", () => {
           "getRemoteBranchSha",
           "deleteRemoteBranchAtTip",
         ],
+        VcsHarvestExtensions: [
+          "fetchBranch",
+          "resolveRefSha",
+          "isCommitAncestorOfRef",
+          "createDetachedCheckout",
+          "removeDetachedCheckout",
+          "getRemoteBranchSha",
+          "deleteRemoteBranchAtTip",
+        ],
       },
       "ports/notification-port.ts": {
         NotificationPayload: ["clientMetadataKey"],

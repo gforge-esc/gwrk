@@ -189,6 +189,21 @@ describe("FR-002 harvest identity and target verification", () => {
       workKey: expect.any(String),
     });
   });
+
+  it("uses the same phase identity for legacy and padded branch names", () => {
+    expect(
+      verifyHarvestTarget(
+        project,
+        candidate({ headBranch: `feat/${featureId}-phase-1` }),
+      ),
+    ).toEqual(verifyHarvestTarget(project, candidate()));
+  });
+
+  it("rejects an explicit feature that conflicts with the branch", () => {
+    expect(
+      verifyHarvestTarget(project, candidate({ explicitFeatureId: "other" })),
+    ).toMatchObject({ ok: false, code: "NOT_FEATURE_BRANCH" });
+  });
 });
 
 describe("FR-003 independent harvest stages", () => {
@@ -313,6 +328,7 @@ describe("FR-005 closed attempts and branch cleanup", () => {
   it.each([
     [{ candidateRepoSlug: "acme/b" }, "REPO_MISMATCH"],
     [{ headBranch: "develop" }, "PROTECTED_BRANCH"],
+    [{ headBranch: "chore/unrelated" }, "PROTECTED_BRANCH"],
     [{ expectedHeadSha: null }, "MISSING_EXPECTED_TIP"],
     [{ expectedHeadSha: "" }, "MISSING_EXPECTED_TIP"],
     [{ observedRemoteHeadSha: "b".repeat(40) }, "TIP_MOVED"],

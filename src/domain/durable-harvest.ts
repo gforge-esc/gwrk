@@ -3,93 +3,63 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { z } from "zod";
-// RED scaffolding. Signatures copied from the Phase 1 contract.
-export type ProjectRole = "viewer" | "operator" | "maintainer";
+import type { DeliveryRecipient, EnrolledProject } from "./project-registry.js";
 
-export type AllowedRunnerKind = "local" | "hosted";
+export const DeliverySourceSchema = z.enum([
+  "github_webhook",
+  "github_poller",
+  "manual_cli",
+]);
+export type DeliverySource = z.infer<typeof DeliverySourceSchema>;
 
-export interface ProjectIdentityFacts {
-  projectRoot: string;
-  remoteOriginUrl?: string | null;
-  gitCommonDir?: string | null;
-}
+export const HarvestTerminalEventSchema = z.enum(["merged", "closed_unmerged"]);
+export type HarvestTerminalEvent = z.infer<typeof HarvestTerminalEventSchema>;
 
-export interface ProjectRunnerPolicy {
-  allowedKinds: AllowedRunnerKind[];
-  runnerIds?: string[];
-}
+export const HarvestStageNameSchema = z.enum([
+  "git_sync",
+  "gate_verify",
+  "learning_record",
+  "slack_delivery",
+  "branch_cleanup",
+]);
+export type HarvestStageName = z.infer<typeof HarvestStageNameSchema>;
 
-export interface ProjectSlackBinding {
-  workspaceId: string;
-  channelId: string;
-  channelName?: string;
-  opsChannelId?: string;
-  sharedChannel: boolean;
-}
+export const HarvestStageStatusSchema = z.enum([
+  "pending",
+  "running",
+  "succeeded",
+  "gate_failed",
+  "forecast_missing",
+  "uncertain",
+  "blocked_tip_mismatch",
+  "skipped_no_target",
+  "failed",
+]);
+export type HarvestStageStatus = z.infer<typeof HarvestStageStatusSchema>;
 
-export interface ProjectRoleBinding {
-  projectId: string;
-  principalType: "slack_user" | "cli_token" | "google_sub";
-  principalId: string;
-  role: ProjectRole;
-}
+export const HarvestOperationStatusSchema = z.enum([
+  "accepted",
+  "running",
+  "completed",
+  "gate_failed",
+  "delivery_pending",
+  "cleanup_blocked",
+  "closed_unmerged",
+  "failed",
+]);
+export type HarvestOperationStatus = z.infer<
+  typeof HarvestOperationStatusSchema
+>;
 
-export interface EnrolledProject {
-  projectId: string;
-  slug: string;
-  name: string;
-  repoSlug: string | null;
-  trunkBranch: string;
-  localRoot: string | null;
-  mirrorPath: string | null;
-  runnerPolicy: ProjectRunnerPolicy;
-  slack: ProjectSlackBinding | null;
-  legacyProjectIds: string[];
-  createdAt: string;
-  updatedAt: string;
-}
-
-export interface DeliveryRecipient {
-  projectId: string;
-  surface: "slack" | "local_cli" | "http";
-  workspaceId?: string;
-  channelId?: string;
-  threadTs?: string;
-  actorUserId?: string;
-  opsOnly?: boolean;
-}
-
-export type DeliverySource = "github_webhook" | "github_poller" | "manual_cli";
-
-export type HarvestTerminalEvent = "merged" | "closed_unmerged";
-
-export type HarvestStageName =
-  | "git_sync"
-  | "gate_verify"
-  | "learning_record"
-  | "slack_delivery"
-  | "branch_cleanup";
-
-export type HarvestStageStatus =
-  | "pending"
-  | "running"
-  | "succeeded"
-  | "gate_failed"
-  | "forecast_missing"
-  | "uncertain"
-  | "blocked_tip_mismatch"
-  | "skipped_no_target"
-  | "failed";
-
-export type HarvestOperationStatus =
-  | "accepted"
-  | "running"
-  | "completed"
-  | "gate_failed"
-  | "delivery_pending"
-  | "cleanup_blocked"
-  | "closed_unmerged"
-  | "failed";
+export const OutboxStatusSchema = z.enum([
+  "pending",
+  "sending",
+  "uncertain",
+  "delivered",
+  "skipped_no_target",
+  "failed",
+]);
+export type OutboxStatus = z.infer<typeof OutboxStatusSchema>;
 
 export interface HarvestCandidateInput {
   source: DeliverySource;
@@ -121,26 +91,64 @@ export interface HarvestStageReceipt {
   completedAt: string | null;
 }
 
-export function computeHarvestWorkKey(input: {
-  prNumber: number;
-  terminalEvent: HarvestTerminalEvent;
-  mergeCommitSha: string | null;
+interface HarvestTarget {
   featureId: string;
   phaseId: string | null;
-}): string {
-  throw new Error("Not implemented");
+}
+
+export function computeHarvestWorkKey(
+  input: HarvestTarget & {
+    prNumber: number;
+    terminalEvent: HarvestTerminalEvent;
+    mergeCommitSha: string | null;
+  },
+): string {
+  const mergeSha =
+    input.terminalEvent === "merged"
+      ? (input.mergeCommitSha?.trim().toLowerCase() ?? null)
+      : null;
+  return `harvest:${JSON.stringify([
+    input.prNumber,
+    input.terminalEvent,
+    mergeSha,
+    input.featureId,
+    input.phaseId,
+  ])}`;
+}
+
+function isSameRepository(
+  projectRepoSlug: string | null,
+  candidateRepoSlug: string | null,
+): boolean {
+  return (
+    !!projectRepoSlug?.trim() &&
+    !!candidateRepoSlug &&
+    projectRepoSlug.toLowerCase() === candidateRepoSlug.toLowerCase()
+  );
+}
+
+function normalizePhaseId(phaseId: string): string {
+  return phaseId.replace(
+    /^phase-(\d+)$/,
+    (_, digits: string) => `phase-${digits.padStart(2, "0")}`,
+  );
+}
+
+function parseHarvestBranch(headBranch: string | null): HarvestTarget | null {
+  const branch = /^(?:feat|phase)\/(.+)$/.exec(headBranch ?? "");
+  if (!branch) return null;
+
+  const phase = /^(.+)-(phase-\d+)$/.exec(branch[1]);
+  return phase
+    ? { featureId: phase[1], phaseId: normalizePhaseId(phase[2]) }
+    : { featureId: branch[1], phaseId: null };
 }
 
 export function verifyHarvestTarget(
   project: EnrolledProject,
   candidate: HarvestCandidateInput,
 ):
-  | {
-      ok: true;
-      featureId: string;
-      phaseId: string | null;
-      workKey: string;
-    }
+  | ({ ok: true; workKey: string } & HarvestTarget)
   | {
       ok: false;
       code:
@@ -151,7 +159,59 @@ export function verifyHarvestTarget(
         | "PHASE_MISMATCH";
       reason: string;
     } {
-  throw new Error("Not implemented");
+  if (!isSameRepository(project.repoSlug, candidate.repoSlug)) {
+    return {
+      ok: false,
+      code: "REPO_MISMATCH",
+      reason: "Pull request repository differs from enrollment",
+    };
+  }
+  if (candidate.baseBranch !== project.trunkBranch) {
+    return {
+      ok: false,
+      code: "NOT_CONFIGURED_TRUNK",
+      reason: "Pull request does not target the configured trunk",
+    };
+  }
+  const target = parseHarvestBranch(candidate.headBranch);
+  if (
+    !target ||
+    candidate.headBranch === project.trunkBranch ||
+    (candidate.explicitFeatureId !== undefined &&
+      candidate.explicitFeatureId !== target.featureId)
+  ) {
+    return {
+      ok: false,
+      code: "NOT_FEATURE_BRANCH",
+      reason: "Pull request head does not identify the requested feature",
+    };
+  }
+  if (
+    candidate.explicitPhaseId !== undefined &&
+    normalizePhaseId(candidate.explicitPhaseId) !== target.phaseId
+  ) {
+    return {
+      ok: false,
+      code: "PHASE_MISMATCH",
+      reason: "Pull request head does not identify the requested phase",
+    };
+  }
+  if (
+    candidate.terminalEvent === "merged" &&
+    !candidate.mergeCommitSha?.trim()
+  ) {
+    return {
+      ok: false,
+      code: "MISSING_MERGE_SHA",
+      reason: "Merged pull request requires a merge commit",
+    };
+  }
+
+  return {
+    ok: true,
+    ...target,
+    workKey: computeHarvestWorkKey({ ...candidate, ...target }),
+  };
 }
 
 export function planHarvestStages(input: {
@@ -164,14 +224,72 @@ export function planHarvestStages(input: {
   stage: HarvestStageName;
   initialStatus: HarvestStageStatus;
 }> {
-  throw new Error("Not implemented");
+  const phaseKeys = [...new Set(input.phaseIds)];
+  if (input.terminalEvent === "closed_unmerged") {
+    return (phaseKeys.length ? phaseKeys : ["feature"]).map((phaseKey) => ({
+      phaseKey,
+      stage: "learning_record",
+      initialStatus: "pending",
+    }));
+  }
+
+  return phaseKeys.flatMap((phaseKey) =>
+    HarvestStageNameSchema.options.map((stage) => ({
+      phaseKey,
+      stage,
+      initialStatus:
+        (stage === "slack_delivery" && !input.hasSlackTarget) ||
+        (stage === "branch_cleanup" && !input.hasRemoteBranchTarget)
+          ? "skipped_no_target"
+          : "pending",
+    })),
+  );
+}
+
+function stageFinished({ stage, status }: HarvestStageReceipt): boolean {
+  return (
+    status === "succeeded" ||
+    (stage === "learning_record" && status === "forecast_missing") ||
+    ((stage === "slack_delivery" || stage === "branch_cleanup") &&
+      status === "skipped_no_target")
+  );
 }
 
 export function deriveHarvestTerminalStatus(input: {
   terminalEvent: HarvestTerminalEvent;
   stages: readonly HarvestStageReceipt[];
 }): HarvestOperationStatus {
-  throw new Error("Not implemented");
+  const closed = input.terminalEvent === "closed_unmerged";
+  const stages = closed
+    ? input.stages.filter(({ stage }) => stage === "learning_record")
+    : input.stages;
+  const hasStatus = (status: HarvestStageStatus) =>
+    stages.some((stage) => stage.status === status);
+
+  if (hasStatus("gate_failed")) return "gate_failed";
+  if (hasStatus("failed")) return "failed";
+  if (hasStatus("uncertain")) return "delivery_pending";
+  if (hasStatus("blocked_tip_mismatch")) return "cleanup_blocked";
+  if (
+    stages.every(
+      ({ status }) => status === "pending" || status === "skipped_no_target",
+    )
+  )
+    return "accepted";
+  if (!stages.every(stageFinished)) return "running";
+  if (closed) return "closed_unmerged";
+
+  const stageNamesByPhase = new Map<string, Set<HarvestStageName>>();
+  for (const { phaseKey, stage } of stages) {
+    const stageNames = stageNamesByPhase.get(phaseKey) ?? new Set();
+    stageNames.add(stage);
+    stageNamesByPhase.set(phaseKey, stageNames);
+  }
+  return [...stageNamesByPhase.values()].every(
+    (names) => names.size === HarvestStageNameSchema.options.length,
+  )
+    ? "completed"
+    : "running";
 }
 
 export function evaluateBranchCleanupSafety(input: {
@@ -192,17 +310,27 @@ export function evaluateBranchCleanupSafety(input: {
         | "MISSING_EXPECTED_TIP"
         | "TIP_MOVED";
     } {
-  throw new Error("Not implemented");
+  const { headBranch, expectedHeadSha, observedRemoteHeadSha } = input;
+  if (!isSameRepository(input.projectRepoSlug, input.candidateRepoSlug)) {
+    return { action: "block_cleanup", code: "REPO_MISMATCH" };
+  }
+  if (
+    !headBranch ||
+    headBranch === input.trunkBranch ||
+    !parseHarvestBranch(headBranch)
+  ) {
+    return { action: "block_cleanup", code: "PROTECTED_BRANCH" };
+  }
+  if (!expectedHeadSha?.trim()) {
+    return { action: "block_cleanup", code: "MISSING_EXPECTED_TIP" };
+  }
+  if (observedRemoteHeadSha === null) return { action: "already_deleted" };
+  if (expectedHeadSha !== observedRemoteHeadSha) {
+    return { action: "block_cleanup", code: "TIP_MOVED" };
+  }
+  return {
+    action: "delete_at_tip",
+    branch: headBranch,
+    expectedSha: expectedHeadSha,
+  };
 }
-
-export const DeliverySourceSchema = z.never();
-
-export const HarvestTerminalEventSchema = z.never();
-
-export const HarvestOperationStatusSchema = z.never();
-
-export const HarvestStageNameSchema = z.never();
-
-export const HarvestStageStatusSchema = z.never();
-
-export const OutboxStatusSchema = z.never();
