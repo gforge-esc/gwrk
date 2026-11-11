@@ -133,7 +133,7 @@ function containsPath(parent: string, candidate: string): boolean {
   return candidate === parent || candidate.startsWith(`${parent}/`);
 }
 
-function isPrivateBind(host: string): boolean {
+export function isPrivateRunnerBind(host: string): boolean {
   if (host === "127.0.0.1" || host === "::1") return true;
   const segments = host.split(".");
   if (
@@ -188,7 +188,7 @@ export function validateRunnerLayout(
   ) {
     errors.push("Credential files must be inside the secrets directory");
   }
-  if (!isPrivateBind(layout.listenHost)) {
+  if (!isPrivateRunnerBind(layout.listenHost)) {
     errors.push("The server must bind to loopback or a private IPv4 address");
   }
   if (

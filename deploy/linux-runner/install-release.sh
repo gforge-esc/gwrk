@@ -60,10 +60,11 @@ awk 'substr($0, 1, 1) != "-" && substr($0, 1, 1) != "d" { exit 1 }' "$staging/ar
 LC_ALL=C tar --quoting-style=escape -tzf "$staging/package.tgz" > "$staging/archive.paths"
 while IFS= read -r path; do
   case "$path" in
+    package/deploy/linux-runner/.env.example) ;;
     *\\*|*//*|*/./*|*/../*|*/.|*/..|*/.gwrk/*|*/.ssh/*|*/.gemini/*|*/.claude/*|*/.codex/*|*/.env|*/.env.*|*/.gwrkrc.local.json)
       fail "Release archive contains a forbidden path."
       ;;
-    package/|package/package.json|package/LICENSE|package/README.md|package/pnpm-lock.yaml|package/dist/*|package/deploy/|package/deploy/linux-runner/|package/deploy/linux-runner/install-release.sh|package/deploy/linux-runner/rollback-release.sh)
+    package/|package/package.json|package/LICENSE|package/README.md|package/pnpm-lock.yaml|package/dist/*|package/deploy/|package/deploy/linux-runner/|package/deploy/linux-runner/install-release.sh|package/deploy/linux-runner/rollback-release.sh|package/deploy/linux-runner/README.md|package/deploy/linux-runner/credentials.sh|package/deploy/linux-runner/gwrk-runner.service|package/deploy/linux-runner/live-pilot-record.example.md|package/deploy/linux-runner/preflight.sh|package/deploy/linux-runner/run.sh)
       ;;
     *) fail "Release archive contains an unexpected path." ;;
   esac
