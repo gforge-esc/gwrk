@@ -18,7 +18,7 @@ import {
 } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import Database from "better-sqlite3";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -78,14 +78,24 @@ function seedLedger(path = join(root, "active.db")) {
 }
 
 const trackedTask = "specs/pilot/.gwrk/tasks.json";
+const trackedRun = "specs/pilot/.gwrk/runs/42.json";
 
-async function seedRepository(checkout: string, contents: string) {
+async function seedRepository(
+  checkout: string,
+  contents: string,
+  runContents?: string,
+) {
   await mkdir(join(checkout, "specs/pilot/.gwrk"), { recursive: true });
   await writeFile(join(checkout, trackedTask), contents);
   const git = (...args: string[]) =>
     execFileSync("git", ["-C", checkout, ...args], { encoding: "utf8" });
   git("init", "--quiet");
   git("add", "-f", trackedTask);
+  if (runContents !== undefined) {
+    await mkdir(join(checkout, dirname(trackedRun)), { recursive: true });
+    await writeFile(join(checkout, trackedRun), runContents);
+    git("add", "-f", trackedRun);
+  }
   git(
     "-c",
     "user.name=Fixture",
@@ -141,7 +151,7 @@ function runInstalledBackup(ledger: string, destination: string) {
     ],
     {
       cwd: root,
-      env: { ...process.env, GWRK_HOME: root, GWRK_DB_PATH: ledger },
+      env: { ...process.env, GWRK_HOME: dirname(ledger), GWRK_DB_PATH: ledger },
       encoding: "utf8",
       timeout: 10_000,
     },
@@ -157,6 +167,79 @@ function expectUsageFailure(result: ReturnType<typeof runCli>) {
 }
 
 describe("installed ledger commands outside a checkout", () => {
+  it("directs backup to resume an interrupted first restore", async () => {
+    const sourceLedger = join(root, "active.db");
+    seedLedger(sourceLedger).close();
+    const source = join(root, "original-backup");
+    await createLedgerBackup({
+      dbPath: sourceLedger,
+      destination: source,
+      createdAt: "2026-11-11T12:00:00.000Z",
+      gwrkVersion: "1.6.0-beta.1",
+      collectDevice: () => null,
+      collectRepositories: () => [],
+    });
+
+    const stateDirectory = join(root, "restored");
+    const ledger = join(stateDirectory, "gwrk.db");
+    const pending = join(stateDirectory, ".restore-pending");
+    const request = { source, stateDirectory, force: false };
+    const realFs =
+      await vi.importActual<typeof import("node:fs/promises")>(
+        "node:fs/promises",
+      );
+    vi.mocked(rename).mockImplementation(async (from, to) => {
+      if (from === join(pending, "install.db") && to === ledger) {
+        throw new Error("Fixture interrupted first ledger installation");
+      }
+      await realFs.rename(from, to);
+    });
+    try {
+      await expect(restoreLedgerBackup(request)).rejects.toThrow(
+        "Fixture interrupted first ledger installation",
+      );
+    } finally {
+      vi.mocked(rename).mockReset();
+    }
+
+    expect((await stat(pending)).isDirectory()).toBe(true);
+    await expect(stat(ledger)).rejects.toMatchObject({ code: "ENOENT" });
+    const destination = join(root, "new-backup");
+    const result = runInstalledBackup(ledger, destination);
+    expect(result.status, result.stderr).toBe(1);
+    expect(result.stdout).toBe("");
+    expect(result.stderr.match(/^\[exit:.*$/gm)).toEqual([
+      expect.stringMatching(/^\[exit:1 .*gwrk db restore.*original backup/),
+    ]);
+    await expect(stat(destination)).rejects.toMatchObject({ code: "ENOENT" });
+
+    await restoreLedgerBackup(request);
+    await expect(stat(pending)).rejects.toMatchObject({ code: "ENOENT" });
+  });
+
+  it.each([
+    ["truncated JSON", '{"id":'],
+    ["invalid schema", '{"id":"pilot-device","role":"unknown"}'],
+  ])(
+    "rejects backup with an existing device record containing %s",
+    async (_case, contents) => {
+      const ledger = join(root, "gwrk.db");
+      seedLedger(ledger).close();
+      const device = join(root, "device.json");
+      await writeFile(device, contents);
+
+      const destination = join(root, "backup");
+      const result = runInstalledBackup(ledger, destination);
+      expect(result.status, result.stderr).toBe(1);
+      expect(result.stdout).toBe("");
+      expect(result.stderr.match(/^\[exit:.*$/gm)).toEqual([
+        expect.stringMatching(/^\[exit:1 /),
+      ]);
+      expect(result.stderr).toContain(device);
+      await expect(stat(destination)).rejects.toMatchObject({ code: "ENOENT" });
+    },
+  );
+
   it("rejects JSON backup while a restore is unfinished", async () => {
     const ledger = join(root, "gwrk.db");
     seedLedger(ledger).close();
@@ -569,8 +652,13 @@ describe("installed ledger commands outside a checkout", () => {
   it("uses original Git objects when the checkout contains a replacement ref", async () => {
     const checkout = join(root, "enrolled");
     const contents = '{"status":"completed"}\n';
-    const original = await seedRepository(checkout, contents);
-    const replacement = await seedRepository(checkout, '{"status":"open"}\n');
+    const runContents = '{"exitCode":0}\n';
+    const original = await seedRepository(checkout, contents, runContents);
+    const replacement = await seedRepository(
+      checkout,
+      '{"status":"open"}\n',
+      '{"exitCode":1}\n',
+    );
     const git = (...args: string[]) =>
       execFileSync("git", ["-C", checkout, ...args], { stdio: "ignore" });
     git("reset", "--hard", original);
@@ -585,6 +673,10 @@ describe("installed ledger commands outside a checkout", () => {
     expect(metadata.repositories[0]).toMatchObject({
       head: original,
       evidence: [
+        {
+          path: trackedRun,
+          sha256: createHash("sha256").update(runContents).digest("hex"),
+        },
         {
           path: trackedTask,
           sha256: createHash("sha256").update(contents).digest("hex"),

@@ -26,7 +26,7 @@ import {
   InstanceLockBusyError,
   PendingLedgerRestoreError,
 } from "../ports/release-ops-port.js";
-import { loadDevice } from "../utils/device.js";
+import { loadDeviceStrict } from "../utils/device.js";
 import { success } from "../utils/format.js";
 import { createOutput, resolveFormat } from "../utils/output.js";
 import { runsCommand } from "./runs.js";
@@ -100,7 +100,7 @@ const backupCommand = new Command("backup")
             destination,
             createdAt: new Date().toISOString(),
             gwrkVersion: command.parent?.parent?.version() ?? "unknown",
-            collectDevice: loadDevice,
+            collectDevice: loadDeviceStrict,
             collectRepositories(projects) {
               const selected = projectRoot
                 ? projects.filter(({ path }) => resolve(path) === projectRoot)

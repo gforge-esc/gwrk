@@ -7,6 +7,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { gwrkHome } from "../adapters/config/paths.js";
+import { LedgerBackupMetadataSchema } from "../domain/ledger-backup.js";
 
 export interface DeviceRecord {
   id: string;
@@ -33,6 +34,20 @@ export function loadDevice(): DeviceRecord | null {
     return raw as DeviceRecord;
   } catch {
     return null;
+  }
+}
+
+export function loadDeviceStrict(): DeviceRecord | null {
+  const file = devicePath();
+  try {
+    if (!fs.lstatSync(file, { throwIfNoEntry: false })) return null;
+    const raw: unknown = JSON.parse(fs.readFileSync(file, "utf8"));
+    return LedgerBackupMetadataSchema.shape.device.unwrap().parse(raw);
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : String(error);
+    throw new Error(`Could not read device record at ${file}: ${detail}`, {
+      cause: error,
+    });
   }
 }
 

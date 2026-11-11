@@ -156,9 +156,20 @@ function summarizeLedger(
 export const createLedgerBackup: LedgerBackupPort["createBackup"] = async (
   input,
 ) => {
-  const dbPath = await realpath(input.dbPath);
-  const state = dirname(dbPath);
-  return withMaintenanceLock(state, () => captureLedgerBackup(input, dbPath));
+  const absolute = resolve(input.dbPath);
+  const state = await realpath(dirname(absolute));
+  return withMaintenanceLock(state, async () => {
+    const pending = join(state, PENDING_LEDGER_RESTORE);
+    if (await exists(pending)) throw new PendingLedgerRestoreError(pending);
+
+    const dbPath = await realpath(join(state, basename(absolute)));
+    if (dirname(dbPath) !== state) {
+      throw new Error(
+        `Ledger path must resolve within its state directory: ${absolute}`,
+      );
+    }
+    return captureLedgerBackup(input, dbPath);
+  });
 };
 
 async function withMaintenanceLock<T>(state: string, run: () => Promise<T>) {
@@ -187,9 +198,6 @@ async function withMaintenanceLock<T>(state: string, run: () => Promise<T>) {
 }
 
 async function captureLedgerBackup(input: LedgerBackupRequest, dbPath: string) {
-  const pending = join(dirname(dbPath), PENDING_LEDGER_RESTORE);
-  if (await exists(pending)) throw new PendingLedgerRestoreError(pending);
-
   const destination = resolve(input.destination);
   const parent = dirname(destination);
   await mkdir(parent, { recursive: true, mode: 0o700 });
