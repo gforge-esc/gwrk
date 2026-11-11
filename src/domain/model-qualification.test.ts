@@ -877,6 +877,61 @@ describe("credential guard", () => {
     },
   );
 
+  it.each([
+    {
+      name: "sparse",
+      headers: (key: string) =>
+        Object.assign(Array<string>(4), { 0: key, 1: "value", 3: "control" }),
+    },
+    {
+      name: "two leading holes",
+      headers: (key: string) => Array<string>(2).concat(key, "value"),
+    },
+    {
+      name: "own properties",
+      headers: (key: string) =>
+        Object.assign([key, "value"], {
+          truncated: true,
+          meta: { range: [1] },
+        }),
+    },
+  ])("checks visible pairs in $name inspected arrays", ({ headers }) => {
+    for (const showHidden of [false, true]) {
+      const sanitizedOutput = inspect(
+        { headers: headers("Cookie") },
+        {
+          showHidden,
+          depth: 4,
+        },
+      );
+      expect(() => assertNoSecretMaterial({ sanitizedOutput })).toThrow(
+        /secret material/i,
+      );
+      expect(() =>
+        assertNoSecretMaterial({
+          sanitizedOutput: inspect(
+            { headers: headers("Content-Type") },
+            {
+              showHidden,
+              depth: 4,
+            },
+          ),
+        }),
+      ).not.toThrow();
+    }
+  });
+
+  it("retains inspected own properties that contain credential fields", () => {
+    const sanitizedOutput = inspect({
+      headers: Object.assign(["Content-Type", "text/plain"], {
+        Cookie: "session=fixture-cookie",
+      }),
+    });
+    expect(() => assertNoSecretMaterial({ sanitizedOutput })).toThrow(
+      /secret material/i,
+    );
+  });
+
   it("allows ordinary inspected tuples and multi-value Vary field names", () => {
     const sanitizedOutput = inspect({
       headers: [

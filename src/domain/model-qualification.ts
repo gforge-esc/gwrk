@@ -533,7 +533,7 @@ function findJsonTokenEnd(text: string, start: number): number | undefined {
 // Normalize inspect's visible values before JSON parsing.
 function inspectedRecordAsJson(token: string): string {
   const tokens =
-    /("(?:[^"\\]|\\[\s\S])*"|'(?:[^'\\]|\\[\s\S])*'|\x60(?:[^\x60\\]|\\[\s\S])*\x60)(?:\.\.\. \d+ more characters?)?|([A-Za-z_$][\w$]*)(?=\s*:)|((?:,\s*)?(?:\.\.\. \d+ more items?(?=\s*(?:,\s*\[length\]\s*:|\]))|\[length\]\s*:\s*\d+(?:_\d{3})*(?=\s*\])))/g;
+    /("(?:[^"\\]|\\[\s\S])*"|'(?:[^'\\]|\\[\s\S])*'|\x60(?:[^\x60\\]|\\[\s\S])*\x60)(?:\.\.\. \d+ more characters?)?|([A-Za-z_$][\w$]*)(?=\s*:)|((?:,\s*(?:\.\.\. \d+ more items?|\[length\]\s*:\s*\d+(?:_\d{3})*)(?=\s*[,\]])|\[length\]\s*:\s*\d+(?:_\d{3})*\s*,?))/g;
   const escapes: Record<string, string> = {
     "0": "\0",
     b: "\b",
@@ -569,6 +569,35 @@ function inspectedRecordAsJson(token: string): string {
           );
     },
   );
+}
+
+function normalizeInspectedArrayEntries(record: string): string {
+  const tokens =
+    /("(?:[^"\\]|\\[\s\S])*")(\s*:)?|<(\d+) empty items?>|\bundefined\b|[{}[\]()]/g;
+  const containers: { opening: string; arrayProperties: boolean }[] = [];
+  return record.replace(tokens, (token, literal, colon, emptyCount) => {
+    const container = containers.at(-1);
+    if (literal !== undefined && colon && container?.opening === "[") {
+      // Own properties follow positional entries. Keep them as a record.
+      if (container.arrayProperties) return token;
+      container.arrayProperties = true;
+      return `{${token}`;
+    }
+    if (container?.opening === "[") {
+      if (emptyCount !== undefined) {
+        // Preserve header pair alignment without expanding an arbitrary count.
+        return /[02468]$/.test(emptyCount) ? "null,null" : "null";
+      }
+      if (token === "undefined") return "null";
+    }
+    if (token === "[" || token === "{" || token === "(") {
+      containers.push({ opening: token, arrayProperties: false });
+    } else if (token === "]" || token === "}" || token === ")") {
+      containers.pop();
+      if (token === "]" && container?.arrayProperties) return "}]";
+    }
+    return token;
+  });
 }
 
 function isInspectedCredentialHeader(record: string): boolean {
@@ -661,7 +690,7 @@ function scanEmbeddedJson(
     } catch {
       if (!token.startsWith("[") && !token.startsWith("{")) continue;
       try {
-        token = inspectedRecordAsJson(token);
+        token = normalizeInspectedArrayEntries(inspectedRecordAsJson(token));
         if (token.startsWith("{")) inspectedObject = token;
         decoded = JSON.parse(token);
         inspectedObject = undefined;
