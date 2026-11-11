@@ -31,11 +31,16 @@ export function readRepositoryEvidence(
   path: string,
 ): RepositoryEvidence {
   const root = resolve(path);
+  const env = Object.fromEntries(
+    Object.entries(process.env).filter(([name]) => !name.startsWith("GIT_")),
+  );
+  env.GIT_OPTIONAL_LOCKS = "0";
+  env.GIT_TERMINAL_PROMPT = "0";
   const options = {
     cwd: root,
     timeout: 5000,
     maxBuffer: 8 * 1024 * 1024,
-    env: { ...process.env, GIT_OPTIONAL_LOCKS: "0", GIT_TERMINAL_PROMPT: "0" },
+    env,
   };
   const unavailable = {
     projectId,

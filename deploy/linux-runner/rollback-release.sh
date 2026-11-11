@@ -36,11 +36,13 @@ done
 
 active="$release_root/$old_target"
 target="$release_root/$new_target"
-for file in dist/cli.js deploy/linux-runner/credentials.sh; do
+readable_files=(dist/cli.js deploy/linux-runner/credentials.sh)
+startup_scripts=(deploy/linux-runner/preflight.sh deploy/linux-runner/run.sh)
+for file in "${readable_files[@]}"; do
   [[ -f "$target/$file" && -r "$target/$file" ]] ||
     fail "Rollback target requires a readable regular file: $target/$file"
 done
-for file in deploy/linux-runner/preflight.sh deploy/linux-runner/run.sh; do
+for file in "${startup_scripts[@]}"; do
   [[ -f "$target/$file" && -x "$target/$file" ]] ||
     fail "Rollback target requires an executable regular file: $target/$file"
 done
@@ -48,6 +50,14 @@ service_user=$(systemctl show --property=User --value "$unit")
 service_group=$(systemctl show --property=Group --value "$unit")
 [[ -n "$service_user" && -n "$service_group" ]] || fail "Set User and Group on $unit before rollback."
 as_service=(runuser -u "$service_user" -g "$service_group" --)
+for file in "${readable_files[@]}" "${startup_scripts[@]}"; do
+  "${as_service[@]}" test -r "$target/$file" ||
+    fail "$service_user cannot read rollback target file: $target/$file"
+done
+for file in "${startup_scripts[@]}"; do
+  "${as_service[@]}" test -x "$target/$file" ||
+    fail "$service_user cannot execute rollback target file: $target/$file"
+done
 check_rollback() {
   "${as_service[@]}" node "$active/dist/cli.js" db rollback-check --current "$active" --target "$target" "$@"
 }

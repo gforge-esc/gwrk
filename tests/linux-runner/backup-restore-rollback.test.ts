@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { execFileSync, spawnSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import {
   appendFile,
   mkdir,
@@ -68,6 +69,33 @@ function seedLedger() {
     INSERT INTO history VALUES (1, '{"result":"accepted"}');
   `);
   return db;
+}
+
+const trackedTask = "specs/pilot/.gwrk/tasks.json";
+
+async function seedRepository(checkout: string, contents: string) {
+  await mkdir(join(checkout, "specs/pilot/.gwrk"), { recursive: true });
+  await writeFile(join(checkout, trackedTask), contents);
+  const git = (...args: string[]) =>
+    execFileSync("git", ["-C", checkout, ...args], { encoding: "utf8" });
+  git("init", "--quiet");
+  git("add", "-f", trackedTask);
+  git(
+    "-c",
+    "user.name=Fixture",
+    "-c",
+    "user.email=fixture@example.invalid",
+    "-c",
+    "commit.gpgsign=false",
+    "-c",
+    "core.hooksPath=/dev/null",
+    "commit",
+    "--quiet",
+    "--no-edit",
+    "-m",
+    "Record fixture task",
+  );
+  return git("rev-parse", "HEAD").trim();
 }
 
 function runCli(...args: string[]) {
@@ -238,6 +266,64 @@ describe("installed ledger commands outside a checkout", () => {
     } finally {
       db.close();
     }
+  });
+
+  it("uses the enrolled checkout despite inherited Git overrides", async () => {
+    const checkout = join(root, "enrolled");
+    const other = join(root, "other");
+    const taskContents = '{"status":"completed"}\n';
+    const head = await seedRepository(checkout, taskContents);
+    const otherHead = await seedRepository(other, '{"status":"open"}\n');
+    expect(head).not.toBe(otherHead);
+
+    const db = seedLedger();
+    db.prepare("UPDATE projects SET path = ?").run(checkout);
+    db.close();
+
+    vi.stubEnv("GIT_DIR", join(other, ".git"));
+    vi.stubEnv("GIT_WORK_TREE", checkout);
+    try {
+      const result = runLedgerCommand("backup", "--out", "backup");
+      expect(result.status, result.stderr).toBe(0);
+    } finally {
+      vi.unstubAllEnvs();
+    }
+
+    const { metadata } = await verifyLedgerBackup(join(root, "backup"));
+    expect(metadata.repositories).toEqual([
+      {
+        projectId: "pilot-repo",
+        root: checkout,
+        remote: null,
+        head,
+        evidence: [
+          {
+            path: trackedTask,
+            sha256: createHash("sha256").update(taskContents).digest("hex"),
+          },
+        ],
+      },
+    ]);
+  });
+
+  it("preserves the digest for an enrolled __proto__ ID on disk", async () => {
+    const checkout = join(root, "enrolled");
+    await seedRepository(checkout, '{"status":"completed"}\n');
+    const db = seedLedger();
+    db.prepare("INSERT INTO projects VALUES (?, ?)").run("__proto__", checkout);
+    db.close();
+
+    const result = runLedgerCommand("backup", "--out", "backup");
+    expect(result.status, result.stderr).toBe(0);
+    const backup = join(root, "backup");
+    const manifest = JSON.parse(
+      await readFile(join(backup, "backup-manifest.json"), "utf8"),
+    );
+    const digests = manifest.summary.enrolledRepoDigests;
+    expect(Object.hasOwn(digests, "__proto__")).toBe(true);
+    expect(digests.__proto__).toMatch(/^[a-f0-9]{64}$/);
+    const verified = await verifyLedgerBackup(backup);
+    expect(verified.manifest.summary.enrolledRepoDigests).toEqual(digests);
   });
 
   it("backs up all snapshot projects while scoping checkout evidence", async () => {

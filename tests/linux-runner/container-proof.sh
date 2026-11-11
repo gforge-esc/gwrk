@@ -199,6 +199,20 @@ test "$(readlink /opt/gwrk/current)" = "$current_before"
 test "$(readlink /opt/gwrk/previous)" = "$previous_before"
 mv /tmp/prior-cli.js "$prior/dist/cli.js"
 
+credentials="$prior/deploy/linux-runner/credentials.sh"
+credentials_mode=$(stat -c %a "$credentials")
+chown root:root "$credentials"
+chmod 0600 "$credentials"
+: > /tmp/supervisor.calls
+expect_rejection "$credentials" bash "$rollback" /opt/gwrk /var/lib/gwrk
+if grep -Eq '^(stop|start)$' /tmp/supervisor.calls; then
+  printf 'Rollback changed the service state before rejecting unreadable credentials.\n' >&2
+  exit 1
+fi
+test "$(readlink /opt/gwrk/current)" = "$current_before"
+test "$(readlink /opt/gwrk/previous)" = "$previous_before"
+chmod "$credentials_mode" "$credentials"
+
 mv "$prior/node_modules" /tmp/prior-node-modules
 : > /tmp/supervisor.calls
 expect_rejection 'Rollback target CLI could not start' bash "$rollback" /opt/gwrk /var/lib/gwrk

@@ -7,6 +7,16 @@ import { z } from "zod";
 export const PENDING_LEDGER_RESTORE = ".restore-pending";
 
 const digest = z.string().regex(/^[a-f0-9]{64}$/);
+const repoDigests = z
+  .custom<Record<string, string>>((value) => {
+    if (typeof value !== "object" || value === null) return false;
+    const prototype = Object.getPrototypeOf(value);
+    return (
+      (prototype === Object.prototype || prototype === null) &&
+      Object.values(value).every((entry) => digest.safeParse(entry).success)
+    );
+  })
+  .transform((value) => Object.fromEntries(Object.entries(value)));
 const nonnegative = z.number().int().nonnegative();
 const ledgerSummary = z
   .object({
@@ -15,7 +25,7 @@ const ledgerSummary = z
     completedRunIds: z.array(nonnegative),
     compressionCount: nonnegative,
     historyCount: nonnegative,
-    enrolledRepoDigests: z.record(digest),
+    enrolledRepoDigests: repoDigests,
   })
   .strict();
 
