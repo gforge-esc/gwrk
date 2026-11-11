@@ -1441,6 +1441,46 @@ describe("durable recovery store contract", () => {
 });
 
 describe("persisted harvest intake contract", () => {
+  it.each<Partial<DurableHarvestOperation>>([
+    { projectId: "unverified-project" },
+    { repoSlug: "acme/other" },
+    { trunkBranch: "main" },
+    { prNumber: 43 },
+    { terminalEvent: "closed_unmerged" },
+    { mergeCommitSha: "b".repeat(40) },
+    { featureId: "different-feature" },
+    { phaseId: "phase-04" },
+  ])("rejects substituted scope %o before any write", (substitution) => {
+    const valid = wholeFeatureMergeIntake("verified-merge", 42, [
+      "phase-01",
+      "phase-02",
+    ]);
+    if (!valid.target.accepted) throw new Error("Expected verified intake");
+    const [first, second] = valid.target.operations;
+    const initial = restoreHarvestIntake({ harvests: [], stages: [] });
+
+    expect(
+      initial.store.recordHarvestIntake({
+        ...valid,
+        target: {
+          ...valid.target,
+          operations: [first, { ...second, ...substitution }],
+        },
+      }),
+    ).toMatchObject({ ok: false });
+    const saved = initial.snapshot();
+    expect(saved.harvests).toEqual([]);
+    expect(saved.deliveries).toEqual([]);
+    expect(saved.aliases).toEqual([]);
+    expect(
+      restoreHarvestIntake(saved).store.recordHarvestIntake(valid),
+    ).toMatchObject({
+      ok: true,
+      deduplicatedTransport: false,
+      operations: [{ phaseId: "phase-01" }, { phaseId: "phase-02" }],
+    });
+  });
+
   it.each([
     { localRepoSlug: "acme/a", repoSlug: "acme/b", trunkBranch: "develop" },
     { localRepoSlug: null, repoSlug: "acme/b", trunkBranch: "develop" },
