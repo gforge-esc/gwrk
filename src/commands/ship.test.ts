@@ -6,7 +6,9 @@ import fs from "node:fs";
 import path from "node:path";
 import { Command } from "commander";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { discoverGitIdentityFacts } from "../adapters/git/project-id.js";
 import { getDb, getTestDb } from "../db/index.js";
+import { normalizeRegistryRepo } from "../db/project-registry.js";
 import * as runsModule from "../db/runs.js";
 import * as execModule from "../utils/exec.js";
 import * as uiModule from "../utils/format.js";
@@ -81,11 +83,16 @@ vi.mock("../utils/config.js", async (importOriginal) => {
   };
 });
 
-vi.mock("../db/runs.js", () => ({
-  startRun: vi.fn().mockReturnValue(999),
-  finishRun: vi.fn(),
-  recordHistory: vi.fn(),
-}));
+vi.mock("../db/runs.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../db/runs.js")>();
+  return {
+    ...actual,
+    ensureCheckoutProjectId: vi.fn(actual.ensureCheckoutProjectId),
+    startRun: vi.fn().mockReturnValue(999),
+    finishRun: vi.fn(),
+    recordHistory: vi.fn(),
+  };
+});
 
 vi.mock("../utils/format.js", () => ({
   fail: vi.fn(),
@@ -552,12 +559,30 @@ describe("BackendSelector Integration", () => {
     expect(wudCalls[0][2].env.GEMINI_MODEL).toBe("router-selected-model");
   });
 
+  it("uses the verified checkout owner for routing and the run ledger", async () => {
+    const { getBackendSelector } = await import("../server/index.js");
+    const selector = getBackendSelector();
+    vi.mocked(runsModule.ensureCheckoutProjectId).mockReturnValueOnce("pre-origin-owner");
+
+    await program.parseAsync([
+      "node", "test", "ship", "001-cli-core", "1", "--legacy",
+    ]);
+
+    expect(selector.selectBackend).toHaveBeenCalledWith(
+      expect.objectContaining({ projectId: "pre-origin-owner" }),
+    );
+    expect(runsModule.startRun).toHaveBeenCalledWith(
+      expect.objectContaining({ project_id: "pre-origin-owner" }),
+    );
+  });
+
   it("forwards the canonical checkout ID in a dry run", async () => {
     const { getBackendSelector } = await import("../server/index.js");
     const selector = getBackendSelector();
+    const { remoteOriginUrl } = discoverGitIdentityFacts(process.cwd());
     routingDb
-      .prepare("INSERT INTO projects (id, name, path) VALUES (?, ?, ?)")
-      .run("canonical", "Checkout", process.cwd());
+      .prepare("INSERT INTO projects (id, name, path, github_repo) VALUES (?, ?, ?, ?)")
+      .run("canonical", "Checkout", process.cwd(), normalizeRegistryRepo(remoteOriginUrl ?? null));
     routingDb
       .prepare("INSERT INTO project_aliases (alias_id, project_id) VALUES (?, ?)")
       .run(resolveProjectId(process.cwd()), "canonical");

@@ -62,13 +62,27 @@ function discoverVerifiedMirror(root: string) {
   }
 }
 
-export function discoverStoredRepository(root: string, projectId: string) {
-  const facts = discoverVerifiedCheckout(root) ?? discoverVerifiedMirror(root);
+export function discoverStoredRepository(
+  root: string,
+  projectId: string,
+  allowLocalSubdirectory = false,
+) {
+  function discover(checkout: string) {
+    const verified =
+      discoverVerifiedCheckout(checkout) ?? discoverVerifiedMirror(checkout);
+    if (verified || !allowLocalSubdirectory || !isAbsolute(checkout))
+      return verified;
+    const facts = discoverGitIdentityFacts(checkout);
+    return facts.gitCommonDir &&
+      computeProjectId({ ...facts, remoteOriginUrl: null }) === projectId
+      ? facts
+      : null;
+  }
+
+  const facts = discover(root);
   const suffix = `#${projectId}`;
   if (facts || !root.endsWith(suffix)) return facts;
-
-  const checkout = root.slice(0, -suffix.length);
-  return discoverVerifiedCheckout(checkout) ?? discoverVerifiedMirror(checkout);
+  return discover(root.slice(0, -suffix.length));
 }
 
 export function canonicalProjectId(
@@ -351,10 +365,8 @@ export function createProjectRegistry(
         const sameRepository = priorRoots.some(
           (priorRoot) =>
             priorRoot &&
-            (
-              discoverVerifiedCheckout(priorRoot) ??
-              discoverVerifiedMirror(priorRoot)
-            )?.gitCommonDir === facts.gitCommonDir,
+            discoverStoredRepository(priorRoot, id, id === localId)
+              ?.gitCommonDir === facts.gitCommonDir,
         );
         if (!sameRepository) continue;
         transitions.add(id);

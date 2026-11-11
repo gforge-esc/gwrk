@@ -18,11 +18,11 @@ import {
   writeScopedStderr,
   writeScopedStdout,
 } from "../adapters/cli/output-scope.js";
-import { getDb } from "../db/index.js";
-import { canonicalProjectId } from "../db/project-registry.js";
 import {
+  ensureCheckoutProjectId,
   finishRun as dbFinishRun,
   recordHistory as dbRecordHistory,
+  resolveCheckoutProjectId,
   startRun as dbStartRun,
 } from "../db/runs.js";
 import {
@@ -117,7 +117,7 @@ async function shipPhase(
   cwd: string,
   selectedModel?: string,
   selectedCommand?: string,
-  overrides: { stateRoot?: string; branchName?: string } = {},
+  overrides: { stateRoot?: string; branchName?: string; projectId?: string } = {},
 ): Promise<number> {
   // Resolve prefix: "003" → "003-slack"
   const feature = resolveFeature(featureInput, cwd);
@@ -213,6 +213,7 @@ async function shipPhase(
   const runDevice = loadDevice();
 
   const runId = startRun({
+    project_id: overrides.projectId,
     feature_id: feature,
     phase_id: phaseId,
     command: "ship",
@@ -298,7 +299,7 @@ async function shipPhase(
       // Wire events to bridge for Slack notifications
       new ShipBridge(orchestrator, cwd);
 
-      const planStore = new PlanStore(resolveProjectId(cwd));
+      const planStore = new PlanStore(overrides.projectId ?? resolveProjectId(cwd));
       orchestrator.on("plan:ship:complete", (event) => {
         planStore.handleShipComplete(event);
       });
@@ -425,6 +426,7 @@ async function shipPhase(
     });
 
     recordHistory({
+      project_id: overrides.projectId,
       feature_id: feature,
       run_id: runId,
       from_status: "open",
@@ -729,7 +731,7 @@ Examples:
             if (!opts.force && !opts.dryRun) {
               try {
                 const graphStatuses = new Map<string, string>(
-                  new PlanStore(resolveProjectId(cwd))
+                  new PlanStore(resolveCheckoutProjectId(cwd))
                     .getPlanStatus()
                     .features.flatMap((f) =>
                       f.phases.map((p) => [p.id, p.status] as [string, string]),
@@ -788,7 +790,7 @@ Examples:
               try {
                 const selection = await getBackendSelector(cwd).selectBackend({
                   runId: `ship-dryrun-${feature}`,
-                  projectId: canonicalProjectId(getDb(), resolveProjectId(cwd)),
+                  projectId: resolveCheckoutProjectId(cwd),
                   feature,
                   phase: `phase-${phases[0].padStart(2, "0")}`,
                   taskType: "implement",
@@ -860,6 +862,13 @@ Examples:
           }
 
           try {
+            let projectId: string | undefined;
+            try {
+              projectId = ensureCheckoutProjectId(cwd);
+            } catch (error) {
+              if (!opts.agent) throw error;
+              warnCli(`${YELLOW}⚠${RESET} ledger checkout registration skipped: ${error}`);
+            }
             for (const p of phases) {
               let currentBackend = opts.agent as string as AgentBackendId;
               let selectedModel: string | undefined;
@@ -871,7 +880,7 @@ Examples:
                 const selector = getBackendSelector(cwd);
                 const selection = await selector.selectBackend({
                   runId: `ship-${feature}-${Date.now()}`,
-                  projectId: canonicalProjectId(getDb(), resolveProjectId(cwd)),
+                  projectId: projectId ?? resolveCheckoutProjectId(cwd),
                   feature,
                   phase: `phase-${p.padStart(2, "0")}`,
                   taskType: "implement",
@@ -894,7 +903,7 @@ Examples:
                 shipCwd,
                 selectedModel,
                 selectedCommand,
-                overrides,
+                { ...overrides, projectId },
               );
               if (exitCode !== 0) {
                 finalExitCode = exitCode;

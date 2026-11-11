@@ -8,7 +8,10 @@
 
 import path from "node:path";
 import type Database from "better-sqlite3";
-import { discoverGitIdentityFacts } from "../adapters/git/project-id.js";
+import {
+  discoverGitIdentityFacts,
+  resolveGitCheckoutRoot,
+} from "../adapters/git/project-id.js";
 import {
   computeLegacyProjectIds,
   computeProjectId,
@@ -79,10 +82,25 @@ function ensureProjectRow(
     return id;
   }
 
+  return ensureCheckoutProjectId(process.cwd(), conn);
+}
+
+export function resolveCheckoutProjectId(
+  checkout: string,
+  conn: Database.Database = getDb(),
+): string {
+  const { checkoutId, owner } = resolveCheckoutOwner(conn, checkout);
+  return owner ?? checkoutId;
+}
+
+export function ensureCheckoutProjectId(
+  checkout: string,
+  conn: Database.Database = getDb(),
+): string {
   return conn
     .transaction(() => {
       const { checkoutId, owner, origin, root, unboundLocal } =
-        resolveCheckoutOwner(conn, process.cwd());
+        resolveCheckoutOwner(conn, checkout);
       if (unboundLocal) {
         conn
           .prepare("UPDATE projects SET github_repo = ? WHERE id = ?")
@@ -102,7 +120,7 @@ function ensureProjectRow(
 }
 
 function resolveCheckoutOwner(conn: Database.Database, root: string) {
-  const facts = discoverGitIdentityFacts(root);
+  const facts = discoverGitIdentityFacts(resolveGitCheckoutRoot(root));
   const computedId = computeProjectId(facts);
   const checkoutId = canonicalProjectId(conn, computedId);
   const localGitId = facts.gitCommonDir
@@ -179,7 +197,11 @@ function resolveCheckoutOwner(conn: Database.Database, root: string) {
       local?.mirror_path,
     ].some((storedRoot) => {
       if (!storedRoot) return false;
-      const storedFacts = discoverStoredRepository(storedRoot, localGitId);
+      const storedFacts = discoverStoredRepository(
+        storedRoot,
+        localGitId,
+        true,
+      );
       if (storedFacts?.gitCommonDir !== facts.gitCommonDir) return false;
       const storedOrigin = normalizeRegistryRepo(
         storedFacts?.remoteOriginUrl ?? null,

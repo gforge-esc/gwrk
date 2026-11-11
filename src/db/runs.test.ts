@@ -139,6 +139,71 @@ describe("runs db", () => {
     expect(historyId).toBeGreaterThan(0);
   });
 
+  it.each(["suffix", "subdirectory"] as const)(
+    "preserves %s ledger rows through first origin enrollment",
+    (layout) => {
+      const checkout = realpathSync(
+        mkdtempSync(join(tmpdir(), "gwrk-first-origin-layout-")),
+      );
+      const subdir = join(checkout, "packages", "app");
+      const cwd = vi
+        .spyOn(process, "cwd")
+        .mockReturnValue(layout === "suffix" ? checkout : subdir);
+      try {
+        execFileSync("git", ["init", "--quiet", checkout]);
+        mkdirSync(subdir, { recursive: true });
+        const localId = computeProjectId(discoverGitIdentityFacts(checkout));
+        const run = startRun({ feature_id: "shared", command: "local" }, db);
+        expect
+          .soft(
+            db
+              .prepare("SELECT path FROM projects WHERE id = ?")
+              .pluck()
+              .get(localId),
+          )
+          .toBe(checkout);
+        db.prepare("UPDATE projects SET path = ? WHERE id = ?").run(
+          layout === "suffix" ? `${checkout}#${localId}` : subdir,
+          localId,
+        );
+        const ids = () =>
+          listCheckoutRuns("shared", checkout, db).map(({ id }) => id);
+        expect(ids()).toEqual([run]);
+        execFileSync("git", [
+          "-C",
+          checkout,
+          "remote",
+          "add",
+          "origin",
+          "https://github.com/org/alpha.git",
+        ]);
+        expect.soft(ids()).toEqual([run]);
+        const remoteId = computeProjectId(discoverGitIdentityFacts(checkout));
+        const now = "2026-11-11T12:00:00.000Z";
+        createProjectRegistry(db, () => {}).enrollProject({
+          projectId: remoteId,
+          slug: "alpha",
+          name: "Alpha",
+          repoSlug: "org/alpha",
+          trunkBranch: "develop",
+          localRoot: checkout,
+          mirrorPath: null,
+          runnerPolicy: { allowedKinds: ["local"] },
+          slack: null,
+          legacyProjectIds: [localId],
+          createdAt: now,
+          updatedAt: now,
+        });
+        expect(listRuns("shared", remoteId, db).map(({ id }) => id)).toEqual([
+          run,
+        ]);
+      } finally {
+        cwd.mockRestore();
+        rmSync(checkout, { recursive: true, force: true });
+      }
+    },
+  );
+
   it("retains pre-origin runs across linked worktrees and separates a later origin", () => {
     const root = realpathSync(
       mkdtempSync(join(tmpdir(), "gwrk-first-origin-")),
