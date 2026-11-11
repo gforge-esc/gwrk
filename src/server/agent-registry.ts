@@ -3,3 +3,8 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 export * from "../domain/agent-config.js";
+export {
+  loadRegistry,
+  readRegistryConfigLayers,
+  tryLoadRegistry,
+} from "../adapters/agents/registry-loader.js";
