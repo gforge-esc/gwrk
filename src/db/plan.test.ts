@@ -182,6 +182,105 @@ describe("src/db/plan.ts (DM-018-001/002/003)", () => {
     },
   );
 
+  it.each([false, true])(
+    "reads the latest phase and proposal through both IDs with enrollment first = %s",
+    (enrollmentFirst) => {
+      const checkout = mkdtempSync(join(tmpdir(), "gwrk-plan-child-order-"));
+      onTestFinished(() => rmSync(checkout, { recursive: true, force: true }));
+      execFileSync("git", ["init", "--quiet", checkout]);
+      const dbPath = join(checkout, "ledger.sqlite");
+      const writer = openDatabase({ dbPath });
+      onTestFinished(() => writer.close());
+      const reader = openDatabase({ dbPath });
+      onTestFinished(() => reader.close());
+      const registry = createProjectRegistry(reader, () => {});
+      const localId = resolveProjectId(checkout);
+      const project = {
+        projectId: localId,
+        slug: "checkout",
+        name: "Checkout",
+        repoSlug: null,
+        trunkBranch: "develop",
+        localRoot: checkout,
+        mirrorPath: null,
+        runnerPolicy: { allowedKinds: ["local" as const] },
+        slack: null,
+        legacyProjectIds: [],
+        createdAt: "2026-01-01T00:00:00Z",
+        updatedAt: "2026-01-01T00:00:00Z",
+      };
+      registry.enrollProject(project);
+      execFileSync("git", [
+        "-C",
+        checkout,
+        "remote",
+        "add",
+        "origin",
+        "git@github.com:example/checkout.git",
+      ]);
+      const remoteId = resolveProjectId(checkout);
+      const enroll = () =>
+        registry.enrollProject({
+          ...project,
+          projectId: remoteId,
+          repoSlug: "example/checkout",
+        });
+      const phase = {
+        id: "phase",
+        feature_id: "feature",
+        name: "Phase",
+        status: "PENDING",
+        health: "CLEAN",
+        sp_estimate: 1,
+        seq: 1,
+      };
+      const proposal = {
+        id: "proposal",
+        target_phase_id: phase.id,
+        proposal_type: "UPDATE",
+        status: "PENDING",
+      };
+      for (const owner of [localId, remoteId]) {
+        insertFeature(
+          {
+            id: phase.feature_id,
+            name: "Feature",
+            status: "PLANNED",
+            sp_total: 1,
+          },
+          owner,
+          writer,
+        );
+        insertPhase(phase, owner, writer);
+        insertProposal(proposal, owner, writer);
+      }
+      if (enrollmentFirst) enroll();
+      insertPhase({ ...phase, status: "DONE" }, localId, writer);
+      insertProposal({ ...proposal, status: "ACCEPTED" }, localId, writer);
+      // The two histories can share the same wall-clock second.
+      for (const table of ["plan_phases", "plan_proposals"]) {
+        writer
+          .prepare(`UPDATE ${table} SET updated_at = ?`)
+          .run(project.updatedAt);
+      }
+      if (!enrollmentFirst) enroll();
+
+      for (const owner of [localId, remoteId]) {
+        expect.soft(getPhase(phase.id, owner, reader)?.status).toBe("DONE");
+        expect
+          .soft(listPhases(phase.feature_id, owner, reader))
+          .toMatchObject([{ id: phase.id, status: "DONE" }]);
+        expect
+          .soft(getProposal(proposal.id, owner, reader)?.status)
+          .toBe("ACCEPTED");
+        expect
+          .soft(listProposals(owner, reader))
+          .toMatchObject([{ id: proposal.id, status: "ACCEPTED" }]);
+      }
+      expect(reader.pragma("foreign_key_check")).toEqual([]);
+    },
+  );
+
   it("FR-001: should insert and retrieve a feature", () => {
     const feature = {
       id: "F018",
@@ -271,8 +370,8 @@ describe("src/db/plan.ts (DM-018-001/002/003)", () => {
 
   it("removes superseded proposal copies when deleting their effective phase", () => {
     for (const [owner, phase] of [
-      [projectId, "phase-new"],
       ["alias", "phase-old"],
+      [projectId, "phase-new"],
     ]) {
       insertFeature(
         { id: "feature", name: "Feature", status: "PLANNED", sp_total: 0 },
@@ -318,8 +417,8 @@ describe("src/db/plan.ts (DM-018-001/002/003)", () => {
 
   it("preserves a surviving phase's proposal when its shadowed parent cascades", () => {
     for (const [owner, feature] of [
-      [projectId, "keep"],
       ["alias", "delete"],
+      [projectId, "keep"],
     ]) {
       insertFeature(
         { id: feature, name: feature, status: "PLANNED", sp_total: 0 },

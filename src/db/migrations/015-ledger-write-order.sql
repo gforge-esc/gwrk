@@ -10,6 +10,8 @@ INSERT INTO ledger_write_order (id, sequence) VALUES (1, 0);
 
 ALTER TABLE gate_results ADD COLUMN write_seq INTEGER NOT NULL DEFAULT 0;
 ALTER TABLE plan_features ADD COLUMN write_seq INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE plan_phases ADD COLUMN write_seq INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE plan_proposals ADD COLUMN write_seq INTEGER NOT NULL DEFAULT 0;
 ALTER TABLE issues ADD COLUMN write_seq INTEGER NOT NULL DEFAULT 0;
 
 CREATE TRIGGER gate_results_insert_write_seq AFTER INSERT ON gate_results

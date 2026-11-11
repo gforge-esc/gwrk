@@ -13,6 +13,10 @@ import {
 
 const featureColumns =
   "id, name, status, sp_total, project_id, created_at, updated_at";
+const phaseColumns =
+  "id, feature_id, name, status, health, sp_estimate, sp_actual, duration_ms, completed_at, evidence, seq, created_at, updated_at, project_id";
+const proposalColumns =
+  "id, target_phase_id, proposal_type, detail, source, status, created_at, resolved_at, project_id, updated_at";
 
 export interface PlanFeature {
   id: string;
@@ -221,21 +225,23 @@ export function insertPhase(
         .prepare(
           `INSERT INTO plan_phases (
            id, feature_id, name, status, health, sp_estimate,
-           sp_actual, duration_ms, completed_at, evidence, seq, project_id, updated_at
+           sp_actual, duration_ms, completed_at, evidence, seq, project_id, updated_at, write_seq
          )
          VALUES (
            @id, @feature_id, @name, @status, @health, @sp_estimate,
-           @sp_actual, @duration_ms, @completed_at, @evidence, @seq, @project_id, datetime('now')
+           @sp_actual, @duration_ms, @completed_at, @evidence, @seq, @project_id, datetime('now'), @write_seq
          )
          ON CONFLICT(project_id, id) DO UPDATE SET feature_id = excluded.feature_id,
            name = excluded.name, status = excluded.status, health = excluded.health,
            sp_estimate = excluded.sp_estimate, sp_actual = excluded.sp_actual,
            duration_ms = excluded.duration_ms, completed_at = excluded.completed_at,
-           evidence = excluded.evidence, seq = excluded.seq, updated_at = excluded.updated_at`,
+           evidence = excluded.evidence, seq = excluded.seq, updated_at = excluded.updated_at,
+           write_seq = excluded.write_seq`,
         )
         .run({
           ...phase,
           project_id: owner,
+          write_seq: nextLedgerWriteSequence(conn),
           sp_actual: phase.sp_actual ?? null,
           duration_ms: phase.duration_ms ?? null,
           completed_at: phase.completed_at ?? null,
@@ -256,8 +262,8 @@ export function getPhase(
   const conn = db ?? getDb();
   const { canonical, ids, placeholders } = projectScope(conn, projectId);
   return conn
-    .prepare(`SELECT * FROM plan_phases WHERE id = ? AND project_id IN (${placeholders})
-      ORDER BY project_id = ? DESC, project_id LIMIT 1`)
+    .prepare(`SELECT ${phaseColumns} FROM plan_phases WHERE id = ? AND project_id IN (${placeholders})
+      ORDER BY write_seq DESC, project_id = ? DESC, project_id LIMIT 1`)
     .get(id, ...ids, canonical) as PlanPhase | undefined;
 }
 
@@ -275,11 +281,11 @@ export function listPhases(
     .prepare(`
       WITH ranked AS (
         SELECT rowid, feature_id, ROW_NUMBER() OVER (
-          PARTITION BY id ORDER BY project_id = ? DESC, project_id
+          PARTITION BY id ORDER BY write_seq DESC, project_id = ? DESC, project_id
         ) AS rank
         FROM plan_phases WHERE project_id IN (${placeholders})
       )
-      SELECT * FROM plan_phases
+      SELECT ${phaseColumns} FROM plan_phases
       WHERE rowid IN (SELECT rowid FROM ranked WHERE rank = 1 AND feature_id = ?)
       ORDER BY seq, id
     `)
@@ -395,19 +401,20 @@ export function insertProposal(
         .prepare(`
       INSERT INTO plan_proposals (
         id, target_phase_id, proposal_type, detail, source, status, project_id,
-        created_at, resolved_at, updated_at
+        created_at, resolved_at, updated_at, write_seq
       ) VALUES (
         @id, @target_phase_id, @proposal_type, @detail, @source, @status, @project_id,
-        COALESCE(@created_at, datetime('now')), @resolved_at, datetime('now')
+        COALESCE(@created_at, datetime('now')), @resolved_at, datetime('now'), @write_seq
       )
       ON CONFLICT(project_id, id) DO UPDATE SET target_phase_id = excluded.target_phase_id,
         proposal_type = excluded.proposal_type, detail = excluded.detail, source = excluded.source,
         status = excluded.status, created_at = excluded.created_at, resolved_at = excluded.resolved_at,
-        updated_at = excluded.updated_at
+        updated_at = excluded.updated_at, write_seq = excluded.write_seq
     `)
         .run({
           ...proposal,
           project_id: owner,
+          write_seq: nextLedgerWriteSequence(conn),
           detail: proposal.detail ?? null,
           source: proposal.source ?? null,
           created_at: existing?.created_at ?? null,
@@ -435,8 +442,8 @@ export function getProposal(
   const conn = db ?? getDb();
   const { canonical, ids, placeholders } = projectScope(conn, projectId);
   return conn
-    .prepare(`SELECT * FROM plan_proposals WHERE id = ? AND project_id IN (${placeholders})
-      ORDER BY project_id = ? DESC, project_id LIMIT 1`)
+    .prepare(`SELECT ${proposalColumns} FROM plan_proposals WHERE id = ? AND project_id IN (${placeholders})
+      ORDER BY write_seq DESC, project_id = ? DESC, project_id LIMIT 1`)
     .get(id, ...ids, canonical) as PlanProposal | undefined;
 }
 
@@ -450,8 +457,8 @@ export function listProposals(
   const conn = db ?? getDb();
   const { canonical, ids, placeholders } = projectScope(conn, projectId);
   const rows = conn
-    .prepare(`SELECT * FROM plan_proposals WHERE project_id IN (${placeholders})
-      ORDER BY project_id = ? DESC, project_id`)
+    .prepare(`SELECT ${proposalColumns} FROM plan_proposals WHERE project_id IN (${placeholders})
+      ORDER BY write_seq DESC, project_id = ? DESC, project_id`)
     .all(...ids, canonical) as PlanProposal[];
   return firstPerKey(rows, (row) => row.id).sort((a, b) =>
     (b.created_at ?? "").localeCompare(a.created_at ?? ""),
