@@ -1,3 +1,7 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
 import { describe, expect, it } from "vitest";
 import {
   DispatchAttemptStatusSchema,
@@ -62,6 +66,7 @@ function operation(
   };
 }
 const noEvidence: WorkerRecoveryEvidence = {
+  workerState: "stopped",
   openPullRequest: null,
   mergedPullRequest: null,
   completedManifestRunId: null,
@@ -355,4 +360,19 @@ describe("FR-006 durable status schemas", () => {
     for (const value of ["unknown", "", null, undefined, 42])
       expect(DispatchAttemptStatusSchema.safeParse(value).success).toBe(false);
   });
+});
+
+describe("stale worker restart safety", () => {
+  it.each(["running", "unknown"] as const)(
+    "keeps a %s worker from acquiring a replacement attempt",
+    (workerState) => {
+      expect(
+        evaluateStaleDispatchReconciliation({
+          operation: operation(),
+          evidence: { ...noEvidence, workerState },
+          maxCrashRecoveryAttempts: 3,
+        }),
+      ).toMatchObject({ action: "await_worker_stop" });
+    },
+  );
 });

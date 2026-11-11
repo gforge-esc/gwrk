@@ -1,6 +1,6 @@
 # Phase 1 coverage
 
-Phase 1 adds 66 RED cases across three unit test files. Blocked: the sandbox prevents committing through the parent repository Git index. The feature owner must also resolve the recovery contract gaps below.
+Phase 1 covers durable operation policy and lease fencing. Blocked: implementation depends on feature 048, Slack project identity.
 
 | AC | Acceptance Criterion | Test Type | Test File | Test Exists | Gate |
 |----|---------------------|-----------|-----------|-------------|------|
@@ -23,19 +23,15 @@ These rows record Phase 1 coverage only. Durable persistence and effects remain 
 
 No HTTP routes or UI components belong to Phase 1. Integration and end-to-end test counts are zero.
 
-## Contract gaps
+## Integration dependencies
 
-- Worker recovery evidence has no live, stopped or unknown worker state. `StaleLeaseDecision` has no pending result. The coordinator requires confirmed termination before requeue. Tests cover pre-launch crashes and verified pull requests. They cannot express the live-worker safeguard without a contract change.
 - Harvest policy accepts one candidate without prior operation state. It can prove equal work keys across arrival orders. It cannot prove that a stale close preserves an earlier verified merge. The store and coordinator must test that rule in later phases.
 - Project identity types from feature 048 are absent. RED stubs inline the documented upstream shapes. Implementation must replace those copies with canonical domain imports after feature 048 lands.
-- `docs/architecture.md` is absent. Test conventions come from `docs/grounding/architecture.md` and existing tests. The named `compile-gate` skill was not found. The build and explicit TypeScript check ran directly.
 
 ## Verification
 
 `pnpm build` passes. An explicit TypeScript check including both new test files and `src/architecture.test.ts` passes. The normal build excludes test files.
 
-The scoped Vitest run reports 66 new failures and 17 existing passes. Dispatch contributes 28 RED cases. Harvest contributes 36 RED cases. Architecture contributes two RED cases. No new test passes before implementation.
+The scoped Vitest run reports 68 new failures and 17 existing passes. Dispatch contributes 30 RED cases. Harvest contributes 36 RED cases. Architecture contributes two RED cases. No new test passes before implementation.
 
 Policy stubs throw `Not implemented`. Schema stubs reject every value. Architecture checks fail on missing domain barrel exports and the absent operations port. The implementation phase must supply these contracts and satisfy the policy assertions.
-
-The commit attempt failed because the sandbox denied creation of the parent repository worktree index lock. No commit exists for these changes.

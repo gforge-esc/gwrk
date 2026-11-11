@@ -1,3 +1,7 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
 import { z } from "zod";
 // RED scaffolding. Signatures copied from the Phase 1 contract.
 export interface DeliveryRecipient {
@@ -67,6 +71,7 @@ export interface DispatchReceipt {
 }
 
 export interface WorkerRecoveryEvidence {
+  workerState: "not_started" | "running" | "stopped" | "unknown";
   openPullRequest: { prNumber: number; prUrl: string } | null;
   mergedPullRequest: {
     prNumber: number;
@@ -84,6 +89,7 @@ export type StaleLeaseDecision =
       prUrl: string;
       triggerHarvestMergeSha?: string;
     }
+  | { action: "await_worker_stop"; reason: string }
   | { action: "requeue_attempt"; reason: string }
   | { action: "fail_exhausted"; reason: string };
 

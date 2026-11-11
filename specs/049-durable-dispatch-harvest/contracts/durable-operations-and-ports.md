@@ -68,6 +68,7 @@ export interface DispatchReceipt {
 }
 
 export interface WorkerRecoveryEvidence {
+  workerState: "not_started" | "running" | "stopped" | "unknown";
   openPullRequest: { prNumber: number; prUrl: string } | null;
   mergedPullRequest: { prNumber: number; prUrl: string; mergeCommitSha: string } | null;
   completedManifestRunId: string | null;
@@ -81,6 +82,7 @@ export type StaleLeaseDecision =
       prUrl: string;
       triggerHarvestMergeSha?: string;
     }
+  | { action: "await_worker_stop"; reason: string }
   | { action: "requeue_attempt"; reason: string }
   | { action: "fail_exhausted"; reason: string };
 
@@ -118,7 +120,7 @@ export function evaluateStaleDispatchReconciliation(input: {
 }): StaleLeaseDecision;
 ```
 
-Work-key normalization sorts task IDs and produces `ship:<featureId>:<phaseId>` for phase-wide dispatches. Acceptance policy returns `deduplicated` when an active operation already owns `(projectId, workKey)`. Fence checks reject stale epochs even when `leaseOwner` matches. Crash reconciliation completes a worker without relaunching when a pull request already exists on GitHub.
+Work-key normalization sorts task IDs and produces `ship:<featureId>:<phaseId>` for phase-wide dispatches. Acceptance policy returns `deduplicated` when an active operation already owns `(projectId, workKey)`. Fence checks reject stale epochs even when `leaseOwner` matches. Crash reconciliation completes a worker without relaunching when a pull request already exists on GitHub. A retry requires evidence that the worker never started or has stopped. Running or unknown workers retain the operation until the coordinator confirms termination.
 
 ## Pure harvest and cleanup policy
 
