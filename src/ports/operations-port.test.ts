@@ -335,7 +335,8 @@ function restoreHarvestIntake(persisted: {
                 stage.phaseKey === planned.phaseKey &&
                 stage.stage === planned.stage,
             );
-            if (!receipt) throw new Error("Expected the skipped cleanup receipt");
+            if (!receipt)
+              throw new Error("Expected the skipped cleanup receipt");
             Object.assign(receipt, planned);
           }
           const stages = rows.stages.filter(
@@ -1524,6 +1525,15 @@ it("resumes a persisted retryable sync failure after lease expiry", () => {
   ).toEqual({ ok: true });
   const restarted = restoreRecoveryStore(initial.snapshot());
   expect(restarted.listRecoverableHarvests({ nowIso })).toEqual([]);
+  expect(restarted.listRecoverableHarvests({ nowIso: leaseExpiresAt })).toEqual(
+    [
+      expect.objectContaining({
+        operationId: "retryable",
+        status: "running",
+        completedAt: null,
+      }),
+    ],
+  );
   const next = restarted.claimHarvestLease({
     operationId: "retryable",
     leaseOwner: "second",
@@ -1531,7 +1541,9 @@ it("resumes a persisted retryable sync failure after lease expiry", () => {
     leaseExpiresAt: "2026-11-11T12:02:00.000Z",
   });
   expect(next?.fence.leaseEpoch).toBe(first.fence.leaseEpoch + 1);
-  expect(next?.operation.completedAt).toBeNull();
+  expect(next?.stages.filter(({ stage }) => stage !== "git_sync")).toEqual(
+    initial.snapshot().stages.filter(({ stage }) => stage !== "git_sync"),
+  );
   expect(next?.stages).toContainEqual(
     expect.objectContaining({
       stage: "git_sync",
@@ -1541,15 +1553,25 @@ it("resumes a persisted retryable sync failure after lease expiry", () => {
     }),
   );
   if (!next) throw new Error("Expected retry after lease expiry");
-  expect(
-    restarted.transitionHarvestStage({
-      fence: next.fence,
-      nowIso: leaseExpiresAt,
-      phaseKey: phaseId,
-      stage: "git_sync",
-      status: "succeeded",
+  for (const { stage } of next.stages.filter(
+    ({ status }) => status !== "skipped_no_target",
+  )) {
+    expect(
+      restarted.transitionHarvestStage({
+        fence: next.fence,
+        nowIso: leaseExpiresAt,
+        phaseKey: phaseId,
+        stage,
+        status: "succeeded",
+      }),
+    ).toEqual({ ok: true });
+  }
+  expect(restarted.snapshot().harvests).toEqual([
+    expect.objectContaining({
+      status: "completed",
+      completedAt: leaseExpiresAt,
     }),
-  ).toEqual({ ok: true });
+  ]);
 });
 
 it("schedules cleanup after a completed offline harvest receives verified pull request evidence", () => {
@@ -1627,8 +1649,30 @@ it("schedules cleanup after a completed offline harvest receives verified pull r
       status: "succeeded",
     }),
   ).toEqual({ ok: true });
-  const final = restoreRecoveryStore(restarted.snapshot());
-  expect(final.listRecoverableHarvests({ nowIso: leaseExpiresAt })).toEqual([]);
+  const final = restoreHarvestIntake({
+    ...intake.snapshot(),
+    ...restarted.snapshot(),
+  });
+  for (const delivery of [
+    pull,
+    harvestIntake("poller-pull", {}, "github_poller"),
+  ]) {
+    expect(final.store.recordHarvestIntake(delivery)).toMatchObject({
+      ok: true,
+      deduplicatedWork: true,
+      operations: [{ operationId: operation.operationId, status: "completed" }],
+    });
+  }
+  const persisted = final.snapshot();
+  expect(persisted.stages).toEqual(restarted.snapshot().stages);
+  expect(
+    restoreRecoveryStore({
+      ...persisted,
+      outboxItems: [],
+    }).listRecoverableHarvests({
+      nowIso: leaseExpiresAt,
+    }),
+  ).toEqual([]);
 });
 
 it("records learning for an offline harvest after restart", async () => {
