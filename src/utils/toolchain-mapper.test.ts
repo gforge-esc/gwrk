@@ -6,6 +6,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { createToolchainAdapter } from "../adapters/toolchain/index.js";
 import type { ProjectProfile } from "../engine/prompt-conditioner.js";
 import {
   getBuildCommand,
@@ -113,6 +114,21 @@ describe("getBuildCommand (021 FR-004 — string | null)", () => {
     it("package.json scripts.build + pnpm-lock → pnpm build", () => {
       expect(getBuildCommand(p({}), dir)).toBe("pnpm build");
     });
+    it("keeps manifest discovery on the adapter's normal entry point", () => {
+      expect(createToolchainAdapter(p({})).getBuildCommand(dir)).toBe("pnpm build");
+    });
+
+    it("does not fall through after malformed package JSON", () => {
+      const invalid = fs.mkdtempSync(path.join(os.tmpdir(), "gwrk-build-invalid-"));
+      try {
+        fs.writeFileSync(path.join(invalid, "package.json"), "{");
+        fs.writeFileSync(path.join(invalid, "go.mod"), "module fixture");
+        expect(getBuildCommand(p({}), invalid)).toBeNull();
+      } finally {
+        fs.rmSync(invalid, { recursive: true, force: true });
+      }
+    });
+
     it("no build script anywhere → null", () => {
       const empty = fs.mkdtempSync(path.join(os.tmpdir(), "gwrk-nobuild-"));
       expect(getBuildCommand(p({}), empty)).toBeNull();

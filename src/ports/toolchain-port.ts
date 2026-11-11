@@ -9,7 +9,6 @@ import {
   normalizeTestStem,
 } from "../domain/test-rules.js";
 import {
-  getBuildCommand,
   getSourceExtension,
   getTestCommand,
   getTestExtension,
@@ -34,7 +33,10 @@ export interface ToolchainPort {
   getTestCommand(files?: string[], grepPattern?: string): string | null;
 }
 
-export function createToolchainAdapter(profile: ProjectProfile): ToolchainPort {
+export function createToolchainAdapter(
+  profile: ProjectProfile,
+  getBuildCommand: (cwd: string) => string | null,
+): ToolchainPort {
   const sourceExtension = getSourceExtension(profile);
   const testExtension = getTestExtension(profile);
   return {
@@ -45,7 +47,7 @@ export function createToolchainAdapter(profile: ProjectProfile): ToolchainPort {
     isTestFile: (f) => isPolyglotTestFile(f, testExtension),
     colocatedTestCandidates: (src) =>
       getColocatedTestCandidates(src, testExtension),
-    getBuildCommand: (cwd) => getBuildCommand(profile, cwd),
+    getBuildCommand,
     getTestCommand: (files, grepPattern) =>
       getTestCommand(profile, files ?? [], grepPattern),
   };

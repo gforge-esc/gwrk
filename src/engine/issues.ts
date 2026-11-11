@@ -76,7 +76,7 @@ export async function notifyIssueOpened(
     return;
   }
 
-  const { notifySlack } = await import("../server/slack-notify.js");
+  const { notifySlack } = await import("../adapters/notifications/index.js");
   await notifySlack(
     {
       text,
