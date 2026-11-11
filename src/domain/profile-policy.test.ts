@@ -1,3 +1,7 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
 import { describe, expect, it } from "vitest";
 import { DesignSchema } from "./architecture-context.js";
 import { mergeProfileOverrides, resolveWorkspacePolicyProfile } from "./profile-policy.js";
@@ -5,6 +9,7 @@ import {
   getSourceExtension,
   getTestCommand,
   getTestExtension,
+  resolveBuildCommand,
 } from "./toolchain.js";
 import type { ProjectProfile } from "./types.js";
 
@@ -200,6 +205,24 @@ describe("FR-001: profile design inheritance (044 phase p01)", () => {
 
     expect(result).toMatchObject({ design, toolchain: { test: "jest", build: null } });
     expect(getTestCommand(result, ["app.test.js"])).toBe("npx jest app.test.js");
+  });
+
+  it("keeps npm build selection under a pnpm root with the same language family", () => {
+    const result = resolveWorkspacePolicyProfile(
+      "apps/web",
+      { type: "nodejs", stack: { language: "JavaScript", buildSystem: "npm" } },
+      {
+        project: {
+          design,
+          stack: { language: "TypeScript", buildSystem: "pnpm" },
+          toolchain: { build: "pnpm build" },
+        },
+      },
+    );
+    expect(result.design).toEqual(design);
+    expect(resolveBuildCommand(result, {
+      hasPackageJson: true, hasPackageBuildScript: true,
+    })).toBe("npm run build");
   });
 
   it("TR-005: selects the longest workspace ancestor for a nested path", () => {

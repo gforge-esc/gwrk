@@ -76,6 +76,13 @@ function compatibleToolchain(
     (formatter ? toolLanguages[formatter] : undefined);
   const differentFamily =
     sourceFamily !== undefined && sourceFamily !== workspaceFamily;
+  const sourceBuildSystem = sourceStack?.buildSystem?.toLowerCase();
+  const workspaceBuildSystem = workspaceStack?.buildSystem?.toLowerCase();
+  const buildFits =
+    !differentFamily &&
+    (!sourceBuildSystem ||
+      !workspaceBuildSystem ||
+      sourceBuildSystem === workspaceBuildSystem);
   const runnerFits =
     (!differentFamily || (source === "detected" && test != null)) &&
     (!test || toolLanguages[test] === workspaceFamily);
@@ -88,9 +95,9 @@ function compatibleToolchain(
       toolLanguages[formatter] === workspaceFamily && { formatter }),
     ...(runnerFits && test !== undefined && { test }),
     ...(runnerFits &&
-      !differentFamily &&
+      buildFits &&
       testCommand !== undefined && { testCommand }),
-    ...(!differentFamily && build !== undefined && { build }),
+    ...(buildFits && build !== undefined && { build }),
     ...(extensionsFit && testExtension !== undefined && { testExtension }),
     ...(extensionsFit && sourceExtension !== undefined && { sourceExtension }),
   };

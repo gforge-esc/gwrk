@@ -510,7 +510,13 @@ function applyWorkspaceConfig(
   const matchedPath = matchWorkspacePath(relativePath, Object.keys(workspaces));
   const design = DesignSchema.safeParse(config?.project?.design).data;
   let detected = initialProfile;
-  let localProject = options?.localProject;
+  const matchedRoot = matchedPath ? path.resolve(root, matchedPath) : undefined;
+  const detectMatched =
+    matchedRoot &&
+    (options?.detectMatchedWorkspace || matchedPath !== relativePath);
+  const localProject =
+    (detectMatched ? readLocalProject(matchedRoot) : undefined) ??
+    options?.localProject;
   const hasDesign =
     design ||
     (matchedPath && workspaces[matchedPath].design) ||
@@ -519,19 +525,16 @@ function applyWorkspaceConfig(
     if (options?.requireDesign) return detected;
     return resolveWorkspacePolicyProfile(
       relativePath,
-      localProject ? mergeLocalProject(detected, localProject) : detected,
+      options?.localProject
+        ? mergeLocalProject(detected, options.localProject)
+        : detected,
       { workspaces },
     );
   }
 
-  if (
-    matchedPath &&
-    (options?.detectMatchedWorkspace || matchedPath !== relativePath)
-  ) {
-    const workspaceRoot = path.resolve(root, matchedPath);
+  if (detectMatched) {
     try {
-      detected = detectFilesystemProfile(workspaceRoot);
-      localProject = readLocalProject(workspaceRoot) ?? localProject;
+      detected = detectFilesystemProfile(matchedRoot);
     } catch {
       // Keep the supplied profile when the workspace directory is unavailable.
     }
@@ -543,9 +546,12 @@ function applyWorkspaceConfig(
   let stack = GwrkConfigSchema.shape.project.shape.stack.safeParse(
     config?.project?.stack,
   ).data;
-  if (toolchain && !stack?.language && !stack?.languages?.[0]) {
+  if (
+    toolchain &&
+    (!stack?.buildSystem || (!stack.language && !stack.languages?.[0]))
+  ) {
     try {
-      stack = detectProfileInDirectory(root, false).stack;
+      stack = { ...detectFilesystemProfile(root).stack, ...stack };
     } catch {
       // The configured resolver also accepts paths that are unavailable on disk.
     }

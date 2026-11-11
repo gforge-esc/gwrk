@@ -512,6 +512,21 @@ describe("FR-001: architecture-aware workspace profiles (044 phase p01)", () => 
     },
   );
 
+  it("detects local architecture and language from a registered workspace root", async () => {
+    const config = {
+      project: { name: "fixture" },
+      workspaces: { "services/api": { stack: { framework: "Django" } } },
+    };
+    write(".gwrkrc.json", JSON.stringify(config));
+    write("services/api/.gwrkrc.json", JSON.stringify({ project: { name: "api", design } }));
+    write("services/api/pyproject.toml", '[project]\ndependencies = ["django"]\n');
+    write("services/api/src/api.py", "pass\n");
+    const nested = "services/api/src";
+    const expected = { design, stack: { language: "Python", framework: "Django" } };
+    expect.soft(await resolveWorkspaceProfile(root, nested)).toMatchObject(expected);
+    expect(resolveWorkspaceProfile(path.join(root, nested), root, config)).toMatchObject(expected);
+  });
+
   it("uses workspace lint, build and discovery across all resolver paths", async () => {
     const config = {
       project: {
