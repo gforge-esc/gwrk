@@ -78,26 +78,35 @@ function ensureProjectRow(
     return id;
   }
 
-  const { checkoutId, owner, origin, root } = resolveCheckoutOwner(
-    conn,
-    process.cwd(),
-  );
-  if (owner) return owner;
-
-  conn
-    .prepare(`
-    INSERT INTO projects (id, name, path, github_repo) VALUES (?, ?, ?, ?)
-    ON CONFLICT(id) DO UPDATE SET path = excluded.path, github_repo = excluded.github_repo
-    WHERE projects.path = '' AND projects.github_repo IS NULL
-  `)
-    .run(checkoutId, path.basename(root), root, origin);
-  return checkoutId;
+  return conn
+    .transaction(() => {
+      const { checkoutId, owner, origin, root, unboundLocal } =
+        resolveCheckoutOwner(conn, process.cwd());
+      if (unboundLocal) {
+        conn
+          .prepare("UPDATE projects SET github_repo = ? WHERE id = ?")
+          .run(origin, unboundLocal);
+      }
+      if (owner) return owner;
+      conn
+        .prepare(`
+      INSERT INTO projects (id, name, path, github_repo) VALUES (?, ?, ?, ?)
+      ON CONFLICT(id) DO UPDATE SET path = excluded.path, github_repo = excluded.github_repo
+      WHERE projects.path = '' AND projects.github_repo IS NULL
+    `)
+        .run(checkoutId, path.basename(root), root, origin);
+      return checkoutId;
+    })
+    .immediate();
 }
 
 function resolveCheckoutOwner(conn: Database.Database, root: string) {
   const facts = discoverGitIdentityFacts(root);
   const computedId = computeProjectId(facts);
   const checkoutId = canonicalProjectId(conn, computedId);
+  const localGitId = facts.gitCommonDir
+    ? computeProjectId({ ...facts, remoteOriginUrl: null })
+    : null;
   const origin = normalizeRegistryRepo(facts.remoteOriginUrl ?? null);
   const findProject = conn.prepare<
     [string],
@@ -135,10 +144,17 @@ function resolveCheckoutOwner(conn: Database.Database, root: string) {
     );
   }
 
-  function resolved(owner?: string) {
+  function resolved(owner?: string, unboundLocal?: string) {
     const ids = checkoutScope(checkoutId);
     if (owner && owner !== checkoutId) ids.push(...checkoutScope(owner));
-    return { checkoutId, owner, origin, root: facts.projectRoot, ids };
+    return {
+      checkoutId,
+      owner,
+      origin,
+      root: facts.projectRoot,
+      ids,
+      unboundLocal,
+    };
   }
 
   if (findProject.get(checkoutId)?.updated_at != null) {
@@ -167,6 +183,14 @@ function resolveCheckoutOwner(conn: Database.Database, root: string) {
     if (id === checkoutId || !atCheckout.includes(id)) continue;
     const owner = checkoutOwner(id);
     if (owner) return resolved(owner);
+    if (
+      origin &&
+      id === localGitId &&
+      canonicalProjectId(conn, id) === id &&
+      storedRepos(id).length === 0
+    ) {
+      return resolved(id, id);
+    }
   }
 
   const owners = new Set(

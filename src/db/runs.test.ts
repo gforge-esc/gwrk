@@ -139,6 +139,62 @@ describe("runs db", () => {
     expect(historyId).toBeGreaterThan(0);
   });
 
+  it("retains local run history through the first origin and separates a later origin", () => {
+    const checkout = realpathSync(
+      mkdtempSync(join(tmpdir(), "gwrk-first-origin-")),
+    );
+    const cwd = vi.spyOn(process, "cwd").mockReturnValue(checkout);
+    const ids = () =>
+      listCheckoutRuns("shared", checkout, db).map(({ id }) => id);
+    try {
+      execFileSync("git", ["init", "--quiet", checkout]);
+      const local = startRun({ feature_id: "shared", command: "local" }, db);
+      expect(ids()).toEqual([local]);
+      execFileSync("git", [
+        "-C",
+        checkout,
+        "remote",
+        "add",
+        "origin",
+        "https://github.com/org/alpha.git",
+      ]);
+      expect.soft(ids()).toEqual([local]);
+      const alpha = startRun({ feature_id: "shared", command: "alpha" }, db);
+      expect.soft(ids()).toEqual([alpha, local]);
+      const registry = createProjectRegistry(db, () => {});
+      const remoteId = computeProjectId(discoverGitIdentityFacts(checkout));
+      const now = "2026-11-11T12:00:00.000Z";
+      registry.enrollProject({
+        projectId: remoteId,
+        slug: "alpha",
+        name: "Alpha",
+        repoSlug: "org/alpha",
+        trunkBranch: "develop",
+        localRoot: checkout,
+        mirrorPath: null,
+        runnerPolicy: { allowedKinds: ["local"] },
+        slack: null,
+        legacyProjectIds: [],
+        createdAt: now,
+        updatedAt: now,
+      });
+      expect.soft(ids()).toEqual([alpha, local]);
+      execFileSync("git", [
+        "-C",
+        checkout,
+        "remote",
+        "set-url",
+        "origin",
+        "https://github.com/org/beta.git",
+      ]);
+      const beta = startRun({ feature_id: "shared", command: "beta" }, db);
+      expect(ids()).toEqual([beta]);
+    } finally {
+      cwd.mockRestore();
+      rmSync(checkout, { recursive: true, force: true });
+    }
+  });
+
   it.each([false, true])(
     "isolates implicit runs after an origin change with a legacy owner: %s",
     async (legacyOwner) => {

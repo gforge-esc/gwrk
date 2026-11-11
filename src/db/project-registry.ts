@@ -216,6 +216,84 @@ export function createProjectRegistry(
     return canonical;
   }
 
+  function receiptScope(receiptKey: string) {
+    let tuple: unknown;
+    try {
+      tuple = JSON.parse(receiptKey);
+    } catch {
+      return null;
+    }
+    if (
+      !Array.isArray(tuple) ||
+      tuple.length !== 7 ||
+      !tuple
+        .slice(0, 6)
+        .every((field) => typeof field === "string" && field.length > 0) ||
+      (tuple[6] !== null && typeof tuple[6] !== "string")
+    )
+      return null;
+    const scope = projectScope(db, tuple[0]);
+    return {
+      ...scope,
+      keys: scope.ids.map((id) => JSON.stringify([id, ...tuple.slice(1)])),
+    };
+  }
+
+  function findActionReceipt(receiptKey: string): SlackActionReceipt | null {
+    const select = `SELECT receipt_key AS receiptKey, project_id AS projectId,
+      action_id AS actionId, feature_id AS featureId, phase_id AS phaseId,
+      message_ts AS messageTs, actor_user_id AS actorUserId, outcome, recorded_at AS recordedAt
+      FROM slack_action_receipts`;
+    const scope = receiptScope(receiptKey);
+    const row = scope
+      ? db
+          .prepare(`${select} WHERE receipt_key IN (${scope.placeholders})
+          AND project_id IN (${scope.placeholders})
+          ORDER BY receipt_key = ? DESC, receipt_key LIMIT 1`)
+          .get(...scope.keys, ...scope.ids, scope.keys[0])
+      : db.prepare(`${select} WHERE receipt_key = ?`).get(receiptKey);
+    return (row as SlackActionReceipt | undefined) ?? null;
+  }
+
+  const claimActionReceipt = db.transaction((receipt: SlackActionReceipt) => {
+    const projectId = requireEnrolled(receipt.projectId);
+    const scope = receiptScope(receipt.receiptKey);
+    if (scope && scope.canonical !== projectId) {
+      throw new Error("Slack receipt key belongs to another project");
+    }
+    if (findActionReceipt(receipt.receiptKey)) return false;
+    const result = db
+      .prepare(`
+      INSERT INTO slack_action_receipts (
+        receipt_key, project_id, action_id, feature_id, phase_id, message_ts, actor_user_id, outcome, recorded_at
+      ) VALUES (@receiptKey, @projectId, @actionId, @featureId, @phaseId, @messageTs, @actorUserId, 'claimed', @recordedAt)
+      ON CONFLICT(receipt_key) DO NOTHING
+    `)
+      .run({
+        ...receipt,
+        projectId,
+        receiptKey: scope?.keys[0] ?? receipt.receiptKey,
+      });
+    return result.changes === 1;
+  });
+
+  const completeActionReceipt = db.transaction(
+    (
+      receiptKey: string,
+      outcome: Parameters<ProjectRegistryPort["completeActionReceipt"]>[1],
+    ) => {
+      const receipt = findActionReceipt(receiptKey);
+      if (!receipt) return false;
+      const result = db
+        .prepare(`
+      UPDATE slack_action_receipts SET outcome = ?
+      WHERE receipt_key = ? AND outcome IN ('claimed', 'uncertain')
+    `)
+        .run(outcome, receipt.receiptKey);
+      return result.changes === 1;
+    },
+  );
+
   const enroll = db.transaction((input: EnrolledProject): EnrolledProject => {
     const validated = validateProjectEnrollment(input);
     if (!validated.ok) throw new Error(validated.error);
@@ -263,7 +341,7 @@ export function createProjectRegistry(
         const priorRepo = normalizeRegistryRepo(prior.github_repo);
         if (
           prior.updated_at !== null
-            ? id !== localId || priorRepo !== null
+            ? id !== localId || (priorRepo !== null && priorRepo !== origin)
             : priorRepo !== origin
         ) {
           continue;
@@ -573,37 +651,9 @@ export function createProjectRegistry(
           projectId: requireEnrolled(thread.projectId),
         }) as SlackFeatureThread;
     },
-    getActionReceipt(receiptKey) {
-      const row = db
-        .prepare(`
-        SELECT receipt_key AS receiptKey, project_id AS projectId, action_id AS actionId,
-               feature_id AS featureId, phase_id AS phaseId, message_ts AS messageTs,
-               actor_user_id AS actorUserId, outcome, recorded_at AS recordedAt
-        FROM slack_action_receipts WHERE receipt_key = ?
-      `)
-        .get(receiptKey) as SlackActionReceipt | undefined;
-      return row ?? null;
-    },
-    claimActionReceipt(receipt) {
-      const result = db
-        .prepare(`
-        INSERT INTO slack_action_receipts (
-          receipt_key, project_id, action_id, feature_id, phase_id, message_ts, actor_user_id, outcome, recorded_at
-        ) VALUES (@receiptKey, @projectId, @actionId, @featureId, @phaseId, @messageTs, @actorUserId, 'claimed', @recordedAt)
-        ON CONFLICT(receipt_key) DO NOTHING
-      `)
-        .run({ ...receipt, projectId: requireEnrolled(receipt.projectId) });
-      return result.changes === 1;
-    },
-    completeActionReceipt(receiptKey, outcome) {
-      const result = db
-        .prepare(`
-        UPDATE slack_action_receipts SET outcome = ?
-        WHERE receipt_key = ? AND outcome IN ('claimed', 'uncertain')
-      `)
-        .run(outcome, receiptKey);
-      return result.changes === 1;
-    },
+    getActionReceipt: findActionReceipt,
+    claimActionReceipt: claimActionReceipt.immediate,
+    completeActionReceipt: completeActionReceipt.immediate,
     close,
   };
 }

@@ -19,9 +19,10 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { resolveProjectId } from "../adapters/git/project-id.js";
 import { createSqliteProjectRegistryAdapter } from "../adapters/sqlite/index.js";
 import { computeLegacyProjectIds } from "../domain/project-id.js";
-import type {
-  EnrolledProject,
-  SlackActionReceipt,
+import {
+  type EnrolledProject,
+  type SlackActionReceipt,
+  buildActionReceiptKey,
 } from "../domain/project-registry.js";
 import {
   listRoutingDecisions,
@@ -412,6 +413,34 @@ describe("Project registry storage", () => {
         repoSlug: "example/unrelated",
         legacyProjectIds: [],
       });
+      const action = {
+        actionId: "merge_pr",
+        featureId: "001-pilot",
+        phaseId: null,
+        workspaceId: slack.workspaceId,
+        channelId: slack.channelId,
+        messageTs: "1731320500.000100",
+      };
+      const receipt = (
+        projectId: string,
+        messageTs = action.messageTs,
+      ): SlackActionReceipt => ({
+        ...action,
+        messageTs,
+        projectId,
+        receiptKey: buildActionReceiptKey({ ...action, projectId, messageTs }),
+        actorUserId: "U_MAINTAINER",
+        outcome: "claimed",
+        recordedAt: now,
+      });
+      const firstClaim = receipt(localId);
+      const pendingClaim = receipt(localId, "1731320500.000200");
+      expect(registry.claimActionReceipt(firstClaim)).toBe(true);
+      expect(
+        registry.completeActionReceipt(firstClaim.receiptKey, "executed"),
+      ).toBe(true);
+      expect(registry.claimActionReceipt(pendingClaim)).toBe(true);
+
       insertFeature(
         { id: "shared", name: "Local feature", status: "open", sp_total: 1 },
         localId,
@@ -484,6 +513,23 @@ describe("Project registry storage", () => {
 
       expect(registry.enrollProject(remote).projectId).toBe(remoteId);
       expect(registry.enrollProject(remote).projectId).toBe(remoteId);
+      const replay = receipt(remoteId);
+      expect
+        .soft(registry.getActionReceipt(replay.receiptKey)?.outcome)
+        .toBe("executed");
+      expect.soft(registry.claimActionReceipt(replay)).toBe(false);
+      expect
+        .soft(
+          registry.completeActionReceipt(
+            receipt(remoteId, pendingClaim.messageTs).receiptKey,
+            "executed",
+          ),
+        )
+        .toBe(true);
+      expect
+        .soft(registry.getActionReceipt(pendingClaim.receiptKey)?.outcome)
+        .toBe("executed");
+      expect(registry.claimActionReceipt(receipt("unrelated"))).toBe(true);
       for (const id of [localId, remoteId, legacyAlias]) {
         expect(registry.getProject(id)?.projectId).toBe(remoteId);
         expect(getFeature("shared", id, db)?.project_id).toBe(localId);
