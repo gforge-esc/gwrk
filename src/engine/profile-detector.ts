@@ -480,16 +480,13 @@ function applyWorkspaceConfig(
     if (parsed.success) workspaces[workspacePath] = parsed.data;
   }
 
-  const toolchain = ToolchainConfigSchema.safeParse(config?.project?.toolchain)
-    .data;
+  const toolchain = ToolchainConfigSchema.safeParse(
+    config?.project?.toolchain,
+  ).data;
   let stack = GwrkConfigSchema.shape.project.shape.stack.safeParse(
     config?.project?.stack,
   ).data;
-  if (
-    (toolchain?.test !== undefined || toolchain?.testCommand !== undefined) &&
-    !stack?.language &&
-    !stack?.languages?.[0]
-  ) {
+  if (toolchain && !stack?.language && !stack?.languages?.[0]) {
     stack = detectProfileInDirectory(root, false).stack;
   }
 
@@ -565,33 +562,21 @@ export function resolveWorkspaceProfile(
 
   if (bestMatch) {
     const wsConfig = config.workspaces[bestMatch];
-    return {
+    const workspace: ProjectProfile = {
       type: wsConfig.type || "nodejs",
       stack: wsConfig.stack || {},
       layout: wsConfig.layout || "flat",
-      ...workspaceProfileMetadata(config.project, wsConfig),
     };
+    if (
+      !DesignSchema.safeParse(config.project?.design).success &&
+      !DesignSchema.safeParse(wsConfig.design).success
+    ) {
+      return workspace;
+    }
+    return applyWorkspaceConfig(projectRoot, cwd, workspace, config, {
+      requireDesign: true,
+    });
   }
 
   return undefined;
-}
-
-function workspaceProfileMetadata(
-  project: WorkspaceProfileConfig | undefined,
-  workspace: WorkspaceProfileConfig,
-): Pick<ProjectProfile, "design" | "toolchain"> {
-  const projectDesign = DesignSchema.safeParse(project?.design).data;
-  const workspaceDesign = DesignSchema.safeParse(workspace.design).data;
-  if (!projectDesign && !workspaceDesign) return {};
-
-  const { type: _type, ...metadata } = mergeProfileOverrides({
-    detected: { type: "unknown" },
-    projectDesign,
-    projectToolchain: ToolchainConfigSchema.safeParse(project?.toolchain).data,
-    workspaceConfig: {
-      design: workspaceDesign,
-      toolchain: ToolchainConfigSchema.safeParse(workspace.toolchain).data,
-    },
-  });
-  return metadata;
 }

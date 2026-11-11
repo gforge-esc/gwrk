@@ -6,7 +6,7 @@ import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { getTestCommand } from "../domain/toolchain.js";
+import { getLintCommand, getTestCommand, getTestExtension } from "../domain/toolchain.js";
 import { detectProfile, resolveWorkspaceProfile } from "./profile-detector.js";
 import { conditionPrompt } from "./prompt-conditioner.js";
 
@@ -504,6 +504,44 @@ describe("FR-001: architecture-aware workspace profiles (044 phase p01)", () => 
         .toEqual(["pytest test_api.py -v", "pytest test_api.py -v"]);
     },
   );
+
+  it("uses workspace lint, build and discovery across all resolver paths", async () => {
+    const config = {
+      project: {
+        name: "fixture",
+        design,
+        toolchain: { primary: "biome", build: "pnpm build", testExtension: ".test.ts" },
+      },
+      workspaces: { "services/api": { stack: { language: "Python" } } },
+    };
+    write("pnpm-workspace.yaml", "");
+    write(".gwrkrc.json", JSON.stringify(config));
+    write("services/api/pyproject.toml", '[project]\ndependencies = ["django"]\n');
+    const workspace = path.join(root, "services/api");
+    const profiles = [
+      await detectProfile(workspace),
+      await resolveWorkspaceProfile(root, "services/api"),
+      resolveWorkspaceProfile(workspace, root, config),
+    ];
+    for (const profile of profiles) {
+      expect(profile).toMatchObject({ design, stack: { language: "Python" } });
+      if (!profile) throw new Error("Expected workspace profile");
+      expect.soft(getLintCommand(profile, ["api.py"])).toBe("ruff check api.py");
+      expect.soft(getTestExtension(profile)).toBe(".py");
+      expect.soft(profile.toolchain?.build).toBeUndefined();
+    }
+  });
+
+  it("filters the root test runner through the configured workspace resolver", () => {
+    const workspace = path.join(root, "services/api");
+    const profile = resolveWorkspaceProfile(workspace, root, {
+      project: { design, stack: { language: "TypeScript" }, toolchain: { test: "vitest" } },
+      workspaces: { "services/api": { stack: { language: "Python" }, toolchain: { build: null } } },
+    });
+    expect(profile).toMatchObject({ design, toolchain: { build: null } });
+    if (!profile) throw new Error("Expected workspace profile");
+    expect(getTestCommand(profile, ["test_api.py"])).toBe("pytest test_api.py -v");
+  });
 
   it("keeps the detected workspace language when its framework is overridden", async () => {
     const { resolveWorkspaceProfile } = await import("./profile-detector.js");

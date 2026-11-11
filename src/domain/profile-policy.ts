@@ -17,21 +17,35 @@ export interface ProfileOverrideInput {
   workspaceConfig?: WorkspaceProfileConfig;
 }
 
-const runnerLanguages = {
+type Toolchain = NonNullable<ProjectProfile["toolchain"]>;
+
+const toolLanguages = {
   vitest: "javascript",
   jest: "javascript",
   "node-test": "javascript",
   pytest: "python",
   "cargo-test": "rust",
   "go-test": "go",
+  biome: "javascript",
+  eslint: "javascript",
+  prettier: "javascript",
+  ruff: "python",
+  black: "python",
+  "golangci-lint": "go",
+  gofmt: "go",
+  clippy: "rust",
+  cargo: "rust",
+  rustfmt: "rust",
 } satisfies Record<
-  NonNullable<NonNullable<ProjectProfile["toolchain"]>["test"]>,
+  NonNullable<Toolchain["test" | "primary" | "formatter"]>,
   string
 >;
 
-function languageFamily(stack: ProjectProfile["stack"]): string | undefined {
-  const language =
-    stack?.language?.toLowerCase() || stack?.languages?.[0]?.toLowerCase();
+function profileLanguage(stack: ProjectProfile["stack"]): string | undefined {
+  return stack?.language?.toLowerCase() || stack?.languages?.[0]?.toLowerCase();
+}
+
+function languageFamily(language: string | undefined): string | undefined {
   return language === "typescript" ? "javascript" : language;
 }
 
@@ -40,21 +54,36 @@ function compatibleRootToolchain(
   rootStack: ProjectProfile["stack"],
   workspaceStack: ProjectProfile["stack"],
 ): ProjectProfile["toolchain"] {
-  if (!toolchain) return undefined;
+  const workspaceLanguage = profileLanguage(workspaceStack);
+  if (!toolchain || !workspaceLanguage) return toolchain;
 
-  const rootLanguage = languageFamily(rootStack);
-  const workspaceLanguage = languageFamily(workspaceStack);
-  const { test, testCommand: _command, ...defaults } = toolchain;
-  const runnerLanguage = test ? runnerLanguages[test] : undefined;
-
-  if (
-    workspaceLanguage &&
-    ((rootLanguage && rootLanguage !== workspaceLanguage) ||
-      (runnerLanguage && runnerLanguage !== workspaceLanguage))
-  ) {
-    return Object.keys(defaults).length ? defaults : undefined;
-  }
-  return toolchain;
+  const rootLanguage = profileLanguage(rootStack);
+  const workspaceFamily = languageFamily(workspaceLanguage);
+  const differentFamily =
+    rootLanguage && languageFamily(rootLanguage) !== workspaceFamily;
+  const {
+    primary,
+    formatter,
+    test,
+    testCommand,
+    build,
+    testExtension,
+    sourceExtension,
+  } = toolchain;
+  const runnerFits =
+    !differentFamily && (!test || toolLanguages[test] === workspaceFamily);
+  const extensionsFit = !rootLanguage || rootLanguage === workspaceLanguage;
+  const compatible: Toolchain = {
+    ...(primary && toolLanguages[primary] === workspaceFamily && { primary }),
+    ...(formatter &&
+      toolLanguages[formatter] === workspaceFamily && { formatter }),
+    ...(runnerFits && test !== undefined && { test }),
+    ...(runnerFits && testCommand !== undefined && { testCommand }),
+    ...(!differentFamily && build !== undefined && { build }),
+    ...(extensionsFit && testExtension !== undefined && { testExtension }),
+    ...(extensionsFit && sourceExtension !== undefined && { sourceExtension }),
+  };
+  return Object.keys(compatible).length ? compatible : undefined;
 }
 
 function mergeToolchain(
