@@ -1,0 +1,20 @@
+{
+  "runId": "2026-11-11T21:06:45.393Z_ship_p01",
+  "feature": "049-durable-dispatch-harvest",
+  "phase": "phase-01",
+  "command": "ship",
+  "agent": "codex",
+  "model": "unknown",
+  "startedAt": "2026-11-11T21:06:45.393Z",
+  "finishedAt": "2026-11-11T21:19:00.499Z",
+  "durationS": 735,
+  "exitCode": 1,
+  "attempt": 1,
+  "reviewVerdict": "NO-GO",
+  "filesChanged": 7,
+  "linesAdded": 444,
+  "linesDeleted": 6,
+  "gitCommit": "48ed417acd083b6528b6580479865914879e9a2e",
+  "gitBranch": "feat/049-durable-dispatch-harvest",
+  "digest": []
+}
