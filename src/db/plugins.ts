@@ -5,6 +5,21 @@
 import type Database from "better-sqlite3";
 import { getDb } from "./index.js";
 
+export function getBackendSuccessRate(backendName: string): number {
+  try {
+    const result = getDb()
+      .prepare(
+        `SELECT COUNT(*) AS total,
+                SUM(CASE WHEN exit_code = 0 THEN 1 ELSE 0 END) AS successes
+         FROM runs WHERE agent_backend = ?`,
+      )
+      .get(backendName) as { total: number; successes: number };
+    return result.total === 0 ? 0 : result.successes / result.total;
+  } catch {
+    return 0;
+  }
+}
+
 interface AgentContextSync {
   project_root: string;
   backend_name: string;

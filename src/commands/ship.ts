@@ -787,6 +787,14 @@ Examples:
             type: "implement" as const,
             explicitBackend,
             requireRegistry: explicitBackend === undefined,
+            historyMode:
+              explicitBackend === undefined
+                ? ("quota-tiebreak" as const)
+                : undefined,
+            backendEligibility:
+              explicitBackend === undefined
+                ? undefined
+                : ("installed" as const),
           };
 
           if (opts.dryRun) {
@@ -869,15 +877,11 @@ Examples:
               const implementation = await agentPort.selectRoute({
                 ...phaseContext,
                 ...implementationRoute,
+                includeReviewModel: true,
               });
               logCliOutput(
                 `  🤖 Router selected backend: ${implementation.backend} (${implementation.reason})`,
               );
-              const review = await agentPort.selectRoute({
-                type: "review",
-                explicitBackend: implementation.backend,
-              });
-
               const exitCode = await shipPhase(
                 feature,
                 p,
@@ -890,8 +894,8 @@ Examples:
                 {
                   ...overrides,
                   selectedEffort: implementation.effort,
-                  reviewModel: review.model,
-                  reviewEffort: review.effort,
+                  reviewModel: implementation.reviewModel,
+                  reviewEffort: implementation.reviewEffort,
                 },
               );
               if (exitCode !== 0) {

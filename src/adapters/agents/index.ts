@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { getRoutingHistory } from "../../db/plugins.js";
+import { getBackendSuccessRate, getRoutingHistory } from "../../db/plugins.js";
 import {
   type BackendQuotaSnapshot,
   type HistoricalBackendStat,
@@ -75,24 +75,34 @@ async function selectAvailableRoute(
   }
 
   const config = loadConfig(projectRoot);
+  const quotaFirst = context.historyMode === "quota-tiebreak";
+  const installedOnly = context.backendEligibility === "installed";
   const history = context.explicitBackend
     ? []
-    : routingHistory(context.type, projectRoot);
-  const configured = (config.agents as Record<string, unknown>)?.[context.type];
-  const preferredAgent =
-    context.preferredAgent ??
-    (context.type === "skill" &&
-    ["narrative", "signal-cut"].includes(context.skillName ?? "")
-      ? "claude"
-      : undefined);
-  const fallbackOrder = config.agents?.fallbackOrder ?? [
-    "agy",
-    "claude",
-    "codex",
-  ];
+    : quotaFirst
+      ? Object.keys(agentRegistry?.backends ?? {}).map((backend) => ({
+          backend,
+          runs: 0,
+          successRate: getBackendSuccessRate(backend),
+        }))
+      : routingHistory(context.type, projectRoot);
+  const configured = quotaFirst
+    ? undefined
+    : (config.agents as Record<string, unknown>)?.[context.type];
+  const preferredAgent = quotaFirst
+    ? undefined
+    : (context.preferredAgent ??
+      (context.type === "skill" &&
+      ["narrative", "signal-cut"].includes(context.skillName ?? "")
+        ? "claude"
+        : undefined));
+  const fallbackOrder = (quotaFirst
+    ? agentRegistry?.fallbackOrder
+    : config.agents?.fallbackOrder) ?? ["agy", "claude", "codex"];
   const facts: RoutingFacts = {
     ...requestedRoute,
     history,
+    historyMode: context.historyMode,
     fallbackOrder,
     pillarConfig:
       typeof configured === "string"
@@ -126,17 +136,22 @@ async function selectAvailableRoute(
     for (const backend of Object.values(agentRegistry.backends)) {
       const { name } = backend;
       if (context.explicitBackend && name !== context.explicitBackend) continue;
-      const reading = await prober.probeQuota(backend, agentRegistry.backends);
-      readings[name] = reading;
-      quotas[name] = {
-        percent: reading.percent,
-        probeStatus:
-          reading.status === "timeout-assumed-available"
-            ? "optimistic"
-            : reading.status === "cached"
-              ? "cached"
-              : "fresh",
-      };
+      if (!installedOnly) {
+        const reading = await prober.probeQuota(
+          backend,
+          agentRegistry.backends,
+        );
+        readings[name] = reading;
+        quotas[name] = {
+          percent: reading.percent,
+          probeStatus:
+            reading.status === "timeout-assumed-available"
+              ? "optimistic"
+              : reading.status === "cached"
+                ? "cached"
+                : "fresh",
+        };
+      }
       const models = [
         "default",
         ...backend.models.flatMap((entry) =>
@@ -170,7 +185,9 @@ async function selectAvailableRoute(
           ...facts,
           availableBackends: [...candidates],
           quotas:
-            agentRegistry && !context.explicitBackend ? quotas : undefined,
+            agentRegistry && !context.explicitBackend && !installedOnly
+              ? quotas
+              : undefined,
           cooledDownModels,
         },
       );
@@ -186,13 +203,30 @@ async function selectAvailableRoute(
     let available = false;
     try {
       const backend = await registry.getAgentBackend(route.backend);
-      available = (await quotaProbe(backend)).status === "available";
+      available = installedOnly
+        ? await backend.isAvailable()
+        : (await quotaProbe(backend)).status === "available";
     } catch {
       // The next candidate can still satisfy the requested role.
     }
     if (available) {
+      const review = context.includeReviewModel
+        ? selectAgentRoute(
+            { type: "review" },
+            {
+              explicitBackend: route.backend,
+              availableBackends: [route.backend],
+              registry: agentRegistry,
+              cooledDownModels,
+            },
+          )
+        : undefined;
       const selected = {
         ...route,
+        ...(review && {
+          reviewModel: review.model,
+          reviewEffort: review.effort,
+        }),
         fallbackUsed: route.fallbackUsed || probed.size > 1,
       };
       const { type, preview, runId, feature, phase, taskSP } = context;

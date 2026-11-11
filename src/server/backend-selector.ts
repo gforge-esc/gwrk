@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { exitCli, logCliError } from "../adapters/cli/output-scope.js";
-import { getDb } from "../db/index.js";
+import { getBackendSuccessRate } from "../db/plugins.js";
 import type { AgentRegistry } from "../domain/agent-config.js";
 import {
   type BackendQuotaSnapshot,
@@ -54,7 +54,7 @@ export class BackendSelector {
     const history = backends.map(({ name }) => ({
       backend: name,
       runs: 0,
-      successRate: this.getSuccessRate(name),
+      successRate: getBackendSuccessRate(name),
     }));
     for (const backend of backends) {
       const { name } = backend;
@@ -132,29 +132,5 @@ export class BackendSelector {
       modelFailoverUsed: selection.modelFailoverUsed,
     });
     return selection;
-  }
-
-  /**
-   * Calculates historical success rate for a backend from the runs table.
-   * Success = exit_code 0.
-   */
-  private getSuccessRate(backendName: string): number {
-    try {
-      const db = getDb();
-      const result = db
-        .prepare(`
-        SELECT 
-          COUNT(*) as total,
-          SUM(CASE WHEN exit_code = 0 THEN 1 ELSE 0 END) as successes
-        FROM runs 
-        WHERE agent_backend = ?
-      `)
-        .get(backendName) as { total: number; successes: number } | undefined;
-
-      if (!result || result.total === 0) return 0;
-      return result.successes / result.total;
-    } catch (error) {
-      return 0; // Optimistic default or fail silent for tiebreaker
-    }
   }
 }

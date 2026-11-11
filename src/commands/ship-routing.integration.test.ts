@@ -90,6 +90,7 @@ function provider(name: string): AgentBackend {
 describe("ship with the real AgentPort router", () => {
   let root: string;
   let dbPath: string;
+  let codex: AgentBackend;
 
   beforeEach(async () => {
     vi.resetModules();
@@ -132,27 +133,17 @@ describe("ship with the real AgentPort router", () => {
         ],
       }),
     );
-    fs.writeFileSync(
-      path.join(root, ".gwrkrc.json"),
-      JSON.stringify({
-        project: { name: "Routing fixture" },
-        agents: {
-          implement: "codex",
-          fallbackOrder: ["codex", "claude"],
-          registry: {
-            codex: backendConfig("codex"),
-            claude: backendConfig("claude"),
-          },
-        },
-      }),
-    );
+    configureAgents();
 
     const { AgentBackendRegistry } = await import(
       "../plugins/agent-registry.js"
     );
-    const providers = new Map(
-      ["agy", "codex", "claude"].map((name) => [name, provider(name)]),
-    );
+    codex = provider("codex");
+    const providers = new Map([
+      ["agy", provider("agy")],
+      ["codex", codex],
+      ["claude", provider("claude")],
+    ]);
     vi.spyOn(
       AgentBackendRegistry.prototype,
       "getAgentBackend",
@@ -162,6 +153,24 @@ describe("ship with the real AgentPort router", () => {
       return backend;
     });
   });
+
+  function configureAgents(implement = "codex") {
+    fs.writeFileSync(
+      path.join(root, ".gwrkrc.json"),
+      JSON.stringify({
+        project: { name: "Routing fixture" },
+        agents: {
+          implement,
+          fallbackOrder: ["codex", "claude"],
+          registry: {
+            codex: backendConfig("codex"),
+            claude: backendConfig("claude"),
+          },
+        },
+      }),
+    );
+
+  }
 
   afterEach(async () => {
     const { closeDb } = await import("../db/index.js");
@@ -201,7 +210,7 @@ describe("ship with the real AgentPort router", () => {
     return getDb().prepare("SELECT * FROM routing_decisions").all();
   }
 
-  it("falls back from depleted Codex quota and records the Claude route once", async () => {
+  it("ranks Claude first when Codex is depleted and records one route", async () => {
     seedQuota(0);
 
     await ship();
@@ -228,10 +237,52 @@ describe("ship with the real AgentPort router", () => {
         quota_percent: 90,
         probe_status: "cached",
         task_sp: 1,
-        fallback_used: 1,
+        fallback_used: 0,
         model_failover_used: 0,
       },
     ]);
+  });
+
+  it.each([
+    { codexPercent: 10, implement: "codex", backend: "claude", quota: 90 },
+    { codexPercent: 80, implement: "claude", backend: "codex", quota: 80 },
+  ])(
+    "selects $backend with Codex at $codexPercent percent and stronger Codex history",
+    async ({ codexPercent, implement, backend, quota }) => {
+      configureAgents(implement);
+      seedQuota(codexPercent);
+      const { getDb } = await import("../db/index.js");
+      const insert = getDb().prepare(
+        "INSERT INTO runs (feature_id, command, agent_backend, exit_code) VALUES (?, 'ship', ?, ?)",
+      );
+      insert.run(feature, "codex", 0);
+      insert.run(feature, "claude", 1);
+
+      await ship();
+
+      expect(ShipOrchestrator).toHaveBeenCalledExactlyOnceWith(
+        expect.objectContaining({
+          backend,
+          selectedModel: `${backend}-primary`,
+        }),
+        undefined,
+      );
+      expect(await decisions()).toMatchObject([
+        { selected_backend: backend, quota_percent: quota, fallback_used: 0 },
+      ]);
+    },
+  );
+
+  it("previews the backend with higher quota despite the configured role default", async () => {
+    seedQuota(10);
+
+    await ship("--dry-run");
+
+    expect(console.log).toHaveBeenCalledWith(
+      expect.stringContaining("backend: claude, model: claude-primary"),
+    );
+    expect(ShipOrchestrator).not.toHaveBeenCalled();
+    expect(await decisions()).toEqual([]);
   });
 
   it("stops when every configured backend is depleted even if another CLI is installed", async () => {
@@ -286,18 +337,48 @@ describe("ship with the real AgentPort router", () => {
     },
   );
 
-  it("uses the explicit backend and its role models despite cached quota depletion", async () => {
+  it("uses both models from an explicit backend without checking quota", async () => {
     seedQuota(0);
+    vi.mocked(codex.checkQuota).mockResolvedValue({ status: "rate-limited" });
+    const { QuotaProber } = await import("../server/quota-prober.js");
+    const probeQuota = vi.spyOn(QuotaProber.prototype, "probeQuota");
+
     await ship("--agent", "codex");
-    expect(
-      vi.mocked(ShipOrchestrator).mock.calls.map(([options]) => options),
-    ).toMatchObject([
-      {
+
+    expect(codex.isAvailable).toHaveBeenCalled();
+    expect(codex.checkQuota).not.toHaveBeenCalled();
+    expect(probeQuota).not.toHaveBeenCalled();
+    expect(ShipOrchestrator).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({
         backend: "codex",
         selectedModel: "codex-primary",
         reviewModel: "codex-review",
-      },
-    ]);
+      }),
+      undefined,
+    );
+  });
+
+  it("resolves both role models after one native quota check", async () => {
+    seedQuota(100);
+    vi.mocked(codex.checkQuota)
+      .mockResolvedValueOnce({ status: "available" })
+      .mockResolvedValue({ status: "rate-limited" });
+    const { AgentBackendRegistry } = await import("../plugins/agent-registry.js");
+
+    await ship();
+
+    expect(AgentBackendRegistry.prototype.getAgentBackend).toHaveBeenCalledExactlyOnceWith("codex");
+    expect(codex.checkQuota).toHaveBeenCalledTimes(1);
+    expect(ShipOrchestrator).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({
+        backend: "codex",
+        selectedModel: "codex-primary",
+        selectedEffort: "medium",
+        reviewModel: "codex-review",
+        reviewEffort: "high",
+      }),
+      undefined,
+    );
   });
 
   it("passes through the legacy model environment for provider-default routes", async () => {
