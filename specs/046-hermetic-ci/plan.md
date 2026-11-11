@@ -40,14 +40,14 @@ The spec has five unnumbered requirements and four numbered acceptance criteria.
 
 #### Files
 
-- `src/server/index.ts` — **amend** — Accept explicit server scope and clean up owned effects on close and failed startup. FR-002, FR-003.
-- `src/server/dispatch.ts` — **amend** — Scope all journal writes to the queue project root. Pass the supplied ledger to run start and finish. FR-002.
-- `tests/helpers/server-fixture.ts` — **create** — Compose isolated Fastify instances and own their temporary project roots and SQLite handles. FR-002.
-- `src/server/e2e.test.ts` — **amend** — Register real routes with fixture config and exercise them through Fastify injection. FR-002.
-- `src/server/integration.test.ts` — **amend** — Start two isolated instances and verify dispatch completes in the correct journal and ledger. FR-002, FR-003.
-- `src/server/routes/dispatch.test.ts` — **amend** — Retain route assertions with a real scoped queue and a controlled ship result. FR-002.
-- `src/server/routes/notify.test.ts` — **verify** — Retain direct route injection and captured notification delivery from PR #232. FR-002.
-- `src/server/routes/status.test.ts` — **amend** — Cover the registered status route with fixture scope and close it on assertion failure. FR-002, FR-003.
+- `src/server/index.ts` (MODIFY: Accept explicit server scope and clean up owned effects on close and failed startup. FR-002, FR-003.)
+- `src/server/dispatch.ts` (MODIFY: Scope all journal writes to the queue project root. Pass the supplied ledger to run start and finish. FR-002.)
+- `tests/helpers/server-fixture.ts` (NEW: Compose isolated Fastify instances and own their temporary project roots and SQLite handles. FR-002.)
+- `src/server/e2e.test.ts` (MODIFY: Register real routes with fixture config and exercise them through Fastify injection. FR-002.)
+- `src/server/integration.test.ts` (MODIFY: Start two isolated instances and verify dispatch completes in the correct journal and ledger. FR-002, FR-003.)
+- `src/server/routes/dispatch.test.ts` (MODIFY: Retain route assertions with a real scoped queue and a controlled ship result. FR-002.)
+- `src/server/routes/notify.test.ts` (MODIFY: Retain direct route injection and captured notification delivery from PR #232. FR-002.)
+- `src/server/routes/status.test.ts` (MODIFY: Cover the registered status route with fixture scope and close it on assertion failure. FR-002, FR-003.)
 
 #### Governance & Skills Contract
 
@@ -76,9 +76,9 @@ pnpm exec vitest run --retry 0 src/server/e2e.test.ts src/server/integration.tes
 
 #### Files
 
-- `src/cli.pulse.e2e.test.ts` — **amend** — Use scoped CLI capture for cases that need no child working directory. Keep bounded subprocess coverage for config discovery. FR-002, FR-003.
-- `src/engine/pulse-integration.test.ts` — **amend** — Seed fixed Git history in a temporary repository. Assert the scan results without a host-speed threshold. FR-002, FR-003.
-- `tests/helpers/pulse-git-fixture.ts` — **create** — Seed explicit branch names and fixed author data through bounded asynchronous Git commands. FR-002, FR-003.
+- `src/cli.pulse.e2e.test.ts` (MODIFY: Use scoped CLI capture for cases that need no child working directory. Keep bounded subprocess coverage for config discovery. FR-002, FR-003.)
+- `src/engine/pulse-integration.test.ts` (MODIFY: Seed fixed Git history in a temporary repository. Assert the scan results without a host-speed threshold. FR-002, FR-003.)
+- `tests/helpers/pulse-git-fixture.ts` (NEW: Seed explicit branch names and fixed author data through bounded asynchronous Git commands. FR-002, FR-003.)
 
 #### Governance & Skills Contract
 
@@ -104,8 +104,8 @@ pnpm exec vitest run --retry 0 src/cli.pulse.e2e.test.ts src/engine/pulse-integr
 
 #### Files
 
-- `src/db/db.ts` — **delete** — Remove the throwing compression insert stub after confirming it has no production consumer. FR-004.
-- `src/db/db.test.ts` — **amend** — Retain execution ledger tests and remove assertions that accept the stub throwing for every input. FR-004.
+- `src/db/db.ts` (DELETE: Remove the throwing compression insert stub after confirming it has no production consumer. FR-004.)
+- `src/db/db.test.ts` (MODIFY: Retain execution ledger tests and remove assertions that accept the stub throwing for every input. FR-004.)
 
 #### Governance & Skills Contract
 
@@ -131,9 +131,9 @@ pnpm exec vitest run src/db/db.test.ts src/db/compression.test.ts src/adapters/s
 
 #### Files
 
-- `vitest.config.ts` — **amend** — Remove integration quarantine and unhandled error suppression. Keep general exclusions and worker isolation. FR-001, FR-003.
-- `package.json` — **amend** — Keep `test:ci` as a full Vitest run without the quarantine flag. FR-001, FR-003.
-- `src/ci-test-policy.test.ts` — **create** — Verify selection of all former matches and the exit status of isolated worker probes. FR-001, FR-003.
+- `vitest.config.ts` (MODIFY: Remove integration quarantine and unhandled error suppression. Keep general exclusions and worker isolation. FR-001, FR-003.)
+- `package.json` (MODIFY: Keep `test:ci` as a full Vitest run without the quarantine flag. FR-001, FR-003.)
+- `src/ci-test-policy.test.ts` (NEW: Verify selection of all former matches and the exit status of isolated worker probes. FR-001, FR-003.)
 
 #### Governance & Skills Contract
 
@@ -162,9 +162,9 @@ CI=true pnpm run test:ci
 
 #### Files
 
-- `.github/workflows/ci.yml` — **amend** — Run blocking lint in both matrix jobs and remove stale quarantine comments. FR-005.
-- `biome.json` — **amend** — Exclude the ignored machine-local config from project lint. Keep tracked lint coverage. FR-005.
-- `src/ci-lint-policy.test.ts` — **create** — Check workflow failure propagation and run clean and defective lint fixtures. FR-005.
+- `.github/workflows/ci.yml` (MODIFY: Run blocking lint in both matrix jobs and remove stale quarantine comments. FR-005.)
+- `biome.json` (MODIFY: Exclude the ignored machine-local config from project lint. Keep tracked lint coverage. FR-005.)
+- `src/ci-lint-policy.test.ts` (NEW: Check workflow failure propagation and run clean and defective lint fixtures. FR-005.)
 
 #### Governance & Skills Contract
 
