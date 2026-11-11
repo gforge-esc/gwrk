@@ -990,6 +990,30 @@ describe("credential guard", () => {
     },
   );
 
+  it.each(["object", "array"] as const)(
+    "detects a known multiline secret split across inspected %s strings",
+    (container) => {
+      const secret = "fixture-private-first-line\nfixture-private-second-line";
+      const wrap = (text: string) =>
+        container === "object" ? { data: text } : [text];
+      const sanitizedOutput = inspect(wrap(secret), { breakLength: 35 });
+      expect(sanitizedOutput).toMatch(/\+\s*['"`]/);
+      expect(() =>
+        assertNoSecretMaterial({ sanitizedOutput }, [secret]),
+      ).toThrow(/secret material/i);
+      const control = inspect(
+        wrap(
+          "ordinary text on the first line\nordinary text on the second line",
+        ),
+        { breakLength: 35 },
+      );
+      expect(control).toMatch(/\+\s*['"`]/);
+      expect(() =>
+        assertNoSecretMaterial({ sanitizedOutput: control }, [secret]),
+      ).not.toThrow();
+    },
+  );
+
   it("allows ordinary inspected tuples and multi-value Vary field names", () => {
     const sanitizedOutput = inspect({
       headers: [

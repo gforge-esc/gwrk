@@ -543,7 +543,7 @@ function inspectedRecordAsJson(token: string): string {
     t: "\t",
     v: "\v",
   };
-  return token.replace(
+  const normalized = token.replace(
     tokens,
     (
       _token,
@@ -569,6 +569,16 @@ function inspectedRecordAsJson(token: string): string {
           );
     },
   );
+  // Node's inspector splits multiline values into a sum of quoted literals.
+  const literal = /"(?:[^"\\]|\\[\s\S])*"/g;
+  const strings = /"(?:[^"\\]|\\[\s\S])*"(?:\s*\+\s*"(?:[^"\\]|\\[\s\S])*")*/g;
+  return normalized.replace(strings, (sequence) => {
+    const fragments = sequence.match(literal);
+    if (!fragments || fragments.length === 1) return sequence;
+    return JSON.stringify(
+      fragments.map((fragment) => JSON.parse(fragment) as string).join(""),
+    );
+  });
 }
 
 function normalizeInspectedArrayEntries(record: string): string {
