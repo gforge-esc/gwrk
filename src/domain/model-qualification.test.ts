@@ -268,16 +268,18 @@ describe("model qualification policy", () => {
   });
 
   it.each([undefined, "3", -1, 1.5, Number.MAX_SAFE_INTEGER + 1])(
-    "rejects repeat index %s even with three valid repeats",
+    "rejects persisted repeat index %s even with three valid repeats",
     (repeatIndex) => {
-      const input = {
-        ...passingEvidence,
-        repeats: [
-          ...passingEvidence.repeats,
-          { fixtureId: "handoff", repeatIndex, gatesPassed: true },
-        ],
-      };
-      expect(evaluatePromotion(input as unknown as PromotionEvidence)).toEqual({
+      const input = JSON.parse(
+        JSON.stringify({
+          ...passingEvidence,
+          repeats: [
+            ...passingEvidence.repeats,
+            { fixtureId: "handoff", repeatIndex, gatesPassed: true },
+          ],
+        }),
+      );
+      expect(evaluatePromotion(input)).toEqual({
         promote: false,
         reason: "insufficient-repeats",
       });

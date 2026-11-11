@@ -94,16 +94,18 @@ it("exposes the documented catalog and lock store contracts to consumers", async
   expect(await consumer.readDiscoverySnapshot(scope)).toEqual(snapshot);
   expect(await consumer.readRouteLock(scope)).toEqual(incumbent);
 
+  const unvalidatedSnapshot: unknown = snapshot;
   const snapshotDigest: string = await store.writeDiscoverySnapshot(
     scope,
-    snapshot,
+    unvalidatedSnapshot,
   );
   expect(snapshotDigest).toBe("snapshot-digest");
 
-  const digest: string = await store.writeRouteLockAtomic(scope, {
+  const lock: unknown = {
     document: { schemaVersion: 1, routes: {} },
     expectedIncumbentDigest: null,
-  });
+  };
+  const digest: string = await store.writeRouteLockAtomic(scope, lock);
   expect(digest).toBe("lock-digest");
 });
 
