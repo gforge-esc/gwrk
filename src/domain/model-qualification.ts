@@ -463,6 +463,16 @@ function isFlatHeaderList(entries: unknown[]): boolean {
   );
 }
 
+function isHeaderTupleList(entries: unknown[]): boolean {
+  return (
+    entries.length > 0 &&
+    entries.every(
+      (entry) =>
+        Array.isArray(entry) && entry.length === 2 && isFlatHeaderList(entry),
+    )
+  );
+}
+
 function findJsonTokenEnd(text: string, start: number): number | undefined {
   let inString = text[start] === '"';
   const closers = inString ? [] : [text[start] === "{" ? "}" : "]"];
@@ -509,7 +519,11 @@ function assertUniqueJsonKeys(record: string): void {
   }
 }
 
-function scanEmbeddedJson(text: string, knownSecrets: readonly string[]): void {
+function scanEmbeddedJson(
+  text: string,
+  knownSecrets: readonly string[],
+  isHeaderCollection = false,
+): void {
   const openings = /["[{]/g;
   for (
     let opening = openings.exec(text);
@@ -530,7 +544,7 @@ function scanEmbeddedJson(text: string, knownSecrets: readonly string[]): void {
       openings.lastIndex = end;
     }
     // Quoted log text can overlap the start of a JSON record.
-    assertNoSecretMaterial(decoded, knownSecrets);
+    scanEvidence(decoded, knownSecrets, isHeaderCollection);
   }
 }
 
@@ -538,13 +552,25 @@ export function assertNoSecretMaterial(
   value: unknown,
   knownSecrets: readonly string[] = [],
 ): void {
+  scanEvidence(value, knownSecrets, false);
+}
+
+function scanEvidence(
+  value: unknown,
+  knownSecrets: readonly string[],
+  rootIsHeaderCollection: boolean,
+): void {
   let secretInText = false;
+  let isRoot = true;
   const flatHeaderLists = new WeakSet<unknown[]>();
-  const headerCollections = new WeakSet<unknown[]>();
+  const headerTupleParents = new WeakSet<unknown[]>();
   const headerMaps = new WeakSet<object>();
   const serialized =
     JSON.stringify(value, function (this: unknown, key, entry: unknown) {
-      const isHeaderCollection = headersKeyPattern.test(key);
+      const isHeaderCollection = isRoot
+        ? rootIsHeaderCollection
+        : headersKeyPattern.test(key);
+      isRoot = false;
       const isFlatHeaderValue =
         Array.isArray(this) &&
         flatHeaderLists.has(this) &&
@@ -558,12 +584,14 @@ export function assertNoSecretMaterial(
       const isHeaderValue = isFlatHeaderValue || isStructuredHeaderValue;
       if (Array.isArray(entry)) {
         const isHeaderTuple =
-          Array.isArray(this) && headerCollections.has(this);
+          Array.isArray(this) && headerTupleParents.has(this);
         // The same array can appear under both a header field and ordinary evidence.
         flatHeaderLists.delete(entry);
-        headerCollections.delete(entry);
+        headerTupleParents.delete(entry);
         if (!isHeaderValue) {
-          if (isHeaderCollection) headerCollections.add(entry);
+          if (isHeaderCollection || isHeaderTupleList(entry)) {
+            headerTupleParents.add(entry);
+          }
           if (
             (isHeaderCollection || isHeaderTuple) &&
             isFlatHeaderList(entry)
@@ -595,7 +623,9 @@ export function assertNoSecretMaterial(
         secretInText = true;
       } else {
         scanEmbeddedJson(key, knownSecrets);
-        if (typeof entry === "string") scanEmbeddedJson(entry, knownSecrets);
+        if (typeof entry === "string") {
+          scanEmbeddedJson(entry, knownSecrets, isHeaderCollection);
+        }
       }
       return entry;
     }) ?? "";

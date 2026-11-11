@@ -187,6 +187,23 @@ describe("credential guard", () => {
       }),
     },
   ])("header values in $form", ({ evidence }) => {
+    it.each([
+      ["Cookie", "session=fixture-only", true],
+      ["Content-Type", "text/plain", false],
+    ] as const)(
+      "checks %s in encoded response headers",
+      (key, value, rejects) => {
+        const encoded = JSON.stringify([{ key, value }]);
+        for (const responseHeaders of [encoded, JSON.stringify(encoded)]) {
+          const check = expect(() =>
+            assertNoSecretMaterial(evidence({ responseHeaders })),
+          );
+          if (rejects) check.toThrow(/secret material/i);
+          else check.not.toThrow();
+        }
+      },
+    );
+
     it("rejects a credential tuple inside a general response array", () => {
       const response = [
         "fixture-response",
@@ -329,6 +346,38 @@ describe("credential guard", () => {
         headers: [["Vary", ["Cookie", "Bearer\tfixture-token"]]],
       };
       expect(() => assertNoSecretMaterial(evidence(response))).toThrow(
+        /secret material/i,
+      );
+    });
+  });
+
+  describe.each([
+    {
+      form: "persisted evidence",
+      evidence: (tuples: unknown) =>
+        JSON.parse(JSON.stringify({ response: tuples })),
+    },
+    {
+      form: "fixture stdout",
+      evidence: (tuples: unknown) => ({
+        sanitizedOutput: `stdout: ${JSON.stringify(tuples)}`,
+      }),
+    },
+  ])("standalone header tuples in $form", ({ evidence }) => {
+    it.each([
+      ["Cookie", "Accept-Encoding"],
+      ["Accept-Encoding", "Cookie"],
+    ])("allows Vary values %s and %s", (first, second) => {
+      expect(() =>
+        assertNoSecretMaterial(evidence([["Vary", [first, second]]])),
+      ).not.toThrow();
+    });
+
+    it.each([
+      ["Set-Cookie", "session=fixture-only"],
+      ["Vary", ["Cookie", "Bearer\tfixture-token"]],
+    ])("rejects credential material in a %s tuple", (name, value) => {
+      expect(() => assertNoSecretMaterial(evidence([[name, value]]))).toThrow(
         /secret material/i,
       );
     });
