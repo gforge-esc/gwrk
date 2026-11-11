@@ -216,7 +216,7 @@ export function composeEffectivePolicy(
 
 | Source layer | Precedence rank | Render position | Selection rule |
 |---|---|---|---|
-| `project-local` | 1 | 4 | Applies declared selectors. Legacy entries without selectors keep project-local scope. |
+| `project-local` | 1 | 4 | Declared selectors or project-local scope for legacy entries |
 | `project-entry` | 2 | 3 | Filtered by manifest selectors |
 | `global` | 3 | 2 | Unscoped legacy skills load globally while selector skills filter |
 | `builtin` | 4 | 1 | Filtered by language and framework and `projectScope` |
