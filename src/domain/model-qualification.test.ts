@@ -78,14 +78,17 @@ const passingEvidence: PromotionEvidence = {
 };
 
 describe("credential guard", () => {
-  it.each(["Cookie: session=fixture", "Authorization: Basic Zml4dHVyZQ=="])(
-    "rejects a credential header in a nested property name",
-    (header) => {
-      expect(() =>
-        assertNoSecretMaterial({ nested: [{ [header]: true }] }),
-      ).toThrow(/secret material/i);
-    },
-  );
+  it.each([
+    "Cookie: session=fixture-session",
+    "Authorization: Basic Zml4dHVyZQ==",
+    "sEt-CoOkIe: session=fixture-session",
+  ])("rejects credential header %j in a nested property name", (header) => {
+    expect(() =>
+      assertNoSecretMaterial(
+        JSON.parse(JSON.stringify({ nested: [{ [header]: true }] })),
+      ),
+    ).toThrow(/secret material/i);
+  });
 });
 
 describe("model qualification policy", () => {
@@ -121,6 +124,33 @@ describe("model qualification policy", () => {
 
   const report = snapshot.adapters[0];
   const model = report.models[0];
+  it.each([
+    ["omitted CLI version", [{ ...report, cliVersion: undefined }]],
+    ["blank CLI version", [{ ...report, cliVersion: " " }]],
+    ["numeric CLI version", [{ ...report, cliVersion: 3 }]],
+    ["omitted adapter version", [{ ...report, adapterVersion: undefined }]],
+    ["blank adapter version", [{ ...report, adapterVersion: " " }]],
+    ["numeric adapter version", [{ ...report, adapterVersion: 1 }]],
+    [
+      "omitted default flag",
+      [{ ...report, models: [{ ...model, isDefault: undefined }] }],
+    ],
+    [
+      "string default flag",
+      [{ ...report, models: [{ ...model, isDefault: "false" }] }],
+    ],
+    ["null model list", [{ ...report, models: null }]],
+    ["null adapter list", null],
+    ["null adapter entry", [null]],
+    ["null model entry", [{ ...report, models: [null] }]],
+  ])("rejects a persisted catalog with %s", (_field, adapters) => {
+    const persisted = JSON.parse(JSON.stringify({ scope, adapters }));
+    expect(checkCandidate(persisted, scope, candidate)).toEqual({
+      ok: false,
+      reason: "model-unavailable",
+    });
+  });
+
   it.each([
     {
       field: "string model forwarding",

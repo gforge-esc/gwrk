@@ -83,28 +83,34 @@ export function checkCandidate(
   }
   if (!isConcreteModel(candidate.modelId))
     return { ok: false, reason: "model-alias" };
+  if (!Array.isArray(snapshot.adapters))
+    return { ok: false, reason: "model-unavailable" };
   const reports = snapshot.adapters.filter(
-    ({ backend }) => backend === candidate.backend,
+    (report) => report?.backend === candidate.backend,
   );
-  const report = reports[0];
+  const report: AdapterDiscoveryReport = reports[0];
   if (
     reports.length !== 1 ||
     report.status !== "available" ||
-    report.supportsModelForwarding !== true
+    report.supportsModelForwarding !== true ||
+    !isNonBlankString(report.cliVersion) ||
+    !isNonBlankString(report.adapterVersion) ||
+    !Array.isArray(report.models)
   ) {
     return { ok: false, reason: "model-unavailable" };
   }
-  const models = report.models.filter(
+  const models: DiscoveredModel[] = report.models.filter(
     (model) =>
-      model.backend === candidate.backend &&
+      model?.backend === candidate.backend &&
       model.modelId === candidate.modelId &&
       model.provider === candidate.provider &&
       model.family === candidate.family &&
       model.hidden === false,
   );
   if (models.length !== 1) return { ok: false, reason: "model-unavailable" };
-  const { supportedEfforts } = models[0];
+  const { isDefault, supportedEfforts } = models[0];
   if (
+    typeof isDefault !== "boolean" ||
     !Array.isArray(supportedEfforts) ||
     supportedEfforts.some((effort) => typeof effort !== "string")
   ) {
