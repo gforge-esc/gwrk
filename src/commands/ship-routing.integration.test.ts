@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -392,7 +393,7 @@ describe("ship with the real AgentPort router", () => {
     }
   });
 
-  it("terminates the native availability subprocess when ship falls back", async () => {
+  it("terminates the native availability process group when ship falls back", async () => {
     seedQuota(100, 50);
     const claude = provider("claude");
     const { AgentBackendRegistry } = await import(
@@ -405,13 +406,15 @@ describe("ship with the real AgentPort router", () => {
 
     const binDir = path.join(root, "bin");
     const pidFile = path.join(root, "which.pid");
+    const descendantFile = path.join(root, "sleep.pid");
     fs.mkdirSync(binDir);
     fs.writeFileSync(
       path.join(binDir, "which"),
-      '#!/bin/sh\ntrap "" TERM\nprintf "%s\\n" "$$" > "$FIXTURE_PID_FILE"\nexec /bin/sleep 30\n',
+      '#!/bin/sh\ntrap "" TERM\nprintf "%s\\n" "$$" > "$FIXTURE_PID_FILE"\n/bin/sleep 30 &\nprintf "%s\\n" "$!" > "$FIXTURE_DESCENDANT_FILE"\nwait\n',
       { mode: 0o755 },
     );
     vi.stubEnv("FIXTURE_PID_FILE", pidFile);
+    vi.stubEnv("FIXTURE_DESCENDANT_FILE", descendantFile);
     vi.stubEnv("PATH", `${binDir}${path.delimiter}${process.env.PATH}`);
 
     try {
@@ -419,6 +422,8 @@ describe("ship with the real AgentPort router", () => {
 
       const childPid = Number(fs.readFileSync(pidFile, "utf8"));
       expect(childPid).toBeGreaterThan(0);
+      const descendantPid = Number(fs.readFileSync(descendantFile, "utf8"));
+      expect(descendantPid).toBeGreaterThan(0);
       expect(ShipOrchestrator).toHaveBeenCalledExactlyOnceWith(
         expect.objectContaining({
           backend: "claude",
@@ -430,14 +435,19 @@ describe("ship with the real AgentPort router", () => {
         expect(() => process.kill(childPid, 0)).toThrow(
           expect.objectContaining({ code: "ESRCH" }),
         );
+        const state = spawnSync("ps", ["-o", "stat=", "-p", String(descendantPid)], {
+          encoding: "utf8",
+        }).stdout.trim();
+        // A container init can leave a terminated child as a zombie.
+        expect(state).toMatch(/^(?:Z.*)?$/);
       });
     } finally {
-      const childPid = fs.existsSync(pidFile)
-        ? Number(fs.readFileSync(pidFile, "utf8"))
-        : 0;
-      if (childPid > 0) {
+      for (const file of [pidFile, descendantFile]) {
+        if (!fs.existsSync(file)) continue;
+        const pid = Number(fs.readFileSync(file, "utf8"));
+        if (pid <= 0) continue;
         try {
-          process.kill(childPid, "SIGKILL");
+          process.kill(pid, "SIGKILL");
         } catch (error) {
           if ((error as NodeJS.ErrnoException).code !== "ESRCH") throw error;
         }
