@@ -294,7 +294,8 @@ it.each([
               version: version.split("/")[1],
               platform: "linux",
               arch: process.arch,
-              nodeVersion: process.versions.node,
+              // The fixture represents a supported release on every CI Node version.
+              nodeVersion: "22.0.0",
               nodeAbi: process.versions.modules,
               commitSha: "0".repeat(40),
               builtAt: "2026-11-11T12:00:00Z",
