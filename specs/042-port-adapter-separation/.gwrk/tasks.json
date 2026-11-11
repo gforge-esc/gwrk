@@ -289,57 +289,64 @@
           "id": "T027",
           "title": "Create output-scope.ts",
           "description": "NEW src/adapters/cli/output-scope.ts. Provide `AsyncLocalStorage` output scope and agent-mode transforms. Tests: src/adapters/cli/output-scope.test.ts",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/phase-04.sh",
-          "sp": 2
+          "sp": 2,
+          "completedAt": "2026-11-11T17:53:41.393Z"
         },
         {
           "id": "T028",
           "title": "Modify cli.ts",
           "description": "MODIFY src/cli.ts. Replace global `process.stdout.write` mutation with per-command output scope. Tests: src/adapters/cli/output-scope.test.ts",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/phase-04.sh",
-          "sp": 1
+          "sp": 1,
+          "completedAt": "2026-11-11T17:53:43.104Z"
         },
         {
           "id": "T029",
           "title": "Modify output.ts",
           "description": "MODIFY src/utils/output.ts. Route `CommandOutput` writes through the active CLI output scope. Tests: src/adapters/cli/output-scope.test.ts",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/phase-04.sh",
-          "sp": 1
+          "sp": 1,
+          "completedAt": "2026-11-11T17:53:44.852Z"
         },
         {
           "id": "T030",
           "title": "Modify format.ts",
           "description": "MODIFY src/utils/format.ts. Route formatted banners and status output through the active CLI output scope",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/phase-04.sh",
-          "sp": 1
+          "sp": 1,
+          "completedAt": "2026-11-11T17:53:46.590Z"
         },
         {
           "id": "T031",
           "title": "Modify signal.ts",
           "description": "MODIFY src/utils/signal.ts. Emit `[exit:N | Xs]` on scoped stderr while preserving exit codes",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/phase-04.sh",
-          "sp": 1
+          "sp": 1,
+          "completedAt": "2026-11-11T17:53:48.354Z"
         },
         {
           "id": "T032",
           "title": "Modify project-discover.ts",
           "description": "MODIFY src/commands/project-discover.ts. Write discovery text and JSON through scoped output",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/phase-04.sh",
-          "sp": 1
+          "sp": 1,
+          "completedAt": "2026-11-11T17:53:50.146Z"
         },
         {
           "id": "T033",
           "title": "Modify skill.ts",
           "description": "MODIFY src/commands/skill.ts. Write skill stdout through scoped output",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/phase-04.sh",
-          "sp": 1
+          "sp": 1,
+          "completedAt": "2026-11-11T17:53:52.070Z"
         }
       ],
       "sp_estimate": 8,
