@@ -626,6 +626,24 @@ describe("credential guard", () => {
     expect(() => assertNoSecretMaterial({ sanitizedOutput })).not.toThrow();
   });
 
+  it.each([
+    ["Cookie", "session=fixture-session"],
+    ["Proxy-Authorization", "Basic Zml4dHVyZQ=="],
+  ])("rejects inspected %s map entries in fixture output", (name, value) => {
+    const sanitizedOutput = inspect({ headers: new Map([[name, value]]) });
+    expect(() => assertNoSecretMaterial({ sanitizedOutput })).toThrow(
+      /secret material/i,
+    );
+  });
+
+  it.each([
+    ["Content-Type", "text/plain"],
+    ["Vary", "Cookie"],
+  ])("allows inspected %s map entries in fixture output", (name, value) => {
+    const sanitizedOutput = inspect({ headers: new Map([[name, value]]) });
+    expect(() => assertNoSecretMaterial({ sanitizedOutput })).not.toThrow();
+  });
+
   it("rejects Set-Cookie headers in doubly encoded JSON fixture output", () => {
     const payload = {
       headers: [{ name: "Set-Cookie", value: "session=fixture-only" }],

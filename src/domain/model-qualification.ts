@@ -430,7 +430,7 @@ function containsSensitiveText(text: string): boolean {
 }
 
 const headerPattern = new RegExp(
-  String.raw`(?:\b${credentialHeaders}|(["'])${credentialHeaders}\1)[ \t]*:`,
+  String.raw`(?:\b${credentialHeaders}|(["'])${credentialHeaders}\1)[ \t]*:|(["'\x60])${credentialHeaders}\2\s*=>`,
   "i",
 );
 const credentialHeaderNamePattern = new RegExp(`^${credentialHeaders}$`, "i");
