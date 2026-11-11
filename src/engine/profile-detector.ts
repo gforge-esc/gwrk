@@ -33,6 +33,9 @@ interface LanguageSignal {
 interface FilesystemProfile {
   profile: ProjectProfile;
   signals: readonly LanguageSignal[];
+  toolchains?: Readonly<
+    Record<string, NonNullable<ProjectProfile["toolchain"]>>
+  >;
 }
 
 /**
@@ -62,12 +65,16 @@ function detectProfileInDirectory(
     );
   }
 
-  if (localProject) return mergeLocalProject(detected.profile, localProject);
-
-  return (
-    resolveDetectedProfile(projectRoot, detected, searchAncestors) ??
-    detected.profile
+  const scoped = resolveDetectedProfile(
+    projectRoot,
+    detected,
+    searchAncestors,
+    localProject,
   );
+  if (scoped) return scoped;
+  return localProject
+    ? mergeLocalProject(detected.profile, localProject)
+    : detected.profile;
 }
 
 function detectFilesystemProfile(projectRoot: string): FilesystemProfile {
@@ -258,12 +265,17 @@ function detectFilesystemProfile(projectRoot: string): FilesystemProfile {
   }
 
   // 4. Toolchain Detection (Phase 16)
-  const toolchain: NonNullable<ProjectProfile["toolchain"]> = {};
+  type Toolchain = NonNullable<ProjectProfile["toolchain"]>;
+  const toolchain: Toolchain = {};
+  const javascript: Toolchain = {};
+  const python: Toolchain = {};
+  const rust: Toolchain = {};
+  const go: Toolchain = {};
 
   // Formatter & Linter
   if (files.includes("biome.json") || files.includes("biome.jsonc")) {
-    toolchain.primary = "biome";
-    toolchain.formatter = "biome";
+    toolchain.primary = javascript.primary = "biome";
+    toolchain.formatter = javascript.formatter = "biome";
   } else {
     if (
       files.includes(".eslintrc") ||
@@ -272,7 +284,7 @@ function detectFilesystemProfile(projectRoot: string): FilesystemProfile {
       files.includes("eslint.config.js") ||
       files.includes("eslint.config.mjs")
     ) {
-      toolchain.primary = "eslint";
+      toolchain.primary = javascript.primary = "eslint";
     }
     if (
       files.includes(".prettierrc") ||
@@ -280,12 +292,12 @@ function detectFilesystemProfile(projectRoot: string): FilesystemProfile {
       files.includes(".prettierrc.js") ||
       files.includes("prettier.config.js")
     ) {
-      toolchain.formatter = "prettier";
+      toolchain.formatter = javascript.formatter = "prettier";
     }
   }
 
   if (files.includes("ruff.toml") || files.includes(".ruff.toml")) {
-    toolchain.primary = "ruff";
+    toolchain.primary = python.primary = "ruff";
   } else if (files.includes(".black") || files.includes("pyproject.toml")) {
     if (files.includes("pyproject.toml")) {
       try {
@@ -293,10 +305,12 @@ function detectFilesystemProfile(projectRoot: string): FilesystemProfile {
           path.join(projectRoot, "pyproject.toml"),
           "utf-8",
         );
-        if (content.includes("[tool.black]")) toolchain.formatter = "black";
-        if (content.includes("[tool.ruff]")) toolchain.primary = "ruff";
+        if (content.includes("[tool.black]"))
+          toolchain.formatter = python.formatter = "black";
+        if (content.includes("[tool.ruff]"))
+          toolchain.primary = python.primary = "ruff";
         if (content.includes("[tool.pytest") || /\bpytest\b/.test(content)) {
-          toolchain.test = "pytest";
+          toolchain.test = python.test = "pytest";
         }
       } catch {}
     }
@@ -308,12 +322,12 @@ function detectFilesystemProfile(projectRoot: string): FilesystemProfile {
     files.includes(".golangci.toml") ||
     files.includes(".golangci.json")
   ) {
-    toolchain.primary = "golangci-lint";
+    toolchain.primary = go.primary = "golangci-lint";
   }
 
   if (files.includes("clippy.toml") || files.includes(".clippy.toml")) {
-    toolchain.primary = "clippy";
-  } else if (files.includes("Cargo.toml") && !toolchain.primary) {
+    toolchain.primary = rust.primary = "clippy";
+  } else if (files.includes("Cargo.toml")) {
     try {
       const cargoContent = fs.readFileSync(
         path.join(projectRoot, "Cargo.toml"),
@@ -323,7 +337,8 @@ function detectFilesystemProfile(projectRoot: string): FilesystemProfile {
         cargoContent.includes("[lints.clippy]") ||
         cargoContent.includes("clippy")
       ) {
-        toolchain.primary = "clippy";
+        rust.primary = "clippy";
+        toolchain.primary ??= rust.primary;
       }
     } catch {}
   }
@@ -335,18 +350,18 @@ function detectFilesystemProfile(projectRoot: string): FilesystemProfile {
     files.includes("vitest.config.mts") ||
     files.includes("vitest.config.mjs")
   ) {
-    toolchain.test = "vitest";
+    toolchain.test = javascript.test = "vitest";
   } else if (
     files.includes("jest.config.js") ||
     files.includes("jest.config.ts") ||
     files.includes("jest.config.mjs")
   ) {
-    toolchain.test = "jest";
-  } else if (files.includes("Cargo.toml")) {
-    toolchain.test = "cargo-test";
-  } else if (files.includes("go.mod")) {
-    toolchain.test = "go-test";
+    toolchain.test = javascript.test = "jest";
   }
+  if (files.includes("Cargo.toml")) rust.test = "cargo-test";
+  if (files.includes("go.mod")) go.test = "go-test";
+  const configuredTest = javascript.test ?? rust.test ?? go.test;
+  if (configuredTest) toolchain.test = configuredTest;
 
   // Also check package.json for test and linter signals
   if (files.includes("package.json")) {
@@ -354,27 +369,29 @@ function detectFilesystemProfile(projectRoot: string): FilesystemProfile {
       const pkg = JSON.parse(
         fs.readFileSync(path.join(projectRoot, "package.json"), "utf-8"),
       );
-      if (!toolchain.test) {
+      if (!javascript.test) {
         if (pkg.devDependencies?.vitest || pkg.dependencies?.vitest)
-          toolchain.test = "vitest";
+          javascript.test = "vitest";
         else if (pkg.devDependencies?.jest || pkg.dependencies?.jest)
-          toolchain.test = "jest";
+          javascript.test = "jest";
       }
-      if (!toolchain.primary) {
+      if (!javascript.primary) {
         if (
           pkg.devDependencies?.["@biomejs/biome"] ||
           pkg.dependencies?.["@biomejs/biome"]
         ) {
-          toolchain.primary = "biome";
+          javascript.primary = "biome";
         } else if (pkg.devDependencies?.eslint || pkg.dependencies?.eslint) {
-          toolchain.primary = "eslint";
+          javascript.primary = "eslint";
         }
       }
     } catch {}
   }
 
+  if (javascript.test) toolchain.test ??= javascript.test;
+  if (javascript.primary) toolchain.primary ??= javascript.primary;
   if (files.includes("pytest.ini") || files.includes("conftest.py")) {
-    toolchain.test = "pytest";
+    toolchain.test = python.test = "pytest";
   }
 
   if (Object.keys(toolchain).length > 0) {
@@ -398,7 +415,7 @@ function detectFilesystemProfile(projectRoot: string): FilesystemProfile {
     }
   }
 
-  return { profile, signals };
+  return { profile, signals, toolchains: { javascript, python, rust, go } };
 }
 
 function readLocalProject(
@@ -447,12 +464,13 @@ function resolveDetectedProfile(
   detectedRoot: string,
   detected: FilesystemProfile,
   searchAncestors: boolean,
+  localProject?: WorkspaceProfileConfig,
 ): ProjectProfile | undefined {
   const start = path.resolve(detectedRoot);
   let directory = start;
   while (true) {
     const configPath = path.join(directory, ".gwrkrc.json");
-    if (fs.existsSync(configPath)) {
+    if ((directory !== start || !localProject) && fs.existsSync(configPath)) {
       try {
         const config = JSON.parse(fs.readFileSync(configPath, "utf-8"));
         if (directory === start) {
@@ -462,9 +480,25 @@ function resolveDetectedProfile(
           });
         }
 
-        return applyWorkspaceConfig(directory, start, detected, config, {
-          requireDesign: true,
-        });
+        if (
+          localProject &&
+          !matchWorkspacePath(
+            relativeWorkspacePath(directory, start),
+            Object.keys(config?.workspaces ?? {}),
+          )
+        )
+          return undefined;
+        const scoped = applyWorkspaceConfig(
+          directory,
+          start,
+          detected,
+          config,
+          {
+            requireDesign: true,
+            localProject,
+          },
+        );
+        return localProject && scoped === detected.profile ? undefined : scoped;
       } catch {
         return undefined;
       }
@@ -578,6 +612,7 @@ function applyWorkspaceConfig(
       requireDesign: options?.requireDesign,
       localProject,
       detectedStacks: detected.signals,
+      detectedToolchains: detected.toolchains,
     },
   );
 }

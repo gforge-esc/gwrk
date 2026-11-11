@@ -61,6 +61,13 @@ function resolveWorkspaceStack(
   const mergedStack = { ...detectedStack, ...localStack, ...entryStack };
   const detectedFamily = languageFamily(profileLanguage(detectedStack));
   const workspaceFamily = languageFamily(profileLanguage(mergedStack));
+  const localFamily = languageFamily(profileLanguage(localStack));
+  const {
+    framework: localFramework,
+    buildSystem: localBuildSystem,
+    ...localFields
+  } = localStack ?? {};
+  const compatibleLocal = !localFamily || localFamily === workspaceFamily;
   const selectedStack = detectedStacks.find(
     (stack) => languageFamily(profileLanguage(stack)) === workspaceFamily,
   );
@@ -79,7 +86,11 @@ function resolveWorkspaceStack(
     ...(workspaceBuildSystem !== undefined && {
       buildSystem: workspaceBuildSystem,
     }),
-    ...localStack,
+    ...localFields,
+    ...(compatibleLocal &&
+      localFramework !== undefined && { framework: localFramework }),
+    ...(compatibleLocal &&
+      localBuildSystem !== undefined && { buildSystem: localBuildSystem }),
     ...entryStack,
   };
 }
@@ -217,6 +228,7 @@ export function resolveWorkspacePolicyProfile(
     requireDesign?: boolean;
     localProject?: WorkspaceProfileConfig;
     detectedStacks?: readonly Stack[];
+    detectedToolchains?: Readonly<Record<string, Toolchain>>;
   },
 ): ProjectProfile {
   const workspaces = rootConfig?.workspaces ?? {};
@@ -255,16 +267,27 @@ export function resolveWorkspacePolicyProfile(
     toolchain: rawToolchain,
     ...detected
   } = detectedWorkspace;
-  const detectedToolchain = compatibleToolchain(
-    rawToolchain,
-    rawStack,
-    workspaceStack,
-    "detected",
+  const workspaceFamily = languageFamily(profileLanguage(workspaceStack));
+  const detectedToolchain = mergeToolchain(
+    compatibleToolchain(rawToolchain, rawStack, workspaceStack, "detected"),
+    workspaceFamily
+      ? options?.detectedToolchains?.[workspaceFamily]
+      : undefined,
   );
+  const localFamily = languageFamily(profileLanguage(localProject?.stack));
+  const localToolchain =
+    localFamily && workspaceFamily && localFamily !== workspaceFamily
+      ? compatibleToolchain(
+          localProject?.toolchain,
+          localProject?.stack,
+          workspaceStack,
+          "root",
+        )
+      : localProject?.toolchain;
 
   return mergeProfileOverrides({
     detected:
-      rootToolchain || detectedToolchain
+      rootToolchain || Object.keys(detectedToolchain).length
         ? {
             ...detected,
             toolchain: mergeToolchain(rootToolchain, detectedToolchain),
@@ -273,7 +296,7 @@ export function resolveWorkspacePolicyProfile(
     projectDesign,
     projectType: localProject?.type,
     projectStack: workspaceStack,
-    projectToolchain: localProject?.toolchain,
+    projectToolchain: localToolchain,
     workspaceConfig: workspaceOverrides,
   });
 }

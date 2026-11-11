@@ -579,6 +579,39 @@ describe("FR-001: architecture-aware workspace profiles (044 phase p01)", () => 
     }
   });
 
+  it("keeps the selected TypeScript runner and linter in a mixed workspace", async () => {
+    const config = {
+      project: { name: "fixture", design },
+      workspaces: { "apps/mixed": { stack: { language: "TypeScript" } } },
+    };
+    write(".gwrkrc.json", JSON.stringify(config));
+    write("apps/mixed/package.json", "{}");
+    write("apps/mixed/jest.config.js", "");
+    write("apps/mixed/eslint.config.js", "");
+    write("apps/mixed/pyproject.toml", "[project]\n");
+    write("apps/mixed/pytest.ini", "");
+    write("apps/mixed/ruff.toml", "");
+    write("apps/mixed/.gwrkrc.json", JSON.stringify({
+      project: {
+        name: "mixed",
+        stack: { language: "Python", framework: "Django", buildSystem: "uv" },
+        toolchain: { test: "pytest", primary: "ruff" },
+      },
+    }));
+    const workspace = path.join(root, "apps/mixed");
+    const profiles = [
+      await detectProfile(workspace),
+      await resolveWorkspaceProfile(root, "apps/mixed"),
+      resolveWorkspaceProfile(workspace, root, config),
+    ];
+    for (const profile of profiles) {
+      expect(profile).toBeDefined();
+      if (!profile) throw new Error("Expected a mixed workspace profile");
+      expect.soft(getTestCommand(profile, ["app.test.ts"])).toBe("npx jest app.test.ts");
+      expect.soft(getLintCommand(profile, ["app.ts"])).toBe("npx eslint app.ts");
+    }
+  });
+
   it("uses the configured language to select tools in a mixed workspace", async () => {
     const config = {
       project: {

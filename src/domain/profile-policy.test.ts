@@ -11,7 +11,7 @@ import {
   getTestExtension,
   resolveBuildCommand,
 } from "./toolchain.js";
-import type { ProjectProfile } from "./types.js";
+import type { ProjectProfile, WorkspaceProfileConfig } from "./types.js";
 
 const design = DesignSchema.parse({
   architecture: "hexagonal-functional",
@@ -294,6 +294,27 @@ describe("FR-001: profile design inheritance (044 phase p01)", () => {
       ).toBe(command);
     },
   );
+
+  it("drops local stack and tools when the registered workspace selects a different language", () => {
+    const local = {
+      stack: { language: "TypeScript", framework: "Next.js", buildSystem: "pnpm" },
+      toolchain: { test: "jest", build: "pnpm build" },
+    } satisfies WorkspaceProfileConfig;
+    const profile = resolveWorkspacePolicyProfile(
+      "services/api", { type: "polyglot-monorepo", stack: local.stack },
+      {
+        project: { design },
+        workspaces: { "services/api": { stack: { language: "Python" } } },
+      },
+      {
+        localProject: local,
+        detectedStacks: [local.stack, { language: "Python", framework: "Django", buildSystem: "uv" }],
+      },
+    );
+    expect.soft(profile.stack).toMatchObject({ language: "Python", framework: "Django", buildSystem: "uv" });
+    expect.soft(resolveBuildCommand(profile)).toBeNull();
+    expect(getTestCommand(profile, ["test_api.py"])).toBe("pytest test_api.py -v");
+  });
 
   it("TR-005: selects the longest workspace ancestor for a nested path", () => {
     const nestedDesign = DesignSchema.parse({ architecture: "clean", principles: ["tdd"] });
