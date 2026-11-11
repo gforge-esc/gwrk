@@ -19,6 +19,7 @@ import {
   generateFilesystemGates,
   generateRunner,
 } from "../utils/gate-gen.js";
+import { commitPaths } from "../utils/git.js";
 import { readRefsContent } from "../utils/read-refs.js";
 import { loadTaskState } from "../utils/state.js";
 import {
@@ -226,16 +227,27 @@ export class DefineOrchestrator extends EventEmitter {
       if (!this.config.dryRun) {
         // Auto-commit define artifacts after each successful stage
         try {
-          execSync("git add -A", { cwd: this.config.cwd });
           const stageName = this.state.stage.toLowerCase().replace(/_/g, "-");
-          execSync(
-            `git commit --author="$(git config user.name) <$(git config user.email)>" -m "chore(${this.config.featureId}): define ${stageName}"`,
-            {
-              cwd: this.config.cwd,
-              env: { ...process.env, GWRK_SHIP: "1" },
-              stdio: "ignore",
-            },
-          );
+          const message = `chore(${this.config.featureId}): define ${stageName}`;
+          if (this.state.stage === DefineStage.PLAN) {
+            const feature = path.join("specs", this.config.featureId);
+            const outputs = ["plan.md", "data-model.md", "contracts"]
+              .map((output) => path.join(feature, output))
+              .filter((output) =>
+                fs.existsSync(path.join(this.config.cwd, output)),
+              );
+            commitPaths(this.config.cwd, message, outputs);
+          } else {
+            execSync("git add -A", { cwd: this.config.cwd });
+            execSync(
+              `git commit --author="$(git config user.name) <$(git config user.email)>" -m "${message}"`,
+              {
+                cwd: this.config.cwd,
+                env: { ...process.env, GWRK_SHIP: "1" },
+                stdio: "ignore",
+              },
+            );
+          }
         } catch {
           // Non-fatal — nothing to commit or git not available
         }
