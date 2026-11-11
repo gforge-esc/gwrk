@@ -169,7 +169,8 @@ async function selectAvailableRoute(
         {
           ...facts,
           availableBackends: [...candidates],
-          quotas: agentRegistry ? quotas : undefined,
+          quotas:
+            agentRegistry && !context.explicitBackend ? quotas : undefined,
           cooledDownModels,
         },
       );

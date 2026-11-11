@@ -783,18 +783,23 @@ Examples:
           const agentPort = createAgentPortAdapter({ projectRoot: cwd });
           const explicitBackend = opts.agent as string | undefined;
           const routeContext = { feature, language: "typescript", taskSP: 1 };
+          const implementationRoute = {
+            type: "implement" as const,
+            explicitBackend,
+            requireRegistry: explicitBackend === undefined,
+          };
 
           if (opts.dryRun) {
             try {
               const implementation = await agentPort.selectRoute({
-                type: "implement",
-                explicitBackend,
+                ...implementationRoute,
                 preview: true,
               });
               logCliOutput(
                 `  🤖 Would build with backend: ${implementation.backend}, model: ${implementation.model}, effort: ${implementation.effort ?? "default"} (router: ${implementation.reason})`,
               );
             } catch (error) {
+              if (implementationRoute.requireRegistry) throw error;
               logCliOutput(
                 `  🤖 Could not select an implementation route: ${error}`,
               );
@@ -863,9 +868,7 @@ Examples:
               };
               const implementation = await agentPort.selectRoute({
                 ...phaseContext,
-                type: "implement",
-                explicitBackend,
-                requireRegistry: explicitBackend === undefined,
+                ...implementationRoute,
               });
               logCliOutput(
                 `  🤖 Router selected backend: ${implementation.backend} (${implementation.reason})`,
@@ -881,7 +884,9 @@ Examples:
                 implementation.backend,
                 opts,
                 shipCwd,
-                implementation.model,
+                opts.legacy && implementation.mode === "provider-default"
+                  ? undefined
+                  : implementation.model,
                 {
                   ...overrides,
                   selectedEffort: implementation.effort,

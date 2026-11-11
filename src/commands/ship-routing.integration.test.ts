@@ -245,41 +245,69 @@ describe("ship with the real AgentPort router", () => {
     expect(await decisions()).toEqual([]);
   });
 
-  it("rejects automatic routing when agents.fallbackOrder is missing", async () => {
-    fs.writeFileSync(
-      path.join(root, ".gwrkrc.json"),
-      JSON.stringify({
-        project: { name: "Routing fixture" },
-        agents: {
-          implement: "codex",
-          registry: {
-            codex: {
-              ...backendConfig("codex"),
-              models: [{ name: "fast", modelFlag: "codex-fast", tier: "fast" }],
+  it.each([{ args: [] }, { args: ["--dry-run"] }])(
+    "rejects automatic routing when agents.fallbackOrder is missing (%s)",
+    async ({ args }) => {
+      fs.writeFileSync(
+        path.join(root, ".gwrkrc.json"),
+        JSON.stringify({
+          project: { name: "Routing fixture" },
+          agents: {
+            implement: "codex",
+            registry: {
+              codex: {
+                ...backendConfig("codex"),
+                models: [{ name: "fast", modelFlag: "codex-fast", tier: "fast" }],
+              },
             },
           },
-        },
-      }),
-    );
-    const { AgentBackendRegistry } = await import(
-      "../plugins/agent-registry.js"
-    );
-    const getBackends = vi.spyOn(AgentBackendRegistry.prototype, "getBackends");
-    const stderr = vi.spyOn(process.stderr, "write").mockReturnValue(true);
-    const { createShipCommand } = await import("./ship.js");
+        }),
+      );
+      const { AgentBackendRegistry } = await import(
+        "../plugins/agent-registry.js"
+      );
+      const getBackends = vi.spyOn(AgentBackendRegistry.prototype, "getBackends");
+      const stderr = vi.spyOn(process.stderr, "write").mockReturnValue(true);
+      const { createShipCommand } = await import("./ship.js");
 
-    await createShipCommand().parseAsync([feature, "phase-01"], { from: "user" });
+      await createShipCommand().parseAsync([feature, "phase-01", ...args], { from: "user" });
 
-    expect(process.exitCode).toBe(1);
-    expect(stderr).toHaveBeenCalledWith(
-      expect.stringContaining(
-        "Missing required config: agents.registry or agents.fallbackOrder",
-      ),
+      expect(process.exitCode).toBe(1);
+      expect(stderr).toHaveBeenCalledWith(
+        expect.stringContaining(
+          "Missing required config: agents.registry or agents.fallbackOrder",
+        ),
+      );
+      expect(AgentBackendRegistry.prototype.getAgentBackend).not.toHaveBeenCalled();
+      expect(getBackends).not.toHaveBeenCalled();
+      expect(ShipOrchestrator).not.toHaveBeenCalled();
+      expect(await decisions()).toEqual([]);
+      expect(console.log).not.toHaveBeenCalledWith(expect.stringContaining("Would build with backend"));
+    },
+  );
+
+  it("uses the explicit backend and its role models despite cached quota depletion", async () => {
+    seedQuota(0);
+    await ship("--agent", "codex");
+    expect(
+      vi.mocked(ShipOrchestrator).mock.calls.map(([options]) => options),
+    ).toMatchObject([
+      {
+        backend: "codex",
+        selectedModel: "codex-primary",
+        reviewModel: "codex-review",
+      },
+    ]);
+  });
+
+  it("passes through the legacy model environment for provider-default routes", async () => {
+    vi.stubEnv("GEMINI_MODEL", "configured-legacy-model");
+    await ship("--legacy", "--agent", "agy");
+    const call = vi.mocked(run).mock.calls.find(([command]) =>
+      command.endsWith("/work-until-done.sh"),
     );
-    expect(AgentBackendRegistry.prototype.getAgentBackend).not.toHaveBeenCalled();
-    expect(getBackends).not.toHaveBeenCalled();
-    expect(ShipOrchestrator).not.toHaveBeenCalled();
-    expect(await decisions()).toEqual([]);
+    expect(call?.[1]).toEqual([feature, "01"]);
+    expect(call?.[2]?.env?.GEMINI_MODEL).toBe("configured-legacy-model");
   });
 
   it("uses the alternate model during cooldown and records model failover", async () => {
