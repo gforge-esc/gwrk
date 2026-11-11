@@ -167,6 +167,55 @@ function expectUsageFailure(result: ReturnType<typeof runCli>) {
 }
 
 describe("installed ledger commands outside a checkout", () => {
+  it("rejects a device FIFO before publishing a backup", () => {
+    const ledger = join(root, "gwrk.db");
+    seedLedger(ledger).close();
+    execFileSync("mkfifo", [join(root, "device.json")]);
+    const destination = join(root, "fifo-backup");
+    const result = runInstalledBackup(ledger, destination);
+    expect(result.error).toBeUndefined();
+    expect(result.status, result.stderr).toBe(1);
+    expect(result.stderr.match(/^\[exit:.*$/gm)).toEqual([
+      expect.stringMatching(/^\[exit:1 .*device record.*regular file/),
+    ]);
+    return expect(stat(destination)).rejects.toMatchObject({ code: "ENOENT" });
+  }, 15_000);
+
+  it.skipIf(process.platform !== "linux")(
+    "rejects a manifest FIFO and releases restore locks",
+    async () => {
+      const backup = join(root, "fifo-backup");
+      const state = join(root, "restored");
+      const runtime = join(root, "runtime");
+      await mkdir(backup);
+      execFileSync("mkfifo", [join(backup, "backup-manifest.json")]);
+      const result = runLedgerCommand(
+        "restore",
+        "--from",
+        backup,
+        "--state-dir",
+        state,
+        "--format",
+        "json",
+      );
+      expect(result.error).toBeUndefined();
+      expect(result.status, result.stderr).toBe(1);
+      expect(result.stderr.match(/^\[exit:.*$/gm)).toEqual([
+        expect.stringMatching(/^\[exit:1 .*regular files/),
+      ]);
+      const database = join(state, "gwrk.db");
+      await expect(stat(database)).rejects.toMatchObject({ code: "ENOENT" });
+      const runtimeLock = acquireInstanceLock(runtime, process.pid);
+      try {
+        const ledgerLock = acquireLedgerLock(database, process.pid);
+        ledgerLock.release();
+      } finally {
+        runtimeLock.release();
+      }
+    },
+    15_000,
+  );
+
   it("directs backup to resume an interrupted first restore", async () => {
     const sourceLedger = join(root, "active.db");
     seedLedger(sourceLedger).close();

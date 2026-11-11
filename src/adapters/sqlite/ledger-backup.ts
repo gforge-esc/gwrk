@@ -3,13 +3,13 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { createHash } from "node:crypto";
+import { constants } from "node:fs";
 import {
   copyFile,
   lstat,
   mkdir,
   mkdtemp,
   open,
-  readFile,
   realpath,
   rename,
   rm,
@@ -273,11 +273,26 @@ async function captureLedgerBackup(input: LedgerBackupRequest, dbPath: string) {
   }
 }
 
+async function readRegularBackupFile(path: string): Promise<Buffer> {
+  const file = await open(
+    path,
+    constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK,
+  );
+  try {
+    if (!(await file.stat()).isFile()) {
+      throw new Error(`Backup payload must contain regular files: ${path}`);
+    }
+    return await file.readFile();
+  } finally {
+    await file.close();
+  }
+}
+
 export const verifyLedgerBackup: LedgerBackupPort["verifyBackup"] = async (
   directory,
 ) => {
   const manifestPath = join(directory, MANIFEST_FILE);
-  const text = await readFile(manifestPath, "utf8").catch(
+  const manifestBytes = await readRegularBackupFile(manifestPath).catch(
     (error: NodeJS.ErrnoException) => {
       if (error.code === "ENOENT") {
         throw new Error(
@@ -287,12 +302,13 @@ export const verifyLedgerBackup: LedgerBackupPort["verifyBackup"] = async (
       throw error;
     },
   );
-  const manifest = LedgerBackupManifestSchema.parse(JSON.parse(text));
+  const manifest = LedgerBackupManifestSchema.parse(
+    JSON.parse(manifestBytes.toString("utf8")),
+  );
   const dbPath = join(directory, DB_FILE);
   const metadataPath = join(directory, METADATA_FILE);
-  for (const path of [manifestPath, dbPath, metadataPath]) {
-    if (!(await lstat(path)).isFile())
-      throw new Error("Backup payload must contain regular files.");
+  if (!(await lstat(dbPath)).isFile()) {
+    throw new Error("Backup payload must contain regular files.");
   }
   for (const suffix of ["-wal", "-shm", "-journal"]) {
     if (await exists(dbPath + suffix))
@@ -300,7 +316,7 @@ export const verifyLedgerBackup: LedgerBackupPort["verifyBackup"] = async (
   }
   if ((await sha256(dbPath)) !== manifest.dbSha256)
     throw new Error("Backup database digest mismatch.");
-  const metadataBytes = await readFile(metadataPath);
+  const metadataBytes = await readRegularBackupFile(metadataPath);
   if (
     createHash("sha256").update(metadataBytes).digest("hex") !==
     manifest.metadataSha256

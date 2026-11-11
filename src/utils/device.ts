@@ -39,15 +39,30 @@ export function loadDevice(): DeviceRecord | null {
 
 export function loadDeviceStrict(): DeviceRecord | null {
   const file = devicePath();
+  let descriptor: number | undefined;
   try {
-    if (!fs.lstatSync(file, { throwIfNoEntry: false })) return null;
-    const raw: unknown = JSON.parse(fs.readFileSync(file, "utf8"));
+    descriptor = fs.openSync(
+      file,
+      fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW | fs.constants.O_NONBLOCK,
+    );
+    if (!fs.fstatSync(descriptor).isFile()) {
+      throw new Error("Expected a regular file.");
+    }
+    const raw: unknown = JSON.parse(fs.readFileSync(descriptor, "utf8"));
     return LedgerBackupMetadataSchema.shape.device.unwrap().parse(raw);
   } catch (error) {
+    if (
+      descriptor === undefined &&
+      (error as NodeJS.ErrnoException).code === "ENOENT"
+    ) {
+      return null;
+    }
     const detail = error instanceof Error ? error.message : String(error);
     throw new Error(`Could not read device record at ${file}: ${detail}`, {
       cause: error,
     });
+  } finally {
+    if (descriptor !== undefined) fs.closeSync(descriptor);
   }
 }
 
