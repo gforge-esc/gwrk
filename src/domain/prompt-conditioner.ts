@@ -11,6 +11,9 @@ export function conditionPrompt(
   profile: ProjectProfile,
 ): string {
   if (!profile || profile.type === "unknown") {
+    if (profile?.design) {
+      return `${generateProjectContext(profile.design)}\n\n${prompt}`;
+    }
     return prompt;
   }
 
@@ -32,7 +35,32 @@ export function conditionPrompt(
   });
 
   const xml = generateProfileXml(profile);
+  if (profile.design) {
+    return `${generateProjectContext(profile.design, xml)}\n\n${conditioned.trim()}`;
+  }
   return `${xml}\n\n${conditioned.trim()}`;
+}
+
+function generateProjectContext(
+  design: NonNullable<ProjectProfile["design"]>,
+  profileXml?: string,
+): string {
+  const architecture = design.architecture
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;");
+  const principles = design.principles.map(
+    (principle) => `    <principle>${principle}</principle>`,
+  );
+  return [
+    "<project_context>",
+    ...(profileXml ? [profileXml] : []),
+    `  <design templateVersion="${design.templateVersion}">`,
+    `    <architecture>${architecture}</architecture>`,
+    ...principles,
+    "  </design>",
+    "</project_context>",
+  ].join("\n");
 }
 
 function generateProfileXml(profile: ProjectProfile): string {

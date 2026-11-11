@@ -3,15 +3,9 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import type { ProjectDesign } from "./architecture-context.js";
-import type { ProjectProfile } from "./types.js";
+import type { ProjectProfile, WorkspaceProfileConfig } from "./types.js";
 
-export interface WorkspaceProfileConfig {
-  type?: string;
-  stack?: { language?: string; framework?: string; buildSystem?: string };
-  layout?: string;
-  toolchain?: ProjectProfile["toolchain"];
-  design?: ProjectDesign;
-}
+export type { WorkspaceProfileConfig } from "./types.js";
 
 export interface ProfileOverrideInput {
   detected: ProjectProfile;
@@ -24,18 +18,64 @@ export interface ProfileOverrideInput {
 }
 
 export function mergeProfileOverrides(
-  _input: ProfileOverrideInput,
-): ProjectProfile & { design?: ProjectDesign } {
-  throw new Error("Not implemented");
+  input: ProfileOverrideInput,
+): ProjectProfile {
+  const { detected, workspaceConfig } = input;
+  const profile = {
+    ...detected,
+    type: workspaceConfig?.type ?? input.projectType ?? detected.type,
+  };
+  const layout = workspaceConfig?.layout ?? input.projectLayout;
+  const design = workspaceConfig?.design ?? input.projectDesign;
+
+  if (layout !== undefined) profile.layout = layout;
+  if (design !== undefined) profile.design = design;
+  if (input.projectStack || workspaceConfig?.stack) {
+    profile.stack = {
+      ...detected.stack,
+      ...input.projectStack,
+      ...workspaceConfig?.stack,
+    };
+  }
+  if (input.projectToolchain || workspaceConfig?.toolchain) {
+    profile.toolchain = {
+      ...detected.toolchain,
+      ...input.projectToolchain,
+      ...workspaceConfig?.toolchain,
+    };
+  }
+  return profile;
 }
 
 export function resolveWorkspacePolicyProfile(
-  _workspaceRelPath: string,
-  _detectedWorkspace: ProjectProfile,
-  _rootConfig?: {
-    project?: { design?: ProjectDesign; toolchain?: ProjectProfile["toolchain"] };
+  workspaceRelPath: string,
+  detectedWorkspace: ProjectProfile,
+  rootConfig?: {
+    project?: {
+      design?: ProjectDesign;
+      toolchain?: ProjectProfile["toolchain"];
+    };
     workspaces?: Readonly<Record<string, WorkspaceProfileConfig>>;
   },
-): ProjectProfile & { design?: ProjectDesign } {
-  throw new Error("Not implemented");
+): ProjectProfile {
+  let bestMatch = "";
+  let workspaceConfig: WorkspaceProfileConfig | undefined;
+  for (const [workspacePath, config] of Object.entries(
+    rootConfig?.workspaces ?? {},
+  )) {
+    if (
+      workspacePath.length > bestMatch.length &&
+      (workspaceRelPath === workspacePath ||
+        workspaceRelPath.startsWith(`${workspacePath}/`))
+    ) {
+      bestMatch = workspacePath;
+      workspaceConfig = config;
+    }
+  }
+  return mergeProfileOverrides({
+    detected: detectedWorkspace,
+    projectDesign: rootConfig?.project?.design,
+    projectToolchain: rootConfig?.project?.toolchain,
+    workspaceConfig,
+  });
 }

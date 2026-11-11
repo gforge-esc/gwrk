@@ -131,4 +131,20 @@ describe("FR-001: architecture metadata in prompts (044 phase p01)", () => {
     expect(withoutDesign).not.toMatch(/<design\b/);
     expect(withDesign.match(/<design\b[^>]*>[\s\S]*?<\/design>/)?.[0]).toContain("layered");
   });
+
+  it("renders escaped design metadata when the project type is unknown", () => {
+    const profile = {
+      type: "unknown",
+      design: {
+        architecture: "Ports & <adapters>",
+        principles: [],
+        templateVersion: "1.0.0" as const,
+      },
+    };
+    const prompt = "[type: generic]Inspect ports.[/type]";
+    const result = conditionPrompt(prompt, profile);
+    expect(result).toContain("<architecture>Ports &amp; &lt;adapters&gt;</architecture>");
+    expect(result).toContain("</design>\n</project_context>");
+    expect(result.endsWith(prompt)).toBe(true);
+  });
 });

@@ -288,6 +288,30 @@ describe("FR-001: architecture-aware workspace profiles (044 phase p01)", () => 
     expect(result).toMatchObject({ design: localDesign, stack: { language: "Python" } });
   });
 
+  it("stops config lookup at the current Git worktree root", async () => {
+    write("services/.git", "gitdir: /unused/nested-worktree\n");
+    const result = await detectProfile(path.join(root, "services/api"));
+    expect(result.design).toBeUndefined();
+    expect(result.toolchain).toEqual({ primary: "ruff", test: "pytest" });
+  });
+
+  it("keeps the detected workspace language when its framework is overridden", async () => {
+    const { resolveWorkspaceProfile } = await import("./profile-detector.js");
+    write(
+      ".gwrkrc.json",
+      JSON.stringify({
+        project: { name: "fixture", design, stack: { language: "TypeScript" } },
+        workspaces: { "services/api": { stack: { framework: "Django" } } },
+      }),
+    );
+    const result = await resolveWorkspaceProfile(root, "services/api");
+    expect(result).toMatchObject({
+      design,
+      stack: { language: "Python", framework: "Django" },
+      toolchain: { primary: "ruff", test: "pytest" },
+    });
+  });
+
   it("TR-001: preserves explicit workspace design through config parsing", async () => {
     const { GwrkConfigSchema } = await import("../utils/config.js");
     const localDesign = { ...design, architecture: "clean", principles: [] };

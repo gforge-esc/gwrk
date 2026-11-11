@@ -8,6 +8,13 @@
 
 import fs from "node:fs";
 import path from "node:path";
+import { DesignSchema } from "../domain/architecture-context.js";
+import {
+  mergeProfileOverrides,
+  resolveWorkspacePolicyProfile,
+} from "../domain/profile-policy.js";
+import type { WorkspaceProfileConfig } from "../domain/types.js";
+import { GwrkConfigSchema } from "../utils/config.js";
 import { ToolchainConfigSchema } from "../utils/config.js";
 import type { ProjectProfile } from "./prompt-conditioner.js";
 
@@ -62,6 +69,8 @@ export async function detectProfile(
     profile.type = "gwrk-native";
     profile.stack.language = "TypeScript";
     profile.layout = "src-nested";
+    const configured = resolveDetectedProfile(projectRoot, profile);
+    if (configured) return configured;
     return profile;
   }
 
@@ -79,6 +88,8 @@ export async function detectProfile(
       formatter: "biome",
       test: "vitest",
     };
+    const configured = resolveDetectedProfile(projectRoot, profile);
+    if (configured) return configured;
     return profile;
   }
 
@@ -376,13 +387,70 @@ export async function detectProfile(
             profile.toolchain = { ...profile.toolchain, ...parsed.data };
           }
         }
+        return mergeProfileOverrides({
+          detected: profile,
+          projectDesign: DesignSchema.safeParse(rc.project.design).data,
+        });
       }
     }
   } catch {
     // Ignore config load errors
   }
 
+  const configured = resolveDetectedProfile(projectRoot, profile);
+  if (configured) return configured;
   return profile;
+}
+
+function resolveDetectedProfile(
+  detectedRoot: string,
+  detected: ProjectProfile,
+): ProjectProfile | undefined {
+  const start = path.resolve(detectedRoot);
+  let directory = start;
+  while (true) {
+    const configPath = path.join(directory, ".gwrkrc.json");
+    if (fs.existsSync(configPath)) {
+      try {
+        const config = JSON.parse(fs.readFileSync(configPath, "utf-8"));
+        const design = DesignSchema.safeParse(config?.project?.design).data;
+        if (directory === start) {
+          return mergeProfileOverrides({ detected, projectDesign: design });
+        }
+
+        const workspaceSchema =
+          GwrkConfigSchema.shape.workspaces.unwrap().valueSchema;
+        const workspaces: Record<string, WorkspaceProfileConfig> =
+          Object.create(null);
+        for (const [workspacePath, entry] of Object.entries(
+          config?.workspaces ?? {},
+        )) {
+          const parsed = workspaceSchema.safeParse(entry);
+          if (parsed.success) workspaces[workspacePath] = parsed.data;
+        }
+        return resolveWorkspacePolicyProfile(
+          path.relative(directory, start).split(path.sep).join("/"),
+          detected,
+          {
+            project: {
+              design,
+              toolchain: ToolchainConfigSchema.safeParse(
+                config?.project?.toolchain,
+              ).data,
+            },
+            workspaces,
+          },
+        );
+      } catch {
+        return undefined;
+      }
+    }
+    const parent = path.dirname(directory);
+    if (directory === parent || fs.existsSync(path.join(directory, ".git"))) {
+      return undefined;
+    }
+    directory = parent;
+  }
 }
 
 /**
@@ -390,11 +458,23 @@ export async function detectProfile(
  * Checks if the current path is within a defined workspace in .gwrkrc.json.
  */
 export function resolveWorkspaceProfile(
+  projectRoot: string,
+  workspacePath: string,
+): Promise<ProjectProfile>;
+export function resolveWorkspaceProfile(
+  cwd: string,
+  projectRoot: string,
+  config: unknown,
+): ProjectProfile | undefined;
+export function resolveWorkspaceProfile(
   cwd: string,
   projectRoot: string,
   // biome-ignore lint/suspicious/noExplicitAny: workspace config object
-  config: any,
-): ProjectProfile | undefined {
+  config?: any,
+): ProjectProfile | undefined | Promise<ProjectProfile> {
+  if (config === undefined) {
+    return detectProfile(path.resolve(cwd, projectRoot));
+  }
   if (!config.workspaces) return undefined;
 
   const relativeCwd = path.relative(projectRoot, cwd);
@@ -418,8 +498,25 @@ export function resolveWorkspaceProfile(
       type: wsConfig.type || "nodejs",
       stack: wsConfig.stack || {},
       layout: wsConfig.layout || "flat",
+      ...workspaceProfileMetadata(config.project, wsConfig),
     };
   }
 
   return undefined;
+}
+
+function workspaceProfileMetadata(
+  project: WorkspaceProfileConfig | undefined,
+  workspace: WorkspaceProfileConfig,
+): Pick<ProjectProfile, "design" | "toolchain"> {
+  const { type: _type, ...metadata } = mergeProfileOverrides({
+    detected: { type: "unknown" },
+    projectDesign: DesignSchema.safeParse(project?.design).data,
+    projectToolchain: ToolchainConfigSchema.safeParse(project?.toolchain).data,
+    workspaceConfig: {
+      design: DesignSchema.safeParse(workspace.design).data,
+      toolchain: ToolchainConfigSchema.safeParse(workspace.toolchain).data,
+    },
+  });
+  return metadata;
 }

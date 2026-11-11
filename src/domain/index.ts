@@ -9,3 +9,4 @@ export * from "./prompt-conditioner.js";
 export * from "./agent-config.js";
 export * from "./test-rules.js";
 export * from "./verdict.js";
+export * from "./profile-policy.js";
