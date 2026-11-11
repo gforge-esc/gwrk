@@ -16,17 +16,19 @@
           "id": "T001",
           "title": "Create preflight.sh",
           "description": "NEW deploy/hosted-auth-proof/preflight.sh. Reject missing credentials, placeholders and wildcard allowlist entries. Tests: tests/hosted-auth-proof/preflight.test.ts",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T001-gate.sh",
-          "sp": 2
+          "sp": 2,
+          "completedAt": "2026-11-11T16:27:12.391Z"
         },
         {
           "id": "T002",
           "title": "Create .env.example",
           "description": "NEW deploy/hosted-auth-proof/.env.example. Name the public host inputs",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T002-gate.sh",
-          "sp": 2
+          "sp": 2,
+          "completedAt": "2026-11-11T16:27:13.680Z"
         }
       ],
       "sp_estimate": 4,
