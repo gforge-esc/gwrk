@@ -113,6 +113,14 @@ afterEach(() => {
 });
 
 describe("029 FR-013: every dispatch learns what it may not do (US-004)", () => {
+  it("039: every stage receives the selected target independently of enforcement placeholders", async () => {
+    mkdirSync(path.join(workDir, ".gwrk"), { recursive: true });
+    writeFileSync(path.join(workDir, ".gwrk/architecture.md"), "Target: pure domain. Conformance: unassessed.");
+    for (const workflow of ["gwrk-plan", "gwrk-implement", "review-code-cli"]) {
+      expect(await assembledPrompt(workDir, workflow)).toContain("<architecture_target>\nTarget: pure domain. Conformance: unassessed.");
+    }
+  });
+
   it("FR-013: injects architecture_decisions when the index exists", async () => {
     writeIndexFixture(workDir);
 
@@ -204,7 +212,7 @@ describe("029 FR-013: every dispatch learns what it may not do (US-004)", () => 
     expect(new Set(blocks).size).toBe(1);
   });
 
-  it("FR-013: the grounding array carries exactly four entries and no scope filter", async () => {
+  it("FR-013: the grounding array includes the derived target and decisions without a scope filter", async () => {
     // Asserted on the source so a scope or stage filter cannot be introduced
     // later without this failing (contract §4). `resolveEnforcementSkills`
     // takes (projectRoot, scope, profile); the grounding loop must not.
@@ -216,7 +224,8 @@ describe("029 FR-013: every dispatch learns what it may not do (US-004)", () => 
     expect(start).toBeGreaterThan(-1);
     const literal = source.slice(start, source.indexOf("];", start) + 2);
 
-    expect(literal.match(/\btag:/g)).toHaveLength(4);
+    expect(literal.match(/\btag:/g)).toHaveLength(5);
+    expect(literal).toContain("architecture_target");
     expect(literal).toContain("architecture_decisions");
     expect(literal).toContain(".gwrk/decisions/index.md");
     expect(literal).not.toMatch(/\bscope\b/);

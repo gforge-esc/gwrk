@@ -5,6 +5,7 @@
 
 import { Command } from "commander";
 import pkg from "../package.json" with { type: "json" };
+import { assessCommand } from "./commands/assess.js";
 import { dbCommand } from "./commands/db.js";
 import { defineCommand } from "./commands/define.js";
 import { deviceCommand } from "./commands/device.js";
@@ -59,6 +60,7 @@ program
         const pillars = ["define", "ship", "test", "gate", "measure"];
         const ops = [
           "init",
+          "assess",
           "tasks",
           "plan",
           "db",
@@ -109,6 +111,7 @@ program
   });
 
 program.addCommand(initCommand);
+program.addCommand(assessCommand);
 program.addCommand(projectCommand);
 
 // The Foxtrot Charlie Pillars
@@ -179,7 +182,9 @@ program.hook("preAction", (thisCommand, actionCommand) => {
     .filter(Boolean)
     .join(" ");
   const resolvesOwnRoot =
-    actionCommand.name() === "init" || commandPath === "define adr";
+    actionCommand.name() === "init" ||
+    actionCommand.name() === "assess" ||
+    commandPath === "define adr";
 
   if (!resolvesOwnRoot) {
     // This will process.exit(1) if config is missing or invalid

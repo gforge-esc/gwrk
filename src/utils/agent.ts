@@ -586,6 +586,10 @@ export async function dispatchToAgent(task: TaskDispatch): Promise<TaskResult> {
   const workDir = task.workDir || projectRoot;
   const groundingFiles = [
     {
+      path: path.join(workDir, ".gwrk/architecture.md"),
+      tag: "architecture_target",
+    },
+    {
       path: path.join(workDir, ".gwrk/ontology/domain.md"),
       tag: "domain_ontology",
     },

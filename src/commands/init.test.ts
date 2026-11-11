@@ -98,6 +98,28 @@ describe("Init Command Tests", () => {
     vi.restoreAllMocks();
   });
 
+  it("039: refuses to overwrite malformed tracked configuration", async () => {
+    fs.writeFileSync(path.join(tempDir, ".gwrkrc.json"), "{ unfinished");
+    await expect(initAction({ contextOnly: true })).rejects.toThrow(/invalid JSON/);
+    expect(fs.readFileSync(path.join(tempDir, ".gwrkrc.json"), "utf8")).toBe("{ unfinished");
+  });
+
+  it("039: context-only init preserves personal settings and source without agent provisioning", async () => {
+    fs.writeFileSync(path.join(tempDir, ".gwrkrc.json"), JSON.stringify({ project: { name: "existing", architecture: { doc: "design.md", decisions: "docs/adr" } } }));
+    const personal = '{"agents":{"define":"custom-agent"}}';
+    fs.writeFileSync(path.join(tempDir, ".gwrkrc.local.json"), personal);
+    fs.writeFileSync(path.join(tempDir, "source.py"), "print('unchanged')\n");
+    await initAction({ contextOnly: true, architecture: "hexagonal-functional", language: "Python", framework: "FastAPI" });
+    const tracked = JSON.parse(fs.readFileSync(path.join(tempDir, ".gwrkrc.json"), "utf8"));
+    expect(tracked.project.architecture.decisions).toBe("docs/adr");
+    expect(tracked.project.design.architecture).toBe("hexagonal-functional");
+    expect(fs.readFileSync(path.join(tempDir, ".gwrkrc.local.json"), "utf8")).toBe(personal);
+    expect(fs.readFileSync(path.join(tempDir, "source.py"), "utf8")).toBe("print('unchanged')\n");
+    const { BUILTIN_AGENTS } = await import("../plugins/builtins/agents/index.js");
+    expect(BUILTIN_AGENTS.agy.isAvailable).not.toHaveBeenCalled();
+    expect(fs.readFileSync(path.join(tempDir, ".gwrk/decisions/index.md"), "utf8")).toContain("Proposed");
+  });
+
   describe("FR-001: Unified Init Wizard", () => {
     it("US-001: should run interactive wizard when no flags provided", async () => {
       const mockRl = {
@@ -509,15 +531,13 @@ describe("Init Command Tests", () => {
       expect(body).toContain("ADR-001");
     });
 
-    it("FR-017: writes no index when docs/decisions is empty", async () => {
+    it("039: creates a Proposed target decision and index for a fresh project", async () => {
       fs.writeFileSync(path.join(tempDir, "package.json"), JSON.stringify({ name: "test" }));
 
       await initAction({ nonInteractive: true });
 
-      // init scaffolds the directory itself, so "empty" is the normal case for
-      // a fresh project — and an index of nothing is worse than no index.
       expect(fs.existsSync(path.join(tempDir, "docs", "decisions"))).toBe(true);
-      expect(fs.existsSync(path.join(tempDir, INDEX_REL))).toBe(false);
+      expect(fs.readFileSync(path.join(tempDir, INDEX_REL), "utf8")).toContain("Proposed");
     });
 
     it("FR-017: does not fail init when a record is unparseable", async () => {

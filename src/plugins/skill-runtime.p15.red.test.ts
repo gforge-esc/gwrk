@@ -7,8 +7,6 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { PluginLoader } from "./loader.js";
 import { resolveEnforcementSkills } from "./skill-runtime.js";
 
-// Module does not exist yet (RED)
-
 vi.mock("node:fs/promises");
 vi.mock("./loader.js");
 
