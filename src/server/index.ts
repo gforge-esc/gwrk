@@ -61,15 +61,19 @@ export interface ServerStartOptions {
   projectRoot?: string;
   pid?: ServerPidScope;
   ledger?: DispatchLedgerScope;
+  sandbox?: SandboxManager;
 }
 
 export class ScopedSandboxManager extends SandboxManager {
-  constructor(private readonly root: string) {
+  constructor(
+    private readonly root: string,
+    private readonly gitEnv = () => repositoryGitEnv(root),
+  ) {
     super(root);
   }
 
   protected override gitOptions() {
-    return { env: repositoryGitEnv(this.root) };
+    return { env: this.gitEnv() };
   }
 
   override async pruneSandboxes(): Promise<void> {
@@ -120,9 +124,10 @@ export async function startServer(
 
   const monitor = new SystemMonitor(config);
   const sandbox =
-    options.projectRoot === undefined
+    options.sandbox ??
+    (options.projectRoot === undefined
       ? new SandboxManager(projectRoot)
-      : new ScopedSandboxManager(projectRoot);
+      : new ScopedSandboxManager(projectRoot));
 
   const git = new GitManager(projectRoot);
   const queue = new DispatchQueue(

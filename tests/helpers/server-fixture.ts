@@ -46,6 +46,17 @@ interface FixtureOptions {
   pauseDispatch?: boolean;
 }
 
+function fixtureGitEnv(root: string): NodeJS.ProcessEnv {
+  return {
+    ...repositoryGitEnv(root),
+    GIT_CONFIG_GLOBAL: join(root, "no-global-config"),
+    GIT_CONFIG_NOSYSTEM: "1",
+    GIT_EDITOR: "true",
+    EDITOR: "true",
+    GIT_TERMINAL_PROMPT: "0",
+  };
+}
+
 export function fixtureGit(root: string, ...args: string[]): string {
   const options = {
     cwd: root,
@@ -53,15 +64,9 @@ export function fixtureGit(root: string, ...args: string[]): string {
     stdio: ["ignore", "pipe", "pipe"] as ("ignore" | "pipe")[],
     timeout: 5_000,
   };
-  const noninteractive = {
-    GIT_EDITOR: "true",
-    EDITOR: "true",
-    GIT_TERMINAL_PROMPT: "0",
-  };
-  const env = { ...repositoryGitEnv(root), ...noninteractive };
   return execFileSync("git", args, {
     ...options,
-    env,
+    env: fixtureGitEnv(root),
   }).trim();
 }
 
@@ -139,12 +144,16 @@ export async function createServerFixture(
       },
     });
     const ledger = { db, projectId };
+    const sandbox = new ScopedSandboxManager(projectRoot, () =>
+      fixtureGitEnv(projectRoot),
+    );
 
     if (mode === "listen") {
       app = await startServer(config, {
         handleSignals: false,
         projectRoot,
         ledger,
+        sandbox,
         pid: {
           writePid(pid) {
             mkdirSync(stateDir, { recursive: true });
@@ -163,7 +172,6 @@ export async function createServerFixture(
     } else {
       app = fastify();
       const monitor = new SystemMonitor(config);
-      const sandbox = new ScopedSandboxManager(projectRoot);
       const queue = new DispatchQueue(
         config,
         monitor,

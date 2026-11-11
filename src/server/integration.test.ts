@@ -824,6 +824,90 @@ describe("Server E2E Integration", () => {
     }
   });
 
+  it("removes a missing worktree registration and reuses its dispatch branch", async () => {
+    const fixture = await createServerFixture("routes", {
+      routes: ["dispatch"],
+    });
+    const dispatch = {
+      method: "POST" as const,
+      url: "/api/dispatch",
+      payload: { featureId: "missing-worktree", phaseId: "phase-01" },
+    };
+    vi.mocked(ShipOrchestrator).mockImplementationOnce(
+      ({ cwd }) =>
+        ({
+          run: vi.fn(async () => {
+            rmSync(cwd, { recursive: true, force: true });
+            return 0;
+          }),
+          getResult: () => ({}),
+        }) as unknown as ShipOrchestrator,
+    );
+    try {
+      for (let i = 0; i < 2; i++) {
+        const response = await fixture.app.inject(dispatch);
+        expect(response.statusCode).toBe(201);
+        await vi.waitFor(() => {
+          expect(fixture.journal().at(-1)).toMatchObject({
+            id: response.json().id,
+            status: "completed",
+          });
+        });
+        expect(
+          fixtureGit(
+            fixture.projectRoot,
+            "worktree",
+            "list",
+            "--porcelain",
+          ).match(/^worktree .+$/gm),
+        ).toEqual([`worktree ${fixture.projectRoot}`]);
+      }
+      expect(ShipOrchestrator).toHaveBeenCalledTimes(2);
+    } finally {
+      await fixture.close();
+    }
+  });
+
+  it("keeps machine Git hooks out of fixture setup and dispatch", async () => {
+    const parent = mkdtempSync(join(tmpdir(), "gwrk-git-config-"));
+    const marker = join(parent, "fsmonitor-ran");
+    const hook = join(parent, "fsmonitor");
+    const globalConfig = join(parent, "gitconfig");
+    let fixture: ServerFixture | undefined;
+    try {
+      writeFileSync(
+        hook,
+        `#!/bin/sh\nprintf "ran" > '${marker.replaceAll("'", "'\\''")}'\n`,
+        { mode: 0o700 },
+      );
+      execFileSync("git", [
+        "config",
+        "--file",
+        globalConfig,
+        "core.fsmonitor",
+        hook,
+      ]);
+      vi.stubEnv("GIT_CONFIG_GLOBAL", globalConfig);
+      fixture = await createServerFixture("routes", { routes: ["dispatch"] });
+      const response = await fixture.app.inject({
+        method: "POST",
+        url: "/api/dispatch",
+        payload: { featureId: "isolated-config", phaseId: "phase-01" },
+      });
+      expect(response.statusCode).toBe(201);
+      await fixture.app.close();
+      expect(fixture.journal().at(-1)?.status).toBe("completed");
+      expect(existsSync(marker)).toBe(false);
+    } finally {
+      try {
+        await fixture?.close();
+      } finally {
+        vi.unstubAllEnvs();
+        rmSync(parent, { recursive: true, force: true });
+      }
+    }
+  });
+
   it("completes a dispatch with spaces in its temporary directory", async () => {
     const parent = mkdtempSync(join(tmpdir(), "gwrk fixture space "));
     let fixture: ServerFixture | undefined;

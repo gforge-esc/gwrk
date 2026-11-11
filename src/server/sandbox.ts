@@ -363,10 +363,23 @@ export class SandboxManager {
     featureId: string,
     options: DestroyOptions = {},
   ): Promise<void> {
-    if (!fs.existsSync(workDir)) return;
+    const projectRoot = path.dirname(path.dirname(this.runsDir));
+    if (!fs.existsSync(workDir)) {
+      const gitOptions = this.gitOptions();
+      if (!gitOptions.env) return;
+      const registrations = execFileSync(
+        "git",
+        ["worktree", "list", "--porcelain", "-z"],
+        { cwd: projectRoot, ...gitOptions, encoding: "utf-8" },
+      );
+      if (registrations.split("\0").includes(`worktree ${workDir}`)) {
+        this.runWorktree(["remove", "--force", workDir], projectRoot);
+      }
+      this.forgetSandbox(workDir);
+      return;
+    }
 
     const { autoCommitPush = true, teardown } = options;
-    const projectRoot = path.dirname(path.dirname(this.runsDir));
 
     // 0. Release what `setup` started, while the worktree still exists.
     //    Best-effort: a failing teardown must not strand the worktree forever,
