@@ -49,6 +49,7 @@ jobs:
         run: |
           mkdir -p "$RUNNER_TEMP/gwrk-release"
           node scripts/release/build-linux-release.mjs "$RUNNER_TEMP/gwrk-release" "$RELEASE_TAG"
+          cp deploy/linux-runner/install-release.sh "$RUNNER_TEMP/gwrk-release/"
 
       - name: Upload Linux release assets
         if: ${{ steps.release.outputs.release_created }}
@@ -66,7 +67,7 @@ jobs:
           # then upload idempotently so re-runs don't fail on an existing asset.
           for attempt in $(seq 1 6); do
             if gh release view "$tag" >/dev/null 2>&1; then
-              gh release upload "$tag" "$file" "${file}.sha256" release-manifest.json --clobber
+              gh release upload "$tag" "$file" "${file}.sha256" release-manifest.json install-release.sh --clobber
               echo "Uploaded ${file} to release ${tag}"
               exit 0
             fi

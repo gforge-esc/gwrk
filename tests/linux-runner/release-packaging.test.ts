@@ -22,9 +22,18 @@ describe("Linux release archive", () => {
       const source = join(root, "source");
       mkdirSync(join(source, "dist"), { recursive: true });
       mkdirSync(join(source, ".gwrk"));
+      mkdirSync(join(source, "deploy/linux-runner"), { recursive: true });
       copyFileSync("package.json", join(source, "package.json"));
       copyFileSync("pnpm-lock.yaml", join(source, "pnpm-lock.yaml"));
       writeFileSync(join(source, "dist/cli.js"), "// fixture");
+      copyFileSync(
+        "deploy/linux-runner/install-release.sh",
+        join(source, "deploy/linux-runner/install-release.sh"),
+      );
+      writeFileSync(
+        join(source, "deploy/linux-runner/.env"),
+        "synthetic-secret",
+      );
       for (const path of [".env", ".gwrkrc.local.json", ".gwrk/config.json"]) {
         writeFileSync(join(source, path), "synthetic-secret");
       }
@@ -47,6 +56,8 @@ describe("Linux release archive", () => {
 
       expect(files).toContain("package/dist/cli.js");
       expect(files).toContain("package/pnpm-lock.yaml");
+      expect(files).toContain("package/deploy/linux-runner/install-release.sh");
+      expect(files).not.toContain("package/deploy/linux-runner/.env");
       expect(files).not.toContain("package/.gwrkrc.local.json");
       expect(files).not.toContain("package/.env");
       expect(files).not.toContain("package/.gwrk/config.json");

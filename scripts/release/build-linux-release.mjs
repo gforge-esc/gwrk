@@ -3,47 +3,11 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { execFileSync } from "node:child_process";
-import { createHash } from "node:crypto";
 import { closeSync, openSync } from "node:fs";
-import {
-  copyFile,
-  mkdtemp,
-  readFile,
-  readdir,
-  rm,
-  writeFile,
-} from "node:fs/promises";
+import { copyFile, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
-
-async function sha256(path) {
-  return createHash("sha256")
-    .update(await readFile(path))
-    .digest("hex");
-}
-
-async function readPluginInventory(root, parse) {
-  const plugins = [];
-  for (const collection of (await readdir(root)).sort()) {
-    const directory = join(root, collection);
-    const entries = await readdir(directory, { withFileTypes: true });
-    for (const plugin of entries
-      .filter((entry) => entry.isDirectory())
-      .map((entry) => entry.name)
-      .sort()) {
-      const manifest = parse(
-        await readFile(join(directory, plugin, "manifest.yaml"), "utf8"),
-      );
-      plugins.push({
-        kind: manifest.type,
-        name: manifest.name,
-        version: manifest.version,
-      });
-    }
-  }
-  return plugins;
-}
 
 export async function packRelease(sourceDir, outputFile) {
   const staging = await mkdtemp(join(tmpdir(), "gwrk-pack-"));
@@ -124,18 +88,11 @@ async function buildRelease(outputDir, releaseTag) {
     const tarball = join(staging, "release.tgz");
     await packRelease(staging, tarball);
 
-    const { parse } = await import(
-      pathToFileURL(join(staging, "node_modules/yaml/dist/index.js")).href
-    );
     const { validateReleaseManifest } = await import(
       pathToFileURL(join(staging, "dist/domain/release-packaging.js")).href
     );
-    const migrationsRoot = join(staging, "dist/db/migrations");
-    const migrations = await Promise.all(
-      (await readdir(migrationsRoot)).sort().map(async (name) => ({
-        name,
-        sha256: await sha256(join(migrationsRoot, name)),
-      })),
+    const { readReleaseInventory, sha256 } = await import(
+      pathToFileURL(join(staging, "dist/adapters/release/inventory.js")).href
     );
     const tarballSha256 = await sha256(tarball);
     const manifest = validateReleaseManifest({
@@ -147,12 +104,7 @@ async function buildRelease(outputDir, releaseTag) {
       platform: process.platform,
       arch: process.arch,
       tarballSha256,
-      lockfileSha256: await sha256(join(staging, "pnpm-lock.yaml")),
-      plugins: await readPluginInventory(
-        join(staging, "dist/plugins/builtins"),
-        parse,
-      ),
-      migrations,
+      ...(await readReleaseInventory(staging)),
     });
     if (!manifest.ok) throw new Error(manifest.errors.join("\n"));
 
