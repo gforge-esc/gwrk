@@ -16,6 +16,7 @@ import {
   deriveHarvestTerminalStatus,
   evaluateBranchCleanupSafety,
   planHarvestStages,
+  scopeVerifiedMergeToPhases,
   verifyHarvestTarget,
 } from "./durable-harvest.js";
 
@@ -91,6 +92,53 @@ const cleanup = {
 };
 
 describe("FR-002 harvest identity and target verification", () => {
+  it("scopes a verified whole-feature merge to the phases at checkout", () => {
+    const input = candidate({ headBranch: `feat/${featureId}` });
+    const verified = verifyHarvestTarget(project, input);
+    if (!verified.ok) throw new Error(verified.reason);
+    const fact = {
+      prNumber: 42,
+      terminalEvent: input.terminalEvent,
+      mergeCommitSha: sha,
+    };
+    const scopes = scopeVerifiedMergeToPhases(verified, fact, [
+      "phase-1",
+      "phase-02",
+      "phase-01",
+    ]);
+    expect(scopes).toEqual(
+      [phaseId, "phase-02"].map((phaseId) => ({
+        featureId,
+        phaseId,
+        workKey: computeHarvestWorkKey({ ...fact, featureId, phaseId }),
+      })),
+    );
+  });
+
+  it.each([
+    ["merged", `feat/${featureId}-${phaseId}`],
+    ["closed_unmerged", `feat/${featureId}`],
+  ] as const)(
+    "keeps a single scope for %s on %s",
+    (terminalEvent, headBranch) => {
+      const fact = {
+        prNumber: 42,
+        terminalEvent,
+        mergeCommitSha: terminalEvent === "merged" ? sha : null,
+      };
+      const verified = verifyHarvestTarget(
+        project,
+        candidate({ ...fact, headBranch }),
+      );
+      if (!verified.ok) throw new Error(verified.reason);
+      expect(
+        scopeVerifiedMergeToPhases(verified, fact, [phaseId, "phase-02"]),
+      ).toEqual([
+        { featureId, phaseId: verified.phaseId, workKey: verified.workKey },
+      ]);
+    },
+  );
+
   it("TR-002 converges transports and arrival order on the same verified work key", () => {
     const inputs = (
       ["manual_cli", "github_poller", "github_webhook"] as const

@@ -300,8 +300,10 @@ export interface OperationsStorePort {
   }): DurableDispatchOperation | null;
 
   /**
-   * Commit the delivery and operation in one transaction.
-   * Resolve manual phase scope before intake with scopeManualHarvestToPhases.
+   * Commit the original delivery and all resolved operations in one transaction.
+   * Resolve checkout coverage with scopeManualHarvestToPhases or scopeVerifiedMergeToPhases before intake.
+   * Replay returns every persisted operation in the original scope order.
+   * Reject transport ID reuse with a different repository or payload digest.
    * Resolve work keys and their aliases within the project before matching commit scope.
    * Use canCorrelateHarvestIntake to match local commits to verified merged pull requests.
    * If several verified pull requests match a local commit, use the earliest operation.
@@ -316,13 +318,20 @@ export interface OperationsStorePort {
     payloadDigest: string;
     receivedAt: string;
     target:
-      | { accepted: true; operation: DurableHarvestOperation }
+      | {
+          accepted: true;
+          operations: readonly [
+            DurableHarvestOperation,
+            ...DurableHarvestOperation[],
+          ];
+        }
       | { accepted: false; projectId: string | null; reason: string };
   }):
     | {
         ok: true;
-        operation: DurableHarvestOperation | null;
+        operations: DurableHarvestOperation[];
         deduplicatedTransport: boolean;
+        /** True when every accepted scope matched existing work. */
         deduplicatedWork: boolean;
       }
     | { ok: false; code: "DELIVERY_ID_CONFLICT" };
@@ -346,6 +355,7 @@ export interface OperationsStorePort {
   /**
    * Persist the full, nonempty set of initial receipts in one fenced write.
    * Require all stages for the supplied phase IDs and the operation's terminal event.
+   * Validate initial statuses against the resolved targets with isCompleteHarvestStagePlan.
    * If the operation names a phase, require that phase alone.
    * A replay with the same phase and stage keys preserves every receipt.
    * Reject incomplete or changed plans without writing a partial batch.
@@ -354,6 +364,8 @@ export interface OperationsStorePort {
     fence: LeaseFence;
     nowIso: string;
     phaseIds: readonly string[];
+    hasSlackTarget: boolean;
+    hasRemoteBranchTarget: boolean;
     stages: readonly HarvestStagePlanEntry[];
   }): FencedWrite | { ok: false; code: "HARVEST_PLAN_CONFLICT" };
   /** Update a planned receipt. Never add a new stage after initialization. */

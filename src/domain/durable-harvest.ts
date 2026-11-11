@@ -97,12 +97,16 @@ interface HarvestTarget {
   phaseId: string | null;
 }
 
+type HarvestPullRequestIdentity = {
+  prNumber: number;
+  terminalEvent: HarvestTerminalEvent;
+  mergeCommitSha: string | null;
+};
+
+type HarvestWorkScope = HarvestTarget & { workKey: string };
+
 export function computeHarvestWorkKey(
-  input: HarvestTarget & {
-    prNumber: number;
-    terminalEvent: HarvestTerminalEvent;
-    mergeCommitSha: string | null;
-  },
+  input: HarvestTarget & HarvestPullRequestIdentity,
 ): string {
   const mergeSha =
     input.terminalEvent === "merged"
@@ -151,6 +155,22 @@ export function scopeManualHarvestToPhases(
     ...candidate,
     deliveryId: JSON.stringify([candidate.deliveryId, phaseId]),
     explicitPhaseId: phaseId,
+  }));
+}
+
+/** Use phase IDs discovered at the verified merge checkout. */
+export function scopeVerifiedMergeToPhases(
+  { featureId, phaseId, workKey }: HarvestWorkScope,
+  fact: HarvestPullRequestIdentity,
+  phaseIds: readonly string[],
+): HarvestWorkScope[] {
+  if (phaseId !== null || fact.terminalEvent !== "merged" || !phaseIds.length) {
+    return [{ featureId, phaseId, workKey }];
+  }
+  return [...new Set(phaseIds.map(normalizePhaseId))].map((phaseId) => ({
+    featureId,
+    phaseId,
+    workKey: computeHarvestWorkKey({ ...fact, featureId, phaseId }),
   }));
 }
 
@@ -218,7 +238,7 @@ export function verifyHarvestTarget(
   project: EnrolledProject,
   candidate: HarvestCandidateInput,
 ):
-  | ({ ok: true; workKey: string } & HarvestTarget)
+  | ({ ok: true } & HarvestWorkScope)
   | {
       ok: false;
       code:
@@ -419,15 +439,16 @@ export function planHarvestStages(input: {
 export function isCompleteHarvestStagePlan(input: {
   terminalEvent: HarvestTerminalEvent;
   phaseIds: readonly string[];
+  hasSlackTarget: boolean;
+  hasRemoteBranchTarget: boolean;
   stages: readonly HarvestStagePlanEntry[];
 }): boolean {
-  const expected = planHarvestStages({
-    ...input,
-    hasSlackTarget: false,
-    hasRemoteBranchTarget: false,
-  });
-  const stageKey = ({ phaseKey, stage }: HarvestStagePlanEntry) =>
-    JSON.stringify([phaseKey, stage]);
+  const expected = planHarvestStages(input);
+  const stageKey = ({
+    phaseKey,
+    stage,
+    initialStatus,
+  }: HarvestStagePlanEntry) => JSON.stringify([phaseKey, stage, initialStatus]);
   const remaining = new Set(expected.map(stageKey));
   return (
     remaining.size > 0 &&

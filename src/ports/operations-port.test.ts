@@ -16,6 +16,7 @@ import {
   isCompleteHarvestStagePlan,
   planHarvestStages,
   scopeManualHarvestToPhases,
+  scopeVerifiedMergeToPhases,
   verifyHarvestTarget,
 } from "../domain/durable-harvest.js";
 import type {
@@ -132,7 +133,7 @@ function harvestIntake(
     candidate,
     payloadDigest: operationId,
     receivedAt: nowIso,
-    target: { accepted: true, operation },
+    target: { accepted: true, operations: [operation] },
   };
 }
 
@@ -164,70 +165,118 @@ function restoreHarvestIntake(persisted: {
   harvests: DurableHarvestOperation[];
   stages: HarvestStageReceipt[];
   aliases?: { projectId: string; workKey: string; operationId: string }[];
+  deliveries?: {
+    key: string;
+    repoSlug: string | null;
+    payloadDigest: string;
+    operationIds: string[];
+  }[];
 }) {
   const rows = structuredClone(persisted);
   const aliases = rows.aliases ?? [];
+  const deliveries = rows.deliveries ?? [];
   const store: Pick<OperationsStorePort, "recordHarvestIntake"> = {
-    recordHarvestIntake({ target }) {
-      if (!target.accepted) throw new Error("Expected accepted intake");
-      const incoming = target.operation;
-      const alias = aliases.find(
-        (row) =>
-          row.projectId === incoming.projectId &&
-          row.workKey === incoming.workKey,
-      );
-      const existing =
-        rows.harvests.find(
-          (row) =>
-            row.projectId === incoming.projectId &&
-            (row.workKey === incoming.workKey ||
-              row.operationId === alias?.operationId),
-        ) ??
-        rows.harvests
-          .filter((row) => canCorrelateHarvestIntake(row, incoming))
-          .sort(
-            (a, b) =>
-              a.createdAt.localeCompare(b.createdAt) ||
-              a.operationId.localeCompare(b.operationId),
-          )[0];
-      if (!existing) {
-        rows.harvests.push(incoming);
-      } else if (!alias && existing.workKey !== incoming.workKey) {
-        aliases.push({
-          projectId: incoming.projectId,
-          workKey: incoming.workKey,
-          operationId: existing.operationId,
-        });
-        if (existing.prNumber === null && incoming.prNumber !== null) {
-          const {
-            repoSlug,
-            headRepoSlug,
-            prNumber,
-            prUrl,
-            headBranch,
-            expectedHeadSha,
-            terminalAt,
-          } = incoming;
-          Object.assign(existing, {
-            repoSlug,
-            headRepoSlug,
-            prNumber,
-            prUrl,
-            headBranch,
-            expectedHeadSha,
-            terminalAt,
-          });
+    recordHarvestIntake({ candidate, payloadDigest, target }) {
+      const key = JSON.stringify([candidate.source, candidate.deliveryId]);
+      const repoSlug = candidate.repoSlug?.toLowerCase() ?? null;
+      const delivery = deliveries.find((row) => row.key === key);
+      if (delivery) {
+        if (
+          delivery.payloadDigest !== payloadDigest ||
+          delivery.repoSlug !== repoSlug
+        ) {
+          return { ok: false, code: "DELIVERY_ID_CONFLICT" };
         }
+        return {
+          ok: true,
+          operations: delivery.operationIds.map((operationId) => {
+            const operation = rows.harvests.find(
+              (row) => row.operationId === operationId,
+            );
+            if (!operation) throw new Error("Expected persisted operation");
+            return operation;
+          }),
+          deduplicatedTransport: true,
+          deduplicatedWork: delivery.operationIds.length > 0,
+        };
       }
+      const incoming = target.accepted ? target.operations : [];
+      const operations = incoming.map(matchScope);
+      deliveries.push({
+        key,
+        repoSlug,
+        payloadDigest,
+        operationIds: operations.map((row) => row.operationId),
+      });
       return {
         ok: true,
-        operation: existing ?? incoming,
+        operations,
         deduplicatedTransport: false,
-        deduplicatedWork: Boolean(existing),
+        deduplicatedWork:
+          operations.length > 0 &&
+          operations.every((row, index) => row !== incoming[index]),
       };
     },
   };
-  return { store, snapshot: () => structuredClone({ ...rows, aliases }) };
+
+  function matchScope(
+    incoming: DurableHarvestOperation,
+  ): DurableHarvestOperation {
+    const alias = aliases.find(
+      (row) =>
+        row.projectId === incoming.projectId &&
+        row.workKey === incoming.workKey,
+    );
+    const existing =
+      rows.harvests.find(
+        (row) =>
+          row.projectId === incoming.projectId &&
+          (row.workKey === incoming.workKey ||
+            row.operationId === alias?.operationId),
+      ) ??
+      rows.harvests
+        .filter((row) => canCorrelateHarvestIntake(row, incoming))
+        .sort(
+          (a, b) =>
+            a.createdAt.localeCompare(b.createdAt) ||
+            a.operationId.localeCompare(b.operationId),
+        )[0];
+    if (!existing) {
+      rows.harvests.push(incoming);
+    } else if (!alias && existing.workKey !== incoming.workKey) {
+      aliases.push({
+        projectId: incoming.projectId,
+        workKey: incoming.workKey,
+        operationId: existing.operationId,
+      });
+      if (existing.prNumber === null && incoming.prNumber !== null) {
+        const {
+          repoSlug,
+          headRepoSlug,
+          prNumber,
+          prUrl,
+          headBranch,
+          expectedHeadSha,
+          terminalAt,
+        } = incoming;
+        Object.assign(existing, {
+          repoSlug,
+          headRepoSlug,
+          prNumber,
+          prUrl,
+          headBranch,
+          expectedHeadSha,
+          terminalAt,
+        });
+      }
+    }
+    return existing ?? incoming;
+  }
+
+  return {
+    store,
+    snapshot: () => structuredClone({ ...rows, aliases, deliveries }),
+  };
 }
 
 function outbox(
@@ -327,7 +376,14 @@ function restoreRecoveryStore(persisted: {
       row.updatedAt = nowIso;
       return result;
     },
-    initializeHarvestStages({ fence, nowIso, phaseIds, stages: plan }) {
+    initializeHarvestStages({
+      fence,
+      nowIso,
+      phaseIds,
+      hasSlackTarget,
+      hasRemoteBranchTarget,
+      stages: plan,
+    }) {
       const row = harvests.find((row) => row.operationId === fence.operationId);
       if (!row) return { ok: false, code: "LEASE_FENCED" };
       const lease = validateLeaseFence(row, fence, nowIso);
@@ -338,6 +394,8 @@ function restoreRecoveryStore(persisted: {
         !isCompleteHarvestStagePlan({
           terminalEvent: row.terminalEvent,
           phaseIds,
+          hasSlackTarget,
+          hasRemoteBranchTarget,
           stages: plan,
         })
       ) {
@@ -651,7 +709,7 @@ describe("durable recovery store contract", () => {
       const first = prFirst ? pull : inputs[0];
       const overlapping = prFirst ? inputs[0] : pull;
       if (!first.target.accepted) throw new Error("Expected initial intake");
-      const original = first.target.operation;
+      const [original] = first.target.operations;
       const recordLearning = vi.fn((operation: DurableHarvestOperation) => ({
         ...learningReceipt(operation.operationId),
         phaseKey: operation.phaseId ?? "feature",
@@ -663,11 +721,11 @@ describe("durable recovery store contract", () => {
       });
       expect(resumed.store.recordHarvestIntake(overlapping)).toMatchObject({
         deduplicatedWork: true,
-        operation: { operationId: original.operationId },
+        operations: [{ operationId: original.operationId }],
       });
       expect(resumed.store.recordHarvestIntake(inputs[1])).toMatchObject({
         deduplicatedWork: false,
-        operation: { phaseId: "phase-02" },
+        operations: [{ phaseId: "phase-02" }],
       });
       const persisted = resumed.snapshot();
       expect(persisted.harvests.map(({ phaseId }) => phaseId)).toEqual([
@@ -679,8 +737,9 @@ describe("durable recovery store contract", () => {
       const replay = restoreHarvestIntake(persisted).store;
       for (const intake of [pull, ...inputs]) {
         const result = replay.recordHarvestIntake(intake);
-        if (!result.ok || !result.operation) throw new Error("Expected replay");
-        const operation = result.operation;
+        if (!result.ok || !result.operations.length)
+          throw new Error("Expected replay");
+        const [operation] = result.operations;
         const receipt = persisted.stages.find(
           ({ operationId, phaseKey }) =>
             operationId === operation.operationId &&
@@ -709,13 +768,19 @@ describe("durable recovery store contract", () => {
     });
     if (!claim) throw new Error("Expected a harvest lease");
     const phaseIds = [phaseId, "phase-02"];
+    const targets = { hasSlackTarget: true, hasRemoteBranchTarget: true };
     const plan = planHarvestStages({
       phaseIds,
       terminalEvent: "merged",
-      hasSlackTarget: true,
-      hasRemoteBranchTarget: true,
+      ...targets,
     });
-    const init = { fence: claim.fence, nowIso, phaseIds, stages: plan };
+    const init = {
+      fence: claim.fence,
+      nowIso,
+      phaseIds,
+      ...targets,
+      stages: plan,
+    };
     const firstStage = {
       ...init,
       phaseKey: phaseId,
@@ -762,13 +827,13 @@ describe("durable recovery store contract", () => {
         }),
       ).toEqual({ ok: true });
     }
-    expect(
-      afterPlan.initializeHarvestStages({ ...resumed, phaseIds, stages: plan }),
-    ).toEqual({ ok: true });
+    expect(afterPlan.initializeHarvestStages({ ...init, ...resumed })).toEqual({
+      ok: true,
+    });
     expect(
       afterPlan.initializeHarvestStages({
+        ...init,
         ...resumed,
-        phaseIds,
         stages: plan.slice(0, 5),
       }),
     ).toEqual({
@@ -799,6 +864,46 @@ describe("durable recovery store contract", () => {
       }),
     ).toBe("running");
   });
+
+  it.each(["gate_verify", "slack_delivery", "branch_cleanup"] as const)(
+    "rejects an initial plan that skips %s when required",
+    (skippedStage) => {
+      const store = restoreRecoveryStore({
+        harvests: [harvest("planned")],
+        stages: [],
+        outboxItems: [],
+      });
+      const claim = store.claimHarvestLease({
+        operationId: "planned",
+        leaseOwner: "worker",
+        nowIso,
+        leaseExpiresAt,
+      });
+      if (!claim) throw new Error("Expected a harvest lease");
+      const targets = { hasSlackTarget: true, hasRemoteBranchTarget: true };
+      const phaseIds = [phaseId];
+      const plan = planHarvestStages({
+        terminalEvent: "merged",
+        phaseIds,
+        ...targets,
+      });
+      const invalidPlan = plan.map((entry) =>
+        entry.stage === skippedStage
+          ? { ...entry, initialStatus: "skipped_no_target" as const }
+          : entry,
+      );
+      expect(
+        store.initializeHarvestStages({
+          fence: claim.fence,
+          nowIso,
+          phaseIds,
+          ...targets,
+          stages: invalidPlan,
+        }),
+      ).toEqual({ ok: false, code: "HARVEST_PLAN_CONFLICT" });
+      expect(store.snapshot().stages).toEqual([]);
+    },
+  );
 
   it("discovers project sends and claims abandoned or uncertain sends for reconciliation", () => {
     const store = restoreRecoveryStore({
@@ -934,6 +1039,174 @@ describe("durable recovery store contract", () => {
 });
 
 describe("persisted harvest intake contract", () => {
+  it.each(["manual", "pull request"])(
+    "reuses both covered phases when a whole-feature %s arrives first",
+    (firstSource) => {
+      const phaseIds = ["phase-1", "phase-02", "phase-01"];
+      const local = harvestIntake("local-feature", {
+        ...offline,
+        phaseId: null,
+      });
+      const localScopes = scopeManualHarvestToPhases(
+        local.candidate,
+        phaseIds,
+      ).map((candidate) => {
+        const scoped = harvestIntake(candidate.deliveryId, {
+          ...offline,
+          phaseId: candidate.explicitPhaseId,
+        });
+        if (!scoped.target.accepted)
+          throw new Error("Expected scoped local target");
+        return scoped.target.operations[0];
+      });
+      const manual = {
+        ...local,
+        target: {
+          accepted: true,
+          operations: [localScopes[0], ...localScopes.slice(1)],
+        },
+      } satisfies HarvestIntake;
+      const verifiedMerge = (
+        deliveryId: string,
+        prNumber: number,
+      ): HarvestIntake => {
+        const pull = harvestIntake(deliveryId, {
+          prNumber,
+          prUrl: `https://github.com/acme/a/pull/${prNumber}`,
+          phaseId: null,
+          headBranch: `feat/${featureId}`,
+        });
+        if (!pull.target.accepted) throw new Error("Expected verified merge");
+        const [target] = pull.target.operations;
+        const scopes = scopeVerifiedMergeToPhases(
+          target,
+          {
+            prNumber,
+            terminalEvent: target.terminalEvent,
+            mergeCommitSha: target.mergeCommitSha,
+          },
+          phaseIds,
+        );
+        const toOperation = (scope: (typeof scopes)[number]) => ({
+          ...target,
+          ...scope,
+          operationId: `${deliveryId}-${scope.phaseId}`,
+        });
+        const [first, ...rest] = scopes;
+        return {
+          ...pull,
+          target: {
+            accepted: true,
+            operations: [toOperation(first), ...rest.map(toOperation)],
+          },
+        };
+      };
+
+      const pull = verifiedMerge("pull-feature", 42);
+      const [first, second] =
+        firstSource === "manual" ? [manual, pull] : [pull, manual];
+      const initial = restoreHarvestIntake({ harvests: [], stages: [] });
+      const accepted = initial.store.recordHarvestIntake(first);
+      if (!accepted.ok) throw new Error("Expected initial intake");
+      expect(accepted.operations.map((row) => row.phaseId)).toEqual([
+        phaseId,
+        "phase-02",
+      ]);
+
+      const recordLearning = vi.fn((row: DurableHarvestOperation) => ({
+        ...learningReceipt(row.operationId),
+        phaseKey: row.phaseId ?? "feature",
+      }));
+      const receipts = accepted.operations.map(recordLearning);
+      const resumed = restoreHarvestIntake({
+        ...initial.snapshot(),
+        stages: receipts,
+      });
+      const expected = accepted.operations.map(
+        ({ operationId, workKey, phaseId }) => ({
+          operationId,
+          workKey,
+          phaseId,
+          prNumber: 42,
+        }),
+      );
+      expect(resumed.store.recordHarvestIntake(second)).toMatchObject({
+        ok: true,
+        deduplicatedTransport: false,
+        deduplicatedWork: true,
+        operations: expected,
+      });
+      const persisted = resumed.snapshot();
+      expect(persisted.harvests).toHaveLength(2);
+      expect(persisted.stages).toEqual(receipts);
+      expect(persisted.deliveries).toHaveLength(2);
+
+      const replay = restoreHarvestIntake(persisted);
+      for (const intake of [first, second]) {
+        if (!intake.target.accepted)
+          throw new Error("Expected accepted intake");
+        const result = replay.store.recordHarvestIntake({
+          ...intake,
+          target: { accepted: true, operations: [intake.target.operations[0]] },
+        });
+        expect(result).toMatchObject({
+          ok: true,
+          deduplicatedTransport: true,
+          operations: expected,
+        });
+        if (!result.ok) throw new Error("Expected delivery replay");
+        for (const row of result.operations) {
+          if (
+            !persisted.stages.some(
+              (receipt) =>
+                receipt.operationId === row.operationId &&
+                receipt.phaseKey === row.phaseId,
+            )
+          ) {
+            persisted.stages.push(recordLearning(row));
+          }
+        }
+      }
+      expect(recordLearning.mock.calls.map(([row]) => row.phaseId)).toEqual([
+        phaseId,
+        "phase-02",
+      ]);
+
+      expect(
+        replay.store.recordHarvestIntake({
+          ...pull,
+          payloadDigest: "different",
+        }),
+      ).toEqual({ ok: false, code: "DELIVERY_ID_CONFLICT" });
+      expect(replay.snapshot()).toEqual(persisted);
+      expect(
+        replay.store.recordHarvestIntake(
+          harvestIntake("uncovered", { ...offline, phaseId: "phase-03" }),
+        ),
+      ).toMatchObject({
+        ok: true,
+        deduplicatedWork: false,
+        operations: [{ operationId: "uncovered", phaseId: "phase-03" }],
+      });
+      expect(
+        replay.store.recordHarvestIntake(verifiedMerge("other-pull", 43)),
+      ).toMatchObject({
+        ok: true,
+        deduplicatedWork: false,
+        operations: [
+          { operationId: `other-pull-${phaseId}`, phaseId, prNumber: 43 },
+          {
+            operationId: "other-pull-phase-02",
+            phaseId: "phase-02",
+            prNumber: 43,
+          },
+        ],
+      });
+      expect(replay.snapshot().harvests).toHaveLength(5);
+      expect(replay.snapshot().stages).toEqual(receipts);
+    },
+  );
+
   it.each(["local", "pull request"])(
     "preserves the first operation and receipts when %s arrives first",
     (firstSource) => {
@@ -945,7 +1218,7 @@ describe("persisted harvest intake contract", () => {
       const [first, second] =
         firstSource === "local" ? [local, pull] : [pull, local];
       if (!first.target.accepted) throw new Error("Expected accepted intake");
-      const firstOperation = first.target.operation;
+      const [firstOperation] = first.target.operations;
       const receipt = learningReceipt(firstOperation.operationId);
       const restarted = restoreHarvestIntake({
         harvests: [firstOperation],
@@ -965,7 +1238,7 @@ describe("persisted harvest intake contract", () => {
       expect(result).toMatchObject({
         ok: true,
         deduplicatedWork: true,
-        operation: expected,
+        operations: [expected],
       });
       const persisted = restarted.snapshot();
       expect(persisted.harvests).toHaveLength(1);
@@ -975,7 +1248,7 @@ describe("persisted harvest intake contract", () => {
         expect(replay.recordHarvestIntake(intake)).toMatchObject({
           ok: true,
           deduplicatedWork: true,
-          operation: expected,
+          operations: [expected],
         });
       }
     },
@@ -991,7 +1264,7 @@ describe("persisted harvest intake contract", () => {
     if (!local.target.accepted)
       throw new Error("Expected accepted local intake");
     const restarted = restoreHarvestIntake({
-      harvests: [local.target.operation],
+      harvests: [...local.target.operations],
       stages: [],
     });
     expect(
@@ -999,7 +1272,7 @@ describe("persisted harvest intake contract", () => {
     ).toMatchObject({
       ok: true,
       deduplicatedWork: false,
-      operation: { operationId: "pull" },
+      operations: [{ operationId: "pull" }],
     });
     expect(restarted.snapshot().harvests).toHaveLength(2);
   });
@@ -1009,7 +1282,7 @@ describe("persisted harvest intake contract", () => {
     if (!first.target.accepted)
       throw new Error("Expected accepted pull request");
     const restarted = restoreHarvestIntake({
-      harvests: [first.target.operation],
+      harvests: [...first.target.operations],
       stages: [],
     });
     expect(
@@ -1017,7 +1290,7 @@ describe("persisted harvest intake contract", () => {
     ).toMatchObject({
       ok: true,
       deduplicatedWork: true,
-      operation: { operationId: "first-pull" },
+      operations: [{ operationId: "first-pull" }],
     });
     const replay = restoreHarvestIntake(restarted.snapshot());
     expect(
@@ -1030,7 +1303,7 @@ describe("persisted harvest intake contract", () => {
     ).toMatchObject({
       ok: true,
       deduplicatedWork: false,
-      operation: { operationId: "second-pull" },
+      operations: [{ operationId: "second-pull" }],
     });
     expect(replay.snapshot().harvests).toHaveLength(2);
   });
@@ -1051,16 +1324,17 @@ it("records learning for an offline harvest after restart", async () => {
   });
   if (!claim) throw new Error("Expected a learning claim");
   const { operation, fence } = claim;
+  const targets = { hasSlackTarget: false, hasRemoteBranchTarget: false };
   expect(
     restarted.initializeHarvestStages({
       fence,
       nowIso,
       phaseIds: [phaseId],
+      ...targets,
       stages: planHarvestStages({
         terminalEvent: "merged",
         phaseIds: [phaseId],
-        hasSlackTarget: false,
-        hasRemoteBranchTarget: false,
+        ...targets,
       }),
     }),
   ).toEqual({ ok: true });
