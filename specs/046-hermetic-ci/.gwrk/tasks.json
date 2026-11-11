@@ -57,7 +57,7 @@
         {
           "id": "T004",
           "title": "Create pulse-git-fixture.ts",
-          "description": "NEW tests/helpers/pulse-git-fixture.ts. Seed explicit branch names and fixed author data through bounded asynchronous Git commands. FR-002, FR-003.",
+          "description": "NEW tests/helpers/pulse-git-fixture.ts. Seed explicit branch names and fixed author data through bounded asynchronous Git commands. The phase gate uses a different Git default branch and runs both Pulse suites with the quarantine lifted. FR-002, FR-003.",
           "status": "open",
           "gateScript": "gates/phase-02.sh",
           "sp": 2
