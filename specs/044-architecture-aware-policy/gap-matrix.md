@@ -1,6 +1,6 @@
 # Phase 1 coverage
 
-All 24 new cases fail before implementation. The build passes. Blocked: the runner denies Git index writes outside this worktree. The repository owner must commit the files from a writable Git session.
+All 24 new cases fail before implementation. The build passes. Blocked: implementation depends on feature 043, unified routing and prompt delivery.
 
 | AC | Acceptance Criterion | Test Type | Test File | Test Exists | Gate |
 |----|---------------------|-----------|-----------|-------------|------|
@@ -21,9 +21,3 @@ The spec defines no US identifiers or error-state table. Cases use the FR and TR
 - Invalid workspace design fails config validation.
 - Workspace path boundaries prevent sibling overrides.
 - Frozen inputs check deterministic merging without mutation.
-
-The new policy module contains signatures and throwing stubs only. The workspace resolver test calls the contracted two-argument interface. The current three-argument implementation fails that test.
-
-The repository has no docs/architecture.md. Test conventions come from docs/grounding/architecture.md and existing co-located suites. The plan cites a missing ADR-010-polyglot-monorepo-workspaces.md. The existing ADR-010-decision-records.md retains authority. The compile-gate skill was not found. Direct pnpm build verification passed.
-
-Implementation depends on feature 043: Unified Routing and Prompt Delivery. The plan records this dependency.
