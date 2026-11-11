@@ -24,6 +24,7 @@ import { restoreLedgerBackup } from "../../src/adapters/sqlite/ledger-backup.js"
 
 const repo = fileURLToPath(new URL("../..", import.meta.url));
 const rollback = join(repo, "deploy/linux-runner/rollback-release.sh");
+const serviceScripts = ["credentials.sh", "preflight.sh", "run.sh"] as const;
 
 it.each([
   { signal: "SIGTERM", status: 143, stage: "readiness" },
@@ -33,9 +34,18 @@ it.each([
   { signal: null, status: 1, stage: "backup with an inactive unit" },
   { signal: null, status: 1, stage: "target CLI version mismatch" },
   { signal: null, status: 1, stage: "target manifest version mismatch" },
+  ...serviceScripts.map((malformedFile) => ({
+    signal: null,
+    status: 1,
+    stage: `invalid target ${malformedFile}`,
+    malformedFile,
+  })),
 ] as const)(
   "preserves release state during $stage (exit $status)",
-  async ({ signal, status, stage }) => {
+  async (scenario) => {
+    const { signal, status, stage } = scenario;
+    const malformedFile =
+      "malformedFile" in scenario ? scenario.malformedFile : undefined;
     const root = await mkdtemp(join(tmpdir(), "gwrk-rollback-signal-"));
     const bin = join(root, "bin");
     const runtime = join(root, "runtime");
@@ -55,7 +65,9 @@ it.each([
       await mkdir(runtime);
       await mkdir(state);
       await writeFile(join(runtime, "server.lock"), "");
-      if (signal) await writeFile(pidFile, String(process.pid));
+      if (signal || malformedFile) {
+        await writeFile(pidFile, String(process.pid));
+      }
       await symlink(active, current);
       await symlink(target, previous);
       for (const version of [active, target]) {
@@ -69,10 +81,14 @@ it.each([
         );
         await writeFile(join(release, "package.json"), '{"type":"module"}');
         await symlink(join(repo, "dist/cli.js"), join(release, "dist/cli.js"));
-        for (const name of ["credentials.sh", "preflight.sh", "run.sh"]) {
+        for (const name of serviceScripts) {
           await writeFile(join(service, name), "", { mode: 0o755 });
         }
       }
+      const malformedPath = malformedFile
+        ? join(root, target, "deploy/linux-runner", malformedFile)
+        : undefined;
+      if (malformedPath) await writeFile(malformedPath, "if then\n");
       const db = new Database(ledger);
       try {
         db.exec(`
@@ -132,7 +148,7 @@ case "$1" in
         if [[ -f "$pid_file" ]]; then printf 'active\\n'; else printf 'inactive\\n'; fi
         ;;
       --property=MainPID)
-        if [[ ! -e "$ready" ]]; then
+        if [[ "$FIXTURE_STAGE" == readiness && ! -e "$ready" ]]; then
           touch "$ready"
           while [[ ! -e "$release_readiness" ]]; do sleep 0.05; done
         fi
@@ -180,13 +196,17 @@ esac`,
             expect(await readFile(calls, "utf8"), output).toBe("stop\n");
           } else {
             expect(existsSync(calls), output).toBe(false);
-            expect(output).toContain(
-              stage === "target CLI version mismatch"
-                ? "Rollback target CLI version does not match"
-                : "Rollback target manifest version 1.1.0 does not match",
-            );
+            if (malformedPath) {
+              expect(output).toContain(malformedPath);
+            } else {
+              expect(output).toContain(
+                stage === "target CLI version mismatch"
+                  ? "Rollback target CLI version does not match"
+                  : "Rollback target manifest version 1.1.0 does not match",
+              );
+            }
           }
-          expect(existsSync(pidFile)).toBe(false);
+          expect(existsSync(pidFile)).toBe(Boolean(malformedPath));
           expect(await readlink(current)).toBe(active);
           expect(await readlink(previous)).toBe(target);
           return;

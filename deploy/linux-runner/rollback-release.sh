@@ -58,6 +58,10 @@ for file in "${startup_scripts[@]}"; do
   "${as_service[@]}" test -x "$target/$file" ||
     fail "$service_user cannot execute rollback target file: $target/$file"
 done
+for file in deploy/linux-runner/credentials.sh "${startup_scripts[@]}"; do
+  "${as_service[@]}" bash -n -- "$target/$file" ||
+    fail "Rollback target script failed syntax validation: $target/$file"
+done
 check_rollback() {
   "${as_service[@]}" node "$active/dist/cli.js" db rollback-check --current "$active" --target "$target" "$@"
 }
