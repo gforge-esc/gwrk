@@ -111,6 +111,8 @@ pnpm exec vitest run src/architecture.test.ts src/engine/issues.test.ts src/engi
 - `src/db/index.ts` (MODIFY: Add `openDatabase` factory accepting database path and migration options)
 - `src/ports/store-port.ts` (MODIFY: Add `close` lifecycle methods to `PlanStorePort` and `RunStorePort`)
 - `src/adapters/sqlite/index.ts` (MODIFY: Implement `createSqlitePlanStoreAdapter` and `createSqliteRunStoreAdapter` with instance handles)
+- `src/commands/plan.ts` (MODIFY: Write rendered plans through the SQLite plan adapter)
+- `src/engine/harvest.ts` (MODIFY: Write compression records through the SQLite run adapter)
 - `src/engine/plan-store.ts` (MODIFY: Accept optional `Database.Database` handle and preserve instance connection state)
 - `src/adapters/sqlite/store-isolation.test.ts` (NEW: Open two file-backed stores in one process and verify isolated writes)
 - `src/db/db.test.ts` (MODIFY: Verify `openDatabase` isolation alongside existing execution ledger cases)

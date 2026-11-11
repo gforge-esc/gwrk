@@ -9,6 +9,8 @@
 import fs from "node:fs";
 import path from "node:path";
 import { Command } from "commander";
+import { createSqlitePlanStoreAdapter } from "../adapters/sqlite/index.js";
+import { getDb } from "../db/index.js";
 import { PlanStore } from "../engine/plan-store.js";
 import { color } from "../utils/format.js";
 import { createOutput, resolveFormat } from "../utils/output.js";
@@ -454,16 +456,15 @@ planCommand
       const projectId = resolveProjectId(process.cwd());
       const store = new PlanStore(projectId);
       guardEmpty(store);
-      const md = await store.render();
-
       if (options.stdout) {
-        console.log(md);
+        console.log(await store.render());
         return;
       }
 
       const projectRoot = process.cwd();
       const planPath = path.join(projectRoot, "specs", "000-build-plan.md");
-      fs.writeFileSync(planPath, md, "utf-8");
+      const adapter = createSqlitePlanStoreAdapter({ projectId, db: getDb() });
+      await adapter.renderToMarkdown(planPath);
       console.log(`Successfully regenerated ${planPath} from graph state.`);
     });
   });

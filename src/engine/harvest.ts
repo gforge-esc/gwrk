@@ -5,7 +5,8 @@
 import fs from "node:fs";
 import path from "node:path";
 import { notifyHarvestComplete } from "../adapters/notifications/index.js";
-import { getCompressionRecord, recordCompression } from "../db/compression.js";
+import { createSqliteRunStoreAdapter } from "../adapters/sqlite/index.js";
+import { getCompressionRecord } from "../db/compression.js";
 import {
   finishRun,
   getFeatureRunTelemetry,
@@ -389,7 +390,7 @@ export async function harvestFeature(
             ...(telemetry ? { telemetry } : {}),
           };
 
-          recordCompression(report, projectId);
+          createSqliteRunStoreAdapter().recordCompression(report, projectId);
           console.log(
             `Recorded compression for ${featureId} ${phaseId}: point=${compression.pointCompression.toFixed(1)}x`,
           );
