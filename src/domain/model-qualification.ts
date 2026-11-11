@@ -370,6 +370,11 @@ const secretPattern =
   /(?:^|[^a-z0-9])(?:bearer\s+[^\s"]+|sk-|AIza|gh[pousr]_|github_pat_|xox[baprs]-|xapp-)|[\w.+-]+@[\w.-]+\.[a-z]{2,}|"(?:authorization|cookie|set-cookie|api[_-]?key|access[_-]?token|password)"\s*:/i;
 const headerPattern = /\b(?:authorization|set-cookie|cookie)[ \t]*:/i;
 const credentialHeaderNamePattern = /^(?:authorization|cookie|set-cookie)$/i;
+const flatHeadersKeyPattern = /^(?:raw)?headers$/i;
+
+function isCredentialHeaderName(value: unknown): boolean {
+  return typeof value === "string" && credentialHeaderNamePattern.test(value);
+}
 
 export function assertNoSecretMaterial(
   value: unknown,
@@ -384,10 +389,12 @@ export function assertNoSecretMaterial(
         (typeof entry === "string" &&
           (headerPattern.test(entry) || secretPattern.test(entry))) ||
         (Array.isArray(entry) &&
-          entry.length === 2 &&
-          typeof entry[0] === "string" &&
-          typeof entry[1] === "string" &&
-          credentialHeaderNamePattern.test(entry[0]))
+          ((entry.length === 2 && isCredentialHeaderName(entry[0])) ||
+            (flatHeadersKeyPattern.test(key) &&
+              entry.some(
+                (name, index) =>
+                  index % 2 === 0 && isCredentialHeaderName(name),
+              ))))
       ) {
         secretInText = true;
       }

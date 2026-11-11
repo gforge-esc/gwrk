@@ -122,6 +122,32 @@ describe("credential guard", () => {
       }),
     ).not.toThrow();
   });
+
+  it.each([
+    {
+      rawHeaders: ["Content-Type", "application/json", "Set-Cookie", "fixture"],
+    },
+    { headers: [["Set-Cookie", ["session=fixture", "theme=dark"]]] },
+  ])(
+    "rejects credential header structures %j from persisted evidence",
+    (headers) => {
+      const persisted = JSON.parse(JSON.stringify({ response: headers }));
+      expect(() => assertNoSecretMaterial(persisted)).toThrow(
+        /secret material/i,
+      );
+    },
+  );
+
+  it("allows ordinary flat headers and header arrays", () => {
+    expect(() =>
+      assertNoSecretMaterial({
+        response: {
+          rawHeaders: ["Content-Type", "application/json", "Vary", "Cookie"],
+          headers: [["Vary", ["Accept", "Cookie"]]],
+        },
+      }),
+    ).not.toThrow();
+  });
 });
 
 describe("model qualification policy", () => {
