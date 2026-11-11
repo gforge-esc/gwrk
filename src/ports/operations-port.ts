@@ -302,7 +302,7 @@ export interface OperationsStorePort {
   /**
    * Commit the original delivery and all resolved operations in one transaction.
    * Resolve checkout coverage with scopeManualHarvestToPhases or scopeVerifiedMergeToPhases before intake.
-   * Pass accepted: false when a verified whole-feature merge yields no scopes.
+   * Pass accepted: false when checkout coverage yields no scopes.
    * Replay returns every persisted operation in the original scope order.
    * Reject transport ID reuse with a different repository or payload digest.
    * Resolve work keys and their aliases within the project before matching commit scope.
@@ -312,7 +312,10 @@ export interface OperationsStorePort {
    * Preserve the first operation ID, work key and stage receipts.
    * Attach verified pull request facts, including the head repository, when they arrive.
    * Persist both work keys for replay and keep distinct verified pull requests separate.
-   * Preserve a verified merge on a later close.
+   * Before work-key matching, use isStaleHarvestClose to find a verified merge
+   * for a later close within the project and repository.
+   * Associate the delivery with the earliest matching merge. Break ties by least
+   * operation ID. Preserve its receipts and do not write a close operation or alias.
    * Take head facts only from the verified pull request on first attachment.
    * Fill missing head facts from later verified deliveries for the same pull request and merge scope.
    * Reject enrichment that conflicts with existing verified head facts.

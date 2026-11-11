@@ -16,6 +16,7 @@ import {
   evaluateBranchCleanupSafety,
   hasVerifiedBranchCleanupTarget,
   isCompleteHarvestStagePlan,
+  isStaleHarvestClose,
   isValidHarvestStageTransition,
   matchesHarvestNoticeRecipient,
   mergeVerifiedHarvestFacts,
@@ -121,7 +122,7 @@ function harvestIntake(
       projectId: operation.projectId,
       slug: "a",
       name: "A",
-      repoSlug: "acme/a",
+      repoSlug: operation.repoSlug ?? "acme/a",
       trunkBranch: "develop",
       localRoot: "/repos/a",
       mirrorPath: null,
@@ -278,6 +279,16 @@ function restoreHarvestIntake(persisted: {
     incoming: DurableHarvestOperation,
     receivedAt: string,
   ): DurableHarvestOperation {
+    if (incoming.terminalEvent === "closed_unmerged") {
+      const merge = rows.harvests
+        .filter((row) => isStaleHarvestClose(row, incoming))
+        .sort(
+          (a, b) =>
+            a.createdAt.localeCompare(b.createdAt) ||
+            a.operationId.localeCompare(b.operationId),
+        )[0];
+      if (merge) return merge;
+    }
     const alias = aliases.find(
       (row) =>
         row.projectId === incoming.projectId &&
@@ -1311,6 +1322,82 @@ describe("durable recovery store contract", () => {
 });
 
 describe("persisted harvest intake contract", () => {
+  it("records an unscoped manual delivery with no checkout phases", () => {
+    const manual = harvestIntake("manual-empty", {
+      ...offline,
+      phaseId: null,
+    });
+    const scopes = scopeManualHarvestToPhases(manual.candidate, []);
+    const intake: HarvestIntake = {
+      ...manual,
+      target: scopes.length
+        ? manual.target
+        : { accepted: false, projectId, reason: "No phases at checkout" },
+    };
+    const initial = restoreHarvestIntake({ harvests: [], stages: [] });
+    expect(initial.store.recordHarvestIntake(intake)).toMatchObject({
+      ok: true,
+      operations: [],
+    });
+    const saved = initial.snapshot();
+    expect(saved.harvests).toEqual([]);
+    expect(saved.stages).toEqual([]);
+    expect(
+      restoreHarvestIntake(saved).store.recordHarvestIntake(intake),
+    ).toMatchObject({ ok: true, operations: [], deduplicatedTransport: true });
+  });
+
+  it.each(["phase", "whole feature"] as const)(
+    "keeps a verified %s merge on a later stale close",
+    (scope) => {
+      const merge =
+        scope === "phase"
+          ? harvestIntake("merge")
+          : wholeFeatureMergeIntake("merge", 42, ["phase-01", "phase-02"]);
+      const closed = {
+        terminalEvent: "closed_unmerged" as const,
+        mergeCommitSha: null,
+      };
+      const stale = harvestIntake("stale", closed, "github_poller");
+      const anotherRepository = harvestIntake("other-repo", {
+        ...closed,
+        repoSlug: "acme/b",
+        prUrl: "https://github.com/acme/b/pull/42",
+      });
+      const anotherProject = harvestIntake("other-project", {
+        ...closed,
+        projectId: "project-b",
+      });
+      const initial = restoreHarvestIntake({ harvests: [], stages: [] });
+      const merged = initial.store.recordHarvestIntake(merge);
+      if (!merged.ok) throw new Error("Expected a recorded merge");
+      const prior = initial.snapshot();
+      const resumed = restoreHarvestIntake(prior);
+      const result = resumed.store.recordHarvestIntake(stale);
+
+      expect(result).toMatchObject({
+        ok: true,
+        operations: [{ terminalEvent: "merged" }],
+        deduplicatedWork: true,
+      });
+      const saved = resumed.snapshot();
+      expect(saved.harvests).toEqual(prior.harvests);
+      expect(saved.stages).toEqual(prior.stages);
+      const replay = restoreHarvestIntake(saved).store;
+      expect(replay.recordHarvestIntake(stale)).toEqual({
+        ...result,
+        deduplicatedTransport: true,
+      });
+      for (const independent of [anotherRepository, anotherProject]) {
+        expect(replay.recordHarvestIntake(independent)).toMatchObject({
+          ok: true,
+          operations: [{ terminalEvent: "closed_unmerged" }],
+          deduplicatedWork: false,
+        });
+      }
+    },
+  );
+
   it.each(["github_webhook", "github_poller"] as const)(
     "rejects a whole-feature %s merge without checkout coverage",
     (source) => {

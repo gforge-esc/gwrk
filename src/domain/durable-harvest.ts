@@ -149,8 +149,7 @@ export function scopeManualHarvestToPhases(
   if (
     candidate.source !== "manual_cli" ||
     candidate.prNumber !== null ||
-    candidate.explicitPhaseId !== undefined ||
-    phaseIds.length === 0
+    candidate.explicitPhaseId !== undefined
   ) {
     return [candidate];
   }
@@ -249,6 +248,25 @@ export function canCorrelateHarvestIntake(
   return (
     (existing.prNumber === null) !== (incoming.prNumber === null) &&
     sharesMergedCommitScope(existing, incoming)
+  );
+}
+
+type HarvestRepositoryPull = Pick<
+  HarvestCandidateInput,
+  "repoSlug" | "prNumber" | "terminalEvent"
+> & { projectId: string };
+
+export function isStaleHarvestClose(
+  existing: HarvestRepositoryPull,
+  incoming: HarvestRepositoryPull,
+): boolean {
+  return (
+    existing.terminalEvent === "merged" &&
+    incoming.terminalEvent === "closed_unmerged" &&
+    existing.projectId === incoming.projectId &&
+    existing.prNumber !== null &&
+    existing.prNumber === incoming.prNumber &&
+    isSameRepository(existing.repoSlug, incoming.repoSlug)
   );
 }
 
