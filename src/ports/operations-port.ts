@@ -307,7 +307,9 @@ export interface OperationsStorePort {
    * Pass accepted: false when checkout coverage yields no scopes.
    * Replay returns every persisted operation in the original scope order.
    * Reject transport ID reuse with a different repository or payload digest.
-   * Resolve work keys and their aliases within the project before matching commit scope.
+   * Scope verified work keys to the normalized repository and configured trunk.
+   * Verify compatible repository and trunk before matching a key or saving an alias.
+   * Use a null local repository only for work verified through the enrolled checkout.
    * Use canCorrelateHarvestIntake to match local commits to verified merged pull requests.
    * If several verified pull requests match a local commit, use the earliest operation.
    * Break creation-time ties by least operation ID.

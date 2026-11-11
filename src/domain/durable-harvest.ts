@@ -156,6 +156,8 @@ interface HarvestTarget {
 }
 
 type HarvestPullRequestIdentity = {
+  repoSlug: string | null;
+  baseBranch: string;
   prNumber: number;
   terminalEvent: HarvestTerminalEvent;
   mergeCommitSha: string | null;
@@ -173,6 +175,8 @@ export function computeHarvestWorkKey(
       ? (input.mergeCommitSha?.trim().toLowerCase() ?? null)
       : null;
   return `harvest:${JSON.stringify([
+    input.repoSlug?.toLowerCase() ?? null,
+    input.baseBranch,
     input.prNumber,
     input.terminalEvent,
     mergeSha,
@@ -274,12 +278,31 @@ function matchesPullRequestUrl(
 
 const fullGitObjectId = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/i;
 
-type HarvestCommitScope = HarvestTarget & {
+type HarvestRepositoryScope = {
   projectId: string;
-  prNumber: number | null;
-  terminalEvent: HarvestTerminalEvent;
-  mergeCommitSha: string | null;
+  repoSlug: string | null;
+  trunkBranch: string;
 };
+
+type HarvestCommitScope = HarvestTarget &
+  HarvestRepositoryScope & {
+    prNumber: number | null;
+    terminalEvent: HarvestTerminalEvent;
+    mergeCommitSha: string | null;
+  };
+
+export function sharesHarvestRepositoryScope(
+  existing: HarvestRepositoryScope,
+  incoming: HarvestRepositoryScope,
+): boolean {
+  return (
+    existing.projectId === incoming.projectId &&
+    existing.trunkBranch === incoming.trunkBranch &&
+    (existing.repoSlug === null ||
+      incoming.repoSlug === null ||
+      isSameRepository(existing.repoSlug, incoming.repoSlug))
+  );
+}
 
 function sharesMergedCommitScope(
   existing: HarvestCommitScope,
@@ -289,7 +312,7 @@ function sharesMergedCommitScope(
   return (
     existing.terminalEvent === "merged" &&
     incoming.terminalEvent === "merged" &&
-    existing.projectId === incoming.projectId &&
+    sharesHarvestRepositoryScope(existing, incoming) &&
     existing.featureId === incoming.featureId &&
     existing.phaseId === incoming.phaseId &&
     commit !== undefined &&
@@ -311,7 +334,8 @@ export function canCorrelateHarvestIntake(
 type HarvestRepositoryPull = Pick<
   HarvestCandidateInput,
   "repoSlug" | "prNumber" | "terminalEvent"
-> & { projectId: string };
+> &
+  HarvestRepositoryScope;
 
 export function isStaleHarvestClose(
   existing: HarvestRepositoryPull,
@@ -320,7 +344,7 @@ export function isStaleHarvestClose(
   return (
     existing.terminalEvent === "merged" &&
     incoming.terminalEvent === "closed_unmerged" &&
-    existing.projectId === incoming.projectId &&
+    sharesHarvestRepositoryScope(existing, incoming) &&
     existing.prNumber !== null &&
     existing.prNumber === incoming.prNumber &&
     isSameRepository(existing.repoSlug, incoming.repoSlug)
@@ -411,7 +435,7 @@ export function verifyHarvestTarget(
       ok: true,
       featureId,
       phaseId,
-      workKey: `harvest-local:${JSON.stringify([project.projectId, commit, featureId, phaseId])}`,
+      workKey: `harvest-local:${JSON.stringify([project.projectId, project.repoSlug?.toLowerCase() ?? null, project.trunkBranch, commit, featureId, phaseId])}`,
     };
   }
 
@@ -679,7 +703,6 @@ export function mergeVerifiedHarvestFacts(
     verified.prNumber <= 0 ||
     (prior.prNumber !== null && prior.prNumber !== verified.prNumber) ||
     !sharesMergedCommitScope(prior, verified) ||
-    prior.trunkBranch !== verified.trunkBranch ||
     (prior.repoSlug && !isSameRepository(prior.repoSlug, verified.repoSlug)) ||
     (priorPull?.headRepoSlug &&
       verified.headRepoSlug &&

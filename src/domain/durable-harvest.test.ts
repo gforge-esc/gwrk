@@ -97,6 +97,8 @@ describe("FR-002 harvest identity and target verification", () => {
     const verified = verifyHarvestTarget(project, input);
     if (!verified.ok) throw new Error(verified.reason);
     const fact = {
+      repoSlug: "acme/a",
+      baseBranch: "develop",
       prNumber: 42,
       terminalEvent: input.terminalEvent,
       mergeCommitSha: sha,
@@ -117,6 +119,8 @@ describe("FR-002 harvest identity and target verification", () => {
 
   it("converges a manually requested phase with webhook and poller coverage", () => {
     const fact = {
+      repoSlug: "acme/a",
+      baseBranch: "develop",
       prNumber: 42,
       terminalEvent: "merged",
       mergeCommitSha: sha,
@@ -165,6 +169,8 @@ describe("FR-002 harvest identity and target verification", () => {
     "keeps a single scope for %s on %s",
     (terminalEvent, headBranch) => {
       const fact = {
+        repoSlug: "acme/a",
+        baseBranch: "develop",
         prNumber: 42,
         terminalEvent,
         mergeCommitSha: terminalEvent === "merged" ? sha : null,
@@ -196,6 +202,8 @@ describe("FR-002 harvest identity and target verification", () => {
       featureId,
       phaseId,
       workKey: computeHarvestWorkKey({
+        repoSlug: "acme/a",
+        baseBranch: "develop",
         prNumber: 42,
         terminalEvent: "merged",
         mergeCommitSha: sha,
@@ -276,6 +284,8 @@ describe("FR-002 harvest identity and target verification", () => {
 
   it("TR-002 distinguishes terminal events and separate merges", () => {
     const input = {
+      repoSlug: "acme/a",
+      baseBranch: "develop",
       prNumber: 42,
       terminalEvent: "merged" as const,
       mergeCommitSha: sha,
@@ -283,6 +293,13 @@ describe("FR-002 harvest identity and target verification", () => {
       phaseId,
     };
     const key = computeHarvestWorkKey(input);
+    expect(key).toBe(computeHarvestWorkKey({ ...input, repoSlug: "ACME/A" }));
+    expect(key).not.toBe(
+      computeHarvestWorkKey({ ...input, repoSlug: "acme/b" }),
+    );
+    expect(key).not.toBe(
+      computeHarvestWorkKey({ ...input, baseBranch: "main" }),
+    );
     expect(key).not.toBe(computeHarvestWorkKey({ ...input, prNumber: 43 }));
     expect(key).not.toBe(
       computeHarvestWorkKey({ ...input, mergeCommitSha: "b".repeat(40) }),

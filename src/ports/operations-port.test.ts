@@ -26,6 +26,7 @@ import {
   resolveHarvestSlackRecipient,
   scopeManualHarvestToPhases,
   scopeVerifiedMergeToPhases,
+  sharesHarvestRepositoryScope,
   verifyHarvestTarget,
 } from "../domain/durable-harvest.js";
 import type {
@@ -129,7 +130,7 @@ function harvestIntake(
       slug: "a",
       name: "A",
       repoSlug: operation.repoSlug ?? "acme/a",
-      trunkBranch: "develop",
+      trunkBranch: operation.trunkBranch,
       localRoot: "/repos/a",
       mirrorPath: null,
       runnerPolicy: { allowedKinds: ["local"] },
@@ -175,6 +176,8 @@ function wholeFeatureMergeIntake(
   const [first, ...rest] = scopeVerifiedMergeToPhases(
     target,
     {
+      repoSlug: target.repoSlug,
+      baseBranch: target.trunkBranch,
       prNumber,
       terminalEvent: target.terminalEvent,
       mergeCommitSha: target.mergeCommitSha,
@@ -303,7 +306,7 @@ function restoreHarvestIntake(persisted: {
     const existing =
       rows.harvests.find(
         (row) =>
-          row.projectId === incoming.projectId &&
+          sharesHarvestRepositoryScope(row, incoming) &&
           (row.workKey === incoming.workKey ||
             row.operationId === alias?.operationId),
       ) ??
@@ -1425,6 +1428,46 @@ describe("durable recovery store contract", () => {
 });
 
 describe("persisted harvest intake contract", () => {
+  it.each([
+    { repoSlug: "acme/b", trunkBranch: "develop" },
+    { repoSlug: "acme/a", trunkBranch: "main" },
+  ])(
+    "keeps local and pull work separate when scope changes to $repoSlug $trunkBranch",
+    ({ repoSlug, trunkBranch }) => {
+      const local = harvestIntake("local-scope", {
+        ...offline,
+        repoSlug: "acme/a",
+      });
+      const pull = harvestIntake("pull-scope", {
+        repoSlug,
+        trunkBranch,
+        prUrl: `https://github.com/${repoSlug}/pull/42`,
+      });
+      for (const [first, second] of [
+        [local, pull],
+        [pull, local],
+      ]) {
+        const store = restoreHarvestIntake({ harvests: [], stages: [] });
+        store.store.recordHarvestIntake(first);
+        expect(store.store.recordHarvestIntake(second)).toMatchObject({
+          ok: true,
+          deduplicatedWork: false,
+          operations: [{ operationId: second.candidate.deliveryId }],
+        });
+        const saved = store.snapshot();
+        expect(saved.harvests).toHaveLength(2);
+        expect(saved.aliases).toEqual([]);
+        expect(
+          restoreHarvestIntake(saved).store.recordHarvestIntake(second),
+        ).toMatchObject({
+          ok: true,
+          deduplicatedTransport: true,
+          operations: [{ operationId: second.candidate.deliveryId }],
+        });
+      }
+    },
+  );
+
   it("records an unscoped manual delivery with no checkout phases", () => {
     const manual = harvestIntake("manual-empty", {
       ...offline,
