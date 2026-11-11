@@ -222,49 +222,55 @@
           "id": "T021",
           "title": "Modify index.ts",
           "description": "MODIFY src/db/index.ts. Add `openDatabase` factory accepting database path and migration options",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/phase-03.sh",
-          "sp": 1
+          "sp": 1,
+          "completedAt": "2026-11-11T17:38:46.426Z"
         },
         {
           "id": "T022",
           "title": "Modify store-port.ts",
           "description": "MODIFY src/ports/store-port.ts. Add `close` lifecycle methods to `PlanStorePort` and `RunStorePort`",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/phase-03.sh",
-          "sp": 1
+          "sp": 1,
+          "completedAt": "2026-11-11T17:38:47.549Z"
         },
         {
           "id": "T023",
           "title": "Modify index.ts",
           "description": "MODIFY src/adapters/sqlite/index.ts. Implement `createSqlitePlanStoreAdapter` and `createSqliteRunStoreAdapter` with instance handles",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/phase-03.sh",
-          "sp": 1
+          "sp": 1,
+          "completedAt": "2026-11-11T17:38:48.701Z"
         },
         {
           "id": "T024",
           "title": "Modify plan.ts",
           "description": "MODIFY src/commands/plan.ts. Write rendered plans through the SQLite plan adapter. Tests: src/engine/plan-store-scoping.test.ts",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/phase-03.sh",
-          "sp": 1
+          "sp": 1,
+          "completedAt": "2026-11-11T17:38:49.709Z"
         },
         {
           "id": "T025",
           "title": "Modify harvest.ts",
           "description": "MODIFY src/engine/harvest.ts. Write compression records through the SQLite run adapter",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/phase-03.sh",
-          "sp": 1
+          "sp": 1,
+          "completedAt": "2026-11-11T17:38:50.682Z"
         },
         {
           "id": "T026",
           "title": "Modify plan-store.ts",
           "description": "MODIFY src/engine/plan-store.ts. Accept optional `Database.Database` handle and preserve instance connection state. Tests: src/engine/plan-store-scoping.test.ts",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/phase-03.sh",
-          "sp": 1
+          "sp": 1,
+          "completedAt": "2026-11-11T17:38:51.712Z"
         }
       ],
       "sp_estimate": 6,
