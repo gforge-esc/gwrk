@@ -6,7 +6,7 @@ import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { detectProfile } from "./profile-detector.js";
+import { detectProfile, resolveWorkspaceProfile } from "./profile-detector.js";
 import { conditionPrompt } from "./prompt-conditioner.js";
 
 describe("profile-detector", () => {
@@ -293,6 +293,53 @@ describe("FR-001: architecture-aware workspace profiles (044 phase p01)", () => 
     const result = await detectProfile(path.join(root, "services/api"));
     expect(result.design).toBeUndefined();
     expect(result.toolchain).toEqual({ primary: "ruff", test: "pytest" });
+  });
+
+  it("keeps pytest for an unregistered Python workspace under a TypeScript root without design", async () => {
+    write("pnpm-workspace.yaml", "");
+    write(
+      ".gwrkrc.json",
+      JSON.stringify({
+        project: {
+          name: "fixture",
+          stack: { language: "TypeScript" },
+          toolchain: { test: "vitest" },
+        },
+        workspaces: { "apps/web": { toolchain: { test: "vitest" } } },
+      }),
+    );
+
+    const result = await detectProfile(path.join(root, "services/api"));
+    expect(result).toMatchObject({
+      stack: { language: "Python" },
+      toolchain: { test: "pytest" },
+    });
+  });
+
+  it("applies the supplied root's design and workspace overrides when the local config only names the workspace", async () => {
+    write(
+      ".gwrkrc.json",
+      JSON.stringify({
+        project: { name: "fixture", design },
+        workspaces: {
+          "services/api": {
+            stack: { framework: "Django" },
+            toolchain: { build: null },
+          },
+        },
+      }),
+    );
+    write(
+      "services/api/.gwrkrc.json",
+      JSON.stringify({ project: { name: "api" } }),
+    );
+
+    const result = await resolveWorkspaceProfile(root, "services/api");
+    expect(result).toMatchObject({
+      design,
+      stack: { language: "Python", framework: "Django" },
+      toolchain: { build: null },
+    });
   });
 
   it("keeps the detected workspace language when its framework is overridden", async () => {

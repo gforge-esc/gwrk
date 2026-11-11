@@ -37,6 +37,13 @@ interface LanguageSignal {
 export async function detectProfile(
   projectRoot: string,
 ): Promise<ProjectProfile> {
+  return detectProfileInDirectory(projectRoot, true);
+}
+
+function detectProfileInDirectory(
+  projectRoot: string,
+  searchAncestors: boolean,
+): ProjectProfile {
   const profile: ProjectProfile & {
     stack: NonNullable<ProjectProfile["stack"]>;
   } = {
@@ -69,7 +76,11 @@ export async function detectProfile(
     profile.type = "gwrk-native";
     profile.stack.language = "TypeScript";
     profile.layout = "src-nested";
-    const configured = resolveDetectedProfile(projectRoot, profile);
+    const configured = resolveDetectedProfile(
+      projectRoot,
+      profile,
+      searchAncestors,
+    );
     if (configured) return configured;
     return profile;
   }
@@ -88,7 +99,11 @@ export async function detectProfile(
       formatter: "biome",
       test: "vitest",
     };
-    const configured = resolveDetectedProfile(projectRoot, profile);
+    const configured = resolveDetectedProfile(
+      projectRoot,
+      profile,
+      searchAncestors,
+    );
     if (configured) return configured;
     return profile;
   }
@@ -397,7 +412,11 @@ export async function detectProfile(
     // Ignore config load errors
   }
 
-  const configured = resolveDetectedProfile(projectRoot, profile);
+  const configured = resolveDetectedProfile(
+    projectRoot,
+    profile,
+    searchAncestors,
+  );
   if (configured) return configured;
   return profile;
 }
@@ -405,6 +424,7 @@ export async function detectProfile(
 function resolveDetectedProfile(
   detectedRoot: string,
   detected: ProjectProfile,
+  searchAncestors: boolean,
 ): ProjectProfile | undefined {
   const start = path.resolve(detectedRoot);
   let directory = start;
@@ -413,43 +433,73 @@ function resolveDetectedProfile(
     if (fs.existsSync(configPath)) {
       try {
         const config = JSON.parse(fs.readFileSync(configPath, "utf-8"));
-        const design = DesignSchema.safeParse(config?.project?.design).data;
         if (directory === start) {
-          return mergeProfileOverrides({ detected, projectDesign: design });
+          return mergeProfileOverrides({
+            detected,
+            projectDesign: DesignSchema.safeParse(config?.project?.design).data,
+          });
         }
 
-        const workspaceSchema =
-          GwrkConfigSchema.shape.workspaces.unwrap().valueSchema;
-        const workspaces: Record<string, WorkspaceProfileConfig> =
-          Object.create(null);
-        for (const [workspacePath, entry] of Object.entries(
-          config?.workspaces ?? {},
-        )) {
-          const parsed = workspaceSchema.safeParse(entry);
-          if (parsed.success) workspaces[workspacePath] = parsed.data;
-        }
-        return resolveWorkspacePolicyProfile(
-          path.relative(directory, start).split(path.sep).join("/"),
-          detected,
-          {
-            project: {
-              design,
-              toolchain: ToolchainConfigSchema.safeParse(
-                config?.project?.toolchain,
-              ).data,
-            },
-            workspaces,
-          },
-        );
+        return applyWorkspaceConfig(directory, start, detected, config);
       } catch {
         return undefined;
       }
     }
     const parent = path.dirname(directory);
-    if (directory === parent || fs.existsSync(path.join(directory, ".git"))) {
+    if (
+      !searchAncestors ||
+      directory === parent ||
+      fs.existsSync(path.join(directory, ".git"))
+    ) {
       return undefined;
     }
     directory = parent;
+  }
+}
+
+function applyWorkspaceConfig(
+  root: string,
+  workspace: string,
+  detected: ProjectProfile,
+  config: {
+    project?: { design?: unknown; toolchain?: unknown };
+    workspaces?: Record<string, unknown>;
+  } | null,
+): ProjectProfile {
+  const workspaceSchema = GwrkConfigSchema.shape.workspaces.unwrap().valueSchema;
+  const workspaces: Record<string, WorkspaceProfileConfig> = Object.create(null);
+  for (const [workspacePath, entry] of Object.entries(config?.workspaces ?? {})) {
+    const parsed = workspaceSchema.safeParse(entry);
+    if (parsed.success) workspaces[workspacePath] = parsed.data;
+  }
+
+  return resolveWorkspacePolicyProfile(
+    path.relative(root, workspace).split(path.sep).join("/"),
+    detected,
+    {
+      project: {
+        design: DesignSchema.safeParse(config?.project?.design).data,
+        toolchain: ToolchainConfigSchema.safeParse(config?.project?.toolchain)
+          .data,
+      },
+      workspaces,
+    },
+  );
+}
+
+async function detectWorkspaceProfile(
+  root: string,
+  workspacePath: string,
+): Promise<ProjectProfile> {
+  const workspace = path.resolve(root, workspacePath);
+  const detected = detectProfileInDirectory(workspace, false);
+  try {
+    const config = JSON.parse(
+      fs.readFileSync(path.join(root, ".gwrkrc.json"), "utf-8"),
+    );
+    return applyWorkspaceConfig(root, workspace, detected, config);
+  } catch {
+    return detected;
   }
 }
 
@@ -473,7 +523,7 @@ export function resolveWorkspaceProfile(
   config?: any,
 ): ProjectProfile | undefined | Promise<ProjectProfile> {
   if (config === undefined) {
-    return detectProfile(path.resolve(cwd, projectRoot));
+    return detectWorkspaceProfile(cwd, projectRoot);
   }
   if (!config.workspaces) return undefined;
 

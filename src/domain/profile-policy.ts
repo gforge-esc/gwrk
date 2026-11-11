@@ -72,9 +72,13 @@ export function resolveWorkspacePolicyProfile(
       workspaceConfig = config;
     }
   }
+
+  const rootDesign = rootConfig?.project?.design;
+  if (!rootDesign && !workspaceConfig) return detectedWorkspace;
+
   return mergeProfileOverrides({
     detected: detectedWorkspace,
-    projectDesign: rootConfig?.project?.design,
+    projectDesign: detectedWorkspace.design ?? rootDesign,
     projectToolchain: rootConfig?.project?.toolchain,
     workspaceConfig,
   });
