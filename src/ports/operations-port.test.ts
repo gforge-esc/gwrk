@@ -17,6 +17,8 @@ import {
   hasVerifiedBranchCleanupTarget,
   isCompleteHarvestStagePlan,
   isValidHarvestStageTransition,
+  matchesHarvestNoticeRecipient,
+  mergeVerifiedHarvestFacts,
   planHarvestStages,
   planLateBranchCleanup,
   scopeManualHarvestToPhases,
@@ -296,64 +298,45 @@ function restoreHarvestIntake(persisted: {
         )[0];
     if (!existing) {
       rows.harvests.push(incoming);
-    } else if (!alias && existing.workKey !== incoming.workKey) {
+      return incoming;
+    }
+    if (!alias && existing.workKey !== incoming.workKey) {
       aliases.push({
         projectId: incoming.projectId,
         workKey: incoming.workKey,
         operationId: existing.operationId,
       });
-      if (existing.prNumber === null && incoming.prNumber !== null) {
-        const cleanup = planLateBranchCleanup({
-          operationId: existing.operationId,
-          prior: existing,
-          verified: incoming,
-          stages: rows.stages,
-          nowIso: receivedAt,
-        });
-        const {
-          repoSlug,
-          headRepoSlug,
-          prNumber,
-          prUrl,
-          headBranch,
-          expectedHeadSha,
-          terminalAt,
-        } = incoming;
-        Object.assign(existing, {
-          repoSlug,
-          headRepoSlug,
-          prNumber,
-          prUrl,
-          headBranch,
-          expectedHeadSha,
-          terminalAt,
-          updatedAt: receivedAt,
-        });
-        if (cleanup.length) {
-          for (const planned of cleanup) {
-            const receipt = rows.stages.find(
-              (stage) =>
-                stage.operationId === planned.operationId &&
-                stage.phaseKey === planned.phaseKey &&
-                stage.stage === planned.stage,
-            );
-            if (!receipt)
-              throw new Error("Expected the skipped cleanup receipt");
-            Object.assign(receipt, planned);
-          }
-          const stages = rows.stages.filter(
-            ({ operationId }) => operationId === existing.operationId,
-          );
-          existing.status = deriveHarvestTerminalStatus({
-            terminalEvent: existing.terminalEvent,
-            phaseIds: [...new Set(stages.map(({ phaseKey }) => phaseKey))],
-            stages,
-          });
-          existing.completedAt = null;
-        }
-      }
     }
-    return existing ?? incoming;
+    const facts = mergeVerifiedHarvestFacts(existing, incoming);
+    if (!facts) return existing;
+    const cleanup = planLateBranchCleanup({
+      operationId: existing.operationId,
+      prior: existing,
+      verified: incoming,
+      stages: rows.stages,
+      nowIso: receivedAt,
+    });
+    Object.assign(existing, facts, { updatedAt: receivedAt });
+    if (cleanup.length) {
+      const stages = rows.stages.filter(
+        ({ operationId }) => operationId === existing.operationId,
+      );
+      for (const planned of cleanup) {
+        const receipt = stages.find(
+          ({ phaseKey, stage }) =>
+            phaseKey === planned.phaseKey && stage === planned.stage,
+        );
+        if (!receipt) throw new Error("Expected the skipped cleanup receipt");
+        Object.assign(receipt, planned);
+      }
+      existing.status = deriveHarvestTerminalStatus({
+        terminalEvent: existing.terminalEvent,
+        phaseIds: [...new Set(stages.map(({ phaseKey }) => phaseKey))],
+        stages,
+      });
+      existing.completedAt = null;
+    }
+    return existing;
   }
 
   return {
@@ -551,7 +534,10 @@ function restoreRecoveryStore(persisted: {
             failureNotice.ownerKind !== "harvest" ||
             failureNotice.ownerOperationId !== row.operationId ||
             failureNotice.projectId !== row.projectId ||
-            failureNotice.recipient.projectId !== row.projectId ||
+            !matchesHarvestNoticeRecipient(
+              row.recipient,
+              failureNotice.recipient,
+            ) ||
             failureNotice.featureId !== row.featureId ||
             failureNotice.phaseId !== phaseKey)
         ) {
@@ -567,7 +553,7 @@ function restoreRecoveryStore(persisted: {
       ) {
         return invalid;
       }
-      if (failureNotice) {
+      if (failureNotice && row.recipient) {
         const dedupeKey = JSON.stringify([
           "harvest_gate_failed",
           row.operationId,
@@ -581,6 +567,7 @@ function restoreRecoveryStore(persisted: {
         ) {
           outboxItems.push({
             ...failureNotice,
+            recipient: row.recipient,
             dedupeKey,
             status: "pending",
             workspaceId: null,
@@ -1772,7 +1759,14 @@ it.each([true, false])(
     };
     if (hasSlackTarget) {
       const before = initial.snapshot();
-      for (const failureNotice of [null, { ...notice, phaseId: "phase-02" }]) {
+      for (const failureNotice of [
+        null,
+        { ...notice, phaseId: "phase-02" },
+        {
+          ...notice,
+          recipient: { ...notice.recipient, channelId: "C9", threadTs: "9.9" },
+        },
+      ]) {
         expect(
           initial.transitionHarvestStage({ ...transition, failureNotice }),
         ).toEqual({ ok: false, code: "HARVEST_STAGE_TRANSITION_INVALID" });
@@ -1789,6 +1783,7 @@ it.each([true, false])(
               ownerOperationId: operationId,
               phaseId,
               status: "pending",
+              recipient: notice.recipient,
             }),
           ]
         : [],
@@ -1831,6 +1826,70 @@ it.each([true, false])(
     expect(restarted.snapshot()).toEqual(initial.snapshot());
   },
 );
+
+it("enriches a completed pull request harvest when a later delivery verifies its head", () => {
+  const incomplete = harvestIntake("first-verified", { headRepoSlug: null });
+  if (!incomplete.target.accepted)
+    throw new Error("Expected first pull request");
+  const [operation] = incomplete.target.operations;
+  const receipts = planHarvestStages({
+    phaseIds: [phaseId],
+    terminalEvent: "merged",
+    hasSlackTarget: false,
+    hasRemoteBranchTarget: false,
+  }).map(
+    ({ phaseKey, stage, initialStatus }): HarvestStageReceipt => ({
+      ...learningReceipt(operation.operationId),
+      phaseKey,
+      stage,
+      status: initialStatus === "pending" ? "succeeded" : initialStatus,
+    }),
+  );
+  const state = restoreHarvestIntake({
+    harvests: [{ ...operation, status: "completed", completedAt: nowIso }],
+    stages: receipts,
+  });
+  const foreign = harvestIntake(
+    "foreign-head",
+    { headRepoSlug: "other/repo" },
+    "github_poller",
+  );
+  expect(
+    restoreHarvestIntake(state.snapshot()).store.recordHarvestIntake(foreign),
+  ).toMatchObject({
+    ok: true,
+    operations: [{ operationId: operation.operationId, status: "completed" }],
+  });
+  const complete = harvestIntake("verified-head", {}, "github_poller");
+  expect(state.store.recordHarvestIntake(complete)).toMatchObject({
+    ok: true,
+    operations: [
+      {
+        operationId: operation.operationId,
+        prNumber: 42,
+        headRepoSlug: "acme/a",
+        status: "running",
+        completedAt: null,
+      },
+    ],
+  });
+  const restarted = restoreRecoveryStore({
+    ...state.snapshot(),
+    outboxItems: [],
+  });
+  const lease = restarted.claimHarvestLease({
+    operationId: operation.operationId,
+    nowIso,
+    leaseOwner: "cleanup",
+    leaseExpiresAt,
+  });
+  expect(
+    lease?.stages.find(({ stage }) => stage === "branch_cleanup"),
+  ).toMatchObject({ status: "pending", completedAt: null });
+  expect(
+    lease?.stages.filter(({ stage }) => stage !== "branch_cleanup"),
+  ).toEqual(receipts.filter(({ stage }) => stage !== "branch_cleanup"));
+});
 
 it("schedules cleanup after a completed offline harvest receives verified pull request evidence", async () => {
   const local = harvestIntake("offline-complete", offline);

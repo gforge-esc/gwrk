@@ -225,7 +225,7 @@ type HarvestCommitScope = HarvestTarget & {
   mergeCommitSha: string | null;
 };
 
-export function canCorrelateHarvestIntake(
+function sharesMergedCommitScope(
   existing: HarvestCommitScope,
   incoming: HarvestCommitScope,
 ): boolean {
@@ -233,13 +233,22 @@ export function canCorrelateHarvestIntake(
   return (
     existing.terminalEvent === "merged" &&
     incoming.terminalEvent === "merged" &&
-    (existing.prNumber === null) !== (incoming.prNumber === null) &&
     existing.projectId === incoming.projectId &&
     existing.featureId === incoming.featureId &&
     existing.phaseId === incoming.phaseId &&
     commit !== undefined &&
     fullGitObjectId.test(commit) &&
     commit === incoming.mergeCommitSha?.trim().toLowerCase()
+  );
+}
+
+export function canCorrelateHarvestIntake(
+  existing: HarvestCommitScope,
+  incoming: HarvestCommitScope,
+): boolean {
+  return (
+    (existing.prNumber === null) !== (incoming.prNumber === null) &&
+    sharesMergedCommitScope(existing, incoming)
   );
 }
 
@@ -578,21 +587,85 @@ export function hasVerifiedBranchCleanupTarget(
   );
 }
 
+type VerifiedHarvestFacts = HarvestCommitScope &
+  BranchCleanupTarget & {
+    prUrl: string | null;
+    terminalAt: string;
+  };
+
+export function mergeVerifiedHarvestFacts(
+  prior: VerifiedHarvestFacts,
+  verified: VerifiedHarvestFacts,
+) {
+  if (
+    verified.prNumber === null ||
+    !Number.isSafeInteger(verified.prNumber) ||
+    verified.prNumber <= 0 ||
+    (prior.prNumber !== null && prior.prNumber !== verified.prNumber) ||
+    !sharesMergedCommitScope(prior, verified) ||
+    prior.trunkBranch !== verified.trunkBranch ||
+    (prior.repoSlug && !isSameRepository(prior.repoSlug, verified.repoSlug)) ||
+    (prior.headRepoSlug &&
+      verified.headRepoSlug &&
+      !isSameRepository(prior.headRepoSlug, verified.headRepoSlug)) ||
+    (prior.headBranch &&
+      verified.headBranch &&
+      prior.headBranch !== verified.headBranch) ||
+    (prior.expectedHeadSha &&
+      verified.expectedHeadSha &&
+      prior.expectedHeadSha.toLowerCase() !==
+        verified.expectedHeadSha.toLowerCase())
+  ) {
+    return null;
+  }
+  const facts = {
+    repoSlug: prior.repoSlug ?? verified.repoSlug,
+    headRepoSlug: prior.headRepoSlug ?? verified.headRepoSlug,
+    prNumber: verified.prNumber,
+    prUrl: prior.prUrl ?? verified.prUrl,
+    headBranch: prior.headBranch ?? verified.headBranch,
+    expectedHeadSha: prior.expectedHeadSha ?? verified.expectedHeadSha,
+    terminalAt:
+      prior.prNumber === null ? verified.terminalAt : prior.terminalAt,
+  };
+  return Object.entries(facts).some(
+    ([key, value]) => prior[key as keyof typeof facts] !== value,
+  )
+    ? facts
+    : null;
+}
+
+export function matchesHarvestNoticeRecipient(
+  stored: DeliveryRecipient | null,
+  requested: DeliveryRecipient,
+): stored is DeliveryRecipient {
+  return (
+    stored?.surface === "slack" &&
+    requested.surface === stored.surface &&
+    requested.projectId === stored.projectId &&
+    requested.workspaceId === stored.workspaceId &&
+    requested.channelId === stored.channelId &&
+    requested.threadTs === stored.threadTs &&
+    requested.actorUserId === stored.actorUserId &&
+    Boolean(requested.opsOnly) === Boolean(stored.opsOnly)
+  );
+}
+
 export function planLateBranchCleanup(input: {
   operationId: string;
-  prior: HarvestCommitScope & { status: HarvestOperationStatus };
-  verified: HarvestCommitScope & BranchCleanupTarget;
+  prior: VerifiedHarvestFacts & { status: HarvestOperationStatus };
+  verified: VerifiedHarvestFacts;
   stages: readonly HarvestStageReceipt[];
   nowIso: string;
 }): HarvestStageReceipt[] {
   const { operationId, prior, verified, stages, nowIso } = input;
+  const enriched = mergeVerifiedHarvestFacts(prior, verified);
   if (
-    prior.prNumber !== null ||
-    !canCorrelateHarvestIntake(prior, verified) ||
+    !enriched ||
     !["accepted", "running", "delivery_pending", "completed"].includes(
       prior.status,
     ) ||
-    !hasVerifiedBranchCleanupTarget(verified)
+    !hasVerifiedBranchCleanupTarget({ ...prior, ...enriched })
   ) {
     return [];
   }
