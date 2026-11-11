@@ -29,7 +29,7 @@ Recheck each pattern against the implementation base before recording failing ev
 | `**/src/server/integration.test.ts` | `src/server/integration.test.ts` | Fixed port, global state and background work | 1 |
 | `**/src/server/routes/dispatch.test.ts` | `src/server/routes/dispatch.test.ts` | Shared state and dispatch teardown | 1 |
 | `**/src/cli.pulse.e2e.test.ts` | `src/cli.pulse.e2e.test.ts` | Repeated CLI startup and Git setup | 2 |
-| `**/src/**/notify.test.ts` | `src/server/routes/notify.test.ts` | Daemon startup for route assertions | 1 |
+| `**/src/**/notify.test.ts` | `src/server/routes/notify.test.ts` | Daemon startup for route assertions. [PR #232](https://github.com/gforge-esc/gwrk/pull/232) isolates the suite and restores CI coverage. | 1 |
 | `**/src/engine/pulse-integration.test.ts` | `src/engine/pulse-integration.test.ts` | Synchronous Git setup and wall-clock threshold | 2 |
 
 ## Phase conventions
@@ -46,7 +46,7 @@ The spec has five unnumbered requirements and four numbered acceptance criteria.
 - `src/server/e2e.test.ts` — **amend** — Register real routes with fixture config and exercise them through Fastify injection. FR-002.
 - `src/server/integration.test.ts` — **amend** — Start two isolated instances and verify dispatch completes in the correct journal and ledger. FR-002, FR-003.
 - `src/server/routes/dispatch.test.ts` — **amend** — Retain route assertions with a real scoped queue and a controlled ship result. FR-002.
-- `src/server/routes/notify.test.ts` — **amend** — Exercise the real notification routes with a captured notifier and no listener. FR-002.
+- `src/server/routes/notify.test.ts` — **verify** — Retain direct route injection and captured notification delivery from PR #232. FR-002.
 - `src/server/routes/status.test.ts` — **amend** — Cover the registered status route with fixture scope and close it on assertion failure. FR-002, FR-003.
 
 #### Governance & Skills Contract
