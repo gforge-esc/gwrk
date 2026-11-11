@@ -17,7 +17,7 @@
           "title": "Modify index.ts",
           "description": "MODIFY src/server/index.ts. Accept explicit server scope and clean up owned effects on close and failed startup. FR-002, FR-003.",
           "status": "open",
-          "gateScript": "pnpm run build\npnpm exec vitest run --retry 0 src/server/e2e.test.ts src/server/integration.test.ts src/server/routes/dispatch.test.ts src/server/routes/notify.test.ts src/server/routes/status.test.ts src/server/dispatch.test.ts src/adapters/sqlite/store-isolation.test.ts src/architecture.test.ts",
+          "gateScript": "gates/phase-01.sh",
           "sp": 1
         },
         {
@@ -25,7 +25,7 @@
           "title": "Modify dispatch.ts",
           "description": "MODIFY src/server/dispatch.ts. Scope all journal writes to the queue project root. Pass the supplied ledger to run start and finish. FR-002.. Tests: src/server/routes/dispatch.test.ts",
           "status": "open",
-          "gateScript": "pnpm run build\npnpm exec vitest run --retry 0 src/server/e2e.test.ts src/server/integration.test.ts src/server/routes/dispatch.test.ts src/server/routes/notify.test.ts src/server/routes/status.test.ts src/server/dispatch.test.ts src/adapters/sqlite/store-isolation.test.ts src/architecture.test.ts",
+          "gateScript": "gates/phase-01.sh",
           "sp": 1
         },
         {
@@ -33,7 +33,7 @@
           "title": "Create server-fixture.ts",
           "description": "NEW tests/helpers/server-fixture.ts. Compose isolated Fastify instances and own their temporary project roots and SQLite handles. FR-002.",
           "status": "open",
-          "gateScript": "pnpm run build\npnpm exec vitest run --retry 0 src/server/e2e.test.ts src/server/integration.test.ts src/server/routes/dispatch.test.ts src/server/routes/notify.test.ts src/server/routes/status.test.ts src/server/dispatch.test.ts src/adapters/sqlite/store-isolation.test.ts src/architecture.test.ts",
+          "gateScript": "gates/phase-01.sh",
           "sp": 2
         }
       ],
@@ -55,7 +55,7 @@
           "title": "Create pulse-git-fixture.ts",
           "description": "NEW tests/helpers/pulse-git-fixture.ts. Seed explicit branch names and fixed author data through bounded asynchronous Git commands. FR-002, FR-003.",
           "status": "open",
-          "gateScript": "pnpm run build\npnpm exec vitest run --retry 0 src/cli.pulse.e2e.test.ts src/engine/pulse-integration.test.ts src/adapters/cli/output-scope.test.ts src/architecture.test.ts",
+          "gateScript": "gates/phase-02.sh",
           "sp": 2
         }
       ],
@@ -74,7 +74,7 @@
           "title": "Modify db.ts",
           "description": "DELETE src/db/db.ts. Remove the throwing compression insert stub after confirming it has no production consumer. FR-004.. Tests: src/db/db.test.ts",
           "status": "open",
-          "gateScript": "pnpm run build\npnpm exec vitest run src/db/db.test.ts src/db/compression.test.ts src/adapters/sqlite/store-isolation.test.ts src/architecture.test.ts",
+          "gateScript": "gates/phase-03.sh",
           "sp": 1
         }
       ],
@@ -95,7 +95,7 @@
           "title": "Modify vitest.config.ts",
           "description": "MODIFY vitest.config.ts. Remove integration quarantine and unhandled error suppression. Keep general exclusions and worker isolation. FR-001, FR-003.",
           "status": "open",
-          "gateScript": "pnpm run build\npnpm exec vitest run src/ci-test-policy.test.ts src/architecture.test.ts\nCI=true pnpm run test:ci --retry 0 src/server/e2e.test.ts src/server/integration.test.ts src/server/routes/dispatch.test.ts src/server/routes/notify.test.ts src/cli.pulse.e2e.test.ts src/engine/pulse-integration.test.ts\nCI=true pnpm run test:ci",
+          "gateScript": "gates/phase-04.sh",
           "sp": 1
         },
         {
@@ -103,7 +103,7 @@
           "title": "Modify package.json",
           "description": "MODIFY package.json. Keep `test:ci` as a full Vitest run without the quarantine flag. FR-001, FR-003.",
           "status": "open",
-          "gateScript": "pnpm run build\npnpm exec vitest run src/ci-test-policy.test.ts src/architecture.test.ts\nCI=true pnpm run test:ci --retry 0 src/server/e2e.test.ts src/server/integration.test.ts src/server/routes/dispatch.test.ts src/server/routes/notify.test.ts src/cli.pulse.e2e.test.ts src/engine/pulse-integration.test.ts\nCI=true pnpm run test:ci",
+          "gateScript": "gates/phase-04.sh",
           "sp": 1
         }
       ],
@@ -123,7 +123,7 @@
           "title": "Modify ci.yml",
           "description": "MODIFY .github/workflows/ci.yml. Run blocking lint in both matrix jobs and remove stale quarantine comments. FR-005.. Tests: src/ci-lint-policy.test.ts",
           "status": "open",
-          "gateScript": "pnpm run build\npnpm run lint\npnpm exec vitest run src/ci-lint-policy.test.ts src/architecture.test.ts\nnode dist/cli.js define adr --check\nCI=true pnpm run test:ci",
+          "gateScript": "gates/phase-05.sh",
           "sp": 1
         },
         {
@@ -131,7 +131,7 @@
           "title": "Modify biome.json",
           "description": "MODIFY biome.json. Exclude the ignored machine-local config from project lint. Keep tracked lint coverage. FR-005.",
           "status": "open",
-          "gateScript": "pnpm run build\npnpm run lint\npnpm exec vitest run src/ci-lint-policy.test.ts src/architecture.test.ts\nnode dist/cli.js define adr --check\nCI=true pnpm run test:ci",
+          "gateScript": "gates/phase-05.sh",
           "sp": 1
         }
       ],

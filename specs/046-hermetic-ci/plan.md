@@ -209,6 +209,6 @@ The spec assigns no IDs to its requirements or acceptance criteria. The matrix m
 
 ## Deferred Items
 
-- Start implementation after project adoption. Require passing gates from [042 port and adapter separation](../042-port-adapter-separation/plan.md) and [043 unified routing and prompt delivery](../043-unified-routing-prompt-delivery/plan.md). No feature requirement is deferred.
+- Require passing gates from [042 port and adapter separation](../042-port-adapter-separation/plan.md) and [043 unified routing and prompt delivery](../043-unified-routing-prompt-delivery/plan.md). No feature requirement is deferred.
 - [035 Polyglot canary](../035-polyglot-canary-e2e/spec.md) keeps its separate language-native acceptance. This feature restores only the matches of the six quarantine patterns. It leaves unrelated `tests/e2e/` selection alone.
 - [040 domain purity and boundaries](../040-pure-domain-boundary-gates/plan.md) owns boundary expansion. This plan runs the existing architecture check. It leaves the repaired assessment envelope and template determinism regression coverage in place.
