@@ -296,24 +296,28 @@ function detectFilesystemProfile(projectRoot: string): FilesystemProfile {
     }
   }
 
-  if (files.includes("ruff.toml") || files.includes(".ruff.toml")) {
+  const hasRuffConfig = files.includes("ruff.toml") || files.includes(".ruff.toml");
+  if (hasRuffConfig) {
     toolchain.primary = python.primary = "ruff";
-  } else if (files.includes(".black") || files.includes("pyproject.toml")) {
-    if (files.includes("pyproject.toml")) {
-      try {
-        const content = fs.readFileSync(
-          path.join(projectRoot, "pyproject.toml"),
-          "utf-8",
-        );
+  }
+  if (files.includes("pyproject.toml")) {
+    try {
+      const content = fs.readFileSync(
+        path.join(projectRoot, "pyproject.toml"),
+        "utf-8",
+      );
+      if (content.includes("[tool.pytest") || /\bpytest\b/.test(content)) {
+        python.test = "pytest";
+        // Keep legacy aggregate detection when a standalone Ruff config exists.
+        if (!hasRuffConfig) toolchain.test = python.test;
+      }
+      if (!hasRuffConfig) {
         if (content.includes("[tool.black]"))
           toolchain.formatter = python.formatter = "black";
         if (content.includes("[tool.ruff]"))
           toolchain.primary = python.primary = "ruff";
-        if (content.includes("[tool.pytest") || /\bpytest\b/.test(content)) {
-          toolchain.test = python.test = "pytest";
-        }
-      } catch {}
-    }
+      }
+    } catch {}
   }
 
   if (

@@ -650,6 +650,35 @@ describe("FR-001: architecture-aware workspace profiles (044 phase p01)", () => 
     }
   });
 
+  it("detects the selected Python runner from pyproject.toml alongside a Ruff config", async () => {
+    const config = {
+      project: {
+        name: "fixture",
+        design,
+        stack: { language: "Python" },
+        toolchain: { testCommand: "uv run pytest {files}" },
+      },
+      workspaces: { "services/api": { stack: { language: "Python" } } },
+    };
+    write(".gwrkrc.json", JSON.stringify(config));
+    write("services/api/package.json", "{}");
+    write("services/api/jest.config.js", "");
+    write("services/api/pyproject.toml", "[project]\n[tool.pytest.ini_options]\n");
+    write("services/api/ruff.toml", "");
+
+    const workspace = path.join(root, "services/api");
+    const profiles = [
+      await detectProfile(workspace),
+      await resolveWorkspaceProfile(root, "services/api"),
+      resolveWorkspaceProfile(workspace, root, config),
+    ];
+    for (const profile of profiles) {
+      if (!profile) throw new Error("Expected workspace profile");
+      expect.soft(profile).toMatchObject({ design, toolchain: { test: "pytest" } });
+      expect.soft(getTestCommand(profile, ["test_api.py"])).toBe("pytest test_api.py -v");
+    }
+  });
+
   it("keeps explicit workspace-local tools above filtered detection", async () => {
     write("services/api/package.json", "{}");
     write("services/api/biome.json", "{}");

@@ -99,7 +99,7 @@ function compatibleToolchain(
   toolchain: ProjectProfile["toolchain"],
   sourceStack: ProjectProfile["stack"],
   workspaceStack: ProjectProfile["stack"],
-  source: "root" | "detected",
+  source: "root" | "detected" | "local",
 ): ProjectProfile["toolchain"] {
   if (!toolchain) return undefined;
 
@@ -136,7 +136,9 @@ function compatibleToolchain(
     sourceFamily !== undefined && sourceFamily !== workspaceFamily;
   const buildFits = !differentFamily && buildSystemsMatch;
   const runnerFits =
-    (!differentFamily || (source === "detected" && test != null)) &&
+    (!differentFamily ||
+      (source !== "root" && test != null) ||
+      (source === "local" && test === null)) &&
     (!test || toolLanguages[test] === workspaceFamily);
   const extensionsFit =
     !differentFamily &&
@@ -149,7 +151,8 @@ function compatibleToolchain(
     ...(runnerFits &&
       buildFits &&
       testCommand !== undefined && { testCommand }),
-    ...(buildFits && build !== undefined && { build }),
+    ...((buildFits || (source === "local" && build === null)) &&
+      build !== undefined && { build }),
     ...(extensionsFit && testExtension !== undefined && { testExtension }),
     ...(extensionsFit && sourceExtension !== undefined && { sourceExtension }),
   };
@@ -281,7 +284,7 @@ export function resolveWorkspacePolicyProfile(
           localProject?.toolchain,
           localProject?.stack,
           workspaceStack,
-          "root",
+          "local",
         )
       : localProject?.toolchain;
 
