@@ -199,6 +199,17 @@ test "$(readlink /opt/gwrk/current)" = "$current_before"
 test "$(readlink /opt/gwrk/previous)" = "$previous_before"
 mv /tmp/prior-cli.js "$prior/dist/cli.js"
 
+mv "$prior/node_modules" /tmp/prior-node-modules
+: > /tmp/supervisor.calls
+expect_rejection 'Rollback target CLI could not start' bash "$rollback" /opt/gwrk /var/lib/gwrk
+if grep -Eq '^(stop|start)$' /tmp/supervisor.calls; then
+  printf 'Rollback stopped the service before rejecting missing dependencies.\n' >&2
+  exit 1
+fi
+test "$(readlink /opt/gwrk/current)" = "$current_before"
+test "$(readlink /opt/gwrk/previous)" = "$previous_before"
+mv /tmp/prior-node-modules "$prior/node_modules"
+
 printf 'SELECT 1;\n' > "$prior/dist/db/migrations/999-fixture.sql"
 write_prior_manifest
 expect_rejection '999-fixture.sql' bash "$rollback" /opt/gwrk /var/lib/gwrk

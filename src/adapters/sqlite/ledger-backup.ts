@@ -26,6 +26,7 @@ import {
 } from "../../domain/ledger-backup.js";
 import type { LedgerBackupPort } from "../../ports/release-ops-port.js";
 import { sha256 } from "../release/inventory.js";
+import { readRepositoryEvidence } from "../release/repository-evidence.js";
 
 const DB_FILE = "gwrk.db";
 const METADATA_FILE = "repo-metadata.json";
@@ -278,12 +279,20 @@ export async function verifyLedgerAgainstBackup(
   const directory = resolve(backupDirectory);
   const { manifest, metadata } = await verifyLedgerBackup(directory);
   const backupRows = readLedger(join(directory, DB_FILE), acceptedWorkRows);
-  const matches = readLedger(
-    dbPath,
-    (db) =>
-      isDeepStrictEqual(summarizeLedger(db, metadata), manifest.summary) &&
-      isDeepStrictEqual(acceptedWorkRows(db), backupRows),
+  const repoIds = new Set(
+    metadata.repositories.map(({ projectId }) => projectId),
   );
+  const matches = readLedger(dbPath, (db) => {
+    const repositories = projectRows(db)
+      .filter(({ id }) => repoIds.has(id))
+      .map(({ id, path }) => readRepositoryEvidence(id, path));
+    return (
+      isDeepStrictEqual(
+        summarizeLedger(db, { ...metadata, repositories }),
+        manifest.summary,
+      ) && isDeepStrictEqual(acceptedWorkRows(db), backupRows)
+    );
+  });
   if (!matches) {
     throw new Error("Live ledger does not match the pre-rollback backup.");
   }

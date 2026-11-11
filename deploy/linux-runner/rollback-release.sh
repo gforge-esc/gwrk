@@ -52,6 +52,8 @@ check_rollback() {
   "${as_service[@]}" node "$active/dist/cli.js" db rollback-check --current "$active" --target "$target" "$@"
 }
 check_rollback
+timeout --kill-after=5s 15s "${as_service[@]}" node "$target/dist/cli.js" --version </dev/null >/dev/null 2>&1 ||
+  fail "Rollback target CLI could not start as $service_user: $target/dist/cli.js"
 
 scratch=$(mktemp -d "$release_root/.rollback.XXXXXXXX")
 switched=false

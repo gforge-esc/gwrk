@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { spawnSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import {
   appendFile,
   mkdir,
@@ -25,6 +25,8 @@ import {
   verifyLedgerAgainstBackup,
   verifyLedgerBackup,
 } from "../../src/adapters/sqlite/ledger-backup.js";
+
+import { readRepositoryEvidence } from "../../src/adapters/release/repository-evidence.js";
 
 vi.mock("node:fs/promises", async (importOriginal) => {
   const fs = await importOriginal<typeof import("node:fs/promises")>();
@@ -532,6 +534,57 @@ describe("ledger backup", () => {
         verifyLedgerAgainstBackup(db.name, destination),
       ).resolves.toBeUndefined();
       db.prepare(statement).run();
+      await expect(
+        verifyLedgerAgainstBackup(db.name, destination),
+      ).rejects.toThrow(/does not match the pre-rollback backup/);
+    } finally {
+      db.close();
+    }
+  });
+
+  it("rejects a changed tracked task after a rollback restart", async () => {
+    const git = (...args: string[]) =>
+      execFileSync("git", ["-C", root, ...args], { stdio: "ignore" });
+    const taskDir = join(root, "specs", "001-fixture", ".gwrk");
+    const task = join(taskDir, "tasks.json");
+    git("init", "--quiet");
+    await mkdir(taskDir, { recursive: true });
+    const commitTask = async (status: string) => {
+      await writeFile(task, JSON.stringify({ status }));
+      git("add", task);
+      git(
+        "-c",
+        "user.name=Fixture",
+        "-c",
+        "user.email=fixture@example.invalid",
+        "-c",
+        "commit.gpgsign=false",
+        "-c",
+        "core.hooksPath=/dev/null",
+        "commit",
+        "--quiet",
+        "-m",
+        "Record fixture task",
+      );
+    };
+    await commitTask("completed");
+
+    const db = seedLedger();
+    const destination = join(root, "before-rollback");
+    try {
+      await createLedgerBackup({
+        dbPath: db.name,
+        destination,
+        createdAt: "2026-11-11T12:00:00.000Z",
+        gwrkVersion: "1.6.0-beta.1",
+        metadata: { device: null },
+        collectRepositories: (projects) =>
+          projects.map(({ id, path }) => readRepositoryEvidence(id, path)),
+      });
+      await expect(
+        verifyLedgerAgainstBackup(db.name, destination),
+      ).resolves.toBeUndefined();
+      await commitTask("open");
       await expect(
         verifyLedgerAgainstBackup(db.name, destination),
       ).rejects.toThrow(/does not match the pre-rollback backup/);
