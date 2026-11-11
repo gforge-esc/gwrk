@@ -1,6 +1,6 @@
 # Workflow guidance and governance visibility plan
 
-Feature 045 aligns definition prompts with project policy and adds scoped architecture evidence to discovery. It also makes enforcement versions reproducible and gives plugin seed an actionable failure path. Blocked: implementation awaits architecture-aware policy selection (feature 044) and project owner adoption.
+Feature 045 aligns definition prompts with project policy and adds scoped architecture evidence to discovery. It also makes enforcement versions reproducible and gives plugin seed an actionable failure path. Blocked: implementation awaits architecture-aware policy selection (feature 044).
 
 ## Dependencies
 
@@ -42,7 +42,7 @@ Use [the repository layout and stack](../../docs/grounding/architecture.md) in s
 
 Delivers architecture guidance (FR-001) and decision authority (FR-002). Use the selected design and project standards from feature 044. For gwrk, describe the pure domain and its ports. Locate orchestration in `src/application/` and external effects in `src/adapters/`. Use the host repository's layout for other projects. Keep the planning output and gate contracts from features 023 and 024.
 
-Apply the single dispatch path decision (ADR-007) and the decision records contract (ADR-010). Keep the index payload verbatim in every stage. Place shared conflict guidance outside that payload. Decided constraints govern. Escalate a conflicting Proposed target to the project owner before affected implementation. Require test-driven development and compile-gate.
+Apply the single dispatch path decision (ADR-007) and the decision records contract (ADR-010). Keep the index payload verbatim in every stage. Place shared conflict guidance outside that payload. Decided constraints govern. Record any conflict with a Proposed target in the plan. Require test-driven development and compile-gate.
 
 #### Files
 
@@ -171,6 +171,6 @@ The proposed [feature spec](spec.md) uses unnumbered bullets and numbered accept
 
 | Item | Dependency or scope |
 |---|---|
-| Feature 045 implementation | Project owner adoption and the completed [architecture-aware policy contract](../044-architecture-aware-policy/contracts/policy-selection.md) |
+| Feature 045 implementation | The completed [architecture-aware policy contract](../044-architecture-aware-policy/contracts/policy-selection.md) |
 
 All five required changes and four acceptance criteria have phase coverage. The [reviewed findings](../../docs/architecture/assessments/2026-11-11-self-assessment/report.md) assign this feature workflow guidance (F09) and governance visibility (F10). Feature 043 owns the transport repair. The existing context determinism regression stays in the Phase 2 gate.
