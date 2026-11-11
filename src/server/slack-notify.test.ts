@@ -58,6 +58,41 @@ describe("US-003: Slack Event Bridge", () => {
     );
   });
 
+  it("passes cancellation to a stalled Slack webhook and skips Telegram", async () => {
+    vi.mocked(getSlackApp).mockReturnValue(null);
+    vi.stubEnv("TELEGRAM_BOT_TOKEN", "synthetic-token");
+    vi.stubEnv("TELEGRAM_CHAT_ID", "1234");
+    const controller = new AbortController();
+    const fetchStub = vi.fn<typeof fetch>();
+    let release!: (value: Response) => void;
+    fetchStub.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          release = resolve;
+        }),
+    );
+    fetchStub.mockResolvedValue(new Response(null, { status: 200 }));
+    vi.stubGlobal("fetch", fetchStub);
+    try {
+      const delivery = notifySlack(
+        { text: "Stalled webhook", blocks: [] },
+        undefined,
+        {
+          signal: controller.signal,
+        },
+      );
+      await vi.waitFor(() => expect(fetchStub).toHaveBeenCalledOnce());
+      controller.abort();
+      release(new Response(null, { status: 200 }));
+      await delivery;
+      expect.soft(fetchStub.mock.calls[0][1]?.signal).toBe(controller.signal);
+      expect(fetchStub).toHaveBeenCalledOnce();
+    } finally {
+      vi.unstubAllGlobals();
+      vi.unstubAllEnvs();
+    }
+  });
+
   it("FR-005: Converts ship:complete event to Block Kit message", async () => {
     // Test implementation here...
     expect(true).toBe(true);

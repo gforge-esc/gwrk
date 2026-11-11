@@ -138,6 +138,7 @@ describe("DispatchQueue (unified ship engine)", () => {
     expect(notifySlack).toHaveBeenCalledWith(
       expect.anything(),
       expect.objectContaining({ type: "review_ready" }),
+      expect.objectContaining({ signal: expect.any(AbortSignal) }),
     );
 
     // Worktree torn down WITHOUT auto commit/push/PR — the engine owns the PR.
@@ -162,13 +163,27 @@ describe("DispatchQueue (unified ship engine)", () => {
       const noticeStarted = new Promise<void>((resolve) => {
         startNotice = resolve;
       });
+      const providerFinished = vi.fn();
       const noticePending = new Promise<void>((resolve) => {
         finishNotice = resolve;
       });
-      vi.mocked(notifySlack).mockImplementationOnce(() => {
-        startNotice();
-        return noticePending;
-      });
+      vi.mocked(notifySlack).mockImplementationOnce(
+        async (_message, _event, options) => {
+          startNotice();
+          try {
+            await Promise.race([
+              noticePending,
+              new Promise<void>((resolve) => {
+                options?.signal?.addEventListener("abort", () => resolve(), {
+                  once: true,
+                });
+              }),
+            ]);
+          } finally {
+            providerFinished(options?.signal?.aborted);
+          }
+        },
+      );
       const journalTerminal = vi.fn();
       mockRun.mockImplementationOnce(async () => {
         vi.mocked(persistDispatch).mockImplementationOnce(journalTerminal);
@@ -195,6 +210,7 @@ describe("DispatchQueue (unified ship engine)", () => {
           .toHaveBeenCalledExactlyOnceWith(
             expect.anything(),
             expect.objectContaining({ type: eventType }),
+            expect.objectContaining({ signal: expect.any(AbortSignal) }),
           );
         expect.soft(mockSandbox.destroySandbox).toHaveBeenCalledOnce();
         expect.soft(queue.getActiveCount()).toBe(0);
@@ -204,6 +220,7 @@ describe("DispatchQueue (unified ship engine)", () => {
         });
         await vi.advanceTimersByTimeAsync(5_000);
         expect(closed).toBe(true);
+        expect(providerFinished).toHaveBeenCalledExactlyOnceWith(true);
         await closing;
       } finally {
         finishNotice();
@@ -227,6 +244,7 @@ describe("DispatchQueue (unified ship engine)", () => {
     expect(notifySlack).toHaveBeenCalledWith(
       expect.anything(),
       expect.objectContaining({ type: "phase_fail" }),
+      expect.objectContaining({ signal: expect.any(AbortSignal) }),
     );
     expect(mockSandbox.destroySandbox).toHaveBeenCalledWith(
       "/work/dir",

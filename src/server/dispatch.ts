@@ -320,30 +320,26 @@ export class DispatchQueue {
         this.processNext();
       }
     }
-    let timeout: ReturnType<typeof setTimeout> | undefined;
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 5_000);
     try {
       const reviewReady = exitCode === 0;
       const message = reviewReady
         ? MessageBuilder.reviewReady(record)
         : MessageBuilder.phaseFail(record, stderr);
-      const delivery = notifySlack(message, {
-        type: reviewReady ? "review_ready" : "phase_fail",
-        feature: record.featureId,
-        phase: record.phaseId,
-        payload: (reviewReady
-          ? record
-          : { ...record, stderr }) as unknown as Record<string, unknown>,
-        timestamp: new Date().toISOString(),
-      });
-      await Promise.race([
-        delivery,
-        new Promise<never>((_, reject) => {
-          timeout = setTimeout(
-            () => reject(new Error("Dispatch notification timed out")),
-            5_000,
-          );
-        }),
-      ]);
+      await notifySlack(
+        message,
+        {
+          type: reviewReady ? "review_ready" : "phase_fail",
+          feature: record.featureId,
+          phase: record.phaseId,
+          payload: (reviewReady
+            ? record
+            : { ...record, stderr }) as unknown as Record<string, unknown>,
+          timestamp: new Date().toISOString(),
+        },
+        { signal: controller.signal },
+      );
     } catch (error) {
       logCliError("Failed to notify dispatch outcome:", error);
     } finally {

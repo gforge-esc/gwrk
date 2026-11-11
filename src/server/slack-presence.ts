@@ -115,9 +115,16 @@ class PresenceManager {
   public async handleNotification(
     event: SlackEvent,
     message: SlackMessage,
+    signal?: AbortSignal,
   ): Promise<void> {
+    if (signal?.aborted) return;
     if (this.currentPresence === "active") {
-      await this.sendImmediately(message);
+      if (signal) {
+        const { sendSlackMessage } = await import("./slack-notify.js");
+        await sendSlackMessage(message, signal);
+      } else {
+        await this.sendImmediately(message);
+      }
     } else {
       logCliOutput(
         `User away. Queuing event: ${event.type} for ${event.feature}`,

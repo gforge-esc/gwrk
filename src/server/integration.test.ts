@@ -25,6 +25,7 @@ import { getCompressionRecord } from "../db/compression.js";
 import { getGateResults } from "../db/gates.js";
 import { getDb } from "../db/index.js";
 import { listIssues } from "../db/issues.js";
+import { insertFeature, insertPhase } from "../db/plan.js";
 import { listRuns, recordHistory, startRun } from "../db/runs.js";
 import type { ShipStageResult } from "../domain/ship-types.js";
 import { gatherDeliveryActuals } from "../engine/compression.js";
@@ -40,7 +41,7 @@ import { SystemMonitor } from "./monitor.js";
 import { NetworkMonitor } from "./network.js";
 import * as persistence from "./persistence.js";
 import { removePid, writePid } from "./pid.js";
-import { startSlackApp } from "./slack.js";
+import { getSlackApp, startSlackApp } from "./slack.js";
 
 vi.mock("node:child_process", async (importOriginal) => {
   const original = await importOriginal<typeof import("node:child_process")>();
@@ -405,6 +406,97 @@ setInterval(() => {}, 1000);
       expect(result.status).toBe("fulfilled");
     } finally {
       await fixture.close();
+    }
+  });
+
+  it("cancels a stalled heartbeat request before removing its process record", async () => {
+    const fixture = await createServerFixture("routes", {
+      routes: ["dispatch"],
+    });
+    const server = fastify();
+    vi.spyOn(server, "listen").mockResolvedValue("http://127.0.0.1:0");
+    vi.mocked(fastify).mockReturnValueOnce(server);
+    vi.mocked(getSlackApp).mockReturnValueOnce({
+      client: { token: "fixture-slack-token" },
+    } as NonNullable<ReturnType<typeof getSlackApp>>);
+    const providerStopped = vi.fn();
+    const provider = vi
+      .fn<typeof fetch>()
+      .mockImplementation(async (_url, init) => {
+        const signal = init?.signal;
+        if (!signal) throw new Error("Expected an abortable heartbeat request");
+        return new Promise((_, reject) => {
+          signal.addEventListener(
+            "abort",
+            () => {
+              providerStopped(existsSync(fixture.pidPath));
+              reject(signal.reason);
+            },
+            { once: true },
+          );
+        });
+      });
+    vi.stubGlobal("fetch", provider);
+    try {
+      insertFeature(
+        {
+          id: "fixture",
+          name: "Fixture",
+          status: "ACTIVE",
+          sp_total: 1,
+        },
+        fixture.projectId,
+        fixture.db,
+      );
+      insertPhase(
+        {
+          id: "phase-01",
+          feature_id: "fixture",
+          name: "Pending fixture phase",
+          status: "IN_PROGRESS",
+          health: "GREEN",
+          sp_estimate: 1,
+          seq: 1,
+        },
+        fixture.projectId,
+        fixture.db,
+      );
+      fixture.db
+        .prepare("UPDATE plan_phases SET updated_at = ?")
+        .run("2000-01-01T00:00:00Z");
+      const config = GwrkConfigSchema.parse({
+        project: { name: "fixture", slack: { channelId: "C1" } },
+        server: { host: "127.0.0.1", port: 0 },
+      });
+      await startServer(config, {
+        projectRoot: fixture.projectRoot,
+        handleSignals: false,
+        ledger: { projectId: fixture.projectId, db: fixture.db },
+        pid: {
+          writePid(pid) {
+            writeFileSync(fixture.pidPath, String(pid), { flag: "wx" });
+          },
+          removePid() {
+            rmSync(fixture.pidPath);
+          },
+        },
+      });
+      await vi.waitFor(() => expect(provider).toHaveBeenCalledOnce());
+      expect(provider).toHaveBeenCalledWith(
+        "https://slack.com/api/chat.postMessage",
+        expect.objectContaining({
+          signal: expect.any(AbortSignal),
+          body: expect.stringContaining("Build Plan Health Report"),
+        }),
+      );
+      expect(providerStopped).not.toHaveBeenCalled();
+      await server.close();
+      expect(providerStopped).toHaveBeenCalledExactlyOnceWith(true);
+      expect(existsSync(fixture.pidPath)).toBe(false);
+    } finally {
+      await server.close();
+      await fixture.close();
+      vi.unstubAllGlobals();
     }
   });
 
