@@ -1,10 +1,10 @@
 {
   "featureId": "040-pure-domain-boundary-gates",
-  "createdAt": "2026-11-11T16:11:32.751Z",
+  "createdAt": "2026-11-11T16:16:46.478Z",
   "generatedFrom": {
     "plan": {
-      "hash": "61b5bb3f0c95bb2ba03b759e3bcd09719ef28740883161fcf0e15c2e50304f08",
-      "modifiedAt": "2026-11-11T16:11:29.986Z"
+      "hash": "50279d21f9d85b1ac90faf0e4bf6e38bc60b76efd7ae516482d83c758d5fb00d",
+      "modifiedAt": "2026-11-11T16:16:46.148Z"
     }
   },
   "phases": [
@@ -17,11 +17,16 @@
           "title": "Create architecture-boundary.ts",
           "description": "NEW tests/helpers/architecture-boundary.ts. Check TypeScript syntax and layer rules",
           "status": "open",
-          "gateScript": "gates/T001-gate.sh",
+          "gateScript": "pnpm exec vitest run src/architecture.test.ts src/engine/harvest.test.ts src/engine/issues.test.ts",
           "sp": 2
         }
       ],
-      "sp_estimate": 2
+      "sp_estimate": 2,
+      "testTargets": [
+        "src/architecture.test.ts",
+        "src/engine/harvest.test.ts",
+        "src/engine/issues.test.ts"
+      ]
     },
     {
       "id": "phase-02",
@@ -32,7 +37,7 @@
           "title": "Modify project-id.ts",
           "description": "MODIFY src/domain/project-id.ts. Compute the existing identity from supplied facts",
           "status": "open",
-          "gateScript": "gates/T002-gate.sh",
+          "gateScript": "pnpm exec vitest run src/domain/project-id.test.ts src/utils/project-id.test.ts src/db/runs.test.ts src/architecture.test.ts",
           "sp": 1
         },
         {
@@ -40,11 +45,17 @@
           "title": "Create project-id.ts",
           "description": "NEW src/adapters/git/project-id.ts. Discover the remote and main worktree through bounded Git commands",
           "status": "open",
-          "gateScript": "gates/T003-gate.sh",
+          "gateScript": "pnpm exec vitest run src/domain/project-id.test.ts src/utils/project-id.test.ts src/db/runs.test.ts src/architecture.test.ts",
           "sp": 2
         }
       ],
-      "sp_estimate": 3
+      "sp_estimate": 3,
+      "testTargets": [
+        "src/domain/project-id.test.ts",
+        "src/utils/project-id.test.ts",
+        "src/db/runs.test.ts",
+        "src/architecture.test.ts"
+      ]
     },
     {
       "id": "phase-03",
@@ -55,7 +66,7 @@
           "title": "Modify agent-config.ts",
           "description": "MODIFY src/domain/agent-config.ts. Validate and merge supplied registry layers",
           "status": "open",
-          "gateScript": "gates/T004-gate.sh",
+          "gateScript": "pnpm exec vitest run src/domain/agent-config.test.ts src/server/agent-registry.test.ts src/server/agent-registry.integration.test.ts src/utils/resolve-model.test.ts src/utils/resolve-agent.test.ts src/architecture.test.ts",
           "sp": 1
         },
         {
@@ -63,11 +74,19 @@
           "title": "Create registry-loader.ts",
           "description": "NEW src/adapters/agents/registry-loader.ts. Read registry files and keep startup failure handling at the boundary",
           "status": "open",
-          "gateScript": "gates/T005-gate.sh",
+          "gateScript": "pnpm exec vitest run src/domain/agent-config.test.ts src/server/agent-registry.test.ts src/server/agent-registry.integration.test.ts src/utils/resolve-model.test.ts src/utils/resolve-agent.test.ts src/architecture.test.ts",
           "sp": 2
         }
       ],
-      "sp_estimate": 3
+      "sp_estimate": 3,
+      "testTargets": [
+        "src/domain/agent-config.test.ts",
+        "src/server/agent-registry.test.ts",
+        "src/server/agent-registry.integration.test.ts",
+        "src/utils/resolve-model.test.ts",
+        "src/utils/resolve-agent.test.ts",
+        "src/architecture.test.ts"
+      ]
     },
     {
       "id": "phase-04",
@@ -78,7 +97,7 @@
           "title": "Modify toolchain.ts",
           "description": "MODIFY src/domain/toolchain.ts. Resolve the build command from supplied facts",
           "status": "open",
-          "gateScript": "gates/T006-gate.sh",
+          "gateScript": "pnpm exec vitest run src/domain/toolchain.test.ts src/utils/toolchain-mapper.test.ts src/architecture.test.ts src/application/architecture/context.test.ts",
           "sp": 1
         },
         {
@@ -86,11 +105,17 @@
           "title": "Create manifest-discovery.ts",
           "description": "NEW src/adapters/toolchain/manifest-discovery.ts. Discover build manifests and preserve explicit overrides",
           "status": "open",
-          "gateScript": "gates/T007-gate.sh",
+          "gateScript": "pnpm exec vitest run src/domain/toolchain.test.ts src/utils/toolchain-mapper.test.ts src/architecture.test.ts src/application/architecture/context.test.ts",
           "sp": 2
         }
       ],
-      "sp_estimate": 3
+      "sp_estimate": 3,
+      "testTargets": [
+        "src/domain/toolchain.test.ts",
+        "src/utils/toolchain-mapper.test.ts",
+        "src/architecture.test.ts",
+        "src/application/architecture/context.test.ts"
+      ]
     }
   ]
 }
