@@ -180,6 +180,45 @@ describe("credential guard", () => {
     ).not.toThrow();
   });
 
+  describe.each<{
+    shape: string;
+    evidence: (header: { name: string; value: string }) => unknown;
+  }>([
+    {
+      shape: "a persisted singleton",
+      evidence: (header) =>
+        JSON.parse(JSON.stringify({ response: { headers: header } })),
+    },
+    {
+      shape: "an embedded top-level array",
+      evidence: (header) => ({
+        sanitizedOutput: `response headers: ${JSON.stringify([header])}`,
+      }),
+    },
+    {
+      shape: "embedded JSON in a property name",
+      evidence: (header) => ({
+        [JSON.stringify({ response: { headers: [header] } })]: true,
+      }),
+    },
+  ])("named headers in $shape", ({ evidence }) => {
+    it("rejects Set-Cookie", () => {
+      const payload = evidence({
+        name: "Set-Cookie",
+        value: "session=fixture-only",
+      });
+      expect(() => assertNoSecretMaterial(payload)).toThrow(/secret material/i);
+    });
+
+    it("allows Content-Type", () => {
+      const payload = evidence({
+        name: "Content-Type",
+        value: "application/json",
+      });
+      expect(() => assertNoSecretMaterial(payload)).not.toThrow();
+    });
+  });
+
   it.each([
     {
       headers: [["Set-Cookie", ["session=fixture", "theme=dark"]]],

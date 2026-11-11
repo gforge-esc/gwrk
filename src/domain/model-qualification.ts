@@ -463,6 +463,7 @@ export function assertNoSecretMaterial(
       if (
         headerPattern.test(key) ||
         secretPattern.test(key) ||
+        isNamedCredentialHeader(entry) ||
         (typeof entry === "string" &&
           (headerPattern.test(entry) || secretPattern.test(entry))) ||
         (Array.isArray(entry) &&
@@ -470,13 +471,13 @@ export function assertNoSecretMaterial(
             (headersKeyPattern.test(key) &&
               entry.some(
                 (header, index) =>
-                  isNamedCredentialHeader(header) ||
-                  (index % 2 === 0 && isCredentialHeaderName(header)),
+                  index % 2 === 0 && isCredentialHeaderName(header),
               ))))
       ) {
         secretInText = true;
-      } else if (typeof entry === "string") {
-        scanEmbeddedJson(entry, knownSecrets);
+      } else {
+        scanEmbeddedJson(key, knownSecrets);
+        if (typeof entry === "string") scanEmbeddedJson(entry, knownSecrets);
       }
       return entry;
     }) ?? "";
