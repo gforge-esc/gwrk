@@ -646,7 +646,7 @@ export async function dispatchToAgent(task: TaskDispatch): Promise<TaskResult> {
   // Layer 3: External Context Injection (Phase 21)
   const rawKeywordSource = [
     task.featureDir ?? "",
-    task.prompt ?? task.stdin ?? promptParts?.userInput ?? "",
+    promptParts?.userInput ?? task.prompt ?? task.stdin ?? "",
   ]
     .join(" ")
     .replace(/^specs\//, "")

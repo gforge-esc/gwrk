@@ -314,6 +314,32 @@ it('uses the primary checkout throttle for a dispatch in a linked worktree', asy
 });
 
 describe("TR-018: Context Injection in Dispatch (Phase 21)", () => {
+  it("selects extension context from the scoped task rather than the assembled template", async () => {
+    const template = fs.readFileSync(
+      new URL("../plugins/builtins/workflows/gwrk-implement/PROMPT.md", import.meta.url),
+      "utf8",
+    );
+    const userInput = "<user_input>\nVerify the idempotency guarantee.\n</user_input>";
+    vi.mocked(extensionRuntime.resolveExtensionContext).mockImplementationOnce(
+      async (_workDir, keywords) =>
+        keywords?.includes("idempotency")
+          ? [{ source: "project_rules", content: "Use the durable operation key." }]
+          : [],
+    );
+
+    const result = await dispatchToAgent({
+      agent: "agy",
+      workflow: "gwrk-implement",
+      featureDir: "specs/043-unified-routing-prompt-delivery",
+      promptParts: { template, userInput },
+      stdin: `${template}\n\n${userInput}`,
+      dryRun: true,
+    });
+
+    expect(result.stdout).toContain("<project_rules>\nUse the durable operation key.");
+    expect(result.stdout).toContain(userInput);
+  });
+
   it("FR-L3-006: injects output of resolveExtensionContext into prompt", async () => {
     vi.mocked(extensionRuntime.resolveExtensionContext).mockResolvedValue([
       { source: "test-source", content: "External Context Content", relevance: 1.0 }
