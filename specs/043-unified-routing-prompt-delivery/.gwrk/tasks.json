@@ -1,0 +1,276 @@
+{
+  "featureId": "043-unified-routing-prompt-delivery",
+  "createdAt": "2026-11-11T18:06:02.721Z",
+  "generatedFrom": {
+    "plan": {
+      "hash": "8cd3e17a45a699b29f245d3eacf910422bbd59d7e13daf03191aa193da36701e",
+      "modifiedAt": "2026-11-11T18:05:58.535Z"
+    }
+  },
+  "phases": [
+    {
+      "id": "phase-01",
+      "title": "Unified routing and port adapter",
+      "tasks": [
+        {
+          "id": "T001",
+          "title": "Create agent-routing.ts",
+          "description": "NEW src/domain/agent-routing.ts. Implement pure `selectAgentRoute` over supplied overrides, quotas, cooldowns and fallback order. Tests: src/domain/agent-routing.test.ts",
+          "status": "open",
+          "gateScript": "pnpm build\npnpm exec vitest run src/domain/agent-routing.test.ts src/adapters/agents/agent-port.test.ts src/utils/resolve-agent.test.ts src/utils/resolve-model.test.ts src/utils/config-resolution.conformance.test.ts src/engine/router.test.ts src/plugins/skill-runtime.test.ts src/architecture.test.ts",
+          "sp": 2
+        },
+        {
+          "id": "T002",
+          "title": "Modify index.ts",
+          "description": "MODIFY src/domain/index.ts. Export pure routing contracts and `selectAgentRoute`",
+          "status": "open",
+          "gateScript": "pnpm build\npnpm exec vitest run src/domain/agent-routing.test.ts src/adapters/agents/agent-port.test.ts src/utils/resolve-agent.test.ts src/utils/resolve-model.test.ts src/utils/config-resolution.conformance.test.ts src/engine/router.test.ts src/plugins/skill-runtime.test.ts src/architecture.test.ts",
+          "sp": 1
+        },
+        {
+          "id": "T003",
+          "title": "Modify agent-port.ts",
+          "description": "MODIFY src/ports/agent-port.ts. Extend `RoutingContext` and `SelectedAgentRoute` with typed route mode, effort, quota and failover fields. Tests: src/adapters/agents/agent-port.test.ts",
+          "status": "open",
+          "gateScript": "pnpm build\npnpm exec vitest run src/domain/agent-routing.test.ts src/adapters/agents/agent-port.test.ts src/utils/resolve-agent.test.ts src/utils/resolve-model.test.ts src/utils/config-resolution.conformance.test.ts src/engine/router.test.ts src/plugins/skill-runtime.test.ts src/architecture.test.ts",
+          "sp": 1
+        },
+        {
+          "id": "T004",
+          "title": "Create index.ts",
+          "description": "NEW src/adapters/agents/index.ts. Implement `createAgentPortAdapter` binding `AgentPort` to `selectAgentRoute`, quota probing and `dispatchToAgent`",
+          "status": "open",
+          "gateScript": "pnpm build\npnpm exec vitest run src/domain/agent-routing.test.ts src/adapters/agents/agent-port.test.ts src/utils/resolve-agent.test.ts src/utils/resolve-model.test.ts src/utils/config-resolution.conformance.test.ts src/engine/router.test.ts src/plugins/skill-runtime.test.ts src/architecture.test.ts",
+          "sp": 2
+        },
+        {
+          "id": "T005",
+          "title": "Modify resolve-model.ts",
+          "description": "MODIFY src/utils/resolve-model.ts. Delegate registry model selection to `src/domain/agent-routing.js`",
+          "status": "open",
+          "gateScript": "pnpm build\npnpm exec vitest run src/domain/agent-routing.test.ts src/adapters/agents/agent-port.test.ts src/utils/resolve-agent.test.ts src/utils/resolve-model.test.ts src/utils/config-resolution.conformance.test.ts src/engine/router.test.ts src/plugins/skill-runtime.test.ts src/architecture.test.ts",
+          "sp": 1
+        },
+        {
+          "id": "T006",
+          "title": "Modify resolve-agent.ts",
+          "description": "MODIFY src/utils/resolve-agent.ts. Delegate synchronous pillar resolution and fallback selection to `src/domain/agent-routing.js`",
+          "status": "open",
+          "gateScript": "pnpm build\npnpm exec vitest run src/domain/agent-routing.test.ts src/adapters/agents/agent-port.test.ts src/utils/resolve-agent.test.ts src/utils/resolve-model.test.ts src/utils/config-resolution.conformance.test.ts src/engine/router.test.ts src/plugins/skill-runtime.test.ts src/architecture.test.ts",
+          "sp": 1
+        },
+        {
+          "id": "T007",
+          "title": "Modify router.ts",
+          "description": "MODIFY src/engine/router.ts. Delegate `selectBackend` decision logic to `src/domain/agent-routing.js` over history and config facts",
+          "status": "open",
+          "gateScript": "pnpm build\npnpm exec vitest run src/domain/agent-routing.test.ts src/adapters/agents/agent-port.test.ts src/utils/resolve-agent.test.ts src/utils/resolve-model.test.ts src/utils/config-resolution.conformance.test.ts src/engine/router.test.ts src/plugins/skill-runtime.test.ts src/architecture.test.ts",
+          "sp": 1
+        },
+        {
+          "id": "T008",
+          "title": "Modify skill-runtime.ts",
+          "description": "MODIFY src/plugins/skill-runtime.ts. Route skill backend selection through `createAgentPortAdapter` while preserving `SkillResult` pipe semantics",
+          "status": "open",
+          "gateScript": "pnpm build\npnpm exec vitest run src/domain/agent-routing.test.ts src/adapters/agents/agent-port.test.ts src/utils/resolve-agent.test.ts src/utils/resolve-model.test.ts src/utils/config-resolution.conformance.test.ts src/engine/router.test.ts src/plugins/skill-runtime.test.ts src/architecture.test.ts",
+          "sp": 1
+        }
+      ],
+      "sp_estimate": 10,
+      "testTargets": [
+        "src/domain/agent-routing.test.ts",
+        "src/adapters/agents/agent-port.test.ts",
+        "src/utils/resolve-agent.test.ts",
+        "src/plugins/skill-runtime.test.ts"
+      ]
+    },
+    {
+      "id": "phase-02",
+      "title": "Server routing caller migration",
+      "tasks": [
+        {
+          "id": "T009",
+          "title": "Modify ship.ts",
+          "description": "MODIFY src/commands/ship.ts. Route backend and model selection through `createAgentPortAdapter` instead of `getBackendSelector`. Tests: src/commands/ship.test.ts",
+          "status": "open",
+          "gateScript": "pnpm build\npnpm exec vitest run src/commands/ship.test.ts src/engine/model-routing.test.ts src/server/agent-registry.test.ts src/server/agent-registry.integration.test.ts src/server/backend-selector.test.ts src/server/backend-selector.integration.test.ts src/architecture.test.ts",
+          "sp": 1
+        },
+        {
+          "id": "T010",
+          "title": "Modify backend-selector.ts",
+          "description": "MODIFY src/server/backend-selector.ts. Import domain config, task classifier and `ModelSelector` directly and delegate selection to `selectAgentRoute`. Tests: src/server/backend-selector.test.ts",
+          "status": "open",
+          "gateScript": "pnpm build\npnpm exec vitest run src/commands/ship.test.ts src/engine/model-routing.test.ts src/server/agent-registry.test.ts src/server/agent-registry.integration.test.ts src/server/backend-selector.test.ts src/server/backend-selector.integration.test.ts src/architecture.test.ts",
+          "sp": 1
+        },
+        {
+          "id": "T011",
+          "title": "Modify quota-prober.ts",
+          "description": "MODIFY src/server/quota-prober.ts. Import `AgentBackendConfig` and `QuotaProbe` from `src/domain/agent-config.js`",
+          "status": "open",
+          "gateScript": "pnpm build\npnpm exec vitest run src/commands/ship.test.ts src/engine/model-routing.test.ts src/server/agent-registry.test.ts src/server/agent-registry.integration.test.ts src/server/backend-selector.test.ts src/server/backend-selector.integration.test.ts src/architecture.test.ts",
+          "sp": 1
+        },
+        {
+          "id": "T012",
+          "title": "Modify index.ts",
+          "description": "MODIFY src/server/index.ts. Import `loadRegistry` from `src/adapters/agents/registry-loader.js`",
+          "status": "open",
+          "gateScript": "pnpm build\npnpm exec vitest run src/commands/ship.test.ts src/engine/model-routing.test.ts src/server/agent-registry.test.ts src/server/agent-registry.integration.test.ts src/server/backend-selector.test.ts src/server/backend-selector.integration.test.ts src/architecture.test.ts",
+          "sp": 1
+        }
+      ],
+      "sp_estimate": 4,
+      "testTargets": [
+        "src/commands/ship.test.ts",
+        "src/engine/model-routing.test.ts",
+        "src/server/backend-selector.test.ts",
+        "src/server/agent-registry.integration.test.ts"
+      ]
+    },
+    {
+      "id": "phase-03",
+      "title": "Compatibility shim removal",
+      "tasks": [
+        {
+          "id": "T013",
+          "title": "Modify agent-registry.ts",
+          "description": "DELETE src/server/agent-registry.ts. Remove compatibility re-export shim after migrating all callers",
+          "status": "open",
+          "gateScript": "pnpm build\npnpm exec vitest run src/server/model-selector.test.ts src/server/quota-prober.test.ts src/server/task-classifier.test.ts src/server/backend-selector.test.ts src/architecture.test.ts",
+          "sp": 1
+        },
+        {
+          "id": "T014",
+          "title": "Modify model-selector.ts",
+          "description": "DELETE src/server/model-selector.ts. Remove compatibility re-export shim after migrating all callers. Tests: src/server/model-selector.test.ts",
+          "status": "open",
+          "gateScript": "pnpm build\npnpm exec vitest run src/server/model-selector.test.ts src/server/quota-prober.test.ts src/server/task-classifier.test.ts src/server/backend-selector.test.ts src/architecture.test.ts",
+          "sp": 1
+        },
+        {
+          "id": "T015",
+          "title": "Modify task-classifier.ts",
+          "description": "DELETE src/server/task-classifier.ts. Remove compatibility re-export shim after migrating all callers. Tests: src/server/task-classifier.test.ts",
+          "status": "open",
+          "gateScript": "pnpm build\npnpm exec vitest run src/server/model-selector.test.ts src/server/quota-prober.test.ts src/server/task-classifier.test.ts src/server/backend-selector.test.ts src/architecture.test.ts",
+          "sp": 1
+        }
+      ],
+      "sp_estimate": 3,
+      "testTargets": [
+        "src/server/model-selector.test.ts",
+        "src/server/task-classifier.test.ts",
+        "src/architecture.test.ts"
+      ]
+    },
+    {
+      "id": "phase-04",
+      "title": "Workflow runtime and prompt transport",
+      "tasks": [
+        {
+          "id": "T016",
+          "title": "Modify workflow-runtime.ts",
+          "description": "MODIFY src/plugins/workflow-runtime.ts. Populate `task.stdin` before dispatch and support `nativeOnly` execution with an injected `dispatcher`. Tests: src/plugins/workflow-runtime.test.ts",
+          "status": "open",
+          "gateScript": "pnpm build\npnpm exec vitest run src/utils/agent.test.ts src/utils/agent.grounding-decisions.test.ts src/plugins/workflow-runtime.test.ts src/plugins/skill-runtime.test.ts src/engine/ship-orchestrator.workflow-seam.test.ts src/plugins/builtins/workflows/gwrk-plan/prompt-contract.test.ts src/architecture.test.ts",
+          "sp": 1
+        },
+        {
+          "id": "T017",
+          "title": "Modify ship-orchestrator.ts",
+          "description": "MODIFY src/engine/ship-orchestrator.ts. Route `stageImplement` and `executeReviewWorkflow` through `WorkflowRuntime` in `nativeOnly` mode using `dispatchWithFailback`. Tests: src/engine/ship-orchestrator.workflow-seam.test.ts",
+          "status": "open",
+          "gateScript": "pnpm build\npnpm exec vitest run src/utils/agent.test.ts src/utils/agent.grounding-decisions.test.ts src/plugins/workflow-runtime.test.ts src/plugins/skill-runtime.test.ts src/engine/ship-orchestrator.workflow-seam.test.ts src/plugins/builtins/workflows/gwrk-plan/prompt-contract.test.ts src/architecture.test.ts",
+          "sp": 1
+        },
+        {
+          "id": "T018",
+          "title": "Modify agent.ts",
+          "description": "MODIFY src/utils/agent.ts. Combine prompt and stdin before enforcement resolution, grounding and `<command_safety>` injection without duplicating prompts. Tests: src/utils/agent.test.ts",
+          "status": "open",
+          "gateScript": "pnpm build\npnpm exec vitest run src/utils/agent.test.ts src/utils/agent.grounding-decisions.test.ts src/plugins/workflow-runtime.test.ts src/plugins/skill-runtime.test.ts src/engine/ship-orchestrator.workflow-seam.test.ts src/plugins/builtins/workflows/gwrk-plan/prompt-contract.test.ts src/architecture.test.ts",
+          "sp": 1
+        },
+        {
+          "id": "T019",
+          "title": "Modify PROMPT.md",
+          "description": "MODIFY src/plugins/builtins/workflows/gwrk-plan/PROMPT.md. Add `<code_quality>` enforcement placeholder while preserving canonical plan format rules",
+          "status": "open",
+          "gateScript": "pnpm build\npnpm exec vitest run src/utils/agent.test.ts src/utils/agent.grounding-decisions.test.ts src/plugins/workflow-runtime.test.ts src/plugins/skill-runtime.test.ts src/engine/ship-orchestrator.workflow-seam.test.ts src/plugins/builtins/workflows/gwrk-plan/prompt-contract.test.ts src/architecture.test.ts",
+          "sp": 1
+        },
+        {
+          "id": "T020",
+          "title": "Modify PROMPT.md",
+          "description": "MODIFY src/plugins/builtins/workflows/gwrk-implement/PROMPT.md. Add `<code_quality>` enforcement placeholder for implementation dispatches",
+          "status": "open",
+          "gateScript": "pnpm build\npnpm exec vitest run src/utils/agent.test.ts src/utils/agent.grounding-decisions.test.ts src/plugins/workflow-runtime.test.ts src/plugins/skill-runtime.test.ts src/engine/ship-orchestrator.workflow-seam.test.ts src/plugins/builtins/workflows/gwrk-plan/prompt-contract.test.ts src/architecture.test.ts",
+          "sp": 1
+        }
+      ],
+      "sp_estimate": 5,
+      "testTargets": [
+        "src/utils/agent.test.ts",
+        "src/plugins/workflow-runtime.test.ts",
+        "src/engine/ship-orchestrator.workflow-seam.test.ts",
+        "src/plugins/builtins/workflows/gwrk-plan/prompt-contract.test.ts"
+      ]
+    },
+    {
+      "id": "phase-05",
+      "title": "Adapter parity and recorded recovery",
+      "tasks": [
+        {
+          "id": "T021",
+          "title": "Modify agent-port.ts",
+          "description": "MODIFY src/ports/agent-port.ts. Extend `UnwrappedStreamResult` and `unwrapStreamJson` to detect terminal `is_error` and failure subtypes in stream-json envelopes",
+          "status": "open",
+          "gateScript": "pnpm build\npnpm exec vitest run src/plugins/builtins/agents/agy/adapter.test.ts src/plugins/builtins/agents/claude/adapter.test.ts src/plugins/builtins/agents/codex/adapter.test.ts src/plugins/workflow-runtime.test.ts src/commands/assess.test.ts src/architecture.test.ts",
+          "sp": 1
+        },
+        {
+          "id": "T022",
+          "title": "Modify adapter.ts",
+          "description": "MODIFY src/plugins/builtins/agents/agy/adapter.ts. Retain Antigravity envelope parsing and reject an error terminal even when its response contains a GO verdict. Tests: src/plugins/builtins/agents/agy/adapter.test.ts",
+          "status": "open",
+          "gateScript": "pnpm build\npnpm exec vitest run src/plugins/builtins/agents/agy/adapter.test.ts src/plugins/builtins/agents/claude/adapter.test.ts src/plugins/builtins/agents/codex/adapter.test.ts src/plugins/workflow-runtime.test.ts src/commands/assess.test.ts src/architecture.test.ts",
+          "sp": 1
+        },
+        {
+          "id": "T023",
+          "title": "Modify adapter.ts",
+          "description": "MODIFY src/plugins/builtins/agents/claude/adapter.ts. Populate `status` and force non-zero `exitCode` when stream-json terminal events report failure on raw exit `0`. Tests: src/plugins/builtins/agents/agy/adapter.test.ts",
+          "status": "open",
+          "gateScript": "pnpm build\npnpm exec vitest run src/plugins/builtins/agents/agy/adapter.test.ts src/plugins/builtins/agents/claude/adapter.test.ts src/plugins/builtins/agents/codex/adapter.test.ts src/plugins/workflow-runtime.test.ts src/commands/assess.test.ts src/architecture.test.ts",
+          "sp": 1
+        },
+        {
+          "id": "T024",
+          "title": "Modify adapter.ts",
+          "description": "MODIFY src/plugins/builtins/agents/codex/adapter.ts. Populate `status`, `unwrappedStdout` and `structuredOutput` across JSON and plain-text responses. Tests: src/plugins/builtins/agents/agy/adapter.test.ts",
+          "status": "open",
+          "gateScript": "pnpm build\npnpm exec vitest run src/plugins/builtins/agents/agy/adapter.test.ts src/plugins/builtins/agents/claude/adapter.test.ts src/plugins/builtins/agents/codex/adapter.test.ts src/plugins/workflow-runtime.test.ts src/commands/assess.test.ts src/architecture.test.ts",
+          "sp": 1
+        },
+        {
+          "id": "T025",
+          "title": "Modify workflow-runtime.ts",
+          "description": "MODIFY src/plugins/workflow-runtime.ts. Reject `result.status === \"failure\"` before output extraction even when `exitCode` is `0`",
+          "status": "open",
+          "gateScript": "pnpm build\npnpm exec vitest run src/plugins/builtins/agents/agy/adapter.test.ts src/plugins/builtins/agents/claude/adapter.test.ts src/plugins/builtins/agents/codex/adapter.test.ts src/plugins/workflow-runtime.test.ts src/commands/assess.test.ts src/architecture.test.ts",
+          "sp": 1
+        }
+      ],
+      "sp_estimate": 5,
+      "testTargets": [
+        "src/plugins/builtins/agents/agy/adapter.test.ts",
+        "src/plugins/builtins/agents/claude/adapter.test.ts",
+        "src/plugins/builtins/agents/codex/adapter.test.ts",
+        "src/commands/assess.test.ts"
+      ]
+    }
+  ]
+}
