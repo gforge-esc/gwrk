@@ -355,15 +355,15 @@ export interface HarvestExecutionPort {
 | `heartbeatDispatchLease` | Extend `lease_expires_at` for active worker | Requires matching `LeaseFence` |
 | `completeDispatchAttempt` | Persist terminal or requeued attempt state | Fails with `LEASE_FENCED` on stale epoch |
 | `listRecoverableDispatches` | List `accepted` and expired `leased` or `running` rows | Ordered by `created_at` ascending |
-| `recordHarvestIntake` | Record `harvest_deliveries` and upsert `harvest_operations` | Separate transport key and work key |
+| `recordHarvestIntake` | Record `harvest_deliveries` and upsert `harvest_operations` | One transaction. Reject transport ID reuse with different verified repository or payload digest |
 | `claimHarvestLease` | Claim or renew harvest operation lease | Increments `lease_epoch` atomically |
-| `transitionHarvestStage` | Update one `harvest_stage_receipts` row | Requires matching `lease_epoch` |
+| `transitionHarvestStage` | Update one `harvest_stage_receipts` row | Requires matching owner and epoch on every stage and effect receipt write |
 | `enqueueOutbox` | Insert idempotent `notification_outbox` item | Unique `(project_id, dedupe_key)` |
-| `claimOutboxItem` | Mark pending or retryable item `sending` | Captures `client_metadata_key` |
+| `claimOutboxItem` | Mark pending or retryable item `sending` | Captures `client_metadata_key` with a fenced delivery claim |
 | `markOutboxUncertain` | Persist `uncertain` after send timeout or error | Blocks blind resend before reconcile |
-| `completeOutboxItem` | Store `delivered` receipt with `message_ts` and `thread_ts` | Idempotent per `outbox_id` |
+| `completeOutboxItem` | Store `delivered` receipt with `message_ts` and `thread_ts` | Requires the current delivery claim |
 | `getHarvestCursor` | Read per-project poller watermark | Keyed by `project_id` |
-| `saveHarvestCursor` | Advance `last_polled_at` and `last_terminal_at` | Atomic per `project_id` |
+| `saveHarvestCursor` | Advance `last_polled_at` and `last_terminal_at` | Advance only after all deliveries up to the watermark commit |
 | `getOperationsStatus` | Summarize queue age, harvests, outbox lag and legacy counts | Marks legacy rows `legacy_unverified` |
 
 ### `VcsPort` and `NotificationPort` extensions
@@ -392,6 +392,11 @@ export interface VcsHarvestExtensions {
   ): Promise<{ deleted: boolean; reason?: "tip_moved" | "missing" }>;
 }
 
+export type NotificationReconcileResult =
+  | { status: "found"; receipt: NotificationReceipt }
+  | { status: "confirmed_absent" }
+  | { status: "indeterminate"; reason: string };
+
 export interface NotificationReconcileQuery {
   projectId: string;
   workspaceId?: string;
@@ -401,4 +406,6 @@ export interface NotificationReconcileQuery {
 }
 ```
 
-`VcsPort` extends `048`'s interface with `VcsHarvestExtensions`. `NotificationPayload` adds optional `clientMetadataKey?: string` and `NotificationPort` adds optional `reconcileDelivery?(query: NotificationReconcileQuery): Promise<NotificationReceipt | null>`. `deleteRemoteBranchAtTip` runs `git push origin --force-with-lease=refs/heads/<branch>:<expectedSha> :refs/heads/<branch>` so remote branch movement fails closed without deleting new commits.
+`VcsPort` extends `048`'s interface with `VcsHarvestExtensions`. `NotificationPayload` adds optional `clientMetadataKey?: string` and `NotificationPort` adds optional `reconcileDelivery?(query: NotificationReconcileQuery): Promise<NotificationReconcileResult>`. `deleteRemoteBranchAtTip` runs `git push origin --force-with-lease=refs/heads/<branch>:<expectedSha> :refs/heads/<branch>` so remote branch movement fails closed without deleting new commits.
+
+A missing message in a partial page, an access denial or a timed-out lookup is indeterminate. The outbox retains the uncertain state and exposes it to the operator. Resend only after a definitive provider rejection or a complete authorized lookup that confirms absence.

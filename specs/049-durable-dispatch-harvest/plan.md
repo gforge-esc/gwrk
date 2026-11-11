@@ -143,7 +143,7 @@ pnpm exec vitest run src/db/operations.test.ts src/db/db.test.ts src/architectur
 | ID | Type | Target | Assertion |
 |---|---|---|---|
 | TR-002 | unit | `src/adapters/github/github-adapter.test.ts` | Adapter verifies raw-body HMAC signatures and paginates terminal PRs past missed intervals |
-| TR-003 | unit | `src/adapters/notifications/outbox-reconcile.test.ts` | Adapter recovers prior Slack `messageTs` by `clientMetadataKey` without double posting |
+| TR-003 | unit | `src/adapters/notifications/outbox-reconcile.test.ts` | Adapter finds the prior receipt by metadata key and suppresses resend after a partial or unauthorized lookup |
 | TR-004 | integration | `src/adapters/git/harvest-git.test.ts` | Detached checkout leaves developer branch untouched and moved remote tip blocks deletion |
 
 #### Done When
@@ -178,8 +178,8 @@ pnpm exec vitest run src/adapters/git/harvest-git.test.ts src/adapters/github/gi
 
 | ID | Type | Target | Assertion |
 |---|---|---|---|
-| TR-001 | unit | `src/application/dispatch/dispatch-service.test.ts` | Crash after acceptance executes once on restart and PR-opened crash completes without relaunch |
-| TR-002 | unit | `src/application/harvest/harvest-service.test.ts` | Duplicate and out-of-order webhook, poller and manual events converge per repository merge |
+| TR-001 | unit | `src/application/dispatch/dispatch-service.test.ts` | Crash after acceptance executes once. A live or unconfirmed old worker blocks relaunch |
+| TR-002 | unit | `src/application/harvest/harvest-service.test.ts` | Duplicate and out-of-order events converge per repository merge. A stale close cannot replace a verified merge |
 | TR-003 | unit | `src/application/harvest/harvest-service.test.ts` | Faults after each stage write and external effect resume cleanly and fence stale lease owners |
 | TR-004 | unit | `src/application/harvest/harvest-service.test.ts` | Closed unmerged PRs skip phase promotion, gate failures stay distinct and moved tips block cleanup |
 

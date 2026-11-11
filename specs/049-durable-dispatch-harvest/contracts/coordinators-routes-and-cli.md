@@ -104,9 +104,9 @@ export interface OutboxDeliveryService {
 }
 ```
 
-Startup recovery runs `DurableDispatchService.recoverOnStartup` before new workers start. Expired or interrupted running leases call `WorkerExecutionPort.inspectRecoveredWork` first. If the prior worker opened or merged a pull request, recovery records completion without starting a second worker. Otherwise recovery marks the interrupted attempt, cleans the stale sandbox and requeues under a new `leaseEpoch`.
+Startup recovery runs `DurableDispatchService.recoverOnStartup` before new workers start. Expired or interrupted running leases call `WorkerExecutionPort.inspectRecoveredWork` first. If the prior worker opened or merged a pull request, recovery records completion without starting a second worker. If the prior worker is still running, recovery waits or obtains a confirmed stop before requeueing. An unavailable or ambiguous worker lookup leaves recovery pending. Only a confirmed stopped worker without a terminal pull request can be requeued under a new `leaseEpoch`.
 
-Harvest coordination drives five ordered stages for merged pull requests. Those stages are `git_sync`, `gate_verify` and `learning_record` plus `slack_delivery` and `branch_cleanup`. Each stage checks its `harvest_stage_receipts` row first and skips work marked `succeeded` or `skipped_no_target`. If `gate_verify` fails, the service records `gate_failed` and skips phase promotion. It then queues `harvest_gate_failed` to the feature thread so status reports the failure. Outbox flushing calls `NotificationPort.reconcileDelivery` whenever an item starts in `sending` or `uncertain`. That check prevents duplicate Slack posts after timeouts. Telegram remains disabled across all hosted pilot notifications.
+Harvest coordination drives five ordered stages for merged pull requests. Those stages are `git_sync`, `gate_verify` and `learning_record` plus `slack_delivery` and `branch_cleanup`. Each stage checks its `harvest_stage_receipts` row first and skips work marked `succeeded` or `skipped_no_target`. If `gate_verify` fails, the service records `gate_failed` and skips phase promotion. It then queues `harvest_gate_failed` to the feature thread so status reports the failure. Outbox flushing calls `NotificationPort.reconcileDelivery` whenever an item starts in `sending` or `uncertain`. Indeterminate lookup leaves the item uncertain and visible in status. Only confirmed absence permits a new send. Telegram remains disabled across all hosted pilot notifications.
 
 ## HTTP, Slack and webhook ingress contracts
 
@@ -118,8 +118,10 @@ Phases: Phase 5 and Phase 6
 |---|---|---|---|
 | `POST /api/dispatch` | `DurableDispatchService.accept` commits SQLite row | HTTP `201` (new) or `200` (existing) with `DispatchReceipt` | Returns existing active `operationId` |
 | Slack `/gwrk dispatch` and `/gwrk ship` | Authorize via `048`, then persist `DispatchReceipt` before `ack()` | Ephemeral or threaded message with `operationId` | Replies with active `operationId` |
-| Slack `request_changes` and `retry_phase` | Claim `048` action receipt and persist `DispatchReceipt` before `ack()` | Thread reply naming `operationId` and attempt | Rejects replayed click or returns active `operationId` |
+| Slack `request_changes` and `retry_phase` | Claim the authorized Slack action and persist `DispatchReceipt` in one SQLite transaction before `ack()` | Thread reply naming `operationId` and attempt | Rejects replayed click or returns active `operationId` |
 | `POST /webhook/github` | Verify raw-body HMAC and commit `harvest_deliveries` plus `harvest_operations` | HTTP `200` with `{ status, deliveryId, operationId }` | Transport retry returns stored `operationId` |
+
+Keep authorization and durable acceptance on the acknowledgement path. Run GitHub lookups and agent work after acceptance. Store a transport payload digest with the verified delivery ID. An out-of-order close cannot overwrite an already verified merge. Reconcile ambiguous GitHub state from the enrolled repository before promoting any phase.
 
 ### Durable status payload extensions
 
