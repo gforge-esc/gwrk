@@ -39,3 +39,9 @@ export function computeProjectId(facts: ProjectIdentityFacts): string {
     .update(computeProjectKey(facts))
     .digest("hex");
 }
+
+export function computeLegacyProjectIds(facts: ProjectIdentityFacts): string[] {
+  return [`path:${facts.projectRoot}`, facts.projectRoot].map((key) =>
+    crypto.createHash("md5").update(key).digest("hex"),
+  );
+}

@@ -336,6 +336,14 @@ describe("FR-002 / TR-002: Pure Slack command routing and role authorization", (
     const unscoped = parseProjectSelector("status 048-project-identity-slack");
     expect(unscoped.requestedProject).toBeUndefined();
     expect(unscoped.cleanedText).toBe("status 048-project-identity-slack");
+
+    expect(parseProjectSelector("status --project alpha feature")).toEqual({
+      requestedProject: "alpha",
+      cleanedText: "status feature",
+    });
+    expect(
+      parseProjectSelector("status --project alpha --project=beta"),
+    ).toEqual({ requestedProject: "", cleanedText: "status" });
   });
 
   it("FR-002: maps Slack commands and interactive actions to required access levels", async () => {
@@ -829,6 +837,41 @@ describe("FR-003 / TR-003: Click-time Slack action verification, thread binding 
         actorUserId: "U_MAINTAINER",
       }),
     });
+  });
+
+  it("uses the action's minimum role even when the caller requests read access", async () => {
+    const { evaluateSlackAction } = await loadSlackRouting();
+    expect(
+      evaluateSlackAction(PROJECTS, ROLES, {
+        workspaceId: STORED_THREAD.workspaceId,
+        channelId: STORED_THREAD.channelId,
+        isDirectMessage: false,
+        actorUserId: "U_OPERATOR",
+        messageTs: STORED_THREAD.rootTs,
+        requiredAccess: "read",
+        actionId: "merge_pr",
+        featureId: STORED_THREAD.featureId,
+        storedThread: STORED_THREAD,
+      }),
+    ).toMatchObject({ ok: false, code: "INSUFFICIENT_ROLE" });
+  });
+
+  it("uses the actual Slack message as the root for a top-level click", async () => {
+    const { evaluateSlackAction } = await loadSlackRouting();
+    expect(
+      evaluateSlackAction(PROJECTS, ROLES, {
+        workspaceId: STORED_THREAD.workspaceId,
+        channelId: STORED_THREAD.channelId,
+        isDirectMessage: false,
+        actorUserId: "U_MAINTAINER",
+        messageTs: "1731320500.000200",
+        payloadRootTs: STORED_THREAD.rootTs,
+        requiredAccess: "maintain",
+        actionId: "merge_pr",
+        featureId: STORED_THREAD.featureId,
+        storedThread: STORED_THREAD,
+      }),
+    ).toMatchObject({ ok: false, code: "THREAD_PROJECT_MISMATCH" });
   });
 });
 

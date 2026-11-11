@@ -107,6 +107,16 @@ describe("Project identity from supplied facts", () => {
 });
 
 describe("FR-001 / TR-001: Canonical remote IDs and legacy path alias hashes", () => {
+  it("returns both historical hashes for a project identified only by its path", async () => {
+    const { computeLegacyProjectIds } = await import("./project-id.js");
+    const facts = { projectRoot: "/repos/local-only" };
+
+    expect(computeLegacyProjectIds(facts)).toEqual([
+      computeProjectId(facts),
+      md5(facts.projectRoot),
+    ]);
+  });
+
   it("TR-001: keeps canonical remote MD5 and emits prefixed and bare legacy path hashes", async () => {
     const mod = await loadProjectIdModule();
     expect(typeof mod.computeLegacyProjectIds).toBe("function");
