@@ -175,6 +175,71 @@ describe("credential guard", () => {
     ).not.toThrow();
   });
 
+  describe.each<{ form: string; evidence: (response: unknown) => unknown }>([
+    {
+      form: "persisted evidence",
+      evidence: (response) => JSON.parse(JSON.stringify({ response })),
+    },
+    {
+      form: "fixture stdout",
+      evidence: (response) => ({
+        sanitizedOutput: `stdout: ${JSON.stringify({ response })}`,
+      }),
+    },
+  ])("header values in $form", ({ evidence }) => {
+    it.each(["headers", "rawHeaders"])("rejects a Cookie key in %s", (key) => {
+      const response = {
+        [key]: [{ key: "Cookie", value: "session=fixture-only" }],
+      };
+      expect(() => assertNoSecretMaterial(evidence(response))).toThrow(
+        /secret material/i,
+      );
+    });
+
+    it("allows a Content-Type key in headers", () => {
+      const response = {
+        headers: [{ key: "Content-Type", value: "text/plain" }],
+      };
+      expect(() => assertNoSecretMaterial(evidence(response))).not.toThrow();
+    });
+
+    it.each([
+      ["Cookie", "Accept-Encoding"],
+      ["Accept-Encoding", "Cookie"],
+    ])(
+      "allows Vary values %s and %s in tuples and flat lists",
+      (first, second) => {
+        const values = [first, second];
+        const response = {
+          headers: [["Vary", values]],
+          rawHeaders: ["Content-Type", "text/plain", "Vary", values],
+        };
+        expect(() => assertNoSecretMaterial(evidence(response))).not.toThrow();
+      },
+    );
+
+    it("rejects a Cookie header after a multi-value Vary header", () => {
+      const response = {
+        headers: [
+          ["Vary", ["Cookie", "Accept-Encoding"]],
+          ["Cookie", "session=fixture-only"],
+        ],
+      };
+      expect(() => assertNoSecretMaterial(evidence(response))).toThrow(
+        /secret material/i,
+      );
+    });
+
+    it("rejects credential text in a multi-value header", () => {
+      const response = {
+        headers: [["Vary", ["Cookie", "Bearer\tfixture-token"]]],
+      };
+      expect(() => assertNoSecretMaterial(evidence(response))).toThrow(
+        /secret material/i,
+      );
+    });
+  });
+
   it.each([
     ["Authorization", "Basic Zml4dHVyZQ=="],
     ["Cookie", "session=fixture-only"],

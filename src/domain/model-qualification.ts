@@ -430,13 +430,29 @@ function isCredentialHeaderName(value: unknown): boolean {
   return typeof value === "string" && credentialHeaderNamePattern.test(value);
 }
 
-function isNamedCredentialHeader(entry: unknown): boolean {
+function isCredentialHeaderRecord(
+  entry: unknown,
+  nameField: "name" | "key",
+): boolean {
   return (
     typeof entry === "object" &&
     entry !== null &&
-    "name" in entry &&
     "value" in entry &&
-    isCredentialHeaderName(entry.name)
+    nameField in entry &&
+    isCredentialHeaderName(Reflect.get(entry, nameField))
+  );
+}
+
+function isFlatHeaderList(entries: unknown[]): boolean {
+  return (
+    entries.length % 2 === 0 &&
+    entries.every(
+      (entry, index) =>
+        typeof entry === "string" ||
+        (index % 2 === 1 &&
+          Array.isArray(entry) &&
+          entry.every((value) => typeof value === "string")),
+    )
   );
 }
 
@@ -516,20 +532,31 @@ export function assertNoSecretMaterial(
   knownSecrets: readonly string[] = [],
 ): void {
   let secretInText = false;
+  const flatHeaderLists = new WeakSet<unknown[]>();
   const serialized =
-    JSON.stringify(value, (key, entry: unknown) => {
+    JSON.stringify(value, function (this: unknown, key, entry: unknown) {
+      const isHeaderCollection = headersKeyPattern.test(key);
+      const isHeaderValue =
+        Array.isArray(this) &&
+        flatHeaderLists.has(this) &&
+        Number(key) % 2 === 1;
+      if (Array.isArray(entry) && !isHeaderValue && isFlatHeaderList(entry)) {
+        flatHeaderLists.add(entry);
+      }
       if (
         headerPattern.test(key) ||
         secretPattern.test(key) ||
-        isNamedCredentialHeader(entry) ||
+        isCredentialHeaderRecord(entry, "name") ||
         (typeof entry === "string" &&
           (headerPattern.test(entry) || secretPattern.test(entry))) ||
         (Array.isArray(entry) &&
+          !isHeaderValue &&
           entry.some(
             (header, index) =>
-              index % 2 === 0 &&
-              (index + 1 < entry.length || headersKeyPattern.test(key)) &&
-              isCredentialHeaderName(header),
+              (index % 2 === 0 &&
+                (index + 1 < entry.length || isHeaderCollection) &&
+                isCredentialHeaderName(header)) ||
+              (isHeaderCollection && isCredentialHeaderRecord(header, "key")),
           ))
       ) {
         secretInText = true;
