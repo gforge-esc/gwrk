@@ -495,24 +495,29 @@ function resolveDetectedProfile(
     const config = readWorkspaceRootConfig(start);
     if (config === undefined) return undefined;
   }
-  let nearestConfig:
-    | { directory: string; config: WorkspaceRootConfig }
-    | undefined;
   const ancestors =
     workspaceRoot?.configuredLookup &&
     crossesGitWorktreeBoundary(workspaceRoot.directory, start)
       ? []
-      : ancestorWorkspaceConfigs(start, workspaceRoot?.directory);
-  for (const ancestor of ancestors) {
-    nearestConfig ??= ancestor;
-    const { directory, config } = ancestor;
+      : [...ancestorWorkspaceConfigs(start, workspaceRoot?.directory)];
+  const nearestConfig = ancestors[0];
+  const ancestorDesign = findNearestAncestorDesign(ancestors);
+  for (const { directory, config } of ancestors) {
+    const workspaces = validateWorkspaceEntries(config);
+    const relativePath = relativeWorkspacePath(directory, start);
+    if (!matchWorkspacePath(relativePath, Object.keys(workspaces))) continue;
+
     const scoped = applyWorkspaceConfig(directory, start, detected, config, {
       requireDesign: true,
-      requireMatch: true,
       configuredLookup: workspaceRoot?.configuredLookup,
       localProject,
+      ancestorDesign:
+        ancestorDesign ??
+        DesignSchema.safeParse(workspaceRoot?.config?.project?.design).data,
+      workspaces,
     });
     if (scoped !== detected.profile) return scoped;
+    break;
   }
 
   if (workspaceRoot?.config !== undefined) {
@@ -523,6 +528,7 @@ function resolveDetectedProfile(
       workspaceRoot.config,
       {
         localProject,
+        ancestorDesign,
         requireDesign: workspaceRoot.configuredLookup,
         configuredLookup: workspaceRoot.configuredLookup,
       },
@@ -562,14 +568,7 @@ function* ancestorWorkspaceConfigs(workspace: string, root?: string) {
   const stop = root === undefined ? undefined : path.resolve(root);
   if (stop !== undefined) {
     const relative = relativeWorkspacePath(stop, directory);
-    if (
-      !relative ||
-      relative === ".." ||
-      relative.startsWith("../") ||
-      path.isAbsolute(relative)
-    ) {
-      return;
-    }
+    if (!relative || isOutsideRoot(relative)) return;
   }
 
   while (!fs.existsSync(path.join(directory, ".git"))) {
@@ -581,9 +580,11 @@ function* ancestorWorkspaceConfigs(workspace: string, root?: string) {
   }
 }
 
-function findNearestAncestorDesign(workspace: string, root: string) {
-  for (const { config } of ancestorWorkspaceConfigs(workspace, root)) {
-    const design = DesignSchema.safeParse(config.project?.design).data;
+function findNearestAncestorDesign(
+  ancestors: readonly { config: WorkspaceRootConfig }[],
+) {
+  for (const { config } of ancestors) {
+    const design = DesignSchema.safeParse(config?.project?.design).data;
     if (design) return design;
   }
   return undefined;
@@ -593,16 +594,17 @@ function relativeWorkspacePath(root: string, workspace: string): string {
   return path.relative(root, workspace).split(path.sep).join("/");
 }
 
-function crossesGitWorktreeBoundary(root: string, workspace: string): boolean {
-  const relativePath = relativeWorkspacePath(root, workspace);
-  if (
-    !relativePath ||
+function isOutsideRoot(relativePath: string): boolean {
+  return (
     relativePath === ".." ||
     relativePath.startsWith("../") ||
     path.isAbsolute(relativePath)
-  ) {
-    return false;
-  }
+  );
+}
+
+function crossesGitWorktreeBoundary(root: string, workspace: string): boolean {
+  const relativePath = relativeWorkspacePath(root, workspace);
+  if (!relativePath || isOutsideRoot(relativePath)) return false;
 
   let directory = path.resolve(root);
   for (const segment of relativePath.split("/")) {
@@ -612,18 +614,9 @@ function crossesGitWorktreeBoundary(root: string, workspace: string): boolean {
   return false;
 }
 
-function applyWorkspaceConfig(
-  root: string,
-  workspace: string,
-  initialDetection: FilesystemProfile,
+function validateWorkspaceEntries(
   config: WorkspaceRootConfig,
-  options?: {
-    requireDesign?: boolean;
-    requireMatch?: boolean;
-    configuredLookup?: boolean;
-    localProject?: WorkspaceProfileConfig;
-  },
-): ProjectProfile | undefined {
+): Record<string, WorkspaceProfileConfig> {
   const workspaceSchema =
     GwrkConfigSchema.shape.workspaces.unwrap().valueSchema;
   const workspaces: Record<string, WorkspaceProfileConfig> =
@@ -634,11 +627,27 @@ function applyWorkspaceConfig(
     const parsed = workspaceSchema.safeParse(entry);
     if (parsed.success) workspaces[workspacePath] = parsed.data;
   }
+  return workspaces;
+}
 
+function applyWorkspaceConfig(
+  root: string,
+  workspace: string,
+  initialDetection: FilesystemProfile,
+  config: WorkspaceRootConfig,
+  options?: {
+    requireDesign?: boolean;
+    configuredLookup?: boolean;
+    localProject?: WorkspaceProfileConfig;
+    ancestorDesign?: WorkspaceProfileConfig["design"];
+    workspaces?: Record<string, WorkspaceProfileConfig>;
+  },
+): ProjectProfile | undefined {
+  const workspaces = options?.workspaces ?? validateWorkspaceEntries(config);
   const relativePath = relativeWorkspacePath(root, workspace);
   const matchedPath = matchWorkspacePath(relativePath, Object.keys(workspaces));
   const matchedEntry = matchedPath ? workspaces[matchedPath] : undefined;
-  if (!matchedEntry && (options?.requireMatch || options?.configuredLookup)) {
+  if (!matchedEntry && options?.configuredLookup) {
     return initialDetection.profile;
   }
   const design = DesignSchema.safeParse(config?.project?.design).data;
@@ -649,7 +658,7 @@ function applyWorkspaceConfig(
   const localDesign =
     outsideWorktree || entryDesign
       ? undefined
-      : (localProject?.design ?? findNearestAncestorDesign(workspace, root));
+      : (localProject?.design ?? options?.ancestorDesign);
   const hasDesign = entryDesign || localDesign || design;
   let detected = initialDetection;
   if (!hasDesign) {
@@ -741,7 +750,10 @@ async function detectWorkspaceProfile(
   workspacePath: string,
 ): Promise<ProjectProfile> {
   const workspace = path.resolve(root, workspacePath);
-  if (crossesGitWorktreeBoundary(root, workspace)) {
+  if (
+    isOutsideRoot(relativeWorkspacePath(root, workspace)) ||
+    crossesGitWorktreeBoundary(root, workspace)
+  ) {
     return detectProfileInDirectory(workspace);
   }
   return detectProfileInDirectory(workspace, {

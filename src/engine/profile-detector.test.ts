@@ -1020,6 +1020,57 @@ describe("FR-001: architecture-aware workspace profiles (044 phase p01)", () => 
     },
   );
 
+  it("uses the nearer registration when only the outer project declares a design", async () => {
+    const outer = {
+      project: { name: "fixture", design },
+      workspaces: { "services/api": { stack: { framework: "Flask" } } },
+    };
+    write(".gwrkrc.json", JSON.stringify(outer));
+    write("services/.gwrkrc.json", JSON.stringify({
+      project: { name: "services" },
+      workspaces: {
+        api: {
+          stack: { framework: "Django" },
+          toolchain: { testCommand: "uv run pytest {files}" },
+        },
+      },
+    }));
+
+    const cwd = path.join(root, "services/api");
+    const profiles = {
+      direct: await detectProfile(cwd),
+      explicit: await resolveWorkspaceProfile(root, "services/api"),
+      configured: resolveWorkspaceProfile(cwd, root, outer),
+    };
+    for (const [entryPoint, profile] of Object.entries(profiles)) {
+      expect.soft(profile, entryPoint).toMatchObject({
+        design,
+        stack: { language: "Python", framework: "Django" },
+      });
+      expect.soft(getTestCommand(profile, ["test_api.py"]), entryPoint).toBe(
+        "uv run pytest test_api.py",
+      );
+    }
+  });
+
+  it.each(["relative", "absolute"])("detects a sibling worktree from a %s path", async (pathKind) => {
+    const checkout = path.join(root, "checkout");
+    const sibling = path.join(root, "other");
+    write("checkout/.git", "gitdir: /unused/checkout\n");
+    write("checkout/.gwrkrc.json", JSON.stringify({ project: { design } }));
+    write("other/.git", "gitdir: /unused/other\n");
+    write("other/pyproject.toml", '[project]\ndependencies = ["fastapi", "pytest"]\n');
+
+    const direct = await detectProfile(sibling);
+    expect(direct.design).toBeUndefined();
+    const explicit = await resolveWorkspaceProfile(
+      checkout,
+      pathKind === "relative" ? "../other" : sibling,
+    );
+    expect.soft(explicit.design).toBeUndefined();
+    expect(explicit).toEqual(direct);
+  });
+
   it("keeps a nested worktree registration within its own worktree", async () => {
     const nestedDesign = { ...design, architecture: "layered" };
     const outer = {
