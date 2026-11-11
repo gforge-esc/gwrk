@@ -20,7 +20,7 @@ vi.mock("../../utils/project-id.js", () => ({
   resolveProjectId: () => "project",
 }));
 vi.mock("../../utils/agent.js", () => ({ dispatchToAgent: vi.fn() }));
-vi.mock("../../server/quota-prober.js", () => ({
+vi.mock("./quota-prober.js", () => ({
   QuotaProber: class {
     async probeQuota() {
       return { percent: 100, status: "fresh" };
