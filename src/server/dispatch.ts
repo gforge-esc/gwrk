@@ -213,7 +213,12 @@ export class DispatchQueue {
       });
       record.workDir = worktreeDir;
       record.branchName = shipBranch;
-      persistDispatch(record, this.projectRoot);
+      try {
+        persistDispatch(record, this.projectRoot);
+      } catch (error) {
+        this.errors.push(error);
+        throw error;
+      }
 
       const orchestrator = new ShipOrchestrator({
         featureId: record.featureId,

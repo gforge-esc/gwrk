@@ -29,12 +29,13 @@ import { listRuns, recordHistory, startRun } from "../db/runs.js";
 import { gatherDeliveryActuals } from "../engine/compression.js";
 import { ShipOrchestrator } from "../engine/ship-orchestrator.js";
 import { execCommand } from "../utils/exec.js";
-import { runTaskGate } from "../utils/gate-exec.js";
+import * as gateExec from "../utils/gate-exec.js";
 import { syncTrunkForHarvest } from "../utils/git.js";
 import { HarvestWatcher } from "./harvest-watcher.js";
 import { PlanHeartbeat } from "./heartbeat.js";
 import { SystemMonitor } from "./monitor.js";
 import { NetworkMonitor } from "./network.js";
+import * as persistence from "./persistence.js";
 import { removePid, writePid } from "./pid.js";
 import { startSlackApp } from "./slack.js";
 
@@ -578,6 +579,21 @@ describe("Server E2E Integration", () => {
       const phaseId = "phase-01";
       const mergedAt = "2026-12-01T00:00:00Z";
       const headRef = `feat/${featureId}-${phaseId}`;
+      const slowCommand = "exec /bin/sleep 1";
+      const slowGates = [
+        { id: "T003", gateScript: "gates/T003-gate.sh" },
+        { id: "T004", gateScript: "gates/slow.sh" },
+        { id: "T005", gateScript: slowCommand },
+      ];
+      const runTaskGate = gateExec.runTaskGate;
+      vi.spyOn(gateExec, "runTaskGate").mockImplementation((task, options) =>
+        runTaskGate(task, {
+          ...options,
+          timeoutMs: slowGates.some(({ id }) => id === task.id)
+            ? 50
+            : undefined,
+        }),
+      );
       try {
         const origin = await createServerFixture("routes", {
           routes: ["dispatch"],
@@ -672,6 +688,15 @@ describe("Server E2E Integration", () => {
             mode: 0o755,
           },
         );
+        for (const { gateScript } of slowGates.slice(0, 2)) {
+          writeFileSync(
+            join(featureDir, gateScript),
+            `#!/bin/sh\n${slowCommand}\n`,
+            {
+              mode: 0o700,
+            },
+          );
+        }
         writeFileSync(
           join(featureDir, ".gwrk", "tasks.json"),
           JSON.stringify({
@@ -696,6 +721,12 @@ describe("Server E2E Integration", () => {
                     status: "open",
                     gateScript: "gates/T002-gate.sh",
                   },
+                  ...slowGates.map((gate) => ({
+                    ...gate,
+                    title: "Verify gate deadline",
+                    description: "",
+                    status: "open",
+                  })),
                 ],
               },
             ],
@@ -725,7 +756,7 @@ describe("Server E2E Integration", () => {
           expect(options?.env?.GIT_WORK_TREE).toBeUndefined();
           expect(options?.env?.GH_REPO).toBeUndefined();
           returnPullRequests?.();
-          await watcher.mock.results[0]?.value;
+          expect(watcher).toHaveBeenCalledOnce();
         } else {
           const response = await injectGitHub(fixture, "pull_request", {
             action: "closed",
@@ -764,6 +795,20 @@ describe("Server E2E Integration", () => {
             expect.arrayContaining([
               expect.objectContaining({ task_id: "T001", passed: 1 }),
               expect.objectContaining({ task_id: "T002", passed: 1 }),
+              ...slowGates.map(({ id }) =>
+                expect.objectContaining({
+                  task_id: id,
+                  passed: 0,
+                  exit_code: 1,
+                  ...(id === "T005"
+                    ? {}
+                    : {
+                        output: expect.stringContaining(
+                          "Gate timed out after 50 ms",
+                        ),
+                      }),
+                }),
+              ),
             ]),
           );
         expect
@@ -885,32 +930,46 @@ describe("Server E2E Integration", () => {
     }
   });
 
-  it("applies a scoped gate deadline to both executable file strategies", async () => {
-    const fixture = await createServerFixture("routes");
-    const { projectRoot } = fixture;
-    const gates = join(projectRoot, "gates");
+  it("reports a failed worktree journal append on close after teardown", async () => {
+    const fixture = await createServerFixture("routes", {
+      routes: ["dispatch"],
+    });
+    const append = persistence.persistDispatch;
+    let workDir: string | undefined;
+    vi.spyOn(persistence, "persistDispatch").mockImplementation(
+      (record, root) => {
+        if (record.status === "running" && record.workDir) {
+          workDir = record.workDir;
+          throw new Error("fixture worktree journal append failed");
+        }
+        append(record, root);
+      },
+    );
+
     try {
-      mkdirSync(gates);
-      for (const gate of ["T001-gate.sh", "configured.sh"]) {
-        writeFileSync(join(gates, gate), "#!/bin/sh\nexec /bin/sleep 1\n", {
-          mode: 0o700,
+      const response = await fixture.app.inject({
+        method: "POST",
+        url: "/api/dispatch",
+        payload: { featureId: "journal-failure", phaseId: "phase-01" },
+      });
+      expect(response.statusCode).toBe(201);
+      await vi.waitFor(() => {
+        expect(fixture.journal().at(-1)).toMatchObject({
+          id: response.json().id,
+          status: "failed",
         });
-      }
-      const options = {
-        cwd: projectRoot,
-        featureDir: projectRoot,
-        timeoutMs: 50,
-      };
-      for (const [task, strategy] of [
-        [{ id: "T001" }, "convention"],
-        [{ id: "T002", gateScript: "gates/configured.sh" }, "file"],
-        [{ id: "T003", gateScript: "exec /bin/sleep 1" }, "inline"],
-      ] as const) {
-        expect.soft(await runTaskGate(task, options)).toMatchObject({
-          passed: false,
-          strategy,
-        });
-      }
+      });
+      expect(ShipOrchestrator).not.toHaveBeenCalled();
+      expect(workDir).toBeDefined();
+      expect(existsSync(workDir ?? "")).toBe(false);
+      expect(
+        fixtureGit(fixture.projectRoot, "worktree", "list", "--porcelain"),
+      ).not.toContain(workDir);
+      const queue = await fixture.app.inject("/api/dispatch/queue");
+      expect(queue.json().active).toEqual([]);
+      await expect(fixture.app.close()).rejects.toThrow(
+        "fixture worktree journal append failed",
+      );
     } finally {
       await fixture.close();
     }
@@ -942,6 +1001,8 @@ describe("Server E2E Integration", () => {
       vi.stubEnv("GIT_WORK_TREE", external.projectRoot);
       vi.stubEnv("GIT_COMMITTER_DATE", "invalid-fixture-date");
       vi.stubEnv("GIT_AUTHOR_DATE", "invalid-fixture-date");
+      vi.stubEnv("GIT_AUTHOR_NAME", "Inherited Author");
+      vi.stubEnv("GIT_AUTHOR_EMAIL", "author@example.invalid");
       vi.stubEnv("GIT_COMMITTER_NAME", "Inherited Committer");
       vi.stubEnv("GIT_COMMITTER_EMAIL", "inherited@example.invalid");
       fixture = await createServerFixture("routes", { routes: ["dispatch"] });
@@ -954,6 +1015,9 @@ describe("Server E2E Integration", () => {
         fixtureGit(projectRoot, "log", "-1", "--format=%an|%ae|%cn|%ce"),
       ).toBe(
         "Gwrk Test|gwrk-test@example.invalid|Gwrk Test|gwrk-test@example.invalid",
+      );
+      expect(fixtureGit(projectRoot, "log", "-1", "--format=%at %ct")).toBe(
+        "946684800 946684800",
       );
       const worktrees = () =>
         fixtureGit(projectRoot, "worktree", "list", "--porcelain").match(
