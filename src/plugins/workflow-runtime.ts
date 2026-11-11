@@ -382,13 +382,14 @@ export class WorkflowRuntime {
     const conditionedPrompt = conditionPrompt(basePrompt, profile);
     const userInput = `<user_input>\n${input}\n</user_input>`;
     const outputSchema = manifest?.outputSchema;
-    const stdin = options.nativeOnly
-      ? [conditionedPrompt, userInput].filter(Boolean).join("\n\n")
-      : `${conditionedPrompt}\n\n<output_contract>\nYour output MUST be a single JSON object matching this schema:\n${JSON.stringify(outputSchema, null, 2)}\n</output_contract>\n\n${userInput}`;
+    const template = options.nativeOnly
+      ? conditionedPrompt
+      : `${conditionedPrompt}\n\n<output_contract>\nYour output MUST be a single JSON object matching this schema:\n${JSON.stringify(outputSchema, null, 2)}\n</output_contract>`;
 
     const task: TaskDispatch = {
       type: options.taskType ?? "workflow",
-      stdin,
+      stdin: [template, userInput].filter(Boolean).join("\n\n"),
+      promptParts: { template, userInput },
       agent: options.agent,
       model: options.model,
       env: options.effort ? { GWRK_EFFORT: options.effort } : undefined,

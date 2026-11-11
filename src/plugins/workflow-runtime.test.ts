@@ -98,13 +98,16 @@ describe("WorkflowRuntime Phase 13: Project Awareness", () => {
       dispatcher,
     });
 
-    const { stdin } = dispatcher.mock.calls[0][0];
+    const { stdin, promptParts } = dispatcher.mock.calls[0][0];
     expect(stdin).toContain('<project_profile type="pnpm-monorepo">');
     expect(stdin).toContain("Native rules");
     expect(stdin).not.toContain("Excluded template text");
-    expect(stdin.slice(stdin.indexOf("<user_input>"))).toBe(
-      `<user_input>\n${input}\n</user_input>`,
-    );
+    const userInput = `<user_input>\n${input}\n</user_input>`;
+    expect(stdin.slice(stdin.indexOf("<user_input>"))).toBe(userInput);
+    expect(promptParts).toEqual({
+      template: stdin.slice(0, -`\n\n${userInput}`.length),
+      userInput,
+    });
   });
 
   it("039: report-only workflows reject mutation intents before executing them", async () => {
@@ -228,6 +231,12 @@ describe("WorkflowRuntime Phase 13: Project Awareness", () => {
         ),
       }),
     );
+    const { stdin, promptParts } = vi.mocked(agentUtils.dispatchToAgent).mock.calls[0][0];
+    expect(promptParts).toEqual({
+      template: expect.stringContaining("<output_contract>"),
+      userInput: "<user_input>\ninput data\n</user_input>",
+    });
+    expect(stdin).toBe(`${promptParts?.template}\n\n${promptParts?.userInput}`);
   });
 });
 

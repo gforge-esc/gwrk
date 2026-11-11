@@ -64,9 +64,8 @@ describe('US-016: Enforcement Skills Dispatch Injection', () => {
     vi.clearAllMocks();
   });
 
-  it("expands prompt policy before transport and sends overlapping input once", async () => {
-    vi.mocked(skillRuntime.resolveEnforcementSkills).mockResolvedValue("# Scoped architecture rule");
-    const prompt = "Plan the requested phase.\n<code_quality>{{enforcement}}</code_quality>";
+  it("sends identical legacy prompt and stdin once", async () => {
+    const prompt = "Plan the requested phase.";
     const result = await dispatchToAgent({
       workflow: "gwrk-plan",
       workDir: "/fake/root",
@@ -78,37 +77,21 @@ describe('US-016: Enforcement Skills Dispatch Injection', () => {
     });
 
     expect(result.stdout.match(/Plan the requested phase\./g)).toHaveLength(1);
-    expect(result.stdout.match(/# Scoped architecture rule/g)).toHaveLength(1);
-    expect(result.stdout).not.toContain("{{enforcement}}");
     expect(result.stdout.match(/<command_safety>/g)).toHaveLength(1);
   });
 
   it('TR-P9-005: injects enforcement skills into <code_quality> section', async () => {
     vi.mocked(skillRuntime.resolveEnforcementSkills).mockResolvedValue('# Strict Typing Rule');
     
-    let capturedStdin = '';
-    vi.mocked(spawn).mockImplementation(() => {
-      const mockChild = new EventEmitter() as any;
-      const stdin = new PassThrough();
-      stdin.on('data', (chunk) => { capturedStdin += chunk.toString(); });
-      mockChild.stdin = stdin;
-      mockChild.stdout = new PassThrough();
-      mockChild.stderr = new PassThrough();
-
-      setTimeout(() => {
-        mockChild.stdout.end();
-        mockChild.stderr.end();
-        mockChild.emit('close', 0);
-      }, 50);
-
-      return mockChild;
-    });
+    const capturedStdin = mockAgentStdin();
+    const promptParts = { template: '<code_quality></code_quality>', userInput: '' };
 
     await dispatchToAgent({
       workflow: 'gwrk-implement',
       workDir: '/fake/root',
       agent: 'agy',
-      stdin: '<code_quality></code_quality>'
+      stdin: promptParts.template,
+      promptParts,
     });
 
     expect(skillRuntime.resolveEnforcementSkills).toHaveBeenCalledWith(
@@ -116,24 +99,43 @@ describe('US-016: Enforcement Skills Dispatch Injection', () => {
       'implementation',
       expect.objectContaining({ stack: { language: 'TypeScript' } }),
     );
-    expect(capturedStdin).toContain('# Strict Typing Rule');
+    expect(capturedStdin()).toContain('<code_quality>\n# Strict Typing Rule\n</code_quality>');
   });
 
-  it('expands template enforcement and preserves the marker in scoped input', async () => {
+  it('expands template enforcement even when the template quotes the input tag', async () => {
     vi.mocked(skillRuntime.resolveEnforcementSkills).mockResolvedValue('# Strict Typing Rule');
     const capturedStdin = mockAgentStdin();
     const input = '<user_input>\n  Keep {{enforcement}} in <code_quality>{{enforcement}}</code_quality>.\r\n</user_input>';
+    const template = 'Quote `<user_input>` and keep {{enforcement}} here.\n<code_quality>\n{{enforcement}}\n</code_quality>';
+    const promptParts = { template, userInput: input };
 
     await dispatchToAgent({
       workflow: 'gwrk-implement',
       workDir: '/fake/root',
       agent: 'agy',
-      stdin: `Keep {{enforcement}} outside the section.\n<code_quality>\n{{enforcement}}\n</code_quality>\n\n${input}`,
+      stdin: `${template}\n\n${input}`,
+      promptParts,
     });
 
     expect(capturedStdin()).toContain('<code_quality>\n# Strict Typing Rule\n</code_quality>');
-    expect(capturedStdin()).toContain(input);
-    expect(capturedStdin()).toContain('Keep {{enforcement}} outside the section.');
+    expect(capturedStdin().endsWith(`\n\n${input}`)).toBe(true);
+    expect(capturedStdin()).toContain('Quote `<user_input>` and keep {{enforcement}} here.');
+  });
+
+  it('preserves a code quality fixture in a prompt-only task', async () => {
+    vi.mocked(skillRuntime.resolveEnforcementSkills).mockResolvedValue('# Strict Typing Rule');
+    const capturedStdin = mockAgentStdin();
+    const prompt = '  Keep this fixture:\r\n<code_quality>{{enforcement}}</code_quality>\r\n';
+
+    await dispatchToAgent({
+      workflow: 'gwrk-implement',
+      workDir: '/fake/root',
+      agent: 'agy',
+      prompt,
+    });
+
+    expect(capturedStdin()).toBe(`${COMMAND_SAFETY_BLOCK}\n\n${prompt}`);
+    expect(skillRuntime.resolveEnforcementSkills).not.toHaveBeenCalled();
   });
 });
 
@@ -156,31 +158,41 @@ describe('ADR-008: Command Safety Posture', () => {
       expect(COMMAND_SAFETY_BLOCK).toContain('NEVER run: vim');
     });
 
-    it('injects the full policy when scoped input quotes only the opening tag', async () => {
+    it.each([
+      ['the opening tag', '<command_safety>'],
+      ['the full block', COMMAND_SAFETY_BLOCK],
+    ])('injects the full policy before scoped input that quotes %s', async (_label, quote) => {
       const capturedStdin = mockAgentStdin();
-      const input = '<user_input>\nQuote the opening tag <command_safety>.\n</user_input>';
+      const userInput = `<user_input>\nQuote this:\n${quote}\n</user_input>`;
+      const template = 'Do the work.';
+      const promptParts = { template, userInput };
 
       await dispatchToAgent({
         workflow: 'gwrk-implement',
         workDir: '/fake/root',
         agent: 'agy',
-        stdin: input,
+        stdin: `${template}\n\n${userInput}`,
+        promptParts,
       });
 
-      expect(capturedStdin()).toContain(`${COMMAND_SAFETY_BLOCK}\n\n${input}`);
+      expect(capturedStdin()).toBe(`${COMMAND_SAFETY_BLOCK}\n\n${template}\n\n${userInput}`);
     });
 
     it('sends a single copy when the full policy is already present', async () => {
       const capturedStdin = mockAgentStdin();
+      const template = `Do the work.\n${COMMAND_SAFETY_BLOCK}`;
+      const userInput = '<user_input>\nTask instructions\n</user_input>';
+      const promptParts = { template, userInput };
 
       await dispatchToAgent({
         workflow: 'gwrk-implement',
         workDir: '/fake/root',
         agent: 'agy',
-        stdin: `${COMMAND_SAFETY_BLOCK}\nDo the work`,
+        stdin: `${template}\n\n${userInput}`,
+        promptParts,
       });
 
-      expect(capturedStdin().split(COMMAND_SAFETY_BLOCK)).toHaveLength(2);
+      expect(capturedStdin()).toBe(`${template}\n\n${userInput}`);
     });
   });
 

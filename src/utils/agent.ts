@@ -417,6 +417,7 @@ async function dispatchAgent(opts: DispatchOptions): Promise<{
  * Maps to ADR-006 AgentBackend.dispatch() input.
  */
 export interface TaskDispatch extends AgentTaskRequest {
+  promptParts?: { template: string; userInput: string };
   commandOverride?: string;
   dryRun?: boolean;
 }
@@ -544,17 +545,10 @@ export async function dispatchToAgent(task: TaskDispatch): Promise<TaskResult> {
   const adapter = await registry.getAgentBackend(agentName);
 
   const startTime = Date.now();
-  let stdinPayload = [
-    task.prompt,
-    task.stdin === task.prompt ? undefined : task.stdin,
-  ]
-    .filter(Boolean)
-    .join("\n\n");
+  const { promptParts, ...agentTask } = task;
+  let template = promptParts?.template ?? "";
 
   // FR-014: Inject enforcement skills
-  const inputStart = stdinPayload.indexOf("<user_input>");
-  const templateEnd = inputStart === -1 ? stdinPayload.length : inputStart;
-  const template = stdinPayload.slice(0, templateEnd);
   const codeQuality = template.match(/<code_quality>[\s\S]*?<\/code_quality>/);
 
   if (codeQuality) {
@@ -565,11 +559,11 @@ export async function dispatchToAgent(task: TaskDispatch): Promise<TaskResult> {
 
     // R007: Detect project profile for language-aware enforcement routing
     const { detectProfile } = await import("../engine/profile-detector.js");
-    const profile = await detectProfile(task.workDir || projectRoot);
+    const profile = await detectProfile(projectRoot);
 
     const enforcement = await resolveEnforcementSkills(
-      task.workDir || projectRoot,
-      scope as "implementation" | "review",
+      projectRoot,
+      scope,
       profile,
     );
 
@@ -577,10 +571,16 @@ export async function dispatchToAgent(task: TaskDispatch): Promise<TaskResult> {
     const expandedSection = section.includes("{{enforcement}}")
       ? section.replaceAll("{{enforcement}}", () => enforcement)
       : `<code_quality>\n${enforcement}\n</code_quality>`;
-    stdinPayload =
-      template.replace(section, () => expandedSection) +
-      stdinPayload.slice(templateEnd);
+    template = template.replace(section, () => expandedSection);
   }
+
+  const hasCommandSafety = template.includes(COMMAND_SAFETY_BLOCK);
+  let stdinPayload = (promptParts
+    ? [template, promptParts.userInput]
+    : [task.prompt, task.stdin === task.prompt ? undefined : task.stdin]
+  )
+    .filter(Boolean)
+    .join("\n\n");
 
   // ADR-009: Inject project knowledge documents (grounding)
   const workDir = projectRoot;
@@ -633,7 +633,7 @@ export async function dispatchToAgent(task: TaskDispatch): Promise<TaskResult> {
   // Layer 3: External Context Injection (Phase 21)
   const rawKeywordSource = [
     task.featureDir ?? "",
-    task.prompt ?? task.stdin ?? "",
+    task.prompt ?? task.stdin ?? promptParts?.userInput ?? "",
   ]
     .join(" ")
     .replace(/^specs\//, "")
@@ -658,17 +658,12 @@ export async function dispatchToAgent(task: TaskDispatch): Promise<TaskResult> {
   }
 
   // ADR-008 Layer 1: Inject <command_safety> block into prompt stdin
-  if (
-    (stdinPayload || task.prompt) &&
-    !stdinPayload.includes(COMMAND_SAFETY_BLOCK)
-  ) {
-    stdinPayload = stdinPayload
-      ? `${COMMAND_SAFETY_BLOCK}\n\n${stdinPayload}`
-      : COMMAND_SAFETY_BLOCK;
+  if (stdinPayload && !hasCommandSafety) {
+    stdinPayload = `${COMMAND_SAFETY_BLOCK}\n\n${stdinPayload}`;
   }
 
   const dispatch = await adapter.dispatch({
-    ...task,
+    ...agentTask,
     prompt: undefined,
     stdin: stdinPayload || undefined,
   });
