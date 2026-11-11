@@ -503,18 +503,18 @@ function isHeaderTupleList(entries: unknown[]): boolean {
 }
 
 function findJsonTokenEnd(text: string, start: number): number | undefined {
-  let inString = text[start] === '"';
-  const closers = inString ? [] : [text[start] === "{" ? "}" : "]"];
+  let quote = text[start] === '"' ? '"' : null;
+  const closers = quote ? [] : [text[start] === "{" ? "}" : "]"];
   for (let index = start + 1; index < text.length; index += 1) {
     const char = text[index];
-    if (inString) {
+    if (quote) {
       if (char === "\\") index += 1;
-      else if (char === '"') {
+      else if (char === quote) {
         if (closers.length === 0) return index + 1;
-        inString = false;
+        quote = null;
       }
-    } else if (char === '"') {
-      inString = true;
+    } else if (char === '"' || char === "'" || char === "\x60") {
+      quote = char;
     } else if (char === "{" || char === "[") {
       closers.push(char === "{" ? "}" : "]");
     } else if (char === "}" || char === "]") {
@@ -523,6 +523,37 @@ function findJsonTokenEnd(text: string, start: number): number | undefined {
     }
   }
   return undefined;
+}
+
+// Node's inspect can print tuple strings with single quotes, backticks and
+// hexadecimal escapes. Convert only string literals and let JSON parse the array.
+function inspectedArrayAsJson(token: string): string {
+  const strings =
+    /"(?:[^"\\]|\\[\s\S])*"|'(?:[^'\\]|\\[\s\S])*'|\x60(?:[^\x60\\]|\\[\s\S])*\x60/g;
+  const escapes: Record<string, string> = {
+    "0": "\0",
+    b: "\b",
+    f: "\f",
+    n: "\n",
+    r: "\r",
+    t: "\t",
+    v: "\v",
+  };
+  return token.replace(strings, (literal) =>
+    JSON.stringify(
+      literal
+        .slice(1, -1)
+        .replace(
+          /\\(?:x([0-9a-f]{2})|u([0-9a-f]{4})|u\{([0-9a-f]{1,6})\}|([\s\S]))/gi,
+          (_escape, hex, unit, point, char) => {
+            const digits = hex ?? unit ?? point;
+            return digits === undefined
+              ? (escapes[char] ?? char)
+              : String.fromCodePoint(Number.parseInt(digits, 16));
+          },
+        ),
+    ),
+  );
 }
 
 function assertUniqueJsonKeys(record: string): void {
@@ -561,12 +592,18 @@ function scanEmbeddedJson(
   ) {
     const end = findJsonTokenEnd(text, opening.index);
     if (end === undefined) continue;
-    const token = text.slice(opening.index, end);
+    let token = text.slice(opening.index, end);
     let decoded: unknown;
     try {
       decoded = JSON.parse(token);
     } catch {
-      continue;
+      if (!token.startsWith("[")) continue;
+      try {
+        token = inspectedArrayAsJson(token);
+        decoded = JSON.parse(token);
+      } catch {
+        continue;
+      }
     }
     if (typeof decoded !== "string") {
       assertUniqueJsonKeys(token);

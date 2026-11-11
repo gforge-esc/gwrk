@@ -597,6 +597,28 @@ describe("credential guard", () => {
     );
   });
 
+  it.each([
+    ["Set-Cookie", "session=fixture-only"],
+    ["Proxy-Authorization", "Basic Zml4dHVyZQ=="],
+  ])("rejects inspected %s tuples in fixture output", (name, value) => {
+    const sanitizedOutput = inspect({
+      headers: [...new Headers([[name, value]])],
+    });
+    expect(() => assertNoSecretMaterial({ sanitizedOutput })).toThrow(
+      /secret material/i,
+    );
+  });
+
+  it("allows ordinary inspected tuples and multi-value Vary field names", () => {
+    const sanitizedOutput = inspect({
+      headers: [
+        ["Content-Type", "text/plain"],
+        ["Vary", ["Cookie", "Accept-Encoding"]],
+      ],
+    });
+    expect(() => assertNoSecretMaterial({ sanitizedOutput })).not.toThrow();
+  });
+
   it("allows quoted Content-Type headers in inspected fixture output", () => {
     const sanitizedOutput = inspect({
       headers: { "Content-Type": "text/plain" },
