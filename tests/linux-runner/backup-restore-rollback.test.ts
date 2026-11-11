@@ -137,25 +137,32 @@ function runLedgerCommand(...args: string[]) {
   return runCli("db", ...args);
 }
 
-function runInstalledBackup(ledger: string, destination: string) {
+function runInstalledLedgerCommand(ledger: string, ...args: string[]) {
   return spawnSync(
     process.execPath,
     [
       fileURLToPath(new URL("../../dist/cli.js", import.meta.url)),
       "db",
-      "backup",
-      "--out",
-      destination,
+      ...args,
       "--format",
       "json",
     ],
     {
       cwd: root,
-      env: { ...process.env, GWRK_HOME: dirname(ledger), GWRK_DB_PATH: ledger },
+      env: {
+        ...process.env,
+        GWRK_HOME: dirname(ledger),
+        GWRK_DB_PATH: ledger,
+        GWRK_RUNTIME_DIR: join(root, "runtime"),
+      },
       encoding: "utf8",
       timeout: 10_000,
     },
   );
+}
+
+function runInstalledBackup(ledger: string, destination: string) {
+  return runInstalledLedgerCommand(ledger, "backup", "--out", destination);
 }
 
 function expectUsageFailure(result: ReturnType<typeof runCli>) {
@@ -167,18 +174,19 @@ function expectUsageFailure(result: ReturnType<typeof runCli>) {
 }
 
 describe("installed ledger commands outside a checkout", () => {
-  it("rejects a device FIFO before publishing a backup", () => {
+  it("rejects a device FIFO before publishing a backup", async () => {
     const ledger = join(root, "gwrk.db");
     seedLedger(ledger).close();
     execFileSync("mkfifo", [join(root, "device.json")]);
     const destination = join(root, "fifo-backup");
     const result = runInstalledBackup(ledger, destination);
-    expect(result.error).toBeUndefined();
+    expect.soft(result.error).toBeUndefined();
+    await expect(stat(destination)).rejects.toMatchObject({ code: "ENOENT" });
     expect(result.status, result.stderr).toBe(1);
+    expect(result.stdout).toBe("");
     expect(result.stderr.match(/^\[exit:.*$/gm)).toEqual([
       expect.stringMatching(/^\[exit:1 .*device record.*regular file/),
     ]);
-    return expect(stat(destination)).rejects.toMatchObject({ code: "ENOENT" });
   }, 15_000);
 
   it.skipIf(process.platform !== "linux")(
@@ -187,24 +195,31 @@ describe("installed ledger commands outside a checkout", () => {
       const backup = join(root, "fifo-backup");
       const state = join(root, "restored");
       const runtime = join(root, "runtime");
+      const database = join(state, "gwrk.db");
       await mkdir(backup);
-      execFileSync("mkfifo", [join(backup, "backup-manifest.json")]);
-      const result = runLedgerCommand(
+      const manifest = join(backup, "backup-manifest.json");
+      execFileSync("mkfifo", [manifest]);
+      const result = runInstalledLedgerCommand(
+        database,
         "restore",
         "--from",
         backup,
         "--state-dir",
         state,
-        "--format",
-        "json",
       );
       expect(result.error).toBeUndefined();
       expect(result.status, result.stderr).toBe(1);
+      expect(result.stdout).toBe("");
       expect(result.stderr.match(/^\[exit:.*$/gm)).toEqual([
         expect.stringMatching(/^\[exit:1 .*regular files/),
       ]);
-      const database = join(state, "gwrk.db");
+      expect(result.stderr).toContain(manifest);
       await expect(stat(database)).rejects.toMatchObject({ code: "ENOENT" });
+      await expect(stat(join(state, ".restore-pending"))).rejects.toMatchObject(
+        {
+          code: "ENOENT",
+        },
+      );
       const runtimeLock = acquireInstanceLock(runtime, process.pid);
       try {
         const ledgerLock = acquireLedgerLock(database, process.pid);
