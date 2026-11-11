@@ -463,6 +463,7 @@ describe("ship with the real AgentPort router", () => {
     vi.stubEnv("CODEX_MODEL", "environment-model");
     const adapter = new CodexAdapter();
     vi.spyOn(adapter, "isAvailable").mockResolvedValue(true);
+    const resolveModel = vi.spyOn(adapter, "resolveModel");
     const { AgentBackendRegistry } = await import(
       "../plugins/agent-registry.js"
     );
@@ -475,9 +476,18 @@ describe("ship with the real AgentPort router", () => {
     expect(ShipOrchestrator).not.toHaveBeenCalled();
     expect(run).not.toHaveBeenCalled();
     expect(fs.existsSync(dbPath)).toBe(false);
+    expect(resolveModel).toHaveBeenCalledExactlyOnceWith({
+      model: undefined,
+      env: { CODEX_MODEL: "environment-model" },
+    });
+    resolveModel.mockClear();
 
     await ship("--agent", "codex");
 
+    expect(resolveModel).toHaveBeenCalledExactlyOnceWith({
+      model: undefined,
+      env: { CODEX_MODEL: "environment-model" },
+    });
     expect(ShipOrchestrator).toHaveBeenCalledExactlyOnceWith(
       expect.objectContaining({ backend: "codex" }),
       undefined,

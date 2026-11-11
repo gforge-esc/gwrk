@@ -225,19 +225,26 @@ async function selectAvailableRoute(
         context.explicitBackend !== undefined &&
         context.explicitModel === undefined &&
         !agentRegistry?.backends[route.backend];
+      const modelEnv = useAdapterModelDefaults
+        ? context.adapterModelEnv
+        : undefined;
+      const adapterModel =
+        (context.preview || modelEnv) && backend?.resolveModel
+          ? (backend.resolveModel({
+              model: useAdapterModelDefaults ? undefined : route.model,
+              env: {
+                ...modelEnv,
+                ...(route.effort && { GWRK_EFFORT: route.effort }),
+              },
+            }) ?? null)
+          : undefined;
       const selection = {
         ...route,
         ...(useAdapterModelDefaults && { useAdapterModelDefaults }),
+        ...(adapterModel !== undefined && { adapterModel }),
         fallbackUsed: route.fallbackUsed || probed.size > 1,
       };
-      if (context.preview) {
-        if (!backend?.resolveModel) return selection;
-        const adapterModel = backend.resolveModel({
-          model: useAdapterModelDefaults ? undefined : route.model,
-          env: route.effort ? { GWRK_EFFORT: route.effort } : {},
-        });
-        return { ...selection, adapterModel: adapterModel ?? null };
-      }
+      if (context.preview) return selection;
       const review =
         context.includeReviewModel && !useAdapterModelDefaults
           ? selectAgentRoute(

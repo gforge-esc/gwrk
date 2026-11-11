@@ -593,19 +593,21 @@ describe("AgentPort routing", () => {
       expect(createAgentPortAdapter).toHaveBeenCalledWith({
         projectRoot: process.cwd(),
       });
-      expect(selectRoute).toHaveBeenCalledExactlyOnceWith({
-        type: "implement",
-        explicitBackend,
-        requireRegistry: explicitBackend === undefined,
-        historyMode: explicitBackend === undefined ? "quota-tiebreak" : undefined,
-        backendEligibility: explicitBackend === undefined ? undefined : "installed",
-        includeReviewModel: true,
-        feature: "001-cli-core",
-        phase: "phase-01",
-        runId: expect.stringMatching(/^ship-001-cli-core-/),
-        taskSP: 1,
-        language: "typescript",
-      });
+      expect(selectRoute).toHaveBeenCalledExactlyOnceWith(
+        expect.objectContaining({
+          type: "implement",
+          explicitBackend,
+          requireRegistry: explicitBackend === undefined,
+          historyMode: explicitBackend === undefined ? "quota-tiebreak" : undefined,
+          backendEligibility: explicitBackend === undefined ? undefined : "installed",
+          includeReviewModel: true,
+          feature: "001-cli-core",
+          phase: "phase-01",
+          runId: expect.stringMatching(/^ship-001-cli-core-/),
+          taskSP: 1,
+          language: "typescript",
+        }),
+      );
       expect(ShipOrchestrator).toHaveBeenCalledTimes(1);
       expect(vi.mocked(ShipOrchestrator).mock.calls[0]?.[0]).toMatchObject({
         backend,

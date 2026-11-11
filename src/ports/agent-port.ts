@@ -69,6 +69,8 @@ export interface RoutingContext {
   historyMode?: RoutingFacts["historyMode"];
   backendEligibility?: "quota" | "installed";
   includeReviewModel?: boolean;
+  /** Model environment for an explicit backend outside the registry. */
+  adapterModelEnv?: Record<string, string>;
   runId?: string;
   skillName?: string;
   feature?: string;

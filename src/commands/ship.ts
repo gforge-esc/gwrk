@@ -114,10 +114,9 @@ function shipModel(
       ? process.env.GEMINI_MODEL
       : route.model;
   }
-  if (!route.useAdapterModelDefaults) return route.model;
-  const override =
-    route.backend === "codex" ? process.env.CODEX_MODEL : undefined;
-  return override && override !== "default" ? override : undefined;
+  return route.useAdapterModelDefaults
+    ? (route.adapterModel ?? undefined)
+    : route.model;
 }
 
 /**
@@ -799,10 +798,16 @@ Examples:
 
           const agentPort = createAgentPortAdapter({ projectRoot: cwd });
           const explicitBackend = opts.agent as string | undefined;
+          const codexModel = process.env.CODEX_MODEL;
           const routeContext = { feature, language: "typescript", taskSP: 1 };
           const implementationRoute = {
             type: "implement" as const,
             explicitBackend,
+            ...(!opts.legacy &&
+              explicitBackend !== undefined &&
+              codexModel !== undefined && {
+                adapterModelEnv: { CODEX_MODEL: codexModel },
+              }),
             requireRegistry: explicitBackend === undefined,
             historyMode:
               explicitBackend === undefined
@@ -823,12 +828,9 @@ Examples:
               const { adapterModel } = implementation;
               const previewModel = opts.legacy
                 ? shipModel(implementation, true)
-                : implementation.useAdapterModelDefaults &&
-                    implementation.backend === "codex"
-                  ? (shipModel(implementation, false) ?? "default")
-                  : adapterModel === null
-                    ? "default"
-                    : adapterModel;
+                : adapterModel === null
+                  ? "default"
+                  : adapterModel;
               logCliOutput(
                 `  🤖 Would build with backend: ${implementation.backend}, model: ${previewModel ?? implementation.model}, effort: ${implementation.effort ?? "default"} (router: ${implementation.reason})`,
               );
