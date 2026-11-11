@@ -303,13 +303,7 @@ export class PlanStore {
           (p) => p.status === "DONE" || p.status === "SHIPPED",
         );
         if (allCompleted) {
-          db.insertFeature(
-            {
-              ...feature,
-              status: "SHIPPED",
-            },
-            this.projectId,
-          );
+          db.updateFeatureStatus(feature.id, "SHIPPED", this.projectId);
         }
       }
     }
@@ -339,38 +333,22 @@ export class PlanStore {
     duration_ms: number;
     evidence: string;
   }): void {
-    const phase = db.getPhase(event.phaseId, this.projectId);
-    if (phase) {
-      db.insertPhase(
-        {
-          ...phase,
-          status: "SHIPPED",
-          sp_actual: event.sp_actual,
-          duration_ms: event.duration_ms,
-          completed_at: new Date().toISOString(),
-          evidence: event.evidence,
-        },
-        this.projectId,
-      );
+    const prefix = `${event.featureId}/`;
+    const phaseId = event.phaseId.startsWith(prefix)
+      ? event.phaseId
+      : `${prefix}${event.phaseId}`;
+    const phase =
+      db.getPhase(phaseId, this.projectId) ??
+      db.getPhase(event.phaseId, this.projectId);
+    if (phase?.feature_id !== event.featureId) return;
 
-      // Auto-cascade: If all phases in the feature are now DONE/SHIPPED, mark the feature as SHIPPED
-      const feature = db.getFeature(event.featureId, this.projectId);
-      if (feature) {
-        const phases = db.listPhases(event.featureId, this.projectId);
-        const allCompleted = phases.every(
-          (p) => p.status === "DONE" || p.status === "SHIPPED",
-        );
-        if (allCompleted) {
-          db.insertFeature(
-            {
-              ...feature,
-              status: "SHIPPED",
-            },
-            this.projectId,
-          );
-        }
-      }
-    }
+    this.updatePhase(phase.id, {
+      status: "SHIPPED",
+      sp_actual: event.sp_actual,
+      duration_ms: event.duration_ms,
+      completed_at: new Date().toISOString(),
+      evidence: event.evidence,
+    });
   }
 
   /**
@@ -379,13 +357,7 @@ export class PlanStore {
   handleDefineComplete(event: { featureId: string; status: string }): void {
     const feature = db.getFeature(event.featureId, this.projectId);
     if (feature) {
-      db.insertFeature(
-        {
-          ...feature,
-          status: event.status,
-        },
-        this.projectId,
-      );
+      db.updateFeatureStatus(feature.id, event.status, this.projectId);
 
       // Also update all phases of this feature that are currently PLANNED
       const phases = db.listPhases(event.featureId, this.projectId);
