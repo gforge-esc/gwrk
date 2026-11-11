@@ -824,6 +824,59 @@ describe("FR-001: architecture-aware workspace profiles (044 phase p01)", () => 
     expect(getTestCommand(profile, ["test_api.py"])).toBeNull();
   });
 
+  it("finds the registered workspace under a nearer local design", async () => {
+    const localDesign = { ...design, architecture: "layered" };
+    const config = {
+      project: { name: "fixture", design },
+      workspaces: { "services/api": { toolchain: { build: null } } },
+    };
+    write(".gwrkrc.json", JSON.stringify(config));
+    write("services/api/pyproject.toml", '[project]\ndependencies = ["django"]\n');
+    write("services/api/uv.lock", "");
+    write("services/api/pytest.ini", "[pytest]\n");
+    write("services/api/src/api.py", "");
+    write("services/api/.gwrkrc.json", JSON.stringify({ project: { name: "api", design: localDesign } }));
+    const child = path.join(root, "services/api/src");
+    const profiles = [
+      await detectProfile(child),
+      await resolveWorkspaceProfile(root, "services/api/src"),
+      resolveWorkspaceProfile(child, root, config),
+    ];
+    for (const profile of profiles) {
+      expect.soft(profile).toMatchObject({
+        design: localDesign,
+        stack: { language: "Python", framework: "Django", buildSystem: "uv" },
+        toolchain: { test: "pytest", build: null },
+      });
+    }
+  });
+
+  it("drops partial local JavaScript stack fields when the entry selects Python", async () => {
+    const config = {
+      project: { name: "fixture", design },
+      workspaces: { "apps/mixed": { stack: { language: "Python" } } },
+    };
+    write(".gwrkrc.json", JSON.stringify(config));
+    write("apps/mixed/package.json", '{}');
+    write("apps/mixed/pyproject.toml", '[project]\ndependencies = ["django"]\n');
+    write("apps/mixed/uv.lock", "");
+    write("apps/mixed/.gwrkrc.json", JSON.stringify({
+      project: { name: "mixed", stack: { framework: "Next.js", buildSystem: "pnpm" } },
+    }));
+    const workspace = path.join(root, "apps/mixed");
+    const profiles = [
+      await detectProfile(workspace),
+      await resolveWorkspaceProfile(root, "apps/mixed"),
+      resolveWorkspaceProfile(workspace, root, config),
+    ];
+    for (const profile of profiles) {
+      expect.soft(profile).toMatchObject({
+        design,
+        stack: { language: "Python", framework: "Django", buildSystem: "uv" },
+      });
+    }
+  });
+
   it("preserves nested local stack and commands over the matched workspace defaults", async () => {
     const config = {
       project: { name: "fixture", design },

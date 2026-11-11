@@ -483,7 +483,8 @@ function resolveDetectedProfile(
 ): ProjectProfile | undefined {
   const start = path.resolve(detectedRoot);
   let directory = start;
-  let requireWorkspaceMatch = localProject !== undefined;
+  let nearestProfile: ProjectProfile | undefined;
+  let sawAncestorConfig = false;
   while (true) {
     const configPath = path.join(directory, ".gwrkrc.json");
     if ((directory !== start || !localProject) && fs.existsSync(configPath)) {
@@ -496,25 +497,30 @@ function resolveDetectedProfile(
           });
         }
 
-        if (
-          !requireWorkspaceMatch ||
-          matchWorkspacePath(
-            relativeWorkspacePath(directory, start),
-            Object.keys(config?.workspaces ?? {}),
-          )
-        ) {
+        const matchedWorkspace = matchWorkspacePath(
+          relativeWorkspacePath(directory, start),
+          Object.keys(config?.workspaces ?? {}),
+        );
+        if (matchedWorkspace || (!localProject && !sawAncestorConfig)) {
+          const inheritedDesign = nearestProfile?.design;
           const scoped = applyWorkspaceConfig(
             directory,
             start,
             detected,
             config,
-            { requireDesign: true, localProject },
+            {
+              requireDesign: true,
+              localProject:
+                localProject ??
+                (inheritedDesign ? { design: inheritedDesign } : undefined),
+            },
           );
-          if (scoped !== detected.profile) return scoped;
+          if (matchedWorkspace && scoped !== detected.profile) return scoped;
+          if (scoped !== detected.profile) nearestProfile = scoped;
         }
-        requireWorkspaceMatch = true;
+        sawAncestorConfig = true;
       } catch {
-        return undefined;
+        return nearestProfile;
       }
     }
     const parent = path.dirname(directory);
@@ -523,7 +529,7 @@ function resolveDetectedProfile(
       directory === parent ||
       fs.existsSync(path.join(directory, ".git"))
     ) {
-      return undefined;
+      return nearestProfile;
     }
     directory = parent;
   }

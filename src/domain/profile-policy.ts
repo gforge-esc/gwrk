@@ -67,7 +67,9 @@ export function resolveProfileStack(
   const workspaceFamily = languageFamily(
     selectedLanguage?.toLowerCase() ?? profileLanguage(detectedStack),
   );
-  const localFamily = languageFamily(profileLanguage(localStack));
+  const localFamily = languageFamily(
+    profileLanguage(localStack) ?? profileLanguage(detectedStack),
+  );
   const {
     framework: localFramework,
     buildSystem: localBuildSystem,
@@ -271,16 +273,30 @@ export function resolveWorkspacePolicyProfile(
   }
 
   const { stack: entryStack, ...workspaceOverrides } = workspaceConfig ?? {};
-  const localStack = resolveProfileStack(
+  const matchedSourceStack = resolveProfileStack(
+    detectedWorkspace.stack,
     matchedLocalProject?.stack,
+    undefined,
+    options?.detectedStacks,
+  );
+  // Keep explicit fields from the previous layer when the language is unchanged.
+  const otherLanguageSignals = (stack: ProjectProfile["stack"]) =>
+    options?.detectedStacks?.filter(
+      (signal) =>
+        languageFamily(profileLanguage(signal)) !==
+        languageFamily(profileLanguage(stack)),
+    );
+  const localSourceStack = resolveProfileStack(
+    matchedSourceStack,
     localProject?.stack,
     undefined,
+    otherLanguageSignals(matchedSourceStack),
   );
   const workspaceStack = resolveProfileStack(
-    detectedWorkspace.stack,
-    localStack,
+    localSourceStack,
+    undefined,
     entryStack,
-    options?.detectedStacks,
+    otherLanguageSignals(localSourceStack),
   );
   const rootToolchain = compatibleToolchain(
     rootConfig?.project?.toolchain,
@@ -300,20 +316,9 @@ export function resolveWorkspacePolicyProfile(
       ? options?.detectedToolchains?.[workspaceFamily]
       : undefined,
   );
-  const localSourceStack = resolveProfileStack(
-    rawStack,
-    localStack,
-    undefined,
-    options?.detectedStacks,
-  );
   const matchedToolchain = compatibleToolchain(
     matchedLocalProject?.toolchain,
-    resolveProfileStack(
-      rawStack,
-      matchedLocalProject?.stack,
-      undefined,
-      options?.detectedStacks,
-    ),
+    matchedSourceStack,
     workspaceStack,
     "local",
   );
