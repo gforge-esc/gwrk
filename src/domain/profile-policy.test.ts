@@ -225,6 +225,36 @@ describe("FR-001: profile design inheritance (044 phase p01)", () => {
     })).toBe("npm run build");
   });
 
+  it.each([
+    { toolchain: undefined, command: "npm run build" },
+    { toolchain: { build: "npm run bundle" }, command: "npm run bundle" },
+    { toolchain: { build: null }, command: null },
+  ])(
+    "resolves build to $command when the workspace only identifies its build system",
+    ({ toolchain, command }) => {
+      const result = resolveWorkspacePolicyProfile(
+        "apps/web",
+        { type: "nodejs", stack: { buildSystem: "npm" } },
+        {
+          project: {
+            design,
+            stack: { language: "TypeScript", buildSystem: "pnpm" },
+            toolchain: { build: "pnpm build" },
+          },
+          workspaces: { "apps/web": { toolchain } },
+        },
+      );
+
+      expect(result.design).toEqual(design);
+      expect(
+        resolveBuildCommand(result, {
+          hasPackageJson: true,
+          hasPackageBuildScript: true,
+        }),
+      ).toBe(command);
+    },
+  );
+
   it("TR-005: selects the longest workspace ancestor for a nested path", () => {
     const nestedDesign = DesignSchema.parse({ architecture: "clean", principles: ["tdd"] });
     const result = resolveWorkspacePolicyProfile("services/api/admin/src", detected, {

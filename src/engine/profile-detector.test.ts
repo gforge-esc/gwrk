@@ -515,16 +515,40 @@ describe("FR-001: architecture-aware workspace profiles (044 phase p01)", () => 
   it("detects local architecture and language from a registered workspace root", async () => {
     const config = {
       project: { name: "fixture" },
-      workspaces: { "services/api": { stack: { framework: "Django" } } },
+      workspaces: {
+        "services/api": {
+          stack: { framework: "Django" },
+          toolchain: { build: null },
+        },
+      },
     };
     write(".gwrkrc.json", JSON.stringify(config));
-    write("services/api/.gwrkrc.json", JSON.stringify({ project: { name: "api", design } }));
-    write("services/api/pyproject.toml", '[project]\ndependencies = ["django"]\n');
+    write(
+      "services/api/.gwrkrc.json",
+      JSON.stringify({ project: { name: "api", design } }),
+    );
+    write(
+      "services/api/pyproject.toml",
+      '[project]\ndependencies = ["fastapi"]\n',
+    );
     write("services/api/src/api.py", "pass\n");
     const nested = "services/api/src";
-    const expected = { design, stack: { language: "Python", framework: "Django" } };
-    expect.soft(await resolveWorkspaceProfile(root, nested)).toMatchObject(expected);
-    expect(resolveWorkspaceProfile(path.join(root, nested), root, config)).toMatchObject(expected);
+    const profiles = [
+      await resolveWorkspaceProfile(root, nested),
+      resolveWorkspaceProfile(path.join(root, nested), root, config),
+    ];
+    for (const profile of profiles) {
+      expect.soft(profile).toMatchObject({
+        design,
+        type: "python",
+        stack: { language: "Python", framework: "Django" },
+        toolchain: { build: null },
+      });
+      if (!profile) throw new Error("Expected workspace profile");
+      expect.soft(getTestCommand(profile, ["test_api.py"])).toBe(
+        "pytest test_api.py -v",
+      );
+    }
   });
 
   it("uses workspace lint, build and discovery across all resolver paths", async () => {

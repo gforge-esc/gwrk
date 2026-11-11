@@ -55,8 +55,20 @@ function compatibleToolchain(
   workspaceStack: ProjectProfile["stack"],
   source: "root" | "detected",
 ): ProjectProfile["toolchain"] {
+  if (!toolchain) return undefined;
+
+  const sourceBuildSystem = sourceStack?.buildSystem?.toLowerCase();
+  const workspaceBuildSystem = workspaceStack?.buildSystem?.toLowerCase();
+  const buildSystemsMatch =
+    !sourceBuildSystem ||
+    !workspaceBuildSystem ||
+    sourceBuildSystem === workspaceBuildSystem;
   const workspaceLanguage = profileLanguage(workspaceStack);
-  if (!toolchain || !workspaceLanguage) return toolchain;
+  if (!workspaceLanguage) {
+    if (buildSystemsMatch) return toolchain;
+    const { build: _build, testCommand: _command, ...compatible } = toolchain;
+    return Object.keys(compatible).length ? compatible : undefined;
+  }
 
   const sourceLanguage = profileLanguage(sourceStack);
   const workspaceFamily = languageFamily(workspaceLanguage);
@@ -76,13 +88,7 @@ function compatibleToolchain(
     (formatter ? toolLanguages[formatter] : undefined);
   const differentFamily =
     sourceFamily !== undefined && sourceFamily !== workspaceFamily;
-  const sourceBuildSystem = sourceStack?.buildSystem?.toLowerCase();
-  const workspaceBuildSystem = workspaceStack?.buildSystem?.toLowerCase();
-  const buildFits =
-    !differentFamily &&
-    (!sourceBuildSystem ||
-      !workspaceBuildSystem ||
-      sourceBuildSystem === workspaceBuildSystem);
+  const buildFits = !differentFamily && buildSystemsMatch;
   const runnerFits =
     (!differentFamily || (source === "detected" && test != null)) &&
     (!test || toolLanguages[test] === workspaceFamily);
