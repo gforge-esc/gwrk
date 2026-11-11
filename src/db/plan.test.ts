@@ -372,10 +372,12 @@ describe("src/db/plan.ts (DM-018-001/002/003)", () => {
       "INSERT INTO project_aliases (alias_id, project_id) VALUES (?, ?)",
     ).run("alias", projectId);
 
-    expect(listPhases("old-feature", projectId, db)).toEqual([]);
-    expect(listPhases("current-feature", projectId, db)).toEqual([
-      getPhase(phase.id, projectId, db),
-    ]);
+    for (const id of [projectId, "alias"]) {
+      expect(listPhases("old-feature", id, db)).toEqual([]);
+      expect(listPhases("current-feature", id, db)).toEqual([
+        getPhase(phase.id, id, db),
+      ]);
+    }
 
     deleteFeature("current-feature", projectId, db);
     for (const id of [projectId, "alias"]) {

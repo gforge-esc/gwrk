@@ -7,9 +7,11 @@ import {
   copyFileSync,
   mkdirSync,
   mkdtempSync,
+  readFileSync,
   readdirSync,
   realpathSync,
   rmSync,
+  writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -26,13 +28,15 @@ import { insertCompressionRecord } from "./db.js";
 import { getGateResult } from "./gates.js";
 import { getTestDb, openDatabase } from "./index.js";
 import { listIssues } from "./issues.js";
-import { getRoutingHistory } from "./plugins.js";
 import {
   getEdgesForFeature,
   getFeature,
   getPhase,
   getProposal,
+  insertPhase,
+  insertProposal,
 } from "./plan.js";
+import { getRoutingHistory } from "./plugins.js";
 import { createProjectRegistry } from "./project-registry.js";
 import {
   finishRun,
@@ -79,6 +83,115 @@ describe("Project registry upgrade", () => {
     }
     return openDatabase({ dbPath, migrationsDir });
   }
+
+  it.each(["original", "expanded"])(
+    "upgrades plan rows from the %s ledger write-order migration",
+    (version) => {
+      const ledgerMigration = "015-ledger-write-order.sql";
+      const planMigration = "016-plan-write-order.sql";
+      const columns = ["plan_phases", "plan_proposals"].map(
+        (table) =>
+          `ALTER TABLE ${table} ADD COLUMN write_seq INTEGER NOT NULL DEFAULT 0;`,
+      );
+      copyFileSync(new URL(migration, source), join(migrationsDir, migration));
+      let ledgerSql = readFileSync(new URL(ledgerMigration, source), "utf8");
+      for (const column of columns) ledgerSql = ledgerSql.replace(column, "");
+      const expanded = version === "expanded";
+      if (expanded) ledgerSql += `\n${columns.join("\n")}\n`;
+      writeFileSync(join(migrationsDir, ledgerMigration), ledgerSql);
+
+      const legacy = openDatabase({ dbPath, migrationsDir });
+      try {
+        legacy.exec(`
+          INSERT INTO projects (id, name, path) VALUES ('legacy-local', 'Legacy local', '');
+          INSERT INTO plan_features (id, name, project_id) VALUES ('feature', 'Feature', 'legacy-local');
+          INSERT INTO plan_phases (id, feature_id, name, seq, project_id)
+            VALUES ('phase', 'feature', 'Phase', 1, 'legacy-local');
+          INSERT INTO plan_proposals (id, target_phase_id, proposal_type, project_id)
+            VALUES ('proposal', 'phase', 'amend', 'legacy-local');
+          UPDATE ledger_write_order SET sequence = 42 WHERE id = 1;
+        `);
+        if (expanded) {
+          legacy.exec(`
+            UPDATE plan_phases SET write_seq = 41;
+            UPDATE plan_proposals SET write_seq = 42;
+          `);
+        }
+      } finally {
+        legacy.close();
+      }
+
+      if (readdirSync(source).includes(planMigration)) {
+        copyFileSync(
+          new URL(planMigration, source),
+          join(migrationsDir, planMigration),
+        );
+      }
+      const projectId = "legacy-local";
+      const upgraded = openDatabase({ dbPath, migrationsDir });
+      try {
+        const phase = getPhase("phase", projectId, upgraded);
+        const proposal = getProposal("proposal", projectId, upgraded);
+        expect(phase).toMatchObject({ name: "Phase" });
+        expect(proposal).toMatchObject({ target_phase_id: "phase" });
+        expect(
+          upgraded.prepare("SELECT write_seq FROM plan_phases").pluck().get(),
+        ).toBe(expanded ? 41 : 0);
+        expect(
+          upgraded
+            .prepare("SELECT write_seq FROM plan_proposals")
+            .pluck()
+            .get(),
+        ).toBe(expanded ? 42 : 0);
+        expect(
+          upgraded
+            .prepare("SELECT sequence FROM ledger_write_order")
+            .pluck()
+            .get(),
+        ).toBe(42);
+
+        if (!phase || !proposal) throw new Error("Missing upgraded plan rows");
+        insertPhase({ ...phase, status: "COMPLETED" }, projectId, upgraded);
+        insertProposal(
+          { ...proposal, status: "ACCEPTED" },
+          projectId,
+          upgraded,
+        );
+        expect(upgraded.pragma("foreign_key_check")).toEqual([]);
+      } finally {
+        upgraded.close();
+      }
+
+      const reopened = openDatabase({ dbPath, migrationsDir });
+      try {
+        expect(getPhase("phase", projectId, reopened)?.status).toBe(
+          "COMPLETED",
+        );
+        expect(getProposal("proposal", projectId, reopened)?.status).toBe(
+          "ACCEPTED",
+        );
+        expect(
+          reopened.prepare("SELECT write_seq FROM plan_phases").pluck().get(),
+        ).toBe(43);
+        expect(
+          reopened
+            .prepare("SELECT write_seq FROM plan_proposals")
+            .pluck()
+            .get(),
+        ).toBe(44);
+        expect(
+          reopened
+            .prepare(
+              "SELECT name FROM _migrations WHERE name IN (?, ?) ORDER BY name",
+            )
+            .pluck()
+            .all(ledgerMigration, planMigration),
+        ).toEqual([ledgerMigration, planMigration]);
+      } finally {
+        reopened.close();
+      }
+    },
+  );
 
   it("preserves history and records the IDs of missing legacy runs", () => {
     const upgraded = upgrade((legacy) => {
