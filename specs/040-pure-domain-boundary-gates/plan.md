@@ -11,7 +11,7 @@ Enforce the boundary with the TypeScript syntax tree. Move Git discovery, config
 #### Done When
 
 ```bash
-pnpm exec vitest run src/architecture.test.ts
+pnpm exec vitest run src/architecture.test.ts src/engine/harvest.test.ts src/engine/issues.test.ts
 ```
 
 ### Phase 2: Project identity
@@ -50,4 +50,4 @@ pnpm exec vitest run src/domain/agent-config.test.ts src/server/agent-registry.t
 pnpm exec vitest run src/domain/toolchain.test.ts src/utils/toolchain-mapper.test.ts src/architecture.test.ts src/application/architecture/context.test.ts
 ```
 
-The boundary gate allows no exceptions in the domain. It records three existing dynamic Slack dependencies by exact file and import. Project-scoped Slack and durable harvest remove those dependencies in features 048 and 049.
+The boundary gate allows no exceptions for existing violations. Route the three discovered engine imports through the notifications adapter and verify the existing notification behavior.

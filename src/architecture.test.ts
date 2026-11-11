@@ -97,15 +97,6 @@ describe("Architecture import detection", () => {
 
 const layers = ["domain", "ports", "application", "db", "utils", "engine"];
 
-// The Slack imports move with project-scoped Slack and harvest.
-const migrationBaseline: Record<string, string[]> = {
-  engine: [
-    "engine/harvest.ts -> dynamic-dependency:server/slack-messages.js",
-    "engine/harvest.ts -> dynamic-dependency:server/slack-notify.js",
-    "engine/issues.ts -> dynamic-dependency:server/slack-notify.js",
-  ],
-};
-
 describe("Hexagonal boundary gates (ADR-011)", () => {
   it.each(layers)("rejects new boundary violations in %s", (layer) => {
     const srcRoot = path.resolve("src");
@@ -119,7 +110,7 @@ describe("Hexagonal boundary gates (ADR-011)", () => {
       ),
     );
 
-    expect(violations.sort()).toEqual(migrationBaseline[layer] ?? []);
+    expect(violations.sort()).toEqual([]);
   });
 });
 

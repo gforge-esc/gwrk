@@ -9,6 +9,6 @@ The boundary gate reports zero violations in the domain. The identity, registry 
 | Agent registry | Pure layer validation was absent | Layer precedence, typed errors, startup failures and optional model fallback |
 | Toolchain discovery | Pure manifest policy was absent | Explicit override, package manager precedence, malformed manifests and adapter composition |
 
-The unexempted scan exposed nine violations across the three affected domain modules. Each migration removed its entries. Three dynamic imports still connect Slack to harvest and issue processing. The gate enumerates those imports exactly and rejects new ones.
+The unexempted scan exposed nine violations across the three affected domain modules. Each migration removed its entries. The scan also exposed three direct engine imports from the Slack server. They now pass through the notifications adapter. The existing harvest and issue tests cover those call paths.
 
 Run `gwrk gate 040` to exercise all seven behavioral gates. The phase commands live in [the implementation plan](plan.md).
