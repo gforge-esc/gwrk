@@ -151,6 +151,42 @@ describe("model qualification policy", () => {
     ).toMatchObject({ promote: false, reason: "judge-non-regression" });
   });
 
+  it("keeps the incumbent when persisted evidence has malformed decisions", () => {
+    const invalidOption = {
+      ...passingEvidence,
+      candidateOption: "tie",
+      judges: passingEvidence.judges.map((verdict) => ({
+        ...verdict,
+        winner: "tie",
+      })),
+    };
+    const invalidGate = {
+      ...passingEvidence,
+      repeats: passingEvidence.repeats.map((repeat) => ({
+        ...repeat,
+        gatesPassed: "false",
+      })),
+    };
+    const invalidJudge = (fields: Record<string, unknown>) => ({
+      ...passingEvidence,
+      judges: [
+        { ...passingEvidence.judges[0], ...fields },
+        passingEvidence.judges[1],
+      ],
+    });
+    for (const invalid of [
+      invalidOption,
+      invalidGate,
+      invalidJudge({ citations: null }),
+      invalidJudge({ scores: null }),
+      invalidJudge({ judge: null }),
+    ]) {
+      expect(
+        evaluatePromotion(invalid as unknown as PromotionEvidence).promote,
+      ).toBe(false);
+    }
+  });
+
   describe.each(["A", "B"] as const)("candidate %s", (candidateOption) => {
     const input = {
       ...passingEvidence,

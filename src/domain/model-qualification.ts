@@ -61,6 +61,7 @@ type CandidateCheck =
 
 export function isConcreteModel(modelId: string): boolean {
   return (
+    typeof modelId === "string" &&
     modelId === modelId.trim() &&
     Boolean(modelId) &&
     !/^(auto|default|latest|unknown|opus|sonnet|haiku)$/i.test(modelId)
@@ -165,9 +166,15 @@ export type PromotionDecision =
     };
 
 export function evaluatePromotion(input: PromotionEvidence): PromotionDecision {
-  if (input.repeats.some((repeat) => !repeat.gatesPassed))
+  if (input.candidateOption !== "A" && input.candidateOption !== "B")
+    return { promote: false, reason: "judge-non-regression" };
+  if (
+    !Array.isArray(input.repeats) ||
+    input.repeats.some((repeat) => repeat?.gatesPassed !== true)
+  )
     return { promote: false, reason: "gate-failure" };
   if (
+    !Array.isArray(input.requiredFixtures) ||
     input.requiredFixtures.length === 0 ||
     input.requiredFixtures.some((fixture) => {
       const indices = new Set(
@@ -186,15 +193,17 @@ export function evaluatePromotion(input: PromotionEvidence): PromotionDecision {
     return { promote: false, reason: "insufficient-repeats" };
   }
 
-  const normalize = (value: string) => value.trim().toLowerCase();
+  if (!Array.isArray(input.judges) || input.judges.length !== 2)
+    return { promote: false, reason: "judge-dependence" };
+  const normalize = (value: unknown) =>
+    typeof value === "string" ? value.trim().toLowerCase() : "";
   const providers = new Set(
-    input.judges.map((verdict) => normalize(verdict.judge.provider)),
+    input.judges.map((verdict) => normalize(verdict?.judge?.provider)),
   );
   const families = new Set(
-    input.judges.map((verdict) => normalize(verdict.judge.family)),
+    input.judges.map((verdict) => normalize(verdict?.judge?.family)),
   );
   if (
-    input.judges.length !== 2 ||
     providers.size !== 2 ||
     families.size !== 2 ||
     providers.has("") ||
@@ -211,6 +220,12 @@ export function evaluatePromotion(input: PromotionEvidence): PromotionDecision {
     return { promote: false, reason: "judge-dependence" };
   }
 
+  if (
+    !Array.isArray(input.refs?.input) ||
+    !Array.isArray(input.refs?.output) ||
+    !Array.isArray(input.refs?.gate)
+  )
+    return { promote: false, reason: "invalid-citations" };
   const refs = {
     input: new Set(input.refs.input),
     output: new Set(input.refs.output),
@@ -219,9 +234,11 @@ export function evaluatePromotion(input: PromotionEvidence): PromotionDecision {
   if (
     input.judges.some(
       (verdict) =>
+        !Array.isArray(verdict.citations) ||
         verdict.citations.length === 0 ||
         verdict.citations.some(
-          (citation) =>
+          (citation: JudgeVerdict["citations"][number]) =>
+            typeof citation?.claim !== "string" ||
             !citation.claim.trim() ||
             !refs.input.has(citation.inputRef) ||
             !refs.output.has(citation.outputRef) ||
@@ -232,8 +249,11 @@ export function evaluatePromotion(input: PromotionEvidence): PromotionDecision {
     return { promote: false, reason: "invalid-citations" };
   }
 
-  const validScore = (score: number) =>
-    Number.isFinite(score) && score >= 0 && score <= 100;
+  const validScore = (score: unknown) =>
+    typeof score === "number" &&
+    Number.isFinite(score) &&
+    score >= 0 &&
+    score <= 100;
   if (
     input.judges.some(
       (verdict) =>
@@ -243,8 +263,8 @@ export function evaluatePromotion(input: PromotionEvidence): PromotionDecision {
         (input.candidateOption === "A"
           ? verdict.optionARegression
           : verdict.optionBRegression) !== false ||
-        !validScore(verdict.scores.optionA) ||
-        !validScore(verdict.scores.optionB),
+        !validScore(verdict.scores?.optionA) ||
+        !validScore(verdict.scores?.optionB),
     )
   ) {
     return { promote: false, reason: "judge-non-regression" };
