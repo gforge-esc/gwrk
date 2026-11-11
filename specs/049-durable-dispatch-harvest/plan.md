@@ -37,7 +37,7 @@ flowchart LR
 
 | Contract group | Symbols | Phase | Contract file |
 |---|---|---|---|
-| SQLite durable tables and Zod schemas | Migration `015` and durable status enums | Phase 1 and Phase 2 | `data-model.md` |
+| SQLite durable tables and Zod schemas | Migration `016` and durable status enums | Phase 1 and Phase 2 | `data-model.md` |
 | Pure dispatch and harvest policy | `evaluateDispatchAcceptance`, `validateLeaseFence`, `verifyHarvestTarget` and `evaluateBranchCleanupSafety` | Phase 1 | `contracts/durable-operations-and-ports.md` |
 | Store, Git, GitHub and outbox ports | `ClockPort`, `OperationsStorePort`, `GitHubHarvestPort`, `WorkerExecutionPort` and `HarvestExecutionPort` | Phase 1 through Phase 3 | `contracts/durable-operations-and-ports.md` |
 | Dispatch, harvest and outbox services | `DurableDispatchService`, `DurableHarvestService` and `OutboxDeliveryService` | Phase 4 | `contracts/coordinators-routes-and-cli.md` |
@@ -86,13 +86,13 @@ pnpm exec vitest run src/domain/durable-dispatch.test.ts src/domain/durable-harv
 
 #### Files
 
-- `src/db/migrations/015-durable-dispatch-and-harvest.sql` (NEW: Create dispatch and attempt tables plus delivery, cursor and outbox stage tables)
+- `src/db/migrations/016-durable-dispatch-and-harvest.sql` (NEW: Create dispatch and attempt tables plus delivery, cursor and outbox stage tables)
 - `src/db/operations.ts` (NEW: Implement transactional acceptance and fenced leases plus stage receipts, cursors and outbox reads)
 - `src/adapters/sqlite/operations.ts` (NEW: Implement `createSqliteOperationsStoreAdapter` over injected database connections)
 - `src/adapters/sqlite/index.ts` (MODIFY: Export `createSqliteOperationsStoreAdapter` from the SQLite adapter barrel)
 - `src/server/persistence.ts` (MODIFY: Read legacy `.gwrk/dispatches.jsonl` entries as `legacy_unverified` without mutating the repo tree)
 - `src/db/operations.test.ts` (NEW: Test atomic acceptance and lease fencing plus transport dedup, stage receipts and legacy preservation)
-- `src/db/db.test.ts` (MODIFY: Verify migration `015` foreign keys and backward compatibility on existing databases)
+- `src/db/db.test.ts` (MODIFY: Verify migration `016` foreign keys and backward compatibility on existing databases)
 
 #### Governance and skills
 
@@ -108,7 +108,7 @@ pnpm exec vitest run src/domain/durable-dispatch.test.ts src/domain/durable-harv
 | TR-001 | integration | `src/db/operations.test.ts` | Accepted dispatches survive reopen and list in FIFO order with expired leases flagged |
 | TR-002 | integration | `src/db/operations.test.ts` | Separate transport deliveries across two repos with matching PR numbers stay isolated |
 | TR-003 | integration | `src/db/operations.test.ts` | Stale `leaseEpoch` writes fail with `LEASE_FENCED` without mutating successor attempts |
-| TR-005 | unit | `src/db/db.test.ts` | Migration `015` preserves legacy rows and marks unverified records |
+| TR-005 | unit | `src/db/db.test.ts` | Migration `016` preserves legacy rows and marks unverified records |
 
 #### Done When
 

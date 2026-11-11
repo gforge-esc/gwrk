@@ -33,9 +33,9 @@ flowchart LR
 | `harvest_stage_receipts` | `(operation_id, phase_key, stage)` | Independent progress for sync, gates, learning, Slack and cleanup | Stage recovery state |
 | `notification_outbox` | `outbox_id`, `(project_id, dedupe_key)` | Durable recipient routing and uncertain-send reconciliation | Outbound delivery ledger |
 
-## SQLite migration `015`
+## SQLite migration `016`
 
-Source: `src/db/migrations/015-durable-dispatch-and-harvest.sql`
+Source: `src/db/migrations/016-durable-dispatch-and-harvest.sql`
 
 ```sql
 CREATE TABLE IF NOT EXISTS dispatch_operations (
