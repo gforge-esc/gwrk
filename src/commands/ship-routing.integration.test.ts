@@ -683,6 +683,33 @@ describe("ship with the real AgentPort router", () => {
     },
   );
 
+  it("routes a registered script-owned backend without a native adapter", async () => {
+    configureAgents("legacy-wrapper", ["legacy-wrapper"]);
+    const { AgentBackendRegistry } = await import("../plugins/agent-registry.js");
+    const lookup = vi.mocked(AgentBackendRegistry.prototype.getAgentBackend);
+
+    await ship("--dry-run", "--legacy");
+    expect(console.log).toHaveBeenCalledWith(
+      expect.stringContaining("backend: legacy-wrapper, model: legacy-wrapper-primary"),
+    );
+    expect(await decisions()).toEqual([]);
+    await ship("--legacy");
+
+    const scriptCalls = vi.mocked(run).mock.calls.filter(([command]) =>
+      command.endsWith("/work-until-done.sh"),
+    );
+    expect(scriptCalls).toHaveLength(1);
+    expect(scriptCalls[0][2]?.env).toMatchObject({
+      AGENT_BACKEND: "legacy-wrapper",
+      GEMINI_MODEL: "legacy-wrapper-primary",
+    });
+    expect(await decisions()).toMatchObject([{
+      selected_backend: "legacy-wrapper",
+      selected_model: "legacy-wrapper-primary",
+    }]);
+    expect(lookup).not.toHaveBeenCalled();
+  });
+
   it("previews and ships an explicit backend owned by the legacy script", async () => {
     const { AgentBackendRegistry } = await import(
       "../plugins/agent-registry.js"

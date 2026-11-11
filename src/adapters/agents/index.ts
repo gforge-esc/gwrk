@@ -73,9 +73,7 @@ async function selectAvailableRoute(
   const config = loadConfig(projectRoot);
   const quotaFirst = context.historyMode === "quota-tiebreak";
   const installedOnly = context.backendEligibility === "installed";
-  const scriptOwned =
-    context.backendEligibility === "script-owned" &&
-    context.explicitBackend !== undefined;
+  const scriptOwned = context.backendEligibility === "script-owned";
   const history = context.explicitBackend
     ? []
     : quotaFirst

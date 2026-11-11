@@ -813,10 +813,10 @@ Examples:
                 ? ("quota-tiebreak" as const)
                 : undefined,
             backendEligibility:
-              explicitBackend === undefined
-                ? undefined
-                : opts.legacy
-                  ? ("script-owned" as const)
+              opts.legacy
+                ? ("script-owned" as const)
+                : explicitBackend === undefined
+                  ? undefined
                   : ("installed" as const),
           };
 
