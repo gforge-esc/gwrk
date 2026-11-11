@@ -1,0 +1,19 @@
+{
+  "runId": "2026-11-11T18:55:31.838Z_define_p01",
+  "feature": "049-durable-dispatch-harvest",
+  "phase": "p01",
+  "command": "define tests",
+  "agent": "codex",
+  "model": "gpt-6-astra",
+  "startedAt": "2026-11-11T18:55:31.838Z",
+  "finishedAt": "2026-11-11T19:02:01.721Z",
+  "durationS": 390,
+  "exitCode": 0,
+  "attempt": 1,
+  "filesChanged": 6,
+  "linesAdded": 1285,
+  "linesDeleted": 0,
+  "gitCommit": "725f987065941fc58201b076e9b0662eea790a82",
+  "gitBranch": "codex/durable-dispatch-harvest-plan",
+  "digest": []
+}
