@@ -1,12 +1,5 @@
-#!/bin/bash
-set -euo pipefail
+#!/usr/bin/env bash
 # AUTHORED
-# Gate: T004 — Modify agent-config.ts
-# Generated from filesystem convention (deterministic test gate)
-
-test -f src/domain/agent-config.ts || { echo "FAIL: T004 — file not found: src/domain/agent-config.ts" >&2; exit 1; }
-
-pnpm vitest run src/domain/agent-config.test.ts --reporter=verbose \
-  || { echo "FAIL: T004 — test failed for src/domain/agent-config.test.ts" >&2; exit 1; }
-
-echo "PASS: T004 — Modify agent-config.ts"
+set -euo pipefail
+cd "$(git rev-parse --show-toplevel)"
+pnpm exec vitest run src/domain/agent-config.test.ts src/server/agent-registry.test.ts src/server/agent-registry.integration.test.ts src/utils/resolve-model.test.ts src/utils/resolve-agent.test.ts src/architecture.test.ts

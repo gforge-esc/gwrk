@@ -1,12 +1,5 @@
-#!/bin/bash
-set -euo pipefail
+#!/usr/bin/env bash
 # AUTHORED
-# Gate: T002 — Modify project-id.ts
-# Generated from filesystem convention (deterministic test gate)
-
-test -f src/domain/project-id.ts || { echo "FAIL: T002 — file not found: src/domain/project-id.ts" >&2; exit 1; }
-
-pnpm vitest run src/domain/project-id.test.ts --reporter=verbose \
-  || { echo "FAIL: T002 — test failed for src/domain/project-id.test.ts" >&2; exit 1; }
-
-echo "PASS: T002 — Modify project-id.ts"
+set -euo pipefail
+cd "$(git rev-parse --show-toplevel)"
+pnpm exec vitest run src/domain/project-id.test.ts src/utils/project-id.test.ts src/db/runs.test.ts src/architecture.test.ts

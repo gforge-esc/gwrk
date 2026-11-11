@@ -1,9 +1,5 @@
-#!/bin/bash
-set -euo pipefail
+#!/usr/bin/env bash
 # AUTHORED
-# Gate: T001 — Create architecture-boundary.ts
-# Generated from filesystem convention (no test file found)
-
-test -f tests/helpers/architecture-boundary.ts || { echo "FAIL: T001 — file not found: tests/helpers/architecture-boundary.ts" >&2; exit 1; }
-
-echo "PASS: T001 — Create architecture-boundary.ts"
+set -euo pipefail
+cd "$(git rev-parse --show-toplevel)"
+pnpm exec vitest run src/architecture.test.ts

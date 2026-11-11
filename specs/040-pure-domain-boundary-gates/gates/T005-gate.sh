@@ -1,9 +1,5 @@
-#!/bin/bash
-set -euo pipefail
+#!/usr/bin/env bash
 # AUTHORED
-# Gate: T005 — Create registry-loader.ts
-# Generated from filesystem convention (no test file found)
-
-test -f src/adapters/agents/registry-loader.ts || { echo "FAIL: T005 — file not found: src/adapters/agents/registry-loader.ts" >&2; exit 1; }
-
-echo "PASS: T005 — Create registry-loader.ts"
+set -euo pipefail
+cd "$(git rev-parse --show-toplevel)"
+pnpm exec vitest run src/domain/agent-config.test.ts src/server/agent-registry.test.ts src/server/agent-registry.integration.test.ts src/utils/resolve-model.test.ts src/utils/resolve-agent.test.ts src/architecture.test.ts

@@ -1,9 +1,5 @@
-#!/bin/bash
-set -euo pipefail
+#!/usr/bin/env bash
 # AUTHORED
-# Gate: T007 — Create manifest-discovery.ts
-# Generated from filesystem convention (no test file found)
-
-test -f src/adapters/toolchain/manifest-discovery.ts || { echo "FAIL: T007 — file not found: src/adapters/toolchain/manifest-discovery.ts" >&2; exit 1; }
-
-echo "PASS: T007 — Create manifest-discovery.ts"
+set -euo pipefail
+cd "$(git rev-parse --show-toplevel)"
+pnpm exec vitest run src/domain/toolchain.test.ts src/utils/toolchain-mapper.test.ts src/architecture.test.ts src/application/architecture/context.test.ts
