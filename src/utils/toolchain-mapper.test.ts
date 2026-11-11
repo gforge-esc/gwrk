@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import * as toolchainPort from "../ports/toolchain-port.js";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -141,5 +142,11 @@ describe("getBuildCommand (021 FR-004 — string | null)", () => {
       expect(getBuildCommand(p({}), d)).toBeNull();
       fs.rmSync(d, { recursive: true, force: true });
     });
+  });
+});
+
+describe("Toolchain port boundary", () => {
+  it("exports only type contracts from the port module", () => {
+    expect(Object.keys(toolchainPort)).toEqual([]);
   });
 });
