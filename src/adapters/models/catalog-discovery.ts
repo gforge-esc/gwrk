@@ -115,19 +115,45 @@ export function createModelCatalog(
               cliVersion = await readVersion(command).catch(() => "unknown");
             const discovered =
               (await source.adapter.discoverModels?.({ projectRoot })) ?? [];
-            const models = new Map<string, DiscoveredModel>();
-            for (const model of [...discovered, ...explicitCandidates]) {
-              if (
+            const providerModels = discovered.filter(
+              (model) =>
+                model.backend === backend && isConcreteModel(model.modelId),
+            );
+            const providerIds = new Set(
+              providerModels.map(({ modelId }) => modelId),
+            );
+            const candidates = explicitCandidates.filter(
+              (model) =>
                 model.backend === backend &&
                 isConcreteModel(model.modelId) &&
-                !models.has(model.modelId)
-              ) {
-                models.set(model.modelId, model);
-              }
-            }
-            const visible = [...models.values()].filter(
-              (model) => !model.hidden,
+                !providerIds.has(model.modelId),
             );
+            const models = new Map<string, DiscoveredModel>();
+            for (const model of [...providerModels, ...candidates]) {
+              if (model.hidden) continue;
+              const identity = JSON.stringify([
+                model.modelId,
+                model.provider,
+                model.family,
+                model.isDefault,
+              ]);
+              const prior = models.get(identity);
+              models.set(
+                identity,
+                prior
+                  ? {
+                      ...prior,
+                      supportedEfforts: [
+                        ...new Set([
+                          ...prior.supportedEfforts,
+                          ...model.supportedEfforts,
+                        ]),
+                      ],
+                    }
+                  : model,
+              );
+            }
+            const visible = [...models.values()];
             return {
               backend,
               cliVersion,

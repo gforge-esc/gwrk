@@ -99,6 +99,63 @@ describe("model discovery", () => {
 });
 
 describe("catalog reports", () => {
+  it("keeps conflicting discovered identities visible to model qualification", async () => {
+    const { checkCandidate } = await import(
+      "../../domain/model-qualification.js"
+    );
+    const { createModelCatalog } = await import("./catalog-discovery.js");
+    const [model, hiddenOnly] = parseAgyModelList(
+      "gemini-3-flash\tGemini 3 Flash\ngemini-3-pro\tGemini 3 Pro",
+    );
+    const scope = {
+      workspaceId: "fixture",
+      runnerProfile: "local",
+      platform: process.platform,
+      arch: process.arch,
+    };
+    const catalog = createModelCatalog("/fixture", {
+      loadAgent: async () => ({
+        manifest: {
+          type: "agent",
+          version: "2.0.0",
+          invocation: { command: "agy" },
+        },
+        adapter: {
+          supportsModelForwarding: true,
+          isAvailable: async () => true,
+          discoverModels: async () => [
+            { ...model, hidden: true },
+            { ...model, supportedEfforts: ["high"] },
+            { ...model, supportedEfforts: ["low"] },
+            { ...model, family: "other-family", supportedEfforts: ["high"] },
+            { ...hiddenOnly, hidden: true },
+          ],
+        },
+      }),
+      readVersion: async () => "agy 1.2.3",
+    });
+
+    const adapters = await catalog.discoverCatalog({
+      scope,
+      backends: ["agy"],
+      explicitCandidates: [hiddenOnly],
+      nowIso: "2026-11-11T12:00:00Z",
+    });
+    expect(adapters[0].models).toEqual([
+      { ...model, supportedEfforts: ["high", "low"] },
+      { ...model, family: "other-family", supportedEfforts: ["high"] },
+    ]);
+    expect(
+      checkCandidate({ scope, adapters }, scope, { ...model, effort: "high" }),
+    ).toEqual({
+      ok: false,
+      reason: "model-unavailable",
+    });
+    expect(
+      checkCandidate({ scope, adapters }, scope, { ...model, effort: "low" }),
+    ).toEqual({ ok: true });
+  });
+
   it("preserves discovered IDs and reports absent and unauthenticated backends", async () => {
     const { createModelCatalog } = await import("./catalog-discovery.js");
     const { ModelDiscoveryError } = await import(
