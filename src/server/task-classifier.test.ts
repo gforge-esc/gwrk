@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { describe, expect, it } from "vitest";
-import { TaskClassification, TaskType, classifyTask } from "./task-classifier";
+import { TaskClassification, TaskType, classifyTask } from "../domain/types.js";
 
 describe("task-classifier", () => {
   it("TR-010: classifies 'implement' as 'fast'", () => {

@@ -150,7 +150,7 @@
           "title": "Modify agent-registry.ts",
           "description": "DELETE src/server/agent-registry.ts. Remove compatibility re-export shim after migrating all callers",
           "status": "open",
-          "gateScript": "pnpm build\npnpm exec vitest run src/server/model-selector.test.ts src/server/quota-prober.test.ts src/server/task-classifier.test.ts src/server/backend-selector.test.ts src/architecture.test.ts",
+          "gateScript": "gates/phase-03.sh",
           "sp": 1
         },
         {
@@ -158,7 +158,7 @@
           "title": "Modify model-selector.ts",
           "description": "DELETE src/server/model-selector.ts. Remove compatibility re-export shim after migrating all callers. Tests: src/server/model-selector.test.ts",
           "status": "open",
-          "gateScript": "pnpm build\npnpm exec vitest run src/server/model-selector.test.ts src/server/quota-prober.test.ts src/server/task-classifier.test.ts src/server/backend-selector.test.ts src/architecture.test.ts",
+          "gateScript": "gates/phase-03.sh",
           "sp": 1
         },
         {
@@ -166,7 +166,7 @@
           "title": "Modify task-classifier.ts",
           "description": "DELETE src/server/task-classifier.ts. Remove compatibility re-export shim after migrating all callers. Tests: src/server/task-classifier.test.ts",
           "status": "open",
-          "gateScript": "pnpm build\npnpm exec vitest run src/server/model-selector.test.ts src/server/quota-prober.test.ts src/server/task-classifier.test.ts src/server/backend-selector.test.ts src/architecture.test.ts",
+          "gateScript": "gates/phase-03.sh",
           "sp": 1
         }
       ],
