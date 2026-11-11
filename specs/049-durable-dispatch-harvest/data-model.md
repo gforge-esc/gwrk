@@ -97,6 +97,7 @@ CREATE TABLE IF NOT EXISTS harvest_deliveries (
   outcome      TEXT NOT NULL,
   reason       TEXT,
   received_at  TEXT NOT NULL,
+  -- Replay requires the same resolved project, repository and payload digest.
   PRIMARY KEY (source, delivery_id),
   UNIQUE (source, delivery_id, project_id)
 );

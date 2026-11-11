@@ -242,6 +242,7 @@ function restoreHarvestIntake(persisted: {
   aliases?: { projectId: string; workKey: string; operationId: string }[];
   deliveries?: {
     key: string;
+    projectId: string | null;
     repoSlug: string | null;
     payloadDigest: string;
     operationIds: string[];
@@ -255,10 +256,14 @@ function restoreHarvestIntake(persisted: {
   const store: Pick<OperationsStorePort, "recordHarvestIntake"> = {
     recordHarvestIntake({ candidate, payloadDigest, receivedAt, target }) {
       const key = JSON.stringify([candidate.source, candidate.deliveryId]);
+      const projectId = target.accepted
+        ? target.project.projectId
+        : target.projectId;
       const repoSlug = candidate.repoSlug?.toLowerCase() ?? null;
       const delivery = rows.deliveries.find((row) => row.key === key);
       if (delivery) {
         if (
+          delivery.projectId !== projectId ||
           delivery.payloadDigest !== payloadDigest ||
           delivery.repoSlug !== repoSlug
         ) {
@@ -268,7 +273,8 @@ function restoreHarvestIntake(persisted: {
           ok: true,
           operations: delivery.operationIds.map((operationId) => {
             const operation = rows.harvests.find(
-              (row) => row.operationId === operationId,
+              (row) =>
+                row.projectId === projectId && row.operationId === operationId,
             );
             if (!operation) throw new Error("Expected persisted operation");
             return operation;
@@ -314,6 +320,7 @@ function restoreHarvestIntake(persisted: {
       }
       transaction.deliveries.push({
         key,
+        projectId,
         repoSlug,
         payloadDigest,
         operationIds: operations.map((row) => row.operationId),
@@ -1489,6 +1496,52 @@ describe("durable recovery store contract", () => {
 });
 
 describe("persisted harvest intake contract", () => {
+  it.each([true, false])(
+    "checks the resolved project before replaying a repository-less delivery accepted=%s",
+    (accepted) => {
+      const deliveryId = "shared-manual-delivery";
+      const owner = harvestIntake(deliveryId, { ...offline, projectId });
+      const foreignId = "project-b";
+      const foreign = harvestIntake(deliveryId, {
+        ...offline,
+        projectId: foreignId,
+      });
+      const requests: [HarvestIntake, HarvestIntake] = accepted
+        ? [owner, foreign]
+        : [
+            {
+              ...owner,
+              target: { accepted: false, projectId, reason: "No coverage" },
+            },
+            {
+              ...foreign,
+              target: {
+                accepted: false,
+                projectId: foreignId,
+                reason: "No coverage",
+              },
+            },
+          ];
+      expect(requests[0].candidate).toEqual(requests[1].candidate);
+      expect(requests[0].candidate.repoSlug).toBeNull();
+      const initial = restoreHarvestIntake({ harvests: [], stages: [] });
+      const result = initial.store.recordHarvestIntake(requests[0]);
+      if (!result.ok) throw new Error("Expected original delivery to persist");
+      const saved = initial.snapshot();
+      const reopened = restoreHarvestIntake(saved);
+      expect(reopened.store.recordHarvestIntake(requests[1])).toEqual({
+        ok: false,
+        code: "DELIVERY_ID_CONFLICT",
+      });
+      expect(reopened.snapshot()).toEqual(saved);
+      expect(reopened.store.recordHarvestIntake(requests[0])).toMatchObject({
+        ok: true,
+        deduplicatedTransport: true,
+        operations: result.operations,
+      });
+    },
+  );
+
   it.each(["local", "pull request"])(
     "keeps an unknown checkout separate across restart when %s arrives first",
     (firstSource) => {
