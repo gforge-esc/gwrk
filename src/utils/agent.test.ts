@@ -6,6 +6,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { dispatchToAgent, SAFE_AGENT_ENV, COMMAND_SAFETY_BLOCK } from './agent.js';
 import * as skillRuntime from '../plugins/skill-runtime.js';
 import * as extensionRuntime from '../plugins/extension-runtime.js';
+import { WorkflowRuntime } from '../plugins/workflow-runtime.js';
 import { execFileSync, spawn } from 'node:child_process';
 import { EventEmitter } from 'node:events';
 import fs from 'node:fs';
@@ -102,20 +103,21 @@ describe('US-016: Enforcement Skills Dispatch Injection', () => {
     expect(capturedStdin()).toContain('<code_quality>\n# Strict Typing Rule\n</code_quality>');
   });
 
-  it("expands bare enforcement in legacy stdin while preserving scoped input", async () => {
-    vi.mocked(skillRuntime.resolveEnforcementSkills).mockResolvedValue("# Strict Typing Rule");
-    const scopedInput = "<user_input>\nKeep {{enforcement}} as written.\n</user_input>";
-    const result = await dispatchToAgent({
+  it("preserves bare enforcement markers in the template outside the code quality section", async () => {
+    const template = "Rules:\n{{enforcement}}";
+    const userInput = "<user_input>\nKeep {{enforcement}} as written.\n</user_input>";
+    const capturedStdin = mockAgentStdin();
+
+    await dispatchToAgent({
       workflow: "gwrk-implement",
       workDir: "/fake/root",
       agent: "agy",
-      prompt: "Do the work.",
-      stdin: `Rules:\n{{enforcement}}\n\n${scopedInput}`,
-      dryRun: true,
+      stdin: `${template}\n\n${userInput}`,
+      promptParts: { template, userInput },
     });
 
-    expect(result.stdout).toContain("Rules:\n# Strict Typing Rule");
-    expect(result.stdout).toContain(scopedInput);
+    expect(capturedStdin()).toBe(`${COMMAND_SAFETY_BLOCK}\n\n${template}\n\n${userInput}`);
+    expect(skillRuntime.resolveEnforcementSkills).not.toHaveBeenCalled();
   });
 
   it('expands template enforcement even when the template quotes the input tag', async () => {
@@ -138,7 +140,7 @@ describe('US-016: Enforcement Skills Dispatch Injection', () => {
     expect(capturedStdin()).toContain('Quote `<user_input>` and keep {{enforcement}} here.');
   });
 
-  it('preserves a code quality fixture in a prompt-only task', async () => {
+  it.each(['prompt', 'stdin'] as const)('preserves a code quality fixture in a legacy %s task', async (field) => {
     vi.mocked(skillRuntime.resolveEnforcementSkills).mockResolvedValue('# Strict Typing Rule');
     const capturedStdin = mockAgentStdin();
     const prompt = '  Keep this fixture:\r\n<code_quality>{{enforcement}}</code_quality>\r\n';
@@ -147,7 +149,7 @@ describe('US-016: Enforcement Skills Dispatch Injection', () => {
       workflow: 'gwrk-implement',
       workDir: '/fake/root',
       agent: 'agy',
-      prompt,
+      [field]: prompt,
     });
 
     expect(capturedStdin()).toBe(`${COMMAND_SAFETY_BLOCK}\n\n${prompt}`);
@@ -314,30 +316,26 @@ it('uses the primary checkout throttle for a dispatch in a linked worktree', asy
 });
 
 describe("TR-018: Context Injection in Dispatch (Phase 21)", () => {
-  it("selects extension context from the scoped task rather than the assembled template", async () => {
-    const template = fs.readFileSync(
-      new URL("../plugins/builtins/workflows/gwrk-implement/PROMPT.md", import.meta.url),
-      "utf8",
-    );
-    const userInput = "<user_input>\nVerify the idempotency guarantee.\n</user_input>";
+  it("includes feature and task context in the native implementation agent stdin", async () => {
+    const input = "Verify the idempotency guarantee.";
+    const capturedStdin = mockAgentStdin();
     vi.mocked(extensionRuntime.resolveExtensionContext).mockImplementationOnce(
       async (_workDir, keywords) =>
-        keywords?.includes("idempotency")
+        keywords?.includes("routing") && keywords.includes("idempotency")
           ? [{ source: "project_rules", content: "Use the durable operation key." }]
           : [],
     );
 
-    const result = await dispatchToAgent({
-      agent: "agy",
-      workflow: "gwrk-implement",
+    await new WorkflowRuntime().executeWorkflow("gwrk-implement", input, {
+      agent: "codex",
       featureDir: "specs/043-unified-routing-prompt-delivery",
-      promptParts: { template, userInput },
-      stdin: `${template}\n\n${userInput}`,
-      dryRun: true,
+      nativeOnly: true,
+      projectRoot: "/fake/root",
     });
 
-    expect(result.stdout).toContain("<project_rules>\nUse the durable operation key.");
-    expect(result.stdout).toContain(userInput);
+    expect(capturedStdin()).toContain("# /gwrk-implement");
+    expect(capturedStdin()).toContain(`<user_input>\n${input}\n</user_input>`);
+    expect(capturedStdin()).toContain("<project_rules>\nUse the durable operation key.\n</project_rules>");
   });
 
   it("FR-L3-006: injects output of resolveExtensionContext into prompt", async () => {

@@ -546,18 +546,13 @@ export async function dispatchToAgent(task: TaskDispatch): Promise<TaskResult> {
 
   const startTime = Date.now();
   const { promptParts, ...agentTask } = task;
-  const legacyStdin = task.stdin ?? "";
-  const scopedInput = legacyStdin.search(/^<user_input>(?:\r?$)/m);
-  const templateEnd = scopedInput < 0 ? legacyStdin.length : scopedInput;
-  let template = promptParts?.template ?? legacyStdin.slice(0, templateEnd);
+  let template = promptParts?.template ?? "";
 
   // FR-014: Inject enforcement skills
   const codeQuality = template.match(
     /<code_quality>[\s\S]*?<\/code_quality>/,
   )?.[0];
-  const enforcementMarker = "{{enforcement}}";
-
-  if (codeQuality || template.includes(enforcementMarker)) {
+  if (codeQuality) {
     const scope =
       task.workflow?.includes("review") || task.type?.includes("review")
         ? "review"
@@ -573,24 +568,18 @@ export async function dispatchToAgent(task: TaskDispatch): Promise<TaskResult> {
       profile,
     );
 
-    if (codeQuality) {
-      const section = codeQuality.includes(enforcementMarker)
-        ? codeQuality.replaceAll(enforcementMarker, () => enforcement)
-        : `<code_quality>\n${enforcement}\n</code_quality>`;
-      template = template.replace(codeQuality, () => section);
-    } else {
-      template = template.replace(enforcementMarker, () => enforcement);
-    }
+    const enforcementMarker = "{{enforcement}}";
+    const section = codeQuality.includes(enforcementMarker)
+      ? codeQuality.replaceAll(enforcementMarker, () => enforcement)
+      : `<code_quality>\n${enforcement}\n</code_quality>`;
+    template = template.replace(codeQuality, () => section);
   }
 
   const hasCommandSafety = template.includes(COMMAND_SAFETY_BLOCK);
   let stdinPayload = (
     promptParts
       ? [template, promptParts.userInput]
-      : [
-          task.prompt === task.stdin ? undefined : task.prompt,
-          template + legacyStdin.slice(templateEnd),
-        ]
+      : [task.prompt === task.stdin ? undefined : task.prompt, task.stdin]
   )
     .filter(Boolean)
     .join("\n\n");
