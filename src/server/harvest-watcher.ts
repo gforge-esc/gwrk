@@ -28,6 +28,7 @@ export class HarvestWatcher {
     private slackApp: App | null,
     private projectRoot: string = process.cwd(),
     private ledger?: DispatchLedgerScope,
+    private gitEnv?: () => NodeJS.ProcessEnv,
   ) {
     this.projectId = ledger?.projectId ?? resolveProjectId(this.projectRoot);
   }
@@ -56,6 +57,7 @@ export class HarvestWatcher {
 
   async runCheck() {
     try {
+      const env = this.gitEnv?.();
       const baseBranch = detectDefaultBranch(this.projectRoot, "develop");
 
       // Execute GitHub CLI command to get merged and closed PRs
@@ -74,7 +76,7 @@ export class HarvestWatcher {
           "number,headRefName,mergedAt,mergeCommit,url,state,closedAt",
         ],
         undefined,
-        { cwd: this.projectRoot },
+        { cwd: this.projectRoot, env },
       );
 
       if (result.exitCode !== 0) {
@@ -142,8 +144,8 @@ export class HarvestWatcher {
         };
 
         try {
-          syncTrunkForHarvest(this.projectRoot, baseBranch);
-          await harvestFeature(this.projectRoot, record, this.ledger);
+          syncTrunkForHarvest(this.projectRoot, baseBranch, env);
+          await harvestFeature(this.projectRoot, record, this.ledger, env);
           logCliOutput(
             `HarvestWatcher: Completed harvest for ${featureId} (${phaseId || "all phases"})`,
           );

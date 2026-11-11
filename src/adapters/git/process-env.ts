@@ -18,6 +18,6 @@ export function repositoryGitEnv(projectRoot: string): NodeJS.ProcessEnv {
     .split(/\r?\n/);
 
   const env = { ...process.env };
-  for (const key of localEnvKeys) delete env[key];
+  for (const key of [...localEnvKeys, "GH_REPO"]) delete env[key];
   return env;
 }

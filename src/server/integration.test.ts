@@ -557,6 +557,143 @@ describe("Server E2E Integration", () => {
     }
   });
 
+  it.each(["webhook", "watcher"] as const)(
+    "syncs the scoped checkout during %s harvest with inherited Git selectors",
+    async (entryPoint) => {
+      const git =
+        await vi.importActual<typeof import("../utils/git.js")>(
+          "../utils/git.js",
+        );
+      vi.mocked(syncTrunkForHarvest).mockImplementationOnce(
+        git.syncTrunkForHarvest,
+      );
+      const fixtures: ServerFixture[] = [];
+      let returnPullRequests: (() => void) | undefined;
+      const featureId = "scoped-sync";
+      const phaseId = "phase-01";
+      const mergedAt = "2026-01-01T00:00:00Z";
+      const headRef = `feat/${featureId}-${phaseId}`;
+      try {
+        const origin = await createServerFixture("routes", {
+          routes: ["dispatch"],
+        });
+        fixtures.push(origin);
+        const external = await createServerFixture("routes", {
+          routes: ["dispatch"],
+        });
+        fixtures.push(external);
+        vi.stubEnv("GIT_DIR", join(external.projectRoot, ".git"));
+        vi.stubEnv("GIT_WORK_TREE", external.projectRoot);
+        vi.stubEnv("GH_REPO", "external/repo");
+        stubListener();
+        const watcher = vi.spyOn(HarvestWatcher.prototype, "runCheck");
+        if (entryPoint === "watcher") {
+          vi.mocked(execCommand).mockReturnValueOnce(
+            new Promise((resolve) => {
+              returnPullRequests = () =>
+                resolve({
+                  exitCode: 0,
+                  stdout: JSON.stringify([
+                    {
+                      number: 9,
+                      headRefName: headRef,
+                      state: "MERGED",
+                      mergedAt,
+                      mergeCommit: { oid: "abcdef" },
+                      url: "https://example.invalid/pr/9",
+                    },
+                  ]),
+                  stderr: "",
+                });
+            }),
+          );
+        }
+        const fixture = await createServerFixture("listen");
+        fixtures.push(fixture);
+        for (const { projectRoot } of [fixture, external]) {
+          mkdirSync(join(projectRoot, ".git", "info"), { recursive: true });
+          writeFileSync(
+            join(projectRoot, ".git", "info", "exclude"),
+            ".gwrk/\n",
+          );
+          fixtureGit(
+            projectRoot,
+            "remote",
+            "add",
+            "origin",
+            origin.projectRoot,
+          );
+          fixtureGit(projectRoot, "fetch", "origin", "develop");
+          fixtureGit(projectRoot, "reset", "--hard", "origin/develop");
+        }
+        fixtureGit(external.projectRoot, "switch", "-c", "external");
+        writeFileSync(join(external.projectRoot, "untracked"), "external\n");
+        const externalBefore = [
+          fixtureGit(external.projectRoot, "rev-parse", "HEAD"),
+          fixtureGit(external.projectRoot, "show-ref"),
+        ];
+        fixtureGit(
+          origin.projectRoot,
+          "-c",
+          "user.name=Gwrk Test",
+          "-c",
+          "user.email=gwrk-test@example.invalid",
+          "commit",
+          "--author=Gwrk Test <gwrk-test@example.invalid>",
+          "--no-gpg-sign",
+          "--allow-empty",
+          "-m",
+          "Advance origin",
+        );
+        const originHead = fixtureGit(origin.projectRoot, "rev-parse", "HEAD");
+        expect(originHead).not.toBe(externalBefore[0]);
+        if (entryPoint === "watcher") {
+          const options = vi.mocked(execCommand).mock.calls[0]?.[3];
+          expect(options?.cwd).toBe(fixture.projectRoot);
+          expect(options?.env).toBeDefined();
+          expect(options?.env?.GIT_DIR).toBeUndefined();
+          expect(options?.env?.GIT_WORK_TREE).toBeUndefined();
+          expect(options?.env?.GH_REPO).toBeUndefined();
+          returnPullRequests?.();
+          await watcher.mock.results[0]?.value;
+        } else {
+          const response = await injectGitHub(fixture, "pull_request", {
+            action: "closed",
+            pull_request: {
+              number: 9,
+              merged: true,
+              merged_at: mergedAt,
+              merge_commit_sha: "abcdef",
+              html_url: "https://example.invalid/pr/9",
+              base: { ref: "develop" },
+              head: { ref: headRef },
+            },
+          });
+          expect(response.statusCode).toBe(200);
+        }
+        await fixture.app.close();
+
+        expect([
+          fixtureGit(external.projectRoot, "rev-parse", "HEAD"),
+          fixtureGit(external.projectRoot, "show-ref"),
+        ]).toEqual(externalBefore);
+        expect(fixtureGit(fixture.projectRoot, "rev-parse", "HEAD")).toBe(
+          originHead,
+        );
+        expect(listRuns(featureId, fixture.projectId, fixture.db)).toEqual([
+          expect.objectContaining({
+            status: "merged",
+            merge_commit_sha: "abcdef",
+          }),
+        ]);
+        expect(getDb).not.toHaveBeenCalled();
+      } finally {
+        returnPullRequests?.();
+        await Promise.all(fixtures.map((fixture) => fixture.close()));
+      }
+    },
+  );
+
   it("releases a dispatch worktree and reports a failed ledger update on close", async () => {
     stubListener();
     const fixture = await createServerFixture("listen");

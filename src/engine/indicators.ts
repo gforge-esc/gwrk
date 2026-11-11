@@ -22,6 +22,7 @@ export function computeLeadingIndicators(
   projectId: string,
   projectRoot = process.cwd(),
   ledger?: Database.Database,
+  env?: NodeJS.ProcessEnv,
 ): LeadingIndicators {
   const db = ledger ?? getDb();
 
@@ -138,7 +139,7 @@ export function computeLeadingIndicators(
         const gitOut = execFileSync(
           "git",
           ["log", "--numstat", "--format=", "--", featureDir],
-          { cwd: projectRoot, encoding: "utf-8" },
+          { cwd: projectRoot, encoding: "utf-8", env },
         );
         const lines = gitOut.split("\n").filter(Boolean);
         const uniqueFiles = new Set<string>();

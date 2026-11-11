@@ -23,9 +23,10 @@ export async function githubWebhookPlugin(
     config: GwrkConfig;
     projectRoot: string;
     ledger?: DispatchLedgerScope;
+    gitEnv?: () => NodeJS.ProcessEnv;
   },
 ) {
-  const { config, projectRoot, ledger } = options;
+  const { config, projectRoot, ledger, gitEnv } = options;
   const inFlight = new Set<Promise<void>>();
   fastify.addHook("onClose", async () => {
     await Promise.all(inFlight);
@@ -172,8 +173,9 @@ export async function githubWebhookPlugin(
     };
 
     // 5. Trigger Harvest (FR-H01)
-    syncTrunkForHarvest(projectRoot, baseRef);
-    const harvest = harvestFeature(projectRoot, record, ledger)
+    const env = gitEnv?.();
+    syncTrunkForHarvest(projectRoot, baseRef, env);
+    const harvest = harvestFeature(projectRoot, record, ledger, env)
       .then(() => {
         fastify.log.info(`Harvest complete for ${featureId}`);
       })

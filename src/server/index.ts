@@ -62,6 +62,7 @@ export interface ServerStartOptions {
   pid?: ServerPidScope;
   ledger?: DispatchLedgerScope;
   sandbox?: SandboxManager;
+  gitEnv?: () => NodeJS.ProcessEnv;
 }
 
 export class ScopedSandboxManager extends SandboxManager {
@@ -110,6 +111,11 @@ export async function startServer(
   options: ServerStartOptions = { handleSignals: true },
 ) {
   const projectRoot = resolve(options.projectRoot ?? process.cwd());
+  const gitEnv =
+    options.gitEnv ??
+    (options.projectRoot !== undefined || options.ledger
+      ? () => repositoryGitEnv(projectRoot)
+      : undefined);
   const pid = options.pid ?? { writePid, removePid };
   const server = fastify({
     logger: true,
@@ -127,7 +133,7 @@ export async function startServer(
     options.sandbox ??
     (options.projectRoot === undefined
       ? new SandboxManager(projectRoot)
-      : new ScopedSandboxManager(projectRoot));
+      : new ScopedSandboxManager(projectRoot, gitEnv));
 
   const git = new GitManager(projectRoot);
   const queue = new DispatchQueue(
@@ -233,6 +239,7 @@ export async function startServer(
       config,
       projectRoot,
       ledger: options.ledger,
+      gitEnv,
     });
     await notifyRoutes(server);
 
@@ -273,6 +280,7 @@ export async function startServer(
       slackApp,
       projectRoot,
       options.ledger,
+      gitEnv,
     );
     cleanup.push(() => harvestWatcher.stop());
     harvestWatcher.start();

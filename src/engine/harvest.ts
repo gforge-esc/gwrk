@@ -60,6 +60,7 @@ export interface LogIndex {
 export async function finalizeLogs(
   featureId: string,
   projectPath: string,
+  env?: NodeJS.ProcessEnv,
 ): Promise<void> {
   const runsDir = path.join("specs", featureId, ".gwrk", "runs");
   const fullRunsDir = path.join(projectPath, runsDir);
@@ -113,7 +114,7 @@ export async function finalizeLogs(
     projectPath,
     stagedFiles,
     `harvest: finalize logs for ${featureId}`,
-    { skipHooks: true },
+    { skipHooks: true, ...(env && { env }) },
   );
 }
 
@@ -125,6 +126,7 @@ export async function harvestFeature(
   projectPath: string,
   record: HarvestRecord,
   scope?: { projectId: string; db: Database.Database },
+  env?: NodeJS.ProcessEnv,
 ): Promise<CompressionReport | undefined> {
   const { featureId, phaseId, mergeCommitSha, prNumber, mergedAt, status } =
     record;
@@ -150,7 +152,7 @@ export async function harvestFeature(
           logCliOutput(
             `Reconciling/Harvesting phase ${phase.id} for feature ${featureId}...`,
           );
-          await harvestFeature(projectPath, subRecord, scope);
+          await harvestFeature(projectPath, subRecord, scope, env);
         }
       } catch (err) {
         logCliError(
@@ -199,7 +201,7 @@ export async function harvestFeature(
 
   // 1. Finalize Logs (FR-H02)
   try {
-    await finalizeLogs(featureId, projectPath);
+    await finalizeLogs(featureId, projectPath, env);
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     warnCli(`Log finalization failed (non-fatal): ${msg}`);
@@ -390,6 +392,7 @@ export async function harvestFeature(
             projectId,
             scope ? projectPath : undefined,
             scope?.db,
+            env,
           );
           let telemetry: CompressionReport["telemetry"];
           try {
@@ -444,7 +447,7 @@ export async function harvestFeature(
   // 5. Branch Cleanup (FR-H08)
   if (status === "merged" && record.headBranch) {
     try {
-      await cleanupBranch(record.headBranch, projectPath);
+      await cleanupBranch(record.headBranch, projectPath, env);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
       warnCli(
@@ -474,6 +477,11 @@ export async function notifyDoneDone(
 export async function cleanupBranch(
   branchName: string,
   projectPath: string,
+  env?: NodeJS.ProcessEnv,
 ): Promise<void> {
-  deleteRemoteBranch(projectPath, branchName);
+  if (env) {
+    deleteRemoteBranch(projectPath, branchName, undefined, env);
+  } else {
+    deleteRemoteBranch(projectPath, branchName);
+  }
 }

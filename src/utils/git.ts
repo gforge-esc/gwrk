@@ -195,10 +195,14 @@ export function getCurrentCommit(repoPath: string): string {
 /**
  * Gets the current branch name.
  */
-export function getCurrentBranch(repoPath: string): string {
+export function getCurrentBranch(
+  repoPath: string,
+  env?: NodeJS.ProcessEnv,
+): string {
   try {
     const stdout = execFileSync("git", ["rev-parse", "--abbrev-ref", "HEAD"], {
       cwd: repoPath,
+      env,
       encoding: "utf-8",
       stdio: ["ignore", "pipe", "pipe"],
     });
@@ -328,24 +332,29 @@ export async function syncBranch(
 export function syncTrunkForHarvest(
   repoPath: string,
   baseBranch = "develop",
+  env?: NodeJS.ProcessEnv,
 ): void {
   if (!fs.existsSync(path.join(repoPath, ".git"))) return;
   try {
-    execFileSync("git", ["fetch", "origin", baseBranch], {
+    const options = {
       cwd: repoPath,
-      stdio: ["ignore", "ignore", "ignore"],
-    });
-    const current = getCurrentBranch(repoPath);
-    if (current === baseBranch && isWorkingTreeClean(repoPath)) {
-      execFileSync("git", ["merge", "--ff-only", `origin/${baseBranch}`], {
-        cwd: repoPath,
-        stdio: ["ignore", "ignore", "ignore"],
-      });
+      env,
+      stdio: "ignore" as const,
+    };
+    execFileSync("git", ["fetch", "origin", baseBranch], options);
+    const current = getCurrentBranch(repoPath, env);
+    if (current === baseBranch && isWorkingTreeClean(repoPath, env)) {
+      execFileSync(
+        "git",
+        ["merge", "--ff-only", `origin/${baseBranch}`],
+        options,
+      );
     } else if (current !== baseBranch) {
-      execFileSync("git", ["fetch", "origin", `${baseBranch}:${baseBranch}`], {
-        cwd: repoPath,
-        stdio: ["ignore", "ignore", "ignore"],
-      });
+      execFileSync(
+        "git",
+        ["fetch", "origin", `${baseBranch}:${baseBranch}`],
+        options,
+      );
     }
   } catch {
     // Non-fatal: offline or local repository without origin remote
@@ -355,10 +364,14 @@ export function syncTrunkForHarvest(
 /**
  * Checks if the working tree is clean.
  */
-export function isWorkingTreeClean(repoPath: string): boolean {
+export function isWorkingTreeClean(
+  repoPath: string,
+  env?: NodeJS.ProcessEnv,
+): boolean {
   try {
     const stdout = execFileSync("git", ["status", "--porcelain"], {
       cwd: repoPath,
+      env,
       encoding: "utf-8",
       stdio: ["ignore", "pipe", "pipe"],
     });
@@ -375,12 +388,13 @@ export function commitFiles(
   repoPath: string,
   files: string[],
   message: string,
-  options?: { skipHooks?: boolean },
+  options?: { skipHooks?: boolean; env?: NodeJS.ProcessEnv },
 ): void {
   try {
     // Stage files
     execFileSync("git", ["add", ...files], {
       cwd: repoPath,
+      env: options?.env,
       stdio: ["ignore", "ignore", "pipe"],
     });
 
@@ -391,6 +405,7 @@ export function commitFiles(
     }
     execFileSync("git", commitArgs, {
       cwd: repoPath,
+      env: options?.env,
       stdio: ["ignore", "pipe", "pipe"],
     });
   } catch (e) {
@@ -481,10 +496,12 @@ export function deleteRemoteBranch(
   repoPath: string,
   branch: string,
   remote = "origin",
+  env?: NodeJS.ProcessEnv,
 ): void {
   try {
     execFileSync("git", ["push", remote, "--delete", branch], {
       cwd: repoPath,
+      env,
       stdio: ["ignore", "ignore", "pipe"],
     });
   } catch (e: unknown) {

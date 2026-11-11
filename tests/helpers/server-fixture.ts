@@ -16,10 +16,10 @@ import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
 import type Database from "better-sqlite3";
 import fastify, { type FastifyInstance } from "fastify";
+import { repositoryGitEnv } from "../../src/adapters/git/process-env.js";
 import { openDatabase } from "../../src/db/index.js";
 import { registerProject } from "../../src/db/runs.js";
 import { DispatchQueue } from "../../src/server/dispatch.js";
-import { repositoryGitEnv } from "../../src/adapters/git/process-env.js";
 import { ScopedSandboxManager, startServer } from "../../src/server/index.js";
 import { LifecycleMonitor } from "../../src/server/lifecycle.js";
 import { SystemMonitor } from "../../src/server/monitor.js";
@@ -144,9 +144,8 @@ export async function createServerFixture(
       },
     });
     const ledger = { db, projectId };
-    const sandbox = new ScopedSandboxManager(projectRoot, () =>
-      fixtureGitEnv(projectRoot),
-    );
+    const gitEnv = () => fixtureGitEnv(projectRoot);
+    const sandbox = new ScopedSandboxManager(projectRoot, gitEnv);
 
     if (mode === "listen") {
       app = await startServer(config, {
@@ -154,6 +153,7 @@ export async function createServerFixture(
         projectRoot,
         ledger,
         sandbox,
+        gitEnv,
         pid: {
           writePid(pid) {
             mkdirSync(stateDir, { recursive: true });
