@@ -1,0 +1,26 @@
+{
+  "runId": "2026-11-11T16:39:04.089Z_ship_p02",
+  "feature": "041-hosted-google-signin-proof",
+  "phase": "phase-02",
+  "command": "ship",
+  "agent": "agy",
+  "model": "gemini-3.8-flash-high",
+  "usage": {
+    "inputTokens": 702194,
+    "outputTokens": 33384,
+    "totalTokens": 735578
+  },
+  "startedAt": "2026-11-11T16:39:04.089Z",
+  "finishedAt": "2026-11-11T16:56:39.900Z",
+  "durationS": 1056,
+  "exitCode": 0,
+  "attempt": 1,
+  "gateResult": "PASS",
+  "reviewVerdict": "GO",
+  "filesChanged": 1,
+  "linesAdded": 26,
+  "linesDeleted": 0,
+  "gitCommit": "97effd36e02100e4019893afb3030ab43e24c6c1",
+  "gitBranch": "feat/041-hosted-google-signin-proof",
+  "digest": []
+}

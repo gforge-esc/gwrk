@@ -1,0 +1,62 @@
+http:
+  routers:
+    home:
+      entryPoints: [websecure]
+      rule: 'Host(`gwrk.gforge.ai`) && Path(`/`)'
+      middlewares: [strip-client-identity, check-home-session, strip-session]
+      service: status
+    status:
+      entryPoints: [websecure]
+      rule: 'Host(`gwrk.gforge.ai`) && Path(`/status`)'
+      middlewares: [strip-client-identity, check-session, strip-session]
+      service: status
+    oauth:
+      entryPoints: [websecure]
+      rule: 'Host(`gwrk.gforge.ai`) && (Path(`/oauth2/start`) || Path(`/oauth2/callback`) || Path(`/oauth2/sign_out`))'
+      middlewares: [strip-client-identity]
+      service: oauth
+
+  middlewares:
+    strip-client-identity:
+      headers:
+        customRequestHeaders:
+          Authorization: ""
+          X-Auth-Request-User: ""
+          X-Auth-Request-Email: ""
+          X-Auth-Request-Groups: ""
+          X-Auth-Request-Preferred-Username: ""
+          X-Auth-Request-Access-Token: ""
+          X-Forwarded-User: ""
+          X-Forwarded-Email: ""
+          X-Forwarded-Groups: ""
+          X-Forwarded-Preferred-Username: ""
+          X-Forwarded-Access-Token: ""
+          X-Forwarded-Uri: ""
+          X-Forwarded-Method: ""
+          X-Auth-Request-Redirect: ""
+    strip-session:
+      headers:
+        customRequestHeaders:
+          Cookie: ""
+    check-session:
+      forwardAuth:
+        address: http://oauth2-proxy:4180/oauth2/auth
+        authRequestHeaders: [Cookie]
+        trustForwardHeader: false
+        authSigninURL: /oauth2/start?rd=%2Fstatus
+    check-home-session:
+      forwardAuth:
+        address: http://oauth2-proxy:4180/oauth2/auth
+        authRequestHeaders: [Cookie]
+        trustForwardHeader: false
+        authSigninURL: /oauth2/start?rd=%2F
+
+  services:
+    status:
+      loadBalancer:
+        servers:
+          - url: http://status:8080
+    oauth:
+      loadBalancer:
+        servers:
+          - url: http://oauth2-proxy:4180
