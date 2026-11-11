@@ -753,6 +753,43 @@ describe("credential guard", () => {
     expect(() => assertNoSecretMaterial({ sanitizedOutput })).not.toThrow();
   });
 
+  it("rejects a visible cookie in truncated inspection output", () => {
+    const sanitizedOutput = inspect(
+      {
+        headers: [
+          "Content-Type",
+          "text/plain",
+          "Cookie",
+          "session=fixture-cookie",
+          "Connection",
+          "close",
+        ],
+      },
+      { maxArrayLength: 4 },
+    );
+    expect(sanitizedOutput).toContain("... 2 more items");
+    expect(() => assertNoSecretMaterial({ sanitizedOutput })).toThrow(
+      /secret material/i,
+    );
+  });
+
+  it("allows truncated noncredential headers and quoted truncation text", () => {
+    const sanitizedOutput = inspect(
+      {
+        headers: [
+          "Content-Type",
+          "... 2 more items",
+          "Connection",
+          "close",
+          "Vary",
+          "Origin",
+        ],
+      },
+      { maxArrayLength: 4 },
+    );
+    expect(() => assertNoSecretMaterial({ sanitizedOutput })).not.toThrow();
+  });
+
   it("allows ordinary inspected tuples and multi-value Vary field names", () => {
     const sanitizedOutput = inspect({
       headers: [

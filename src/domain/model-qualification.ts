@@ -530,10 +530,10 @@ function findJsonTokenEnd(text: string, start: number): number | undefined {
   return undefined;
 }
 
-// Normalize inspect's string literals and bare keys before JSON parsing.
+// Normalize inspect's visible values before JSON parsing.
 function inspectedRecordAsJson(token: string): string {
   const tokens =
-    /"(?:[^"\\]|\\[\s\S])*"|'(?:[^'\\]|\\[\s\S])*'|\x60(?:[^\x60\\]|\\[\s\S])*\x60|([A-Za-z_$][\w$]*)(?=\s*:)/g;
+    /"(?:[^"\\]|\\[\s\S])*"|'(?:[^'\\]|\\[\s\S])*'|\x60(?:[^\x60\\]|\\[\s\S])*\x60|([A-Za-z_$][\w$]*)(?=\s*:)|((?:,\s*)?\.\.\. \d+ more items?)(?=\s*\])/g;
   const escapes: Record<string, string> = {
     "0": "\0",
     b: "\b",
@@ -543,22 +543,26 @@ function inspectedRecordAsJson(token: string): string {
     t: "\t",
     v: "\v",
   };
-  return token.replace(tokens, (literal, key: string | undefined) =>
-    key !== undefined
-      ? JSON.stringify(key)
-      : JSON.stringify(
-          literal
-            .slice(1, -1)
-            .replace(
-              /\\(?:x([0-9a-f]{2})|u([0-9a-f]{4})|u\{([0-9a-f]{1,6})\}|([\s\S]))/gi,
-              (_escape, hex, unit, point, char) => {
-                const digits = hex ?? unit ?? point;
-                return digits === undefined
-                  ? (escapes[char] ?? char)
-                  : String.fromCodePoint(Number.parseInt(digits, 16));
-              },
-            ),
-        ),
+  return token.replace(
+    tokens,
+    (literal, key: string | undefined, omitted: string | undefined) => {
+      if (omitted !== undefined) return "";
+      return key !== undefined
+        ? JSON.stringify(key)
+        : JSON.stringify(
+            literal
+              .slice(1, -1)
+              .replace(
+                /\\(?:x([0-9a-f]{2})|u([0-9a-f]{4})|u\{([0-9a-f]{1,6})\}|([\s\S]))/gi,
+                (_escape, hex, unit, point, char) => {
+                  const digits = hex ?? unit ?? point;
+                  return digits === undefined
+                    ? (escapes[char] ?? char)
+                    : String.fromCodePoint(Number.parseInt(digits, 16));
+                },
+              ),
+          );
+    },
   );
 }
 
