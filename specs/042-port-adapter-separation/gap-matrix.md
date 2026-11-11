@@ -8,10 +8,12 @@ The boundary and store tests reproduced six failures. The candidate fixes pass i
 | Port dependency direction | `src/architecture.test.ts` checks type-only imports and exports | Failed before the checker recognized runtime imports from the domain. |
 | Adapter ownership | `src/architecture.test.ts` checks legacy module re-exports | Failed before the checker recognized infrastructure re-exports. |
 | Store isolation | Two file-backed adapters write through distinct connections | Failed when the stores used the default connection. Passes with isolated connections. |
-| CLI isolation | `src/adapters/cli/output-scope.test.ts` checks the process writer after an agent command | Fails. The invocation replaces the process writer. |
+| CLI isolation | `src/adapters/cli/output-scope.test.ts` checks the process writer after an agent command | Failed when the invocation replaced the process writer. Passes with scoped output and independent parsers. |
 
 The same run passed the 18 existing toolchain cases.
 
 The toolchain change passed 122 scoped tests. The adapter change passed 43 scoped tests.
 
 The CI suite passed 1,770 tests after the store change. A scratch project used the CLI to initialize and render its plan.
+
+The CLI regression run passed 1,773 tests. Two overlapping commands kept their output, parser options and exit codes separate. The built CLI preserved normal ANSI colors, agent text and JSON output against a scratch plan.

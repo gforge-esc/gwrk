@@ -6,6 +6,7 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { z } from "zod";
+import { exitCli, logCliError, warnCli } from "../adapters/cli/output-scope.js";
 
 const TaskStatusSchema = z.enum([
   "open",
@@ -130,7 +131,7 @@ function sanitizeTaskStatuses(raw: Record<string, unknown>): number {
       if (!VALID_STATUSES.has(status)) {
         const coercedStatus =
           STATUS_COERCION_MAP[status.toLowerCase()] ?? "open";
-        console.warn(
+        warnCli(
           `  ⚠ task ${t.id ?? "?"}: coerced invalid status "${status}" → "${coercedStatus}"`,
         );
         t.status = coercedStatus;
@@ -152,16 +153,14 @@ export function loadTaskState(featureDir: string): TaskState {
   try {
     raw = JSON.parse(fs.readFileSync(tasksPath, "utf-8"));
   } catch (error) {
-    console.error(`Task state error in ${tasksPath}: invalid JSON`);
-    process.exit(1);
+    logCliError(`Task state error in ${tasksPath}: invalid JSON`);
+    exitCli(1);
   }
 
   // Sanitize LLM-hallucinated status values before Zod validation
   const coerced = sanitizeTaskStatuses(raw as Record<string, unknown>);
   if (coerced > 0) {
-    console.warn(
-      `  ⚠ ${coerced} invalid task status(es) coerced in ${tasksPath}`,
-    );
+    warnCli(`  ⚠ ${coerced} invalid task status(es) coerced in ${tasksPath}`);
     // Write the sanitized version back to prevent re-coercion on next load
     const tempPath = `${tasksPath}.tmp`;
     fs.writeFileSync(tempPath, JSON.stringify(raw, null, 2), "utf-8");
@@ -170,8 +169,8 @@ export function loadTaskState(featureDir: string): TaskState {
 
   const result = TaskStateSchema.safeParse(raw);
   if (!result.success) {
-    console.error(`Task state error in ${tasksPath}: ${result.error.message}`);
-    process.exit(1);
+    logCliError(`Task state error in ${tasksPath}: ${result.error.message}`);
+    exitCli(1);
   }
 
   return result.data;
@@ -196,8 +195,8 @@ export function saveTaskState(featureDir: string, state: TaskState): void {
   const tasksPath = path.join(gwrkDir, "tasks.json");
   const result = TaskStateSchema.safeParse(state);
   if (!result.success) {
-    console.error(`Invalid task state: ${result.error.message}`);
-    process.exit(1);
+    logCliError(`Invalid task state: ${result.error.message}`);
+    exitCli(1);
   }
 
   // Atomic write via temp file

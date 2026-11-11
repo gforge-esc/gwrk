@@ -11,6 +11,7 @@ import {
   type RegistryValidationResult,
   validateAgentRegistry,
 } from "../../domain/agent-config.js";
+import { exitCli, logCliError } from "../cli/output-scope.js";
 
 function readLayer(filePath: string): string | null {
   if (!fs.existsSync(filePath)) return null;
@@ -44,6 +45,6 @@ export function tryLoadRegistry(
 export function loadRegistry(projectRoot?: string): AgentRegistry {
   const result = tryLoadRegistry(projectRoot);
   if (result.ok) return result.value;
-  console.error(result.error.message);
-  return process.exit(1);
+  logCliError(result.error.message);
+  return exitCli(1);
 }

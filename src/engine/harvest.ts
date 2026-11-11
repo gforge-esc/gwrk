@@ -4,6 +4,11 @@
 
 import fs from "node:fs";
 import path from "node:path";
+import {
+  logCliError,
+  logCliOutput,
+  warnCli,
+} from "../adapters/cli/output-scope.js";
 import { notifyHarvestComplete } from "../adapters/notifications/index.js";
 import { createSqliteRunStoreAdapter } from "../adapters/sqlite/index.js";
 import { getCompressionRecord } from "../db/compression.js";
@@ -126,7 +131,7 @@ export async function harvestFeature(
 
   // If no phaseId is specified, discover all phases from plan.md and run harvest for each
   if (!phaseId) {
-    console.log(
+    logCliOutput(
       `No phaseId provided for harvest on ${featureId}. Attempting to discover all phases from plan.md...`,
     );
     const featureDir = path.join(projectPath, "specs", featureId);
@@ -134,24 +139,24 @@ export async function harvestFeature(
     if (fs.existsSync(planPath)) {
       try {
         const parsedPlan = parsePlan(planPath);
-        console.log(
+        logCliOutput(
           `Discovered ${parsedPlan.phases.length} phases for feature ${featureId}: ${parsedPlan.phases.map((p) => p.id).join(", ")}`,
         );
         for (const phase of parsedPlan.phases) {
           const subRecord = { ...record, phaseId: phase.id };
-          console.log(
+          logCliOutput(
             `Reconciling/Harvesting phase ${phase.id} for feature ${featureId}...`,
           );
           await harvestFeature(projectPath, subRecord);
         }
       } catch (err) {
-        console.error(
+        logCliError(
           `Failed to process phase-less harvest for ${featureId}:`,
           err,
         );
       }
     } else {
-      console.warn(
+      warnCli(
         `No plan.md found for ${featureId} at ${planPath}, cannot process phase-less harvest.`,
       );
     }
@@ -162,7 +167,7 @@ export async function harvestFeature(
   if (phaseId) {
     const existing = getCompressionRecord(featureId, phaseId, projectId);
     if (existing) {
-      console.log(
+      logCliOutput(
         `Harvest already completed for ${featureId} ${phaseId}, skipping.`,
       );
       return;
@@ -177,7 +182,7 @@ export async function harvestFeature(
         r.status === status,
     );
     if (alreadyProcessedRun) {
-      console.log(
+      logCliOutput(
         `Run for PR ${prNumber} already marked as ${status}. Skipping harvest idempotently.`,
       );
       return;
@@ -189,7 +194,7 @@ export async function harvestFeature(
     await finalizeLogs(featureId, projectPath);
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    console.warn(`Log finalization failed (non-fatal): ${msg}`);
+    warnCli(`Log finalization failed (non-fatal): ${msg}`);
   }
 
   // 2. Finalize DB Run Records (FR-H03)
@@ -209,7 +214,7 @@ export async function harvestFeature(
   );
 
   if (alreadyProcessedRun) {
-    console.log(
+    logCliOutput(
       `Run record for PR ${prNumber} is already ${status}. Skipping DB update.`,
     );
   } else if (targetRun?.id) {
@@ -219,7 +224,7 @@ export async function harvestFeature(
       finished_at: mergedAt,
     });
   } else if (status === "merged") {
-    console.warn(
+    warnCli(
       `No matching pending run found for harvest: feature=${featureId}, phase=${phaseId}, PR=${prNumber}. Backfilling run record.`,
     );
     try {
@@ -257,14 +262,14 @@ export async function harvestFeature(
         tokens_out: latestManifest?.usage?.outputTokens,
         cost_usd: latestManifest?.usage?.costUsd,
       });
-      console.log(
+      logCliOutput(
         `Backfilled run record for ${featureId} ${phaseId} (Run ID: ${backfillId})`,
       );
     } catch (dbErr) {
-      console.warn(`Failed to backfill run record (non-fatal): ${dbErr}`);
+      warnCli(`Failed to backfill run record (non-fatal): ${dbErr}`);
     }
   } else {
-    console.log(
+    logCliOutput(
       `No pending run found for closed PR ${prNumber}. Skipping backfill.`,
     );
   }
@@ -272,7 +277,7 @@ export async function harvestFeature(
   // If this PR was closed (not merged), we just wanted to clean up the run record and logs.
   // We do not finalize the phase, compute compression, or reconcile gates.
   if (status === "closed") {
-    console.log(
+    logCliOutput(
       `PR ${prNumber} was closed. Run record updated. Skipping phase finalization.`,
     );
     return;
@@ -291,7 +296,7 @@ export async function harvestFeature(
     );
 
     if (pendingRuns.length > 0) {
-      console.log(
+      logCliOutput(
         `Phase ${phaseId} has ${pendingRuns.length} other pending runs. Marking them as closed since phase was merged.`,
       );
       for (const r of pendingRuns) {
@@ -302,7 +307,7 @@ export async function harvestFeature(
             finished_at: new Date().toISOString(),
           });
         } catch (e) {
-          console.warn(`Failed to close pending run ${r.id}: ${e}`);
+          warnCli(`Failed to close pending run ${r.id}: ${e}`);
         }
       }
     }
@@ -312,12 +317,12 @@ export async function harvestFeature(
   if (phaseId) {
     try {
       const result = await reconcileGates(projectPath, featureId, phaseId);
-      console.log(
+      logCliOutput(
         `Gate reconciliation: ${result.passed}/${result.total} passed${result.failed > 0 ? ` (${result.failed} failed)` : ""}`,
       );
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
-      console.warn(`Gate reconciliation failed (non-fatal): ${msg}`);
+      warnCli(`Gate reconciliation failed (non-fatal): ${msg}`);
     }
   }
 
@@ -391,14 +396,14 @@ export async function harvestFeature(
           };
 
           createSqliteRunStoreAdapter().recordCompression(report, projectId);
-          console.log(
+          logCliOutput(
             `Recorded compression for ${featureId} ${phaseId}: point=${compression.pointCompression.toFixed(1)}x`,
           );
         }
       }
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
-      console.warn(`Failed to calculate compression for ${featureId}: ${msg}`);
+      warnCli(`Failed to calculate compression for ${featureId}: ${msg}`);
     }
   }
 
@@ -413,7 +418,7 @@ export async function harvestFeature(
       await cleanupBranch(record.headBranch, projectPath);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
-      console.warn(
+      warnCli(
         `Failed to cleanup branch ${record.headBranch} (non-fatal): ${msg}`,
       );
     }

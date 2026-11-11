@@ -11,18 +11,26 @@ import fs from "node:fs";
 import path from "node:path";
 import { Command } from "commander";
 import {
+  logCliError,
+  logCliOutput,
+  setCliExitCode,
+  warnCli,
+  writeScopedStderr,
+  writeScopedStdout,
+} from "../adapters/cli/output-scope.js";
+import {
   finishRun as dbFinishRun,
   recordHistory as dbRecordHistory,
   startRun as dbStartRun,
 } from "../db/runs.js";
-import { PlanStore } from "../engine/plan-store.js";
-import { detectProfile } from "../engine/profile-detector.js";
-import { ShipOrchestrator } from "../engine/ship-orchestrator.js";
-import type { ShipStage, ShipState } from "../engine/ship-types.js";
 import {
   isPolyglotSourceFile,
   isPolyglotTestFile,
 } from "../domain/test-rules.js";
+import { PlanStore } from "../engine/plan-store.js";
+import { detectProfile } from "../engine/profile-detector.js";
+import { ShipOrchestrator } from "../engine/ship-orchestrator.js";
+import type { ShipStage, ShipState } from "../engine/ship-types.js";
 import { extractFilePaths } from "../utils/file-extract.js";
 import { getPhaseVerificationGate } from "../utils/gate-quality.js";
 import { listTestsTree, phaseHasTests } from "../utils/test-discovery.js";
@@ -76,7 +84,7 @@ function startRun(...args: Parameters<typeof dbStartRun>): number {
   try {
     return dbStartRun(...args);
   } catch (e) {
-    console.warn(`${YELLOW}⚠${RESET} ledger startRun skipped: ${e}`);
+    warnCli(`${YELLOW}⚠${RESET} ledger startRun skipped: ${e}`);
     return -1;
   }
 }
@@ -84,14 +92,14 @@ function finishRun(...args: Parameters<typeof dbFinishRun>): void {
   try {
     dbFinishRun(...args);
   } catch (e) {
-    console.warn(`${YELLOW}⚠${RESET} ledger finishRun skipped: ${e}`);
+    warnCli(`${YELLOW}⚠${RESET} ledger finishRun skipped: ${e}`);
   }
 }
 function recordHistory(...args: Parameters<typeof dbRecordHistory>): void {
   try {
     dbRecordHistory(...args);
   } catch (e) {
-    console.warn(`${YELLOW}⚠${RESET} ledger recordHistory skipped: ${e}`);
+    warnCli(`${YELLOW}⚠${RESET} ledger recordHistory skipped: ${e}`);
   }
 }
 
@@ -134,7 +142,7 @@ async function shipPhase(
           .map((d) => `    ${d}`)
           .join("\n")
       : "    (none)";
-    console.error(
+    logCliError(
       `\n  Feature spec not found: specs/${feature}/spec.md\n  Available features:\n${available}\n`,
     );
     return 1;
@@ -187,7 +195,7 @@ async function shipPhase(
         // phase that declares neither a test nor a real gate.
         const isGateOnly = getPhaseVerificationGate(phaseData) !== null;
         if (isGateOnly) {
-          console.log(
+          logCliOutput(
             `  ✓ ${phaseId}: gate-only phase — verified by Done-When gate, no unit test required`,
           );
         } else {
@@ -253,9 +261,9 @@ async function shipPhase(
           // persistent counter. A new `gwrk ship` gets a fresh breaker.
           // Stage is preserved for crash recovery; iteration is not.
           if (existingState) existingState.iteration = 1;
-          console.log(`  🔄 Resuming from state: ${existingState?.stage}`);
+          logCliOutput(`  🔄 Resuming from state: ${existingState?.stage}`);
         } catch (err) {
-          console.warn(`  ⚠️ Corrupt state file — starting fresh: ${err}`);
+          warnCli(`  ⚠️ Corrupt state file — starting fresh: ${err}`);
         }
       }
 
@@ -365,7 +373,7 @@ async function shipPhase(
       lines_added: stats.linesAdded,
       lines_deleted: stats.linesDeleted,
     });
-    console.error(
+    logCliError(
       `\n  Error: ${err instanceof Error ? err.message : String(err)}`,
     );
     fail("ship", exitCode, durationS, runId);
@@ -436,14 +444,10 @@ async function shipPhase(
         await run("git", ["push", "-u", "origin", currentBranch], { cwd });
       }
     } catch (pushErr) {
-      console.warn(
-        `Warning: Could not commit/push execution manifest: ${pushErr}`,
-      );
+      warnCli(`Warning: Could not commit/push execution manifest: ${pushErr}`);
     }
   } catch (manifestError) {
-    console.warn(
-      `Warning: Could not write execution manifest: ${manifestError}`,
-    );
+    warnCli(`Warning: Could not write execution manifest: ${manifestError}`);
   }
 
   return exitCode;
@@ -521,11 +525,12 @@ export function findShippedDrift(
   return drift;
 }
 
-export const shipCommand = new Command("ship")
-  .description("Ship: autonomous branch→implement→review→PR→CI loop")
-  .addHelpText(
-    "after",
-    `
+export const createShipCommand = () =>
+  new Command("ship")
+    .description("Ship: autonomous branch→implement→review→PR→CI loop")
+    .addHelpText(
+      "after",
+      `
 Type: mutator
 Mutates: git branches, task state, execution manifests
 Format: use gwrk --format json for structured output
@@ -539,386 +544,394 @@ Examples:
   gwrk ship 001-cli-core --dry-run
   gwrk ship 001 --agent claude
 `,
-  )
-  .argument("<feature>", "Feature ID")
-  .argument("[phase]", "Phase number (omit to ship all phases)")
-  .option("--dry-run", "Dry run mode")
-  .option("--max-iterations <n>", "Max implement→review cycles", "3")
-  .option("--ci-timeout <n>", "CI wait timeout in minutes", "30")
-  .option(
-    "--agent <agent>",
-    "Override the default agent (e.g., agy, claude, codex)",
-  )
-  .option("--format <format>", "Output format (json)")
+    )
+    .argument("<feature>", "Feature ID")
+    .argument("[phase]", "Phase number (omit to ship all phases)")
+    .option("--dry-run", "Dry run mode")
+    .option("--max-iterations <n>", "Max implement→review cycles", "3")
+    .option("--ci-timeout <n>", "CI wait timeout in minutes", "30")
+    .option(
+      "--agent <agent>",
+      "Override the default agent (e.g., agy, claude, codex)",
+    )
+    .option("--format <format>", "Output format (json)")
 
-  .option("--legacy", "Use legacy bash ship loop (work-until-done.sh)")
-  .option(
-    "--resume-from <stage>",
-    "Resume from a specific stage (BRANCH_SETUP, IMPLEMENT, etc.)",
-  )
-  .option("--force", "Force ship even if phase is already complete")
-  .option(
-    "--worktree",
-    "Ship in an isolated git worktree (enables running features in parallel without collision)",
-  )
-  .action(
-    async (
-      featureArg: string,
-      phase: string | undefined,
-      opts: Record<string, string | boolean | undefined>,
-    ) => {
-      await withSignal("ship", async () => {
-        const cwd = process.cwd();
-        const config = loadConfig(cwd);
+    .option("--legacy", "Use legacy bash ship loop (work-until-done.sh)")
+    .option(
+      "--resume-from <stage>",
+      "Resume from a specific stage (BRANCH_SETUP, IMPLEMENT, etc.)",
+    )
+    .option("--force", "Force ship even if phase is already complete")
+    .option(
+      "--worktree",
+      "Ship in an isolated git worktree (enables running features in parallel without collision)",
+    )
+    .action(
+      async (
+        featureArg: string,
+        phase: string | undefined,
+        opts: Record<string, string | boolean | undefined>,
+      ) => {
+        await withSignal("ship", async () => {
+          const cwd = process.cwd();
+          const config = loadConfig(cwd);
 
-        // Resolve webhook for cloud fallback (Phase 3 / T012)
-        const webhookUrl =
-          process.env.SLACK_WEBHOOK_URL || config.project.slack?.webhookUrl;
-        if (webhookUrl) {
-          // Webhook configured, will be used by ShipBridge via notifySlack
-        }
-
-        // Resolve prefix (e.g. "011" → "011-harvest")
-        let feature: string;
-        try {
-          feature = resolveFeature(featureArg, cwd);
-        } catch {
-          console.error(`Feature not found: specs/${featureArg}`);
-          throw new CommandError(
-            `Feature not found: specs/${featureArg}. Run 'gwrk project specs' to list available features.`,
-            1,
-          );
-        }
-
-        // Validate feature exists before any work
-        const featureSpecDir = path.join(cwd, "specs", feature);
-        if (
-          !fs.existsSync(featureSpecDir) ||
-          !fs.existsSync(path.join(featureSpecDir, "spec.md"))
-        ) {
-          console.error(`Feature not found: specs/${feature}`);
-          throw new CommandError(
-            `Feature not found: specs/${feature}. Run 'gwrk project specs' to list available features.`,
-            1,
-          );
-        }
-
-        // FR-022: Workstation setup pre-flight check.
-        // A dry-run only prints what would happen — it never touches git or the
-        // agent, so it must not require a provisioned workstation.
-        const setupState = loadSetupState();
-        if (!opts.dryRun && !isSetupComplete(setupState)) {
-          blocked("Run gwrk init first");
-          throw new CommandError("Run gwrk init first", 1);
-        }
-
-        // Determine which phases to ship
-        let phases: string[];
-        const specDir = path.join(cwd, "specs", feature);
-        const taskState = loadTaskState(specDir);
-
-        if (phase) {
-          const phaseId = `phase-${phase.padStart(2, "0")}`;
-          const phaseData = taskState.phases.find((p) => p.id === phaseId);
-
-          // --force: always clear stale orchestrator state, regardless of task status
-          if (opts.force && !opts.dryRun) {
-            const statePath = path.join(
-              cwd,
-              ".runs",
-              `${feature}_${phaseId}.state`,
-            );
-            if (fs.existsSync(statePath)) {
-              fs.unlinkSync(statePath);
-            }
+          // Resolve webhook for cloud fallback (Phase 3 / T012)
+          const webhookUrl =
+            process.env.SLACK_WEBHOOK_URL || config.project.slack?.webhookUrl;
+          if (webhookUrl) {
+            // Webhook configured, will be used by ShipBridge via notifySlack
           }
 
-          if (phaseData && isPhaseComplete(phaseData) && !opts.dryRun) {
-            if (!opts.force) {
-              console.error(
-                `${YELLOW}⚠${RESET} Phase ${phase} is already complete. Use --force to re-ship.`,
+          // Resolve prefix (e.g. "011" → "011-harvest")
+          let feature: string;
+          try {
+            feature = resolveFeature(featureArg, cwd);
+          } catch {
+            logCliError(`Feature not found: specs/${featureArg}`);
+            throw new CommandError(
+              `Feature not found: specs/${featureArg}. Run 'gwrk project specs' to list available features.`,
+              1,
+            );
+          }
+
+          // Validate feature exists before any work
+          const featureSpecDir = path.join(cwd, "specs", feature);
+          if (
+            !fs.existsSync(featureSpecDir) ||
+            !fs.existsSync(path.join(featureSpecDir, "spec.md"))
+          ) {
+            logCliError(`Feature not found: specs/${feature}`);
+            throw new CommandError(
+              `Feature not found: specs/${feature}. Run 'gwrk project specs' to list available features.`,
+              1,
+            );
+          }
+
+          // FR-022: Workstation setup pre-flight check.
+          // A dry-run only prints what would happen — it never touches git or the
+          // agent, so it must not require a provisioned workstation.
+          const setupState = loadSetupState();
+          if (!opts.dryRun && !isSetupComplete(setupState)) {
+            blocked("Run gwrk init first");
+            throw new CommandError("Run gwrk init first", 1);
+          }
+
+          // Determine which phases to ship
+          let phases: string[];
+          const specDir = path.join(cwd, "specs", feature);
+          const taskState = loadTaskState(specDir);
+
+          if (phase) {
+            const phaseId = `phase-${phase.padStart(2, "0")}`;
+            const phaseData = taskState.phases.find((p) => p.id === phaseId);
+
+            // --force: always clear stale orchestrator state, regardless of task status
+            if (opts.force && !opts.dryRun) {
+              const statePath = path.join(
+                cwd,
+                ".runs",
+                `${feature}_${phaseId}.state`,
               );
-              process.exitCode = 1;
+              if (fs.existsSync(statePath)) {
+                fs.unlinkSync(statePath);
+              }
+            }
+
+            if (phaseData && isPhaseComplete(phaseData) && !opts.dryRun) {
+              if (!opts.force) {
+                logCliError(
+                  `${YELLOW}⚠${RESET} Phase ${phase} is already complete. Use --force to re-ship.`,
+                );
+                setCliExitCode(1);
+                return;
+              }
+              // Reopen tasks
+              for (const t of phaseData.tasks) {
+                t.status = "open";
+              }
+              saveTaskState(specDir, taskState);
+              // Commit the reset so the orchestrator sees a clean working tree
+              execSync(
+                `git add ${specDir}/.gwrk/tasks.json && git commit --author="$(git config user.name) <$(git config user.email)>" -m "chore(${feature}): reset phase ${phase} tasks for re-ship"`,
+                {
+                  cwd,
+                  env: { ...process.env, GWRK_SHIP: "1" },
+                  stdio: "pipe",
+                },
+              );
+              logCliOutput(
+                `${YELLOW}⚠${RESET} Force mode: resetting Phase ${phase} tasks to open`,
+              );
+            }
+            phases = [phase];
+          } else {
+            const allPhases = taskState.phases.map((p) =>
+              p.id.replace("phase-", ""),
+            );
+
+            // FR-014: Skip phases where all tasks are terminal (completed or cancelled)
+            phases = allPhases.filter((phaseNum) => {
+              const phaseId = `phase-${phaseNum.padStart(2, "0")}`;
+              const phaseData = taskState.phases.find((p) => p.id === phaseId);
+              if (!phaseData) return true;
+              if (isPhaseComplete(phaseData) && !opts.dryRun) {
+                if (opts.force) {
+                  const statePath = path.join(
+                    cwd,
+                    ".runs",
+                    `${feature}_${phaseId}.state`,
+                  );
+                  if (fs.existsSync(statePath)) {
+                    fs.unlinkSync(statePath);
+                  }
+                  for (const t of phaseData.tasks) {
+                    t.status = "open";
+                  }
+                  saveTaskState(specDir, taskState);
+                  // Commit the reset so the orchestrator sees a clean working tree
+                  execSync(
+                    `git add ${specDir}/.gwrk/tasks.json && git commit --author="$(git config user.name) <$(git config user.email)>" -m "chore(${feature}): reset phase ${phaseNum} tasks for re-ship"`,
+                    {
+                      cwd,
+                      env: { ...process.env, GWRK_SHIP: "1" },
+                      stdio: "pipe",
+                    },
+                  );
+                  logCliOutput(
+                    `${YELLOW}⚠${RESET} Force mode: resetting Phase ${phaseNum} tasks to open`,
+                  );
+                  return true;
+                }
+                logCliOutput(
+                  `  ⏭  Phase ${phaseNum}: all tasks complete — skipping`,
+                );
+                return false;
+              }
+              return true;
+            });
+
+            if (phases.length === 0) {
+              logCliOutput(
+                `${GREEN}✓${RESET} All phases complete for ${feature} — nothing to ship`,
+              );
               return;
             }
-            // Reopen tasks
-            for (const t of phaseData.tasks) {
-              t.status = "open";
+
+            // tasks.json and the plan graph are two records of the same fact and
+            // can disagree — regenerating tasks.json wipes completion flags, so
+            // shipped phases read as open and get rebuilt for nothing. Neither is
+            // authoritative enough to overrule the other (the graph's SHIPPED is
+            // promoted from ship-run existence, not a passing gate), so surface
+            // the conflict instead of silently believing one side.
+            if (!opts.force && !opts.dryRun) {
+              try {
+                const graphStatuses = new Map<string, string>(
+                  new PlanStore(resolveProjectId(cwd))
+                    .getPlanStatus()
+                    .features.flatMap((f) =>
+                      f.phases.map((p) => [p.id, p.status] as [string, string]),
+                    ),
+                );
+                const drift = findShippedDrift(feature, phases, graphStatuses);
+                if (drift.length > 0) {
+                  logCliError(
+                    `${YELLOW}⚠${RESET} tasks.json and the build plan disagree about ${drift.length} phase(s):`,
+                  );
+                  for (const id of drift) {
+                    logCliError(
+                      `    ${id}: graph=${graphStatuses.get(id)}, tasks.json=open`,
+                    );
+                  }
+                  logCliError(
+                    "  Shipping would re-implement work the plan already records as shipped.",
+                  );
+                  logCliError("  Resolve, then re-run:");
+                  logCliError(
+                    `    gwrk ship ${feature} <phase>   # ship one phase explicitly, bypassing selection`,
+                  );
+                  logCliError(
+                    "    …or mark the tasks completed in tasks.json if the graph is right",
+                  );
+                  logCliError(
+                    `    …or gwrk ship ${feature} --force   # if tasks.json is right and the graph is stale`,
+                  );
+                  throw new CommandError(
+                    `Refusing to re-ship ${drift.length} phase(s) the build plan records as shipped`,
+                    1,
+                  );
+                }
+              } catch (driftErr) {
+                // A missing/empty graph must not block shipping — only a real
+                // conflict does.
+                if (driftErr instanceof CommandError) throw driftErr;
+              }
             }
-            saveTaskState(specDir, taskState);
-            // Commit the reset so the orchestrator sees a clean working tree
-            execSync(
-              `git add ${specDir}/.gwrk/tasks.json && git commit --author="$(git config user.name) <$(git config user.email)>" -m "chore(${feature}): reset phase ${phase} tasks for re-ship"`,
-              {
-                cwd,
-                env: { ...process.env, GWRK_SHIP: "1" },
-                stdio: "pipe",
-              },
-            );
-            console.log(
-              `${YELLOW}⚠${RESET} Force mode: resetting Phase ${phase} tasks to open`,
+
+            logCliOutput(
+              `${GREEN}▶${RESET} Shipping feature ${feature}: ${phases.length} phases${DIM} (${phases.map((p) => `P${p}`).join(", ")})${RESET}`,
             );
           }
-          phases = [phase];
-        } else {
-          const allPhases = taskState.phases.map((p) =>
-            p.id.replace("phase-", ""),
-          );
 
-          // FR-014: Skip phases where all tasks are terminal (completed or cancelled)
-          phases = allPhases.filter((phaseNum) => {
-            const phaseId = `phase-${phaseNum.padStart(2, "0")}`;
-            const phaseData = taskState.phases.find((p) => p.id === phaseId);
-            if (!phaseData) return true;
-            if (isPhaseComplete(phaseData) && !opts.dryRun) {
-              if (opts.force) {
-                const statePath = path.join(
-                  cwd,
-                  ".runs",
-                  `${feature}_${phaseId}.state`,
-                );
-                if (fs.existsSync(statePath)) {
-                  fs.unlinkSync(statePath);
-                }
-                for (const t of phaseData.tasks) {
-                  t.status = "open";
-                }
-                saveTaskState(specDir, taskState);
-                // Commit the reset so the orchestrator sees a clean working tree
-                execSync(
-                  `git add ${specDir}/.gwrk/tasks.json && git commit --author="$(git config user.name) <$(git config user.email)>" -m "chore(${feature}): reset phase ${phaseNum} tasks for re-ship"`,
-                  {
-                    cwd,
-                    env: { ...process.env, GWRK_SHIP: "1" },
-                    stdio: "pipe",
-                  },
-                );
-                console.log(
-                  `${YELLOW}⚠${RESET} Force mode: resetting Phase ${phaseNum} tasks to open`,
-                );
-                return true;
-              }
-              console.log(
-                `  ⏭  Phase ${phaseNum}: all tasks complete — skipping`,
+          if (opts.dryRun) {
+            // Report the backend that would build without invoking the agent.
+            // With --agent it's authoritative; otherwise the router selects at
+            // run time by quota — resolve it through the real selector so the
+            // dry-run matches the actual run.
+            if (opts.agent) {
+              logCliOutput(
+                `  🤖 Would build with backend: ${opts.agent} (--agent override)`,
               );
-              return false;
+            } else {
+              try {
+                const selection = await getBackendSelector(cwd).selectBackend({
+                  runId: `ship-dryrun-${feature}`,
+                  feature,
+                  phase: `phase-${phases[0].padStart(2, "0")}`,
+                  taskType: "implement",
+                  language: "typescript",
+                  taskSP: 1,
+                });
+                logCliOutput(
+                  `  🤖 Would build with backend: ${selection.backend} (router: ${selection.reason})`,
+                );
+              } catch {
+                logCliOutput(
+                  `  🤖 Router default: ${pillarBackend(config, "implement")} (agents.implement)`,
+                );
+              }
             }
-            return true;
-          });
-
-          if (phases.length === 0) {
-            console.log(
-              `${GREEN}✓${RESET} All phases complete for ${feature} — nothing to ship`,
-            );
+            if (opts.worktree) {
+              dryRunFmt(
+                `create worktree .runs/sandboxes/${feature}-ship-<uuid> on feat/${feature} (base develop)${
+                  config.worktree?.setup
+                    ? `; run "${config.worktree.setup}"`
+                    : ""
+                }`,
+              );
+            }
+            const scriptPath = path.join(cwd, "scripts/dev/work-until-done.sh");
+            for (const p of phases) {
+              dryRunFmt(`${scriptPath} ${feature} ${p}`);
+            }
             return;
           }
 
-          // tasks.json and the plan graph are two records of the same fact and
-          // can disagree — regenerating tasks.json wipes completion flags, so
-          // shipped phases read as open and get rebuilt for nothing. Neither is
-          // authoritative enough to overrule the other (the graph's SHIPPED is
-          // promoted from ship-run existence, not a passing gate), so surface
-          // the conflict instead of silently believing one side.
-          if (!opts.force && !opts.dryRun) {
-            try {
-              const graphStatuses = new Map<string, string>(
-                new PlanStore(resolveProjectId(cwd))
-                  .getPlanStatus()
-                  .features.flatMap((f) =>
-                    f.phases.map((p) => [p.id, p.status] as [string, string]),
-                  ),
-              );
-              const drift = findShippedDrift(feature, phases, graphStatuses);
-              if (drift.length > 0) {
-                console.error(
-                  `${YELLOW}⚠${RESET} tasks.json and the build plan disagree about ${drift.length} phase(s):`,
-                );
-                for (const id of drift) {
-                  console.error(
-                    `    ${id}: graph=${graphStatuses.get(id)}, tasks.json=open`,
-                  );
-                }
-                console.error(
-                  "  Shipping would re-implement work the plan already records as shipped.",
-                );
-                console.error("  Resolve, then re-run:");
-                console.error(
-                  `    gwrk ship ${feature} <phase>   # ship one phase explicitly, bypassing selection`,
-                );
-                console.error(
-                  "    …or mark the tasks completed in tasks.json if the graph is right",
-                );
-                console.error(
-                  `    …or gwrk ship ${feature} --force   # if tasks.json is right and the graph is stale`,
-                );
-                throw new CommandError(
-                  `Refusing to re-ship ${drift.length} phase(s) the build plan records as shipped`,
-                  1,
+          // Ship each phase sequentially — stop on first failure.
+          const shipStartTime = Date.now();
+          let finalExitCode = 0;
+
+          // --worktree: isolate the whole feature in a git worktree so multiple
+          // features can ship in parallel without colliding on the working tree.
+          // The orchestrator runs in the worktree (git/build/test/agent), keeps
+          // crash-recovery state in the primary checkout, and ships on the
+          // feature branch. Phases stay sequential within the feature.
+          let shipCwd = cwd;
+          let overrides: { stateRoot?: string; branchName?: string } = {};
+          let sandbox: SandboxManager | undefined;
+          let worktreeDir: string | undefined;
+          const shipBranch = `feat/${feature}`;
+
+          if (opts.worktree) {
+            sandbox = new SandboxManager(cwd);
+            logCliOutput(
+              `  ▸ creating worktree for ${feature} (${shipBranch})`,
+            );
+            worktreeDir = await sandbox.createSandbox({
+              featureId: feature,
+              phaseId: "all",
+              taskId: "ship",
+              backend: pillarBackend(
+                config,
+                "implement",
+                opts.agent as string,
+              ) as AgentBackendId,
+              projectRoot: cwd,
+              baseBranch: "develop",
+              branchName: shipBranch,
+              setup: config.worktree?.setup,
+            });
+            shipCwd = worktreeDir;
+            overrides = { stateRoot: cwd, branchName: shipBranch };
+            logCliOutput(`  ✓ worktree ready: ${worktreeDir}`);
+          }
+
+          try {
+            for (const p of phases) {
+              let currentBackend = opts.agent as string as AgentBackendId;
+              let selectedModel: string | undefined;
+              let selectedCommand: string | undefined;
+
+              if (!currentBackend) {
+                // Select on the primary checkout so the quota cache/cooldown is
+                // shared, not scattered across ephemeral worktrees.
+                const selector = getBackendSelector(cwd);
+                const selection = await selector.selectBackend({
+                  runId: `ship-${feature}-${Date.now()}`,
+                  feature,
+                  phase: `phase-${p.padStart(2, "0")}`,
+                  taskType: "implement",
+                  language: "typescript",
+                  taskSP: 1, // Default for orchestrator
+                });
+                currentBackend = selection.backend as AgentBackendId;
+                selectedModel = selection.model;
+                selectedCommand = selection.command;
+                logCliOutput(
+                  `  🤖 Router selected backend: ${selection.backend} (${selection.reason})`,
                 );
               }
-            } catch (driftErr) {
-              // A missing/empty graph must not block shipping — only a real
-              // conflict does.
-              if (driftErr instanceof CommandError) throw driftErr;
+
+              const exitCode = await shipPhase(
+                feature,
+                p,
+                currentBackend,
+                opts,
+                shipCwd,
+                selectedModel,
+                selectedCommand,
+                overrides,
+              );
+              if (exitCode !== 0) {
+                finalExitCode = exitCode;
+                break;
+              }
+            }
+          } finally {
+            if (sandbox && worktreeDir) {
+              logCliOutput(`  ▸ removing worktree ${worktreeDir}`);
+              // Ship owns commit/push/PR via PR_CI — destroy only removes the tree.
+              await sandbox.destroySandbox(worktreeDir, feature, {
+                autoCommitPush: false,
+                teardown: config.worktree?.teardown,
+              });
             }
           }
 
-          console.log(
-            `${GREEN}▶${RESET} Shipping feature ${feature}: ${phases.length} phases${DIM} (${phases.map((p) => `P${p}`).join(", ")})${RESET}`,
+          const totalDurationS = Math.round(
+            (Date.now() - shipStartTime) / 1000,
           );
-        }
 
-        if (opts.dryRun) {
-          // Report the backend that would build without invoking the agent.
-          // With --agent it's authoritative; otherwise the router selects at
-          // run time by quota — resolve it through the real selector so the
-          // dry-run matches the actual run.
-          if (opts.agent) {
-            console.log(
-              `  🤖 Would build with backend: ${opts.agent} (--agent override)`,
-            );
-          } else {
-            try {
-              const selection = await getBackendSelector(cwd).selectBackend({
-                runId: `ship-dryrun-${feature}`,
-                feature,
-                phase: `phase-${phases[0].padStart(2, "0")}`,
-                taskType: "implement",
-                language: "typescript",
-                taskSP: 1,
-              });
-              console.log(
-                `  🤖 Would build with backend: ${selection.backend} (router: ${selection.reason})`,
-              );
-            } catch {
-              console.log(
-                `  🤖 Router default: ${pillarBackend(config, "implement")} (agents.implement)`,
-              );
-            }
-          }
-          if (opts.worktree) {
-            dryRunFmt(
-              `create worktree .runs/sandboxes/${feature}-ship-<uuid> on feat/${feature} (base develop)${
-                config.worktree?.setup ? `; run "${config.worktree.setup}"` : ""
-              }`,
-            );
-          }
-          const scriptPath = path.join(cwd, "scripts/dev/work-until-done.sh");
-          for (const p of phases) {
-            dryRunFmt(`${scriptPath} ${feature} ${p}`);
-          }
-          return;
-        }
+          // FR-015/T008: Agent-Native exit wrapper on stderr
+          writeScopedStderr(`[exit:${finalExitCode} | ${totalDurationS}s]\n`);
 
-        // Ship each phase sequentially — stop on first failure.
-        const shipStartTime = Date.now();
-        let finalExitCode = 0;
-
-        // --worktree: isolate the whole feature in a git worktree so multiple
-        // features can ship in parallel without colliding on the working tree.
-        // The orchestrator runs in the worktree (git/build/test/agent), keeps
-        // crash-recovery state in the primary checkout, and ships on the
-        // feature branch. Phases stay sequential within the feature.
-        let shipCwd = cwd;
-        let overrides: { stateRoot?: string; branchName?: string } = {};
-        let sandbox: SandboxManager | undefined;
-        let worktreeDir: string | undefined;
-        const shipBranch = `feat/${feature}`;
-
-        if (opts.worktree) {
-          sandbox = new SandboxManager(cwd);
-          console.log(`  ▸ creating worktree for ${feature} (${shipBranch})`);
-          worktreeDir = await sandbox.createSandbox({
-            featureId: feature,
-            phaseId: "all",
-            taskId: "ship",
-            backend: pillarBackend(
-              config,
-              "implement",
-              opts.agent as string,
-            ) as AgentBackendId,
-            projectRoot: cwd,
-            baseBranch: "develop",
-            branchName: shipBranch,
-            setup: config.worktree?.setup,
-          });
-          shipCwd = worktreeDir;
-          overrides = { stateRoot: cwd, branchName: shipBranch };
-          console.log(`  ✓ worktree ready: ${worktreeDir}`);
-        }
-
-        try {
-          for (const p of phases) {
-            let currentBackend = opts.agent as string as AgentBackendId;
-            let selectedModel: string | undefined;
-            let selectedCommand: string | undefined;
-
-            if (!currentBackend) {
-              // Select on the primary checkout so the quota cache/cooldown is
-              // shared, not scattered across ephemeral worktrees.
-              const selector = getBackendSelector(cwd);
-              const selection = await selector.selectBackend({
-                runId: `ship-${feature}-${Date.now()}`,
-                feature,
-                phase: `phase-${p.padStart(2, "0")}`,
-                taskType: "implement",
-                language: "typescript",
-                taskSP: 1, // Default for orchestrator
-              });
-              currentBackend = selection.backend as AgentBackendId;
-              selectedModel = selection.model;
-              selectedCommand = selection.command;
-              console.log(
-                `  🤖 Router selected backend: ${selection.backend} (${selection.reason})`,
-              );
-            }
-
-            const exitCode = await shipPhase(
+          // FR-015/T009: JSON output mode
+          if (opts.format === "json") {
+            const output = {
               feature,
-              p,
-              currentBackend,
-              opts,
-              shipCwd,
-              selectedModel,
-              selectedCommand,
-              overrides,
-            );
-            if (exitCode !== 0) {
-              finalExitCode = exitCode;
-              break;
-            }
+              phase: phase || "all",
+              exitCode: finalExitCode,
+              durationS: totalDurationS,
+              runId: `ship-${feature}`,
+            };
+            writeScopedStdout(`${JSON.stringify(output)}\n`);
           }
-        } finally {
-          if (sandbox && worktreeDir) {
-            console.log(`  ▸ removing worktree ${worktreeDir}`);
-            // Ship owns commit/push/PR via PR_CI — destroy only removes the tree.
-            await sandbox.destroySandbox(worktreeDir, feature, {
-              autoCommitPush: false,
-              teardown: config.worktree?.teardown,
-            });
+
+          if (finalExitCode !== 0) {
+            setCliExitCode(finalExitCode);
           }
-        }
+        });
+      },
+    );
 
-        const totalDurationS = Math.round((Date.now() - shipStartTime) / 1000);
-
-        // FR-015/T008: Agent-Native exit wrapper on stderr
-        process.stderr.write(`[exit:${finalExitCode} | ${totalDurationS}s]\n`);
-
-        // FR-015/T009: JSON output mode
-        if (opts.format === "json") {
-          const output = {
-            feature,
-            phase: phase || "all",
-            exitCode: finalExitCode,
-            durationS: totalDurationS,
-            runId: `ship-${feature}`,
-          };
-          process.stdout.write(`${JSON.stringify(output)}\n`);
-        }
-
-        if (finalExitCode !== 0) {
-          process.exitCode = finalExitCode;
-        }
-      });
-    },
-  );
+export const shipCommand = createShipCommand();

@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import { logCliError, warnCli } from "../adapters/cli/output-scope.js";
 import { loadConfig } from "../utils/config.js";
 import type { SlackMessage } from "./slack-messages.js";
 import { type SlackEvent, presenceManager } from "./slack-presence.js";
@@ -65,12 +66,12 @@ export async function sendSlackMessage(message: SlackMessage): Promise<void> {
       const config = loadConfig(process.cwd());
       channelId = config.project.slack?.channelId;
     } catch (e) {
-      console.warn("Failed to load config for channel resolution:", e);
+      warnCli("Failed to load config for channel resolution:", e);
     }
   }
 
   if (!channelId) {
-    console.warn("No Slack channel configured — skipping notification");
+    warnCli("No Slack channel configured — skipping notification");
     return;
   }
 
@@ -82,7 +83,7 @@ export async function sendSlackMessage(message: SlackMessage): Promise<void> {
     });
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
-    console.error(`Failed to post Slack notification: ${errorMessage}`);
+    logCliError(`Failed to post Slack notification: ${errorMessage}`);
 
     // Fallback to webhook on Socket Mode failure
     await sendViaWebhook(message);
@@ -137,12 +138,12 @@ async function sendViaWebhook(message: SlackMessage): Promise<void> {
     });
 
     if (!response.ok) {
-      console.error(
+      logCliError(
         `Webhook notification failed: ${response.status} ${response.statusText}`,
       );
     }
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
-    console.error(`Webhook notification error: ${errorMessage}`);
+    logCliError(`Webhook notification error: ${errorMessage}`);
   }
 }

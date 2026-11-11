@@ -6,24 +6,32 @@ import { Command } from "commander";
 import { describe, expect, it, vi } from "vitest";
 
 // We mock the commands to avoid side effects during registration check
-vi.mock("./commands/init.js", () => ({ initCommand: new Command("init") }));
+vi.mock("./commands/init.js", () => ({
+  createInitCommand: () => new Command("init"),
+}));
 vi.mock("./commands/define.js", () => ({
-  defineCommand: new Command("define"),
+  createDefineCommand: () => new Command("define"),
 }));
-vi.mock("./commands/ship.js", () => ({ shipCommand: new Command("ship") }));
+vi.mock("./commands/ship.js", () => ({
+  createShipCommand: () => new Command("ship"),
+}));
 vi.mock("./commands/measure.js", () => ({
-  measureCommand: new Command("measure"),
+  createMeasureCommand: () => new Command("measure"),
 }));
-vi.mock("./commands/tasks.js", () => ({ tasksCommand: new Command("tasks") }));
-vi.mock("./commands/db.js", () => ({ dbCommand: new Command("db") }));
+vi.mock("./commands/tasks.js", () => ({
+  createTasksCommand: () => new Command("tasks"),
+}));
+vi.mock("./commands/db.js", () => ({
+  createDbCommand: () => new Command("db"),
+}));
 vi.mock("./commands/server.js", () => ({
-  serverCommand: new Command("server"),
+  createServerCommand: () => new Command("server"),
 }));
 vi.mock("./commands/status.js", () => ({
-  statusCommand: new Command("status"),
+  createStatusCommand: () => new Command("status"),
 }));
 vi.mock("./commands/project.js", () => ({
-  projectCommand: new Command("project"),
+  createProjectCommand: () => new Command("project"),
 }));
 vi.mock("./utils/config.js", () => ({ loadConfig: vi.fn() }));
 

@@ -14,11 +14,12 @@ import { execSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { Command } from "commander";
+import { warnCli } from "../adapters/cli/output-scope.js";
 import { finishRun, startRun } from "../db/runs.js";
+import { isPolyglotTestFile } from "../domain/test-rules.js";
 import { DefineOrchestrator } from "../engine/define-orchestrator.js";
 import { DefineStage } from "../engine/define-types.js";
 import { PlanStore } from "../engine/plan-store.js";
-import { isPolyglotTestFile } from "../domain/test-rules.js";
 import { withParentFlags } from "../utils/command-flags.js";
 import { banner, blocked, fail, success } from "../utils/format.js";
 import {
@@ -45,229 +46,235 @@ import { loadTaskState } from "../utils/state.js";
  * With --force:       blows away existing tasks.json + gates and regenerates fresh.
  * With --reconcile:   merges new plan into existing tasks, preserving completed status.
  */
-export const tasksGenerateCommand = new Command("tasks")
-  .description("Decompose plan into tasks.json + gate scripts")
-  .addHelpText(
-    "after",
-    `
+export const createTasksGenerateCommand = () =>
+  new Command("tasks")
+    .description("Decompose plan into tasks.json + gate scripts")
+    .addHelpText(
+      "after",
+      `
 Examples:
   gwrk define tasks 001
   gwrk define tasks 001 10
   gwrk define tasks 001 --reconcile
   gwrk define tasks 001 --force --no-llm
 `,
-  )
-  .argument("<feature>", "Feature ID (e.g. 001-cli-core)")
-  .argument("[phase]", "Phase number (e.g. 10)")
-  .option(
-    "-p, --phase <phase>",
-    "Specific phase string or number to generate tasks for (e.g. p01 or 1)",
-  )
-  .option("--force", "Overwrite existing tasks.json and gate scripts")
-  .option("--reconcile", "Merge updated plan, preserving completed task status")
-  .option(
-    "--no-llm",
-    "Skip LLM gate authoring (writes tasks.json only, no gates)",
-  )
-  .option("--dry-run", "Print the command without executing")
-  .action(
-    async (
-      featureArg: string,
-      phaseArg: string | undefined,
-      opts: {
-        force?: boolean;
-        reconcile?: boolean;
-        llm?: boolean;
-        phase?: string;
-        dryRun?: boolean;
-      },
-      command: Command,
-    ) => {
-      // Also declared on `define`; commander binds it to the parent otherwise.
-      // biome-ignore lint/style/noParameterAssign: merge parent commander flags
-      opts = withParentFlags(opts, command);
-      await withSignal(`define tasks ${featureArg}`, async () => {
-        const projectRoot = process.cwd();
-        // Resolve prefix: "003" → "003-slack"
-        const feature = resolveFeature(featureArg, projectRoot);
-        const featureDir = path.join(projectRoot, "specs", feature);
-        const planPath = path.join(featureDir, "plan.md");
+    )
+    .argument("<feature>", "Feature ID (e.g. 001-cli-core)")
+    .argument("[phase]", "Phase number (e.g. 10)")
+    .option(
+      "-p, --phase <phase>",
+      "Specific phase string or number to generate tasks for (e.g. p01 or 1)",
+    )
+    .option("--force", "Overwrite existing tasks.json and gate scripts")
+    .option(
+      "--reconcile",
+      "Merge updated plan, preserving completed task status",
+    )
+    .option(
+      "--no-llm",
+      "Skip LLM gate authoring (writes tasks.json only, no gates)",
+    )
+    .option("--dry-run", "Print the command without executing")
+    .action(
+      async (
+        featureArg: string,
+        phaseArg: string | undefined,
+        opts: {
+          force?: boolean;
+          reconcile?: boolean;
+          llm?: boolean;
+          phase?: string;
+          dryRun?: boolean;
+        },
+        command: Command,
+      ) => {
+        // Also declared on `define`; commander binds it to the parent otherwise.
+        // biome-ignore lint/style/noParameterAssign: merge parent commander flags
+        opts = withParentFlags(opts, command);
+        await withSignal(`define tasks ${featureArg}`, async () => {
+          const projectRoot = process.cwd();
+          // Resolve prefix: "003" → "003-slack"
+          const feature = resolveFeature(featureArg, projectRoot);
+          const featureDir = path.join(projectRoot, "specs", feature);
+          const planPath = path.join(featureDir, "plan.md");
 
-        // Format phase uniformly to p0X if it's just a number (positional takes precedence)
-        const rawPhase = phaseArg || opts.phase;
-        let paddedPhase: string | undefined = undefined;
-        if (rawPhase) {
-          paddedPhase = rawPhase.match(/^\d+$/)
-            ? `p${rawPhase.padStart(2, "0")}`
-            : rawPhase;
-        }
-
-        // Guard: ADR-005 §8.4 — define tests must run before define tasks
-        const gapMatrixPath = path.join(featureDir, "gap-matrix.md");
-        const runsManifestDir = path.join(featureDir, ".gwrk", "runs");
-        const hasTestFiles = (() => {
-          try {
-            const srcDir = path.join(projectRoot, "src");
-            if (!fs.existsSync(srcDir)) return false;
-            const allFiles = fs.readdirSync(srcDir);
-            return allFiles.some(
-              (f) =>
-                f.includes(feature) &&
-                (f.endsWith(".test.ts") || isPolyglotTestFile(f)) &&
-                !f.startsWith("cli.e2e"),
-            );
-          } catch {
-            return false;
+          // Format phase uniformly to p0X if it's just a number (positional takes precedence)
+          const rawPhase = phaseArg || opts.phase;
+          let paddedPhase: string | undefined = undefined;
+          if (rawPhase) {
+            paddedPhase = rawPhase.match(/^\d+$/)
+              ? `p${rawPhase.padStart(2, "0")}`
+              : rawPhase;
           }
-        })();
-        const testsRan =
-          fs.existsSync(gapMatrixPath) ||
-          fs.existsSync(runsManifestDir) ||
-          hasTestFiles;
-        if (!testsRan && !opts.dryRun) {
-          blocked(
-            `RED tests must exist before generating tasks (ADR-005 §8.4).\n  Run: gwrk define tests ${feature}`,
-          );
-          throw new CommandError(
-            `Run 'gwrk define tests ${feature}' first. See ADR-005 §8.4.`,
-            1,
-          );
-        }
 
-        banner("define tasks", {
-          Feature: feature,
-          Phase: paddedPhase || "All",
-          "Dry Run": opts.dryRun ? "Yes" : "No",
-        });
-        const startTime = Date.now();
-        const startedAt = new Date().toISOString();
+          // Guard: ADR-005 §8.4 — define tests must run before define tasks
+          const gapMatrixPath = path.join(featureDir, "gap-matrix.md");
+          const runsManifestDir = path.join(featureDir, ".gwrk", "runs");
+          const hasTestFiles = (() => {
+            try {
+              const srcDir = path.join(projectRoot, "src");
+              if (!fs.existsSync(srcDir)) return false;
+              const allFiles = fs.readdirSync(srcDir);
+              return allFiles.some(
+                (f) =>
+                  f.includes(feature) &&
+                  (f.endsWith(".test.ts") || isPolyglotTestFile(f)) &&
+                  !f.startsWith("cli.e2e"),
+              );
+            } catch {
+              return false;
+            }
+          })();
+          const testsRan =
+            fs.existsSync(gapMatrixPath) ||
+            fs.existsSync(runsManifestDir) ||
+            hasTestFiles;
+          if (!testsRan && !opts.dryRun) {
+            blocked(
+              `RED tests must exist before generating tasks (ADR-005 §8.4).\n  Run: gwrk define tests ${feature}`,
+            );
+            throw new CommandError(
+              `Run 'gwrk define tests ${feature}' first. See ADR-005 §8.4.`,
+              1,
+            );
+          }
 
-        const { backend } = resolveAgent("define", projectRoot);
-
-        // A preview must leave no trace: `startRun` used to fire before anything
-        // consulted --dry-run, leaving a run row that never finishes (NULL
-        // exit_code). `runs` is what harvest correlates against and what
-        // getShippedPhases reads, so a row for work that never happened is
-        // false evidence. -1 is the same sentinel a failed ledger write uses.
-        const runId = opts.dryRun
-          ? -1
-          : startRun({
-              feature_id: feature,
-              command: "define tasks",
-              agent_backend: backend,
-              workflow: "plan-to-tasks",
-            });
-
-        try {
-          const input = `Decompose plan for feature ${feature}${paddedPhase ? ` phase ${paddedPhase}` : ""}${opts.force ? " --force" : ""}${opts.reconcile ? " --reconcile" : ""}`;
-
-          const orchestrator = new DefineOrchestrator(
-            {
-              featureId: feature,
-              backend,
-              cwd: projectRoot,
-              reconcile: opts.reconcile,
-              dryRun: opts.dryRun,
-              quiet: true,
-            },
-            {
-              stage: DefineStage.PLAN_TO_TASKS,
-              featureId: feature,
-              startedAt,
-              runId: `define-tasks-${feature}-${Date.now()}`,
-              backend,
-              reconcile: opts.reconcile,
-            },
-          );
-
-          const exitCode = await orchestrator.runLoop(input, {
-            stopAfterOne: true,
+          banner("define tasks", {
+            Feature: feature,
+            Phase: paddedPhase || "All",
+            "Dry Run": opts.dryRun ? "Yes" : "No",
           });
+          const startTime = Date.now();
+          const startedAt = new Date().toISOString();
 
-          if (exitCode !== 0) {
-            throw new Error(
-              `Workflow execution failed with exit code ${exitCode}`,
-            );
-          }
+          const { backend } = resolveAgent("define", projectRoot);
 
-          if (opts.dryRun) {
-            return;
-          }
+          // A preview must leave no trace: `startRun` used to fire before anything
+          // consulted --dry-run, leaving a run row that never finishes (NULL
+          // exit_code). `runs` is what harvest correlates against and what
+          // getShippedPhases reads, so a row for work that never happened is
+          // false evidence. -1 is the same sentinel a failed ledger write uses.
+          const runId = opts.dryRun
+            ? -1
+            : startRun({
+                feature_id: feature,
+                command: "define tasks",
+                agent_backend: backend,
+                workflow: "plan-to-tasks",
+              });
 
-          const durationS = Math.round((Date.now() - startTime) / 1000);
-          finishRun(runId, { exit_code: 0, duration_s: durationS });
-          success("define tasks", durationS, runId);
-
-          // Write Execution Manifest (ADR-003)
           try {
-            const finishedAt = new Date().toISOString();
-            const gitCommit = getCurrentCommit(projectRoot);
-            const gitBranch = getCurrentBranch(projectRoot);
-            const { filesChanged, linesAdded, linesDeleted } = getDiffStats(
-              projectRoot,
-              `${gitCommit}~1`,
-            );
+            const input = `Decompose plan for feature ${feature}${paddedPhase ? ` phase ${paddedPhase}` : ""}${opts.force ? " --force" : ""}${opts.reconcile ? " --reconcile" : ""}`;
 
-            const manifestPhase = paddedPhase || "all";
-            const manifestId = generateRunId(
-              startedAt,
-              "define",
-              manifestPhase,
-            );
-
-            writeManifest(featureDir, {
-              runId: manifestId,
-              feature,
-              phase: manifestPhase,
-              command: "define tasks",
-              agent: backend,
-              model: "unknown",
-              startedAt,
-              finishedAt,
-              durationS,
-              exitCode: 0,
-              attempt: 1,
-              filesChanged,
-              linesAdded,
-              linesDeleted,
-              gitCommit,
-              gitBranch,
-              digest: [],
-            });
-          } catch (manifestError) {
-            console.warn(
-              `Warning: Could not write execution manifest: ${manifestError}`,
-            );
-          }
-
-          const planStore = new PlanStore(resolveProjectId(projectRoot));
-          planStore.handleDefineComplete({
-            featureId: feature,
-            status: "DEFINED",
-          });
-
-          // Auto-commit define artifacts (clean working tree)
-          try {
-            execSync("git add -A", { cwd: projectRoot });
-            execSync(
-              `git commit --author="$(git config user.name) <$(git config user.email)>" -m "chore(${feature}): define tasks"`,
+            const orchestrator = new DefineOrchestrator(
               {
+                featureId: feature,
+                backend,
                 cwd: projectRoot,
-                env: { ...process.env, GWRK_SHIP: "1" },
-                stdio: "ignore",
+                reconcile: opts.reconcile,
+                dryRun: opts.dryRun,
+                quiet: true,
+              },
+              {
+                stage: DefineStage.PLAN_TO_TASKS,
+                featureId: feature,
+                startedAt,
+                runId: `define-tasks-${feature}-${Date.now()}`,
+                backend,
+                reconcile: opts.reconcile,
               },
             );
-          } catch {
-            // Non-fatal — may have nothing to commit
+
+            const exitCode = await orchestrator.runLoop(input, {
+              stopAfterOne: true,
+            });
+
+            if (exitCode !== 0) {
+              throw new Error(
+                `Workflow execution failed with exit code ${exitCode}`,
+              );
+            }
+
+            if (opts.dryRun) {
+              return;
+            }
+
+            const durationS = Math.round((Date.now() - startTime) / 1000);
+            finishRun(runId, { exit_code: 0, duration_s: durationS });
+            success("define tasks", durationS, runId);
+
+            // Write Execution Manifest (ADR-003)
+            try {
+              const finishedAt = new Date().toISOString();
+              const gitCommit = getCurrentCommit(projectRoot);
+              const gitBranch = getCurrentBranch(projectRoot);
+              const { filesChanged, linesAdded, linesDeleted } = getDiffStats(
+                projectRoot,
+                `${gitCommit}~1`,
+              );
+
+              const manifestPhase = paddedPhase || "all";
+              const manifestId = generateRunId(
+                startedAt,
+                "define",
+                manifestPhase,
+              );
+
+              writeManifest(featureDir, {
+                runId: manifestId,
+                feature,
+                phase: manifestPhase,
+                command: "define tasks",
+                agent: backend,
+                model: "unknown",
+                startedAt,
+                finishedAt,
+                durationS,
+                exitCode: 0,
+                attempt: 1,
+                filesChanged,
+                linesAdded,
+                linesDeleted,
+                gitCommit,
+                gitBranch,
+                digest: [],
+              });
+            } catch (manifestError) {
+              warnCli(
+                `Warning: Could not write execution manifest: ${manifestError}`,
+              );
+            }
+
+            const planStore = new PlanStore(resolveProjectId(projectRoot));
+            planStore.handleDefineComplete({
+              featureId: feature,
+              status: "DEFINED",
+            });
+
+            // Auto-commit define artifacts (clean working tree)
+            try {
+              execSync("git add -A", { cwd: projectRoot });
+              execSync(
+                `git commit --author="$(git config user.name) <$(git config user.email)>" -m "chore(${feature}): define tasks"`,
+                {
+                  cwd: projectRoot,
+                  env: { ...process.env, GWRK_SHIP: "1" },
+                  stdio: "ignore",
+                },
+              );
+            } catch {
+              // Non-fatal — may have nothing to commit
+            }
+          } catch (error: unknown) {
+            const durationS = Math.round((Date.now() - startTime) / 1000);
+            const message =
+              error instanceof Error ? error.message : String(error);
+            finishRun(runId, { exit_code: 1, duration_s: durationS });
+            fail("define tasks", 1, durationS, runId);
+            throw new CommandError(`Error generating tasks: ${message}`, 1);
           }
-        } catch (error: unknown) {
-          const durationS = Math.round((Date.now() - startTime) / 1000);
-          const message =
-            error instanceof Error ? error.message : String(error);
-          finishRun(runId, { exit_code: 1, duration_s: durationS });
-          fail("define tasks", 1, durationS, runId);
-          throw new CommandError(`Error generating tasks: ${message}`, 1);
-        }
-      });
-    },
-  );
+        });
+      },
+    );
+
+export const tasksGenerateCommand = createTasksGenerateCommand();

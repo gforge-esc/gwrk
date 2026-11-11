@@ -7,6 +7,12 @@ import os from "node:os";
 import path from "node:path";
 import { Command } from "commander";
 import { parse } from "yaml";
+import {
+  logCliError,
+  setCliExitCode,
+  writeScopedStderr,
+  writeScopedStdout,
+} from "../adapters/cli/output-scope.js";
 import { PluginLoader } from "../plugins/loader.js";
 import { executeSkill } from "../plugins/skill-runtime.js";
 import { color } from "../utils/format.js";
@@ -131,35 +137,36 @@ function getSkillManifestHelpSync(name: string): string {
 /**
  * FR-006: gwrk skill <name> command handler.
  */
-export const skillCommand = new Command("skill")
-  .description("Invoke a reasoning skill")
-  .argument("[name]", "Name of the skill to invoke")
-  .option("--format <type>", "Output format (json)")
-  .option("--agent", "Enable Agent-Native Mode (ANSI-stripped)", false)
-  .addHelpText("after", () => {
-    const argv = process.argv;
-    const skillIdx = argv.indexOf("skill");
-    const name = argv[skillIdx + 1];
+export const createSkillCommand = () =>
+  new Command("skill")
+    .description("Invoke a reasoning skill")
+    .argument("[name]", "Name of the skill to invoke")
+    .option("--format <type>", "Output format (json)")
+    .option("--agent", "Enable Agent-Native Mode (ANSI-stripped)", false)
+    .addHelpText("after", () => {
+      const argv = process.argv;
+      const skillIdx = argv.indexOf("skill");
+      const name = argv[skillIdx + 1];
 
-    if (name && !name.startsWith("-")) {
-      return getSkillManifestHelpSync(name);
-    }
+      if (name && !name.startsWith("-")) {
+        return getSkillManifestHelpSync(name);
+      }
 
-    const skills = getSkillsSync();
-    const atomic = skills.filter((s) => s.tier === "atomic");
-    const compound = skills.filter((s) => s.tier === "compound");
+      const skills = getSkillsSync();
+      const atomic = skills.filter((s) => s.tier === "atomic");
+      const compound = skills.filter((s) => s.tier === "compound");
 
-    let out = `\n${BOLD}${CYAN}Atomic Skills${RESET}\n`;
-    for (const s of atomic) {
-      out += `  ${GREEN}${s.name.padEnd(20)}${RESET} ${DIM}${s.description}${RESET}\n`;
-    }
+      let out = `\n${BOLD}${CYAN}Atomic Skills${RESET}\n`;
+      for (const s of atomic) {
+        out += `  ${GREEN}${s.name.padEnd(20)}${RESET} ${DIM}${s.description}${RESET}\n`;
+      }
 
-    out += `\n${BOLD}${CYAN}Compound Skills${RESET}\n`;
-    for (const s of compound) {
-      out += `  ${MAGENTA}${s.name.padEnd(20)}${RESET} ${DIM}${s.description}${RESET}\n`;
-    }
+      out += `\n${BOLD}${CYAN}Compound Skills${RESET}\n`;
+      for (const s of compound) {
+        out += `  ${MAGENTA}${s.name.padEnd(20)}${RESET} ${DIM}${s.description}${RESET}\n`;
+      }
 
-    out += `\n${BOLD}Examples:${RESET}
+      out += `\n${BOLD}Examples:${RESET}
   echo "brief.md" | gwrk skill narrative
   gwrk skill signal-cut < input.md --format json
   gwrk skill truth-extract --product gwrk
@@ -171,55 +178,57 @@ ${BOLD}Exit codes:${RESET}
   1: Skill not found, dependency missing, or execution failed
   2: Usage error
 `;
-    return out;
-  })
-  .action(async (name, options, command) => {
-    if (!name) {
-      command.help();
-      return;
-    }
+      return out;
+    })
+    .action(async (name, options, command) => {
+      if (!name) {
+        command.help();
+        return;
+      }
 
-    await withSignal("skill", async () => {
-      // Read stdin
-      let input = "";
-      if (!process.stdin.isTTY) {
+      await withSignal("skill", async () => {
+        // Read stdin
+        let input = "";
+        if (!process.stdin.isTTY) {
+          try {
+            input = fs.readFileSync(0, "utf-8");
+          } catch (e) {
+            // Stdin might be empty or closed
+          }
+        }
+
         try {
-          input = fs.readFileSync(0, "utf-8");
-        } catch (e) {
-          // Stdin might be empty or closed
-        }
-      }
+          const result = await executeSkill(name, {
+            input,
+            format: options.format,
+            agent: options.agent,
+            ...options, // Pass extra flags from command line
+          });
 
-      try {
-        const result = await executeSkill(name, {
-          input,
-          format: options.format,
-          agent: options.agent,
-          ...options, // Pass extra flags from command line
-        });
+          // stdout is the skill result
+          writeScopedStdout(result.stdout);
 
-        // stdout is the skill result
-        process.stdout.write(result.stdout);
-
-        // stderr might have agent output, but no signal (we'll let withSignal do it)
-        if (result.stderr) {
-          process.stderr.write(result.stderr);
+          // stderr might have agent output, but no signal (we'll let withSignal do it)
+          if (result.stderr) {
+            writeScopedStderr(result.stderr);
+          }
+        } catch (err: unknown) {
+          if (typeof err === "object" && err !== null && "stderr" in err) {
+            writeScopedStderr((err as { stderr: string }).stderr);
+          }
+          if (
+            typeof err === "object" &&
+            err !== null &&
+            "message" in err &&
+            !options.agent
+          ) {
+            logCliError(`${RED}Error:${RESET} ${(err as Error).message}`);
+          }
+          // withSignal will pick up this exitCode if we set it
+          setCliExitCode((err as { exitCode?: number }).exitCode || 1);
+          throw err; // Re-throw so withSignal can report the error message if needed
         }
-      } catch (err: unknown) {
-        if (typeof err === "object" && err !== null && "stderr" in err) {
-          process.stderr.write((err as { stderr: string }).stderr);
-        }
-        if (
-          typeof err === "object" &&
-          err !== null &&
-          "message" in err &&
-          !options.agent
-        ) {
-          console.error(`${RED}Error:${RESET} ${(err as Error).message}`);
-        }
-        // withSignal will pick up this exitCode if we set it
-        process.exitCode = (err as { exitCode?: number }).exitCode || 1;
-        throw err; // Re-throw so withSignal can report the error message if needed
-      }
+      });
     });
-  });
+
+export const skillCommand = createSkillCommand();

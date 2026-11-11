@@ -4,6 +4,7 @@
 
 import fs from "node:fs";
 import path from "node:path";
+import { logCliOutput } from "../adapters/cli/output-scope.js";
 import { scaffold } from "../engine/ontology-scaffold.js";
 import { scan } from "../engine/source-scanner.js";
 import { WorkflowRuntime } from "../plugins/workflow-runtime.js";
@@ -79,7 +80,7 @@ export async function defineOntologyCommand(options: {
   await withSignal("define ontology", async () => {
     const projectRoot = process.cwd();
 
-    console.log(
+    logCliOutput(
       `${CYAN}🦩${RESET} ${DIM}Scaffolding ontology artifacts...${RESET}`,
     );
     await scaffold(projectRoot);
@@ -109,7 +110,7 @@ export async function defineOntologyCommand(options: {
         ...(options.refs ? { Refs: options.refs } : {}),
       });
 
-      console.log(`${DIM}Scanning project for grounding material...${RESET}`);
+      logCliOutput(`${DIM}Scanning project for grounding material...${RESET}`);
       const material = await scan(projectRoot);
 
       // Prepare input for the workflow. Refs lead: they are authoritative, and
@@ -133,7 +134,7 @@ ${material.patterns.length > 0 ? material.patterns.join("\n\n---\n\n") : "None f
       const input = refsBlock ? `${refsBlock}\n${grounding}` : grounding;
 
       const runtime = new WorkflowRuntime();
-      console.log(
+      logCliOutput(
         `${DIM}Executing gwrk-ontology-construct workflow...${RESET}`,
       );
 
@@ -151,13 +152,13 @@ ${material.patterns.length > 0 ? material.patterns.join("\n\n---\n\n") : "None f
       success("ontology construct", durationS);
 
       if (result.summary) {
-        console.log(`\n${result.summary}\n`);
+        logCliOutput(`\n${result.summary}\n`);
       }
     } else {
-      console.log(
+      logCliOutput(
         `\n  ${CYAN}Done!${RESET} Ontology structure created in ${DIM}.gwrk/ontology/${RESET}`,
       );
-      console.log(
+      logCliOutput(
         `  Run ${DIM}gwrk define ontology --run${RESET} to generate the initial domain.md.\n`,
       );
     }

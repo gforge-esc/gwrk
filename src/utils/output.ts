@@ -3,6 +3,10 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import type { Command } from "commander";
+import {
+  writeScopedStderr,
+  writeScopedStdout,
+} from "../adapters/cli/output-scope.js";
 
 /**
  * CommandOutput interface for abstracting stdout/stderr writes.
@@ -43,10 +47,10 @@ export function createOutput(format?: string): CommandOutput {
           typeof data === "string"
             ? JSON.stringify(data)
             : JSON.stringify(data, null, 2);
-        process.stdout.write(`${output}\n`);
+        writeScopedStdout(`${output}\n`);
       },
       info(msg: string): void {
-        process.stderr.write(`${msg}\n`);
+        writeScopedStderr(`${msg}\n`);
       },
     };
   }
@@ -59,10 +63,10 @@ export function createOutput(format?: string): CommandOutput {
     isJson: false,
     write(data: string | object): void {
       const output = typeof data === "string" ? data : String(data);
-      process.stdout.write(output);
+      writeScopedStdout(output);
     },
     info(msg: string): void {
-      process.stderr.write(`${msg}\n`);
+      writeScopedStderr(`${msg}\n`);
     },
   };
 }

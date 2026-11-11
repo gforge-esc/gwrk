@@ -9,6 +9,11 @@
 import fs from "node:fs";
 import path from "node:path";
 import { Command } from "commander";
+import {
+  logCliError,
+  logCliOutput,
+  warnCli,
+} from "../adapters/cli/output-scope.js";
 import { createSqlitePlanStoreAdapter } from "../adapters/sqlite/index.js";
 import { getDb } from "../db/index.js";
 import { PlanStore } from "../engine/plan-store.js";
@@ -63,13 +68,22 @@ export function resolveDepEdge(
   };
 }
 
-export const planCommand = new Command("plan")
-  .description(
-    "Build Plan Orchestrator (DAG) — query and manage the project spine",
-  )
-  .addHelpText(
-    "after",
-    `
+function guardEmpty(store: PlanStore) {
+  if (store.isEmpty()) {
+    const msg = "No build plan data. Run 'gwrk plan seed' or 'gwrk plan init'.";
+    logCliError(msg);
+    throw new CommandError(msg, 1);
+  }
+}
+
+export function createPlanCommand(): Command {
+  const planCommand = new Command("plan")
+    .description(
+      "Build Plan Orchestrator (DAG) — query and manage the project spine",
+    )
+    .addHelpText(
+      "after",
+      `
 Subcommands:
   status         View per-phase project status
   next           Show ready work items (all deps satisfied)
@@ -85,655 +99,671 @@ Subcommands:
   viz            Open interactive graph visualization
   review         Review agent proposals
 `,
-  );
+    );
 
-/** Guard against empty graph for subcommands that require data */
-function guardEmpty(store: PlanStore) {
-  if (store.isEmpty()) {
-    const msg = "No build plan data. Run 'gwrk plan seed' or 'gwrk plan init'.";
-    console.error(msg);
-    throw new CommandError(msg, 1);
-  }
+  /** Guard against empty graph for subcommands that require data */
+  planCommand
+    .command("status")
+    .description("View project status from the build plan graph")
+    .option("--json", "Output in JSON format")
+    .action(async (options, command) => {
+      await withSignal("plan status", async () => {
+        const projectId = resolveProjectId(process.cwd());
+        const store = new PlanStore(projectId);
+        guardEmpty(store);
+        const out = options.json
+          ? createOutput("json")
+          : resolveFormat(command);
+        const status = store.getPlanStatus();
+
+        if (out.isJson) {
+          out.write(status);
+          return;
+        }
+
+        const { BOLD, CYAN, GREEN, YELLOW, RED, DIM, RESET } = color;
+        logCliOutput(`${BOLD}Build Plan Status${RESET}\n`);
+
+        for (const f of status.features) {
+          let statusColor = RESET;
+          if (f.status === "DONE") statusColor = GREEN;
+          else if (f.status === "SHIPPED") statusColor = GREEN;
+          else if (f.status === "IN_PROGRESS") statusColor = YELLOW;
+          else if (f.status === "SPECIFIED" || f.status === "DEFINED")
+            statusColor = CYAN;
+
+          logCliOutput(
+            `${BOLD}${statusColor}${f.id.padEnd(10)}${RESET} ${BOLD}${f.name}${RESET} [${statusColor}${f.status}${RESET}]`,
+          );
+
+          for (const p of f.phases) {
+            let pColor = DIM;
+            if (p.status === "DONE" || p.status === "SHIPPED") pColor = GREEN;
+            else if (p.status === "IN_PROGRESS") pColor = YELLOW;
+
+            let healthIcon = " ";
+            if (p.health === "YELLOW") healthIcon = `${YELLOW}⚠${RESET}`;
+            else if (p.health === "RED") healthIcon = `${RED}✗${RESET}`;
+            else if (p.health === "GREEN") healthIcon = `${GREEN}✓${RESET}`;
+
+            logCliOutput(
+              `  ${pColor}↳ ${p.id.padEnd(12)}${RESET} ${p.name.padEnd(35)} ${pColor}${p.status.padEnd(12)}${RESET} ${healthIcon} ${DIM}(${p.sp_estimate} SP)${RESET}`,
+            );
+          }
+          logCliOutput("");
+        }
+      });
+    });
+
+  planCommand
+    .command("seed")
+    .description("Seed the build plan graph from 000-build-plan.md")
+    .option("--dry-run", "Show what would be seeded without writing to DB")
+    .action(async (options) => {
+      await withSignal("plan seed", async () => {
+        const projectRoot = process.cwd();
+        const planPath = path.join(projectRoot, "specs", "000-build-plan.md");
+        const projectId = resolveProjectId(projectRoot);
+        const store = new PlanStore(projectId);
+
+        if (options.dryRun) {
+          const { parseBuildPlan } = await import("../utils/parser-plan.js");
+          const payload = parseBuildPlan(planPath);
+          logCliOutput(
+            "Dry Run: Seed Payload extracted from 000-build-plan.md",
+          );
+          logCliOutput(JSON.stringify(payload, null, 2));
+          return;
+        }
+
+        store.seedFromFile(planPath);
+        logCliOutput(
+          "Successfully seeded build plan graph from 000-build-plan.md",
+        );
+      });
+    });
+
+  planCommand
+    .command("init")
+    .description("Initialize the build plan graph by scanning specs/ directory")
+    .option("--dry-run", "Show discovered features without writing to DB")
+    .action(async (options) => {
+      await withSignal("plan init", async () => {
+        const projectRoot = process.cwd();
+        const specsDir = path.join(projectRoot, "specs");
+        const projectId = resolveProjectId(projectRoot);
+        const store = new PlanStore(projectId);
+
+        if (options.dryRun) {
+          const readiness = store.scanReadiness(specsDir);
+          logCliOutput("Dry Run: Discovered features from specs/");
+          for (const r of readiness) {
+            const phaseInfo =
+              r.phases.length > 0
+                ? ` (${r.phases.length} phases: ${r.phases.map((p) => `P${p.number}`).join(", ")})`
+                : "";
+            logCliOutput(
+              `  ${r.featureId}: L${r.level} ${r.status}${phaseInfo}`,
+            );
+          }
+          const totalPhases = readiness.reduce(
+            (sum, r) => sum + r.phases.length,
+            0,
+          );
+          logCliOutput(
+            `\nTotal: ${readiness.length} features, ${totalPhases} phases`,
+          );
+          return;
+        }
+
+        const { added, skipped, phasesInserted, pruned, reconciled } =
+          store.initFromSpecs(specsDir);
+        logCliOutput(
+          `Initialized build plan graph. Added: ${added.length}, Skipped (existing): ${skipped.length}, Phases: ${phasesInserted}`,
+        );
+        if (added.length > 0) logCliOutput(`  Added: ${added.join(", ")}`);
+        if (pruned.length > 0)
+          logCliOutput(`  Pruned (no specs/ dir): ${pruned.join(", ")}`);
+        if (reconciled.length > 0) {
+          logCliOutput("  Reconciled status:");
+          for (const r of reconciled) logCliOutput(`    ${r}`);
+        }
+      });
+    });
+
+  // --- Phase 2+ Subcommands (Placeholders with guards) ---
+
+  planCommand
+    .command("next")
+    .description("Show items ready to work on (dependencies satisfied)")
+    .option("--json", "Output in JSON format")
+    .action(async (options, command) => {
+      await withSignal("plan next", async () => {
+        const projectId = resolveProjectId(process.cwd());
+        const store = new PlanStore(projectId);
+        guardEmpty(store);
+        const solver = await store.getSolver();
+        const ready = solver.getReadyQueue();
+        const out = options.json
+          ? createOutput("json")
+          : resolveFormat(command);
+
+        if (out.isJson) {
+          out.write(ready);
+          return;
+        }
+
+        if (ready.length === 0) {
+          logCliOutput("All build plan items complete.");
+          return;
+        }
+
+        const { BOLD, GREEN, DIM, RESET } = color;
+        logCliOutput(`${BOLD}Ready Work Items${RESET}\n`);
+        for (const p of ready) {
+          logCliOutput(
+            `${BOLD}${GREEN}${p.id.padEnd(12)}${RESET} ${p.name.padEnd(35)} ${DIM}(${p.sp_estimate} SP)${RESET}`,
+          );
+        }
+      });
+    });
+
+  planCommand
+    .command("critical")
+    .description("Show the critical path through the build plan")
+    .option("--json", "Output in JSON format")
+    .action(async (options, command) => {
+      await withSignal("plan critical", async () => {
+        const projectId = resolveProjectId(process.cwd());
+        const store = new PlanStore(projectId);
+        guardEmpty(store);
+        const solver = await store.getSolver();
+        const { path, warnings } = solver.getCriticalPath();
+        const out = options.json
+          ? createOutput("json")
+          : resolveFormat(command);
+
+        if (out.isJson) {
+          out.write({ path, warnings });
+          return;
+        }
+
+        const { BOLD, RED, YELLOW, RESET, DIM } = color;
+        logCliOutput(`${BOLD}Critical Path${RESET}\n`);
+
+        if (warnings.length > 0) {
+          for (const w of warnings) {
+            warnCli(`${YELLOW}${w}${RESET}`);
+          }
+          logCliOutput("");
+        }
+
+        logCliOutput(
+          path
+            .map(
+              (p) =>
+                `${BOLD}${RED}${p.id}${RESET} ${DIM}(${p.sp_estimate} SP)${RESET}`,
+            )
+            .join(" → "),
+        );
+      });
+    });
+
+  planCommand
+    .command("waves")
+    .description(
+      "Show parallel execution waves for remaining work (--all for the whole plan)",
+    )
+    .option("--json", "Output in JSON format")
+    .option(
+      "--all",
+      "Include shipped phases — the plan of record, not current work",
+    )
+    .action(async (options, command) => {
+      await withSignal("plan waves", async () => {
+        const projectId = resolveProjectId(process.cwd());
+        const store = new PlanStore(projectId);
+        guardEmpty(store);
+        const solver = await store.getSolver();
+        // Default to remaining work: a wave list that opens on phases shipped
+        // months ago cannot answer "what can I ship in parallel now".
+        const waves = options.all
+          ? solver.getTopologicalWaves()
+          : solver.getRemainingWaves();
+        const out = options.json
+          ? createOutput("json")
+          : resolveFormat(command);
+
+        if (out.isJson) {
+          out.write(waves);
+          return;
+        }
+
+        const { BOLD, CYAN, RESET, DIM } = color;
+        logCliOutput(
+          `${BOLD}Parallel Execution Waves${RESET}${options.all ? `${DIM} (entire plan)${RESET}` : `${DIM} (remaining work)${RESET}`}\n`,
+        );
+
+        if (waves.length === 0) {
+          logCliOutput("All build plan items complete.");
+          return;
+        }
+
+        waves.forEach((wave, i) => {
+          logCliOutput(`${BOLD}${CYAN}Wave ${i + 1}${RESET}`);
+          for (const p of wave) {
+            logCliOutput(
+              `  ${p.id.padEnd(12)} ${p.name.padEnd(35)} ${DIM}(${p.sp_estimate} SP)${RESET}`,
+            );
+          }
+          logCliOutput("");
+        });
+
+        if (!options.all) {
+          logCliOutput(
+            `${DIM}Wave 1 is dependency-ready, not necessarily parallel-safe: check for shared migrations, overlapping deliverables, and single-instance test resources before running two at once.${RESET}`,
+          );
+        }
+      });
+    });
+
+  planCommand
+    .command("verify")
+    .description("Detect drift between plan and actual state")
+    .option("--json", "Output in JSON format")
+    .action(async (options) => {
+      await withSignal("plan verify", async () => {
+        const projectId = resolveProjectId(process.cwd());
+        const store = new PlanStore(projectId);
+        guardEmpty(store);
+
+        const { DriftDetector } = await import("../engine/drift-detector.js");
+        const status = store.getPlanStatus();
+        const detector = new DriftDetector({
+          features: status.features,
+          phases: status.features.flatMap((f) => f.phases),
+        });
+
+        const projectRoot = process.cwd();
+        const results = detector.verify(projectRoot);
+
+        // The detector compares specs/ against the graph. It cannot see the
+        // graph's own edges, so ask the solver whether the statuses are
+        // self-consistent: a phase recorded finished before its predecessors is
+        // either a status promoted without evidence or a missing edge.
+        const inversions = (await store.getSolver()).getStatusInversions();
+
+        if (options.json) {
+          logCliOutput(JSON.stringify({ results, inversions }, null, 2));
+          return;
+        }
+
+        const drifted = results.filter((r) => r.status === "DRIFTED");
+        const missing = results.filter(
+          (r) =>
+            r.status === "MISSING_FROM_GRAPH" ||
+            r.status === "MISSING_FROM_SPECS",
+        );
+        const clean = results.filter((r) => r.status === "CLEAN");
+
+        if (inversions.length > 0) {
+          logCliOutput(
+            `\n${color.RED}Status Inversions (${inversions.length}):${color.RESET}`,
+          );
+          logCliOutput(
+            `${color.DIM}  A phase recorded finished before the work it depends on.${color.RESET}`,
+          );
+          for (const inv of inversions) {
+            logCliOutput(
+              `  ${color.RED}✗${color.RESET} ${inv.phaseId} is finished but waits on: ${inv.blockedBy.join(", ")}`,
+            );
+          }
+          logCliOutput(
+            `${color.DIM}  Either the status was promoted without a passing gate, or an edge is missing.${color.RESET}`,
+          );
+        }
+
+        // Keep this exact wording: ship-feature.sh greps for "No drift".
+        if (
+          drifted.length === 0 &&
+          missing.length === 0 &&
+          inversions.length === 0
+        ) {
+          logCliOutput(
+            `${color.GREEN}✓${color.RESET} No drift detected. ${clean.length} phase(s) clean.`,
+          );
+          return;
+        }
+
+        if (drifted.length > 0) {
+          logCliOutput(
+            `\n${color.RED}Drift Detected (${drifted.length}):${color.RESET}`,
+          );
+          for (const d of drifted) {
+            logCliOutput(
+              `  ${color.RED}✗${color.RESET} ${d.featureId}${d.phaseId ? `/${d.phaseId}` : ""}: ${d.reason}`,
+            );
+          }
+        }
+
+        if (missing.length > 0) {
+          logCliOutput(
+            `\n${color.YELLOW}Missing (${missing.length}):${color.RESET}`,
+          );
+          for (const m of missing) {
+            logCliOutput(
+              `  ${color.YELLOW}⚠${color.RESET} ${m.featureId}: ${m.reason}`,
+            );
+          }
+        }
+
+        if (clean.length > 0) {
+          logCliOutput(
+            `\n${color.GREEN}Clean (${clean.length}):${color.RESET} ${clean.map((c) => c.phaseId || c.featureId).join(", ")}`,
+          );
+        }
+      });
+    });
+
+  planCommand
+    .command("render")
+    .description("Regenerate 000-build-plan.md from the graph state")
+    .option("--stdout", "Print to stdout instead of writing to file")
+    .action(async (options) => {
+      await withSignal("plan render", async () => {
+        const projectId = resolveProjectId(process.cwd());
+        const store = new PlanStore(projectId);
+        guardEmpty(store);
+        if (options.stdout) {
+          logCliOutput(await store.render());
+          return;
+        }
+
+        const projectRoot = process.cwd();
+        const planPath = path.join(projectRoot, "specs", "000-build-plan.md");
+        const adapter = createSqlitePlanStoreAdapter({
+          projectId,
+          db: getDb(),
+        });
+        await adapter.renderToMarkdown(planPath);
+        logCliOutput(`Successfully regenerated ${planPath} from graph state.`);
+      });
+    });
+
+  planCommand
+    .command("add <type> <id> [name]")
+    .description("Add a feature or phase to the build plan")
+    .option(
+      "--feature-id <featureId>",
+      "Parent feature (required for phase type)",
+    )
+    .option("--sp <sp>", "SP estimate (for phases)", "0")
+    .action(async (type, id, name, options) => {
+      await withSignal("plan add", async () => {
+        const projectId = resolveProjectId(process.cwd());
+        const store = new PlanStore(projectId);
+
+        if (type === "feature") {
+          store.addFeature({
+            id,
+            name: name || id,
+            status: "PLANNED",
+            sp_total: 0,
+          });
+          logCliOutput(
+            `${color.GREEN}✓${color.RESET} Added feature ${color.BOLD}${id}${color.RESET}`,
+          );
+        } else if (type === "phase") {
+          if (!options.featureId) {
+            throw new CommandError(
+              "Phase requires --feature-id <featureId>",
+              1,
+            );
+          }
+          store.addPhase({
+            id,
+            feature_id: options.featureId,
+            name: name || id,
+            status: "PLANNED",
+            health: "GREEN",
+            sp_estimate: Number.parseInt(options.sp, 10) || 0,
+            seq: 0,
+          });
+          logCliOutput(
+            `${color.GREEN}✓${color.RESET} Added phase ${color.BOLD}${id}${color.RESET} to feature ${options.featureId}`,
+          );
+        } else {
+          throw new CommandError(
+            `Unknown type '${type}'. Use 'feature' or 'phase'.`,
+            1,
+          );
+        }
+      });
+    });
+
+  planCommand
+    .command("remove <id>")
+    .description("Remove a feature or phase from the build plan")
+    .option("--type <type>", "Specify 'feature' or 'phase'", "phase")
+    .action(async (id, options) => {
+      await withSignal("plan remove", async () => {
+        const projectId = resolveProjectId(process.cwd());
+        const store = new PlanStore(projectId);
+        guardEmpty(store);
+
+        if (options.type === "feature") {
+          const { deleteFeature } = await import("../db/plan.js");
+          deleteFeature(id, projectId);
+          logCliOutput(
+            `${color.GREEN}✓${color.RESET} Removed feature ${color.BOLD}${id}${color.RESET} and all its phases/edges`,
+          );
+        } else {
+          store.removePhase(id);
+          logCliOutput(
+            `${color.GREEN}✓${color.RESET} Removed phase ${color.BOLD}${id}${color.RESET}`,
+          );
+        }
+      });
+    });
+
+  planCommand
+    .command("dep <action> <from> [to]")
+    .description(
+      "Manage dependency edges (add/remove). Direction is prerequisite → dependent. " +
+        "Recommended: `dep add <feature> --needs <prerequisite>`.",
+    )
+    .option("--type <edgeType>", "Edge type", "DEPENDS_ON")
+    .option(
+      "--needs <prerequisite>",
+      "Declare that <from> depends on <prerequisite> (unambiguous direction)",
+    )
+    .action(async (action, from, to, options) => {
+      await withSignal("plan dep", async () => {
+        const projectId = resolveProjectId(process.cwd());
+        const store = new PlanStore(projectId);
+
+        if (action !== "add" && action !== "remove") {
+          throw new CommandError(
+            `Unknown action '${action}'. Use 'add' or 'remove'.`,
+            1,
+          );
+        }
+
+        const { edge, message } = resolveDepEdge(
+          from,
+          to,
+          options.needs,
+          options.type,
+        );
+
+        if (action === "add") {
+          store.addEdge(edge);
+          logCliOutput(`${color.GREEN}✓${color.RESET} Added edge: ${message}`);
+        } else {
+          store.removeEdge(edge.from_id, edge.to_id, edge.edge_type);
+          logCliOutput(
+            `${color.GREEN}✓${color.RESET} Removed edge: ${message}`,
+          );
+        }
+      });
+    });
+
+  planCommand
+    .command("set <id>")
+    .description("Manually override status, SP, or health")
+    .option("--status <status>", "Set status")
+    .option("--sp <sp>", "Set SP estimate")
+    .option("--health <health>", "Set health (GREEN/YELLOW/RED)")
+    .action(async (id, options) => {
+      await withSignal("plan set", async () => {
+        const projectId = resolveProjectId(process.cwd());
+        const store = new PlanStore(projectId);
+        guardEmpty(store);
+
+        const updates: Record<string, unknown> = {};
+        if (options.status) updates.status = options.status;
+        if (options.sp) updates.sp_estimate = Number.parseInt(options.sp, 10);
+        if (options.health) updates.health = options.health;
+
+        if (Object.keys(updates).length === 0) {
+          throw new CommandError(
+            "Provide at least one option: --status, --sp, or --health",
+            1,
+          );
+        }
+
+        store.updatePhase(id, updates);
+        logCliOutput(
+          `${color.GREEN}✓${color.RESET} Updated phase ${color.BOLD}${id}${color.RESET}: ${Object.entries(
+            updates,
+          )
+            .map(([k, v]) => `${k}=${v}`)
+            .join(", ")}`,
+        );
+      });
+    });
+
+  planCommand
+    .command("viz")
+    .description("Open interactive graph visualization")
+    .option("--dry-run", "Show visualization data without opening browser")
+    .option("--output <path>", "Write HTML to specific path instead of opening")
+    .action(async (options) => {
+      await withSignal("plan viz", async () => {
+        const projectId = resolveProjectId(process.cwd());
+        const store = new PlanStore(projectId);
+        guardEmpty(store);
+
+        const status = store.getPlanStatus();
+        const solver = await store.getSolver();
+        const { path: criticalPath } = solver.getCriticalPath();
+
+        const { generatePlanVizHtml } = await import("../server/plan-viz.js");
+        const html = generatePlanVizHtml(
+          status.features,
+          status.features.flatMap((f) => f.phases),
+          status.edges,
+          criticalPath.map((p) => p.id),
+        );
+
+        if (options.dryRun) {
+          logCliOutput("Dry Run: Generated Visualization HTML (truncated)");
+          logCliOutput(`${html.substring(0, 500)}...`);
+          return;
+        }
+
+        const tempPath =
+          options.output || path.join(process.cwd(), "dist", "plan-viz.html");
+        const distDir = path.dirname(tempPath);
+        if (!fs.existsSync(distDir)) {
+          fs.mkdirSync(distDir, { recursive: true });
+        }
+
+        fs.writeFileSync(tempPath, html, "utf-8");
+        logCliOutput(`Visualization generated: ${tempPath}`);
+
+        // Open in default browser
+        const { exec } = await import("node:child_process");
+        const openCmd = process.platform === "darwin" ? "open" : "xdg-open";
+        exec(`${openCmd} "${tempPath}"`, (err) => {
+          if (err) {
+            logCliError(`Could not open browser: ${err.message}`);
+            logCliOutput(`Open manually: file://${tempPath}`);
+          }
+        });
+      });
+    });
+
+  const reviewCommand = planCommand
+    .command("review")
+    .description("Review agent proposals for the build plan");
+
+  reviewCommand
+    .command("list")
+    .description("List pending proposals")
+    .option("--json", "Output in JSON format")
+    .action(async (options) => {
+      await withSignal("plan review list", async () => {
+        const projectId = resolveProjectId(process.cwd());
+        const store = new PlanStore(projectId);
+        const proposals = store.listProposals();
+
+        if (options.json) {
+          logCliOutput(JSON.stringify(proposals, null, 2));
+          return;
+        }
+
+        if (proposals.length === 0) {
+          logCliOutput("No pending proposals.");
+          return;
+        }
+
+        const { BOLD, CYAN, RESET, DIM, YELLOW, GREEN, RED } = color;
+        logCliOutput(`${BOLD}Build Plan Proposals${RESET}\n`);
+
+        for (const p of proposals) {
+          let statusColor = YELLOW;
+          if (p.status === "APPROVED") statusColor = GREEN;
+          if (p.status === "REJECTED") statusColor = RED;
+
+          logCliOutput(
+            `${BOLD}${CYAN}${p.id.padEnd(12)}${RESET} [${statusColor}${p.status}${RESET}] ${BOLD}${p.proposal_type}${RESET} for ${p.target_phase_id}`,
+          );
+          if (p.detail) logCliOutput(`  ${DIM}Detail: ${p.detail}${RESET}`);
+          if (p.source) logCliOutput(`  ${DIM}Source: ${p.source}${RESET}`);
+          logCliOutput("");
+        }
+      });
+    });
+
+  reviewCommand
+    .command("approve <id>")
+    .description("Approve a proposal")
+    .action(async (id) => {
+      await withSignal("plan review approve", async () => {
+        const projectId = resolveProjectId(process.cwd());
+        const store = new PlanStore(projectId);
+        store.approveProposal(id);
+        logCliOutput(
+          `${color.GREEN}✓${color.RESET} Approved proposal ${color.BOLD}${id}${color.RESET}`,
+        );
+      });
+    });
+
+  reviewCommand
+    .command("reject <id>")
+    .description("Reject a proposal")
+    .action(async (id) => {
+      await withSignal("plan review reject", async () => {
+        const projectId = resolveProjectId(process.cwd());
+        const store = new PlanStore(projectId);
+        store.rejectProposal(id);
+        logCliOutput(
+          `${color.RED}✗${color.RESET} Rejected proposal ${color.BOLD}${id}${color.RESET}`,
+        );
+      });
+    });
+  return planCommand;
 }
 
-planCommand
-  .command("status")
-  .description("View project status from the build plan graph")
-  .option("--json", "Output in JSON format")
-  .action(async (options, command) => {
-    await withSignal("plan status", async () => {
-      const projectId = resolveProjectId(process.cwd());
-      const store = new PlanStore(projectId);
-      guardEmpty(store);
-      const out = options.json ? createOutput("json") : resolveFormat(command);
-      const status = store.getPlanStatus();
-
-      if (out.isJson) {
-        out.write(status);
-        return;
-      }
-
-      const { BOLD, CYAN, GREEN, YELLOW, RED, DIM, RESET } = color;
-      console.log(`${BOLD}Build Plan Status${RESET}\n`);
-
-      for (const f of status.features) {
-        let statusColor = RESET;
-        if (f.status === "DONE") statusColor = GREEN;
-        else if (f.status === "SHIPPED") statusColor = GREEN;
-        else if (f.status === "IN_PROGRESS") statusColor = YELLOW;
-        else if (f.status === "SPECIFIED" || f.status === "DEFINED")
-          statusColor = CYAN;
-
-        console.log(
-          `${BOLD}${statusColor}${f.id.padEnd(10)}${RESET} ${BOLD}${f.name}${RESET} [${statusColor}${f.status}${RESET}]`,
-        );
-
-        for (const p of f.phases) {
-          let pColor = DIM;
-          if (p.status === "DONE" || p.status === "SHIPPED") pColor = GREEN;
-          else if (p.status === "IN_PROGRESS") pColor = YELLOW;
-
-          let healthIcon = " ";
-          if (p.health === "YELLOW") healthIcon = `${YELLOW}⚠${RESET}`;
-          else if (p.health === "RED") healthIcon = `${RED}✗${RESET}`;
-          else if (p.health === "GREEN") healthIcon = `${GREEN}✓${RESET}`;
-
-          console.log(
-            `  ${pColor}↳ ${p.id.padEnd(12)}${RESET} ${p.name.padEnd(35)} ${pColor}${p.status.padEnd(12)}${RESET} ${healthIcon} ${DIM}(${p.sp_estimate} SP)${RESET}`,
-          );
-        }
-        console.log("");
-      }
-    });
-  });
-
-planCommand
-  .command("seed")
-  .description("Seed the build plan graph from 000-build-plan.md")
-  .option("--dry-run", "Show what would be seeded without writing to DB")
-  .action(async (options) => {
-    await withSignal("plan seed", async () => {
-      const projectRoot = process.cwd();
-      const planPath = path.join(projectRoot, "specs", "000-build-plan.md");
-      const projectId = resolveProjectId(projectRoot);
-      const store = new PlanStore(projectId);
-
-      if (options.dryRun) {
-        const { parseBuildPlan } = await import("../utils/parser-plan.js");
-        const payload = parseBuildPlan(planPath);
-        console.log("Dry Run: Seed Payload extracted from 000-build-plan.md");
-        console.log(JSON.stringify(payload, null, 2));
-        return;
-      }
-
-      store.seedFromFile(planPath);
-      console.log(
-        "Successfully seeded build plan graph from 000-build-plan.md",
-      );
-    });
-  });
-
-planCommand
-  .command("init")
-  .description("Initialize the build plan graph by scanning specs/ directory")
-  .option("--dry-run", "Show discovered features without writing to DB")
-  .action(async (options) => {
-    await withSignal("plan init", async () => {
-      const projectRoot = process.cwd();
-      const specsDir = path.join(projectRoot, "specs");
-      const projectId = resolveProjectId(projectRoot);
-      const store = new PlanStore(projectId);
-
-      if (options.dryRun) {
-        const readiness = store.scanReadiness(specsDir);
-        console.log("Dry Run: Discovered features from specs/");
-        for (const r of readiness) {
-          const phaseInfo =
-            r.phases.length > 0
-              ? ` (${r.phases.length} phases: ${r.phases.map((p) => `P${p.number}`).join(", ")})`
-              : "";
-          console.log(`  ${r.featureId}: L${r.level} ${r.status}${phaseInfo}`);
-        }
-        const totalPhases = readiness.reduce(
-          (sum, r) => sum + r.phases.length,
-          0,
-        );
-        console.log(
-          `\nTotal: ${readiness.length} features, ${totalPhases} phases`,
-        );
-        return;
-      }
-
-      const { added, skipped, phasesInserted, pruned, reconciled } =
-        store.initFromSpecs(specsDir);
-      console.log(
-        `Initialized build plan graph. Added: ${added.length}, Skipped (existing): ${skipped.length}, Phases: ${phasesInserted}`,
-      );
-      if (added.length > 0) console.log(`  Added: ${added.join(", ")}`);
-      if (pruned.length > 0)
-        console.log(`  Pruned (no specs/ dir): ${pruned.join(", ")}`);
-      if (reconciled.length > 0) {
-        console.log("  Reconciled status:");
-        for (const r of reconciled) console.log(`    ${r}`);
-      }
-    });
-  });
-
-// --- Phase 2+ Subcommands (Placeholders with guards) ---
-
-planCommand
-  .command("next")
-  .description("Show items ready to work on (dependencies satisfied)")
-  .option("--json", "Output in JSON format")
-  .action(async (options, command) => {
-    await withSignal("plan next", async () => {
-      const projectId = resolveProjectId(process.cwd());
-      const store = new PlanStore(projectId);
-      guardEmpty(store);
-      const solver = await store.getSolver();
-      const ready = solver.getReadyQueue();
-      const out = options.json ? createOutput("json") : resolveFormat(command);
-
-      if (out.isJson) {
-        out.write(ready);
-        return;
-      }
-
-      if (ready.length === 0) {
-        console.log("All build plan items complete.");
-        return;
-      }
-
-      const { BOLD, GREEN, DIM, RESET } = color;
-      console.log(`${BOLD}Ready Work Items${RESET}\n`);
-      for (const p of ready) {
-        console.log(
-          `${BOLD}${GREEN}${p.id.padEnd(12)}${RESET} ${p.name.padEnd(35)} ${DIM}(${p.sp_estimate} SP)${RESET}`,
-        );
-      }
-    });
-  });
-
-planCommand
-  .command("critical")
-  .description("Show the critical path through the build plan")
-  .option("--json", "Output in JSON format")
-  .action(async (options, command) => {
-    await withSignal("plan critical", async () => {
-      const projectId = resolveProjectId(process.cwd());
-      const store = new PlanStore(projectId);
-      guardEmpty(store);
-      const solver = await store.getSolver();
-      const { path, warnings } = solver.getCriticalPath();
-      const out = options.json ? createOutput("json") : resolveFormat(command);
-
-      if (out.isJson) {
-        out.write({ path, warnings });
-        return;
-      }
-
-      const { BOLD, RED, YELLOW, RESET, DIM } = color;
-      console.log(`${BOLD}Critical Path${RESET}\n`);
-
-      if (warnings.length > 0) {
-        for (const w of warnings) {
-          console.warn(`${YELLOW}${w}${RESET}`);
-        }
-        console.log("");
-      }
-
-      console.log(
-        path
-          .map(
-            (p) =>
-              `${BOLD}${RED}${p.id}${RESET} ${DIM}(${p.sp_estimate} SP)${RESET}`,
-          )
-          .join(" → "),
-      );
-    });
-  });
-
-planCommand
-  .command("waves")
-  .description(
-    "Show parallel execution waves for remaining work (--all for the whole plan)",
-  )
-  .option("--json", "Output in JSON format")
-  .option(
-    "--all",
-    "Include shipped phases — the plan of record, not current work",
-  )
-  .action(async (options, command) => {
-    await withSignal("plan waves", async () => {
-      const projectId = resolveProjectId(process.cwd());
-      const store = new PlanStore(projectId);
-      guardEmpty(store);
-      const solver = await store.getSolver();
-      // Default to remaining work: a wave list that opens on phases shipped
-      // months ago cannot answer "what can I ship in parallel now".
-      const waves = options.all
-        ? solver.getTopologicalWaves()
-        : solver.getRemainingWaves();
-      const out = options.json ? createOutput("json") : resolveFormat(command);
-
-      if (out.isJson) {
-        out.write(waves);
-        return;
-      }
-
-      const { BOLD, CYAN, RESET, DIM } = color;
-      console.log(
-        `${BOLD}Parallel Execution Waves${RESET}${options.all ? `${DIM} (entire plan)${RESET}` : `${DIM} (remaining work)${RESET}`}\n`,
-      );
-
-      if (waves.length === 0) {
-        console.log("All build plan items complete.");
-        return;
-      }
-
-      waves.forEach((wave, i) => {
-        console.log(`${BOLD}${CYAN}Wave ${i + 1}${RESET}`);
-        for (const p of wave) {
-          console.log(
-            `  ${p.id.padEnd(12)} ${p.name.padEnd(35)} ${DIM}(${p.sp_estimate} SP)${RESET}`,
-          );
-        }
-        console.log("");
-      });
-
-      if (!options.all) {
-        console.log(
-          `${DIM}Wave 1 is dependency-ready, not necessarily parallel-safe: check for shared migrations, overlapping deliverables, and single-instance test resources before running two at once.${RESET}`,
-        );
-      }
-    });
-  });
-
-planCommand
-  .command("verify")
-  .description("Detect drift between plan and actual state")
-  .option("--json", "Output in JSON format")
-  .action(async (options) => {
-    await withSignal("plan verify", async () => {
-      const projectId = resolveProjectId(process.cwd());
-      const store = new PlanStore(projectId);
-      guardEmpty(store);
-
-      const { DriftDetector } = await import("../engine/drift-detector.js");
-      const status = store.getPlanStatus();
-      const detector = new DriftDetector({
-        features: status.features,
-        phases: status.features.flatMap((f) => f.phases),
-      });
-
-      const projectRoot = process.cwd();
-      const results = detector.verify(projectRoot);
-
-      // The detector compares specs/ against the graph. It cannot see the
-      // graph's own edges, so ask the solver whether the statuses are
-      // self-consistent: a phase recorded finished before its predecessors is
-      // either a status promoted without evidence or a missing edge.
-      const inversions = (await store.getSolver()).getStatusInversions();
-
-      if (options.json) {
-        console.log(JSON.stringify({ results, inversions }, null, 2));
-        return;
-      }
-
-      const drifted = results.filter((r) => r.status === "DRIFTED");
-      const missing = results.filter(
-        (r) =>
-          r.status === "MISSING_FROM_GRAPH" ||
-          r.status === "MISSING_FROM_SPECS",
-      );
-      const clean = results.filter((r) => r.status === "CLEAN");
-
-      if (inversions.length > 0) {
-        console.log(
-          `\n${color.RED}Status Inversions (${inversions.length}):${color.RESET}`,
-        );
-        console.log(
-          `${color.DIM}  A phase recorded finished before the work it depends on.${color.RESET}`,
-        );
-        for (const inv of inversions) {
-          console.log(
-            `  ${color.RED}✗${color.RESET} ${inv.phaseId} is finished but waits on: ${inv.blockedBy.join(", ")}`,
-          );
-        }
-        console.log(
-          `${color.DIM}  Either the status was promoted without a passing gate, or an edge is missing.${color.RESET}`,
-        );
-      }
-
-      // Keep this exact wording: ship-feature.sh greps for "No drift".
-      if (
-        drifted.length === 0 &&
-        missing.length === 0 &&
-        inversions.length === 0
-      ) {
-        console.log(
-          `${color.GREEN}✓${color.RESET} No drift detected. ${clean.length} phase(s) clean.`,
-        );
-        return;
-      }
-
-      if (drifted.length > 0) {
-        console.log(
-          `\n${color.RED}Drift Detected (${drifted.length}):${color.RESET}`,
-        );
-        for (const d of drifted) {
-          console.log(
-            `  ${color.RED}✗${color.RESET} ${d.featureId}${d.phaseId ? `/${d.phaseId}` : ""}: ${d.reason}`,
-          );
-        }
-      }
-
-      if (missing.length > 0) {
-        console.log(
-          `\n${color.YELLOW}Missing (${missing.length}):${color.RESET}`,
-        );
-        for (const m of missing) {
-          console.log(
-            `  ${color.YELLOW}⚠${color.RESET} ${m.featureId}: ${m.reason}`,
-          );
-        }
-      }
-
-      if (clean.length > 0) {
-        console.log(
-          `\n${color.GREEN}Clean (${clean.length}):${color.RESET} ${clean.map((c) => c.phaseId || c.featureId).join(", ")}`,
-        );
-      }
-    });
-  });
-
-planCommand
-  .command("render")
-  .description("Regenerate 000-build-plan.md from the graph state")
-  .option("--stdout", "Print to stdout instead of writing to file")
-  .action(async (options) => {
-    await withSignal("plan render", async () => {
-      const projectId = resolveProjectId(process.cwd());
-      const store = new PlanStore(projectId);
-      guardEmpty(store);
-      if (options.stdout) {
-        console.log(await store.render());
-        return;
-      }
-
-      const projectRoot = process.cwd();
-      const planPath = path.join(projectRoot, "specs", "000-build-plan.md");
-      const adapter = createSqlitePlanStoreAdapter({ projectId, db: getDb() });
-      await adapter.renderToMarkdown(planPath);
-      console.log(`Successfully regenerated ${planPath} from graph state.`);
-    });
-  });
-
-planCommand
-  .command("add <type> <id> [name]")
-  .description("Add a feature or phase to the build plan")
-  .option(
-    "--feature-id <featureId>",
-    "Parent feature (required for phase type)",
-  )
-  .option("--sp <sp>", "SP estimate (for phases)", "0")
-  .action(async (type, id, name, options) => {
-    await withSignal("plan add", async () => {
-      const projectId = resolveProjectId(process.cwd());
-      const store = new PlanStore(projectId);
-
-      if (type === "feature") {
-        store.addFeature({
-          id,
-          name: name || id,
-          status: "PLANNED",
-          sp_total: 0,
-        });
-        console.log(
-          `${color.GREEN}✓${color.RESET} Added feature ${color.BOLD}${id}${color.RESET}`,
-        );
-      } else if (type === "phase") {
-        if (!options.featureId) {
-          throw new CommandError("Phase requires --feature-id <featureId>", 1);
-        }
-        store.addPhase({
-          id,
-          feature_id: options.featureId,
-          name: name || id,
-          status: "PLANNED",
-          health: "GREEN",
-          sp_estimate: Number.parseInt(options.sp, 10) || 0,
-          seq: 0,
-        });
-        console.log(
-          `${color.GREEN}✓${color.RESET} Added phase ${color.BOLD}${id}${color.RESET} to feature ${options.featureId}`,
-        );
-      } else {
-        throw new CommandError(
-          `Unknown type '${type}'. Use 'feature' or 'phase'.`,
-          1,
-        );
-      }
-    });
-  });
-
-planCommand
-  .command("remove <id>")
-  .description("Remove a feature or phase from the build plan")
-  .option("--type <type>", "Specify 'feature' or 'phase'", "phase")
-  .action(async (id, options) => {
-    await withSignal("plan remove", async () => {
-      const projectId = resolveProjectId(process.cwd());
-      const store = new PlanStore(projectId);
-      guardEmpty(store);
-
-      if (options.type === "feature") {
-        const { deleteFeature } = await import("../db/plan.js");
-        deleteFeature(id, projectId);
-        console.log(
-          `${color.GREEN}✓${color.RESET} Removed feature ${color.BOLD}${id}${color.RESET} and all its phases/edges`,
-        );
-      } else {
-        store.removePhase(id);
-        console.log(
-          `${color.GREEN}✓${color.RESET} Removed phase ${color.BOLD}${id}${color.RESET}`,
-        );
-      }
-    });
-  });
-
-planCommand
-  .command("dep <action> <from> [to]")
-  .description(
-    "Manage dependency edges (add/remove). Direction is prerequisite → dependent. " +
-      "Recommended: `dep add <feature> --needs <prerequisite>`.",
-  )
-  .option("--type <edgeType>", "Edge type", "DEPENDS_ON")
-  .option(
-    "--needs <prerequisite>",
-    "Declare that <from> depends on <prerequisite> (unambiguous direction)",
-  )
-  .action(async (action, from, to, options) => {
-    await withSignal("plan dep", async () => {
-      const projectId = resolveProjectId(process.cwd());
-      const store = new PlanStore(projectId);
-
-      if (action !== "add" && action !== "remove") {
-        throw new CommandError(
-          `Unknown action '${action}'. Use 'add' or 'remove'.`,
-          1,
-        );
-      }
-
-      const { edge, message } = resolveDepEdge(
-        from,
-        to,
-        options.needs,
-        options.type,
-      );
-
-      if (action === "add") {
-        store.addEdge(edge);
-        console.log(`${color.GREEN}✓${color.RESET} Added edge: ${message}`);
-      } else {
-        store.removeEdge(edge.from_id, edge.to_id, edge.edge_type);
-        console.log(`${color.GREEN}✓${color.RESET} Removed edge: ${message}`);
-      }
-    });
-  });
-
-planCommand
-  .command("set <id>")
-  .description("Manually override status, SP, or health")
-  .option("--status <status>", "Set status")
-  .option("--sp <sp>", "Set SP estimate")
-  .option("--health <health>", "Set health (GREEN/YELLOW/RED)")
-  .action(async (id, options) => {
-    await withSignal("plan set", async () => {
-      const projectId = resolveProjectId(process.cwd());
-      const store = new PlanStore(projectId);
-      guardEmpty(store);
-
-      const updates: Record<string, unknown> = {};
-      if (options.status) updates.status = options.status;
-      if (options.sp) updates.sp_estimate = Number.parseInt(options.sp, 10);
-      if (options.health) updates.health = options.health;
-
-      if (Object.keys(updates).length === 0) {
-        throw new CommandError(
-          "Provide at least one option: --status, --sp, or --health",
-          1,
-        );
-      }
-
-      store.updatePhase(id, updates);
-      console.log(
-        `${color.GREEN}✓${color.RESET} Updated phase ${color.BOLD}${id}${color.RESET}: ${Object.entries(
-          updates,
-        )
-          .map(([k, v]) => `${k}=${v}`)
-          .join(", ")}`,
-      );
-    });
-  });
-
-planCommand
-  .command("viz")
-  .description("Open interactive graph visualization")
-  .option("--dry-run", "Show visualization data without opening browser")
-  .option("--output <path>", "Write HTML to specific path instead of opening")
-  .action(async (options) => {
-    await withSignal("plan viz", async () => {
-      const projectId = resolveProjectId(process.cwd());
-      const store = new PlanStore(projectId);
-      guardEmpty(store);
-
-      const status = store.getPlanStatus();
-      const solver = await store.getSolver();
-      const { path: criticalPath } = solver.getCriticalPath();
-
-      const { generatePlanVizHtml } = await import("../server/plan-viz.js");
-      const html = generatePlanVizHtml(
-        status.features,
-        status.features.flatMap((f) => f.phases),
-        status.edges,
-        criticalPath.map((p) => p.id),
-      );
-
-      if (options.dryRun) {
-        console.log("Dry Run: Generated Visualization HTML (truncated)");
-        console.log(`${html.substring(0, 500)}...`);
-        return;
-      }
-
-      const tempPath =
-        options.output || path.join(process.cwd(), "dist", "plan-viz.html");
-      const distDir = path.dirname(tempPath);
-      if (!fs.existsSync(distDir)) {
-        fs.mkdirSync(distDir, { recursive: true });
-      }
-
-      fs.writeFileSync(tempPath, html, "utf-8");
-      console.log(`Visualization generated: ${tempPath}`);
-
-      // Open in default browser
-      const { exec } = await import("node:child_process");
-      const openCmd = process.platform === "darwin" ? "open" : "xdg-open";
-      exec(`${openCmd} "${tempPath}"`, (err) => {
-        if (err) {
-          console.error(`Could not open browser: ${err.message}`);
-          console.log(`Open manually: file://${tempPath}`);
-        }
-      });
-    });
-  });
-
-const reviewCommand = planCommand
-  .command("review")
-  .description("Review agent proposals for the build plan");
-
-reviewCommand
-  .command("list")
-  .description("List pending proposals")
-  .option("--json", "Output in JSON format")
-  .action(async (options) => {
-    await withSignal("plan review list", async () => {
-      const projectId = resolveProjectId(process.cwd());
-      const store = new PlanStore(projectId);
-      const proposals = store.listProposals();
-
-      if (options.json) {
-        console.log(JSON.stringify(proposals, null, 2));
-        return;
-      }
-
-      if (proposals.length === 0) {
-        console.log("No pending proposals.");
-        return;
-      }
-
-      const { BOLD, CYAN, RESET, DIM, YELLOW, GREEN, RED } = color;
-      console.log(`${BOLD}Build Plan Proposals${RESET}\n`);
-
-      for (const p of proposals) {
-        let statusColor = YELLOW;
-        if (p.status === "APPROVED") statusColor = GREEN;
-        if (p.status === "REJECTED") statusColor = RED;
-
-        console.log(
-          `${BOLD}${CYAN}${p.id.padEnd(12)}${RESET} [${statusColor}${p.status}${RESET}] ${BOLD}${p.proposal_type}${RESET} for ${p.target_phase_id}`,
-        );
-        if (p.detail) console.log(`  ${DIM}Detail: ${p.detail}${RESET}`);
-        if (p.source) console.log(`  ${DIM}Source: ${p.source}${RESET}`);
-        console.log("");
-      }
-    });
-  });
-
-reviewCommand
-  .command("approve <id>")
-  .description("Approve a proposal")
-  .action(async (id) => {
-    await withSignal("plan review approve", async () => {
-      const projectId = resolveProjectId(process.cwd());
-      const store = new PlanStore(projectId);
-      store.approveProposal(id);
-      console.log(
-        `${color.GREEN}✓${color.RESET} Approved proposal ${color.BOLD}${id}${color.RESET}`,
-      );
-    });
-  });
-
-reviewCommand
-  .command("reject <id>")
-  .description("Reject a proposal")
-  .action(async (id) => {
-    await withSignal("plan review reject", async () => {
-      const projectId = resolveProjectId(process.cwd());
-      const store = new PlanStore(projectId);
-      store.rejectProposal(id);
-      console.log(
-        `${color.RED}✗${color.RESET} Rejected proposal ${color.BOLD}${id}${color.RESET}`,
-      );
-    });
-  });
+export const planCommand = createPlanCommand();

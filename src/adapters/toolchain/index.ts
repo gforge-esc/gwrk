@@ -21,9 +21,7 @@ export {
   getBuildCommand,
 } from "./manifest-discovery.js";
 
-export function createToolchainAdapter(
-  profile: ProjectProfile,
-): ToolchainPort {
+export function createToolchainAdapter(profile: ProjectProfile): ToolchainPort {
   const sourceExtension = getSourceExtension(profile);
   const testExtension = getTestExtension(profile);
   return {

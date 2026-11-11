@@ -171,12 +171,14 @@ pnpm exec vitest run src/adapters/sqlite/store-isolation.test.ts src/db/db.test.
 | TR-014 | unit | `src/utils/output.test.ts` | Text and JSON `CommandOutput` contracts pass |
 | TR-015 | unit | `src/utils/signal.test.ts` | Operational `[exit:N \| Xs]` stderr signal contract passes |
 | TR-016 | integration | `src/commands/skill.test.ts` | CLI `--agent` and `--format json` options pass without global mutation |
+| TR-017 | integration | `src/cli.ux.test.ts` | Each command tree retains help for registered subcommands |
+| TR-018 | integration | `src/commands/gate.test.ts` | Each new command tree registers the gate command |
 
 #### Done When
 
 ```bash
 pnpm build
-pnpm exec vitest run src/adapters/cli/output-scope.test.ts src/utils/output.test.ts src/utils/signal.test.ts src/utils/agent-layer.test.ts src/commands/skill.test.ts src/cli.test.ts src/cli.consistency.test.ts src/cli.option-collisions.test.ts src/architecture.test.ts
+pnpm exec vitest run src/adapters/cli/output-scope.test.ts src/utils/output.test.ts src/utils/signal.test.ts src/utils/agent-layer.test.ts src/commands/skill.test.ts src/cli.test.ts src/cli.consistency.test.ts src/cli.option-collisions.test.ts src/cli.ux.test.ts src/commands/gate.test.ts src/architecture.test.ts
 ```
 
 ## Coverage matrix

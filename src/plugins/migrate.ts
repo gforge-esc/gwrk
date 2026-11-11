@@ -6,6 +6,11 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { parse, stringify } from "yaml";
+import {
+  logCliError,
+  logCliOutput,
+  warnCli,
+} from "../adapters/cli/output-scope.js";
 
 const FRONTMATTER_REGEX = /^---\n([\s\S]+?)\n---\n?([\s\S]*)$/;
 
@@ -24,10 +29,10 @@ export async function migratePlugins(
   try {
     const stats = await fs.stat(agentsDir);
     if (stats.isDirectory()) {
-      console.warn(
+      warnCli(
         "\n[DEPRECATED] Legacy '.agents/' directory detected. This directory is no longer supported.",
       );
-      console.warn(
+      warnCli(
         "Please run 'gwrk init' to seed builtin plugins to ~/.gwrk/ and delete '.agents/'.\n",
       );
     }
@@ -124,14 +129,16 @@ async function migrateSkill(
     }
 
     if (options.dryRun) {
-      console.log(`[DRY RUN] Would migrate skill '${name}' to ${skillDestDir}`);
+      logCliOutput(
+        `[DRY RUN] Would migrate skill '${name}' to ${skillDestDir}`,
+      );
       return;
     }
 
     // Check if destination exists
     try {
       await fs.stat(skillDestDir);
-      console.log(`Skipping '${name}' — already installed.`);
+      logCliOutput(`Skipping '${name}' — already installed.`);
       return;
     } catch {
       // Destination does not exist, proceed
@@ -149,9 +156,9 @@ async function migrateSkill(
     // Write SKILL.md (preserving the original content)
     await fs.writeFile(path.join(skillDestDir, "SKILL.md"), content);
 
-    console.log(`Migrated skill '${name}'.`);
+    logCliOutput(`Migrated skill '${name}'.`);
   } catch (e) {
-    console.error(`Failed to migrate skill '${name}':`, e);
+    logCliError(`Failed to migrate skill '${name}':`, e);
   }
 }
 
@@ -185,7 +192,7 @@ async function migrateWorkflow(
     };
 
     if (options.dryRun) {
-      console.log(
+      logCliOutput(
         `[DRY RUN] Would migrate workflow '${name}' to ${workflowDestDir}`,
       );
       return;
@@ -194,7 +201,7 @@ async function migrateWorkflow(
     // Check if destination exists
     try {
       await fs.stat(workflowDestDir);
-      console.log(`Skipping workflow '${name}' — already installed.`);
+      logCliOutput(`Skipping workflow '${name}' — already installed.`);
       return;
     } catch {
       // Destination does not exist, proceed
@@ -207,8 +214,8 @@ async function migrateWorkflow(
     );
     await fs.writeFile(path.join(workflowDestDir, `${name}.md`), content);
 
-    console.log(`Migrated workflow '${name}'.`);
+    logCliOutput(`Migrated workflow '${name}'.`);
   } catch (e) {
-    console.error(`Failed to migrate workflow '${name}':`, e);
+    logCliError(`Failed to migrate workflow '${name}':`, e);
   }
 }

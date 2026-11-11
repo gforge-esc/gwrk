@@ -5,6 +5,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { z } from "zod";
+import { warnCli } from "../adapters/cli/output-scope.js";
 
 export const ExecutionUsageSchema = z.object({
   inputTokens: z.number().optional(),
@@ -93,12 +94,12 @@ export function loadManifests(featureDir: string): ExecutionManifest[] {
       if (result.success) {
         manifests.push(result.data);
       } else {
-        console.warn(
+        warnCli(
           `Skipping invalid manifest ${filePath}: ${result.error.message}`,
         );
       }
     } catch (error) {
-      console.warn(`Error reading manifest ${filePath}: ${error}`);
+      warnCli(`Error reading manifest ${filePath}: ${error}`);
     }
   }
 

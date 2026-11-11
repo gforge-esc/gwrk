@@ -3,45 +3,49 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { Command } from "commander";
+import { logCliOutput } from "../adapters/cli/output-scope.js";
 import { isPidRunning, readPid } from "../server/pid.js";
 import { loadDevice } from "../utils/device.js";
 import { CommandError, withSignal } from "../utils/signal.js";
 
-export const deviceCommand = new Command("device")
-  .description("Show device identity and role")
-  .action(async () => {
-    await withSignal("device", async () => {
-      const device = loadDevice();
-      if (!device) {
-        throw new CommandError(
-          "No device registered. Run 'gwrk init' first.",
-          1,
-        );
-      }
-
-      const since = device.createdAt.split("T")[0];
-      console.log();
-      console.log(`  Device:   ${device.id.slice(0, 8)}`);
-      console.log(`  Hostname: ${device.hostname}`);
-      console.log(`  Role:     ${device.role}`);
-      console.log(`  Since:    ${since}`);
-      console.log();
-
-      if (device.role === "server") {
-        const pid = readPid();
-        const running = pid ? isPidRunning(pid) : false;
-        if (running) {
-          console.log(`  Daemon:   running (pid ${pid})`);
-        } else {
-          console.log("  Daemon:   not running");
+export const createDeviceCommand = () =>
+  new Command("device")
+    .description("Show device identity and role")
+    .action(async () => {
+      await withSignal("device", async () => {
+        const device = loadDevice();
+        if (!device) {
+          throw new CommandError(
+            "No device registered. Run 'gwrk init' first.",
+            1,
+          );
         }
-        console.log("  Features: harvest, Slack, heartbeat, dispatch");
-      } else {
-        console.log(
-          "  Agent work runs locally. Harvest handled by the server via GitHub.",
-        );
-        console.log("  To switch roles: gwrk init --server");
-      }
-      console.log();
+
+        const since = device.createdAt.split("T")[0];
+        logCliOutput();
+        logCliOutput(`  Device:   ${device.id.slice(0, 8)}`);
+        logCliOutput(`  Hostname: ${device.hostname}`);
+        logCliOutput(`  Role:     ${device.role}`);
+        logCliOutput(`  Since:    ${since}`);
+        logCliOutput();
+
+        if (device.role === "server") {
+          const pid = readPid();
+          const running = pid ? isPidRunning(pid) : false;
+          if (running) {
+            logCliOutput(`  Daemon:   running (pid ${pid})`);
+          } else {
+            logCliOutput("  Daemon:   not running");
+          }
+          logCliOutput("  Features: harvest, Slack, heartbeat, dispatch");
+        } else {
+          logCliOutput(
+            "  Agent work runs locally. Harvest handled by the server via GitHub.",
+          );
+          logCliOutput("  To switch roles: gwrk init --server");
+        }
+        logCliOutput();
+      });
     });
-  });
+
+export const deviceCommand = createDeviceCommand();
