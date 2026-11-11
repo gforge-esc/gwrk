@@ -142,23 +142,25 @@ describe("credential guard", () => {
   );
 
   it("rejects flat credential headers decoded from fixture stdout", () => {
-    const evidence = (headers: string[]) => ({
-      sanitizedOutput: `stdout: ${JSON.stringify(headers)}`,
-    });
+    const headers = [
+      "Content-Type",
+      "text/plain",
+      "Set-Cookie",
+      "session=fixture-only",
+    ];
     expect(() =>
-      assertNoSecretMaterial(
-        evidence([
-          "Content-Type",
-          "text/plain",
-          "Set-Cookie",
-          "session=fixture-only",
-        ]),
-      ),
+      assertNoSecretMaterial({
+        sanitizedOutput: `stdout: ${JSON.stringify(headers)}`,
+      }),
     ).toThrow(/secret material/i);
+  });
+
+  it("allows Cookie as a Vary value in flat headers decoded from fixture stdout", () => {
+    const headers = ["Content-Type", "text/plain", "Vary", "Cookie"];
     expect(() =>
-      assertNoSecretMaterial(
-        evidence(["Content-Type", "text/plain", "Vary", "Cookie"]),
-      ),
+      assertNoSecretMaterial({
+        sanitizedOutput: `stdout: ${JSON.stringify(headers)}`,
+      }),
     ).not.toThrow();
   });
 
