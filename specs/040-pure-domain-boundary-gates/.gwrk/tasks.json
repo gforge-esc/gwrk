@@ -17,7 +17,7 @@
           "title": "Create architecture-boundary.ts",
           "description": "NEW tests/helpers/architecture-boundary.ts. Check TypeScript syntax and layer rules",
           "status": "open",
-          "gateScript": "pnpm exec vitest run src/architecture.test.ts src/engine/harvest.test.ts src/engine/issues.test.ts",
+          "gateScript": "gates/T001-gate.sh",
           "sp": 2
         }
       ],
@@ -32,7 +32,7 @@
           "title": "Modify project-id.ts",
           "description": "MODIFY src/domain/project-id.ts. Compute the existing identity from supplied facts",
           "status": "open",
-          "gateScript": "pnpm exec vitest run src/domain/project-id.test.ts src/utils/project-id.test.ts src/db/runs.test.ts src/architecture.test.ts",
+          "gateScript": "gates/T002-gate.sh",
           "sp": 1
         },
         {
@@ -40,7 +40,7 @@
           "title": "Create project-id.ts",
           "description": "NEW src/adapters/git/project-id.ts. Discover the remote and main worktree through bounded Git commands",
           "status": "open",
-          "gateScript": "pnpm exec vitest run src/domain/project-id.test.ts src/utils/project-id.test.ts src/db/runs.test.ts src/architecture.test.ts",
+          "gateScript": "gates/T003-gate.sh",
           "sp": 2
         }
       ],
@@ -55,7 +55,7 @@
           "title": "Modify agent-config.ts",
           "description": "MODIFY src/domain/agent-config.ts. Validate and merge supplied registry layers",
           "status": "open",
-          "gateScript": "pnpm exec vitest run src/domain/agent-config.test.ts src/server/agent-registry.test.ts src/server/agent-registry.integration.test.ts src/utils/resolve-model.test.ts src/utils/resolve-agent.test.ts src/architecture.test.ts",
+          "gateScript": "gates/T004-gate.sh",
           "sp": 1
         },
         {
@@ -63,7 +63,7 @@
           "title": "Create registry-loader.ts",
           "description": "NEW src/adapters/agents/registry-loader.ts. Read registry files and keep startup failure handling at the boundary",
           "status": "open",
-          "gateScript": "pnpm exec vitest run src/domain/agent-config.test.ts src/server/agent-registry.test.ts src/server/agent-registry.integration.test.ts src/utils/resolve-model.test.ts src/utils/resolve-agent.test.ts src/architecture.test.ts",
+          "gateScript": "gates/T005-gate.sh",
           "sp": 2
         }
       ],
@@ -78,7 +78,7 @@
           "title": "Modify toolchain.ts",
           "description": "MODIFY src/domain/toolchain.ts. Resolve the build command from supplied facts",
           "status": "open",
-          "gateScript": "pnpm exec vitest run src/domain/toolchain.test.ts src/utils/toolchain-mapper.test.ts src/architecture.test.ts src/application/architecture/context.test.ts",
+          "gateScript": "gates/T006-gate.sh",
           "sp": 1
         },
         {
@@ -86,7 +86,7 @@
           "title": "Create manifest-discovery.ts",
           "description": "NEW src/adapters/toolchain/manifest-discovery.ts. Discover build manifests and preserve explicit overrides",
           "status": "open",
-          "gateScript": "pnpm exec vitest run src/domain/toolchain.test.ts src/utils/toolchain-mapper.test.ts src/architecture.test.ts src/application/architecture/context.test.ts",
+          "gateScript": "gates/T007-gate.sh",
           "sp": 2
         }
       ],
