@@ -483,6 +483,32 @@ describe("model qualification policy", () => {
     },
   );
 
+  it("rejects conflicting identities for the same executable route", () => {
+    const models = [
+      { ...model, supportedEfforts: ["high"] },
+      { ...model, family: "other-family", supportedEfforts: ["high"] },
+    ];
+    const catalog = (entries: typeof models) => ({
+      ...snapshot,
+      adapters: [{ ...report, models: entries }],
+    });
+    const route = { ...candidate, effort: "high" };
+    expect(checkCandidate(catalog(models), scope, route)).toEqual({
+      ok: false,
+      reason: "model-unavailable",
+    });
+    expect(checkCandidate(catalog([models[0]]), scope, route)).toEqual({
+      ok: true,
+    });
+    expect(
+      checkCandidate(
+        catalog([models[0], { ...models[1], supportedEfforts: ["low"] }]),
+        scope,
+        route,
+      ),
+    ).toEqual({ ok: true });
+  });
+
   it("checks the exact model, runner and effort against available catalog entries", () => {
     expect(checkCandidate(snapshot, scope, candidate)).toEqual({ ok: true });
     expect(

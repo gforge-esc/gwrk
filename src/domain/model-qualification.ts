@@ -122,13 +122,26 @@ export function checkCandidate(
   ) {
     return { ok: false, reason: "model-unavailable" };
   }
-  const models: DiscoveredModel[] = report.models.filter(
+  const visibleModels: DiscoveredModel[] = report.models.filter(
     (model) =>
       model?.backend === candidate.backend &&
       model.modelId === candidate.modelId &&
-      model.provider === candidate.provider &&
-      model.family === candidate.family &&
       model.hidden === false,
+  );
+  const effort = candidate.effort;
+  const routeMatches = visibleModels.filter(
+    (model) =>
+      effort === undefined ||
+      (Array.isArray(model.supportedEfforts) &&
+        model.supportedEfforts.includes(effort)),
+  );
+  if (routeMatches.length > 1)
+    return { ok: false, reason: "model-unavailable" };
+
+  const models = visibleModels.filter(
+    (model) =>
+      model.provider === candidate.provider &&
+      model.family === candidate.family,
   );
   if (models.length !== 1) return { ok: false, reason: "model-unavailable" };
   const { isDefault, supportedEfforts } = models[0];
