@@ -2,7 +2,9 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import { execFileSync } from "node:child_process";
 import fs from "node:fs";
+import { tmpdir } from "node:os";
 import path from "node:path";
 import { Command } from "commander";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -10,6 +12,10 @@ import { discoverGitIdentityFacts } from "../adapters/git/project-id.js";
 import { getDb, getTestDb } from "../db/index.js";
 import { normalizeRegistryRepo } from "../db/project-registry.js";
 import * as runsModule from "../db/runs.js";
+import {
+  listRoutingDecisions,
+  recordDecision,
+} from "../server/routing-decisions.js";
 import * as execModule from "../utils/exec.js";
 import * as uiModule from "../utils/format.js";
 import { resolveProjectId } from "../utils/project-id.js";
@@ -87,7 +93,6 @@ vi.mock("../db/runs.js", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../db/runs.js")>();
   return {
     ...actual,
-    ensureCheckoutProjectId: vi.fn(actual.ensureCheckoutProjectId),
     startRun: vi.fn().mockReturnValue(999),
     finishRun: vi.fn(),
     recordHistory: vi.fn(),
@@ -562,18 +567,67 @@ describe("BackendSelector Integration", () => {
   it("uses the verified checkout owner for routing and the run ledger", async () => {
     const { getBackendSelector } = await import("../server/index.js");
     const selector = getBackendSelector();
-    vi.mocked(runsModule.ensureCheckoutProjectId).mockReturnValueOnce("pre-origin-owner");
-
-    await program.parseAsync([
-      "node", "test", "ship", "001-cli-core", "1", "--legacy",
-    ]);
-
-    expect(selector.selectBackend).toHaveBeenCalledWith(
-      expect.objectContaining({ projectId: "pre-origin-owner" }),
+    const { startRun } =
+      await vi.importActual<typeof runsModule>("../db/runs.js");
+    const checkout = fs.realpathSync(
+      fs.mkdtempSync(path.join(tmpdir(), "gwrk-ship-origin-")),
     );
-    expect(runsModule.startRun).toHaveBeenCalledWith(
-      expect.objectContaining({ project_id: "pre-origin-owner" }),
-    );
+    const cwd = vi.spyOn(process, "cwd").mockReturnValue(checkout);
+    const feature = "001-cli-core";
+    try {
+      execFileSync("git", ["init", "--quiet", checkout]);
+      const spec = path.join(checkout, "specs", feature);
+      fs.mkdirSync(spec, { recursive: true });
+      fs.writeFileSync(path.join(spec, "spec.md"), "# Ship fixture\n");
+      const localId = resolveProjectId(checkout);
+      const priorRun = startRun(
+        { feature_id: feature, command: "local" },
+        routingDb,
+      );
+      execFileSync("git", [
+        "-C",
+        checkout,
+        "remote",
+        "add",
+        "origin",
+        "https://github.com/org/alpha.git",
+      ]);
+      const remoteId = resolveProjectId(checkout);
+      expect(remoteId).not.toBe(localId);
+
+      const selectBackend = vi.mocked(selector.selectBackend);
+      const select = selectBackend.getMockImplementation()!;
+      selectBackend.mockImplementationOnce(async (context) => {
+        const selection = await select(context);
+        recordDecision(
+          {
+            ...context,
+            selectedBackend: selection.backend,
+            reason: selection.reason,
+            probeStatus: selection.probeStatus,
+          },
+          routingDb,
+        );
+        return selection;
+      });
+      vi.mocked(runsModule.startRun).mockImplementationOnce(startRun);
+
+      await program.parseAsync(["node", "test", "ship", feature, "1", "--legacy"]);
+
+      const [selection] = selectBackend.mock.calls[0];
+      const runs = runsModule.listRuns(feature, localId, routingDb);
+      expect(runs).toMatchObject([
+        { command: "ship", project_id: localId },
+        { id: priorRun, command: "local", project_id: localId },
+      ]);
+      expect(listRoutingDecisions(localId, selection.runId, routingDb))
+        .toMatchObject([{ projectId: localId, feature }]);
+      expect(listRoutingDecisions(remoteId, selection.runId, routingDb))
+        .toEqual([]);
+    } finally {
+      cwd.mockRestore();
+      fs.rmSync(checkout, { recursive: true, force: true });
+    }
   });
 
   it("forwards the canonical checkout ID in a dry run", async () => {
