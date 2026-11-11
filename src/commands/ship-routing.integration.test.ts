@@ -841,7 +841,7 @@ describe("ship with the real AgentPort router", () => {
 
     expect(ShipOrchestrator).not.toHaveBeenCalled();
     expect(fs.existsSync(dbPath)).toBe(false);
-    expect(codex.isAvailable).not.toHaveBeenCalled();
+    expect(codex.isAvailable).toHaveBeenCalledOnce();
     const previewOutput = vi.mocked(console.log).mock.calls.flat().join("\n");
 
     await ship("--agent", "codex");
@@ -860,6 +860,118 @@ describe("ship with the real AgentPort router", () => {
       "backend: codex, model: codex-alternate, effort: low",
     );
   });
+
+  it("dispatches the selected project-local backend from a separate work directory", async () => {
+    const backend = "fixture-project-agent";
+    configureAgents(backend, [backend], "fixture-fast");
+    const homeDir = path.join(root, "home");
+    fs.mkdirSync(homeDir);
+    vi.stubEnv("HOME", homeDir);
+    vi.stubEnv("GWRK_HOME", path.join(homeDir, ".gwrk"));
+    const { AgentBackendRegistry } = await import(
+      "../plugins/agent-registry.js"
+    );
+    vi.mocked(AgentBackendRegistry.prototype.getAgentBackend).mockRestore();
+
+    const pluginDir = path.join(root, ".gwrk", "plugins", "agents", backend);
+    fs.mkdirSync(pluginDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(pluginDir, "manifest.yaml"),
+      `type: agent
+name: ${backend}
+version: 1.0.0
+description: Project-local dispatch fixture
+adapter: ./adapter.js
+dispatchMode: local-cli
+contextFileName: AGENTS.md
+capabilities: []
+models: {}
+exitCodeMap: {}
+`,
+    );
+    fs.writeFileSync(
+      path.join(pluginDir, "adapter.js"),
+      `module.exports = {
+        name: ${JSON.stringify(backend)},
+        async isAvailable() { return true; },
+        async dispatch(task) {
+          return { command: this.name, args: [], stdin: "fixture dispatch: " + task.model };
+        },
+        parseResult() { throw new Error("Dry run must not execute the adapter command"); }
+      };`,
+    );
+    const workDir = path.join(root, "worktree");
+    fs.mkdirSync(workDir);
+
+    await ship("--agent", backend);
+
+    expect(ShipOrchestrator).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({ backend, selectedModel: "fixture-fast" }),
+      undefined,
+    );
+    const [options] = vi.mocked(ShipOrchestrator).mock.calls[0];
+    const { dispatchToAgent } = await import("../utils/agent.js");
+    const result = await dispatchToAgent({
+      agent: options.backend,
+      model: options.selectedModel,
+      workDir,
+      dryRun: true,
+    });
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toBe("fixture dispatch: fixture-fast");
+  });
+
+  it.each(["missing", "unavailable"])(
+    "reports an explicit %s native backend in preview and rejects it in execution",
+    async (status) => {
+      const backend = "fixture-backend-missing";
+      configureAgents(backend, [backend], "fixture-fast");
+      const { AgentBackendRegistry } = await import(
+        "../plugins/agent-registry.js"
+      );
+      const lookup = vi.mocked(AgentBackendRegistry.prototype.getAgentBackend);
+      const adapter = provider(backend);
+      vi.mocked(adapter.isAvailable).mockResolvedValue(false);
+      if (status === "missing") {
+        lookup.mockRejectedValue(new Error(`No native adapter for ${backend}`));
+      } else {
+        lookup.mockResolvedValue(adapter);
+      }
+      const { QuotaProber } = await import("../server/quota-prober.js");
+      const probeQuota = vi.spyOn(QuotaProber.prototype, "probeQuota");
+
+      await ship("--dry-run", "--agent", backend);
+
+      const previewOutput = vi.mocked(console.log).mock.calls.flat().join("\n");
+      expect(previewOutput).toContain("Could not select an implementation route");
+      expect(previewOutput).toContain(`work-until-done.sh ${feature} 01`);
+      expect(previewOutput).not.toContain("Would build with");
+      expect(lookup).toHaveBeenCalledExactlyOnceWith(backend);
+      if (status === "unavailable") {
+        expect(adapter.isAvailable).toHaveBeenCalledOnce();
+      }
+      expect(ShipOrchestrator).not.toHaveBeenCalled();
+      expect(fs.existsSync(dbPath)).toBe(false);
+
+      const stderr = vi.spyOn(process.stderr, "write").mockReturnValue(true);
+      const { createShipCommand } = await import("./ship.js");
+      await createShipCommand().parseAsync(
+        [feature, "phase-01", "--agent", backend],
+        { from: "user" },
+      );
+
+      expect(process.exitCode).toBe(1);
+      expect(stderr).toHaveBeenCalledWith(
+        expect.stringContaining(
+          "No available agent backends found for task type: implement",
+        ),
+      );
+      expect(probeQuota).not.toHaveBeenCalled();
+      expect(adapter.checkQuota).not.toHaveBeenCalled();
+      expect(ShipOrchestrator).not.toHaveBeenCalled();
+      expect(await decisions()).toEqual([]);
+    },
+  );
 
   it("previews the explicit configured model without creating a routing database", async () => {
     expect(fs.existsSync(dbPath)).toBe(false);

@@ -515,7 +515,9 @@ export async function dispatchToAgent(task: TaskDispatch): Promise<TaskResult> {
   }
 
   const agentName = (task.agent ?? "agy") as string;
-  const registry = new AgentBackendRegistry(new PluginLoader());
+  const registry = new AgentBackendRegistry(
+    new PluginLoader({ projectDir: projectRoot }),
+  );
   const adapter = await registry.getAgentBackend(agentName);
 
   const startTime = Date.now();

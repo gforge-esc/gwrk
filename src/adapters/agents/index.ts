@@ -68,8 +68,6 @@ async function selectAvailableRoute(
     });
   }
   const agentRegistry = registered.ok ? registered.value : undefined;
-  const explicitPreview =
-    context.preview === true && context.explicitBackend !== undefined;
   const config = loadConfig(projectRoot);
   const quotaFirst = context.historyMode === "quota-tiebreak";
   const installedOnly = context.backendEligibility === "installed";
@@ -209,24 +207,21 @@ async function selectAvailableRoute(
     probed.add(route.backend);
     candidates.delete(route.backend);
     let backend: AgentBackend | undefined;
-    let available = scriptOwned || explicitPreview;
+    let available = scriptOwned;
     if (!scriptOwned) {
       try {
         backend = await registry.getAgentBackend(route.backend);
-        if (!explicitPreview) {
-          const availabilityOnly = context.preview || installedOnly;
-          if (
-            (restrictToRegistry || availabilityOnly) &&
-            !(await backend.isAvailable())
-          ) {
-            continue;
-          }
+        const availabilityOnly = context.preview || installedOnly;
+        if (
+          !(restrictToRegistry || availabilityOnly) ||
+          (await backend.isAvailable())
+        ) {
           available =
             availabilityOnly ||
             (await quotaProbe(backend)).status === "available";
         }
       } catch {
-        // An explicit preview can display the route even if the adapter is missing.
+        // Treat backend lookup and eligibility errors as unavailability.
       }
     }
     if (available) {
