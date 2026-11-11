@@ -78,6 +78,19 @@ const passingEvidence: PromotionEvidence = {
 };
 
 describe("credential guard", () => {
+  it.each(["ghp_", "sk-", "AIza", "xoxb-"])(
+    "rejects the %s prefix inside underscore delimiters",
+    (prefix) => {
+      const token = `_${prefix}Fixture123_`;
+      expect
+        .soft(() => assertNoSecretMaterial({ output: token }))
+        .toThrow(/secret material/i);
+      expect
+        .soft(() => assertNoSecretMaterial({ [token]: true }))
+        .toThrow(/secret material/i);
+    },
+  );
+
   it.each([
     "Cookie: session=fixture-session",
     "Authorization: Basic Zml4dHVyZQ==",

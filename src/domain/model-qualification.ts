@@ -366,7 +366,7 @@ export function qualificationStaleness(
 }
 
 const secretPattern =
-  /\bbearer\s+[^\s"]+|\b(?:sk-|AIza|gh[pousr]_|github_pat_|xox[baprs]-|xapp-)|[\w.+-]+@[\w.-]+\.[a-z]{2,}|"(?:authorization|cookie|set-cookie|api[_-]?key|access[_-]?token|password)"\s*:/i;
+  /(?:^|[^a-z0-9])(?:bearer\s+[^\s"]+|sk-|AIza|gh[pousr]_|github_pat_|xox[baprs]-|xapp-)|[\w.+-]+@[\w.-]+\.[a-z]{2,}|"(?:authorization|cookie|set-cookie|api[_-]?key|access[_-]?token|password)"\s*:/i;
 const headerPattern = /\b(?:authorization|set-cookie|cookie)[ \t]*:/i;
 
 export function assertNoSecretMaterial(
