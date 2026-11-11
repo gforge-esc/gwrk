@@ -174,6 +174,46 @@ describe("credential guard", () => {
     });
     expect(() => assertNoSecretMaterial({ sanitizedOutput })).not.toThrow();
   });
+
+  it("rejects Set-Cookie headers in fenced JSON fixture output", () => {
+    const sanitizedOutput = [
+      "Response headers",
+      "```json",
+      JSON.stringify({
+        headers: [["Set-Cookie", ["session=fixture-only", "theme=dark"]]],
+      }),
+      "```",
+    ].join("\n");
+
+    expect(() => assertNoSecretMaterial({ sanitizedOutput })).toThrow(
+      /secret material/i,
+    );
+  });
+
+  it("scans each fenced JSON block for credential headers", () => {
+    const sanitizedOutput = [
+      "```json",
+      "{invalid JSON}",
+      "```",
+      "~~~JSON",
+      JSON.stringify({ rawHeaders: ["Cookie", "session=fixture-only"] }),
+      "~~~",
+    ].join("\r\n");
+
+    expect(() => assertNoSecretMaterial({ sanitizedOutput })).toThrow(
+      /secret material/i,
+    );
+  });
+
+  it("allows Content-Type headers in fenced JSON fixture output", () => {
+    const sanitizedOutput = [
+      "```json",
+      JSON.stringify({ headers: [["Content-Type", "application/json"]] }),
+      "```",
+    ].join("\n");
+
+    expect(() => assertNoSecretMaterial({ sanitizedOutput })).not.toThrow();
+  });
 });
 
 describe("model qualification policy", () => {

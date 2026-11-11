@@ -373,6 +373,8 @@ const secretPattern =
 const headerPattern = /\b(?:authorization|set-cookie|cookie)[ \t]*:/i;
 const credentialHeaderNamePattern = /^(?:authorization|cookie|set-cookie)$/i;
 const flatHeadersKeyPattern = /^(?:raw)?headers$/i;
+const fencedJsonPattern =
+  /^[ \t]*((`|~)\2{2,})[ \t]*(?:json)?[ \t]*\r?\n([\s\S]*?)^[ \t]*\1\2*[ \t]*\r?$/gim;
 
 function isCredentialHeaderName(value: unknown): boolean {
   return typeof value === "string" && credentialHeaderNamePattern.test(value);
@@ -382,6 +384,18 @@ export function assertNoSecretMaterial(
   value: unknown,
   knownSecrets: readonly string[] = [],
 ): void {
+  const scanJson = (text: string) => {
+    const json = text.trimStart();
+    if (!json.startsWith("{") && !json.startsWith("[")) return;
+    let decoded: unknown;
+    try {
+      decoded = JSON.parse(json);
+    } catch {
+      return;
+    }
+    assertNoSecretMaterial(decoded, knownSecrets);
+  };
+
   let secretInText = false;
   const serialized =
     JSON.stringify(value, (key, entry: unknown) => {
@@ -400,15 +414,9 @@ export function assertNoSecretMaterial(
       ) {
         secretInText = true;
       } else if (typeof entry === "string") {
-        const json = entry.trim();
-        if (json.startsWith("{") || json.startsWith("[")) {
-          let decoded: unknown;
-          try {
-            decoded = JSON.parse(json);
-          } catch {
-            return entry;
-          }
-          assertNoSecretMaterial(decoded, knownSecrets);
+        scanJson(entry);
+        for (const [, , , json] of entry.matchAll(fencedJsonPattern)) {
+          scanJson(json);
         }
       }
       return entry;
