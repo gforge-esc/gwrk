@@ -340,6 +340,43 @@ describe("ship with the real AgentPort router", () => {
     }]);
   });
 
+  it("falls back when native backend availability stalls", async () => {
+    seedQuota(100, 50);
+    const claude = provider("claude");
+    const { AgentBackendRegistry } = await import("../plugins/agent-registry.js");
+    vi.mocked(AgentBackendRegistry.prototype.getAgentBackend).mockImplementation(
+      async (name) => (name === "codex" ? codex : claude),
+    );
+    let release!: (available: boolean) => void;
+    const stalled = new Promise<boolean>((resolve) => { release = resolve; });
+    const started = new Promise<void>((resolve) => {
+      vi.mocked(codex.isAvailable).mockImplementation(() => {
+        resolve();
+        return stalled;
+      });
+    });
+
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    const shipping = ship();
+    try {
+      await Promise.race([started, shipping]);
+      await vi.advanceTimersByTimeAsync(4_999);
+      expect(ShipOrchestrator).not.toHaveBeenCalled();
+
+      await vi.advanceTimersByTimeAsync(1);
+      expect(ShipOrchestrator).toHaveBeenCalledExactlyOnceWith(
+        expect.objectContaining({ backend: "claude", selectedModel: "claude-primary" }),
+        undefined,
+      );
+      expect(codex.checkQuota).not.toHaveBeenCalled();
+      await shipping;
+    } finally {
+      vi.useRealTimers();
+      release(false);
+      await shipping;
+    }
+  });
+
   it("uses configured quota when the automatic native quota check stalls", async () => {
     seedQuota(100, 50);
     const claude = provider("claude");

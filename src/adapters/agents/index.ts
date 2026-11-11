@@ -29,22 +29,18 @@ interface AgentPortAdapterOptions {
   registry?: AgentBackendRegistry;
 }
 
-const NATIVE_SHIP_QUOTA_TIMEOUT_MS = 5_000;
+const NATIVE_SHIP_PROBE_TIMEOUT_MS = 5_000;
 
-async function probeNativeShipQuota(
-  backend: AgentBackend,
-): ReturnType<typeof quotaProbe> {
+async function boundNativeShipProbe<T>(
+  probe: () => Promise<T>,
+  fallback: T,
+): Promise<T> {
   let timeout: ReturnType<typeof setTimeout> | undefined;
-  const deadline = new Promise<Awaited<ReturnType<typeof quotaProbe>>>(
-    (resolve) => {
-      timeout = setTimeout(
-        () => resolve({ status: "unknown" }),
-        NATIVE_SHIP_QUOTA_TIMEOUT_MS,
-      );
-    },
-  );
+  const deadline = new Promise<T>((resolve) => {
+    timeout = setTimeout(() => resolve(fallback), NATIVE_SHIP_PROBE_TIMEOUT_MS);
+  });
   try {
-    return await Promise.race([quotaProbe(backend), deadline]);
+    return await Promise.race([probe(), deadline]);
   } finally {
     clearTimeout(timeout);
   }
@@ -231,16 +227,23 @@ async function selectAvailableRoute(
     let available = scriptOwned;
     if (!scriptOwned) {
       try {
-        backend = await registry.getAgentBackend(route.backend);
         const availabilityOnly = context.preview || installedOnly;
-        if (
-          !(restrictToRegistry || availabilityOnly) ||
-          (await backend.isAvailable())
-        ) {
-          const probe = restrictToRegistry ? probeNativeShipQuota : quotaProbe;
+        const requireInstalled = restrictToRegistry || availabilityOnly;
+        backend = requireInstalled
+          ? await boundNativeShipProbe<AgentBackend | undefined>(async () => {
+              const candidate = await registry.getAgentBackend(route.backend);
+              return (await candidate.isAvailable()) ? candidate : undefined;
+            }, undefined)
+          : await registry.getAgentBackend(route.backend);
+        if (backend) {
+          const candidate = backend;
           const nativeQuota = availabilityOnly
             ? undefined
-            : await probe(backend);
+            : restrictToRegistry
+              ? await boundNativeShipProbe(() => quotaProbe(candidate), {
+                  status: "unknown",
+                })
+              : await quotaProbe(candidate);
           available =
             availabilityOnly ||
             nativeQuota?.status === "available" ||
