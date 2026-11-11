@@ -3,8 +3,8 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { listRuns } from "../db/runs.js";
-import { runsCommand } from "./runs.js";
+import { listCheckoutRuns } from "../db/runs.js";
+import { createRunsCommand } from "./runs.js";
 
 vi.mock("../db/runs.js");
 
@@ -14,7 +14,7 @@ describe("runsCommand — CLI and JSON output", () => {
   beforeEach(() => {
     consoleLogSpy = vi.spyOn(console, "log").mockImplementation(() => {});
 
-    vi.mocked(listRuns).mockReturnValue([
+    vi.mocked(listCheckoutRuns).mockReturnValue([
       {
         id: 1,
         feature_id: "001-cli-core",
@@ -41,17 +41,17 @@ describe("runsCommand — CLI and JSON output", () => {
   });
 
   it("handles empty runs gracefully", async () => {
-    vi.mocked(listRuns).mockReturnValue([]);
-    await runsCommand.parseAsync(["node", "cli.js", "001-cli-core"]);
+    vi.mocked(listCheckoutRuns).mockReturnValue([]);
+    await createRunsCommand().parseAsync(["node", "cli.js", "001-cli-core"]);
 
-    expect(listRuns).toHaveBeenCalledWith("001-cli-core", expect.any(String));
+    expect(listCheckoutRuns).toHaveBeenCalledWith("001-cli-core", process.cwd());
     expect(consoleLogSpy).toHaveBeenCalledWith(
       "No runs found for 001-cli-core",
     );
   });
 
   it("--json flag outputs valid JSON", async () => {
-    await runsCommand.parseAsync(["node", "cli.js", "001-cli-core", "--json"]);
+    await createRunsCommand().parseAsync(["node", "cli.js", "001-cli-core", "--json"]);
 
     const outputString = consoleLogSpy.mock.calls[0]?.[0];
     const parsed = JSON.parse(outputString);
@@ -63,7 +63,7 @@ describe("runsCommand — CLI and JSON output", () => {
   });
 
   it("prints human readable table", async () => {
-    await runsCommand.parseAsync(["node", "cli.js", "001-cli-core"]);
+    await createRunsCommand().parseAsync(["node", "cli.js", "001-cli-core"]);
     const fullOutput = consoleLogSpy.mock.calls.map((c) => c[0]).join("\n");
 
     expect(fullOutput).toContain("Execution History: 001-cli-core");

@@ -13,6 +13,7 @@ pnpm exec vitest run \
   src/db/issues.test.ts \
   src/db/compression.test.ts \
   src/commands/ship.test.ts \
+  src/commands/runs.test.ts \
   src/server/backend-selector.integration.test.ts \
   src/adapters/sqlite/store-isolation.test.ts \
   src/architecture.test.ts
