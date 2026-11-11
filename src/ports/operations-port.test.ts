@@ -105,6 +105,7 @@ function harvestIntake(
   operationId: string,
   overrides: Partial<DurableHarvestOperation> = {},
   source?: HarvestCandidateInput["source"],
+  checkoutPhaseIds?: readonly string[],
 ): HarvestIntake {
   const operation = harvest(operationId, overrides);
   const candidate: HarvestCandidateInput = {
@@ -148,11 +149,40 @@ function harvestIntake(
     featureId: verified.featureId,
     phaseId: verified.phaseId,
   });
-  return {
+  const delivery = {
     candidate,
     payloadDigest: operationId,
     receivedAt: nowIso,
-    target: { accepted: true, operations: [operation] },
+  };
+  if (checkoutPhaseIds === undefined) {
+    return {
+      ...delivery,
+      target: { accepted: true, operations: [operation] },
+    };
+  }
+  if (verified.kind !== "pull_request")
+    throw new Error("Expected verified merge");
+  const [first, ...rest] = scopeVerifiedMergeToPhases(
+    verified,
+    checkoutPhaseIds,
+  );
+  const toOperation = (scope: NonNullable<typeof first>) => ({
+    ...operation,
+    ...scope,
+    operationId: `${operationId}-${scope.phaseId}`,
+  });
+  return {
+    ...delivery,
+    target: first
+      ? {
+          accepted: true,
+          operations: [toOperation(first), ...rest.map(toOperation)],
+        }
+      : {
+          accepted: false,
+          projectId: operation.projectId,
+          reason: "No covered phases at checkout",
+        },
   };
 }
 
@@ -162,7 +192,7 @@ function wholeFeatureMergeIntake(
   phaseIds: readonly string[],
   source: "github_webhook" | "github_poller" = "github_webhook",
 ): HarvestIntake {
-  const pull = harvestIntake(
+  return harvestIntake(
     deliveryId,
     {
       prNumber,
@@ -171,34 +201,8 @@ function wholeFeatureMergeIntake(
       headBranch: `feat/${featureId}`,
     },
     source,
-  );
-  if (!pull.target.accepted) throw new Error("Expected verified merge");
-  const [target] = pull.target.operations;
-  const [first, ...rest] = scopeVerifiedMergeToPhases(
-    target,
-    {
-      repoSlug: target.repoSlug,
-      baseBranch: target.trunkBranch,
-      prNumber,
-      terminalEvent: target.terminalEvent,
-      mergeCommitSha: target.mergeCommitSha,
-    },
     phaseIds,
   );
-  const toOperation = (scope: NonNullable<typeof first>) => ({
-    ...target,
-    ...scope,
-    operationId: `${deliveryId}-${scope.phaseId}`,
-  });
-  return {
-    ...pull,
-    target: first
-      ? {
-          accepted: true,
-          operations: [toOperation(first), ...rest.map(toOperation)],
-        }
-      : { accepted: false, projectId, reason: "No covered phases at checkout" },
-  };
 }
 
 const offline = {
@@ -538,6 +542,7 @@ function restoreRecoveryStore(persisted: {
       failureNotice,
       evidenceJson,
       error,
+      linkedRunId,
     }) {
       const row = harvests.find((row) => row.operationId === fence.operationId);
       if (!row) return { ok: false, code: "LEASE_FENCED" };
@@ -625,6 +630,13 @@ function restoreRecoveryStore(persisted: {
           ? null
           : nowIso,
       });
+      if (
+        stage === "learning_record" &&
+        status === "succeeded" &&
+        linkedRunId !== undefined
+      ) {
+        row.linkedRunId = linkedRunId;
+      }
       row.status = deriveHarvestTerminalStatus({
         terminalEvent: row.terminalEvent,
         phaseIds: [...new Set(planned.map((entry) => entry.phaseKey))],
@@ -2532,7 +2544,15 @@ async function verifyLateCleanupAfterRestart(
 
 it("records learning for an offline harvest after restart", async () => {
   const restarted = restoreRecoveryStore({
-    harvests: [harvest("offline", offline)],
+    harvests: [
+      harvest("offline", {
+        ...offline,
+        recipient: { projectId, surface: "slack", workspaceId: "W1" },
+      }),
+    ],
+    slackBindings: {
+      [projectId]: { workspaceId: "W1", channelId: "C1", sharedChannel: false },
+    },
     stages: [],
     outboxItems: [],
   });
@@ -2545,7 +2565,7 @@ it("records learning for an offline harvest after restart", async () => {
   });
   if (!claim) throw new Error("Expected a learning claim");
   const { operation, fence } = claim;
-  const targets = { hasSlackTarget: false, hasRemoteBranchTarget: false };
+  const targets = { hasSlackTarget: true, hasRemoteBranchTarget: false };
   expect(
     restarted.initializeHarvestStages({
       fence,
@@ -2559,9 +2579,20 @@ it("records learning for an offline harvest after restart", async () => {
       }),
     }),
   ).toEqual({ ok: true });
+  for (const stage of ["git_sync", "gate_verify"] as const) {
+    expect(
+      restarted.transitionHarvestStage({
+        fence,
+        nowIso,
+        phaseKey: phaseId,
+        stage,
+        status: "succeeded",
+      }),
+    ).toEqual({ ok: true });
+  }
   const execution: Pick<HarvestExecutionPort, "recordLearningAtCheckout"> = {
     recordLearningAtCheckout: vi.fn(async () => ({
-      linkedRunId: null,
+      linkedRunId: 77,
       forecastMissing: false,
       summaryText: "Recorded offline learning",
     })),
@@ -2585,6 +2616,7 @@ it("records learning for an offline harvest after restart", async () => {
       phaseKey: phaseId,
       stage: "learning_record",
       status: "succeeded",
+      linkedRunId: result.linkedRunId,
       evidenceJson: JSON.stringify(result),
     }),
   ).toEqual({ ok: true });
@@ -2595,15 +2627,17 @@ it("records learning for an offline harvest after restart", async () => {
       mergeCommitSha: sha,
     }),
   );
-  const replay = restarted.claimHarvestLease({
+  const restored = restoreRecoveryStore(restarted.snapshot());
+  const replay = restored.claimHarvestLease({
     operationId: operation.operationId,
     leaseOwner: "replay-worker",
     nowIso: leaseExpiresAt,
     leaseExpiresAt: "2026-11-11T12:02:00.000Z",
   });
-  expect(replay?.stages).toHaveLength(5);
+  if (!replay) throw new Error("Expected a replay claim");
+  expect(replay.stages).toHaveLength(5);
   expect(
-    replay?.stages.filter(({ stage }) => stage === "learning_record"),
+    replay.stages.filter(({ stage }) => stage === "learning_record"),
   ).toEqual([
     expect.objectContaining({
       operationId: "offline",
@@ -2612,6 +2646,17 @@ it("records learning for an offline harvest after restart", async () => {
       evidenceJson: expect.stringContaining(result.summaryText),
     }),
   ]);
+  expect(replay.operation.linkedRunId).toBe(77);
+  expect(
+    restored.transitionHarvestStage({
+      fence: replay.fence,
+      nowIso: leaseExpiresAt,
+      phaseKey: phaseId,
+      stage: "slack_delivery",
+      status: "succeeded",
+    }),
+  ).toEqual({ ok: true });
+  expect(restored.snapshot().harvests[0].linkedRunId).toBe(77);
 });
 
 it("launches each persisted dispatch with its accepted task scope after restart", async () => {

@@ -96,7 +96,9 @@ describe("FR-002 harvest identity and target verification", () => {
   it("scopes a verified whole-feature merge to the phases at checkout", () => {
     const input = candidate({ headBranch: `feat/${featureId}` });
     const verified = verifyHarvestTarget(project, input);
-    if (!verified.ok) throw new Error(verified.reason);
+    if (!verified.ok || verified.kind !== "pull_request") {
+      throw new Error("Expected verified pull request");
+    }
     const fact = {
       repoSlug: "acme/a",
       baseBranch: "develop",
@@ -104,7 +106,7 @@ describe("FR-002 harvest identity and target verification", () => {
       terminalEvent: input.terminalEvent,
       mergeCommitSha: sha,
     };
-    const scopes = scopeVerifiedMergeToPhases(verified, fact, [
+    const scopes = scopeVerifiedMergeToPhases(verified, [
       "phase-1",
       "phase-02",
       "phase-01",
@@ -116,6 +118,40 @@ describe("FR-002 harvest identity and target verification", () => {
         workKey: computeHarvestWorkKey({ ...fact, featureId, phaseId }),
       })),
     );
+  });
+
+  it.each([
+    { repoSlug: "acme/b" },
+    { baseBranch: "main" },
+    { prNumber: 99 },
+    { mergeCommitSha: "b".repeat(40) },
+  ])("uses the verified identity when facts change to %o", (change) => {
+    const input = candidate({
+      repoSlug: "ACME/A",
+      headBranch: `feat/${featureId}`,
+      mergeCommitSha: ` ${"AB".repeat(20)} `,
+    });
+    const verified = verifyHarvestTarget(project, input);
+    if (!verified.ok || verified.kind !== "pull_request") {
+      throw new Error("Expected verified pull request");
+    }
+    const identity = {
+      repoSlug: "acme/a",
+      baseBranch: "develop",
+      prNumber: 42,
+      terminalEvent: "merged",
+      mergeCommitSha: "ab".repeat(20),
+    } as const;
+
+    Object.assign(input, change);
+    expect(verified.pullRequestIdentity).toEqual(identity);
+    expect(scopeVerifiedMergeToPhases(verified, [phaseId])).toEqual([
+      {
+        featureId,
+        phaseId,
+        workKey: computeHarvestWorkKey({ ...identity, featureId, phaseId }),
+      },
+    ]);
   });
 
   it("converges a manually requested phase with webhook and poller coverage", () => {
@@ -136,7 +172,9 @@ describe("FR-002 harvest identity and target verification", () => {
         explicitPhaseId: "phase-2",
       }),
     );
-    if (!manual.ok) throw new Error(manual.reason);
+    if (!manual.ok || manual.kind !== "pull_request") {
+      throw new Error("Expected verified pull request");
+    }
     const expected = {
       featureId,
       phaseId: "phase-02",
@@ -146,20 +184,20 @@ describe("FR-002 harvest identity and target verification", () => {
         phaseId: "phase-02",
       }),
     };
-    expect(scopeVerifiedMergeToPhases(manual, fact, phaseIds)).toEqual([
-      expected,
-    ]);
-    expect(scopeVerifiedMergeToPhases(manual, fact, ["phase-01"])).toEqual([]);
-    expect(scopeVerifiedMergeToPhases(manual, fact, [])).toEqual([]);
+    expect(scopeVerifiedMergeToPhases(manual, phaseIds)).toEqual([expected]);
+    expect(scopeVerifiedMergeToPhases(manual, ["phase-01"])).toEqual([]);
+    expect(scopeVerifiedMergeToPhases(manual, [])).toEqual([]);
     for (const source of ["github_webhook", "github_poller"] as const) {
       const verified = verifyHarvestTarget(
         project,
         candidate({ ...base, source }),
       );
-      if (!verified.ok) throw new Error(verified.reason);
-      expect(
-        scopeVerifiedMergeToPhases(verified, fact, phaseIds),
-      ).toContainEqual(expected);
+      if (!verified.ok || verified.kind !== "pull_request") {
+        throw new Error("Expected verified pull request");
+      }
+      expect(scopeVerifiedMergeToPhases(verified, phaseIds)).toContainEqual(
+        expected,
+      );
     }
   });
 
@@ -180,8 +218,10 @@ describe("FR-002 harvest identity and target verification", () => {
         project,
         candidate({ ...fact, headBranch }),
       );
-      if (!verified.ok) throw new Error(verified.reason);
-      expect(scopeVerifiedMergeToPhases(verified, fact, [])).toEqual([
+      if (!verified.ok || verified.kind !== "pull_request") {
+        throw new Error("Expected verified pull request");
+      }
+      expect(scopeVerifiedMergeToPhases(verified, [])).toEqual([
         { featureId, phaseId: verified.phaseId, workKey: verified.workKey },
       ]);
     },
@@ -198,17 +238,22 @@ describe("FR-002 harvest identity and target verification", () => {
       }),
     );
     const results = inputs.map((input) => verifyHarvestTarget(project, input));
+    const pullRequestIdentity = {
+      repoSlug: "acme/a",
+      baseBranch: "develop",
+      prNumber: 42,
+      terminalEvent: "merged",
+      mergeCommitSha: sha,
+    } as const;
     const expected = {
       ok: true,
+      kind: "pull_request",
       featureId,
       phaseId,
       repoSlug: "acme/a",
+      pullRequestIdentity,
       workKey: computeHarvestWorkKey({
-        repoSlug: "acme/a",
-        baseBranch: "develop",
-        prNumber: 42,
-        terminalEvent: "merged",
-        mergeCommitSha: sha,
+        ...pullRequestIdentity,
         featureId,
         phaseId,
       }),
@@ -332,6 +377,13 @@ describe("FR-002 harvest identity and target verification", () => {
     const unknownLocal = { ...local, repoSlug: null };
     expect(canCorrelateHarvestIntake(unknownLocal, pull)).toBe(false);
     expect(canCorrelateHarvestIntake(pull, unknownLocal)).toBe(false);
+    for (const conflict of [
+      { ...pull, repoSlug: "acme/b" },
+      { ...pull, trunkBranch: "main" },
+    ]) {
+      expect(canCorrelateHarvestIntake(local, conflict)).toBe(false);
+      expect(canCorrelateHarvestIntake(conflict, local)).toBe(false);
+    }
   });
   it("TR-002 keeps matching PR numbers scoped to their enrolled repository", () => {
     const other = { ...project, projectId: "project-b", repoSlug: "acme/b" };

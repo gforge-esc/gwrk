@@ -304,6 +304,7 @@ export interface OperationsStorePort {
   /**
    * Commit the original delivery and all resolved operations in one transaction.
    * Resolve checkout coverage with scopeManualHarvestToPhases or scopeVerifiedMergeToPhases before intake.
+   * Derive verified phase work keys from the pull request identity returned by verifyHarvestTarget.
    * Pass accepted: false when checkout coverage yields no scopes.
    * Replay returns every persisted operation in the original scope order.
    * Reject transport ID reuse with a different repository or payload digest.
@@ -392,6 +393,8 @@ export interface OperationsStorePort {
    * Validate the fence and the planned receipt before any write.
    * Reject invalid transitions with isValidHarvestStageTransition.
    * Write the receipt and derive operation status in the same transaction.
+   * On successful learning_record, persist a supplied linkedRunId with the receipt.
+   * Preserve the saved run link when later transitions omit linkedRunId.
    * Use deriveHarvestTerminalStatus with the terminal event and full saved phase plan.
    * Set updatedAt to nowIso and set completedAt to nowIso for a terminal status.
    * Require a failure notice when the phase's saved Slack receipt has a target.

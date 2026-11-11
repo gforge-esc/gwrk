@@ -165,8 +165,15 @@ type HarvestPullRequestIdentity = {
 
 type HarvestWorkScope = HarvestTarget & { workKey: string };
 
-type VerifiedHarvestTarget = HarvestWorkScope & {
+type VerifiedLocalHarvestTarget = HarvestWorkScope & {
+  kind: "local_commit";
   repoSlug: string | null;
+};
+
+type VerifiedPullRequestTarget = HarvestWorkScope & {
+  kind: "pull_request";
+  repoSlug: string;
+  pullRequestIdentity: Readonly<HarvestPullRequestIdentity>;
   requestedPhaseId?: string;
 };
 
@@ -231,15 +238,15 @@ export function scopeVerifiedMergeToPhases(
     phaseId,
     workKey,
     requestedPhaseId,
-  }: Omit<VerifiedHarvestTarget, "repoSlug">,
-  fact: HarvestPullRequestIdentity,
+    pullRequestIdentity,
+  }: VerifiedPullRequestTarget,
   phaseIds: readonly string[],
 ): HarvestWorkScope[] {
   const covered = [...new Set(phaseIds.map(normalizePhaseId))];
   if (requestedPhaseId !== undefined && !covered.includes(requestedPhaseId)) {
     return [];
   }
-  if (phaseId !== null || fact.terminalEvent !== "merged") {
+  if (phaseId !== null || pullRequestIdentity.terminalEvent !== "merged") {
     return [{ featureId, phaseId, workKey }];
   }
   const selected =
@@ -247,7 +254,11 @@ export function scopeVerifiedMergeToPhases(
   return selected.map((phaseId) => ({
     featureId,
     phaseId,
-    workKey: computeHarvestWorkKey({ ...fact, featureId, phaseId }),
+    workKey: computeHarvestWorkKey({
+      ...pullRequestIdentity,
+      featureId,
+      phaseId,
+    }),
   }));
 }
 
@@ -362,7 +373,7 @@ export function verifyHarvestTarget(
   project: EnrolledProject,
   candidate: HarvestCandidateInput,
 ):
-  | ({ ok: true } & VerifiedHarvestTarget)
+  | ({ ok: true } & (VerifiedLocalHarvestTarget | VerifiedPullRequestTarget))
   | {
       ok: false;
       code:
@@ -441,6 +452,7 @@ export function verifyHarvestTarget(
       requestedPhase === undefined ? null : normalizePhaseId(requestedPhase);
     return {
       ok: true,
+      kind: "local_commit",
       featureId,
       phaseId,
       repoSlug,
@@ -448,7 +460,7 @@ export function verifyHarvestTarget(
     };
   }
 
-  if (!isSameRepository(project.repoSlug, candidate.repoSlug)) {
+  if (repoSlug === null || !isSameRepository(repoSlug, candidate.repoSlug)) {
     return {
       ok: false,
       code: "REPO_MISMATCH",
@@ -513,16 +525,20 @@ export function verifyHarvestTarget(
       reason: "Pull request head does not identify the requested phase",
     };
   }
-  if (candidate.terminalEvent === "merged") {
-    const mergeSha = candidate.mergeCommitSha?.trim();
-    if (!mergeSha) {
+  const terminalEvent = candidate.terminalEvent;
+  const mergeCommitSha =
+    terminalEvent === "merged"
+      ? (candidate.mergeCommitSha?.trim().toLowerCase() ?? null)
+      : null;
+  if (terminalEvent === "merged") {
+    if (!mergeCommitSha) {
       return {
         ok: false,
         code: "MISSING_MERGE_SHA",
         reason: "Merged pull request requires a merge commit",
       };
     }
-    if (!fullGitObjectId.test(mergeSha)) {
+    if (!fullGitObjectId.test(mergeCommitSha)) {
       return {
         ok: false,
         code: "INVALID_MERGE_SHA",
@@ -531,17 +547,21 @@ export function verifyHarvestTarget(
     }
   }
 
+  const pullRequestIdentity = {
+    repoSlug,
+    baseBranch: project.trunkBranch,
+    prNumber,
+    terminalEvent,
+    mergeCommitSha,
+  };
   return {
     ok: true,
+    kind: "pull_request",
     ...target,
     repoSlug,
+    pullRequestIdentity,
     ...(needsCheckoutCoverage ? { requestedPhaseId } : {}),
-    workKey: computeHarvestWorkKey({
-      ...candidate,
-      ...target,
-      repoSlug,
-      prNumber,
-    }),
+    workKey: computeHarvestWorkKey({ ...pullRequestIdentity, ...target }),
   };
 }
 
