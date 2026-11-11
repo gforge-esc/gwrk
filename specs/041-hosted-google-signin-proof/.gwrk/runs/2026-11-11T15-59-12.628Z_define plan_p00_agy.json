@@ -1,0 +1,19 @@
+{
+  "runId": "2026-11-11T15:59:12.628Z_define_p00",
+  "feature": "041-hosted-google-signin-proof",
+  "phase": "p00",
+  "command": "define plan",
+  "agent": "agy",
+  "model": "gemini-4-carbon-high",
+  "startedAt": "2026-11-11T15:59:12.628Z",
+  "finishedAt": "2026-11-11T16:15:14.875Z",
+  "durationS": 962,
+  "exitCode": 0,
+  "attempt": 1,
+  "filesChanged": 4,
+  "linesAdded": 501,
+  "linesDeleted": 0,
+  "gitCommit": "5b6d42d2f950cbdd0b8b87194b8e1e1726a5ca20",
+  "gitBranch": "codex/implement-hosted-google-signin-proof",
+  "digest": []
+}
