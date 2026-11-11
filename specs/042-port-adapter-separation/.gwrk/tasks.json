@@ -110,89 +110,100 @@
           "id": "T010",
           "title": "Modify architecture-boundary.ts",
           "description": "MODIFY tests/helpers/architecture-boundary.ts. Require type-only domain imports in ports and reject legacy adapter re-exports",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/phase-02.sh",
-          "sp": 1
+          "sp": 1,
+          "completedAt": "2026-11-11T17:21:28.790Z"
         },
         {
           "id": "T011",
           "title": "Modify notification-port.ts",
           "description": "MODIFY src/ports/notification-port.ts. Retain only `NotificationPayload` and `NotificationPort`",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/phase-02.sh",
-          "sp": 1
+          "sp": 1,
+          "completedAt": "2026-11-11T17:21:31.608Z"
         },
         {
           "id": "T012",
           "title": "Modify index.ts",
           "description": "MODIFY src/adapters/notifications/index.ts. Own the Slack default and harvest notification helpers",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/phase-02.sh",
-          "sp": 1
+          "sp": 1,
+          "completedAt": "2026-11-11T17:21:34.422Z"
         },
         {
           "id": "T013",
           "title": "Modify index.ts",
           "description": "DELETE src/adapters/agents/index.ts. Remove unused backend re-exports",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/phase-02.sh",
-          "sp": 1
+          "sp": 1,
+          "completedAt": "2026-11-11T17:21:37.254Z"
         },
         {
           "id": "T014",
           "title": "Modify index.ts",
           "description": "DELETE src/adapters/cli/index.ts. Remove unused command re-exports",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/phase-02.sh",
-          "sp": 1
+          "sp": 1,
+          "completedAt": "2026-11-11T17:21:40.089Z"
         },
         {
           "id": "T015",
           "title": "Modify index.ts",
           "description": "DELETE src/adapters/server/index.ts. Remove unused server re-exports",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/phase-02.sh",
-          "sp": 1
+          "sp": 1,
+          "completedAt": "2026-11-11T17:21:42.892Z"
         },
         {
           "id": "T016",
           "title": "Modify index.ts",
           "description": "DELETE src/adapters/index.ts. Remove unused aggregate barrel",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/phase-02.sh",
-          "sp": 1
+          "sp": 1,
+          "completedAt": "2026-11-11T17:21:45.711Z"
         },
         {
           "id": "T017",
           "title": "Modify index.ts",
           "description": "MODIFY src/adapters/sqlite/index.ts. Remove the unused PlanStore re-export",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/phase-02.sh",
-          "sp": 1
+          "sp": 1,
+          "completedAt": "2026-11-11T17:21:48.553Z"
         },
         {
           "id": "T018",
           "title": "Modify slack-notify.ts",
           "description": "MODIFY src/server/slack-notify.ts. Keep transport and move adapter construction to the notification adapter",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/phase-02.sh",
-          "sp": 1
+          "sp": 1,
+          "completedAt": "2026-11-11T17:21:51.510Z"
         },
         {
           "id": "T019",
           "title": "Modify issues.ts",
           "description": "MODIFY src/engine/issues.ts. Route issue notifications through `dispatchNotification` in `src/adapters/notifications/index.js`",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/phase-02.sh",
-          "sp": 1
+          "sp": 1,
+          "completedAt": "2026-11-11T17:21:54.448Z"
         },
         {
           "id": "T020",
           "title": "Modify harvest.ts",
           "description": "MODIFY src/engine/harvest.ts. Route completion notifications through `notifyHarvestComplete` in `src/adapters/notifications/index.js`",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/phase-02.sh",
-          "sp": 1
+          "sp": 1,
+          "completedAt": "2026-11-11T17:21:57.315Z"
         }
       ],
       "sp_estimate": 11,
