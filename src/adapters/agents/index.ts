@@ -252,20 +252,24 @@ async function selectAvailableRoute(
       };
       const { type, preview, runId, feature, phase, taskSP } = context;
       if (type === "implement" && !preview && runId && feature && phase) {
-        recordDecision({
-          runId,
-          feature,
-          phase,
-          selectedBackend: selected.backend,
-          selectedModel: selected.model,
-          taskClassification: classifyTask(type),
-          reason: selected.reason,
-          quotaPercent: selected.quotaPercent,
-          probeStatus: readings[selected.backend]?.status ?? "available",
-          taskSp: taskSP,
-          fallbackUsed: selected.fallbackUsed,
-          modelFailoverUsed: selected.modelFailoverUsed,
-        });
+        try {
+          recordDecision({
+            runId,
+            feature,
+            phase,
+            selectedBackend: selected.backend,
+            selectedModel: selected.model,
+            taskClassification: classifyTask(type),
+            reason: selected.reason,
+            quotaPercent: selected.quotaPercent,
+            probeStatus: readings[selected.backend]?.status ?? "available",
+            taskSp: taskSP,
+            fallbackUsed: selected.fallbackUsed,
+            modelFailoverUsed: selected.modelFailoverUsed,
+          });
+        } catch (error) {
+          if (!context.explicitBackend) throw error;
+        }
       }
       return selected;
     }

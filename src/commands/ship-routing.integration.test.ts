@@ -441,6 +441,21 @@ describe("ship with the real AgentPort router", () => {
     );
   });
 
+  it("ships with both explicit models when the routing ledger is unavailable", async () => {
+    fs.mkdirSync(dbPath);
+
+    await ship("--agent", "codex");
+
+    expect(ShipOrchestrator).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({
+        backend: "codex",
+        selectedModel: "codex-primary",
+        reviewModel: "codex-review",
+      }),
+      undefined,
+    );
+  });
+
   it("preserves the native model environment for an explicit unregistered backend", async () => {
     configureAgents("claude", ["claude"]);
     vi.stubEnv("CODEX_MODEL", "environment-model");
