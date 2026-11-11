@@ -57,6 +57,7 @@ export function resolveWorkspacePolicyProfile(
     };
     workspaces?: Readonly<Record<string, WorkspaceProfileConfig>>;
   },
+  options?: { requireDesign: boolean },
 ): ProjectProfile {
   let bestMatch = "";
   let workspaceConfig: WorkspaceProfileConfig | undefined;
@@ -74,7 +75,11 @@ export function resolveWorkspacePolicyProfile(
   }
 
   const rootDesign = rootConfig?.project?.design;
-  if (!rootDesign && !workspaceConfig) return detectedWorkspace;
+  const hasDesign =
+    rootDesign !== undefined || workspaceConfig?.design !== undefined;
+  if (!hasDesign && (options?.requireDesign || !workspaceConfig)) {
+    return detectedWorkspace;
+  }
 
   return mergeProfileOverrides({
     detected: detectedWorkspace,

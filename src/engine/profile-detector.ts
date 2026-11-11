@@ -440,7 +440,9 @@ function resolveDetectedProfile(
           });
         }
 
-        return applyWorkspaceConfig(directory, start, detected, config);
+        return applyWorkspaceConfig(directory, start, detected, config, {
+          requireDesign: true,
+        });
       } catch {
         return undefined;
       }
@@ -465,10 +467,15 @@ function applyWorkspaceConfig(
     project?: { design?: unknown; toolchain?: unknown };
     workspaces?: Record<string, unknown>;
   } | null,
+  options?: { requireDesign: boolean },
 ): ProjectProfile {
-  const workspaceSchema = GwrkConfigSchema.shape.workspaces.unwrap().valueSchema;
-  const workspaces: Record<string, WorkspaceProfileConfig> = Object.create(null);
-  for (const [workspacePath, entry] of Object.entries(config?.workspaces ?? {})) {
+  const workspaceSchema =
+    GwrkConfigSchema.shape.workspaces.unwrap().valueSchema;
+  const workspaces: Record<string, WorkspaceProfileConfig> =
+    Object.create(null);
+  for (const [workspacePath, entry] of Object.entries(
+    config?.workspaces ?? {},
+  )) {
     const parsed = workspaceSchema.safeParse(entry);
     if (parsed.success) workspaces[workspacePath] = parsed.data;
   }
@@ -484,6 +491,7 @@ function applyWorkspaceConfig(
       },
       workspaces,
     },
+    options,
   );
 }
 

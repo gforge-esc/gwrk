@@ -310,26 +310,38 @@ describe("FR-001: architecture-aware workspace profiles (044 phase p01)", () => 
     expect(result.toolchain).toEqual({ primary: "ruff", test: "pytest" });
   });
 
-  it("keeps pytest for an unregistered Python workspace under a TypeScript root without design", async () => {
-    write("pnpm-workspace.yaml", "");
-    write(
-      ".gwrkrc.json",
-      JSON.stringify({
-        project: {
-          name: "fixture",
-          stack: { language: "TypeScript" },
-          toolchain: { test: "vitest" },
-        },
-        workspaces: { "apps/web": { toolchain: { test: "vitest" } } },
-      }),
-    );
+  it.each([
+    {
+      registration: "unregistered",
+      workspaces: { "apps/web": { toolchain: { test: "vitest" } } },
+    },
+    {
+      registration: "registered",
+      workspaces: { "services/api": { stack: { framework: "Django" } } },
+    },
+  ])(
+    "keeps FastAPI and pytest for the $registration Python workspace under a TypeScript root without design",
+    async ({ workspaces }) => {
+      write("pnpm-workspace.yaml", "");
+      write(
+        ".gwrkrc.json",
+        JSON.stringify({
+          project: {
+            name: "fixture",
+            stack: { language: "TypeScript" },
+            toolchain: { test: "vitest" },
+          },
+          workspaces,
+        }),
+      );
 
-    const result = await detectProfile(path.join(root, "services/api"));
-    expect(result).toMatchObject({
-      stack: { language: "Python" },
-      toolchain: { test: "pytest" },
-    });
-  });
+      const result = await detectProfile(path.join(root, "services/api"));
+      expect(result).toMatchObject({
+        stack: { language: "Python", framework: "FastAPI" },
+        toolchain: { test: "pytest" },
+      });
+    },
+  );
 
   it("applies the supplied root's design and workspace overrides when the local config only names the workspace", async () => {
     write(
