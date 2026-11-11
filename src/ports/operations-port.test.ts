@@ -1343,6 +1343,12 @@ describe("persisted harvest intake contract", () => {
     expect(saved.harvests).toEqual([]);
     expect(saved.stages).toEqual([]);
     expect(
+      restoreRecoveryStore(saved).listRecoverableHarvests({
+        projectId,
+        nowIso,
+      }),
+    ).toEqual([]);
+    expect(
       restoreHarvestIntake(saved).store.recordHarvestIntake(intake),
     ).toMatchObject({ ok: true, operations: [], deduplicatedTransport: true });
   });
@@ -1358,7 +1364,13 @@ describe("persisted harvest intake contract", () => {
         terminalEvent: "closed_unmerged" as const,
         mergeCommitSha: null,
       };
-      const stale = harvestIntake("stale", closed, "github_poller");
+      const stale = harvestIntake(
+        "stale",
+        scope === "phase"
+          ? closed
+          : { ...closed, phaseId: null, headBranch: `feat/${featureId}` },
+        "github_poller",
+      );
       const anotherRepository = harvestIntake("other-repo", {
         ...closed,
         repoSlug: "acme/b",
@@ -1371,18 +1383,25 @@ describe("persisted harvest intake contract", () => {
       const initial = restoreHarvestIntake({ harvests: [], stages: [] });
       const merged = initial.store.recordHarvestIntake(merge);
       if (!merged.ok) throw new Error("Expected a recorded merge");
-      const prior = initial.snapshot();
+      const prior = {
+        ...initial.snapshot(),
+        stages: merged.operations.map((operation) => ({
+          ...learningReceipt(operation.operationId),
+          phaseKey: operation.phaseId ?? phaseId,
+        })),
+      };
       const resumed = restoreHarvestIntake(prior);
       const result = resumed.store.recordHarvestIntake(stale);
 
       expect(result).toMatchObject({
         ok: true,
-        operations: [{ terminalEvent: "merged" }],
+        operations: [merged.operations[0]],
         deduplicatedWork: true,
       });
       const saved = resumed.snapshot();
       expect(saved.harvests).toEqual(prior.harvests);
       expect(saved.stages).toEqual(prior.stages);
+      expect(saved.aliases).toEqual(prior.aliases);
       const replay = restoreHarvestIntake(saved).store;
       expect(replay.recordHarvestIntake(stale)).toEqual({
         ...result,
