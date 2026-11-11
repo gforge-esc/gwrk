@@ -22,7 +22,10 @@ export interface LedgerBackupRequest {
   readonly destination: string;
   readonly createdAt: string;
   readonly gwrkVersion: string;
-  readonly metadata: Omit<LedgerBackupMetadata, "projects">;
+  readonly metadata: Pick<LedgerBackupMetadata, "device">;
+  collectRepositories(
+    projects: readonly { id: string; path: string }[],
+  ): LedgerBackupMetadata["repositories"];
 }
 
 export interface VerifiedLedgerBackup {

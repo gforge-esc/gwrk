@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { basename, dirname, resolve } from "node:path";
-import { Command } from "commander";
+import { Command, Option } from "commander";
 import { gwrkRuntimeDir, usesHostedRuntime } from "../adapters/config/paths.js";
 import { verifyInstalledRelease } from "../adapters/release/inventory.js";
 import { readRepositoryEvidence } from "../adapters/release/repository-evidence.js";
@@ -72,7 +72,10 @@ const backupCommand = new Command("backup")
   .description(
     "Create and verify an online execution ledger backup (generator)",
   )
-  .option("--format <type>", "Output format (json)")
+  .addOption(
+    new Option("--format <type>", "Output format (json)").choices(["json"]),
+  )
+  .allowExcessArguments(false)
   .requiredOption("--out <dir>", "New backup directory")
   .option(
     "--project-root <dir>",
@@ -89,22 +92,20 @@ const backupCommand = new Command("backup")
           destination,
           createdAt: new Date().toISOString(),
           gwrkVersion: command.parent?.parent?.version() ?? "unknown",
-          metadata: {
-            device: loadDevice(),
-            repositories(projects) {
-              const selected = projectRoot
-                ? projects.filter(({ path }) => resolve(path) === projectRoot)
-                : projects;
-              if (projectRoot && selected.length === 0) {
-                throw new CommandError(
-                  "Project root is not enrolled in this ledger. Run 'gwrk init' in that checkout.",
-                  1,
-                );
-              }
-              return selected.map(({ id, path }) =>
-                readRepositoryEvidence(id, path),
+          metadata: { device: loadDevice() },
+          collectRepositories(projects) {
+            const selected = projectRoot
+              ? projects.filter(({ path }) => resolve(path) === projectRoot)
+              : projects;
+            if (projectRoot && selected.length === 0) {
+              throw new CommandError(
+                "Project root is not enrolled in this ledger. Run 'gwrk init' in that checkout.",
+                1,
               );
-            },
+            }
+            return selected.map(({ id, path }) =>
+              readRepositoryEvidence(id, path),
+            );
           },
         });
         output.write(
@@ -118,7 +119,10 @@ const backupCommand = new Command("backup")
 
 const restoreCommand = new Command("restore")
   .description("Verify a backup and restore an offline Linux ledger (mutator)")
-  .option("--format <type>", "Output format (json)")
+  .addOption(
+    new Option("--format <type>", "Output format (json)").choices(["json"]),
+  )
+  .allowExcessArguments(false)
   .requiredOption("--from <dir>", "Verified backup directory")
   .requiredOption("--state-dir <dir>", "Target state directory")
   .option("--force", "Replace existing ledger and device files", false)

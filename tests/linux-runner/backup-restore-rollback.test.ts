@@ -47,7 +47,7 @@ function seedLedger() {
   db.pragma("foreign_keys = ON");
   db.exec(`
     CREATE TABLE _migrations (name TEXT PRIMARY KEY);
-    CREATE TABLE projects (id TEXT PRIMARY KEY);
+    CREATE TABLE projects (id TEXT PRIMARY KEY, path TEXT NOT NULL UNIQUE);
     CREATE TABLE runs (
       id INTEGER PRIMARY KEY,
       project_id TEXT REFERENCES projects(id),
@@ -56,8 +56,10 @@ function seedLedger() {
     );
     CREATE TABLE compression (id INTEGER PRIMARY KEY);
     CREATE TABLE history (id INTEGER PRIMARY KEY, metadata TEXT);
+  `);
+  db.prepare("INSERT INTO projects VALUES (?, ?)").run("pilot-repo", root);
+  db.exec(`
     INSERT INTO _migrations VALUES ('001-initial.sql');
-    INSERT INTO projects VALUES ('pilot-repo');
     INSERT INTO runs VALUES (42, 'pilot-repo', '2026-11-11T12:00:00Z', 0);
     INSERT INTO runs VALUES (43, 'pilot-repo', NULL, NULL);
     INSERT INTO compression VALUES (1);
@@ -66,17 +68,11 @@ function seedLedger() {
   return db;
 }
 
-function runLedgerCommand(...args: string[]) {
+function runCli(...args: string[]) {
   const cli = fileURLToPath(new URL("../../src/cli.ts", import.meta.url));
   return spawnSync(
     process.execPath,
-    [
-      "--import",
-      createRequire(import.meta.url).resolve("tsx"),
-      cli,
-      "db",
-      ...args,
-    ],
+    ["--import", createRequire(import.meta.url).resolve("tsx"), cli, ...args],
     {
       cwd: root,
       env: {
@@ -91,6 +87,18 @@ function runLedgerCommand(...args: string[]) {
   );
 }
 
+function runLedgerCommand(...args: string[]) {
+  return runCli("db", ...args);
+}
+
+function expectUsageFailure(result: ReturnType<typeof runCli>) {
+  expect(result.status, result.stderr).toBe(2);
+  const signals = result.stderr.match(/^\[exit:.*$/gm) ?? [];
+  expect(signals).toHaveLength(1);
+  expect(signals[0]).toMatch(/^\[exit:2 \| \d+(?:\.\d+)?m?s\]$/);
+  expect(result.stdout).toBe("");
+}
+
 describe("installed ledger commands outside a checkout", () => {
   it.each([
     { args: ["backup"], missing: "--out" },
@@ -99,11 +107,7 @@ describe("installed ledger commands outside a checkout", () => {
     { args: ["restore", "--from", "backup"], missing: "--state-dir" },
   ])("reports a usage failure for db $args without $missing", ({ args }) => {
     const result = runLedgerCommand(...args);
-    expect(result.status, result.stderr).toBe(2);
-    expect(
-      result.stderr.match(/^\[exit:2 \| \d+(?:\.\d+)?m?s\]$/gm) ?? [],
-    ).toHaveLength(1);
-    expect(result.stdout).not.toContain("[exit:");
+    expectUsageFailure(result);
   });
 
   it.each([
@@ -111,13 +115,48 @@ describe("installed ledger commands outside a checkout", () => {
     ["restore", "--from", "backup", "--state-dir", "restored"],
   ])("reports an unknown option for db %s with one exit signal", (...args) => {
     const result = runLedgerCommand(...args, "--bogus");
-    expect(result.status, result.stderr).toBe(2);
     expect(result.stderr).toContain("unknown option '--bogus'");
-    expect(
-      result.stderr.match(/^\[exit:2 \| \d+(?:\.\d+)?m?s\]$/gm) ?? [],
-    ).toHaveLength(1);
-    expect(result.stdout).toBe("");
+    expectUsageFailure(result);
   });
+
+  const commands = {
+    backup: ["backup", "--out", "backup"],
+    restore: ["restore", "--from", "backup", "--state-dir", "restored"],
+  };
+  it.each([
+    {
+      command: "backup",
+      position: "before db",
+      args: ["--format", "yaml", "db", ...commands.backup],
+    },
+    {
+      command: "restore",
+      position: "before db",
+      args: ["--format", "yaml", "db", ...commands.restore],
+    },
+    {
+      command: "backup",
+      position: "after backup",
+      args: ["db", ...commands.backup, "--format", "yaml"],
+    },
+    {
+      command: "restore",
+      position: "after restore",
+      args: ["db", ...commands.restore, "--format", "yaml"],
+    },
+  ])("reports an invalid format for db $command $position", ({ args }) => {
+    const result = runCli(...args);
+    expectUsageFailure(result);
+  });
+
+  it.each(Object.values(commands))(
+    "rejects extra arguments to db %s",
+    (...args) => {
+      const result = runLedgerCommand(...args, "extra");
+      expect(result.stderr).toContain("too many arguments");
+      expectUsageFailure(result);
+    },
+  );
 
   it.each([
     ["backup", "generator"],
@@ -167,7 +206,6 @@ describe("installed ledger commands outside a checkout", () => {
 
     const db = seedLedger();
     try {
-      db.exec("ALTER TABLE projects ADD COLUMN path TEXT");
       db.prepare("UPDATE projects SET path = ?").run(enrolled);
       db.prepare("INSERT INTO projects VALUES (?, ?)").run(
         "parent-repo",
@@ -202,8 +240,6 @@ describe("installed ledger commands outside a checkout", () => {
 
   it("backs up all snapshot projects while scoping checkout evidence", async () => {
     const db = seedLedger();
-    db.exec("ALTER TABLE projects ADD COLUMN path TEXT");
-    db.prepare("UPDATE projects SET path = ?").run(root);
     db.prepare("INSERT INTO projects (id, path) VALUES (?, ?)").run(
       "other-repo",
       join(root, "other"),
@@ -242,7 +278,6 @@ describe("installed ledger commands outside a checkout", () => {
     await mkdir(bin);
     const db = seedLedger();
     try {
-      db.exec("ALTER TABLE projects ADD COLUMN path TEXT");
       db.prepare("UPDATE projects SET path = ?").run(oldCheckout);
       const sqlite = createRequire(import.meta.url).resolve("better-sqlite3");
       await writeFile(
@@ -300,7 +335,6 @@ describe("ledger backup", () => {
     const db = seedLedger();
     const destination = join(root, "backup");
     try {
-      db.exec("ALTER TABLE projects ADD COLUMN path TEXT");
       db.prepare("UPDATE projects SET path = ?").run(join(root, "enrolled"));
       await expect(
         createLedgerBackup({
@@ -308,18 +342,16 @@ describe("ledger backup", () => {
           destination,
           createdAt: "2026-11-11T12:00:00.000Z",
           gwrkVersion: "1.6.0-beta.1",
-          metadata: {
-            device: null,
-            repositories: [
-              {
-                projectId: "pilot-repo",
-                root: join(root, "different"),
-                remote: null,
-                head: null,
-                evidence: [],
-              },
-            ],
-          },
+          metadata: { device: null },
+          collectRepositories: () => [
+            {
+              projectId: "pilot-repo",
+              root: join(root, "different"),
+              remote: null,
+              head: null,
+              evidence: [],
+            },
+          ],
         }),
       ).rejects.toThrow(/Repository metadata root does not match/);
       await expect(stat(destination)).rejects.toMatchObject({ code: "ENOENT" });
@@ -337,9 +369,13 @@ describe("ledger backup", () => {
         destination,
         createdAt: "2026-11-11T12:00:00.000Z",
         gwrkVersion: "1.6.0-beta.1",
-        metadata: { device: null, repositories: [] },
+        metadata: { device: null },
+        collectRepositories: () => [],
       });
-      db.exec("INSERT INTO projects VALUES ('after-backup')");
+      db.prepare("INSERT INTO projects VALUES (?, ?)").run(
+        "after-backup",
+        join(root, "after-backup"),
+      );
       const verified = await verifyLedgerBackup(destination);
       expect(verified.manifest).toEqual(result);
       expect(verified.manifest.summary).toEqual({
@@ -368,7 +404,8 @@ describe("ledger backup", () => {
           destination,
           createdAt: "2026-11-11T12:00:00.000Z",
           gwrkVersion: "1.6.0-beta.1",
-          metadata: { device: null, repositories: [] },
+          metadata: { device: null },
+          collectRepositories: () => [],
         }),
       ).rejects.toThrow(/already exists/);
       expect(await verifyLedgerBackup(destination)).toEqual(verified);
@@ -393,7 +430,8 @@ describe("ledger backup", () => {
         destination,
         createdAt: device.createdAt,
         gwrkVersion: "1.6.0-beta.1",
-        metadata: { device, repositories: [] },
+        metadata: { device },
+        collectRepositories: () => [],
       });
       const request = { source: destination, stateDirectory, force: false };
       expect((await restoreLedgerBackup(request)).manifest).toEqual(manifest);
@@ -411,28 +449,27 @@ describe("ledger backup", () => {
       }
       await rm(devicePath);
       await mkdir(devicePath);
+      const installedDb = join(stateDirectory, "gwrk.db");
+      const original = await readFile(installedDb);
       await expect(
         restoreLedgerBackup({ ...request, force: true }),
       ).rejects.toThrow(/Restore target must be a regular file/);
       const pending = join(stateDirectory, ".restore-pending");
       await expect(stat(pending)).rejects.toMatchObject({ code: "ENOENT" });
-      const obstructed = new Database(join(stateDirectory, "gwrk.db"), {
-        readonly: true,
-      });
-      try {
-        expect(
-          obstructed.prepare("SELECT id FROM runs ORDER BY id").pluck().all(),
-        ).toEqual([43, 99]);
-      } finally {
-        obstructed.close();
-      }
+      expect(await readFile(installedDb)).toEqual(original);
       await rm(devicePath, { recursive: true });
       const realFs =
         await vi.importActual<typeof import("node:fs/promises")>(
           "node:fs/promises",
         );
+      let interrupted = false;
       vi.mocked(rename).mockImplementation(async (from, to) => {
-        if (from === join(pending, "install.db")) {
+        if (
+          !interrupted &&
+          from === join(pending, "install.db") &&
+          to === installedDb
+        ) {
+          interrupted = true;
           throw new Error("Fixture interrupted database installation");
         }
         await realFs.rename(from, to);
@@ -441,11 +478,17 @@ describe("ledger backup", () => {
         await expect(
           restoreLedgerBackup({ ...request, force: true }),
         ).rejects.toThrow("Fixture interrupted database installation");
+        expect((await stat(pending)).isDirectory()).toBe(true);
+        await mkdir(devicePath);
+        await expect(restoreLedgerBackup(request)).rejects.toThrow(
+          /Restore target must be a regular file/,
+        );
+        expect((await stat(pending)).isDirectory()).toBe(true);
+        await rm(devicePath, { recursive: true });
+        expect((await restoreLedgerBackup(request)).manifest).toEqual(manifest);
       } finally {
         vi.mocked(rename).mockReset();
       }
-      expect((await stat(pending)).isDirectory()).toBe(true);
-      expect((await restoreLedgerBackup(request)).manifest).toEqual(manifest);
       expect(JSON.parse(await readFile(devicePath, "utf8"))).toEqual(device);
       await expect(
         stat(join(stateDirectory, ".restore-pending")),
@@ -482,7 +525,8 @@ describe("ledger backup", () => {
         destination,
         createdAt: "2026-11-11T12:00:00.000Z",
         gwrkVersion: "1.6.0-beta.1",
-        metadata: { device: null, repositories: [] },
+        metadata: { device: null },
+        collectRepositories: () => [],
       });
       await expect(
         verifyLedgerAgainstBackup(db.name, destination),
@@ -505,7 +549,8 @@ describe("ledger backup", () => {
         destination,
         createdAt: "2026-11-11T12:00:00.000Z",
         gwrkVersion: "1.6.0-beta.1",
-        metadata: { device: null, repositories: [] },
+        metadata: { device: null },
+        collectRepositories: () => [],
       });
       const metadata = join(destination, "repo-metadata.json");
       const original = await readFile(metadata);

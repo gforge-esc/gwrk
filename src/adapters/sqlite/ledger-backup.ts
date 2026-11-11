@@ -18,17 +18,13 @@ import { basename, dirname, join, resolve } from "node:path";
 import { isDeepStrictEqual } from "node:util";
 import Database from "better-sqlite3";
 import {
-  type LedgerBackupManifest,
   LedgerBackupManifestSchema,
   type LedgerBackupMetadata,
   LedgerBackupMetadataSchema,
   type LedgerSummary,
   PENDING_LEDGER_RESTORE,
 } from "../../domain/ledger-backup.js";
-import type {
-  LedgerBackupPort,
-  LedgerBackupRequest,
-} from "../../ports/release-ops-port.js";
+import type { LedgerBackupPort } from "../../ports/release-ops-port.js";
 import { sha256 } from "../release/inventory.js";
 
 const DB_FILE = "gwrk.db";
@@ -140,18 +136,9 @@ function summarizeLedger(
   };
 }
 
-type RepositoryEvidence = LedgerBackupMetadata["repositories"];
-type SnapshotBackupRequest = Omit<LedgerBackupRequest, "metadata"> & {
-  metadata: Omit<LedgerBackupRequest["metadata"], "repositories"> & {
-    repositories:
-      | RepositoryEvidence
-      | ((projects: BackupProject[]) => RepositoryEvidence);
-  };
-};
-
-export async function createLedgerBackup(
-  input: SnapshotBackupRequest,
-): Promise<LedgerBackupManifest> {
+export const createLedgerBackup: LedgerBackupPort["createBackup"] = async (
+  input,
+) => {
   const destination = resolve(input.destination);
   const parent = dirname(destination);
   await mkdir(parent, { recursive: true, mode: 0o700 });
@@ -188,14 +175,10 @@ export async function createLedgerBackup(
     } finally {
       standalone.close();
     }
-    const { device, repositories } = input.metadata;
     const metadata = LedgerBackupMetadataSchema.parse({
-      device,
+      device: input.metadata.device,
       projects,
-      repositories:
-        typeof repositories === "function"
-          ? repositories(projects)
-          : repositories,
+      repositories: input.collectRepositories(projects),
     });
     const metadataPath = join(staging, METADATA_FILE);
     await writeFile(metadataPath, `${JSON.stringify(metadata, null, 2)}\n`, {
@@ -229,7 +212,7 @@ export async function createLedgerBackup(
   } finally {
     await rm(staging, { recursive: true, force: true });
   }
-}
+};
 
 export const verifyLedgerBackup: LedgerBackupPort["verifyBackup"] = async (
   directory,

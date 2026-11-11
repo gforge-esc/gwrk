@@ -138,7 +138,7 @@ node -e 'const assert=require("node:assert/strict"); assert.deepEqual(require("/
 prior=/opt/gwrk/releases/1.0.0-fixture
 active=$(realpath /opt/gwrk/current)
 mkdir "$prior"
-cp -R "$active/dist" "$active/package.json" "$active/pnpm-lock.yaml" "$active/release-manifest.json" "$prior/"
+cp -R "$active/dist" "$active/deploy" "$active/package.json" "$active/pnpm-lock.yaml" "$active/release-manifest.json" "$prior/"
 ln -s "$active/node_modules" "$prior/node_modules"
 ln -s releases/1.0.0-fixture /opt/gwrk/previous
 node -e 'const fs=require("node:fs"); const p=process.argv[1]; fs.writeFileSync(p,JSON.stringify({...require(p),version:"1.0.0-fixture"}))' "$prior/package.json"
@@ -147,16 +147,15 @@ cat > /fixture-bin/systemctl <<'SCRIPT'
 #!/usr/bin/env bash
 set -euo pipefail
 pid_file="$GWRK_RUNTIME_DIR/server.pid"
+printf '%s\n' "$1" >> /tmp/supervisor.calls
 case "$1" in
   stop)
-    printf '%s\n' "$1" >> /tmp/supervisor.calls
     if [[ -f "$pid_file" ]]; then
       kill "$(< "$pid_file")" 2>/dev/null || true
       rm "$pid_file"
     fi
     ;;
   start)
-    printf '%s\n' "$1" >> /tmp/supervisor.calls
     if [[ "${GWRK_FIXTURE_DROP_RUN:-0}" == 1 ]]; then
       runuser -u gwrk -g gwrk -- node -e 'const requireRelease=require("node:module").createRequire("/opt/gwrk/current/package.json"); const db=new (requireRelease("better-sqlite3"))(process.env.GWRK_DB_PATH); db.prepare("DELETE FROM runs WHERE id = 42").run(); db.close();'
     fi
@@ -188,11 +187,25 @@ const manifest = JSON.parse(await readFile(path, "utf8"));
 await writeFile(path, JSON.stringify({ ...manifest, version: "1.0.0-fixture", ...await readReleaseInventory(root) }));
 NODE
 }
-printf 'SELECT 1;\n' > "$prior/dist/db/migrations/999-fixture.sql"
 write_prior_manifest
 rollback="$active/deploy/linux-runner/rollback-release.sh"
+current_before=$(readlink /opt/gwrk/current)
+previous_before=$(readlink /opt/gwrk/previous)
+mv "$prior/dist/cli.js" /tmp/prior-cli.js
+: > /tmp/supervisor.calls
+expect_rejection 'dist/cli.js' bash "$rollback" /opt/gwrk /var/lib/gwrk
+test ! -s /tmp/supervisor.calls
+test "$(readlink /opt/gwrk/current)" = "$current_before"
+test "$(readlink /opt/gwrk/previous)" = "$previous_before"
+mv /tmp/prior-cli.js "$prior/dist/cli.js"
+
+printf 'SELECT 1;\n' > "$prior/dist/db/migrations/999-fixture.sql"
+write_prior_manifest
 expect_rejection '999-fixture.sql' bash "$rollback" /opt/gwrk /var/lib/gwrk
-test ! -e /tmp/supervisor.calls
+if grep -Eq '^(stop|start)$' /tmp/supervisor.calls; then
+  printf 'Incompatible rollback changed the service state.\n' >&2
+  exit 1
+fi
 test "$(realpath /opt/gwrk/current)" = "$active"
 rm "$prior/dist/db/migrations/999-fixture.sql"
 write_prior_manifest
@@ -213,9 +226,13 @@ test "$(realpath /opt/gwrk/current)" = "$prior"
 runuser -u gwrk -g gwrk -- node --input-type=module <<'NODE'
 import assert from "node:assert/strict";
 import Database from "/opt/gwrk/current/node_modules/better-sqlite3/lib/index.js";
-const db = new Database("/var/lib/gwrk/gwrk.db", { fileMustExist: true });
-assert.equal(db.prepare("UPDATE runs SET exit_code = 0 WHERE id = 42").run().changes, 1);
+const path = "/var/lib/gwrk/gwrk.db";
+const db = new Database(path, { fileMustExist: true });
+assert.equal(db.prepare("UPDATE runs SET exit_code = 17 WHERE id = 42").run().changes, 1);
 db.close();
+const reopened = new Database(path, { readonly: true, fileMustExist: true });
+assert.equal(reopened.prepare("SELECT exit_code FROM runs WHERE id = 42").pluck().get(), 17);
+reopened.close();
 NODE
 first_backups=(/var/lib/gwrk/backups/rollback-*)
 test "${#first_backups[@]}" -eq 1

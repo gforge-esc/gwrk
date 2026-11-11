@@ -6,7 +6,7 @@
 import { existsSync, realpathSync } from "node:fs";
 import { performance } from "node:perf_hooks";
 import { fileURLToPath } from "node:url";
-import { Command } from "commander";
+import { Command, Option } from "commander";
 import pkg from "../package.json" with { type: "json" };
 import { assessCommand } from "./commands/assess.js";
 import { dbCommand } from "./commands/db.js";
@@ -42,7 +42,9 @@ program
   .name("gwrk")
   .version(pkg.version)
   .description("The Principal Engineer's Operating System")
-  .option("--format <type>", "Output format (json)")
+  .addOption(
+    new Option("--format <type>", "Output format (json)").choices(["json"]),
+  )
   .option("--workspace <name>", "Select a workspace profile")
   .option("--agent", "Enable Agent-Native Mode (TC-006)", false)
   .configureHelp({
@@ -170,11 +172,6 @@ program.hook("preAction", (thisCommand, actionCommand) => {
     };
   }
 
-  if (opts.format && opts.format !== "json") {
-    console.error(`Unknown format: ${opts.format}. Supported: json`);
-    process.exit(2);
-  }
-
   // Commands that resolve the project root themselves are exempt from the
   // cwd-anchored preflight. `loadConfig` joins its argument with
   // `.gwrkrc.json` and never walks parents, so preflighting it against
@@ -228,6 +225,8 @@ if (
     }
     if (
       error.code === "commander.unknownOption" ||
+      error.code === "commander.invalidArgument" ||
+      error.code === "commander.excessArguments" ||
       error.code === "commander.missingMandatoryOptionValue" ||
       error.code === "commander.optionMissingArgument"
     ) {
