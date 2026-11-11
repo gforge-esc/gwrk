@@ -845,10 +845,35 @@ describe("FR-001: architecture-aware workspace profiles (044 phase p01)", () => 
     for (const profile of profiles) {
       expect.soft(profile).toMatchObject({
         design: localDesign,
+        type: "python",
         stack: { language: "Python", framework: "Django", buildSystem: "uv" },
         toolchain: { test: "pytest", build: null },
       });
     }
+  });
+
+  it("keeps the nearest ancestor design when a nested directory only configures its name", async () => {
+    const nearerDesign = { ...design, architecture: "layered" };
+    write(".gwrkrc.json", JSON.stringify({
+      project: { name: "fixture", design },
+      workspaces: { "services/api": { toolchain: { build: null } } },
+    }));
+    write("services/api/pyproject.toml", '[project]\ndependencies = ["django"]\n');
+    write("services/api/uv.lock", "");
+    write("services/api/pytest.ini", "[pytest]\n");
+    write("services/api/admin/.gwrkrc.json", JSON.stringify({
+      project: { name: "admin", design: nearerDesign },
+    }));
+    write("services/api/admin/src/.gwrkrc.json", JSON.stringify({
+      project: { name: "src" },
+    }));
+
+    expect(await detectProfile(path.join(root, "services/api/admin/src"))).toMatchObject({
+      design: nearerDesign,
+      type: "python",
+      stack: { language: "Python", framework: "Django", buildSystem: "uv" },
+      toolchain: { test: "pytest", build: null },
+    });
   });
 
   it("drops partial local JavaScript stack fields when the entry selects Python", async () => {

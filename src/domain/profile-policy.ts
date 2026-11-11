@@ -280,8 +280,12 @@ export function resolveWorkspacePolicyProfile(
     options?.detectedStacks,
   );
   // Keep explicit fields from the previous layer when the language is unchanged.
+  const detectedStacks = [
+    ...(options?.detectedStacks ?? []),
+    ...(detectedWorkspace.stack ? [detectedWorkspace.stack] : []),
+  ];
   const otherLanguageSignals = (stack: ProjectProfile["stack"]) =>
-    options?.detectedStacks?.filter(
+    detectedStacks.filter(
       (signal) =>
         languageFamily(profileLanguage(signal)) !==
         languageFamily(profileLanguage(stack)),

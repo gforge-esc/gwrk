@@ -628,6 +628,38 @@ describe("FR-001: profile design inheritance (044 phase p01)", () => {
     );
   });
 
+  it("keeps detected metadata when the entry selects the detected language family again", () => {
+    const profile = resolveWorkspacePolicyProfile(
+      "apps/web",
+      {
+        type: "nodejs",
+        stack: {
+          language: "TypeScript",
+          framework: "Next.js",
+          buildSystem: "npm",
+        },
+      },
+      {
+        project: { design },
+        workspaces: { "apps/web": { stack: { language: "JavaScript" } } },
+      },
+      {
+        localProject: {
+          stack: { language: "Python", framework: "Django", buildSystem: "uv" },
+        },
+      },
+    );
+
+    expect(profile).toMatchObject({
+      design,
+      stack: {
+        language: "JavaScript",
+        framework: "Next.js",
+        buildSystem: "npm",
+      },
+    });
+  });
+
   it.each([
     { test: "pytest" as const, command: "pytest test_api.py -v" },
     { test: null, command: null },

@@ -484,6 +484,7 @@ function resolveDetectedProfile(
   const start = path.resolve(detectedRoot);
   let directory = start;
   let nearestProfile: ProjectProfile | undefined;
+  let nearestDesign: ProjectProfile["design"];
   let sawAncestorConfig = false;
   while (true) {
     const configPath = path.join(directory, ".gwrkrc.json");
@@ -502,7 +503,7 @@ function resolveDetectedProfile(
           Object.keys(config?.workspaces ?? {}),
         );
         if (matchedWorkspace || (!localProject && !sawAncestorConfig)) {
-          const inheritedDesign = nearestProfile?.design;
+          const inheritedDesign = nearestProfile?.design ?? nearestDesign;
           const scoped = applyWorkspaceConfig(
             directory,
             start,
@@ -511,12 +512,15 @@ function resolveDetectedProfile(
             {
               requireDesign: true,
               localProject:
-                localProject ??
-                (inheritedDesign ? { design: inheritedDesign } : undefined),
+                inheritedDesign && !localProject?.design
+                  ? { ...localProject, design: inheritedDesign }
+                  : localProject,
             },
           );
           if (matchedWorkspace && scoped !== detected.profile) return scoped;
           if (scoped !== detected.profile) nearestProfile = scoped;
+        } else if (!sawAncestorConfig && !localProject?.design) {
+          nearestDesign = DesignSchema.safeParse(config?.project?.design).data;
         }
         sawAncestorConfig = true;
       } catch {
