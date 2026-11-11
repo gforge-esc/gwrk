@@ -309,11 +309,32 @@ describe("FR-001: architecture-aware workspace profiles (044 phase p01)", () => 
     expect(result).toMatchObject({ design: localDesign, stack: { language: "Python" } });
   });
 
-  it("stops config lookup at the current Git worktree root", async () => {
-    write("services/.git", "gitdir: /unused/nested-worktree\n");
-    const result = await detectProfile(path.join(root, "services/api"));
-    expect(result.design).toBeUndefined();
-    expect(result.toolchain).toEqual({ primary: "ruff", test: "pytest" });
+  it.each(["file", "directory"])("stops workspace lookup at a nested .git %s", async (marker) => {
+    const workspaces = {
+      "services/api": { stack: { framework: "Django" }, toolchain: { build: null } },
+    };
+    const config = { project: { name: "fixture", design }, workspaces };
+    write(".gwrkrc.json", JSON.stringify(config));
+    if (marker === "file") {
+      write("services/.git", "gitdir: /unused/nested-worktree\n");
+    } else {
+      fs.mkdirSync(path.join(root, "services/.git"));
+    }
+
+    const workspace = path.join(root, "services/api");
+    const direct = await detectProfile(workspace);
+    expect(direct).toMatchObject({
+      stack: { language: "Python", framework: "FastAPI" },
+      toolchain: { primary: "ruff", test: "pytest" },
+    });
+    expect(direct.design).toBeUndefined();
+    expect.soft(await resolveWorkspaceProfile(root, "services/api")).toEqual(direct);
+    expect.soft(resolveWorkspaceProfile(workspace, root, config)).toBeUndefined();
+    expect(resolveWorkspaceProfile(workspace, root, { workspaces })).toStrictEqual({
+      type: "nodejs",
+      stack: { framework: "Django" },
+      layout: "flat",
+    });
   });
 
   it.each([
@@ -1001,15 +1022,22 @@ describe("FR-001: architecture-aware workspace profiles (044 phase p01)", () => 
     }
 
     const direct = await detectProfile(child);
-    if (boundary) expect.soft(direct.design).toBeUndefined();
+    const explicit = await resolveWorkspaceProfile(root, relativePath);
+    const configured = resolveWorkspaceProfile(child, root, config);
+    if (boundary) {
+      expect(direct.design).toBeUndefined();
+      expect.soft(explicit).toEqual(direct);
+      expect.soft(configured).toBeUndefined();
+      return;
+    }
     const profiles = {
-      ...(boundary ? {} : { direct }),
-      "two-argument resolver": await resolveWorkspaceProfile(root, relativePath),
-      "three-argument resolver": resolveWorkspaceProfile(child, root, config),
+      direct,
+      "two-argument resolver": explicit,
+      "three-argument resolver": configured,
     };
     for (const [entryPoint, profile] of Object.entries(profiles)) {
       expect.soft(profile, entryPoint).toMatchObject({
-        design: entryDesign ?? (boundary ? design : nearerDesign),
+        design: entryDesign ?? nearerDesign,
         type: "python",
         stack: { language: "Python", framework: "Django", buildSystem: "uv" },
         toolchain: { test: "pytest", build: null },

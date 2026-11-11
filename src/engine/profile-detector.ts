@@ -575,6 +575,25 @@ function relativeWorkspacePath(root: string, workspace: string): string {
   return path.relative(root, workspace).split(path.sep).join("/");
 }
 
+function crossesGitWorktreeBoundary(root: string, workspace: string): boolean {
+  const relativePath = relativeWorkspacePath(root, workspace);
+  if (
+    !relativePath ||
+    relativePath === ".." ||
+    relativePath.startsWith("../") ||
+    path.isAbsolute(relativePath)
+  ) {
+    return false;
+  }
+
+  let directory = path.resolve(root);
+  for (const segment of relativePath.split("/")) {
+    directory = path.join(directory, segment);
+    if (fs.existsSync(path.join(directory, ".git"))) return true;
+  }
+  return false;
+}
+
 function applyWorkspaceConfig(
   root: string,
   workspace: string,
@@ -582,10 +601,10 @@ function applyWorkspaceConfig(
   config: WorkspaceRootConfig,
   options?: {
     requireDesign?: boolean;
-    detectMatchedWorkspace?: boolean;
+    configuredLookup?: boolean;
     localProject?: WorkspaceProfileConfig;
   },
-): ProjectProfile {
+): ProjectProfile | undefined {
   const workspaceSchema =
     GwrkConfigSchema.shape.workspaces.unwrap().valueSchema;
   const workspaces: Record<string, WorkspaceProfileConfig> =
@@ -618,10 +637,17 @@ function applyWorkspaceConfig(
     );
   }
 
+  if (
+    options?.configuredLookup &&
+    crossesGitWorktreeBoundary(root, workspace)
+  ) {
+    return undefined;
+  }
+
   let matchedProject: WorkspaceProfileConfig | undefined;
   if (
     matchedPath &&
-    (options?.detectMatchedWorkspace || matchedPath !== relativePath)
+    (options?.configuredLookup || matchedPath !== relativePath)
   ) {
     const matchedRoot = path.resolve(root, matchedPath);
     matchedProject =
@@ -688,6 +714,9 @@ async function detectWorkspaceProfile(
   workspacePath: string,
 ): Promise<ProjectProfile> {
   const workspace = path.resolve(root, workspacePath);
+  if (crossesGitWorktreeBoundary(root, workspace)) {
+    return detectProfileInDirectory(workspace);
+  }
   return detectProfileInDirectory(workspace, {
     directory: root,
     config: readWorkspaceRootConfig(root),
@@ -737,7 +766,7 @@ export function resolveWorkspaceProfile(
       config,
       {
         requireDesign: true,
-        detectMatchedWorkspace: true,
+        configuredLookup: true,
         localProject: readLocalProject(cwd),
       },
     );
