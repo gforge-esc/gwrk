@@ -441,9 +441,10 @@ function readLocalProject(
     if (!fs.existsSync(rcPath)) return undefined;
     const rc = JSON.parse(fs.readFileSync(rcPath, "utf-8"));
     if (!rc.project) return undefined;
+    const projectSchema = GwrkConfigSchema.shape.project.shape;
     return {
-      type: rc.project.type || undefined,
-      stack: rc.project.stack,
+      type: projectSchema.type.safeParse(rc.project.type).data || undefined,
+      stack: projectSchema.stack.safeParse(rc.project.stack).data,
       toolchain: ToolchainConfigSchema.safeParse(rc.project.toolchain).data,
       design: DesignSchema.safeParse(rc.project.design).data,
     };
@@ -497,6 +498,7 @@ function resolveDetectedProfile(
       : { directory: workspaceRoot.directory, config: workspaceRoot.config };
   const designSource = findNearestAncestorDesign(
     suppliedRoot ? [...ancestors, suppliedRoot] : ancestors,
+    start,
   );
   const ancestorDesign = designSource?.design;
   for (const { directory, config } of ancestors) {
@@ -512,7 +514,6 @@ function resolveDetectedProfile(
       workspaces,
     });
     if (scoped !== detected.profile) return scoped;
-    break;
   }
 
   if (suppliedRoot) {
@@ -538,7 +539,6 @@ function resolveDetectedProfile(
     }
   }
 
-  if (localProject?.design && !suppliedRoot) return undefined;
   const policySource =
     ancestors.find(
       ({ directory, config }) =>
@@ -602,11 +602,17 @@ function* ancestorWorkspaceConfigs(workspace: string, root?: string) {
 
 function findNearestAncestorDesign(
   ancestors: readonly WorkspaceConfigSource[],
+  workspace: string,
 ) {
   for (const ancestor of ancestors) {
-    const design = DesignSchema.safeParse(
-      ancestor.config?.project?.design,
-    ).data;
+    const workspaces = validateWorkspaceEntries(ancestor.config);
+    const match = matchWorkspacePath(
+      relativeWorkspacePath(ancestor.directory, workspace),
+      Object.keys(workspaces),
+    );
+    const design =
+      (match ? workspaces[match].design : undefined) ??
+      DesignSchema.safeParse(ancestor.config?.project?.design).data;
     if (design) return { ...ancestor, design };
   }
   return undefined;

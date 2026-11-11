@@ -1053,6 +1053,68 @@ describe("FR-001: architecture-aware workspace profiles (044 phase p01)", () => 
     }
   });
 
+  it("inherits outer workspace design while retaining the nearest registered stack", async () => {
+    const layered = { ...design, architecture: "layered", principles: ["clean-code"] };
+    const outer = {
+      project: { name: "fixture" },
+      workspaces: { "services/api": { design: layered, stack: { framework: "Flask" } } },
+    };
+    write(".git", "gitdir: /unused/worktree\n");
+    write(".gwrkrc.json", JSON.stringify(outer));
+    write("services/.gwrkrc.json", JSON.stringify({
+      project: { name: "services" },
+      workspaces: { api: { stack: { framework: "Django" } } },
+    }));
+    const cwd = path.join(root, "services/api");
+    const profiles = [
+      await detectProfile(cwd),
+      await resolveWorkspaceProfile(root, "services/api"),
+      resolveWorkspaceProfile(cwd, root, outer),
+    ];
+    for (const profile of profiles) {
+      expect.soft(profile).toMatchObject({
+        design: layered,
+        stack: { language: "Python", framework: "Django" },
+      });
+    }
+    expect(profiles[0]).toEqual(profiles[1]);
+    expect(profiles[0]).toEqual(profiles[2]);
+  });
+
+  it("retains compatible ancestor tools when only local design overrides", async () => {
+    const localDesign = { ...design, architecture: "layered", principles: ["clean-code"] };
+    const toolchain = { test: "pytest", testCommand: "uv run pytest {files}", build: null };
+    write(".git", "gitdir: /unused/worktree\n");
+    write(".gwrkrc.json", JSON.stringify({
+      project: { name: "fixture", design, stack: { language: "Python", buildSystem: "uv" }, toolchain },
+    }));
+    write("services/api/pyproject.toml", '[project]\ndependencies = ["fastapi"]\n');
+    write("services/api/uv.lock", "");
+    write("services/api/.gwrkrc.json", JSON.stringify({
+      project: { name: "api", design: localDesign },
+    }));
+    const direct = await detectProfile(path.join(root, "services/api"));
+    const explicit = await resolveWorkspaceProfile(root, "services/api");
+    expect(direct).toEqual(explicit);
+    expect(direct).toMatchObject({ design: localDesign, toolchain });
+    expect(getTestCommand(direct, ["test_api.py"])).toBe("uv run pytest test_api.py");
+  });
+
+  it("uses detected language when the local stack is invalid", async () => {
+    write(".git", "gitdir: /unused/worktree\n");
+    write(".gwrkrc.json", JSON.stringify({ project: { name: "fixture", design } }));
+    write("services/api/.gwrkrc.json", JSON.stringify({
+      project: { name: "api", stack: { language: 42 }, toolchain: { build: null } },
+    }));
+    const direct = await detectProfile(path.join(root, "services/api"));
+    expect(direct).toEqual(await resolveWorkspaceProfile(root, "services/api"));
+    expect(direct).toMatchObject({
+      design,
+      stack: { language: "Python", framework: "FastAPI" },
+      toolchain: { build: null },
+    });
+  });
+
   it("inherits the root design through an unregistered name-only config", async () => {
     const layered = { ...design, architecture: "layered", principles: ["clean-code"] };
     const toolchain = {
