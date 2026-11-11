@@ -268,14 +268,18 @@ flock -u 9
 lock_held=false
 target_started=true
 systemctl start "$unit"
+runner_ready() {
+  local pid="$1"
+  [[ "$pid" =~ ^[1-9][0-9]+$ &&
+     -f "$runtime/server.pid" && ! -L "$runtime/server.pid" &&
+     "$(< "$runtime/server.pid")" == "$pid" ]] &&
+    kill -0 "$pid" &&
+    timeout 5s systemctl is-active --quiet "$unit"
+}
 deadline=$((SECONDS + 90))
 while true; do
   pid=$(timeout 5s systemctl show --property=MainPID --value "$unit") || pid=""
-  if [[ "$pid" =~ ^[1-9][0-9]+$ &&
-        -f "$runtime/server.pid" && ! -L "$runtime/server.pid" &&
-        "$(< "$runtime/server.pid")" == "$pid" ]] &&
-      kill -0 "$pid" &&
-      timeout 5s systemctl is-active --quiet "$unit"; then
+  if runner_ready "$pid"; then
     break
   fi
   ((SECONDS < deadline)) || fail "Timed out waiting for the target release to listen."
@@ -293,5 +297,7 @@ if [[ "${service_executable##*/}" != node || "$service_cli" != /* ||
   fail "The restarted service did not run the selected release."
 fi
 check_rollback --against "$backup"
+[[ "$(timeout 5s systemctl show --property=MainPID --value "$unit")" == "$pid" ]] &&
+  runner_ready "$pid" || fail "The restarted service changed during ledger comparison."
 recover_pointers=false
 printf 'Activated gwrk %s. Verified pre-rollback backup at %s\n' "${new_target#releases/}" "$backup"

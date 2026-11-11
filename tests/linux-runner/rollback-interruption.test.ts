@@ -40,6 +40,13 @@ it.each([
   { signal: null, status: 1, stage: "running service ledger mismatch" },
   { signal: null, status: 1, stage: "service release root mismatch" },
   { signal: null, status: 1, stage: "running service release root mismatch" },
+  { signal: null, status: 0, stage: "restarted service stays ready" },
+  { signal: null, status: 1, stage: "restarted service runs the wrong CLI" },
+  {
+    signal: null,
+    status: 1,
+    stage: "restarted service exits during comparison",
+  },
   {
     signal: null,
     status: 1,
@@ -53,7 +60,7 @@ it.each([
     malformedFile,
   })),
 ] as const)(
-  "preserves release state during $stage (exit $status)",
+  "checks release state during $stage (exit $status)",
   async (scenario) => {
     const { signal, status, stage } = scenario;
     const malformedFile =
@@ -71,6 +78,7 @@ it.each([
     const serviceRuntime = join(root, "other runtime");
     const pathMismatch =
       stage.startsWith("service ") || stage.startsWith("running service ");
+    const verifiesRestart = stage.startsWith("restarted service ");
     const running = Boolean(signal || malformedFile || pathMismatch);
     const pidFile = join(runtime, "server.pid");
     const ready = join(runtime, "checking-readiness");
@@ -98,7 +106,14 @@ it.each([
           join(release, "node_modules"),
         );
         await writeFile(join(release, "package.json"), '{"type":"module"}');
-        await symlink(join(repo, "dist/cli.js"), join(release, "dist/cli.js"));
+        if (verifiesRestart && version === target) {
+          await writeFile(join(release, "dist/cli.js"), "");
+        } else {
+          await symlink(
+            join(repo, "dist/cli.js"),
+            join(release, "dist/cli.js"),
+          );
+        }
         await mkdir(join(release, "dist/domain"));
         await symlink(
           join(repo, "dist/domain/gwrk-paths.js"),
@@ -213,7 +228,7 @@ it.each([
 
       const shims = {
         uname: "printf 'Linux\\n'",
-        realpath: 'cd -P -- "$3" && pwd -P',
+        realpath: `exec node -e 'console.log(require("node:fs").realpathSync(process.argv[1]))' "$3"`,
         flock: "exit 0",
         runuser: `shift 5
 if [[ "$1" == env ]]; then
@@ -228,6 +243,9 @@ if [[ "\${3:-}" == db ]]; then
   if [[ "\${4:-}" == rollback-check ]]; then
     if [[ "$FIXTURE_STAGE" == "service "* || "$FIXTURE_STAGE" == "running service "* ]]; then
       exec node --require "$FIXTURE_ROOT/linux.cjs" "\${@:2}"
+    fi
+    if [[ "$FIXTURE_STAGE" == "restarted service exits during comparison" && " $* " == *" --against "* ]]; then
+      rm -f "$FIXTURE_RUNTIME/server.pid"
     fi
     version=1.0.0
     if [[ "$FIXTURE_STAGE" == "target manifest version mismatch" ]]; then version=1.1.0; fi
@@ -272,6 +290,12 @@ case "$FIXTURE_STAGE" in
 esac
 printf '%s\\0' "GWRK_HOME=$state" "GWRK_DB_PATH=$database" "GWRK_RUNTIME_DIR=$runtime" "GWRK_RELEASE_ROOT=$release_root"`,
         cat: `
+if [[ "$1" == -- && "$2" == "/proc/$FIXTURE_PID/cmdline" && "$FIXTURE_STAGE" == "restarted service "* ]]; then
+  cli="$FIXTURE_ROOT/current/dist/cli.js"
+  if [[ "$FIXTURE_STAGE" == "restarted service runs the wrong CLI" ]]; then cli="$FIXTURE_ROOT/previous/dist/cli.js"; fi
+  printf '%s\\0' node "$cli" server start --foreground
+  exit 0
+fi
 if [[ "$1" == -- && "$2" == "/proc/$FIXTURE_PID/environ" ]]; then
   state="$FIXTURE_ROOT/state"
   database="$state/gwrk.db"
@@ -352,6 +376,28 @@ esac`,
           if (stage === "backup with an inactive unit") {
             expect(output).toContain("Fixture backup failed");
             expect(await readFile(calls, "utf8"), output).toBe("stop\n");
+          } else if (verifiesRestart) {
+            if (status === 0) {
+              expect(output).toContain("Activated gwrk 1.0.0.");
+            } else {
+              expect(output).toContain(
+                stage === "restarted service runs the wrong CLI"
+                  ? "The restarted service did not run the selected release"
+                  : "The restarted service changed during ledger comparison",
+              );
+            }
+            expect(await readFile(calls, "utf8"), output).toBe(
+              status === 0 ? "stop\nstart\n" : "stop\nstart\nstop\n",
+            );
+            const backups = join(state, "backups");
+            const entries = await readdir(backups);
+            expect(entries).toHaveLength(1);
+            const restored = await restoreLedgerBackup({
+              source: join(backups, entries[0]),
+              stateDirectory: join(root, "restored"),
+              force: false,
+            });
+            expect(restored.manifest.summary.completedRunIds).toEqual([42]);
           } else {
             expect(existsSync(calls), output).toBe(false);
             if (pathMismatch) {
@@ -376,9 +422,9 @@ esac`,
               );
             }
           }
-          expect(existsSync(pidFile)).toBe(running);
-          expect(await readlink(current)).toBe(active);
-          expect(await readlink(previous)).toBe(target);
+          expect(existsSync(pidFile)).toBe(running || status === 0);
+          expect(await readlink(current)).toBe(status === 0 ? target : active);
+          expect(await readlink(previous)).toBe(status === 0 ? active : target);
           return;
         }
         await vi.waitFor(() => expect(existsSync(ready), output).toBe(true), {
