@@ -4,6 +4,7 @@
 
 import fs from "node:fs";
 import path from "node:path";
+import { notifyHarvestComplete } from "../adapters/notifications/index.js";
 import { getCompressionRecord, recordCompression } from "../db/compression.js";
 import {
   finishRun,
@@ -11,6 +12,7 @@ import {
   listRuns,
   recordRun,
 } from "../db/runs.js";
+import type { NotificationPort } from "../ports/notification-port.js";
 import { loadConfig } from "../utils/config.js";
 import { commitFiles, deleteRemoteBranch } from "../utils/git.js";
 import { loadManifests } from "../utils/manifest.js";
@@ -423,12 +425,11 @@ export async function harvestFeature(
  * Posts the "🏆 Done, Done!" notification to Slack.
  * (FR-H07)
  */
-export async function notifyDoneDone(report: CompressionReport): Promise<void> {
-  const { MessageBuilder, notifySlack } = await import(
-    "../adapters/notifications/index.js"
-  );
-  const message = MessageBuilder.doneDone(report.featureId, report);
-  await notifySlack(message, undefined, { opsOnly: true });
+export async function notifyDoneDone(
+  report: CompressionReport,
+  notifier?: NotificationPort,
+): Promise<void> {
+  await notifyHarvestComplete(report, notifier);
 }
 
 /**

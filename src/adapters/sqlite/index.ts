@@ -5,8 +5,6 @@
 import { recordCompression } from "../../db/compression.js";
 import type { RunStorePort } from "../../ports/store-port.js";
 
-export { PlanStore } from "../../engine/plan-store.js";
-
 export function createSqliteRunStoreAdapter(): RunStorePort {
   return {
     recordCompression: (report, projectId) =>

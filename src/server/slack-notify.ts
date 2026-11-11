@@ -2,31 +2,11 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import type {
-  NotificationPayload,
-  NotificationPort,
-} from "../ports/notification-port.js";
 import { loadConfig } from "../utils/config.js";
 import type { SlackMessage } from "./slack-messages.js";
 import { type SlackEvent, presenceManager } from "./slack-presence.js";
 import { getSlackApp } from "./slack.js";
 import { loadTelegramConfig, notifyTelegram } from "./telegram-notify.js";
-
-export function createSlackNotificationAdapter(): NotificationPort {
-  return {
-    async notify(payload: NotificationPayload): Promise<void> {
-      await notifySlack(
-        {
-          text: payload.text,
-          channel: payload.channel,
-          blocks: payload.blocks as SlackMessage["blocks"],
-        },
-        undefined,
-        { opsOnly: payload.opsOnly },
-      );
-    },
-  };
-}
 
 /**
  * Dispatches a Slack notification.

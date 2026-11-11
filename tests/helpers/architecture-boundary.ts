@@ -5,7 +5,15 @@
 import path from "node:path";
 import ts from "typescript";
 
-type DependencyKind = "static" | "dynamic" | "require";
+type DependencyKind = "static" | "dynamic" | "require" | "re-export";
+
+const legacyAdapterLayers = new Set([
+  "commands",
+  "engine",
+  "plugins",
+  "server",
+  "utils",
+]);
 
 const inwardLayers: Record<string, readonly string[]> = {
   domain: ["domain"],
@@ -25,13 +33,22 @@ const purePackages = new Set([
 ]);
 
 export function inspectArchitectureSource(file: string, source: string) {
-  const imports: Array<{ kind: DependencyKind; specifier: string | null }> = [];
+  const imports: Array<{
+    kind: DependencyKind;
+    specifier: string | null;
+    typeOnly: boolean;
+  }> = [];
   const effects: string[] = [];
   const ast = ts.createSourceFile(file, source, ts.ScriptTarget.Latest, true);
 
-  function dependency(kind: DependencyKind, expression?: ts.Node) {
+  function dependency(
+    kind: DependencyKind,
+    expression?: ts.Node,
+    typeOnly = false,
+  ) {
     imports.push({
       kind,
+      typeOnly,
       specifier:
         expression && ts.isStringLiteralLike(expression)
           ? expression.text
@@ -40,15 +57,35 @@ export function inspectArchitectureSource(file: string, source: string) {
   }
 
   function visit(node: ts.Node) {
-    if (ts.isImportDeclaration(node) || ts.isExportDeclaration(node)) {
-      if (node.moduleSpecifier) dependency("static", node.moduleSpecifier);
+    if (ts.isImportDeclaration(node)) {
+      const clause = node.importClause;
+      const bindings = clause?.namedBindings;
+      const typeOnly = Boolean(
+        clause?.isTypeOnly ||
+          (!clause?.name &&
+            bindings &&
+            ts.isNamedImports(bindings) &&
+            bindings.elements.length > 0 &&
+            bindings.elements.every((element) => element.isTypeOnly)),
+      );
+      dependency("static", node.moduleSpecifier, typeOnly);
+    } else if (ts.isExportDeclaration(node)) {
+      const clause = node.exportClause;
+      const typeOnly =
+        node.isTypeOnly ||
+        (clause &&
+          ts.isNamedExports(clause) &&
+          clause.elements.length > 0 &&
+          clause.elements.every((element) => element.isTypeOnly));
+      if (node.moduleSpecifier)
+        dependency("re-export", node.moduleSpecifier, typeOnly);
     } else if (ts.isImportEqualsDeclaration(node)) {
       if (ts.isExternalModuleReference(node.moduleReference)) {
         dependency("require", node.moduleReference.expression);
       }
     } else if (ts.isImportTypeNode(node)) {
       if (ts.isLiteralTypeNode(node.argument)) {
-        dependency("static", node.argument.literal);
+        dependency("static", node.argument.literal, true);
       }
     } else if (ts.isCallExpression(node)) {
       const callee = node.expression;
@@ -57,7 +94,11 @@ export function inspectArchitectureSource(file: string, source: string) {
       } else if (ts.isIdentifier(callee) && callee.text === "require") {
         dependency("require", node.arguments[0]);
       } else if (ts.isIdentifier(callee) && callee.text === "createRequire") {
-        imports.push({ kind: "require", specifier: callee.text });
+        imports.push({
+          kind: "require",
+          specifier: callee.text,
+          typeOnly: false,
+        });
       } else if (ts.isIdentifier(callee) && callee.text === "Date") {
         effects.push("ambient:Date()");
       }
@@ -102,7 +143,7 @@ export function architectureViolations(file: string, source: string): string[] {
   const { imports, effects } = inspectArchitectureSource(file, source);
   const violations = layer === "domain" ? [...effects] : [];
 
-  for (const { kind, specifier } of imports) {
+  for (const { kind, specifier, typeOnly } of imports) {
     if (restricted && specifier === null) {
       violations.push(`${kind}:<non-literal>`);
       continue;
@@ -127,6 +168,18 @@ export function architectureViolations(file: string, source: string): string[] {
       path.posix.join(path.posix.dirname(file), specifier),
     );
     const targetLayer = target.split("/")[0];
+    if (layer === "ports" && targetLayer === "domain" && !typeOnly) {
+      violations.push(`runtime-domain-dependency:${target}`);
+      continue;
+    }
+    if (
+      layer === "adapters" &&
+      kind === "re-export" &&
+      legacyAdapterLayers.has(targetLayer)
+    ) {
+      violations.push(`legacy-adapter-re-export:${target}`);
+      continue;
+    }
     if (layer === "db" && target === "adapters/git/project-id.js") continue;
     if (
       (inwardLayers[layer] && !inwardLayers[layer].includes(targetLayer)) ||
