@@ -1,0 +1,273 @@
+{
+  "featureId": "047-model-qualification",
+  "createdAt": "2026-11-11T19:17:01.111Z",
+  "generatedFrom": {
+    "plan": {
+      "hash": "32a401052a84e827d1038573af7b2088e62f226242023ba2185de76c29396cb8",
+      "modifiedAt": "2026-11-11T19:07:23.627Z"
+    }
+  },
+  "phases": [
+    {
+      "id": "phase-01",
+      "title": "Domain policy and ports",
+      "tasks": [
+        {
+          "id": "T001",
+          "title": "Create model-qualification.ts",
+          "description": "NEW src/domain/model-qualification.ts. Validate snapshots, judge independence and secret guards. Tests: src/domain/model-qualification.test.ts",
+          "status": "open",
+          "gateScript": "pnpm exec vitest run src/domain/model-qualification.test.ts src/architecture.test.ts",
+          "sp": 2
+        },
+        {
+          "id": "T002",
+          "title": "Create model-qualification-port.ts",
+          "description": "NEW src/ports/model-qualification-port.ts. Declare discovery and qualification port interfaces",
+          "status": "open",
+          "gateScript": "pnpm exec vitest run src/domain/model-qualification.test.ts src/architecture.test.ts",
+          "sp": 2
+        },
+        {
+          "id": "T003",
+          "title": "Modify index.ts",
+          "description": "MODIFY src/ports/index.ts. Export model qualification port contracts",
+          "status": "open",
+          "gateScript": "pnpm exec vitest run src/domain/model-qualification.test.ts src/architecture.test.ts",
+          "sp": 1
+        }
+      ],
+      "sp_estimate": 5,
+      "testTargets": [
+        "src/domain/model-qualification.test.ts",
+        "src/domain/model-qualification.test.ts",
+        "src/domain/model-qualification.test.ts",
+        "src/architecture.test.ts"
+      ]
+    },
+    {
+      "id": "phase-02",
+      "title": "Model discovery and smoke probes",
+      "tasks": [
+        {
+          "id": "T004",
+          "title": "Modify agent-port.ts",
+          "description": "MODIFY src/ports/agent-port.ts. Add typed `effort`, `routeMode` and `observedModel` fields",
+          "status": "open",
+          "gateScript": "pnpm exec vitest run src/adapters/models/catalog-discovery.test.ts src/adapters/models/smoke-probe.test.ts src/utils/agent.test.ts src/plugins/builtins/agents/agy/adapter.test.ts src/architecture.test.ts",
+          "sp": 1
+        },
+        {
+          "id": "T005",
+          "title": "Modify agent-backend.ts",
+          "description": "MODIFY src/plugins/agent-backend.ts. Add optional `discoverModels` method separate from `dispatch`",
+          "status": "open",
+          "gateScript": "pnpm exec vitest run src/adapters/models/catalog-discovery.test.ts src/adapters/models/smoke-probe.test.ts src/utils/agent.test.ts src/plugins/builtins/agents/agy/adapter.test.ts src/architecture.test.ts",
+          "sp": 1
+        },
+        {
+          "id": "T006",
+          "title": "Modify adapter.ts",
+          "description": "MODIFY src/plugins/builtins/agents/agy/adapter.ts. Parse `agy models`, separate Antigravity Claude routes and read `init.model`. Tests: src/adapters/models/catalog-discovery.test.ts",
+          "status": "open",
+          "gateScript": "pnpm exec vitest run src/adapters/models/catalog-discovery.test.ts src/adapters/models/smoke-probe.test.ts src/utils/agent.test.ts src/plugins/builtins/agents/agy/adapter.test.ts src/architecture.test.ts",
+          "sp": 1
+        },
+        {
+          "id": "T007",
+          "title": "Modify adapter.ts",
+          "description": "MODIFY src/plugins/builtins/agents/claude/adapter.ts. Query active auth models, forward typed `effort` and extract `observedModel`. Tests: src/adapters/models/catalog-discovery.test.ts",
+          "status": "open",
+          "gateScript": "pnpm exec vitest run src/adapters/models/catalog-discovery.test.ts src/adapters/models/smoke-probe.test.ts src/utils/agent.test.ts src/plugins/builtins/agents/agy/adapter.test.ts src/architecture.test.ts",
+          "sp": 1
+        },
+        {
+          "id": "T008",
+          "title": "Modify adapter.ts",
+          "description": "MODIFY src/plugins/builtins/agents/codex/adapter.ts. Paginate `model/list`, filter hidden models and forward `effort`. Tests: src/adapters/models/catalog-discovery.test.ts",
+          "status": "open",
+          "gateScript": "pnpm exec vitest run src/adapters/models/catalog-discovery.test.ts src/adapters/models/smoke-probe.test.ts src/utils/agent.test.ts src/plugins/builtins/agents/agy/adapter.test.ts src/architecture.test.ts",
+          "sp": 1
+        },
+        {
+          "id": "T009",
+          "title": "Create catalog-discovery.ts",
+          "description": "NEW src/adapters/models/catalog-discovery.ts. Collect built-in, external plugin and explicit candidate catalogs with versions. Tests: src/adapters/models/catalog-discovery.test.ts",
+          "status": "open",
+          "gateScript": "pnpm exec vitest run src/adapters/models/catalog-discovery.test.ts src/adapters/models/smoke-probe.test.ts src/utils/agent.test.ts src/plugins/builtins/agents/agy/adapter.test.ts src/architecture.test.ts",
+          "sp": 2
+        },
+        {
+          "id": "T010",
+          "title": "Create smoke-probe.ts",
+          "description": "NEW src/adapters/models/smoke-probe.ts. Run bounded exact-model and effort smoke probes in clean temporary directories. Tests: src/adapters/models/smoke-probe.test.ts",
+          "status": "open",
+          "gateScript": "pnpm exec vitest run src/adapters/models/catalog-discovery.test.ts src/adapters/models/smoke-probe.test.ts src/utils/agent.test.ts src/plugins/builtins/agents/agy/adapter.test.ts src/architecture.test.ts",
+          "sp": 2
+        },
+        {
+          "id": "T011",
+          "title": "Modify agent.ts",
+          "description": "MODIFY src/utils/agent.ts. Enforce explicit dispatch deadlines and allow synthetic fixtures to exclude external context. Tests: src/utils/agent.test.ts",
+          "status": "open",
+          "gateScript": "pnpm exec vitest run src/adapters/models/catalog-discovery.test.ts src/adapters/models/smoke-probe.test.ts src/utils/agent.test.ts src/plugins/builtins/agents/agy/adapter.test.ts src/architecture.test.ts",
+          "sp": 1
+        }
+      ],
+      "sp_estimate": 10,
+      "testTargets": [
+        "src/adapters/models/catalog-discovery.test.ts",
+        "src/adapters/models/catalog-discovery.test.ts",
+        "src/adapters/models/smoke-probe.test.ts"
+      ]
+    },
+    {
+      "id": "phase-03",
+      "title": "Synthetic fixtures and two-judge evaluation",
+      "tasks": [
+        {
+          "id": "T012",
+          "title": "Create suite.json",
+          "description": "NEW tests/fixtures/model-qualification/suite.json. Version synthetic definition, handoff and implementation fixtures",
+          "status": "open",
+          "gateScript": "pnpm exec vitest run src/application/models/evaluate-models.test.ts src/architecture.test.ts",
+          "sp": 2
+        },
+        {
+          "id": "T013",
+          "title": "Create fixture.json",
+          "description": "NEW tests/fixtures/model-qualification/define-long-context/fixture.json. Bundle synthetic repo files, ADRs and research brief",
+          "status": "open",
+          "gateScript": "pnpm exec vitest run src/application/models/evaluate-models.test.ts src/architecture.test.ts",
+          "sp": 2
+        },
+        {
+          "id": "T014",
+          "title": "Create fixture.json",
+          "description": "NEW tests/fixtures/model-qualification/implement-seeded-defect/fixture.json. Bundle fixed plan, seeded RED test and forbidden file paths",
+          "status": "open",
+          "gateScript": "pnpm exec vitest run src/application/models/evaluate-models.test.ts src/architecture.test.ts",
+          "sp": 2
+        },
+        {
+          "id": "T015",
+          "title": "Create evaluate-models.ts",
+          "description": "NEW src/application/models/evaluate-models.ts. Orchestrate repeat fixtures, handoff checks and blinded two-judge scoring. Tests: src/application/models/evaluate-models.test.ts",
+          "status": "open",
+          "gateScript": "pnpm exec vitest run src/application/models/evaluate-models.test.ts src/architecture.test.ts",
+          "sp": 2
+        },
+        {
+          "id": "T016",
+          "title": "Create fixture-runner.ts",
+          "description": "NEW src/adapters/models/fixture-runner.ts. Materialize synthetic workspaces and run report-only judge prompts via `WorkflowRuntime`",
+          "status": "open",
+          "gateScript": "pnpm exec vitest run src/application/models/evaluate-models.test.ts src/architecture.test.ts",
+          "sp": 2
+        }
+      ],
+      "sp_estimate": 10,
+      "testTargets": [
+        "src/application/models/evaluate-models.test.ts",
+        "src/application/models/evaluate-models.test.ts",
+        "src/application/models/evaluate-models.test.ts"
+      ]
+    },
+    {
+      "id": "phase-04",
+      "title": "Route lock store and CLI",
+      "tasks": [
+        {
+          "id": "T017",
+          "title": "Create promote-model.ts",
+          "description": "NEW src/application/models/promote-model.ts. Verify evaluation freshness, assemble role pins and preserve `previousLock`",
+          "status": "open",
+          "gateScript": "pnpm exec vitest run src/adapters/models/route-lock-store.test.ts src/commands/models.test.ts src/cli.consistency.test.ts src/cli.option-collisions.test.ts src/cli.ux.test.ts src/architecture.test.ts",
+          "sp": 2
+        },
+        {
+          "id": "T018",
+          "title": "Create route-lock-store.ts",
+          "description": "NEW src/adapters/models/route-lock-store.ts. Persist runner snapshots, evaluation bundles and temp-rename atomic route locks. Tests: src/adapters/models/route-lock-store.test.ts",
+          "status": "open",
+          "gateScript": "pnpm exec vitest run src/adapters/models/route-lock-store.test.ts src/commands/models.test.ts src/cli.consistency.test.ts src/cli.option-collisions.test.ts src/cli.ux.test.ts src/architecture.test.ts",
+          "sp": 2
+        },
+        {
+          "id": "T019",
+          "title": "Create models.ts",
+          "description": "NEW src/commands/models.ts. Implement `gwrk models discover`, `evaluate` and `promote` with `withSignal` and help examples. Tests: src/adapters/models/route-lock-store.test.ts",
+          "status": "open",
+          "gateScript": "pnpm exec vitest run src/adapters/models/route-lock-store.test.ts src/commands/models.test.ts src/cli.consistency.test.ts src/cli.option-collisions.test.ts src/cli.ux.test.ts src/architecture.test.ts",
+          "sp": 2
+        },
+        {
+          "id": "T020",
+          "title": "Modify cli.ts",
+          "description": "MODIFY src/cli.ts. Register `modelsCommand` under Operations without intermediate option collisions",
+          "status": "open",
+          "gateScript": "pnpm exec vitest run src/adapters/models/route-lock-store.test.ts src/commands/models.test.ts src/cli.consistency.test.ts src/cli.option-collisions.test.ts src/cli.ux.test.ts src/architecture.test.ts",
+          "sp": 1
+        }
+      ],
+      "sp_estimate": 7,
+      "testTargets": [
+        "src/adapters/models/route-lock-store.test.ts",
+        "src/commands/models.test.ts",
+        "src/cli.option-collisions.test.ts"
+      ]
+    },
+    {
+      "id": "phase-05",
+      "title": "Unified routing and live runbook",
+      "tasks": [
+        {
+          "id": "T021",
+          "title": "Create resolve-route.ts",
+          "description": "NEW src/application/models/resolve-route.ts. Resolve pinned routes, qualified fallbacks and `provider-default` mode. Tests: src/application/models/resolve-route.test.ts",
+          "status": "open",
+          "gateScript": "pnpm exec vitest run src/application/models/resolve-route.test.ts src/utils/manifest.test.ts src/utils/config-resolution.conformance.test.ts src/architecture.test.ts",
+          "sp": 2
+        },
+        {
+          "id": "T022",
+          "title": "Modify resolve-agent.ts",
+          "description": "MODIFY src/utils/resolve-agent.ts. Delegate pillar and role selection through `resolve-route` with centralized config access",
+          "status": "open",
+          "gateScript": "pnpm exec vitest run src/application/models/resolve-route.test.ts src/utils/manifest.test.ts src/utils/config-resolution.conformance.test.ts src/architecture.test.ts",
+          "sp": 1
+        },
+        {
+          "id": "T023",
+          "title": "Modify workflow-runtime.ts",
+          "description": "MODIFY src/plugins/workflow-runtime.ts. Forward typed `model`, `effort` and `routeMode` and return `observedModel`",
+          "status": "open",
+          "gateScript": "pnpm exec vitest run src/application/models/resolve-route.test.ts src/utils/manifest.test.ts src/utils/config-resolution.conformance.test.ts src/architecture.test.ts",
+          "sp": 1
+        },
+        {
+          "id": "T024",
+          "title": "Modify manifest.ts",
+          "description": "MODIFY src/utils/manifest.ts. Record `requestedModel`, `observedModel` and `fallbackReason` in manifests",
+          "status": "open",
+          "gateScript": "pnpm exec vitest run src/application/models/resolve-route.test.ts src/utils/manifest.test.ts src/utils/config-resolution.conformance.test.ts src/architecture.test.ts",
+          "sp": 1
+        },
+        {
+          "id": "T025",
+          "title": "Create model-qualification-live.md",
+          "description": "NEW docs/operations/model-qualification-live.md. Define separate live qualification steps for local workstation and Linux pilot runners",
+          "status": "open",
+          "gateScript": "pnpm exec vitest run src/application/models/resolve-route.test.ts src/utils/manifest.test.ts src/utils/config-resolution.conformance.test.ts src/architecture.test.ts",
+          "sp": 2
+        }
+      ],
+      "sp_estimate": 7,
+      "testTargets": [
+        "src/application/models/resolve-route.test.ts",
+        "src/utils/manifest.test.ts",
+        "src/utils/config-resolution.conformance.test.ts"
+      ]
+    }
+  ]
+}
