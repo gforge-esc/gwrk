@@ -82,10 +82,11 @@ describe("credential guard", () => {
     "Cookie: session=fixture-session",
     "Authorization: Basic Zml4dHVyZQ==",
     "sEt-CoOkIe: session=fixture-session",
-  ])("rejects credential header %j in a nested property name", (header) => {
+    "Bearer\tfixture-token",
+  ])("rejects credential text %j in a nested property name", (key) => {
     expect(() =>
       assertNoSecretMaterial(
-        JSON.parse(JSON.stringify({ nested: [{ [header]: true }] })),
+        JSON.parse(JSON.stringify({ nested: [{ [key]: true }] })),
       ),
     ).toThrow(/secret material/i);
   });
@@ -176,26 +177,44 @@ describe("model qualification policy", () => {
     });
   });
 
-  describe.each(["provider", "family"] as const)("model %s", (field) => {
-    it.each([undefined, " "])(
-      "rejects matching identities with persisted value %j",
-      (value) => {
-        const input = JSON.parse(
-          JSON.stringify({
-            snapshot: {
-              ...snapshot,
-              adapters: [{ ...report, models: [{ ...model, [field]: value }] }],
-            },
-            candidate: { ...candidate, [field]: value },
-          }),
-        );
-        expect(checkCandidate(input.snapshot, scope, input.candidate)).toEqual({
-          ok: false,
-          reason: "model-unavailable",
-        });
-      },
-    );
+  it("rejects a persisted null candidate", () => {
+    expect(checkCandidate(snapshot, scope, JSON.parse("null"))).toEqual({
+      ok: false,
+      reason: "model-unavailable",
+    });
   });
+
+  describe.each(["backend", "provider", "family"] as const)(
+    "model %s",
+    (field) => {
+      it.each([undefined, " "])(
+        "rejects matching identities with persisted value %j",
+        (value) => {
+          const input = JSON.parse(
+            JSON.stringify({
+              snapshot: {
+                ...snapshot,
+                adapters: [
+                  {
+                    ...report,
+                    ...(field === "backend" ? { backend: value } : {}),
+                    models: [{ ...model, [field]: value }],
+                  },
+                ],
+              },
+              candidate: { ...candidate, [field]: value },
+            }),
+          );
+          expect(
+            checkCandidate(input.snapshot, scope, input.candidate),
+          ).toEqual({
+            ok: false,
+            reason: "model-unavailable",
+          });
+        },
+      );
+    },
+  );
 
   it.each([
     ["omitted CLI version", [{ ...report, cliVersion: undefined }]],

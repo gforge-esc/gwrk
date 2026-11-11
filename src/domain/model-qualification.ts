@@ -97,6 +97,8 @@ export function checkCandidate(
   ) {
     return { ok: false, reason: "runner-mismatch" };
   }
+  if (!isNonBlankString(candidate?.backend))
+    return { ok: false, reason: "model-unavailable" };
   if (!isConcreteModel(candidate.modelId))
     return { ok: false, reason: "model-alias" };
   if (
@@ -369,6 +371,7 @@ export function assertNoSecretMaterial(
     JSON.stringify(value, (key, entry: unknown) => {
       if (
         headerPattern.test(key) ||
+        secretPattern.test(key) ||
         (typeof entry === "string" &&
           (headerPattern.test(entry) || secretPattern.test(entry)))
       ) {
