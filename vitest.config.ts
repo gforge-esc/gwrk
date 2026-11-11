@@ -1,3 +1,7 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
 import { defineConfig } from "vitest/config";
 
 // Non-hermetic integration tests: they spawn real daemons and share global
@@ -14,8 +18,7 @@ const QUARANTINED_INTEGRATION = [
   // Slow CLI-spawn suites: node startup latency on CI blows the worker-RPC.
   // (cli.ux is now in-process and un-quarantined — PR-7.)
   "**/src/cli.pulse.e2e.test.ts",
-  // Other CI-hostile integration tests (carried from develop #96).
-  "**/src/**/notify.test.ts",
+  // Pulse fixture still exceeds the CI worker budget.
   "**/src/engine/pulse-integration.test.ts",
 ];
 

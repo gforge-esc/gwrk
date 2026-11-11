@@ -7,6 +7,7 @@ import path from "node:path";
 import { Command } from "commander";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import * as runsModule from "../db/runs.js";
+import { ShipOrchestrator } from "../engine/ship-orchestrator.js";
 import * as execModule from "../utils/exec.js";
 import * as uiModule from "../utils/format.js";
 import * as stateModule from "../utils/state.js";
@@ -763,6 +764,7 @@ describe("FR-009/T010: Agent config fail-fast", () => {
 
     expect(process.exitCode).toBe(1);
     expect(runsModule.startRun).not.toHaveBeenCalled();
+    expect(ShipOrchestrator).not.toHaveBeenCalled();
   });
 });
 
