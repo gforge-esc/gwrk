@@ -1,0 +1,20 @@
+{
+  "runId": "2026-11-11T23:10:17.785Z_ship_p01",
+  "feature": "047-model-qualification",
+  "phase": "phase-01",
+  "command": "ship",
+  "agent": "codex",
+  "model": "unknown",
+  "startedAt": "2026-11-11T23:10:17.785Z",
+  "finishedAt": "2026-11-11T23:17:51.474Z",
+  "durationS": 454,
+  "exitCode": 1,
+  "attempt": 1,
+  "reviewVerdict": "NO-GO",
+  "filesChanged": 4,
+  "linesAdded": 40,
+  "linesDeleted": 3,
+  "gitCommit": "96ca2b7ca822a5bfe6c9937b1e21f6ee0f261529",
+  "gitBranch": "feat/047-model-qualification",
+  "digest": []
+}
