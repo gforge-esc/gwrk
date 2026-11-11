@@ -315,7 +315,7 @@ export interface OperationsStorePort {
    * Preserve a verified merge on a later close.
    * Enrich missing facts from a later delivery for the same pull request and merge scope.
    * Never replace an existing head repository, branch or expected tip with conflicting facts.
-   * Use planLateBranchCleanup on matching offline harvests when verified PR facts arrive.
+   * Use planLateBranchCleanup when verified facts enrich a matching local or pull request harvest.
    * Persist activated cleanup receipts with the new facts and rederive status atomically.
    * Clear completedAt when a prior completion becomes recoverable. Preserve its lease fence.
    */
@@ -383,10 +383,10 @@ export interface OperationsStorePort {
    * Use deriveHarvestTerminalStatus with the terminal event and full saved phase plan.
    * Set updatedAt to nowIso and set completedAt to nowIso for a terminal status.
    * Require a failure notice when the phase's saved Slack receipt has a target.
-   * Resolve the notice recipient from the saved operation and its project feature thread.
+   * Use the saved operation recipient and prefer its project feature thread for routing.
    * Reject conflicting recipient fields before changing either the receipt or outbox.
    * Upsert harvest_gate_failed by project, operation and phase in the gate failure transaction.
-   * A fenced replay of the recorded gate failure preserves the receipt and notice.
+   * On fenced replay, validate against the saved notice recipient and preserve both records.
    * Keep retryable_failure receipts and their errors eligible for a new claim after lease expiry.
    * Set neither the receipt nor the operation completion time for a retryable failure.
    * Exclude terminal operations from recovery scans and claims.
