@@ -16,9 +16,10 @@
           "id": "T001",
           "title": "Create release-packaging.ts",
           "description": "NEW src/domain/release-packaging.ts. Validate release manifests and check layout separation plus rollback migration compatibility. Tests: src/domain/release-packaging.test.ts",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/phase-01.sh",
-          "sp": 2
+          "sp": 2,
+          "completedAt": "2026-11-11T17:32:57.977Z"
         }
       ],
       "sp_estimate": 2,
