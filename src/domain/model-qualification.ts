@@ -277,10 +277,11 @@ export function evaluatePromotion(input: PromotionEvidence): PromotionDecision {
   ) {
     return { promote: false, reason: "judge-dependence" };
   }
-  const [firstJudge, secondJudge] = input.judges;
+  const [{ judge: firstJudge }, { judge: secondJudge }] = input.judges;
   if (
-    firstJudge.judge.backend === secondJudge.judge.backend &&
-    firstJudge.judge.modelId === secondJudge.judge.modelId
+    firstJudge.modelId === secondJudge.modelId &&
+    (firstJudge.backend === secondJudge.backend ||
+      /^[^/]+\/[^/]/.test(firstJudge.modelId))
   ) {
     return { promote: false, reason: "judge-dependence" };
   }

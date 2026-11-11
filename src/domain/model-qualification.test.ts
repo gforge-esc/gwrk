@@ -890,11 +890,44 @@ describe("model qualification policy", () => {
   );
 
   it.each([
-    ["provider-a/model-v1", { promote: false, reason: "judge-dependence" }],
-    ["provider-b/model-v1", { promote: true }],
+    [
+      "aggregator-cli",
+      "aggregator-cli",
+      "provider-a/model-v1",
+      "provider-a/model-v1",
+      { promote: false, reason: "judge-dependence" },
+    ],
+    [
+      "aggregator-cli",
+      "aggregator-cli",
+      "provider-a/model-v1",
+      "provider-b/model-v1",
+      { promote: true },
+    ],
+    [
+      "native-cli",
+      "aggregator-cli",
+      "provider-a/model-v1",
+      "provider-a/model-v1",
+      { promote: false, reason: "judge-dependence" },
+    ],
+    [
+      "native-cli",
+      "aggregator-cli",
+      "provider-a/model-v1",
+      "provider-b/model-v1",
+      { promote: true },
+    ],
+    [
+      "native-cli",
+      "aggregator-cli",
+      "model-v1",
+      "model-v1",
+      { promote: true },
+    ],
   ])(
-    "checks judge independence on a shared backend with second model %s",
-    (modelId, expected) => {
+    "checks judge independence on %s and %s with models %s and %s",
+    (firstBackend, secondBackend, firstModelId, secondModelId, expected) => {
       const [first, second] = passingEvidence.judges;
       const input = JSON.parse(
         JSON.stringify({
@@ -904,15 +937,19 @@ describe("model qualification policy", () => {
               ...first,
               judge: {
                 ...first.judge,
-                backend: "aggregator",
-                modelId: "provider-a/model-v1",
+                backend: firstBackend,
+                modelId: firstModelId,
               },
-              observedJudgeModel: "provider-a/model-v1",
+              observedJudgeModel: firstModelId,
             },
             {
               ...second,
-              judge: { ...second.judge, backend: "aggregator", modelId },
-              observedJudgeModel: modelId,
+              judge: {
+                ...second.judge,
+                backend: secondBackend,
+                modelId: secondModelId,
+              },
+              observedJudgeModel: secondModelId,
             },
           ],
         }),
