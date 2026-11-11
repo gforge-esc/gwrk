@@ -190,15 +190,15 @@
           "title": "Modify workflow-runtime.ts",
           "description": "MODIFY src/plugins/workflow-runtime.ts. Populate `task.stdin` before dispatch and support `nativeOnly` execution with an injected `dispatcher`. Tests: src/plugins/workflow-runtime.test.ts",
           "status": "open",
-          "gateScript": "pnpm build\npnpm exec vitest run src/utils/agent.test.ts src/utils/agent.grounding-decisions.test.ts src/plugins/workflow-runtime.test.ts src/plugins/skill-runtime.test.ts src/engine/ship-orchestrator.workflow-seam.test.ts src/plugins/builtins/workflows/gwrk-plan/prompt-contract.test.ts src/architecture.test.ts",
+          "gateScript": "gates/phase-04.sh",
           "sp": 1
         },
         {
           "id": "T017",
           "title": "Modify ship-orchestrator.ts",
-          "description": "MODIFY src/engine/ship-orchestrator.ts. Route `stageImplement` and `executeReviewWorkflow` through `WorkflowRuntime` in `nativeOnly` mode using `dispatchWithFailback`. Tests: src/engine/ship-orchestrator.workflow-seam.test.ts",
+          "description": "MODIFY src/engine/ship-orchestrator.ts. Route `stageImplement` and `executeReviewWorkflow` through `WorkflowRuntime` in `nativeOnly` mode using `dispatchWithFailback`. Tests: src/engine/ship-orchestrator.review.test.ts, src/engine/ship-orchestrator.test.ts",
           "status": "open",
-          "gateScript": "pnpm build\npnpm exec vitest run src/utils/agent.test.ts src/utils/agent.grounding-decisions.test.ts src/plugins/workflow-runtime.test.ts src/plugins/skill-runtime.test.ts src/engine/ship-orchestrator.workflow-seam.test.ts src/plugins/builtins/workflows/gwrk-plan/prompt-contract.test.ts src/architecture.test.ts",
+          "gateScript": "gates/phase-04.sh",
           "sp": 1
         },
         {
@@ -206,7 +206,7 @@
           "title": "Modify agent.ts",
           "description": "MODIFY src/utils/agent.ts. Combine prompt and stdin before enforcement resolution, grounding and `<command_safety>` injection without duplicating prompts. Tests: src/utils/agent.test.ts",
           "status": "open",
-          "gateScript": "pnpm build\npnpm exec vitest run src/utils/agent.test.ts src/utils/agent.grounding-decisions.test.ts src/plugins/workflow-runtime.test.ts src/plugins/skill-runtime.test.ts src/engine/ship-orchestrator.workflow-seam.test.ts src/plugins/builtins/workflows/gwrk-plan/prompt-contract.test.ts src/architecture.test.ts",
+          "gateScript": "gates/phase-04.sh",
           "sp": 1
         },
         {
@@ -214,7 +214,7 @@
           "title": "Modify PROMPT.md",
           "description": "MODIFY src/plugins/builtins/workflows/gwrk-plan/PROMPT.md. Add `<code_quality>` enforcement placeholder while preserving canonical plan format rules",
           "status": "open",
-          "gateScript": "pnpm build\npnpm exec vitest run src/utils/agent.test.ts src/utils/agent.grounding-decisions.test.ts src/plugins/workflow-runtime.test.ts src/plugins/skill-runtime.test.ts src/engine/ship-orchestrator.workflow-seam.test.ts src/plugins/builtins/workflows/gwrk-plan/prompt-contract.test.ts src/architecture.test.ts",
+          "gateScript": "gates/phase-04.sh",
           "sp": 1
         },
         {
@@ -222,7 +222,7 @@
           "title": "Modify PROMPT.md",
           "description": "MODIFY src/plugins/builtins/workflows/gwrk-implement/PROMPT.md. Add `<code_quality>` enforcement placeholder for implementation dispatches",
           "status": "open",
-          "gateScript": "pnpm build\npnpm exec vitest run src/utils/agent.test.ts src/utils/agent.grounding-decisions.test.ts src/plugins/workflow-runtime.test.ts src/plugins/skill-runtime.test.ts src/engine/ship-orchestrator.workflow-seam.test.ts src/plugins/builtins/workflows/gwrk-plan/prompt-contract.test.ts src/architecture.test.ts",
+          "gateScript": "gates/phase-04.sh",
           "sp": 1
         }
       ],
