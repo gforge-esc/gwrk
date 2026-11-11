@@ -2,8 +2,11 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import { execFile } from "node:child_process";
 import fs from "node:fs/promises";
 import path from "node:path";
+import { promisify } from "node:util";
+import { parseAgyModelList } from "../../../../adapters/models/agy-catalog.js";
 import {
   type AgentTaskRequest as TaskDispatch,
   type AgentTaskResult as TaskResult,
@@ -38,6 +41,13 @@ export class AgyAdapter implements AgentBackend {
     } catch {
       return false;
     }
+  }
+
+  async discoverModels() {
+    const { stdout } = await promisify(execFile)("agy", ["models"], {
+      timeout: 10_000,
+    });
+    return parseAgyModelList(stdout);
   }
 
   async checkQuota(): Promise<QuotaStatus> {
@@ -141,7 +151,7 @@ export class AgyAdapter implements AgentBackend {
       args.push("--model", rawModel);
     }
 
-    const effort = task.env?.AGY_EFFORT || task.env?.GWRK_EFFORT;
+    const effort = task.effort || task.env?.AGY_EFFORT || task.env?.GWRK_EFFORT;
     if (effort) {
       args.push("--effort", effort);
     }
@@ -197,6 +207,16 @@ export class AgyAdapter implements AgentBackend {
       .map((line) => {
         try {
           const event = JSON.parse(line);
+          if (
+            event?.event === "init" &&
+            typeof event.init?.model === "string"
+          ) {
+            return JSON.stringify({
+              type: "system",
+              subtype: "init",
+              model: event.init.model,
+            });
+          }
           if (event?.event !== "result" || !event.result) return line;
           const failed = event.result.status !== "SUCCESS";
           if (failed && typeof event.result.error === "string") {
@@ -264,6 +284,7 @@ export class AgyAdapter implements AgentBackend {
         : {}),
       stdout,
       unwrappedStdout: unwrapped.text,
+      observedModel: unwrapped.observedModel ?? "unknown",
       ...(unwrapped.structuredOutput
         ? { structuredOutput: unwrapped.structuredOutput }
         : {}),

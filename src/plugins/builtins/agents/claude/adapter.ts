@@ -120,7 +120,8 @@ export class ClaudeAdapter implements AgentBackend {
       args.push("--model", rawModel);
     }
 
-    const effort = task.env?.CLAUDE_EFFORT || task.env?.GWRK_EFFORT;
+    const effort =
+      task.effort || task.env?.CLAUDE_EFFORT || task.env?.GWRK_EFFORT;
     if (effort) {
       args.push("--effort", effort);
     }
@@ -211,6 +212,7 @@ export class ClaudeAdapter implements AgentBackend {
         : {}),
       stdout,
       unwrappedStdout: unwrapped.text,
+      observedModel: unwrapped.observedModel ?? "unknown",
       ...(unwrapped.structuredOutput
         ? { structuredOutput: unwrapped.structuredOutput }
         : {}),

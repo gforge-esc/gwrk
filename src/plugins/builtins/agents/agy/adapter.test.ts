@@ -236,4 +236,24 @@ describe("AgyAdapter", () => {
       unwrappedStdout: "GO",
     });
   });
+  it("forwards typed effort and records the observed model separately", async () => {
+    const adapter = new AgyAdapter();
+    const dispatch = await adapter.dispatch({
+      effort: "high",
+      prompt: "Run checks",
+    });
+    const [flag, value] = ["--effort", "high"];
+    const flagIndex = dispatch.args.indexOf(flag);
+    expect(flagIndex).toBeGreaterThanOrEqual(0);
+    expect(dispatch.args[flagIndex + 1]).toBe(value);
+    const stdout = [
+      { event: "init", init: { model: "gemini-4-carbon-high" } },
+      { event: "result", result: { status: "SUCCESS", response: "ok" } },
+    ]
+      .map((event) => JSON.stringify(event))
+      .join("\n");
+    expect(adapter.parseResult(stdout, "", 0).observedModel).toBe(
+      "gemini-4-carbon-high",
+    );
+  });
 });

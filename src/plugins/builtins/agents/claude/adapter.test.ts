@@ -167,4 +167,24 @@ describe("ClaudeAdapter", () => {
       expect(execCommand).toHaveBeenCalledWith("which", ["claude"]);
     });
   });
+  it("forwards typed effort and records the observed model separately", async () => {
+    const adapter = new ClaudeAdapter();
+    const dispatch = await adapter.dispatch({
+      effort: "high",
+      prompt: "Run checks",
+    });
+    const [flag, value] = ["--effort", "high"];
+    const flagIndex = dispatch.args.indexOf(flag);
+    expect(flagIndex).toBeGreaterThanOrEqual(0);
+    expect(dispatch.args[flagIndex + 1]).toBe(value);
+    const stdout = [
+      { type: "system", subtype: "init", model: "claude-opus-5-5" },
+      { type: "result", subtype: "success", result: "ok" },
+    ]
+      .map((event) => JSON.stringify(event))
+      .join("\n");
+    expect(adapter.parseResult(stdout, "", 0).observedModel).toBe(
+      "claude-opus-5-5",
+    );
+  });
 });

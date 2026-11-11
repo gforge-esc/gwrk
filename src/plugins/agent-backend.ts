@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import type { DiscoveredModel } from "../domain/model-qualification.js";
 import type {
   AgentTaskRequest as TaskDispatch,
   AgentTaskResult as TaskResult,
@@ -71,6 +72,7 @@ export interface AgentBackend {
    */
   isAvailable(): Promise<boolean>;
 
+  discoverModels?(): Promise<readonly DiscoveredModel[]>;
   checkQuota?(): Promise<QuotaStatus>;
   probe?(): Promise<ProbeResult>;
 

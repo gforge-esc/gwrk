@@ -16,6 +16,8 @@ export interface AgentTaskRequest {
   stdin?: string;
   agent?: string;
   model?: string;
+  effort?: string;
+  routeMode?: "pinned" | "provider-default";
   workDir?: string;
   timeoutMs?: number;
   env?: Record<string, string>;
@@ -45,6 +47,7 @@ export interface AgentTaskResult {
   timedOut?: boolean;
   status?: "success" | "failure";
   terminalStatus?: "success" | "failure";
+  observedModel?: string;
   error?: string;
   errorType?:
     | "rate_limit"
@@ -88,6 +91,7 @@ export interface UnwrappedStreamResult {
   structuredOutput?: Record<string, unknown>;
   isTurnLimit?: boolean;
   terminalStatus?: "success" | "failure";
+  observedModel?: string;
   usage?: {
     tokensIn?: number;
     tokensOut?: number;
@@ -113,6 +117,7 @@ export function unwrapStreamJson(stdout: string): UnwrappedStreamResult {
   let terminalStatus: UnwrappedStreamResult["terminalStatus"];
   let usage: UnwrappedStreamResult["usage"];
   let parsedAnyEvent = false;
+  let observedModel: string | undefined;
 
   for (const raw of lines) {
     const line = raw.trim();
@@ -124,6 +129,15 @@ export function unwrapStreamJson(stdout: string): UnwrappedStreamResult {
       continue;
     }
     if (!evt || typeof evt !== "object") continue;
+
+    if (
+      evt.type === "system" &&
+      evt.subtype === "init" &&
+      typeof evt.model === "string" &&
+      evt.model.trim()
+    ) {
+      observedModel = evt.model;
+    }
 
     if (evt.subtype === "error_max_turns") {
       isTurnLimit = true;
@@ -186,6 +200,7 @@ export function unwrapStreamJson(stdout: string): UnwrappedStreamResult {
     return {
       text: stdout,
       isTurnLimit: stdout.includes("error_max_turns") || undefined,
+      ...(observedModel ? { observedModel } : {}),
     };
   }
 
@@ -200,6 +215,7 @@ export function unwrapStreamJson(stdout: string): UnwrappedStreamResult {
     ...(lastStructuredOutput ? { structuredOutput: lastStructuredOutput } : {}),
     ...(isTurnLimit ? { isTurnLimit: true } : {}),
     ...(terminalStatus ? { terminalStatus } : {}),
+    ...(observedModel ? { observedModel } : {}),
     ...(usage ? { usage } : {}),
   };
 }

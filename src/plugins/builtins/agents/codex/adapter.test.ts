@@ -65,4 +65,17 @@ describe("CodexAdapter", () => {
       },
     );
   });
+  it("forwards typed effort and records the observed model separately", async () => {
+    const adapter = new CodexAdapter();
+    const dispatch = await adapter.dispatch({
+      effort: "high",
+      prompt: "Run checks",
+    });
+    const [flag, value] = ["-c", 'model_reasoning_effort="high"'];
+    const flagIndex = dispatch.args.indexOf(flag);
+    expect(flagIndex).toBeGreaterThanOrEqual(0);
+    expect(dispatch.args[flagIndex + 1]).toBe(value);
+    const stdout = "ok";
+    expect(adapter.parseResult(stdout, "", 0).observedModel).toBe("unknown");
+  });
 });
