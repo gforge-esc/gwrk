@@ -1,6 +1,6 @@
 # Workflow governance data model
 
-The project policy lock records exact enforcement versions in Git. Discovery reports architecture context health and scoped assessment evidence from existing repository files. Blocked: implementation awaits architecture-aware policy selection (feature 044) and project owner adoption.
+The project policy lock records exact enforcement versions in Git. Discovery reports architecture context health and scoped assessment evidence from existing repository files. Blocked: implementation awaits architecture-aware policy selection (feature 044).
 
 ## Type dependencies
 

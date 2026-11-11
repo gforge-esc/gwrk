@@ -1,6 +1,6 @@
 # Workflow governance interfaces
 
-Discovery gains additive readiness data. Dispatch keeps the existing transport and consumes a verified policy when the project supplies pins. Blocked: implementation awaits architecture-aware policy selection (feature 044) and project owner adoption.
+Discovery gains additive readiness data. Dispatch keeps the existing transport and consumes a verified policy when the project supplies pins. Blocked: implementation awaits architecture-aware policy selection (feature 044).
 
 ## Workflow guidance
 
@@ -9,7 +9,7 @@ Discovery gains additive readiness data. Dispatch keeps the existing transport a
 - Specification and plan workflows use the selected layout and applicable enforcement rules. If the profile has no design, infer locations from the host repository and its recorded decisions.
 - The Principal Engineer persona uses project verification commands and schema standards. Keep its review authority and reporting requirements.
 - Every stage receives the complete readable `<architecture_decisions>` payload. Preserve all statuses and the existing behavior for a missing or unreadable index.
-- When the target and index are readable, add one shared instruction outside the index payload. Follow Decided constraints and refer a conflict with a Proposed target to the project owner before implementing the affected change.
+- When the target and index are readable, add one shared instruction outside the index payload. Follow Decided constraints and record conflicts with a Proposed target in the plan.
 
 ## Discovery
 
