@@ -416,6 +416,26 @@ export function planHarvestStages(input: {
   );
 }
 
+export function isCompleteHarvestStagePlan(input: {
+  terminalEvent: HarvestTerminalEvent;
+  phaseIds: readonly string[];
+  stages: readonly HarvestStagePlanEntry[];
+}): boolean {
+  const expected = planHarvestStages({
+    ...input,
+    hasSlackTarget: false,
+    hasRemoteBranchTarget: false,
+  });
+  const stageKey = ({ phaseKey, stage }: HarvestStagePlanEntry) =>
+    JSON.stringify([phaseKey, stage]);
+  const remaining = new Set(expected.map(stageKey));
+  return (
+    remaining.size > 0 &&
+    input.stages.length === remaining.size &&
+    input.stages.every((entry) => remaining.delete(stageKey(entry)))
+  );
+}
+
 function stageFinished({ stage, status }: HarvestStageReceipt): boolean {
   return (
     status === "succeeded" ||

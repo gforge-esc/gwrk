@@ -264,6 +264,7 @@ describe("FR-006 durable operation boundaries", () => {
           "listRecoverableHarvests",
           "claimHarvestLease",
           "heartbeatHarvestLease",
+          "initializeHarvestStages",
           "transitionHarvestStage",
           "enqueueOutbox",
           "getOutboxItem",

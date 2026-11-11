@@ -301,6 +301,7 @@ export interface OperationsStorePort {
 
   /**
    * Commit the delivery and operation in one transaction.
+   * Resolve manual phase scope before intake with scopeManualHarvestToPhases.
    * Resolve work keys and their aliases within the project before matching commit scope.
    * Use canCorrelateHarvestIntake to match local commits to verified merged pull requests.
    * If several verified pull requests match a local commit, use the earliest operation.
@@ -330,7 +331,7 @@ export interface OperationsStorePort {
     nowIso: string;
     projectId?: string;
   }): DurableHarvestOperation[];
-  /** Recheck eligibility and acquire the lease atomically. */
+  /** Acquire an eligible lease atomically and return the full set of persisted stage receipts. */
   claimHarvestLease(input: OperationLeaseRequest): {
     fence: LeaseFence;
     operation: DurableHarvestOperation;
@@ -344,12 +345,15 @@ export interface OperationsStorePort {
   }): FencedWrite;
   /**
    * Persist the full, nonempty set of initial receipts in one fenced write.
+   * Require all stages for the supplied phase IDs and the operation's terminal event.
+   * If the operation names a phase, require that phase alone.
    * A replay with the same phase and stage keys preserves every receipt.
-   * Reject a changed plan without writing a partial batch.
+   * Reject incomplete or changed plans without writing a partial batch.
    */
   initializeHarvestStages(input: {
     fence: LeaseFence;
     nowIso: string;
+    phaseIds: readonly string[];
     stages: readonly HarvestStagePlanEntry[];
   }): FencedWrite | { ok: false; code: "HARVEST_PLAN_CONFLICT" };
   /** Update a planned receipt. Never add a new stage after initialization. */

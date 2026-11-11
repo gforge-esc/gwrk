@@ -13,6 +13,7 @@ import {
   type HarvestStageReceipt,
   canCorrelateHarvestIntake,
   deriveHarvestTerminalStatus,
+  isCompleteHarvestStagePlan,
   planHarvestStages,
   scopeManualHarvestToPhases,
   verifyHarvestTarget,
@@ -122,7 +123,11 @@ function harvestIntake(
     candidate,
   );
   if (!verified.ok) throw new Error(verified.reason);
-  operation.workKey = verified.workKey;
+  Object.assign(operation, {
+    workKey: verified.workKey,
+    featureId: verified.featureId,
+    phaseId: verified.phaseId,
+  });
   return {
     candidate,
     payloadDigest: operationId,
@@ -322,11 +327,22 @@ function restoreRecoveryStore(persisted: {
       row.updatedAt = nowIso;
       return result;
     },
-    initializeHarvestStages({ fence, nowIso, stages: plan }) {
+    initializeHarvestStages({ fence, nowIso, phaseIds, stages: plan }) {
       const row = harvests.find((row) => row.operationId === fence.operationId);
       if (!row) return { ok: false, code: "LEASE_FENCED" };
       const lease = validateLeaseFence(row, fence, nowIso);
       if (!lease.ok) return lease;
+      if (
+        (row.phaseId !== null &&
+          (phaseIds.length !== 1 || phaseIds[0] !== row.phaseId)) ||
+        !isCompleteHarvestStagePlan({
+          terminalEvent: row.terminalEvent,
+          phaseIds,
+          stages: plan,
+        })
+      ) {
+        return { ok: false, code: "HARVEST_PLAN_CONFLICT" };
+      }
       const key = ({ phaseKey, stage }: { phaseKey: string; stage: string }) =>
         JSON.stringify([phaseKey, stage]);
       const keys = new Set(plan.map(key));
@@ -334,11 +350,9 @@ function restoreRecoveryStore(persisted: {
         ({ operationId }) => operationId === fence.operationId,
       );
       if (
-        !plan.length ||
-        keys.size !== plan.length ||
-        (saved.length &&
-          (saved.length !== keys.size ||
-            !saved.every((entry) => keys.has(key(entry)))))
+        saved.length &&
+        (saved.length !== keys.size ||
+          !saved.every((entry) => keys.has(key(entry))))
       ) {
         return { ok: false, code: "HARVEST_PLAN_CONFLICT" };
       }
@@ -638,7 +652,11 @@ describe("durable recovery store contract", () => {
       const overlapping = prFirst ? inputs[0] : pull;
       if (!first.target.accepted) throw new Error("Expected initial intake");
       const original = first.target.operation;
-      const stage = learningReceipt(original.operationId);
+      const recordLearning = vi.fn((operation: DurableHarvestOperation) => ({
+        ...learningReceipt(operation.operationId),
+        phaseKey: operation.phaseId ?? "feature",
+      }));
+      const stage = recordLearning(original);
       const resumed = restoreHarvestIntake({
         harvests: [original],
         stages: [stage],
@@ -651,10 +669,29 @@ describe("durable recovery store contract", () => {
         deduplicatedWork: false,
         operation: { phaseId: "phase-02" },
       });
-      expect(resumed.snapshot().harvests.map(({ phaseId }) => phaseId)).toEqual(
-        [phaseId, "phase-02"],
-      );
-      expect(resumed.snapshot().stages).toEqual([stage]);
+      const persisted = resumed.snapshot();
+      expect(persisted.harvests.map(({ phaseId }) => phaseId)).toEqual([
+        phaseId,
+        "phase-02",
+      ]);
+      expect(persisted.stages).toEqual([stage]);
+
+      const replay = restoreHarvestIntake(persisted).store;
+      for (const intake of [pull, ...inputs]) {
+        const result = replay.recordHarvestIntake(intake);
+        if (!result.ok || !result.operation) throw new Error("Expected replay");
+        const operation = result.operation;
+        const receipt = persisted.stages.find(
+          ({ operationId, phaseKey }) =>
+            operationId === operation.operationId &&
+            phaseKey === operation.phaseId,
+        );
+        if (!receipt) persisted.stages.push(recordLearning(operation));
+      }
+      expect(recordLearning.mock.calls.map(([row]) => row.phaseId)).toEqual([
+        phaseId,
+        "phase-02",
+      ]);
     },
   );
 
@@ -678,7 +715,7 @@ describe("durable recovery store contract", () => {
       hasSlackTarget: true,
       hasRemoteBranchTarget: true,
     });
-    const init = { fence: claim.fence, nowIso, stages: plan };
+    const init = { fence: claim.fence, nowIso, phaseIds, stages: plan };
     const firstStage = {
       ...init,
       phaseKey: phaseId,
@@ -689,6 +726,12 @@ describe("durable recovery store contract", () => {
       ok: false,
       code: "HARVEST_STAGE_UNPLANNED",
     });
+    for (const incompletePlan of [plan.slice(0, 5), plan.slice(0, -1)]) {
+      expect(
+        store.initializeHarvestStages({ ...init, stages: incompletePlan }),
+      ).toEqual({ ok: false, code: "HARVEST_PLAN_CONFLICT" });
+      expect(store.snapshot().stages).toEqual([]);
+    }
     expect(store.initializeHarvestStages(init)).toEqual({ ok: true });
     const afterPlan = restoreRecoveryStore(store.snapshot());
     const later = "2026-11-11T12:02:00.000Z";
@@ -720,11 +763,12 @@ describe("durable recovery store contract", () => {
       ).toEqual({ ok: true });
     }
     expect(
-      afterPlan.initializeHarvestStages({ ...resumed, stages: plan }),
+      afterPlan.initializeHarvestStages({ ...resumed, phaseIds, stages: plan }),
     ).toEqual({ ok: true });
     expect(
       afterPlan.initializeHarvestStages({
         ...resumed,
+        phaseIds,
         stages: plan.slice(0, 5),
       }),
     ).toEqual({
@@ -748,7 +792,9 @@ describe("durable recovery store contract", () => {
     expect(
       deriveHarvestTerminalStatus({
         terminalEvent: "merged",
-        phaseIds,
+        phaseIds: [
+          ...new Set(afterFirstPhase.stages.map(({ phaseKey }) => phaseKey)),
+        ],
         stages: afterFirstPhase.stages,
       }),
     ).toBe("running");
@@ -1009,6 +1055,7 @@ it("records learning for an offline harvest after restart", async () => {
     restarted.initializeHarvestStages({
       fence,
       nowIso,
+      phaseIds: [phaseId],
       stages: planHarvestStages({
         terminalEvent: "merged",
         phaseIds: [phaseId],
