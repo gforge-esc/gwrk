@@ -31,6 +31,8 @@ it.each([
   { signal: "SIGTERM", status: 143, stage: "initial stop" },
   { signal: "SIGINT", status: 130, stage: "initial stop" },
   { signal: null, status: 1, stage: "backup with an inactive unit" },
+  { signal: null, status: 1, stage: "target CLI version mismatch" },
+  { signal: null, status: 1, stage: "target manifest version mismatch" },
 ] as const)(
   "preserves release state during $stage (exit $status)",
   async ({ signal, status, stage }) => {
@@ -90,9 +92,22 @@ it.each([
         realpath: 'cd -P -- "$3" && pwd -P',
         flock: "exit 0",
         runuser: `shift 5
+if [[ "\${3:-}" == --version ]]; then
+  if [[ "$FIXTURE_STAGE" == "target CLI version mismatch" ]]; then
+    printf '1.1.0\\n'
+  else
+    printf '1.0.0\\n'
+  fi
+  exit 0
+fi
 if [[ "\${3:-}" == db ]]; then
-  [[ "\${4:-}" != rollback-check ]] || exit 0
-  if [[ "\${4:-}" == backup && "$FIXTURE_STAGE" == "backup with an inactive unit" ]]; then
+  if [[ "\${4:-}" == rollback-check ]]; then
+    version=1.0.0
+    if [[ "$FIXTURE_STAGE" == "target manifest version mismatch" ]]; then version=1.1.0; fi
+    printf '{"allowed":true,"targetVersion":"%s"}\\n' "$version"
+    exit 0
+  fi
+  if [[ "\${4:-}" == backup && ( "$FIXTURE_STAGE" == "backup with an inactive unit" || "$FIXTURE_STAGE" == *mismatch ) ]]; then
     printf 'Fixture backup failed\\n' >&2
     exit 1
   fi
@@ -164,8 +179,13 @@ esac`,
       try {
         if (!signal) {
           expect(await closed, output).toEqual([status, null]);
-          expect(output).toContain("Fixture backup failed");
-          expect(await readFile(calls, "utf8"), output).toBe("stop\n");
+          if (stage === "backup with an inactive unit") {
+            expect(output).toContain("Fixture backup failed");
+            expect(await readFile(calls, "utf8"), output).toBe("stop\n");
+          } else {
+            expect(output).toContain("does not match");
+            expect(existsSync(calls)).toBe(false);
+          }
           expect(existsSync(pidFile)).toBe(false);
           expect(await readlink(current)).toBe(active);
           expect(await readlink(previous)).toBe(target);

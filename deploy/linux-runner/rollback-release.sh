@@ -61,9 +61,18 @@ done
 check_rollback() {
   "${as_service[@]}" node "$active/dist/cli.js" db rollback-check --current "$active" --target "$target" "$@"
 }
-check_rollback
-timeout --kill-after=5s 15s "${as_service[@]}" node "$target/dist/cli.js" --version </dev/null >/dev/null 2>&1 ||
+compatibility=$(check_rollback --format json)
+verified_version=$(node -e '
+  const result = JSON.parse(require("node:fs").readFileSync(0, "utf8"));
+  if (result.allowed !== true || typeof result.targetVersion !== "string") process.exit(1);
+  process.stdout.write(result.targetVersion);
+' <<< "$compatibility") || fail "Could not read the verified rollback target version."
+[[ "$verified_version" == "${new_target#releases/}" ]] ||
+  fail "Rollback target manifest version $verified_version does not match $new_target."
+cli_version=$(timeout --kill-after=5s 15s "${as_service[@]}" node "$target/dist/cli.js" --version </dev/null 2>/dev/null) ||
   fail "Rollback target CLI could not start as $service_user: $target/dist/cli.js"
+[[ "$cli_version" == "$verified_version" ]] ||
+  fail "Rollback target CLI version does not match verified release $verified_version."
 timeout --kill-after=5s 15s "${as_service[@]}" node -e '
   const { createRequire } = require("node:module");
   const Database = createRequire(process.argv[1])("better-sqlite3");
