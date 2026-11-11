@@ -497,6 +497,30 @@ function resolvePrimaryCheckout(executionDir: string): string {
   return executionDir;
 }
 
+function splitLegacyStdin(task: TaskDispatch) {
+  const { stdin, prompt, type, workflow } = task;
+  if (
+    !stdin ||
+    stdin === prompt ||
+    type?.startsWith("skill/") ||
+    workflow?.startsWith("skill/")
+  ) {
+    return undefined;
+  }
+
+  if (stdin.trim() === "<code_quality></code_quality>") {
+    return { template: stdin, userInput: "" };
+  }
+
+  // Legacy templates place the task in a final block with tags on their own lines.
+  const inputStart = stdin.search(/^<user_input>\r?\n/m);
+  if (inputStart < 0) return undefined;
+  const userInput = stdin.slice(inputStart);
+  if (!/\n<\/user_input>(?:\r?\n)*$/.test(userInput)) return undefined;
+
+  return { template: stdin.slice(0, inputStart), userInput };
+}
+
 /**
  * FR-019: Dispatch agent work via a single facade.
  * FR-020: Normalizes exit codes — proprietary codes mapped to gwrk standard.
@@ -546,13 +570,15 @@ export async function dispatchToAgent(task: TaskDispatch): Promise<TaskResult> {
 
   const startTime = Date.now();
   const { promptParts, ...agentTask } = task;
-  let template = promptParts?.template ?? "";
+  const legacyParts = promptParts ? undefined : splitLegacyStdin(task);
+  let template = promptParts?.template ?? legacyParts?.template ?? "";
 
   // FR-014: Inject enforcement skills
   const codeQuality = template.match(
     /<code_quality>[\s\S]*?<\/code_quality>/,
   )?.[0];
-  if (codeQuality) {
+  const bareEnforcementSlot = /^\{\{enforcement\}\}(?=\r?\n)/m;
+  if (codeQuality || (legacyParts && bareEnforcementSlot.test(template))) {
     const scope =
       task.workflow?.includes("review") || task.type?.includes("review")
         ? "review"
@@ -568,18 +594,26 @@ export async function dispatchToAgent(task: TaskDispatch): Promise<TaskResult> {
       profile,
     );
 
-    const enforcementMarker = "{{enforcement}}";
-    const section = codeQuality.includes(enforcementMarker)
-      ? codeQuality.replaceAll(enforcementMarker, () => enforcement)
-      : `<code_quality>\n${enforcement}\n</code_quality>`;
-    template = template.replace(codeQuality, () => section);
+    if (codeQuality) {
+      const enforcementMarker = "{{enforcement}}";
+      const section = codeQuality.includes(enforcementMarker)
+        ? codeQuality.replaceAll(enforcementMarker, () => enforcement)
+        : `<code_quality>\n${enforcement}\n</code_quality>`;
+      template = template.replace(codeQuality, () => section);
+    } else {
+      template = template.replace(bareEnforcementSlot, () => enforcement);
+    }
   }
 
-  const hasCommandSafety = template.includes(COMMAND_SAFETY_BLOCK);
+  const hasCommandSafety =
+    promptParts !== undefined && template.includes(COMMAND_SAFETY_BLOCK);
   let stdinPayload = (
     promptParts
       ? [template, promptParts.userInput]
-      : [task.prompt === task.stdin ? undefined : task.prompt, task.stdin]
+      : [
+          task.prompt === task.stdin ? undefined : task.prompt,
+          legacyParts ? template + legacyParts.userInput : task.stdin,
+        ]
   )
     .filter(Boolean)
     .join("\n\n");

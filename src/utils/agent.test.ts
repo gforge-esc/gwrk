@@ -120,6 +120,63 @@ describe('US-016: Enforcement Skills Dispatch Injection', () => {
     expect(skillRuntime.resolveEnforcementSkills).not.toHaveBeenCalled();
   });
 
+  const legacyInput = "<user_input>\r\n  Keep {{enforcement}} and <code_quality></code_quality>.  \r\n</user_input>\r\n";
+  const legacyPrefix = "Rules:\r\n{{enforcement}}\r\n\r\n";
+
+  it.each([
+    ["a standalone empty section", "<code_quality></code_quality>"],
+    ["a code quality slot before scoped input", `Rules:\r\n<code_quality>\r\n{{enforcement}}\r\n</code_quality>\r\n\r\n${legacyInput}`],
+    ["a bare marker before scoped input", `${legacyPrefix}${legacyInput}`],
+  ])("expands %s in legacy Codex stdin", async (_label, stdin) => {
+    const actualSkills = await vi.importActual<typeof skillRuntime>("../plugins/skill-runtime.js");
+    vi.mocked(skillRuntime.resolveEnforcementSkills).mockImplementationOnce(actualSkills.resolveEnforcementSkills);
+    const capturedStdin = mockAgentStdin();
+
+    await dispatchToAgent({
+      workflow: "gwrk-implement",
+      workDir: "/fake/root",
+      agent: "codex",
+      stdin,
+      quiet: true,
+    });
+
+    const [template, userInput] = stdin.includes(legacyInput)
+      ? [stdin.slice(0, -legacyInput.length), legacyInput]
+      : [stdin, ""];
+    const payload = capturedStdin();
+    const expandedTemplate = payload.slice(0, payload.length - userInput.length);
+    expect(expandedTemplate).toContain("<!-- enforcement-skill: typescript-standards -->");
+    expect(expandedTemplate).not.toContain("{{enforcement}}");
+    expect(payload.slice(expandedTemplate.length)).toBe(userInput);
+    if (template === "<code_quality></code_quality>") {
+      expect(expandedTemplate).toContain("<code_quality>\n");
+      expect(expandedTemplate).toContain("</code_quality>");
+    } else {
+      expect(expandedTemplate).toMatch(/^<command_safety>[\s\S]*<\/command_safety>\n\nRules:\r\n/);
+      expect(expandedTemplate.endsWith("\r\n\r\n")).toBe(true);
+    }
+  });
+
+  it.each([
+    ["skill input", { workflow: "skill/fixture", type: "skill/fixture", stdin: `${legacyPrefix}${legacyInput}` }],
+    ["input with text after the closing tag", { stdin: `${legacyPrefix}${legacyInput}More task text` }],
+    ["an inline marker", { stdin: `Quote {{enforcement}} here.\r\n\r\n${legacyInput}` }],
+    ["identical prompt and stdin", { prompt: `${legacyPrefix}${legacyInput}`, stdin: `${legacyPrefix}${legacyInput}` }],
+  ])("preserves %s in legacy Codex stdin", async (_label, task) => {
+    const capturedStdin = mockAgentStdin();
+
+    await dispatchToAgent({
+      workflow: "gwrk-implement",
+      workDir: "/fake/root",
+      agent: "codex",
+      quiet: true,
+      ...task,
+    });
+
+    expect(capturedStdin()).toBe(`${COMMAND_SAFETY_BLOCK}\n\n${task.stdin}`);
+    expect(skillRuntime.resolveEnforcementSkills).not.toHaveBeenCalled();
+  });
+
   it('expands template enforcement even when the template quotes the input tag', async () => {
     vi.mocked(skillRuntime.resolveEnforcementSkills).mockResolvedValue('# Strict Typing Rule');
     const capturedStdin = mockAgentStdin();
