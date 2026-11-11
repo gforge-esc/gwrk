@@ -115,6 +115,62 @@ describe("src/db/plan.ts (DM-018-001/002/003)", () => {
     expect(db.pragma("foreign_key_check")).toEqual([]);
   });
 
+  it("preserves a surviving phase's proposal when its shadowed parent cascades", () => {
+    for (const [owner, feature] of [
+      [projectId, "keep"],
+      ["alias", "delete"],
+    ]) {
+      insertFeature(
+        { id: feature, name: feature, status: "PLANNED", sp_total: 0 },
+        owner,
+        db,
+      );
+      insertPhase(
+        {
+          id: "P",
+          feature_id: feature,
+          name: "Phase",
+          status: "PLANNED",
+          health: "CLEAN",
+          sp_estimate: 0,
+          seq: 1,
+        },
+        owner,
+        db,
+      );
+    }
+    insertProposal(
+      {
+        id: "Q",
+        target_phase_id: "P",
+        proposal_type: "ADD_TASK",
+        status: "PENDING",
+        detail: "Keep this proposal",
+        source: "review",
+      },
+      "alias",
+      db,
+    );
+    db.prepare(
+      "UPDATE plan_proposals SET created_at = '2026-10-01', resolved_at = '2026-10-02', updated_at = '2026-10-03' WHERE id = 'Q'",
+    ).run();
+    db.prepare(
+      "INSERT INTO project_aliases (alias_id, project_id) VALUES (?, ?)",
+    ).run("alias", projectId);
+    const expected = {
+      ...getProposal("Q", projectId, db),
+      project_id: projectId,
+    };
+
+    deleteFeature("delete", "alias", db);
+    for (const id of [projectId, "alias"]) {
+      expect.soft(getPhase("P", id, db)?.feature_id).toBe("keep");
+      expect.soft(getProposal("Q", id, db)).toEqual(expected);
+      expect.soft(listProposals(id, db)).toEqual([expected]);
+    }
+    expect(db.pragma("foreign_key_check")).toEqual([]);
+  });
+
   it("moves an effective phase to a legacy-owned feature with its proposals", () => {
     const phase = {
       id: "phase",

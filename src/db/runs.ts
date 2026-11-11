@@ -99,36 +99,61 @@ function resolveCheckoutOwner(conn: Database.Database, root: string) {
   const computedId = computeProjectId(facts);
   const checkoutId = canonicalProjectId(conn, computedId);
   const origin = normalizeRegistryRepo(facts.remoteOriginUrl ?? null);
-  const enrolled = conn.prepare(
-    "SELECT 1 FROM projects WHERE id = ? AND updated_at IS NOT NULL",
-  );
-  if (enrolled.get(checkoutId))
-    return { checkoutId, owner: checkoutId, origin, root };
+  const findProject = conn.prepare<
+    [string],
+    {
+      repo_slug: string | null;
+      github_repo: string | null;
+      updated_at: string | null;
+    }
+  >("SELECT repo_slug, github_repo, updated_at FROM projects WHERE id = ?");
 
-  const findProject = conn.prepare(
-    "SELECT repo_slug, github_repo FROM projects WHERE id = ?",
-  );
   function storedRepos(id: string) {
-    const row = findProject.get(id) as
-      | { repo_slug: string | null; github_repo: string | null }
-      | undefined;
-    return row
-      ? [row.repo_slug, row.github_repo]
-          .map(normalizeRegistryRepo)
-          .filter((repo) => repo !== null)
-      : [];
+    const row = findProject.get(id);
+    return [row?.repo_slug, row?.github_repo]
+      .map((repo) => normalizeRegistryRepo(repo ?? null))
+      .filter((repo) => repo !== null);
   }
+
+  function hasConflictingRepo(id: string): boolean {
+    return storedRepos(id).some((repo) => repo !== origin);
+  }
+
+  if (
+    hasConflictingRepo(computedId) ||
+    hasConflictingRepo(checkoutId) ||
+    (checkoutId !== computedId &&
+      origin !== null &&
+      !storedRepos(checkoutId).includes(origin))
+  ) {
+    throw new Error(`Project ownership conflict for checkout: ${root}`);
+  }
+
+  function checkoutScope(id: string): string[] {
+    return projectScope(conn, id).ids.filter(
+      (scopedId) => !hasConflictingRepo(scopedId),
+    );
+  }
+
+  function resolved(owner?: string) {
+    const ids = checkoutScope(checkoutId);
+    if (owner && owner !== checkoutId) ids.push(...checkoutScope(owner));
+    return { checkoutId, owner, origin, root: facts.projectRoot, ids };
+  }
+
+  if (findProject.get(checkoutId)?.updated_at != null) {
+    return resolved(checkoutId);
+  }
+
   function checkoutOwner(id: string): string | null {
     const owner = canonicalProjectId(conn, id);
-    const ownerRepos = storedRepos(owner);
-    const aliasRepos = owner === id ? [] : storedRepos(id);
-    if ([...ownerRepos, ...aliasRepos].some((repo) => repo !== origin))
-      return null;
+    if (hasConflictingRepo(id) || hasConflictingRepo(owner)) return null;
     if (
       owner === checkoutId ||
-      (origin !== null && ownerRepos.includes(origin))
-    )
+      (origin !== null && storedRepos(owner).includes(origin))
+    ) {
       return owner;
+    }
     return origin === null && owner === id ? owner : null;
   }
 
@@ -141,14 +166,14 @@ function resolveCheckoutOwner(conn: Database.Database, root: string) {
   for (const id of computeLegacyProjectIds(facts)) {
     if (id === checkoutId || !atCheckout.includes(id)) continue;
     const owner = checkoutOwner(id);
-    if (owner) return { checkoutId, owner, origin, root };
+    if (owner) return resolved(owner);
   }
 
   const owners = new Set(
     atCheckout.map(checkoutOwner).filter((id) => id !== null),
   );
   const [owner] = owners.size === 1 ? owners : [];
-  return { checkoutId, owner, origin, root };
+  return resolved(owner);
 }
 
 export function startRun(
@@ -406,11 +431,7 @@ export function listCheckoutRuns(
   db?: Database.Database,
 ): RunRecord[] {
   const conn = db ?? getDb();
-  const { checkoutId, owner } = resolveCheckoutOwner(conn, checkout);
-  const ids = projectScope(conn, checkoutId).ids;
-  if (owner && owner !== checkoutId) {
-    ids.push(...projectScope(conn, owner).ids);
-  }
+  const { ids } = resolveCheckoutOwner(conn, checkout);
   return listRunsInScope(conn, featureId, ids);
 }
 

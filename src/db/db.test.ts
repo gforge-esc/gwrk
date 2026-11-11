@@ -20,6 +20,7 @@ import {
   computeLegacyProjectIds,
   computeProjectId,
 } from "../domain/project-id.js";
+import { listCompressionRecords } from "./compression.js";
 import { insertCompressionRecord } from "./db.js";
 import { getGateResult } from "./gates.js";
 import { getTestDb, openDatabase } from "./index.js";
@@ -297,6 +298,62 @@ describe("Project registry upgrade", () => {
       for (const alias of computeLegacyProjectIds(facts)) {
         expect(registry.getProject(alias)?.projectId).toBe(projectId);
       }
+    } finally {
+      upgraded.close();
+    }
+  });
+
+  it("keeps a compression-only path hash out of a new checkout owner's scope", () => {
+    const checkout = join(root, "compression-checkout");
+    execFileSync("git", ["init", "--quiet", checkout], { stdio: "ignore" });
+    const git = (...args: string[]) =>
+      execFileSync("git", ["-C", checkout, ...args], { stdio: "ignore" });
+    git("remote", "add", "origin", "git@github.com:example/alpha.git");
+    const [alphaHash] = computeLegacyProjectIds(
+      discoverGitIdentityFacts(checkout),
+    );
+    const betaOrigin = "git@github.com:example/beta.git";
+    const betaId = computeProjectId({
+      projectRoot: checkout,
+      remoteOriginUrl: betaOrigin,
+    });
+    const upgraded = upgrade((legacy) => {
+      legacy
+        .prepare(`
+        INSERT INTO compression (
+          feature_id, phase_id, project_id, estimated_hours, actual_coding_hours,
+          estimated_days, actual_delivery_days, point_compression,
+          total_compression, merge_timestamp
+        ) VALUES ('shared', 'phase', ?, 8, 1, 1, 1, 8, 1, '2026-11-11')
+      `)
+        .run(alphaHash);
+      git("remote", "set-url", "origin", betaOrigin);
+      legacy
+        .prepare(
+          "INSERT INTO projects (id, name, path, github_repo) VALUES (?, ?, ?, ?)",
+        )
+        .run(betaId, "Beta", checkout, "example/beta");
+    });
+    try {
+      expect(
+        upgraded
+          .prepare("SELECT local_root FROM projects WHERE id = ?")
+          .pluck()
+          .get(betaId),
+      ).toBe(checkout);
+      expect
+        .soft(
+          upgraded
+            .prepare(
+              "SELECT project_id FROM project_aliases WHERE alias_id = ?",
+            )
+            .get(alphaHash),
+        )
+        .toBeUndefined();
+      expect(
+        listCompressionRecords("shared", alphaHash, upgraded),
+      ).toMatchObject([{ project_id: alphaHash, point_compression: 8 }]);
+      expect(listCompressionRecords("shared", betaId, upgraded)).toEqual([]);
     } finally {
       upgraded.close();
     }

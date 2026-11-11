@@ -21,6 +21,7 @@ import {
   type ProjectRecord,
   finishRun,
   getStats,
+  listCheckoutRuns,
   listProjects,
   listRuns,
   recordHistory,
@@ -271,6 +272,63 @@ describe("runs db", () => {
         .prepare("SELECT path, local_root FROM projects WHERE id = ?")
         .get("other-project"),
     ).toEqual({ path: "", local_root: null });
+  });
+
+  it("rejects checkout reads and writes through a conflicting alias", () => {
+    const checkout = realpathSync(
+      mkdtempSync(join(tmpdir(), "gwrk-run-alias-")),
+    );
+    try {
+      execFileSync("git", ["init", "--quiet", checkout], { stdio: "ignore" });
+      execFileSync("git", [
+        "-C",
+        checkout,
+        "remote",
+        "add",
+        "origin",
+        "git@github.com:example/beta.git",
+      ]);
+      const betaId = computeProjectId(discoverGitIdentityFacts(checkout));
+      createProjectRegistry(db, () => {}).enrollProject({
+        projectId: "alpha",
+        slug: "alpha",
+        name: "Alpha",
+        repoSlug: "example/alpha",
+        trunkBranch: "develop",
+        localRoot: "/fixtures/alpha",
+        mirrorPath: null,
+        runnerPolicy: { allowedKinds: ["local"] },
+        slack: null,
+        legacyProjectIds: [],
+        createdAt: "2026-11-11T12:00:00.000Z",
+        updatedAt: "2026-11-11T12:00:00.000Z",
+      });
+      startRun(
+        { feature_id: "shared", command: "alpha-history", project_id: "alpha" },
+        db,
+      );
+      db.prepare(
+        "INSERT INTO project_aliases (alias_id, project_id) VALUES (?, 'alpha')",
+      ).run(betaId);
+      const cwd = vi.spyOn(process, "cwd").mockReturnValue(checkout);
+      try {
+        expect
+          .soft(() => listCheckoutRuns("shared", checkout, db))
+          .toThrow(/Project ownership conflict/);
+        expect
+          .soft(() =>
+            startRun({ feature_id: "shared", command: "beta-implicit" }, db),
+          )
+          .toThrow(/Project ownership conflict/);
+        expect(
+          listRuns("shared", "alpha", db).map(({ command }) => command),
+        ).toEqual(["alpha-history"]);
+      } finally {
+        cwd.mockRestore();
+      }
+    } finally {
+      rmSync(checkout, { recursive: true, force: true });
+    }
   });
 
   it("keeps implicit runs with verified legacy history until enrollment", () => {

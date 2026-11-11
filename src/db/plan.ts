@@ -507,14 +507,39 @@ export function deleteFeature(
       const { ids, placeholders } = projectScope(conn, projectId);
       const phases = listPhases(id, projectId, conn);
       const phaseIds = new Set(phases.map((phase) => phase.id));
-      if (phaseIds.size > 0) {
-        for (const proposal of listProposals(projectId, conn)) {
-          if (phaseIds.has(proposal.target_phase_id)) {
-            deleteProposal(proposal.id, projectId, conn);
-          }
+      const cascades = conn.prepare(`
+        SELECT 1 FROM plan_phases WHERE project_id = ? AND id = ? AND feature_id = ?
+      `);
+      const removeCopies = conn.prepare(`
+        DELETE FROM plan_proposals
+        WHERE id = ? AND project_id IN (${placeholders}) AND project_id <> ?
+      `);
+      const moveProposal = conn.prepare(`
+        UPDATE plan_proposals SET project_id = ? WHERE id = ? AND project_id = ?
+      `);
+      for (const proposal of listProposals(projectId, conn)) {
+        if (phaseIds.has(proposal.target_phase_id)) {
+          deleteProposal(proposal.id, projectId, conn);
+          continue;
         }
-        for (const phaseId of phaseIds) deletePhase(phaseId, projectId, conn);
+        if (!cascades.get(proposal.project_id, proposal.target_phase_id, id)) {
+          continue;
+        }
+        const survivingPhase = getPhase(
+          proposal.target_phase_id,
+          projectId,
+          conn,
+        );
+        if (survivingPhase) {
+          removeCopies.run(proposal.id, ...ids, proposal.project_id);
+          moveProposal.run(
+            survivingPhase.project_id,
+            proposal.id,
+            proposal.project_id,
+          );
+        }
       }
+      for (const phaseId of phaseIds) deletePhase(phaseId, projectId, conn);
       conn
         .prepare(
           `DELETE FROM plan_edges WHERE (from_id = ? OR to_id = ?) AND project_id IN (${placeholders})`,

@@ -81,6 +81,25 @@ export function canonicalProjectId(
   return row?.project_id ?? projectId;
 }
 
+export function prepareProjectLedgerLookup(
+  db: Database.Database,
+): Database.Statement<{ id: string }> {
+  return db.prepare<{ id: string }>(`
+    SELECT 1 FROM runs WHERE project_id = @id
+    UNION ALL SELECT 1 FROM history WHERE project_id = @id
+    UNION ALL SELECT 1 FROM plan_features WHERE project_id = @id
+    UNION ALL SELECT 1 FROM plan_phases WHERE project_id = @id
+    UNION ALL SELECT 1 FROM plan_proposals WHERE project_id = @id
+    UNION ALL SELECT 1 FROM plan_edges WHERE project_id = @id
+    UNION ALL SELECT 1 FROM gate_results WHERE project_id = @id
+    UNION ALL SELECT 1 FROM issues WHERE project_id = @id
+    UNION ALL SELECT 1 FROM compression WHERE project_id = @id
+    UNION ALL SELECT 1 FROM routing_history WHERE project_id = @id
+    UNION ALL SELECT 1 FROM routing_decisions WHERE project_id = @id
+    LIMIT 1
+  `);
+}
+
 export function projectScope(db: Database.Database, projectId: string) {
   const canonical = canonicalProjectId(db, projectId);
   const aliases = db
@@ -214,7 +233,7 @@ export function createProjectRegistry(
     const projectRepo = normalizeRegistryRepo(project.repoSlug);
     const verifiedIds = new Set<string>();
     const findLocal = db.prepare(`
-      SELECT path, local_root, mirror_path, updated_at
+      SELECT path, local_root, mirror_path, github_repo, updated_at
       FROM projects WHERE id = ? AND repo_slug IS NULL
     `);
     for (const root of [project.localRoot, project.mirrorPath]) {
@@ -237,9 +256,18 @@ export function createProjectRegistry(
         const prior = findLocal.get(id) as
           | (Pick<ProjectRow, "local_root" | "mirror_path" | "updated_at"> & {
               path: string;
+              github_repo: string | null;
             })
           | undefined;
-        if (!prior || (prior.updated_at !== null && id !== localId)) continue;
+        if (!prior) continue;
+        const priorRepo = normalizeRegistryRepo(prior.github_repo);
+        if (
+          prior.updated_at !== null
+            ? id !== localId || priorRepo !== null
+            : priorRepo !== origin
+        ) {
+          continue;
+        }
         const priorRoots = [prior.local_root, prior.mirror_path];
         if (prior.updated_at === null) priorRoots.push(prior.path);
         const sameRepository = priorRoots.some(
@@ -266,20 +294,7 @@ export function createProjectRegistry(
     const findProject = db.prepare<[string], ProjectOwnershipRow>(
       "SELECT path, repo_slug, github_repo, updated_at, local_root, mirror_path FROM projects WHERE id = ?",
     );
-    const hasRecords = db.prepare(`
-      SELECT 1 FROM runs WHERE project_id = @id
-      UNION ALL SELECT 1 FROM history WHERE project_id = @id
-      UNION ALL SELECT 1 FROM plan_features WHERE project_id = @id
-      UNION ALL SELECT 1 FROM plan_phases WHERE project_id = @id
-      UNION ALL SELECT 1 FROM plan_proposals WHERE project_id = @id
-      UNION ALL SELECT 1 FROM plan_edges WHERE project_id = @id
-      UNION ALL SELECT 1 FROM gate_results WHERE project_id = @id
-      UNION ALL SELECT 1 FROM issues WHERE project_id = @id
-      UNION ALL SELECT 1 FROM compression WHERE project_id = @id
-      UNION ALL SELECT 1 FROM routing_history WHERE project_id = @id
-      UNION ALL SELECT 1 FROM routing_decisions WHERE project_id = @id
-      LIMIT 1
-    `);
+    const hasRecords = prepareProjectLedgerLookup(db);
     const existing = findProject.get(projectId);
     const existingRepos = storedRepositorySlugs(existing);
     const verifiedProject = verifiedIds.size > 0;
@@ -338,8 +353,8 @@ export function createProjectRegistry(
       ) {
         throw new Error(`Project alias is reserved or already owned: ${alias}`);
       }
-      if (owner !== alias || (!legacy && !hasRecords.get({ id: alias })))
-        continue;
+      if (owner !== alias) continue;
+      const occupied = Boolean(legacy || hasRecords.get({ id: alias }));
 
       const storedRepos = storedRepositorySlugs(legacy);
       const legacyRoots = new Set([
@@ -366,11 +381,13 @@ export function createProjectRegistry(
             (origin !== projectRepo || computeProjectId(facts) !== projectId)
           );
         });
+      // A live remote can change while the checkout path and its hashes stay the same.
       const ownsLegacy =
         transitions.has(alias) ||
-        verifiedIds.has(alias) ||
-        matchesLegacyCheckout ||
-        (projectRepo !== null && storedRepos.includes(projectRepo));
+        (projectRepo !== null
+          ? storedRepos.includes(projectRepo)
+          : matchesLegacyCheckout) ||
+        (!occupied && verifiedIds.has(alias));
       if (conflictingRepo || !ownsLegacy) {
         throw new Error(
           `Project alias belongs to a different repository or checkout: ${alias}`,
@@ -425,7 +442,35 @@ export function createProjectRegistry(
     const retargetAliases = db.prepare(
       "UPDATE project_aliases SET project_id = ? WHERE project_id = ?",
     );
-    for (const localId of transitions) retargetAliases.run(projectId, localId);
+    const copyRoles = db.prepare(`
+      INSERT INTO project_role_bindings (project_id, principal_type, principal_id, role, created_at)
+      SELECT @projectId, principal_type, principal_id, role, created_at
+      FROM project_role_bindings WHERE project_id = @localId
+      ON CONFLICT(project_id, principal_type, principal_id) DO NOTHING
+    `);
+    const copyThreads = db.prepare(`
+      INSERT INTO slack_feature_threads (project_id, feature_id, workspace_id, channel_id, root_ts, updated_at)
+      SELECT @projectId, feature_id, workspace_id, channel_id, root_ts, updated_at
+      FROM slack_feature_threads
+      WHERE project_id = @localId AND workspace_id = @workspace AND channel_id = @channel
+      ON CONFLICT(project_id, feature_id) DO UPDATE SET
+        workspace_id = excluded.workspace_id, channel_id = excluded.channel_id,
+        root_ts = excluded.root_ts, updated_at = excluded.updated_at
+      WHERE slack_feature_threads.workspace_id <> excluded.workspace_id
+         OR slack_feature_threads.channel_id <> excluded.channel_id
+    `);
+    for (const localId of transitions) {
+      copyRoles.run({ projectId, localId });
+      if (project.slack) {
+        copyThreads.run({
+          projectId,
+          localId,
+          workspace: project.slack.workspaceId,
+          channel: project.slack.channelId,
+        });
+      }
+      retargetAliases.run(projectId, localId);
+    }
 
     const addAlias = db.prepare(`
       INSERT INTO project_aliases (alias_id, project_id, created_at) VALUES (?, ?, ?)
@@ -500,7 +545,13 @@ export function createProjectRegistry(
     getFeatureThread(projectId, featureId) {
       const row = db
         .prepare(`
-        SELECT ${threadColumns} FROM slack_feature_threads WHERE project_id = ? AND feature_id = ?
+        SELECT ${threadColumns}
+        FROM slack_feature_threads
+        JOIN (
+          SELECT id, slack_workspace_id, slack_channel FROM projects WHERE updated_at IS NOT NULL
+        ) AS project ON project.id = project_id
+          AND project.slack_workspace_id = workspace_id AND project.slack_channel = channel_id
+        WHERE project_id = ? AND feature_id = ?
       `)
         .get(canonicalProjectId(db, projectId), featureId) as
         | SlackFeatureThread

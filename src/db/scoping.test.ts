@@ -293,18 +293,117 @@ describe("Project registry storage", () => {
     }
   });
 
+  it("rejects a foreign Git ID before its checkout has any ledger records", () => {
+    const root = mkdtempSync(join(tmpdir(), "gwrk-unclaimed-alias-"));
+    const db = getTestDb();
+    try {
+      const registry = createSqliteProjectRegistryAdapter({ db });
+      function checkout(name: string) {
+        const localRoot = join(root, name);
+        const repoSlug = `example/${name}`;
+        execFileSync("git", ["init", "--quiet", localRoot], {
+          stdio: "ignore",
+        });
+        execFileSync("git", [
+          "-C",
+          localRoot,
+          "remote",
+          "add",
+          "origin",
+          `https://github.com/${repoSlug}.git`,
+        ]);
+        return {
+          ...project,
+          projectId: resolveProjectId(localRoot),
+          slug: name,
+          localRoot,
+          repoSlug,
+          legacyProjectIds: [],
+        };
+      }
+      const alpha = checkout("alpha");
+      const beta = checkout("beta");
+      expect
+        .soft(() =>
+          registry.enrollProject({
+            ...alpha,
+            legacyProjectIds: [beta.projectId],
+          }),
+        )
+        .toThrow(/different repository or checkout/);
+      expect.soft(registry.getProject(alpha.projectId)).toBeNull();
+      expect.soft(registry.getProject(beta.projectId)).toBeNull();
+      expect(registry.enrollProject(beta).projectId).toBe(beta.projectId);
+    } finally {
+      db.close();
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("rejects an occupied remote checkout hash without historical provenance", () => {
+    const checkout = mkdtempSync(join(tmpdir(), "gwrk-unproven-path-hash-"));
+    const db = getTestDb();
+    try {
+      execFileSync("git", ["init", "--quiet", checkout], { stdio: "ignore" });
+      execFileSync("git", [
+        "-C",
+        checkout,
+        "remote",
+        "add",
+        "origin",
+        "https://github.com/example/pilot.git",
+      ]);
+      const [legacyId] = computeLegacyProjectIds({ projectRoot: checkout });
+      registerProject(
+        { id: legacyId, name: "Prior checkout", path: checkout },
+        db,
+      );
+      insertFeature(
+        { id: "shared", name: "Prior feature", status: "open", sp_total: 1 },
+        legacyId,
+        db,
+      );
+      const registry = createSqliteProjectRegistryAdapter({ db });
+      const projectId = resolveProjectId(checkout);
+      expect
+        .soft(() =>
+          registry.enrollProject({
+            ...project,
+            projectId,
+            localRoot: checkout,
+            legacyProjectIds: [legacyId],
+          }),
+        )
+        .toThrow(/different repository or checkout/);
+      expect.soft(registry.getProject(projectId)).toBeNull();
+      expect.soft(getFeature("shared", projectId, db)).toBeUndefined();
+      expect(getFeature("shared", legacyId, db)?.name).toBe("Prior feature");
+    } finally {
+      db.close();
+      rmSync(checkout, { recursive: true, force: true });
+    }
+  });
+
   it("transitions a verified local enrollment to its remote identity", () => {
     const checkout = mkdtempSync(join(tmpdir(), "gwrk-enrollment-"));
     const db = getTestDb();
     try {
       execFileSync("git", ["init", "--quiet", checkout], { stdio: "ignore" });
       const localId = resolveProjectId(checkout);
+      const [legacyAlias] = computeLegacyProjectIds({ projectRoot: checkout });
+      const slack = {
+        workspaceId: "T1",
+        channelId: "C1",
+        sharedChannel: false,
+      };
       const registry = createSqliteProjectRegistryAdapter({ db });
       registry.enrollProject({
         ...project,
         projectId: localId,
         repoSlug: null,
         localRoot: checkout,
+        legacyProjectIds: [legacyAlias],
+        slack,
       });
       registry.enrollProject({
         ...project,
@@ -319,6 +418,31 @@ describe("Project registry storage", () => {
         db,
       );
 
+      for (const principalId of ["local-maintainer", "shared-user"]) {
+        registry.setRoleBinding({
+          projectId: localId,
+          principalId,
+          principalType: "slack_user",
+          role: "maintainer",
+        });
+      }
+      for (const featureId of [
+        "shared",
+        "same-channel",
+        "stale-remote",
+        "old-channel",
+      ]) {
+        registry.bindFeatureThread({
+          projectId: localId,
+          featureId,
+          workspaceId: slack.workspaceId,
+          channelId: featureId === "old-channel" ? "C0" : slack.channelId,
+          rootTs: `local-${featureId}`,
+          updatedAt: now,
+        });
+      }
+      expect.soft(registry.getFeatureThread(localId, "old-channel")).toBeNull();
+
       execFileSync("git", [
         "-C",
         checkout,
@@ -328,11 +452,22 @@ describe("Project registry storage", () => {
         "https://github.com/example/pilot.git",
       ]);
       const remoteId = resolveProjectId(checkout);
+      registerProject({ id: remoteId, name: "Remote", path: "" }, db);
+      db.prepare(`
+        INSERT INTO project_role_bindings (project_id, principal_type, principal_id, role)
+        VALUES (?, 'slack_user', 'shared-user', 'viewer')
+      `).run(remoteId);
+      db.prepare(`
+        INSERT INTO slack_feature_threads (project_id, feature_id, workspace_id, channel_id, root_ts)
+        VALUES (?, 'same-channel', 'T1', 'C1', 'remote-current'),
+               (?, 'stale-remote', 'T1', 'C0', 'remote-stale')
+      `).run(remoteId, remoteId);
       const remote = {
         ...project,
         projectId: remoteId,
         localRoot: checkout,
         legacyProjectIds: [localId],
+        slack,
       };
       expect
         .soft(() =>
@@ -344,14 +479,32 @@ describe("Project registry storage", () => {
         .toThrow(/already owned: unrelated/);
       expect(registry.getProject(localId)?.projectId).toBe(localId);
       expect(registry.getProject(remoteId)).toBeNull();
-      expect(registry.getProject("legacy-project")?.projectId).toBe(localId);
+      expect(registry.getProject(legacyAlias)?.projectId).toBe(localId);
       expect(registry.getProject("unrelated")?.projectId).toBe("unrelated");
 
       expect(registry.enrollProject(remote).projectId).toBe(remoteId);
       expect(registry.enrollProject(remote).projectId).toBe(remoteId);
-      for (const id of [localId, remoteId, "legacy-project"]) {
+      for (const id of [localId, remoteId, legacyAlias]) {
         expect(registry.getProject(id)?.projectId).toBe(remoteId);
         expect(getFeature("shared", id, db)?.project_id).toBe(localId);
+        expect.soft(registry.listRoleBindings(id)).toMatchObject([
+          {
+            projectId: remoteId,
+            principalId: "local-maintainer",
+            role: "maintainer",
+          },
+          { projectId: remoteId, principalId: "shared-user", role: "viewer" },
+        ]);
+        expect
+          .soft(registry.getFeatureThread(id, "shared")?.rootTs)
+          .toBe("local-shared");
+        expect
+          .soft(registry.getFeatureThread(id, "same-channel")?.rootTs)
+          .toBe("remote-current");
+        expect
+          .soft(registry.getFeatureThread(id, "stale-remote")?.rootTs)
+          .toBe("local-stale-remote");
+        expect.soft(registry.getFeatureThread(id, "old-channel")).toBeNull();
       }
       expect(registry.findByLocalRoot(checkout)?.projectId).toBe(remoteId);
       expect(
@@ -449,7 +602,7 @@ describe("Project registry storage", () => {
     const db = getTestDb();
     try {
       const registry = createSqliteProjectRegistryAdapter({ db });
-      registry.enrollProject(project);
+      registry.enrollProject({ ...project, legacyProjectIds: [] });
       const binding = {
         projectId: project.projectId,
         principalType: "slack_user",
@@ -516,7 +669,9 @@ describe("Project registry storage", () => {
       expect(listRuns("shared", projectId, db)).toMatchObject([
         { id: run, command: "alpha-history" },
       ]);
-      expect(registry.enrollProject(project).repoSlug).toBe(repoSlug);
+      expect(
+        registry.enrollProject({ ...project, legacyProjectIds: [] }).repoSlug,
+      ).toBe(repoSlug);
     } finally {
       db.close();
     }
@@ -586,6 +741,15 @@ describe("Project registry storage", () => {
       try {
         const registry = createSqliteProjectRegistryAdapter({ db });
         const alpha = { ...project, legacyProjectIds: ["route"] };
+        registerProject(
+          {
+            id: "route",
+            name: "Previous Alpha",
+            path: "",
+            github_repo: alpha.repoSlug,
+          },
+          db,
+        );
         const gamma = {
           ...project,
           projectId: "gamma",
@@ -726,7 +890,7 @@ describe("Project registry storage", () => {
     }
   });
 
-  it("accepts a verified legacy hash from another checkout of the same origin", () => {
+  it("accepts a legacy hash with matching provenance from another checkout", () => {
     const root = mkdtempSync(join(tmpdir(), "gwrk-moved-checkout-"));
     const db = getTestDb();
     try {
@@ -744,7 +908,15 @@ describe("Project registry storage", () => {
         ]);
       }
       const [legacyId] = computeLegacyProjectIds({ projectRoot: previous });
-      registerProject({ id: legacyId, name: "Previous", path: previous }, db);
+      registerProject(
+        {
+          id: legacyId,
+          name: "Previous",
+          path: previous,
+          github_repo: project.repoSlug,
+        },
+        db,
+      );
       insertFeature(
         { id: "shared", name: "Previous feature", status: "open", sp_total: 1 },
         legacyId,
@@ -774,6 +946,15 @@ describe("Project registry storage", () => {
     try {
       const registry = createSqliteProjectRegistryAdapter({ db });
       const slack = { workspaceId: "T1", channelId: "C1", sharedChannel: true };
+      registerProject(
+        {
+          id: "legacy-project",
+          name: "Previous Pilot",
+          path: "",
+          github_repo: project.repoSlug,
+        },
+        db,
+      );
       const first = registry.enrollProject({ ...project, slack });
       const second = registry.enrollProject({
         ...project,
@@ -865,7 +1046,7 @@ describe("Project registry storage", () => {
     try {
       const owner = createSqliteProjectRegistryAdapter({ db: first });
       const duplicate = createSqliteProjectRegistryAdapter({ db: second });
-      owner.enrollProject(project);
+      owner.enrollProject({ ...project, legacyProjectIds: [] });
       const receipt: SlackActionReceipt = {
         receiptKey: "verified-action",
         projectId: project.projectId,

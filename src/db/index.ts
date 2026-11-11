@@ -14,6 +14,7 @@ import {
 import {
   discoverVerifiedCheckout,
   normalizeRegistryRepo,
+  prepareProjectLedgerLookup,
 } from "./project-registry.js";
 
 const GWRK_DIR = process.env.GWRK_DIR || path.join(os.homedir(), ".gwrk");
@@ -180,6 +181,7 @@ function backfillCheckoutRoots(db: Database.Database): void {
     SELECT @alias, @id WHERE NOT EXISTS (SELECT 1 FROM projects WHERE id = @alias)
     ON CONFLICT(alias_id) DO NOTHING
   `);
+  const hasRecords = prepareProjectLedgerLookup(db);
   for (const { id, path: checkout, github_repo } of projects) {
     const suffix = `#${id}`;
     const facts =
@@ -201,7 +203,12 @@ function backfillCheckoutRoots(db: Database.Database): void {
     }
 
     setRoot.run(facts.projectRoot, id);
-    for (const alias of aliases) addAlias.run({ alias, id });
+    for (const alias of aliases) {
+      // A path hash alone cannot establish ownership of an existing ledger.
+      if (!hasRecords.get({ id: alias })) {
+        addAlias.run({ alias, id });
+      }
+    }
   }
 }
 
