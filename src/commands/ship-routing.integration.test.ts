@@ -554,8 +554,15 @@ describe("ship with the real AgentPort router", () => {
     },
   );
 
-  it("passes through the legacy model environment for provider-default routes", async () => {
+  it("previews the legacy model environment used by the script", async () => {
     vi.stubEnv("GEMINI_MODEL", "configured-legacy-model");
+    await ship("--dry-run", "--legacy", "--agent", "agy");
+
+    expect(console.log).toHaveBeenCalledWith(
+      expect.stringContaining("backend: agy, model: configured-legacy-model"),
+    );
+    expect(run).not.toHaveBeenCalled();
+
     await ship("--legacy", "--agent", "agy");
     const call = vi.mocked(run).mock.calls.find(([command]) =>
       command.endsWith("/work-until-done.sh"),

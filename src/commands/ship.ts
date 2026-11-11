@@ -68,6 +68,7 @@ import {
   saveTaskState,
 } from "../utils/state.js";
 
+import type { SelectedAgentRoute } from "../ports/agent-port.js";
 import { SandboxManager } from "../server/sandbox.js";
 import { resolveProjectId } from "../utils/project-id.js";
 import { pillarBackend } from "../utils/resolve-agent.js";
@@ -102,6 +103,18 @@ function recordHistory(...args: Parameters<typeof dbRecordHistory>): void {
   } catch (e) {
     warnCli(`${YELLOW}⚠${RESET} ledger recordHistory skipped: ${e}`);
   }
+}
+
+function shipModel(
+  route: SelectedAgentRoute,
+  legacy: boolean,
+): string | undefined {
+  if (legacy) {
+    return route.mode === "provider-default"
+      ? process.env.GEMINI_MODEL
+      : route.model;
+  }
+  return route.useAdapterModelDefaults ? undefined : route.model;
 }
 
 /**
@@ -252,7 +265,7 @@ async function shipPhase(
           MAX_ITERATIONS: opts.maxIterations as string,
           CI_TIMEOUT: opts.ciTimeout as string,
           AGENT_BACKEND: backend,
-          GEMINI_MODEL: selectedModel || process.env.GEMINI_MODEL,
+          GEMINI_MODEL: selectedModel,
         },
         stdio: "inherit",
       });
@@ -804,8 +817,11 @@ Examples:
                 ...implementationRoute,
                 preview: true,
               });
+              const previewModel = opts.legacy
+                ? shipModel(implementation, true)
+                : implementation.adapterModel;
               logCliOutput(
-                `  🤖 Would build with backend: ${implementation.backend}, model: ${implementation.adapterModel ?? implementation.model}, effort: ${implementation.effort ?? "default"} (router: ${implementation.reason})`,
+                `  🤖 Would build with backend: ${implementation.backend}, model: ${previewModel ?? implementation.model}, effort: ${implementation.effort ?? "default"} (router: ${implementation.reason})`,
               );
             } catch (error) {
               if (error instanceof InvalidAgentRegistryError) throw error;
@@ -889,10 +905,7 @@ Examples:
                 implementation.backend,
                 opts,
                 shipCwd,
-                implementation.useAdapterModelDefaults ||
-                  (opts.legacy && implementation.mode === "provider-default")
-                  ? undefined
-                  : implementation.model,
+                shipModel(implementation, Boolean(opts.legacy)),
                 {
                   ...overrides,
                   selectedEffort: implementation.effort,
