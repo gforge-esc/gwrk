@@ -18,13 +18,17 @@ import { basename, dirname, join, resolve } from "node:path";
 import { isDeepStrictEqual } from "node:util";
 import Database from "better-sqlite3";
 import {
+  type LedgerBackupManifest,
   LedgerBackupManifestSchema,
   type LedgerBackupMetadata,
   LedgerBackupMetadataSchema,
   type LedgerSummary,
   PENDING_LEDGER_RESTORE,
 } from "../../domain/ledger-backup.js";
-import type { LedgerBackupPort } from "../../ports/release-ops-port.js";
+import type {
+  LedgerBackupPort,
+  LedgerBackupRequest,
+} from "../../ports/release-ops-port.js";
 import { sha256 } from "../release/inventory.js";
 
 const DB_FILE = "gwrk.db";
@@ -38,20 +42,6 @@ async function syncPath(path: string): Promise<void> {
     await handle.sync();
   } finally {
     await handle.close();
-  }
-}
-
-export function readBackupProjects(
-  dbPath: string,
-): { id: string; path: string }[] {
-  const db = new Database(dbPath, { readonly: true, fileMustExist: true });
-  try {
-    return db.prepare("SELECT id, path FROM projects ORDER BY id").all() as {
-      id: string;
-      path: string;
-    }[];
-  } finally {
-    db.close();
   }
 }
 
@@ -71,8 +61,12 @@ function appliedMigrations(db: Database.Database): string[] {
     .all() as string[];
 }
 
-function projectRows(db: Database.Database): unknown[] {
-  return db.prepare("SELECT * FROM projects ORDER BY id").all();
+type BackupProject = { id: string; path: string };
+
+function projectRows(db: Database.Database): BackupProject[] {
+  return db
+    .prepare("SELECT * FROM projects ORDER BY id")
+    .all() as BackupProject[];
 }
 
 function readLedger<T>(dbPath: string, read: (db: Database.Database) => T): T {
@@ -99,17 +93,27 @@ function summarizeLedger(
     throw new Error("Backup project metadata does not match the ledger.");
   }
   const projectIds = metadata.projects.map(({ id }) => id);
-  const knownProjects = new Set(projectIds);
+  const projectPaths = new Map(
+    metadata.projects.map(({ id, path }) => [id, path]),
+  );
   const repoIds = new Set(
     metadata.repositories.map(({ projectId }) => projectId),
   );
   if (
     repoIds.size !== metadata.repositories.length ||
-    [...repoIds].some((id) => !knownProjects.has(id))
+    [...repoIds].some((id) => !projectPaths.has(id))
   ) {
     throw new Error(
       "Repository metadata has duplicate or unknown project IDs.",
     );
+  }
+  for (const { projectId, root } of metadata.repositories) {
+    const path = projectPaths.get(projectId);
+    if (typeof path !== "string" || root !== resolve(path)) {
+      throw new Error(
+        `Repository metadata root does not match the ledger for ${projectId}.`,
+      );
+    }
   }
 
   return {
@@ -136,9 +140,18 @@ function summarizeLedger(
   };
 }
 
-export const createLedgerBackup: LedgerBackupPort["createBackup"] = async (
-  input,
-) => {
+type RepositoryEvidence = LedgerBackupMetadata["repositories"];
+type SnapshotBackupRequest = Omit<LedgerBackupRequest, "metadata"> & {
+  metadata: Omit<LedgerBackupRequest["metadata"], "repositories"> & {
+    repositories:
+      | RepositoryEvidence
+      | ((projects: BackupProject[]) => RepositoryEvidence);
+  };
+};
+
+export async function createLedgerBackup(
+  input: SnapshotBackupRequest,
+): Promise<LedgerBackupManifest> {
   const destination = resolve(input.destination);
   const parent = dirname(destination);
   await mkdir(parent, { recursive: true, mode: 0o700 });
@@ -168,16 +181,21 @@ export const createLedgerBackup: LedgerBackupPort["createBackup"] = async (
       source.close();
     }
     const standalone = new Database(snapshot, { fileMustExist: true });
-    let projects: unknown[];
+    let projects: BackupProject[];
     try {
       standalone.pragma("journal_mode = DELETE");
       projects = projectRows(standalone);
     } finally {
       standalone.close();
     }
+    const { device, repositories } = input.metadata;
     const metadata = LedgerBackupMetadataSchema.parse({
-      ...input.metadata,
+      device,
       projects,
+      repositories:
+        typeof repositories === "function"
+          ? repositories(projects)
+          : repositories,
     });
     const metadataPath = join(staging, METADATA_FILE);
     await writeFile(metadataPath, `${JSON.stringify(metadata, null, 2)}\n`, {
@@ -211,7 +229,7 @@ export const createLedgerBackup: LedgerBackupPort["createBackup"] = async (
   } finally {
     await rm(staging, { recursive: true, force: true });
   }
-};
+}
 
 export const verifyLedgerBackup: LedgerBackupPort["verifyBackup"] = async (
   directory,
@@ -327,6 +345,15 @@ export const restoreLedgerBackup: LedgerBackupPort["restoreBackup"] = async (
     );
   }
 
+  // The hosted instance lock keeps writers out during validation and installation.
+  for (const file of targets) {
+    const target = join(state, file);
+    const info = await statIfPresent(target);
+    if (info && !info.isFile()) {
+      throw new Error(`Restore target must be a regular file: ${target}`);
+    }
+  }
+
   if (!resuming) {
     await mkdir(state, { recursive: true, mode: 0o700 });
     const staging = await mkdtemp(join(state, ".restore-stage-"));
@@ -351,15 +378,6 @@ export const restoreLedgerBackup: LedgerBackupPort["restoreBackup"] = async (
     throw new Error(
       `An unfinished restore exists at ${pending}. Retry with its original backup.`,
     );
-  }
-
-  // The hosted instance lock keeps writers out during installation.
-  for (const file of targets) {
-    const target = join(state, file);
-    const info = await statIfPresent(target);
-    if (info && !info.isFile()) {
-      throw new Error(`Restore target must be a regular file: ${target}`);
-    }
   }
 
   const stagedDb = join(pending, "install.db");

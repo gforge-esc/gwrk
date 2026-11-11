@@ -146,18 +146,19 @@ node -e 'const fs=require("node:fs"); const p=process.argv[1]; fs.writeFileSync(
 cat > /fixture-bin/systemctl <<'SCRIPT'
 #!/usr/bin/env bash
 set -euo pipefail
-printf '%s\n' "$1" >> /tmp/supervisor.calls
 pid_file="$GWRK_RUNTIME_DIR/server.pid"
 case "$1" in
   stop)
+    printf '%s\n' "$1" >> /tmp/supervisor.calls
     if [[ -f "$pid_file" ]]; then
       kill "$(< "$pid_file")" 2>/dev/null || true
       rm "$pid_file"
     fi
     ;;
   start)
+    printf '%s\n' "$1" >> /tmp/supervisor.calls
     if [[ "${GWRK_FIXTURE_DROP_RUN:-0}" == 1 ]]; then
-      node -e 'const requireRelease=require("node:module").createRequire("/opt/gwrk/current/package.json"); const db=new (requireRelease("better-sqlite3"))(process.env.GWRK_DB_PATH); db.prepare("DELETE FROM runs WHERE id = 42").run(); db.close();'
+      runuser -u gwrk -g gwrk -- node -e 'const requireRelease=require("node:module").createRequire("/opt/gwrk/current/package.json"); const db=new (requireRelease("better-sqlite3"))(process.env.GWRK_DB_PATH); db.prepare("DELETE FROM runs WHERE id = 42").run(); db.close();'
     fi
     sleep 120 8>&- 9>&- >/dev/null 2>&1 &
     printf '%s\n' "$!" > "$pid_file"
@@ -196,8 +197,26 @@ test "$(realpath /opt/gwrk/current)" = "$active"
 rm "$prior/dist/db/migrations/999-fixture.sql"
 write_prior_manifest
 mkdir -m 0700 /var/lib/gwrk/backups
+runuser -u gwrk -g gwrk -- node --input-type=module <<'NODE'
+import assert from "node:assert/strict";
+import Database from "/opt/gwrk/current/node_modules/better-sqlite3/lib/index.js";
+const db = new Database("/var/lib/gwrk/gwrk.db", { fileMustExist: true });
+assert.equal(db.pragma("journal_mode", { simple: true }), "wal");
+db.pragma("wal_checkpoint(TRUNCATE)");
+db.close();
+NODE
+test ! -e /var/lib/gwrk/gwrk.db-wal
+test ! -e /var/lib/gwrk/gwrk.db-shm
+test "$(id -u)" -eq 0
 bash "$rollback" /opt/gwrk /var/lib/gwrk
 test "$(realpath /opt/gwrk/current)" = "$prior"
+runuser -u gwrk -g gwrk -- node --input-type=module <<'NODE'
+import assert from "node:assert/strict";
+import Database from "/opt/gwrk/current/node_modules/better-sqlite3/lib/index.js";
+const db = new Database("/var/lib/gwrk/gwrk.db", { fileMustExist: true });
+assert.equal(db.prepare("UPDATE runs SET exit_code = 0 WHERE id = 42").run().changes, 1);
+db.close();
+NODE
 first_backups=(/var/lib/gwrk/backups/rollback-*)
 test "${#first_backups[@]}" -eq 1
 node -e 'const assert=require("node:assert/strict"); const fs=require("node:fs"); const root="/var/lib/gwrk/backups/"; const [dir]=fs.readdirSync(root); assert.deepEqual(require(root+dir+"/backup-manifest.json").summary.completedRunIds,[42]);'

@@ -36,8 +36,12 @@ done
 
 active="$release_root/$old_target"
 target="$release_root/$new_target"
+service_user=$(systemctl show --property=User --value "$unit")
+service_group=$(systemctl show --property=Group --value "$unit")
+[[ -n "$service_user" && -n "$service_group" ]] || fail "Set User and Group on $unit before rollback."
+as_service=(runuser -u "$service_user" -g "$service_group" --)
 check_rollback() {
-  node "$active/dist/cli.js" db rollback-check --current "$active" --target "$target" "$@"
+  "${as_service[@]}" node "$active/dist/cli.js" db rollback-check --current "$active" --target "$target" "$@"
 }
 check_rollback
 
@@ -85,10 +89,6 @@ flock -xn 9 || fail "Another process holds the server runtime lock."
 lock_held=true
 [[ ! -e "$state/.restore-pending" ]] || fail "Complete the unfinished ledger restore before rollback."
 check_rollback
-service_user=$(systemctl show --property=User --value "$unit")
-service_group=$(systemctl show --property=Group --value "$unit")
-[[ -n "$service_user" && -n "$service_group" ]] || fail "Set User and Group on $unit before rollback."
-as_service=(runuser -u "$service_user" -g "$service_group" --)
 backup_root="$state/backups"
 "${as_service[@]}" test -x "$state" || fail "$service_user cannot traverse $state."
 # Earlier operator rollbacks could create this directory as root.

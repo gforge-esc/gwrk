@@ -11,7 +11,6 @@ import { acquireInstanceLock } from "../adapters/server/instance-lock.js";
 import {
   createLedgerBackup,
   readAppliedMigrations,
-  readBackupProjects,
   restoreLedgerBackup,
   verifyLedgerAgainstBackup,
   verifyLedgerBackup,
@@ -83,30 +82,29 @@ const backupCommand = new Command("backup")
     async (opts: { out: string; projectRoot?: string }, command: Command) => {
       await withSignal("db backup", async () => {
         const output = ledgerOutput(command);
-        const dbPath = getDbPath();
-        const projects = readBackupProjects(dbPath);
-        const selected = opts.projectRoot
-          ? projects.filter(
-              ({ path }) => resolve(path) === resolve(opts.projectRoot ?? ""),
-            )
-          : projects;
-        if (opts.projectRoot && selected.length === 0) {
-          throw new CommandError(
-            "Project root is not enrolled in this ledger. Run 'gwrk init' in that checkout.",
-            1,
-          );
-        }
+        const projectRoot = opts.projectRoot && resolve(opts.projectRoot);
         const destination = resolve(opts.out);
         const manifest = await backupPort.createBackup({
-          dbPath,
+          dbPath: getDbPath(),
           destination,
           createdAt: new Date().toISOString(),
           gwrkVersion: command.parent?.parent?.version() ?? "unknown",
           metadata: {
             device: loadDevice(),
-            repositories: selected.map(({ id, path }) =>
-              readRepositoryEvidence(id, path),
-            ),
+            repositories(projects) {
+              const selected = projectRoot
+                ? projects.filter(({ path }) => resolve(path) === projectRoot)
+                : projects;
+              if (projectRoot && selected.length === 0) {
+                throw new CommandError(
+                  "Project root is not enrolled in this ledger. Run 'gwrk init' in that checkout.",
+                  1,
+                );
+              }
+              return selected.map(({ id, path }) =>
+                readRepositoryEvidence(id, path),
+              );
+            },
           },
         });
         output.write(

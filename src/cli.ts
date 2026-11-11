@@ -223,13 +223,11 @@ if (
       );
       process.exit(127);
     }
-    if (
-      error.code === "commander.missingArgument" ||
-      error.code === "commander.unknownOption"
-    ) {
+    if (error.code === "commander.missingArgument") {
       process.exit(2);
     }
     if (
+      error.code === "commander.unknownOption" ||
       error.code === "commander.missingMandatoryOptionValue" ||
       error.code === "commander.optionMissingArgument"
     ) {

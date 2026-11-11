@@ -8,6 +8,7 @@ import {
   mkdir,
   mkdtemp,
   readFile,
+  rename,
   rm,
   stat,
   writeFile,
@@ -17,13 +18,18 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import Database from "better-sqlite3";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   createLedgerBackup,
   restoreLedgerBackup,
   verifyLedgerAgainstBackup,
   verifyLedgerBackup,
 } from "../../src/adapters/sqlite/ledger-backup.js";
+
+vi.mock("node:fs/promises", async (importOriginal) => {
+  const fs = await importOriginal<typeof import("node:fs/promises")>();
+  return { ...fs, rename: vi.fn(fs.rename) };
+});
 
 let root: string;
 
@@ -80,6 +86,7 @@ function runLedgerCommand(...args: string[]) {
         GWRK_RUNTIME_DIR: join(root, "runtime"),
       },
       encoding: "utf8",
+      timeout: 10_000,
     },
   );
 }
@@ -97,6 +104,19 @@ describe("installed ledger commands outside a checkout", () => {
       result.stderr.match(/^\[exit:2 \| \d+(?:\.\d+)?m?s\]$/gm) ?? [],
     ).toHaveLength(1);
     expect(result.stdout).not.toContain("[exit:");
+  });
+
+  it.each([
+    ["backup", "--out", "backup"],
+    ["restore", "--from", "backup", "--state-dir", "restored"],
+  ])("reports an unknown option for db %s with one exit signal", (...args) => {
+    const result = runLedgerCommand(...args, "--bogus");
+    expect(result.status, result.stderr).toBe(2);
+    expect(result.stderr).toContain("unknown option '--bogus'");
+    expect(
+      result.stderr.match(/^\[exit:2 \| \d+(?:\.\d+)?m?s\]$/gm) ?? [],
+    ).toHaveLength(1);
+    expect(result.stdout).toBe("");
   });
 
   it.each([
@@ -213,6 +233,58 @@ describe("installed ledger commands outside a checkout", () => {
     }
   });
 
+  it("uses the snapshot checkout when enrollment changes during a Git probe", async () => {
+    const oldCheckout = join(root, "old");
+    const newCheckout = join(root, "new");
+    const bin = join(root, "bin");
+    await mkdir(oldCheckout);
+    await mkdir(newCheckout);
+    await mkdir(bin);
+    const db = seedLedger();
+    try {
+      db.exec("ALTER TABLE projects ADD COLUMN path TEXT");
+      db.prepare("UPDATE projects SET path = ?").run(oldCheckout);
+      const sqlite = createRequire(import.meta.url).resolve("better-sqlite3");
+      await writeFile(
+        join(bin, "git"),
+        `#!${process.execPath}
+const Database = require(${JSON.stringify(sqlite)});
+const db = new Database(process.env.GWRK_DB_PATH);
+db.prepare("UPDATE projects SET path = ?").run(${JSON.stringify(newCheckout)});
+db.close();
+process.exitCode = 1;
+`,
+        { mode: 0o700 },
+      );
+      const originalPath = process.env.PATH;
+      vi.stubEnv("PATH", `${bin}:${originalPath}`);
+      try {
+        const result = runLedgerCommand("backup", "--out", "backup");
+        expect(result.status, result.stderr).toBe(0);
+      } finally {
+        vi.unstubAllEnvs();
+      }
+      expect(db.prepare("SELECT path FROM projects").pluck().get()).toBe(
+        newCheckout,
+      );
+      const { metadata } = await verifyLedgerBackup(join(root, "backup"));
+      expect(metadata.projects).toEqual([
+        { id: "pilot-repo", path: oldCheckout },
+      ]);
+      expect(metadata.repositories).toEqual([
+        {
+          projectId: "pilot-repo",
+          root: oldCheckout,
+          remote: null,
+          head: null,
+          evidence: [],
+        },
+      ]);
+    } finally {
+      db.close();
+    }
+  });
+
   it.each([
     ["restore", "--from", "missing", "--state-dir", "restore"],
     ["rollback-check", "--current", "missing", "--target", "missing"],
@@ -224,6 +296,38 @@ describe("installed ledger commands outside a checkout", () => {
 });
 
 describe("ledger backup", () => {
+  it("rejects evidence from a different checkout for a known project", async () => {
+    const db = seedLedger();
+    const destination = join(root, "backup");
+    try {
+      db.exec("ALTER TABLE projects ADD COLUMN path TEXT");
+      db.prepare("UPDATE projects SET path = ?").run(join(root, "enrolled"));
+      await expect(
+        createLedgerBackup({
+          dbPath: db.name,
+          destination,
+          createdAt: "2026-11-11T12:00:00.000Z",
+          gwrkVersion: "1.6.0-beta.1",
+          metadata: {
+            device: null,
+            repositories: [
+              {
+                projectId: "pilot-repo",
+                root: join(root, "different"),
+                remote: null,
+                head: null,
+                evidence: [],
+              },
+            ],
+          },
+        }),
+      ).rejects.toThrow(/Repository metadata root does not match/);
+      await expect(stat(destination)).rejects.toMatchObject({ code: "ENOENT" });
+    } finally {
+      db.close();
+    }
+  });
+
   it("preserves committed WAL state in a standalone snapshot and verifies its summary", async () => {
     const db = seedLedger();
     const destination = join(root, "backup");
@@ -273,7 +377,7 @@ describe("ledger backup", () => {
     }
   });
 
-  it("restores a clean target and resumes a forced restore after an interrupted publish", async () => {
+  it("rejects invalid targets and resumes a restore interrupted during installation", async () => {
     const db = seedLedger();
     const destination = join(root, "backup");
     const stateDirectory = join(root, "restored");
@@ -309,10 +413,9 @@ describe("ledger backup", () => {
       await mkdir(devicePath);
       await expect(
         restoreLedgerBackup({ ...request, force: true }),
-      ).rejects.toThrow();
-      expect(
-        (await stat(join(stateDirectory, ".restore-pending"))).isDirectory(),
-      ).toBe(true);
+      ).rejects.toThrow(/Restore target must be a regular file/);
+      const pending = join(stateDirectory, ".restore-pending");
+      await expect(stat(pending)).rejects.toMatchObject({ code: "ENOENT" });
       const obstructed = new Database(join(stateDirectory, "gwrk.db"), {
         readonly: true,
       });
@@ -324,9 +427,26 @@ describe("ledger backup", () => {
         obstructed.close();
       }
       await rm(devicePath, { recursive: true });
-      expect(
-        (await restoreLedgerBackup({ ...request, force: true })).manifest,
-      ).toEqual(manifest);
+      const realFs =
+        await vi.importActual<typeof import("node:fs/promises")>(
+          "node:fs/promises",
+        );
+      vi.mocked(rename).mockImplementation(async (from, to) => {
+        if (from === join(pending, "install.db")) {
+          throw new Error("Fixture interrupted database installation");
+        }
+        await realFs.rename(from, to);
+      });
+      try {
+        await expect(
+          restoreLedgerBackup({ ...request, force: true }),
+        ).rejects.toThrow("Fixture interrupted database installation");
+      } finally {
+        vi.mocked(rename).mockReset();
+      }
+      expect((await stat(pending)).isDirectory()).toBe(true);
+      expect((await restoreLedgerBackup(request)).manifest).toEqual(manifest);
+      expect(JSON.parse(await readFile(devicePath, "utf8"))).toEqual(device);
       await expect(
         stat(join(stateDirectory, ".restore-pending")),
       ).rejects.toMatchObject({ code: "ENOENT" });
