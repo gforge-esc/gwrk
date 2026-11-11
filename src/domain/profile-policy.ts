@@ -52,56 +52,47 @@ function languageFamily(language: string | undefined): string | undefined {
 
 export function resolveProfileStack(
   detectedStack: ProjectProfile["stack"],
-  localStack: ProjectProfile["stack"],
-  entryStack: ProjectProfile["stack"],
+  overrides: readonly (Stack | undefined)[],
   detectedStacks: readonly Stack[] = [],
 ): ProjectProfile["stack"] {
-  if (!detectedStack && !localStack && !entryStack) return undefined;
+  if (!detectedStack && !overrides.some(Boolean)) return undefined;
 
-  const selectedLanguage =
-    entryStack?.language ||
-    entryStack?.languages?.[0] ||
-    localStack?.language ||
-    localStack?.languages?.[0];
-  const detectedFamily = languageFamily(profileLanguage(detectedStack));
-  const workspaceFamily = languageFamily(
-    selectedLanguage?.toLowerCase() ?? profileLanguage(detectedStack),
-  );
-  const localFamily = languageFamily(
-    profileLanguage(localStack) ?? profileLanguage(detectedStack),
-  );
-  const {
-    framework: localFramework,
-    buildSystem: localBuildSystem,
-    ...localFields
-  } = localStack ?? {};
-  const compatibleLocal = !localFamily || localFamily === workspaceFamily;
+  let selectedLanguage: string | undefined;
+  for (const override of overrides) {
+    selectedLanguage =
+      override?.language || override?.languages?.[0] || selectedLanguage;
+  }
+  let sourceFamily = languageFamily(profileLanguage(detectedStack));
+  const workspaceFamily =
+    languageFamily(selectedLanguage?.toLowerCase()) ?? sourceFamily;
   const selectedStack = detectedStacks.find(
     (stack) => languageFamily(profileLanguage(stack)) === workspaceFamily,
   );
-
   const { framework, buildSystem, ...sharedStack } = detectedStack ?? {};
-  const compatibleFamily =
-    detectedFamily === undefined || detectedFamily === workspaceFamily;
+  const compatibleFamily = !sourceFamily || sourceFamily === workspaceFamily;
   const workspaceFramework =
     selectedStack?.framework ?? (compatibleFamily ? framework : undefined);
   const workspaceBuildSystem =
     selectedStack?.buildSystem ?? (compatibleFamily ? buildSystem : undefined);
 
-  return {
+  const stack: Stack = {
     ...sharedStack,
     ...(workspaceFramework !== undefined && { framework: workspaceFramework }),
     ...(workspaceBuildSystem !== undefined && {
       buildSystem: workspaceBuildSystem,
     }),
-    ...localFields,
-    ...(compatibleLocal &&
-      localFramework !== undefined && { framework: localFramework }),
-    ...(compatibleLocal &&
-      localBuildSystem !== undefined && { buildSystem: localBuildSystem }),
-    ...entryStack,
-    ...(selectedLanguage && { language: selectedLanguage }),
   };
+  for (const override of overrides) {
+    if (!override) continue;
+    sourceFamily = languageFamily(profileLanguage(override)) ?? sourceFamily;
+    if (override.languages !== undefined) stack.languages = override.languages;
+    if (sourceFamily && sourceFamily !== workspaceFamily) continue;
+    if (override.framework !== undefined) stack.framework = override.framework;
+    if (override.buildSystem !== undefined)
+      stack.buildSystem = override.buildSystem;
+  }
+  if (selectedLanguage) stack.language = selectedLanguage;
+  return stack;
 }
 
 function compatibleToolchain(
@@ -273,34 +264,22 @@ export function resolveWorkspacePolicyProfile(
   }
 
   const { stack: entryStack, ...workspaceOverrides } = workspaceConfig ?? {};
+  const matchedStack = matchedLocalProject?.stack;
+  const localStack = localProject?.stack;
   const matchedSourceStack = resolveProfileStack(
     detectedWorkspace.stack,
-    matchedLocalProject?.stack,
-    undefined,
+    [matchedStack],
     options?.detectedStacks,
   );
-  // Keep explicit fields from the previous layer when the language is unchanged.
-  const detectedStacks = [
-    ...(options?.detectedStacks ?? []),
-    ...(detectedWorkspace.stack ? [detectedWorkspace.stack] : []),
-  ];
-  const otherLanguageSignals = (stack: ProjectProfile["stack"]) =>
-    detectedStacks.filter(
-      (signal) =>
-        languageFamily(profileLanguage(signal)) !==
-        languageFamily(profileLanguage(stack)),
-    );
   const localSourceStack = resolveProfileStack(
-    matchedSourceStack,
-    localProject?.stack,
-    undefined,
-    otherLanguageSignals(matchedSourceStack),
+    detectedWorkspace.stack,
+    [matchedStack, localStack],
+    options?.detectedStacks,
   );
   const workspaceStack = resolveProfileStack(
-    localSourceStack,
-    undefined,
-    entryStack,
-    otherLanguageSignals(localSourceStack),
+    detectedWorkspace.stack,
+    [matchedStack, localStack, entryStack],
+    options?.detectedStacks,
   );
   const rootToolchain = compatibleToolchain(
     rootConfig?.project?.toolchain,

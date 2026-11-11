@@ -852,28 +852,54 @@ describe("FR-001: architecture-aware workspace profiles (044 phase p01)", () => 
     }
   });
 
-  it("keeps the nearest ancestor design when a nested directory only configures its name", async () => {
-    const nearerDesign = { ...design, architecture: "layered" };
-    write(".gwrkrc.json", JSON.stringify({
+  it.each([
+    { scenario: "nearest valid design", entryDesign: undefined, boundary: false },
+    {
+      scenario: "entry design",
+      entryDesign: { ...design, architecture: "clean-architecture", principles: [] },
+      boundary: false,
+    },
+    { scenario: "worktree boundary", entryDesign: undefined, boundary: true },
+  ])("resolves a nested directory with $scenario", async ({ entryDesign, boundary }) => {
+    const nearerDesign = { ...design, architecture: "layered", principles: ["clean-code"] };
+    const config = {
       project: { name: "fixture", design },
-      workspaces: { "services/api": { toolchain: { build: null } } },
-    }));
+      workspaces: { "services/api": { design: entryDesign, toolchain: { build: null } } },
+    };
+    write(".gwrkrc.json", JSON.stringify(config));
     write("services/api/pyproject.toml", '[project]\ndependencies = ["django"]\n');
     write("services/api/uv.lock", "");
     write("services/api/pytest.ini", "[pytest]\n");
     write("services/api/admin/.gwrkrc.json", JSON.stringify({
       project: { name: "admin", design: nearerDesign },
     }));
-    write("services/api/admin/src/.gwrkrc.json", JSON.stringify({
+    const relativePath = "services/api/admin/src";
+    const child = path.join(root, relativePath);
+    write(`${relativePath}/.gwrkrc.json`, JSON.stringify({
       project: { name: "src" },
     }));
+    if (boundary) {
+      write(`${relativePath}/.git`, "gitdir: /unused/nested-worktree\n");
+      write("services/api/.gwrkrc.json", JSON.stringify({
+        project: { name: "api", design: nearerDesign },
+      }));
+    }
 
-    expect(await detectProfile(path.join(root, "services/api/admin/src"))).toMatchObject({
-      design: nearerDesign,
-      type: "python",
-      stack: { language: "Python", framework: "Django", buildSystem: "uv" },
-      toolchain: { test: "pytest", build: null },
-    });
+    const direct = await detectProfile(child);
+    if (boundary) expect.soft(direct.design).toBeUndefined();
+    const profiles = {
+      ...(boundary ? {} : { direct }),
+      "two-argument resolver": await resolveWorkspaceProfile(root, relativePath),
+      "three-argument resolver": resolveWorkspaceProfile(child, root, config),
+    };
+    for (const [entryPoint, profile] of Object.entries(profiles)) {
+      expect.soft(profile, entryPoint).toMatchObject({
+        design: entryDesign ?? (boundary ? design : nearerDesign),
+        type: "python",
+        stack: { language: "Python", framework: "Django", buildSystem: "uv" },
+        toolchain: { test: "pytest", build: null },
+      });
+    }
   });
 
   it("drops partial local JavaScript stack fields when the entry selects Python", async () => {

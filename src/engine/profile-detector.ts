@@ -482,67 +482,93 @@ function resolveDetectedProfile(
   localProject?: WorkspaceProfileConfig,
 ): ProjectProfile | undefined {
   const start = path.resolve(detectedRoot);
-  let directory = start;
-  let nearestProfile: ProjectProfile | undefined;
-  let nearestDesign: ProjectProfile["design"];
-  let sawAncestorConfig = false;
-  while (true) {
-    const configPath = path.join(directory, ".gwrkrc.json");
-    if ((directory !== start || !localProject) && fs.existsSync(configPath)) {
-      try {
-        const config = JSON.parse(fs.readFileSync(configPath, "utf-8"));
-        if (directory === start) {
-          return mergeProfileOverrides({
-            detected: detected.profile,
-            projectDesign: DesignSchema.safeParse(config?.project?.design).data,
-          });
-        }
-
-        const matchedWorkspace = matchWorkspacePath(
-          relativeWorkspacePath(directory, start),
-          Object.keys(config?.workspaces ?? {}),
-        );
-        if (matchedWorkspace || (!localProject && !sawAncestorConfig)) {
-          const inheritedDesign = nearestProfile?.design ?? nearestDesign;
-          const scoped = applyWorkspaceConfig(
-            directory,
-            start,
-            detected,
-            config,
-            {
-              requireDesign: true,
-              localProject:
-                inheritedDesign && !localProject?.design
-                  ? { ...localProject, design: inheritedDesign }
-                  : localProject,
-            },
-          );
-          if (matchedWorkspace && scoped !== detected.profile) return scoped;
-          if (scoped !== detected.profile) nearestProfile = scoped;
-        } else if (!sawAncestorConfig && !localProject?.design) {
-          nearestDesign = DesignSchema.safeParse(config?.project?.design).data;
-        }
-        sawAncestorConfig = true;
-      } catch {
-        return nearestProfile;
-      }
-    }
-    const parent = path.dirname(directory);
-    if (
-      !searchAncestors ||
-      directory === parent ||
-      fs.existsSync(path.join(directory, ".git"))
-    ) {
-      return nearestProfile;
-    }
-    directory = parent;
+  const configPath = path.join(start, ".gwrkrc.json");
+  if (!localProject && fs.existsSync(configPath)) {
+    const config = readWorkspaceRootConfig(start);
+    if (config === undefined) return undefined;
+    return mergeProfileOverrides({
+      detected: detected.profile,
+      projectDesign: DesignSchema.safeParse(config?.project?.design).data,
+    });
   }
+  if (!searchAncestors) return undefined;
+
+  let nearestConfig:
+    | { directory: string; config: WorkspaceRootConfig }
+    | undefined;
+  for (const ancestor of ancestorWorkspaceConfigs(start)) {
+    nearestConfig ??= ancestor;
+    const { directory, config } = ancestor;
+    const matchedWorkspace = matchWorkspacePath(
+      relativeWorkspacePath(directory, start),
+      Object.keys(config?.workspaces ?? {}),
+    );
+    if (!matchedWorkspace) continue;
+    const scoped = applyWorkspaceConfig(directory, start, detected, config, {
+      requireDesign: true,
+      localProject,
+    });
+    if (scoped !== detected.profile) return scoped;
+  }
+
+  if (localProject || !nearestConfig) return undefined;
+  return applyWorkspaceConfig(
+    nearestConfig.directory,
+    start,
+    detected,
+    nearestConfig.config,
+    { requireDesign: true },
+  );
 }
 
 type WorkspaceRootConfig = {
   project?: { design?: unknown; stack?: unknown; toolchain?: unknown };
   workspaces?: Record<string, unknown>;
 } | null;
+
+function readWorkspaceRootConfig(
+  directory: string,
+): WorkspaceRootConfig | undefined {
+  const configPath = path.join(directory, ".gwrkrc.json");
+  if (!fs.existsSync(configPath)) return undefined;
+  try {
+    return JSON.parse(fs.readFileSync(configPath, "utf-8"));
+  } catch {
+    return undefined;
+  }
+}
+
+function* ancestorWorkspaceConfigs(workspace: string, root?: string) {
+  let directory = path.resolve(workspace);
+  const stop = root === undefined ? undefined : path.resolve(root);
+  if (stop !== undefined) {
+    const relative = relativeWorkspacePath(stop, directory);
+    if (
+      !relative ||
+      relative === ".." ||
+      relative.startsWith("../") ||
+      path.isAbsolute(relative)
+    ) {
+      return;
+    }
+  }
+
+  while (!fs.existsSync(path.join(directory, ".git"))) {
+    const parent = path.dirname(directory);
+    if (parent === directory || parent === stop) return;
+    directory = parent;
+    const config = readWorkspaceRootConfig(directory);
+    if (config) yield { directory, config };
+  }
+}
+
+function findNearestAncestorDesign(workspace: string, root: string) {
+  for (const { config } of ancestorWorkspaceConfigs(workspace, root)) {
+    const design = DesignSchema.safeParse(config.project?.design).data;
+    if (design) return design;
+  }
+  return undefined;
+}
 
 function relativeWorkspacePath(root: string, workspace: string): string {
   return path.relative(root, workspace).split(path.sep).join("/");
@@ -573,20 +599,13 @@ function applyWorkspaceConfig(
   const relativePath = relativeWorkspacePath(root, workspace);
   const matchedPath = matchWorkspacePath(relativePath, Object.keys(workspaces));
   const design = DesignSchema.safeParse(config?.project?.design).data;
-  let detected = initialDetection;
-  const matchedRoot = matchedPath ? path.resolve(root, matchedPath) : undefined;
-  const detectMatched =
-    matchedRoot &&
-    (options?.detectMatchedWorkspace || matchedPath !== relativePath);
-  const matchedProject = detectMatched
-    ? readLocalProject(matchedRoot)
-    : undefined;
+  const entryDesign = matchedPath ? workspaces[matchedPath].design : undefined;
   const localProject = options?.localProject;
-  const hasDesign =
-    design ||
-    (matchedPath && workspaces[matchedPath].design) ||
-    localProject?.design ||
-    matchedProject?.design;
+  const localDesign =
+    localProject?.design ??
+    (entryDesign ? undefined : findNearestAncestorDesign(workspace, root));
+  const hasDesign = entryDesign || localDesign || design;
+  let detected = initialDetection;
   if (!hasDesign) {
     if (options?.requireDesign) return detected.profile;
     return resolveWorkspacePolicyProfile(
@@ -598,7 +617,14 @@ function applyWorkspaceConfig(
     );
   }
 
-  if (detectMatched) {
+  let matchedProject: WorkspaceProfileConfig | undefined;
+  if (
+    matchedPath &&
+    (options?.detectMatchedWorkspace || matchedPath !== relativePath)
+  ) {
+    const matchedRoot = path.resolve(root, matchedPath);
+    matchedProject =
+      matchedPath === relativePath ? undefined : readLocalProject(matchedRoot);
     try {
       detected = detectFilesystemProfile(matchedRoot);
     } catch {
@@ -622,8 +648,7 @@ function applyWorkspaceConfig(
       const rootDetection = detectFilesystemProfile(root);
       stack = resolveProfileStack(
         rootDetection.profile.stack,
-        stack,
-        undefined,
+        [stack],
         rootDetection.signals,
       );
     } catch {
@@ -644,8 +669,13 @@ function applyWorkspaceConfig(
     },
     {
       requireDesign: options?.requireDesign,
-      localProject,
-      matchedLocalProject: matchedProject,
+      localProject: localDesign
+        ? { ...localProject, design: localDesign }
+        : localProject,
+      matchedLocalProject: matchedProject && {
+        ...matchedProject,
+        design: undefined,
+      },
       detectedStacks: detected.signals,
       detectedToolchains: detected.toolchains,
     },
@@ -657,12 +687,8 @@ async function detectWorkspaceProfile(
   workspacePath: string,
 ): Promise<ProjectProfile> {
   const workspace = path.resolve(root, workspacePath);
-  let config: WorkspaceRootConfig;
-  try {
-    config = JSON.parse(
-      fs.readFileSync(path.join(root, ".gwrkrc.json"), "utf-8"),
-    );
-  } catch {
+  const config = readWorkspaceRootConfig(root);
+  if (config === undefined) {
     return detectProfileInDirectory(workspace, false);
   }
   return detectProfileInDirectory(workspace, false, {
