@@ -5,6 +5,7 @@
 import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
+import type Database from "better-sqlite3";
 import { getDb } from "../db/index.js";
 import type { EffortForecast, LeadingIndicators } from "./types.js";
 
@@ -19,8 +20,10 @@ export function computeLeadingIndicators(
   featureId: string,
   forecast: EffortForecast,
   projectId: string,
+  projectRoot = process.cwd(),
+  ledger?: Database.Database,
 ): LeadingIndicators {
-  const db = getDb();
+  const db = ledger ?? getDb();
 
   // 1. Convergence
   // We count all unique tasks (T### or US###) that have any history for this feature.
@@ -67,7 +70,7 @@ export function computeLeadingIndicators(
 
   // Load total tasks from tasks.json or spec.md if available to get an accurate denominator (FR-014)
   let totalTasksExpected = 0;
-  const featureDir = path.join(process.cwd(), "specs", featureId);
+  const featureDir = path.join(projectRoot, "specs", featureId);
   try {
     const tasksJsonPath = path.join(featureDir, ".gwrk", "tasks.json");
     if (fs.existsSync(tasksJsonPath)) {
@@ -135,7 +138,7 @@ export function computeLeadingIndicators(
         const gitOut = execFileSync(
           "git",
           ["log", "--numstat", "--format=", "--", featureDir],
-          { encoding: "utf-8" },
+          { cwd: projectRoot, encoding: "utf-8" },
         );
         const lines = gitOut.split("\n").filter(Boolean);
         const uniqueFiles = new Set<string>();
@@ -183,13 +186,13 @@ export function computeLeadingIndicators(
 
   try {
     // 1. Check active runs dir
-    const runsDir = path.join(process.cwd(), ".runs");
+    const runsDir = path.join(projectRoot, ".runs");
     const featureRegex = new RegExp(`(^|[-])${featureId}([-]|\\.)`);
     countInDir(runsDir, featureRegex);
 
     // 2. Check harvested logs dir
     const harvestedDir = path.join(
-      process.cwd(),
+      projectRoot,
       "specs",
       featureId,
       ".gwrk",

@@ -335,7 +335,7 @@ export async function harvestFeature(
   // 2.5 Gate Reconciliation — run gates, persist evidence, update tasks.json
   if (phaseId) {
     try {
-      const result = await reconcileGates(projectPath, featureId, phaseId);
+      const result = await reconcileGates(projectPath, featureId, phaseId, scope);
       logCliOutput(
         `Gate reconciliation: ${result.passed}/${result.total} passed${result.failed > 0 ? ` (${result.failed} failed)` : ""}`,
       );
@@ -383,6 +383,8 @@ export async function harvestFeature(
             featureId,
             forecast,
             projectId,
+            projectPath,
+            scope?.db,
           );
           let telemetry: CompressionReport["telemetry"];
           try {

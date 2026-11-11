@@ -3,7 +3,13 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { execFileSync, execSync } from "node:child_process";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { homedir } from "node:os";
 import { join, sep } from "node:path";
 import fastify from "fastify";
@@ -530,23 +536,84 @@ describe("Server E2E Integration", () => {
       fixtureGit(external.projectRoot, "rev-parse", "HEAD"),
       fixtureGit(external.projectRoot, "status", "--porcelain"),
       fixtureGit(external.projectRoot, "config", "--local", "--list"),
+      fixtureGit(external.projectRoot, "show-ref"),
+      fixtureGit(external.projectRoot, "worktree", "list", "--porcelain"),
     ];
     try {
       const original = snapshot();
       vi.stubEnv("GIT_DIR", join(external.projectRoot, ".git"));
       vi.stubEnv("GIT_WORK_TREE", external.projectRoot);
-      try {
-        fixture = await createServerFixture("routes", { routes: ["dispatch"] });
-      } finally {
-        vi.unstubAllEnvs();
-      }
+      fixture = await createServerFixture("routes", { routes: ["dispatch"] });
+      const response = await fixture.app.inject({
+        method: "POST",
+        url: "/api/dispatch",
+        payload: { featureId: "probe", phaseId: "phase-01" },
+      });
+      expect(response.statusCode).toBe(201);
+      const isolated = fixture;
+      await vi.waitFor(() => {
+        expect(isolated.journal().at(-1)?.status).toBe("completed");
+      });
+      await fixture.app.close();
       expect(snapshot()).toEqual(original);
+      expect(
+        fixtureGit(
+          fixture.projectRoot,
+          "branch",
+          "--list",
+          "feat/probe-phase-01",
+        ),
+      ).toContain("feat/probe-phase-01");
+      expect(
+        fixtureGit(
+          fixture.projectRoot,
+          "worktree",
+          "list",
+          "--porcelain",
+        ).match(/^worktree .+$/gm),
+      ).toEqual([`worktree ${fixture.projectRoot}`]);
       expect(existsSync(join(fixture.projectRoot, ".git"))).toBe(true);
       expect(fixtureGit(fixture.projectRoot, "log", "-1", "--format=%s")).toBe(
         "Initialize fixture",
       );
     } finally {
-      await Promise.all([fixture?.close(), external.close()]);
+      try {
+        await Promise.all([fixture?.close(), external.close()]);
+      } finally {
+        vi.unstubAllEnvs();
+      }
+    }
+  });
+
+  it("retries a dispatch after the first journal append fails", async () => {
+    const fixture = await createServerFixture("routes", {
+      routes: ["dispatch"],
+    });
+    const journal = join(fixture.projectRoot, ".gwrk", "dispatches.jsonl");
+    const request = {
+      method: "POST" as const,
+      url: "/api/dispatch",
+      payload: { featureId: "retry-append", phaseId: "phase-01" },
+    };
+    try {
+      mkdirSync(journal);
+      expect((await fixture.app.inject(request)).statusCode).toBe(500);
+      rmSync(journal, { recursive: true });
+
+      const retry = await fixture.app.inject(request);
+      expect(retry.statusCode).toBe(201);
+      const { id } = retry.json();
+      await vi.waitFor(() => {
+        expect(fixture.journal().at(-1)).toMatchObject({
+          id,
+          status: "completed",
+        });
+      });
+      expect(
+        fixture.journal().filter(({ status }) => status === "queued"),
+      ).toHaveLength(1);
+    } finally {
+      await fixture.close();
     }
   });
 

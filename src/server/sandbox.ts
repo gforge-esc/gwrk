@@ -89,6 +89,10 @@ export class SandboxManager {
     );
   }
 
+  protected gitOptions(): { env?: NodeJS.ProcessEnv } {
+    return {};
+  }
+
   /**
    * The identity gwrk hands to `setup` and `teardown`.
    *
@@ -99,7 +103,7 @@ export class SandboxManager {
    */
   private hookEnv(id: string, workDir: string, featureId: string) {
     return {
-      ...process.env,
+      ...(this.gitOptions().env ?? process.env),
       GWRK_SANDBOX_ID: id,
       GWRK_SANDBOX_DIR: workDir,
       GWRK_FEATURE_ID: featureId,
@@ -247,6 +251,7 @@ export class SandboxManager {
     try {
       execSync(`git rev-parse --verify --quiet ${branchName}`, {
         cwd: projectRoot,
+        ...this.gitOptions(),
         stdio: "pipe",
       });
       branchExists = true;
@@ -260,6 +265,7 @@ export class SandboxManager {
         worktreeListOutput = String(
           execSync("git worktree list --porcelain", {
             cwd: projectRoot,
+            ...this.gitOptions(),
             encoding: "utf-8",
             stdio: "pipe",
           }) ?? "",
@@ -287,6 +293,7 @@ export class SandboxManager {
       try {
         execSync(`git worktree add ${workDir} ${branchName}`, {
           cwd: projectRoot,
+          ...this.gitOptions(),
           stdio: "pipe",
         });
       } catch (e: unknown) {
@@ -296,9 +303,13 @@ export class SandboxManager {
     } else {
       try {
         // Ensure the base branch exists; otherwise fall back to current HEAD.
-        execSync(`git branch --list ${baseBranch}`, { cwd: projectRoot });
+        execSync(`git branch --list ${baseBranch}`, {
+          cwd: projectRoot,
+          ...this.gitOptions(),
+        });
         execSync(`git worktree add -b ${branchName} ${workDir} ${baseBranch}`, {
           cwd: projectRoot,
+          ...this.gitOptions(),
           stdio: "pipe",
         });
       } catch {
@@ -306,6 +317,7 @@ export class SandboxManager {
         try {
           execSync(`git worktree add -b ${branchName} ${workDir}`, {
             cwd: projectRoot,
+            ...this.gitOptions(),
             stdio: "pipe",
           });
         } catch (e2: unknown) {
@@ -379,6 +391,7 @@ export class SandboxManager {
       // 1. Check if there are changes
       const status = execSync("git status --porcelain", {
         cwd: workDir,
+        ...this.gitOptions(),
         encoding: "utf-8",
       }).trim();
 
@@ -386,15 +399,21 @@ export class SandboxManager {
         // 2. Commit changes (gwrk agents usually do this, but just in case)
         execSync('git add . && git commit -m "Task contribution" || true', {
           cwd: workDir,
+          ...this.gitOptions(),
           stdio: "pipe",
         });
 
         // 3. Push the branch
-        execSync("git push origin HEAD", { cwd: workDir, stdio: "pipe" });
+        execSync("git push origin HEAD", {
+          cwd: workDir,
+          ...this.gitOptions(),
+          stdio: "pipe",
+        });
 
         // 4. Create PR via gh CLI
         const branchName = execSync("git rev-parse --abbrev-ref HEAD", {
           cwd: workDir,
+          ...this.gitOptions(),
           encoding: "utf-8",
         }).trim();
 
@@ -405,6 +424,7 @@ export class SandboxManager {
             `gh pr create --base ${baseBranch} --head ${branchName} --title "Task contribution: ${branchName}" --body "Automated PR from gwrk sandbox"`,
             {
               cwd: workDir,
+              ...this.gitOptions(),
               stdio: "pipe",
             },
           );
@@ -417,6 +437,7 @@ export class SandboxManager {
       // 5. Remove worktree
       execSync(`git worktree remove --force ${workDir}`, {
         cwd: projectRoot,
+        ...this.gitOptions(),
         stdio: "pipe",
       });
       // 6. Forget it — the ordinary exit path; pruneOrphans covers the rest.
@@ -430,6 +451,7 @@ export class SandboxManager {
       try {
         execSync(`git worktree remove --force ${workDir}`, {
           cwd: projectRoot,
+          ...this.gitOptions(),
           stdio: "pipe",
         });
       } catch {

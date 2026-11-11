@@ -19,6 +19,7 @@ import fastify, { type FastifyInstance } from "fastify";
 import { openDatabase } from "../../src/db/index.js";
 import { registerProject } from "../../src/db/runs.js";
 import { DispatchQueue } from "../../src/server/dispatch.js";
+import { repositoryGitEnv } from "../../src/adapters/git/process-env.js";
 import { ScopedSandboxManager, startServer } from "../../src/server/index.js";
 import { LifecycleMonitor } from "../../src/server/lifecycle.js";
 import { SystemMonitor } from "../../src/server/monitor.js";
@@ -45,8 +46,6 @@ interface FixtureOptions {
   pauseDispatch?: boolean;
 }
 
-let gitLocalEnvKeys: string[] | undefined;
-
 export function fixtureGit(root: string, ...args: string[]): string {
   const options = {
     cwd: root,
@@ -59,15 +58,7 @@ export function fixtureGit(root: string, ...args: string[]): string {
     EDITOR: "true",
     GIT_TERMINAL_PROMPT: "0",
   };
-  gitLocalEnvKeys ??= execFileSync("git", ["rev-parse", "--local-env-vars"], {
-    ...options,
-    env: { PATH: process.env.PATH, ...noninteractive },
-  })
-    .trim()
-    .split(/\r?\n/);
-
-  const env: NodeJS.ProcessEnv = { ...process.env, ...noninteractive };
-  for (const key of gitLocalEnvKeys) delete env[key];
+  const env = { ...repositoryGitEnv(root), ...noninteractive };
   return execFileSync("git", args, {
     ...options,
     env,

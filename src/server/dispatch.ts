@@ -128,8 +128,8 @@ export class DispatchQueue {
       createdAt: new Date().toISOString(),
     };
 
-    this.queue.push(record);
     persistDispatch(record, this.projectRoot);
+    this.queue.push(record);
     this.processNext();
     return record;
   }

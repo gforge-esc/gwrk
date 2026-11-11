@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import path from "node:path";
+import type Database from "better-sqlite3";
 import { recordGateResult } from "../db/gates.js";
 import { type TaskGateResult, runTaskGate } from "../utils/gate-exec.js";
 import { resolveProjectId } from "../utils/project-id.js";
@@ -29,9 +30,10 @@ export async function reconcileGates(
   projectPath: string,
   featureId: string,
   phaseId?: string,
+  scope?: { projectId: string; db: Database.Database },
 ): Promise<ReconcileResult> {
   const featureDir = path.join(projectPath, "specs", featureId);
-  const projectId = resolveProjectId(projectPath);
+  const projectId = scope?.projectId ?? resolveProjectId(projectPath);
 
   let taskState: TaskState;
   try {
@@ -88,6 +90,7 @@ export async function reconcileGates(
           output: gateResult.output.slice(0, 2000), // Truncate for storage
         },
         projectId,
+        scope?.db,
       );
 
       if (gateResult.passed) {

@@ -12,6 +12,7 @@ import {
   logCliOutput,
   warnCli,
 } from "../adapters/cli/output-scope.js";
+import { repositoryGitEnv } from "../adapters/git/process-env.js";
 import type { GwrkConfig } from "../utils/config.js";
 import { type DispatchLedgerScope, DispatchQueue } from "./dispatch.js";
 import { GitManager } from "./git-manager.js";
@@ -67,10 +68,15 @@ export class ScopedSandboxManager extends SandboxManager {
     super(root);
   }
 
+  protected override gitOptions() {
+    return { env: repositoryGitEnv(this.root) };
+  }
+
   override async pruneSandboxes(): Promise<void> {
     if (!existsSync(join(this.root, ".git"))) return;
     execFileSync("git", ["worktree", "prune"], {
       cwd: this.root,
+      ...this.gitOptions(),
       stdio: ["ignore", "pipe", "pipe"],
       timeout: 5_000,
     });
