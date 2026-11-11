@@ -11,13 +11,14 @@ Linux releases build from a pinned Git commit. Clean Linux hosts verify and inst
 | `version` | `string` | Matches `package.json` and release tag | Phase 1 and Phase 2 |
 | `commitSha` | `string` | Full 40-character lowercase hexadecimal Git SHA | Phase 1 and Phase 2 |
 | `builtAt` | `string` | ISO-8601 UTC timestamp injected as an input | Phase 1 and Phase 2 |
-| `nodeVersion` | `string` | Node.js major and ABI string from build runtime | Phase 1 and Phase 2 |
+| `nodeVersion` | `string` | Node.js version from the build runtime, at least 22 | Phase 1 and Phase 2 |
+| `nodeAbi` | `string` | Native module ABI from the build runtime | Phase 1 and Phase 2 |
 | `platform` | `"linux"` | Explicit Linux target marker | Phase 1 and Phase 2 |
 | `arch` | `"x64"` or `"arm64"` | Target CPU architecture | Phase 1 and Phase 2 |
 | `tarballSha256` | `string` | 64-character Secure Hash Algorithm 256 (SHA-256) digest of tarball | Phase 1 and Phase 2 |
 | `lockfileSha256` | `string` | 64-character SHA-256 digest of `pnpm-lock.yaml` | Phase 1 and Phase 2 |
 | `plugins` | `PluginInventoryItem[]` | Sorted built-in agents, workflows and skills in `dist/plugins/builtins/` | Phase 1 and Phase 2 |
-| `migrations` | `string[]` | Sorted SQL filenames in `dist/db/migrations/` | Phase 1 and Phase 2 |
+| `migrations` | `MigrationDigest[]` | Sorted SQL filenames and digests in `dist/db/migrations/` | Phase 1 and Phase 2 |
 
 The release archive excludes `.gwrkrc.local.json`, `.env` and `~/.gwrk/config.json`. It also excludes SSH keys, GitHub tokens and local agent session files.
 
@@ -27,7 +28,7 @@ The release archive excludes `.gwrkrc.local.json`, `.env` and `~/.gwrk/config.js
 
 ```typescript
 export interface PluginInventoryItem {
-  readonly kind: "agent" | "workflow" | "skill";
+  readonly kind: "agent" | "channel" | "extension" | "review" | "skill" | "workflow";
   readonly name: string;
   readonly version: string;
 }
@@ -37,12 +38,13 @@ export interface ReleaseManifest {
   readonly commitSha: string;
   readonly builtAt: string;
   readonly nodeVersion: string;
+  readonly nodeAbi: string;
   readonly platform: "linux";
   readonly arch: "x64" | "arm64";
   readonly tarballSha256: string;
   readonly lockfileSha256: string;
   readonly plugins: readonly PluginInventoryItem[];
-  readonly migrations: readonly string[];
+  readonly migrations: readonly { name: string; sha256: string }[];
 }
 
 export interface RunnerLayout {
@@ -75,6 +77,7 @@ export function validateRunnerLayout(
 ): ValidationOutcome<RunnerLayout>;
 export function evaluateRollbackCompatibility(
   appliedMigrations: readonly string[],
+  currentManifest: ReleaseManifest,
   targetManifest: ReleaseManifest,
 ): RollbackCompatibility;
 ```
@@ -93,6 +96,8 @@ export interface ReleaseOpsPort {
   restoreConsistentBackup(input: RestoreRequest): Promise<RestoreVerification>;
 }
 ```
+
+The installer validates that the release inventory matches the archive. Rollback requires the target migration inventory to match the applied schema by filename and digest. It refuses a target that would apply a migration or lacks the digest of an applied migration. The Linux filesystem adapter resolves symbolic links before applying layout checks.
 
 ## Layout separation rules
 

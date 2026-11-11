@@ -39,7 +39,6 @@ Governance follows `.gwrk/architecture.md`, `ADR-011` and `ADR-013`. Keep pure l
 #### Files
 
 - `src/domain/release-packaging.ts` (NEW: Validate release manifests and check layout separation plus rollback migration compatibility)
-- `src/ports/release-ops-port.ts` (NEW: Declare ports for instance locking and online SQLite backup plus runner probes)
 - `src/domain/release-packaging.test.ts` (NEW: Test manifest digests and laptop path rejection plus rollback verdicts)
 
 #### Test Strategy
@@ -89,6 +88,7 @@ Governance follows `ADR-004`, `ADR-008` and `ADR-011`. Isolate state roots and p
 
 #### Files
 
+- `src/ports/release-ops-port.ts` (NEW: Declare the instance lock boundary)
 - `src/adapters/server/instance-lock.ts` (NEW: Hold a Linux instance lock for the server lifetime)
 - `src/server/pid.ts` (MODIFY: Resolve `GWRK_RUNTIME_DIR` and `GWRK_HOME` paths and expose single-instance lock helpers)
 - `src/db/index.ts` (MODIFY: Resolve default database directory from `GWRK_DIR` or `GWRK_HOME` before `~/.gwrk`)

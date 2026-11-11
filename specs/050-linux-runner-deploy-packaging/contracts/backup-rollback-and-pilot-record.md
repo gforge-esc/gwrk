@@ -50,7 +50,7 @@ Stage restore into a separate directory. Leave the target intact until the resto
 `deploy/linux-runner/rollback-release.sh` reverts `<releaseRoot>/current` to `<releaseRoot>/previous` or an explicit `<targetVersion>`:
 
 1. Read `<releaseRoot>/releases/<version>/release-manifest.json` and verify its release files exist.
-2. Read applied `_migrations` names from `<stateRoot>/gwrk.db` and call `evaluateRollbackCompatibility`.
+2. Read applied `_migrations` names from `<stateRoot>/gwrk.db`. Compare their digests in the verified current and target manifests. Reject a target that would apply any additional migration.
 3. If `allowed === false`, print the blocking migration names to stderr and exit `1` before changing `current`.
 4. If `allowed === true`, stop accepting work and stop the supervisor. Run `gwrk db backup` against quiesced state.
 5. Atomically switch `current` to the target release and start the supervisor.
