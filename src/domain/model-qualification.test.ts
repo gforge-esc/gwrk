@@ -187,6 +187,21 @@ describe("credential guard", () => {
       }),
     },
   ])("header values in $form", ({ evidence }) => {
+    it("rejects a credential tuple inside a general response array", () => {
+      const response = [
+        "fixture-response",
+        ["Set-Cookie", "session=fixture-only"],
+      ];
+      expect(() => assertNoSecretMaterial(evidence(response))).toThrow(
+        /secret material/i,
+      );
+    });
+
+    it("allows multi-value Vary in a flat header collection", () => {
+      const response = { rawHeaders: ["Vary", ["Cookie", "Accept-Encoding"]] };
+      expect(() => assertNoSecretMaterial(evidence(response))).not.toThrow();
+    });
+
     it.each(["headers", "rawHeaders", "requestHeaders", "responseHeaders"])(
       "rejects a Cookie key in %s",
       (collection) => {

@@ -540,18 +540,11 @@ export function assertNoSecretMaterial(
 ): void {
   let secretInText = false;
   const flatHeaderLists = new WeakSet<unknown[]>();
+  const headerCollections = new WeakSet<unknown[]>();
   const headerMaps = new WeakSet<object>();
   const serialized =
     JSON.stringify(value, function (this: unknown, key, entry: unknown) {
       const isHeaderCollection = headersKeyPattern.test(key);
-      if (
-        isHeaderCollection &&
-        typeof entry === "object" &&
-        entry &&
-        !Array.isArray(entry)
-      ) {
-        headerMaps.add(entry);
-      }
       const isFlatHeaderValue =
         Array.isArray(this) &&
         flatHeaderLists.has(this) &&
@@ -563,8 +556,24 @@ export function assertNoSecretMaterial(
         entry.every((value) => typeof value === "string") &&
         (headerMaps.has(this) || (key === "value" && hasHeaderName(this)));
       const isHeaderValue = isFlatHeaderValue || isStructuredHeaderValue;
-      if (Array.isArray(entry) && !isHeaderValue && isFlatHeaderList(entry)) {
-        flatHeaderLists.add(entry);
+      if (Array.isArray(entry)) {
+        const isHeaderTuple =
+          Array.isArray(this) && headerCollections.has(this);
+        // The same array can appear under both a header field and ordinary evidence.
+        flatHeaderLists.delete(entry);
+        headerCollections.delete(entry);
+        if (!isHeaderValue) {
+          if (isHeaderCollection) headerCollections.add(entry);
+          if (
+            (isHeaderCollection || isHeaderTuple) &&
+            isFlatHeaderList(entry)
+          ) {
+            flatHeaderLists.add(entry);
+          }
+        }
+      } else if (typeof entry === "object" && entry !== null) {
+        headerMaps.delete(entry);
+        if (isHeaderCollection) headerMaps.add(entry);
       }
       if (
         headerPattern.test(key) ||
