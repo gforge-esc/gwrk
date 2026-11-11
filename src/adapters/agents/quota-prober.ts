@@ -4,8 +4,11 @@
 
 import * as fs from "node:fs";
 import * as path from "node:path";
-import type { AgentBackendConfig, QuotaProbe } from "../domain/agent-config.js";
-import { execCommand } from "../utils/exec.js";
+import type {
+  AgentBackendConfig,
+  QuotaProbe,
+} from "../../domain/agent-config.js";
+import { execCommand } from "../../utils/exec.js";
 
 export interface QuotaReading {
   percent: number;

@@ -27,11 +27,11 @@ import { SandboxManager } from "./sandbox.js";
 import { getSlackApp, startSlackApp, stopSlackApp } from "./slack.js";
 import { startTelegramBot, stopTelegramBot } from "./telegram.js";
 
+import { QuotaProber } from "../adapters/agents/quota-prober.js";
 import { BackendSelector } from "./backend-selector.js";
-import { QuotaProber } from "./quota-prober.js";
 
 export { BackendSelector } from "./backend-selector.js";
-export { QuotaProber } from "./quota-prober.js";
+export { QuotaProber } from "../adapters/agents/quota-prober.js";
 export { loadRegistry } from "../adapters/agents/registry-loader.js";
 
 let backendSelector: BackendSelector | undefined;

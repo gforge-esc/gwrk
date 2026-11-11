@@ -9,7 +9,7 @@ import { TaskClassification, TaskType } from "../domain/types.js";
 import { BackendSelector, type TaskContext } from "./backend-selector.js";
 
 // Mock recordDecision to avoid DB side effects in non-db tests
-vi.mock("./routing-decisions.js", () => ({
+vi.mock("../adapters/sqlite/routing-decisions.js", () => ({
   recordDecision: vi.fn(),
 }));
 
