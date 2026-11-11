@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import { exitCli, logCliError } from "../adapters/cli/output-scope.js";
 import { getDb } from "../db/index.js";
 import type { AgentBackendConfig, AgentRegistry } from "./agent-registry.js";
 import { ModelSelector } from "./model-selector.js";
@@ -49,8 +50,8 @@ export class BackendSelector {
     const backends = Object.values(this.registry.backends);
 
     if (backends.length === 0) {
-      console.error("No backends in registry");
-      process.exit(1);
+      logCliError("No backends in registry");
+      exitCli(1);
     }
 
     // 1. Probe all backends
@@ -69,8 +70,8 @@ export class BackendSelector {
     });
 
     if (availableBackends.length === 0) {
-      console.error("All backends quota-exhausted — retry after reset");
-      process.exit(1);
+      logCliError("All backends quota-exhausted — retry after reset");
+      exitCli(1);
     }
 
     // 3. Sort by quota descending
@@ -150,10 +151,10 @@ export class BackendSelector {
       lastError = `All models for '${backend.name}' in cooldown — provider failover`;
     }
 
-    console.error(
+    logCliError(
       `Fallback chain exhausted after ${maxAttempts} attempts. ${lastError}`,
     );
-    process.exit(1);
+    exitCli(1);
   }
 
   /**

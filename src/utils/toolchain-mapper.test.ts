@@ -8,6 +8,7 @@ import path from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createToolchainAdapter } from "../adapters/toolchain/index.js";
 import type { ProjectProfile } from "../engine/prompt-conditioner.js";
+import * as toolchainPort from "../ports/toolchain-port.js";
 import {
   getBuildCommand,
   getSourceExtension,
@@ -141,5 +142,11 @@ describe("getBuildCommand (021 FR-004 — string | null)", () => {
       expect(getBuildCommand(p({}), d)).toBeNull();
       fs.rmSync(d, { recursive: true, force: true });
     });
+  });
+});
+
+describe("Toolchain port boundary", () => {
+  it("exports only type contracts from the port module", () => {
+    expect(Object.keys(toolchainPort)).toEqual([]);
   });
 });

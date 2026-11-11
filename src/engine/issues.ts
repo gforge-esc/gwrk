@@ -4,11 +4,9 @@
 
 import fs from "node:fs";
 import path from "node:path";
+import { dispatchNotification } from "../adapters/notifications/index.js";
 import type { IssueRecord } from "../db/issues.js";
-import {
-  type NotificationPort,
-  getNotificationPort,
-} from "../ports/notification-port.js";
+import type { NotificationPort } from "../ports/notification-port.js";
 
 export function associateIssueWithFeature(issue: {
   title: string;
@@ -70,19 +68,5 @@ export async function notifyIssueOpened(
     },
   ];
 
-  const port = notifier ?? getNotificationPort();
-  if (port) {
-    await port.notify({ text, blocks });
-    return;
-  }
-
-  const { notifySlack } = await import("../adapters/notifications/index.js");
-  await notifySlack(
-    {
-      text,
-      blocks,
-    },
-    undefined,
-    {},
-  );
+  await dispatchNotification({ text, blocks }, notifier);
 }

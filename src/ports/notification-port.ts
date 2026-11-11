@@ -12,13 +12,3 @@ export interface NotificationPayload {
 export interface NotificationPort {
   notify(payload: NotificationPayload): Promise<void>;
 }
-
-let activeNotificationPort: NotificationPort | null = null;
-
-export function registerNotificationPort(port: NotificationPort | null): void {
-  activeNotificationPort = port;
-}
-
-export function getNotificationPort(): NotificationPort | null {
-  return activeNotificationPort;
-}

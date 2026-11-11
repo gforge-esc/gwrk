@@ -83,6 +83,32 @@ describe("Architecture import detection", () => {
     ]);
   });
 
+  it("allows domain types and rejects domain values in port imports", () => {
+    const source = [
+      'import type { A } from "../domain/types.js";',
+      'import { type B } from "../domain/types.js";',
+      'export { type C } from "../domain/types.js";',
+      'import { type D, value } from "../domain/types.js";',
+      'export { otherValue } from "../domain/types.js";',
+    ].join("\n");
+
+    expect(architectureViolations("ports/fixture.ts", source)).toEqual([
+      "ports/fixture.ts -> runtime-domain-dependency:domain/types.js",
+      "ports/fixture.ts -> runtime-domain-dependency:domain/types.js",
+    ]);
+  });
+
+  it("rejects direct legacy re-exports from adapter entry points", () => {
+    expect(
+      architectureViolations(
+        "adapters/notifications/index.ts",
+        'export { notifySlack } from "../../server/slack-notify.js";',
+      ),
+    ).toEqual([
+      "adapters/notifications/index.ts -> legacy-adapter-re-export:server/slack-notify.js",
+    ]);
+  });
+
   it("detects cross-layer dynamic imports", () => {
     expect(
       architectureViolations(
@@ -95,7 +121,15 @@ describe("Architecture import detection", () => {
   });
 });
 
-const layers = ["domain", "ports", "application", "db", "utils", "engine"];
+const layers = [
+  "domain",
+  "ports",
+  "application",
+  "db",
+  "utils",
+  "engine",
+  "adapters",
+];
 
 describe("Hexagonal boundary gates (ADR-011)", () => {
   it.each(layers)("rejects new boundary violations in %s", (layer) => {

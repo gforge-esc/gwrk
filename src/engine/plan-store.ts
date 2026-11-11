@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import path from "node:path";
+import type Database from "better-sqlite3";
 import * as db from "../db/plan.js";
 import {
   type PlanEdgePayload,
@@ -25,7 +26,14 @@ const DEFINITION_RANK: Record<string, number> = {
 };
 
 export class PlanStore {
-  constructor(private readonly projectId: string) {}
+  private readonly databaseArgs: [
+    projectId: string,
+    connection?: Database.Database,
+  ];
+
+  constructor(projectId: string, connection?: Database.Database) {
+    this.databaseArgs = connection ? [projectId, connection] : [projectId];
+  }
 
   /**
    * Seed the build plan from a file (Markdown or YAML).
@@ -43,7 +51,7 @@ export class PlanStore {
           status: feature.status,
           sp_total: feature.sp_total,
         },
-        this.projectId,
+        ...this.databaseArgs,
       );
     }
     for (const phase of phases) {
@@ -57,11 +65,11 @@ export class PlanStore {
           sp_estimate: phase.sp_estimate,
           seq: phase.seq,
         },
-        this.projectId,
+        ...this.databaseArgs,
       );
     }
     for (const edge of edges) {
-      db.insertEdge(edge, this.projectId);
+      db.insertEdge(edge, ...this.databaseArgs);
     }
   }
 
@@ -93,23 +101,23 @@ export class PlanStore {
     let phasesInserted = 0;
 
     // Get shipped phases for status enrichment
-    const shippedPhases = db.getShippedPhases(this.projectId);
+    const shippedPhases = db.getShippedPhases(...this.databaseArgs);
 
     // Build set of feature IDs that exist on disk
     const diskFeatureIds = new Set(readiness.map((r) => r.featureId));
 
     // Prune ghost features (exist in DB but not on disk)
     const pruned: string[] = [];
-    const existingFeatures = db.listFeatures(this.projectId);
+    const existingFeatures = db.listFeatures(...this.databaseArgs);
     for (const feature of existingFeatures) {
       if (!diskFeatureIds.has(feature.id)) {
-        db.deleteFeature(feature.id, this.projectId);
+        db.deleteFeature(feature.id, ...this.databaseArgs);
         pruned.push(feature.id);
       }
     }
 
     for (const res of readiness) {
-      const existing = db.getFeature(res.featureId, this.projectId);
+      const existing = db.getFeature(res.featureId, ...this.databaseArgs);
       if (existing) {
         skipped.push(res.featureId);
         // Reconcile name if it was seeded with wrong name (e.g., from plan seed YAML)
@@ -117,7 +125,11 @@ export class PlanStore {
           existing.name !== res.featureId &&
           existing.name !== res.featureId
         ) {
-          db.updateFeatureName(res.featureId, res.featureId, this.projectId);
+          db.updateFeatureName(
+            res.featureId,
+            res.featureId,
+            ...this.databaseArgs,
+          );
         }
         // Refresh status from disk readiness when the docs have advanced the
         // definition frontier (PLANNED → SPECIFIED → DEFINED). Never downgrade,
@@ -126,7 +138,11 @@ export class PlanStore {
         const cur = DEFINITION_RANK[existing.status];
         const disk = DEFINITION_RANK[res.status];
         if (cur !== undefined && disk !== undefined && disk > cur) {
-          db.updateFeatureStatus(res.featureId, res.status, this.projectId);
+          db.updateFeatureStatus(
+            res.featureId,
+            res.status,
+            ...this.databaseArgs,
+          );
           reconciled.push(
             `${res.featureId}: ${existing.status} → ${res.status}`,
           );
@@ -134,7 +150,11 @@ export class PlanStore {
         // Refresh sp_total from disk (tasks.json). Only when we have an
         // estimate — absent tasks.json must not zero an existing total.
         if (res.spTotal !== undefined && res.spTotal !== existing.sp_total) {
-          db.updateFeatureSpTotal(res.featureId, res.spTotal, this.projectId);
+          db.updateFeatureSpTotal(
+            res.featureId,
+            res.spTotal,
+            ...this.databaseArgs,
+          );
         }
       } else {
         db.insertFeature(
@@ -144,7 +164,7 @@ export class PlanStore {
             status: res.status,
             sp_total: res.spTotal || 0,
           },
-          this.projectId,
+          ...this.databaseArgs,
         );
         added.push(res.featureId);
       }
@@ -158,16 +178,16 @@ export class PlanStore {
               `${res.featureId}/phase-${String(p.number).padStart(2, "0")}`,
           ),
         );
-        for (const ep of db.listPhases(res.featureId, this.projectId)) {
+        for (const ep of db.listPhases(res.featureId, ...this.databaseArgs)) {
           if (!validPhaseIds.has(ep.id)) {
-            db.deletePhase(ep.id, this.projectId);
+            db.deletePhase(ep.id, ...this.databaseArgs);
           }
         }
       }
       for (const phase of res.phases) {
         const phaseSeq = `phase-${String(phase.number).padStart(2, "0")}`;
         const phaseId = `${res.featureId}/${phaseSeq}`;
-        const existingPhase = db.getPhase(phaseId, this.projectId);
+        const existingPhase = db.getPhase(phaseId, ...this.databaseArgs);
 
         // Determine status: check if this feature+phase has a ship run or completed tasks
         const shipKey = `${res.featureId}:${phaseSeq}`;
@@ -190,7 +210,7 @@ export class PlanStore {
               seq: phase.number,
               status,
             },
-            this.projectId,
+            ...this.databaseArgs,
           );
           continue;
         }
@@ -207,15 +227,15 @@ export class PlanStore {
             sp_estimate: phase.sp,
             seq: phase.number,
           },
-          this.projectId,
+          ...this.databaseArgs,
         );
         phasesInserted++;
       }
 
       // Reconcile feature status from phases
-      const feature = db.getFeature(res.featureId, this.projectId);
+      const feature = db.getFeature(res.featureId, ...this.databaseArgs);
       if (feature) {
-        const phases = db.listPhases(res.featureId, this.projectId);
+        const phases = db.listPhases(res.featureId, ...this.databaseArgs);
         if (phases.length > 0) {
           const allShipped = phases.every(
             (p) => p.status === "DONE" || p.status === "SHIPPED",
@@ -232,7 +252,11 @@ export class PlanStore {
           }
 
           if (newStatus !== feature.status) {
-            db.updateFeatureStatus(res.featureId, newStatus, this.projectId);
+            db.updateFeatureStatus(
+              res.featureId,
+              newStatus,
+              ...this.databaseArgs,
+            );
             reconciled.push(
               `${res.featureId}: ${feature.status} → ${newStatus}`,
             );
@@ -250,11 +274,11 @@ export class PlanStore {
     features: (db.PlanFeature & { phases: db.PlanPhase[] })[];
     edges: db.PlanEdge[];
   } {
-    const features = db.listFeatures(this.projectId).map((f) => {
-      const phases = db.listPhases(f.id, this.projectId);
+    const features = db.listFeatures(...this.databaseArgs).map((f) => {
+      const phases = db.listPhases(f.id, ...this.databaseArgs);
       return { ...f, phases };
     });
-    const edges = db.listAllEdges(this.projectId);
+    const edges = db.listAllEdges(...this.databaseArgs);
     return { features, edges };
   }
 
@@ -262,48 +286,48 @@ export class PlanStore {
    * Check if the plan graph is empty.
    */
   isEmpty(): boolean {
-    return db.isPlanEmpty(this.projectId);
+    return db.isPlanEmpty(...this.databaseArgs);
   }
 
   /**
    * Add a new feature.
    */
   addFeature(feature: db.PlanFeature): void {
-    db.insertFeature(feature, this.projectId);
+    db.insertFeature(feature, ...this.databaseArgs);
   }
 
   /**
    * Add a new phase.
    */
   addPhase(phase: db.PlanPhase): void {
-    db.insertPhase(phase, this.projectId);
+    db.insertPhase(phase, ...this.databaseArgs);
   }
 
   /**
    * Remove a phase.
    */
   removePhase(id: string): void {
-    db.deletePhase(id, this.projectId);
+    db.deletePhase(id, ...this.databaseArgs);
   }
 
   /**
    * Update a phase's status and metadata.
    */
   updatePhase(id: string, updates: Partial<db.PlanPhase>): void {
-    const existing = db.getPhase(id, this.projectId);
+    const existing = db.getPhase(id, ...this.databaseArgs);
     if (!existing) throw new Error(`Phase ${id} not found`);
-    db.insertPhase({ ...existing, ...updates }, this.projectId);
+    db.insertPhase({ ...existing, ...updates }, ...this.databaseArgs);
 
     // Auto-cascade if status was updated
     if (updates.status) {
-      const feature = db.getFeature(existing.feature_id, this.projectId);
+      const feature = db.getFeature(existing.feature_id, ...this.databaseArgs);
       if (feature) {
-        const phases = db.listPhases(existing.feature_id, this.projectId);
+        const phases = db.listPhases(existing.feature_id, ...this.databaseArgs);
         const allCompleted = phases.every(
           (p) => p.status === "DONE" || p.status === "SHIPPED",
         );
         if (allCompleted) {
-          db.updateFeatureStatus(feature.id, "SHIPPED", this.projectId);
+          db.updateFeatureStatus(feature.id, "SHIPPED", ...this.databaseArgs);
         }
       }
     }
@@ -313,14 +337,14 @@ export class PlanStore {
    * Add a dependency edge.
    */
   addEdge(edge: db.PlanEdge): void {
-    db.insertEdge(edge, this.projectId);
+    db.insertEdge(edge, ...this.databaseArgs);
   }
 
   /**
    * Remove a dependency edge.
    */
   removeEdge(from_id: string, to_id: string, edge_type: string): void {
-    db.deleteEdge(from_id, to_id, edge_type, this.projectId);
+    db.deleteEdge(from_id, to_id, edge_type, ...this.databaseArgs);
   }
 
   /**
@@ -338,8 +362,8 @@ export class PlanStore {
       ? event.phaseId
       : `${prefix}${event.phaseId}`;
     const phase =
-      db.getPhase(phaseId, this.projectId) ??
-      db.getPhase(event.phaseId, this.projectId);
+      db.getPhase(phaseId, ...this.databaseArgs) ??
+      db.getPhase(event.phaseId, ...this.databaseArgs);
     if (phase?.feature_id !== event.featureId) return;
 
     this.updatePhase(phase.id, {
@@ -355,15 +379,15 @@ export class PlanStore {
    * Hook handler for successful definition completion.
    */
   handleDefineComplete(event: { featureId: string; status: string }): void {
-    const feature = db.getFeature(event.featureId, this.projectId);
+    const feature = db.getFeature(event.featureId, ...this.databaseArgs);
     if (feature) {
-      db.updateFeatureStatus(feature.id, event.status, this.projectId);
+      db.updateFeatureStatus(feature.id, event.status, ...this.databaseArgs);
 
       // Also update all phases of this feature that are currently PLANNED
-      const phases = db.listPhases(event.featureId, this.projectId);
+      const phases = db.listPhases(event.featureId, ...this.databaseArgs);
       for (const p of phases) {
         if (p.status === "PLANNED") {
-          db.insertPhase({ ...p, status: event.status }, this.projectId);
+          db.insertPhase({ ...p, status: event.status }, ...this.databaseArgs);
         }
       }
     }
@@ -411,21 +435,21 @@ export class PlanStore {
    * List all proposals.
    */
   listProposals(): db.PlanProposal[] {
-    return db.listProposals(this.projectId);
+    return db.listProposals(...this.databaseArgs);
   }
 
   /**
    * Add a new proposal.
    */
   addProposal(proposal: db.PlanProposal): void {
-    db.insertProposal(proposal, this.projectId);
+    db.insertProposal(proposal, ...this.databaseArgs);
   }
 
   /**
    * Approve a proposal.
    */
   approveProposal(id: string): void {
-    const proposal = db.getProposal(id, this.projectId);
+    const proposal = db.getProposal(id, ...this.databaseArgs);
     if (!proposal) throw new Error(`Proposal ${id} not found`);
 
     if (proposal.proposal_type === "STATUS_UPDATE" && proposal.detail) {
@@ -440,7 +464,7 @@ export class PlanStore {
         status: "APPROVED",
         resolved_at: new Date().toISOString(),
       },
-      this.projectId,
+      ...this.databaseArgs,
     );
   }
 
@@ -448,7 +472,7 @@ export class PlanStore {
    * Reject a proposal.
    */
   rejectProposal(id: string): void {
-    const proposal = db.getProposal(id, this.projectId);
+    const proposal = db.getProposal(id, ...this.databaseArgs);
     if (!proposal) throw new Error(`Proposal ${id} not found`);
 
     db.insertProposal(
@@ -457,7 +481,7 @@ export class PlanStore {
         status: "REJECTED",
         resolved_at: new Date().toISOString(),
       },
-      this.projectId,
+      ...this.databaseArgs,
     );
   }
 }

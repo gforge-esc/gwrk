@@ -7,6 +7,7 @@ import os from "node:os";
 import path from "node:path";
 import { Command } from "commander";
 import { parse, stringify } from "yaml";
+import { logCliOutput } from "../adapters/cli/output-scope.js";
 import { detectProfile } from "../engine/profile-detector.js";
 import {
   doctorPlugins,
@@ -30,7 +31,7 @@ import { migrateSkills } from "../plugins/migrate.js";
 import { seedSkills } from "../plugins/seed.js";
 import { color } from "../utils/format.js";
 import { withSignal } from "../utils/signal.js";
-import { syncContextCommand } from "./sync-context.js";
+import { createSyncContextCommand } from "./sync-context.js";
 
 const { BOLD, DIM, CYAN, GREEN, YELLOW, RED, RESET } = color;
 
@@ -256,184 +257,194 @@ export async function togglePlugin(
 /**
  * Plugin Command definition
  */
-export const pluginCommand = new Command("plugin")
-  .description("Manage gwrk plugins (skills, agents, workflows)")
-  .addCommand(
-    new Command("search")
-      .description("Search for plugins in the registry")
-      .argument("<query>", "Search query")
-      .action(async (query) => {
-        await withSignal("plugin search", async () => {
-          const results = await searchPlugins(query);
-          if (results.length === 0) {
-            console.log(
-              `${YELLOW}No plugins found matching '${query}'.${RESET}`,
-            );
-            return;
-          }
-          console.log(`\n${BOLD}${CYAN}SEARCH RESULTS${RESET}\n`);
-          for (const p of results) {
-            console.log(`  ${GREEN}${p.name.padEnd(20)}${RESET} v${p.version}`);
-            console.log(`    ${DIM}${p.description}${RESET}\n`);
-          }
-        });
-      }),
-  )
-  .addCommand(
-    new Command("install")
-      .description("Install a plugin from ID, URL, or local path")
-      .argument("<id|url|path>", "Plugin ID, git URL, or local path")
-      .option("-f, --force", "Overwrite if already installed")
-      .action(async (idOrUrl, options) => {
-        await withSignal("plugin install", async () => {
-          const manifest = await installPlugin(idOrUrl, options);
-          console.log(`${GREEN}Installed plugin '${manifest.name}'.${RESET}`);
-        });
-      }),
-  )
-  .addCommand(
-    new Command("update")
-      .description("Update installed plugins")
-      .argument("[name]", "Name of the plugin to update")
-      .action(async (name) => {
-        await withSignal("plugin update", async () => {
-          const updated = await updatePlugin(name);
-          if (updated.length === 0) {
-            console.log(`${YELLOW}No plugins updated.${RESET}`);
-          } else {
-            for (const p of updated) {
-              console.log(`${GREEN}Updated plugin '${p}'.${RESET}`);
+export const createPluginCommand = () =>
+  new Command("plugin")
+    .description("Manage gwrk plugins (skills, agents, workflows)")
+    .addCommand(
+      new Command("search")
+        .description("Search for plugins in the registry")
+        .argument("<query>", "Search query")
+        .action(async (query) => {
+          await withSignal("plugin search", async () => {
+            const results = await searchPlugins(query);
+            if (results.length === 0) {
+              logCliOutput(
+                `${YELLOW}No plugins found matching '${query}'.${RESET}`,
+              );
+              return;
             }
-          }
-        });
-      }),
-  )
-  .addCommand(
-    new Command("remove")
-      .description("Remove an installed plugin")
-      .argument("<name>", "Name of the plugin")
-      .option("-f, --force", "Remove even if dependencies exist")
-      .action(async (name, options) => {
-        await withSignal("plugin remove", async () => {
-          const manifest = await removePlugin(name, options);
-          console.log(`${GREEN}Removed plugin '${manifest.name}'.${RESET}`);
-        });
-      }),
-  )
-  .addCommand(
-    new Command("list")
-      .description("List installed plugins")
-      .option("--format <type>", "Output format (json)")
-      .option("--project", "Show resolution for current project")
-      .option(
-        "--type <type>",
-        "Filter by plugin type (agent, skill, workflow, extension, review)",
-      )
-      .option("--tier <tier>", "Filter by tier (atomic, compound, enforcement)")
-      .option(
-        "--category <cat>",
-        "Filter by category (reasoning, evaluative, etc.)",
-      )
-      .action(async (options) => {
-        await withSignal("plugin list", async () => {
-          const output = await listPlugins(options);
-          console.log(output);
-        });
-      }),
-  )
-  .addCommand(
-    new Command("disable")
-      .description("Disable a plugin in the current project or globally")
-      .argument("<name>", "Name of the plugin")
-      .option("-g, --global", "Disable globally in ~/.gwrk/config.json")
-      .action(async (name, options) => {
-        await withSignal("plugin disable", async () => {
-          await togglePlugin(name, false, options);
-          console.log(
-            `${GREEN}Disabled plugin '${name}' ${options.global ? "globally" : "for this project"}.${RESET}`,
-          );
-        });
-      }),
-  )
-  .addCommand(
-    new Command("enable")
-      .description("Enable a plugin in the current project or globally")
-      .argument("<name>", "Name of the plugin")
-      .option("-g, --global", "Enable globally in ~/.gwrk/config.json")
-      .action(async (name, options) => {
-        await withSignal("plugin enable", async () => {
-          await togglePlugin(name, true, options);
-          console.log(
-            `${GREEN}Enabled plugin '${name}' ${options.global ? "globally" : "for this project"}.${RESET}`,
-          );
-        });
-      }),
-  )
-  .addCommand(
-    new Command("index")
-      .description(
-        "Generate registry.json catalog with SemVer and SHA-256 digests",
-      )
-      .argument("[dir]", "Path to registry root directory")
-      .action(async (dir) => {
-        await withSignal("plugin index", async () => {
-          const targetDir = dir ? path.resolve(dir) : undefined;
-          const catalog = await generateRegistryIndex(targetDir);
-          const count = Object.keys(catalog.plugins).length;
-          console.log(
-            `${GREEN}Indexed ${count} plugin(s) into registry.json.${RESET}`,
-          );
-        });
-      }),
-  )
-  .addCommand(
-    new Command("doctor")
-      .description(
-        "Verify installed plugin manifests and SHA-256 lockfile digests",
-      )
-      .action(async () => {
-        await withSignal("plugin doctor", async () => {
-          const report = await doctorPlugins();
-          if (report.entries.length === 0) {
-            console.log(
-              `${DIM}No installed plugins found in ~/.gwrk/plugins.${RESET}`,
+            logCliOutput(`\n${BOLD}${CYAN}SEARCH RESULTS${RESET}\n`);
+            for (const p of results) {
+              logCliOutput(
+                `  ${GREEN}${p.name.padEnd(20)}${RESET} v${p.version}`,
+              );
+              logCliOutput(`    ${DIM}${p.description}${RESET}\n`);
+            }
+          });
+        }),
+    )
+    .addCommand(
+      new Command("install")
+        .description("Install a plugin from ID, URL, or local path")
+        .argument("<id|url|path>", "Plugin ID, git URL, or local path")
+        .option("-f, --force", "Overwrite if already installed")
+        .action(async (idOrUrl, options) => {
+          await withSignal("plugin install", async () => {
+            const manifest = await installPlugin(idOrUrl, options);
+            logCliOutput(
+              `${GREEN}Installed plugin '${manifest.name}'.${RESET}`,
             );
-            return;
-          }
-          for (const entry of report.entries) {
-            const badge =
-              entry.status === "ok" ? `${GREEN}✓${RESET}` : `${RED}✗${RESET}`;
-            const detail = entry.message ? ` (${entry.message})` : "";
-            console.log(
-              `  ${badge} ${entry.name.padEnd(22)} v${entry.version} [${entry.status}]${detail}`,
+          });
+        }),
+    )
+    .addCommand(
+      new Command("update")
+        .description("Update installed plugins")
+        .argument("[name]", "Name of the plugin to update")
+        .action(async (name) => {
+          await withSignal("plugin update", async () => {
+            const updated = await updatePlugin(name);
+            if (updated.length === 0) {
+              logCliOutput(`${YELLOW}No plugins updated.${RESET}`);
+            } else {
+              for (const p of updated) {
+                logCliOutput(`${GREEN}Updated plugin '${p}'.${RESET}`);
+              }
+            }
+          });
+        }),
+    )
+    .addCommand(
+      new Command("remove")
+        .description("Remove an installed plugin")
+        .argument("<name>", "Name of the plugin")
+        .option("-f, --force", "Remove even if dependencies exist")
+        .action(async (name, options) => {
+          await withSignal("plugin remove", async () => {
+            const manifest = await removePlugin(name, options);
+            logCliOutput(`${GREEN}Removed plugin '${manifest.name}'.${RESET}`);
+          });
+        }),
+    )
+    .addCommand(
+      new Command("list")
+        .description("List installed plugins")
+        .option("--format <type>", "Output format (json)")
+        .option("--project", "Show resolution for current project")
+        .option(
+          "--type <type>",
+          "Filter by plugin type (agent, skill, workflow, extension, review)",
+        )
+        .option(
+          "--tier <tier>",
+          "Filter by tier (atomic, compound, enforcement)",
+        )
+        .option(
+          "--category <cat>",
+          "Filter by category (reasoning, evaluative, etc.)",
+        )
+        .action(async (options) => {
+          await withSignal("plugin list", async () => {
+            const output = await listPlugins(options);
+            logCliOutput(output);
+          });
+        }),
+    )
+    .addCommand(
+      new Command("disable")
+        .description("Disable a plugin in the current project or globally")
+        .argument("<name>", "Name of the plugin")
+        .option("-g, --global", "Disable globally in ~/.gwrk/config.json")
+        .action(async (name, options) => {
+          await withSignal("plugin disable", async () => {
+            await togglePlugin(name, false, options);
+            logCliOutput(
+              `${GREEN}Disabled plugin '${name}' ${options.global ? "globally" : "for this project"}.${RESET}`,
             );
-          }
-          if (!report.healthy) {
-            throw new Error(
-              "One or more installed plugins failed integrity verification.",
+          });
+        }),
+    )
+    .addCommand(
+      new Command("enable")
+        .description("Enable a plugin in the current project or globally")
+        .argument("<name>", "Name of the plugin")
+        .option("-g, --global", "Enable globally in ~/.gwrk/config.json")
+        .action(async (name, options) => {
+          await withSignal("plugin enable", async () => {
+            await togglePlugin(name, true, options);
+            logCliOutput(
+              `${GREEN}Enabled plugin '${name}' ${options.global ? "globally" : "for this project"}.${RESET}`,
             );
-          }
-        });
-      }),
-  )
-  .addCommand(
-    new Command("migrate")
-      .description("Migrate legacy skills to the new plugin system")
-      .option("--dry-run", "Show what would be migrated without copying")
-      .action(async (options) => {
-        await withSignal("plugin migrate", async () => {
-          await migrateSkills(options);
-        });
-      }),
-  )
-  .addCommand(
-    new Command("seed")
-      .description("Seed atomic skills from the reasoning modes taxonomy")
-      .option("--dry-run", "Show what would be seeded without copying")
-      .action(async (options) => {
-        await withSignal("plugin seed", async () => {
-          await seedSkills(options);
-        });
-      }),
-  )
-  .addCommand(syncContextCommand);
+          });
+        }),
+    )
+    .addCommand(
+      new Command("index")
+        .description(
+          "Generate registry.json catalog with SemVer and SHA-256 digests",
+        )
+        .argument("[dir]", "Path to registry root directory")
+        .action(async (dir) => {
+          await withSignal("plugin index", async () => {
+            const targetDir = dir ? path.resolve(dir) : undefined;
+            const catalog = await generateRegistryIndex(targetDir);
+            const count = Object.keys(catalog.plugins).length;
+            logCliOutput(
+              `${GREEN}Indexed ${count} plugin(s) into registry.json.${RESET}`,
+            );
+          });
+        }),
+    )
+    .addCommand(
+      new Command("doctor")
+        .description(
+          "Verify installed plugin manifests and SHA-256 lockfile digests",
+        )
+        .action(async () => {
+          await withSignal("plugin doctor", async () => {
+            const report = await doctorPlugins();
+            if (report.entries.length === 0) {
+              logCliOutput(
+                `${DIM}No installed plugins found in ~/.gwrk/plugins.${RESET}`,
+              );
+              return;
+            }
+            for (const entry of report.entries) {
+              const badge =
+                entry.status === "ok" ? `${GREEN}✓${RESET}` : `${RED}✗${RESET}`;
+              const detail = entry.message ? ` (${entry.message})` : "";
+              logCliOutput(
+                `  ${badge} ${entry.name.padEnd(22)} v${entry.version} [${entry.status}]${detail}`,
+              );
+            }
+            if (!report.healthy) {
+              throw new Error(
+                "One or more installed plugins failed integrity verification.",
+              );
+            }
+          });
+        }),
+    )
+    .addCommand(
+      new Command("migrate")
+        .description("Migrate legacy skills to the new plugin system")
+        .option("--dry-run", "Show what would be migrated without copying")
+        .action(async (options) => {
+          await withSignal("plugin migrate", async () => {
+            await migrateSkills(options);
+          });
+        }),
+    )
+    .addCommand(
+      new Command("seed")
+        .description("Seed atomic skills from the reasoning modes taxonomy")
+        .option("--dry-run", "Show what would be seeded without copying")
+        .action(async (options) => {
+          await withSignal("plugin seed", async () => {
+            await seedSkills(options);
+          });
+        }),
+    )
+    .addCommand(createSyncContextCommand());
+
+export const pluginCommand = createPluginCommand();

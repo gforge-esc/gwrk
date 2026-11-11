@@ -2,26 +2,6 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import {
-  getColocatedTestCandidates,
-  isPolyglotSourceFile,
-  isPolyglotTestFile,
-  normalizeTestStem,
-} from "../domain/test-rules.js";
-import {
-  getSourceExtension,
-  getTestCommand,
-  getTestExtension,
-} from "../domain/toolchain.js";
-import type { ProjectProfile } from "../domain/types.js";
-
-export {
-  getColocatedTestCandidates,
-  isPolyglotSourceFile,
-  isPolyglotTestFile,
-  normalizeTestStem,
-};
-
 export interface ToolchainPort {
   readonly language: string;
   readonly sourceExtension: string;
@@ -31,24 +11,4 @@ export interface ToolchainPort {
   colocatedTestCandidates(srcPath: string): string[];
   getBuildCommand(cwd: string): string | null;
   getTestCommand(files?: string[], grepPattern?: string): string | null;
-}
-
-export function createToolchainAdapter(
-  profile: ProjectProfile,
-  getBuildCommand: (cwd: string) => string | null,
-): ToolchainPort {
-  const sourceExtension = getSourceExtension(profile);
-  const testExtension = getTestExtension(profile);
-  return {
-    language: profile.stack?.language ?? profile.type,
-    sourceExtension,
-    testExtension,
-    isSourceFile: (f) => isPolyglotSourceFile(f, testExtension),
-    isTestFile: (f) => isPolyglotTestFile(f, testExtension),
-    colocatedTestCandidates: (src) =>
-      getColocatedTestCandidates(src, testExtension),
-    getBuildCommand,
-    getTestCommand: (files, grepPattern) =>
-      getTestCommand(profile, files ?? [], grepPattern),
-  };
 }

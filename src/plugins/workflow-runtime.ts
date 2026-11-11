@@ -6,6 +6,7 @@ import { execSync } from "node:child_process";
 import * as fs from "node:fs";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
+import { warnCli } from "../adapters/cli/output-scope.js";
 import { IntentEngine, type IntentSummary } from "../engine/intent-engine.js";
 import { detectProfile } from "../engine/profile-detector.js";
 import { conditionPrompt } from "../engine/prompt-conditioner.js";
@@ -414,7 +415,7 @@ export class WorkflowRuntime {
         "error_max_structured_output_retries",
       );
       if (!options.reportOnly && exhaustedStructuredOutput && hasArtifacts()) {
-        console.warn(
+        warnCli(
           "[workflow-runtime] Agent exhausted structured-output retries but wrote artifacts natively — recovering as native success.",
         );
         return {
@@ -445,7 +446,7 @@ export class WorkflowRuntime {
         (result.nativeWriter || options.tolerant || hasArtifacts())
       ) {
         const preview = result.stdout.substring(0, 200).replace(/\n/g, " ");
-        console.warn(
+        warnCli(
           `[workflow-runtime] Agent returned prose instead of JSON (tolerant mode). Preview: ${preview}…`,
         );
         return {
@@ -490,7 +491,7 @@ export class WorkflowRuntime {
           intent.command.includes("tee") ||
           intent.command.includes(">>")
         ) {
-          console.warn(
+          warnCli(
             "  ⚠ Filtered RUN_COMMAND intent with shell redirect — agent already applied changes natively.",
           );
           return false;
@@ -504,7 +505,7 @@ export class WorkflowRuntime {
         intent.action === "WRITE_FILE" &&
         intent.filePath?.endsWith("tasks.json")
       ) {
-        console.warn(
+        warnCli(
           "  ⚠ Filtered WRITE_FILE intent targeting tasks.json — agent already applied changes natively.",
         );
         return false;
@@ -525,7 +526,7 @@ export class WorkflowRuntime {
           : null;
         const incoming = intent.content ?? "";
         if (wouldShrinkExistingFile(existing, incoming)) {
-          console.warn(
+          warnCli(
             `  ⚠ Kept the on-disk ${intent.filePath} — the agent wrote it directly and the WRITE_FILE intent had less content (${incoming.length} vs ${existing?.length} chars).`,
           );
           return false;
@@ -554,7 +555,7 @@ export class WorkflowRuntime {
             (allowed) => fp.endsWith(allowed) || fp.includes(allowed),
           );
           if (!inScope) {
-            console.warn(
+            warnCli(
               `  ⚠ Filtered WRITE_FILE intent outside allowed scope: ${fp}`,
             );
             return false;

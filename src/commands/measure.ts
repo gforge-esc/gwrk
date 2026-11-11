@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { Command } from "commander";
-import { compressionCommand } from "./compression.js";
+import { createCompressionCommand } from "./compression.js";
 import { registerPulseSubcommands } from "./pulse.js";
 
 /**
@@ -14,18 +14,21 @@ import { registerPulseSubcommands } from "./pulse.js";
  *   gwrk measure pulse [--days N]           Git activity dashboard
  *   gwrk measure compression <feature>      Effort vs actual ratio
  */
-export const measureCommand = new Command("measure")
-  .description("Measure: pulse, compression (Value)")
-  .addHelpText(
-    "after",
-    `
+export function createMeasureCommand(): Command {
+  const command = new Command("measure")
+    .description("Measure: pulse, compression (Value)")
+    .addHelpText(
+      "after",
+      `
 Examples:
   gwrk measure pulse
   gwrk measure compression 001
 `,
-  )
-  .enablePositionalOptions()
-  .addCommand(compressionCommand);
+    )
+    .enablePositionalOptions()
+    .addCommand(createCompressionCommand());
+  registerPulseSubcommands(command);
+  return command;
+}
 
-// Register pulse as a subcommand of measure
-registerPulseSubcommands(measureCommand);
+export const measureCommand = createMeasureCommand();

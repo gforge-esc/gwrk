@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { execSync } from "node:child_process";
+import { exitCli, logCliError } from "../adapters/cli/output-scope.js";
 
 const BOLD = "\x1b[1m";
 const DIM = "\x1b[2m";
@@ -81,17 +82,17 @@ interface DockerStatus {
 async function ensureDocker(): Promise<DockerStatus> {
   // Step 1: Is Docker installed?
   if (!isDockerInstalled()) {
-    console.error("");
-    console.error(`  ${RED}✗${RESET} Docker is not installed.`);
-    console.error("");
-    console.error("  Install Docker Desktop:");
-    console.error(`    ${BOLD}brew install --cask docker${RESET}`);
-    console.error("  or download from:");
-    console.error(
+    logCliError("");
+    logCliError(`  ${RED}✗${RESET} Docker is not installed.`);
+    logCliError("");
+    logCliError("  Install Docker Desktop:");
+    logCliError(`    ${BOLD}brew install --cask docker${RESET}`);
+    logCliError("  or download from:");
+    logCliError(
       `    ${DIM}https://www.docker.com/products/docker-desktop/${RESET}`,
     );
-    console.error("");
-    process.exit(1);
+    logCliError("");
+    exitCli(1);
   }
 
   // Step 2: Is daemon already running?
@@ -100,35 +101,35 @@ async function ensureDocker(): Promise<DockerStatus> {
   }
 
   // Step 3: Try to start Docker Desktop
-  console.error(
+  logCliError(
     `  ${YELLOW}⏳${RESET} Docker daemon not running. Starting Docker Desktop...`,
   );
 
   if (!startDockerDesktop()) {
-    console.error(`  ${RED}✗${RESET} Could not launch Docker Desktop.`);
-    console.error("");
-    console.error("  Start it manually:");
-    console.error(`    ${BOLD}open -a Docker${RESET}`);
-    console.error("");
-    process.exit(1);
+    logCliError(`  ${RED}✗${RESET} Could not launch Docker Desktop.`);
+    logCliError("");
+    logCliError("  Start it manually:");
+    logCliError(`    ${BOLD}open -a Docker${RESET}`);
+    logCliError("");
+    exitCli(1);
   }
 
   // Step 4: Wait for daemon
   const ready = await waitForDocker(30_000, 2_000);
 
   if (!ready) {
-    console.error(
+    logCliError(
       `  ${RED}✗${RESET} Docker Desktop started but daemon is not responding.`,
     );
-    console.error("");
-    console.error("  Try restarting Docker Desktop:");
-    console.error(
+    logCliError("");
+    logCliError("  Try restarting Docker Desktop:");
+    logCliError(
       `    ${BOLD}osascript -e 'quit app "Docker"' && open -a Docker${RESET}`,
     );
-    console.error("");
-    process.exit(1);
+    logCliError("");
+    exitCli(1);
   }
 
-  console.error(`  ${GREEN}✓${RESET} Docker Desktop started`);
+  logCliError(`  ${GREEN}✓${RESET} Docker Desktop started`);
   return { installed: true, running: true, startedByUs: true };
 }

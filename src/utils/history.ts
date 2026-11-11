@@ -5,6 +5,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { z } from "zod";
+import { warnCli } from "../adapters/cli/output-scope.js";
 import { recordHistory } from "../db/runs.js";
 
 const HistoryEntrySchema = z.object({
@@ -38,6 +39,6 @@ export function appendHistory(entry: HistoryEntry): void {
         : undefined,
     });
   } catch (error) {
-    console.warn(`Warning: Could not record history in DB: ${error}`);
+    warnCli(`Warning: Could not record history in DB: ${error}`);
   }
 }
