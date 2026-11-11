@@ -180,13 +180,15 @@ program.hook("preAction", (thisCommand, actionCommand) => {
   // `define adr` walks parents for the marker (adr-scaffold.ts `findProjectRoot`)
   // and must work from any subdirectory (FR-002, US-001 scenario 3), so
   // preflighting it here would defeat the walk before the handler runs.
+  // Ledger maintenance uses state paths even outside a project checkout.
   const commandPath = [actionCommand.parent?.name(), actionCommand.name()]
     .filter(Boolean)
     .join(" ");
   const resolvesOwnRoot =
     actionCommand.name() === "init" ||
     actionCommand.name() === "assess" ||
-    commandPath === "define adr";
+    commandPath === "define adr" ||
+    ["db backup", "db restore", "db rollback-check"].includes(commandPath);
 
   if (!resolvesOwnRoot) {
     // This will process.exit(1) if config is missing or invalid

@@ -71,6 +71,10 @@ function appliedMigrations(db: Database.Database): string[] {
     .all() as string[];
 }
 
+function projectRows(db: Database.Database): unknown[] {
+  return db.prepare("SELECT * FROM projects ORDER BY id").all();
+}
+
 function summarizeLedger(
   dbPath: string,
   metadata: LedgerBackupMetadata,
@@ -84,10 +88,10 @@ function summarizeLedger(
     if (foreignKeys.length > 0)
       throw new Error("Ledger foreign key check failed.");
 
-    const projectIds = db
-      .prepare("SELECT id FROM projects ORDER BY id")
-      .pluck()
-      .all() as string[];
+    if (!isDeepStrictEqual(projectRows(db), metadata.projects)) {
+      throw new Error("Backup project metadata does not match the ledger.");
+    }
+    const projectIds = metadata.projects.map(({ id }) => id);
     const knownProjects = new Set(projectIds);
     const repoIds = new Set(
       metadata.repositories.map(({ projectId }) => projectId),
@@ -135,7 +139,6 @@ export const createLedgerBackup: LedgerBackupPort["createBackup"] = async (
 ) => {
   const destination = resolve(input.destination);
   const parent = dirname(destination);
-  const metadata = LedgerBackupMetadataSchema.parse(input.metadata);
   await mkdir(parent, { recursive: true, mode: 0o700 });
   const staging = await mkdtemp(join(parent, `.${basename(destination)}-`));
   let reserved = false;
@@ -163,11 +166,17 @@ export const createLedgerBackup: LedgerBackupPort["createBackup"] = async (
       source.close();
     }
     const standalone = new Database(snapshot, { fileMustExist: true });
+    let projects: unknown[];
     try {
       standalone.pragma("journal_mode = DELETE");
+      projects = projectRows(standalone);
     } finally {
       standalone.close();
     }
+    const metadata = LedgerBackupMetadataSchema.parse({
+      ...input.metadata,
+      projects,
+    });
     const metadataPath = join(staging, METADATA_FILE);
     await writeFile(metadataPath, `${JSON.stringify(metadata, null, 2)}\n`, {
       mode: 0o600,
@@ -245,14 +254,17 @@ export const verifyLedgerBackup: LedgerBackupPort["verifyBackup"] = async (
   return { manifest, metadata };
 };
 
-async function exists(path: string): Promise<boolean> {
+async function statIfPresent(path: string) {
   try {
-    await lstat(path);
-    return true;
+    return await lstat(path);
   } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "ENOENT") return false;
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return undefined;
     throw error;
   }
+}
+
+async function exists(path: string): Promise<boolean> {
+  return Boolean(await statIfPresent(path));
 }
 
 export const restoreLedgerBackup: LedgerBackupPort["restoreBackup"] = async (
@@ -307,32 +319,49 @@ export const restoreLedgerBackup: LedgerBackupPort["restoreBackup"] = async (
     );
   }
 
-  // The hosted instance lock keeps writers out. The pending directory retains
-  // the verified source until all state files have been installed.
+  // The hosted instance lock keeps writers out during installation.
+  for (const file of targets) {
+    const target = join(state, file);
+    const info = await statIfPresent(target);
+    if (info && !info.isFile()) {
+      throw new Error(`Restore target must be a regular file: ${target}`);
+    }
+  }
+
   const stagedDb = join(pending, "install.db");
+  const stagedDevice = join(pending, DEVICE_FILE);
+  const installedDb = join(state, DB_FILE);
+  const installedDevice = join(state, DEVICE_FILE);
+  const { device } = verified.metadata;
   await copyFile(join(pending, DB_FILE), stagedDb);
   await syncPath(stagedDb);
-  for (const suffix of ["-wal", "-shm", "-journal"]) {
-    await rm(join(state, DB_FILE + suffix), { force: true });
-  }
-  await rename(stagedDb, join(state, DB_FILE));
-
-  if (verified.metadata.device) {
-    const stagedDevice = join(pending, DEVICE_FILE);
-    await writeFile(
-      stagedDevice,
-      `${JSON.stringify(verified.metadata.device, null, 2)}
-`,
-      { mode: 0o600 },
-    );
+  if (device) {
+    await writeFile(stagedDevice, `${JSON.stringify(device, null, 2)}\n`, {
+      mode: 0o600,
+    });
     await syncPath(stagedDevice);
-    await rename(stagedDevice, join(state, DEVICE_FILE));
-  } else {
-    await rm(join(state, DEVICE_FILE), { force: true });
   }
 
-  if ((await sha256(join(state, DB_FILE))) !== verified.manifest.dbSha256) {
+  for (const suffix of ["-wal", "-shm", "-journal"]) {
+    await rm(installedDb + suffix, { force: true });
+  }
+  await rename(stagedDb, installedDb);
+  if (device) {
+    await rename(stagedDevice, installedDevice);
+  } else {
+    await rm(installedDevice, { force: true });
+  }
+
+  if ((await sha256(installedDb)) !== verified.manifest.dbSha256) {
     throw new Error("Installed ledger digest does not match the backup.");
+  }
+  if (
+    !isDeepStrictEqual(
+      summarizeLedger(installedDb, verified.metadata),
+      verified.manifest.summary,
+    )
+  ) {
+    throw new Error("Installed ledger summary does not match the backup.");
   }
   await syncPath(state);
   const retired = await mkdtemp(join(state, ".restore-complete-"));

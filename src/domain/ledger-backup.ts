@@ -41,6 +41,11 @@ export const LedgerBackupMetadataSchema = z
       })
       .strict()
       .nullable(),
+    projects: z.array(
+      z
+        .object({ id: z.string().min(1) })
+        .catchall(z.union([z.string(), z.number(), z.null()])),
+    ),
     repositories: z.array(
       z
         .object({

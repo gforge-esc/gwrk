@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import { spawnSync } from "node:child_process";
 import {
   appendFile,
   mkdir,
@@ -10,8 +11,10 @@ import {
   rm,
   stat,
 } from "node:fs/promises";
+import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import Database from "better-sqlite3";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
@@ -53,6 +56,74 @@ function seedLedger() {
   `);
   return db;
 }
+
+function runLedgerCommand(...args: string[]) {
+  const cli = fileURLToPath(new URL("../../src/cli.ts", import.meta.url));
+  return spawnSync(
+    process.execPath,
+    [
+      "--import",
+      createRequire(import.meta.url).resolve("tsx"),
+      cli,
+      "db",
+      ...args,
+    ],
+    {
+      cwd: root,
+      env: {
+        ...process.env,
+        GWRK_HOME: root,
+        GWRK_DB_PATH: join(root, "active.db"),
+        GWRK_RUNTIME_DIR: join(root, "runtime"),
+      },
+      encoding: "utf8",
+    },
+  );
+}
+
+describe("installed ledger commands outside a checkout", () => {
+  it("backs up all snapshot projects while scoping checkout evidence", async () => {
+    const db = seedLedger();
+    db.exec("ALTER TABLE projects ADD COLUMN path TEXT");
+    db.prepare("UPDATE projects SET path = ?").run(root);
+    db.prepare("INSERT INTO projects (id, path) VALUES (?, ?)").run(
+      "other-repo",
+      join(root, "other"),
+    );
+    try {
+      const result = runLedgerCommand(
+        "backup",
+        "--out",
+        "backup",
+        "--project-root",
+        root,
+        "--format",
+        "json",
+      );
+      expect(result.status, result.stderr).toBe(0);
+      expect(result.stdout).toContain(join(root, "backup"));
+      const { metadata } = await verifyLedgerBackup(join(root, "backup"));
+      expect(metadata).toMatchObject({
+        projects: [
+          { id: "other-repo", path: join(root, "other") },
+          { id: "pilot-repo", path: root },
+        ],
+        repositories: [{ projectId: "pilot-repo" }],
+      });
+    } finally {
+      db.close();
+    }
+  });
+
+  it.each([
+    ["restore", "--from", "missing", "--state-dir", "restore"],
+    ["rollback-check", "--current", "missing", "--target", "missing"],
+  ])("reports %s navigation failures with an exit signal", (...args) => {
+    const result = runLedgerCommand(...args);
+    expect(result.status).toBe(1);
+    expect(result.stderr).toMatch(/\[exit:1 \| .*\] db/);
+  });
+});
 
 describe("ledger backup", () => {
   it("preserves committed WAL state in a standalone snapshot and verifies its summary", async () => {
@@ -130,6 +201,12 @@ describe("ledger backup", () => {
         /already contains/,
       );
 
+      const existing = new Database(join(stateDirectory, "gwrk.db"));
+      try {
+        existing.prepare("UPDATE runs SET id = 99 WHERE id = 42").run();
+      } finally {
+        existing.close();
+      }
       await rm(devicePath);
       await mkdir(devicePath);
       await expect(
@@ -138,6 +215,16 @@ describe("ledger backup", () => {
       expect(
         (await stat(join(stateDirectory, ".restore-pending"))).isDirectory(),
       ).toBe(true);
+      const obstructed = new Database(join(stateDirectory, "gwrk.db"), {
+        readonly: true,
+      });
+      try {
+        expect(
+          obstructed.prepare("SELECT id FROM runs ORDER BY id").pluck().all(),
+        ).toEqual([43, 99]);
+      } finally {
+        obstructed.close();
+      }
       await rm(devicePath, { recursive: true });
       expect(
         (await restoreLedgerBackup({ ...request, force: true })).manifest,
