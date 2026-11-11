@@ -6,6 +6,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import { realpathSync } from "node:fs";
 import path from "node:path";
 import type Database from "better-sqlite3";
 import {
@@ -184,13 +185,17 @@ function resolveCheckoutOwner(conn: Database.Database, root: string) {
     return resolved(checkoutId);
   }
 
+  const localOwner = localGitId ? canonicalProjectId(conn, localGitId) : null;
   if (
     origin &&
+    facts.gitCommonDir &&
     localGitId &&
-    canonicalProjectId(conn, localGitId) === localGitId &&
-    !hasConflictingRepo(localGitId)
+    localOwner &&
+    !hasConflictingRepo(localGitId) &&
+    !hasConflictingRepo(localOwner)
   ) {
-    const local = findProject.get(localGitId);
+    const local = findProject.get(localOwner);
+    const commonDir = realpathSync(facts.gitCommonDir);
     const sharesRepository = [
       local?.path,
       local?.local_root,
@@ -199,18 +204,24 @@ function resolveCheckoutOwner(conn: Database.Database, root: string) {
       if (!storedRoot) return false;
       const storedFacts = discoverStoredRepository(
         storedRoot,
-        localGitId,
-        true,
+        localOwner,
+        localOwner === localGitId,
       );
-      if (storedFacts?.gitCommonDir !== facts.gitCommonDir) return false;
+      if (
+        !storedFacts?.gitCommonDir ||
+        realpathSync(storedFacts.gitCommonDir) !== commonDir
+      )
+        return false;
       const storedOrigin = normalizeRegistryRepo(
-        storedFacts?.remoteOriginUrl ?? null,
+        storedFacts.remoteOriginUrl ?? null,
       );
-      return storedOrigin === null || storedOrigin === origin;
+      return (
+        storedOrigin === null || computeProjectId(storedFacts) === computedId
+      );
     });
     if (sharesRepository) {
-      const unboundLocal = storedRepos(localGitId).length === 0;
-      return resolved(localGitId, unboundLocal ? localGitId : undefined);
+      const unboundLocal = storedRepos(localOwner).length === 0;
+      return resolved(localOwner, unboundLocal ? localOwner : undefined);
     }
   }
 

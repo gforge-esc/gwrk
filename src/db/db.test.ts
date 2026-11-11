@@ -569,6 +569,69 @@ describe("Project registry upgrade", () => {
     }
   });
 
+  it("unifies occupied path hashes with their verified remote owner", () => {
+    const checkout = join(root, "occupied-hashes");
+    execFileSync("git", ["init", "--quiet", checkout], { stdio: "ignore" });
+    execFileSync("git", [
+      "-C",
+      checkout,
+      "remote",
+      "add",
+      "origin",
+      "git@github.com:example/alpha.git",
+    ]);
+    const facts = discoverGitIdentityFacts(checkout);
+    const canonical = computeProjectId(facts);
+    const ids = [
+      canonical,
+      ...computeLegacyProjectIds({ projectRoot: checkout }),
+    ];
+    const upgraded = upgrade((legacy) => {
+      for (const [index, id] of ids.entries()) {
+        legacy
+          .prepare(
+            "INSERT INTO projects (id, name, path, github_repo) VALUES (?, ?, ?, ?)",
+          )
+          .run(
+            id,
+            "Alpha",
+            index === 0 ? checkout : `${checkout}#${id}`,
+            "example/alpha",
+          );
+        legacy
+          .prepare(
+            "INSERT INTO runs (id, project_id, feature_id, command) VALUES (?, ?, 'shared', 'ship')",
+          )
+          .run(index + 1, id);
+      }
+    });
+    try {
+      for (const id of ids) {
+        expect
+          .soft(
+            listRuns("shared", id, upgraded)
+              .map((run) => run.id)
+              .sort(),
+          )
+          .toEqual([1, 2, 3]);
+      }
+      expect(
+        listCheckoutRuns("shared", checkout, upgraded)
+          .map((run) => run.id)
+          .sort(),
+      ).toEqual([1, 2, 3]);
+      expect(
+        upgraded
+          .prepare("SELECT project_id FROM runs ORDER BY id")
+          .pluck()
+          .all(),
+      ).toEqual(ids);
+      expect(upgraded.pragma("foreign_key_check")).toEqual([]);
+    } finally {
+      upgraded.close();
+    }
+  });
+
   it("backfills the local checkout owner when the first origin predates the upgrade", () => {
     const checkout = join(root, "first-origin");
     execFileSync("git", ["init", "--quiet", checkout], { stdio: "ignore" });

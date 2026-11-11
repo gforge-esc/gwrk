@@ -9,6 +9,7 @@ import {
   mkdtempSync,
   readFileSync,
   readdirSync,
+  realpathSync,
   rmSync,
   symlinkSync,
   writeFileSync,
@@ -17,9 +18,15 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import Database from "better-sqlite3";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { resolveProjectId } from "../adapters/git/project-id.js";
+import {
+  discoverGitIdentityFacts,
+  resolveProjectId,
+} from "../adapters/git/project-id.js";
 import { createSqliteProjectRegistryAdapter } from "../adapters/sqlite/index.js";
-import { computeLegacyProjectIds } from "../domain/project-id.js";
+import {
+  computeLegacyProjectIds,
+  computeProjectId,
+} from "../domain/project-id.js";
 import {
   type EnrolledProject,
   type SlackActionReceipt,
@@ -659,6 +666,93 @@ describe("Project registry storage", () => {
     } finally {
       cwd.mockRestore();
       db.close();
+      rmSync(checkout, { recursive: true, force: true });
+    }
+  });
+
+  it("transitions a migrated path-hash owner through its verified local Git alias", () => {
+    const checkout = realpathSync(
+      mkdtempSync(join(tmpdir(), "gwrk-migrated-hash-")),
+    );
+    const migrationsDir = join(checkout, "migrations");
+    const dbPath = join(checkout, "ledger.sqlite");
+    const source = new URL("./migrations/", import.meta.url);
+    const migration = "014-project-registry-and-composite-keys.sql";
+    let upgraded: Database.Database | undefined;
+    try {
+      execFileSync("git", ["init", "--quiet", checkout]);
+      const facts = discoverGitIdentityFacts(checkout);
+      const localId = computeProjectId(facts);
+      const [hashId] = computeLegacyProjectIds(facts);
+      mkdirSync(migrationsDir);
+      for (const file of readdirSync(source)) {
+        if (file.endsWith(".sql") && file < migration) {
+          copyFileSync(new URL(file, source), join(migrationsDir, file));
+        }
+      }
+      const legacy = openDatabase({ dbPath, migrationsDir });
+      let runId: number;
+      try {
+        legacy
+          .prepare(
+            "INSERT INTO projects (id, name, path) VALUES (?, 'Local', ?)",
+          )
+          .run(hashId, `${checkout}#${hashId}`);
+        runId = Number(
+          legacy
+            .prepare(
+              "INSERT INTO runs (project_id, feature_id, command) VALUES (?, 'shared', 'local')",
+            )
+            .run(hashId).lastInsertRowid,
+        );
+      } finally {
+        legacy.close();
+      }
+      copyFileSync(new URL(migration, source), join(migrationsDir, migration));
+      const ledger = openDatabase({ dbPath, migrationsDir });
+      upgraded = ledger;
+      expect(listRuns("shared", localId, ledger)).toMatchObject([
+        { id: runId, project_id: hashId },
+      ]);
+      execFileSync("git", [
+        "-C",
+        checkout,
+        "remote",
+        "add",
+        "origin",
+        "https://github.com/example/pilot.git",
+      ]);
+      const remoteFacts = discoverGitIdentityFacts(checkout);
+      const remoteId = computeProjectId(remoteFacts);
+      const registry = createSqliteProjectRegistryAdapter({ db: ledger });
+      const enrollment = {
+        ...project,
+        projectId: remoteId,
+        localRoot: checkout,
+        legacyProjectIds: computeLegacyProjectIds(remoteFacts),
+      };
+      const setRepository = ledger.prepare(
+        "UPDATE projects SET github_repo = ? WHERE id = ?",
+      );
+      setRepository.run("example/other", hashId);
+      expect(() => registry.enrollProject(enrollment)).toThrow(
+        /different repository or checkout/,
+      );
+      expect(registry.getProject(remoteId)).toBeNull();
+      expect(listRuns("shared", localId, ledger)).toMatchObject([
+        { id: runId, project_id: hashId },
+      ]);
+      setRepository.run(null, hashId);
+
+      expect(registry.enrollProject(enrollment).projectId).toBe(remoteId);
+      for (const id of [hashId, localId, remoteId]) {
+        expect(registry.getProject(id)?.projectId).toBe(remoteId);
+        expect(listRuns("shared", id, ledger)).toMatchObject([
+          { id: runId, project_id: hashId },
+        ]);
+      }
+    } finally {
+      upgraded?.close();
       rmSync(checkout, { recursive: true, force: true });
     }
   });

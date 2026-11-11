@@ -12,6 +12,7 @@ import {
   computeProjectId,
 } from "../domain/project-id.js";
 import {
+  canonicalProjectId,
   discoverVerifiedCheckout,
   normalizeRegistryRepo,
   prepareProjectLedgerLookup,
@@ -177,12 +178,13 @@ function backfillCheckoutRoots(db: Database.Database): void {
     .prepare("SELECT id, path, github_repo FROM projects WHERE path <> ''")
     .all() as { id: string; path: string; github_repo: string | null }[];
   const setRoot = db.prepare("UPDATE projects SET local_root = ? WHERE id = ?");
+  const hasProject = db.prepare("SELECT 1 FROM projects WHERE id = ?");
   const addAlias = db.prepare(`
-    INSERT INTO project_aliases (alias_id, project_id)
-    SELECT @alias, @id WHERE NOT EXISTS (SELECT 1 FROM projects WHERE id = @alias)
+    INSERT INTO project_aliases (alias_id, project_id) VALUES (@alias, @id)
     ON CONFLICT(alias_id) DO NOTHING
   `);
   const hasRecords = prepareProjectLedgerLookup(db);
+  const verified = [];
   for (const { id, path: checkout, github_repo } of projects) {
     const suffix = `#${id}`;
     const facts =
@@ -195,6 +197,7 @@ function backfillCheckoutRoots(db: Database.Database): void {
     const origin = normalizeRegistryRepo(facts.remoteOriginUrl ?? null);
     if (storedRepo !== null && storedRepo !== origin) continue;
 
+    const canonical = computeProjectId(facts);
     const aliases = computeLegacyProjectIds(facts);
     const matchesPreOriginId =
       github_repo === null &&
@@ -202,7 +205,7 @@ function backfillCheckoutRoots(db: Database.Database): void {
       facts.gitCommonDir &&
       id === computeProjectId({ ...facts, remoteOriginUrl: null });
     if (
-      id !== computeProjectId(facts) &&
+      id !== canonical &&
       !matchesPreOriginId &&
       (!aliases.includes(id) || storedRepo !== origin)
     ) {
@@ -210,10 +213,33 @@ function backfillCheckoutRoots(db: Database.Database): void {
     }
 
     setRoot.run(facts.projectRoot, id);
+    verified.push({ id, canonical, origin, storedRepo, aliases });
+  }
+
+  const remoteOwners = new Set(
+    verified
+      .filter(
+        ({ id, canonical, origin }) => id === canonical && origin !== null,
+      )
+      .map(({ id }) => id),
+  );
+  for (const { id, canonical, origin, storedRepo, aliases } of verified) {
+    if (
+      id !== canonical &&
+      remoteOwners.has(canonical) &&
+      origin === storedRepo &&
+      aliases.includes(id) &&
+      canonicalProjectId(db, canonical) === canonical
+    ) {
+      addAlias.run({ alias: id, id: canonical });
+    }
+  }
+  for (const { id, aliases } of verified) {
+    const owner = canonicalProjectId(db, id);
     for (const alias of aliases) {
       // A path hash alone cannot establish ownership of an existing ledger.
-      if (!hasRecords.get({ id: alias })) {
-        addAlias.run({ alias, id });
+      if (!hasProject.get(alias) && !hasRecords.get({ id: alias })) {
+        addAlias.run({ alias, id: owner });
       }
     }
   }

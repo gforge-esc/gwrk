@@ -325,10 +325,9 @@ export function createProjectRegistry(
     const projectRepo = normalizeRegistryRepo(project.repoSlug);
     const verifiedIds = new Set<string>();
     const verifiedPaths = new Set<string>();
-    const findLocal = db.prepare(`
-      SELECT path, local_root, mirror_path, github_repo, updated_at
-      FROM projects WHERE id = ? AND repo_slug IS NULL
-    `);
+    const findProject = db.prepare<[string], ProjectOwnershipRow>(
+      "SELECT path, repo_slug, github_repo, updated_at, local_root, mirror_path FROM projects WHERE id = ?",
+    );
     for (const [root, discover] of [
       [project.localRoot, discoverVerifiedCheckout],
       [
@@ -351,22 +350,25 @@ export function createProjectRegistry(
       verifiedPaths.add(realpathSync(root));
       const origin = projectRepo;
 
+      const commonDir = facts.gitCommonDir && realpathSync(facts.gitCommonDir);
       const localId = computeProjectId({ ...facts, remoteOriginUrl: null });
-      for (const id of computeLegacyProjectIds(facts)) {
-        verifiedIds.add(id);
+      const localOwner = canonicalProjectId(db, localId);
+      const legacyIds = computeLegacyProjectIds(facts);
+      for (const id of legacyIds) verifiedIds.add(id);
+      for (const id of new Set([...legacyIds, localOwner])) {
         if (id === projectId || canonicalProjectId(db, id) !== id) continue;
-        const prior = findLocal.get(id) as
-          | (Pick<ProjectRow, "local_root" | "mirror_path" | "updated_at"> & {
-              path: string;
-              github_repo: string | null;
-            })
-          | undefined;
-        if (!prior) continue;
+        const prior = findProject.get(id);
+        if (!prior || prior.repo_slug !== null) continue;
         const priorRepo = normalizeRegistryRepo(prior.github_repo);
-        const preOrigin = id === localId && priorRepo === null;
+        const isLocalOwner = id === localOwner && Boolean(commonDir);
+        const preOrigin = isLocalOwner && priorRepo === null;
         if (
           (priorRepo !== origin && !preOrigin) ||
-          (prior.updated_at !== null && id !== localId)
+          (prior.updated_at !== null && !isLocalOwner) ||
+          (isLocalOwner &&
+            storedRepositorySlugs(findProject.get(localId)).some(
+              (repo) => repo !== origin,
+            ))
         ) {
           continue;
         }
@@ -374,12 +376,18 @@ export function createProjectRegistry(
         if (prior.updated_at === null || !priorRoots.some(Boolean)) {
           priorRoots.push(prior.path);
         }
-        const sameRepository = priorRoots.some(
-          (priorRoot) =>
-            priorRoot &&
-            discoverStoredRepository(priorRoot, id, id === localId)
-              ?.gitCommonDir === facts.gitCommonDir,
-        );
+        const sameRepository = priorRoots.some((priorRoot) => {
+          if (!priorRoot || !commonDir) return false;
+          const priorFacts = discoverStoredRepository(
+            priorRoot,
+            id,
+            id === localId,
+          );
+          return (
+            priorFacts?.gitCommonDir &&
+            realpathSync(priorFacts.gitCommonDir) === commonDir
+          );
+        });
         if (!sameRepository) continue;
         transitions.add(id);
         aliases.add(id);
@@ -393,9 +401,6 @@ export function createProjectRegistry(
       );
     }
     aliases.delete(projectId);
-    const findProject = db.prepare<[string], ProjectOwnershipRow>(
-      "SELECT path, repo_slug, github_repo, updated_at, local_root, mirror_path FROM projects WHERE id = ?",
-    );
     const hasRecords = prepareProjectLedgerLookup(db);
     const existing = findProject.get(projectId);
     const existingRepos = storedRepositorySlugs(existing);

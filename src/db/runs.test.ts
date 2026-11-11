@@ -3,7 +3,14 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { execFileSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, realpathSync, rmSync } from "node:fs";
+import {
+  copyFileSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  realpathSync,
+  rmSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type Database from "better-sqlite3";
@@ -203,6 +210,97 @@ describe("runs db", () => {
       }
     },
   );
+
+  it("uses a migrated path-hash owner after the first origin", () => {
+    const checkout = realpathSync(
+      mkdtempSync(join(tmpdir(), "gwrk-migrated-hash-")),
+    );
+    const migrationsDir = join(checkout, "migrations");
+    const dbPath = join(checkout, "ledger.sqlite");
+    const source = new URL("./migrations/", import.meta.url);
+    const migration = "014-project-registry-and-composite-keys.sql";
+    let upgraded: Database.Database | undefined;
+    const cwd = vi.spyOn(process, "cwd").mockReturnValue(checkout);
+    try {
+      execFileSync("git", ["init", "--quiet", checkout]);
+      const facts = discoverGitIdentityFacts(checkout);
+      const localId = computeProjectId(facts);
+      const [hashId] = computeLegacyProjectIds(facts);
+      mkdirSync(migrationsDir);
+      for (const file of readdirSync(source)) {
+        if (file.endsWith(".sql") && file < migration) {
+          copyFileSync(new URL(file, source), join(migrationsDir, file));
+        }
+      }
+      const legacy = database.openDatabase({ dbPath, migrationsDir });
+      let runId: number;
+      try {
+        legacy
+          .prepare(
+            "INSERT INTO projects (id, name, path) VALUES (?, 'Local', ?)",
+          )
+          .run(hashId, `${checkout}#${hashId}`);
+        runId = Number(
+          legacy
+            .prepare(
+              "INSERT INTO runs (project_id, feature_id, command) VALUES (?, 'shared', 'local')",
+            )
+            .run(hashId).lastInsertRowid,
+        );
+      } finally {
+        legacy.close();
+      }
+      copyFileSync(new URL(migration, source), join(migrationsDir, migration));
+      const ledger = database.openDatabase({ dbPath, migrationsDir });
+      upgraded = ledger;
+      expect(listRuns("shared", localId, ledger)).toMatchObject([
+        { id: runId, project_id: hashId },
+      ]);
+      execFileSync("git", [
+        "-C",
+        checkout,
+        "remote",
+        "add",
+        "origin",
+        "https://github.com/example/pilot.git",
+      ]);
+      const history = () => listCheckoutRuns("shared", checkout, ledger);
+      expect.soft(history()).toMatchObject([{ id: runId, project_id: hashId }]);
+      const next = startRun(
+        { feature_id: "shared", command: "first-origin" },
+        ledger,
+      );
+      expect.soft(history()).toMatchObject([
+        { id: next, project_id: hashId },
+        { id: runId, project_id: hashId },
+      ]);
+      expect
+        .soft(
+          ledger
+            .prepare("SELECT github_repo FROM projects WHERE id = ?")
+            .pluck()
+            .get(hashId),
+        )
+        .toBe("example/pilot");
+      execFileSync("git", [
+        "-C",
+        checkout,
+        "remote",
+        "set-url",
+        "origin",
+        "https://github.com/example/beta.git",
+      ]);
+      expect(history()).toEqual([]);
+      expect(listRuns("shared", hashId, ledger).map(({ id }) => id)).toEqual([
+        next,
+        runId,
+      ]);
+    } finally {
+      cwd.mockRestore();
+      upgraded?.close();
+      rmSync(checkout, { recursive: true, force: true });
+    }
+  });
 
   it("retains pre-origin runs across linked worktrees and separates a later origin", () => {
     const root = realpathSync(
