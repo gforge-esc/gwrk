@@ -255,6 +255,13 @@ UPDATE routing_decisions AS d SET project_id = COALESCE((
 ), 'legacy-local');
 CREATE INDEX idx_routing_decisions_project_run ON routing_decisions(project_id, run_id);
 
+-- Preserve orphaned run IDs without linking history to a different run.
+ALTER TABLE history ADD COLUMN legacy_run_id INTEGER;
+UPDATE history SET legacy_run_id = run_id, run_id = NULL
+WHERE run_id IS NOT NULL AND NOT EXISTS (
+  SELECT 1 FROM runs WHERE runs.id = history.run_id
+);
+
 CREATE TEMP TABLE migration_014_fk_guard (violations INTEGER CHECK (violations = 0));
 INSERT INTO migration_014_fk_guard SELECT count(*) FROM pragma_foreign_key_check;
 DROP TABLE migration_014_fk_guard;

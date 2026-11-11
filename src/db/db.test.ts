@@ -66,6 +66,52 @@ describe("Project registry upgrade", () => {
     return openDatabase({ dbPath, migrationsDir });
   }
 
+  it("preserves history and records the IDs of missing legacy runs", () => {
+    const upgraded = upgrade((legacy) => {
+      legacy.pragma("foreign_keys = OFF");
+      legacy.exec(`
+        INSERT INTO projects (id, name, path) VALUES ('alpha', 'Alpha', '/alpha');
+        INSERT INTO runs (id, feature_id, command) VALUES (1, 'shared', 'ship');
+        INSERT INTO history (id, project_id, feature_id, run_id, metadata)
+          VALUES (1, 'alpha', 'shared', 1, 'linked'),
+                 (2, 'alpha', 'shared', 99, 'orphaned'),
+                 (3, 'alpha', 'shared', NULL, 'unlinked');
+      `);
+      expect(legacy.pragma("foreign_key_check")).toHaveLength(1);
+    });
+    try {
+      expect(
+        upgraded
+          .prepare(
+            "SELECT project_id, run_id, legacy_run_id, metadata FROM history ORDER BY id",
+          )
+          .all(),
+      ).toEqual([
+        {
+          project_id: "alpha",
+          run_id: 1,
+          legacy_run_id: null,
+          metadata: "linked",
+        },
+        {
+          project_id: "alpha",
+          run_id: null,
+          legacy_run_id: 99,
+          metadata: "orphaned",
+        },
+        {
+          project_id: "alpha",
+          run_id: null,
+          legacy_run_id: null,
+          metadata: "unlinked",
+        },
+      ]);
+      expect(upgraded.pragma("foreign_key_check")).toEqual([]);
+    } finally {
+      upgraded.close();
+    }
+  });
+
   it("preserves explicit issue and gate owners when a feature ID collides", () => {
     const upgraded = upgrade((legacy) => {
       // The old feature key allowed only Alpha's copy of the shared feature ID.
