@@ -62,6 +62,7 @@ type CandidateCheck =
 export function isConcreteModel(modelId: string): boolean {
   return (
     typeof modelId === "string" &&
+    !modelId.includes("\u0000") &&
     modelId === modelId.trim() &&
     Boolean(modelId) &&
     !/^(auto|default|latest|unknown|opus|sonnet|haiku)$/i.test(modelId)
@@ -368,6 +369,7 @@ export function qualificationStaleness(
 const secretPattern =
   /(?:^|[^a-z0-9])(?:bearer\s+[^\s"]+|sk-|AIza|gh[pousr]_|github_pat_|xox[baprs]-|xapp-)|[\w.+-]+@[\w.-]+\.[a-z]{2,}|"(?:authorization|cookie|set-cookie|api[_-]?key|access[_-]?token|password)"\s*:/i;
 const headerPattern = /\b(?:authorization|set-cookie|cookie)[ \t]*:/i;
+const credentialHeaderNamePattern = /^(?:authorization|cookie|set-cookie)$/i;
 
 export function assertNoSecretMaterial(
   value: unknown,
@@ -380,7 +382,12 @@ export function assertNoSecretMaterial(
         headerPattern.test(key) ||
         secretPattern.test(key) ||
         (typeof entry === "string" &&
-          (headerPattern.test(entry) || secretPattern.test(entry)))
+          (headerPattern.test(entry) || secretPattern.test(entry))) ||
+        (Array.isArray(entry) &&
+          entry.length === 2 &&
+          typeof entry[0] === "string" &&
+          typeof entry[1] === "string" &&
+          credentialHeaderNamePattern.test(entry[0]))
       ) {
         secretInText = true;
       }

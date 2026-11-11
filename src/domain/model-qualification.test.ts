@@ -12,6 +12,7 @@ import {
   blindCandidate,
   checkCandidate,
   evaluatePromotion,
+  isConcreteModel,
   qualificationStaleness,
 } from "./model-qualification.js";
 
@@ -103,6 +104,24 @@ describe("credential guard", () => {
       ),
     ).toThrow(/secret material/i);
   });
+
+  it.each([
+    ["Authorization", "Basic Zml4dHVyZQ=="],
+    ["Cookie", "session=fixture-session"],
+    ["sEt-CoOkIe", "session=fixture-session"],
+  ])("rejects a nested %s header pair", (name, value) => {
+    expect(() =>
+      assertNoSecretMaterial({ response: { headers: [[name, value]] } }),
+    ).toThrow(/secret material/i);
+  });
+
+  it("allows a nested Content-Type header pair", () => {
+    expect(() =>
+      assertNoSecretMaterial({
+        response: { headers: [["Content-Type", "application/json"]] },
+      }),
+    ).not.toThrow();
+  });
 });
 
 describe("model qualification policy", () => {
@@ -138,6 +157,37 @@ describe("model qualification policy", () => {
 
   const report = snapshot.adapters[0];
   const model = report.models[0];
+
+  it.each([
+    {
+      modelId: "provider-a/model\u0000-v1",
+      concrete: false,
+      expected: { ok: false, reason: "model-alias" },
+    },
+    {
+      modelId: "provider-a/model-v1",
+      concrete: true,
+      expected: { ok: true },
+    },
+  ])(
+    "validates the persisted model ID $modelId",
+    ({ modelId, concrete, expected }) => {
+      const persisted = JSON.parse(
+        JSON.stringify({
+          candidate: { ...candidate, modelId },
+          snapshot: {
+            ...snapshot,
+            adapters: [{ ...report, models: [{ ...model, modelId }] }],
+          },
+        }),
+      );
+
+      expect.soft(isConcreteModel(persisted.candidate.modelId)).toBe(concrete);
+      expect(
+        checkCandidate(persisted.snapshot, scope, persisted.candidate),
+      ).toEqual(expected);
+    },
+  );
 
   describe.each(["snapshot", "requested"] as const)(
     "%s runner scope",
