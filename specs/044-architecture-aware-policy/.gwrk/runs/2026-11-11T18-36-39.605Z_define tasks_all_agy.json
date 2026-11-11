@@ -1,0 +1,19 @@
+{
+  "runId": "2026-11-11T18:36:39.605Z_define_all",
+  "feature": "044-architecture-aware-policy",
+  "phase": "all",
+  "command": "define tasks",
+  "agent": "agy",
+  "model": "unknown",
+  "startedAt": "2026-11-11T18:36:39.605Z",
+  "finishedAt": "2026-11-11T18:36:39.898Z",
+  "durationS": 0,
+  "exitCode": 0,
+  "attempt": 1,
+  "filesChanged": 1,
+  "linesAdded": 230,
+  "linesDeleted": 0,
+  "gitCommit": "1ee8fca04ee567164df380952aa7f848729f9225",
+  "gitBranch": "codex/architecture-aware-policy-plan",
+  "digest": []
+}
