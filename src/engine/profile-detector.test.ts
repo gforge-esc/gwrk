@@ -581,12 +581,21 @@ describe("FR-001: architecture-aware workspace profiles (044 phase p01)", () => 
 
   it("uses the configured language to select tools in a mixed workspace", async () => {
     const config = {
-      project: { name: "fixture", design },
+      project: {
+        name: "fixture",
+        design,
+        stack: { language: "Python", buildSystem: "Poetry" },
+        toolchain: { build: "poetry build" },
+      },
       workspaces: { "services/api": { stack: { language: "Python" } } },
     };
     write(".gwrkrc.json", JSON.stringify(config));
-    write("services/api/package.json", "{}");
+    write(
+      "services/api/package.json",
+      JSON.stringify({ dependencies: { next: "1.0.0" } }),
+    );
     write("services/api/pyproject.toml", '[project]\ndependencies = ["django"]\n');
+    write("services/api/uv.lock", "");
     write("services/api/biome.json", "{}");
     write("services/api/vitest.config.ts", "");
 
@@ -597,10 +606,14 @@ describe("FR-001: architecture-aware workspace profiles (044 phase p01)", () => 
       resolveWorkspaceProfile(workspace, root, config),
     ];
     for (const profile of profiles) {
-      expect(profile).toMatchObject({ design, stack: { language: "Python" } });
+      expect.soft(profile).toMatchObject({
+        design,
+        stack: { language: "Python", framework: "Django", buildSystem: "uv" },
+      });
       if (!profile) throw new Error("Expected workspace profile");
       expect.soft(getTestCommand(profile, ["test_api.py"])).toBe("pytest test_api.py -v");
       expect.soft(getLintCommand(profile, ["api.py"])).toBe("ruff check api.py");
+      expect.soft(profile.toolchain?.build).toBeUndefined();
     }
   });
 

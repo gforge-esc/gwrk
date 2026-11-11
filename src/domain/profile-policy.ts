@@ -18,6 +18,7 @@ export interface ProfileOverrideInput {
 }
 
 type Toolchain = NonNullable<ProjectProfile["toolchain"]>;
+type Stack = NonNullable<ProjectProfile["stack"]>;
 
 const toolLanguages = {
   vitest: "javascript",
@@ -47,6 +48,40 @@ function profileLanguage(stack: ProjectProfile["stack"]): string | undefined {
 
 function languageFamily(language: string | undefined): string | undefined {
   return language === "typescript" ? "javascript" : language;
+}
+
+function resolveWorkspaceStack(
+  detectedStack: ProjectProfile["stack"],
+  localStack: ProjectProfile["stack"],
+  entryStack: ProjectProfile["stack"],
+  detectedStacks: readonly Stack[] = [],
+): ProjectProfile["stack"] {
+  if (!detectedStack && !localStack && !entryStack) return undefined;
+
+  const mergedStack = { ...detectedStack, ...localStack, ...entryStack };
+  const detectedFamily = languageFamily(profileLanguage(detectedStack));
+  const workspaceFamily = languageFamily(profileLanguage(mergedStack));
+  const selectedStack = detectedStacks.find(
+    (stack) => languageFamily(profileLanguage(stack)) === workspaceFamily,
+  );
+
+  const { framework, buildSystem, ...sharedStack } = detectedStack ?? {};
+  const compatibleFamily =
+    detectedFamily === undefined || detectedFamily === workspaceFamily;
+  const workspaceFramework =
+    selectedStack?.framework ?? (compatibleFamily ? framework : undefined);
+  const workspaceBuildSystem =
+    selectedStack?.buildSystem ?? (compatibleFamily ? buildSystem : undefined);
+
+  return {
+    ...sharedStack,
+    ...(workspaceFramework !== undefined && { framework: workspaceFramework }),
+    ...(workspaceBuildSystem !== undefined && {
+      buildSystem: workspaceBuildSystem,
+    }),
+    ...localStack,
+    ...entryStack,
+  };
 }
 
 function compatibleToolchain(
@@ -181,6 +216,7 @@ export function resolveWorkspacePolicyProfile(
   options?: {
     requireDesign?: boolean;
     localProject?: WorkspaceProfileConfig;
+    detectedStacks?: readonly Stack[];
   },
 ): ProjectProfile {
   const workspaces = rootConfig?.workspaces ?? {};
@@ -201,21 +237,27 @@ export function resolveWorkspacePolicyProfile(
     });
   }
 
-  const workspaceStack = {
-    ...detectedWorkspace.stack,
-    ...localProject?.stack,
-    ...workspaceConfig?.stack,
-  };
+  const { stack: entryStack, ...workspaceOverrides } = workspaceConfig ?? {};
+  const workspaceStack = resolveWorkspaceStack(
+    detectedWorkspace.stack,
+    localProject?.stack,
+    entryStack,
+    options?.detectedStacks,
+  );
   const rootToolchain = compatibleToolchain(
     rootConfig?.project?.toolchain,
     rootConfig?.project?.stack,
     workspaceStack,
     "root",
   );
-  const { toolchain: rawToolchain, ...detected } = detectedWorkspace;
+  const {
+    stack: rawStack,
+    toolchain: rawToolchain,
+    ...detected
+  } = detectedWorkspace;
   const detectedToolchain = compatibleToolchain(
     rawToolchain,
-    detectedWorkspace.stack,
+    rawStack,
     workspaceStack,
     "detected",
   );
@@ -230,8 +272,8 @@ export function resolveWorkspacePolicyProfile(
         : detected,
     projectDesign,
     projectType: localProject?.type,
-    projectStack: localProject?.stack,
+    projectStack: workspaceStack,
     projectToolchain: localProject?.toolchain,
-    workspaceConfig,
+    workspaceConfig: workspaceOverrides,
   });
 }

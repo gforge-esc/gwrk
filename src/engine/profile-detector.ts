@@ -30,6 +30,11 @@ interface LanguageSignal {
   buildSystem?: string;
 }
 
+interface FilesystemProfile {
+  profile: ProjectProfile;
+  signals: readonly LanguageSignal[];
+}
+
 /**
  * Auto-detect project type, stack, and layout from filesystem signals.
  * Scans for ALL language markers to support polyglot monorepos.
@@ -57,14 +62,15 @@ function detectProfileInDirectory(
     );
   }
 
-  if (localProject) return mergeLocalProject(detected, localProject);
+  if (localProject) return mergeLocalProject(detected.profile, localProject);
 
   return (
-    resolveDetectedProfile(projectRoot, detected, searchAncestors) ?? detected
+    resolveDetectedProfile(projectRoot, detected, searchAncestors) ??
+    detected.profile
   );
 }
 
-function detectFilesystemProfile(projectRoot: string): ProjectProfile {
+function detectFilesystemProfile(projectRoot: string): FilesystemProfile {
   const profile: ProjectProfile & {
     stack: NonNullable<ProjectProfile["stack"]>;
   } = {
@@ -97,7 +103,7 @@ function detectFilesystemProfile(projectRoot: string): ProjectProfile {
     profile.type = "gwrk-native";
     profile.stack.language = "TypeScript";
     profile.layout = "src-nested";
-    return profile;
+    return { profile, signals: [] };
   }
 
   // 2. Scan ALL language markers (not first-match-wins)
@@ -114,7 +120,7 @@ function detectFilesystemProfile(projectRoot: string): ProjectProfile {
       formatter: "biome",
       test: "vitest",
     };
-    return profile;
+    return { profile, signals };
   }
 
   // pnpm workspace / lockfile or package.json detection
@@ -392,7 +398,7 @@ function detectFilesystemProfile(projectRoot: string): ProjectProfile {
     }
   }
 
-  return profile;
+  return { profile, signals };
 }
 
 function readLocalProject(
@@ -439,7 +445,7 @@ function mergeLocalProject(
 
 function resolveDetectedProfile(
   detectedRoot: string,
-  detected: ProjectProfile,
+  detected: FilesystemProfile,
   searchAncestors: boolean,
 ): ProjectProfile | undefined {
   const start = path.resolve(detectedRoot);
@@ -451,7 +457,7 @@ function resolveDetectedProfile(
         const config = JSON.parse(fs.readFileSync(configPath, "utf-8"));
         if (directory === start) {
           return mergeProfileOverrides({
-            detected,
+            detected: detected.profile,
             projectDesign: DesignSchema.safeParse(config?.project?.design).data,
           });
         }
@@ -487,7 +493,7 @@ function relativeWorkspacePath(root: string, workspace: string): string {
 function applyWorkspaceConfig(
   root: string,
   workspace: string,
-  initialProfile: ProjectProfile,
+  initialDetection: FilesystemProfile,
   config: WorkspaceRootConfig,
   options?: {
     requireDesign?: boolean;
@@ -509,7 +515,7 @@ function applyWorkspaceConfig(
   const relativePath = relativeWorkspacePath(root, workspace);
   const matchedPath = matchWorkspacePath(relativePath, Object.keys(workspaces));
   const design = DesignSchema.safeParse(config?.project?.design).data;
-  let detected = initialProfile;
+  let detected = initialDetection;
   const matchedRoot = matchedPath ? path.resolve(root, matchedPath) : undefined;
   const detectMatched =
     matchedRoot &&
@@ -522,12 +528,12 @@ function applyWorkspaceConfig(
     (matchedPath && workspaces[matchedPath].design) ||
     localProject?.design;
   if (!hasDesign) {
-    if (options?.requireDesign) return detected;
+    if (options?.requireDesign) return detected.profile;
     return resolveWorkspacePolicyProfile(
       relativePath,
       options?.localProject
-        ? mergeLocalProject(detected, options.localProject)
-        : detected,
+        ? mergeLocalProject(detected.profile, options.localProject)
+        : detected.profile,
       { workspaces },
     );
   }
@@ -551,7 +557,7 @@ function applyWorkspaceConfig(
     (!stack?.buildSystem || (!stack.language && !stack.languages?.[0]))
   ) {
     try {
-      stack = { ...detectFilesystemProfile(root).stack, ...stack };
+      stack = { ...detectFilesystemProfile(root).profile.stack, ...stack };
     } catch {
       // The configured resolver also accepts paths that are unavailable on disk.
     }
@@ -559,7 +565,7 @@ function applyWorkspaceConfig(
 
   return resolveWorkspacePolicyProfile(
     relativePath,
-    detected,
+    detected.profile,
     {
       project: {
         design,
@@ -568,7 +574,11 @@ function applyWorkspaceConfig(
       },
       workspaces,
     },
-    { requireDesign: options?.requireDesign, localProject },
+    {
+      requireDesign: options?.requireDesign,
+      localProject,
+      detectedStacks: detected.signals,
+    },
   );
 }
 
@@ -627,10 +637,13 @@ export function resolveWorkspaceProfile(
       stack: wsConfig.stack || {},
       layout: wsConfig.layout || "flat",
     };
-    return applyWorkspaceConfig(projectRoot, cwd, workspace, config, {
-      requireDesign: true,
-      detectMatchedWorkspace: true,
-    });
+    return applyWorkspaceConfig(
+      projectRoot,
+      cwd,
+      { profile: workspace, signals: [] },
+      config,
+      { requireDesign: true, detectMatchedWorkspace: true },
+    );
   }
 
   return undefined;

@@ -123,6 +123,46 @@ describe("FR-001: profile design inheritance (044 phase p01)", () => {
     expect(getTestCommand(result, ["test_api.py"])).toBe("pytest test_api.py -v");
   });
 
+  it.each([
+    {
+      scenario: "different language family",
+      language: "Python",
+      overrides: {},
+      expected: { language: "Python" },
+    },
+    {
+      scenario: "explicit workspace metadata",
+      language: "Python",
+      overrides: { framework: "Django", buildSystem: "uv" },
+      expected: { language: "Python", framework: "Django", buildSystem: "uv" },
+    },
+    {
+      scenario: "same language family",
+      language: "TypeScript",
+      overrides: {},
+      expected: { language: "TypeScript", framework: "Next.js", buildSystem: "npm" },
+    },
+  ])("resolves stack metadata with $scenario", ({ language, overrides, expected }) => {
+    const result = resolveWorkspacePolicyProfile(
+      "services/api",
+      {
+        type: "nodejs",
+        stack: {
+          language: "JavaScript",
+          framework: "Next.js",
+          buildSystem: "npm",
+        },
+      },
+      {
+        project: { design },
+        workspaces: { "services/api": { stack: { language, ...overrides } } },
+      },
+    );
+
+    expect(result.design).toEqual(design);
+    expect(result.stack).toStrictEqual(expected);
+  });
+
   it("keeps a compatible detected runner while filtering build and discovery for a language override", () => {
     const result = resolveWorkspacePolicyProfile(
       "services/api",
