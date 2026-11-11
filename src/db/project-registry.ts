@@ -334,22 +334,31 @@ export function createProjectRegistry(
         continue;
 
       const storedRepos = storedRepositorySlugs(legacy);
-      const legacyFacts = legacy
-        ? (discoverVerifiedCheckout(legacy.path) ??
-          discoverVerifiedMirror(legacy.path))
-        : null;
-      const storedOrigin = normalizeRegistryRepo(
-        legacyFacts?.remoteOriginUrl ?? null,
+      const legacyRoots = new Set([
+        legacy?.path,
+        legacy?.local_root,
+        legacy?.mirror_path,
+      ]);
+      const legacyFacts = Array.from(legacyRoots).flatMap((root) => {
+        if (!root) return [];
+        const facts =
+          discoverVerifiedCheckout(root) ?? discoverVerifiedMirror(root);
+        return facts ? [facts] : [];
+      });
+      const matchesLegacyCheckout = legacyFacts.some(
+        (facts) =>
+          computeProjectId(facts) === projectId &&
+          computeLegacyProjectIds(facts).includes(alias),
       );
-      const legacyCheckoutId = legacyFacts && computeProjectId(legacyFacts);
-      const matchesLegacyCheckout =
-        legacyFacts !== null &&
-        legacyCheckoutId === projectId &&
-        computeLegacyProjectIds(legacyFacts).includes(alias);
       const conflictingRepo =
         storedRepos.some((repo) => repo !== projectRepo) ||
-        (storedOrigin !== null &&
-          (storedOrigin !== projectRepo || legacyCheckoutId !== projectId));
+        legacyFacts.some((facts) => {
+          const origin = normalizeRegistryRepo(facts.remoteOriginUrl ?? null);
+          return (
+            origin !== null &&
+            (origin !== projectRepo || computeProjectId(facts) !== projectId)
+          );
+        });
       const ownsLegacy =
         transitions.has(alias) ||
         verifiedIds.has(alias) ||

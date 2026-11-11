@@ -334,12 +334,14 @@ describe("Project registry storage", () => {
         localRoot: checkout,
         legacyProjectIds: [localId],
       };
-      expect(() =>
-        registry.enrollProject({
-          ...remote,
-          legacyProjectIds: [localId, "unrelated"],
-        }),
-      ).toThrow(/already owned: unrelated/);
+      expect
+        .soft(() =>
+          registry.enrollProject({
+            ...remote,
+            legacyProjectIds: [localId, "unrelated"],
+          }),
+        )
+        .toThrow(/already owned: unrelated/);
       expect(registry.getProject(localId)?.projectId).toBe(localId);
       expect(registry.getProject(remoteId)).toBeNull();
       expect(registry.getProject("legacy-project")?.projectId).toBe(localId);
@@ -556,9 +558,14 @@ describe("Project registry storage", () => {
     { mirror: false, storedOrigin: null },
     { mirror: true, storedOrigin: null },
     { mirror: false, storedOrigin: "https://github.com/example/beta.git" },
+    {
+      mirror: false,
+      storedOrigin: "https://github.com/example/beta.git",
+      suffixedPath: true,
+    },
   ])(
     "rejects a legacy claim with conflicting Git origin: %j",
-    ({ mirror, storedOrigin }) => {
+    ({ mirror, storedOrigin, suffixedPath }) => {
       const checkout = mkdtempSync(join(tmpdir(), "gwrk-alias-origin-"));
       const db = getTestDb();
       try {
@@ -593,11 +600,16 @@ describe("Project registry storage", () => {
           {
             id: "beta-legacy",
             name: "Beta",
-            path: storedPath,
+            path: suffixedPath ? `${storedPath}#beta-legacy` : storedPath,
             github_repo: claimedRepo,
           },
           db,
         );
+        if (suffixedPath) {
+          db.prepare(
+            "UPDATE projects SET local_root = ? WHERE id = 'beta-legacy'",
+          ).run(storedPath);
+        }
         insertFeature(
           { id: "shared", name: "Beta feature", status: "open", sp_total: 1 },
           "beta-legacy",

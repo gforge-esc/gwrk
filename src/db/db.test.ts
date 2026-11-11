@@ -145,22 +145,29 @@ describe("Project registry upgrade", () => {
           ),
         )
         .toEqual([]);
-      expect(listIssues("shared", "legacy-local", upgraded)).toMatchObject([
-        { issue_number: 8 },
-      ]);
+      expect
+        .soft(listIssues("shared", "legacy-local", upgraded))
+        .toMatchObject([{ issue_number: 8 }]);
       expect(listIssues("alpha-only", "alpha", upgraded)).toMatchObject([
         { issue_number: 9 },
       ]);
       expect
         .soft(getGateResult("shared", "phase", "T001", "alpha", upgraded))
         .toBeUndefined();
-      expect(listIssues("shared", "beta-unregistered", upgraded)).toMatchObject(
-        [{ issue_number: 7, title: "Beta issue" }],
-      );
-      expect(
-        getGateResult("shared", "phase", "T001", "beta-unregistered", upgraded)
-          ?.gate_script,
-      ).toBe("beta.sh");
+      expect
+        .soft(listIssues("shared", "beta-unregistered", upgraded))
+        .toMatchObject([{ issue_number: 7, title: "Beta issue" }]);
+      expect
+        .soft(
+          getGateResult(
+            "shared",
+            "phase",
+            "T001",
+            "beta-unregistered",
+            upgraded,
+          )?.gate_script,
+        )
+        .toBe("beta.sh");
       expect(
         getGateResult("shared", "other-phase", "T002", "legacy-local", upgraded)
           ?.gate_script,
