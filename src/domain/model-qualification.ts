@@ -59,11 +59,11 @@ type CandidateCheck =
         | "effort-unavailable";
     };
 
-function isConcreteModel(modelId: string): boolean {
+export function isConcreteModel(modelId: string): boolean {
   return (
     modelId === modelId.trim() &&
     Boolean(modelId) &&
-    !/^(auto|default|latest|unknown)$/i.test(modelId)
+    !/^(auto|default|latest|unknown|opus|sonnet|haiku)$/i.test(modelId)
   );
 }
 

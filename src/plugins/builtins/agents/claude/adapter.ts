@@ -2,14 +2,17 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import { execFile } from "node:child_process";
 import fs from "node:fs/promises";
 import path from "node:path";
+import { promisify } from "node:util";
 import {
   type AgentTaskRequest as TaskDispatch,
   type AgentTaskResult as TaskResult,
   unwrapStreamJson,
 } from "../../../../ports/agent-port.js";
 import { execCommand } from "../../../../utils/exec.js";
+import { ModelDiscoveryError } from "../../../agent-backend.js";
 import type {
   AgentBackend,
   AgentDispatch,
@@ -28,6 +31,7 @@ export class ClaudeAdapter implements AgentBackend {
   readonly displayName = "Claude Code";
   readonly emitsStreamJson = true;
   readonly nativeWriter = true;
+  readonly supportsModelForwarding = true;
 
   async isAvailable(): Promise<boolean> {
     try {
@@ -36,6 +40,39 @@ export class ClaudeAdapter implements AgentBackend {
     } catch {
       return false;
     }
+  }
+
+  async discoverModels() {
+    let stdout: string;
+    try {
+      ({ stdout } = await promisify(execFile)(
+        "claude",
+        ["auth", "status", "--json"],
+        {
+          timeout: 5_000,
+        },
+      ));
+    } catch (error) {
+      const output = (error as { stdout?: unknown }).stdout;
+      if (typeof output !== "string" || !output.trim()) throw error;
+      stdout = output;
+    }
+    const status: unknown = JSON.parse(stdout);
+    if (
+      typeof status !== "object" ||
+      status === null ||
+      !("loggedIn" in status)
+    ) {
+      throw new Error("Claude CLI returned an invalid authentication status.");
+    }
+    if (status.loggedIn !== true) {
+      throw new ModelDiscoveryError(
+        "auth_error",
+        "Authenticate the Claude CLI.",
+      );
+    }
+    // A successful auth probe permits explicit candidates from this runner.
+    return [];
   }
 
   async checkQuota(): Promise<QuotaStatus> {

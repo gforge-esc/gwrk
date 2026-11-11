@@ -219,8 +219,9 @@ describe("Phase 9: Enforcement Skills", () => {
           );
 
           const mockChild = new EventEmitter() as any;
-          const mockStdinWrite = vi.fn();
-          mockChild.stdin = { write: mockStdinWrite, end: vi.fn() };
+          const stdin = new PassThrough();
+          const mockStdinWrite = vi.spyOn(stdin, "write");
+          mockChild.stdin = stdin;
           mockChild.stdout = new PassThrough();
           mockChild.stderr = new PassThrough();
 

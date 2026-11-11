@@ -15,6 +15,16 @@ export interface QuotaStatus {
   backoffS?: number;
 }
 
+export class ModelDiscoveryError extends Error {
+  constructor(
+    readonly status: "auth_error" | "rate_limited",
+    message: string,
+  ) {
+    super(message);
+    this.name = "ModelDiscoveryError";
+  }
+}
+
 export interface ProbeResult {
   status: "available" | "rate_limited" | "auth_error" | "unavailable";
   latencyMs: number;
@@ -38,6 +48,7 @@ export interface AgentBackend {
    */
   readonly name: string;
   readonly displayName?: string;
+  readonly supportsModelForwarding?: boolean;
 
   /**
    * When true, this agent writes files directly via its own tools rather than

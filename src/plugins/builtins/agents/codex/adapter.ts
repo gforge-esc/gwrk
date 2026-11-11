@@ -28,6 +28,7 @@ export class CodexAdapter implements AgentBackend {
   readonly displayName = "Codex CLI";
   readonly emitsStreamJson = false;
   readonly nativeWriter = true;
+  readonly supportsModelForwarding = true;
 
   async isAvailable(): Promise<boolean> {
     try {

@@ -97,3 +97,69 @@ describe("model discovery", () => {
     ]);
   });
 });
+
+describe("catalog reports", () => {
+  it("preserves discovered IDs and reports absent and unauthenticated backends", async () => {
+    const { createModelCatalog } = await import("./catalog-discovery.js");
+    const { ModelDiscoveryError } = await import(
+      "../../plugins/agent-backend.js"
+    );
+    const manifest = (command: string) => ({
+      manifest: { type: "agent", invocation: { command }, version: "2.0.0" },
+    });
+    const available = {
+      isAvailable: async () => true,
+      discoverModels: async () =>
+        parseAgyModelList("claude-opus-5-5-high\tClaude Opus 5.5 (High)"),
+    };
+    const catalog = createModelCatalog("/fixture", {
+      loadAgent: async (backend) => {
+        if (backend === "goose") return null;
+        return {
+          manifest: manifest(backend).manifest,
+          adapter:
+            backend === "agy"
+              ? available
+              : {
+                  isAvailable: async () => true,
+                  discoverModels: async () => {
+                    throw new ModelDiscoveryError(
+                      "auth_error",
+                      "Authenticate this CLI.",
+                    );
+                  },
+                },
+        };
+      },
+      readVersion: async (command) => `${command} 1.2.3`,
+    });
+
+    const result = await catalog.discoverCatalog({
+      scope: {
+        workspaceId: "fixture",
+        runnerProfile: "local",
+        platform: process.platform,
+        arch: process.arch,
+      },
+      backends: ["agy", "claude", "goose"],
+      nowIso: "2026-11-11T12:00:00Z",
+    });
+    expect(result).toMatchObject([
+      {
+        backend: "agy",
+        status: "available",
+        cliVersion: "agy 1.2.3",
+        adapterVersion: "2.0.0",
+        models: [
+          {
+            backend: "agy",
+            provider: "anthropic",
+            modelId: "claude-opus-5-5-high",
+          },
+        ],
+      },
+      { backend: "claude", status: "auth_error", models: [] },
+      { backend: "goose", status: "unavailable", models: [] },
+    ]);
+  });
+});

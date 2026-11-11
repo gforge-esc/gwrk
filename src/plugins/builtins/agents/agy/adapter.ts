@@ -33,6 +33,7 @@ export class AgyAdapter implements AgentBackend {
   readonly displayName = "Antigravity";
   readonly emitsStreamJson = true;
   readonly nativeWriter = true;
+  readonly supportsModelForwarding = true;
 
   async isAvailable(): Promise<boolean> {
     try {
