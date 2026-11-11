@@ -187,7 +187,7 @@ Live cutover of `define`, `implement` and `ship` waits on the unified routing sp
 | `agy` | Authenticated `agy models` CLI | Separate Antigravity Claude routes from native `claude` | Phase 2 |
 | `codex` | App Server `model/list` stdio pagination | Preserve effort list and exclude `hidden` entries | Phase 2 |
 | `claude` | Agent SDK `supportedModels()` or auth probe | Report expired OAuth as `auth_error` without blocking | Phase 2 |
-| `cursor` | `agent models` or `--list-models` | Exclude `auto` alias from candidate pins | Phase 2 |
+| `cursor-agent` | Supported model-list command or explicit candidates | Exclude `auto` from candidate pins | Phase 2 |
 | `opencode` | `opencode models` under project config | Preserve provider-qualified model ID and variant | Phase 2 |
 | `aider` | `aider --list-models` plus explicit filter | Require smoke probe before candidate eligibility | Phase 2 |
 | `goose` | Explicit `--candidates` input or provider list | Block pin promotion while `supportsModelForwarding` is false | Phase 2 |

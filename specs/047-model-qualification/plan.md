@@ -48,7 +48,7 @@ pnpm exec vitest run src/domain/model-qualification.test.ts src/architecture.tes
 
 ### Phase 2: Model discovery and smoke probes
 
-Add discovery adapters separate from `dispatch()` (`ADR-006`). Support `agy models` and Codex App Server `model/list` pagination with effort mapping. Include native `claude` discovery and external adapter hooks (`cursor` or `opencode` plus `aider` and `goose`) with unavailable-adapter reporting. Run bounded non-interactive smoke probes (`ADR-008`) in temporary workspaces and record `observedModel` or `"unknown"`.
+Add discovery adapters separate from `dispatch()` (`ADR-006`). Support `agy models` and Codex App Server `model/list` pagination with effort mapping. Include native `claude` discovery and external adapter hooks (`cursor-agent` or `opencode` plus `aider` and `goose`) with unavailable-adapter reporting. Run bounded non-interactive smoke probes (`ADR-008`) in temporary workspaces and record `observedModel` or `"unknown"`.
 
 #### Files
 

@@ -21,7 +21,7 @@ const supportedBackends = [
   "agy",
   "claude",
   "codex",
-  "cursor",
+  "cursor-agent",
   "opencode",
   "aider",
   "goose",
