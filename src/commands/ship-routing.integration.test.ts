@@ -143,6 +143,7 @@ describe("ship with the real AgentPort router", () => {
       ["agy", provider("agy")],
       ["codex", codex],
       ["claude", provider("claude")],
+      ["goose", provider("goose")],
     ]);
     vi.spyOn(
       AgentBackendRegistry.prototype,
@@ -154,18 +155,20 @@ describe("ship with the real AgentPort router", () => {
     });
   });
 
-  function configureAgents(implement = "codex") {
+  function configureAgents(
+    implement = "codex",
+    names = ["codex", "claude"],
+  ) {
     fs.writeFileSync(
       path.join(root, ".gwrkrc.json"),
       JSON.stringify({
         project: { name: "Routing fixture" },
         agents: {
           implement,
-          fallbackOrder: ["codex", "claude"],
-          registry: {
-            codex: backendConfig("codex"),
-            claude: backendConfig("claude"),
-          },
+          fallbackOrder: names,
+          registry: Object.fromEntries(
+            names.map((name) => [name, backendConfig(name)]),
+          ),
         },
       }),
     );
@@ -287,14 +290,51 @@ describe("ship with the real AgentPort router", () => {
 
   it("stops when every configured backend is depleted even if another CLI is installed", async () => {
     seedQuota(0, 0);
+    const stderr = vi.spyOn(process.stderr, "write").mockReturnValue(true);
     const { createShipCommand } = await import("./ship.js");
 
     await createShipCommand().parseAsync([feature, "phase-01"], { from: "user" });
 
     expect(process.exitCode).toBe(1);
+    expect(stderr).toHaveBeenCalledWith(
+      expect.stringContaining("All backends quota-exhausted. Retry after reset."),
+    );
     expect(ShipOrchestrator).not.toHaveBeenCalled();
     expect(await decisions()).toEqual([]);
   });
+
+  it.each([false, true])(
+    "stops at three automatic backend attempts with native refusal %s",
+    async (nativeRefusal) => {
+      configureAgents("codex", ["codex", "claude", "agy", "goose"]);
+      const { QuotaProber } = await import("../server/quota-prober.js");
+      const { AgentBackendRegistry } = await import("../plugins/agent-registry.js");
+      const probe = QuotaProber.prototype.probeQuota;
+      vi.spyOn(QuotaProber.prototype, "probeQuota").mockImplementation(function (
+        this: QuotaProber,
+        ...args
+      ) {
+        const { name } = args[0];
+        if (name !== "goose" && (!nativeRefusal || name !== "codex")) {
+          for (const suffix of ["primary", "alternate", "review"]) {
+            this.markModelFailure(name, `${name}-${suffix}`);
+          }
+        }
+        return probe.apply(this, args);
+      });
+      if (nativeRefusal) {
+        vi.mocked(codex.checkQuota).mockResolvedValue({ status: "rate-limited" });
+      }
+      const { createShipCommand } = await import("./ship.js");
+
+      await createShipCommand().parseAsync([feature, "phase-01"], { from: "user" });
+
+      expect(process.exitCode).toBe(1);
+      expect(ShipOrchestrator).not.toHaveBeenCalled();
+      expect(AgentBackendRegistry.prototype.getAgentBackend).not.toHaveBeenCalledWith("goose");
+      expect(await decisions()).toEqual([]);
+    },
+  );
 
   it.each([{ args: [] }, { args: ["--dry-run"] }])(
     "rejects automatic routing when agents.fallbackOrder is missing (%s)",

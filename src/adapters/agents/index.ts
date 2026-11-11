@@ -167,6 +167,15 @@ async function selectAvailableRoute(
       );
     }
   }
+  const boundedAutomaticRoute = quotaFirst && restrictToRegistry;
+  if (
+    boundedAutomaticRoute &&
+    Object.values(quotas).every(({ percent }) => percent <= 0)
+  ) {
+    throw new Error("All backends quota-exhausted. Retry after reset.");
+  }
+
+  const registeredCandidates = boundedAutomaticRoute ? [...candidates] : null;
   const probed = new Set<string>();
   let loadedAll = restrictToRegistry;
   while (candidates.size > 0 || !loadedAll) {
@@ -183,7 +192,9 @@ async function selectAvailableRoute(
         { ...context, preferredAgent },
         {
           ...facts,
-          availableBackends: [...candidates],
+          availableBackends: registeredCandidates ?? [...candidates],
+          maxBackendAttempts: boundedAutomaticRoute ? 3 : undefined,
+          probedUnavailableBackends: boundedAutomaticRoute ? probed : undefined,
           quotas:
             agentRegistry && !context.explicitBackend && !installedOnly
               ? quotas
