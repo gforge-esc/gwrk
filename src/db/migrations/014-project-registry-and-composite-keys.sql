@@ -90,7 +90,9 @@ WHERE EXISTS (SELECT 1 FROM plan_features UNION ALL SELECT 1 FROM plan_phases
               UNION ALL SELECT 1 FROM gate_results UNION ALL SELECT 1 FROM issues
               UNION ALL SELECT 1 FROM routing_decisions
               UNION ALL SELECT 1 FROM runs WHERE project_id IS NULL
-              UNION ALL SELECT 1 FROM history WHERE project_id IS NULL);
+              UNION ALL SELECT 1 FROM history WHERE project_id IS NULL
+              UNION ALL SELECT 1 FROM compression WHERE project_id IS NULL
+              UNION ALL SELECT 1 FROM routing_history WHERE project_id IS NULL);
 
 INSERT OR IGNORE INTO projects (id, name, path, slug)
 SELECT project_id, project_id, '', project_id
@@ -284,6 +286,16 @@ UPDATE history SET project_id = COALESCE(
   'legacy-local'
 )
 WHERE project_id IS NULL;
+
+-- Ownerless reports can share a feature and phase. Preserve those rows while
+-- retaining idempotent writes for attributed reports.
+ALTER TABLE compression ADD COLUMN legacy_unattributed INTEGER NOT NULL DEFAULT 0;
+DROP INDEX idx_compression_unique;
+UPDATE compression SET project_id = 'legacy-local', legacy_unattributed = 1
+WHERE project_id IS NULL;
+CREATE UNIQUE INDEX idx_compression_unique
+  ON compression(feature_id, phase_id, project_id) WHERE legacy_unattributed = 0;
+UPDATE routing_history SET project_id = 'legacy-local' WHERE project_id IS NULL;
 
 CREATE TEMP TABLE migration_014_fk_guard (violations INTEGER CHECK (violations = 0));
 INSERT INTO migration_014_fk_guard SELECT count(*) FROM pragma_foreign_key_check;
