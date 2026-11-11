@@ -32,15 +32,19 @@ interface AgentPortAdapterOptions {
 const NATIVE_SHIP_PROBE_TIMEOUT_MS = 5_000;
 
 async function boundNativeShipProbe<T>(
-  probe: () => Promise<T>,
+  probe: (signal: AbortSignal) => Promise<T>,
   fallback: T,
 ): Promise<T> {
+  const controller = new AbortController();
   let timeout: ReturnType<typeof setTimeout> | undefined;
   const deadline = new Promise<T>((resolve) => {
-    timeout = setTimeout(() => resolve(fallback), NATIVE_SHIP_PROBE_TIMEOUT_MS);
+    timeout = setTimeout(() => {
+      resolve(fallback);
+      controller.abort();
+    }, NATIVE_SHIP_PROBE_TIMEOUT_MS);
   });
   try {
-    return await Promise.race([probe(), deadline]);
+    return await Promise.race([probe(controller.signal), deadline]);
   } finally {
     clearTimeout(timeout);
   }
@@ -230,19 +234,26 @@ async function selectAvailableRoute(
         const availabilityOnly = context.preview || installedOnly;
         const requireInstalled = restrictToRegistry || availabilityOnly;
         backend = requireInstalled
-          ? await boundNativeShipProbe<AgentBackend | undefined>(async () => {
-              const candidate = await registry.getAgentBackend(route.backend);
-              return (await candidate.isAvailable()) ? candidate : undefined;
-            }, undefined)
+          ? await boundNativeShipProbe(
+              async (signal) => {
+                const candidate = await registry.getAgentBackend(route.backend);
+                if (signal.aborted || !(await candidate.isAvailable(signal))) {
+                  return undefined;
+                }
+                return candidate;
+              },
+              undefined,
+            )
           : await registry.getAgentBackend(route.backend);
         if (backend) {
           const candidate = backend;
           const nativeQuota = availabilityOnly
             ? undefined
             : restrictToRegistry
-              ? await boundNativeShipProbe(() => quotaProbe(candidate), {
-                  status: "unknown",
-                })
+              ? await boundNativeShipProbe(
+                  (signal) => quotaProbe(candidate, signal),
+                  { status: "unknown" },
+                )
               : await quotaProbe(candidate);
           available =
             availabilityOnly ||

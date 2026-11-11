@@ -74,9 +74,9 @@ export interface AgentBackend {
   /**
    * Returns true if the backend's required CLI or integration is available.
    */
-  isAvailable(): Promise<boolean>;
+  isAvailable(signal?: AbortSignal): Promise<boolean>;
 
-  checkQuota?(): Promise<QuotaStatus>;
+  checkQuota?(signal?: AbortSignal): Promise<QuotaStatus>;
   probe?(): Promise<ProbeResult>;
 
   /**

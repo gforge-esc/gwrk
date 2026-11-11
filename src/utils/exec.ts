@@ -66,9 +66,15 @@ export function execCommand(
   command: string,
   args: string[],
   stdin?: string,
-  opts?: { cwd?: string; env?: NodeJS.ProcessEnv },
+  opts?: { cwd?: string; env?: NodeJS.ProcessEnv; signal?: AbortSignal },
 ): Promise<ExecResult> {
   return new Promise((resolve) => {
+    const signal = opts?.signal;
+    if (signal?.aborted) {
+      resolve({ exitCode: 1, stdout: "", stderr: "Command aborted" });
+      return;
+    }
+
     const child = execFile(
       command,
       args,
@@ -104,6 +110,13 @@ export function execCommand(
         }
       },
     );
+
+    if (signal) {
+      // execFile uses SIGTERM on abort regardless of its killSignal option.
+      const abort = () => child.kill("SIGKILL");
+      signal.addEventListener("abort", abort, { once: true });
+      child.once("close", () => signal.removeEventListener("abort", abort));
+    }
 
     if (stdin && child.stdin) {
       child.stdin.write(stdin);

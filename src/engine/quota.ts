@@ -15,19 +15,25 @@ type QuotaStatus = Omit<AdapterQuotaStatus, "status"> & {
  * Probes the current quota status of a backend.
  * Uses the backend's native checkQuota if available, otherwise infers from recent errors or isAvailable().
  */
-export async function quotaProbe(backend: AgentBackend): Promise<QuotaStatus> {
+export async function quotaProbe(
+  backend: AgentBackend,
+  signal?: AbortSignal,
+): Promise<QuotaStatus> {
+  if (signal?.aborted) return { status: "unknown" };
+
   // 1. Native checkQuota if implemented by the adapter
   if (typeof backend.checkQuota === "function") {
     try {
-      return await backend.checkQuota();
+      return await backend.checkQuota(signal);
     } catch (err) {
       // If native check fails, fall back to basic availability
     }
   }
 
   // 2. Fallback to basic isAvailable() check
+  if (signal?.aborted) return { status: "unknown" };
   try {
-    const available = await backend.isAvailable();
+    const available = await backend.isAvailable(signal);
     if (!available) {
       return { status: "unavailable" };
     }

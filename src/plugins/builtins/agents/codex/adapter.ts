@@ -28,9 +28,12 @@ export class CodexAdapter implements AgentBackend {
   readonly emitsStreamJson = false;
   readonly nativeWriter = true;
 
-  async isAvailable(): Promise<boolean> {
+  async isAvailable(signal?: AbortSignal): Promise<boolean> {
     try {
-      const { exitCode } = await execCommand("which", ["codex"]);
+      const args = ["codex"];
+      const { exitCode } = signal
+        ? await execCommand("which", args, undefined, { signal })
+        : await execCommand("which", args);
       return exitCode === 0;
     } catch {
       return false;

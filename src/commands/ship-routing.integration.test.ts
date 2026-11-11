@@ -392,6 +392,59 @@ describe("ship with the real AgentPort router", () => {
     }
   });
 
+  it("terminates the native availability subprocess when ship falls back", async () => {
+    seedQuota(100, 50);
+    const claude = provider("claude");
+    const { AgentBackendRegistry } = await import(
+      "../plugins/agent-registry.js"
+    );
+    const nativeCodex = new CodexAdapter();
+    vi.mocked(AgentBackendRegistry.prototype.getAgentBackend).mockImplementation(
+      async (name) => (name === "codex" ? nativeCodex : claude),
+    );
+
+    const binDir = path.join(root, "bin");
+    const pidFile = path.join(root, "which.pid");
+    fs.mkdirSync(binDir);
+    fs.writeFileSync(
+      path.join(binDir, "which"),
+      '#!/bin/sh\ntrap "" TERM\nprintf "%s\\n" "$$" > "$FIXTURE_PID_FILE"\nexec /bin/sleep 30\n',
+      { mode: 0o755 },
+    );
+    vi.stubEnv("FIXTURE_PID_FILE", pidFile);
+    vi.stubEnv("PATH", `${binDir}${path.delimiter}${process.env.PATH}`);
+
+    try {
+      await ship();
+
+      const childPid = Number(fs.readFileSync(pidFile, "utf8"));
+      expect(childPid).toBeGreaterThan(0);
+      expect(ShipOrchestrator).toHaveBeenCalledExactlyOnceWith(
+        expect.objectContaining({
+          backend: "claude",
+          selectedModel: "claude-primary",
+        }),
+        undefined,
+      );
+      await vi.waitFor(() => {
+        expect(() => process.kill(childPid, 0)).toThrow(
+          expect.objectContaining({ code: "ESRCH" }),
+        );
+      });
+    } finally {
+      const childPid = fs.existsSync(pidFile)
+        ? Number(fs.readFileSync(pidFile, "utf8"))
+        : 0;
+      if (childPid > 0) {
+        try {
+          process.kill(childPid, "SIGKILL");
+        } catch (error) {
+          if ((error as NodeJS.ErrnoException).code !== "ESRCH") throw error;
+        }
+      }
+    }
+  }, 10_000);
+
   it.each([false, true])(
     "reports a timed-out explicit backend as unavailable with dry-run=%s",
     async (dryRun) => {
@@ -461,13 +514,17 @@ describe("ship with the real AgentPort router", () => {
       async (name) => (name === "codex" ? codex : claude),
     );
     let releaseQuota!: () => void;
-    const pendingQuota = new Promise<{ status: "unknown" }>((resolve) => {
-      releaseQuota = () => resolve({ status: "unknown" });
-    });
+    let quotaSignal: AbortSignal | undefined;
     const quotaStarted = new Promise<void>((resolve) => {
-      vi.mocked(codex.checkQuota).mockImplementation(() => {
+      vi.mocked(codex.checkQuota).mockImplementation((signal) => {
+        quotaSignal = signal;
         resolve();
-        return pendingQuota;
+        return new Promise((resolveQuota, rejectQuota) => {
+          releaseQuota = () => resolveQuota({ status: "unknown" });
+          signal?.addEventListener("abort", () => rejectQuota(signal.reason), {
+            once: true,
+          });
+        });
       });
     });
 
@@ -480,6 +537,8 @@ describe("ship with the real AgentPort router", () => {
       expect(ShipOrchestrator).not.toHaveBeenCalled();
 
       await vi.advanceTimersByTimeAsync(1);
+      expect(quotaSignal?.aborted).toBe(true);
+      expect(codex.isAvailable).toHaveBeenCalledOnce();
       expect(ShipOrchestrator).toHaveBeenCalledExactlyOnceWith(
         expect.objectContaining({
           backend: "codex",
@@ -491,7 +550,7 @@ describe("ship with the real AgentPort router", () => {
       await shipping;
     } finally {
       vi.useRealTimers();
-      releaseQuota();
+      releaseQuota?.();
       await shipping;
     }
   });

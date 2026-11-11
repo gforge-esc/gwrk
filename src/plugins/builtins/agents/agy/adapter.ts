@@ -31,9 +31,12 @@ export class AgyAdapter implements AgentBackend {
   readonly emitsStreamJson = true;
   readonly nativeWriter = true;
 
-  async isAvailable(): Promise<boolean> {
+  async isAvailable(signal?: AbortSignal): Promise<boolean> {
     try {
-      const { exitCode } = await execCommand("which", ["agy"]);
+      const args = ["agy"];
+      const { exitCode } = signal
+        ? await execCommand("which", args, undefined, { signal })
+        : await execCommand("which", args);
       return exitCode === 0;
     } catch {
       return false;
