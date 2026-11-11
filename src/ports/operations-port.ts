@@ -14,6 +14,7 @@ import type {
 import type {
   HarvestCandidateInput,
   HarvestOperationStatus,
+  HarvestSlackRecipient,
   HarvestStageName,
   HarvestStagePlanEntry,
   HarvestStageReceipt,
@@ -167,7 +168,7 @@ export interface DurableHarvestOperation {
   mergeCommitSha: string | null;
   terminalAt: string;
   recipient: DeliveryRecipient | null;
-  plannedSlackRecipient: DeliveryRecipient | null;
+  plannedSlackRecipient: HarvestSlackRecipient | null;
   status: HarvestOperationStatus;
   leaseOwner: string | null;
   leaseEpoch: number;
@@ -366,7 +367,8 @@ export interface OperationsStorePort {
   /**
    * Persist the full, nonempty set of initial receipts and plannedSlackRecipient in one fenced write.
    * Require all stages for the supplied phase IDs and the operation's terminal event.
-   * Resolve the saved recipient and its project feature thread under the fence on first initialization.
+   * Use resolveHarvestSlackRecipient with the enrolled binding and scoped feature thread
+   * under the fence on first initialization.
    * Derive cleanup eligibility from current stored pull request facts under the fence.
    * Use hasVerifiedBranchCleanupTarget and validate the plan with isCompleteHarvestStagePlan.
    * If the operation names a phase, require that phase alone.
@@ -431,7 +433,8 @@ export interface OperationsStorePort {
   }): OutboxItem[];
   /**
    * Bind the resolved destination and existing metadata key in the atomic send claim.
-   * For harvest_gate_failed, use the notice's saved recipient on the first send claim.
+   * For harvest_gate_failed, use the notice's complete saved Slack recipient on the first send claim.
+   * Reject a gate failure send claim if the saved workspace or channel is missing.
    * For other notices, a null destination on a first claim permits a skip without sending.
    * Reconcile abandoned sending and uncertain items at the stored destination.
    * Keep the stored destination on later claims.

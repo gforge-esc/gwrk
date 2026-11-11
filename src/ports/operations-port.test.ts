@@ -16,17 +16,22 @@ import {
   evaluateBranchCleanupSafety,
   hasVerifiedBranchCleanupTarget,
   isCompleteHarvestStagePlan,
+  isHarvestSlackRecipient,
   isStaleHarvestClose,
   isValidHarvestStageTransition,
   matchesHarvestNoticeRecipient,
   mergeVerifiedHarvestFacts,
   planHarvestStages,
   planLateBranchCleanup,
+  resolveHarvestSlackRecipient,
   scopeManualHarvestToPhases,
   scopeVerifiedMergeToPhases,
   verifyHarvestTarget,
 } from "../domain/durable-harvest.js";
-import type { SlackFeatureThread } from "../domain/project-registry.js";
+import type {
+  ProjectSlackBinding,
+  SlackFeatureThread,
+} from "../domain/project-registry.js";
 import type {
   DurableHarvestOperation,
   HarvestExecutionPort,
@@ -397,6 +402,7 @@ function outbox(
 function restoreRecoveryStore(persisted: {
   dispatches?: DurableDispatchOperation[];
   featureThreads?: SlackFeatureThread[];
+  slackBindings?: Record<string, ProjectSlackBinding>;
   harvests: DurableHarvestOperation[];
   stages: HarvestStageReceipt[];
   outboxItems: OutboxItem[];
@@ -404,6 +410,7 @@ function restoreRecoveryStore(persisted: {
   const {
     dispatches = [],
     featureThreads = [],
+    slackBindings = {},
     harvests,
     stages,
     outboxItems,
@@ -411,25 +418,6 @@ function restoreRecoveryStore(persisted: {
   const resumableHarvests = ["accepted", "running", "delivery_pending"];
   const byCreation = (a: { createdAt: string }, b: { createdAt: string }) =>
     a.createdAt.localeCompare(b.createdAt);
-
-  function resolveHarvestSlackRecipient(row: DurableHarvestOperation) {
-    const { recipient } = row;
-    if (recipient?.surface !== "slack" || recipient.projectId !== row.projectId)
-      return null;
-    const thread = featureThreads.find(
-      (entry) =>
-        entry.projectId === row.projectId && entry.featureId === row.featureId,
-    );
-    if (thread) {
-      return {
-        ...recipient,
-        workspaceId: thread.workspaceId,
-        channelId: thread.channelId,
-        threadTs: thread.rootTs,
-      };
-    }
-    return recipient.channelId ? recipient : null;
-  }
 
   const store: RecoveryStore = {
     getDispatchOperation({ projectId, featureId, phaseId }) {
@@ -486,7 +474,17 @@ function restoreRecoveryStore(persisted: {
       );
       const recipient = saved.length
         ? row.plannedSlackRecipient
-        : resolveHarvestSlackRecipient(row);
+        : resolveHarvestSlackRecipient({
+            projectId: row.projectId,
+            featureId: row.featureId,
+            recipient: row.recipient,
+            binding: slackBindings[row.projectId] ?? null,
+            thread: featureThreads.find(
+              (entry) =>
+                entry.projectId === row.projectId &&
+                entry.featureId === row.featureId,
+            ),
+          });
       if (
         (row.phaseId !== null &&
           (phaseIds.length !== 1 || phaseIds[0] !== row.phaseId)) ||
@@ -660,8 +658,9 @@ function restoreRecoveryStore(persisted: {
       const action = row.status === "pending" ? "send" : "reconcile";
       if (action === "send" && row.channelId === null) {
         if (row.eventType === "harvest_gate_failed") {
-          row.workspaceId = row.recipient.workspaceId ?? null;
-          row.channelId = row.recipient.channelId ?? null;
+          if (!isHarvestSlackRecipient(row.recipient)) return null;
+          row.workspaceId = row.recipient.workspaceId;
+          row.channelId = row.recipient.channelId;
           row.threadTs = row.recipient.threadTs ?? null;
         } else if (destination) {
           Object.assign(row, destination);
@@ -686,6 +685,7 @@ function restoreRecoveryStore(persisted: {
       structuredClone({
         dispatches,
         featureThreads,
+        slackBindings,
         harvests,
         stages,
         outboxItems,
@@ -942,6 +942,13 @@ describe("durable recovery store contract", () => {
 
   it("persists a complete phase plan before work and preserves progress after takeover", () => {
     const store = restoreRecoveryStore({
+      slackBindings: {
+        [projectId]: {
+          workspaceId: "W1",
+          channelId: "C1",
+          sharedChannel: false,
+        },
+      },
       harvests: [
         harvest("planned", {
           phaseId: null,
@@ -1152,6 +1159,13 @@ describe("durable recovery store contract", () => {
     "rejects an initial plan that skips %s when required",
     (skippedStage) => {
       const store = restoreRecoveryStore({
+        slackBindings: {
+          [projectId]: {
+            workspaceId: "W1",
+            channelId: "C1",
+            sharedChannel: false,
+          },
+        },
         harvests: [
           harvest("planned", {
             recipient: outbox("notice", "pending").recipient,
@@ -1884,10 +1898,17 @@ it.each([
             channelId: thread.channelId,
             threadTs: thread.rootTs,
           }
-        : acceptedNotice.recipient,
+        : { ...acceptedNotice.recipient, workspaceId: "W1" },
     };
     const initial = restoreRecoveryStore({
       featureThreads: hasFeatureThread ? [thread] : [],
+      slackBindings: {
+        [projectId]: {
+          workspaceId: "W1",
+          channelId: hasFeatureThread ? thread.channelId : "C1",
+          sharedChannel: false,
+        },
+      },
       harvests: [
         harvest(operationId, {
           recipient: hasFeatureThread
@@ -2025,7 +2046,7 @@ it.each([
       }),
     ).toEqual({ ok: true });
     expect(restarted.snapshot()).toEqual(restartState);
-    if (hasFeatureThread) {
+    if (hasSlackTarget) {
       expect(
         restarted.claimOutboxItem({
           outboxId: notice.outboxId,
@@ -2034,11 +2055,56 @@ it.each([
         }),
       ).toMatchObject({
         action: "send",
-        item: { ...destination, clientMetadataKey: notice.clientMetadataKey },
+        item: {
+          workspaceId: notice.recipient.workspaceId,
+          channelId: notice.recipient.channelId,
+          threadTs: notice.recipient.threadTs,
+          clientMetadataKey: notice.clientMetadataKey,
+        },
       });
     }
   },
 );
+
+it("does not send an incomplete saved gate notice to the caller's destination", () => {
+  const notice = outbox("incomplete", "pending", {
+    eventType: "harvest_gate_failed",
+  });
+  const store = restoreRecoveryStore({
+    harvests: [],
+    stages: [],
+    outboxItems: [notice],
+  });
+  expect(
+    store.claimOutboxItem({
+      outboxId: notice.outboxId,
+      nowIso,
+      destination: { workspaceId: "W1", channelId: "C1", threadTs: "1.2" },
+    }),
+  ).toBeNull();
+  expect(store.snapshot().outboxItems).toEqual([notice]);
+});
+
+it("rejects a saved recipient outside the enrolled Slack binding", () => {
+  const recipient = outbox("foreign", "pending").recipient;
+  const route = {
+    projectId,
+    featureId,
+    binding: { workspaceId: "W1", channelId: "C1", sharedChannel: false },
+  };
+  for (const foreign of [
+    { ...recipient, workspaceId: "W2" },
+    { ...recipient, channelId: "C2" },
+    { ...recipient, projectId: "other-project" },
+  ]) {
+    expect(
+      resolveHarvestSlackRecipient({ ...route, recipient: foreign }),
+    ).toBeNull();
+  }
+  expect(
+    resolveHarvestSlackRecipient({ ...route, binding: null, recipient }),
+  ).toBeNull();
+});
 
 it("enriches a completed pull request harvest when a later delivery verifies its head", () => {
   const incomplete = harvestIntake("first-verified", { headRepoSlug: null });

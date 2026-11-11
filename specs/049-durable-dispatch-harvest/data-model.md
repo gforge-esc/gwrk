@@ -211,7 +211,7 @@ CREATE INDEX IF NOT EXISTS idx_notification_outbox_pending
 
 Record the delivery and its linked operations in one transaction. Persist work-key aliases in that transaction. Store the normalized repository and payload digest with the original delivery. Replay the linked operations in position order after checking both values. Rejected deliveries have no operation links. Resolve the primary work key and alias before inserting a work key in either table.
 
-Save the resolved Slack recipient in `planned_slack_recipient_json` in the fenced transaction that initializes the stage receipts. Leave it null when the plan has no Slack target. Reuse the saved recipient on plan replay. Use it for the atomic gate failure notice and the notice's first send claim.
+Save the resolved Slack recipient in `planned_slack_recipient_json` in the fenced transaction that initializes the stage receipts. Require the workspace and channel from the enrolled project binding. Leave it null when the plan has no Slack target. Reuse the saved recipient on plan replay. Use it for the atomic gate failure notice and the notice's first send claim.
 
 ## Domain Zod schemas
 

@@ -3,7 +3,64 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { z } from "zod";
-import type { DeliveryRecipient, EnrolledProject } from "./project-registry.js";
+import type {
+  DeliveryRecipient,
+  EnrolledProject,
+  ProjectSlackBinding,
+  SlackFeatureThread,
+} from "./project-registry.js";
+
+export interface HarvestSlackRecipient extends DeliveryRecipient {
+  surface: "slack";
+  workspaceId: string;
+  channelId: string;
+}
+
+export function isHarvestSlackRecipient(
+  recipient: DeliveryRecipient,
+): recipient is HarvestSlackRecipient {
+  return (
+    recipient.surface === "slack" &&
+    Boolean(recipient.workspaceId?.trim() && recipient.channelId?.trim())
+  );
+}
+
+export function resolveHarvestSlackRecipient(input: {
+  projectId: string;
+  featureId: string;
+  recipient: DeliveryRecipient | null;
+  binding: ProjectSlackBinding | null;
+  thread?: SlackFeatureThread;
+}): HarvestSlackRecipient | null {
+  const { projectId, featureId, recipient, binding, thread } = input;
+  if (
+    !binding ||
+    recipient?.surface !== "slack" ||
+    recipient.projectId !== projectId ||
+    (recipient.workspaceId !== undefined &&
+      recipient.workspaceId !== binding.workspaceId) ||
+    (recipient.channelId !== undefined &&
+      recipient.channelId !== binding.channelId)
+  ) {
+    return null;
+  }
+  const threadMatches =
+    thread?.projectId === projectId &&
+    thread.featureId === featureId &&
+    thread.workspaceId === binding.workspaceId &&
+    thread.channelId === binding.channelId;
+  return {
+    ...recipient,
+    surface: "slack",
+    workspaceId: binding.workspaceId,
+    channelId: binding.channelId,
+    threadTs: threadMatches
+      ? thread.rootTs
+      : recipient.channelId === binding.channelId
+        ? recipient.threadTs
+        : undefined,
+  };
+}
 
 export const DeliverySourceSchema = z.enum([
   "github_webhook",
