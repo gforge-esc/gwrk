@@ -139,6 +139,14 @@ function runLedgerCommand(...args: string[]) {
 }
 
 function runInstalledLedgerCommand(ledger: string, ...args: string[]) {
+  return runInstalledLedgerCommandAtHome(ledger, dirname(ledger), ...args);
+}
+
+function runInstalledLedgerCommandAtHome(
+  ledger: string,
+  home: string,
+  ...args: string[]
+) {
   return spawnSync(
     process.execPath,
     [
@@ -152,7 +160,7 @@ function runInstalledLedgerCommand(ledger: string, ...args: string[]) {
       cwd: root,
       env: {
         ...process.env,
-        GWRK_HOME: dirname(ledger),
+        GWRK_HOME: home,
         GWRK_DB_PATH: ledger,
         GWRK_RUNTIME_DIR: join(root, "runtime"),
       },
@@ -200,6 +208,63 @@ describe("installed ledger commands outside a checkout", () => {
       expect.soft(result.status, result.stderr).toBe(1);
       expect.soft(result.stderr).toContain(marker);
       await expect(stat(marker)).rejects.toMatchObject({ code: "ENOENT" });
+    },
+  );
+
+  it("preserves an absent device record with separate state and home", async () => {
+    const home = join(root, "identity");
+    const state = join(root, "ledger-state");
+    await mkdir(home);
+    await mkdir(state);
+    const ledger = join(state, "gwrk.db");
+    seedLedger(ledger).close();
+    const device = join(home, "device.json");
+    const result = runInstalledLedgerCommandAtHome(
+      ledger,
+      home,
+      "backup",
+      "--out",
+      join(device, "copy"),
+    );
+    expect.soft(result.status, result.stderr).toBe(1);
+    expect.soft(result.stderr).toContain(device);
+    await expect(stat(device)).rejects.toMatchObject({ code: "ENOENT" });
+    const clean = runInstalledLedgerCommandAtHome(
+      ledger,
+      home,
+      "backup",
+      "--out",
+      join(root, "safe-backup"),
+    );
+    expect(clean.status, clean.stderr).toBe(0);
+  });
+
+  it.each([false, true])(
+    "does not create a second ledger's restore marker via symlink=%s",
+    async (alias) => {
+      const first = join(root, "first-state");
+      const second = join(root, "second-state");
+      await mkdir(first);
+      await mkdir(second);
+      const sourceLedger = join(first, "gwrk.db");
+      const otherLedger = join(second, "gwrk.db");
+      seedLedger(sourceLedger).close();
+      seedLedger(otherLedger).close();
+      const link = join(root, "other-state-alias");
+      await symlink(second, link);
+      const marker = join(second, ".restore-pending");
+      const result = runInstalledBackup(
+        sourceLedger,
+        join(alias ? link : second, ".restore-pending"),
+      );
+      expect.soft(result.status, result.stderr).toBe(1);
+      expect.soft(result.stderr).toContain("reserved restore path");
+      await expect(stat(marker)).rejects.toMatchObject({ code: "ENOENT" });
+      const clean = runInstalledBackup(
+        otherLedger,
+        join(root, "second-backup"),
+      );
+      expect(clean.status, clean.stderr).toBe(0);
     },
   );
 

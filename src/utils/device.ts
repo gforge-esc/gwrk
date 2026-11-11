@@ -20,7 +20,7 @@ export interface DeviceRecord {
  * Path to the per-machine device identity file.
  * GWRK_HOME overrides ~/.gwrk for testing.
  */
-function devicePath(): string {
+export function devicePath(): string {
   return path.join(gwrkHome(), "device.json");
 }
 

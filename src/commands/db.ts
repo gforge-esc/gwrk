@@ -26,7 +26,7 @@ import {
   InstanceLockBusyError,
   PendingLedgerRestoreError,
 } from "../ports/release-ops-port.js";
-import { loadDeviceStrict } from "../utils/device.js";
+import { devicePath, loadDeviceStrict } from "../utils/device.js";
 import { success } from "../utils/format.js";
 import { createOutput, resolveFormat } from "../utils/output.js";
 import { runsCommand } from "./runs.js";
@@ -98,6 +98,7 @@ const backupCommand = new Command("backup")
           .createBackup({
             dbPath: getDbPath(),
             destination,
+            devicePath: devicePath(),
             createdAt: new Date().toISOString(),
             gwrkVersion: command.parent?.parent?.version() ?? "unknown",
             collectDevice: loadDeviceStrict,

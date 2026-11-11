@@ -38,6 +38,7 @@ export interface InstanceLockPort {
 export interface LedgerBackupRequest {
   readonly dbPath: string;
   readonly destination: string;
+  readonly devicePath?: string;
   readonly createdAt: string;
   readonly gwrkVersion: string;
   collectDevice(): LedgerBackupMetadata["device"];

@@ -206,8 +206,16 @@ async function withMaintenanceLock<T>(state: string, run: () => Promise<T>) {
 }
 
 async function captureLedgerBackup(input: LedgerBackupRequest, dbPath: string) {
-  const destination = await canonicalPath(resolve(input.destination));
-  rejectReservedRestorePath(destination, dirname(dbPath));
+  const suppliedPath = resolve(input.destination);
+  const destination = await canonicalPath(suppliedPath);
+  rejectBackupRestoreMarker(destination);
+  rejectBackupRestoreMarker(suppliedPath);
+  if (input.devicePath) {
+    const configuredDevice = resolve(input.devicePath);
+    rejectPathAtOrBelow(suppliedPath, configuredDevice, "device path");
+    const canonicalDevice = await canonicalPath(configuredDevice);
+    rejectPathAtOrBelow(destination, canonicalDevice, "device path");
+  }
   const parent = dirname(destination);
   await mkdir(parent, { recursive: true, mode: 0o700 });
   const staging = await mkdtemp(join(parent, `.${basename(destination)}-`));
@@ -416,15 +424,38 @@ async function canonicalPath(path: string): Promise<string> {
   }
 }
 
+function rejectBackupRestoreMarker(path: string): void {
+  const parts = path.split(sep);
+  const marker = parts.indexOf(PENDING_LEDGER_RESTORE);
+  if (marker !== -1) {
+    rejectPathAtOrBelow(
+      path,
+      parts.slice(0, marker + 1).join(sep),
+      "restore path",
+    );
+  }
+}
+
 function rejectReservedRestorePath(path: string, state: string): void {
-  const pending = join(state, PENDING_LEDGER_RESTORE);
-  const offset = relative(pending, path);
+  rejectPathAtOrBelow(
+    path,
+    join(state, PENDING_LEDGER_RESTORE),
+    "restore path",
+  );
+}
+
+function rejectPathAtOrBelow(
+  path: string,
+  reserved: string,
+  label: string,
+): void {
+  const offset = relative(reserved, path);
   if (
     !isAbsolute(offset) &&
     offset !== ".." &&
     !offset.startsWith(`..${sep}`)
   ) {
-    throw new Error(`Path ${path} uses the reserved restore path ${pending}.`);
+    throw new Error(`Path ${path} uses the reserved ${label} ${reserved}.`);
   }
 }
 
