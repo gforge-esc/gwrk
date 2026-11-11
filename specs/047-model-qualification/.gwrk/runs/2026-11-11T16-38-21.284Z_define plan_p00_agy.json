@@ -1,0 +1,19 @@
+{
+  "runId": "2026-11-11T16:38:21.284Z_define_p00",
+  "feature": "047-model-qualification",
+  "phase": "p00",
+  "command": "define plan",
+  "agent": "agy",
+  "model": "gemini-4-carbon-high",
+  "startedAt": "2026-11-11T16:38:21.284Z",
+  "finishedAt": "2026-11-11T16:53:22.302Z",
+  "durationS": 901,
+  "exitCode": 0,
+  "attempt": 1,
+  "filesChanged": 4,
+  "linesAdded": 503,
+  "linesDeleted": 0,
+  "gitCommit": "53b18681ec7db1c67c8bf44165d3ab3dc37a6a60",
+  "gitBranch": "codex/model-qualification-plan",
+  "digest": []
+}
