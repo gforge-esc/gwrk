@@ -2,8 +2,9 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { exitCli, logCliError } from "../adapters/cli/output-scope.js";
+import { exitCli, logCliError, warnCli } from "../adapters/cli/output-scope.js";
 import { getDb } from "../db/index.js";
+import { projectScope } from "../db/project-registry.js";
 import type { AgentBackendConfig, AgentRegistry } from "./agent-registry.js";
 import { ModelSelector } from "./model-selector.js";
 import type { QuotaProber, QuotaReading } from "./quota-prober.js";
@@ -12,6 +13,8 @@ import { TaskClassification, classifyTask } from "./task-classifier.js";
 
 interface TaskContext {
   runId: string;
+  projectId: string;
+  ledgerAvailable?: boolean;
   feature: string;
   phase: string;
   taskType: string;
@@ -80,9 +83,9 @@ export class BackendSelector {
       const qB = readings.get(b.name)?.percent ?? 0;
 
       // If within 20%, use tiebreaker
-      if (Math.abs(qA - qB) <= 20) {
-        const successA = this.getSuccessRate(a.name);
-        const successB = this.getSuccessRate(b.name);
+      if (context.ledgerAvailable !== false && Math.abs(qA - qB) <= 20) {
+        const successA = this.getSuccessRate(a.name, context.projectId);
+        const successB = this.getSuccessRate(b.name, context.projectId);
         if (successA !== successB) {
           return successB - successA;
         }
@@ -128,21 +131,27 @@ export class BackendSelector {
           modelFailoverUsed,
         };
 
-        // Record decision
-        recordDecision({
-          runId: context.runId,
-          feature: context.feature,
-          phase: context.phase,
-          selectedBackend: selection.backend,
-          selectedModel: selection.model,
-          taskClassification: selection.taskClassification,
-          reason: selection.reason,
-          quotaPercent: selection.quotaPercent,
-          probeStatus: selection.probeStatus,
-          taskSp: context.taskSP,
-          fallbackUsed: selection.fallbackUsed,
-          modelFailoverUsed: selection.modelFailoverUsed,
-        });
+        if (context.ledgerAvailable !== false) {
+          try {
+            recordDecision({
+              runId: context.runId,
+              projectId: context.projectId,
+              feature: context.feature,
+              phase: context.phase,
+              selectedBackend: selection.backend,
+              selectedModel: selection.model,
+              taskClassification: selection.taskClassification,
+              reason: selection.reason,
+              quotaPercent: selection.quotaPercent,
+              probeStatus: selection.probeStatus,
+              taskSp: context.taskSP,
+              fallbackUsed: selection.fallbackUsed,
+              modelFailoverUsed: selection.modelFailoverUsed,
+            });
+          } catch (error) {
+            warnCli(`Routing decision recording skipped: ${error}`);
+          }
+        }
 
         return selection;
       }
@@ -161,18 +170,21 @@ export class BackendSelector {
    * Calculates historical success rate for a backend from the runs table.
    * Success = exit_code 0.
    */
-  private getSuccessRate(backendName: string): number {
+  private getSuccessRate(backendName: string, projectId: string): number {
     try {
       const db = getDb();
+      const { ids, placeholders } = projectScope(db, projectId);
       const result = db
         .prepare(`
         SELECT 
           COUNT(*) as total,
           SUM(CASE WHEN exit_code = 0 THEN 1 ELSE 0 END) as successes
         FROM runs 
-        WHERE agent_backend = ?
+        WHERE agent_backend = ? AND project_id IN (${placeholders})
       `)
-        .get(backendName) as { total: number; successes: number } | undefined;
+        .get(backendName, ...ids) as
+        | { total: number; successes: number }
+        | undefined;
 
       if (!result || result.total === 0) return 0;
       return result.successes / result.total;

@@ -6,7 +6,9 @@ import { writeFile } from "node:fs/promises";
 import type Database from "better-sqlite3";
 import { recordCompression } from "../../db/compression.js";
 import { type SqliteDatabaseOptions, openDatabase } from "../../db/index.js";
+import { createProjectRegistry } from "../../db/project-registry.js";
 import { PlanStore } from "../../engine/plan-store.js";
+import type { ProjectRegistryPort } from "../../ports/store-port.js";
 import type { PlanStorePort, RunStorePort } from "../../ports/store-port.js";
 
 export interface SqliteStoreOptions extends SqliteDatabaseOptions {
@@ -58,4 +60,14 @@ export function createSqliteRunStoreAdapter(
       if (owned?.open) owned.close();
     },
   };
+}
+
+export function createSqliteProjectRegistryAdapter(
+  options: SqliteStoreOptions = {},
+): ProjectRegistryPort {
+  const { db, ...databaseOptions } = options;
+  const connection = db ?? openDatabase(databaseOptions);
+  return createProjectRegistry(connection, () => {
+    if (!db && connection.open) connection.close();
+  });
 }

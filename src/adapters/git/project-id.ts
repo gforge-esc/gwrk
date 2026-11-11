@@ -39,6 +39,10 @@ export function discoverGitIdentityFacts(
   return { projectRoot, remoteOriginUrl, gitCommonDir };
 }
 
+export function resolveGitCheckoutRoot(directory: string): string {
+  return readGit(directory, ["rev-parse", "--show-toplevel"]) ?? directory;
+}
+
 export function resolveProjectId(projectRoot: string): string {
   return computeProjectId(discoverGitIdentityFacts(projectRoot));
 }
