@@ -569,6 +569,7 @@ export function assertNoSecretMaterial(
         headerPattern.test(key) ||
         secretPattern.test(key) ||
         isCredentialHeaderRecord(entry, "name") ||
+        (isHeaderCollection && isCredentialHeaderRecord(entry, "key")) ||
         (typeof entry === "string" &&
           (headerPattern.test(entry) || secretPattern.test(entry))) ||
         (Array.isArray(entry) &&

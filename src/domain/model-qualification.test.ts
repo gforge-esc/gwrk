@@ -203,6 +203,26 @@ describe("credential guard", () => {
       expect(() => assertNoSecretMaterial(evidence(response))).not.toThrow();
     });
 
+    it.each(["headers", "rawHeaders"])(
+      "rejects a singleton Cookie key in %s",
+      (collection) => {
+        const response = {
+          [collection]: { key: "cOoKiE", value: "session=fixture-only" },
+        };
+        expect(() => assertNoSecretMaterial(evidence(response))).toThrow(
+          /secret material/i,
+        );
+      },
+    );
+
+    it.each([
+      ["Cookie", "Accept-Encoding"],
+      ["Accept-Encoding", "Cookie"],
+    ])("allows singleton keyed Vary values %s and %s", (first, second) => {
+      const response = { headers: { key: "Vary", value: [first, second] } };
+      expect(() => assertNoSecretMaterial(evidence(response))).not.toThrow();
+    });
+
     it.each([
       ["Cookie", "Accept-Encoding"],
       ["Accept-Encoding", "Cookie"],
