@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { createHmac } from "node:crypto";
+import { createHash, createHmac } from "node:crypto";
 
 export type ModelRole = "define" | "implement" | "review";
 export type BlindedOption = "A" | "B";
@@ -339,17 +339,46 @@ export function evaluatePromotion(input: PromotionEvidence): PromotionDecision {
   return { promote: true };
 }
 
+export function eligibleRoutesDigest(
+  snapshot: DiscoverySnapshot,
+  scope: RunnerScope,
+): string {
+  const routes = new Set<string>();
+  if (Array.isArray(snapshot?.adapters)) {
+    for (const adapter of snapshot.adapters) {
+      if (!Array.isArray(adapter?.models)) continue;
+      for (const model of adapter.models) {
+        if (!Array.isArray(model?.supportedEfforts)) continue;
+        const { backend, provider, family, modelId } = model;
+        for (const effort of [undefined, ...model.supportedEfforts]) {
+          const candidate = { backend, provider, family, modelId, effort };
+          if (checkCandidate(snapshot, scope, candidate).ok) {
+            routes.add(
+              JSON.stringify([backend, provider, family, modelId, effort]),
+            );
+          }
+        }
+      }
+    }
+  }
+  return createHash("sha256")
+    .update(JSON.stringify([...routes].sort()))
+    .digest("hex");
+}
+
 export interface QualificationFingerprint {
   readonly fixtureSuiteHash: string;
   readonly workflowPromptHashes: Readonly<Record<string, string>>;
   readonly cliVersion: string;
   readonly adapterVersion: string;
+  readonly eligibleRoutesDigest: string;
 }
 
 type StalenessReason =
   | "fixtures-changed"
   | "prompts-changed"
   | "tools-changed"
+  | "eligible-models-changed"
   | "model-unavailable";
 
 export function qualificationStaleness(
@@ -377,6 +406,8 @@ export function qualificationStaleness(
     pinned.adapterVersion !== current.adapterVersion
   )
     reasons.push("tools-changed");
+  if (pinned.eligibleRoutesDigest !== current.eligibleRoutesDigest)
+    reasons.push("eligible-models-changed");
   if (!modelAvailable) reasons.push("model-unavailable");
   return reasons;
 }

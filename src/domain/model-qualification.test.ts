@@ -5,12 +5,15 @@
 import { describe, expect, it } from "vitest";
 import {
   type AdapterDiscoveryReport,
+  type DiscoveredModel,
+  type DiscoverySnapshot,
   type JudgeVerdict,
   type ModelCandidate,
   type PromotionEvidence,
   assertNoSecretMaterial,
   blindCandidate,
   checkCandidate,
+  eligibleRoutesDigest,
   evaluatePromotion,
   isConcreteModel,
   qualificationStaleness,
@@ -1033,12 +1036,105 @@ describe("model qualification policy", () => {
     },
   );
 
+  it("expires evidence when the eligible route digest changes", () => {
+    const pinned = {
+      fixtureSuiteHash: "fixtures",
+      workflowPromptHashes: { define: "prompt" },
+      cliVersion: "3.0",
+      adapterVersion: "1.2",
+      eligibleRoutesDigest: "previous-catalog-digest",
+    };
+    const current = { ...pinned, eligibleRoutesDigest: "new-catalog-digest" };
+
+    expect(qualificationStaleness(pinned, current, true)).toEqual([
+      "eligible-models-changed",
+    ]);
+  });
+
+  describe("eligible catalog staleness", () => {
+    const nextModel = { ...model, modelId: "frontier-v4" };
+    const catalog = (...models: DiscoveredModel[]): DiscoverySnapshot => ({
+      scope,
+      adapters: [{ ...report, models }],
+    });
+    const fingerprint = (current: DiscoverySnapshot) => ({
+      fixtureSuiteHash: "fixtures",
+      workflowPromptHashes: { define: "prompt" },
+      cliVersion: report.cliVersion,
+      adapterVersion: report.adapterVersion,
+      eligibleRoutesDigest: eligibleRoutesDigest(current, scope),
+    });
+
+    it.each([
+      ["gains an eligible model", snapshot, catalog(model, nextModel)],
+      ["loses an eligible model", catalog(model, nextModel), snapshot],
+      [
+        "changes a supported effort",
+        catalog({ ...model, supportedEfforts: ["high", "low"] }),
+        catalog({ ...model, supportedEfforts: ["high", "medium"] }),
+      ],
+    ])("expires evidence when the catalog %s", (_change, pinned, current) => {
+      const modelAvailable = checkCandidate(current, scope, candidate).ok;
+      expect(modelAvailable).toBe(true);
+      expect(
+        qualificationStaleness(
+          fingerprint(pinned),
+          fingerprint(current),
+          modelAvailable,
+        ),
+      ).toEqual(["eligible-models-changed"]);
+    });
+
+    it("keeps evidence fresh after catalog entries are reordered", () => {
+      const primaryReport = {
+        ...report,
+        models: [model, { ...nextModel, supportedEfforts: ["high", "low"] }],
+      };
+      const otherReport = {
+        ...report,
+        backend: "other-cli",
+        models: [{ ...model, backend: "other-cli" }],
+      };
+      const pinned = { scope, adapters: [primaryReport, otherReport] };
+      const current = {
+        scope,
+        adapters: [
+          otherReport,
+          {
+            ...report,
+            models: [
+              { ...nextModel, supportedEfforts: ["low", "high"] },
+              model,
+            ],
+          },
+        ],
+      };
+
+      expect(
+        qualificationStaleness(fingerprint(pinned), fingerprint(current), true),
+      ).toEqual([]);
+    });
+
+    it("keeps evidence fresh when only ineligible routes are added", () => {
+      const current = catalog(
+        { ...model, supportedEfforts: ["high", "low\u0000"] },
+        { ...nextModel, hidden: true },
+        { ...nextModel, modelId: "provider-a/auto" },
+      );
+
+      expect(eligibleRoutesDigest(current, scope)).toBe(
+        eligibleRoutesDigest(snapshot, scope),
+      );
+    });
+  });
+
   it("expires evidence after effective prompt, fixture, tool or model changes", () => {
     const pinned = {
       fixtureSuiteHash: "fixtures",
       workflowPromptHashes: { define: "prompt", adr: "policy" },
       cliVersion: "3.0",
       adapterVersion: "1.2",
+      eligibleRoutesDigest: eligibleRoutesDigest(snapshot, scope),
     };
     expect(
       qualificationStaleness(
