@@ -48,19 +48,21 @@ describe("CodexAdapter", () => {
   });
   it("normalizes JSON results and failed JSONL turns", () => {
     const report = { summary: "GO", intents: [] };
-    expect(adapter.parseResult(JSON.stringify(report, null, 2), "", 0))
-      .toMatchObject({ status: "success", structuredOutput: report });
+    expect(
+      adapter.parseResult(JSON.stringify(report, null, 2), "", 0),
+    ).toMatchObject({ status: "success", structuredOutput: report });
 
     const message = JSON.stringify({
       type: "item.completed",
       item: { type: "agent_message", text: JSON.stringify(report) },
     });
     const terminal = JSON.stringify({ type: "turn.failed" });
-    expect(adapter.parseResult(`${message}\n${terminal}`, "", 0)).toMatchObject({
-      status: "failure",
-      exitCode: 1,
-      unwrappedStdout: JSON.stringify(report),
-    });
+    expect(adapter.parseResult(`${message}\n${terminal}`, "", 0)).toMatchObject(
+      {
+        status: "failure",
+        exitCode: 1,
+        unwrappedStdout: JSON.stringify(report),
+      },
+    );
   });
-
 });

@@ -218,14 +218,22 @@ describe("AgyAdapter", () => {
     const adapter = new AgyAdapter();
     const stdout = [
       { event: "result", result: { status: "SUCCESS", response: "GO" } },
-      { event: "result", result: { status: "ERROR" } },
-    ].map((event) => JSON.stringify(event)).join("\n");
+      {
+        event: "result",
+        result: {
+          status: "ERROR",
+          error: "Your AI credits balance is too low to continue.",
+        },
+      },
+    ]
+      .map((event) => JSON.stringify(event))
+      .join("\n");
 
     expect(adapter.parseResult(stdout, "", 0)).toMatchObject({
       status: "failure",
+      errorType: "rate_limit",
       exitCode: 1,
       unwrappedStdout: "GO",
     });
   });
-
 });

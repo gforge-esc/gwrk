@@ -175,15 +175,15 @@
           "title": "Modify workflow-runtime.ts",
           "description": "MODIFY src/plugins/workflow-runtime.ts. Populate `task.stdin` before dispatch and support `nativeOnly` execution with an injected `dispatcher`. Tests: src/plugins/workflow-runtime.test.ts",
           "status": "open",
-          "gateScript": "pnpm build\npnpm exec vitest run src/utils/agent.test.ts src/utils/agent.grounding-decisions.test.ts src/plugins/workflow-runtime.test.ts src/plugins/skill-runtime.test.ts src/engine/ship-orchestrator.workflow-seam.test.ts src/plugins/builtins/workflows/gwrk-plan/prompt-contract.test.ts src/architecture.test.ts",
+          "gateScript": "gates/phase-04.sh",
           "sp": 1
         },
         {
           "id": "T017",
           "title": "Modify ship-orchestrator.ts",
-          "description": "MODIFY src/engine/ship-orchestrator.ts. Route `stageImplement` and `executeReviewWorkflow` through `WorkflowRuntime` in `nativeOnly` mode using `dispatchWithFailback`. Tests: src/engine/ship-orchestrator.workflow-seam.test.ts",
+          "description": "MODIFY src/engine/ship-orchestrator.ts. Route `stageImplement` and `executeReviewWorkflow` through `WorkflowRuntime` in `nativeOnly` mode using `dispatchWithFailback`. Tests: src/engine/ship-orchestrator.review.test.ts, src/engine/ship-orchestrator.test.ts",
           "status": "open",
-          "gateScript": "pnpm build\npnpm exec vitest run src/utils/agent.test.ts src/utils/agent.grounding-decisions.test.ts src/plugins/workflow-runtime.test.ts src/plugins/skill-runtime.test.ts src/engine/ship-orchestrator.workflow-seam.test.ts src/plugins/builtins/workflows/gwrk-plan/prompt-contract.test.ts src/architecture.test.ts",
+          "gateScript": "gates/phase-04.sh",
           "sp": 1
         },
         {
@@ -191,7 +191,7 @@
           "title": "Modify agent.ts",
           "description": "MODIFY src/utils/agent.ts. Combine prompt and stdin before enforcement resolution, grounding and `<command_safety>` injection without duplicating prompts. Tests: src/utils/agent.test.ts",
           "status": "open",
-          "gateScript": "pnpm build\npnpm exec vitest run src/utils/agent.test.ts src/utils/agent.grounding-decisions.test.ts src/plugins/workflow-runtime.test.ts src/plugins/skill-runtime.test.ts src/engine/ship-orchestrator.workflow-seam.test.ts src/plugins/builtins/workflows/gwrk-plan/prompt-contract.test.ts src/architecture.test.ts",
+          "gateScript": "gates/phase-04.sh",
           "sp": 1
         },
         {
@@ -199,7 +199,7 @@
           "title": "Modify PROMPT.md",
           "description": "MODIFY src/plugins/builtins/workflows/gwrk-plan/PROMPT.md. Add `<code_quality>` enforcement placeholder while preserving canonical plan format rules",
           "status": "open",
-          "gateScript": "pnpm build\npnpm exec vitest run src/utils/agent.test.ts src/utils/agent.grounding-decisions.test.ts src/plugins/workflow-runtime.test.ts src/plugins/skill-runtime.test.ts src/engine/ship-orchestrator.workflow-seam.test.ts src/plugins/builtins/workflows/gwrk-plan/prompt-contract.test.ts src/architecture.test.ts",
+          "gateScript": "gates/phase-04.sh",
           "sp": 1
         },
         {
@@ -207,7 +207,7 @@
           "title": "Modify PROMPT.md",
           "description": "MODIFY src/plugins/builtins/workflows/gwrk-implement/PROMPT.md. Add `<code_quality>` enforcement placeholder for implementation dispatches",
           "status": "open",
-          "gateScript": "pnpm build\npnpm exec vitest run src/utils/agent.test.ts src/utils/agent.grounding-decisions.test.ts src/plugins/workflow-runtime.test.ts src/plugins/skill-runtime.test.ts src/engine/ship-orchestrator.workflow-seam.test.ts src/plugins/builtins/workflows/gwrk-plan/prompt-contract.test.ts src/architecture.test.ts",
+          "gateScript": "gates/phase-04.sh",
           "sp": 1
         }
       ],
@@ -228,7 +228,7 @@
           "title": "Modify agent-port.ts",
           "description": "MODIFY src/ports/agent-port.ts. Extend `UnwrappedStreamResult` and `unwrapStreamJson` to detect terminal `is_error` and failure subtypes in stream-json envelopes",
           "status": "open",
-          "gateScript": "pnpm build\npnpm exec vitest run src/plugins/builtins/agents/agy/adapter.test.ts src/plugins/builtins/agents/claude/adapter.test.ts src/plugins/builtins/agents/codex/adapter.test.ts src/plugins/workflow-runtime.test.ts src/commands/assess.test.ts src/architecture.test.ts",
+          "gateScript": "gates/phase-05.sh",
           "sp": 1
         },
         {
@@ -236,23 +236,23 @@
           "title": "Modify adapter.ts",
           "description": "MODIFY src/plugins/builtins/agents/agy/adapter.ts. Retain Antigravity envelope parsing and reject an error terminal even when its response contains a GO verdict. Tests: src/plugins/builtins/agents/agy/adapter.test.ts",
           "status": "open",
-          "gateScript": "pnpm build\npnpm exec vitest run src/plugins/builtins/agents/agy/adapter.test.ts src/plugins/builtins/agents/claude/adapter.test.ts src/plugins/builtins/agents/codex/adapter.test.ts src/plugins/workflow-runtime.test.ts src/commands/assess.test.ts src/architecture.test.ts",
+          "gateScript": "gates/phase-05.sh",
           "sp": 1
         },
         {
           "id": "T023",
           "title": "Modify adapter.ts",
-          "description": "MODIFY src/plugins/builtins/agents/claude/adapter.ts. Populate `status` and force non-zero `exitCode` when stream-json terminal events report failure on raw exit `0`. Tests: src/plugins/builtins/agents/agy/adapter.test.ts",
+          "description": "MODIFY src/plugins/builtins/agents/claude/adapter.ts. Populate `status` and force non-zero `exitCode` when stream-json terminal events report failure on raw exit `0`. Tests: src/plugins/builtins/agents/claude/adapter.test.ts",
           "status": "open",
-          "gateScript": "pnpm build\npnpm exec vitest run src/plugins/builtins/agents/agy/adapter.test.ts src/plugins/builtins/agents/claude/adapter.test.ts src/plugins/builtins/agents/codex/adapter.test.ts src/plugins/workflow-runtime.test.ts src/commands/assess.test.ts src/architecture.test.ts",
+          "gateScript": "gates/phase-05.sh",
           "sp": 1
         },
         {
           "id": "T024",
           "title": "Modify adapter.ts",
-          "description": "MODIFY src/plugins/builtins/agents/codex/adapter.ts. Populate `status`, `unwrappedStdout` and `structuredOutput` across JSON and plain-text responses. Tests: src/plugins/builtins/agents/agy/adapter.test.ts",
+          "description": "MODIFY src/plugins/builtins/agents/codex/adapter.ts. Populate `status`, `unwrappedStdout` and `structuredOutput` across JSON and plain-text responses. Tests: src/plugins/builtins/agents/codex/adapter.test.ts",
           "status": "open",
-          "gateScript": "pnpm build\npnpm exec vitest run src/plugins/builtins/agents/agy/adapter.test.ts src/plugins/builtins/agents/claude/adapter.test.ts src/plugins/builtins/agents/codex/adapter.test.ts src/plugins/workflow-runtime.test.ts src/commands/assess.test.ts src/architecture.test.ts",
+          "gateScript": "gates/phase-05.sh",
           "sp": 1
         },
         {
@@ -260,7 +260,7 @@
           "title": "Modify workflow-runtime.ts",
           "description": "MODIFY src/plugins/workflow-runtime.ts. Reject `result.status === \"failure\"` before output extraction even when `exitCode` is `0`",
           "status": "open",
-          "gateScript": "pnpm build\npnpm exec vitest run src/plugins/builtins/agents/agy/adapter.test.ts src/plugins/builtins/agents/claude/adapter.test.ts src/plugins/builtins/agents/codex/adapter.test.ts src/plugins/workflow-runtime.test.ts src/commands/assess.test.ts src/architecture.test.ts",
+          "gateScript": "gates/phase-05.sh",
           "sp": 1
         }
       ],

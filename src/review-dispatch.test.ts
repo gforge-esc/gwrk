@@ -69,5 +69,4 @@ describe("T053: Review Dispatch Architecture (ADR-007)", () => {
       expect(content).toContain("throw new Error");
     });
   });
-
 });

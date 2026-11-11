@@ -147,6 +147,10 @@ pnpm exec vitest run src/server/model-selector.test.ts src/server/quota-prober.t
 - `src/plugins/workflow-runtime.test.ts` (MODIFY: Verify `WorkflowRuntime` populates `stdin` before dispatch and separates native workflow execution from skill execution)
 - `src/utils/agent.test.ts` (MODIFY: Capture planning and implementation dispatches and verify expanded enforcement rules, project context and task instructions)
 - `src/engine/ship-orchestrator.review.test.ts` (MODIFY: Verify `ShipOrchestrator` dispatches implementation and review workflows through `WorkflowRuntime` while preserving post-dispatch gates)
+- `src/engine/ship-orchestrator.test.ts` (MODIFY: Verify the full lifecycle dispatches implementation through the native workflow)
+- `src/commands/plan.test.ts` and `src/commands/specify.test.ts` and `src/commands/define-ontology.issue201.test.ts` (MODIFY: Assert prompt content on stdin)
+- `src/review-dispatch.test.ts` (MODIFY: Keep prompt contract tests and rely on orchestrator behavior tests for dispatch)
+
 
 #### Governance and skills
 
@@ -168,7 +172,7 @@ pnpm exec vitest run src/server/model-selector.test.ts src/server/quota-prober.t
 
 ```bash
 pnpm build
-pnpm exec vitest run src/utils/agent.test.ts src/utils/agent.grounding-decisions.test.ts src/plugins/workflow-runtime.test.ts src/plugins/skill-runtime.test.ts src/engine/ship-orchestrator.review.test.ts src/plugins/builtins/workflows/gwrk-plan/prompt-contract.test.ts src/architecture.test.ts
+pnpm exec vitest run src/utils/agent.test.ts src/utils/agent.grounding-decisions.test.ts src/plugins/workflow-runtime.test.ts src/plugins/skill-runtime.test.ts src/engine/ship-orchestrator.review.test.ts src/engine/ship-orchestrator.test.ts src/engine/ship-orchestrator.review-finding-liveness.test.ts src/commands/plan.test.ts src/commands/specify.test.ts src/commands/define-ontology.issue201.test.ts src/review-dispatch.test.ts src/plugins/builtins/workflows/gwrk-plan/prompt-contract.test.ts src/architecture.test.ts
 ```
 
 ### Phase 5: Adapter parity and recorded recovery
