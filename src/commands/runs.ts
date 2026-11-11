@@ -4,8 +4,7 @@
 
 import { Command } from "commander";
 import { logCliOutput } from "../adapters/cli/output-scope.js";
-import { listRuns } from "../db/runs.js";
-import { resolveProjectId } from "../utils/project-id.js";
+import { listCheckoutRuns } from "../db/runs.js";
 import { resolveFeature } from "../utils/resolve-feature.js";
 import { withSignal } from "../utils/signal.js";
 
@@ -29,8 +28,7 @@ Examples:
       await withSignal("db runs", async () => {
         const projectRoot = process.cwd();
         const feature = resolveFeature(featureArg, projectRoot);
-        const projectId = resolveProjectId(projectRoot);
-        const runs = listRuns(feature, projectId);
+        const runs = listCheckoutRuns(feature, projectRoot);
 
         if (runs.length === 0) {
           logCliOutput(`No runs found for ${feature}`);

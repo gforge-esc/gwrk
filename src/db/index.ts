@@ -11,7 +11,10 @@ import {
   computeLegacyProjectIds,
   computeProjectId,
 } from "../domain/project-id.js";
-import { discoverVerifiedCheckout } from "./project-registry.js";
+import {
+  discoverVerifiedCheckout,
+  normalizeRegistryRepo,
+} from "./project-registry.js";
 
 const GWRK_DIR = process.env.GWRK_DIR || path.join(os.homedir(), ".gwrk");
 const DB_PATH = process.env.GWRK_DB_PATH || path.join(GWRK_DIR, "gwrk.db");
@@ -169,15 +172,15 @@ function migrateProjectRegistry(db: Database.Database, sql: string): void {
 
 function backfillCheckoutRoots(db: Database.Database): void {
   const projects = db
-    .prepare("SELECT id, path FROM projects WHERE path <> ''")
-    .all() as { id: string; path: string }[];
+    .prepare("SELECT id, path, github_repo FROM projects WHERE path <> ''")
+    .all() as { id: string; path: string; github_repo: string | null }[];
   const setRoot = db.prepare("UPDATE projects SET local_root = ? WHERE id = ?");
   const addAlias = db.prepare(`
     INSERT INTO project_aliases (alias_id, project_id)
     SELECT @alias, @id WHERE NOT EXISTS (SELECT 1 FROM projects WHERE id = @alias)
     ON CONFLICT(alias_id) DO NOTHING
   `);
-  for (const { id, path: checkout } of projects) {
+  for (const { id, path: checkout, github_repo } of projects) {
     const suffix = `#${id}`;
     const facts =
       discoverVerifiedCheckout(checkout) ??
@@ -185,8 +188,17 @@ function backfillCheckoutRoots(db: Database.Database): void {
         ? discoverVerifiedCheckout(checkout.slice(0, -suffix.length))
         : null);
     if (!facts) continue;
+    const storedRepo = normalizeRegistryRepo(github_repo);
+    const origin = normalizeRegistryRepo(facts.remoteOriginUrl ?? null);
+    if (storedRepo !== null && storedRepo !== origin) continue;
+
     const aliases = computeLegacyProjectIds(facts);
-    if (id !== computeProjectId(facts) && !aliases.includes(id)) continue;
+    if (
+      id !== computeProjectId(facts) &&
+      (!aliases.includes(id) || storedRepo !== origin)
+    ) {
+      continue;
+    }
 
     setRoot.run(facts.projectRoot, id);
     for (const alias of aliases) addAlias.run({ alias, id });

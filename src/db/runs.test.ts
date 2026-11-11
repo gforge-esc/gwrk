@@ -3,17 +3,19 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, realpathSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, realpathSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type Database from "better-sqlite3";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { runWithOutputScope } from "../adapters/cli/output-scope.js";
 import { discoverGitIdentityFacts } from "../adapters/git/project-id.js";
+import { createRunsCommand } from "../commands/runs.js";
 import {
   computeLegacyProjectIds,
   computeProjectId,
 } from "../domain/project-id.js";
-import { getTestDb } from "./index.js";
+import * as database from "./index.js";
 import { createProjectRegistry } from "./project-registry.js";
 import {
   type ProjectRecord,
@@ -33,7 +35,7 @@ describe("runs db", () => {
   let db: Database.Database;
 
   beforeEach(() => {
-    db = getTestDb();
+    db = database.getTestDb();
     registerProject(
       {
         id: TEST_PROJECT_ID,
@@ -138,13 +140,31 @@ describe("runs db", () => {
 
   it.each([false, true])(
     "isolates implicit runs after an origin change with a legacy owner: %s",
-    (legacyOwner) => {
+    async (legacyOwner) => {
       const checkout = realpathSync(
         mkdtempSync(join(tmpdir(), "gwrk-run-origin-")),
       );
       const cwd = vi.spyOn(process, "cwd").mockReturnValue(checkout);
+      const getDb = vi.spyOn(database, "getDb").mockReturnValue(db);
+      async function checkoutHistory() {
+        const output: string[] = [];
+        const scope = {
+          agentMode: false,
+          stdout: (chunk: string) => output.push(chunk),
+          stderr: (chunk: string) => output.push(chunk),
+          exitCode: 0,
+        };
+        await runWithOutputScope(scope, () =>
+          createRunsCommand().parseAsync(["shared", "--json"], {
+            from: "user",
+          }),
+        );
+        expect(scope.exitCode, output.join("")).toBe(0);
+        return (JSON.parse(output[0]) as { id: number }[]).map(({ id }) => id);
+      }
       try {
         execFileSync("git", ["init", "--quiet", checkout], { stdio: "ignore" });
+        mkdirSync(join(checkout, "specs", "shared"), { recursive: true });
         execFileSync("git", [
           "-C",
           checkout,
@@ -155,7 +175,8 @@ describe("runs db", () => {
         ]);
         const alphaFacts = discoverGitIdentityFacts(checkout);
         const [legacyId] = computeLegacyProjectIds(alphaFacts);
-        const alphaId = legacyOwner ? legacyId : computeProjectId(alphaFacts);
+        const computedId = computeProjectId(alphaFacts);
+        const alphaId = legacyOwner ? legacyId : computedId;
         if (legacyOwner) {
           registerProject(
             {
@@ -167,6 +188,10 @@ describe("runs db", () => {
             db,
           );
         }
+        const explicit = startRun(
+          { feature_id: "shared", command: "explicit", project_id: computedId },
+          db,
+        );
         const alphaRun = startRun(
           { feature_id: "shared", command: "alpha" },
           db,
@@ -179,6 +204,7 @@ describe("runs db", () => {
               .get(alphaId),
           )
           .toMatch(/org\/alpha$/);
+        expect.soft(await checkoutHistory()).toEqual([alphaRun, explicit]);
 
         execFileSync("git", [
           "-C",
@@ -193,11 +219,13 @@ describe("runs db", () => {
 
         expect
           .soft(listRuns("shared", alphaId, db).map(({ id }) => id))
-          .toEqual([alphaRun]);
+          .toEqual(legacyOwner ? [alphaRun] : [alphaRun, explicit]);
         expect(listRuns("shared", betaId, db).map(({ id }) => id)).toEqual([
           betaRun,
         ]);
+        expect(await checkoutHistory()).toEqual([betaRun]);
       } finally {
+        getDb.mockRestore();
         cwd.mockRestore();
         rmSync(checkout, { recursive: true, force: true });
       }

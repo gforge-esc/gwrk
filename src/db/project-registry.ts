@@ -115,6 +115,21 @@ interface ProjectRow {
   updated_at: string;
 }
 
+type ProjectOwnershipRow = Pick<
+  ProjectRow,
+  "repo_slug" | "local_root" | "mirror_path"
+> & {
+  path: string;
+  github_repo: string | null;
+  updated_at: string | null;
+};
+
+function storedRepositorySlugs(row?: ProjectOwnershipRow): string[] {
+  return [row?.repo_slug, row?.github_repo]
+    .map((repo) => normalizeRegistryRepo(repo ?? null))
+    .filter((repo) => repo !== null);
+}
+
 const threadColumns = `
   project_id AS projectId, feature_id AS featureId, workspace_id AS workspaceId,
   channel_id AS channelId, root_ts AS rootTs, updated_at AS updatedAt
@@ -232,27 +247,6 @@ export function createProjectRegistry(
       }
     }
 
-    const enrolled = db
-      .prepare(`
-      SELECT repo_slug, local_root, mirror_path FROM projects
-      WHERE id = ? AND updated_at IS NOT NULL
-    `)
-      .get(projectId) as
-      | Pick<ProjectRow, "repo_slug" | "local_root" | "mirror_path">
-      | undefined;
-    if (
-      enrolled &&
-      (normalizeRegistryRepo(enrolled.repo_slug) !== projectRepo ||
-        (projectRepo === null &&
-          verifiedIds.size === 0 &&
-          (enrolled.local_root !== project.localRoot ||
-            enrolled.mirror_path !== project.mirrorPath)))
-    ) {
-      throw new Error(
-        `Project ID belongs to a different repository or checkout: ${projectId}`,
-      );
-    }
-
     const currentOwner = canonicalProjectId(db, projectId);
     if (currentOwner !== projectId && !transitions.has(currentOwner)) {
       throw new Error(
@@ -260,8 +254,8 @@ export function createProjectRegistry(
       );
     }
     aliases.delete(projectId);
-    const findAlias = db.prepare(
-      "SELECT path, repo_slug, github_repo, updated_at FROM projects WHERE id = ?",
+    const findProject = db.prepare<[string], ProjectOwnershipRow>(
+      "SELECT path, repo_slug, github_repo, updated_at, local_root, mirror_path FROM projects WHERE id = ?",
     );
     const hasRecords = db.prepare(`
       SELECT 1 FROM runs WHERE project_id = @id
@@ -277,16 +271,58 @@ export function createProjectRegistry(
       UNION ALL SELECT 1 FROM routing_decisions WHERE project_id = @id
       LIMIT 1
     `);
+    const existing = findProject.get(projectId);
+    const existingRepos = storedRepositorySlugs(existing);
+    const verifiedProject = verifiedIds.size > 0;
+    const conflict = () =>
+      new Error(
+        `Project ID belongs to a different repository or checkout: ${projectId}`,
+      );
+    if (existingRepos.some((repo) => repo !== projectRepo)) throw conflict();
+
+    if (existing?.updated_at != null) {
+      if (
+        normalizeRegistryRepo(existing.repo_slug) !== projectRepo ||
+        (projectRepo === null &&
+          !verifiedProject &&
+          (existing.local_root !== project.localRoot ||
+            existing.mirror_path !== project.mirrorPath))
+      ) {
+        throw conflict();
+      }
+    } else {
+      const roots = new Set(
+        [existing?.path, existing?.local_root, existing?.mirror_path].filter(
+          (root): root is string => Boolean(root),
+        ),
+      );
+      let verifiedStoredCheckout = false;
+      for (const root of roots) {
+        const facts =
+          discoverVerifiedCheckout(root) ?? discoverVerifiedMirror(root);
+        if (!facts) continue;
+        if (
+          computeProjectId(facts) !== projectId ||
+          normalizeRegistryRepo(facts.remoteOriginUrl ?? null) !== projectRepo
+        ) {
+          throw conflict();
+        }
+        verifiedStoredCheckout = true;
+      }
+      const occupied = roots.size > 0 || hasRecords.get({ id: projectId });
+      if (
+        occupied &&
+        !verifiedProject &&
+        !verifiedStoredCheckout &&
+        existingRepos.length === 0
+      ) {
+        throw conflict();
+      }
+    }
+
     for (const alias of aliases) {
       const owner = canonicalProjectId(db, alias);
-      const legacy = findAlias.get(alias) as
-        | {
-            path: string;
-            repo_slug: string | null;
-            github_repo: string | null;
-            updated_at: string | null;
-          }
-        | undefined;
+      const legacy = findProject.get(alias);
       if (
         alias === LEGACY_LOCAL ||
         (legacy?.updated_at != null && !transitions.has(alias)) ||
@@ -297,11 +333,7 @@ export function createProjectRegistry(
       if (owner !== alias || (!legacy && !hasRecords.get({ id: alias })))
         continue;
 
-      const storedRepos = legacy
-        ? [legacy.repo_slug, legacy.github_repo]
-            .map(normalizeRegistryRepo)
-            .filter((repo) => repo !== null)
-        : [];
+      const storedRepos = storedRepositorySlugs(legacy);
       const legacyFacts = legacy
         ? (discoverVerifiedCheckout(legacy.path) ??
           discoverVerifiedMirror(legacy.path))

@@ -78,15 +78,32 @@ function ensureProjectRow(
     return id;
   }
 
-  const cwd = process.cwd();
-  const facts = discoverGitIdentityFacts(cwd);
+  const { checkoutId, owner, origin, root } = resolveCheckoutOwner(
+    conn,
+    process.cwd(),
+  );
+  if (owner) return owner;
+
+  conn
+    .prepare(`
+    INSERT INTO projects (id, name, path, github_repo) VALUES (?, ?, ?, ?)
+    ON CONFLICT(id) DO UPDATE SET path = excluded.path, github_repo = excluded.github_repo
+    WHERE projects.path = '' AND projects.github_repo IS NULL
+  `)
+    .run(checkoutId, path.basename(root), root, origin);
+  return checkoutId;
+}
+
+function resolveCheckoutOwner(conn: Database.Database, root: string) {
+  const facts = discoverGitIdentityFacts(root);
   const computedId = computeProjectId(facts);
   const checkoutId = canonicalProjectId(conn, computedId);
   const origin = normalizeRegistryRepo(facts.remoteOriginUrl ?? null);
   const enrolled = conn.prepare(
     "SELECT 1 FROM projects WHERE id = ? AND updated_at IS NOT NULL",
   );
-  if (enrolled.get(checkoutId)) return checkoutId;
+  if (enrolled.get(checkoutId))
+    return { checkoutId, owner: checkoutId, origin, root };
 
   const findProject = conn.prepare(
     "SELECT repo_slug, github_repo FROM projects WHERE id = ?",
@@ -124,25 +141,14 @@ function ensureProjectRow(
   for (const id of computeLegacyProjectIds(facts)) {
     if (id === checkoutId || !atCheckout.includes(id)) continue;
     const owner = checkoutOwner(id);
-    if (owner) return owner;
+    if (owner) return { checkoutId, owner, origin, root };
   }
 
   const owners = new Set(
     atCheckout.map(checkoutOwner).filter((id) => id !== null),
   );
-  if (owners.size === 1) {
-    const [owner] = owners;
-    return owner;
-  }
-
-  conn
-    .prepare(`
-    INSERT INTO projects (id, name, path, github_repo) VALUES (?, ?, ?, ?)
-    ON CONFLICT(id) DO UPDATE SET path = excluded.path, github_repo = excluded.github_repo
-    WHERE projects.path = '' AND projects.github_repo IS NULL
-  `)
-    .run(checkoutId, path.basename(cwd), facts.projectRoot, origin);
-  return checkoutId;
+  const [owner] = owners.size === 1 ? owners : [];
+  return { checkoutId, owner, origin, root };
 }
 
 export function startRun(
@@ -391,7 +397,29 @@ export function listRuns(
   db?: Database.Database,
 ): RunRecord[] {
   const conn = db ?? getDb();
-  const { ids, placeholders } = projectScope(conn, projectId);
+  return listRunsInScope(conn, featureId, projectScope(conn, projectId).ids);
+}
+
+export function listCheckoutRuns(
+  featureId: string,
+  checkout: string,
+  db?: Database.Database,
+): RunRecord[] {
+  const conn = db ?? getDb();
+  const { checkoutId, owner } = resolveCheckoutOwner(conn, checkout);
+  const ids = projectScope(conn, checkoutId).ids;
+  if (owner && owner !== checkoutId) {
+    ids.push(...projectScope(conn, owner).ids);
+  }
+  return listRunsInScope(conn, featureId, ids);
+}
+
+function listRunsInScope(
+  conn: Database.Database,
+  featureId: string,
+  ids: string[],
+): RunRecord[] {
+  const placeholders = ids.map(() => "?").join(", ");
   return conn
     .prepare(
       `SELECT * FROM runs WHERE feature_id = ? AND project_id IN (${placeholders}) ORDER BY id DESC`,

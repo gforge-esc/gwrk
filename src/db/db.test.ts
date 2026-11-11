@@ -294,6 +294,44 @@ describe("Project registry upgrade", () => {
       upgraded.close();
     }
   });
+
+  it("does not bind a legacy path hash after the checkout changes origin", () => {
+    const checkout = join(root, "reused-checkout");
+    execFileSync("git", ["init", "--quiet", checkout], { stdio: "ignore" });
+    execFileSync("git", [
+      "-C",
+      checkout,
+      "remote",
+      "add",
+      "origin",
+      "git@github.com:Example/Beta.git",
+    ]);
+    const [id] = computeLegacyProjectIds(discoverGitIdentityFacts(checkout));
+    const upgraded = upgrade((legacy) => {
+      legacy
+        .prepare(
+          "INSERT INTO projects (id, name, path, github_repo) VALUES (?, ?, ?, ?)",
+        )
+        .run(id, "Alpha", checkout, "example/alpha");
+    });
+    try {
+      expect
+        .soft(
+          upgraded
+            .prepare("SELECT local_root FROM projects WHERE id = ?")
+            .pluck()
+            .get(id),
+        )
+        .toBeNull();
+      expect(
+        upgraded
+          .prepare("SELECT alias_id FROM project_aliases WHERE project_id = ?")
+          .all(id),
+      ).toEqual([]);
+    } finally {
+      upgraded.close();
+    }
+  });
 });
 
 describe("SQLite execution ledger", () => {

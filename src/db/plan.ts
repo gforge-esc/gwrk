@@ -502,17 +502,31 @@ export function deleteFeature(
   db?: Database.Database,
 ): void {
   const conn = db ?? getDb();
-  const { ids, placeholders } = projectScope(conn, projectId);
   conn
-    .prepare(
-      `DELETE FROM plan_edges WHERE (from_id = ? OR to_id = ?) AND project_id IN (${placeholders})`,
-    )
-    .run(id, id, ...ids);
-  conn
-    .prepare(
-      `DELETE FROM plan_features WHERE id = ? AND project_id IN (${placeholders})`,
-    )
-    .run(id, ...ids);
+    .transaction(() => {
+      const { ids, placeholders } = projectScope(conn, projectId);
+      const phases = listPhases(id, projectId, conn);
+      const phaseIds = new Set(phases.map((phase) => phase.id));
+      if (phaseIds.size > 0) {
+        for (const proposal of listProposals(projectId, conn)) {
+          if (phaseIds.has(proposal.target_phase_id)) {
+            deleteProposal(proposal.id, projectId, conn);
+          }
+        }
+        for (const phaseId of phaseIds) deletePhase(phaseId, projectId, conn);
+      }
+      conn
+        .prepare(
+          `DELETE FROM plan_edges WHERE (from_id = ? OR to_id = ?) AND project_id IN (${placeholders})`,
+        )
+        .run(id, id, ...ids);
+      conn
+        .prepare(
+          `DELETE FROM plan_features WHERE id = ? AND project_id IN (${placeholders})`,
+        )
+        .run(id, ...ids);
+    })
+    .immediate();
 }
 
 /**

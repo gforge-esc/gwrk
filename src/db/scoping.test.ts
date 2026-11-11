@@ -44,7 +44,7 @@ import {
   insertProposal,
   listFeatures,
 } from "./plan.js";
-import { listRuns, registerProject } from "./runs.js";
+import { listRuns, registerProject, startRun } from "./runs.js";
 
 describe("Database Scoping (US-030 / FR-037 / FR-038 / TR-036)", () => {
   let db: Database.Database;
@@ -470,6 +470,51 @@ describe("Project registry storage", () => {
         localRoot: project.localRoot,
       });
       expect(registry.listRoleBindings(project.projectId)).toEqual([binding]);
+    } finally {
+      db.close();
+    }
+  });
+
+  it("rejects first enrollment of another repository's existing run history", () => {
+    const db = getTestDb();
+    try {
+      const registry = createSqliteProjectRegistryAdapter({ db });
+      const { projectId, repoSlug, localRoot } = project;
+      registerProject(
+        {
+          id: projectId,
+          name: "Alpha",
+          path: localRoot ?? "",
+          github_repo: repoSlug,
+        },
+        db,
+      );
+      const run = startRun(
+        {
+          feature_id: "shared",
+          command: "alpha-history",
+          project_id: projectId,
+        },
+        db,
+      );
+      const getRow = db.prepare("SELECT * FROM projects WHERE id = ?");
+      const prior = getRow.get(projectId);
+
+      expect
+        .soft(() =>
+          registry.enrollProject({
+            ...project,
+            repoSlug: "example/beta",
+            localRoot: "/fixtures/beta",
+          }),
+        )
+        .toThrow(/different repository or checkout/);
+      expect.soft(registry.getProject(projectId)).toBeNull();
+      expect.soft(getRow.get(projectId)).toEqual(prior);
+      expect(listRuns("shared", projectId, db)).toMatchObject([
+        { id: run, command: "alpha-history" },
+      ]);
+      expect(registry.enrollProject(project).repoSlug).toBe(repoSlug);
     } finally {
       db.close();
     }

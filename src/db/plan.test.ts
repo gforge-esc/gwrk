@@ -6,6 +6,7 @@ import type Database from "better-sqlite3";
 import { beforeEach, describe, expect, it } from "vitest";
 import { getTestDb } from "./index.js";
 import {
+  deleteFeature,
   getAllDependencies,
   getEdgesForFeature,
   getFeature,
@@ -83,6 +84,16 @@ describe("src/db/plan.ts (DM-018-001/002/003)", () => {
         db,
       );
       insertPhase({ ...phase, feature_id: featureId }, id, db);
+      insertProposal(
+        {
+          id: "P1",
+          target_phase_id: phase.id,
+          proposal_type: "ADD_TASK",
+          status: "PENDING",
+        },
+        id,
+        db,
+      );
     }
     db.prepare(
       "INSERT INTO project_aliases (alias_id, project_id) VALUES (?, ?)",
@@ -92,6 +103,16 @@ describe("src/db/plan.ts (DM-018-001/002/003)", () => {
     expect(listPhases("current-feature", projectId, db)).toEqual([
       getPhase(phase.id, projectId, db),
     ]);
+
+    deleteFeature("current-feature", projectId, db);
+    for (const id of [projectId, "alias"]) {
+      expect.soft(getPhase(phase.id, id, db)).toBeUndefined();
+      expect.soft(listPhases("old-feature", id, db)).toEqual([]);
+      expect.soft(getProposal("P1", id, db)).toBeUndefined();
+      expect.soft(listProposals(id, db)).toEqual([]);
+      expect(getFeature("old-feature", id, db)).toBeDefined();
+    }
+    expect(db.pragma("foreign_key_check")).toEqual([]);
   });
 
   it("moves an effective phase to a legacy-owned feature with its proposals", () => {
