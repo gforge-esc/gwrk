@@ -74,7 +74,7 @@ timeout --kill-after=5s 15s "${as_service[@]}" node -e '
 
 scratch=$(mktemp -d "$release_root/.rollback.XXXXXXXX")
 recover_pointers=false
-stopped=false
+stop_attempted=false
 lock_held=false
 target_started=false
 point() {
@@ -100,8 +100,9 @@ on_exit() {
     fi
     if $target_started; then
       printf 'Verify the ledger and recover from %s before starting the service.\n' "$backup" >&2
-    elif $stopped; then
-      systemctl start "$unit" || true
+    elif $stop_attempted; then
+      systemctl start "$unit" ||
+        printf 'Could not restart the original release for %s.\n' "$unit" >&2
     fi
   fi
   rm -rf -- "$scratch"
@@ -110,8 +111,8 @@ trap on_exit EXIT
 trap 'exit 143' TERM
 trap 'exit 130' INT
 
+stop_attempted=true
 systemctl stop "$unit"
-stopped=true
 [[ -f "$runtime/server.lock" && ! -L "$runtime/server.lock" ]] ||
   fail "Preserve the service runtime directory and lock file across stop."
 exec 9<>"$runtime/server.lock"

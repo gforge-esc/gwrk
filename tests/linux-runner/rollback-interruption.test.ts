@@ -26,11 +26,13 @@ const repo = fileURLToPath(new URL("../..", import.meta.url));
 const rollback = join(repo, "deploy/linux-runner/rollback-release.sh");
 
 it.each([
-  { signal: "SIGTERM", status: 143 },
-  { signal: "SIGINT", status: 130 },
+  { signal: "SIGTERM", status: 143, stage: "readiness" },
+  { signal: "SIGINT", status: 130, stage: "readiness" },
+  { signal: "SIGTERM", status: 143, stage: "initial stop" },
+  { signal: "SIGINT", status: 130, stage: "initial stop" },
 ] as const)(
-  "recovers both pointers on $signal during readiness",
-  async ({ signal, status }) => {
+  "recovers the original release on $signal during $stage",
+  async ({ signal, status, stage }) => {
     const root = await mkdtemp(join(tmpdir(), "gwrk-rollback-signal-"));
     const bin = join(root, "bin");
     const runtime = join(root, "runtime");
@@ -95,7 +97,14 @@ pid_file="$GWRK_RUNTIME_DIR/server.pid"
 ready="$GWRK_RUNTIME_DIR/checking-readiness"
 release_readiness="$GWRK_RUNTIME_DIR/release-readiness"
 case "$1" in
-  stop) printf 'stop\\n' >> "$GWRK_RUNTIME_DIR/supervisor.calls"; rm "$pid_file" ;;
+  stop)
+    printf 'stop\\n' >> "$GWRK_RUNTIME_DIR/supervisor.calls"
+    rm "$pid_file"
+    if [[ "$FIXTURE_STAGE" == "initial stop" ]]; then
+      touch "$ready"
+      while [[ ! -e "$release_readiness" ]]; do sleep 0.05; done
+    fi
+    ;;
   start) printf 'start\\n' >> "$GWRK_RUNTIME_DIR/supervisor.calls"; printf '%s\\n' "$FIXTURE_PID" > "$pid_file" ;;
   show)
     case "$2" in
@@ -129,6 +138,7 @@ esac`,
           PATH: [bin, process.env.PATH].join(delimiter),
           GWRK_RUNTIME_DIR: runtime,
           FIXTURE_PID: String(process.pid),
+          FIXTURE_STAGE: stage,
         },
         stdio: ["ignore", "pipe", "pipe"],
       });
@@ -144,8 +154,12 @@ esac`,
         await vi.waitFor(() => expect(existsSync(ready), output).toBe(true), {
           timeout: 8_000,
         });
-        expect(await readlink(current)).toBe(target);
-        expect(await readlink(previous)).toBe(active);
+        expect(await readlink(current)).toBe(
+          stage === "readiness" ? target : active,
+        );
+        expect(await readlink(previous)).toBe(
+          stage === "readiness" ? active : target,
+        );
         expect(child.kill(signal)).toBe(true);
         await writeFile(releaseReadiness, "");
         await vi.waitFor(
@@ -157,13 +171,17 @@ esac`,
           { timeout: 8_000 },
         );
         expect(await readFile(calls, "utf8"), output).toBe(
-          "stop\nstart\nstop\n",
+          stage === "readiness" ? "stop\nstart\nstop\n" : "stop\nstart\n",
         );
-        expect(existsSync(pidFile)).toBe(false);
+        expect(existsSync(pidFile)).toBe(stage === "initial stop");
         expect(await readlink(current)).toBe(active);
         expect(await readlink(previous)).toBe(target);
         expect(await closed, output).toEqual([status, null]);
         const backups = join(state, "backups");
+        if (stage === "initial stop") {
+          expect(existsSync(backups)).toBe(false);
+          return;
+        }
         const entries = await readdir(backups);
         expect(entries).toHaveLength(1);
         const restored = await restoreLedgerBackup({
