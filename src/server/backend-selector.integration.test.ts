@@ -111,6 +111,48 @@ describe("BackendSelector Integration", () => {
     expect(listRoutingDecisions("legacy-local", context.runId, db)).toEqual([]);
   });
 
+  it.each(["alpha", "alpha-legacy"])(
+    "uses only Alpha's canonical and legacy run history when routing for %s",
+    async (projectId) => {
+      mockRegistry.backends.alternate = {
+        ...mockRegistry.backends.gemini,
+        name: "alternate",
+      };
+      db.exec(`
+        INSERT INTO projects (id, name, path) VALUES
+          ('alpha', 'Alpha', ''), ('alpha-legacy', 'Legacy Alpha', ''),
+          ('beta', 'Beta', '');
+        INSERT INTO project_aliases (alias_id, project_id)
+          VALUES ('alpha-legacy', 'alpha');
+      `);
+      const insertRun = db.prepare(`
+        INSERT INTO runs (project_id, feature_id, command, agent_backend, exit_code)
+        VALUES (?, ?, 'ship', ?, ?)
+      `);
+      const addHistory = (owner: string, geminiExit: number, pairs: number) => {
+        for (let i = 0; i < pairs; i++) {
+          insertRun.run(owner, context.feature, "gemini", geminiExit);
+          insertRun.run(owner, context.feature, "alternate", 1 - geminiExit);
+        }
+      };
+
+      addHistory("alpha", 0, 1);
+      addHistory("alpha-legacy", 1, 2);
+      const before = await selector.selectBackend({ ...context, projectId });
+
+      addHistory("beta", 0, 4);
+      const after = await selector.selectBackend({ ...context, projectId });
+      const beta = await selector.selectBackend({
+        ...context,
+        projectId: "beta",
+      });
+
+      expect(before.backend).toBe("alternate");
+      expect(after.backend).toBe(before.backend);
+      expect(beta.backend).toBe("gemini");
+    },
+  );
+
   it("skips history and decision writes when the ledger is unavailable", async () => {
     mockRegistry.backends.alternate = {
       ...mockRegistry.backends.gemini,

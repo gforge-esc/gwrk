@@ -4,6 +4,7 @@
 
 import { exitCli, logCliError, warnCli } from "../adapters/cli/output-scope.js";
 import { getDb } from "../db/index.js";
+import { projectScope } from "../db/project-registry.js";
 import type { AgentBackendConfig, AgentRegistry } from "./agent-registry.js";
 import { ModelSelector } from "./model-selector.js";
 import type { QuotaProber, QuotaReading } from "./quota-prober.js";
@@ -83,8 +84,8 @@ export class BackendSelector {
 
       // If within 20%, use tiebreaker
       if (context.ledgerAvailable !== false && Math.abs(qA - qB) <= 20) {
-        const successA = this.getSuccessRate(a.name);
-        const successB = this.getSuccessRate(b.name);
+        const successA = this.getSuccessRate(a.name, context.projectId);
+        const successB = this.getSuccessRate(b.name, context.projectId);
         if (successA !== successB) {
           return successB - successA;
         }
@@ -169,18 +170,21 @@ export class BackendSelector {
    * Calculates historical success rate for a backend from the runs table.
    * Success = exit_code 0.
    */
-  private getSuccessRate(backendName: string): number {
+  private getSuccessRate(backendName: string, projectId: string): number {
     try {
       const db = getDb();
+      const { ids, placeholders } = projectScope(db, projectId);
       const result = db
         .prepare(`
         SELECT 
           COUNT(*) as total,
           SUM(CASE WHEN exit_code = 0 THEN 1 ELSE 0 END) as successes
         FROM runs 
-        WHERE agent_backend = ?
+        WHERE agent_backend = ? AND project_id IN (${placeholders})
       `)
-        .get(backendName) as { total: number; successes: number } | undefined;
+        .get(backendName, ...ids) as
+        | { total: number; successes: number }
+        | undefined;
 
       if (!result || result.total === 0) return 0;
       return result.successes / result.total;
