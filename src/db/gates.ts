@@ -4,11 +4,7 @@
 
 import type Database from "better-sqlite3";
 import { getDb } from "./index.js";
-import {
-  canonicalProjectId,
-  firstPerKey,
-  projectScope,
-} from "./project-registry.js";
+import { firstPerKey, projectScope } from "./project-registry.js";
 
 /**
  * DB record for gate execution evidence.
@@ -40,7 +36,8 @@ export function recordGateResult(
     INSERT INTO gate_results (
       feature_id, phase_id, task_id, gate_script, passed, exit_code, output, project_id
     ) VALUES (
-      @feature_id, @phase_id, @task_id, @gate_script, @passed, @exit_code, @output, @project_id
+      @feature_id, @phase_id, @task_id, @gate_script, @passed, @exit_code, @output,
+      COALESCE((SELECT project_id FROM project_aliases WHERE alias_id = @project_id), @project_id)
     )
     ON CONFLICT(project_id, feature_id, phase_id, task_id) DO UPDATE SET
       gate_script = excluded.gate_script, passed = excluded.passed, exit_code = excluded.exit_code,
@@ -49,7 +46,7 @@ export function recordGateResult(
   `);
   const res = stmt.get({
     ...result,
-    project_id: canonicalProjectId(conn, projectId),
+    project_id: projectId,
   }) as { id: number };
   return res.id;
 }

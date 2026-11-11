@@ -836,10 +836,88 @@ describe("Project registry storage", () => {
           .soft(remoteRegistry.listRoleBindings(id))
           .toMatchObject([{ role: "viewer" }]);
       }
-      registry.setRoleBinding({ ...binding, role: "operator" });
-      expect(remoteRegistry.listRoleBindings(remoteId)).toMatchObject([
-        { role: "operator" },
+      remoteRegistry.setRoleBinding({ ...binding, projectId: remoteId });
+      registry.setRoleBinding({ ...binding, role: "viewer" });
+      for (const id of [localId, remoteId]) {
+        expect(remoteRegistry.listRoleBindings(id)).toMatchObject([
+          { role: "viewer" },
+        ]);
+      }
+    } finally {
+      other.close();
+      db.close();
+    }
+  });
+
+  it("updates the canonical gate when enrollment commits before the write", () => {
+    const checkout = join(root, "gate-transition");
+    const dbPath = join(root, "gate-transition.sqlite");
+    const db = openDatabase({ dbPath });
+    const other = openDatabase({ dbPath });
+    const registry = createSqliteProjectRegistryAdapter({ db });
+    const remoteRegistry = createSqliteProjectRegistryAdapter({ db: other });
+    try {
+      execFileSync("git", ["init", "--quiet", checkout]);
+      const localId = resolveProjectId(checkout);
+      const local = {
+        ...project,
+        projectId: localId,
+        localRoot: checkout,
+        repoSlug: null,
+        legacyProjectIds: [],
+      };
+      registry.enrollProject(local);
+      execFileSync("git", [
+        "-C",
+        checkout,
+        "remote",
+        "add",
+        "origin",
+        "git@github.com:example/alpha.git",
       ]);
+      const remoteId = resolveProjectId(checkout);
+      const pass = {
+        feature_id: "shared",
+        phase_id: "phase-01",
+        task_id: "T001",
+        gate_script: "check.sh",
+        passed: 1,
+        exit_code: 0,
+        output: "passed",
+      };
+      const passId = recordGateResult(pass, remoteId, other);
+      const failure = { ...pass, passed: 0, exit_code: 1, output: "failed" };
+
+      const prepare = db.prepare.bind(db);
+      const spy = vi.spyOn(db, "prepare").mockImplementation(((sql: string) => {
+        const statement = prepare(sql);
+        if (sql.includes("INSERT INTO gate_results")) {
+          const get = statement.get.bind(statement);
+          vi.spyOn(statement, "get").mockImplementationOnce((...args) => {
+            remoteRegistry.enrollProject({
+              ...local,
+              projectId: remoteId,
+              repoSlug: "example/alpha",
+            });
+            return get(...args);
+          });
+        }
+        return statement;
+      }) as typeof db.prepare);
+      let failureId: number;
+      try {
+        failureId = recordGateResult(failure, localId, db);
+      } finally {
+        spy.mockRestore();
+      }
+
+      expect(remoteRegistry.getProject(localId)?.projectId).toBe(remoteId);
+      for (const id of [localId, remoteId]) {
+        expect
+          .soft(getGateResult("shared", "phase-01", "T001", id, other))
+          .toMatchObject({ ...failure, id: passId, project_id: remoteId });
+      }
+      expect(failureId).toBe(passId);
     } finally {
       other.close();
       db.close();
