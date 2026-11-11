@@ -27,6 +27,47 @@ describe("WorkflowRuntime Phase 13: Project Awareness", () => {
     vi.clearAllMocks();
   });
 
+  it("hands a native workflow the complete stdin and leaves intents to its caller", async () => {
+    vi.mocked(PluginLoader.prototype.resolvePlugin).mockResolvedValue({
+      manifest: { name: "native", type: "workflow" } as any,
+      path: "/mock/plugin",
+    });
+    vi.mocked(fs.readFile).mockResolvedValue("Native workflow rules");
+    vi.mocked(detector.detectProfile).mockResolvedValue({ type: "generic" });
+    vi.mocked(conditioner.conditionPrompt).mockImplementation(
+      (prompt) => prompt,
+    );
+    const taskResult = {
+      exitCode: 0,
+      stdout: "wrote files natively",
+      stderr: "",
+      durationS: 1,
+    };
+    const dispatcher = vi.fn().mockResolvedValue(taskResult);
+
+    const result = await new WorkflowRuntime().executeWorkflow(
+      "native",
+      "Scope instructions",
+      {
+        nativeOnly: true,
+        dispatcher,
+        featureDir: "specs/fixture",
+      },
+    );
+
+    expect(result.taskResult).toBe(taskResult);
+    expect(result.intents).toEqual([]);
+    expect(dispatcher).toHaveBeenCalledWith(
+      expect.objectContaining({
+        stdin: expect.stringContaining("Native workflow rules"),
+        featureDir: "specs/fixture",
+      }),
+    );
+    expect(dispatcher.mock.calls[0][0].stdin).toContain("Scope instructions");
+    expect(dispatcher.mock.calls[0][0]).not.toHaveProperty("prompt");
+    expect(agentUtils.dispatchToAgent).not.toHaveBeenCalled();
+  });
+
   it("039: report-only workflows reject mutation intents before executing them", async () => {
     vi.mocked(PluginLoader.prototype.resolvePlugin).mockResolvedValue({
       manifest: {
@@ -143,7 +184,7 @@ describe("WorkflowRuntime Phase 13: Project Awareness", () => {
     );
     expect(agentUtils.dispatchToAgent).toHaveBeenCalledWith(
       expect.objectContaining({
-        prompt: expect.stringContaining(
+        stdin: expect.stringContaining(
           "<conditioned># Test Prompt</conditioned>",
         ),
       }),

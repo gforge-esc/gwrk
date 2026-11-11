@@ -177,7 +177,7 @@ async function dispatchAgent(opts: DispatchOptions): Promise<{
     opts.prebuiltDispatch ?? (await buildCommand(opts, workflowContent));
 
   // Set up .runs/ log file
-  const runsDir = path.join(projectRoot, ".runs");
+  const runsDir = path.join(process.cwd(), ".runs");
   fs.mkdirSync(runsDir, { recursive: true });
   const ts = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
   // Use parent directory name for plugin workflows (PROMPT.md → parent dir name)
@@ -483,7 +483,7 @@ async function resolveWorkflowPath(workflowName: string): Promise<string> {
  * Internals are replaced by pluginRegistry.getAgentBackend().dispatch()
  */
 export async function dispatchToAgent(task: TaskDispatch): Promise<TaskResult> {
-  const projectRoot = process.cwd();
+  const projectRoot = task.workDir ?? process.cwd();
   try {
     const config = loadConfig(projectRoot);
     const throttleMs = config.agents.throttleMs ?? 0;
@@ -515,11 +515,18 @@ export async function dispatchToAgent(task: TaskDispatch): Promise<TaskResult> {
   }
 
   const agentName = (task.agent ?? "agy") as string;
-  const registry = new AgentBackendRegistry(new PluginLoader());
+  const registry = new AgentBackendRegistry(
+    new PluginLoader({ projectDir: projectRoot }),
+  );
   const adapter = await registry.getAgentBackend(agentName);
 
   const startTime = Date.now();
-  let stdinPayload = task.stdin ?? "";
+  let stdinPayload = [
+    task.prompt,
+    task.stdin === task.prompt ? undefined : task.stdin,
+  ]
+    .filter(Boolean)
+    .join("\n\n");
 
   // FR-014: Inject enforcement skills
   const hasEnforcementPlaceholder = stdinPayload.includes("{{enforcement}}");
@@ -542,7 +549,10 @@ export async function dispatchToAgent(task: TaskDispatch): Promise<TaskResult> {
     );
 
     if (hasEnforcementPlaceholder) {
-      stdinPayload = stdinPayload.replace("{{enforcement}}", enforcement);
+      stdinPayload = stdinPayload.replaceAll(
+        "{{enforcement}}",
+        () => enforcement,
+      );
     } else if (hasCodeQualitySection) {
       stdinPayload = stdinPayload.replace(
         /<code_quality>([\s\S]*?)<\/code_quality>/,
@@ -552,7 +562,7 @@ export async function dispatchToAgent(task: TaskDispatch): Promise<TaskResult> {
   }
 
   // ADR-009: Inject project knowledge documents (grounding)
-  const workDir = task.workDir || projectRoot;
+  const workDir = projectRoot;
   const groundingFiles = [
     {
       path: path.join(workDir, ".gwrk/architecture.md"),
@@ -600,7 +610,10 @@ export async function dispatchToAgent(task: TaskDispatch): Promise<TaskResult> {
   }
 
   // Layer 3: External Context Injection (Phase 21)
-  const rawKeywordSource = [task.featureDir ?? "", task.prompt ?? ""]
+  const rawKeywordSource = [
+    task.featureDir ?? "",
+    task.prompt ?? task.stdin ?? "",
+  ]
     .join(" ")
     .replace(/^specs\//, "")
     .replace(/^\d+-/, " ");
@@ -635,7 +648,8 @@ export async function dispatchToAgent(task: TaskDispatch): Promise<TaskResult> {
 
   const dispatch = await adapter.dispatch({
     ...task,
-    stdin: stdinPayload || task.stdin,
+    prompt: undefined,
+    stdin: stdinPayload || undefined,
   });
   if (
     stdinPayload &&

@@ -95,25 +95,26 @@ describe("ShipOrchestrator", () => {
   });
 
   it("should complete full lifecycle successfully", async () => {
-    let callCount = 0;
-    vi.mocked(state.loadTaskState).mockImplementation(() => {
-      callCount++;
-      return {
-        featureId: "004-ship-loop",
-        createdAt: new Date().toISOString(),
-        phases: [{ 
-          id: "phase-01", 
-          title: "Phase 1", 
-          tasks: [{ id: "T001", title: "Task 1", description: "Desc 1", status: callCount >= 2 ? "completed" : "open", gateScript: "gates/T001-gate.sh" }] 
-        }]
-      };
-    });
+    let implemented = false;
+    vi.mocked(state.loadTaskState).mockImplementation(() => ({
+      featureId: "004-ship-loop",
+      createdAt: new Date().toISOString(),
+      phases: [{
+        id: "phase-01",
+        title: "Phase 1",
+        tasks: [{
+          id: "T001",
+          title: "Task 1",
+          description: "Desc 1",
+          status: implemented ? "completed" : "open",
+          gateScript: "gates/T001-gate.sh",
+        }],
+      }],
+    }));
 
-    vi.mocked(agent.dispatchToAgent).mockResolvedValue({
-      exitCode: 0,
-      stdout: "Success",
-      stderr: "",
-      durationS: 10
+    vi.mocked(agent.dispatchToAgent).mockImplementation(async (task) => {
+      if (task.workflow === "gwrk-implement") implemented = true;
+      return { exitCode: 0, stdout: "Success", stderr: "", durationS: 10 };
     });
     vi.mocked(gateRunner.runGate)
       .mockResolvedValueOnce({ passed: false, exitCode: 1, output: "Fail" })  // pre-flight: triggers implement
@@ -126,6 +127,11 @@ describe("ShipOrchestrator", () => {
     expect((orchestrator as any).state.stage).toBe(ShipStage.DONE);
     expect(git.createBranch).toHaveBeenCalledWith(config.cwd, "feat/004-ship-loop", "develop");
     expect(agent.dispatchToAgent).toHaveBeenCalledTimes(3); // IMPLEMENT + CODE_REVIEW + UAT_REVIEW
+    expect(agent.dispatchToAgent).toHaveBeenCalledWith(expect.objectContaining({
+      type: "implement",
+      workflow: "gwrk-implement",
+      stdin: expect.stringContaining("T001"),
+    }));
   });
 
   it("TEST_GATE fails (NO-GO) when phase tests execute 0 tests — liveness (ADR-005 §10)", async () => {

@@ -3,6 +3,10 @@
 **Persona**: Senior Software Engineer
 **Pillar**: Shipping (Implementation)
 
+<code_quality>
+{{enforcement}}
+</code_quality>
+
 Implement a specific phase of a feature, driven by the implementation plan and verified by gate scripts.
 
 ## Preamble
