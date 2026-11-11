@@ -880,46 +880,50 @@ describe("credential guard", () => {
   it.each([
     {
       name: "sparse",
-      headers: (key: string) =>
-        Object.assign(Array<string>(4), { 0: key, 1: "value", 3: "control" }),
+      marker: "<1 empty item>",
+      headers: (key: string, value: string) =>
+        Object.assign(Array<string>(4), { 0: key, 1: value, 3: "control" }),
     },
     {
       name: "two leading holes",
-      headers: (key: string) => Array<string>(2).concat(key, "value"),
+      marker: "<2 empty items>",
+      headers: (key: string, value: string) =>
+        Array<string>(2).concat(key, value),
     },
     {
       name: "own properties",
-      headers: (key: string) =>
-        Object.assign([key, "value"], {
+      marker: "truncated: true",
+      headers: (key: string, value: string) =>
+        Object.assign([key, value], {
           truncated: true,
           meta: { range: [1] },
         }),
     },
-  ])("checks visible pairs in $name inspected arrays", ({ headers }) => {
-    for (const showHidden of [false, true]) {
-      const sanitizedOutput = inspect(
-        { headers: headers("Cookie") },
-        {
-          showHidden,
-          depth: 4,
-        },
-      );
-      expect(() => assertNoSecretMaterial({ sanitizedOutput })).toThrow(
-        /secret material/i,
-      );
-      expect(() =>
-        assertNoSecretMaterial({
-          sanitizedOutput: inspect(
-            { headers: headers("Content-Type") },
-            {
-              showHidden,
-              depth: 4,
-            },
-          ),
-        }),
-      ).not.toThrow();
-    }
-  });
+  ])(
+    "checks visible pairs in $name inspected arrays",
+    ({ headers, marker }) => {
+      for (const showHidden of [false, true]) {
+        const options = { showHidden, depth: 4 };
+        const cookieOutput = inspect(
+          { headers: headers("Cookie", "session=fixture-cookie") },
+          options,
+        );
+        const contentTypeOutput = inspect(
+          { headers: headers("Content-Type", "text/plain") },
+          options,
+        );
+        expect(cookieOutput).toContain(marker);
+        expect(cookieOutput).toContain("session=fixture-cookie");
+        expect(contentTypeOutput).toContain(marker);
+        expect(() =>
+          assertNoSecretMaterial({ sanitizedOutput: contentTypeOutput }),
+        ).not.toThrow();
+        expect(() =>
+          assertNoSecretMaterial({ sanitizedOutput: cookieOutput }),
+        ).toThrow(/secret material/i);
+      }
+    },
+  );
 
   it("retains inspected own properties that contain credential fields", () => {
     const sanitizedOutput = inspect({
