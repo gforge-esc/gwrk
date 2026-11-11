@@ -310,6 +310,68 @@ describe("Server E2E Integration", () => {
     }
   });
 
+  it("bounds an in-flight GitHub poll before removing the scoped PID file", async () => {
+    const bin = mkdtempSync(join(tmpdir(), "gwrk-poll-bin-"));
+    const marker = join(bin, "poll.pid");
+    let fixture: ServerFixture | undefined;
+    let childPid: number | undefined;
+    const stopChild = () => {
+      if (childPid === undefined) return;
+      try {
+        process.kill(childPid, "SIGKILL");
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== "ESRCH") throw error;
+      }
+    };
+    try {
+      writeFileSync(
+        join(bin, "gh"),
+        `#!/usr/bin/env node
+process.on("SIGTERM", () => {});
+require("node:fs").writeFileSync(${JSON.stringify(marker)}, String(process.pid));
+setInterval(() => {}, 1000);
+`,
+        { mode: 0o755 },
+      );
+      vi.stubEnv("PATH", `${bin}:${process.env.PATH}`);
+      const actual =
+        await vi.importActual<typeof import("../utils/exec.js")>(
+          "../utils/exec.js",
+        );
+      vi.mocked(execCommand).mockImplementationOnce(actual.execCommand);
+      stubListener();
+      fixture = await createServerFixture("listen");
+      const pollPid = await vi.waitFor(() => {
+        const pid = Number(readFileSync(marker, "utf8"));
+        expect(pid).toBeGreaterThan(0);
+        return pid;
+      });
+      childPid = pollPid;
+      expect(readIfPresent(fixture.pidPath)).toBe(String(process.pid));
+
+      const closeFinished = vi.fn();
+      const closing = fixture.app.close().then(closeFinished);
+      await vi.waitFor(() => expect(closeFinished).toHaveBeenCalledOnce(), {
+        timeout: 6500,
+      });
+      await closing;
+
+      expect(() => process.kill(pollPid, 0)).toThrow(/ESRCH/);
+      childPid = undefined;
+      expect(existsSync(fixture.pidPath)).toBe(false);
+    } finally {
+      try {
+        stopChild();
+      } finally {
+        try {
+          await fixture?.close();
+        } finally {
+          rmSync(bin, { recursive: true, force: true });
+        }
+      }
+    }
+  }, 10_000);
+
   it("uses scoped SQLite in the startup heartbeat", async () => {
     stubListener();
     const heartbeat = vi.spyOn(PlanHeartbeat.prototype, "runCheck");

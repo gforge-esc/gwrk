@@ -88,6 +88,8 @@ export class DispatchQueue {
   }
 
   enqueue(request: DispatchRequest): DispatchRecord {
+    if (this.closed) throw new Error("Dispatch queue is closed");
+
     // Idempotency guard: prevent double-dispatch for same feature+phase
     const existing = this.getDispatch(request.featureId, request.phaseId);
     if (

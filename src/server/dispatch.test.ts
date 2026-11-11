@@ -15,6 +15,7 @@ import { ShipOrchestrator } from "../engine/ship-orchestrator.js";
 import type { GwrkConfig } from "../utils/config.js";
 import { DispatchQueue } from "./dispatch.js";
 import { SystemMonitor } from "./monitor.js";
+import { persistDispatch } from "./persistence.js";
 import { SandboxManager } from "./sandbox.js";
 import { notifySlack } from "./slack-notify.js";
 
@@ -212,6 +213,36 @@ describe("DispatchQueue (unified ship engine)", () => {
     expect(queue.getActiveCount()).toBe(0);
     expect(queue.getQueueDepth()).toBe(1);
     expect(mockSandbox.createSandbox).not.toHaveBeenCalled();
+  });
+
+  it("rejects new and duplicate dispatches as soon as close starts", async () => {
+    let finishShip!: (exitCode: number) => void;
+    mockRun.mockReturnValue(
+      new Promise<number>((resolve) => {
+        finishShip = resolve;
+      }),
+    );
+    const active = { featureId: "feat-1", phaseId: "phase-01" };
+    const next = { featureId: "feat-2", phaseId: "phase-01" };
+    queue.enqueue(active);
+    await vi.waitFor(() => expect(mockRun).toHaveBeenCalledOnce());
+
+    const closing = queue.close();
+    try {
+      const writes = vi.mocked(persistDispatch).mock.calls.length;
+      expect(() => queue.enqueue(active)).toThrow("Dispatch queue is closed");
+      expect(() => queue.enqueue(next)).toThrow("Dispatch queue is closed");
+      expect(queue.getQueueDepth()).toBe(0);
+      expect(persistDispatch).toHaveBeenCalledTimes(writes);
+    } finally {
+      finishShip(0);
+      await closing;
+    }
+
+    const writes = vi.mocked(persistDispatch).mock.calls.length;
+    expect(() => queue.enqueue(next)).toThrow("Dispatch queue is closed");
+    expect(queue.getQueueDepth()).toBe(0);
+    expect(persistDispatch).toHaveBeenCalledTimes(writes);
   });
 
   it("returns queue status", () => {
