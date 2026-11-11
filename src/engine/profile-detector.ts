@@ -142,7 +142,11 @@ function detectFilesystemProfile(projectRoot: string): FilesystemProfile {
     const signal: LanguageSignal = {
       language: isPnpm ? "TypeScript" : "JavaScript",
       type: isPnpm ? "pnpm-monorepo" : "nodejs",
-      buildSystem: isPnpm ? "pnpm" : "npm",
+      buildSystem: isPnpm
+        ? "pnpm"
+        : files.includes("yarn.lock")
+          ? "yarn"
+          : "npm",
     };
 
     try {
@@ -260,7 +264,11 @@ function detectFilesystemProfile(projectRoot: string): FilesystemProfile {
     profile.type = signal.type;
     profile.stack.language = signal.language;
     if (signal.framework) profile.stack.framework = signal.framework;
-    if (signal.buildSystem) profile.stack.buildSystem = signal.buildSystem;
+    if (signal.buildSystem) {
+      // Legacy profiles report npm for Yarn projects.
+      profile.stack.buildSystem =
+        signal.buildSystem === "yarn" ? "npm" : signal.buildSystem;
+    }
     // Preserve monorepo layout for single-language monorepo types
     if (signal.type.includes("monorepo")) profile.layout = "monorepo";
   }

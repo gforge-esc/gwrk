@@ -619,6 +619,58 @@ describe("FR-001: architecture-aware workspace profiles (044 phase p01)", () => 
     },
   );
 
+  it.each([
+    { buildSystem: "yarn", workspaceLockfile: "yarn.lock" },
+    { buildSystem: "npm", workspaceLockfile: "package-lock.json" },
+  ])("inherits Yarn commands only for a compatible $buildSystem workspace", async ({
+    buildSystem,
+    workspaceLockfile,
+  }) => {
+    const workspacePath = "apps/web";
+    const workspace = path.join(root, workspacePath);
+    const inheritsCommands = buildSystem === "yarn";
+    const build = "yarn workspace web build:ci";
+    const testCommand = "yarn vitest run {files}";
+    const config = {
+      project: {
+        name: "fixture",
+        design,
+        ...(inheritsCommands && { stack: { buildSystem: "yarn" } }),
+        toolchain: { build, testCommand },
+      },
+      workspaces: { [workspacePath]: {} },
+    };
+    write(".gwrkrc.json", JSON.stringify(config));
+    write("package.json", "{}");
+    write("yarn.lock", "");
+    write(`${workspacePath}/package.json`, "{}");
+    write(`${workspacePath}/${workspaceLockfile}`, "");
+
+    const profiles = [
+      await detectProfile(workspace),
+      await resolveWorkspaceProfile(root, workspacePath),
+      resolveWorkspaceProfile(workspace, root, config),
+    ];
+    for (const profile of profiles) {
+      if (!profile) throw new Error("Expected a workspace profile");
+      expect.soft(profile).toMatchObject({ design, stack: { buildSystem } });
+      if (inheritsCommands) {
+        expect.soft(resolveBuildCommand(profile)).toBe(build);
+        expect.soft(getTestCommand(profile, ["app.test.js"])).toBe(
+          "yarn vitest run app.test.js",
+        );
+      } else {
+        expect.soft(profile.toolchain?.build).toBeUndefined();
+        expect.soft(profile.toolchain?.testCommand).toBeUndefined();
+      }
+    }
+
+    if (inheritsCommands) {
+      write(".gwrkrc.json", JSON.stringify({ project: { name: "fixture" } }));
+      expect((await detectProfile(workspace)).stack?.buildSystem).toBe("npm");
+    }
+  });
+
   it("keeps the selected TypeScript runner and linter in a mixed workspace", async () => {
     const config = {
       project: { name: "fixture", design },
