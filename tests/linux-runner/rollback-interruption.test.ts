@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, you can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { spawn } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { once } from "node:events";
 import { existsSync } from "node:fs";
 import {
@@ -20,6 +20,7 @@ import { delimiter, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import Database from "better-sqlite3";
 import { expect, it, vi } from "vitest";
+import { readReleaseInventory } from "../../src/adapters/release/inventory.js";
 import { restoreLedgerBackup } from "../../src/adapters/sqlite/ledger-backup.js";
 
 const repo = fileURLToPath(new URL("../..", import.meta.url));
@@ -34,6 +35,9 @@ it.each([
   { signal: null, status: 1, stage: "backup with an inactive unit" },
   { signal: null, status: 1, stage: "target CLI version mismatch" },
   { signal: null, status: 1, stage: "target manifest version mismatch" },
+  { signal: null, status: 1, stage: "service ledger mismatch" },
+  { signal: null, status: 1, stage: "service runtime mismatch" },
+  { signal: null, status: 1, stage: "running service ledger mismatch" },
   {
     signal: null,
     status: 1,
@@ -61,6 +65,11 @@ it.each([
     const active = "releases/1.1.0";
     const target = "releases/1.0.0";
     const ledger = join(state, "gwrk.db");
+    const serviceLedger = join(state, "service.db");
+    const serviceRuntime = join(root, "other runtime");
+    const pathMismatch =
+      stage.startsWith("service ") || stage.startsWith("running service ");
+    const running = Boolean(signal || malformedFile || pathMismatch);
     const pidFile = join(runtime, "server.pid");
     const ready = join(runtime, "checking-readiness");
     const releaseReadiness = join(runtime, "release-readiness");
@@ -71,7 +80,7 @@ it.each([
       await mkdir(runtime);
       await mkdir(state);
       await writeFile(join(runtime, "server.lock"), "");
-      if (signal || malformedFile) {
+      if (running) {
         await writeFile(pidFile, String(process.pid));
       }
       await symlink(active, current);
@@ -87,6 +96,11 @@ it.each([
         );
         await writeFile(join(release, "package.json"), '{"type":"module"}');
         await symlink(join(repo, "dist/cli.js"), join(release, "dist/cli.js"));
+        await mkdir(join(release, "dist/domain"));
+        await symlink(
+          join(repo, "dist/domain/gwrk-paths.js"),
+          join(release, "dist/domain/gwrk-paths.js"),
+        );
         for (const name of serviceScripts) {
           await writeFile(join(service, name), "#!/usr/bin/env bash\n", {
             mode: 0o755,
@@ -117,23 +131,107 @@ it.each([
         db.close();
       }
 
+      if (pathMismatch) {
+        await mkdir(serviceRuntime);
+        const service = new Database(serviceLedger);
+        try {
+          service.exec(`
+            CREATE TABLE _migrations (name TEXT PRIMARY KEY);
+            CREATE TABLE runs (id INTEGER PRIMARY KEY);
+            INSERT INTO _migrations VALUES ('999-review.sql');
+            INSERT INTO runs VALUES (42);
+          `);
+        } finally {
+          service.close();
+        }
+        const supplied = new Database(ledger);
+        try {
+          supplied.exec("UPDATE runs SET id = 7");
+        } finally {
+          supplied.close();
+        }
+        for (const version of [active, target]) {
+          const release = join(root, version);
+          await mkdir(join(release, "dist/plugins/builtins"), {
+            recursive: true,
+          });
+          await mkdir(join(release, "dist/db/migrations"), { recursive: true });
+          await writeFile(join(release, "pnpm-lock.yaml"), "");
+          await writeFile(
+            join(release, "package.json"),
+            JSON.stringify({ type: "module", version: version.split("/")[1] }),
+          );
+          await writeFile(
+            join(release, "release-manifest.json"),
+            JSON.stringify({
+              version: version.split("/")[1],
+              platform: "linux",
+              arch: process.arch,
+              nodeVersion: process.versions.node,
+              nodeAbi: process.versions.modules,
+              commitSha: "0".repeat(40),
+              builtAt: "2026-11-11T12:00:00Z",
+              tarballSha256: "0".repeat(64),
+              ...(await readReleaseInventory(release)),
+            }),
+          );
+        }
+        const platformOverride = join(root, "linux.cjs");
+        await writeFile(
+          platformOverride,
+          'Object.defineProperty(process, "platform", { value: "linux" });\n',
+        );
+        const check = (database: string) =>
+          spawnSync(
+            process.execPath,
+            [
+              "--require",
+              platformOverride,
+              join(root, active, "dist/cli.js"),
+              "db",
+              "rollback-check",
+              "--current",
+              current,
+              "--target",
+              previous,
+            ],
+            {
+              env: { ...process.env, GWRK_DB_PATH: database },
+              encoding: "utf8",
+              timeout: 10_000,
+            },
+          );
+        const rejected = check(serviceLedger);
+        expect(rejected.status, rejected.stderr).toBe(1);
+        expect(rejected.stderr).toContain("999-review.sql");
+        const accepted = check(ledger);
+        expect(accepted.status, accepted.stderr).toBe(0);
+      }
+
       const shims = {
         uname: "printf 'Linux\\n'",
         realpath: 'cd -P -- "$3" && pwd -P',
         flock: "exit 0",
         runuser: `shift 5
+if [[ "$1" == env ]]; then
+  shift
+  while [[ "$1" == GWRK_*=* ]]; do export "$1"; shift; done
+fi
 if [[ "\${3:-}" == --version && "$FIXTURE_STAGE" != "target CLI version mismatch" ]]; then
   printf '1.0.0\\n'
   exit 0
 fi
 if [[ "\${3:-}" == db ]]; then
   if [[ "\${4:-}" == rollback-check ]]; then
+    if [[ "$FIXTURE_STAGE" == "service "* || "$FIXTURE_STAGE" == "running service "* ]]; then
+      exec node --require "$FIXTURE_ROOT/linux.cjs" "\${@:2}"
+    fi
     version=1.0.0
     if [[ "$FIXTURE_STAGE" == "target manifest version mismatch" ]]; then version=1.1.0; fi
     printf '{"allowed":true,"targetVersion":"%s"}\\n' "$version"
     exit 0
   fi
-  if [[ "\${4:-}" == backup && ( "$FIXTURE_STAGE" == "backup with an inactive unit" || "$FIXTURE_STAGE" == *mismatch || "$FIXTURE_STAGE" == "invalid target interpreter" ) ]]; then
+  if [[ "\${4:-}" == backup && ( "$FIXTURE_STAGE" == "backup with an inactive unit" || "$FIXTURE_STAGE" == "invalid target interpreter" ) ]]; then
     printf 'Fixture backup failed\\n' >&2
     exit 1
   fi
@@ -141,20 +239,55 @@ fi
 exec "$@"`,
         mv: `exec node -e 'require("node:fs").renameSync(process.argv[1], process.argv[2])' "$3" "$4"`,
         timeout: '[[ "$1" != --kill-after=* ]] || shift\nshift\nexec "$@"',
+        busctl: `
+case "$6" in
+  call) printf '{"type":"o","data":["/fixture/unit"]}\\n' ;;
+  get-property)
+    printf '%s\\n' '{"type":"as","data":["GWRK_HOME=/overridden","GWRK_DIR=/unset"]}' \\
+      '{"type":"a(sb)","data":[["/fixture/runner env",false],["/fixture/optional",true]]}' \\
+      '{"type":"as","data":["GWRK_RUNTIME_DIR"]}' \\
+      '{"type":"as","data":["GWRK_DIR=/unset"]}'
+    ;;
+  *) exit 1 ;;
+esac`,
+        "systemd-run": `
+[[ "$*" == *"--setenv=GWRK_HOME=/overridden"* &&
+   "$*" == *"--setenv=GWRK_DIR=/unset"* &&
+   "$*" == *"--property=EnvironmentFile=/fixture/runner env"* &&
+   "$*" == *"--property=EnvironmentFile=-/fixture/optional"* &&
+   "$*" == *"--property=PassEnvironment=GWRK_RUNTIME_DIR"* &&
+   "$*" == *'--property=UnsetEnvironment="GWRK_DIR=/unset"'* ]]
+state="$FIXTURE_ROOT/state"
+database="$state/gwrk.db"
+runtime="$FIXTURE_RUNTIME"
+case "$FIXTURE_STAGE" in
+  "service ledger mismatch") database="$state/service.db" ;;
+  "service runtime mismatch") runtime="$FIXTURE_ROOT/other runtime" ;;
+esac
+printf '%s\\0' "GWRK_HOME=$state" "GWRK_DB_PATH=$database" "GWRK_RUNTIME_DIR=$runtime"`,
+        cat: `
+if [[ "$1" == -- && "$2" == "/proc/$FIXTURE_PID/environ" ]]; then
+  state="$FIXTURE_ROOT/state"
+  database="$state/gwrk.db"
+  if [[ "$FIXTURE_STAGE" == "running service ledger mismatch" ]]; then database="$state/service.db"; fi
+  printf '%s\\0' "GWRK_HOME=$state" "GWRK_DB_PATH=$database" "GWRK_RUNTIME_DIR=$FIXTURE_RUNTIME"
+else
+  exec /bin/cat "$@"
+fi`,
         systemctl: `
-pid_file="$GWRK_RUNTIME_DIR/server.pid"
-ready="$GWRK_RUNTIME_DIR/checking-readiness"
-release_readiness="$GWRK_RUNTIME_DIR/release-readiness"
+pid_file="$FIXTURE_RUNTIME/server.pid"
+ready="$FIXTURE_RUNTIME/checking-readiness"
+release_readiness="$FIXTURE_RUNTIME/release-readiness"
 case "$1" in
   stop)
-    printf 'stop\\n' >> "$GWRK_RUNTIME_DIR/supervisor.calls"
+    printf 'stop\\n' >> "$FIXTURE_RUNTIME/supervisor.calls"
     rm -f "$pid_file"
     if [[ "$FIXTURE_STAGE" == "initial stop" ]]; then
       touch "$ready"
       while [[ ! -e "$release_readiness" ]]; do sleep 0.05; done
     fi
     ;;
-  start) printf 'start\\n' >> "$GWRK_RUNTIME_DIR/supervisor.calls"; printf '%s\\n' "$FIXTURE_PID" > "$pid_file" ;;
+  start) printf 'start\\n' >> "$FIXTURE_RUNTIME/supervisor.calls"; printf '%s\\n' "$FIXTURE_PID" > "$pid_file" ;;
   show)
     case "$2" in
       --property=User|--property=Group) printf 'gwrk\\n' ;;
@@ -162,11 +295,11 @@ case "$1" in
         if [[ -f "$pid_file" ]]; then printf 'active\\n'; else printf 'inactive\\n'; fi
         ;;
       --property=MainPID)
-        if [[ "$FIXTURE_STAGE" == readiness && ! -e "$ready" ]]; then
+        if [[ "$FIXTURE_STAGE" == readiness && -f "$FIXTURE_RUNTIME/supervisor.calls" && ! -e "$ready" ]]; then
           touch "$ready"
           while [[ ! -e "$release_readiness" ]]; do sleep 0.05; done
         fi
-        cat "$pid_file"
+        if [[ -f "$pid_file" ]]; then cat "$pid_file"; else printf '0\\n'; fi
         ;;
     esac
     ;;
@@ -189,6 +322,8 @@ esac`,
           ...process.env,
           PATH: [bin, process.env.PATH].join(delimiter),
           GWRK_RUNTIME_DIR: runtime,
+          FIXTURE_ROOT: root,
+          FIXTURE_RUNTIME: runtime,
           FIXTURE_PID: String(process.pid),
           FIXTURE_STAGE: stage,
         },
@@ -210,7 +345,14 @@ esac`,
             expect(await readFile(calls, "utf8"), output).toBe("stop\n");
           } else {
             expect(existsSync(calls), output).toBe(false);
-            if (malformedPath) {
+            if (pathMismatch) {
+              expect(output).toContain(
+                stage === "service runtime mismatch"
+                  ? "runtime mismatch"
+                  : "ledger mismatch",
+              );
+              expect(existsSync(join(state, "backups"))).toBe(false);
+            } else if (malformedPath) {
               expect(output).toContain(malformedPath);
               if (stage === "invalid target interpreter") {
                 expect(output).toContain("unsupported interpreter");
@@ -223,7 +365,7 @@ esac`,
               );
             }
           }
-          expect(existsSync(pidFile)).toBe(Boolean(malformedPath));
+          expect(existsSync(pidFile)).toBe(running);
           expect(await readlink(current)).toBe(active);
           expect(await readlink(previous)).toBe(target);
           return;

@@ -143,13 +143,33 @@ ln -s "$active/node_modules" "$prior/node_modules"
 ln -s releases/1.0.0-fixture /opt/gwrk/previous
 node -e 'const fs=require("node:fs"); const p=process.argv[1]; fs.writeFileSync(p,JSON.stringify({...require(p),version:"1.0.0-fixture"}))' "$prior/package.json"
 
+cat > /fixture-bin/busctl <<'SCRIPT'
+#!/usr/bin/env bash
+set -euo pipefail
+case "$6" in
+  call) printf '{"type":"o","data":["/fixture/unit"]}\n' ;;
+  get-property)
+    printf '%s\n' '{"type":"as","data":["HOME=/var/lib/gwrk"]}' \
+      '{"type":"a(sb)","data":[["/etc/gwrk/runner.env",false]]}' \
+      '{"type":"as","data":[]}' '{"type":"as","data":[]}'
+    ;;
+  *) exit 1 ;;
+esac
+SCRIPT
+cat > /fixture-bin/systemd-run <<'SCRIPT'
+#!/usr/bin/env bash
+set -euo pipefail
+[[ "$*" == *"--property=EnvironmentFile=/etc/gwrk/runner.env"* ]]
+printf '%s\0' HOME=/var/lib/gwrk GWRK_HOME=/var/lib/gwrk GWRK_RUNTIME_DIR=/run/gwrk
+SCRIPT
 cat > /fixture-bin/systemctl <<'SCRIPT'
 #!/usr/bin/env bash
 set -euo pipefail
-pid_file="$GWRK_RUNTIME_DIR/server.pid"
+runtime=/run/gwrk
+pid_file="$runtime/server.pid"
 hold_rollback() {
-  touch "$GWRK_RUNTIME_DIR/rollback-held"
-  while [[ ! -f "$GWRK_RUNTIME_DIR/rollback-resume" ]]; do sleep 0.05; done
+  touch "$runtime/rollback-held"
+  while [[ ! -f "$runtime/rollback-resume" ]]; do sleep 0.05; done
 }
 printf '%s\n' "$1" >> /tmp/supervisor.calls
 case "$1" in
@@ -161,12 +181,18 @@ case "$1" in
     if [[ "${GWRK_FIXTURE_HOLD_ROLLBACK:-}" == stop ]]; then hold_rollback; fi
     ;;
   start)
-    readlink /opt/gwrk/current > "$GWRK_RUNTIME_DIR/started-release"
+    readlink /opt/gwrk/current > "$runtime/started-release"
     if [[ "${GWRK_FIXTURE_DROP_RUN:-0}" == 1 ]]; then
-      runuser -u gwrk -g gwrk -- node -e 'const requireRelease=require("node:module").createRequire("/opt/gwrk/current/package.json"); const db=new (requireRelease("better-sqlite3"))(process.env.GWRK_DB_PATH); db.prepare("DELETE FROM runs WHERE id = 42").run(); db.close();'
+      runuser -u gwrk -g gwrk -- node -e 'const requireRelease=require("node:module").createRequire("/opt/gwrk/current/package.json"); const db=new (requireRelease("better-sqlite3"))("/var/lib/gwrk/gwrk.db"); db.prepare("DELETE FROM runs WHERE id = 42").run(); db.close();'
     fi
-    sleep 120 8>&- 9>&- >/dev/null 2>&1 &
-    printf '%s\n' "$!" > "$pid_file"
+    env -i HOME=/var/lib/gwrk GWRK_HOME=/var/lib/gwrk GWRK_RUNTIME_DIR=/run/gwrk \
+      /usr/bin/bash -c 'printf "%s\n" "$$" > "$GWRK_RUNTIME_DIR/server.pid"; exec /usr/bin/sleep 120' \
+      8>&- 9>&- >/dev/null 2>&1 &
+    for attempt in {1..100}; do
+      if [[ -s "$pid_file" ]]; then exit 0; fi
+      sleep 0.05
+    done
+    exit 1
     ;;
   show)
     case "$2" in
@@ -176,8 +202,8 @@ case "$1" in
         if [[ -f "$pid_file" ]]; then printf 'active\n'; else printf 'inactive\n'; fi
         ;;
       --property=MainPID)
-        if [[ "${GWRK_FIXTURE_HOLD_ROLLBACK:-}" == readiness ]]; then hold_rollback; fi
-        cat "$pid_file"
+        if [[ "${GWRK_FIXTURE_HOLD_ROLLBACK:-}" == readiness && -f "$runtime/started-release" ]]; then hold_rollback; fi
+        if [[ -f "$pid_file" ]]; then cat "$pid_file"; else printf '0\n'; fi
         ;;
       *) exit 1 ;;
     esac
@@ -187,7 +213,7 @@ case "$1" in
     ;;
 esac
 SCRIPT
-chmod 0755 /fixture-bin/systemctl
+chmod 0755 /fixture-bin/{busctl,systemctl,systemd-run}
 write_prior_manifest() {
   node --input-type=module - "$prior" <<'NODE'
 import { readFile, writeFile } from "node:fs/promises";

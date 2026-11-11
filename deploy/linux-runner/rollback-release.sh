@@ -14,7 +14,6 @@ state=$(realpath -e -- "$2")
 runtime=$(realpath -e -- "${GWRK_RUNTIME_DIR:?Set GWRK_RUNTIME_DIR to the service runtime directory.}")
 unit="${GWRK_SYSTEMD_UNIT:-gwrk-runner.service}"
 [[ "$unit" =~ ^[a-zA-Z0-9@_.-]+\.service$ ]] || fail "Choose a valid systemd service name."
-export GWRK_HOME="$state" GWRK_DB_PATH="$state/gwrk.db" GWRK_RUNTIME_DIR="$runtime"
 
 exec 8>"$release_root/.install.lock"
 flock -x 8
@@ -66,8 +65,101 @@ for file in deploy/linux-runner/credentials.sh "${startup_scripts[@]}"; do
   "${as_service[@]}" /usr/bin/env bash -n -- "$target/$file" ||
     fail "Rollback target script failed syntax validation: $target/$file"
 done
+
+read_unit_environment() {
+  node --input-type=module - "$unit" "$service_user" "$service_group" <<'NODE'
+import { execFileSync } from "node:child_process";
+
+const [unit, user, group] = process.argv.slice(2);
+const manager = "org.freedesktop.systemd1";
+const root = "/org/freedesktop/systemd1";
+const bus = (...args) => execFileSync("busctl", [
+  "--system", "--json=short", "--no-pager", "--allow-interactive-authorization=no",
+  "--timeout=5s", ...args,
+], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"], timeout: 6000 });
+
+try {
+  const [unitPath] = JSON.parse(bus("call", manager, root, manager + ".Manager", "GetUnit", "s", unit)).data;
+  const properties = bus(
+    "get-property", manager, unitPath, manager + ".Service",
+    "Environment", "EnvironmentFiles", "PassEnvironment", "UnsetEnvironment",
+  ).trim().split("\n").map((line) => JSON.parse(line).data);
+  const [environment, files, pass, unset] = properties;
+  // Let the manager apply environment-file syntax and precedence.
+  execFileSync("systemd-run", [
+    "--system", "--pipe", "--wait", "--collect", "--quiet", "--no-ask-password",
+    "--property=RuntimeMaxSec=10s",
+    "--uid=" + user, "--gid=" + group,
+    ...environment.map((entry) => "--setenv=" + entry),
+    ...files.map(([file, optional]) => "--property=EnvironmentFile=" + (optional ? "-" : "") + file),
+    ...pass.map((name) => "--property=PassEnvironment=" + name),
+    ...unset.map((entry) => "--property=UnsetEnvironment=" + JSON.stringify(entry)),
+    "--", "/usr/bin/env", "-0",
+  ], { stdio: ["ignore", "inherit", "ignore"], timeout: 15000 });
+} catch {
+  console.error("Could not read the loaded systemd environment for " + unit + ".");
+  process.exitCode = 1;
+}
+NODE
+}
+
+resolve_service_paths() {
+  timeout --kill-after=5s 15s "${as_service[@]}" node --input-type=module -e '
+    import { readFileSync, realpathSync } from "node:fs";
+    import { homedir } from "node:os";
+    import { isAbsolute, join } from "node:path";
+    import { pathToFileURL } from "node:url";
+
+    const [active, state, runtime, source] = process.argv.slice(1);
+    try {
+      const { resolveGwrkPaths } = await import(pathToFileURL(join(active, "dist/domain/gwrk-paths.js")).href);
+      const env = Object.create(null);
+      for (const entry of readFileSync(0, "utf8").split("\0")) {
+        const separator = entry.indexOf("=");
+        if (separator > 0) env[entry.slice(0, separator)] = entry.slice(separator + 1);
+      }
+      delete process.env.HOME;
+      const paths = resolveGwrkPaths(env, env.HOME || homedir());
+      function verify(label, path, expected) {
+        if (!isAbsolute(path) || realpathSync(path) !== expected) {
+          throw new Error(label + " mismatch. Expected " + expected + ".");
+        }
+      }
+      verify("ledger", paths.database, join(state, "gwrk.db"));
+      verify("state directory", paths.home, state);
+      if (env.GWRK_DIR) verify("state directory", env.GWRK_DIR, state);
+      verify("runtime", paths.runtimeDir, runtime);
+    } catch (error) {
+      console.error("Could not verify paths for " + source + ": " + error.message);
+      process.exitCode = 1;
+    }
+  ' "$active" "$state" "$runtime" "$1"
+}
+
+verify_running_paths() {
+  cat -- "/proc/$1/environ" | resolve_service_paths "running unit $unit"
+}
+
+read_unit_environment | resolve_service_paths "loaded unit $unit"
+original_state=$(systemctl show --property=ActiveState --value "$unit") ||
+  fail "Could not read the service state for $unit before rollback."
+main_pid=$(systemctl show --property=MainPID --value "$unit") ||
+  fail "Could not read MainPID for $unit before rollback."
+case "$main_pid" in
+  0)
+    case "$original_state" in
+      active|reloading|refreshing) fail "Running unit $unit has no MainPID." ;;
+    esac
+    ;;
+  *)
+    [[ "$main_pid" =~ ^[1-9][0-9]*$ ]] || fail "Invalid MainPID for $unit."
+    verify_running_paths "$main_pid"
+    ;;
+esac
+ledger_service=("${as_service[@]}" env GWRK_HOME="$state" GWRK_DIR="$state"
+  GWRK_DB_PATH="$state/gwrk.db" GWRK_RUNTIME_DIR="$runtime")
 check_rollback() {
-  "${as_service[@]}" node "$active/dist/cli.js" db rollback-check --current "$active" --target "$target" "$@"
+  "${ledger_service[@]}" node "$active/dist/cli.js" db rollback-check --current "$active" --target "$target" "$@"
 }
 compatibility=$(check_rollback --format json)
 verified_version=$(node -e '
@@ -140,8 +232,10 @@ trap on_exit EXIT
 trap 'exit 143' TERM
 trap 'exit 130' INT
 
+[[ "$(systemctl show --property=MainPID --value "$unit")" == "$main_pid" ]] ||
+  fail "MainPID changed for $unit during rollback verification."
 original_state=$(systemctl show --property=ActiveState --value "$unit") ||
-  fail "Could not read the service state for $unit before rollback."
+  fail "Could not read the service state for $unit before stop."
 stop_attempted=true
 systemctl stop "$unit"
 [[ -f "$runtime/server.lock" && ! -L "$runtime/server.lock" ]] ||
@@ -161,7 +255,7 @@ fi
 "${as_service[@]}" test -w "$backup_root" && "${as_service[@]}" test -x "$backup_root" ||
   fail "$service_user cannot write backups in $backup_root."
 backup="$backup_root/rollback-$(date -u +%Y%m%dT%H%M%SZ)-$$"
-"${as_service[@]}" node "$active/dist/cli.js" db backup --out "$backup"
+"${ledger_service[@]}" node "$active/dist/cli.js" db backup --out "$backup"
 recover_pointers=true
 point "$new_target" "$current"
 point "$old_target" "$previous"
@@ -182,6 +276,7 @@ while true; do
   ((SECONDS < deadline)) || fail "Timed out waiting for the target release to listen."
   sleep 1
 done
+verify_running_paths "$pid"
 check_rollback --against "$backup"
 recover_pointers=false
 printf 'Activated gwrk %s. Verified pre-rollback backup at %s\n' "${new_target#releases/}" "$backup"
