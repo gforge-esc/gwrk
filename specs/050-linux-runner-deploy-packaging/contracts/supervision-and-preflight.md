@@ -25,14 +25,14 @@ Phase 3 aligns path resolution in `src/db/index.ts` and `src/plugins/loader.ts`.
 
 ## Single-instance lock and supervised recovery
 
-`src/adapters/server/instance-lock.ts` claims `<runtimeRoot>/server.lock` before `startServer` binds Fastify. The same lock guards `DispatchQueue`, `HarvestWatcher` and `startSlackApp`.
+`src/adapters/server/instance-lock.ts` claims `<runtimeRoot>/server.lock` before `startServer` binds Fastify. The same lock guards `DispatchQueue`, `HarvestWatcher` and `startSlackApp`. Use a kernel-held lock that releases when its owner exits. Keep the lockfile inode in place while the service can restart. Treat PID metadata as diagnostic output.
 
 | Scenario | Lock state | Required behavior |
 |---|---|---|
 | Clean start | Unlocked | Write owner metadata, hold exclusive descriptor and write `server.pid` |
 | Second start while running | Held by live PID | Exit `1` before HTTP listen, worker creation or Slack connection |
-| Crash or `SIGKILL` restart | Stale PID or closed kernel descriptor | Reclaim lock cleanly, prune orphan worktrees and start one server and one worker |
-| Graceful `SIGTERM` or `gwrk server stop` | Held by stopping PID | Stop watchers, close Slack and Fastify, remove `server.pid` and release `server.lock` |
+| Crash or `SIGKILL` restart | Stale PID or closed kernel descriptor | Reclaim the lock and start one server and one worker |
+| Graceful `SIGTERM` or `gwrk server stop` | Held by stopping PID | Stop watchers and close Slack and Fastify. Remove `server.pid` and release the lock descriptor. |
 
 | `gwrk-runner.service` directive | Required value |
 |---|---|
@@ -50,7 +50,7 @@ Operators supply `0640` files in `GWRK_SECRETS_DIR` owned by `root:gwrk`. Laptop
 | Secret file | Purpose | Unattended preflight check | Revocation procedure |
 |---|---|---|---|
 | `pilot-git-credential` | Scoped GitHub App installation or deploy credential for one pilot repo | `GIT_TERMINAL_PROMPT=0 git ls-remote` succeeds under timeout | Revoke GitHub installation or deploy key and remove file, then restart unit |
-| `agent-credential` | Headless credential for the single approved Linux agent backend | Non-interactive backend probe succeeds with `APPROVAL_MODE=yolo` and zero TTY | Revoke API or service key at provider, delete file and restart unit |
+| `agent-credential` | Headless credential for the single approved Linux agent backend | The approved backend completes a bounded headless probe with tools disabled | Revoke API or service key at provider, delete file and restart unit |
 | `slack-bot-token` and `slack-app-token` | Optional Socket Mode tokens when Slack check is enabled | Rejects missing pair or placeholder prefix (`xoxb-`, `xapp-`) | Revoke tokens in Slack app settings, remove files and restart unit |
 
 `deploy/linux-runner/preflight.sh` exits `1` before daemon startup when:
@@ -61,3 +61,5 @@ Operators supply `0640` files in `GWRK_SECRETS_DIR` owned by `root:gwrk`. Laptop
 4. The configured listen host is `0.0.0.0` or `::`, or Telegram variables exist.
 5. Non-interactive Git authentication to `GWRK_PILOT_REPO_URL` fails or prompts for input.
 6. Non-interactive probe of `GWRK_APPROVED_AGENT` fails or exceeds bounded timeout (`ADR-008`).
+
+Set the unit working directory to the configured pilot project root. Verify the unit configuration in the fixture. Record a boot and restart under systemd separately from the container process restart.

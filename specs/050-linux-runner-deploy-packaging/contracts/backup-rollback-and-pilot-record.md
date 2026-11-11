@@ -41,9 +41,9 @@ export interface BackupManifest {
 }
 ```
 
-`repo-metadata.json` records `device.json` and all `projects` rows. For each enrolled pilot repository, it records the remote URL and HEAD SHA. It also records the SHA-256 digest of `specs/*/.gwrk/tasks.json` and `specs/*/.gwrk/runs/` manifests. It never copies `GWRK_SECRETS_DIR` or `.gwrkrc.local.json` secrets.
+`repo-metadata.json` records `device.json` and all `projects` rows. For each enrolled pilot repository, it records the credential-free remote URL and HEAD SHA. It also records the SHA-256 digest of `specs/*/.gwrk/tasks.json` and `specs/*/.gwrk/runs/` manifests. It never copies `GWRK_SECRETS_DIR` or `.gwrkrc.local.json` secrets.
 
-Clean restore verifies `dbSha256` and `metadataSha256` before writing `gwrk.db` and `device.json` into `stateDir`. It re-opens the restored database and runs `compareLedgerSummary`. Any mismatch in seeded `projects` or completed `runs` fails closed. Mismatches in `compression` rows or `history` count also fail closed.
+Stage restore into a separate directory. Leave the target intact until the restored state passes validation. Clean restore verifies `dbSha256` and `metadataSha256` before writing `gwrk.db` and `device.json` into `stateDir`. It re-opens the restored database and runs `compareLedgerSummary`. Any mismatch in seeded `projects` or completed `runs` fails closed. Mismatches in `compression` rows or `history` count also fail closed.
 
 ## Upgrade and rollback procedure
 
@@ -52,7 +52,7 @@ Clean restore verifies `dbSha256` and `metadataSha256` before writing `gwrk.db` 
 1. Read `<releaseRoot>/releases/<version>/release-manifest.json` and verify its release files exist.
 2. Read applied `_migrations` names from `<stateRoot>/gwrk.db` and call `evaluateRollbackCompatibility`.
 3. If `allowed === false`, print the blocking migration names to stderr and exit `1` before changing `current`.
-4. If `allowed === true`, run `gwrk db backup` and stop the supervisor cleanly.
+4. If `allowed === true`, stop accepting work and stop the supervisor. Run `gwrk db backup` against quiesced state.
 5. Atomically switch `current` to the target release and start the supervisor.
 6. Verify accepted work counts match the pre-rollback summary.
 
@@ -76,3 +76,5 @@ Clean restore verifies `dbSha256` and `metadataSha256` before writing `gwrk.db` 
 | Observed unattended worker run ID | `Pending` |
 
 Passing `container-harness.mjs` never marks live pilot checks complete. Operators store the completed live record outside Git.
+
+The fixture preserves persisted ledger and repository evidence. Verify recovery of accepted jobs that were still queued in the integrated pilot after durable dispatch ships.

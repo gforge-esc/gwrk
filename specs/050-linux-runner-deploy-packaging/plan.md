@@ -1,6 +1,6 @@
 # Linux runner and deployment packaging plan
 
-Package a pinned Linux release and supervise one private gwrk server and worker. Validate clean restore and safe rollback before pilot cutover. Blocked for live rollout until the Google sign-in proof and a Linux runner identity exist.
+Package a pinned Linux release and supervise one private gwrk server and worker. Verify restore and rollback before pilot cutover. Blocked for live rollout until the Google sign-in proof and a Linux runner identity exist.
 
 ## Prerequisite and boundary
 
@@ -89,7 +89,7 @@ Governance follows `ADR-004`, `ADR-008` and `ADR-011`. Isolate state roots and p
 
 #### Files
 
-- `src/adapters/server/instance-lock.ts` (NEW: Claim and release an exclusive kernel lockfile with stale-process recovery)
+- `src/adapters/server/instance-lock.ts` (NEW: Hold a Linux instance lock for the server lifetime)
 - `src/server/pid.ts` (MODIFY: Resolve `GWRK_RUNTIME_DIR` and `GWRK_HOME` paths and expose single-instance lock helpers)
 - `src/db/index.ts` (MODIFY: Resolve default database directory from `GWRK_DIR` or `GWRK_HOME` before `~/.gwrk`)
 - `src/plugins/loader.ts` (MODIFY: Resolve global plugin and config paths from `GWRK_HOME` before `~/.gwrk`)
@@ -139,7 +139,7 @@ pnpm exec vitest run tests/linux-runner/backup-restore-rollback.test.ts src/arch
 
 ### Phase 5: Linux supervision and container proof
 
-Governance follows `ADR-006`, `ADR-008` and `.gwrk/rules/workspace.md`. Validate inside local Linux containers with synthetic credentials and no cloud resources. See [supervision-and-preflight.md](contracts/supervision-and-preflight.md) and [backup-rollback-and-pilot-record.md](contracts/backup-rollback-and-pilot-record.md).
+Governance follows `ADR-006`, `ADR-008` and `.gwrk/rules/workspace.md`. Validate inside local Linux containers with synthetic credentials. Exercise the systemd unit on a Linux systemd host and record that result separately. See [supervision-and-preflight.md](contracts/supervision-and-preflight.md) and [backup-rollback-and-pilot-record.md](contracts/backup-rollback-and-pilot-record.md).
 
 #### Files
 
@@ -156,7 +156,7 @@ Governance follows `ADR-006`, `ADR-008` and `.gwrk/rules/workspace.md`. Validate
 | ID | Type | Target | Expected result |
 |---|---|---|---|
 | TR-002 | integration | `tests/linux-runner/container-harness.mjs` | Clean Linux container installs and runs release artifact without source checkout |
-| TR-003 | integration | `tests/linux-runner/container-harness.mjs` | Supervised container restart resumes one server and one worker |
+| TR-003 | integration | `tests/linux-runner/container-harness.mjs` | A Linux process restart resumes one server and one worker |
 | TR-004 | unit | `tests/linux-runner/bundle-and-live-record.test.ts` | Preflight rejects laptop paths, public binds, missing secrets and revoked credentials |
 | TR-007 | unit | `tests/linux-runner/bundle-and-live-record.test.ts` | Live pilot record keeps host and worker checks separate from synthetic fixtures |
 
@@ -186,5 +186,7 @@ node tests/linux-runner/container-harness.mjs
 | Acceptance 5 separate live pilot operator record | Phase 5 | `contracts/backup-rollback-and-pilot-record.md` | TR-007 |
 
 ## Deferred items
+
+Verify restore against persisted ledger entries and repository state in this feature. A restart with accepted jobs still queued requires the durable dispatch work in feature 049. The integrated pilot exercises that recovery path.
 
 Live cloud host provisioning and public DNS allocation belong to prerequisite `041-hosted-google-signin-proof` and operator rollout. Multi-project authorization and live Slack workspace enrollment belong to the downstream integrated pilot in [R013](../../docs/research/R013-hosted-gwrk-server/brief.md).
