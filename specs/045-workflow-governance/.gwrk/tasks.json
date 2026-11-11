@@ -1,0 +1,155 @@
+{
+  "featureId": "045-workflow-governance",
+  "createdAt": "2026-11-11T20:01:14.074Z",
+  "generatedFrom": {
+    "plan": {
+      "hash": "7f807fea167adccef76cbabe536a2ffe385440a94b66e1f5dcd627d5ce7a7026",
+      "modifiedAt": "2026-11-11T20:01:11.244Z"
+    }
+  },
+  "phases": [
+    {
+      "id": "phase-01",
+      "title": "Workflow guidance and decision authority",
+      "tasks": [
+        {
+          "id": "T001",
+          "title": "Modify PROMPT.md",
+          "description": "MODIFY src/plugins/builtins/workflows/gwrk-specify/PROMPT.md. Use selected architecture and the current project layout. FR-001.",
+          "status": "open",
+          "gateScript": "pnpm run build\npnpm exec vitest run src/plugins/workflow-governance.test.ts src/utils/agent.grounding-decisions.test.ts src/plugins/builtins/workflows/gwrk-plan/prompt-contract.test.ts src/commands/define-plan.test.ts src/architecture.test.ts",
+          "sp": 1
+        },
+        {
+          "id": "T002",
+          "title": "Modify PROMPT.md",
+          "description": "MODIFY src/plugins/builtins/workflows/gwrk-plan/PROMPT.md. Use current hexagonal boundaries and preserve the parser contract. FR-001.",
+          "status": "open",
+          "gateScript": "pnpm run build\npnpm exec vitest run src/plugins/workflow-governance.test.ts src/utils/agent.grounding-decisions.test.ts src/plugins/builtins/workflows/gwrk-plan/prompt-contract.test.ts src/commands/define-plan.test.ts src/architecture.test.ts",
+          "sp": 1
+        },
+        {
+          "id": "T003",
+          "title": "Modify principal-engineer.md",
+          "description": "MODIFY src/plugins/builtins/personas/principal-engineer.md. Use the project's verification commands and schema standards. FR-001.",
+          "status": "open",
+          "gateScript": "pnpm run build\npnpm exec vitest run src/plugins/workflow-governance.test.ts src/utils/agent.grounding-decisions.test.ts src/plugins/builtins/workflows/gwrk-plan/prompt-contract.test.ts src/commands/define-plan.test.ts src/architecture.test.ts",
+          "sp": 1
+        },
+        {
+          "id": "T004",
+          "title": "Modify agent.ts",
+          "description": "MODIFY src/utils/agent.ts. Add shared conflict guidance beside the intact decision index. FR-002.. Tests: src/utils/agent.grounding-decisions.test.ts",
+          "status": "open",
+          "gateScript": "pnpm run build\npnpm exec vitest run src/plugins/workflow-governance.test.ts src/utils/agent.grounding-decisions.test.ts src/plugins/builtins/workflows/gwrk-plan/prompt-contract.test.ts src/commands/define-plan.test.ts src/architecture.test.ts",
+          "sp": 1
+        }
+      ],
+      "sp_estimate": 4,
+      "testTargets": [
+        "src/plugins/workflow-governance.test.ts",
+        "src/utils/agent.grounding-decisions.test.ts",
+        "src/plugins/builtins/workflows/gwrk-plan/prompt-contract.test.ts"
+      ]
+    },
+    {
+      "id": "phase-02",
+      "title": "Architecture context and assessment discovery",
+      "tasks": [
+        {
+          "id": "T005",
+          "title": "Create readiness.ts",
+          "description": "NEW src/adapters/architecture/readiness.ts. Inspect project-local context and select the latest readable assessment. FR-003.. Tests: src/adapters/architecture/readiness.test.ts",
+          "status": "open",
+          "gateScript": "pnpm run build\npnpm exec vitest run src/adapters/architecture/readiness.test.ts src/engine/discover.test.ts src/commands/project.test.ts src/application/architecture/context.test.ts src/architecture.test.ts",
+          "sp": 2
+        },
+        {
+          "id": "T006",
+          "title": "Modify discover.ts",
+          "description": "MODIFY src/engine/discover.ts. Attach additive readiness data to the existing discovery result. FR-003.. Tests: src/engine/discover.test.ts",
+          "status": "open",
+          "gateScript": "pnpm run build\npnpm exec vitest run src/adapters/architecture/readiness.test.ts src/engine/discover.test.ts src/commands/project.test.ts src/application/architecture/context.test.ts src/architecture.test.ts",
+          "sp": 1
+        },
+        {
+          "id": "T007",
+          "title": "Modify project-discover.ts",
+          "description": "MODIFY src/commands/project-discover.ts. Render target, context and latest assessment in text and JSON. FR-003.",
+          "status": "open",
+          "gateScript": "pnpm run build\npnpm exec vitest run src/adapters/architecture/readiness.test.ts src/engine/discover.test.ts src/commands/project.test.ts src/application/architecture/context.test.ts src/architecture.test.ts",
+          "sp": 1
+        }
+      ],
+      "sp_estimate": 4,
+      "testTargets": [
+        "src/adapters/architecture/readiness.test.ts",
+        "src/engine/discover.test.ts",
+        "src/commands/project.test.ts"
+      ]
+    },
+    {
+      "id": "phase-03",
+      "title": "Project policy versions",
+      "tasks": [
+        {
+          "id": "T008",
+          "title": "Create policy-lock.ts",
+          "description": "NEW src/plugins/policy-lock.ts. Parse and validate tracked pins and verify the supplied policy candidates. FR-004.. Tests: src/plugins/policy-lock.test.ts",
+          "status": "open",
+          "gateScript": "pnpm run build\npnpm exec vitest run src/plugins/policy-lock.test.ts src/plugins/skill-runtime.test.ts src/plugins/policy-lock.dispatch.test.ts src/engine/registry-versioning.test.ts src/architecture.test.ts",
+          "sp": 2
+        },
+        {
+          "id": "T009",
+          "title": "Modify skill-runtime.ts",
+          "description": "MODIFY src/plugins/skill-runtime.ts. Apply pins at feature 044's policy resolution boundary. FR-004.. Tests: src/plugins/skill-runtime.test.ts",
+          "status": "open",
+          "gateScript": "pnpm run build\npnpm exec vitest run src/plugins/policy-lock.test.ts src/plugins/skill-runtime.test.ts src/plugins/policy-lock.dispatch.test.ts src/engine/registry-versioning.test.ts src/architecture.test.ts",
+          "sp": 1
+        },
+        {
+          "id": "T010",
+          "title": "Modify architecture.md",
+          "description": "MODIFY docs/grounding/architecture.md. Document the project lock format, digest procedure and provisioning steps. FR-004.",
+          "status": "open",
+          "gateScript": "pnpm run build\npnpm exec vitest run src/plugins/policy-lock.test.ts src/plugins/skill-runtime.test.ts src/plugins/policy-lock.dispatch.test.ts src/engine/registry-versioning.test.ts src/architecture.test.ts",
+          "sp": 1
+        }
+      ],
+      "sp_estimate": 4,
+      "testTargets": [
+        "src/plugins/policy-lock.test.ts",
+        "src/plugins/skill-runtime.test.ts",
+        "src/plugins/policy-lock.dispatch.test.ts"
+      ]
+    },
+    {
+      "id": "phase-04",
+      "title": "Plugin seed input and failure",
+      "tasks": [
+        {
+          "id": "T011",
+          "title": "Modify seed.ts",
+          "description": "MODIFY src/plugins/seed.ts. Validate the taxonomy and propagate read, parse and write failures. FR-005.. Tests: src/plugins/seed.test.ts",
+          "status": "open",
+          "gateScript": "pnpm run build\npnpm exec vitest run src/plugins/seed.test.ts src/commands/plugin.test.ts src/architecture.test.ts",
+          "sp": 1
+        },
+        {
+          "id": "T012",
+          "title": "Modify plugin.ts",
+          "description": "MODIFY src/commands/plugin.ts. Accept an explicit taxonomy path and report actionable failure. FR-005.. Tests: src/plugins/seed.test.ts",
+          "status": "open",
+          "gateScript": "pnpm run build\npnpm exec vitest run src/plugins/seed.test.ts src/commands/plugin.test.ts src/architecture.test.ts",
+          "sp": 1
+        }
+      ],
+      "sp_estimate": 2,
+      "testTargets": [
+        "src/plugins/seed.test.ts",
+        "src/commands/plugin.test.ts"
+      ]
+    }
+  ]
+}
