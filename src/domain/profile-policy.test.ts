@@ -549,6 +549,28 @@ describe("FR-001: profile design inheritance (044 phase p01)", () => {
     },
   );
 
+  it("drops incompatible local tool IDs when the local stack is omitted", () => {
+    const profile = resolveWorkspacePolicyProfile(
+      "services/api",
+      { type: "nodejs", stack: { language: "TypeScript", buildSystem: "npm" } },
+      {
+        project: { design },
+        workspaces: {
+          "services/api": { stack: { language: "Python", buildSystem: "uv" } },
+        },
+      },
+      {
+        localProject: {
+          toolchain: { test: "jest", primary: "eslint", formatter: "prettier" },
+        },
+      },
+    );
+    expect(profile.toolchain).toBeUndefined();
+    expect(getTestCommand(profile, ["test_api.py"])).toBe(
+      "pytest test_api.py -v",
+    );
+  });
+
   it("drops local stack and tools when the registered workspace selects a different language", () => {
     const local = {
       stack: {

@@ -743,7 +743,7 @@ describe("FR-001: architecture-aware workspace profiles (044 phase p01)", () => 
     expect((await detectProfile(workspace)).toolchain).toEqual({ primary: "ruff" });
   });
 
-  it("keeps explicit workspace-local tools above filtered detection", async () => {
+  it("keeps explicit workspace-local disablement while filtering incompatible tools", async () => {
     write("services/api/package.json", "{}");
     write("services/api/biome.json", "{}");
     write("services/api/vitest.config.ts", "");
@@ -765,10 +765,40 @@ describe("FR-001: architecture-aware workspace profiles (044 phase p01)", () => 
     expect(profile).toMatchObject({
       design,
       stack: { language: "Python" },
-      toolchain: { primary: "biome", test: null },
+      toolchain: { test: null },
     });
+    expect(profile.toolchain?.primary).toBe("ruff");
     expect(profile.toolchain?.formatter).toBeUndefined();
     expect(getTestCommand(profile, ["test_api.py"])).toBeNull();
+  });
+
+  it("preserves nested local stack and commands over the matched workspace defaults", async () => {
+    const config = {
+      project: { name: "fixture", design },
+      workspaces: { "services/api": { stack: { language: "Python", buildSystem: "uv" } } },
+    };
+    write(".gwrkrc.json", JSON.stringify(config));
+    write("services/api/pyproject.toml", '[project]\ndependencies = ["fastapi"]\n');
+    write("services/api/uv.lock", "");
+    write("services/api/.gwrkrc.json", JSON.stringify({ project: { name: "api" } }));
+    write("services/api/admin/.gwrkrc.json", JSON.stringify({
+      project: {
+        name: "admin",
+        stack: { framework: "Django" },
+        toolchain: { test: "pytest", testCommand: "uv run pytest {files}" },
+      },
+    }));
+    const child = path.join(root, "services/api/admin");
+    const profiles = [
+      await detectProfile(child),
+      await resolveWorkspaceProfile(root, "services/api/admin"),
+      resolveWorkspaceProfile(child, root, config),
+    ];
+    for (const profile of profiles) {
+      expect.soft(profile?.stack).toMatchObject({ language: "Python", framework: "Django", buildSystem: "uv" });
+      if (!profile) throw new Error("Expected a workspace profile");
+      expect.soft(getTestCommand(profile, ["test_api.py"])).toBe("uv run pytest test_api.py");
+    }
   });
 
   it.each([false, true])("resolves a nested design in all entry points with entry override %s", async (override) => {

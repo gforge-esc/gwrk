@@ -106,7 +106,7 @@ function compatibleToolchain(
   toolchain: ProjectProfile["toolchain"],
   sourceStack: ProjectProfile["stack"],
   workspaceStack: ProjectProfile["stack"],
-  source: "root" | "detected" | { localStack: ProjectProfile["stack"] },
+  source: "root" | "detected" | "local",
 ): ProjectProfile["toolchain"] {
   if (!toolchain) return undefined;
 
@@ -124,32 +124,7 @@ function compatibleToolchain(
     !sourceLanguage ||
     !workspaceLanguage ||
     sourceLanguage === workspaceLanguage;
-  const isLocal = typeof source === "object";
-  const localFamily = isLocal
-    ? languageFamily(profileLanguage(source.localStack))
-    : undefined;
-  if (
-    isLocal &&
-    (!localFamily || !workspaceFamily || localFamily === workspaceFamily)
-  ) {
-    const commandsFit =
-      buildSystemsMatch &&
-      (!configuredSourceFamily ||
-        !workspaceFamily ||
-        configuredSourceFamily === workspaceFamily);
-    if (commandsFit && extensionsMatch) return toolchain;
-    const { build, testCommand, sourceExtension, testExtension, ...shared } =
-      toolchain;
-    const compatible: Toolchain = {
-      ...shared,
-      ...((commandsFit || build === null) && build !== undefined && { build }),
-      ...(commandsFit && testCommand !== undefined && { testCommand }),
-      ...(extensionsMatch &&
-        sourceExtension !== undefined && { sourceExtension }),
-      ...(extensionsMatch && testExtension !== undefined && { testExtension }),
-    };
-    return Object.keys(compatible).length ? compatible : undefined;
-  }
+  const isLocal = source === "local";
 
   if (!workspaceLanguage) {
     if (buildSystemsMatch) return toolchain;
@@ -267,6 +242,7 @@ export function resolveWorkspacePolicyProfile(
   options?: {
     requireDesign?: boolean;
     localProject?: WorkspaceProfileConfig;
+    matchedLocalProject?: WorkspaceProfileConfig;
     detectedStacks?: readonly Stack[];
     detectedToolchains?: Readonly<Record<string, Toolchain>>;
   },
@@ -278,9 +254,13 @@ export function resolveWorkspacePolicyProfile(
   );
   const workspaceConfig = bestMatch ? workspaces[bestMatch] : undefined;
   const localProject = options?.localProject;
+  const matchedLocalProject = options?.matchedLocalProject;
   const rootDesign = rootConfig?.project?.design;
   const projectDesign =
-    localProject?.design ?? detectedWorkspace.design ?? rootDesign;
+    localProject?.design ??
+    matchedLocalProject?.design ??
+    detectedWorkspace.design ??
+    rootDesign;
   if (!projectDesign && !workspaceConfig?.design) {
     if (options?.requireDesign || !workspaceConfig) return detectedWorkspace;
     return mergeProfileOverrides({
@@ -290,9 +270,14 @@ export function resolveWorkspacePolicyProfile(
   }
 
   const { stack: entryStack, ...workspaceOverrides } = workspaceConfig ?? {};
+  const localStack = resolveProfileStack(
+    matchedLocalProject?.stack,
+    localProject?.stack,
+    undefined,
+  );
   const workspaceStack = resolveProfileStack(
     detectedWorkspace.stack,
-    localProject?.stack,
+    localStack,
     entryStack,
     options?.detectedStacks,
   );
@@ -314,19 +299,32 @@ export function resolveWorkspacePolicyProfile(
       ? options?.detectedToolchains?.[workspaceFamily]
       : undefined,
   );
-  const localStack = localProject?.stack;
   const localSourceStack = resolveProfileStack(
     rawStack,
     localStack,
     undefined,
     options?.detectedStacks,
   );
-  const localToolchain = compatibleToolchain(
+  const matchedToolchain = compatibleToolchain(
+    matchedLocalProject?.toolchain,
+    resolveProfileStack(
+      rawStack,
+      matchedLocalProject?.stack,
+      undefined,
+      options?.detectedStacks,
+    ),
+    workspaceStack,
+    "local",
+  );
+  const requestedToolchain = compatibleToolchain(
     localProject?.toolchain,
     localSourceStack,
     workspaceStack,
-    { localStack },
+    "local",
   );
+  const localToolchain = requestedToolchain
+    ? mergeToolchain(matchedToolchain, requestedToolchain)
+    : matchedToolchain;
 
   return mergeProfileOverrides({
     detected:
@@ -337,7 +335,7 @@ export function resolveWorkspacePolicyProfile(
           }
         : detected,
     projectDesign,
-    projectType: localProject?.type,
+    projectType: localProject?.type ?? matchedLocalProject?.type,
     projectStack: workspaceStack,
     projectToolchain: localToolchain,
     workspaceConfig: workspaceOverrides,

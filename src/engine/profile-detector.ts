@@ -563,17 +563,12 @@ function applyWorkspaceConfig(
   const matchedProject = detectMatched
     ? readLocalProject(matchedRoot)
     : undefined;
-  const requestedProject = options?.localProject;
-  const localProject = matchedProject
-    ? {
-        ...matchedProject,
-        design: requestedProject?.design ?? matchedProject.design,
-      }
-    : requestedProject;
+  const localProject = options?.localProject;
   const hasDesign =
     design ||
     (matchedPath && workspaces[matchedPath].design) ||
-    localProject?.design;
+    localProject?.design ||
+    matchedProject?.design;
   if (!hasDesign) {
     if (options?.requireDesign) return detected.profile;
     return resolveWorkspacePolicyProfile(
@@ -632,6 +627,7 @@ function applyWorkspaceConfig(
     {
       requireDesign: options?.requireDesign,
       localProject,
+      matchedLocalProject: matchedProject,
       detectedStacks: detected.signals,
       detectedToolchains: detected.toolchains,
     },
