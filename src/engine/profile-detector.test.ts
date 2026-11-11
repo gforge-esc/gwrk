@@ -152,6 +152,21 @@ describe("profile-detector", () => {
 });
 
 describe("FR-002: Workspace Detection via CWD (020-polyglot-monorepo)", () => {
+  it("preserves the legacy resolver shape for workspaces without a design", () => {
+    const root = path.resolve("fixture-project");
+    const workspace = path.join(root, "services", "api");
+    expect(
+      resolveWorkspaceProfile(workspace, root, {
+        project: { toolchain: { test: "vitest" } },
+        workspaces: { "services/api": { stack: { framework: "Django" } } },
+      }),
+    ).toStrictEqual({
+      type: "nodejs",
+      stack: { framework: "Django" },
+      layout: "flat",
+    });
+  });
+
   it("US-002: detects active workspace profile based on cwd in polyglot monorepo", async () => {
     const pd = await import("./profile-detector.js" as any);
     const mockConfig = {

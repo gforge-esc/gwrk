@@ -559,12 +559,16 @@ function workspaceProfileMetadata(
   project: WorkspaceProfileConfig | undefined,
   workspace: WorkspaceProfileConfig,
 ): Pick<ProjectProfile, "design" | "toolchain"> {
+  const projectDesign = DesignSchema.safeParse(project?.design).data;
+  const workspaceDesign = DesignSchema.safeParse(workspace.design).data;
+  if (!projectDesign && !workspaceDesign) return {};
+
   const { type: _type, ...metadata } = mergeProfileOverrides({
     detected: { type: "unknown" },
-    projectDesign: DesignSchema.safeParse(project?.design).data,
+    projectDesign,
     projectToolchain: ToolchainConfigSchema.safeParse(project?.toolchain).data,
     workspaceConfig: {
-      design: DesignSchema.safeParse(workspace.design).data,
+      design: workspaceDesign,
       toolchain: ToolchainConfigSchema.safeParse(workspace.toolchain).data,
     },
   });
