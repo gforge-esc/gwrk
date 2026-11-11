@@ -22,7 +22,7 @@ import {
 import { getCompressionRecord } from "../db/compression.js";
 import { getGateResults } from "../db/gates.js";
 import { getDb } from "../db/index.js";
-import { listRuns, startRun } from "../db/runs.js";
+import { listRuns, recordHistory, startRun } from "../db/runs.js";
 import { gatherDeliveryActuals } from "../engine/compression.js";
 import { ShipOrchestrator } from "../engine/ship-orchestrator.js";
 import { execCommand } from "../utils/exec.js";
@@ -340,15 +340,28 @@ describe("Server E2E Integration", () => {
       `)
           .run(fixture.projectId, closedAt);
         for (const { id } of features) {
-          startRun(
+          const runId = startRun(
             {
               feature_id: id,
               phase_id: "phase-01",
               project_id: fixture.projectId,
               command: "ship",
+              attempt: 1,
             },
             fixture.db,
           );
+          if (id === "merged-feature") {
+            recordHistory(
+              {
+                project_id: fixture.projectId,
+                feature_id: id,
+                task_id: "T001",
+                to_status: "completed",
+                run_id: runId,
+              },
+              fixture.db,
+            );
+          }
         }
         const featureDir = join(fixture.projectRoot, "specs", "merged-feature");
         const featureStateDir = join(featureDir, ".gwrk");
@@ -373,6 +386,13 @@ describe("Server E2E Integration", () => {
                     description: "",
                     status: "open",
                     gateScript: "true",
+                  },
+                  {
+                    id: "T002",
+                    title: "Cancelled before merge",
+                    description: "",
+                    status: "cancelled",
+                    gateScript: "false",
                   },
                 ],
               },
@@ -426,7 +446,10 @@ describe("Server E2E Integration", () => {
           fixture.projectId,
           fixture.db,
         ),
-      ).toMatchObject({ feature_id: "merged-feature" });
+      ).toMatchObject({
+        feature_id: "merged-feature",
+        convergence_first_pass_rate: 50,
+      });
     } finally {
       await fixture.close();
     }
@@ -484,7 +507,11 @@ describe("Server E2E Integration", () => {
         "fixture ledger update failed",
       );
     } finally {
-      await fixture.close();
+      await fixture.close().catch((error: unknown) => {
+        expect(error).toMatchObject({
+          message: "fixture ledger update failed",
+        });
+      });
     }
   });
 
@@ -527,11 +554,19 @@ describe("Server E2E Integration", () => {
     }
   });
 
-  it("initializes a separate Git repository with inherited repository selectors", async () => {
+  it("isolates fixture Git setup and worktrees from inherited repository selectors", async () => {
     const external = await createServerFixture("routes", {
       routes: ["dispatch"],
     });
     let fixture: ServerFixture | undefined;
+    let finishShip!: (exitCode: number) => void;
+    const ship = new Promise<number>((resolve) => {
+      finishShip = resolve;
+    });
+    const run = vi.fn(() => ship);
+    vi.mocked(ShipOrchestrator).mockImplementationOnce(
+      () => ({ run, getResult: () => ({}) }) as unknown as ShipOrchestrator,
+    );
     const snapshot = () => [
       fixtureGit(external.projectRoot, "rev-parse", "HEAD"),
       fixtureGit(external.projectRoot, "status", "--porcelain"),
@@ -544,39 +579,41 @@ describe("Server E2E Integration", () => {
       vi.stubEnv("GIT_DIR", join(external.projectRoot, ".git"));
       vi.stubEnv("GIT_WORK_TREE", external.projectRoot);
       fixture = await createServerFixture("routes", { routes: ["dispatch"] });
+      const { projectRoot } = fixture;
+      expect(existsSync(join(projectRoot, ".git"))).toBe(true);
+      expect(fixtureGit(projectRoot, "log", "-1", "--format=%s")).toBe(
+        "Initialize fixture",
+      );
+      const worktrees = () =>
+        fixtureGit(projectRoot, "worktree", "list", "--porcelain").match(
+          /^worktree .+$/gm,
+        );
       const response = await fixture.app.inject({
         method: "POST",
         url: "/api/dispatch",
         payload: { featureId: "probe", phaseId: "phase-01" },
       });
       expect(response.statusCode).toBe(201);
-      const isolated = fixture;
-      await vi.waitFor(() => {
-        expect(isolated.journal().at(-1)?.status).toBe("completed");
-      });
-      await fixture.app.close();
+      await vi.waitFor(() => expect(run).toHaveBeenCalledOnce());
+      const workDir = fixture.journal().at(-1)?.workDir;
+      expect(workDir).toBeDefined();
+      expect(worktrees()).toEqual([
+        `worktree ${projectRoot}`,
+        `worktree ${workDir}`,
+      ]);
       expect(snapshot()).toEqual(original);
       expect(
-        fixtureGit(
-          fixture.projectRoot,
-          "branch",
-          "--list",
-          "feat/probe-phase-01",
-        ),
+        fixtureGit(projectRoot, "branch", "--list", "feat/probe-phase-01"),
       ).toContain("feat/probe-phase-01");
-      expect(
-        fixtureGit(
-          fixture.projectRoot,
-          "worktree",
-          "list",
-          "--porcelain",
-        ).match(/^worktree .+$/gm),
-      ).toEqual([`worktree ${fixture.projectRoot}`]);
-      expect(existsSync(join(fixture.projectRoot, ".git"))).toBe(true);
-      expect(fixtureGit(fixture.projectRoot, "log", "-1", "--format=%s")).toBe(
-        "Initialize fixture",
-      );
+
+      finishShip(0);
+      await fixture.app.close();
+      expect(fixture.journal().at(-1)?.status).toBe("completed");
+      expect(existsSync(workDir ?? "")).toBe(false);
+      expect(worktrees()).toEqual([`worktree ${projectRoot}`]);
+      expect(snapshot()).toEqual(original);
     } finally {
+      finishShip(0);
       try {
         await Promise.all([fixture?.close(), external.close()]);
       } finally {
@@ -612,6 +649,7 @@ describe("Server E2E Integration", () => {
       expect(
         fixture.journal().filter(({ status }) => status === "queued"),
       ).toHaveLength(1);
+      expect(ShipOrchestrator).toHaveBeenCalledOnce();
     } finally {
       await fixture.close();
     }
