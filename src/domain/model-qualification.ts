@@ -141,7 +141,9 @@ export function checkCandidate(
   }
   if (
     candidate.effort !== undefined &&
-    !supportedEfforts.includes(candidate.effort)
+    (!isNonBlankString(candidate.effort) ||
+      candidate.effort.includes("\u0000") ||
+      !supportedEfforts.includes(candidate.effort))
   ) {
     return { ok: false, reason: "effort-unavailable" };
   }

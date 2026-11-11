@@ -177,6 +177,35 @@ describe("credential guard", () => {
 });
 
 describe("model qualification policy", () => {
+  it.each(["high\u0000", "", " "])(
+    "rejects an unusable persisted effort %j even when the catalog lists it",
+    (effort) => {
+      const persisted = JSON.parse(
+        JSON.stringify({
+          ...snapshot,
+          adapters: [
+            {
+              ...report,
+              models: [{ ...model, supportedEfforts: ["high", effort] }],
+            },
+          ],
+        }),
+      );
+
+      expect(
+        checkCandidate(persisted, scope, { ...candidate, effort }),
+      ).toEqual({
+        ok: false,
+        reason: "effort-unavailable",
+      });
+      expect(
+        checkCandidate(persisted, scope, { ...candidate, effort: "high" }),
+      ).toEqual({
+        ok: true,
+      });
+    },
+  );
+
   it("checks the exact model, runner and effort against available catalog entries", () => {
     expect(checkCandidate(snapshot, scope, candidate)).toEqual({ ok: true });
     expect(
