@@ -17,6 +17,7 @@ import { AgentBackendRegistry } from "../plugins/agent-registry.js";
 import { resolveExtensionContext } from "../plugins/extension-runtime.js";
 import { PluginLoader } from "../plugins/loader.js";
 import { resolveEnforcementSkills } from "../plugins/skill-runtime.js";
+import type { AgentTaskRequest, AgentTaskResult } from "../ports/agent-port.js";
 import { formatResultError, renderStreamStdoutLine } from "./agent-log.js";
 import { type AgentBackendId, loadConfig } from "./config.js";
 import { startProgress } from "./progress.js";
@@ -415,45 +416,12 @@ async function dispatchAgent(opts: DispatchOptions): Promise<{
  * FR-019: Input contract for dispatchToAgent().
  * Maps to ADR-006 AgentBackend.dispatch() input.
  */
-export interface TaskDispatch {
-  type?: string;
-  prompt?: string;
-  agent?: AgentBackendId | string;
-  model?: string;
+export interface TaskDispatch extends AgentTaskRequest {
   commandOverride?: string;
-  workDir?: string;
-  stdin?: string;
-  env?: Record<string, string>;
-  workflow?: string;
-  featureDir?: string;
-  quiet?: boolean;
   dryRun?: boolean;
-  /**
-   * JSON Schema for the expected output contract. Adapters whose CLI supports
-   * structured output (e.g. Claude's `--json-schema`) pass this through to
-   * force schema-conforming output; adapters that don't simply ignore it.
-   */
-  outputSchema?: Record<string, unknown>;
 }
 
-/**
- * FR-019: Output contract for dispatchToAgent().
- * Normalized result — proprietary exit codes mapped to gwrk standard.
- */
-export interface TaskResult {
-  exitCode: number;
-  rawExitCode?: number;
-  errorType?: string;
-  stdout: string;
-  unwrappedStdout?: string;
-  structuredOutput?: Record<string, unknown>;
-  usage?: {
-    tokensIn?: number;
-    tokensOut?: number;
-    costUsd?: number;
-  };
-  stderr: string;
-  durationS: number;
+export interface TaskResult extends AgentTaskResult {
   logPath?: string;
   /** True when the agent writes files directly via built-in tools. */
   nativeWriter?: boolean;

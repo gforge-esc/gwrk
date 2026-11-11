@@ -6,6 +6,8 @@
  * Canonical AgentPort interface and stream-json unwrapping utilities (ADR-006, ADR-011).
  */
 
+import type { RouteSelectionDecision } from "../domain/agent-routing.js";
+
 export interface AgentTaskRequest {
   type?: string;
   workflow?: string;
@@ -59,19 +61,18 @@ export interface AgentTaskResult {
 
 export interface RoutingContext {
   type: string;
+  runId?: string;
   skillName?: string;
   feature?: string;
   phase?: string;
   preferredAgent?: string;
+  explicitBackend?: string;
+  explicitModel?: string;
   language?: string;
   taskSP?: number;
 }
 
-export interface SelectedAgentRoute {
-  backend: string;
-  model: string;
-  reason: string;
-}
+export type SelectedAgentRoute = RouteSelectionDecision;
 
 export interface AgentPort {
   execute(task: AgentTaskRequest): Promise<AgentTaskResult>;

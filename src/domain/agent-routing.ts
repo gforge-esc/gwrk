@@ -21,6 +21,7 @@ export interface RoutingFacts {
   readonly explicitModel?: string;
   readonly pillarConfig?: Readonly<Partial<Record<string, string>>>;
   readonly availableBackends?: readonly string[];
+  readonly fallbackOrder?: readonly string[];
   readonly registry?: AgentRegistry;
   readonly quotas?: Readonly<Record<string, BackendQuotaSnapshot>>;
   readonly history?: readonly HistoricalBackendStat[];
@@ -68,7 +69,7 @@ function backendCandidates(
       : [];
   const fallback = [
     ...new Set([
-      ...(facts.registry?.fallbackOrder ?? []),
+      ...(facts.fallbackOrder ?? facts.registry?.fallbackOrder ?? []),
       ...(facts.availableBackends ??
         Object.keys(facts.registry?.backends ?? {})),
     ]),
