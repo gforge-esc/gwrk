@@ -27,9 +27,11 @@ import {
   scopeManualHarvestToPhases,
   scopeVerifiedMergeToPhases,
   sharesHarvestRepositoryScope,
+  verifyHarvestIntakeOperations,
   verifyHarvestTarget,
 } from "../domain/durable-harvest.js";
 import type {
+  EnrolledProject,
   ProjectSlackBinding,
   SlackFeatureThread,
 } from "../domain/project-registry.js";
@@ -125,29 +127,28 @@ function harvestIntake(
     explicitFeatureId: operation.featureId,
     explicitPhaseId: operation.phaseId ?? undefined,
   };
-  const verified = verifyHarvestTarget(
-    {
-      projectId: operation.projectId,
-      slug: "a",
-      name: "A",
-      repoSlug: operation.repoSlug ?? "acme/a",
-      trunkBranch: operation.trunkBranch,
-      localRoot: "/repos/a",
-      mirrorPath: null,
-      runnerPolicy: { allowedKinds: ["local"] },
-      slack: null,
-      legacyProjectIds: [],
-      createdAt,
-      updatedAt: createdAt,
-    },
-    candidate,
-  );
+  const project: EnrolledProject = {
+    projectId: operation.projectId,
+    slug: "a",
+    name: "A",
+    repoSlug: operation.repoSlug ?? "acme/a",
+    trunkBranch: operation.trunkBranch,
+    localRoot: "/repos/a",
+    mirrorPath: null,
+    runnerPolicy: { allowedKinds: ["local"] },
+    slack: null,
+    legacyProjectIds: [],
+    createdAt,
+    updatedAt: createdAt,
+  };
+  const verified = verifyHarvestTarget(project, candidate);
   if (!verified.ok) throw new Error(verified.reason);
   Object.assign(operation, {
     workKey: verified.workKey,
     repoSlug: verified.repoSlug,
     featureId: verified.featureId,
     phaseId: verified.phaseId,
+    mergeCommitSha: operation.mergeCommitSha?.trim().toLowerCase() ?? null,
   });
   const delivery = {
     candidate,
@@ -157,7 +158,7 @@ function harvestIntake(
   if (checkoutPhaseIds === undefined) {
     return {
       ...delivery,
-      target: { accepted: true, operations: [operation] },
+      target: { accepted: true, project, operations: [operation] },
     };
   }
   if (verified.kind !== "pull_request")
@@ -176,6 +177,8 @@ function harvestIntake(
     target: first
       ? {
           accepted: true,
+          project,
+          checkoutPhaseIds,
           operations: [toOperation(first), ...rest.map(toOperation)],
         }
       : {
@@ -267,6 +270,17 @@ function restoreHarvestIntake(persisted: {
           deduplicatedTransport: true,
           deduplicatedWork: delivery.operationIds.length > 0,
         };
+      }
+      if (
+        target.accepted &&
+        !verifyHarvestIntakeOperations(
+          target.project,
+          candidate,
+          target.checkoutPhaseIds,
+          target.operations,
+        )
+      ) {
+        return { ok: false, code: "HARVEST_IDENTITY_MISMATCH" };
       }
       const incoming = target.accepted ? target.operations : [];
       const operations = incoming.map((operation) =>
@@ -1450,6 +1464,12 @@ describe("persisted harvest intake contract", () => {
     { mergeCommitSha: "b".repeat(40) },
     { featureId: "different-feature" },
     { phaseId: "phase-04" },
+    { workKey: "forged-work-key" },
+    { prUrl: "https://github.com/acme/other/pull/42" },
+    { headRepoSlug: "acme/other" },
+    { headBranch: "feat/different-feature" },
+    { expectedHeadSha: "c".repeat(40) },
+    { terminalAt: leaseExpiresAt },
   ])("rejects substituted scope %o before any write", (substitution) => {
     const valid = wholeFeatureMergeIntake("verified-merge", 42, [
       "phase-01",
@@ -1467,7 +1487,7 @@ describe("persisted harvest intake contract", () => {
           operations: [first, { ...second, ...substitution }],
         },
       }),
-    ).toMatchObject({ ok: false });
+    ).toEqual({ ok: false, code: "HARVEST_IDENTITY_MISMATCH" });
     const saved = initial.snapshot();
     expect(saved.harvests).toEqual([]);
     expect(saved.deliveries).toEqual([]);
@@ -1673,10 +1693,12 @@ describe("persisted harvest intake contract", () => {
           throw new Error("Expected scoped local target");
         return scoped.target.operations[0];
       });
+      if (!local.target.accepted) throw new Error("Expected local target");
       const manual = {
         ...local,
         target: {
-          accepted: true,
+          ...local.target,
+          checkoutPhaseIds: phaseIds,
           operations: [localScopes[0], ...localScopes.slice(1)],
         },
       } satisfies HarvestIntake;
@@ -1725,7 +1747,10 @@ describe("persisted harvest intake contract", () => {
           throw new Error("Expected accepted intake");
         const result = replay.store.recordHarvestIntake({
           ...intake,
-          target: { accepted: true, operations: [intake.target.operations[0]] },
+          target: {
+            ...intake.target,
+            operations: [intake.target.operations[0]],
+          },
         });
         expect(result).toMatchObject({
           ok: true,

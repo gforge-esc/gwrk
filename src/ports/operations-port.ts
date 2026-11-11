@@ -22,7 +22,10 @@ import type {
   HarvestTerminalEvent,
   OutboxStatus,
 } from "../domain/durable-harvest.js";
-import type { DeliveryRecipient } from "../domain/project-registry.js";
+import type {
+  DeliveryRecipient,
+  EnrolledProject,
+} from "../domain/project-registry.js";
 
 export interface ClockPort {
   nowIso(): string;
@@ -303,6 +306,8 @@ export interface OperationsStorePort {
 
   /**
    * Commit the original delivery and all resolved operations in one transaction.
+   * For a new delivery, verify the entire operation batch against enrollment and
+   * checkout coverage with verifyHarvestIntakeOperations before any write.
    * Resolve checkout coverage with scopeManualHarvestToPhases or scopeVerifiedMergeToPhases before intake.
    * Derive verified phase work keys from the pull request identity returned by verifyHarvestTarget.
    * Pass accepted: false when checkout coverage yields no scopes.
@@ -336,6 +341,8 @@ export interface OperationsStorePort {
     target:
       | {
           accepted: true;
+          project: EnrolledProject;
+          checkoutPhaseIds?: readonly string[];
           operations: readonly [
             DurableHarvestOperation,
             ...DurableHarvestOperation[],
@@ -350,7 +357,7 @@ export interface OperationsStorePort {
         /** True when every accepted scope matched existing work. */
         deduplicatedWork: boolean;
       }
-    | { ok: false; code: "DELIVERY_ID_CONFLICT" };
+    | { ok: false; code: "DELIVERY_ID_CONFLICT" | "HARVEST_IDENTITY_MISMATCH" };
   /** List unstarted and resumable harvests without live leases in creation order. */
   listRecoverableHarvests(input: {
     nowIso: string;

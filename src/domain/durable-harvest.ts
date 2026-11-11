@@ -565,6 +565,74 @@ export function verifyHarvestTarget(
   };
 }
 
+interface HarvestIntakeIdentity extends HarvestWorkScope {
+  projectId: string;
+  repoSlug: string | null;
+  trunkBranch: string;
+  prNumber: number | null;
+  prUrl: string | null;
+  headRepoSlug: string | null;
+  headBranch: string | null;
+  expectedHeadSha: string | null;
+  terminalEvent: HarvestTerminalEvent;
+  mergeCommitSha: string | null;
+  terminalAt: string;
+}
+
+/** Check the full batch against enrollment and checkout coverage before any write. */
+export function verifyHarvestIntakeOperations(
+  project: EnrolledProject,
+  candidate: HarvestCandidateInput,
+  checkoutPhaseIds: readonly string[] | undefined,
+  operations: readonly HarvestIntakeIdentity[],
+): boolean {
+  const verified = verifyHarvestTarget(project, candidate);
+  if (!verified.ok) return false;
+
+  let scopes: HarvestWorkScope[] = [verified];
+  if (verified.kind === "pull_request") {
+    scopes = scopeVerifiedMergeToPhases(verified, checkoutPhaseIds ?? []);
+  } else if (checkoutPhaseIds !== undefined) {
+    scopes = [];
+    for (const scoped of scopeManualHarvestToPhases(
+      candidate,
+      checkoutPhaseIds,
+    )) {
+      const result = verifyHarvestTarget(project, scoped);
+      if (!result.ok) return false;
+      scopes.push(result);
+    }
+  }
+
+  const mergeCommitSha =
+    verified.kind === "pull_request"
+      ? verified.pullRequestIdentity.mergeCommitSha
+      : (candidate.mergeCommitSha?.trim().toLowerCase() ?? null);
+  return (
+    operations.length > 0 &&
+    operations.length === scopes.length &&
+    operations.every((operation, index) => {
+      const scope = scopes[index];
+      return (
+        operation.projectId === project.projectId &&
+        operation.repoSlug === verified.repoSlug &&
+        operation.trunkBranch === project.trunkBranch &&
+        operation.featureId === scope.featureId &&
+        operation.phaseId === scope.phaseId &&
+        operation.workKey === scope.workKey &&
+        operation.prNumber === candidate.prNumber &&
+        operation.prUrl === candidate.prUrl &&
+        operation.headRepoSlug === candidate.headRepoSlug &&
+        operation.headBranch === candidate.headBranch &&
+        operation.expectedHeadSha === candidate.expectedHeadSha &&
+        operation.terminalEvent === candidate.terminalEvent &&
+        operation.mergeCommitSha === mergeCommitSha &&
+        operation.terminalAt === candidate.terminalAt
+      );
+    })
+  );
+}
+
 export interface HarvestStagePlanEntry {
   phaseKey: string;
   stage: HarvestStageName;

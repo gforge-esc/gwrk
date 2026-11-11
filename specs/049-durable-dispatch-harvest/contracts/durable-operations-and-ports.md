@@ -369,7 +369,7 @@ export interface HarvestExecutionPort {
 | `heartbeatDispatchLease` | Extend `lease_expires_at` for active worker | Requires matching `LeaseFence` |
 | `completeDispatchAttempt` | Persist terminal or requeued attempt state | Fails with `LEASE_FENCED` on stale epoch |
 | `listRecoverableDispatches` | List `accepted` and expired `leased` or `running` rows | Ordered by `created_at` ascending |
-| `recordHarvestIntake` | Record `harvest_deliveries` and upsert `harvest_operations` | One transaction with transport ID reuse rejected on repository or payload digest mismatch |
+| `recordHarvestIntake` | Record `harvest_deliveries` and upsert `harvest_operations` | One transaction. Reject conflicting transport replays and validate every new operation against enrollment and checkout coverage before writing. |
 | `claimHarvestLease` | Claim or renew harvest operation lease | Increments `lease_epoch` atomically |
 | `initializeHarvestStages` | Persist the complete initial stage plan in one transaction | Requires the current lease. The same stage keys preserve progress. Changed keys fail. |
 | `transitionHarvestStage` | Update one planned stage receipt | Requires the current lease. An unplanned stage fails. |
