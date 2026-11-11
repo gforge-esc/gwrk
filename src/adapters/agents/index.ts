@@ -73,10 +73,21 @@ async function selectAvailableRoute(
     registry: agentRegistry,
   };
   if (context.preview && context.explicitBackend) {
-    return selectAgentRoute(context, {
+    const route = selectAgentRoute(context, {
       ...requestedRoute,
       availableBackends: [context.explicitBackend],
     });
+    if (
+      context.explicitModel !== undefined ||
+      agentRegistry?.backends[route.backend]
+    ) {
+      return route;
+    }
+    const backend = await registry
+      .getAgentBackend(route.backend)
+      .catch(() => undefined);
+    const adapterModel = backend?.resolveModel?.({});
+    return { ...route, adapterModel };
   }
 
   const config = loadConfig(projectRoot);

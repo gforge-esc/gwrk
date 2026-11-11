@@ -805,7 +805,7 @@ Examples:
                 preview: true,
               });
               logCliOutput(
-                `  🤖 Would build with backend: ${implementation.backend}, model: ${implementation.model}, effort: ${implementation.effort ?? "default"} (router: ${implementation.reason})`,
+                `  🤖 Would build with backend: ${implementation.backend}, model: ${implementation.adapterModel ?? implementation.model}, effort: ${implementation.effort ?? "default"} (router: ${implementation.reason})`,
               );
             } catch (error) {
               if (error instanceof InvalidAgentRegistryError) throw error;

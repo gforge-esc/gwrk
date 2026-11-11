@@ -82,6 +82,7 @@ export interface RoutingContext {
 
 export interface SelectedAgentRoute extends RouteSelectionDecision {
   useAdapterModelDefaults?: boolean;
+  adapterModel?: string;
   reviewModel?: string;
   reviewEffort?: string;
 }

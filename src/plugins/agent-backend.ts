@@ -66,6 +66,8 @@ export interface AgentBackend {
    */
   dispatch(task: TaskDispatch): Promise<AgentDispatch>;
 
+  resolveModel?(task: Pick<TaskDispatch, "model" | "env">): string | undefined;
+
   /**
    * Returns true if the backend's required CLI or integration is available.
    */

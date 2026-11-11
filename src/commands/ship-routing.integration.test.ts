@@ -456,9 +456,23 @@ describe("ship with the real AgentPort router", () => {
     );
   });
 
-  it("preserves the native model environment for an explicit unregistered backend", async () => {
+  it("previews the same environment model that an explicit unregistered backend dispatches", async () => {
     configureAgents("claude", ["claude"]);
     vi.stubEnv("CODEX_MODEL", "environment-model");
+    const adapter = new CodexAdapter();
+    vi.spyOn(adapter, "isAvailable").mockResolvedValue(true);
+    const { AgentBackendRegistry } = await import(
+      "../plugins/agent-registry.js"
+    );
+    vi.mocked(AgentBackendRegistry.prototype.getAgentBackend)
+      .mockImplementation(async () => adapter);
+
+    await ship("--dry-run", "--agent", "codex");
+
+    const previewOutput = vi.mocked(console.log).mock.calls.flat().join("\n");
+    expect(ShipOrchestrator).not.toHaveBeenCalled();
+    expect(run).not.toHaveBeenCalled();
+    expect(fs.existsSync(dbPath)).toBe(false);
 
     await ship("--agent", "codex");
 
@@ -467,7 +481,6 @@ describe("ship with the real AgentPort router", () => {
       undefined,
     );
     const [options] = vi.mocked(ShipOrchestrator).mock.calls[0];
-    const adapter = new CodexAdapter();
     const implementation = await adapter.dispatch({
       agent: options.backend,
       model: options.selectedModel,
@@ -484,6 +497,9 @@ describe("ship with the real AgentPort router", () => {
       const modelFlag = args.indexOf("--model");
       expect(modelFlag).toBeGreaterThanOrEqual(0);
       expect(args[modelFlag + 1]).toBe("environment-model");
+      expect(previewOutput).toContain(
+        `backend: codex, model: ${args[modelFlag + 1]}, effort:`,
+      );
     }
   });
 

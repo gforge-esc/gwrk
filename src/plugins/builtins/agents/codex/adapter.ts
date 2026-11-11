@@ -80,14 +80,17 @@ export class CodexAdapter implements AgentBackend {
     }
   }
 
+  resolveModel(task: Pick<TaskDispatch, "model" | "env">): string | undefined {
+    const model =
+      task.model || (task.env?.CODEX_MODEL ?? process.env.CODEX_MODEL);
+    return model && model !== "default" ? model : undefined;
+  }
+
   async dispatch(task: TaskDispatch): Promise<AgentDispatch> {
     const args: string[] = ["exec", "--full-auto"];
 
-    const rawModel =
-      task.model || (task.env?.CODEX_MODEL ?? process.env.CODEX_MODEL);
-    if (rawModel && rawModel !== "default") {
-      args.push("--model", rawModel);
-    }
+    const model = this.resolveModel(task);
+    if (model) args.push("--model", model);
 
     const rawPrompt = task.prompt ?? "";
     const isExpandedPrompt =
