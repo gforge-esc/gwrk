@@ -621,17 +621,16 @@ function scanEvidence(
         headerPattern.test(key) ||
         secretPattern.test(key) ||
         isCredentialHeaderRecord(entry, "name") ||
-        (isHeaderCollection && isCredentialHeaderRecord(entry, "key")) ||
+        isCredentialHeaderRecord(entry, "key") ||
         (typeof entry === "string" &&
           (headerPattern.test(entry) || secretPattern.test(entry))) ||
         (Array.isArray(entry) &&
           !isHeaderValue &&
           entry.some(
             (header, index) =>
-              (index % 2 === 0 &&
-                (index + 1 < entry.length || isHeaderCollection) &&
-                isCredentialHeaderName(header)) ||
-              (isHeaderCollection && isCredentialHeaderRecord(header, "key")),
+              index % 2 === 0 &&
+              (index + 1 < entry.length || isHeaderCollection) &&
+              isCredentialHeaderName(header),
           ))
       ) {
         secretInText = true;

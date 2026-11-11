@@ -380,21 +380,41 @@ describe("credential guard", () => {
         sanitizedOutput: `stdout: ${JSON.stringify(tuples)}`,
       }),
     },
-  ])("standalone header tuples in $form", ({ evidence }) => {
+  ])("standalone headers in $form", ({ evidence }) => {
+    it("rejects a keyed Set-Cookie header outside a header collection", () => {
+      expect(() =>
+        assertNoSecretMaterial(
+          evidence([{ key: "Set-Cookie", value: "session=fixture-only" }]),
+        ),
+      ).toThrow(/secret material/i);
+    });
+
+    it("allows a keyed Content-Type header outside a header collection", () => {
+      expect(() =>
+        assertNoSecretMaterial(
+          evidence([{ key: "Content-Type", value: "text/plain" }]),
+        ),
+      ).not.toThrow();
+    });
+
     it.each([
       ["Cookie", "Accept-Encoding"],
       ["Accept-Encoding", "Cookie"],
     ])("allows Vary values %s and %s", (first, second) => {
-      expect(() =>
-        assertNoSecretMaterial(evidence([["Vary", [first, second]]])),
-      ).not.toThrow();
+      const tuple = ["Vary", [first, second]];
+      expect(() => assertNoSecretMaterial(evidence(tuple))).not.toThrow();
+      expect(() => assertNoSecretMaterial(evidence([tuple]))).not.toThrow();
     });
 
     it.each([
       ["Set-Cookie", "session=fixture-only"],
       ["Vary", ["Cookie", "Bearer\tfixture-token"]],
     ])("rejects credential material in a %s tuple", (name, value) => {
-      expect(() => assertNoSecretMaterial(evidence([[name, value]]))).toThrow(
+      const tuple = [name, value];
+      expect(() => assertNoSecretMaterial(evidence(tuple))).toThrow(
+        /secret material/i,
+      );
+      expect(() => assertNoSecretMaterial(evidence([tuple]))).toThrow(
         /secret material/i,
       );
     });
