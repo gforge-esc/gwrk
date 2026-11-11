@@ -778,6 +778,36 @@ describe("Push upstream tracking for new branches", () => {
     });
   });
 
+  it("commits failed review findings and open tasks with the run manifest", async () => {
+    const { ShipOrchestrator } = await import("../engine/ship-orchestrator.js");
+    const { isWorkingTreeClean } = await import("../utils/git.js");
+    vi.mocked(isWorkingTreeClean).mockReturnValueOnce(false);
+    vi.mocked(ShipOrchestrator).mockImplementationOnce(() => ({
+      on: vi.fn(),
+      run: vi.fn().mockResolvedValue(1),
+      getResult: vi.fn().mockReturnValue({ reviewVerdict: "NO-GO" }),
+    }) as unknown as InstanceType<typeof ShipOrchestrator>);
+    vi.mocked(execModule.run).mockResolvedValue(undefined);
+
+    try {
+      vi.spyOn(fs, "existsSync").mockReturnValue(true);
+      await program.parseAsync(["node", "test", "ship", "001-cli-core", "1"]);
+      expect(process.exitCode).toBe(1);
+      const staged = vi.mocked(execModule.run).mock.calls.find(
+        ([command, args]) => command === "git" && args?.[0] === "add",
+      )?.[1] ?? [];
+      expect(staged.map((file) => path.basename(file))).toEqual(
+        expect.arrayContaining(["runs", "tasks.json", "findings.jsonl"]),
+      );
+      const committed = vi.mocked(execModule.run).mock.calls.find(
+        ([command, args]) => command === "git" && args?.[0] === "commit",
+      )?.[1] ?? [];
+      expect(committed.slice(committed.indexOf("--") + 1)).toEqual(staged.slice(1));
+    } finally {
+      process.exitCode = 0;
+    }
+  });
+
   it("post-manifest push should use 'git push -u origin <branch>' for upstream tracking", async () => {
     const { getCurrentBranch, isWorkingTreeClean } = await import("../utils/git.js");
     vi.mocked(getCurrentBranch).mockReturnValue("feat/014-plugin-system");
