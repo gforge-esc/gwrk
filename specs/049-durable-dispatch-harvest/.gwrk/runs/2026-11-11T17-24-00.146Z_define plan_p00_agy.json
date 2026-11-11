@@ -1,0 +1,19 @@
+{
+  "runId": "2026-11-11T17:24:00.146Z_define_p00",
+  "feature": "049-durable-dispatch-harvest",
+  "phase": "p00",
+  "command": "define plan",
+  "agent": "agy",
+  "model": "gemini-4-carbon-high",
+  "startedAt": "2026-11-11T17:24:00.146Z",
+  "finishedAt": "2026-11-11T17:38:51.317Z",
+  "durationS": 891,
+  "exitCode": 0,
+  "attempt": 1,
+  "filesChanged": 4,
+  "linesAdded": 1128,
+  "linesDeleted": 0,
+  "gitCommit": "be39ffa50d7a3ee2ab529ebfb8b477b227e6f6a9",
+  "gitBranch": "codex/durable-dispatch-harvest-plan",
+  "digest": []
+}
