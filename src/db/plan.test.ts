@@ -7,6 +7,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { getTestDb } from "./index.js";
 import {
   deleteFeature,
+  deletePhase,
   getAllDependencies,
   getEdgesForFeature,
   getFeature,
@@ -111,6 +112,53 @@ describe("src/db/plan.ts (DM-018-001/002/003)", () => {
       expect.soft(getProposal("P1", id, db)).toBeUndefined();
       expect.soft(listProposals(id, db)).toEqual([]);
       expect(getFeature("old-feature", id, db)).toBeDefined();
+    }
+    expect(db.pragma("foreign_key_check")).toEqual([]);
+  });
+
+  it("removes superseded proposal copies when deleting their effective phase", () => {
+    for (const [owner, phase] of [
+      [projectId, "phase-new"],
+      ["alias", "phase-old"],
+    ]) {
+      insertFeature(
+        { id: "feature", name: "Feature", status: "PLANNED", sp_total: 0 },
+        owner,
+        db,
+      );
+      insertPhase(
+        {
+          id: phase,
+          feature_id: "feature",
+          name: phase,
+          status: "PLANNED",
+          health: "CLEAN",
+          sp_estimate: 0,
+          seq: 1,
+        },
+        owner,
+        db,
+      );
+      insertProposal(
+        {
+          id: "P1",
+          target_phase_id: phase,
+          proposal_type: "ADD_TASK",
+          status: "PENDING",
+        },
+        owner,
+        db,
+      );
+    }
+    db.prepare(
+      "INSERT INTO project_aliases (alias_id, project_id) VALUES (?, ?)",
+    ).run("alias", projectId);
+
+    expect(getProposal("P1", "alias", db)?.target_phase_id).toBe("phase-new");
+    deletePhase("phase-new", "alias", db);
+    for (const owner of [projectId, "alias"]) {
+      expect.soft(getProposal("P1", owner, db)).toBeUndefined();
+      expect.soft(getPhase("phase-old", owner, db)).toBeDefined();
     }
     expect(db.pragma("foreign_key_check")).toEqual([]);
   });

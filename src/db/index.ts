@@ -160,6 +160,7 @@ function migrateProjectRegistry(db: Database.Database, sql: string): void {
     db.transaction(() => {
       const migration = db.prepare("SELECT 1 FROM _migrations WHERE name = ?");
       if (migration.get(PROJECT_REGISTRY_MIGRATION)) return;
+      safeAddColumn(db, "issues", "html_url", "TEXT");
       db.exec(rebuild);
       backfillCheckoutRoots(db);
       db.prepare("INSERT INTO _migrations (name) VALUES (?)").run(

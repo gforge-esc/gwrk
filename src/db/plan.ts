@@ -466,12 +466,20 @@ export function deletePhase(
   db?: Database.Database,
 ): void {
   const conn = db ?? getDb();
-  const { ids, placeholders } = projectScope(conn, projectId);
   conn
-    .prepare(
-      `DELETE FROM plan_phases WHERE id = ? AND project_id IN (${placeholders})`,
-    )
-    .run(id, ...ids);
+    .transaction(() => {
+      const { ids, placeholders } = projectScope(conn, projectId);
+      for (const proposal of listProposals(projectId, conn)) {
+        if (proposal.target_phase_id === id)
+          deleteProposal(proposal.id, projectId, conn);
+      }
+      conn
+        .prepare(
+          `DELETE FROM plan_phases WHERE id = ? AND project_id IN (${placeholders})`,
+        )
+        .run(id, ...ids);
+    })
+    .immediate();
 }
 
 /**

@@ -119,6 +119,30 @@ describe("Project registry upgrade", () => {
     }
   });
 
+  it("upgrades a historical issue table without html_url", () => {
+    const upgraded = upgrade((legacy) => {
+      legacy.exec(`
+        ALTER TABLE issues DROP COLUMN html_url;
+        INSERT INTO projects (id, name, path) VALUES ('alpha', 'Alpha', '/alpha');
+        INSERT INTO issues (issue_number, feature_id, title, body, created_at, author, project_id)
+        VALUES (42, 'fixture', 'Original issue', 'Issue body', '2026-11-11', 'fixture', 'alpha');
+      `);
+    });
+    try {
+      expect(listIssues("fixture", "alpha", upgraded)).toMatchObject([
+        {
+          issue_number: 42,
+          title: "Original issue",
+          body: "Issue body",
+          html_url: null,
+        },
+      ]);
+      expect(upgraded.pragma("foreign_key_check")).toEqual([]);
+    } finally {
+      upgraded.close();
+    }
+  });
+
   it("preserves explicit issue and gate owners when a feature ID collides", () => {
     const upgraded = upgrade((legacy) => {
       // The old feature key allowed only Alpha's copy of the shared feature ID.
