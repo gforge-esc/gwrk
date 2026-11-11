@@ -790,6 +790,36 @@ describe("credential guard", () => {
     expect(() => assertNoSecretMaterial({ sanitizedOutput })).not.toThrow();
   });
 
+  it.each([
+    {
+      shape: "flat",
+      headers: ["Cookie", "session=fixture-cookie; theme=dark"],
+    },
+    {
+      shape: "nested",
+      headers: [["Cookie", "session=fixture-cookie; theme=dark"]],
+    },
+  ])(
+    "rejects a visible cookie in a truncated $shape header value",
+    ({ headers }) => {
+      const sanitizedOutput = inspect({ headers }, { maxStringLength: 24 });
+      expect(sanitizedOutput).toContain("session=fixture-cookie");
+      expect(sanitizedOutput).toContain("... 10 more characters");
+      expect(() => assertNoSecretMaterial({ sanitizedOutput })).toThrow(
+        /secret material/i,
+      );
+    },
+  );
+
+  it("allows a truncated noncredential header value", () => {
+    const sanitizedOutput = inspect(
+      { headers: ["Content-Type", "text/plain; charset=utf-8"] },
+      { maxStringLength: 24 },
+    );
+    expect(sanitizedOutput).toContain("... 1 more character");
+    expect(() => assertNoSecretMaterial({ sanitizedOutput })).not.toThrow();
+  });
+
   it("allows ordinary inspected tuples and multi-value Vary field names", () => {
     const sanitizedOutput = inspect({
       headers: [

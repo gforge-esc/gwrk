@@ -533,7 +533,7 @@ function findJsonTokenEnd(text: string, start: number): number | undefined {
 // Normalize inspect's visible values before JSON parsing.
 function inspectedRecordAsJson(token: string): string {
   const tokens =
-    /"(?:[^"\\]|\\[\s\S])*"|'(?:[^'\\]|\\[\s\S])*'|\x60(?:[^\x60\\]|\\[\s\S])*\x60|([A-Za-z_$][\w$]*)(?=\s*:)|((?:,\s*)?\.\.\. \d+ more items?)(?=\s*\])/g;
+    /("(?:[^"\\]|\\[\s\S])*"|'(?:[^'\\]|\\[\s\S])*'|\x60(?:[^\x60\\]|\\[\s\S])*\x60)(?:\.\.\. \d+ more characters?)?|([A-Za-z_$][\w$]*)(?=\s*:)|((?:,\s*)?\.\.\. \d+ more items?)(?=\s*\])/g;
   const escapes: Record<string, string> = {
     "0": "\0",
     b: "\b",
@@ -545,7 +545,12 @@ function inspectedRecordAsJson(token: string): string {
   };
   return token.replace(
     tokens,
-    (literal, key: string | undefined, omitted: string | undefined) => {
+    (
+      _token,
+      literal: string,
+      key: string | undefined,
+      omitted: string | undefined,
+    ) => {
       if (omitted !== undefined) return "";
       return key !== undefined
         ? JSON.stringify(key)
