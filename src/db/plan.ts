@@ -4,6 +4,11 @@
 
 import type Database from "better-sqlite3";
 import { getDb } from "./index.js";
+import {
+  canonicalProjectId,
+  firstPerKey,
+  projectScope,
+} from "./project-registry.js";
 
 export interface PlanFeature {
   id: string;
@@ -53,7 +58,7 @@ export interface PlanProposal {
 }
 
 /**
- * Insert or replace a feature.
+ * Upsert a feature without cascading to its phases.
  */
 export function insertFeature(
   feature: PlanFeature,
@@ -61,12 +66,22 @@ export function insertFeature(
   db?: Database.Database,
 ): void {
   const conn = db ?? getDb();
+  const owner =
+    getFeature(feature.id, projectId, conn)?.project_id ??
+    canonicalProjectId(conn, projectId);
   conn
     .prepare(
-      `INSERT OR REPLACE INTO plan_features (id, name, status, sp_total, project_id, updated_at)
-       VALUES (@id, @name, @status, @sp_total, @project_id, datetime('now'))`,
+      "INSERT INTO projects (id, name, path) VALUES (?, ?, '') ON CONFLICT(id) DO NOTHING",
     )
-    .run({ ...feature, project_id: projectId });
+    .run(owner, owner);
+  conn
+    .prepare(
+      `INSERT INTO plan_features (id, name, status, sp_total, project_id, updated_at)
+       VALUES (@id, @name, @status, @sp_total, @project_id, datetime('now'))
+       ON CONFLICT(project_id, id) DO UPDATE SET name = excluded.name,
+         status = excluded.status, sp_total = excluded.sp_total, updated_at = excluded.updated_at`,
+    )
+    .run({ ...feature, project_id: owner });
 }
 
 /**
@@ -78,9 +93,11 @@ export function getFeature(
   db?: Database.Database,
 ): PlanFeature | undefined {
   const conn = db ?? getDb();
+  const { canonical, ids, placeholders } = projectScope(conn, projectId);
   return conn
-    .prepare("SELECT * FROM plan_features WHERE id = ? AND project_id = ?")
-    .get(id, projectId) as PlanFeature | undefined;
+    .prepare(`SELECT * FROM plan_features WHERE id = ? AND project_id IN (${placeholders})
+      ORDER BY project_id = ? DESC, project_id LIMIT 1`)
+    .get(id, ...ids, canonical) as PlanFeature | undefined;
 }
 
 /**
@@ -91,15 +108,18 @@ export function listFeatures(
   db?: Database.Database,
 ): PlanFeature[] {
   const conn = db ?? getDb();
-  return conn
-    .prepare("SELECT * FROM plan_features WHERE project_id = ? ORDER BY id ASC")
-    .all(projectId) as PlanFeature[];
+  const { canonical, ids, placeholders } = projectScope(conn, projectId);
+  const rows = conn
+    .prepare(`SELECT * FROM plan_features WHERE project_id IN (${placeholders})
+      ORDER BY project_id = ? DESC, project_id`)
+    .all(...ids, canonical) as PlanFeature[];
+  return firstPerKey(rows, (row) => row.id).sort((a, b) =>
+    a.id < b.id ? -1 : Number(a.id > b.id),
+  );
 }
 
 /**
  * Update a feature's status without triggering ON DELETE CASCADE.
- * IMPORTANT: Do NOT use insertFeature() to update status — INSERT OR REPLACE
- * deletes the old row first, cascading to plan_phases.
  */
 export function updateFeatureStatus(
   id: string,
@@ -112,7 +132,7 @@ export function updateFeatureStatus(
     .prepare(
       "UPDATE plan_features SET status = ?, updated_at = datetime('now') WHERE id = ? AND project_id = ?",
     )
-    .run(status, id, projectId);
+    .run(status, id, getFeature(id, projectId, conn)?.project_id ?? projectId);
 }
 
 /**
@@ -129,7 +149,7 @@ export function updateFeatureName(
     .prepare(
       "UPDATE plan_features SET name = ?, updated_at = datetime('now') WHERE id = ? AND project_id = ?",
     )
-    .run(name, id, projectId);
+    .run(name, id, getFeature(id, projectId, conn)?.project_id ?? projectId);
 }
 
 /**
@@ -146,11 +166,11 @@ export function updateFeatureSpTotal(
     .prepare(
       "UPDATE plan_features SET sp_total = ?, updated_at = datetime('now') WHERE id = ? AND project_id = ?",
     )
-    .run(spTotal, id, projectId);
+    .run(spTotal, id, getFeature(id, projectId, conn)?.project_id ?? projectId);
 }
 
 /**
- * Insert or replace a phase.
+ * Upsert a phase without cascading to its proposals.
  */
 export function insertPhase(
   phase: PlanPhase,
@@ -160,18 +180,25 @@ export function insertPhase(
   const conn = db ?? getDb();
   conn
     .prepare(
-      `INSERT OR REPLACE INTO plan_phases (
+      `INSERT INTO plan_phases (
          id, feature_id, name, status, health, sp_estimate,
          sp_actual, duration_ms, completed_at, evidence, seq, project_id, updated_at
        )
        VALUES (
          @id, @feature_id, @name, @status, @health, @sp_estimate,
          @sp_actual, @duration_ms, @completed_at, @evidence, @seq, @project_id, datetime('now')
-       )`,
+       )
+       ON CONFLICT(project_id, id) DO UPDATE SET feature_id = excluded.feature_id,
+         name = excluded.name, status = excluded.status, health = excluded.health,
+         sp_estimate = excluded.sp_estimate, sp_actual = excluded.sp_actual,
+         duration_ms = excluded.duration_ms, completed_at = excluded.completed_at,
+         evidence = excluded.evidence, seq = excluded.seq, updated_at = excluded.updated_at`,
     )
     .run({
       ...phase,
-      project_id: projectId,
+      project_id:
+        getFeature(phase.feature_id, projectId, conn)?.project_id ??
+        canonicalProjectId(conn, projectId),
       sp_actual: phase.sp_actual ?? null,
       duration_ms: phase.duration_ms ?? null,
       completed_at: phase.completed_at ?? null,
@@ -188,9 +215,11 @@ export function getPhase(
   db?: Database.Database,
 ): PlanPhase | undefined {
   const conn = db ?? getDb();
+  const { canonical, ids, placeholders } = projectScope(conn, projectId);
   return conn
-    .prepare("SELECT * FROM plan_phases WHERE id = ? AND project_id = ?")
-    .get(id, projectId) as PlanPhase | undefined;
+    .prepare(`SELECT * FROM plan_phases WHERE id = ? AND project_id IN (${placeholders})
+      ORDER BY project_id = ? DESC, project_id LIMIT 1`)
+    .get(id, ...ids, canonical) as PlanPhase | undefined;
 }
 
 /**
@@ -202,11 +231,12 @@ export function listPhases(
   db?: Database.Database,
 ): PlanPhase[] {
   const conn = db ?? getDb();
-  return conn
-    .prepare(
-      "SELECT * FROM plan_phases WHERE feature_id = ? AND project_id = ? ORDER BY seq ASC",
-    )
-    .all(featureId, projectId) as PlanPhase[];
+  const { canonical, ids, placeholders } = projectScope(conn, projectId);
+  const rows = conn
+    .prepare(`SELECT * FROM plan_phases WHERE feature_id = ? AND project_id IN (${placeholders})
+      ORDER BY project_id = ? DESC, project_id`)
+    .all(featureId, ...ids, canonical) as PlanPhase[];
+  return firstPerKey(rows, (row) => row.id).sort((a, b) => a.seq - b.seq);
 }
 
 /**
@@ -220,10 +250,11 @@ export function insertEdge(
   const conn = db ?? getDb();
   conn
     .prepare(
-      `INSERT OR REPLACE INTO plan_edges (from_id, to_id, edge_type, project_id)
-       VALUES (@from_id, @to_id, @edge_type, @project_id)`,
+      `INSERT INTO plan_edges (from_id, to_id, edge_type, project_id)
+       VALUES (@from_id, @to_id, @edge_type, @project_id)
+       ON CONFLICT(project_id, from_id, to_id, edge_type) DO NOTHING`,
     )
-    .run({ ...edge, project_id: projectId });
+    .run({ ...edge, project_id: canonicalProjectId(conn, projectId) });
 }
 
 /**
@@ -235,9 +266,14 @@ export function getEdgesForFeature(
   db?: Database.Database,
 ): PlanEdge[] {
   const conn = db ?? getDb();
-  return conn
-    .prepare("SELECT * FROM plan_edges WHERE to_id = ? AND project_id = ?")
-    .all(id, projectId) as PlanEdge[];
+  const { canonical, ids, placeholders } = projectScope(conn, projectId);
+  const rows = conn
+    .prepare(`SELECT * FROM plan_edges WHERE to_id = ? AND project_id IN (${placeholders})
+      ORDER BY project_id = ? DESC, project_id`)
+    .all(id, ...ids, canonical) as PlanEdge[];
+  return firstPerKey(rows, (row) =>
+    JSON.stringify([row.from_id, row.to_id, row.edge_type]),
+  );
 }
 
 /**
@@ -248,9 +284,14 @@ export function listAllEdges(
   db?: Database.Database,
 ): PlanEdge[] {
   const conn = db ?? getDb();
-  return conn
-    .prepare("SELECT * FROM plan_edges WHERE project_id = ?")
-    .all(projectId) as PlanEdge[];
+  const { canonical, ids, placeholders } = projectScope(conn, projectId);
+  const rows = conn
+    .prepare(`SELECT * FROM plan_edges WHERE project_id IN (${placeholders})
+      ORDER BY project_id = ? DESC, project_id`)
+    .all(...ids, canonical) as PlanEdge[];
+  return firstPerKey(rows, (row) =>
+    JSON.stringify([row.from_id, row.to_id, row.edge_type]),
+  );
 }
 
 /**
@@ -262,24 +303,28 @@ export function getAllDependencies(
   db?: Database.Database,
 ): PlanFeature[] {
   const conn = db ?? getDb();
-  return conn
+  const { canonical, ids, placeholders } = projectScope(conn, projectId);
+  const rows = conn
     .prepare(
       `
       WITH RECURSIVE
+        scoped_edges AS (
+          SELECT from_id, to_id FROM plan_edges
+          WHERE project_id IN (${placeholders}) AND edge_type = 'DEPENDS_ON'
+        ),
         deps(feature_id) AS (
-          SELECT from_id FROM plan_edges WHERE to_id = ? AND project_id = ? AND edge_type = 'DEPENDS_ON'
+          SELECT from_id FROM scoped_edges WHERE to_id = ?
           UNION
-          SELECT e.from_id
-          FROM plan_edges e
-          JOIN deps d ON e.to_id = d.feature_id
-          WHERE e.project_id = ? AND e.edge_type = 'DEPENDS_ON'
+          SELECT e.from_id FROM scoped_edges e JOIN deps d ON e.to_id = d.feature_id
         )
       SELECT f.* FROM plan_features f
       JOIN deps d ON f.id = d.feature_id
-      WHERE f.project_id = ?
+      WHERE f.project_id IN (${placeholders})
+      ORDER BY f.project_id = ? DESC, f.project_id
     `,
     )
-    .all(id, projectId, projectId, projectId) as PlanFeature[];
+    .all(...ids, id, ...ids, canonical) as PlanFeature[];
+  return firstPerKey(rows, (row) => row.id);
 }
 
 /**
@@ -293,16 +338,21 @@ export function insertProposal(
   const conn = db ?? getDb();
   conn
     .prepare(
-      `INSERT OR REPLACE INTO plan_proposals (
+      `INSERT INTO plan_proposals (
          id, target_phase_id, proposal_type, detail, source, status, project_id, updated_at
        )
        VALUES (
          @id, @target_phase_id, @proposal_type, @detail, @source, @status, @project_id, datetime('now')
-       )`,
+       )
+       ON CONFLICT(project_id, id) DO UPDATE SET target_phase_id = excluded.target_phase_id,
+         proposal_type = excluded.proposal_type, detail = excluded.detail, source = excluded.source,
+         status = excluded.status, updated_at = excluded.updated_at`,
     )
     .run({
       ...proposal,
-      project_id: projectId,
+      project_id:
+        getPhase(proposal.target_phase_id, projectId, conn)?.project_id ??
+        canonicalProjectId(conn, projectId),
       detail: proposal.detail ?? null,
       source: proposal.source ?? null,
     });
@@ -317,9 +367,11 @@ export function getProposal(
   db?: Database.Database,
 ): PlanProposal | undefined {
   const conn = db ?? getDb();
+  const { canonical, ids, placeholders } = projectScope(conn, projectId);
   return conn
-    .prepare("SELECT * FROM plan_proposals WHERE id = ? AND project_id = ?")
-    .get(id, projectId) as PlanProposal | undefined;
+    .prepare(`SELECT * FROM plan_proposals WHERE id = ? AND project_id IN (${placeholders})
+      ORDER BY project_id = ? DESC, project_id LIMIT 1`)
+    .get(id, ...ids, canonical) as PlanProposal | undefined;
 }
 
 /**
@@ -330,11 +382,14 @@ export function listProposals(
   db?: Database.Database,
 ): PlanProposal[] {
   const conn = db ?? getDb();
-  return conn
-    .prepare(
-      "SELECT * FROM plan_proposals WHERE project_id = ? ORDER BY created_at DESC",
-    )
-    .all(projectId) as PlanProposal[];
+  const { canonical, ids, placeholders } = projectScope(conn, projectId);
+  const rows = conn
+    .prepare(`SELECT * FROM plan_proposals WHERE project_id IN (${placeholders})
+      ORDER BY project_id = ? DESC, project_id`)
+    .all(...ids, canonical) as PlanProposal[];
+  return firstPerKey(rows, (row) => row.id).sort((a, b) =>
+    (b.created_at ?? "").localeCompare(a.created_at ?? ""),
+  );
 }
 
 /**
@@ -346,9 +401,12 @@ function deleteProposal(
   db?: Database.Database,
 ): void {
   const conn = db ?? getDb();
+  const { ids, placeholders } = projectScope(conn, projectId);
   conn
-    .prepare("DELETE FROM plan_proposals WHERE id = ? AND project_id = ?")
-    .run(id, projectId);
+    .prepare(
+      `DELETE FROM plan_proposals WHERE id = ? AND project_id IN (${placeholders})`,
+    )
+    .run(id, ...ids);
 }
 
 /**
@@ -360,9 +418,12 @@ export function deletePhase(
   db?: Database.Database,
 ): void {
   const conn = db ?? getDb();
+  const { ids, placeholders } = projectScope(conn, projectId);
   conn
-    .prepare("DELETE FROM plan_phases WHERE id = ? AND project_id = ?")
-    .run(id, projectId);
+    .prepare(
+      `DELETE FROM plan_phases WHERE id = ? AND project_id IN (${placeholders})`,
+    )
+    .run(id, ...ids);
 }
 
 /**
@@ -376,11 +437,12 @@ export function deleteEdge(
   db?: Database.Database,
 ): void {
   const conn = db ?? getDb();
+  const { ids, placeholders } = projectScope(conn, projectId);
   conn
     .prepare(
-      "DELETE FROM plan_edges WHERE from_id = ? AND to_id = ? AND edge_type = ? AND project_id = ?",
+      `DELETE FROM plan_edges WHERE from_id = ? AND to_id = ? AND edge_type = ? AND project_id IN (${placeholders})`,
     )
-    .run(from_id, to_id, edge_type, projectId);
+    .run(from_id, to_id, edge_type, ...ids);
 }
 
 /**
@@ -392,14 +454,17 @@ export function deleteFeature(
   db?: Database.Database,
 ): void {
   const conn = db ?? getDb();
+  const { ids, placeholders } = projectScope(conn, projectId);
   conn
     .prepare(
-      "DELETE FROM plan_edges WHERE (from_id = ? OR to_id = ?) AND project_id = ?",
+      `DELETE FROM plan_edges WHERE (from_id = ? OR to_id = ?) AND project_id IN (${placeholders})`,
     )
-    .run(id, id, projectId);
+    .run(id, id, ...ids);
   conn
-    .prepare("DELETE FROM plan_features WHERE id = ? AND project_id = ?")
-    .run(id, projectId);
+    .prepare(
+      `DELETE FROM plan_features WHERE id = ? AND project_id IN (${placeholders})`,
+    )
+    .run(id, ...ids);
 }
 
 /**
@@ -410,9 +475,12 @@ export function isPlanEmpty(
   db?: Database.Database,
 ): boolean {
   const conn = db ?? getDb();
+  const { ids, placeholders } = projectScope(conn, projectId);
   const result = conn
-    .prepare("SELECT COUNT(*) as count FROM plan_features WHERE project_id = ?")
-    .get(projectId) as { count: number };
+    .prepare(
+      `SELECT COUNT(*) as count FROM plan_features WHERE project_id IN (${placeholders})`,
+    )
+    .get(...ids) as { count: number };
   return result.count === 0;
 }
 
@@ -425,6 +493,7 @@ export function getShippedPhases(
   db?: Database.Database,
 ): Set<string> {
   const conn = db ?? getDb();
+  const { ids, placeholders } = projectScope(conn, projectId);
   const rows = conn
     .prepare(
       // exit_code = 0 is load-bearing. `plan init` promotes PLANNED → SHIPPED
@@ -433,9 +502,9 @@ export function getShippedPhases(
       // exited 1 on a transient GitHub error. `= 0` also excludes in-flight runs,
       // whose exit_code is still NULL.
       `SELECT DISTINCT feature_id, phase_id FROM runs
-       WHERE command = 'ship' AND project_id = ? AND exit_code = 0
+       WHERE command = 'ship' AND project_id IN (${placeholders}) AND exit_code = 0
        AND feature_id IS NOT NULL AND phase_id IS NOT NULL`,
     )
-    .all(projectId) as { feature_id: string; phase_id: string }[];
+    .all(...ids) as { feature_id: string; phase_id: string }[];
   return new Set(rows.map((r) => `${r.feature_id}:${r.phase_id}`));
 }

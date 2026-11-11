@@ -4,6 +4,7 @@
 
 import type Database from "better-sqlite3";
 import { getDb } from "./index.js";
+import { firstPerKey, projectScope } from "./project-registry.js";
 
 export interface IssueRecord {
   id?: number;
@@ -19,8 +20,23 @@ export interface IssueRecord {
   author: string;
 }
 
+function issueProjectId(
+  conn: Database.Database,
+  projectId: string,
+  issueNumber: number,
+): string {
+  const { canonical, ids, placeholders } = projectScope(conn, projectId);
+  const row = conn
+    .prepare(`
+    SELECT project_id FROM issues WHERE issue_number = ? AND project_id IN (${placeholders})
+    ORDER BY project_id = ? DESC, project_id LIMIT 1
+  `)
+    .get(issueNumber, ...ids, canonical) as { project_id: string } | undefined;
+  return row?.project_id ?? canonical;
+}
+
 /**
- * Save a new issue record or replace if it already exists (by issue_number).
+ * Upsert an issue by project and issue number.
  */
 export function upsertIssue(
   issue: IssueRecord,
@@ -30,26 +46,31 @@ export function upsertIssue(
   const conn = db ?? getDb();
   const result = conn
     .prepare(
-      `INSERT OR REPLACE INTO issues (
+      `INSERT INTO issues (
         issue_number, feature_id, title, body, state, html_url, project_id, created_at, closed_at, author
       )
       VALUES (
         @issue_number, @feature_id, @title, @body, @state, @html_url, @project_id, @created_at, @closed_at, @author
-      )`,
+      )
+      ON CONFLICT(project_id, issue_number) DO UPDATE SET
+        feature_id = excluded.feature_id, title = excluded.title, body = excluded.body,
+        state = excluded.state, html_url = excluded.html_url, created_at = excluded.created_at,
+        closed_at = excluded.closed_at, author = excluded.author
+      RETURNING id`,
     )
-    .run({
+    .get({
       issue_number: issue.issue_number,
       feature_id: issue.feature_id,
       title: issue.title,
       body: issue.body ?? null,
       state: issue.state,
       html_url: issue.html_url ?? null,
-      project_id: projectId,
+      project_id: issueProjectId(conn, projectId, issue.issue_number),
       created_at: issue.created_at,
       closed_at: issue.closed_at ?? null,
       author: issue.author,
-    });
-  return Number(result.lastInsertRowid);
+    }) as { id: number };
+  return result.id;
 }
 
 /**
@@ -77,7 +98,7 @@ export function updateIssue(
     .run({
       ...updates,
       issue_number: issueNumber,
-      project_id: projectId,
+      project_id: issueProjectId(conn, projectId, issueNumber),
     });
 }
 
@@ -90,9 +111,14 @@ export function listIssues(
   db?: Database.Database,
 ): IssueRecord[] {
   const conn = db ?? getDb();
-  return conn
-    .prepare(
-      "SELECT * FROM issues WHERE feature_id = ? AND project_id = ? ORDER BY created_at DESC",
-    )
-    .all(featureId, projectId) as IssueRecord[];
+  const { canonical, ids, placeholders } = projectScope(conn, projectId);
+  const rows = conn
+    .prepare(`
+      SELECT * FROM issues WHERE feature_id = ? AND project_id IN (${placeholders})
+      ORDER BY project_id = ? DESC, project_id
+    `)
+    .all(featureId, ...ids, canonical) as IssueRecord[];
+  return firstPerKey(rows, (row) => row.issue_number).sort((a, b) =>
+    b.created_at.localeCompare(a.created_at),
+  );
 }

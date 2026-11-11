@@ -5,6 +5,7 @@
 import type Database from "better-sqlite3";
 import type { CompressionReport } from "../domain/types.js";
 import { getDb } from "./index.js";
+import { canonicalProjectId, projectScope } from "./project-registry.js";
 
 /**
  * DB record for compression metrics.
@@ -59,7 +60,7 @@ export function recordCompression(
     first_impl_commit: report.actuals.firstImplCommit,
     merge_timestamp: report.actuals.prMergedAt,
     session_count: report.actuals.sessionCount,
-    project_id: projectId,
+    project_id: canonicalProjectId(conn, projectId),
     // Indicators
     convergence_first_pass_rate: report.indicators?.convergence.firstPassRate,
     convergence_avg_attempts: report.indicators?.convergence.avgAttempts,
@@ -105,11 +106,15 @@ export function getCompressionRecord(
   db?: Database.Database,
 ): CompressionRecord | undefined {
   const conn = db ?? getDb();
+  const { canonical, ids, placeholders } = projectScope(conn, projectId);
   return conn
     .prepare(
-      "SELECT * FROM compression WHERE feature_id = ? AND phase_id = ? AND project_id = ?",
+      `SELECT * FROM compression WHERE feature_id = ? AND phase_id = ? AND project_id IN (${placeholders})
+      ORDER BY project_id = ? DESC, recorded_at DESC, id DESC LIMIT 1`,
     )
-    .get(featureId, phaseId, projectId) as CompressionRecord | undefined;
+    .get(featureId, phaseId, ...ids, canonical) as
+    | CompressionRecord
+    | undefined;
 }
 
 /**
@@ -121,9 +126,11 @@ export function listCompressionRecords(
   db?: Database.Database,
 ): CompressionRecord[] {
   const conn = db ?? getDb();
+  const { ids, placeholders } = projectScope(conn, projectId);
   return conn
     .prepare(
-      "SELECT * FROM compression WHERE feature_id = ? AND project_id = ? ORDER BY recorded_at DESC",
+      `SELECT * FROM compression WHERE feature_id = ? AND project_id IN (${placeholders})
+      ORDER BY recorded_at DESC, id DESC`,
     )
-    .all(featureId, projectId) as CompressionRecord[];
+    .all(featureId, ...ids) as CompressionRecord[];
 }

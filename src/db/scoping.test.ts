@@ -2,44 +2,53 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { mkdtempSync, rmSync } from "node:fs";
+import {
+  copyFileSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  readdirSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import Database from "better-sqlite3";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { createSqliteProjectRegistryAdapter } from "../adapters/sqlite/index.js";
+import { computeLegacyProjectIds } from "../domain/project-id.js";
 import type {
   EnrolledProject,
   SlackActionReceipt,
 } from "../domain/project-registry.js";
+import {
+  listRoutingDecisions,
+  recordDecision,
+} from "../server/routing-decisions.js";
+import { getCompressionRecord } from "./compression.js";
 import { getGateResult, recordGateResult } from "./gates.js";
 import { getTestDb, openDatabase } from "./index.js";
 import { listIssues, upsertIssue } from "./issues.js";
 import {
   type PlanFeature,
+  deleteFeature,
+  getEdgesForFeature,
   getFeature,
   getPhase,
+  getProposal,
+  insertEdge,
   insertFeature,
   insertPhase,
+  insertProposal,
   listFeatures,
 } from "./plan.js";
-import { registerProject } from "./runs.js";
+import { listRuns, registerProject } from "./runs.js";
 
 describe("Database Scoping (US-030 / FR-037 / FR-038 / TR-036)", () => {
   let db: Database.Database;
 
   beforeEach(() => {
-    db = new Database(":memory:");
-    // Setup tables with project_id column (simulating migration 009)
-    db.exec(`
-      CREATE TABLE plan_features (
-        id TEXT PRIMARY KEY,
-        name TEXT NOT NULL,
-        status TEXT NOT NULL,
-        sp_total INTEGER NOT NULL,
-        project_id TEXT,
-        updated_at TEXT
-      );
-    `);
+    db = getTestDb();
   });
 
   afterEach(() => {
@@ -101,8 +110,22 @@ describe("Shared ledger project isolation", () => {
 
   beforeEach(() => {
     db = getTestDb();
+    const registry = createSqliteProjectRegistryAdapter({ db });
     for (const id of projectIds) {
-      registerProject({ id, name: id, path: `/fixtures/${id}` }, db);
+      registry.enrollProject({
+        projectId: id,
+        slug: id,
+        name: id,
+        repoSlug: `fixtures/${id}`,
+        trunkBranch: "develop",
+        localRoot: `/fixtures/${id}`,
+        mirrorPath: null,
+        runnerPolicy: { allowedKinds: ["local"] },
+        slack: null,
+        legacyProjectIds: [],
+        createdAt: "2026-11-11T12:00:00.000Z",
+        updatedAt: "2026-11-11T12:00:00.000Z",
+      });
       insertFeature(
         { id: featureId, name: id, status: "open", sp_total: 1 },
         id,
@@ -128,11 +151,41 @@ describe("Shared ledger project isolation", () => {
         id,
         db,
       );
+      insertProposal(
+        {
+          id: "same-proposal",
+          target_phase_id: phaseId,
+          proposal_type: "UPDATE",
+          detail: id,
+          status: "PENDING",
+        },
+        id,
+        db,
+      );
+      insertEdge(
+        { from_id: "dependency", to_id: featureId, edge_type: "DEPENDS_ON" },
+        id,
+        db,
+      );
+      insertFeature(
+        { id: featureId, name: id, status: "open", sp_total: 2 },
+        id,
+        db,
+      );
+      insertPhase({ ...getPhase(phaseId, id, db)!, name: id }, id, db);
     }
     for (const id of projectIds) {
       expect(getFeature(featureId, id, db)?.name).toBe(id);
       expect(getPhase(phaseId, id, db)?.name).toBe(id);
+      expect(getProposal("same-proposal", id, db)?.detail).toBe(id);
+      expect(getEdgesForFeature(featureId, id, db)).toHaveLength(1);
     }
+    deleteFeature(featureId, projectIds[0], db);
+    expect(getProposal("same-proposal", projectIds[0], db)).toBeUndefined();
+    expect(getProposal("same-proposal", projectIds[1], db)?.detail).toBe(
+      projectIds[1],
+    );
+    expect(getEdgesForFeature(featureId, projectIds[1], db)).toHaveLength(1);
   });
 
   it("keeps identical gate IDs in both projects", () => {
@@ -233,6 +286,91 @@ describe("Project registry storage", () => {
     }
   });
 
+  it("keeps roles, feature threads and routing decisions in project scope", () => {
+    const db = getTestDb();
+    try {
+      const registry = createSqliteProjectRegistryAdapter({ db });
+      const slack = { workspaceId: "T1", channelId: "C1", sharedChannel: true };
+      const first = registry.enrollProject({ ...project, slack });
+      const second = registry.enrollProject({
+        ...project,
+        projectId: "second",
+        slug: "second",
+        repoSlug: "example/second",
+        localRoot: "/fixtures/second",
+        legacyProjectIds: [],
+        slack: { ...slack, workspaceId: "T2" },
+      });
+      expect(registry.getProject(project.slug)).toEqual(first);
+      expect(registry.findByRepoSlug(project.repoSlug!)).toEqual(first);
+      expect(registry.findByLocalRoot(project.localRoot!)).toEqual(first);
+      expect(registry.listBySlackChannel("T1", "C1")).toEqual([first]);
+
+      expect(() =>
+        registry.enrollProject({
+          ...second,
+          legacyProjectIds: project.legacyProjectIds,
+        }),
+      ).toThrow("already owned");
+      expect(registry.getProject(project.legacyProjectIds[0])).toEqual(first);
+
+      for (const item of [first, second]) {
+        const id = item.projectId;
+        registry.setRoleBinding({
+          projectId: id,
+          principalType: "slack_user",
+          principalId: "fixture",
+          role: id === first.projectId ? "maintainer" : "viewer",
+        });
+        registry.bindFeatureThread({
+          projectId: id,
+          featureId: "001-pilot",
+          workspaceId: item.slack!.workspaceId,
+          channelId: "C1",
+          rootTs: id,
+          updatedAt: now,
+        });
+        recordDecision(
+          {
+            projectId: id,
+            runId: "shared-run",
+            feature: "001-pilot",
+            phase: "phase-01",
+            reason: id,
+            selectedBackend: "fixture",
+            probeStatus: "fresh",
+          },
+          db,
+        );
+      }
+      const alias = project.legacyProjectIds[0];
+      expect(registry.listRoleBindings(alias)[0]?.role).toBe("maintainer");
+      expect(registry.listRoleBindings(second.projectId)[0]?.role).toBe(
+        "viewer",
+      );
+      expect(registry.getFeatureThread(alias, "001-pilot")?.rootTs).toBe(
+        first.projectId,
+      );
+      expect(
+        registry.getFeatureThread(second.projectId, "001-pilot")?.rootTs,
+      ).toBe(second.projectId);
+      expect(
+        listRoutingDecisions(alias, "shared-run", db).map(
+          ({ reason }) => reason,
+        ),
+      ).toEqual([first.projectId]);
+      expect(
+        listRoutingDecisions(second.projectId, "shared-run", db).map(
+          ({ reason }) => reason,
+        ),
+      ).toEqual([second.projectId]);
+      registry.close();
+      expect(db.open).toBe(true);
+    } finally {
+      db.close();
+    }
+  });
+
   it("grants one receipt claim across two database connections", async () => {
     const { createSqliteProjectRegistryAdapter } = await import(
       "../adapters/sqlite/index.js"
@@ -271,6 +409,136 @@ describe("Project registry storage", () => {
     } finally {
       first.close();
       second.close();
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("Migration 014", () => {
+  it("rolls back a failed upgrade and preserves legacy rows when retried", () => {
+    const root = mkdtempSync(join(tmpdir(), "gwrk-registry-migration-"));
+    const dbPath = join(root, "ledger.sqlite");
+    const migrationsDir = join(root, "migrations");
+    const source = new URL("./migrations/", import.meta.url);
+    const migration = "014-project-registry-and-composite-keys.sql";
+    try {
+      mkdirSync(migrationsDir);
+      for (const file of readdirSync(source)) {
+        if (file.endsWith(".sql") && file < migration) {
+          copyFileSync(new URL(file, source), join(migrationsDir, file));
+        }
+      }
+      const old = openDatabase({ dbPath, migrationsDir });
+      try {
+        old.exec(`
+          INSERT INTO projects (id, name, path) VALUES ('local', 'Legacy checkout', '/fixtures/legacy');
+          INSERT INTO runs (id, feature_id, phase_id, project_id, command)
+            VALUES (1, 'feature', 'phase', 'local', 'ship');
+          INSERT INTO history (project_id, feature_id, run_id) VALUES ('local', 'feature', 1);
+          INSERT INTO plan_features (id, name, project_id) VALUES ('feature', 'Legacy feature', 'local');
+          INSERT INTO plan_phases (id, feature_id, name, seq) VALUES ('phase', 'feature', 'Legacy phase', 1);
+          INSERT INTO plan_proposals (id, target_phase_id, proposal_type) VALUES ('proposal', 'phase', 'UPDATE');
+          INSERT INTO plan_edges (from_id, to_id, edge_type) VALUES ('dependency', 'feature', 'DEPENDS_ON');
+          INSERT INTO gate_results (feature_id, phase_id, task_id, gate_script)
+            VALUES ('feature', 'phase', 'T001', 'verify.sh');
+          INSERT INTO issues (issue_number, feature_id, title, created_at, author)
+            VALUES (1, 'unattributed', 'Unattributed issue', '2026-11-11', 'fixture');
+          INSERT INTO compression (
+            feature_id, phase_id, project_id, estimated_hours, actual_coding_hours,
+            estimated_days, actual_delivery_days, point_compression, total_compression, merge_timestamp
+          ) VALUES ('feature', 'phase', 'local', 8, 1, 1, 1, 8, 1, '2026-11-11');
+          INSERT INTO routing_decisions (run_id, feature, phase, selected_backend, reason, probe_status)
+            VALUES ('1', 'feature', 'phase', 'fixture', 'legacy routing', 'fresh');
+        `);
+      } finally {
+        old.close();
+      }
+
+      const file = join(migrationsDir, migration);
+      const sql = readFileSync(new URL(migration, source), "utf8");
+      writeFileSync(
+        file,
+        sql.replace("COMMIT;", "SELECT * FROM injected_failure; COMMIT;"),
+      );
+      expect(() => openDatabase({ dbPath, migrationsDir })).toThrow(
+        "injected_failure",
+      );
+
+      const unchanged = new Database(dbPath, { readonly: true });
+      try {
+        expect(
+          unchanged.prepare("SELECT project_id FROM plan_phases").pluck().get(),
+        ).toBeNull();
+        expect(
+          unchanged
+            .prepare(
+              "SELECT name FROM sqlite_master WHERE name = 'project_aliases'",
+            )
+            .get(),
+        ).toBeUndefined();
+      } finally {
+        unchanged.close();
+      }
+
+      writeFileSync(file, sql);
+      const upgraded = openDatabase({ dbPath, migrationsDir });
+      try {
+        expect(upgraded.pragma("foreign_keys", { simple: true })).toBe(1);
+        expect(upgraded.pragma("foreign_key_check")).toEqual([]);
+        expect(listRuns("feature", "local", upgraded)).toHaveLength(1);
+        expect(getPhase("phase", "local", upgraded)?.name).toBe("Legacy phase");
+        expect(
+          getProposal("proposal", "local", upgraded)?.target_phase_id,
+        ).toBe("phase");
+        expect(getEdgesForFeature("feature", "local", upgraded)).toHaveLength(
+          1,
+        );
+        expect(
+          getGateResult("feature", "phase", "T001", "local", upgraded)
+            ?.gate_script,
+        ).toBe("verify.sh");
+        expect(
+          listIssues("unattributed", "legacy-local", upgraded),
+        ).toHaveLength(1);
+        expect(listRoutingDecisions("local", "1", upgraded)).toHaveLength(1);
+
+        const checkout = "/fixtures/legacy";
+        const [pathAlias] = computeLegacyProjectIds({ projectRoot: checkout });
+        registerProject(
+          { id: pathAlias, name: "Legacy path key", path: checkout },
+          upgraded,
+        );
+        const registry = createSqliteProjectRegistryAdapter({ db: upgraded });
+        registry.enrollProject({
+          projectId: "remote",
+          slug: "legacy",
+          name: "Legacy checkout",
+          repoSlug: "fixtures/legacy",
+          trunkBranch: "develop",
+          localRoot: checkout,
+          mirrorPath: null,
+          runnerPolicy: { allowedKinds: ["local"] },
+          slack: null,
+          legacyProjectIds: ["local"],
+          createdAt: "2026-11-11T12:00:00.000Z",
+          updatedAt: "2026-11-11T12:00:00.000Z",
+        });
+        expect(registry.getProject(pathAlias)?.projectId).toBe("remote");
+        expect(listRuns("feature", "remote", upgraded)).toHaveLength(1);
+        expect(
+          getCompressionRecord("feature", "phase", "remote", upgraded)
+            ?.point_compression,
+        ).toBe(8);
+        expect(
+          getGateResult("feature", "phase", "T001", "remote", upgraded)
+            ?.gate_script,
+        ).toBe("verify.sh");
+        expect(listRoutingDecisions("remote", "1", upgraded)).toHaveLength(1);
+        expect(listIssues("unattributed", "remote", upgraded)).toEqual([]);
+      } finally {
+        upgraded.close();
+      }
+    } finally {
       rmSync(root, { recursive: true, force: true });
     }
   });

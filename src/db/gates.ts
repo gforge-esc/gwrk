@@ -4,6 +4,11 @@
 
 import type Database from "better-sqlite3";
 import { getDb } from "./index.js";
+import {
+  canonicalProjectId,
+  firstPerKey,
+  projectScope,
+} from "./project-registry.js";
 
 /**
  * DB record for gate execution evidence.
@@ -23,8 +28,7 @@ export interface GateResultRecord {
 }
 
 /**
- * Record a gate result. Uses INSERT OR REPLACE for idempotency —
- * re-running gates updates the existing record.
+ * Record or update the result of a gate.
  */
 export function recordGateResult(
   result: Omit<GateResultRecord, "id" | "recorded_at">,
@@ -33,14 +37,21 @@ export function recordGateResult(
 ): number {
   const conn = db ?? getDb();
   const stmt = conn.prepare(`
-    INSERT OR REPLACE INTO gate_results (
+    INSERT INTO gate_results (
       feature_id, phase_id, task_id, gate_script, passed, exit_code, output, project_id
     ) VALUES (
       @feature_id, @phase_id, @task_id, @gate_script, @passed, @exit_code, @output, @project_id
     )
+    ON CONFLICT(project_id, feature_id, phase_id, task_id) DO UPDATE SET
+      gate_script = excluded.gate_script, passed = excluded.passed, exit_code = excluded.exit_code,
+      output = excluded.output, recorded_at = excluded.recorded_at
+    RETURNING id
   `);
-  const res = stmt.run({ ...result, project_id: projectId });
-  return Number(res.lastInsertRowid);
+  const res = stmt.get({
+    ...result,
+    project_id: canonicalProjectId(conn, projectId),
+  }) as { id: number };
+  return res.id;
 }
 
 /**
@@ -53,11 +64,14 @@ export function getGateResults(
   db?: Database.Database,
 ): GateResultRecord[] {
   const conn = db ?? getDb();
-  return conn
-    .prepare(
-      "SELECT * FROM gate_results WHERE feature_id = ? AND phase_id = ? AND project_id = ? ORDER BY task_id",
-    )
-    .all(featureId, phaseId, projectId) as GateResultRecord[];
+  const { canonical, ids, placeholders } = projectScope(conn, projectId);
+  const rows = conn
+    .prepare(`SELECT * FROM gate_results WHERE feature_id = ? AND phase_id = ? AND project_id IN (${placeholders})
+      ORDER BY project_id = ? DESC, project_id`)
+    .all(featureId, phaseId, ...ids, canonical) as GateResultRecord[];
+  return firstPerKey(rows, (row) => row.task_id).sort((a, b) =>
+    a.task_id.localeCompare(b.task_id),
+  );
 }
 
 /**
@@ -71,11 +85,13 @@ export function getGateResult(
   db?: Database.Database,
 ): GateResultRecord | undefined {
   const conn = db ?? getDb();
+  const { canonical, ids, placeholders } = projectScope(conn, projectId);
   return conn
-    .prepare(
-      "SELECT * FROM gate_results WHERE feature_id = ? AND phase_id = ? AND task_id = ? AND project_id = ?",
-    )
-    .get(featureId, phaseId, taskId, projectId) as GateResultRecord | undefined;
+    .prepare(`SELECT * FROM gate_results WHERE feature_id = ? AND phase_id = ? AND task_id = ? AND project_id IN (${placeholders})
+      ORDER BY project_id = ? DESC, project_id LIMIT 1`)
+    .get(featureId, phaseId, taskId, ...ids, canonical) as
+    | GateResultRecord
+    | undefined;
 }
 
 /**
@@ -87,9 +103,16 @@ export function getAllGateResults(
   db?: Database.Database,
 ): GateResultRecord[] {
   const conn = db ?? getDb();
-  return conn
-    .prepare(
-      "SELECT * FROM gate_results WHERE feature_id = ? AND project_id = ? ORDER BY phase_id, task_id",
-    )
-    .all(featureId, projectId) as GateResultRecord[];
+  const { canonical, ids, placeholders } = projectScope(conn, projectId);
+  const rows = conn
+    .prepare(`SELECT * FROM gate_results WHERE feature_id = ? AND project_id IN (${placeholders})
+      ORDER BY project_id = ? DESC, project_id`)
+    .all(featureId, ...ids, canonical) as GateResultRecord[];
+  return firstPerKey(rows, (row) =>
+    JSON.stringify([row.phase_id, row.task_id]),
+  ).sort(
+    (a, b) =>
+      a.phase_id.localeCompare(b.phase_id) ||
+      a.task_id.localeCompare(b.task_id),
+  );
 }

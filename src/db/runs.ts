@@ -10,6 +10,7 @@ import path from "node:path";
 import type Database from "better-sqlite3";
 import { resolveProjectId } from "../adapters/git/project-id.js";
 import { getDb } from "./index.js";
+import { canonicalProjectId, projectScope } from "./project-registry.js";
 
 export interface RunRecord {
   id?: number;
@@ -58,31 +59,24 @@ function ensureProjectRow(
   conn: Database.Database,
   requestedProjectId?: string | null,
 ): string | null {
-  const projectId = requestedProjectId ?? resolveProjectId(process.cwd());
+  const projectId = canonicalProjectId(
+    conn,
+    requestedProjectId ?? resolveProjectId(process.cwd()),
+  );
   if (!projectId) return null;
 
-  const byId = conn
-    .prepare("SELECT id FROM projects WHERE id = ?")
-    .get(projectId) as { id: string } | undefined;
-  if (byId) return projectId;
-
-  const byPath = conn
-    .prepare("SELECT id FROM projects WHERE path = ?")
-    .get(process.cwd()) as { id: string } | undefined;
-  if (byPath) {
-    if (!requestedProjectId) {
-      return byPath.id;
-    }
-    conn
-      .prepare(
-        "INSERT OR IGNORE INTO projects (id, name, path) VALUES (@id, @name, @path)",
-      )
-      .run({
-        id: projectId,
-        name: path.basename(process.cwd()),
-        path: `${process.cwd()}#${projectId}`,
-      });
-    return projectId;
+  if (
+    !requestedProjectId &&
+    !conn.prepare("SELECT 1 FROM projects WHERE id = ?").get(projectId)
+  ) {
+    const legacy = conn
+      .prepare(`
+      SELECT p.id FROM projects p WHERE p.path = ? AND p.updated_at IS NULL
+        AND NOT EXISTS (SELECT 1 FROM project_aliases a WHERE a.alias_id = p.id)
+      LIMIT 2
+    `)
+      .all(process.cwd()) as { id: string }[];
+    if (legacy.length === 1) return legacy[0].id;
   }
 
   conn
@@ -292,9 +286,9 @@ export function getFeatureRunTelemetry(
   db?: Database.Database,
 ): RunTelemetrySummary {
   const conn = db ?? getDb();
-  let query =
-    "SELECT tokens_in, tokens_out, cost_usd, device_id, hostname FROM runs WHERE feature_id = ? AND project_id = ?";
-  const args: string[] = [featureId, projectId];
+  const { ids, placeholders } = projectScope(conn, projectId);
+  let query = `SELECT tokens_in, tokens_out, cost_usd, device_id, hostname FROM runs WHERE feature_id = ? AND project_id IN (${placeholders})`;
+  const args = [featureId, ...ids];
 
   if (phaseId) {
     query += " AND phase_id = ?";
@@ -343,11 +337,12 @@ export function listRuns(
   db?: Database.Database,
 ): RunRecord[] {
   const conn = db ?? getDb();
+  const { ids, placeholders } = projectScope(conn, projectId);
   return conn
     .prepare(
-      "SELECT * FROM runs WHERE feature_id = ? AND project_id = ? ORDER BY id DESC",
+      `SELECT * FROM runs WHERE feature_id = ? AND project_id IN (${placeholders}) ORDER BY id DESC`,
     )
-    .all(featureId, projectId) as RunRecord[];
+    .all(featureId, ...ids) as RunRecord[];
 }
 
 /**
@@ -361,9 +356,9 @@ export function findOpenPr(
   db?: Database.Database,
 ): { pr_number: number; pr_url: string | null } | null {
   const conn = db ?? getDb();
-  let query =
-    "SELECT pr_number, pr_url FROM runs WHERE feature_id = ? AND project_id = ?";
-  const args: (string | number)[] = [featureId, projectId];
+  const { ids, placeholders } = projectScope(conn, projectId);
+  let query = `SELECT pr_number, pr_url FROM runs WHERE feature_id = ? AND project_id IN (${placeholders})`;
+  const args = [featureId, ...ids];
 
   if (phaseId) {
     query += " AND phase_id = ?";
@@ -388,7 +383,7 @@ export interface ProjectRecord {
 }
 
 /**
- * Register a project in the global DB. Upserts by path.
+ * Register a legacy project in the global DB. Upserts by ID.
  */
 export function registerProject(
   project: ProjectRecord,
@@ -397,8 +392,11 @@ export function registerProject(
   const conn = db ?? getDb();
   conn
     .prepare(
-      `INSERT OR REPLACE INTO projects (id, name, path, github_repo, slack_channel)
-       VALUES (@id, @name, @path, @github_repo, @slack_channel)`,
+      `INSERT INTO projects (id, name, path, github_repo, slack_channel)
+       VALUES (@id, @name, @path, @github_repo, @slack_channel)
+       ON CONFLICT(id) DO UPDATE SET name = excluded.name, path = excluded.path,
+         github_repo = excluded.github_repo, slack_channel = excluded.slack_channel
+       WHERE projects.updated_at IS NULL`,
     )
     .run({
       id: project.id,
@@ -426,6 +424,7 @@ export function getStats(
   db?: Database.Database,
 ): RunStats[] {
   const conn = db ?? getDb();
+  const { ids, placeholders } = projectScope(conn, projectId);
   const query = `SELECT
          command,
          agent_backend,
@@ -434,11 +433,11 @@ export function getStats(
          SUM(CASE WHEN exit_code = 0 THEN 1 ELSE 0 END) as success_runs,
          AVG(duration_s) as avg_duration_s
        FROM runs
-       WHERE exit_code IS NOT NULL AND project_id = ?
+       WHERE exit_code IS NOT NULL AND project_id IN (${placeholders})
        GROUP BY command, agent_backend, workflow
        ORDER BY total_runs DESC`;
 
-  return conn.prepare(query).all(projectId) as RunStats[];
+  return conn.prepare(query).all(...ids) as RunStats[];
 }
 
 /**
