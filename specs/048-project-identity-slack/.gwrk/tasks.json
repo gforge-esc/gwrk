@@ -93,7 +93,7 @@
           "title": "Create 014-project-registry-and-composite-keys.sql",
           "description": "NEW src/db/migrations/014-project-registry-and-composite-keys.sql. Add registry tables and rebuild six composite `project_id` tables",
           "status": "open",
-          "gateScript": "pnpm build\npnpm exec vitest run src/db/scoping.test.ts src/db/db.test.ts src/db/plan.test.ts src/db/runs.test.ts src/db/issues.test.ts src/db/compression.test.ts src/architecture.test.ts",
+          "gateScript": "gates/phase-02.sh",
           "sp": 2
         },
         {
@@ -101,7 +101,7 @@
           "title": "Create project-registry.ts",
           "description": "NEW src/db/project-registry.ts. Implement SQLite enrollment and alias lookup plus role bindings, threads and receipts",
           "status": "open",
-          "gateScript": "pnpm build\npnpm exec vitest run src/db/scoping.test.ts src/db/db.test.ts src/db/plan.test.ts src/db/runs.test.ts src/db/issues.test.ts src/db/compression.test.ts src/architecture.test.ts",
+          "gateScript": "gates/phase-02.sh",
           "sp": 2
         },
         {
@@ -109,7 +109,7 @@
           "title": "Modify runs.ts",
           "description": "MODIFY src/db/runs.ts. Remove `#projectId` path hack and read canonical plus alias project IDs",
           "status": "open",
-          "gateScript": "pnpm build\npnpm exec vitest run src/db/scoping.test.ts src/db/db.test.ts src/db/plan.test.ts src/db/runs.test.ts src/db/issues.test.ts src/db/compression.test.ts src/architecture.test.ts",
+          "gateScript": "gates/phase-02.sh",
           "sp": 1
         },
         {
@@ -117,7 +117,7 @@
           "title": "Modify plan.ts",
           "description": "MODIFY src/db/plan.ts. Scope feature and phase writes plus edge, proposal and alias queries by `project_id`",
           "status": "open",
-          "gateScript": "pnpm build\npnpm exec vitest run src/db/scoping.test.ts src/db/db.test.ts src/db/plan.test.ts src/db/runs.test.ts src/db/issues.test.ts src/db/compression.test.ts src/architecture.test.ts",
+          "gateScript": "gates/phase-02.sh",
           "sp": 1
         },
         {
@@ -125,7 +125,7 @@
           "title": "Modify gates.ts",
           "description": "MODIFY src/db/gates.ts. Scope gate upserts and alias reads by composite `project_id` key",
           "status": "open",
-          "gateScript": "pnpm build\npnpm exec vitest run src/db/scoping.test.ts src/db/db.test.ts src/db/plan.test.ts src/db/runs.test.ts src/db/issues.test.ts src/db/compression.test.ts src/architecture.test.ts",
+          "gateScript": "gates/phase-02.sh",
           "sp": 1
         },
         {
@@ -133,7 +133,7 @@
           "title": "Modify issues.ts",
           "description": "MODIFY src/db/issues.ts. Scope issue upserts and alias reads by `(project_id, issue_number)`",
           "status": "open",
-          "gateScript": "pnpm build\npnpm exec vitest run src/db/scoping.test.ts src/db/db.test.ts src/db/plan.test.ts src/db/runs.test.ts src/db/issues.test.ts src/db/compression.test.ts src/architecture.test.ts",
+          "gateScript": "gates/phase-02.sh",
           "sp": 1
         },
         {
@@ -141,7 +141,7 @@
           "title": "Modify compression.ts",
           "description": "MODIFY src/db/compression.ts. Match canonical and alias project IDs when reading compression history",
           "status": "open",
-          "gateScript": "pnpm build\npnpm exec vitest run src/db/scoping.test.ts src/db/db.test.ts src/db/plan.test.ts src/db/runs.test.ts src/db/issues.test.ts src/db/compression.test.ts src/architecture.test.ts",
+          "gateScript": "gates/phase-02.sh",
           "sp": 1
         },
         {
@@ -149,7 +149,7 @@
           "title": "Modify routing-decisions.ts",
           "description": "MODIFY src/server/routing-decisions.ts. Record and query `project_id` on `routing_decisions` rows",
           "status": "open",
-          "gateScript": "pnpm build\npnpm exec vitest run src/db/scoping.test.ts src/db/db.test.ts src/db/plan.test.ts src/db/runs.test.ts src/db/issues.test.ts src/db/compression.test.ts src/architecture.test.ts",
+          "gateScript": "gates/phase-02.sh",
           "sp": 1
         },
         {
@@ -157,7 +157,7 @@
           "title": "Modify index.ts",
           "description": "MODIFY src/adapters/sqlite/index.ts. Export `createSqliteProjectRegistryAdapter` over injected database handles",
           "status": "open",
-          "gateScript": "pnpm build\npnpm exec vitest run src/db/scoping.test.ts src/db/db.test.ts src/db/plan.test.ts src/db/runs.test.ts src/db/issues.test.ts src/db/compression.test.ts src/architecture.test.ts",
+          "gateScript": "gates/phase-02.sh",
           "sp": 1
         }
       ],

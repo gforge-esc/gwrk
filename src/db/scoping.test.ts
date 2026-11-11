@@ -4,12 +4,18 @@
 
 import Database from "better-sqlite3";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { getGateResult, recordGateResult } from "./gates.js";
+import { getTestDb } from "./index.js";
+import { listIssues, upsertIssue } from "./issues.js";
 import {
   type PlanFeature,
   getFeature,
+  getPhase,
   insertFeature,
+  insertPhase,
   listFeatures,
 } from "./plan.js";
+import { registerProject } from "./runs.js";
 
 describe("Database Scoping (US-030 / FR-037 / FR-038 / TR-036)", () => {
   let db: Database.Database;
@@ -77,5 +83,94 @@ describe("Database Scoping (US-030 / FR-037 / FR-038 / TR-036)", () => {
     const list2 = listFeatures(p2, db);
     expect(list2).toHaveLength(1);
     expect(list2[0].id).toBe("F2");
+  });
+});
+
+describe("Shared ledger project isolation", () => {
+  const projectIds = ["project-one", "project-two"];
+  const featureId = "001-shared-feature";
+  const phaseId = "phase-01";
+  let db: Database.Database;
+
+  beforeEach(() => {
+    db = getTestDb();
+    for (const id of projectIds) {
+      registerProject({ id, name: id, path: `/fixtures/${id}` }, db);
+      insertFeature(
+        { id: featureId, name: id, status: "open", sp_total: 1 },
+        id,
+        db,
+      );
+    }
+  });
+
+  afterEach(() => db.close());
+
+  it("keeps identical feature and phase IDs in both projects", () => {
+    for (const id of projectIds) {
+      insertPhase(
+        {
+          id: phaseId,
+          feature_id: featureId,
+          name: id,
+          status: "open",
+          health: "green",
+          sp_estimate: 1,
+          seq: 1,
+        },
+        id,
+        db,
+      );
+    }
+    for (const id of projectIds) {
+      expect(getFeature(featureId, id, db)?.name).toBe(id);
+      expect(getPhase(phaseId, id, db)?.name).toBe(id);
+    }
+  });
+
+  it("keeps identical gate IDs in both projects", () => {
+    for (const id of projectIds) {
+      recordGateResult(
+        {
+          feature_id: featureId,
+          phase_id: phaseId,
+          task_id: "T001",
+          gate_script: "verify.sh",
+          passed: 1,
+          exit_code: 0,
+          output: id,
+        },
+        id,
+        db,
+      );
+    }
+    for (const id of projectIds) {
+      expect(getGateResult(featureId, phaseId, "T001", id, db)?.output).toBe(
+        id,
+      );
+    }
+  });
+
+  it("keeps identical issue numbers in both projects", () => {
+    for (const id of projectIds) {
+      upsertIssue(
+        {
+          issue_number: 1,
+          feature_id: featureId,
+          title: id,
+          body: null,
+          state: "open",
+          created_at: "2026-11-11T12:00:00Z",
+          author: "fixture",
+        },
+        id,
+        db,
+      );
+    }
+    for (const id of projectIds) {
+      expect(listIssues(featureId, id, db).map(({ title }) => title)).toEqual([
+        id,
+      ]);
+    }
   });
 });
