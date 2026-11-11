@@ -15,7 +15,7 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import Database from "better-sqlite3";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { resolveProjectId } from "../adapters/git/project-id.js";
 import { createSqliteProjectRegistryAdapter } from "../adapters/sqlite/index.js";
 import { computeLegacyProjectIds } from "../domain/project-id.js";
@@ -380,6 +380,58 @@ describe("Project registry storage", () => {
       expect.soft(getFeature("shared", projectId, db)).toBeUndefined();
       expect(getFeature("shared", legacyId, db)?.name).toBe("Prior feature");
     } finally {
+      db.close();
+      rmSync(checkout, { recursive: true, force: true });
+    }
+  });
+
+  it("enrolls a verified pre-origin run without an intervening write", () => {
+    const checkout = mkdtempSync(join(tmpdir(), "gwrk-pre-origin-run-"));
+    const db = getTestDb();
+    const cwd = vi.spyOn(process, "cwd").mockReturnValue(checkout);
+    try {
+      execFileSync("git", ["init", "--quiet", checkout]);
+      const localId = resolveProjectId(checkout);
+      const runId = startRun({ feature_id: "shared", command: "local" }, db);
+      const registry = createSqliteProjectRegistryAdapter({ db });
+      expect(registry.getProject(localId)).toBeNull();
+      expect(listRuns("shared", localId, db)).toMatchObject([{ id: runId }]);
+
+      execFileSync("git", [
+        "-C",
+        checkout,
+        "remote",
+        "add",
+        "origin",
+        "https://github.com/example/pilot.git",
+      ]);
+      const remoteId = resolveProjectId(checkout);
+      const enrollment = {
+        ...project,
+        projectId: remoteId,
+        localRoot: checkout,
+        legacyProjectIds: [localId],
+      };
+      const setRepository = db.prepare(
+        "UPDATE projects SET github_repo = ? WHERE id = ?",
+      );
+      setRepository.run("example/other", localId);
+      expect(() => registry.enrollProject(enrollment)).toThrow(
+        /different repository or checkout/,
+      );
+      expect(registry.getProject(remoteId)).toBeNull();
+      expect(listRuns("shared", localId, db)).toMatchObject([{ id: runId }]);
+      setRepository.run(null, localId);
+
+      expect(registry.enrollProject(enrollment).projectId).toBe(remoteId);
+      for (const id of [localId, remoteId]) {
+        expect(registry.getProject(id)?.projectId).toBe(remoteId);
+        expect(listRuns("shared", id, db)).toMatchObject([
+          { id: runId, project_id: localId },
+        ]);
+      }
+    } finally {
+      cwd.mockRestore();
       db.close();
       rmSync(checkout, { recursive: true, force: true });
     }

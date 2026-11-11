@@ -339,10 +339,10 @@ export function createProjectRegistry(
           | undefined;
         if (!prior) continue;
         const priorRepo = normalizeRegistryRepo(prior.github_repo);
+        const preOrigin = id === localId && priorRepo === null;
         if (
-          prior.updated_at !== null
-            ? id !== localId || (priorRepo !== null && priorRepo !== origin)
-            : priorRepo !== origin
+          (priorRepo !== origin && !preOrigin) ||
+          (prior.updated_at !== null && id !== localId)
         ) {
           continue;
         }
