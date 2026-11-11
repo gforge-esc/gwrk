@@ -214,6 +214,7 @@ async function selectAvailableRoute(
     let available = false;
     try {
       const backend = await registry.getAgentBackend(route.backend);
+      if (boundedAutomaticRoute && !(await backend.isAvailable())) continue;
       available = installedOnly
         ? await backend.isAvailable()
         : (await quotaProbe(backend)).status === "available";

@@ -8,6 +8,7 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ShipOrchestrator } from "../engine/ship-orchestrator.js";
 import type { AgentBackend } from "../plugins/agent-backend.js";
+import { CodexAdapter } from "../plugins/builtins/agents/codex/adapter.js";
 import { run } from "../utils/exec.js";
 
 vi.mock("../engine/ship-orchestrator.js", () => ({
@@ -286,6 +287,34 @@ describe("ship with the real AgentPort router", () => {
     );
     expect(ShipOrchestrator).not.toHaveBeenCalled();
     expect(await decisions()).toEqual([]);
+  });
+
+  it("falls back to Claude when the higher-quota Codex executable is missing", async () => {
+    seedQuota(100, 50);
+    const { AgentBackendRegistry } = await import(
+      "../plugins/agent-registry.js"
+    );
+    const codexAdapter = new CodexAdapter();
+    vi.spyOn(codexAdapter, "isAvailable").mockResolvedValue(false);
+    vi.mocked(AgentBackendRegistry.prototype.getAgentBackend)
+      .mockResolvedValueOnce(codexAdapter);
+
+    await ship();
+
+    expect(ShipOrchestrator).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({
+        backend: "claude",
+        selectedModel: "claude-primary",
+      }),
+      undefined,
+    );
+    expect(await decisions()).toMatchObject([
+      {
+        selected_backend: "claude",
+        selected_model: "claude-primary",
+        fallback_used: 1,
+      },
+    ]);
   });
 
   it("stops when every configured backend is depleted even if another CLI is installed", async () => {
