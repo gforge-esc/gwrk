@@ -989,9 +989,15 @@ export class ShipOrchestrator extends EventEmitter {
       return { success: true, exitCode: 0, nextStage: ShipStage.BUILD_CHECK };
     }
 
-    // Check pre-flight gates
+    // A passing gate cannot clear an unresolved review finding.
     const tasksToDispatch = [];
+    let repairRequired = false;
     for (const task of openTasks) {
+      if (/^REVIEW(?:\/GATE DIVERGENCE| FINDING| FAIL)\b/m.test(task.description ?? "")) {
+        tasksToDispatch.push(task);
+        repairRequired = true;
+        continue;
+      }
       const gatePath = path.join(featureDir, task.gateScript);
       if (fs.existsSync(gatePath)) {
         const gateResult = await runGate(gatePath, { cwd: this.config.cwd });
@@ -1021,7 +1027,7 @@ export class ShipOrchestrator extends EventEmitter {
     }
 
     try {
-      const isRetry = this.state.iteration > 1;
+      const isRetry = repairRequired || this.state.iteration > 1;
       const prompt = isRetry
         ? this.buildRetryPrompt(tasksToDispatch)
         : this.buildInitialPrompt(tasksToDispatch);
