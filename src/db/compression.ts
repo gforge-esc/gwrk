@@ -5,7 +5,7 @@
 import type Database from "better-sqlite3";
 import type { CompressionReport } from "../domain/types.js";
 import { getDb } from "./index.js";
-import { canonicalProjectId, projectScope } from "./project-registry.js";
+import { projectScope } from "./project-registry.js";
 
 /**
  * DB record for compression metrics.
@@ -60,7 +60,7 @@ export function recordCompression(
     first_impl_commit: report.actuals.firstImplCommit,
     merge_timestamp: report.actuals.prMergedAt,
     session_count: report.actuals.sessionCount,
-    project_id: canonicalProjectId(conn, projectId),
+    project_id: projectId,
     // Indicators
     convergence_first_pass_rate: report.indicators?.convergence.firstPassRate,
     convergence_avg_attempts: report.indicators?.convergence.avgAttempts,
@@ -86,7 +86,8 @@ export function recordCompression(
          @feature_id, @phase_id, @estimated_hours, @actual_coding_hours,
          @estimated_days, @actual_delivery_days, @point_compression,
          @total_compression, @dormancy_days, @first_impl_commit,
-         @merge_timestamp, @session_count, @project_id,
+         @merge_timestamp, @session_count,
+         COALESCE((SELECT project_id FROM project_aliases WHERE alias_id = @project_id), @project_id),
          @convergence_first_pass_rate, @convergence_avg_attempts,
          @density_lines_per_sp, @density_files_per_sp, @density_tool_calls_per_sp,
          @spec_quality_contract_count, @spec_quality_gate_count
@@ -106,15 +107,13 @@ export function getCompressionRecord(
   db?: Database.Database,
 ): CompressionRecord | undefined {
   const conn = db ?? getDb();
-  const { canonical, ids, placeholders } = projectScope(conn, projectId);
+  const { ids, placeholders } = projectScope(conn, projectId);
   return conn
     .prepare(
       `SELECT * FROM compression WHERE feature_id = ? AND phase_id = ? AND project_id IN (${placeholders})
-      ORDER BY project_id = ? DESC, recorded_at DESC, id DESC LIMIT 1`,
+      ORDER BY id DESC LIMIT 1`,
     )
-    .get(featureId, phaseId, ...ids, canonical) as
-    | CompressionRecord
-    | undefined;
+    .get(featureId, phaseId, ...ids) as CompressionRecord | undefined;
 }
 
 /**
@@ -126,12 +125,12 @@ export function listCompressionRecords(
   db?: Database.Database,
 ): CompressionRecord[] {
   const conn = db ?? getDb();
-  const { canonical, ids, placeholders } = projectScope(conn, projectId);
+  const { ids, placeholders } = projectScope(conn, projectId);
   return conn
     .prepare(`
       WITH ranked AS (
         SELECT id, ROW_NUMBER() OVER (
-          PARTITION BY phase_id ORDER BY project_id = ? DESC, recorded_at DESC, id DESC
+          PARTITION BY phase_id ORDER BY id DESC
         ) AS rank
         FROM compression WHERE feature_id = ? AND project_id IN (${placeholders})
       )
@@ -139,5 +138,5 @@ export function listCompressionRecords(
       WHERE id IN (SELECT id FROM ranked WHERE rank = 1)
       ORDER BY recorded_at DESC, id DESC
     `)
-    .all(canonical, featureId, ...ids) as CompressionRecord[];
+    .all(featureId, ...ids) as CompressionRecord[];
 }

@@ -114,8 +114,12 @@ function runMigrations(db: Database.Database, migrationsDir: string): void {
     if (file === PROJECT_REGISTRY_MIGRATION) {
       migrateProjectRegistry(db, sql);
     } else {
-      db.exec(sql);
-      db.prepare("INSERT INTO _migrations (name) VALUES (?)").run(file);
+      db.transaction(() => {
+        if (db.prepare("SELECT 1 FROM _migrations WHERE name = ?").get(file))
+          return;
+        db.exec(sql);
+        db.prepare("INSERT INTO _migrations (name) VALUES (?)").run(file);
+      }).immediate();
     }
   }
 

@@ -126,6 +126,58 @@ export function projectScope(db: Database.Database, projectId: string) {
   return { canonical, ids, placeholders: ids.map(() => "?").join(", ") };
 }
 
+export function nextLedgerWriteSequence(db: Database.Database): number {
+  const sequence = db
+    .prepare<[], number>(`
+    UPDATE ledger_write_order SET sequence = sequence + 1 WHERE id = 1
+    RETURNING sequence
+  `)
+    .pluck()
+    .get();
+  if (sequence === undefined) throw new Error("Missing ledger write counter");
+  return sequence;
+}
+
+function reconcileLedgerWrites(db: Database.Database, projectId: string): void {
+  const { canonical, ids, placeholders } = projectScope(db, projectId);
+  if (ids.length === 1) return;
+
+  for (const [table, key, columns] of [
+    ["plan_features", "id", ["name", "status", "sp_total", "updated_at"]],
+    [
+      "issues",
+      "issue_number",
+      [
+        "feature_id",
+        "title",
+        "body",
+        "state",
+        "html_url",
+        "created_at",
+        "closed_at",
+        "author",
+      ],
+    ],
+  ] as const) {
+    const fields = [...columns, "write_seq"];
+    db.prepare(`
+      WITH ranked AS (
+        SELECT rowid, FIRST_VALUE(rowid) OVER (
+          PARTITION BY ${key} ORDER BY write_seq DESC, project_id = ? DESC, project_id
+        ) AS latest_row, ROW_NUMBER() OVER (
+          PARTITION BY ${key} ORDER BY project_id = ? DESC, project_id
+        ) AS visibility_rank
+        FROM ${table} WHERE project_id IN (${placeholders})
+      )
+      UPDATE ${table} AS visible
+      SET ${fields.map((field) => `${field} = latest.${field}`).join(", ")}
+      FROM ranked JOIN ${table} AS latest ON latest.rowid = ranked.latest_row
+      WHERE visible.rowid = ranked.rowid AND ranked.visibility_rank = 1
+        AND latest.write_seq > visible.write_seq
+    `).run(canonical, canonical, ...ids);
+  }
+}
+
 export function firstPerKey<T>(
   rows: T[],
   key: (row: T) => string | number,
@@ -603,6 +655,7 @@ export function createProjectRegistry(
     `);
     for (const alias of aliases)
       addAlias.run(alias, projectId, project.updatedAt);
+    reconcileLedgerWrites(db, projectId);
     return toProject(row);
   });
 
@@ -687,24 +740,29 @@ export function createProjectRegistry(
       return row ?? null;
     },
     bindFeatureThread(thread) {
-      const row = db
-        .prepare(`
-        INSERT INTO slack_feature_threads (project_id, feature_id, workspace_id, channel_id, root_ts, updated_at)
-        SELECT id, @featureId, @workspaceId, @channelId, @rootTs, @updatedAt
-        FROM projects
-        WHERE id = @projectId AND updated_at IS NOT NULL
-          AND slack_workspace_id = @workspaceId AND slack_channel = @channelId
-        ON CONFLICT(project_id, feature_id) DO UPDATE SET
-          workspace_id = excluded.workspace_id, channel_id = excluded.channel_id,
-          root_ts = excluded.root_ts, updated_at = excluded.updated_at
-        RETURNING ${threadColumns}
-      `)
-        .get({
-          ...thread,
-          projectId: requireEnrolled(thread.projectId),
-        }) as SlackFeatureThread | undefined;
-      if (!row) throw new Error(`Slack binding mismatch: ${thread.projectId}`);
-      return row;
+      return db
+        .transaction(() => {
+          const row = db
+            .prepare(`
+          INSERT INTO slack_feature_threads (project_id, feature_id, workspace_id, channel_id, root_ts, updated_at)
+          SELECT id, @featureId, @workspaceId, @channelId, @rootTs, @updatedAt
+          FROM projects
+          WHERE id = @projectId AND updated_at IS NOT NULL
+            AND slack_workspace_id = @workspaceId AND slack_channel = @channelId
+          ON CONFLICT(project_id, feature_id) DO UPDATE SET
+            workspace_id = excluded.workspace_id, channel_id = excluded.channel_id,
+            root_ts = excluded.root_ts, updated_at = excluded.updated_at
+          RETURNING ${threadColumns}
+        `)
+            .get({
+              ...thread,
+              projectId: requireEnrolled(thread.projectId),
+            }) as SlackFeatureThread | undefined;
+          if (!row)
+            throw new Error(`Slack binding mismatch: ${thread.projectId}`);
+          return row;
+        })
+        .immediate();
     },
     getActionReceipt: findActionReceipt,
     claimActionReceipt: claimActionReceipt.immediate,

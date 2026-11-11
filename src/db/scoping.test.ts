@@ -37,7 +37,12 @@ import {
   recordDecision,
 } from "../server/routing-decisions.js";
 import { getCompressionRecord } from "./compression.js";
-import { getGateResult, recordGateResult } from "./gates.js";
+import {
+  getAllGateResults,
+  getGateResult,
+  getGateResults,
+  recordGateResult,
+} from "./gates.js";
 import { getTestDb, openDatabase } from "./index.js";
 import { listIssues, upsertIssue } from "./issues.js";
 import {
@@ -708,7 +713,11 @@ describe("Project registry storage", () => {
       } finally {
         legacy.close();
       }
-      copyFileSync(new URL(migration, source), join(migrationsDir, migration));
+      for (const file of readdirSync(source)) {
+        if (file.endsWith(".sql") && file >= migration) {
+          copyFileSync(new URL(file, source), join(migrationsDir, file));
+        }
+      }
       const ledger = openDatabase({ dbPath, migrationsDir });
       upgraded = ledger;
       expect(listRuns("shared", localId, ledger)).toMatchObject([
@@ -849,9 +858,9 @@ describe("Project registry storage", () => {
     }
   });
 
-  it("updates the canonical gate when enrollment commits before the write", () => {
-    const checkout = join(root, "gate-transition");
-    const dbPath = join(root, "gate-transition.sqlite");
+  it("serializes a feature thread write with enrollment on a second connection", () => {
+    const checkout = join(root, "thread-transition");
+    const dbPath = join(root, "thread-transition.sqlite");
     const db = openDatabase({ dbPath });
     const other = openDatabase({ dbPath });
     const registry = createSqliteProjectRegistryAdapter({ db });
@@ -861,12 +870,21 @@ describe("Project registry storage", () => {
       const localId = resolveProjectId(checkout);
       const local = {
         ...project,
+        slack: { workspaceId: "T1", channelId: "C1", sharedChannel: false },
         projectId: localId,
         localRoot: checkout,
         repoSlug: null,
         legacyProjectIds: [],
       };
       registry.enrollProject(local);
+      const thread = {
+        projectId: localId,
+        featureId: "shared",
+        workspaceId: local.slack.workspaceId,
+        channelId: local.slack.channelId,
+        rootTs: "1.000",
+        updatedAt: local.updatedAt,
+      };
       execFileSync("git", [
         "-C",
         checkout,
@@ -876,53 +894,153 @@ describe("Project registry storage", () => {
         "git@github.com:example/alpha.git",
       ]);
       const remoteId = resolveProjectId(checkout);
-      const pass = {
-        feature_id: "shared",
-        phase_id: "phase-01",
-        task_id: "T001",
-        gate_script: "check.sh",
-        passed: 1,
-        exit_code: 0,
-        output: "passed",
-      };
-      const passId = recordGateResult(pass, remoteId, other);
-      const failure = { ...pass, passed: 0, exit_code: 1, output: "failed" };
-
+      const enroll = () =>
+        remoteRegistry.enrollProject({
+          ...local,
+          projectId: remoteId,
+          repoSlug: "example/alpha",
+        });
+      other.pragma("busy_timeout = 0");
+      let raced = false;
+      let writerWasLocked = false;
       const prepare = db.prepare.bind(db);
       const spy = vi.spyOn(db, "prepare").mockImplementation(((sql: string) => {
         const statement = prepare(sql);
-        if (sql.includes("INSERT INTO gate_results")) {
+        if (
+          sql.includes("INSERT INTO slack_feature_threads") &&
+          sql.includes("RETURNING")
+        ) {
           const get = statement.get.bind(statement);
           vi.spyOn(statement, "get").mockImplementationOnce((...args) => {
-            remoteRegistry.enrollProject({
-              ...local,
-              projectId: remoteId,
-              repoSlug: "example/alpha",
-            });
+            raced = true;
+            try {
+              enroll();
+            } catch (error) {
+              if ((error as Database.SqliteError).code !== "SQLITE_BUSY")
+                throw error;
+              writerWasLocked = true;
+            }
             return get(...args);
           });
         }
         return statement;
       }) as typeof db.prepare);
-      let failureId: number;
       try {
-        failureId = recordGateResult(failure, localId, db);
+        registry.bindFeatureThread(thread);
       } finally {
         spy.mockRestore();
       }
-
-      expect(remoteRegistry.getProject(localId)?.projectId).toBe(remoteId);
+      expect.soft(raced).toBe(true);
+      expect.soft(writerWasLocked).toBe(true);
+      if (writerWasLocked) enroll();
       for (const id of [localId, remoteId]) {
-        expect
-          .soft(getGateResult("shared", "phase-01", "T001", id, other))
-          .toMatchObject({ ...failure, id: passId, project_id: remoteId });
+        expect(
+          remoteRegistry.getFeatureThread(id, thread.featureId)?.rootTs,
+        ).toBe("1.000");
       }
-      expect(failureId).toBe(passId);
+      registry.bindFeatureThread({ ...thread, rootTs: "2.000" });
+      for (const id of [localId, remoteId]) {
+        expect(
+          remoteRegistry.getFeatureThread(id, thread.featureId)?.rootTs,
+        ).toBe("2.000");
+      }
     } finally {
       other.close();
       db.close();
     }
   });
+
+  it.each([false, true])(
+    "reads the latest gate write with enrollment first = %s",
+    (enrollmentFirst) => {
+      const checkout = join(root, "gate-transition");
+      const dbPath = join(root, "gate-transition.sqlite");
+      const db = openDatabase({ dbPath });
+      const other = openDatabase({ dbPath });
+      const registry = createSqliteProjectRegistryAdapter({ db });
+      const remoteRegistry = createSqliteProjectRegistryAdapter({ db: other });
+      try {
+        execFileSync("git", ["init", "--quiet", checkout]);
+        const localId = resolveProjectId(checkout);
+        const local = {
+          ...project,
+          projectId: localId,
+          localRoot: checkout,
+          repoSlug: null,
+          legacyProjectIds: [],
+        };
+        registry.enrollProject(local);
+        execFileSync("git", [
+          "-C",
+          checkout,
+          "remote",
+          "add",
+          "origin",
+          "git@github.com:example/alpha.git",
+        ]);
+        const remoteId = resolveProjectId(checkout);
+        const pass = {
+          feature_id: "shared",
+          phase_id: "phase-01",
+          task_id: "T001",
+          gate_script: "check.sh",
+          passed: 1,
+          exit_code: 0,
+          output: "passed",
+        };
+        const localPassId = recordGateResult(pass, localId, db);
+        const remotePassId = recordGateResult(pass, remoteId, other);
+        const failure = { ...pass, passed: 0, exit_code: 1, output: "failed" };
+        const enroll = () =>
+          remoteRegistry.enrollProject({
+            ...local,
+            projectId: remoteId,
+            repoSlug: "example/alpha",
+          });
+
+        const prepare = db.prepare.bind(db);
+        let raced = false;
+        const spy = vi.spyOn(db, "prepare").mockImplementation(((
+          sql: string,
+        ) => {
+          const statement = prepare(sql);
+          if (sql.includes("INSERT INTO gate_results")) {
+            const get = statement.get.bind(statement);
+            vi.spyOn(statement, "get").mockImplementationOnce((...args) => {
+              raced = true;
+              if (enrollmentFirst) enroll();
+              return get(...args);
+            });
+          }
+          return statement;
+        }) as typeof db.prepare);
+        let failureId: number;
+        try {
+          failureId = recordGateResult(failure, localId, db);
+        } finally {
+          spy.mockRestore();
+        }
+        if (!enrollmentFirst) enroll();
+        expect(raced).toBe(true);
+        const expectedId = enrollmentFirst ? remotePassId : localPassId;
+        expect(failureId).toBe(expectedId);
+        db.exec("UPDATE gate_results SET recorded_at = '2026-01-01 00:00:00'");
+
+        expect(remoteRegistry.getProject(localId)?.projectId).toBe(remoteId);
+        for (const id of [localId, remoteId]) {
+          const winner = getGateResult("shared", "phase-01", "T001", id, other);
+          expect.soft(winner).toMatchObject({ ...failure, id: expectedId });
+          expect
+            .soft(getGateResults("shared", "phase-01", id, other))
+            .toEqual([winner]);
+          expect.soft(getAllGateResults("shared", id, other)).toEqual([winner]);
+        }
+      } finally {
+        other.close();
+        db.close();
+      }
+    },
+  );
 
   it("transitions a verified local enrollment to its remote identity", () => {
     const checkout = mkdtempSync(join(tmpdir(), "gwrk-enrollment-"));
@@ -1808,6 +1926,11 @@ describe("Migration 014", () => {
       }
 
       writeFileSync(file, sql);
+      const writeOrder = "015-ledger-write-order.sql";
+      copyFileSync(
+        new URL(writeOrder, source),
+        join(migrationsDir, writeOrder),
+      );
       const upgraded = openDatabase({ dbPath, migrationsDir });
       try {
         expect(upgraded.pragma("foreign_keys", { simple: true })).toBe(1);

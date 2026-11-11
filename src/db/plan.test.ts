@@ -2,9 +2,14 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import { execFileSync } from "node:child_process";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import type Database from "better-sqlite3";
-import { beforeEach, describe, expect, it } from "vitest";
-import { getTestDb } from "./index.js";
+import { beforeEach, describe, expect, it, onTestFinished, vi } from "vitest";
+import { resolveProjectId } from "../adapters/git/project-id.js";
+import { getTestDb, openDatabase } from "./index.js";
 import {
   deleteFeature,
   deletePhase,
@@ -17,9 +22,14 @@ import {
   insertFeature,
   insertPhase,
   insertProposal,
+  listFeatures,
   listPhases,
   listProposals,
+  updateFeatureName,
+  updateFeatureSpTotal,
+  updateFeatureStatus,
 } from "./plan.js";
+import { createProjectRegistry } from "./project-registry.js";
 
 describe("src/db/plan.ts (DM-018-001/002/003)", () => {
   let db: Database.Database;
@@ -28,6 +38,149 @@ describe("src/db/plan.ts (DM-018-001/002/003)", () => {
   beforeEach(() => {
     db = getTestDb();
   });
+
+  describe.each([false, true])(
+    "feature writes with enrollment first = %s",
+    (enrollmentFirst) => {
+      const mutations = [
+        [
+          "upsert",
+          (id: string, db: Database.Database) =>
+            insertFeature(
+              { id: "shared", name: "New", status: "ready", sp_total: 8 },
+              id,
+              db,
+            ),
+          { name: "New", status: "ready", sp_total: 8 },
+        ],
+        [
+          "name",
+          (id: string, db: Database.Database) =>
+            updateFeatureName("shared", "New", id, db),
+          { name: "New" },
+        ],
+        [
+          "status",
+          (id: string, db: Database.Database) =>
+            updateFeatureStatus("shared", "ready", id, db),
+          { status: "ready" },
+        ],
+        [
+          "points",
+          (id: string, db: Database.Database) =>
+            updateFeatureSpTotal("shared", 8, id, db),
+          { sp_total: 8 },
+        ],
+      ] as const;
+
+      it.each(mutations)(
+        "keeps the latest %s mutation",
+        (_label, mutate, expected) => {
+          const checkout = mkdtempSync(join(tmpdir(), "gwrk-write-order-"));
+          onTestFinished(() =>
+            rmSync(checkout, { recursive: true, force: true }),
+          );
+          execFileSync("git", ["init", "--quiet", checkout]);
+          const dbPath = join(checkout, "ledger.sqlite");
+          const writer = openDatabase({ dbPath });
+          onTestFinished(() => {
+            writer.close();
+          });
+          const other = openDatabase({ dbPath });
+          onTestFinished(() => {
+            other.close();
+          });
+          other.pragma("busy_timeout = 0");
+          const registry = createProjectRegistry(other, () => {});
+          const localId = resolveProjectId(checkout);
+          const project = {
+            projectId: localId,
+            slug: "checkout",
+            name: "Checkout",
+            repoSlug: null,
+            trunkBranch: "develop",
+            localRoot: checkout,
+            mirrorPath: null,
+            runnerPolicy: { allowedKinds: ["local" as const] },
+            slack: null,
+            legacyProjectIds: [],
+            createdAt: "2026-01-01T00:00:00Z",
+            updatedAt: "2026-01-01T00:00:00Z",
+          };
+          registry.enrollProject(project);
+          execFileSync("git", [
+            "-C",
+            checkout,
+            "remote",
+            "add",
+            "origin",
+            "git@github.com:example/checkout.git",
+          ]);
+          const remoteId = resolveProjectId(checkout);
+          const enroll = () =>
+            registry.enrollProject({
+              ...project,
+              projectId: remoteId,
+              repoSlug: "example/checkout",
+            });
+          const feature = {
+            id: "shared",
+            name: "Old",
+            status: "draft",
+            sp_total: 1,
+          };
+          insertFeature(feature, localId, writer);
+          insertFeature(feature, remoteId, other);
+          if (enrollmentFirst) enroll();
+
+          let writerLocked = false;
+          const prepare = writer.prepare.bind(writer);
+          const spy = vi.spyOn(writer, "prepare").mockImplementation(((
+            sql: string,
+          ) => {
+            const statement = prepare(sql);
+            if (
+              !enrollmentFirst &&
+              /^(?:INSERT INTO|UPDATE) plan_features/.test(sql.trim())
+            ) {
+              const execute = statement.run.bind(statement);
+              vi.spyOn(statement, "run").mockImplementationOnce((...args) => {
+                try {
+                  enroll();
+                } catch (error) {
+                  if ((error as Database.SqliteError).code !== "SQLITE_BUSY")
+                    throw error;
+                  writerLocked = true;
+                }
+                return execute(...args);
+              });
+            }
+            return statement;
+          }) as typeof writer.prepare);
+          try {
+            mutate(localId, writer);
+          } finally {
+            spy.mockRestore();
+          }
+          if (!enrollmentFirst) {
+            expect.soft(writerLocked).toBe(true);
+            if (writerLocked) enroll();
+          }
+
+          for (const id of [localId, remoteId]) {
+            expect
+              .soft(getFeature("shared", id, other))
+              .toMatchObject(expected);
+            expect.soft(listFeatures(id, other)).toMatchObject([expected]);
+          }
+          expect(
+            other.prepare("SELECT count(*) AS count FROM plan_features").get(),
+          ).toEqual({ count: 2 });
+          expect(other.pragma("foreign_key_check")).toEqual([]);
+        },
+      );
+    },
+  );
 
   it("FR-001: should insert and retrieve a feature", () => {
     const feature = {

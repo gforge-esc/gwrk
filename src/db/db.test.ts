@@ -72,7 +72,11 @@ describe("Project registry upgrade", () => {
     } finally {
       legacy.close();
     }
-    copyFileSync(new URL(migration, source), join(migrationsDir, migration));
+    for (const file of readdirSync(source)) {
+      if (file.endsWith(".sql") && file >= migration) {
+        copyFileSync(new URL(file, source), join(migrationsDir, file));
+      }
+    }
     return openDatabase({ dbPath, migrationsDir });
   }
 

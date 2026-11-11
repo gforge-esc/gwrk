@@ -7,8 +7,12 @@ import { getDb } from "./index.js";
 import {
   canonicalProjectId,
   firstPerKey,
+  nextLedgerWriteSequence,
   projectScope,
 } from "./project-registry.js";
+
+const featureColumns =
+  "id, name, status, sp_total, project_id, created_at, updated_at";
 
 export interface PlanFeature {
   id: string;
@@ -66,22 +70,30 @@ export function insertFeature(
   db?: Database.Database,
 ): void {
   const conn = db ?? getDb();
-  const owner =
-    getFeature(feature.id, projectId, conn)?.project_id ??
-    canonicalProjectId(conn, projectId);
   conn
-    .prepare(
-      "INSERT INTO projects (id, name, path) VALUES (?, ?, '') ON CONFLICT(id) DO NOTHING",
-    )
-    .run(owner, owner);
-  conn
-    .prepare(
-      `INSERT INTO plan_features (id, name, status, sp_total, project_id, updated_at)
-       VALUES (@id, @name, @status, @sp_total, @project_id, datetime('now'))
-       ON CONFLICT(project_id, id) DO UPDATE SET name = excluded.name,
-         status = excluded.status, sp_total = excluded.sp_total, updated_at = excluded.updated_at`,
-    )
-    .run({ ...feature, project_id: owner });
+    .transaction(() => {
+      const owner =
+        getFeature(feature.id, projectId, conn)?.project_id ??
+        canonicalProjectId(conn, projectId);
+      conn
+        .prepare(
+          "INSERT INTO projects (id, name, path) VALUES (?, ?, '') ON CONFLICT(id) DO NOTHING",
+        )
+        .run(owner, owner);
+      conn
+        .prepare(
+          `INSERT INTO plan_features (id, name, status, sp_total, project_id, updated_at, write_seq)
+         VALUES (@id, @name, @status, @sp_total, @project_id, datetime('now'), @write_seq)
+         ON CONFLICT(project_id, id) DO UPDATE SET name = excluded.name,
+           status = excluded.status, sp_total = excluded.sp_total, updated_at = excluded.updated_at, write_seq = excluded.write_seq`,
+        )
+        .run({
+          ...feature,
+          project_id: owner,
+          write_seq: nextLedgerWriteSequence(conn),
+        });
+    })
+    .immediate();
 }
 
 /**
@@ -95,7 +107,7 @@ export function getFeature(
   const conn = db ?? getDb();
   const { canonical, ids, placeholders } = projectScope(conn, projectId);
   return conn
-    .prepare(`SELECT * FROM plan_features WHERE id = ? AND project_id IN (${placeholders})
+    .prepare(`SELECT ${featureColumns} FROM plan_features WHERE id = ? AND project_id IN (${placeholders})
       ORDER BY project_id = ? DESC, project_id LIMIT 1`)
     .get(id, ...ids, canonical) as PlanFeature | undefined;
 }
@@ -110,7 +122,7 @@ export function listFeatures(
   const conn = db ?? getDb();
   const { canonical, ids, placeholders } = projectScope(conn, projectId);
   const rows = conn
-    .prepare(`SELECT * FROM plan_features WHERE project_id IN (${placeholders})
+    .prepare(`SELECT ${featureColumns} FROM plan_features WHERE project_id IN (${placeholders})
       ORDER BY project_id = ? DESC, project_id`)
     .all(...ids, canonical) as PlanFeature[];
   return firstPerKey(rows, (row) => row.id).sort((a, b) =>
@@ -127,12 +139,7 @@ export function updateFeatureStatus(
   projectId: string,
   db?: Database.Database,
 ): void {
-  const conn = db ?? getDb();
-  conn
-    .prepare(
-      "UPDATE plan_features SET status = ?, updated_at = datetime('now') WHERE id = ? AND project_id = ?",
-    )
-    .run(status, id, getFeature(id, projectId, conn)?.project_id ?? projectId);
+  updateFeatureField(id, "status", status, projectId, db ?? getDb());
 }
 
 /**
@@ -144,12 +151,7 @@ export function updateFeatureName(
   projectId: string,
   db?: Database.Database,
 ): void {
-  const conn = db ?? getDb();
-  conn
-    .prepare(
-      "UPDATE plan_features SET name = ?, updated_at = datetime('now') WHERE id = ? AND project_id = ?",
-    )
-    .run(name, id, getFeature(id, projectId, conn)?.project_id ?? projectId);
+  updateFeatureField(id, "name", name, projectId, db ?? getDb());
 }
 
 /**
@@ -161,12 +163,28 @@ export function updateFeatureSpTotal(
   projectId: string,
   db?: Database.Database,
 ): void {
-  const conn = db ?? getDb();
+  updateFeatureField(id, "sp_total", spTotal, projectId, db ?? getDb());
+}
+
+function updateFeatureField(
+  id: string,
+  field: "name" | "status" | "sp_total",
+  value: string | number,
+  projectId: string,
+  conn: Database.Database,
+): void {
   conn
-    .prepare(
-      "UPDATE plan_features SET sp_total = ?, updated_at = datetime('now') WHERE id = ? AND project_id = ?",
-    )
-    .run(spTotal, id, getFeature(id, projectId, conn)?.project_id ?? projectId);
+    .transaction(() => {
+      const owner = getFeature(id, projectId, conn)?.project_id;
+      if (!owner) return;
+      conn
+        .prepare(`
+      UPDATE plan_features SET ${field} = ?, updated_at = datetime('now'), write_seq = ?
+      WHERE id = ? AND project_id = ?
+    `)
+        .run(value, nextLedgerWriteSequence(conn), id, owner);
+    })
+    .immediate();
 }
 
 /**
@@ -191,8 +209,8 @@ export function insertPhase(
         // Keep the phase and its proposals under their current foreign key owner.
         conn
           .prepare(`
-        INSERT INTO plan_features (id, name, status, sp_total, created_at, updated_at, project_id)
-        SELECT id, name, status, sp_total, created_at, updated_at, ?
+        INSERT INTO plan_features (id, name, status, sp_total, created_at, updated_at, write_seq, project_id)
+        SELECT id, name, status, sp_total, created_at, updated_at, write_seq, ?
         FROM plan_features WHERE id = ? AND project_id = ?
         ON CONFLICT(project_id, id) DO NOTHING
       `)
