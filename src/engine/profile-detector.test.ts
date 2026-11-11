@@ -231,3 +231,88 @@ describe("TR-016: Toolchain Detection (Phase 16)", () => {
     }
   });
 });
+
+describe("FR-001: architecture-aware workspace profiles (044 phase p01)", () => {
+  let root: string;
+  const design = {
+    architecture: "hexagonal-functional",
+    principles: ["functional-core", "clean-code", "tdd"],
+    templateVersion: "1.0.0",
+  };
+  const write = (relative: string, content: string) => {
+    const target = path.join(root, relative);
+    fs.mkdirSync(path.dirname(target), { recursive: true });
+    fs.writeFileSync(target, content);
+  };
+  beforeEach(() => {
+    root = fs.mkdtempSync(path.join(os.tmpdir(), "gwrk-044-"));
+    write(".git", "gitdir: /unused/worktree-metadata\n");
+    write(".gwrkrc.json", JSON.stringify({
+      project: { name: "fixture", design },
+      workspaces: {
+        "apps/web": { toolchain: { test: "vitest" } },
+        "services/api": { stack: { framework: "FastAPI" }, toolchain: { build: null } },
+      },
+    }));
+    write("apps/web/package.json", JSON.stringify({ dependencies: { typescript: "5", react: "19" } }));
+    write("services/api/pyproject.toml", '[project]\ndependencies = ["fastapi", "pytest"]\n[tool.ruff]\n');
+  });
+  afterEach(() => fs.rmSync(root, { recursive: true, force: true }));
+
+  it.each([
+    ["apps/web", "TypeScript", "React", { test: "vitest" }],
+    ["services/api", "Python", "FastAPI", { primary: "ruff", test: "pytest", build: null }],
+  ])("TR-001: inherits design while detecting %s stack and toolchain", async (workspace, language, framework, toolchain) => {
+    const result = await detectProfile(path.join(root, workspace));
+    expect(result).toMatchObject({ design, stack: { language, framework }, toolchain });
+  });
+
+  it.each(["gwrk-native", "gwrk", "unknown"])("TR-001: attaches root design for %s detection", async (kind) => {
+    if (kind === "gwrk-native") write("docs/architecture.md", "# Architecture");
+    if (kind === "gwrk") write("package.json", JSON.stringify({ name: "@gwrk/cli" }));
+    const result = await detectProfile(root);
+    expect(result).toMatchObject({ design, type: kind === "gwrk" ? "pnpm-monorepo" : kind });
+  });
+
+  it("TR-001: resolves the public two-argument workspace contract", async () => {
+    const module = await import("./profile-detector.js");
+    // Reflect exercises the new arity without changing the existing implementation signature.
+    const result = await Reflect.apply(module.resolveWorkspaceProfile, undefined, [root, "services/api"]);
+    expect(result).toMatchObject({ design, stack: { language: "Python", framework: "FastAPI" }, toolchain: { build: null } });
+  });
+
+  it("TR-001: uses the nearest config instead of a more distant ancestor", async () => {
+    const localDesign = { ...design, architecture: "layered", principles: [] };
+    write("services/.gwrkrc.json", JSON.stringify({ project: { name: "services", design: localDesign } }));
+    const result = await detectProfile(path.join(root, "services/api"));
+    expect(result).toMatchObject({ design: localDesign, stack: { language: "Python" } });
+  });
+
+  it("TR-001: preserves explicit workspace design through config parsing", async () => {
+    const { GwrkConfigSchema } = await import("../utils/config.js");
+    const localDesign = { ...design, architecture: "clean", principles: [] };
+    const config = GwrkConfigSchema.parse({
+      project: { name: "fixture", design },
+      workspaces: { "services/api": { design: localDesign } },
+    });
+    expect(config.workspaces?.["services/api"]).toMatchObject({ design: localDesign });
+    write(".gwrkrc.json", JSON.stringify(config));
+    expect(await detectProfile(path.join(root, "services/api"))).toMatchObject({ design: localDesign });
+  });
+
+  it.each([
+    { architecture: "", principles: [] },
+    { architecture: "clean", principles: ["unknown-principle"] },
+    { architecture: "clean", templateVersion: "99.0.0" },
+  ])("TR-001: rejects invalid workspace design %j", async (invalid) => {
+    const { GwrkConfigSchema } = await import("../utils/config.js");
+    const parsed = GwrkConfigSchema.safeParse({
+      project: { name: "fixture", design },
+      workspaces: { "services/api": { design: invalid } },
+    });
+    expect(parsed.success).toBe(false);
+    if (!parsed.success) {
+      expect(parsed.error.issues.some((issue) => issue.path.slice(0, 3).join(".") === "workspaces.services/api.design")).toBe(true);
+    }
+  });
+});
