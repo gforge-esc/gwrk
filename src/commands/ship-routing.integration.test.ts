@@ -667,7 +667,7 @@ describe("ship with the real AgentPort router", () => {
     "stops at three automatic backend attempts with native refusal %s",
     async (nativeRefusal) => {
       configureAgents("codex", ["codex", "claude", "agy", "goose"]);
-      const { QuotaProber } = await import("../server/quota-prober.js");
+      const { QuotaProber } = await import("../adapters/agents/quota-prober.js");
       const { AgentBackendRegistry } = await import("../plugins/agent-registry.js");
       const probe = QuotaProber.prototype.probeQuota;
       vi.spyOn(QuotaProber.prototype, "probeQuota").mockImplementation(function (
@@ -740,7 +740,7 @@ describe("ship with the real AgentPort router", () => {
   it("uses both models from an explicit backend without checking quota", async () => {
     seedQuota(0);
     vi.mocked(codex.checkQuota).mockResolvedValue({ status: "rate-limited" });
-    const { QuotaProber } = await import("../server/quota-prober.js");
+    const { QuotaProber } = await import("../adapters/agents/quota-prober.js");
     const probeQuota = vi.spyOn(QuotaProber.prototype, "probeQuota");
 
     await ship("--agent", "codex");
@@ -857,7 +857,7 @@ describe("ship with the real AgentPort router", () => {
         "../plugins/agent-registry.js"
       );
       if (reviewCooldown) {
-        const { QuotaProber } = await import("../server/quota-prober.js");
+        const { QuotaProber } = await import("../adapters/agents/quota-prober.js");
         const probeQuota = QuotaProber.prototype.probeQuota;
         vi.spyOn(QuotaProber.prototype, "probeQuota").mockImplementation(
           function (this: QuotaProber, ...args) {
