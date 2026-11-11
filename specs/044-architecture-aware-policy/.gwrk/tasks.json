@@ -131,7 +131,7 @@
           "title": "Create manifest.yaml",
           "description": "NEW src/plugins/builtins/skills/javascript-standards/manifest.yaml. Declare `javascript-standards` enforcement skill for `JavaScript` across `scope: all`",
           "status": "open",
-          "gateScript": "pnpm build\npnpm exec vitest run src/plugins/skill-runtime.test.ts src/plugins/skill-runtime.p15.red.test.ts src/plugins/enforcement.test.ts src/plugins/framework-pack-compatibility.test.ts src/plugins/builtins/skills/gwrk-conventions/SKILL.test.ts src/commands/plugin.p15.red.test.ts src/architecture.test.ts",
+          "gateScript": "gates/phase-03.sh",
           "sp": 2
         },
         {
@@ -139,7 +139,7 @@
           "title": "Create SKILL.md",
           "description": "NEW src/plugins/builtins/skills/javascript-standards/SKILL.md. Define ESM module boundaries and object port contracts and runtime validation rules",
           "status": "open",
-          "gateScript": "pnpm build\npnpm exec vitest run src/plugins/skill-runtime.test.ts src/plugins/skill-runtime.p15.red.test.ts src/plugins/enforcement.test.ts src/plugins/framework-pack-compatibility.test.ts src/plugins/builtins/skills/gwrk-conventions/SKILL.test.ts src/commands/plugin.p15.red.test.ts src/architecture.test.ts",
+          "gateScript": "gates/phase-03.sh",
           "sp": 2
         },
         {
@@ -147,7 +147,7 @@
           "title": "Modify manifest.yaml",
           "description": "MODIFY src/plugins/builtins/skills/gwrk-conventions/manifest.yaml. Set `projectScope: gwrk` so repository rules stay scoped to `gwrk`",
           "status": "open",
-          "gateScript": "pnpm build\npnpm exec vitest run src/plugins/skill-runtime.test.ts src/plugins/skill-runtime.p15.red.test.ts src/plugins/enforcement.test.ts src/plugins/framework-pack-compatibility.test.ts src/plugins/builtins/skills/gwrk-conventions/SKILL.test.ts src/commands/plugin.p15.red.test.ts src/architecture.test.ts",
+          "gateScript": "gates/phase-03.sh",
           "sp": 1
         },
         {
@@ -155,7 +155,7 @@
           "title": "Modify skill-runtime.ts",
           "description": "MODIFY src/plugins/skill-runtime.ts. Implement `resolveEffectivePolicy` and `formatEffectivePolicyPrompt` and delegate `resolveEnforcementSkills`. Tests: src/plugins/skill-runtime.test.ts",
           "status": "open",
-          "gateScript": "pnpm build\npnpm exec vitest run src/plugins/skill-runtime.test.ts src/plugins/skill-runtime.p15.red.test.ts src/plugins/enforcement.test.ts src/plugins/framework-pack-compatibility.test.ts src/plugins/builtins/skills/gwrk-conventions/SKILL.test.ts src/commands/plugin.p15.red.test.ts src/architecture.test.ts",
+          "gateScript": "gates/phase-03.sh",
           "sp": 1
         },
         {
@@ -163,7 +163,7 @@
           "title": "Modify plugin.ts",
           "description": "MODIFY src/commands/plugin.ts. Route `gwrk plugin list --project` enforcement filtering through `evaluateEnforcementCandidate`. Tests: src/plugins/skill-runtime.test.ts",
           "status": "open",
-          "gateScript": "pnpm build\npnpm exec vitest run src/plugins/skill-runtime.test.ts src/plugins/skill-runtime.p15.red.test.ts src/plugins/enforcement.test.ts src/plugins/framework-pack-compatibility.test.ts src/plugins/builtins/skills/gwrk-conventions/SKILL.test.ts src/commands/plugin.p15.red.test.ts src/architecture.test.ts",
+          "gateScript": "gates/phase-03.sh",
           "sp": 1
         }
       ],

@@ -100,6 +100,39 @@ describe("Phase 9: Enforcement Skills", () => {
       expect(content).toContain("gwrk-conventions");
       expect(content.length).toBeGreaterThan(100);
     });
+
+    it("uses JavaScript guidance in an external project named gwrk", async () => {
+      const projectRoot = path.join(tmpDir, "external");
+      const home = path.join(tmpDir, "home");
+      await Promise.all([fs.mkdir(projectRoot), fs.mkdir(home)]);
+      await fs.writeFile(
+        path.join(projectRoot, ".gwrkrc.json"),
+        JSON.stringify({ project: { name: "gwrk" } }),
+      );
+      vi.stubEnv("HOME", home);
+      try {
+        const content = await resolveEnforcementSkills(
+          projectRoot,
+          "implementation",
+          {
+            type: "nodejs",
+            stack: { language: "JavaScript" },
+            _isGwrk: false,
+          },
+        );
+        expect
+          .soft(content)
+          .toContain("<!-- enforcement-skill: javascript-standards -->");
+        expect
+          .soft(content)
+          .not.toContain("<!-- enforcement-skill: typescript-standards -->");
+        expect
+          .soft(content)
+          .not.toContain("<!-- enforcement-skill: gwrk-conventions -->");
+      } finally {
+        vi.unstubAllEnvs();
+      }
+    });
   });
 
   /**
