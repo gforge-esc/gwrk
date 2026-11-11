@@ -3,8 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { tryLoadRegistry } from "../adapters/agents/registry-loader.js";
-import { ModelSelector } from "../domain/agent-config.js";
-import { classifyTask } from "../domain/types.js";
+import { selectAgentRoute } from "../domain/agent-routing.js";
 
 /**
  * Resolves the preferred model for a task type from the agent registry.
@@ -35,22 +34,14 @@ export function resolveModelForTask(
       return undefined;
     }
 
-    const classification = classifyTask(taskType);
-    const selector = new ModelSelector();
-
-    // Use a no-cooldown prober for define commands (no state to track)
-    const noCooldownProber = {
-      isModelInCooldown: () => false,
-    };
-
-    const { model } = selector.selectModel(
-      backendConfig,
-      classification,
-      taskType,
-      noCooldownProber,
+    const selection = selectAgentRoute(
+      { type: taskType },
+      {
+        explicitBackend: backendName,
+        registry: result.value,
+      },
     );
-
-    return model?.modelFlag || model?.name;
+    return selection.mode === "selected" ? selection.model : undefined;
   } catch {
     // Registry not configured or backend not found — fall back to default
     return undefined;
