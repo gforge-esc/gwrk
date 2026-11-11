@@ -155,7 +155,7 @@
           "title": "Create ledger-backup.ts",
           "description": "NEW src/adapters/sqlite/ledger-backup.ts. Snapshot Write-Ahead Logging SQLite state via Online Backup API with repository metadata",
           "status": "open",
-          "gateScript": "pnpm run build\npnpm exec vitest run tests/linux-runner/backup-restore-rollback.test.ts src/architecture.test.ts",
+          "gateScript": "gates/phase-04.sh",
           "sp": 2
         },
         {
@@ -163,7 +163,7 @@
           "title": "Create backup-restore.ts",
           "description": "NEW src/application/release/backup-restore.ts. Orchestrate consistent backup creation and clean-instance restore checks plus rollback gating. Tests: tests/linux-runner/backup-restore-rollback.test.ts",
           "status": "open",
-          "gateScript": "pnpm run build\npnpm exec vitest run tests/linux-runner/backup-restore-rollback.test.ts src/architecture.test.ts",
+          "gateScript": "gates/phase-04.sh",
           "sp": 2
         },
         {
@@ -171,7 +171,7 @@
           "title": "Modify db.ts",
           "description": "MODIFY src/commands/db.ts. Register `gwrk db backup` and `gwrk db restore` with JSON output and navigation errors",
           "status": "open",
-          "gateScript": "pnpm run build\npnpm exec vitest run tests/linux-runner/backup-restore-rollback.test.ts src/architecture.test.ts",
+          "gateScript": "gates/phase-04.sh",
           "sp": 1
         },
         {
@@ -179,7 +179,7 @@
           "title": "Create rollback-release.sh",
           "description": "NEW deploy/linux-runner/rollback-release.sh. Check persistent `_migrations` against target `release-manifest.json` before switching `current`",
           "status": "open",
-          "gateScript": "pnpm run build\npnpm exec vitest run tests/linux-runner/backup-restore-rollback.test.ts src/architecture.test.ts",
+          "gateScript": "gates/phase-04.sh",
           "sp": 2
         }
       ],
