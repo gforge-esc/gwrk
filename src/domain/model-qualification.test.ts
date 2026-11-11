@@ -77,6 +77,17 @@ const passingEvidence: PromotionEvidence = {
   refs: { input: ["input"], output: ["output"], gate: ["gate"] },
 };
 
+describe("credential guard", () => {
+  it.each(["Cookie: session=fixture", "Authorization: Basic Zml4dHVyZQ=="])(
+    "rejects a credential header in a nested property name",
+    (header) => {
+      expect(() =>
+        assertNoSecretMaterial({ nested: [{ [header]: true }] }),
+      ).toThrow(/secret material/i);
+    },
+  );
+});
+
 describe("model qualification policy", () => {
   it("checks the exact model, runner and effort against available catalog entries", () => {
     expect(checkCandidate(snapshot, scope, candidate)).toEqual({ ok: true });

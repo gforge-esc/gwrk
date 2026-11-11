@@ -340,10 +340,11 @@ export function assertNoSecretMaterial(
 ): void {
   let secretInText = false;
   const serialized =
-    JSON.stringify(value, (_key, entry: unknown) => {
+    JSON.stringify(value, (key, entry: unknown) => {
       if (
-        typeof entry === "string" &&
-        (headerPattern.test(entry) || secretPattern.test(entry))
+        headerPattern.test(key) ||
+        (typeof entry === "string" &&
+          (headerPattern.test(entry) || secretPattern.test(entry)))
       ) {
         secretInText = true;
       }
