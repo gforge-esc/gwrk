@@ -191,25 +191,17 @@ export class AgyAdapter implements AgentBackend {
   }
 
   parseResult(stdout: string, stderr: string, rawExitCode: number): TaskResult {
-    let terminalFailure = false;
-    let terminalSeen = false;
     const normalized = stdout
       .split("\n")
       .map((line) => {
         try {
           const event = JSON.parse(line);
-          if (
-            event.event !== "result" ||
-            !event.result ||
-            typeof event.result.response !== "string"
-          )
-            return line;
-          terminalSeen = true;
-          terminalFailure = event.result.status !== "SUCCESS";
+          if (event?.event !== "result" || !event.result) return line;
           return JSON.stringify({
             type: "result",
             result: event.result.response,
             usage: event.result.usage,
+            is_error: event.result.status !== "SUCCESS",
           });
         } catch {
           return line;
@@ -218,7 +210,8 @@ export class AgyAdapter implements AgentBackend {
       .join("\n");
     const unwrapped = unwrapStreamJson(normalized);
     let errorType: TaskResult["errorType"];
-    let exitCode = terminalFailure && rawExitCode === 0 ? 1 : rawExitCode;
+    let exitCode =
+      unwrapped.terminalStatus === "failure" ? rawExitCode || 1 : rawExitCode;
 
     if (exitCode !== 0) {
       if (rawExitCode === 127 || stderr.includes("command not found")) {
@@ -254,12 +247,9 @@ export class AgyAdapter implements AgentBackend {
     return {
       exitCode,
       rawExitCode,
-      ...(terminalSeen
-        ? {
-            status: terminalFailure
-              ? ("failure" as const)
-              : ("success" as const),
-          }
+      status: exitCode === 0 ? "success" : "failure",
+      ...(unwrapped.terminalStatus
+        ? { terminalStatus: unwrapped.terminalStatus }
         : {}),
       stdout,
       unwrappedStdout: unwrapped.text,

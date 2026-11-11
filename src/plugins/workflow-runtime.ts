@@ -429,12 +429,6 @@ export class WorkflowRuntime {
     })();
 
     const result = options.recordedResult ?? (await dispatcher(task));
-    if (result.status === "failure") {
-      throw new Error(
-        `Workflow execution failed: ${result.error ?? result.stderr}`,
-      );
-    }
-
     // Detect native artifacts (files the agent wrote directly). Used by both
     // the structured-output safety net and the FR-029 tolerant path below.
     // Counts BOTH uncommitted changes (dirty tree) AND commits the agent made
@@ -459,7 +453,7 @@ export class WorkflowRuntime {
       }
     };
 
-    if (result.exitCode !== 0) {
+    if (result.exitCode !== 0 || result.status === "failure") {
       // Safety net: Claude under --json-schema can exhaust its structured-output
       // retries (subtype "error_max_structured_output_retries", exit 1) AFTER
       // writing the deliverable files natively — the work is done, only the
@@ -468,7 +462,12 @@ export class WorkflowRuntime {
       const exhaustedStructuredOutput = result.stdout.includes(
         "error_max_structured_output_retries",
       );
-      if (!options.reportOnly && exhaustedStructuredOutput && hasArtifacts()) {
+      if (
+        !options.reportOnly &&
+        result.exitCode !== 0 &&
+        exhaustedStructuredOutput &&
+        hasArtifacts()
+      ) {
         warnCli(
           "[workflow-runtime] Agent exhausted structured-output retries but wrote artifacts natively — recovering as native success.",
         );
@@ -480,7 +479,7 @@ export class WorkflowRuntime {
         };
       }
       throw new Error(
-        `Workflow execution failed with exit code ${result.exitCode}: ${result.stderr}`,
+        `Workflow execution failed with exit code ${result.exitCode || 1}: ${result.error ?? result.stderr}`,
       );
     }
 

@@ -135,7 +135,11 @@ export async function assessProject(options: AssessOptions = {}) {
           ).parseResult(recordedText, "", 0),
           logPath: path.resolve(root, options.fromLog as string),
         };
-  if (recordedResult && recordedResult.status !== "success")
+  if (
+    recordedResult &&
+    (recordedResult.terminalStatus !== "success" ||
+      recordedResult.status !== "success")
+  )
     throw new CommandError(
       "Recorded output has no verified successful terminal status.",
     );

@@ -179,6 +179,7 @@ pnpm exec vitest run src/utils/agent.test.ts src/utils/agent.grounding-decisions
 - `src/plugins/builtins/agents/agy/adapter.ts` (MODIFY: Retain Antigravity envelope parsing and reject an error terminal even when its response contains a GO verdict)
 - `src/plugins/builtins/agents/claude/adapter.ts` (MODIFY: Populate `status` and force non-zero `exitCode` when stream-json terminal events report failure on raw exit `0`)
 - `src/plugins/builtins/agents/codex/adapter.ts` (MODIFY: Populate `status`, `unwrappedStdout` and `structuredOutput` across JSON and plain-text responses)
+- `src/plugins/builtins/agents/codex/manifest.yaml` (MODIFY: Match the supported non-interactive workspace-write invocation)
 - `src/plugins/workflow-runtime.ts` (MODIFY: Reject `result.status === "failure"` before output extraction even when `exitCode` is `0`)
 - `src/plugins/builtins/agents/agy/adapter.test.ts` (MODIFY: Verify success and failed terminals on raw exit `0`, including the recorded error after a GO verdict)
 - `src/plugins/builtins/agents/claude/adapter.test.ts` (MODIFY: Verify Claude stream-json unwrapping, `status` parity and terminal `is_error` rejection on raw exit `0`)

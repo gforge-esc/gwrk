@@ -137,6 +137,12 @@ describe("WorkflowRuntime Phase 13: Project Awareness", () => {
     expect(agentUtils.dispatchToAgent).not.toHaveBeenCalled();
     await expect(
       new WorkflowRuntime().executeWorkflow("assessment", "input", {
+        reportOnly: true,
+        recordedResult: { ...recordedResult, status: "failure" },
+      }),
+    ).rejects.toThrow(/execution failed/);
+    await expect(
+      new WorkflowRuntime().executeWorkflow("assessment", "input", {
         recordedResult,
       }),
     ).rejects.toThrow(/report-only/);

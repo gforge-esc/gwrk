@@ -44,6 +44,7 @@ export interface AgentTaskResult {
   durationMs?: number;
   timedOut?: boolean;
   status?: "success" | "failure";
+  terminalStatus?: "success" | "failure";
   error?: string;
   errorType?:
     | "rate_limit"
@@ -86,6 +87,7 @@ export interface UnwrappedStreamResult {
   text: string;
   structuredOutput?: Record<string, unknown>;
   isTurnLimit?: boolean;
+  terminalStatus?: "success" | "failure";
   usage?: {
     tokensIn?: number;
     tokensOut?: number;
@@ -108,6 +110,7 @@ export function unwrapStreamJson(stdout: string): UnwrappedStreamResult {
   let lastStructuredOutput: Record<string, unknown> | undefined;
   const assistantChunks: string[] = [];
   let isTurnLimit = false;
+  let terminalStatus: UnwrappedStreamResult["terminalStatus"];
   let usage: UnwrappedStreamResult["usage"];
   let parsedAnyEvent = false;
 
@@ -149,6 +152,14 @@ export function unwrapStreamJson(stdout: string): UnwrappedStreamResult {
       }
     } else if (evt.type === "result") {
       parsedAnyEvent = true;
+      if (
+        evt.is_error === true ||
+        (typeof evt.subtype === "string" && evt.subtype.startsWith("error_"))
+      ) {
+        terminalStatus = "failure";
+      } else if (terminalStatus !== "failure") {
+        terminalStatus = "success";
+      }
       if (evt.structured_output && typeof evt.structured_output === "object") {
         lastStructuredOutput = evt.structured_output as Record<string, unknown>;
       }
@@ -188,6 +199,7 @@ export function unwrapStreamJson(stdout: string): UnwrappedStreamResult {
     text,
     ...(lastStructuredOutput ? { structuredOutput: lastStructuredOutput } : {}),
     ...(isTurnLimit ? { isTurnLimit: true } : {}),
+    ...(terminalStatus ? { terminalStatus } : {}),
     ...(usage ? { usage } : {}),
   };
 }

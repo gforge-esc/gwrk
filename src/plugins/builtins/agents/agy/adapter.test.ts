@@ -214,4 +214,18 @@ describe("AgyAdapter", () => {
       ).exitCode,
     ).toBe(1);
   });
+  it("rejects a failed terminal without response even after a success payload", () => {
+    const adapter = new AgyAdapter();
+    const stdout = [
+      { event: "result", result: { status: "SUCCESS", response: "GO" } },
+      { event: "result", result: { status: "ERROR" } },
+    ].map((event) => JSON.stringify(event)).join("\n");
+
+    expect(adapter.parseResult(stdout, "", 0)).toMatchObject({
+      status: "failure",
+      exitCode: 1,
+      unwrappedStdout: "GO",
+    });
+  });
+
 });
