@@ -119,6 +119,8 @@ async function selectAvailableRoute(
   const restrictToRegistry =
     context.type === "implement" &&
     !context.explicitBackend &&
+    context.requireRegistry === true &&
+    quotaFirst &&
     agentRegistry !== undefined;
   const candidates = new Set(
     restrictToRegistry
@@ -172,15 +174,14 @@ async function selectAvailableRoute(
       );
     }
   }
-  const boundedAutomaticRoute = quotaFirst && restrictToRegistry;
   if (
-    boundedAutomaticRoute &&
+    restrictToRegistry &&
     Object.values(quotas).every(({ percent }) => percent <= 0)
   ) {
     throw new Error("All backends quota-exhausted. Retry after reset.");
   }
 
-  const registeredCandidates = boundedAutomaticRoute ? [...candidates] : null;
+  const registeredCandidates = restrictToRegistry ? [...candidates] : null;
   const probed = new Set<string>();
   let loadedAll = restrictToRegistry;
   while (candidates.size > 0 || !loadedAll) {
@@ -198,8 +199,8 @@ async function selectAvailableRoute(
         {
           ...facts,
           availableBackends: registeredCandidates ?? [...candidates],
-          maxBackendAttempts: boundedAutomaticRoute ? 3 : undefined,
-          probedUnavailableBackends: boundedAutomaticRoute ? probed : undefined,
+          maxBackendAttempts: restrictToRegistry ? 3 : undefined,
+          probedUnavailableBackends: restrictToRegistry ? probed : undefined,
           quotas:
             agentRegistry && !context.explicitBackend && !installedOnly
               ? quotas
@@ -219,7 +220,7 @@ async function selectAvailableRoute(
     let available = false;
     try {
       const backend = await registry.getAgentBackend(route.backend);
-      if (boundedAutomaticRoute && !(await backend.isAvailable())) continue;
+      if (restrictToRegistry && !(await backend.isAvailable())) continue;
       available = installedOnly
         ? await backend.isAvailable()
         : (await quotaProbe(backend)).status === "available";

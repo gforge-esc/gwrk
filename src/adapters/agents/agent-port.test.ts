@@ -6,10 +6,13 @@ import { describe, expect, it, vi } from "vitest";
 import { TaskClassification } from "../../domain/types.js";
 import type { AgentBackendRegistry } from "../../plugins/agent-registry.js";
 import { dispatchToAgent } from "../../utils/agent.js";
+import { GwrkConfigSchema, loadConfig } from "../../utils/config.js";
 import { createAgentPortAdapter } from "./index.js";
+import { tryLoadRegistry } from "./registry-loader.js";
 
-vi.mock("../../utils/config.js", () => ({
-  loadConfig: () => ({ agents: { fallbackOrder: ["fixture"] } }),
+vi.mock("../../utils/config.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../utils/config.js")>()),
+  loadConfig: vi.fn(() => ({ agents: { fallbackOrder: ["fixture"] } })),
 }));
 vi.mock("../../db/plugins.js", () => ({ getRoutingHistory: () => [] }));
 vi.mock("../../utils/project-id.js", () => ({
@@ -27,7 +30,7 @@ vi.mock("../../server/quota-prober.js", () => ({
   },
 }));
 vi.mock("./registry-loader.js", () => ({
-  tryLoadRegistry: () => ({
+  tryLoadRegistry: vi.fn(() => ({
     ok: true,
     value: {
       fallbackOrder: ["fixture"],
@@ -45,7 +48,7 @@ vi.mock("./registry-loader.js", () => ({
         },
       },
     },
-  }),
+  })),
 }));
 
 describe("agent port adapter", () => {
@@ -68,6 +71,55 @@ describe("agent port adapter", () => {
       effort: "high",
     });
     expect(isAvailable).toHaveBeenCalledTimes(1);
+    expect(registry.getBackends).not.toHaveBeenCalled();
+  });
+
+  it("honors the configured implementation backend outside the model registry", async () => {
+    const codex = {
+      name: "codex",
+      type: "local-cli" as const,
+      command: "codex",
+      quotaProbe: { method: "optimistic" as const, cacheTTLMinutes: 5 },
+      maxConcurrent: 1,
+      models: [
+        {
+          name: "fast",
+          modelFlag: "codex-fast",
+          tier: TaskClassification.FAST,
+        },
+      ],
+    };
+    vi.mocked(loadConfig).mockReturnValueOnce(
+      GwrkConfigSchema.parse({
+        project: { name: "Routing fixture" },
+        agents: {
+          implement: "agy",
+          fallbackOrder: ["codex"],
+          registry: { codex },
+        },
+      }),
+    );
+    vi.mocked(tryLoadRegistry).mockReturnValueOnce({
+      ok: true,
+      value: { fallbackOrder: ["codex"], backends: { codex } },
+    });
+    const registry = {
+      getAgentBackend: vi.fn(async (name: string) => ({
+        name,
+        isAvailable: async () => true,
+      })),
+      getBackends: vi.fn(),
+    };
+    const adapter = createAgentPortAdapter({
+      registry: registry as unknown as AgentBackendRegistry,
+    });
+
+    expect(await adapter.selectRoute({ type: "implement" })).toMatchObject({
+      backend: "agy",
+      model: "default",
+      mode: "provider-default",
+    });
+    expect(registry.getAgentBackend).toHaveBeenCalledExactlyOnceWith("agy");
     expect(registry.getBackends).not.toHaveBeenCalled();
   });
 
