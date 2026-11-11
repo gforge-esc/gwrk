@@ -44,25 +44,28 @@
           "id": "T003",
           "title": "Create oidc-issuer.mjs",
           "description": "NEW tests/hosted-auth-proof/oidc-issuer.mjs. Issue signed identity tokens and verify the proof key for code exchange",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T003-gate.sh",
-          "sp": 2
+          "sp": 2,
+          "completedAt": "2026-11-11T16:39:38.412Z"
         },
         {
           "id": "T004",
           "title": "Create gateway-proof.mjs",
           "description": "NEW tests/hosted-auth-proof/gateway-proof.mjs. Run the real gateway and private origin on isolated networks",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T004-gate.sh",
-          "sp": 2
+          "sp": 2,
+          "completedAt": "2026-11-11T16:39:59.229Z"
         },
         {
           "id": "T005",
           "title": "Create compose.test.yaml",
           "description": "NEW tests/hosted-auth-proof/compose.test.yaml. Bind loopback test ports and select the synthetic issuer",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T005-gate.sh",
-          "sp": 2
+          "sp": 2,
+          "completedAt": "2026-11-11T16:40:20.627Z"
         }
       ],
       "sp_estimate": 6,
