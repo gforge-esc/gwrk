@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import { execFileSync } from "node:child_process";
 import crypto from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
@@ -9,7 +10,12 @@ import path from "node:path";
 import ts from "typescript";
 import { describe, expect, it } from "vitest";
 import { architectureViolations } from "../../tests/helpers/architecture-boundary.js";
-import { computeProjectId, computeProjectKey } from "./project-id.js";
+import { discoverGitIdentityFacts } from "../adapters/git/project-id.js";
+import {
+  computeLegacyProjectIds,
+  computeProjectId,
+  computeProjectKey,
+} from "./project-id.js";
 
 const loadProjectIdModule = () =>
   import("./project-id.js") as Promise<Record<string, unknown>>;
@@ -170,6 +176,42 @@ describe("FR-001 / TR-001: Canonical remote IDs and legacy path alias hashes", (
     const worktreeLegacy = computeLegacyProjectIds(linkedWorktree);
     expect(worktreeLegacy).toContain(md5("path:/repos/local-only-wt/feat-048"));
     expect(worktreeLegacy).toContain(md5("/repos/local-only-wt/feat-048"));
+    expect(worktreeLegacy).toContain(computeProjectId(mainWorktree));
+  });
+
+  it("preserves the pre-origin project ID and both path aliases after adding origin", () => {
+    const checkout = fs.mkdtempSync(path.join(os.tmpdir(), "gwrk-project-id-"));
+    try {
+      const projectRoot = fs.realpathSync(checkout);
+      const gitOptions = {
+        cwd: projectRoot,
+        stdio: "ignore" as const,
+        timeout: 5_000,
+        env: { ...process.env, GIT_EDITOR: "true", EDITOR: "true" },
+      };
+      execFileSync("git", ["init", "--quiet"], gitOptions);
+      const preOriginId = computeProjectId(
+        discoverGitIdentityFacts(projectRoot),
+      );
+      expect(preOriginId).toBe(md5(`local:${projectRoot}`));
+
+      execFileSync(
+        "git",
+        ["remote", "add", "origin", "git@github.com:Acme/Widget.git"],
+        gitOptions,
+      );
+      const facts = discoverGitIdentityFacts(projectRoot);
+      expect(computeProjectId(facts)).toBe(
+        md5("remote:github.com/acme/widget"),
+      );
+      expect(computeLegacyProjectIds(facts)).toEqual([
+        md5(`path:${projectRoot}`),
+        md5(projectRoot),
+        preOriginId,
+      ]);
+    } finally {
+      fs.rmSync(checkout, { recursive: true, force: true });
+    }
   });
 
   it("FR-001: validates Slack-bound and local-only project enrollments with caller timestamps", async () => {

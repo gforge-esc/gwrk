@@ -101,7 +101,15 @@ export function validateProjectEnrollment(
 ): { ok: true; value: EnrolledProject } | { ok: false; error: string };
 ```
 
-`computeProjectId` keeps `MD5(remote:<slug>)` when `remoteOriginUrl` exists. `computeLegacyProjectIds` returns `MD5("path:" + projectRoot)` and `MD5(projectRoot)`. For a repo without a remote, retain the existing Git common-directory key so linked worktrees keep one project identity. A registered path alias can recover a legacy record after a remote is added. Explicitly bind aliases to the confirmed repository before merging data. Domain modules stay pure and accept timestamps from callers.
+`computeProjectId` keeps `MD5(remote:<slug>)` when `remoteOriginUrl` exists. Without a remote, linked worktrees share the project ID derived from the Git common directory.
+
+`computeLegacyProjectIds` returns these enrollment aliases:
+
+- `MD5("path:" + projectRoot)`
+- `MD5(projectRoot)`
+- `MD5("local:" + dirname(gitCommonDir))` when Git reports a common directory
+
+Read the absolute Git common directory even when origin exists so enrollment can recover records written before origin was added. Bind aliases to the confirmed repository before merging data. Domain modules stay pure and accept timestamps from callers.
 
 ## SQLite schema migration
 
@@ -231,4 +239,4 @@ export function createSqliteProjectRegistryAdapter(
 ): ProjectRegistryPort;
 ```
 
-After authorization, `claimActionReceipt` atomically inserts a unique receipt key and reports whether this caller owns the claim. Only the owner invokes the side effect. Complete the receipt after the effect returns. Reconcile a claimed or uncertain merge against the pull request before retrying. An unauthorized attempt never claims the key. `getProject` resolves one exact canonical ID, slug, repo slug or registered alias. An ambiguous alias fails closed. SQLite reads resolve aliases without duplicating rows.
+After authorization, `claimActionReceipt` atomically inserts a unique receipt key and reports whether this caller owns the claim. Only the owner invokes the side effect. Complete the receipt after the effect returns. Reconcile a claimed or uncertain merge against the pull request before retrying. An unauthorized attempt never claims the key. `getProject` requires one exact match. It accepts canonical IDs and registered aliases. It also accepts project and repository slugs. SQLite reads resolve aliases without duplicating rows.

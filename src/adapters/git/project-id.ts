@@ -6,7 +6,6 @@ import { execFileSync } from "node:child_process";
 import {
   type ProjectIdentityFacts,
   computeProjectId,
-  normalizeGitRemoteSlug,
 } from "../../domain/project-id.js";
 
 function readGit(projectRoot: string, args: string[]): string | null {
@@ -32,14 +31,11 @@ export function discoverGitIdentityFacts(
     "--get",
     "remote.origin.url",
   ]);
-  const gitCommonDir =
-    remoteOriginUrl && normalizeGitRemoteSlug(remoteOriginUrl)
-      ? null
-      : readGit(projectRoot, [
-          "rev-parse",
-          "--path-format=absolute",
-          "--git-common-dir",
-        ]);
+  const gitCommonDir = readGit(projectRoot, [
+    "rev-parse",
+    "--path-format=absolute",
+    "--git-common-dir",
+  ]);
   return { projectRoot, remoteOriginUrl, gitCommonDir };
 }
 

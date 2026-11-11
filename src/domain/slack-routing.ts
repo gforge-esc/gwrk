@@ -158,12 +158,14 @@ function matchesProjectSelector(
 function selectProject(
   projects: readonly EnrolledProject[],
   selector: string,
+  matches = matchesProjectSelector,
 ): ProjectSelection {
-  const matches = projects.filter((project) =>
-    matchesProjectSelector(project, selector),
+  const matchingProjects = projects.filter((project) =>
+    matches(project, selector),
   );
-  if (matches.length > 1) return ambiguousProject(matches);
-  if (matches.length === 1) return { ok: true, project: matches[0] };
+  if (matchingProjects.length > 1) return ambiguousProject(matchingProjects);
+  if (matchingProjects.length === 1)
+    return { ok: true, project: matchingProjects[0] };
   return {
     ok: false,
     code: "UNKNOWN_PROJECT",
@@ -216,6 +218,23 @@ export function evaluateSlackRoute(
   roles: readonly ProjectRoleBinding[],
   envelope: SlackInboundEnvelope,
 ): RouteDecision {
+  return evaluateSlackConversation(projects, roles, envelope);
+}
+
+function threadProjectMismatch(): RouteDenial {
+  return {
+    ok: false,
+    code: "THREAD_PROJECT_MISMATCH",
+    message: "The action does not match the project or feature thread.",
+  };
+}
+
+function evaluateSlackConversation(
+  projects: readonly EnrolledProject[],
+  roles: readonly ProjectRoleBinding[],
+  envelope: SlackInboundEnvelope,
+  payloadProjectId?: string,
+): RouteDecision {
   const {
     workspaceId,
     channelId,
@@ -245,15 +264,16 @@ export function evaluateSlackRoute(
   }
 
   let project: EnrolledProject;
-  if (requestedProject !== undefined) {
-    const selection = selectProject(candidates, requestedProject);
+  const selector = payloadProjectId ?? requestedProject;
+  if (selector !== undefined) {
+    const matches =
+      payloadProjectId === undefined
+        ? matchesProjectSelector
+        : (entry: EnrolledProject, id: string) => entry.projectId === id;
+    const selection = selectProject(candidates, selector, matches);
     if (!selection.ok) {
       if (selection.code !== "UNKNOWN_PROJECT") return selection;
-      if (
-        workspaceProjects.some((entry) =>
-          matchesProjectSelector(entry, requestedProject),
-        )
-      ) {
+      if (workspaceProjects.some((entry) => matches(entry, selector))) {
         return {
           ok: false,
           code: "CHANNEL_PROJECT_MISMATCH",
@@ -266,6 +286,13 @@ export function evaluateSlackRoute(
       };
     }
     project = selection.project;
+    if (
+      payloadProjectId !== undefined &&
+      requestedProject !== undefined &&
+      !matchesProjectSelector(project, requestedProject)
+    ) {
+      return threadProjectMismatch();
+    }
   } else {
     if (
       isDirectMessage ||
@@ -309,11 +336,6 @@ export function evaluateSlackAction(
     roleRank[minimumRole[input.requiredAccess]]
       ? actionAccess
       : input.requiredAccess;
-  const threadMismatch: RouteDenial = {
-    ok: false,
-    code: "THREAD_PROJECT_MISMATCH",
-    message: "The action does not match the project or feature thread.",
-  };
   const rootTs = threadTs ?? messageTs;
   const matchesThread =
     Boolean(messageTs) &&
@@ -333,20 +355,21 @@ export function evaluateSlackAction(
         isProjectInSlackConversation(project, input),
     )
   ) {
-    return threadMismatch;
+    return threadProjectMismatch();
   }
 
-  const route = evaluateSlackRoute(projects, roles, {
-    ...input,
-    requestedProject: input.requestedProject ?? payloadProjectId,
-    requiredAccess,
-  });
+  const route = evaluateSlackConversation(
+    projects,
+    roles,
+    { ...input, requiredAccess },
+    payloadProjectId,
+  );
   if (!route.ok) {
     if (
       payloadProjectId !== undefined &&
       route.code === "CHANNEL_PROJECT_MISMATCH"
     ) {
-      return threadMismatch;
+      return threadProjectMismatch();
     }
     return route;
   }
@@ -354,11 +377,9 @@ export function evaluateSlackAction(
   if (
     !matchesThread ||
     storedThread.projectId !== route.project.projectId ||
-    (payloadProjectId !== undefined &&
-      payloadProjectId !== route.project.projectId) ||
     (payloadRootTs !== undefined && payloadRootTs !== rootTs)
   ) {
-    return threadMismatch;
+    return threadProjectMismatch();
   }
   if (input.priorReceipt) {
     return {

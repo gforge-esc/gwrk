@@ -41,7 +41,9 @@ export function computeProjectId(facts: ProjectIdentityFacts): string {
 }
 
 export function computeLegacyProjectIds(facts: ProjectIdentityFacts): string[] {
-  return [`path:${facts.projectRoot}`, facts.projectRoot].map((key) =>
-    crypto.createHash("md5").update(key).digest("hex"),
-  );
+  const keys = [`path:${facts.projectRoot}`, facts.projectRoot];
+  if (facts.gitCommonDir) {
+    keys.push(computeProjectKey({ ...facts, remoteOriginUrl: null }));
+  }
+  return keys.map((key) => crypto.createHash("md5").update(key).digest("hex"));
 }

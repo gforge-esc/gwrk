@@ -914,6 +914,44 @@ describe("FR-003 / TR-003: Click-time Slack action verification, thread binding 
     });
   });
 
+  it.each([
+    [undefined, true],
+    [PROJECT_ALPHA.slug, true],
+    [PROJECT_BETA.repoSlug, false],
+  ] as const)(
+    "resolves a canonical merge payload in a shared channel with selector %s",
+    async (requestedProject, allowed) => {
+      const { evaluateSlackAction } = await loadSlackRouting();
+      const sharedAlpha = { ...PROJECT_ALPHA, slack: PROJECT_BETA.slack };
+      const collidingBeta = { ...PROJECT_BETA, slug: PROJECT_ALPHA.projectId };
+      const storedThread = { ...STORED_THREAD, channelId: "C_SHARED" };
+      const result = evaluateSlackAction([sharedAlpha, collidingBeta], ROLES, {
+        workspaceId: storedThread.workspaceId,
+        channelId: storedThread.channelId,
+        isDirectMessage: false,
+        actorUserId: "U_MAINTAINER",
+        messageTs: storedThread.rootTs,
+        requiredAccess: "maintain",
+        actionId: "merge_pr",
+        requestedProject: requestedProject ?? undefined,
+        payloadProjectId: PROJECT_ALPHA.projectId,
+        featureId: storedThread.featureId,
+        storedThread,
+      });
+
+      expect(result).toMatchObject(
+        allowed
+          ? {
+              ok: true,
+              project: sharedAlpha,
+              role: "maintainer",
+              recipient: { threadTs: storedThread.rootTs },
+            }
+          : { ok: false, code: "THREAD_PROJECT_MISMATCH" },
+      );
+    },
+  );
+
   it("uses the action's minimum role even when the caller requests read access", async () => {
     const { evaluateSlackAction } = await loadSlackRouting();
     expect(
