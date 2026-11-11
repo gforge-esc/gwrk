@@ -1,6 +1,6 @@
 # Durable operations policy and port contracts
 
-Isolate dispatch and harvest state transitions inside pure domain modules. Execute SQLite persistence and clock reads through narrow ports. Route Git checkouts, GitHub lookups and Slack reconciliation through narrow ports too. Blocked: types consume `EnrolledProject` and `DeliveryRecipient` from `048-project-identity-slack`.
+Isolate dispatch and harvest state transitions inside pure domain modules. Execute SQLite persistence and clock reads through narrow ports. Route Git checkouts, GitHub lookups and Slack reconciliation through narrow ports too. Blocked: none for policy and ports. Use the reviewed `EnrolledProject` and `DeliveryRecipient` types from Slack project identity (048).
 
 ## Pure dispatch and lease policy
 
@@ -357,7 +357,7 @@ export interface HarvestExecutionPort {
 | `heartbeatDispatchLease` | Extend `lease_expires_at` for active worker | Requires matching `LeaseFence` |
 | `completeDispatchAttempt` | Persist terminal or requeued attempt state | Fails with `LEASE_FENCED` on stale epoch |
 | `listRecoverableDispatches` | List `accepted` and expired `leased` or `running` rows | Ordered by `created_at` ascending |
-| `recordHarvestIntake` | Record `harvest_deliveries` and upsert `harvest_operations` | One transaction. Reject transport ID reuse with different verified repository or payload digest |
+| `recordHarvestIntake` | Record `harvest_deliveries` and upsert `harvest_operations` | One transaction with transport ID reuse rejected on repository or payload digest mismatch |
 | `claimHarvestLease` | Claim or renew harvest operation lease | Increments `lease_epoch` atomically |
 | `transitionHarvestStage` | Update one `harvest_stage_receipts` row | Requires matching owner and epoch on every stage and effect receipt write |
 | `enqueueOutbox` | Insert idempotent `notification_outbox` item | Unique `(project_id, dedupe_key)` |

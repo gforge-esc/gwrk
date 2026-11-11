@@ -1,6 +1,6 @@
 # Durable dispatch and harvest plan
 
-Persist every dispatch and harvest operation in SQLite before acknowledging HTTP, Slack or GitHub callers. Resume unfinished stages and uncertain deliveries after restart while keeping git authoritative under Architecture Decision Record 002 (ADR-002) and ADR-003. Blocked: implementation depends on project-scoped identity and recipients from `048-project-identity-slack`.
+Persist every dispatch and harvest operation in SQLite before acknowledging HTTP, Slack or GitHub callers. Resume unfinished stages and uncertain deliveries after restart while keeping git authoritative under Architecture Decision Record 002 (ADR-002) and ADR-003. Blocked: storage and ingress integration depend on Slack project identity (048).
 
 ## Target recovery boundary
 
@@ -178,8 +178,8 @@ pnpm exec vitest run src/adapters/git/harvest-git.test.ts src/adapters/github/gi
 
 | ID | Type | Target | Assertion |
 |---|---|---|---|
-| TR-001 | unit | `src/application/dispatch/dispatch-service.test.ts` | Crash after acceptance executes once. A live or unconfirmed old worker blocks relaunch |
-| TR-002 | unit | `src/application/harvest/harvest-service.test.ts` | Duplicate and out-of-order events converge per repository merge. A stale close cannot replace a verified merge |
+| TR-001 | unit | `src/application/dispatch/dispatch-service.test.ts` | One execution after acceptance crash and no relaunch with an unconfirmed or live prior worker |
+| TR-002 | unit | `src/application/harvest/harvest-service.test.ts` | Convergence per repository merge and rejection of stale close after verified merge |
 | TR-003 | unit | `src/application/harvest/harvest-service.test.ts` | Faults after each stage write and external effect resume cleanly and fence stale lease owners |
 | TR-004 | unit | `src/application/harvest/harvest-service.test.ts` | Closed unmerged PRs skip phase promotion, gate failures stay distinct and moved tips block cleanup |
 
@@ -281,7 +281,7 @@ pnpm exec vitest run src/commands/harvest.test.ts src/commands/status.test.ts sr
 
 ## Sister spec dependencies
 
-- Upstream prerequisite: `048-project-identity-slack` supplies `EnrolledProject` and `DeliveryRecipient` plus `ProjectRegistryPort`, migration `014` and `tests/helpers/synthetic-slack.ts`. Implementation of `049` waits until `048` lands.
+- Upstream prerequisite: `048-project-identity-slack` supplies `EnrolledProject` and `DeliveryRecipient` plus `ProjectRegistryPort`, migration `014` and `tests/helpers/synthetic-slack.ts`. Phase 1 uses the reviewed identity and recipient types. Phase 2 and later wait for the upstream migration and integration. Final merge review requires the upstream pull request.
 - Upstream architecture foundations: `040-pure-domain-boundary-gates` provides `src/architecture.test.ts` AST boundary checks. `042-port-adapter-separation` provides instance-bound `openDatabase` SQLite store handles and scoped CLI output.
 - Legacy feature evolution: `049` supersedes in-memory queue state in `002-build-server` and `005-parallel-dispatch`. It also replaces early-return shortcuts in `011-harvest` while keeping `tasks.json` and `.gwrk/runs/` authoritative.
 - Downstream pilot consumer: `R013` hosted pilot (`docs/research/R013-hosted-gwrk-server/brief.md`) and `041-hosted-google-signin-proof` run real hosted failover after synthetic `TR-005` passes.

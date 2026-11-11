@@ -1,15 +1,15 @@
 # Durable dispatch and harvest
 
-Persist accepted work before acknowledgement. Resume incomplete dispatch and harvest steps after restart. Blocked: implementation depends on project-scoped identity and recipients from 048.
+Persist accepted work before acknowledgement. Resume incomplete dispatch and harvest steps after restart. Blocked: storage and ingress integration depend on Slack project identity (048).
 
 ## Requirements
 
 - FR-001. Accept dispatch once per project and work key. Store the request and return a stable receipt before acknowledging HTTP or Slack. Recover queued work after restart and reconcile stale running leases before launching a worker.
-- FR-002. Use one project-scoped harvest operation for the poller, signed GitHub webhook and manual CLI. Deduplicate transport deliveries separately from work. Verify enrolled repository, configured trunk, pull request identity and merge SHA.
-- FR-003. Track reconciliation stages independently. Resume git sync, gate verification, learning records, Slack delivery and branch cleanup from durable receipts. Preserve git authority for task state and run manifests under ADR-002 and ADR-003.
+- FR-002. Use one project-scoped harvest operation for the poller, signed GitHub webhook and manual CLI. Deduplicate transport deliveries separately from work. Verify the enrolled repository and configured trunk. Check the pull request identity and merge SHA.
+- FR-003. Track reconciliation stages independently. Resume git sync and gate verification from durable receipts. Use the receipts to resume learning records and Slack delivery as well as branch cleanup. Preserve git authority for task state and run manifests under ADR-002 and ADR-003.
 - FR-004. Deliver receipts to the project, feature thread and recipient from the accepted operation. Reconcile uncertain external sends using stored message identity. Surface unresolved delivery and gate failure in status. Keep Telegram disabled for the hosted pilot.
 - FR-005. Record closed unmerged pull requests as terminal attempts without advancing the phase. Only clean up branches with matching repository, branch and expected tip.
-- FR-006. Use pure policy and injected storage, clock, GitHub, Git and notification ports. Preserve local CLI behavior and read historical records without claiming evidence they lack.
+- FR-006. Use pure policy with injected ports for storage and time. Inject ports for GitHub and Git as well as notifications. Preserve local CLI behavior and read historical records without claiming evidence they lack.
 
 ## Acceptance
 
