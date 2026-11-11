@@ -105,6 +105,10 @@ pnpm exec vitest run src/commands/ship.test.ts src/engine/model-routing.test.ts 
 
 #### Files
 
+- `src/server/index.ts` (MODIFY: Load the routing registry directly through its adapter)
+- `src/server/quota-prober.ts` (MODIFY: Import quota policy types from the domain)
+- `src/engine/model-routing.test.ts` (MODIFY: Exercise canonical model selection and classification)
+- `src/server/backend-selector.test.ts` and `src/server/backend-selector.integration.test.ts` (MODIFY: Use canonical registry and classification types)
 - `src/server/model-selector.test.ts` (MODIFY: Import `ModelSelector`, `AgentBackendConfig` and task classification types from `src/domain/`)
 - `src/server/quota-prober.test.ts` (MODIFY: Import `AgentBackendConfig` and `TaskClassification` from `src/domain/`)
 - `src/server/task-classifier.test.ts` (MODIFY: Import `TaskClassification`, `TaskType` and `classifyTask` from `src/domain/types.js`)
@@ -132,7 +136,7 @@ pnpm exec vitest run src/commands/ship.test.ts src/engine/model-routing.test.ts 
 
 ```bash
 pnpm build
-pnpm exec vitest run src/server/model-selector.test.ts src/server/quota-prober.test.ts src/server/task-classifier.test.ts src/server/backend-selector.test.ts src/architecture.test.ts
+pnpm exec vitest run src/server/model-selector.test.ts src/server/quota-prober.test.ts src/server/task-classifier.test.ts src/server/backend-selector.test.ts src/server/backend-selector.integration.test.ts src/engine/model-routing.test.ts src/architecture.test.ts
 ```
 
 ### Phase 4: Workflow runtime and prompt transport

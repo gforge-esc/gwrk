@@ -132,6 +132,14 @@ const layers = [
 ];
 
 describe("Hexagonal boundary gates (ADR-011)", () => {
+  it("keeps routing definitions and registry loading out of server shims", () => {
+    const removedShims = ["agent-registry", "model-selector", "task-classifier"];
+    const retained = removedShims.filter((name) =>
+      fs.existsSync(path.resolve("src/server", `${name}.ts`)),
+    );
+    expect(retained).toEqual([]);
+  });
+
   it.each(layers)("rejects new boundary violations in %s", (layer) => {
     const srcRoot = path.resolve("src");
     const files = walkTsFiles(path.join(srcRoot, layer));
