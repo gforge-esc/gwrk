@@ -277,16 +277,32 @@ function restoreHarvestIntake(persisted: {
       }
       if (
         target.accepted &&
-        !verifyHarvestIntakeOperations(
+        (!verifyHarvestIntakeOperations(
           target.project,
           candidate,
           target.checkoutPhaseIds,
           target.operations,
-        )
+        ) ||
+          target.operations.some(
+            (row) =>
+              row.status !== "accepted" ||
+              row.leaseEpoch !== 0 ||
+              row.leaseOwner !== null ||
+              row.leaseExpiresAt !== null ||
+              row.completedAt !== null ||
+              row.linkedRunId !== null ||
+              row.lastError !== null ||
+              row.plannedSlackRecipient !== null,
+          ))
       ) {
         return { ok: false, code: "HARVEST_IDENTITY_MISMATCH" };
       }
-      const incoming = target.accepted ? target.operations : [];
+      const incoming = target.accepted
+        ? target.operations.map((operation) => ({
+            ...operation,
+            recipient: candidate.recipient ?? null,
+          }))
+        : [];
       const operations = incoming.map((operation) =>
         matchScope(operation, receivedAt),
       );
@@ -1542,6 +1558,22 @@ describe("persisted harvest intake contract", () => {
     { headBranch: "feat/different-feature" },
     { expectedHeadSha: "c".repeat(40) },
     { terminalAt: leaseExpiresAt },
+    { status: "completed", completedAt: nowIso },
+    { leaseEpoch: 1 },
+    { leaseOwner: "worker" },
+    { leaseExpiresAt },
+    { completedAt: nowIso },
+    { linkedRunId: 77 },
+    { lastError: "forged error" },
+    {
+      plannedSlackRecipient: {
+        projectId: "another-project",
+        surface: "slack",
+        workspaceId: "W9",
+        channelId: "C9",
+        threadTs: "9.9",
+      },
+    },
   ])("rejects substituted scope %o before any write", (substitution) => {
     const valid = wholeFeatureMergeIntake("verified-merge", 42, [
       "phase-01",
@@ -1570,6 +1602,26 @@ describe("persisted harvest intake contract", () => {
       ok: true,
       deduplicatedTransport: false,
       operations: [{ phaseId: "phase-01" }, { phaseId: "phase-02" }],
+    });
+  });
+
+  it("persists the candidate recipient for new harvest operations", () => {
+    const intake = harvestIntake("verified-pull");
+    const recipient = outbox("notice", "pending").recipient;
+    const initial = restoreHarvestIntake({ harvests: [], stages: [] });
+    const delivery = {
+      ...intake,
+      candidate: { ...intake.candidate, recipient },
+    };
+    expect(initial.store.recordHarvestIntake(delivery)).toMatchObject({
+      ok: true,
+      deduplicatedWork: false,
+    });
+    const restarted = restoreHarvestIntake(initial.snapshot());
+    expect(restarted.store.recordHarvestIntake(delivery)).toMatchObject({
+      ok: true,
+      deduplicatedTransport: true,
+      operations: [{ recipient, plannedSlackRecipient: null }],
     });
   });
 

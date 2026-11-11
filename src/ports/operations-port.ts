@@ -308,6 +308,11 @@ export interface OperationsStorePort {
    * Commit the original delivery and all resolved operations in one transaction.
    * For a new delivery, verify the entire operation batch against enrollment and
    * checkout coverage with verifyHarvestIntakeOperations before any write.
+   * Require accepted status and lease epoch zero on every proposed new row.
+   * Require null lease owner, lease expiry, completion time, linked run, last error and planned Slack recipient.
+   * Return HARVEST_IDENTITY_MISMATCH before any write if a proposed row fails these checks.
+   * Set the recipient of a new row from candidate.recipient, defaulting to null.
+   * Bind the planned Slack recipient only during fenced stage initialization.
    * Resolve checkout coverage with scopeManualHarvestToPhases or scopeVerifiedMergeToPhases before intake.
    * Derive verified phase work keys from the pull request identity returned by verifyHarvestTarget.
    * Pass accepted: false when checkout coverage yields no scopes.

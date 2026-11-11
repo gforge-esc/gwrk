@@ -281,7 +281,12 @@ describe("FR-002 harvest identity and target verification", () => {
       const enrolled = { ...project, repoSlug };
       const result = verifyHarvestTarget(enrolled, local);
 
-      expect(result).toMatchObject({ ok: true, featureId, phaseId, repoSlug });
+      expect(result).toMatchObject({
+        ok: true,
+        featureId,
+        phaseId,
+        repoSlug: null,
+      });
       expect(
         verifyHarvestTarget(enrolled, {
           ...local,
@@ -386,30 +391,30 @@ describe("FR-002 harvest identity and target verification", () => {
     }
   });
   it.each([
-    [undefined, null, false],
-    ["ACME/A", "acme/a", true],
+    [{ repoSlug: null }, null, false],
+    [{ repoSlug: "acme/a" }, null, false],
+    [{ repoSlug: "acme/a", checkoutRepoSlug: null }, null, false],
+    [{ repoSlug: null, checkoutRepoSlug: "ACME/A" }, "acme/a", true],
   ] as const)(
     "uses checkout repository evidence %j for manual correlation",
-    (checkoutRepoSlug, repoSlug, correlates) => {
-      const localCandidate = {
-        ...candidate({
-          source: "manual_cli",
-          repoSlug: null,
-          prNumber: null,
-          prUrl: null,
-          headRepoSlug: null,
-          headBranch: null,
-          expectedHeadSha: null,
-          explicitFeatureId: featureId,
-          explicitPhaseId: phaseId,
-        }),
-        checkoutRepoSlug,
-      };
+    (repositories, repoSlug, correlates) => {
+      const localCandidate = candidate({
+        source: "manual_cli",
+        ...repositories,
+        prNumber: null,
+        prUrl: null,
+        headRepoSlug: null,
+        headBranch: null,
+        expectedHeadSha: null,
+        explicitFeatureId: featureId,
+        explicitPhaseId: phaseId,
+      });
       const verified = verifyHarvestTarget(project, localCandidate);
       expect(verified).toMatchObject({
         ok: true,
         kind: "local_commit",
         repoSlug,
+        workKey: `harvest-local:${JSON.stringify([project.projectId, repoSlug, project.trunkBranch, sha, featureId, phaseId])}`,
       });
       if (!verified.ok) throw new Error("Expected valid local target");
 

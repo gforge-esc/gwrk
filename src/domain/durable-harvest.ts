@@ -457,8 +457,7 @@ export function verifyHarvestTarget(
     }
     const phaseId =
       requestedPhase === undefined ? null : normalizePhaseId(requestedPhase);
-    const checkoutRepoSlug =
-      (candidate.checkoutRepoSlug ?? candidate.repoSlug)?.toLowerCase() ?? null;
+    const checkoutRepoSlug = candidate.checkoutRepoSlug?.toLowerCase() ?? null;
     return {
       ok: true,
       kind: "local_commit",
