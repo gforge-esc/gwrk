@@ -14,6 +14,7 @@ import {
   canCorrelateHarvestIntake,
   deriveHarvestTerminalStatus,
   isCompleteHarvestStagePlan,
+  isValidHarvestStageTransition,
   planHarvestStages,
   scopeManualHarvestToPhases,
   scopeVerifiedMergeToPhases,
@@ -88,10 +89,12 @@ type HarvestIntake = Parameters<OperationsStorePort["recordHarvestIntake"]>[0];
 function harvestIntake(
   operationId: string,
   overrides: Partial<DurableHarvestOperation> = {},
+  source?: HarvestCandidateInput["source"],
 ): HarvestIntake {
   const operation = harvest(operationId, overrides);
   const candidate: HarvestCandidateInput = {
-    source: operation.prNumber === null ? "manual_cli" : "github_webhook",
+    source:
+      source ?? (operation.prNumber === null ? "manual_cli" : "github_webhook"),
     deliveryId: operationId,
     repoSlug: operation.repoSlug,
     headRepoSlug: operation.headRepoSlug,
@@ -134,6 +137,49 @@ function harvestIntake(
     payloadDigest: operationId,
     receivedAt: nowIso,
     target: { accepted: true, operations: [operation] },
+  };
+}
+
+function wholeFeatureMergeIntake(
+  deliveryId: string,
+  prNumber: number,
+  phaseIds: readonly string[],
+  source: "github_webhook" | "github_poller" = "github_webhook",
+): HarvestIntake {
+  const pull = harvestIntake(
+    deliveryId,
+    {
+      prNumber,
+      prUrl: `https://github.com/acme/a/pull/${prNumber}`,
+      phaseId: null,
+      headBranch: `feat/${featureId}`,
+    },
+    source,
+  );
+  if (!pull.target.accepted) throw new Error("Expected verified merge");
+  const [target] = pull.target.operations;
+  const [first, ...rest] = scopeVerifiedMergeToPhases(
+    target,
+    {
+      prNumber,
+      terminalEvent: target.terminalEvent,
+      mergeCommitSha: target.mergeCommitSha,
+    },
+    phaseIds,
+  );
+  const toOperation = (scope: NonNullable<typeof first>) => ({
+    ...target,
+    ...scope,
+    operationId: `${deliveryId}-${scope.phaseId}`,
+  });
+  return {
+    ...pull,
+    target: first
+      ? {
+          accepted: true,
+          operations: [toOperation(first), ...rest.map(toOperation)],
+        }
+      : { accepted: false, projectId, reason: "No covered phases at checkout" },
   };
 }
 
@@ -442,20 +488,34 @@ function restoreRecoveryStore(persisted: {
       if (!row) return { ok: false, code: "LEASE_FENCED" };
       const result = validateLeaseFence(row, fence, nowIso);
       if (!result.ok) return result;
-      const receipt = stages.find(
-        (entry) =>
-          entry.operationId === fence.operationId &&
-          entry.phaseKey === phaseKey &&
-          entry.stage === stage,
+      const planned = stages.filter(
+        (entry) => entry.operationId === fence.operationId,
+      );
+      const receipt = planned.find(
+        (entry) => entry.phaseKey === phaseKey && entry.stage === stage,
       );
       if (!receipt) return { ok: false, code: "HARVEST_STAGE_UNPLANNED" };
+      if (
+        !resumableHarvests.includes(row.status) ||
+        !isValidHarvestStageTransition(receipt, status)
+      ) {
+        return { ok: false, code: "HARVEST_STAGE_TRANSITION_INVALID" };
+      }
       Object.assign(receipt, {
         status,
         leaseEpoch: fence.leaseEpoch,
         evidenceJson: evidenceJson ?? null,
         updatedAt: nowIso,
-        completedAt: nowIso,
+        completedAt:
+          status === "pending" || status === "running" ? null : nowIso,
       });
+      row.status = deriveHarvestTerminalStatus({
+        terminalEvent: row.terminalEvent,
+        phaseIds: [...new Set(planned.map((entry) => entry.phaseKey))],
+        stages: planned,
+      });
+      row.updatedAt = nowIso;
+      row.completedAt = resumableHarvests.includes(row.status) ? null : nowIso;
       return result;
     },
     getOutboxItem(outboxId) {
@@ -840,30 +900,119 @@ describe("durable recovery store contract", () => {
       ok: false,
       code: "HARVEST_PLAN_CONFLICT",
     });
-    const afterFirstPhase = restoreRecoveryStore(
-      afterPlan.snapshot(),
-    ).claimHarvestLease({
+    const restarted = restoreRecoveryStore(afterPlan.snapshot());
+    const finalLeaseExpiry = "2026-11-11T12:03:00.000Z";
+    const afterFirstPhase = restarted.claimHarvestLease({
       operationId: "planned",
       leaseOwner: "third",
       nowIso: later,
-      leaseExpiresAt: "2026-11-11T12:03:00.000Z",
+      leaseExpiresAt: finalLeaseExpiry,
     });
     if (!afterFirstPhase) throw new Error("Expected second takeover");
+    expect(afterFirstPhase.operation).toMatchObject({
+      status: "running",
+      updatedAt: leaseExpiresAt,
+      completedAt: null,
+    });
     expect(
       afterFirstPhase.stages
         .filter((entry) => entry.status === "pending")
         .map((entry) => entry.phaseKey),
     ).toEqual(Array(5).fill("phase-02"));
+    const finalWriteAt = "2026-11-11T12:02:30.000Z";
+    for (const { phaseKey, stage } of afterFirstPhase.stages.filter(
+      (entry) => entry.status === "pending",
+    )) {
+      expect(
+        restarted.transitionHarvestStage({
+          fence: afterFirstPhase.fence,
+          nowIso: finalWriteAt,
+          phaseKey,
+          stage,
+          status: "succeeded",
+        }),
+      ).toEqual({ ok: true });
+    }
+    const persisted = restarted.snapshot();
+    expect(persisted.harvests[0]).toMatchObject({
+      status: "completed",
+      updatedAt: finalWriteAt,
+      completedAt: finalWriteAt,
+    });
+    const completed = restoreRecoveryStore(persisted);
     expect(
-      deriveHarvestTerminalStatus({
-        terminalEvent: "merged",
-        phaseIds: [
-          ...new Set(afterFirstPhase.stages.map(({ phaseKey }) => phaseKey)),
-        ],
-        stages: afterFirstPhase.stages,
+      completed.listRecoverableHarvests({
+        nowIso: finalLeaseExpiry,
+        projectId,
       }),
-    ).toBe("running");
+    ).toEqual([]);
+    expect(
+      completed.claimHarvestLease({
+        operationId: "planned",
+        leaseOwner: "fourth",
+        nowIso: finalLeaseExpiry,
+        leaseExpiresAt: "2026-11-11T12:04:00.000Z",
+      }),
+    ).toBeNull();
   });
+
+  it.each([
+    ["gate_verify", "skipped_no_target"],
+    ["gate_verify", "forecast_missing"],
+    ["gate_verify", "uncertain"],
+    ["gate_verify", "blocked_tip_mismatch"],
+    ["git_sync", "gate_failed"],
+  ] as const)(
+    "rejects %s changing to %s and preserves the receipt after takeover",
+    (stage, status) => {
+      const store = restoreRecoveryStore({
+        harvests: [harvest("planned")],
+        stages: [],
+        outboxItems: [],
+      });
+      const claim = store.claimHarvestLease({
+        operationId: "planned",
+        leaseOwner: "first",
+        nowIso,
+        leaseExpiresAt,
+      });
+      if (!claim) throw new Error("Expected a harvest lease");
+      const plan = {
+        terminalEvent: "merged" as const,
+        phaseIds: [phaseId],
+        hasSlackTarget: false,
+        hasRemoteBranchTarget: false,
+      };
+      expect(
+        store.initializeHarvestStages({
+          ...plan,
+          fence: claim.fence,
+          nowIso,
+          stages: planHarvestStages(plan),
+        }),
+      ).toEqual({ ok: true });
+      const before = store.snapshot();
+      expect(
+        store.transitionHarvestStage({
+          fence: claim.fence,
+          nowIso,
+          phaseKey: phaseId,
+          stage,
+          status,
+        }),
+      ).toEqual({ ok: false, code: "HARVEST_STAGE_TRANSITION_INVALID" });
+      expect(store.snapshot()).toEqual(before);
+      const resumed = restoreRecoveryStore(store.snapshot()).claimHarvestLease({
+        operationId: "planned",
+        leaseOwner: "second",
+        nowIso: leaseExpiresAt,
+        leaseExpiresAt: "2026-11-11T12:02:00.000Z",
+      });
+      expect(
+        resumed?.stages.find((entry) => entry.stage === stage)?.status,
+      ).toBe("pending");
+    },
+  );
 
   it.each(["gate_verify", "slack_delivery", "branch_cleanup"] as const)(
     "rejects an initial plan that skips %s when required",
@@ -1039,6 +1188,28 @@ describe("durable recovery store contract", () => {
 });
 
 describe("persisted harvest intake contract", () => {
+  it.each(["github_webhook", "github_poller"] as const)(
+    "rejects a whole-feature %s merge without checkout coverage",
+    (source) => {
+      const intake = wholeFeatureMergeIntake("empty-coverage", 42, [], source);
+      const initial = restoreHarvestIntake({ harvests: [], stages: [] });
+      expect(initial.store.recordHarvestIntake(intake)).toMatchObject({
+        ok: true,
+        operations: [],
+      });
+      const persisted = initial.snapshot();
+      expect(persisted.harvests).toEqual([]);
+      expect(persisted.deliveries[0].operationIds).toEqual([]);
+      expect(
+        restoreHarvestIntake(persisted).store.recordHarvestIntake(intake),
+      ).toMatchObject({
+        ok: true,
+        operations: [],
+        deduplicatedTransport: true,
+      });
+    },
+  );
+
   it.each(["manual", "pull request"])(
     "reuses both covered phases when a whole-feature %s arrives first",
     (firstSource) => {
@@ -1066,43 +1237,7 @@ describe("persisted harvest intake contract", () => {
           operations: [localScopes[0], ...localScopes.slice(1)],
         },
       } satisfies HarvestIntake;
-      const verifiedMerge = (
-        deliveryId: string,
-        prNumber: number,
-      ): HarvestIntake => {
-        const pull = harvestIntake(deliveryId, {
-          prNumber,
-          prUrl: `https://github.com/acme/a/pull/${prNumber}`,
-          phaseId: null,
-          headBranch: `feat/${featureId}`,
-        });
-        if (!pull.target.accepted) throw new Error("Expected verified merge");
-        const [target] = pull.target.operations;
-        const scopes = scopeVerifiedMergeToPhases(
-          target,
-          {
-            prNumber,
-            terminalEvent: target.terminalEvent,
-            mergeCommitSha: target.mergeCommitSha,
-          },
-          phaseIds,
-        );
-        const toOperation = (scope: (typeof scopes)[number]) => ({
-          ...target,
-          ...scope,
-          operationId: `${deliveryId}-${scope.phaseId}`,
-        });
-        const [first, ...rest] = scopes;
-        return {
-          ...pull,
-          target: {
-            accepted: true,
-            operations: [toOperation(first), ...rest.map(toOperation)],
-          },
-        };
-      };
-
-      const pull = verifiedMerge("pull-feature", 42);
+      const pull = wholeFeatureMergeIntake("pull-feature", 42, phaseIds);
       const [first, second] =
         firstSource === "manual" ? [manual, pull] : [pull, manual];
       const initial = restoreHarvestIntake({ harvests: [], stages: [] });
@@ -1189,7 +1324,9 @@ describe("persisted harvest intake contract", () => {
         operations: [{ operationId: "uncovered", phaseId: "phase-03" }],
       });
       expect(
-        replay.store.recordHarvestIntake(verifiedMerge("other-pull", 43)),
+        replay.store.recordHarvestIntake(
+          wholeFeatureMergeIntake("other-pull", 43, phaseIds),
+        ),
       ).toMatchObject({
         ok: true,
         deduplicatedWork: false,

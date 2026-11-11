@@ -170,7 +170,7 @@ export function scopeVerifiedMergeToPhases(
   if (requestedPhaseId !== undefined && !covered.includes(requestedPhaseId)) {
     return [];
   }
-  if (phaseId !== null || fact.terminalEvent !== "merged" || !covered.length) {
+  if (phaseId !== null || fact.terminalEvent !== "merged") {
     return [{ featureId, phaseId, workKey }];
   }
   const selected =
@@ -482,6 +482,25 @@ function stageFinished({ stage, status }: HarvestStageReceipt): boolean {
     (stage === "learning_record" && status === "forecast_missing") ||
     ((stage === "slack_delivery" || stage === "branch_cleanup") &&
       status === "skipped_no_target")
+  );
+}
+
+const stageForOutcome: Partial<Record<HarvestStageStatus, HarvestStageName>> = {
+  gate_failed: "gate_verify",
+  forecast_missing: "learning_record",
+  uncertain: "slack_delivery",
+  blocked_tip_mismatch: "branch_cleanup",
+};
+
+export function isValidHarvestStageTransition(
+  receipt: HarvestStageReceipt,
+  status: HarvestStageStatus,
+): boolean {
+  const requiredStage = stageForOutcome[status];
+  return (
+    !stageFinished(receipt) &&
+    status !== "skipped_no_target" &&
+    (requiredStage === undefined || requiredStage === receipt.stage)
   );
 }
 

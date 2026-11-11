@@ -302,7 +302,7 @@ export interface OperationsStorePort {
   /**
    * Commit the original delivery and all resolved operations in one transaction.
    * Resolve checkout coverage with scopeManualHarvestToPhases or scopeVerifiedMergeToPhases before intake.
-   * Reject an explicitly requested phase when verified checkout coverage is empty.
+   * Pass accepted: false when a verified whole-feature merge yields no scopes.
    * Replay returns every persisted operation in the original scope order.
    * Reject transport ID reuse with a different repository or payload digest.
    * Resolve work keys and their aliases within the project before matching commit scope.
@@ -369,7 +369,14 @@ export interface OperationsStorePort {
     hasRemoteBranchTarget: boolean;
     stages: readonly HarvestStagePlanEntry[];
   }): FencedWrite | { ok: false; code: "HARVEST_PLAN_CONFLICT" };
-  /** Update a planned receipt. Never add a new stage after initialization. */
+  /**
+   * Validate the fence and the planned receipt before any write.
+   * Reject invalid transitions with isValidHarvestStageTransition.
+   * Write the receipt and derive operation status in the same transaction.
+   * Use deriveHarvestTerminalStatus with the terminal event and full saved phase plan.
+   * Set updatedAt to nowIso and set completedAt to nowIso for a terminal status.
+   * Exclude terminal operations from recovery scans and claims.
+   */
   transitionHarvestStage(input: {
     fence: LeaseFence;
     nowIso: string;
@@ -379,7 +386,12 @@ export interface OperationsStorePort {
     evidenceJson?: string | null;
     error?: string | null;
     linkedRunId?: number | null;
-  }): FencedWrite | { ok: false; code: "HARVEST_STAGE_UNPLANNED" };
+  }):
+    | FencedWrite
+    | {
+        ok: false;
+        code: "HARVEST_STAGE_UNPLANNED" | "HARVEST_STAGE_TRANSITION_INVALID";
+      };
 
   enqueueOutbox(input: OutboxMessage & { nowIso: string }): OutboxItem;
   /** Read the accepted delivery context without acquiring a send claim. */

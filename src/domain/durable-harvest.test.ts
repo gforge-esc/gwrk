@@ -174,9 +174,7 @@ describe("FR-002 harvest identity and target verification", () => {
         candidate({ ...fact, headBranch }),
       );
       if (!verified.ok) throw new Error(verified.reason);
-      expect(
-        scopeVerifiedMergeToPhases(verified, fact, [phaseId, "phase-02"]),
-      ).toEqual([
+      expect(scopeVerifiedMergeToPhases(verified, fact, [])).toEqual([
         { featureId, phaseId: verified.phaseId, workKey: verified.workKey },
       ]);
     },
