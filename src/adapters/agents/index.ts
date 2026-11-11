@@ -58,6 +58,9 @@ async function selectAvailableRoute(
   getQuotaProber: () => QuotaProber,
 ) {
   const registered = tryLoadRegistry(projectRoot);
+  if (context.requireRegistry && !registered.ok) {
+    throw new Error(registered.error.message, { cause: registered.error });
+  }
   const agentRegistry = registered.ok ? registered.value : undefined;
   const requestedRoute = {
     explicitBackend: context.explicitBackend,

@@ -865,6 +865,7 @@ Examples:
                 ...phaseContext,
                 type: "implement",
                 explicitBackend,
+                requireRegistry: explicitBackend === undefined,
               });
               logCliOutput(
                 `  🤖 Router selected backend: ${implementation.backend} (${implementation.reason})`,

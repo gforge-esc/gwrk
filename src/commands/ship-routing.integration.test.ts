@@ -245,6 +245,43 @@ describe("ship with the real AgentPort router", () => {
     expect(await decisions()).toEqual([]);
   });
 
+  it("rejects automatic routing when agents.fallbackOrder is missing", async () => {
+    fs.writeFileSync(
+      path.join(root, ".gwrkrc.json"),
+      JSON.stringify({
+        project: { name: "Routing fixture" },
+        agents: {
+          implement: "codex",
+          registry: {
+            codex: {
+              ...backendConfig("codex"),
+              models: [{ name: "fast", modelFlag: "codex-fast", tier: "fast" }],
+            },
+          },
+        },
+      }),
+    );
+    const { AgentBackendRegistry } = await import(
+      "../plugins/agent-registry.js"
+    );
+    const getBackends = vi.spyOn(AgentBackendRegistry.prototype, "getBackends");
+    const stderr = vi.spyOn(process.stderr, "write").mockReturnValue(true);
+    const { createShipCommand } = await import("./ship.js");
+
+    await createShipCommand().parseAsync([feature, "phase-01"], { from: "user" });
+
+    expect(process.exitCode).toBe(1);
+    expect(stderr).toHaveBeenCalledWith(
+      expect.stringContaining(
+        "Missing required config: agents.registry or agents.fallbackOrder",
+      ),
+    );
+    expect(AgentBackendRegistry.prototype.getAgentBackend).not.toHaveBeenCalled();
+    expect(getBackends).not.toHaveBeenCalled();
+    expect(ShipOrchestrator).not.toHaveBeenCalled();
+    expect(await decisions()).toEqual([]);
+  });
+
   it("uses the alternate model during cooldown and records model failover", async () => {
     seedQuota(90);
     const { QuotaProber } = await import("../server/quota-prober.js");

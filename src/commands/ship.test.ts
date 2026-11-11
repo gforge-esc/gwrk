@@ -595,6 +595,7 @@ describe("AgentPort routing", () => {
         {
           type: "implement",
           explicitBackend,
+          requireRegistry: explicitBackend === undefined,
           feature: "001-cli-core",
           phase: "phase-01",
           runId: expect.stringMatching(/^ship-001-cli-core-/),
