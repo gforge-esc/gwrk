@@ -571,6 +571,28 @@ describe("FR-001: profile design inheritance (044 phase p01)", () => {
     );
   });
 
+  it("preserves local build disablement when only the build systems are known", () => {
+    const profile = resolveWorkspacePolicyProfile(
+      "apps/web",
+      { type: "nodejs", stack: { buildSystem: "npm" } },
+      {
+        project: { design },
+        workspaces: { "apps/web": { stack: { buildSystem: "pnpm" } } },
+      },
+      {
+        localProject: {
+          toolchain: {
+            build: null,
+            test: "jest",
+            testCommand: "npm test -- {files}",
+          },
+        },
+      },
+    );
+
+    expect(profile.toolchain).toEqual({ build: null, test: "jest" });
+  });
+
   it("drops local stack and tools when the registered workspace selects a different language", () => {
     const local = {
       stack: {

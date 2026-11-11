@@ -475,6 +475,7 @@ function resolveDetectedProfile(
 ): ProjectProfile | undefined {
   const start = path.resolve(detectedRoot);
   let directory = start;
+  let requireWorkspaceMatch = localProject !== undefined;
   while (true) {
     const configPath = path.join(directory, ".gwrkrc.json");
     if ((directory !== start || !localProject) && fs.existsSync(configPath)) {
@@ -488,7 +489,7 @@ function resolveDetectedProfile(
         }
 
         if (
-          !localProject ||
+          !requireWorkspaceMatch ||
           matchWorkspacePath(
             relativeWorkspacePath(directory, start),
             Object.keys(config?.workspaces ?? {}),
@@ -501,10 +502,9 @@ function resolveDetectedProfile(
             config,
             { requireDesign: true, localProject },
           );
-          return localProject && scoped === detected.profile
-            ? undefined
-            : scoped;
+          if (scoped !== detected.profile) return scoped;
         }
+        requireWorkspaceMatch = true;
       } catch {
         return undefined;
       }

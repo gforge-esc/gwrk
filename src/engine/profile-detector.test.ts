@@ -801,6 +801,44 @@ describe("FR-001: architecture-aware workspace profiles (044 phase p01)", () => 
     }
   });
 
+  it("finds the registered workspace past its name-only config during nested detection", async () => {
+    const config = {
+      project: { name: "fixture", design },
+      workspaces: {
+        "services/api": {
+          stack: { language: "Python", buildSystem: "uv" },
+          toolchain: { build: null },
+        },
+      },
+    };
+    write(".gwrkrc.json", JSON.stringify(config));
+    write(
+      "services/api/.gwrkrc.json",
+      JSON.stringify({ project: { name: "api" } }),
+    );
+    write("services/api/uv.lock", "");
+    write("services/api/admin/test_api.py", "");
+
+    const nested = "services/api/admin";
+    const child = path.join(root, nested);
+    const profiles = [
+      await detectProfile(child),
+      await resolveWorkspaceProfile(root, nested),
+      resolveWorkspaceProfile(child, root, config),
+    ];
+    for (const profile of profiles) {
+      expect(profile).toMatchObject({
+        design,
+        type: "python",
+        stack: { language: "Python", framework: "FastAPI", buildSystem: "uv" },
+        toolchain: { build: null },
+      });
+    }
+
+    write(".gwrkrc.json", JSON.stringify({ project: config.project }));
+    expect((await detectProfile(child)).design).toBeUndefined();
+  });
+
   it.each([false, true])("resolves a nested design in all entry points with entry override %s", async (override) => {
     const childDesign = { ...design, architecture: "clean-architecture" };
     const parentDesign = { ...design, architecture: "layered" };

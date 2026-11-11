@@ -128,7 +128,8 @@ function compatibleToolchain(
 
   if (!workspaceLanguage) {
     if (buildSystemsMatch) return toolchain;
-    const { build: _build, testCommand: _command, ...compatible } = toolchain;
+    const { build, testCommand: _command, ...compatible } = toolchain;
+    if (isLocal && build === null) return { ...compatible, build };
     return Object.keys(compatible).length ? compatible : undefined;
   }
 
