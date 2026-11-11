@@ -343,12 +343,16 @@ describe("ship with the real AgentPort router", () => {
   it("falls back when native backend availability stalls", async () => {
     seedQuota(100, 50);
     const claude = provider("claude");
-    const { AgentBackendRegistry } = await import("../plugins/agent-registry.js");
+    const { AgentBackendRegistry } = await import(
+      "../plugins/agent-registry.js"
+    );
     vi.mocked(AgentBackendRegistry.prototype.getAgentBackend).mockImplementation(
       async (name) => (name === "codex" ? codex : claude),
     );
     let release!: (available: boolean) => void;
-    const stalled = new Promise<boolean>((resolve) => { release = resolve; });
+    const stalled = new Promise<boolean>((resolve) => {
+      release = resolve;
+    });
     const started = new Promise<void>((resolve) => {
       vi.mocked(codex.isAvailable).mockImplementation(() => {
         resolve();
@@ -365,17 +369,87 @@ describe("ship with the real AgentPort router", () => {
 
       await vi.advanceTimersByTimeAsync(1);
       expect(ShipOrchestrator).toHaveBeenCalledExactlyOnceWith(
-        expect.objectContaining({ backend: "claude", selectedModel: "claude-primary" }),
+        expect.objectContaining({
+          backend: "claude",
+          selectedModel: "claude-primary",
+        }),
         undefined,
       );
       expect(codex.checkQuota).not.toHaveBeenCalled();
+      expect(claude.checkQuota).toHaveBeenCalledOnce();
       await shipping;
+      expect(await decisions()).toMatchObject([
+        {
+          selected_backend: "claude",
+          selected_model: "claude-primary",
+          fallback_used: 1,
+        },
+      ]);
     } finally {
       vi.useRealTimers();
       release(false);
       await shipping;
     }
   });
+
+  it.each([false, true])(
+    "reports a timed-out explicit backend as unavailable with dry-run=%s",
+    async (dryRun) => {
+      const { createShipCommand } = await import("./ship.js");
+      const { AgentBackendRegistry } = await import(
+        "../plugins/agent-registry.js"
+      );
+      const stderr = vi.spyOn(process.stderr, "write").mockReturnValue(true);
+      let release!: (available: boolean) => void;
+      const stalled = new Promise<boolean>((resolve) => {
+        release = resolve;
+      });
+      const started = new Promise<void>((resolve) => {
+        vi.mocked(codex.isAvailable).mockImplementation(() => {
+          resolve();
+          return stalled;
+        });
+      });
+
+      const args = [feature, "phase-01", "--agent", "codex"];
+      if (dryRun) args.push("--dry-run");
+      vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+      const shipping = createShipCommand().parseAsync(args, { from: "user" });
+      const finished = vi.fn();
+      const completion = shipping.then(finished);
+      try {
+        await Promise.race([started, completion]);
+        await vi.advanceTimersByTimeAsync(4_999);
+        expect(finished).not.toHaveBeenCalled();
+
+        await vi.advanceTimersByTimeAsync(1);
+        expect(finished).toHaveBeenCalledOnce();
+        expect(process.exitCode).toBe(dryRun ? 0 : 1);
+        if (dryRun) {
+          const output = vi.mocked(console.log).mock.calls.flat().join("\n");
+          expect(output).toContain("Could not select an implementation route");
+          expect(output).toContain(`work-until-done.sh ${feature} 01`);
+          expect(output).not.toContain("Would build with");
+        } else {
+          expect(stderr).toHaveBeenCalledWith(
+            expect.stringContaining(
+              "No available agent backends found for task type: implement",
+            ),
+          );
+        }
+        expect(
+          AgentBackendRegistry.prototype.getAgentBackend,
+        ).toHaveBeenCalledExactlyOnceWith("codex");
+        expect(codex.checkQuota).not.toHaveBeenCalled();
+        expect(ShipOrchestrator).not.toHaveBeenCalled();
+        expect(fs.existsSync(dbPath)).toBe(false);
+      } finally {
+        vi.useRealTimers();
+        release(false);
+        await completion;
+      }
+    },
+  );
 
   it("uses configured quota when the automatic native quota check stalls", async () => {
     seedQuota(100, 50);
