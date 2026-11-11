@@ -32,15 +32,17 @@ export interface SlackEvent {
   timestamp: string;
 }
 
-interface BatchedNotification {
-  projectId: string;
-  events: SlackEvent[];
-  batchedSince: string;
+interface PendingNotification {
+  event: SlackEvent;
+  projectRoot: string;
+  signal?: AbortSignal;
+  detachAbort?: () => void;
+  finish?: () => void;
 }
 
 class PresenceManager {
   private static instance: PresenceManager;
-  private queuedEvents: SlackEvent[] = [];
+  private queuedEvents: PendingNotification[] = [];
   private currentPresence: "active" | "away" = "active";
   private userId: string | null = null;
   private pollerInterval: NodeJS.Timeout | null = null;
@@ -97,13 +99,11 @@ class PresenceManager {
     try {
       const result = await app.client.users.getPresence({ user: this.userId });
       if (result.ok) {
-        const newPresence = result.presence === "active" ? "active" : "away";
-
-        if (newPresence === "active" && this.currentPresence === "away") {
+        const previousPresence = this.currentPresence;
+        this.currentPresence = result.presence === "active" ? "active" : "away";
+        if (this.currentPresence === "active" && previousPresence === "away") {
           await this.flushQueue();
         }
-
-        this.currentPresence = newPresence;
       }
     } catch (error) {
       const errorMessage =
@@ -116,47 +116,90 @@ class PresenceManager {
     event: SlackEvent,
     message: SlackMessage,
     signal?: AbortSignal,
+    projectRoot = process.cwd(),
+    forwardToTelegram?: () => Promise<void>,
   ): Promise<void> {
     if (signal?.aborted) return;
     if (this.currentPresence === "active") {
       if (signal) {
         const { sendSlackMessage } = await import("./slack-notify.js");
-        await sendSlackMessage(message, signal);
+        await sendSlackMessage(message, signal, projectRoot);
       } else {
-        await this.sendImmediately(message);
+        await this.sendImmediately(message, projectRoot);
       }
-    } else {
-      logCliOutput(
-        `User away. Queuing event: ${event.type} for ${event.feature}`,
-      );
-      this.queuedEvents.push(event);
+      await forwardToTelegram?.();
+      return;
     }
+
+    logCliOutput(
+      `User away. Queuing event: ${event.type} for ${event.feature}`,
+    );
+    const pending: PendingNotification = { event, projectRoot, signal };
+    this.queuedEvents.push(pending);
+    if (!signal) {
+      await forwardToTelegram?.();
+      return;
+    }
+
+    const delivery = new Promise<void>((resolve) => {
+      const onAbort = () => {
+        this.queuedEvents = this.queuedEvents.filter(
+          (item) => item !== pending,
+        );
+        resolve();
+      };
+      pending.finish = resolve;
+      pending.detachAbort = () => signal.removeEventListener("abort", onAbort);
+      signal.addEventListener("abort", onAbort, { once: true });
+    });
+    await Promise.all([delivery, forwardToTelegram?.()]);
   }
 
-  private async sendImmediately(message: SlackMessage): Promise<void> {
+  private async sendImmediately(
+    message: SlackMessage,
+    projectRoot: string,
+  ): Promise<void> {
     // Avoid circular dependency by dynamically importing notifySlack
     const { notifySlack } = await import("./slack-notify.js");
-    await notifySlack(message); // Call without event to send immediately
+    await notifySlack(message, undefined, { projectRoot });
   }
 
   private async flushQueue(): Promise<void> {
     if (this.queuedEvents.length === 0) return;
 
-    logCliOutput(`User returned. Flushing ${this.queuedEvents.length} events.`);
-
-    // Group by feature/project if needed, but for now simple list
-    const batchedEvents = this.queuedEvents.map((e) => ({
-      type: e.type,
-      feature: e.feature,
-    }));
-
-    const summaryMessage = MessageBuilder.batchedSummary(batchedEvents);
-
-    // Use sendSlackMessage directly to avoid circular dependency and bypass presence check
     const { sendSlackMessage } = await import("./slack-notify.js");
-    await sendSlackMessage(summaryMessage);
-
-    this.queuedEvents = [];
+    const unboundedGroups = new Map<string, PendingNotification[]>();
+    const boundedGroups = new Map<string, PendingNotification[]>();
+    for (const pending of this.queuedEvents.splice(0)) {
+      pending.detachAbort?.();
+      if (pending.signal?.aborted) {
+        pending.finish?.();
+        continue;
+      }
+      const groups = pending.signal ? boundedGroups : unboundedGroups;
+      const group = groups.get(pending.projectRoot) ?? [];
+      group.push(pending);
+      groups.set(pending.projectRoot, group);
+    }
+    const sendGroup = async ([projectRoot, group]: [
+      string,
+      PendingNotification[],
+    ]) => {
+      const signals = group.flatMap(({ signal }) => (signal ? [signal] : []));
+      const signal = signals.length ? AbortSignal.any(signals) : undefined;
+      const summary = MessageBuilder.batchedSummary(
+        group.map(({ event }) => event),
+      );
+      try {
+        await sendSlackMessage(summary, signal, projectRoot);
+      } finally {
+        for (const pending of group) pending.finish?.();
+      }
+    };
+    await Promise.all([
+      ...Array.from(boundedGroups, sendGroup),
+      ...Array.from(unboundedGroups, sendGroup),
+    ]);
   }
 
   public stop(): void {

@@ -27,7 +27,7 @@ import { getDb } from "../db/index.js";
 import { listIssues } from "../db/issues.js";
 import { insertFeature, insertPhase } from "../db/plan.js";
 import { listRuns, recordHistory, startRun } from "../db/runs.js";
-import type { ShipStageResult } from "../domain/ship-types.js";
+import { ShipStage } from "../domain/ship-types.js";
 import { gatherDeliveryActuals } from "../engine/compression.js";
 import { ShipOrchestrator } from "../engine/ship-orchestrator.js";
 import { GwrkConfigSchema } from "../utils/config.js";
@@ -41,7 +41,10 @@ import { SystemMonitor } from "./monitor.js";
 import { NetworkMonitor } from "./network.js";
 import * as persistence from "./persistence.js";
 import { removePid, writePid } from "./pid.js";
+import * as slackCommands from "./slack-commands.js";
+import { notifySlack } from "./slack-notify.js";
 import { getSlackApp, startSlackApp } from "./slack.js";
+import { startTelegramBot, stopTelegramBot } from "./telegram.js";
 
 vi.mock("node:child_process", async (importOriginal) => {
   const original = await importOriginal<typeof import("node:child_process")>();
@@ -61,7 +64,8 @@ vi.mock("./slack.js", () => ({
   startSlackApp: vi.fn().mockResolvedValue(undefined),
   stopSlackApp: vi.fn().mockResolvedValue(undefined),
 }));
-vi.mock("./slack-notify.js", () => ({
+vi.mock("./slack-notify.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("./slack-notify.js")>()),
   notifySlack: vi.fn().mockResolvedValue(undefined),
 }));
 vi.mock("./telegram.js", () => ({
@@ -490,12 +494,190 @@ setInterval(() => {}, 1000);
         }),
       );
       expect(providerStopped).not.toHaveBeenCalled();
-      await server.close();
-      expect(providerStopped).toHaveBeenCalledExactlyOnceWith(true);
+      const closing = server.close();
+      await vi.waitFor(() =>
+        expect(providerStopped).toHaveBeenCalledExactlyOnceWith(true),
+      );
+      await closing;
       expect(existsSync(fixture.pidPath)).toBe(false);
     } finally {
       await server.close();
       await fixture.close();
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("drains a cancelled Telegram poll before removing its process record", async () => {
+    const telegram =
+      await vi.importActual<typeof import("./telegram.js")>("./telegram.js");
+    vi.mocked(startTelegramBot).mockImplementationOnce(
+      telegram.startTelegramBot,
+    );
+    vi.mocked(stopTelegramBot).mockImplementationOnce(telegram.stopTelegramBot);
+    vi.stubEnv("TELEGRAM_BOT_TOKEN", "fixture-telegram");
+    vi.stubEnv("TELEGRAM_CHAT_ID", "123");
+    let respond!: (response: Response) => void;
+    const response = new Promise<Response>((resolve) => {
+      respond = resolve;
+    });
+    const provider = vi.fn<typeof fetch>().mockReturnValue(response);
+    vi.stubGlobal("fetch", provider);
+    const command = vi.spyOn(slackCommands, "handleSlashCommand");
+    const timer = vi.spyOn(globalThis, "setTimeout");
+    stubListener();
+    let fixture: ServerFixture | undefined;
+    try {
+      fixture = await createServerFixture("listen");
+      await vi.waitFor(() => expect(provider).toHaveBeenCalledOnce());
+      const signal = provider.mock.calls[0][1]?.signal;
+      const closed = vi.fn();
+      const closing = fixture.app.close().then(closed);
+      await vi.waitFor(() => expect(signal?.aborted).toBe(true));
+      expect(closed).not.toHaveBeenCalled();
+      expect(existsSync(fixture.pidPath)).toBe(true);
+      respond(
+        Response.json({
+          ok: true,
+          result: [
+            {
+              update_id: 1,
+              message: { message_id: 1, chat: { id: 123 }, text: "/help" },
+            },
+          ],
+        }),
+      );
+      await closing;
+      expect(command).not.toHaveBeenCalled();
+      expect(provider).toHaveBeenCalledOnce();
+      expect(timer.mock.calls.some(([, delay]) => delay === 2000)).toBe(false);
+      expect(existsSync(fixture.pidPath)).toBe(false);
+    } finally {
+      respond(Response.json({ ok: true, result: [] }));
+      await fixture?.close();
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it.each(["webhook", "presence"] as const)(
+    "routes dispatch notifications to the fixture via %s and Telegram",
+    async (transport) => {
+      const realNotifier =
+        await vi.importActual<typeof import("./slack-notify.js")>(
+          "./slack-notify.js",
+        );
+      vi.mocked(notifySlack).mockImplementationOnce(realNotifier.notifySlack);
+      const fixture = await createServerFixture("routes", {
+        routes: ["dispatch"],
+      });
+      const webhook = "https://fixture.invalid/slack";
+      const slackApi = "https://slack.com/api/chat.postMessage";
+      const telegramApi =
+        "https://api.telegram.org/botfixture-telegram/sendMessage";
+      const provider = vi
+        .fn<typeof fetch>()
+        .mockImplementation(async () => Response.json({ ok: true }));
+      vi.stubGlobal("fetch", provider);
+      vi.stubEnv("GWRK_HOME", join(fixture.projectRoot, ".gwrk"));
+      vi.stubEnv("SLACK_WEBHOOK_URL", "https://checkout.invalid/slack");
+      vi.stubEnv("TELEGRAM_BOT_TOKEN", undefined);
+      vi.stubEnv("TELEGRAM_CHAT_ID", undefined);
+      if (transport === "presence") {
+        const slack = { client: { token: "fixture-slack" } } as NonNullable<
+          ReturnType<typeof getSlackApp>
+        >;
+        vi.mocked(getSlackApp)
+          .mockReturnValueOnce(slack)
+          .mockReturnValueOnce(slack);
+      }
+      try {
+        writeFileSync(
+          join(fixture.projectRoot, ".gwrkrc.json"),
+          JSON.stringify({ project: { name: fixture.projectId } }),
+        );
+        writeFileSync(
+          join(fixture.projectRoot, ".gwrkrc.local.json"),
+          JSON.stringify({
+            project: {
+              name: fixture.projectId,
+              slack: { channelId: "C_FIXTURE", webhookUrl: webhook },
+              telegram: { botToken: "fixture-telegram", chatId: "123" },
+            },
+          }),
+        );
+        const result = await fixture.app.inject({
+          method: "POST",
+          url: "/api/dispatch",
+          payload: { featureId: "notify-probe", phaseId: "phase-01" },
+        });
+        expect(result.statusCode).toBe(201);
+        await fixture.app.close();
+        expect(fixture.journal().at(-1)?.status).toBe("completed");
+        expect(provider.mock.calls.map(([url]) => url)).toEqual([
+          transport === "presence" ? slackApi : webhook,
+          telegramApi,
+        ]);
+        if (transport === "presence") {
+          expect(
+            JSON.parse(String(provider.mock.calls[0][1]?.body)).channel,
+          ).toBe("C_FIXTURE");
+        }
+        expect(
+          JSON.parse(String(provider.mock.calls[1][1]?.body)).chat_id,
+        ).toBe("123");
+      } finally {
+        await fixture.close();
+        vi.unstubAllGlobals();
+      }
+    },
+  );
+
+  it("drains an aborted dispatch notification before closing the server", async () => {
+    const realNotifier =
+      await vi.importActual<typeof import("./slack-notify.js")>(
+        "./slack-notify.js",
+      );
+    vi.mocked(notifySlack).mockImplementationOnce(realNotifier.notifySlack);
+    const fixture = await createServerFixture("routes", {
+      routes: ["dispatch"],
+    });
+    vi.stubEnv("SLACK_WEBHOOK_URL", "https://fixture.invalid/stalled");
+    vi.stubEnv("TELEGRAM_BOT_TOKEN", "fixture-telegram");
+    vi.stubEnv("TELEGRAM_CHAT_ID", "123");
+    let release!: (response: Response) => void;
+    const response = new Promise<Response>((resolve) => {
+      release = resolve;
+    });
+    const cancelled = vi.fn();
+    const provider = vi
+      .fn<typeof fetch>()
+      .mockImplementation((_url, request) => {
+        request?.signal?.addEventListener("abort", cancelled, { once: true });
+        return response;
+      });
+    vi.stubGlobal("fetch", provider);
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    try {
+      const result = await fixture.app.inject({
+        method: "POST",
+        url: "/api/dispatch",
+        payload: { featureId: "notify-probe", phaseId: "phase-01" },
+      });
+      expect(result.statusCode).toBe(201);
+      await vi.waitFor(() => expect(provider).toHaveBeenCalledOnce());
+      expect(fixture.journal().at(-1)?.status).toBe("completed");
+
+      const closed = vi.fn();
+      const closing = fixture.app.close().then(closed);
+      await vi.advanceTimersByTimeAsync(5000);
+      expect(cancelled).toHaveBeenCalledOnce();
+      expect(closed).not.toHaveBeenCalled();
+      release(new Response(null, { status: 200 }));
+      await closing;
+      expect(provider).toHaveBeenCalledOnce();
+    } finally {
+      release(new Response(null, { status: 200 }));
+      await fixture.close();
+      vi.useRealTimers();
       vi.unstubAllGlobals();
     }
   });
@@ -1162,16 +1344,23 @@ setInterval(() => {}, 1000);
       finishShip = resolve;
     });
     const branchSetup = vi.fn();
+    const stopAfterBranchSetup = new Error("Branch setup completed");
     vi.mocked(ShipOrchestrator).mockImplementationOnce((config) => {
       const orchestrator = new RealShipOrchestrator(config);
-      const branchStage = orchestrator as unknown as {
-        stageBranchSetup(): Promise<ShipStageResult>;
-      };
+      orchestrator.on("ship:stage", ({ stage }: { stage: ShipStage }) => {
+        if (stage === ShipStage.ACTIVATE_TESTS) {
+          branchSetup();
+          throw stopAfterBranchSetup;
+        }
+      });
       return {
         async run() {
-          const result = await branchStage.stageBranchSetup();
-          branchSetup(result);
-          return result.success ? ship : result.exitCode;
+          try {
+            return await orchestrator.run();
+          } catch (error) {
+            if (error !== stopAfterBranchSetup) throw error;
+            return ship;
+          }
         },
         getResult: () => ({}),
       } as ShipOrchestrator;
@@ -1226,9 +1415,7 @@ setInterval(() => {}, 1000);
       });
       expect(response.statusCode).toBe(201);
       await vi.waitFor(() => {
-        expect(branchSetup).toHaveBeenCalledWith(
-          expect.objectContaining({ success: true }),
-        );
+        expect(branchSetup).toHaveBeenCalledOnce();
       });
       const workDir = fixture.journal().at(-1)?.workDir;
       expect(workDir).toBeDefined();
@@ -1257,6 +1444,30 @@ setInterval(() => {}, 1000);
       } finally {
         vi.unstubAllEnvs();
       }
+    }
+  });
+
+  it("pins fixture Git reference storage despite an invalid inherited format", async () => {
+    vi.stubEnv("GIT_DEFAULT_REF_FORMAT", "invalid-gwrk-probe");
+    const fixture = await createServerFixture("routes", {
+      routes: ["dispatch"],
+    });
+    try {
+      expect(
+        existsSync(
+          join(fixture.projectRoot, ".git", "refs", "heads", "develop"),
+        ),
+      ).toBe(true);
+      const response = await fixture.app.inject({
+        method: "POST",
+        url: "/api/dispatch",
+        payload: { featureId: "probe", phaseId: "phase-01" },
+      });
+      expect(response.statusCode).toBe(201);
+      await fixture.app.close();
+      expect(fixture.journal().at(-1)?.status).toBe("completed");
+    } finally {
+      await fixture.close();
     }
   });
 

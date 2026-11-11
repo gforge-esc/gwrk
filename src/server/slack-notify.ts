@@ -19,14 +19,24 @@ import { loadTelegramConfig, notifyTelegram } from "./telegram-notify.js";
 export async function notifySlack(
   message: SlackMessage,
   event?: SlackEvent,
-  options: { opsOnly?: boolean; signal?: AbortSignal } = {},
+  options: {
+    opsOnly?: boolean;
+    projectRoot?: string;
+    signal?: AbortSignal;
+  } = {},
 ): Promise<void> {
-  if (options.signal?.aborted) return;
+  const { projectRoot = process.cwd(), signal } = options;
+  if (signal?.aborted) return;
   const app = getSlackApp();
+  const forwardToTelegram = async () => {
+    if (!signal?.aborted && loadTelegramConfig(projectRoot)) {
+      await notifyTelegram(message, projectRoot, signal);
+    }
+  };
 
   if (options.opsOnly) {
     try {
-      const config = loadConfig(process.cwd());
+      const config = loadConfig(projectRoot);
       const opsChannelId = config.project.slack?.opsChannelId;
       if (opsChannelId) {
         message.channel = opsChannelId;
@@ -36,22 +46,23 @@ export async function notifySlack(
     }
   }
 
+  if (app && event) {
+    await presenceManager.handleNotification(
+      event,
+      message,
+      signal,
+      projectRoot,
+      forwardToTelegram,
+    );
+    return;
+  }
   if (app) {
-    // Socket Mode path — full interactivity (buttons, actions)
-    if (event) {
-      await presenceManager.handleNotification(event, message, options.signal);
-    } else {
-      await sendSlackMessage(message, options.signal);
-    }
+    await sendSlackMessage(message, signal, projectRoot);
   } else {
-    // Webhook fallback — fire-and-forget, no interactive elements
-    await sendViaWebhook(message, options.signal);
+    await sendViaWebhook(message, signal, projectRoot);
   }
 
-  // Forward to Telegram when configured (dual-channel control plane)
-  if (!options.signal?.aborted && loadTelegramConfig()) {
-    await notifyTelegram(message, undefined, options.signal);
-  }
+  await forwardToTelegram();
 }
 
 /**
@@ -60,6 +71,7 @@ export async function notifySlack(
 export async function sendSlackMessage(
   message: SlackMessage,
   signal?: AbortSignal,
+  projectRoot = process.cwd(),
 ): Promise<void> {
   if (signal?.aborted) return;
   const app = getSlackApp();
@@ -69,7 +81,7 @@ export async function sendSlackMessage(
   let channelId = message.channel;
   if (!channelId) {
     try {
-      const config = loadConfig(process.cwd());
+      const config = loadConfig(projectRoot);
       channelId = config.project.slack?.channelId;
     } catch (e) {
       warnCli("Failed to load config for channel resolution:", e);
@@ -96,7 +108,7 @@ export async function sendSlackMessage(
     logCliError(`Failed to post Slack notification: ${errorMessage}`);
 
     // Fallback to webhook on Socket Mode failure
-    await sendViaWebhook(message, signal);
+    await sendViaWebhook(message, signal, projectRoot);
   }
 }
 
@@ -111,12 +123,13 @@ export async function sendSlackMessage(
  */
 async function sendViaWebhook(
   message: SlackMessage,
-  signal?: AbortSignal,
+  signal: AbortSignal | undefined,
+  projectRoot: string,
 ): Promise<void> {
   if (signal?.aborted) return;
   let webhookUrl: string | undefined;
   try {
-    const config = loadConfig(process.cwd());
+    const config = loadConfig(projectRoot);
     webhookUrl = config.project.slack?.webhookUrl;
   } catch {
     // Config not available

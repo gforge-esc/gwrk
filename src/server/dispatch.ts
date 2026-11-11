@@ -338,7 +338,7 @@ export class DispatchQueue {
             : { ...record, stderr }) as unknown as Record<string, unknown>,
           timestamp: new Date().toISOString(),
         },
-        { signal: controller.signal },
+        { projectRoot: this.projectRoot, signal: controller.signal },
       );
     } catch (error) {
       logCliError("Failed to notify dispatch outcome:", error);

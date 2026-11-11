@@ -318,7 +318,7 @@ export async function startServer(
 
     if (!telegramInUse) {
       telegramInUse = true;
-      cleanup.push(async () => {
+      stopPollers.push(async () => {
         try {
           await stopTelegramBot();
         } finally {

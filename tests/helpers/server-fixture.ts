@@ -56,6 +56,7 @@ function fixtureGitEnv(root: string): NodeJS.ProcessEnv {
     GIT_CONFIG_GLOBAL: devNull,
     GIT_CONFIG_NOSYSTEM: "1",
     GIT_DEFAULT_HASH: "sha1",
+    GIT_DEFAULT_REF_FORMAT: "files",
     GIT_AUTHOR_NAME: "Gwrk Test",
     GIT_AUTHOR_EMAIL: "gwrk-test@example.invalid",
     GIT_AUTHOR_DATE: "2000-01-01T00:00:00Z",

@@ -138,7 +138,7 @@ describe("DispatchQueue (unified ship engine)", () => {
     expect(notifySlack).toHaveBeenCalledWith(
       expect.anything(),
       expect.objectContaining({ type: "review_ready" }),
-      expect.objectContaining({ signal: expect.any(AbortSignal) }),
+      { projectRoot, signal: expect.any(AbortSignal) },
     );
 
     // Worktree torn down WITHOUT auto commit/push/PR — the engine owns the PR.
@@ -244,7 +244,7 @@ describe("DispatchQueue (unified ship engine)", () => {
     expect(notifySlack).toHaveBeenCalledWith(
       expect.anything(),
       expect.objectContaining({ type: "phase_fail" }),
-      expect.objectContaining({ signal: expect.any(AbortSignal) }),
+      { projectRoot, signal: expect.any(AbortSignal) },
     );
     expect(mockSandbox.destroySandbox).toHaveBeenCalledWith(
       "/work/dir",
