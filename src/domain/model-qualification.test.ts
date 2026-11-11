@@ -218,6 +218,36 @@ describe("credential guard", () => {
       },
     );
 
+    it.each([
+      ["Cookie", "Accept-Encoding"],
+      ["Accept-Encoding", "Cookie"],
+    ])("allows Vary values %s and %s in maps and records", (first, second) => {
+      const value = [first, second];
+      for (const headers of [
+        { vary: value },
+        [{ name: "Vary", value }],
+        [{ key: "Vary", value }],
+      ]) {
+        expect(() =>
+          assertNoSecretMaterial(evidence({ headers })),
+        ).not.toThrow();
+      }
+    });
+
+    it("rejects credential material in header maps and records", () => {
+      const value = ["Cookie", "Bearer\tfixture-token"];
+      for (const headers of [
+        { vary: value },
+        [{ name: "Vary", value }],
+        [{ key: "Vary", value }],
+        { cookie: ["session=fixture-only"] },
+      ]) {
+        expect(() => assertNoSecretMaterial(evidence({ headers }))).toThrow(
+          /secret material/i,
+        );
+      }
+    });
+
     it("rejects a Cookie header after a multi-value Vary header", () => {
       const response = {
         headers: [

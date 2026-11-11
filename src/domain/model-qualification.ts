@@ -443,6 +443,12 @@ function isCredentialHeaderRecord(
   );
 }
 
+function hasHeaderName(entry: object): boolean {
+  return ["name", "key"].some(
+    (field) => typeof Reflect.get(entry, field) === "string",
+  );
+}
+
 function isFlatHeaderList(entries: unknown[]): boolean {
   return (
     entries.length % 2 === 0 &&
@@ -533,13 +539,29 @@ export function assertNoSecretMaterial(
 ): void {
   let secretInText = false;
   const flatHeaderLists = new WeakSet<unknown[]>();
+  const headerMaps = new WeakSet<object>();
   const serialized =
     JSON.stringify(value, function (this: unknown, key, entry: unknown) {
       const isHeaderCollection = headersKeyPattern.test(key);
-      const isHeaderValue =
+      if (
+        isHeaderCollection &&
+        typeof entry === "object" &&
+        entry &&
+        !Array.isArray(entry)
+      ) {
+        headerMaps.add(entry);
+      }
+      const isFlatHeaderValue =
         Array.isArray(this) &&
         flatHeaderLists.has(this) &&
         Number(key) % 2 === 1;
+      const isStructuredHeaderValue =
+        typeof this === "object" &&
+        this !== null &&
+        Array.isArray(entry) &&
+        entry.every((value) => typeof value === "string") &&
+        (headerMaps.has(this) || (key === "value" && hasHeaderName(this)));
+      const isHeaderValue = isFlatHeaderValue || isStructuredHeaderValue;
       if (Array.isArray(entry) && !isHeaderValue && isFlatHeaderList(entry)) {
         flatHeaderLists.add(entry);
       }

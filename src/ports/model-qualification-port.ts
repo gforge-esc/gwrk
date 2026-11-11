@@ -12,6 +12,13 @@ import type {
   RunnerScope,
 } from "../domain/model-qualification.js";
 
+export type {
+  AdapterDiscoveryReport,
+  DiscoveredModel,
+  DiscoverySnapshot,
+  RunnerScope,
+} from "../domain/model-qualification.js";
+
 export interface ModelCatalogPort {
   discoverCatalog(input: {
     scope: RunnerScope;

@@ -7,13 +7,12 @@ import { evaluateModelPromotion } from "../application/models/evaluate-models.js
 import type {
   AdapterDiscoveryReport,
   DiscoveredModel,
-  RunnerScope,
-} from "../domain/model-qualification.js";
-import type {
+  DiscoverySnapshot,
   ModelCatalogPort,
   PromotionJudgePort,
   QualificationRunnerPort,
   RouteLockStorePort,
+  RunnerScope,
   SmokeProbePort,
   StructuredJudgeVerdict,
 } from "./model-qualification-port.js";
@@ -52,7 +51,7 @@ it("exposes the documented catalog and lock store contracts to consumers", async
       return [];
     },
   };
-  const snapshot = { scope, adapters: [] };
+  const snapshot: DiscoverySnapshot = { scope, adapters: [] };
   const incumbent = { digest: "incumbent-digest", document: { routes: {} } };
   const reader: PublishedRouteLockReads = {
     async readDiscoverySnapshot() {
