@@ -1,10 +1,10 @@
 {
   "featureId": "042-port-adapter-separation",
-  "createdAt": "2026-11-11T16:50:48.873Z",
+  "createdAt": "2026-11-11T17:02:15.537Z",
   "generatedFrom": {
     "plan": {
-      "hash": "69cffff5958354112a47a5c8764b5b5d2ddc3d31c8caab488647b2e6f4a01dd6",
-      "modifiedAt": "2026-11-11T16:50:45.905Z"
+      "hash": "53c40fe9810dbb6b33da348bcbbb4bd75dd21491c40f15dfc9e1061cc8814022",
+      "modifiedAt": "2026-11-11T17:02:11.854Z"
     }
   },
   "phases": [
@@ -17,7 +17,7 @@
           "title": "Modify toolchain-port.ts",
           "description": "MODIFY src/ports/toolchain-port.ts. Retain only the `ToolchainPort` interface",
           "status": "open",
-          "gateScript": "gates/phase-01.sh",
+          "gateScript": "pnpm build\npnpm exec vitest run src/utils/toolchain-mapper.test.ts src/utils/test-discovery.test.ts src/utils/gate-gen.test.ts src/commands/test-cmd.test.ts src/cli.test.ts src/db/db.test.ts",
           "sp": 1
         },
         {
@@ -25,7 +25,7 @@
           "title": "Modify index.ts",
           "description": "MODIFY src/adapters/toolchain/index.ts. Build `ToolchainPort` from domain policy and manifest discovery",
           "status": "open",
-          "gateScript": "gates/phase-01.sh",
+          "gateScript": "pnpm build\npnpm exec vitest run src/utils/toolchain-mapper.test.ts src/utils/test-discovery.test.ts src/utils/gate-gen.test.ts src/commands/test-cmd.test.ts src/cli.test.ts src/db/db.test.ts",
           "sp": 1
         },
         {
@@ -33,7 +33,7 @@
           "title": "Modify ship.ts",
           "description": "MODIFY src/commands/ship.ts. Import polyglot file predicates from `src/domain/test-rules.js`",
           "status": "open",
-          "gateScript": "gates/phase-01.sh",
+          "gateScript": "pnpm build\npnpm exec vitest run src/utils/toolchain-mapper.test.ts src/utils/test-discovery.test.ts src/utils/gate-gen.test.ts src/commands/test-cmd.test.ts src/cli.test.ts src/db/db.test.ts",
           "sp": 1
         },
         {
@@ -41,7 +41,7 @@
           "title": "Modify tasks-generate.ts",
           "description": "MODIFY src/commands/tasks-generate.ts. Import `isPolyglotTestFile` from `src/domain/test-rules.js`",
           "status": "open",
-          "gateScript": "gates/phase-01.sh",
+          "gateScript": "pnpm build\npnpm exec vitest run src/utils/toolchain-mapper.test.ts src/utils/test-discovery.test.ts src/utils/gate-gen.test.ts src/commands/test-cmd.test.ts src/cli.test.ts src/db/db.test.ts",
           "sp": 1
         },
         {
@@ -49,7 +49,7 @@
           "title": "Modify test.ts",
           "description": "MODIFY src/commands/test.ts. Import polyglot file predicates from `src/domain/test-rules.js`. Tests: src/utils/toolchain-mapper.test.ts",
           "status": "open",
-          "gateScript": "gates/phase-01.sh",
+          "gateScript": "pnpm build\npnpm exec vitest run src/utils/toolchain-mapper.test.ts src/utils/test-discovery.test.ts src/utils/gate-gen.test.ts src/commands/test-cmd.test.ts src/cli.test.ts src/db/db.test.ts",
           "sp": 1
         },
         {
@@ -57,7 +57,7 @@
           "title": "Modify tests-generate.ts",
           "description": "MODIFY src/commands/tests-generate.ts. Import `isPolyglotTestFile` from `src/domain/test-rules.js`",
           "status": "open",
-          "gateScript": "gates/phase-01.sh",
+          "gateScript": "pnpm build\npnpm exec vitest run src/utils/toolchain-mapper.test.ts src/utils/test-discovery.test.ts src/utils/gate-gen.test.ts src/commands/test-cmd.test.ts src/cli.test.ts src/db/db.test.ts",
           "sp": 1
         },
         {
@@ -65,7 +65,7 @@
           "title": "Modify define-orchestrator.ts",
           "description": "MODIFY src/engine/define-orchestrator.ts. Import `isPolyglotTestFile` from `src/domain/test-rules.js`",
           "status": "open",
-          "gateScript": "gates/phase-01.sh",
+          "gateScript": "pnpm build\npnpm exec vitest run src/utils/toolchain-mapper.test.ts src/utils/test-discovery.test.ts src/utils/gate-gen.test.ts src/commands/test-cmd.test.ts src/cli.test.ts src/db/db.test.ts",
           "sp": 1
         },
         {
@@ -73,7 +73,7 @@
           "title": "Modify gate-gen.ts",
           "description": "MODIFY src/utils/gate-gen.ts. Import polyglot test helpers from `src/domain/test-rules.js`",
           "status": "open",
-          "gateScript": "gates/phase-01.sh",
+          "gateScript": "pnpm build\npnpm exec vitest run src/utils/toolchain-mapper.test.ts src/utils/test-discovery.test.ts src/utils/gate-gen.test.ts src/commands/test-cmd.test.ts src/cli.test.ts src/db/db.test.ts",
           "sp": 1
         },
         {
@@ -81,7 +81,7 @@
           "title": "Modify test-discovery.ts",
           "description": "MODIFY src/utils/test-discovery.ts. Import polyglot test helpers from `src/domain/test-rules.js`",
           "status": "open",
-          "gateScript": "gates/phase-01.sh",
+          "gateScript": "pnpm build\npnpm exec vitest run src/utils/toolchain-mapper.test.ts src/utils/test-discovery.test.ts src/utils/gate-gen.test.ts src/commands/test-cmd.test.ts src/cli.test.ts src/db/db.test.ts",
           "sp": 1
         }
       ],
@@ -102,7 +102,7 @@
           "title": "Modify architecture-boundary.ts",
           "description": "MODIFY tests/helpers/architecture-boundary.ts. Require type-only domain imports in ports and reject legacy adapter re-exports",
           "status": "open",
-          "gateScript": "gates/phase-02.sh",
+          "gateScript": "pnpm build\npnpm exec vitest run src/architecture.test.ts src/engine/issues.test.ts src/engine/harvest.test.ts src/cli.test.ts src/db/db.test.ts",
           "sp": 1
         },
         {
@@ -110,7 +110,7 @@
           "title": "Modify notification-port.ts",
           "description": "MODIFY src/ports/notification-port.ts. Retain only `NotificationPayload` and `NotificationPort`",
           "status": "open",
-          "gateScript": "gates/phase-02.sh",
+          "gateScript": "pnpm build\npnpm exec vitest run src/architecture.test.ts src/engine/issues.test.ts src/engine/harvest.test.ts src/cli.test.ts src/db/db.test.ts",
           "sp": 1
         },
         {
@@ -118,7 +118,7 @@
           "title": "Modify index.ts",
           "description": "MODIFY src/adapters/notifications/index.ts. Own the Slack default and harvest notification helpers",
           "status": "open",
-          "gateScript": "gates/phase-02.sh",
+          "gateScript": "pnpm build\npnpm exec vitest run src/architecture.test.ts src/engine/issues.test.ts src/engine/harvest.test.ts src/cli.test.ts src/db/db.test.ts",
           "sp": 1
         },
         {
@@ -126,7 +126,7 @@
           "title": "Modify index.ts",
           "description": "DELETE src/adapters/agents/index.ts. Remove unused backend re-exports",
           "status": "open",
-          "gateScript": "gates/phase-02.sh",
+          "gateScript": "pnpm build\npnpm exec vitest run src/architecture.test.ts src/engine/issues.test.ts src/engine/harvest.test.ts src/cli.test.ts src/db/db.test.ts",
           "sp": 1
         },
         {
@@ -134,7 +134,7 @@
           "title": "Modify index.ts",
           "description": "DELETE src/adapters/cli/index.ts. Remove unused command re-exports",
           "status": "open",
-          "gateScript": "gates/phase-02.sh",
+          "gateScript": "pnpm build\npnpm exec vitest run src/architecture.test.ts src/engine/issues.test.ts src/engine/harvest.test.ts src/cli.test.ts src/db/db.test.ts",
           "sp": 1
         },
         {
@@ -142,7 +142,7 @@
           "title": "Modify index.ts",
           "description": "DELETE src/adapters/server/index.ts. Remove unused server re-exports",
           "status": "open",
-          "gateScript": "gates/phase-02.sh",
+          "gateScript": "pnpm build\npnpm exec vitest run src/architecture.test.ts src/engine/issues.test.ts src/engine/harvest.test.ts src/cli.test.ts src/db/db.test.ts",
           "sp": 1
         },
         {
@@ -150,7 +150,7 @@
           "title": "Modify index.ts",
           "description": "DELETE src/adapters/index.ts. Remove unused aggregate barrel",
           "status": "open",
-          "gateScript": "gates/phase-02.sh",
+          "gateScript": "pnpm build\npnpm exec vitest run src/architecture.test.ts src/engine/issues.test.ts src/engine/harvest.test.ts src/cli.test.ts src/db/db.test.ts",
           "sp": 1
         },
         {
@@ -158,7 +158,7 @@
           "title": "Modify index.ts",
           "description": "MODIFY src/adapters/sqlite/index.ts. Remove the unused PlanStore re-export",
           "status": "open",
-          "gateScript": "gates/phase-02.sh",
+          "gateScript": "pnpm build\npnpm exec vitest run src/architecture.test.ts src/engine/issues.test.ts src/engine/harvest.test.ts src/cli.test.ts src/db/db.test.ts",
           "sp": 1
         },
         {
@@ -166,7 +166,7 @@
           "title": "Modify slack-notify.ts",
           "description": "MODIFY src/server/slack-notify.ts. Keep transport and move adapter construction to the notification adapter",
           "status": "open",
-          "gateScript": "gates/phase-02.sh",
+          "gateScript": "pnpm build\npnpm exec vitest run src/architecture.test.ts src/engine/issues.test.ts src/engine/harvest.test.ts src/cli.test.ts src/db/db.test.ts",
           "sp": 1
         },
         {
@@ -174,7 +174,7 @@
           "title": "Modify issues.ts",
           "description": "MODIFY src/engine/issues.ts. Route issue notifications through `dispatchNotification` in `src/adapters/notifications/index.js`",
           "status": "open",
-          "gateScript": "gates/phase-02.sh",
+          "gateScript": "pnpm build\npnpm exec vitest run src/architecture.test.ts src/engine/issues.test.ts src/engine/harvest.test.ts src/cli.test.ts src/db/db.test.ts",
           "sp": 1
         },
         {
@@ -182,7 +182,7 @@
           "title": "Modify harvest.ts",
           "description": "MODIFY src/engine/harvest.ts. Route completion notifications through `notifyHarvestComplete` in `src/adapters/notifications/index.js`",
           "status": "open",
-          "gateScript": "gates/phase-02.sh",
+          "gateScript": "pnpm build\npnpm exec vitest run src/architecture.test.ts src/engine/issues.test.ts src/engine/harvest.test.ts src/cli.test.ts src/db/db.test.ts",
           "sp": 1
         }
       ],
@@ -203,7 +203,7 @@
           "title": "Modify index.ts",
           "description": "MODIFY src/db/index.ts. Add `openDatabase` factory accepting database path and migration options",
           "status": "open",
-          "gateScript": "gates/phase-03.sh",
+          "gateScript": "pnpm build\npnpm exec vitest run src/adapters/sqlite/store-isolation.test.ts src/db/db.test.ts src/db/compression.test.ts src/db/plan.test.ts src/db/scoping.test.ts src/engine/plan-store.test.ts src/engine/plan-store-scoping.test.ts src/architecture.test.ts",
           "sp": 1
         },
         {
@@ -211,7 +211,7 @@
           "title": "Modify store-port.ts",
           "description": "MODIFY src/ports/store-port.ts. Add `close` lifecycle methods to `PlanStorePort` and `RunStorePort`",
           "status": "open",
-          "gateScript": "gates/phase-03.sh",
+          "gateScript": "pnpm build\npnpm exec vitest run src/adapters/sqlite/store-isolation.test.ts src/db/db.test.ts src/db/compression.test.ts src/db/plan.test.ts src/db/scoping.test.ts src/engine/plan-store.test.ts src/engine/plan-store-scoping.test.ts src/architecture.test.ts",
           "sp": 1
         },
         {
@@ -219,7 +219,7 @@
           "title": "Modify index.ts",
           "description": "MODIFY src/adapters/sqlite/index.ts. Implement `createSqlitePlanStoreAdapter` and `createSqliteRunStoreAdapter` with instance handles",
           "status": "open",
-          "gateScript": "gates/phase-03.sh",
+          "gateScript": "pnpm build\npnpm exec vitest run src/adapters/sqlite/store-isolation.test.ts src/db/db.test.ts src/db/compression.test.ts src/db/plan.test.ts src/db/scoping.test.ts src/engine/plan-store.test.ts src/engine/plan-store-scoping.test.ts src/architecture.test.ts",
           "sp": 1
         },
         {
@@ -227,7 +227,7 @@
           "title": "Modify plan.ts",
           "description": "MODIFY src/commands/plan.ts. Write rendered plans through the SQLite plan adapter. Tests: src/engine/plan-store-scoping.test.ts",
           "status": "open",
-          "gateScript": "gates/phase-03.sh",
+          "gateScript": "pnpm build\npnpm exec vitest run src/adapters/sqlite/store-isolation.test.ts src/db/db.test.ts src/db/compression.test.ts src/db/plan.test.ts src/db/scoping.test.ts src/engine/plan-store.test.ts src/engine/plan-store-scoping.test.ts src/architecture.test.ts",
           "sp": 1
         },
         {
@@ -235,7 +235,7 @@
           "title": "Modify harvest.ts",
           "description": "MODIFY src/engine/harvest.ts. Write compression records through the SQLite run adapter",
           "status": "open",
-          "gateScript": "gates/phase-03.sh",
+          "gateScript": "pnpm build\npnpm exec vitest run src/adapters/sqlite/store-isolation.test.ts src/db/db.test.ts src/db/compression.test.ts src/db/plan.test.ts src/db/scoping.test.ts src/engine/plan-store.test.ts src/engine/plan-store-scoping.test.ts src/architecture.test.ts",
           "sp": 1
         },
         {
@@ -243,7 +243,7 @@
           "title": "Modify plan-store.ts",
           "description": "MODIFY src/engine/plan-store.ts. Accept optional `Database.Database` handle and preserve instance connection state. Tests: src/engine/plan-store-scoping.test.ts",
           "status": "open",
-          "gateScript": "gates/phase-03.sh",
+          "gateScript": "pnpm build\npnpm exec vitest run src/adapters/sqlite/store-isolation.test.ts src/db/db.test.ts src/db/compression.test.ts src/db/plan.test.ts src/db/scoping.test.ts src/engine/plan-store.test.ts src/engine/plan-store-scoping.test.ts src/architecture.test.ts",
           "sp": 1
         }
       ],
@@ -264,7 +264,7 @@
           "title": "Create output-scope.ts",
           "description": "NEW src/adapters/cli/output-scope.ts. Provide `AsyncLocalStorage` output scope and agent-mode transforms. Tests: src/adapters/cli/output-scope.test.ts",
           "status": "open",
-          "gateScript": "gates/phase-04.sh",
+          "gateScript": "pnpm build\npnpm exec vitest run src/adapters/cli/output-scope.test.ts src/utils/output.test.ts src/utils/signal.test.ts src/utils/agent-layer.test.ts src/commands/skill.test.ts src/cli.test.ts src/cli.consistency.test.ts src/cli.option-collisions.test.ts src/cli.ux.test.ts src/commands/gate.test.ts src/architecture.test.ts",
           "sp": 2
         },
         {
@@ -272,7 +272,7 @@
           "title": "Modify cli.ts",
           "description": "MODIFY src/cli.ts. Replace global `process.stdout.write` mutation with per-command output scope. Tests: src/adapters/cli/output-scope.test.ts",
           "status": "open",
-          "gateScript": "gates/phase-04.sh",
+          "gateScript": "pnpm build\npnpm exec vitest run src/adapters/cli/output-scope.test.ts src/utils/output.test.ts src/utils/signal.test.ts src/utils/agent-layer.test.ts src/commands/skill.test.ts src/cli.test.ts src/cli.consistency.test.ts src/cli.option-collisions.test.ts src/cli.ux.test.ts src/commands/gate.test.ts src/architecture.test.ts",
           "sp": 1
         },
         {
@@ -280,7 +280,7 @@
           "title": "Modify output.ts",
           "description": "MODIFY src/utils/output.ts. Route `CommandOutput` writes through the active CLI output scope. Tests: src/adapters/cli/output-scope.test.ts",
           "status": "open",
-          "gateScript": "gates/phase-04.sh",
+          "gateScript": "pnpm build\npnpm exec vitest run src/adapters/cli/output-scope.test.ts src/utils/output.test.ts src/utils/signal.test.ts src/utils/agent-layer.test.ts src/commands/skill.test.ts src/cli.test.ts src/cli.consistency.test.ts src/cli.option-collisions.test.ts src/cli.ux.test.ts src/commands/gate.test.ts src/architecture.test.ts",
           "sp": 1
         },
         {
@@ -288,7 +288,7 @@
           "title": "Modify format.ts",
           "description": "MODIFY src/utils/format.ts. Route formatted banners and status output through the active CLI output scope",
           "status": "open",
-          "gateScript": "gates/phase-04.sh",
+          "gateScript": "pnpm build\npnpm exec vitest run src/adapters/cli/output-scope.test.ts src/utils/output.test.ts src/utils/signal.test.ts src/utils/agent-layer.test.ts src/commands/skill.test.ts src/cli.test.ts src/cli.consistency.test.ts src/cli.option-collisions.test.ts src/cli.ux.test.ts src/commands/gate.test.ts src/architecture.test.ts",
           "sp": 1
         },
         {
@@ -296,7 +296,7 @@
           "title": "Modify signal.ts",
           "description": "MODIFY src/utils/signal.ts. Emit `[exit:N | Xs]` on scoped stderr while preserving exit codes",
           "status": "open",
-          "gateScript": "gates/phase-04.sh",
+          "gateScript": "pnpm build\npnpm exec vitest run src/adapters/cli/output-scope.test.ts src/utils/output.test.ts src/utils/signal.test.ts src/utils/agent-layer.test.ts src/commands/skill.test.ts src/cli.test.ts src/cli.consistency.test.ts src/cli.option-collisions.test.ts src/cli.ux.test.ts src/commands/gate.test.ts src/architecture.test.ts",
           "sp": 1
         },
         {
@@ -304,7 +304,7 @@
           "title": "Modify project-discover.ts",
           "description": "MODIFY src/commands/project-discover.ts. Write discovery text and JSON through scoped output",
           "status": "open",
-          "gateScript": "gates/phase-04.sh",
+          "gateScript": "pnpm build\npnpm exec vitest run src/adapters/cli/output-scope.test.ts src/utils/output.test.ts src/utils/signal.test.ts src/utils/agent-layer.test.ts src/commands/skill.test.ts src/cli.test.ts src/cli.consistency.test.ts src/cli.option-collisions.test.ts src/cli.ux.test.ts src/commands/gate.test.ts src/architecture.test.ts",
           "sp": 1
         },
         {
@@ -312,7 +312,7 @@
           "title": "Modify skill.ts",
           "description": "MODIFY src/commands/skill.ts. Write skill stdout through scoped output",
           "status": "open",
-          "gateScript": "gates/phase-04.sh",
+          "gateScript": "pnpm build\npnpm exec vitest run src/adapters/cli/output-scope.test.ts src/utils/output.test.ts src/utils/signal.test.ts src/utils/agent-layer.test.ts src/commands/skill.test.ts src/cli.test.ts src/cli.consistency.test.ts src/cli.option-collisions.test.ts src/cli.ux.test.ts src/commands/gate.test.ts src/architecture.test.ts",
           "sp": 1
         }
       ],
@@ -321,7 +321,9 @@
         "src/adapters/cli/output-scope.test.ts",
         "src/utils/output.test.ts",
         "src/utils/signal.test.ts",
-        "src/commands/skill.test.ts"
+        "src/commands/skill.test.ts",
+        "src/cli.ux.test.ts",
+        "src/commands/gate.test.ts"
       ]
     }
   ]
