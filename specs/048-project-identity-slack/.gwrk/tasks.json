@@ -17,7 +17,7 @@
           "title": "Modify project-id.ts",
           "description": "MODIFY src/domain/project-id.ts. Add `computeLegacyProjectIds` alongside canonical `computeProjectId`. Tests: src/domain/project-id.test.ts",
           "status": "open",
-          "gateScript": "pnpm build\npnpm exec vitest run src/domain/project-id.test.ts src/domain/slack-routing.test.ts src/architecture.test.ts",
+          "gateScript": "gates/phase-01.sh",
           "sp": 1
         },
         {
@@ -25,7 +25,7 @@
           "title": "Create project-registry.ts",
           "description": "NEW src/domain/project-registry.ts. Define pure enrollment and role schemas plus thread and action receipt types",
           "status": "open",
-          "gateScript": "pnpm build\npnpm exec vitest run src/domain/project-id.test.ts src/domain/slack-routing.test.ts src/architecture.test.ts",
+          "gateScript": "gates/phase-01.sh",
           "sp": 2
         },
         {
@@ -33,7 +33,7 @@
           "title": "Create slack-routing.ts",
           "description": "NEW src/domain/slack-routing.ts. Implement pure Slack and HTTP routing policy with thread and replay checks. Tests: src/domain/slack-routing.test.ts",
           "status": "open",
-          "gateScript": "pnpm build\npnpm exec vitest run src/domain/project-id.test.ts src/domain/slack-routing.test.ts src/architecture.test.ts",
+          "gateScript": "gates/phase-01.sh",
           "sp": 2
         },
         {
@@ -41,7 +41,7 @@
           "title": "Modify index.ts",
           "description": "MODIFY src/domain/index.ts. Export project registry and Slack routing contracts from the domain barrel",
           "status": "open",
-          "gateScript": "pnpm build\npnpm exec vitest run src/domain/project-id.test.ts src/domain/slack-routing.test.ts src/architecture.test.ts",
+          "gateScript": "gates/phase-01.sh",
           "sp": 1
         },
         {
@@ -49,7 +49,7 @@
           "title": "Modify store-port.ts",
           "description": "MODIFY src/ports/store-port.ts. Add `ProjectRegistryPort` to the existing persistence port module",
           "status": "open",
-          "gateScript": "pnpm build\npnpm exec vitest run src/domain/project-id.test.ts src/domain/slack-routing.test.ts src/architecture.test.ts",
+          "gateScript": "gates/phase-01.sh",
           "sp": 1
         },
         {
@@ -57,7 +57,7 @@
           "title": "Modify notification-port.ts",
           "description": "MODIFY src/ports/notification-port.ts. Add project and recipient fields plus receipt, presence and status contracts",
           "status": "open",
-          "gateScript": "pnpm build\npnpm exec vitest run src/domain/project-id.test.ts src/domain/slack-routing.test.ts src/architecture.test.ts",
+          "gateScript": "gates/phase-01.sh",
           "sp": 1
         },
         {
@@ -65,7 +65,7 @@
           "title": "Modify vcs-port.ts",
           "description": "MODIFY src/ports/vcs-port.ts. Add identity discovery, pull request lookup and pull request merge methods",
           "status": "open",
-          "gateScript": "pnpm build\npnpm exec vitest run src/domain/project-id.test.ts src/domain/slack-routing.test.ts src/architecture.test.ts",
+          "gateScript": "gates/phase-01.sh",
           "sp": 1
         }
       ],
