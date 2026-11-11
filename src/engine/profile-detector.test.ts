@@ -6,6 +6,7 @@ import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { getTestCommand } from "../domain/toolchain.js";
 import { detectProfile, resolveWorkspaceProfile } from "./profile-detector.js";
 import { conditionPrompt } from "./prompt-conditioner.js";
 
@@ -367,6 +368,49 @@ describe("FR-001: architecture-aware workspace profiles (044 phase p01)", () => 
       stack: { language: "Python", framework: "Django" },
       toolchain: { build: null },
     });
+  });
+
+  it.each([
+    { toolchain: { test: "pytest" }, command: "pytest test_api.py -v" },
+    {
+      toolchain: { test: "pytest", testCommand: "uv run pytest {files}" },
+      command: "uv run pytest test_api.py",
+    },
+    { toolchain: { test: null }, command: null },
+  ])(
+    "uses the workspace test selection over the root command",
+    async ({ toolchain, command }) => {
+      write("services/api/pyproject.toml", '[project]\nname = "fixture-api"\n');
+      write(
+        ".gwrkrc.json",
+        JSON.stringify({
+          project: {
+            name: "fixture",
+            design,
+            toolchain: { testCommand: "pnpm exec vitest run {files}" },
+          },
+          workspaces: { "services/api": { toolchain } },
+        }),
+      );
+
+      const result = await resolveWorkspaceProfile(root, "services/api");
+      expect(getTestCommand(result, ["test_api.py"])).toBe(command);
+    },
+  );
+
+  it("keeps the inferred test runner when only the workspace framework is set", async () => {
+    write("services/api/pyproject.toml", '[project]\nname = "fixture-api"\n');
+    write(
+      ".gwrkrc.json",
+      JSON.stringify({
+        project: { name: "fixture", toolchain: { test: "vitest" } },
+        workspaces: { "services/api": { stack: { framework: "Django" } } },
+      }),
+    );
+
+    const result = await resolveWorkspaceProfile(root, "services/api");
+    expect(result.stack?.framework).toBe("Django");
+    expect(getTestCommand(result, ["test_api.py"])).toBe("pytest test_api.py -v");
   });
 
   it("keeps the workspace-local runner under a TypeScript root with a design", async () => {

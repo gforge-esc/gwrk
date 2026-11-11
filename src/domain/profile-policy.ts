@@ -17,6 +17,17 @@ export interface ProfileOverrideInput {
   workspaceConfig?: WorkspaceProfileConfig;
 }
 
+function mergeToolchain(
+  base: ProjectProfile["toolchain"],
+  override: ProjectProfile["toolchain"],
+): NonNullable<ProjectProfile["toolchain"]> {
+  if (override?.test === undefined && override?.testCommand === undefined) {
+    return { ...base, ...override };
+  }
+  const { test: _runner, testCommand: _command, ...shared } = base ?? {};
+  return { ...shared, ...override };
+}
+
 export function mergeProfileOverrides(
   input: ProfileOverrideInput,
 ): ProjectProfile {
@@ -38,11 +49,10 @@ export function mergeProfileOverrides(
     };
   }
   if (input.projectToolchain || workspaceConfig?.toolchain) {
-    profile.toolchain = {
-      ...detected.toolchain,
-      ...input.projectToolchain,
-      ...workspaceConfig?.toolchain,
-    };
+    profile.toolchain = mergeToolchain(
+      mergeToolchain(detected.toolchain, input.projectToolchain),
+      workspaceConfig?.toolchain,
+    );
   }
   return profile;
 }
@@ -76,16 +86,18 @@ export function resolveWorkspacePolicyProfile(
 
   const rootDesign = rootConfig?.project?.design;
   const hasDesign =
-    rootDesign !== undefined || workspaceConfig?.design !== undefined;
+    rootDesign !== undefined ||
+    detectedWorkspace.design !== undefined ||
+    workspaceConfig?.design !== undefined;
   if (!hasDesign && (options?.requireDesign || !workspaceConfig)) {
     return detectedWorkspace;
   }
 
-  const rootToolchain = rootConfig?.project?.toolchain;
+  const rootToolchain = hasDesign ? rootConfig?.project?.toolchain : undefined;
   const detected = rootToolchain
     ? {
         ...detectedWorkspace,
-        toolchain: { ...rootToolchain, ...detectedWorkspace.toolchain },
+        toolchain: mergeToolchain(rootToolchain, detectedWorkspace.toolchain),
       }
     : detectedWorkspace;
 
