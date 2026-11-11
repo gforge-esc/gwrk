@@ -463,6 +463,19 @@ function isFlatHeaderList(entries: unknown[]): boolean {
   );
 }
 
+function isStandaloneVaryTuple(entries: unknown[]): boolean {
+  const [name, values] = entries;
+  const fieldName = /^[!#$%&'*+.^_\x60|~0-9A-Za-z-]+$/;
+  return (
+    entries.length === 2 &&
+    typeof name === "string" &&
+    name.toLowerCase() === "vary" &&
+    Array.isArray(values) &&
+    values.length > 0 &&
+    values.every((value) => typeof value === "string" && fieldName.test(value))
+  );
+}
+
 function isHeaderTupleList(entries: unknown[]): boolean {
   return (
     entries.length > 0 &&
@@ -593,8 +606,9 @@ function scanEvidence(
             headerTupleParents.add(entry);
           }
           if (
-            (isHeaderCollection || isHeaderTuple) &&
-            isFlatHeaderList(entry)
+            ((isHeaderCollection || isHeaderTuple) &&
+              isFlatHeaderList(entry)) ||
+            isStandaloneVaryTuple(entry)
           ) {
             flatHeaderLists.add(entry);
           }

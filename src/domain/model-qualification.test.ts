@@ -214,6 +214,23 @@ describe("credential guard", () => {
       );
     });
 
+    it.each([
+      ["Cookie", "Accept-Encoding"],
+      ["Accept-Encoding", "Cookie"],
+    ])("allows standalone Vary field names %s and %s", (first, second) => {
+      expect(() =>
+        assertNoSecretMaterial(evidence(["vArY", [first, second]])),
+      ).not.toThrow();
+    });
+
+    it("continues scanning a standalone Vary value for credential text", () => {
+      expect(() =>
+        assertNoSecretMaterial(
+          evidence(["Vary", ["Cookie", "Bearer fixture-token"]]),
+        ),
+      ).toThrow(/secret material/i);
+    });
+
     it("allows multi-value Vary in a flat header collection", () => {
       const response = { rawHeaders: ["Vary", ["Cookie", "Accept-Encoding"]] };
       expect(() => assertNoSecretMaterial(evidence(response))).not.toThrow();
