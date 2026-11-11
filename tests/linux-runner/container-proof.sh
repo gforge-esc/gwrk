@@ -237,6 +237,20 @@ test "$(readlink /opt/gwrk/current)" = "$current_before"
 test "$(readlink /opt/gwrk/previous)" = "$previous_before"
 chmod "$credentials_mode" "$credentials"
 
+startup="$prior/deploy/linux-runner/run.sh"
+mv "$startup" /tmp/prior-run.sh
+printf '#!/gwrk-fixture-missing-interpreter\nexit 0\n' > "$startup"
+chmod 0755 "$startup"
+: > /tmp/supervisor.calls
+expect_rejection 'Rollback target uses an unsupported interpreter' bash "$rollback" /opt/gwrk /var/lib/gwrk
+if grep -Eq '^(stop|start)$' /tmp/supervisor.calls; then
+  printf 'Rollback changed the service state before checking the startup interpreter.\n' >&2
+  exit 1
+fi
+test "$(readlink /opt/gwrk/current)" = "$current_before"
+test "$(readlink /opt/gwrk/previous)" = "$previous_before"
+mv /tmp/prior-run.sh "$startup"
+
 mv "$prior/node_modules" /tmp/prior-node-modules
 : > /tmp/supervisor.calls
 expect_rejection 'Rollback target CLI could not start' bash "$rollback" /opt/gwrk /var/lib/gwrk

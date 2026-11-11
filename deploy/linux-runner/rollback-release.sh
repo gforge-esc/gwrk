@@ -57,9 +57,13 @@ done
 for file in "${startup_scripts[@]}"; do
   "${as_service[@]}" test -x "$target/$file" ||
     fail "$service_user cannot execute rollback target file: $target/$file"
+  interpreter=$("${as_service[@]}" head -n 1 -- "$target/$file") ||
+    fail "Could not read the rollback target interpreter: $target/$file"
+  [[ "$interpreter" == '#!/usr/bin/env bash' ]] ||
+    fail "Rollback target uses an unsupported interpreter: $target/$file"
 done
 for file in deploy/linux-runner/credentials.sh "${startup_scripts[@]}"; do
-  "${as_service[@]}" bash -n -- "$target/$file" ||
+  "${as_service[@]}" /usr/bin/env bash -n -- "$target/$file" ||
     fail "Rollback target script failed syntax validation: $target/$file"
 done
 check_rollback() {

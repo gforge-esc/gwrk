@@ -34,6 +34,12 @@ it.each([
   { signal: null, status: 1, stage: "backup with an inactive unit" },
   { signal: null, status: 1, stage: "target CLI version mismatch" },
   { signal: null, status: 1, stage: "target manifest version mismatch" },
+  {
+    signal: null,
+    status: 1,
+    stage: "invalid target interpreter",
+    malformedFile: "run.sh",
+  },
   ...serviceScripts.map((malformedFile) => ({
     signal: null,
     status: 1,
@@ -82,13 +88,21 @@ it.each([
         await writeFile(join(release, "package.json"), '{"type":"module"}');
         await symlink(join(repo, "dist/cli.js"), join(release, "dist/cli.js"));
         for (const name of serviceScripts) {
-          await writeFile(join(service, name), "", { mode: 0o755 });
+          await writeFile(join(service, name), "#!/usr/bin/env bash\n", {
+            mode: 0o755,
+          });
         }
       }
       const malformedPath = malformedFile
         ? join(root, target, "deploy/linux-runner", malformedFile)
         : undefined;
-      if (malformedPath) await writeFile(malformedPath, "if then\n");
+      if (malformedPath) {
+        const body =
+          stage === "invalid target interpreter"
+            ? "#!/gwrk-fixture-missing-interpreter\nexit 0\n"
+            : "#!/usr/bin/env bash\nif then\n";
+        await writeFile(malformedPath, body);
+      }
       const db = new Database(ledger);
       try {
         db.exec(`
@@ -119,7 +133,7 @@ if [[ "\${3:-}" == db ]]; then
     printf '{"allowed":true,"targetVersion":"%s"}\\n' "$version"
     exit 0
   fi
-  if [[ "\${4:-}" == backup && ( "$FIXTURE_STAGE" == "backup with an inactive unit" || "$FIXTURE_STAGE" == *mismatch ) ]]; then
+  if [[ "\${4:-}" == backup && ( "$FIXTURE_STAGE" == "backup with an inactive unit" || "$FIXTURE_STAGE" == *mismatch || "$FIXTURE_STAGE" == "invalid target interpreter" ) ]]; then
     printf 'Fixture backup failed\\n' >&2
     exit 1
   fi
@@ -198,6 +212,9 @@ esac`,
             expect(existsSync(calls), output).toBe(false);
             if (malformedPath) {
               expect(output).toContain(malformedPath);
+              if (stage === "invalid target interpreter") {
+                expect(output).toContain("unsupported interpreter");
+              }
             } else {
               expect(output).toContain(
                 stage === "target CLI version mismatch"
