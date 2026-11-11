@@ -982,26 +982,102 @@ describe("FR-001: architecture-aware workspace profiles (044 phase p01)", () => 
     expect(explicit).toEqual(direct);
   });
 
-  it("uses the nearer registered workspace in every resolver", async () => {
-    const nearerDesign = { ...design, architecture: "layered", principles: ["clean-code"] };
+  it.each(["matching", "unrelated", "absent"])(
+    "uses the nearer registered workspace in every resolver with an outer registration that is %s",
+    async (outerRegistration) => {
+      const nearerDesign = {
+        ...design,
+        architecture: "layered",
+        principles: ["clean-code"],
+      };
+      const outer = {
+        project: { name: "fixture", design },
+        workspaces:
+          outerRegistration === "absent"
+            ? undefined
+            : {
+                [outerRegistration === "matching" ? "services/api" : "apps/web"]: {
+                  stack: { framework: "Django" },
+                },
+              },
+      };
+      write(".gwrkrc.json", JSON.stringify(outer));
+      write("services/.gwrkrc.json", JSON.stringify({
+        project: { name: "services", design: nearerDesign },
+        workspaces: {
+          api: { stack: { framework: "FastAPI" }, toolchain: { build: null } },
+        },
+      }));
+      const cwd = path.join(root, "services/api");
+      const direct = await detectProfile(cwd);
+      expect.soft(direct).toMatchObject({
+        design: nearerDesign,
+        stack: { framework: "FastAPI" },
+        toolchain: { build: null },
+      });
+      expect(await resolveWorkspaceProfile(root, "services/api")).toEqual(direct);
+      expect(resolveWorkspaceProfile(cwd, root, outer)).toEqual(direct);
+    },
+  );
+
+  it("keeps a nested worktree registration within its own worktree", async () => {
+    const nestedDesign = { ...design, architecture: "layered" };
+    const outer = {
+      project: { design },
+      workspaces: { "services/api": { stack: { framework: "Flask" } } },
+    };
+    write(".gwrkrc.json", JSON.stringify(outer));
+    write("services/.git", "gitdir: /unused/nested-worktree\n");
+    write("services/.gwrkrc.json", JSON.stringify({
+      project: { name: "services", design: nestedDesign },
+      workspaces: { api: { stack: { framework: "Django" } } },
+    }));
+
+    const cwd = path.join(root, "services/api");
+    const direct = await detectProfile(cwd);
+    expect(direct).toMatchObject({
+      design: nestedDesign,
+      stack: { language: "Python", framework: "Django" },
+    });
+    expect(await resolveWorkspaceProfile(root, "services/api")).toEqual(direct);
+    expect.soft(resolveWorkspaceProfile(cwd, root, outer)).toBeUndefined();
+    expect(resolveWorkspaceProfile(cwd, root, { workspaces: outer.workspaces })).toStrictEqual({
+      type: "nodejs",
+      stack: { framework: "Flask" },
+      layout: "flat",
+    });
+  });
+
+  it("uses the outer workspace entry when the nearer registration is invalid", async () => {
+    const nearerDesign = { ...design, architecture: "layered" };
     const outer = {
       project: { name: "fixture", design },
-      workspaces: { "services/api": { stack: { framework: "Django" } } },
+      workspaces: {
+        "services/api": {
+          stack: { framework: "Django" },
+          toolchain: { build: null },
+        },
+      },
     };
     write(".gwrkrc.json", JSON.stringify(outer));
     write("services/.gwrkrc.json", JSON.stringify({
       project: { name: "services", design: nearerDesign },
-      workspaces: { api: { stack: { framework: "FastAPI" }, toolchain: { build: null } } },
+      workspaces: { api: { stack: { framework: 42 } } },
     }));
-    const cwd = path.join(root, "services/api");
-    const direct = await detectProfile(cwd);
-    expect.soft(direct).toMatchObject({
-      design: nearerDesign,
-      stack: { framework: "FastAPI" },
-      toolchain: { build: null },
-    });
-    expect(await resolveWorkspaceProfile(root, "services/api")).toEqual(direct);
-    expect(resolveWorkspaceProfile(cwd, root, outer)).toEqual(direct);
+
+    const workspace = path.join(root, "services/api");
+    const profiles = [
+      await detectProfile(workspace),
+      await resolveWorkspaceProfile(root, "services/api"),
+      resolveWorkspaceProfile(workspace, root, outer),
+    ];
+    for (const profile of profiles) {
+      expect.soft(profile).toMatchObject({
+        design: nearerDesign,
+        stack: { language: "Python", framework: "Django" },
+        toolchain: { build: null },
+      });
+    }
   });
 
   it("finds the registered workspace under a nearer local design", async () => {

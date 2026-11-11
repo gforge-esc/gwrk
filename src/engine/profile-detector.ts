@@ -498,19 +498,17 @@ function resolveDetectedProfile(
   let nearestConfig:
     | { directory: string; config: WorkspaceRootConfig }
     | undefined;
-  for (const ancestor of ancestorWorkspaceConfigs(
-    start,
-    workspaceRoot?.directory,
-  )) {
+  const ancestors =
+    workspaceRoot?.configuredLookup &&
+    crossesGitWorktreeBoundary(workspaceRoot.directory, start)
+      ? []
+      : ancestorWorkspaceConfigs(start, workspaceRoot?.directory);
+  for (const ancestor of ancestors) {
     nearestConfig ??= ancestor;
     const { directory, config } = ancestor;
-    const matchedWorkspace = matchWorkspacePath(
-      relativeWorkspacePath(directory, start),
-      Object.keys(config?.workspaces ?? {}),
-    );
-    if (!matchedWorkspace) continue;
     const scoped = applyWorkspaceConfig(directory, start, detected, config, {
       requireDesign: true,
+      requireMatch: true,
       configuredLookup: workspaceRoot?.configuredLookup,
       localProject,
     });
@@ -621,6 +619,7 @@ function applyWorkspaceConfig(
   config: WorkspaceRootConfig,
   options?: {
     requireDesign?: boolean;
+    requireMatch?: boolean;
     configuredLookup?: boolean;
     localProject?: WorkspaceProfileConfig;
   },
@@ -638,12 +637,19 @@ function applyWorkspaceConfig(
 
   const relativePath = relativeWorkspacePath(root, workspace);
   const matchedPath = matchWorkspacePath(relativePath, Object.keys(workspaces));
+  const matchedEntry = matchedPath ? workspaces[matchedPath] : undefined;
+  if (!matchedEntry && (options?.requireMatch || options?.configuredLookup)) {
+    return initialDetection.profile;
+  }
   const design = DesignSchema.safeParse(config?.project?.design).data;
-  const entryDesign = matchedPath ? workspaces[matchedPath].design : undefined;
+  const entryDesign = matchedEntry?.design;
   const localProject = options?.localProject;
+  const outsideWorktree =
+    options?.configuredLookup && crossesGitWorktreeBoundary(root, workspace);
   const localDesign =
-    localProject?.design ??
-    (entryDesign ? undefined : findNearestAncestorDesign(workspace, root));
+    outsideWorktree || entryDesign
+      ? undefined
+      : (localProject?.design ?? findNearestAncestorDesign(workspace, root));
   const hasDesign = entryDesign || localDesign || design;
   let detected = initialDetection;
   if (!hasDesign) {
@@ -657,12 +663,7 @@ function applyWorkspaceConfig(
     );
   }
 
-  if (
-    options?.configuredLookup &&
-    crossesGitWorktreeBoundary(root, workspace)
-  ) {
-    return undefined;
-  }
+  if (outsideWorktree) return undefined;
 
   let matchedProject: WorkspaceProfileConfig | undefined;
   if (
@@ -675,7 +676,13 @@ function applyWorkspaceConfig(
     try {
       detected = detectFilesystemProfile(matchedRoot);
     } catch {
-      // Keep the supplied profile when the workspace directory is unavailable.
+      // A configured lookup can resolve a workspace that is absent on disk.
+      if (options?.configuredLookup && matchedEntry) {
+        detected = {
+          profile: configuredWorkspaceProfile(matchedEntry),
+          signals: [],
+        };
+      }
     }
   }
 
@@ -743,6 +750,16 @@ async function detectWorkspaceProfile(
   });
 }
 
+function configuredWorkspaceProfile(
+  config?: WorkspaceProfileConfig,
+): ProjectProfile {
+  return {
+    type: config?.type || "nodejs",
+    stack: config?.stack || {},
+    layout: config?.layout || "flat",
+  };
+}
+
 /**
  * US-002: Resolve the specific profile for a workspace subdirectory.
  * Checks if the current path is within a defined workspace in .gwrkrc.json.
@@ -765,27 +782,18 @@ export function resolveWorkspaceProfile(
   if (config === undefined) {
     return detectWorkspaceProfile(cwd, projectRoot);
   }
-  if (!config.workspaces) return undefined;
-
   const bestMatch = matchWorkspacePath(
     relativeWorkspacePath(projectRoot, cwd),
-    Object.keys(config.workspaces),
+    Object.keys(config?.workspaces ?? {}),
   );
-
-  if (bestMatch) {
-    const wsConfig = config.workspaces[bestMatch];
-    const workspace: ProjectProfile = {
-      type: wsConfig.type || "nodejs",
-      stack: wsConfig.stack || {},
-      layout: wsConfig.layout || "flat",
-    };
-    return resolveDetectedProfile(
-      cwd,
-      { profile: workspace, signals: [] },
-      readLocalProject(cwd),
-      { directory: projectRoot, config, configuredLookup: true },
-    );
-  }
-
-  return undefined;
+  const workspace = configuredWorkspaceProfile(
+    bestMatch ? config.workspaces[bestMatch] : undefined,
+  );
+  const scoped = resolveDetectedProfile(
+    cwd,
+    { profile: workspace, signals: [] },
+    readLocalProject(cwd),
+    { directory: projectRoot, config, configuredLookup: true },
+  );
+  return !bestMatch && scoped === workspace ? undefined : scoped;
 }
