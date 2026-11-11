@@ -65,7 +65,7 @@ export function isConcreteModel(modelId: string): boolean {
     !modelId.includes("\u0000") &&
     modelId === modelId.trim() &&
     Boolean(modelId) &&
-    !/^(auto|default|latest|unknown|opus|sonnet|haiku)$/i.test(modelId)
+    !/(?:^|\/)(?:auto|default|latest|unknown|opus|sonnet|haiku)$/i.test(modelId)
   );
 }
 
@@ -432,6 +432,19 @@ function assertUniqueJsonKeys(record: string): void {
 }
 
 function scanEmbeddedJson(text: string, knownSecrets: readonly string[]): void {
+  if (text.trimStart().startsWith('"')) {
+    let decoded: unknown;
+    try {
+      decoded = JSON.parse(text);
+    } catch {
+      // A quoted log prefix can precede an embedded JSON record.
+    }
+    if (typeof decoded === "string") {
+      assertNoSecretMaterial(decoded, knownSecrets);
+      return;
+    }
+  }
+
   const openings = /[[{]/g;
   for (
     let opening = openings.exec(text);

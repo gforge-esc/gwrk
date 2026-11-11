@@ -245,6 +245,24 @@ describe("credential guard", () => {
     expect(() => assertNoSecretMaterial({ sanitizedOutput })).not.toThrow();
   });
 
+  it("rejects Set-Cookie headers in doubly encoded JSON fixture output", () => {
+    const payload = {
+      headers: [{ name: "Set-Cookie", value: "session=fixture-only" }],
+    };
+    const sanitizedOutput = JSON.stringify(JSON.stringify(payload));
+    expect(() => assertNoSecretMaterial({ sanitizedOutput })).toThrow(
+      /secret material/i,
+    );
+  });
+
+  it("allows Content-Type headers in doubly encoded JSON fixture output", () => {
+    const payload = {
+      headers: [{ name: "Content-Type", value: "application/json" }],
+    };
+    const sanitizedOutput = JSON.stringify(JSON.stringify(payload));
+    expect(() => assertNoSecretMaterial({ sanitizedOutput })).not.toThrow();
+  });
+
   it.each(["rawHeaders", String.raw`raw\u0048eaders`])(
     "rejects duplicate embedded header keys with spelling %s",
     (key) => {
@@ -419,6 +437,16 @@ describe("model qualification policy", () => {
   it.each([
     {
       modelId: "provider-a/model\u0000-v1",
+      concrete: false,
+      expected: { ok: false, reason: "model-alias" },
+    },
+    {
+      modelId: "openai/auto",
+      concrete: false,
+      expected: { ok: false, reason: "model-alias" },
+    },
+    {
+      modelId: "anthropic/default",
       concrete: false,
       expected: { ok: false, reason: "model-alias" },
     },
