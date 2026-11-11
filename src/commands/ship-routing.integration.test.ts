@@ -294,8 +294,12 @@ describe("ship with the real AgentPort router", () => {
   it("previews an installed backend without calling its native quota hook", async () => {
     configureAgents("goose", ["goose"]);
     const goose = provider("goose");
-    const { AgentBackendRegistry } = await import("../plugins/agent-registry.js");
-    vi.mocked(AgentBackendRegistry.prototype.getAgentBackend).mockResolvedValue(goose);
+    const { AgentBackendRegistry } = await import(
+      "../plugins/agent-registry.js"
+    );
+    vi.mocked(AgentBackendRegistry.prototype.getAgentBackend).mockResolvedValue(
+      goose,
+    );
 
     await ship("--dry-run");
 
@@ -306,6 +310,17 @@ describe("ship with the real AgentPort router", () => {
     expect(goose.checkQuota).not.toHaveBeenCalled();
     expect(ShipOrchestrator).not.toHaveBeenCalled();
     expect(await decisions()).toEqual([]);
+
+    await ship();
+
+    expect(goose.checkQuota).toHaveBeenCalledOnce();
+    expect(await decisions()).toMatchObject([
+      {
+        selected_backend: "goose",
+        selected_model: "goose-primary",
+        quota_percent: 100,
+      },
+    ]);
   });
 
   it("falls back to Claude when the higher-quota Codex executable is missing", async () => {
@@ -673,11 +688,12 @@ describe("ship with the real AgentPort router", () => {
     ]);
   });
 
-  it("previews provider default when Antigravity omits the registered model flag", async () => {
+  it("previews and records provider default when Antigravity omits the registered model flag", async () => {
     const registeredModel = "gemini-2.0-flash";
     configureAgents("agy", ["agy"], registeredModel);
     vi.stubEnv("AGY_MODEL", undefined);
     const adapter = new AgyAdapter();
+    vi.spyOn(adapter, "isAvailable").mockResolvedValue(true);
     const { AgentBackendRegistry } = await import(
       "../plugins/agent-registry.js"
     );
@@ -687,18 +703,29 @@ describe("ship with the real AgentPort router", () => {
 
     await ship("--dry-run", "--agent", "agy");
 
-    const { args } = await adapter.dispatch({
-      agent: "agy",
-      model: registeredModel,
-      env: {},
-    });
-    expect(args).not.toContain("--model");
     expect(console.log).toHaveBeenCalledWith(
       expect.stringContaining("backend: agy, model: default, effort: medium"),
     );
     expect(ShipOrchestrator).not.toHaveBeenCalled();
     expect(run).not.toHaveBeenCalled();
     expect(fs.existsSync(dbPath)).toBe(false);
+
+    await ship("--agent", "agy");
+
+    expect(ShipOrchestrator).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({ backend: "agy", selectedModel: registeredModel }),
+      undefined,
+    );
+    const [options] = vi.mocked(ShipOrchestrator).mock.calls[0];
+    const { args } = await adapter.dispatch({
+      agent: options.backend,
+      model: options.selectedModel,
+      env: { GWRK_EFFORT: options.selectedEffort ?? "" },
+    });
+    expect(args).not.toContain("--model");
+    expect(await decisions()).toMatchObject([
+      { selected_backend: "agy", selected_model: "default" },
+    ]);
   });
 
   it("previews and ships the same explicit alternate model during cooldown", async () => {

@@ -69,6 +69,7 @@ export interface RoutingContext {
   historyMode?: RoutingFacts["historyMode"];
   backendEligibility?: "quota" | "installed";
   includeReviewModel?: boolean;
+  resolveDispatchModel?: boolean;
   /** Allow an explicit backend outside the registry to resolve ambient model defaults. */
   useAmbientModelDefaults?: boolean;
   legacyModelDefault?: string;

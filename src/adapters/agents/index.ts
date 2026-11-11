@@ -238,8 +238,10 @@ async function selectAvailableRoute(
         useAdapterModelDefaults && context.useAmbientModelDefaults
           ? process.env
           : undefined;
+      const resolveDispatchModel =
+        context.resolveDispatchModel ?? context.preview;
       const adapterModel =
-        (context.preview || ambientEnv) && backend?.resolveModel
+        (resolveDispatchModel || ambientEnv) && backend?.resolveModel
           ? (backend.resolveModel(
               {
                 model: useAdapterModelDefaults ? undefined : route.model,
@@ -277,22 +279,21 @@ async function selectAvailableRoute(
       };
       const { type, runId, feature, phase, taskSP } = context;
       if (type === "implement" && runId && feature && phase) {
+        const dispatchModel = adapterModel === null ? "default" : adapterModel;
         const adapterDefault =
-          useAdapterModelDefaults && typeof adapterModel === "string"
-            ? adapterModel
-            : undefined;
+          useAdapterModelDefaults && typeof adapterModel === "string";
         try {
           recordDecision({
             runId,
             feature,
             phase,
             selectedBackend: selected.backend,
-            selectedModel: effectiveModel ?? adapterDefault ?? selected.model,
+            selectedModel: effectiveModel ?? dispatchModel ?? selected.model,
             taskClassification: classifyTask(type),
             reason:
               effectiveModel !== undefined
                 ? "legacy model default"
-                : adapterDefault !== undefined
+                : adapterDefault
                   ? "adapter model default"
                   : selected.reason,
             quotaPercent: selected.quotaPercent,

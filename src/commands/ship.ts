@@ -800,6 +800,7 @@ Examples:
           const implementationRoute = {
             type: "implement" as const,
             explicitBackend,
+            resolveDispatchModel: !opts.legacy,
             useAmbientModelDefaults:
               !opts.legacy && explicitBackend !== undefined,
             legacyModelDefault:

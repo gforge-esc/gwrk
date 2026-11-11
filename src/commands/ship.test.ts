@@ -566,6 +566,7 @@ describe("AgentPort routing", () => {
             type: "implement",
             explicitBackend,
             preview: true,
+            resolveDispatchModel: true,
             useAmbientModelDefaults: explicitBackend !== undefined,
           }),
         );
@@ -602,6 +603,7 @@ describe("AgentPort routing", () => {
         expect.objectContaining({
           type: "implement",
           explicitBackend,
+          resolveDispatchModel: true,
           useAmbientModelDefaults: explicitBackend !== undefined,
           requireRegistry: explicitBackend === undefined,
           historyMode: explicitBackend === undefined ? "quota-tiebreak" : undefined,
