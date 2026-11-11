@@ -14,6 +14,7 @@ import { closeDb, getDb } from "../../src/db/index.js";
 import { HarvestWatcher } from "../../src/server/harvest-watcher.js";
 import { startServer } from "../../src/server/index.js";
 import { SandboxManager } from "../../src/server/sandbox.js";
+import { notifyTelegram } from "../../src/server/telegram-notify.js";
 import { GwrkConfigSchema } from "../../src/utils/config.js";
 
 describe.skipIf(process.platform !== "linux")("Linux instance lock", () => {
@@ -132,6 +133,22 @@ describe.skipIf(process.platform !== "linux")("Linux instance lock", () => {
       prune.mockRestore();
       vi.unstubAllEnvs();
       await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("suppresses hosted Telegram delivery even when credentials are present", async () => {
+    vi.stubEnv("GWRK_RUNTIME_DIR", "/run/gwrk-test");
+    vi.stubEnv("TELEGRAM_BOT_TOKEN", "fixture-token");
+    vi.stubEnv("TELEGRAM_CHAT_ID", "fixture-chat");
+    const transport = vi
+      .spyOn(globalThis, "fetch")
+      .mockRejectedValue(new Error("Unexpected network call"));
+    try {
+      await expect(notifyTelegram({ text: "fixture" })).resolves.toBe(false);
+      expect(transport).not.toHaveBeenCalled();
+    } finally {
+      transport.mockRestore();
+      vi.unstubAllEnvs();
     }
   });
 });
