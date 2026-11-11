@@ -1,0 +1,246 @@
+{
+  "featureId": "050-linux-runner-deploy-packaging",
+  "createdAt": "2026-11-11T17:30:04.520Z",
+  "generatedFrom": {
+    "plan": {
+      "hash": "61a87b359b8201cfd5e51119764b626ccb274cbc30adc1d2d0a1a67bb0850549",
+      "modifiedAt": "2026-11-11T17:17:22.552Z"
+    }
+  },
+  "phases": [
+    {
+      "id": "phase-01",
+      "title": "Release and rollback domain policy",
+      "tasks": [
+        {
+          "id": "T001",
+          "title": "Create release-packaging.ts",
+          "description": "NEW src/domain/release-packaging.ts. Validate release manifests and check layout separation plus rollback migration compatibility. Tests: src/domain/release-packaging.test.ts",
+          "status": "open",
+          "gateScript": "pnpm run build\npnpm exec vitest run src/domain/release-packaging.test.ts src/architecture.test.ts",
+          "sp": 2
+        }
+      ],
+      "sp_estimate": 2,
+      "testTargets": [
+        "src/domain/release-packaging.test.ts",
+        "src/domain/release-packaging.test.ts",
+        "src/domain/release-packaging.test.ts"
+      ]
+    },
+    {
+      "id": "phase-02",
+      "title": "Versioned Linux release installer",
+      "tasks": [
+        {
+          "id": "T002",
+          "title": "Modify package.json",
+          "description": "MODIFY package.json. Allowlist the Linux deployment bundle",
+          "status": "open",
+          "gateScript": "pnpm run build\npnpm exec vitest run tests/linux-runner/release-packaging.test.ts",
+          "sp": 1
+        },
+        {
+          "id": "T003",
+          "title": "Create build-linux-release.mjs",
+          "description": "NEW scripts/release/build-linux-release.mjs. Build from the pinned commit, add the lockfile to the npm archive and emit the manifest and digest",
+          "status": "open",
+          "gateScript": "pnpm run build\npnpm exec vitest run tests/linux-runner/release-packaging.test.ts",
+          "sp": 2
+        },
+        {
+          "id": "T004",
+          "title": "Create install-release.sh",
+          "description": "NEW deploy/linux-runner/install-release.sh. Verify digest and Node runtime plus native SQLite load before switching `current`",
+          "status": "open",
+          "gateScript": "pnpm run build\npnpm exec vitest run tests/linux-runner/release-packaging.test.ts",
+          "sp": 2
+        },
+        {
+          "id": "T005",
+          "title": "Modify release.yml",
+          "description": "MODIFY .github/workflows/release.yml. Build and upload `release-manifest.json` and SHA-256 digest with each release. Tests: tests/linux-runner/release-packaging.test.ts",
+          "status": "open",
+          "gateScript": "pnpm run build\npnpm exec vitest run tests/linux-runner/release-packaging.test.ts",
+          "sp": 1
+        }
+      ],
+      "sp_estimate": 6,
+      "testTargets": [
+        "tests/linux-runner/release-packaging.test.ts",
+        "tests/linux-runner/release-packaging.test.ts"
+      ]
+    },
+    {
+      "id": "phase-03",
+      "title": "Single-instance server and state isolation",
+      "tasks": [
+        {
+          "id": "T006",
+          "title": "Create release-ops-port.ts",
+          "description": "NEW src/ports/release-ops-port.ts. Declare the instance lock boundary",
+          "status": "open",
+          "gateScript": "pnpm run build\npnpm exec vitest run tests/linux-runner/single-instance-recovery.test.ts src/architecture.test.ts",
+          "sp": 2
+        },
+        {
+          "id": "T007",
+          "title": "Create instance-lock.ts",
+          "description": "NEW src/adapters/server/instance-lock.ts. Hold a Linux instance lock for the server lifetime",
+          "status": "open",
+          "gateScript": "pnpm run build\npnpm exec vitest run tests/linux-runner/single-instance-recovery.test.ts src/architecture.test.ts",
+          "sp": 2
+        },
+        {
+          "id": "T008",
+          "title": "Modify pid.ts",
+          "description": "MODIFY src/server/pid.ts. Resolve `GWRK_RUNTIME_DIR` and `GWRK_HOME` paths and expose single-instance lock helpers",
+          "status": "open",
+          "gateScript": "pnpm run build\npnpm exec vitest run tests/linux-runner/single-instance-recovery.test.ts src/architecture.test.ts",
+          "sp": 1
+        },
+        {
+          "id": "T009",
+          "title": "Modify index.ts",
+          "description": "MODIFY src/db/index.ts. Resolve default database directory from `GWRK_DIR` or `GWRK_HOME` before `~/.gwrk`",
+          "status": "open",
+          "gateScript": "pnpm run build\npnpm exec vitest run tests/linux-runner/single-instance-recovery.test.ts src/architecture.test.ts",
+          "sp": 1
+        },
+        {
+          "id": "T010",
+          "title": "Modify loader.ts",
+          "description": "MODIFY src/plugins/loader.ts. Resolve global plugin and config paths from `GWRK_HOME` before `~/.gwrk`",
+          "status": "open",
+          "gateScript": "pnpm run build\npnpm exec vitest run tests/linux-runner/single-instance-recovery.test.ts src/architecture.test.ts",
+          "sp": 1
+        },
+        {
+          "id": "T011",
+          "title": "Modify index.ts",
+          "description": "MODIFY src/server/index.ts. Claim exclusive instance lock before binding HTTP or starting `DispatchQueue` and Slack",
+          "status": "open",
+          "gateScript": "pnpm run build\npnpm exec vitest run tests/linux-runner/single-instance-recovery.test.ts src/architecture.test.ts",
+          "sp": 1
+        },
+        {
+          "id": "T012",
+          "title": "Modify server.ts",
+          "description": "MODIFY src/commands/server.ts. Honor `GWRK_RUNTIME_DIR` and `GWRK_HOME` for daemon logs and stop cleanup",
+          "status": "open",
+          "gateScript": "pnpm run build\npnpm exec vitest run tests/linux-runner/single-instance-recovery.test.ts src/architecture.test.ts",
+          "sp": 1
+        }
+      ],
+      "sp_estimate": 9,
+      "testTargets": [
+        "tests/linux-runner/single-instance-recovery.test.ts",
+        "tests/linux-runner/single-instance-recovery.test.ts"
+      ]
+    },
+    {
+      "id": "phase-04",
+      "title": "Ledger backup and rollback guard",
+      "tasks": [
+        {
+          "id": "T013",
+          "title": "Create ledger-backup.ts",
+          "description": "NEW src/adapters/sqlite/ledger-backup.ts. Snapshot Write-Ahead Logging SQLite state via Online Backup API with repository metadata",
+          "status": "open",
+          "gateScript": "pnpm run build\npnpm exec vitest run tests/linux-runner/backup-restore-rollback.test.ts src/architecture.test.ts",
+          "sp": 2
+        },
+        {
+          "id": "T014",
+          "title": "Create backup-restore.ts",
+          "description": "NEW src/application/release/backup-restore.ts. Orchestrate consistent backup creation and clean-instance restore checks plus rollback gating. Tests: tests/linux-runner/backup-restore-rollback.test.ts",
+          "status": "open",
+          "gateScript": "pnpm run build\npnpm exec vitest run tests/linux-runner/backup-restore-rollback.test.ts src/architecture.test.ts",
+          "sp": 2
+        },
+        {
+          "id": "T015",
+          "title": "Modify db.ts",
+          "description": "MODIFY src/commands/db.ts. Register `gwrk db backup` and `gwrk db restore` with JSON output and navigation errors",
+          "status": "open",
+          "gateScript": "pnpm run build\npnpm exec vitest run tests/linux-runner/backup-restore-rollback.test.ts src/architecture.test.ts",
+          "sp": 1
+        },
+        {
+          "id": "T016",
+          "title": "Create rollback-release.sh",
+          "description": "NEW deploy/linux-runner/rollback-release.sh. Check persistent `_migrations` against target `release-manifest.json` before switching `current`",
+          "status": "open",
+          "gateScript": "pnpm run build\npnpm exec vitest run tests/linux-runner/backup-restore-rollback.test.ts src/architecture.test.ts",
+          "sp": 2
+        }
+      ],
+      "sp_estimate": 7,
+      "testTargets": [
+        "tests/linux-runner/backup-restore-rollback.test.ts",
+        "tests/linux-runner/backup-restore-rollback.test.ts"
+      ]
+    },
+    {
+      "id": "phase-05",
+      "title": "Linux supervision and container proof",
+      "tasks": [
+        {
+          "id": "T017",
+          "title": "Create gwrk-runner.service",
+          "description": "NEW deploy/linux-runner/gwrk-runner.service. Run foreground server as `gwrk:gwrk` on a private bind with separated state and secrets",
+          "status": "open",
+          "gateScript": "pnpm run build\npnpm exec vitest run tests/linux-runner/bundle-and-live-record.test.ts\nnode tests/linux-runner/container-harness.mjs",
+          "sp": 2
+        },
+        {
+          "id": "T018",
+          "title": "Create .env.example",
+          "description": "NEW deploy/linux-runner/.env.example. Name non-secret Linux paths and private bind address plus pilot repo and agent backend",
+          "status": "open",
+          "gateScript": "pnpm run build\npnpm exec vitest run tests/linux-runner/bundle-and-live-record.test.ts\nnode tests/linux-runner/container-harness.mjs",
+          "sp": 2
+        },
+        {
+          "id": "T019",
+          "title": "Create preflight.sh",
+          "description": "NEW deploy/linux-runner/preflight.sh. Verify Linux service user and secret modes plus unattended Git and headless agent probes",
+          "status": "open",
+          "gateScript": "pnpm run build\npnpm exec vitest run tests/linux-runner/bundle-and-live-record.test.ts\nnode tests/linux-runner/container-harness.mjs",
+          "sp": 2
+        },
+        {
+          "id": "T020",
+          "title": "Create README.md",
+          "description": "NEW deploy/linux-runner/README.md. Document gateway boundary and secret supply plus credential revocation and rollback",
+          "status": "open",
+          "gateScript": "pnpm run build\npnpm exec vitest run tests/linux-runner/bundle-and-live-record.test.ts\nnode tests/linux-runner/container-harness.mjs",
+          "sp": 2
+        },
+        {
+          "id": "T021",
+          "title": "Create live-pilot-record.example.md",
+          "description": "NEW deploy/linux-runner/live-pilot-record.example.md. Provide separate pending record for live host and credentials plus observed worker run",
+          "status": "open",
+          "gateScript": "pnpm run build\npnpm exec vitest run tests/linux-runner/bundle-and-live-record.test.ts\nnode tests/linux-runner/container-harness.mjs",
+          "sp": 2
+        },
+        {
+          "id": "T022",
+          "title": "Create container-harness.mjs",
+          "description": "NEW tests/linux-runner/container-harness.mjs. Run clean Linux containers without source checkout to test install and restart plus restore and rollback",
+          "status": "open",
+          "gateScript": "pnpm run build\npnpm exec vitest run tests/linux-runner/bundle-and-live-record.test.ts\nnode tests/linux-runner/container-harness.mjs",
+          "sp": 2
+        }
+      ],
+      "sp_estimate": 12,
+      "testTargets": [
+        "tests/linux-runner/container-harness.mjs",
+        "tests/linux-runner/container-harness.mjs",
+        "tests/linux-runner/bundle-and-live-record.test.ts",
+        "tests/linux-runner/bundle-and-live-record.test.ts"
+      ]
+    }
+  ]
+}
