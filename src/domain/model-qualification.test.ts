@@ -263,6 +263,33 @@ describe("credential guard", () => {
     expect(() => assertNoSecretMaterial({ sanitizedOutput })).not.toThrow();
   });
 
+  describe.each([
+    ["a log prefix", (wrapped: string) => `fixture stdout: ${wrapped}`],
+    ["a log suffix", (wrapped: string) => `${wrapped} fixture complete`],
+  ] as const)("doubly encoded JSON fixture output with %s", (_label, wrap) => {
+    it("rejects Set-Cookie headers", () => {
+      const wrapped = JSON.stringify(
+        JSON.stringify({
+          headers: [{ name: "Set-Cookie", value: "session=fixture-only" }],
+        }),
+      );
+      expect(() =>
+        assertNoSecretMaterial({ sanitizedOutput: wrap(wrapped) }),
+      ).toThrow(/secret material/i);
+    });
+
+    it("allows Content-Type headers", () => {
+      const wrapped = JSON.stringify(
+        JSON.stringify({
+          headers: [{ name: "Content-Type", value: "text/plain" }],
+        }),
+      );
+      expect(() =>
+        assertNoSecretMaterial({ sanitizedOutput: wrap(wrapped) }),
+      ).not.toThrow();
+    });
+  });
+
   it.each(["rawHeaders", String.raw`raw\u0048eaders`])(
     "rejects duplicate embedded header keys with spelling %s",
     (key) => {

@@ -388,14 +388,17 @@ function isNamedCredentialHeader(entry: unknown): boolean {
   );
 }
 
-function findJsonRecordEnd(text: string, start: number): number | undefined {
-  const closers = [text[start] === "{" ? "}" : "]"];
-  let inString = false;
+function findJsonTokenEnd(text: string, start: number): number | undefined {
+  let inString = text[start] === '"';
+  const closers = inString ? [] : [text[start] === "{" ? "}" : "]"];
   for (let index = start + 1; index < text.length; index += 1) {
     const char = text[index];
     if (inString) {
       if (char === "\\") index += 1;
-      else if (char === '"') inString = false;
+      else if (char === '"') {
+        if (closers.length === 0) return index + 1;
+        inString = false;
+      }
     } else if (char === '"') {
       inString = true;
     } else if (char === "{" || char === "[") {
@@ -432,35 +435,22 @@ function assertUniqueJsonKeys(record: string): void {
 }
 
 function scanEmbeddedJson(text: string, knownSecrets: readonly string[]): void {
-  if (text.trimStart().startsWith('"')) {
-    let decoded: unknown;
-    try {
-      decoded = JSON.parse(text);
-    } catch {
-      // A quoted log prefix can precede an embedded JSON record.
-    }
-    if (typeof decoded === "string") {
-      assertNoSecretMaterial(decoded, knownSecrets);
-      return;
-    }
-  }
-
-  const openings = /[[{]/g;
+  const openings = /["[{]/g;
   for (
     let opening = openings.exec(text);
     opening !== null;
     opening = openings.exec(text)
   ) {
-    const end = findJsonRecordEnd(text, opening.index);
+    const end = findJsonTokenEnd(text, opening.index);
     if (end === undefined) continue;
-    const record = text.slice(opening.index, end);
+    const token = text.slice(opening.index, end);
     let decoded: unknown;
     try {
-      decoded = JSON.parse(record);
+      decoded = JSON.parse(token);
     } catch {
       continue;
     }
-    assertUniqueJsonKeys(record);
+    if (typeof decoded !== "string") assertUniqueJsonKeys(token);
     assertNoSecretMaterial(decoded, knownSecrets);
     openings.lastIndex = end;
   }
