@@ -197,7 +197,7 @@
           "title": "Create gwrk-runner.service",
           "description": "NEW deploy/linux-runner/gwrk-runner.service. Run foreground server as `gwrk:gwrk` on a private bind with separated state and secrets",
           "status": "open",
-          "gateScript": "pnpm run build\npnpm exec vitest run tests/linux-runner/bundle-and-live-record.test.ts\nnode tests/linux-runner/container-harness.mjs",
+          "gateScript": "gates/phase-05.sh",
           "sp": 2
         },
         {
@@ -205,7 +205,7 @@
           "title": "Create .env.example",
           "description": "NEW deploy/linux-runner/.env.example. Name non-secret Linux paths and private bind address plus pilot repo and agent backend",
           "status": "open",
-          "gateScript": "pnpm run build\npnpm exec vitest run tests/linux-runner/bundle-and-live-record.test.ts\nnode tests/linux-runner/container-harness.mjs",
+          "gateScript": "gates/phase-05.sh",
           "sp": 2
         },
         {
@@ -213,7 +213,7 @@
           "title": "Create preflight.sh",
           "description": "NEW deploy/linux-runner/preflight.sh. Verify Linux service user and secret modes plus unattended Git and headless agent probes",
           "status": "open",
-          "gateScript": "pnpm run build\npnpm exec vitest run tests/linux-runner/bundle-and-live-record.test.ts\nnode tests/linux-runner/container-harness.mjs",
+          "gateScript": "gates/phase-05.sh",
           "sp": 2
         },
         {
@@ -221,7 +221,7 @@
           "title": "Create README.md",
           "description": "NEW deploy/linux-runner/README.md. Document gateway boundary and secret supply plus credential revocation and rollback",
           "status": "open",
-          "gateScript": "pnpm run build\npnpm exec vitest run tests/linux-runner/bundle-and-live-record.test.ts\nnode tests/linux-runner/container-harness.mjs",
+          "gateScript": "gates/phase-05.sh",
           "sp": 2
         },
         {
@@ -229,7 +229,7 @@
           "title": "Create live-pilot-record.example.md",
           "description": "NEW deploy/linux-runner/live-pilot-record.example.md. Provide separate pending record for live host and credentials plus observed worker run",
           "status": "open",
-          "gateScript": "pnpm run build\npnpm exec vitest run tests/linux-runner/bundle-and-live-record.test.ts\nnode tests/linux-runner/container-harness.mjs",
+          "gateScript": "gates/phase-05.sh",
           "sp": 2
         },
         {
@@ -237,7 +237,7 @@
           "title": "Create container-harness.mjs",
           "description": "NEW tests/linux-runner/container-harness.mjs. Run clean Linux containers without source checkout to test install and restart plus restore and rollback",
           "status": "open",
-          "gateScript": "pnpm run build\npnpm exec vitest run tests/linux-runner/bundle-and-live-record.test.ts\nnode tests/linux-runner/container-harness.mjs",
+          "gateScript": "node tests/linux-runner/container-harness.mjs",
           "sp": 2
         }
       ],

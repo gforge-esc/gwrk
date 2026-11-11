@@ -134,4 +134,39 @@ runuser -u gwrk -- node "$release/dist/cli.js" db restore --from /var/lib/gwrk/b
 cmp /var/lib/gwrk/backup/gwrk.db /var/lib/gwrk/restored/gwrk.db
 node -e 'const assert=require("node:assert/strict"); assert.deepEqual(require("/var/lib/gwrk/backup/backup-manifest.json").summary.completedRunIds,[42]);'
 
-printf 'Verified release install, credential revocation, duplicate start, process restart and clean restore.\n'
+prior=/opt/gwrk/releases/1.0.0-fixture
+active=$(realpath /opt/gwrk/current)
+mkdir "$prior"
+cp -R "$active/dist" "$active/package.json" "$active/pnpm-lock.yaml" "$active/release-manifest.json" "$prior/"
+ln -s "$active/node_modules" "$prior/node_modules"
+ln -s releases/1.0.0-fixture /opt/gwrk/previous
+node -e 'const fs=require("node:fs"); const p=process.argv[1]; fs.writeFileSync(p,JSON.stringify({...require(p),version:"1.0.0-fixture"}))' "$prior/package.json"
+
+cat > /fixture-bin/systemctl <<'SCRIPT'
+#!/usr/bin/env bash
+printf '%s\n' "$1" >> /tmp/supervisor.calls
+SCRIPT
+chmod 0755 /fixture-bin/systemctl
+write_prior_manifest() {
+  node --input-type=module - "$prior" <<'NODE'
+import { readFile, writeFile } from "node:fs/promises";
+import { join } from "node:path";
+import { readReleaseInventory } from "/opt/gwrk/current/dist/adapters/release/inventory.js";
+const root = process.argv[2];
+const path = join(root, "release-manifest.json");
+const manifest = JSON.parse(await readFile(path, "utf8"));
+await writeFile(path, JSON.stringify({ ...manifest, version: "1.0.0-fixture", ...await readReleaseInventory(root) }));
+NODE
+}
+printf 'SELECT 1;\n' > "$prior/dist/db/migrations/999-fixture.sql"
+write_prior_manifest
+rollback="$active/deploy/linux-runner/rollback-release.sh"
+expect_rejection '999-fixture.sql' bash "$rollback" /opt/gwrk /var/lib/gwrk
+test ! -e /tmp/supervisor.calls
+test "$(realpath /opt/gwrk/current)" = "$active"
+rm "$prior/dist/db/migrations/999-fixture.sql"
+write_prior_manifest
+bash "$rollback" /opt/gwrk /var/lib/gwrk
+test "$(realpath /opt/gwrk/current)" = "$prior"
+node -e 'const assert=require("node:assert/strict"); const fs=require("node:fs"); const root="/var/lib/gwrk/backups/"; const [dir]=fs.readdirSync(root); assert.deepEqual(require(root+dir+"/backup-manifest.json").summary.completedRunIds,[42]);'
+printf 'Verified install, credential revocation, process restart, clean restore and guarded rollback.\n'
