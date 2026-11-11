@@ -128,17 +128,19 @@
           "id": "T010",
           "title": "Create README.md",
           "description": "NEW deploy/hosted-auth-proof/README.md. Describe deployment, acceptance, allowlist revocation and teardown",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T010-gate.sh",
-          "sp": 2
+          "sp": 2,
+          "completedAt": "2026-11-11T17:18:50.548Z"
         },
         {
           "id": "T011",
           "title": "Create live-acceptance.example.md",
           "description": "NEW deploy/hosted-auth-proof/live-acceptance.example.md. Record the proof host and acceptance evidence",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T011-gate.sh",
-          "sp": 2
+          "sp": 2,
+          "completedAt": "2026-11-11T17:18:51.765Z"
         }
       ],
       "sp_estimate": 4,
