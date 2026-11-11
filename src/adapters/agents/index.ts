@@ -225,18 +225,19 @@ async function selectAvailableRoute(
         context.explicitBackend !== undefined &&
         context.explicitModel === undefined &&
         !agentRegistry?.backends[route.backend];
-      const modelEnv = useAdapterModelDefaults
-        ? context.adapterModelEnv
-        : undefined;
+      const ambientEnv =
+        useAdapterModelDefaults && context.useAmbientModelDefaults
+          ? process.env
+          : undefined;
       const adapterModel =
-        (context.preview || modelEnv) && backend?.resolveModel
-          ? (backend.resolveModel({
-              model: useAdapterModelDefaults ? undefined : route.model,
-              env: {
-                ...modelEnv,
-                ...(route.effort && { GWRK_EFFORT: route.effort }),
+        (context.preview || ambientEnv) && backend?.resolveModel
+          ? (backend.resolveModel(
+              {
+                model: useAdapterModelDefaults ? undefined : route.model,
+                env: route.effort ? { GWRK_EFFORT: route.effort } : {},
               },
-            }) ?? null)
+              ambientEnv,
+            ) ?? null)
           : undefined;
       const selection = {
         ...route,
@@ -266,15 +267,22 @@ async function selectAvailableRoute(
       };
       const { type, runId, feature, phase, taskSP } = context;
       if (type === "implement" && runId && feature && phase) {
+        const adapterDefault =
+          useAdapterModelDefaults && typeof adapterModel === "string"
+            ? adapterModel
+            : undefined;
         try {
           recordDecision({
             runId,
             feature,
             phase,
             selectedBackend: selected.backend,
-            selectedModel: selected.model,
+            selectedModel: adapterDefault ?? selected.model,
             taskClassification: classifyTask(type),
-            reason: selected.reason,
+            reason:
+              adapterDefault !== undefined
+                ? "adapter model default"
+                : selected.reason,
             quotaPercent: selected.quotaPercent,
             probeStatus: readings[selected.backend]?.status ?? "available",
             taskSp: taskSP,

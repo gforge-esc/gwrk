@@ -798,16 +798,12 @@ Examples:
 
           const agentPort = createAgentPortAdapter({ projectRoot: cwd });
           const explicitBackend = opts.agent as string | undefined;
-          const codexModel = process.env.CODEX_MODEL;
           const routeContext = { feature, language: "typescript", taskSP: 1 };
           const implementationRoute = {
             type: "implement" as const,
             explicitBackend,
-            ...(!opts.legacy &&
-              explicitBackend !== undefined &&
-              codexModel !== undefined && {
-                adapterModelEnv: { CODEX_MODEL: codexModel },
-              }),
+            useAmbientModelDefaults:
+              !opts.legacy && explicitBackend !== undefined,
             requireRegistry: explicitBackend === undefined,
             historyMode:
               explicitBackend === undefined

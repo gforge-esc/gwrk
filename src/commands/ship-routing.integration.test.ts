@@ -476,23 +476,28 @@ describe("ship with the real AgentPort router", () => {
     expect(ShipOrchestrator).not.toHaveBeenCalled();
     expect(run).not.toHaveBeenCalled();
     expect(fs.existsSync(dbPath)).toBe(false);
-    expect(resolveModel).toHaveBeenCalledExactlyOnceWith({
-      model: undefined,
-      env: { CODEX_MODEL: "environment-model" },
-    });
-    resolveModel.mockClear();
+    expect(resolveModel).toHaveBeenCalledTimes(1);
 
     await ship("--agent", "codex");
 
-    expect(resolveModel).toHaveBeenCalledExactlyOnceWith({
-      model: undefined,
-      env: { CODEX_MODEL: "environment-model" },
-    });
     expect(ShipOrchestrator).toHaveBeenCalledExactlyOnceWith(
       expect.objectContaining({ backend: "codex" }),
       undefined,
     );
     const [options] = vi.mocked(ShipOrchestrator).mock.calls[0];
+    expect(await decisions()).toMatchObject([
+      {
+        selected_backend: options.backend,
+        selected_model: options.selectedModel,
+        reason: "adapter model default",
+      },
+    ]);
+    expect(resolveModel).toHaveBeenCalledTimes(2);
+    for (const [task, ambientEnv] of resolveModel.mock.calls) {
+      expect(task.model).toBeUndefined();
+      expect(task.env?.CODEX_MODEL).toBeUndefined();
+      expect(ambientEnv?.CODEX_MODEL).toBe("environment-model");
+    }
     const implementation = await adapter.dispatch({
       agent: options.backend,
       model: options.selectedModel,

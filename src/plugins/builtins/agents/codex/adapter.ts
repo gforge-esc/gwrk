@@ -80,8 +80,12 @@ export class CodexAdapter implements AgentBackend {
     }
   }
 
-  resolveModel(task: Pick<TaskDispatch, "model" | "env">): string | undefined {
-    const model = task.model || task.env?.CODEX_MODEL;
+  resolveModel(
+    task: Pick<TaskDispatch, "model" | "env">,
+    ambientEnv?: Readonly<NodeJS.ProcessEnv>,
+  ): string | undefined {
+    const model =
+      task.model || (task.env?.CODEX_MODEL ?? ambientEnv?.CODEX_MODEL);
     return model && model !== "default" ? model : undefined;
   }
 

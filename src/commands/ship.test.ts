@@ -562,7 +562,12 @@ describe("AgentPort routing", () => {
           projectRoot: process.cwd(),
         });
         expect(selectRoute).toHaveBeenCalledExactlyOnceWith(
-          expect.objectContaining({ type: "implement", explicitBackend, preview: true }),
+          expect.objectContaining({
+            type: "implement",
+            explicitBackend,
+            preview: true,
+            useAmbientModelDefaults: explicitBackend !== undefined,
+          }),
         );
         expect(consoleSpy).toHaveBeenCalledWith(
           expect.stringContaining(
@@ -597,6 +602,7 @@ describe("AgentPort routing", () => {
         expect.objectContaining({
           type: "implement",
           explicitBackend,
+          useAmbientModelDefaults: explicitBackend !== undefined,
           requireRegistry: explicitBackend === undefined,
           historyMode: explicitBackend === undefined ? "quota-tiebreak" : undefined,
           backendEligibility: explicitBackend === undefined ? undefined : "installed",
