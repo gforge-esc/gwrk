@@ -424,8 +424,9 @@ export async function harvestFeature(
  * (FR-H07)
  */
 export async function notifyDoneDone(report: CompressionReport): Promise<void> {
-  const { MessageBuilder } = await import("../server/slack-messages.js");
-  const { notifySlack } = await import("../server/slack-notify.js");
+  const { MessageBuilder, notifySlack } = await import(
+    "../adapters/notifications/index.js"
+  );
   const message = MessageBuilder.doneDone(report.featureId, report);
   await notifySlack(message, undefined, { opsOnly: true });
 }

@@ -3,3 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 export * from "../domain/toolchain.js";
+export {
+  discoverToolchainManifests,
+  getBuildCommand,
+} from "../adapters/toolchain/manifest-discovery.js";
