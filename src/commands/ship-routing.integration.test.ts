@@ -2,7 +2,6 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -435,13 +434,22 @@ describe("ship with the real AgentPort router", () => {
         expect(() => process.kill(childPid, 0)).toThrow(
           expect.objectContaining({ code: "ESRCH" }),
         );
-        const state = spawnSync("ps", ["-o", "stat=", "-p", String(descendantPid)], {
-          encoding: "utf8",
-        }).stdout.trim();
-        // A container init can leave a terminated child as a zombie.
-        expect(state).toMatch(/^(?:Z.*)?$/);
+        try {
+          process.kill(descendantPid, 0);
+          if (process.platform === "linux") {
+            // Container init may leave an exited descendant as a zombie.
+            expect(fs.readFileSync(`/proc/${descendantPid}/stat`, "utf8")).toMatch(
+              /\) Z /,
+            );
+          } else {
+            throw new Error(`Probe descendant ${descendantPid} is still running`);
+          }
+        } catch (error) {
+          const { code } = error as NodeJS.ErrnoException;
+          if (code !== "ESRCH" && code !== "ENOENT") throw error;
+        }
       });
-    } finally {
+    } catch (failure) {
       for (const file of [pidFile, descendantFile]) {
         if (!fs.existsSync(file)) continue;
         const pid = Number(fs.readFileSync(file, "utf8"));
@@ -452,6 +460,7 @@ describe("ship with the real AgentPort router", () => {
           if ((error as NodeJS.ErrnoException).code !== "ESRCH") throw error;
         }
       }
+      throw failure;
     }
   }, 10_000);
 
