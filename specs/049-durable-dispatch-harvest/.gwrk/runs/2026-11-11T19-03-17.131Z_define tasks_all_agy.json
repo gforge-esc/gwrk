@@ -1,0 +1,19 @@
+{
+  "runId": "2026-11-11T19:03:17.131Z_define_all",
+  "feature": "049-durable-dispatch-harvest",
+  "phase": "all",
+  "command": "define tasks",
+  "agent": "agy",
+  "model": "unknown",
+  "startedAt": "2026-11-11T19:03:17.131Z",
+  "finishedAt": "2026-11-11T19:03:17.435Z",
+  "durationS": 0,
+  "exitCode": 0,
+  "attempt": 1,
+  "filesChanged": 1,
+  "linesAdded": 384,
+  "linesDeleted": 0,
+  "gitCommit": "48214c72a3c8de150916844e9806e3a11b621b7c",
+  "gitBranch": "codex/durable-dispatch-harvest-plan",
+  "digest": []
+}
