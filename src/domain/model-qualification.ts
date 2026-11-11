@@ -373,29 +373,55 @@ const secretPattern =
 const headerPattern = /\b(?:authorization|set-cookie|cookie)[ \t]*:/i;
 const credentialHeaderNamePattern = /^(?:authorization|cookie|set-cookie)$/i;
 const flatHeadersKeyPattern = /^(?:raw)?headers$/i;
-const fencedJsonPattern =
-  /^[ \t]*((`|~)\2{2,})[ \t]*(?:json)?[ \t]*\r?\n([\s\S]*?)^[ \t]*\1\2*[ \t]*\r?$/gim;
 
 function isCredentialHeaderName(value: unknown): boolean {
   return typeof value === "string" && credentialHeaderNamePattern.test(value);
+}
+
+function findJsonRecordEnd(text: string, start: number): number | undefined {
+  const closers = [text[start] === "{" ? "}" : "]"];
+  let inString = false;
+  for (let index = start + 1; index < text.length; index += 1) {
+    const char = text[index];
+    if (inString) {
+      if (char === "\\") index += 1;
+      else if (char === '"') inString = false;
+    } else if (char === '"') {
+      inString = true;
+    } else if (char === "{" || char === "[") {
+      closers.push(char === "{" ? "}" : "]");
+    } else if (char === "}" || char === "]") {
+      if (char !== closers.pop()) return undefined;
+      if (closers.length === 0) return index + 1;
+    }
+  }
+  return undefined;
+}
+
+function scanEmbeddedJson(text: string, knownSecrets: readonly string[]): void {
+  const openings = /[[{]/g;
+  for (
+    let opening = openings.exec(text);
+    opening !== null;
+    opening = openings.exec(text)
+  ) {
+    const end = findJsonRecordEnd(text, opening.index);
+    if (end === undefined) continue;
+    let decoded: unknown;
+    try {
+      decoded = JSON.parse(text.slice(opening.index, end));
+    } catch {
+      continue;
+    }
+    assertNoSecretMaterial(decoded, knownSecrets);
+    openings.lastIndex = end;
+  }
 }
 
 export function assertNoSecretMaterial(
   value: unknown,
   knownSecrets: readonly string[] = [],
 ): void {
-  const scanJson = (text: string) => {
-    const json = text.trimStart();
-    if (!json.startsWith("{") && !json.startsWith("[")) return;
-    let decoded: unknown;
-    try {
-      decoded = JSON.parse(json);
-    } catch {
-      return;
-    }
-    assertNoSecretMaterial(decoded, knownSecrets);
-  };
-
   let secretInText = false;
   const serialized =
     JSON.stringify(value, (key, entry: unknown) => {
@@ -414,10 +440,7 @@ export function assertNoSecretMaterial(
       ) {
         secretInText = true;
       } else if (typeof entry === "string") {
-        scanJson(entry);
-        for (const [, , , json] of entry.matchAll(fencedJsonPattern)) {
-          scanJson(json);
-        }
+        scanEmbeddedJson(entry, knownSecrets);
       }
       return entry;
     }) ?? "";

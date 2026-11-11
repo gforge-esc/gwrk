@@ -214,6 +214,54 @@ describe("credential guard", () => {
 
     expect(() => assertNoSecretMaterial({ sanitizedOutput })).not.toThrow();
   });
+
+  describe.each([
+    ["a log prefix", (record: string) => `response: ${record}`],
+    [
+      "a preceding JSON record",
+      (record: string) => `{"type":"start"}\n${record}`,
+    ],
+    [
+      "a fence with an info string",
+      (record: string) =>
+        ['```json title="response"', record, "```"].join("\n"),
+    ],
+  ] as const)("JSON fixture output with %s", (_label, wrap) => {
+    it("rejects a Set-Cookie header in the embedded record", () => {
+      const record = JSON.stringify({
+        rawHeaders: [
+          "Content-Type",
+          "text/plain",
+          "Set-Cookie",
+          "session=fixture-session",
+        ],
+      });
+      expect(() =>
+        assertNoSecretMaterial({ sanitizedOutput: wrap(record) }),
+      ).toThrow(/secret material/i);
+    });
+
+    it("allows a Content-Type header in the embedded record", () => {
+      const record = JSON.stringify({
+        rawHeaders: ["Content-Type", "text/plain"],
+      });
+      expect(() =>
+        assertNoSecretMaterial({ sanitizedOutput: wrap(record) }),
+      ).not.toThrow();
+    });
+  });
+
+  it("finds an embedded JSON array after malformed text", () => {
+    const record = JSON.stringify([
+      { message: 'A literal ]} and an escaped quote " after a backslash \\' },
+      { rawHeaders: ["Cookie", "session=fixture-session"] },
+    ]);
+    expect(() =>
+      assertNoSecretMaterial({
+        sanitizedOutput: `invalid {"open [} ${record}`,
+      }),
+    ).toThrow(/secret material/i);
+  });
 });
 
 describe("model qualification policy", () => {
