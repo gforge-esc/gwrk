@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import * as crypto from "node:crypto";
+import type Database from "better-sqlite3";
 import { logCliError } from "../adapters/cli/output-scope.js";
 import { finishRun, startRun } from "../db/runs.js";
 import { ShipOrchestrator } from "../engine/ship-orchestrator.js";
@@ -25,6 +26,11 @@ export interface DispatchRequest {
   parallel?: boolean; // NEW: Enable parallel dispatch
 }
 
+export interface DispatchLedgerScope {
+  db: Database.Database;
+  projectId: string;
+}
+
 /**
  * DispatchQueue — the daemon's entry point into the unified ship engine.
  *
@@ -43,12 +49,15 @@ export class DispatchQueue {
   private active: DispatchRecord[] = [];
   private history: DispatchRecord[] = [];
   private paused = false;
+  private closed = false;
+  private inFlight = new Set<Promise<void>>();
 
   constructor(
     private config: GwrkConfig,
     private monitor: SystemMonitor,
     private sandbox: SandboxManager,
     private projectRoot: string,
+    private ledger?: DispatchLedgerScope,
   ) {}
 
   pause() {
@@ -56,8 +65,15 @@ export class DispatchQueue {
   }
 
   resume() {
+    if (this.closed) return;
     this.paused = false;
     this.processNext();
+  }
+
+  async close(): Promise<void> {
+    this.closed = true;
+    this.pause();
+    await Promise.all(this.inFlight);
   }
 
   /** Ship branch for a feature-phase. Per-phase (`feat/<feature>-phase-NN`) so
@@ -109,7 +125,7 @@ export class DispatchQueue {
     };
 
     this.queue.push(record);
-    persistDispatch(record);
+    persistDispatch(record, this.projectRoot);
     this.processNext();
     return record;
   }
@@ -138,10 +154,13 @@ export class DispatchQueue {
 
     this.active.push(record);
     record.status = "running";
-    persistDispatch(record);
+    persistDispatch(record, this.projectRoot);
 
     // Run in background
-    this.runDispatch(record).catch(console.error);
+    const work = this.runDispatch(record)
+      .catch(console.error)
+      .finally(() => this.inFlight.delete(work));
+    this.inFlight.add(work);
   }
 
   private async runDispatch(record: DispatchRecord) {
@@ -151,13 +170,17 @@ export class DispatchQueue {
       startedAt: new Date().toISOString(),
     };
 
-    attempt.runId = startRun({
-      feature_id: record.featureId,
-      phase_id: record.phaseId,
-      command: `gwrk ship ${record.featureId} ${record.phaseId}`,
-      agent_backend: record.backend,
-      workflow: "work-until-done",
-    });
+    attempt.runId = startRun(
+      {
+        feature_id: record.featureId,
+        phase_id: record.phaseId,
+        command: `gwrk ship ${record.featureId} ${record.phaseId}`,
+        agent_backend: record.backend,
+        workflow: "work-until-done",
+        project_id: this.ledger?.projectId,
+      },
+      this.ledger?.db,
+    );
 
     record.attempts.push(attempt);
 
@@ -184,7 +207,7 @@ export class DispatchQueue {
       });
       record.workDir = worktreeDir;
       record.branchName = shipBranch;
-      persistDispatch(record);
+      persistDispatch(record, this.projectRoot);
 
       const orchestrator = new ShipOrchestrator({
         featureId: record.featureId,
@@ -246,37 +269,45 @@ export class DispatchQueue {
           new Date(attempt.startedAt).getTime()) /
           1000,
       );
-      finishRun(attempt.runId, {
-        exit_code: exitCode,
-        duration_s: duration,
-      });
+      finishRun(
+        attempt.runId,
+        {
+          exit_code: exitCode,
+          duration_s: duration,
+        },
+        this.ledger?.db,
+      );
     }
 
-    if (exitCode === 0) {
-      record.status = "completed";
-      record.completedAt = attempt.completedAt;
+    try {
+      if (exitCode === 0) {
+        record.status = "completed";
+        record.completedAt = attempt.completedAt;
 
-      // The unified engine already opened the PR (PR_CI → develop). Notify with
-      // the review/merge CTA. Harvest runs the Done-Done finalizer post-merge.
-      await notifySlack(MessageBuilder.reviewReady(record), {
-        type: "review_ready",
-        feature: record.featureId,
-        phase: record.phaseId,
-        payload: record as unknown as Record<string, unknown>,
-        timestamp: new Date().toISOString(),
-      });
-    } else {
-      // The engine owns iteration/diagnosis/failback internally, so a non-zero
-      // exit is terminal for the daemon — no bespoke outer retry/escalation
-      // (that overlap retired with DispatchOrchestrator, PR-8).
-      record.status = "failed";
-      await notifySlack(MessageBuilder.phaseFail(record, stderr), {
-        type: "phase_fail",
-        feature: record.featureId,
-        phase: record.phaseId,
-        payload: { ...record, stderr } as unknown as Record<string, unknown>,
-        timestamp: new Date().toISOString(),
-      });
+        // The unified engine already opened the PR (PR_CI → develop). Notify with
+        // the review/merge CTA. Harvest runs the Done-Done finalizer post-merge.
+        await notifySlack(MessageBuilder.reviewReady(record), {
+          type: "review_ready",
+          feature: record.featureId,
+          phase: record.phaseId,
+          payload: record as unknown as Record<string, unknown>,
+          timestamp: new Date().toISOString(),
+        });
+      } else {
+        // The engine owns iteration/diagnosis/failback internally, so a non-zero
+        // exit is terminal for the daemon — no bespoke outer retry/escalation
+        // (that overlap retired with DispatchOrchestrator, PR-8).
+        record.status = "failed";
+        await notifySlack(MessageBuilder.phaseFail(record, stderr), {
+          type: "phase_fail",
+          feature: record.featureId,
+          phase: record.phaseId,
+          payload: { ...record, stderr } as unknown as Record<string, unknown>,
+          timestamp: new Date().toISOString(),
+        });
+      }
+    } catch (error) {
+      logCliError("Failed to notify dispatch outcome:", error);
     }
 
     // Move from active to history.
@@ -296,7 +327,7 @@ export class DispatchQueue {
       record.workDir = undefined;
     }
 
-    persistDispatch(record);
+    persistDispatch(record, this.projectRoot);
     this.processNext();
   }
 
