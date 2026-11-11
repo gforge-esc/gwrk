@@ -76,9 +76,22 @@ function ensureProjectRow(
   const checkoutId = canonicalProjectId(conn, computeProjectId(facts));
   const projectId = requested ?? checkoutId;
   if (requested === null) {
-    for (const id of [checkoutId, ...computeLegacyProjectIds(facts)]) {
-      const canonical = canonicalProjectId(conn, id);
-      if (exists.get(canonical)) return canonical;
+    const enrolled = conn.prepare(
+      "SELECT 1 FROM projects WHERE id = ? AND updated_at IS NOT NULL",
+    );
+    if (enrolled.get(checkoutId)) return checkoutId;
+
+    const checkoutOwner = conn.prepare(`
+      SELECT 1 FROM projects WHERE id = @id
+      AND (path = @root OR local_root = @root OR mirror_path = @root)
+    `);
+    for (const id of computeLegacyProjectIds(facts)) {
+      if (
+        id !== checkoutId &&
+        checkoutOwner.get({ id, root: facts.projectRoot })
+      ) {
+        return canonicalProjectId(conn, id);
+      }
     }
 
     const legacy = conn
@@ -100,7 +113,7 @@ function ensureProjectRow(
     .run({
       id: projectId,
       name: projectId === checkoutId ? path.basename(cwd) : projectId,
-      path: projectId === checkoutId ? cwd : "",
+      path: requested === null ? cwd : "",
     });
   return projectId;
 }

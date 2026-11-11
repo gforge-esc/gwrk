@@ -2,9 +2,19 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import { execFileSync } from "node:child_process";
+import { mkdtempSync, realpathSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import type Database from "better-sqlite3";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { discoverGitIdentityFacts } from "../adapters/git/project-id.js";
+import {
+  computeLegacyProjectIds,
+  computeProjectId,
+} from "../domain/project-id.js";
 import { getTestDb } from "./index.js";
+import { createProjectRegistry } from "./project-registry.js";
 import {
   type ProjectRecord,
   finishRun,
@@ -186,6 +196,74 @@ describe("runs db", () => {
         .prepare("SELECT path, local_root FROM projects WHERE id = ?")
         .get("other-project"),
     ).toEqual({ path: "", local_root: null });
+  });
+
+  it("keeps implicit runs with verified legacy history until enrollment", () => {
+    const checkout = realpathSync(
+      mkdtempSync(join(tmpdir(), "gwrk-run-owner-")),
+    );
+    try {
+      execFileSync("git", ["init", "--quiet", checkout], { stdio: "ignore" });
+      const facts = discoverGitIdentityFacts(checkout);
+      const [legacyId] = computeLegacyProjectIds(facts);
+      const computedId = computeProjectId(facts);
+      registerProject({ id: legacyId, name: "Checkout", path: checkout }, db);
+      const cwd = vi.spyOn(process, "cwd").mockReturnValue(checkout);
+      try {
+        const previous = startRun(
+          { feature_id: "shared", command: "previous", project_id: legacyId },
+          db,
+        );
+        const explicit = startRun(
+          { feature_id: "shared", command: "explicit", project_id: computedId },
+          db,
+        );
+        const implicit = startRun(
+          { feature_id: "shared", command: "implicit" },
+          db,
+        );
+
+        expect
+          .soft(listRuns("shared", legacyId, db).map(({ id }) => id))
+          .toEqual([implicit, previous]);
+        expect
+          .soft(listRuns("shared", computedId, db).map(({ id }) => id))
+          .toEqual([explicit]);
+
+        const registry = createProjectRegistry(db, () => {});
+        const now = "2026-11-11T12:00:00.000Z";
+        registry.enrollProject({
+          projectId: computedId,
+          slug: "checkout",
+          name: "Checkout",
+          repoSlug: null,
+          trunkBranch: "develop",
+          localRoot: checkout,
+          mirrorPath: null,
+          runnerPolicy: { allowedKinds: ["local"] },
+          slack: null,
+          legacyProjectIds: [legacyId],
+          createdAt: now,
+          updatedAt: now,
+        });
+        const enrolledRun = startRun(
+          { feature_id: "shared", command: "enrolled" },
+          db,
+        );
+        for (const id of [legacyId, computedId]) {
+          expect(listRuns("shared", id, db).map((run) => run.id)).toEqual([
+            enrolledRun,
+            implicit,
+            explicit,
+            previous,
+          ]);
+        }
+      } finally {
+        cwd.mockRestore();
+      }
+    } finally {
+      rmSync(checkout, { recursive: true, force: true });
+    }
   });
 
   describe("FR-H03: DB Record Finalization", () => {

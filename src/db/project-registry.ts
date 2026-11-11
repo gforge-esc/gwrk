@@ -49,6 +49,19 @@ export function discoverVerifiedCheckout(root: string) {
   }
 }
 
+function discoverVerifiedMirror(root: string) {
+  if (!isAbsolute(root)) return null;
+  try {
+    const facts = discoverGitIdentityFacts(root);
+    return facts.gitCommonDir &&
+      realpathSync(facts.gitCommonDir) === realpathSync(root)
+      ? facts
+      : null;
+  } catch {
+    return null;
+  }
+}
+
 export function canonicalProjectId(
   db: Database.Database,
   projectId: string,
@@ -174,6 +187,8 @@ export function createProjectRegistry(
     const checkout = project.localRoot ?? project.mirrorPath;
     const aliases = new Set(project.legacyProjectIds);
     const transitions = new Set<string>();
+    const projectRepo = normalizeRegistryRepo(project.repoSlug);
+    let checkoutConflicts = false;
     const findLocal = db.prepare(`
       SELECT local_root, mirror_path, updated_at
       FROM projects WHERE id = ? AND repo_slug IS NULL
@@ -190,8 +205,15 @@ export function createProjectRegistry(
         }
       }
 
-      const facts = discoverVerifiedCheckout(root);
-      if (!facts || computeProjectId(facts) !== projectId) continue;
+      const facts =
+        discoverVerifiedCheckout(root) ??
+        (root === project.mirrorPath ? discoverVerifiedMirror(root) : null);
+      if (!facts) continue;
+      const origin = normalizeRegistryRepo(facts.remoteOriginUrl ?? null);
+      if (computeProjectId(facts) !== projectId || origin !== projectRepo) {
+        checkoutConflicts = true;
+        continue;
+      }
       const localId = computeProjectId({ ...facts, remoteOriginUrl: null });
       for (const id of computeLegacyProjectIds(facts)) {
         if (id === projectId || canonicalProjectId(db, id) !== id) continue;
@@ -239,10 +261,19 @@ export function createProjectRegistry(
       }
       if (legacy && owner === alias) {
         const legacyRepo = normalizeRegistryRepo(legacy.github_repo);
-        const ownsLegacy = legacyRepo
-          ? legacyRepo === normalizeRegistryRepo(project.repoSlug)
-          : transitions.has(alias) ||
-            [project.localRoot, project.mirrorPath].includes(legacy.path);
+        const legacyFacts =
+          discoverVerifiedCheckout(legacy.path) ??
+          discoverVerifiedMirror(legacy.path);
+        const legacyOriginConflicts =
+          legacyFacts?.remoteOriginUrl &&
+          computeProjectId(legacyFacts) !== projectId;
+        const ownsLegacy =
+          !checkoutConflicts &&
+          !legacyOriginConflicts &&
+          (legacyRepo
+            ? legacyRepo === projectRepo
+            : transitions.has(alias) ||
+              [project.localRoot, project.mirrorPath].includes(legacy.path));
         if (!ownsLegacy) {
           throw new Error(
             `Project alias belongs to a different repository or checkout: ${alias}`,
@@ -312,17 +343,12 @@ export function createProjectRegistry(
   return {
     enrollProject: enroll.immediate,
     getProject(value) {
-      const canonical = canonicalProjectId(db, value);
-      if (canonical !== value) {
-        return findOne(
-          "SELECT * FROM projects WHERE updated_at IS NOT NULL AND id = @value",
-          canonical,
-        );
-      }
       return findOne(
         `
         SELECT * FROM projects WHERE updated_at IS NOT NULL AND (
-          id = @value OR slug = @value OR repo_slug = @value
+          id = @value OR slug = @value OR repo_slug = @value OR id = (
+            SELECT project_id FROM project_aliases WHERE alias_id = @value
+          )
         )
       `,
         value,

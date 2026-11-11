@@ -10,9 +10,11 @@ import {
   getEdgesForFeature,
   getFeature,
   getPhase,
+  getProposal,
   insertEdge,
   insertFeature,
   insertPhase,
+  insertProposal,
   listPhases,
 } from "./plan.js";
 
@@ -89,6 +91,55 @@ describe("src/db/plan.ts (DM-018-001/002/003)", () => {
     expect(listPhases("current-feature", projectId, db)).toEqual([
       getPhase(phase.id, projectId, db),
     ]);
+  });
+
+  it("moves an effective phase to a legacy-owned feature with its proposals", () => {
+    const phase = {
+      id: "phase",
+      feature_id: "current-feature",
+      name: "Shared phase",
+      status: "PLANNED",
+      health: "CLEAN",
+      sp_estimate: 0,
+      seq: 1,
+    };
+    insertFeature(
+      { id: phase.feature_id, name: "Current", status: "PLANNED", sp_total: 0 },
+      projectId,
+      db,
+    );
+    insertFeature(
+      {
+        id: "destination",
+        name: "Destination",
+        status: "PLANNED",
+        sp_total: 5,
+      },
+      "alias",
+      db,
+    );
+    insertPhase(phase, projectId, db);
+    const proposal = {
+      id: "proposal",
+      target_phase_id: phase.id,
+      proposal_type: "ADD_TASK",
+      status: "PENDING",
+    };
+    insertProposal(proposal, projectId, db);
+    db.prepare(
+      "INSERT INTO project_aliases (alias_id, project_id) VALUES (?, ?)",
+    ).run("alias", projectId);
+
+    insertPhase({ ...phase, feature_id: "destination" }, "alias", db);
+
+    for (const id of [projectId, "alias"]) {
+      const moved = getPhase(phase.id, id, db);
+      expect.soft(moved?.feature_id).toBe("destination");
+      expect.soft(listPhases(phase.feature_id, id, db)).toEqual([]);
+      expect.soft(listPhases("destination", id, db)).toEqual([moved]);
+      expect.soft(getProposal(proposal.id, id, db)).toMatchObject(proposal);
+    }
+    expect(db.pragma("foreign_key_check")).toEqual([]);
   });
 
   it("FR-001: should insert and retrieve edges", () => {

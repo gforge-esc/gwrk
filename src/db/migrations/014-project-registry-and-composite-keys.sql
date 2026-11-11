@@ -78,6 +78,18 @@ WHERE EXISTS (SELECT 1 FROM plan_features UNION ALL SELECT 1 FROM plan_phases
               UNION ALL SELECT 1 FROM gate_results UNION ALL SELECT 1 FROM issues
               UNION ALL SELECT 1 FROM routing_decisions);
 
+INSERT OR IGNORE INTO projects (id, name, path, slug)
+SELECT project_id, project_id, '', project_id
+FROM (
+  SELECT project_id FROM plan_features
+  UNION SELECT project_id FROM plan_phases
+  UNION SELECT project_id FROM plan_proposals
+  UNION SELECT project_id FROM plan_edges
+  UNION SELECT project_id FROM gate_results
+  UNION SELECT project_id FROM issues
+)
+WHERE project_id IS NOT NULL;
+
 CREATE TABLE plan_features_new (
   id TEXT NOT NULL,
   name TEXT NOT NULL,
@@ -89,8 +101,8 @@ CREATE TABLE plan_features_new (
   PRIMARY KEY (project_id, id)
 );
 INSERT INTO plan_features_new (id, name, status, sp_total, created_at, updated_at, project_id)
-SELECT f.id, f.name, f.status, f.sp_total, f.created_at, f.updated_at, COALESCE(p.id, 'legacy-local')
-FROM plan_features f LEFT JOIN projects p ON p.id = f.project_id;
+SELECT f.id, f.name, f.status, f.sp_total, f.created_at, f.updated_at, COALESCE(f.project_id, 'legacy-local')
+FROM plan_features f;
 
 CREATE TABLE plan_phases_new (
   id TEXT NOT NULL,
@@ -114,9 +126,8 @@ INSERT INTO plan_phases_new (id, feature_id, name, status, health, sp_estimate, 
                             duration_ms, completed_at, evidence, seq, created_at, updated_at, project_id)
 SELECT ph.id, ph.feature_id, ph.name, ph.status, ph.health, ph.sp_estimate, ph.sp_actual,
        ph.duration_ms, ph.completed_at, ph.evidence, ph.seq, ph.created_at, ph.updated_at,
-       COALESCE(p.id, f.project_id, 'legacy-local')
+       COALESCE(ph.project_id, f.project_id, 'legacy-local')
 FROM plan_phases ph
-LEFT JOIN projects p ON p.id = ph.project_id
 LEFT JOIN plan_features_new f ON f.id = ph.feature_id;
 
 CREATE TABLE plan_proposals_new (
@@ -136,15 +147,14 @@ CREATE TABLE plan_proposals_new (
 INSERT INTO plan_proposals_new (id, target_phase_id, proposal_type, detail, source, status,
                                created_at, resolved_at, project_id)
 SELECT pr.id, pr.target_phase_id, pr.proposal_type, pr.detail, pr.source, pr.status,
-       pr.created_at, pr.resolved_at, COALESCE(p.id, ph.project_id, 'legacy-local')
+       pr.created_at, pr.resolved_at, COALESCE(pr.project_id, ph.project_id, 'legacy-local')
 FROM plan_proposals pr
-LEFT JOIN projects p ON p.id = pr.project_id
 LEFT JOIN plan_phases_new ph ON ph.id = pr.target_phase_id;
 
 -- Retain explicit child ownership without copying another project's data.
 INSERT OR IGNORE INTO plan_phases_new (id, feature_id, name, seq, project_id)
 SELECT pr.target_phase_id, COALESCE(ph.feature_id, pr.target_phase_id),
-       pr.target_phase_id, COALESCE(ph.seq, 0), pr.project_id
+       pr.target_phase_id, 0, pr.project_id
 FROM plan_proposals_new pr LEFT JOIN plan_phases ph ON ph.id = pr.target_phase_id;
 
 INSERT OR IGNORE INTO plan_features_new (id, name, project_id)
@@ -160,14 +170,12 @@ CREATE TABLE plan_edges_new (
 );
 INSERT INTO plan_edges_new (from_id, to_id, edge_type, created_at, project_id)
 SELECT e.from_id, e.to_id, e.edge_type, e.created_at,
-       COALESCE(p.id, CASE WHEN f.id IS NULL OR t.id IS NULL OR f.id = t.id
-                           THEN COALESCE(f.id, t.id) END, 'legacy-local')
-FROM plan_edges e
-LEFT JOIN projects p ON p.id = e.project_id
-LEFT JOIN plan_features f0 ON f0.id = e.from_id
-LEFT JOIN projects f ON f.id = f0.project_id
-LEFT JOIN plan_features t0 ON t0.id = e.to_id
-LEFT JOIN projects t ON t.id = t0.project_id;
+       COALESCE(e.project_id, (
+         SELECT MIN(f.project_id) FROM plan_features_new f
+         WHERE f.id IN (e.from_id, e.to_id)
+         HAVING COUNT(DISTINCT f.project_id) = 1
+       ), 'legacy-local')
+FROM plan_edges e;
 
 CREATE TABLE gate_results_new (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -189,10 +197,10 @@ SELECT g.id, g.feature_id, g.phase_id, g.task_id, g.gate_script, g.passed,
        COALESCE(g.project_id, (
          SELECT MIN(project_id)
          FROM (
-           SELECT ph.project_id FROM plan_phases ph
+           SELECT ph.project_id FROM plan_phases_new ph
            WHERE ph.id = g.phase_id AND ph.feature_id = g.feature_id
            UNION ALL
-           SELECT f.project_id FROM plan_features f WHERE f.id = g.feature_id
+           SELECT f.project_id FROM plan_features_new f WHERE f.id = g.feature_id
          )
          HAVING COUNT(DISTINCT project_id) = 1
        ), 'legacy-local')
@@ -217,7 +225,7 @@ INSERT INTO issues_new (id, issue_number, feature_id, title, body, state, html_u
 SELECT i.id, i.issue_number, i.feature_id, i.title, i.body, i.state, i.html_url,
        i.created_at, i.closed_at, i.author,
        COALESCE(i.project_id, (
-         SELECT MIN(f.project_id) FROM plan_features f WHERE f.id = i.feature_id
+         SELECT MIN(f.project_id) FROM plan_features_new f WHERE f.id = i.feature_id
          HAVING COUNT(DISTINCT f.project_id) = 1
        ), 'legacy-local')
 FROM issues i;

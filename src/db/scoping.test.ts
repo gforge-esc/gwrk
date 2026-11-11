@@ -399,6 +399,116 @@ describe("Project registry storage", () => {
     },
   );
 
+  it.each([true, false])(
+    "rejects ambiguous alias and slug lookup when the alias is enrolled first: %s",
+    (aliasFirst) => {
+      const db = getTestDb();
+      try {
+        const registry = createSqliteProjectRegistryAdapter({ db });
+        const alpha = { ...project, legacyProjectIds: ["route"] };
+        const gamma = {
+          ...project,
+          projectId: "gamma",
+          slug: "route",
+          repoSlug: "example/gamma",
+          localRoot: "/fixtures/gamma",
+          legacyProjectIds: [],
+        };
+        for (const item of aliasFirst ? [alpha, gamma] : [gamma, alpha]) {
+          registry.enrollProject(item);
+        }
+
+        expect(registry.getProject("route")).toBeNull();
+        expect(registry.getProject(alpha.projectId)?.projectId).toBe(
+          alpha.projectId,
+        );
+        expect(registry.getProject(gamma.projectId)?.projectId).toBe(
+          gamma.projectId,
+        );
+      } finally {
+        db.close();
+      }
+    },
+  );
+
+  it.each([
+    { mirror: false, storedOrigin: null },
+    { mirror: true, storedOrigin: null },
+    { mirror: false, storedOrigin: "https://github.com/example/beta.git" },
+  ])(
+    "rejects a legacy claim with conflicting Git origin: %j",
+    ({ mirror, storedOrigin }) => {
+      const checkout = mkdtempSync(join(tmpdir(), "gwrk-alias-origin-"));
+      const db = getTestDb();
+      try {
+        const init = ["init", "--quiet"];
+        if (mirror) init.push("--bare");
+        execFileSync("git", [...init, checkout], { stdio: "ignore" });
+        execFileSync("git", [
+          "-C",
+          checkout,
+          "remote",
+          "add",
+          "origin",
+          "https://github.com/example/alpha.git",
+        ]);
+        let storedPath = "/fixtures/beta";
+        const claimedRepo = storedOrigin ? "example/alpha" : "example/beta";
+        if (storedOrigin) {
+          storedPath = join(checkout, "stored");
+          execFileSync("git", ["init", "--quiet", storedPath], {
+            stdio: "ignore",
+          });
+          execFileSync("git", [
+            "-C",
+            storedPath,
+            "remote",
+            "add",
+            "origin",
+            storedOrigin,
+          ]);
+        }
+        registerProject(
+          {
+            id: "beta-legacy",
+            name: "Beta",
+            path: storedPath,
+            github_repo: claimedRepo,
+          },
+          db,
+        );
+        insertFeature(
+          { id: "shared", name: "Beta feature", status: "open", sp_total: 1 },
+          "beta-legacy",
+          db,
+        );
+        const registry = createSqliteProjectRegistryAdapter({ db });
+        const alphaId = resolveProjectId(checkout);
+
+        expect
+          .soft(() =>
+            registry.enrollProject({
+              ...project,
+              projectId: alphaId,
+              localRoot: mirror ? null : checkout,
+              mirrorPath: mirror ? checkout : null,
+              repoSlug: claimedRepo,
+              legacyProjectIds: ["beta-legacy"],
+            }),
+          )
+          .toThrow(/different repository or checkout/);
+        expect.soft(registry.getProject(alphaId)).toBeNull();
+        expect.soft(listFeatures(alphaId, db)).toEqual([]);
+        expect(getFeature("shared", "beta-legacy", db)?.name).toBe(
+          "Beta feature",
+        );
+      } finally {
+        db.close();
+        rmSync(checkout, { recursive: true, force: true });
+      }
+    },
+  );
+
   it("accepts a legacy alias from a moved checkout of the same repository", () => {
     const db = getTestDb();
     try {

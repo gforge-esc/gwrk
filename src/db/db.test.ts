@@ -24,6 +24,12 @@ import { insertCompressionRecord } from "./db.js";
 import { getGateResult } from "./gates.js";
 import { getTestDb, openDatabase } from "./index.js";
 import { listIssues } from "./issues.js";
+import {
+  getEdgesForFeature,
+  getFeature,
+  getPhase,
+  getProposal,
+} from "./plan.js";
 import { createProjectRegistry } from "./project-registry.js";
 import {
   finishRun,
@@ -117,13 +123,15 @@ describe("Project registry upgrade", () => {
       // The old feature key allowed only Alpha's copy of the shared feature ID.
       legacy.exec(`
         INSERT INTO projects (id, name, path) VALUES ('alpha', 'Alpha', '/alpha');
-        INSERT INTO plan_features (id, name, project_id) VALUES ('shared', 'Alpha feature', 'alpha');
+        INSERT INTO plan_features (id, name, project_id)
+          VALUES ('shared', 'Alpha feature', 'alpha'), ('alpha-only', 'Alpha only', 'alpha');
         INSERT INTO plan_phases (id, feature_id, name, seq, project_id)
           VALUES ('phase', 'shared', 'Alpha phase', 1, 'alpha'),
                  ('other-phase', 'shared', 'Beta phase', 2, 'beta-unregistered');
         INSERT INTO issues (issue_number, feature_id, title, created_at, author, project_id)
           VALUES (7, 'shared', 'Beta issue', '2026-11-11', 'fixture', 'beta-unregistered'),
-                 (8, 'shared', 'Unattributed issue', '2026-11-11', 'fixture', NULL);
+                 (8, 'shared', 'Ambiguous issue', '2026-11-11', 'fixture', NULL),
+                 (9, 'alpha-only', 'Unattributed issue', '2026-11-11', 'fixture', NULL);
         INSERT INTO gate_results (feature_id, phase_id, task_id, gate_script, project_id)
           VALUES ('shared', 'phase', 'T001', 'beta.sh', 'beta-unregistered'),
                  ('shared', 'other-phase', 'T002', 'ambiguous.sh', NULL);
@@ -136,7 +144,13 @@ describe("Project registry upgrade", () => {
             (issue) => issue.issue_number,
           ),
         )
-        .toEqual([8]);
+        .toEqual([]);
+      expect(listIssues("shared", "legacy-local", upgraded)).toMatchObject([
+        { issue_number: 8 },
+      ]);
+      expect(listIssues("alpha-only", "alpha", upgraded)).toMatchObject([
+        { issue_number: 9 },
+      ]);
       expect
         .soft(getGateResult("shared", "phase", "T001", "alpha", upgraded))
         .toBeUndefined();
@@ -151,6 +165,52 @@ describe("Project registry upgrade", () => {
         getGateResult("shared", "other-phase", "T002", "legacy-local", upgraded)
           ?.gate_script,
       ).toBe("ambiguous.sh");
+    } finally {
+      upgraded.close();
+    }
+  });
+
+  it("preserves explicit plan owners absent from the projects table", () => {
+    const beta = "beta-unregistered";
+    const upgraded = upgrade((legacy) => {
+      legacy.exec(`
+        INSERT INTO projects (id, name, path) VALUES ('alpha', 'Alpha', '/alpha');
+        INSERT INTO plan_features (id, name, project_id)
+          VALUES ('shared', 'Alpha feature', 'alpha'),
+                 ('beta-only', 'Beta feature', 'beta-unregistered');
+        INSERT INTO plan_phases (id, feature_id, name, seq, project_id)
+          VALUES ('alpha-phase', 'shared', 'Alpha phase', 1, 'alpha'),
+                 ('beta-phase', 'shared', 'Beta phase', 2, 'beta-unregistered');
+        INSERT INTO plan_proposals (id, target_phase_id, proposal_type, project_id)
+          VALUES ('beta-proposal', 'alpha-phase', 'ADD_TASK', 'beta-unregistered');
+        INSERT INTO plan_edges (from_id, to_id, edge_type, project_id)
+          VALUES ('beta-only', 'shared', 'DEPENDS_ON', 'beta-unregistered');
+      `);
+    });
+    try {
+      expect.soft(getFeature("beta-only", "alpha", upgraded)).toBeUndefined();
+      expect.soft(getPhase("beta-phase", "alpha", upgraded)).toBeUndefined();
+      expect
+        .soft(getProposal("beta-proposal", "alpha", upgraded))
+        .toBeUndefined();
+      expect.soft(getEdgesForFeature("shared", "alpha", upgraded)).toEqual([]);
+      expect
+        .soft(getFeature("beta-only", beta, upgraded)?.name)
+        .toBe("Beta feature");
+      expect.soft(getFeature("shared", beta, upgraded)?.name).toBe("shared");
+      expect
+        .soft(getPhase("beta-phase", beta, upgraded)?.name)
+        .toBe("Beta phase");
+      expect
+        .soft(getProposal("beta-proposal", beta, upgraded)?.target_phase_id)
+        .toBe("alpha-phase");
+      expect
+        .soft(getPhase("alpha-phase", beta, upgraded)?.name)
+        .toBe("alpha-phase");
+      expect
+        .soft(getEdgesForFeature("shared", beta, upgraded))
+        .toMatchObject([{ from_id: "beta-only", project_id: beta }]);
+      expect(upgraded.pragma("foreign_key_check")).toEqual([]);
     } finally {
       upgraded.close();
     }

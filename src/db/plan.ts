@@ -179,31 +179,52 @@ export function insertPhase(
 ): void {
   const conn = db ?? getDb();
   conn
-    .prepare(
-      `INSERT INTO plan_phases (
-         id, feature_id, name, status, health, sp_estimate,
-         sp_actual, duration_ms, completed_at, evidence, seq, project_id, updated_at
-       )
-       VALUES (
-         @id, @feature_id, @name, @status, @health, @sp_estimate,
-         @sp_actual, @duration_ms, @completed_at, @evidence, @seq, @project_id, datetime('now')
-       )
-       ON CONFLICT(project_id, id) DO UPDATE SET feature_id = excluded.feature_id,
-         name = excluded.name, status = excluded.status, health = excluded.health,
-         sp_estimate = excluded.sp_estimate, sp_actual = excluded.sp_actual,
-         duration_ms = excluded.duration_ms, completed_at = excluded.completed_at,
-         evidence = excluded.evidence, seq = excluded.seq, updated_at = excluded.updated_at`,
-    )
-    .run({
-      ...phase,
-      project_id:
-        getFeature(phase.feature_id, projectId, conn)?.project_id ??
-        canonicalProjectId(conn, projectId),
-      sp_actual: phase.sp_actual ?? null,
-      duration_ms: phase.duration_ms ?? null,
-      completed_at: phase.completed_at ?? null,
-      evidence: phase.evidence ?? null,
-    });
+    .transaction(() => {
+      const existing = getPhase(phase.id, projectId, conn);
+      const parent = getFeature(phase.feature_id, projectId, conn);
+      const owner =
+        existing?.project_id ??
+        parent?.project_id ??
+        canonicalProjectId(conn, projectId);
+
+      if (parent?.project_id && parent.project_id !== owner) {
+        // Keep the phase and its proposals under their current foreign key owner.
+        conn
+          .prepare(`
+        INSERT INTO plan_features (id, name, status, sp_total, created_at, updated_at, project_id)
+        SELECT id, name, status, sp_total, created_at, updated_at, ?
+        FROM plan_features WHERE id = ? AND project_id = ?
+        ON CONFLICT(project_id, id) DO NOTHING
+      `)
+          .run(owner, phase.feature_id, parent.project_id);
+      }
+
+      conn
+        .prepare(
+          `INSERT INTO plan_phases (
+           id, feature_id, name, status, health, sp_estimate,
+           sp_actual, duration_ms, completed_at, evidence, seq, project_id, updated_at
+         )
+         VALUES (
+           @id, @feature_id, @name, @status, @health, @sp_estimate,
+           @sp_actual, @duration_ms, @completed_at, @evidence, @seq, @project_id, datetime('now')
+         )
+         ON CONFLICT(project_id, id) DO UPDATE SET feature_id = excluded.feature_id,
+           name = excluded.name, status = excluded.status, health = excluded.health,
+           sp_estimate = excluded.sp_estimate, sp_actual = excluded.sp_actual,
+           duration_ms = excluded.duration_ms, completed_at = excluded.completed_at,
+           evidence = excluded.evidence, seq = excluded.seq, updated_at = excluded.updated_at`,
+        )
+        .run({
+          ...phase,
+          project_id: owner,
+          sp_actual: phase.sp_actual ?? null,
+          duration_ms: phase.duration_ms ?? null,
+          completed_at: phase.completed_at ?? null,
+          evidence: phase.evidence ?? null,
+        });
+    })
+    .immediate();
 }
 
 /**
