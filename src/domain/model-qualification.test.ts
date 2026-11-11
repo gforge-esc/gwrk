@@ -187,6 +187,86 @@ describe("model qualification policy", () => {
     }
   });
 
+  it.each(["", " ", null, 42])(
+    "rejects a persisted required fixture ID of %j even with three matching repeats",
+    (fixtureId) => {
+      const input = JSON.parse(
+        JSON.stringify({
+          ...passingEvidence,
+          requiredFixtures: [fixtureId],
+          repeats: passingEvidence.repeats.map((repeat) => ({
+            ...repeat,
+            fixtureId,
+          })),
+        }),
+      );
+      expect(evaluatePromotion(input)).toEqual({
+        promote: false,
+        reason: "insufficient-repeats",
+      });
+    },
+  );
+
+  it.each(["", " ", null, 42])(
+    "rejects a persisted repeat fixture ID of %j even when required repeats pass",
+    (fixtureId) => {
+      const input = JSON.parse(
+        JSON.stringify({
+          ...passingEvidence,
+          repeats: [
+            ...passingEvidence.repeats,
+            { fixtureId, repeatIndex: 0, gatesPassed: true },
+          ],
+        }),
+      );
+      expect(evaluatePromotion(input)).toEqual({
+        promote: false,
+        reason: "insufficient-repeats",
+      });
+    },
+  );
+
+  it.each([undefined, "", " ", null, 42])(
+    "rejects a persisted judge backend of %j",
+    (backend) => {
+      const [first, second] = passingEvidence.judges;
+      const input = JSON.parse(
+        JSON.stringify({
+          ...passingEvidence,
+          judges: [first, { ...second, judge: { ...second.judge, backend } }],
+        }),
+      );
+      expect(evaluatePromotion(input)).toEqual({
+        promote: false,
+        reason: "judge-dependence",
+      });
+    },
+  );
+
+  describe.each(["input", "output", "gate"] as const)("%s citation", (kind) => {
+    it.each([null, "", " ", 42])(
+      "rejects a persisted reference of %j even when the artifact matches",
+      (ref) => {
+        const [first, second] = passingEvidence.judges;
+        const citation = { ...second.citations[0], [`${kind}Ref`]: ref };
+        const input = JSON.parse(
+          JSON.stringify({
+            ...passingEvidence,
+            judges: [first, { ...second, citations: [citation] }],
+            refs: {
+              ...passingEvidence.refs,
+              [kind]: [...passingEvidence.refs[kind], ref],
+            },
+          }),
+        );
+        expect(evaluatePromotion(input)).toEqual({
+          promote: false,
+          reason: "invalid-citations",
+        });
+      },
+    );
+  });
+
   describe.each(["A", "B"] as const)("candidate %s", (candidateOption) => {
     const input = {
       ...passingEvidence,

@@ -172,6 +172,8 @@ export interface RouteLockStorePort {
 }
 ```
 
+The `lock` payload for `writeRouteLockAtomic` has the shape `{ document: unknown; expectedIncumbentDigest: string | null }`. A null digest expects no incumbent. The store validates the payload and its document. It compares the incumbent digest under the same lock it uses for the write. A mismatch rejects the write with `incumbent-changed`. A successful write returns the new digest.
+
 ## Plugin and unified-routing boundary
 
 `AgentBackend` in `src/plugins/agent-backend.ts` gains an optional `discoverModels?()` method. `dispatch()` never runs catalog discovery, and `discoverModels()` never mutates governance files or dispatches workflow tasks.

@@ -3,10 +3,13 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { expect, expectTypeOf, it } from "vitest";
-import type { JudgeVerdict } from "../domain/model-qualification.js";
+import { evaluateModelPromotion } from "../application/models/evaluate-models.js";
+import type { AdapterDiscoveryReport } from "../domain/model-qualification.js";
 import type {
+  ModelCatalogPort,
   PromotionJudgePort,
   QualificationRunnerPort,
+  RouteLockStorePort,
   SmokeProbePort,
   StructuredJudgeVerdict,
 } from "./model-qualification-port.js";
@@ -24,6 +27,53 @@ const judgeRoute = {
   family: "judge-family",
   modelId: "judge-v1",
 };
+
+it("exposes the documented catalog and lock store contracts to consumers", async () => {
+  const catalog: ModelCatalogPort = {
+    async discoverCatalog() {
+      return [];
+    },
+  };
+  const store: RouteLockStorePort = {
+    async writeDiscoverySnapshot() {
+      return "snapshot-digest";
+    },
+    async readDiscoverySnapshot() {
+      return null;
+    },
+    async writeEvaluationBundle() {
+      return "evaluation-digest";
+    },
+    async readEvaluationBundle() {
+      return null;
+    },
+    async readRouteLock() {
+      return null;
+    },
+    async writeRouteLockAtomic() {
+      return "lock-digest";
+    },
+  };
+
+  const reports: AdapterDiscoveryReport[] = await catalog.discoverCatalog({
+    scope,
+    nowIso: "2026-11-11T00:00:00Z",
+  });
+  expect(reports).toEqual([]);
+
+  const snapshot: unknown = { scope, adapters: reports };
+  const snapshotDigest: string = await store.writeDiscoverySnapshot(
+    scope,
+    snapshot,
+  );
+  expect(snapshotDigest).toBe("snapshot-digest");
+
+  const digest: string = await store.writeRouteLockAtomic(scope, {
+    document: { schemaVersion: 1, routes: {} },
+    expectedIncumbentDigest: null,
+  });
+  expect(digest).toBe("lock-digest");
+});
 
 it("exposes the documented smoke, repeat and judge contracts to consumers", async () => {
   const smoke: SmokeProbePort = {
@@ -114,21 +164,37 @@ it("exposes the documented smoke, repeat and judge contracts to consumers", asyn
     optionB: "second output",
     gateEvidenceSummary: "Both passed",
   });
-  const { judgeBackend, judgeProvider, judgeFamily, judgeModelId, ...verdict } =
-    result;
-  const domainVerdict: JudgeVerdict = {
-    ...verdict,
-    judge: {
-      backend: judgeBackend,
-      provider: judgeProvider,
-      family: judgeFamily,
-      modelId: judgeModelId,
-    },
-  };
-  expect(domainVerdict.judge).toEqual(judgeRoute);
-  expect(domainVerdict.observedJudgeModel).toBe("unknown");
+  expect(result).toMatchObject({
+    judgeBackend: judgeRoute.backend,
+    judgeProvider: judgeRoute.provider,
+    judgeFamily: judgeRoute.family,
+    judgeModelId: judgeRoute.modelId,
+    observedJudgeModel: "unknown",
+  });
   expectTypeOf(result).toEqualTypeOf<StructuredJudgeVerdict>();
   expectTypeOf<
     Omit<StructuredJudgeVerdict, "observedJudgeModel">
   >().not.toMatchTypeOf<StructuredJudgeVerdict>();
+
+  const secondJudge = {
+    ...result,
+    judgeBackend: "other-cli",
+    judgeProvider: "other-provider",
+    judgeFamily: "other-family",
+    judgeModelId: "other-v1",
+    observedJudgeModel: "other-v1",
+  };
+  expect(
+    evaluateModelPromotion({
+      candidateOption: "B",
+      requiredFixtures: [repeat.fixtureId],
+      repeats: [0, 1, 2].map((repeatIndex) => ({
+        fixtureId: repeat.fixtureId,
+        repeatIndex,
+        gatesPassed: repeat.deterministicGatesPassed,
+      })),
+      judges: [result, secondJudge],
+      refs: { input: ["input"], output: ["output"], gate: ["gate"] },
+    }),
+  ).toEqual({ promote: true });
 });

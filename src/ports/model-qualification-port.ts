@@ -18,7 +18,7 @@ export interface ModelCatalogPort {
     backends?: readonly string[];
     explicitCandidates?: readonly DiscoveredModel[];
     nowIso: string;
-  }): Promise<readonly AdapterDiscoveryReport[]>;
+  }): Promise<AdapterDiscoveryReport[]>;
 }
 
 export interface SmokeProbeRequest {
@@ -117,7 +117,7 @@ export interface PromotionJudgePort {
 export interface RouteLockStorePort {
   writeDiscoverySnapshot(
     scope: RunnerScope,
-    snapshot: DiscoverySnapshot,
+    snapshot: unknown,
   ): Promise<string>;
   readDiscoverySnapshot(scope: RunnerScope): Promise<DiscoverySnapshot | null>;
   writeEvaluationBundle(evaluationId: string, bundle: unknown): Promise<string>;
@@ -125,11 +125,5 @@ export interface RouteLockStorePort {
   readRouteLock(
     scope: RunnerScope,
   ): Promise<{ digest: string; document: unknown } | null>;
-  writeRouteLockAtomic(
-    scope: RunnerScope,
-    lock: unknown,
-    expectedIncumbentDigest: string | null,
-  ): Promise<
-    { ok: true; digest: string } | { ok: false; reason: "incumbent-changed" }
-  >;
+  writeRouteLockAtomic(scope: RunnerScope, lock: unknown): Promise<string>;
 }

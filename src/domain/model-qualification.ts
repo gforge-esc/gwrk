@@ -165,6 +165,10 @@ export type PromotionDecision =
         | "judge-non-regression";
     };
 
+function isNonBlankString(value: unknown): value is string {
+  return typeof value === "string" && value.trim().length > 0;
+}
+
 export function evaluatePromotion(input: PromotionEvidence): PromotionDecision {
   if (input.candidateOption !== "A" && input.candidateOption !== "B")
     return { promote: false, reason: "judge-non-regression" };
@@ -176,6 +180,8 @@ export function evaluatePromotion(input: PromotionEvidence): PromotionDecision {
   if (
     !Array.isArray(input.requiredFixtures) ||
     input.requiredFixtures.length === 0 ||
+    input.requiredFixtures.some((fixture) => !isNonBlankString(fixture)) ||
+    input.repeats.some((repeat) => !isNonBlankString(repeat.fixtureId)) ||
     input.requiredFixtures.some((fixture) => {
       const indices = new Set(
         input.repeats
@@ -212,6 +218,7 @@ export function evaluatePromotion(input: PromotionEvidence): PromotionDecision {
     families.has("unknown") ||
     input.judges.some(
       (verdict) =>
+        !isNonBlankString(verdict?.judge?.backend) ||
         !isConcreteModel(verdict.judge.modelId) ||
         (verdict.observedJudgeModel !== "unknown" &&
           verdict.observedJudgeModel !== verdict.judge.modelId),
@@ -238,8 +245,10 @@ export function evaluatePromotion(input: PromotionEvidence): PromotionDecision {
         verdict.citations.length === 0 ||
         verdict.citations.some(
           (citation: JudgeVerdict["citations"][number]) =>
-            typeof citation?.claim !== "string" ||
-            !citation.claim.trim() ||
+            !isNonBlankString(citation?.claim) ||
+            !isNonBlankString(citation.inputRef) ||
+            !isNonBlankString(citation.outputRef) ||
+            !isNonBlankString(citation.gateRef) ||
             !refs.input.has(citation.inputRef) ||
             !refs.output.has(citation.outputRef) ||
             !refs.gate.has(citation.gateRef),
