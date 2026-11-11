@@ -23,7 +23,12 @@ const prompt =
 
 export function createSmokeProbe(dispatch = dispatchToAgent): SmokeProbePort {
   return {
-    async runSmokeProbe({ route, timeoutMs }): Promise<SmokeProbeEvidence> {
+    async runSmokeProbe({
+      backend,
+      modelId,
+      effort,
+      timeoutMs,
+    }): Promise<SmokeProbeEvidence> {
       if (
         !Number.isInteger(timeoutMs) ||
         timeoutMs < 1 ||
@@ -53,13 +58,13 @@ export function createSmokeProbe(dispatch = dispatchToAgent): SmokeProbePort {
             allowMissingPrompt: true,
             projectRoot: directory,
             taskType: "model-smoke-probe",
-            agent: route.backend,
-            model: route.modelId,
+            agent: backend,
+            model: modelId,
             quiet: true,
             dispatcher: (task) =>
               dispatch({
                 ...task,
-                effort: route.effort,
+                effort,
                 routeMode: "pinned",
                 timeoutMs,
                 logPath: join(directory, ".runs", "probe.log"),
@@ -81,7 +86,7 @@ export function createSmokeProbe(dispatch = dispatchToAgent): SmokeProbePort {
         }
 
         const matches =
-          observedModel === "unknown" || observedModel === route.modelId;
+          observedModel === "unknown" || observedModel === modelId;
         const status = taskResult.timedOut
           ? "timed_out"
           : taskResult.errorType === "auth_failure"
@@ -93,7 +98,9 @@ export function createSmokeProbe(dispatch = dispatchToAgent): SmokeProbePort {
               ? "passed"
               : "failed";
         return {
-          requested: route,
+          backend,
+          requestedModel: modelId,
+          ...(effort === undefined ? {} : { requestedEffort: effort }),
           observedModel,
           status,
           schemaValid,

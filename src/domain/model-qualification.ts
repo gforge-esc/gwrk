@@ -123,7 +123,7 @@ export function blindCandidate(
 
 export interface JudgeVerdict {
   readonly judge: ModelCandidate;
-  readonly observedJudgeModel?: string;
+  readonly observedJudgeModel: string;
   readonly winner: BlindedOption | "tie";
   readonly optionARegression: boolean;
   readonly optionBRegression: boolean;
@@ -204,8 +204,7 @@ export function evaluatePromotion(input: PromotionEvidence): PromotionDecision {
     input.judges.some(
       (verdict) =>
         !isConcreteModel(verdict.judge.modelId) ||
-        (verdict.observedJudgeModel &&
-          verdict.observedJudgeModel !== "unknown" &&
+        (verdict.observedJudgeModel !== "unknown" &&
           verdict.observedJudgeModel !== verdict.judge.modelId),
     )
   ) {
@@ -239,9 +238,11 @@ export function evaluatePromotion(input: PromotionEvidence): PromotionDecision {
     input.judges.some(
       (verdict) =>
         verdict.winner !== input.candidateOption ||
+        typeof verdict.optionARegression !== "boolean" ||
+        typeof verdict.optionBRegression !== "boolean" ||
         (input.candidateOption === "A"
           ? verdict.optionARegression
-          : verdict.optionBRegression) ||
+          : verdict.optionBRegression) !== false ||
         !validScore(verdict.scores.optionA) ||
         !validScore(verdict.scores.optionB),
     )
@@ -294,14 +295,26 @@ export function qualificationStaleness(
 }
 
 const secretPattern =
-  /\bbearer\s+[^\s"]+|\b(?:sk-|AIza|gh[pousr]_|github_pat_|xox[baprs]-|xapp-)[\w-]{8,}|[\w.+-]+@[\w.-]+\.[a-z]{2,}|"(?:authorization|cookie|set-cookie|api[_-]?key|access[_-]?token|password)"\s*:/i;
+  /\bbearer\s+[^\s"]+|\b(?:sk-|AIza|gh[pousr]_|github_pat_|xox[baprs]-|xapp-)|[\w.+-]+@[\w.-]+\.[a-z]{2,}|"(?:authorization|cookie|set-cookie|api[_-]?key|access[_-]?token|password)"\s*:/i;
+const headerPattern = /\b(?:authorization|set-cookie|cookie)[ \t]*:/i;
 
 export function assertNoSecretMaterial(
   value: unknown,
   knownSecrets: readonly string[] = [],
 ): void {
-  const serialized = JSON.stringify(value) ?? "";
+  let secretInText = false;
+  const serialized =
+    JSON.stringify(value, (_key, entry: unknown) => {
+      if (
+        typeof entry === "string" &&
+        (headerPattern.test(entry) || secretPattern.test(entry))
+      ) {
+        secretInText = true;
+      }
+      return entry;
+    }) ?? "";
   if (
+    secretInText ||
     secretPattern.test(serialized) ||
     knownSecrets.some(
       (secret) =>

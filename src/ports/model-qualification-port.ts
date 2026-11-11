@@ -4,9 +4,9 @@
 
 import type {
   AdapterDiscoveryReport,
+  BlindedOption,
   DiscoveredModel,
   DiscoverySnapshot,
-  JudgeVerdict,
   ModelCandidate,
   ModelRole,
   RunnerScope,
@@ -23,12 +23,16 @@ export interface ModelCatalogPort {
 
 export interface SmokeProbeRequest {
   scope: RunnerScope;
-  route: ModelCandidate;
+  backend: string;
+  modelId: string;
+  effort?: string;
   timeoutMs: number;
 }
 
 export interface SmokeProbeEvidence {
-  requested: ModelCandidate;
+  backend: string;
+  requestedModel: string;
+  requestedEffort?: string;
   observedModel: string;
   status: "passed" | "failed" | "timed_out" | "auth_error";
   schemaValid: boolean;
@@ -45,14 +49,18 @@ export interface FixtureRepeatRequest {
   fixtureId: string;
   role: ModelRole;
   repeatIndex: number;
-  route: ModelCandidate;
+  route: {
+    backend: string;
+    modelId: string;
+    effort?: string;
+  };
   handoffArtifactDir?: string;
 }
 
 export interface FixtureRepeatEvidence {
   fixtureId: string;
   repeatIndex: number;
-  requested: ModelCandidate;
+  requestedModel: string;
   observedModel: string;
   deterministicGatesPassed: boolean;
   gateChecks: readonly { checkId: string; passed: boolean; detail: string }[];
@@ -81,11 +89,29 @@ export interface JudgeVerdictPacket {
   gateEvidenceSummary: string;
 }
 
+export interface StructuredJudgeVerdict {
+  judgeBackend: string;
+  judgeProvider: string;
+  judgeFamily: string;
+  judgeModelId: string;
+  observedJudgeModel: string;
+  winner: BlindedOption | "tie";
+  optionARegression: boolean;
+  optionBRegression: boolean;
+  scores: { optionA: number; optionB: number };
+  citations: {
+    inputRef: string;
+    outputRef: string;
+    gateRef: string;
+    claim: string;
+  }[];
+}
+
 export interface PromotionJudgePort {
   judgeComparison(
     judge: ModelCandidate,
     packet: JudgeVerdictPacket,
-  ): Promise<JudgeVerdict>;
+  ): Promise<StructuredJudgeVerdict>;
 }
 
 export interface RouteLockStorePort {

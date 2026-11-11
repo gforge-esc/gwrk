@@ -7,6 +7,7 @@ import {
   type AdapterDiscoveryReport,
   type JudgeVerdict,
   type ModelCandidate,
+  type PromotionEvidence,
   assertNoSecretMaterial,
   blindCandidate,
   checkCandidate,
@@ -49,6 +50,7 @@ const snapshot = {
 };
 const judge = (provider: string, family: string): JudgeVerdict => ({
   judge: { backend: provider, provider, family, modelId: `${family}-v1` },
+  observedJudgeModel: "unknown",
   winner: "B",
   optionARegression: false,
   optionBRegression: false,
@@ -62,6 +64,18 @@ const judge = (provider: string, family: string): JudgeVerdict => ({
     },
   ],
 });
+
+const passingEvidence: PromotionEvidence = {
+  candidateOption: "B",
+  requiredFixtures: ["handoff"],
+  repeats: [0, 1, 2].map((repeatIndex) => ({
+    fixtureId: "handoff",
+    repeatIndex,
+    gatesPassed: true,
+  })),
+  judges: [judge("provider-a", "family-a"), judge("provider-b", "family-b")],
+  refs: { input: ["input"], output: ["output"], gate: ["gate"] },
+};
 
 describe("model qualification policy", () => {
   it("checks the exact model, runner and effort against available catalog entries", () => {
@@ -95,20 +109,7 @@ describe("model qualification policy", () => {
   });
 
   it("keeps the incumbent after failed gates, dependent judges or unverifiable references", () => {
-    const input = {
-      candidateOption: "B" as const,
-      requiredFixtures: ["handoff"],
-      repeats: [0, 1, 2].map((repeatIndex) => ({
-        fixtureId: "handoff",
-        repeatIndex,
-        gatesPassed: true,
-      })),
-      judges: [
-        judge("provider-a", "family-a"),
-        judge("provider-b", "family-b"),
-      ],
-      refs: { input: ["input"], output: ["output"], gate: ["gate"] },
-    };
+    const input = passingEvidence;
     expect(evaluatePromotion(input)).toEqual({ promote: true });
     expect(
       evaluatePromotion({ ...input, repeats: input.repeats.slice(0, 2) }),
@@ -149,6 +150,78 @@ describe("model qualification policy", () => {
       }),
     ).toMatchObject({ promote: false, reason: "judge-non-regression" });
   });
+
+  describe.each(["A", "B"] as const)("candidate %s", (candidateOption) => {
+    const input = {
+      ...passingEvidence,
+      candidateOption,
+      judges: passingEvidence.judges.map((verdict) => ({
+        ...verdict,
+        winner: candidateOption,
+      })),
+    };
+
+    it.each(["unknown", "requested"] as const)(
+      "accepts the %s observed judge model",
+      (observation) => {
+        const judges = input.judges.map((verdict) => ({
+          ...verdict,
+          observedJudgeModel:
+            observation === "requested" ? verdict.judge.modelId : observation,
+        }));
+        expect(evaluatePromotion({ ...input, judges })).toEqual({
+          promote: true,
+        });
+      },
+    );
+
+    it.each([
+      "observedJudgeModel",
+      "optionARegression",
+      "optionBRegression",
+    ] as const)("rejects an omitted %s", (field) => {
+      const incomplete: Partial<(typeof input.judges)[number]> = {
+        ...input.judges[1],
+      };
+      delete incomplete[field];
+      expect(
+        evaluatePromotion({
+          ...input,
+          judges: [input.judges[0], incomplete as JudgeVerdict],
+        }),
+      ).toEqual({
+        promote: false,
+        reason:
+          field === "observedJudgeModel"
+            ? "judge-dependence"
+            : "judge-non-regression",
+      });
+    });
+
+    it("rejects a candidate regression", () => {
+      const verdict = {
+        ...input.judges[1],
+        optionARegression: candidateOption === "A",
+        optionBRegression: candidateOption === "B",
+      };
+      expect(
+        evaluatePromotion({ ...input, judges: [input.judges[0], verdict] }),
+      ).toEqual({ promote: false, reason: "judge-non-regression" });
+    });
+  });
+
+  it.each(["", " ", "different-model"])(
+    "rejects an invalid observed judge model %j",
+    (observedJudgeModel) => {
+      const [first, second] = passingEvidence.judges;
+      expect(
+        evaluatePromotion({
+          ...passingEvidence,
+          judges: [first, { ...second, observedJudgeModel }],
+        }),
+      ).toEqual({ promote: false, reason: "judge-dependence" });
+    },
+  );
 
   it("expires evidence after effective prompt, fixture, tool or model changes", () => {
     const pinned = {
@@ -208,4 +281,37 @@ describe("model qualification policy", () => {
       assertNoSecretMaterial({ modelId: "frontier-v3", tokensIn: 42 }),
     ).not.toThrow();
   });
+
+  it.each([
+    "Cookie: session=fixture-session",
+    "Authorization: Basic Zml4dHVyZQ==",
+    "headers\nsEt-CoOkIe: session=fixture-session",
+    "sk-fixture",
+    "AIza1",
+    "ghp_1",
+    "gho_1",
+    "ghu_1",
+    "ghs_1",
+    "ghr_1",
+    "github_pat_1",
+    "xoxb-1",
+    "xoxa-1",
+    "xoxp-1",
+    "xoxr-1",
+    "xoxs-1",
+    "xapp-1",
+  ])("rejects credential fixture %j", (value) => {
+    expect(() => assertNoSecretMaterial({ value })).toThrow(
+      "Secret material found in model qualification evidence.",
+    );
+  });
+
+  it.each(["authorization", "Cookie", "SET-COOKIE"])(
+    "rejects the structured header %s",
+    (header) => {
+      expect(() => assertNoSecretMaterial({ [header]: "fixture" })).toThrow(
+        /Secret material/,
+      );
+    },
+  );
 });

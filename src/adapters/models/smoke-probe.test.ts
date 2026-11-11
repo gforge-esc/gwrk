@@ -8,13 +8,9 @@ import type { AgentTaskRequest } from "../../ports/agent-port.js";
 import { createSmokeProbe } from "./smoke-probe.js";
 
 const request = {
-  route: {
-    backend: "codex",
-    provider: "openai",
-    family: "gpt",
-    modelId: "gpt-6.1-sol",
-    effort: "low",
-  },
+  backend: "codex",
+  modelId: "gpt-6.1-sol",
+  effort: "low",
   scope: {
     workspaceId: "fixture",
     runnerProfile: "local",
@@ -53,7 +49,9 @@ describe("model smoke probe", () => {
       status: "passed",
       schemaValid: true,
       observedModel: "unknown",
-      requested: request.route,
+      backend: request.backend,
+      requestedModel: request.modelId,
+      requestedEffort: request.effort,
     });
   });
 
