@@ -1,0 +1,41 @@
+{
+  "schemaVersion": 1,
+  "id": "implement-seeded-defect",
+  "roles": [
+    "implement",
+    "review"
+  ],
+  "prompt": "Use the fixed plan and repair the seeded ticket routing behavior. For review, report the failing routing task and preserve the completed adapter task.",
+  "files": {
+    "AGENTS.md": "# Project rules\n\nRead both architecture decisions and the fixture research brief. Keep policy pure. Run the failing behavior test before implementing changes.\n",
+    "package.json": "{\"name\":\"fixture-ticket-router\",\"private\":true,\"type\":\"module\",\"scripts\":{\"test\":\"node --test\"}}\n",
+    "docs/decisions/ADR-001-ticket-boundaries.md": "# Ticket routing boundaries\n\nStatus: Decided\n\nThe domain returns a routing decision from ticket data. It has no access to the clock or the network. The adapter owns transport and retries. Use the caller-supplied receipt time as an input.\n",
+    "docs/decisions/ADR-002-unknown-priority.md": "# Unknown priority handling\n\nStatus: Decided\n\nUnknown priority goes to triage. Keep the raw input for the receiving queue. A proposed direct-to-standard shortcut is still open.\n",
+    "docs/refs/queue-contract.md": "# Queue contract\n\nReturn one of `urgent`, `standard` or `triage`. Valid priorities are `high` and `normal`. The adapter does not send a second message after a retryable response.\n",
+    "docs/research/routing-brief.md": "# Routing research brief\n\nIncoming priorities sometimes have leading or trailing whitespace. Preserve the raw value and normalize only for selection. An unrecognized priority has appeared on the same record as an old receipt time. Unknown priority takes precedence over age.\n",
+    "docs/refs/acceptance.md": "# Acceptance inputs\n\nKnown high priority routes to urgent. Known normal priority routes to standard until the receipt is 30 minutes old. At the exact 30-minute boundary it routes to urgent. A future receipt is treated as age zero. Unknown priorities go to triage at any age.\n",
+    "src/domain/select-queue.mjs": "export function selectQueue({ priority }) {\n  return { queue: priority === \"high\" ? \"urgent\" : \"standard\", rawPriority: priority };\n}\n",
+    "src/domain/select-queue.test.mjs": "import assert from \"node:assert/strict\";\nimport { test } from \"node:test\";\nimport { selectQueue } from \"./select-queue.mjs\";\n\nconst receivedAtMs = 1_000_000;\nconst thirtyMinutes = 30 * 60_000;\nfor (const [name, priority, ageMs, queue] of [\n  [\"high\", \" high \", 0, \"urgent\"],\n  [\"normal before cutoff\", \"normal\", thirtyMinutes - 1, \"standard\"],\n  [\"normal at cutoff\", \"normal\", thirtyMinutes, \"urgent\"],\n  [\"future receipt\", \"normal\", -1, \"standard\"],\n  [\"unknown before age\", \"unknown\", thirtyMinutes, \"triage\"],\n]) {\n  test(name, () => {\n    assert.deepEqual(\n      selectQueue({ priority, receivedAtMs, nowMs: receivedAtMs + ageMs }),\n      { queue, rawPriority: priority },\n    );\n  });\n}\n",
+    "src/adapters/ticket-input.mjs": "import { selectQueue } from \"../domain/select-queue.mjs\";\n\nexport function routeReceivedTicket(ticket, nowMs) {\n  return selectQueue({ ...ticket, nowMs });\n}\n",
+    "plan.md": "# Ticket routing repair\n\nImplement the acceptance rules in the existing pure domain function. Keep the adapter unchanged. Run `node --test src/domain/select-queue.test.mjs` and record RED and GREEN.\n",
+    "tasks.md": "# Review tasks\n\nT001 Repair the queue selection policy.\n\nT002 Keep the adapter passing the caller clock to the policy. This task is complete.\n"
+  },
+  "gates": {
+    "command": [
+      "node",
+      "--test",
+      "src/domain/select-queue.test.mjs"
+    ],
+    "baselineExitCode": 1,
+    "candidateExitCode": 0,
+    "allowedChangedPaths": [
+      "src/domain/select-queue.mjs"
+    ],
+    "reviewRequiredReopenedTasks": [
+      "T001"
+    ],
+    "reviewForbiddenReopenedTasks": [
+      "T002"
+    ]
+  }
+}
