@@ -1,4 +1,4 @@
--- Disable foreign key actions while replacing parent tables. Check every reference before commit.
+-- Disable foreign key actions while replacing parent tables.
 PRAGMA foreign_keys = OFF;
 BEGIN IMMEDIATE;
 
@@ -185,13 +185,18 @@ CREATE TABLE gate_results_new (
 INSERT INTO gate_results_new (id, feature_id, phase_id, task_id, gate_script, passed,
                               exit_code, output, recorded_at, project_id)
 SELECT g.id, g.feature_id, g.phase_id, g.task_id, g.gate_script, g.passed,
-       g.exit_code, g.output, g.recorded_at, COALESCE(p.id, ph_project.id, f.id, 'legacy-local')
-FROM gate_results g
-LEFT JOIN projects p ON p.id = g.project_id
-LEFT JOIN plan_phases ph0 ON ph0.id = g.phase_id AND ph0.feature_id = g.feature_id
-LEFT JOIN projects ph_project ON ph_project.id = ph0.project_id
-LEFT JOIN plan_features f0 ON f0.id = g.feature_id
-LEFT JOIN projects f ON f.id = f0.project_id;
+       g.exit_code, g.output, g.recorded_at,
+       COALESCE(g.project_id, (
+         SELECT MIN(project_id)
+         FROM (
+           SELECT ph.project_id FROM plan_phases ph
+           WHERE ph.id = g.phase_id AND ph.feature_id = g.feature_id
+           UNION ALL
+           SELECT f.project_id FROM plan_features f WHERE f.id = g.feature_id
+         )
+         HAVING COUNT(DISTINCT project_id) = 1
+       ), 'legacy-local')
+FROM gate_results g;
 
 CREATE TABLE issues_new (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -210,11 +215,12 @@ CREATE TABLE issues_new (
 INSERT INTO issues_new (id, issue_number, feature_id, title, body, state, html_url,
                         created_at, closed_at, author, project_id)
 SELECT i.id, i.issue_number, i.feature_id, i.title, i.body, i.state, i.html_url,
-       i.created_at, i.closed_at, i.author, COALESCE(p.id, f.id, 'legacy-local')
-FROM issues i
-LEFT JOIN projects p ON p.id = i.project_id
-LEFT JOIN plan_features f0 ON f0.id = i.feature_id
-LEFT JOIN projects f ON f.id = f0.project_id;
+       i.created_at, i.closed_at, i.author,
+       COALESCE(i.project_id, (
+         SELECT MIN(f.project_id) FROM plan_features f WHERE f.id = i.feature_id
+         HAVING COUNT(DISTINCT f.project_id) = 1
+       ), 'legacy-local')
+FROM issues i;
 
 UPDATE sqlite_sequence SET seq = MAX(seq, COALESCE(
   (SELECT old.seq FROM sqlite_sequence old WHERE old.name = replace(sqlite_sequence.name, '_new', '')), 0))

@@ -38,6 +38,29 @@ describe("FR-H14: Issues Ledger", () => {
     expect(issues[0].issue_number).toBe(101);
   });
 
+  it("lists a moved issue under its canonical feature", () => {
+    const issue: IssueRecord = {
+      issue_number: 7,
+      feature_id: "old-feature",
+      title: "Moved issue",
+      body: null,
+      state: "open",
+      created_at: "2026-11-11",
+      author: "tester",
+    };
+    upsertIssue(issue, "alias", db);
+    upsertIssue({ ...issue, feature_id: "new-feature" }, "canonical", db);
+    db.exec(`
+      INSERT INTO projects (id, name, path) VALUES ('canonical', 'Canonical', '');
+      INSERT INTO project_aliases (alias_id, project_id) VALUES ('alias', 'canonical');
+    `);
+
+    expect(listIssues("old-feature", "canonical", db)).toEqual([]);
+    expect(listIssues("new-feature", "canonical", db)).toMatchObject([
+      { issue_number: 7, project_id: "canonical" },
+    ]);
+  });
+
   it("should update issue status", () => {
     const issue: IssueRecord = {
       issue_number: 102,

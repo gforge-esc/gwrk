@@ -11,6 +11,7 @@ import {
   recordCompression,
 } from "./compression.js";
 import { getTestDb } from "./index.js";
+import { createProjectRegistry } from "./project-registry.js";
 
 describe("FR-H06: Compression recording", () => {
   let db: Database.Database;
@@ -103,5 +104,28 @@ describe("FR-H06: Compression recording", () => {
     expect(Array.isArray(records)).toBe(true);
     expect(records.length).toBe(1);
     expect(records[0].feature_id).toBe("list-feat");
+
+    createProjectRegistry(db, () => {}).enrollProject({
+      projectId: "canonical",
+      slug: "checkout",
+      name: "Checkout",
+      repoSlug: null,
+      trunkBranch: "develop",
+      localRoot: "/fixtures/checkout",
+      mirrorPath: null,
+      runnerPolicy: { allowedKinds: ["local"] },
+      slack: null,
+      legacyProjectIds: ["test-project"],
+      createdAt: report.generatedAt,
+      updatedAt: report.generatedAt,
+    });
+    const id = recordCompression(report, "canonical", db);
+    for (const projectId of ["test-project", "canonical"]) {
+      const winner = getCompressionRecord("list-feat", "p1", projectId, db);
+      expect(winner?.id).toBe(id);
+      expect(listCompressionRecords("list-feat", projectId, db)).toEqual([
+        winner,
+      ]);
+    }
   });
 });

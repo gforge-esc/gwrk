@@ -18,6 +18,8 @@ import {
   writeScopedStderr,
   writeScopedStdout,
 } from "../adapters/cli/output-scope.js";
+import { getDb } from "../db/index.js";
+import { canonicalProjectId } from "../db/project-registry.js";
 import {
   finishRun as dbFinishRun,
   recordHistory as dbRecordHistory,
@@ -786,6 +788,7 @@ Examples:
               try {
                 const selection = await getBackendSelector(cwd).selectBackend({
                   runId: `ship-dryrun-${feature}`,
+                  projectId: canonicalProjectId(getDb(), resolveProjectId(cwd)),
                   feature,
                   phase: `phase-${phases[0].padStart(2, "0")}`,
                   taskType: "implement",
@@ -868,6 +871,7 @@ Examples:
                 const selector = getBackendSelector(cwd);
                 const selection = await selector.selectBackend({
                   runId: `ship-${feature}-${Date.now()}`,
+                  projectId: canonicalProjectId(getDb(), resolveProjectId(cwd)),
                   feature,
                   phase: `phase-${p.padStart(2, "0")}`,
                   taskType: "implement",

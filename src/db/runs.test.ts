@@ -152,6 +152,42 @@ describe("runs db", () => {
     expect(runs.length).toBe(1);
   });
 
+  it("keeps implicit runs with the checkout after a write for another project", () => {
+    const checkoutId = TEST_PROJECT_ID;
+    registerProject(
+      { id: checkoutId, name: "Checkout", path: process.cwd() },
+      db,
+    );
+
+    startRun(
+      {
+        feature_id: "shared",
+        command: "explicit",
+        project_id: "other-project",
+      },
+      db,
+    );
+    const implicitId = startRun(
+      { feature_id: "shared", command: "implicit" },
+      db,
+    );
+
+    expect(listRuns("shared", checkoutId, db).map(({ id }) => id)).toEqual([
+      implicitId,
+    ]);
+    expect(
+      listRuns("shared", "other-project", db).map(({ command }) => command),
+    ).toEqual(["explicit"]);
+    expect(
+      db.prepare("SELECT id FROM projects ORDER BY id").pluck().all(),
+    ).toEqual(["other-project", checkoutId]);
+    expect(
+      db
+        .prepare("SELECT path, local_root FROM projects WHERE id = ?")
+        .get("other-project"),
+    ).toEqual({ path: "", local_root: null });
+  });
+
   describe("FR-H03: DB Record Finalization", () => {
     it("US-H03: finishRun updates status, PR, and merge commit", () => {
       const runId = startRun(

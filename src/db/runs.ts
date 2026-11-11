@@ -8,7 +8,11 @@
 
 import path from "node:path";
 import type Database from "better-sqlite3";
-import { resolveProjectId } from "../adapters/git/project-id.js";
+import { discoverGitIdentityFacts } from "../adapters/git/project-id.js";
+import {
+  computeLegacyProjectIds,
+  computeProjectId,
+} from "../domain/project-id.js";
 import { getDb } from "./index.js";
 import { canonicalProjectId, projectScope } from "./project-registry.js";
 
@@ -59,24 +63,34 @@ function ensureProjectRow(
   conn: Database.Database,
   requestedProjectId?: string | null,
 ): string | null {
-  const projectId = canonicalProjectId(
-    conn,
-    requestedProjectId ?? resolveProjectId(process.cwd()),
-  );
-  if (!projectId) return null;
+  const exists = conn.prepare("SELECT 1 FROM projects WHERE id = ?");
+  const requested =
+    requestedProjectId == null
+      ? null
+      : canonicalProjectId(conn, requestedProjectId);
+  if (requested === "") return null;
+  if (requested && exists.get(requested)) return requested;
 
-  if (
-    !requestedProjectId &&
-    !conn.prepare("SELECT 1 FROM projects WHERE id = ?").get(projectId)
-  ) {
+  const cwd = process.cwd();
+  const facts = discoverGitIdentityFacts(cwd);
+  const checkoutId = canonicalProjectId(conn, computeProjectId(facts));
+  const projectId = requested ?? checkoutId;
+  if (requested === null) {
+    for (const id of [checkoutId, ...computeLegacyProjectIds(facts)]) {
+      const canonical = canonicalProjectId(conn, id);
+      if (exists.get(canonical)) return canonical;
+    }
+
     const legacy = conn
       .prepare(`
-      SELECT p.id FROM projects p WHERE p.path = ? AND p.updated_at IS NULL
+      SELECT p.id FROM projects p
+      WHERE (p.path = ? OR p.local_root = ? OR p.mirror_path = ?)
         AND NOT EXISTS (SELECT 1 FROM project_aliases a WHERE a.alias_id = p.id)
       LIMIT 2
     `)
-      .all(process.cwd()) as { id: string }[];
-    if (legacy.length === 1) return legacy[0].id;
+      .pluck()
+      .all(cwd, cwd, cwd) as string[];
+    if (legacy.length === 1) return legacy[0];
   }
 
   conn
@@ -85,8 +99,8 @@ function ensureProjectRow(
     )
     .run({
       id: projectId,
-      name: path.basename(process.cwd()),
-      path: process.cwd(),
+      name: projectId === checkoutId ? path.basename(cwd) : projectId,
+      path: projectId === checkoutId ? cwd : "",
     });
   return projectId;
 }

@@ -5,16 +5,30 @@
 import fs from "node:fs";
 import path from "node:path";
 import { Command } from "commander";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { getDb, getTestDb } from "../db/index.js";
 import * as runsModule from "../db/runs.js";
 import * as execModule from "../utils/exec.js";
 import * as uiModule from "../utils/format.js";
+import { resolveProjectId } from "../utils/project-id.js";
 import * as stateModule from "../utils/state.js";
 import {
   loadSetupState,
   isSetupComplete,
 } from "../utils/setup-state.js";
 import { shipCommand } from "./ship.js";
+
+vi.mock("../db/index.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../db/index.js")>();
+  return { ...actual, getDb: vi.fn() };
+});
+
+let routingDb: ReturnType<typeof getTestDb>;
+beforeEach(() => {
+  routingDb = getTestDb();
+  vi.mocked(getDb).mockReturnValue(routingDb);
+});
+afterEach(() => routingDb.close());
 
 // Mock dependencies
 vi.mock("../utils/exec.js", () => ({
@@ -526,16 +540,35 @@ describe("BackendSelector Integration", () => {
     const { getBackendSelector } = await import("../server/index.js");
     const mockSelector = getBackendSelector() as any;
     
-    // Legacy ship to keep it simple for this test
     vi.mocked(execModule.run).mockResolvedValue(undefined);
-
     await program.parseAsync(["node", "test", "ship", "001-cli-core", "1", "--legacy"]);
 
-    expect(mockSelector.selectBackend).toHaveBeenCalled();
+    expect(mockSelector.selectBackend).toHaveBeenCalledWith(
+      expect.objectContaining({ projectId: resolveProjectId(process.cwd()) }),
+    );
     
     const wudCalls = vi.mocked(execModule.run).mock.calls.filter(call => typeof call[0] === "string" && call[0].includes("work-until-done.sh"));
     expect(wudCalls[0][2].env.AGENT_BACKEND).toBe("router-selected-agent");
     expect(wudCalls[0][2].env.GEMINI_MODEL).toBe("router-selected-model");
+  });
+
+  it("forwards the canonical checkout ID in a dry run", async () => {
+    const { getBackendSelector } = await import("../server/index.js");
+    const selector = getBackendSelector();
+    routingDb
+      .prepare("INSERT INTO projects (id, name, path) VALUES (?, ?, ?)")
+      .run("canonical", "Checkout", process.cwd());
+    routingDb
+      .prepare("INSERT INTO project_aliases (alias_id, project_id) VALUES (?, ?)")
+      .run(resolveProjectId(process.cwd()), "canonical");
+
+    await program.parseAsync([
+      "node", "test", "ship", "001-cli-core", "1", "--dry-run",
+    ]);
+
+    expect(selector.selectBackend).toHaveBeenCalledWith(
+      expect.objectContaining({ projectId: "canonical" }),
+    );
   });
 
   it("should skip selectBackend() when --agent override IS provided", async () => {

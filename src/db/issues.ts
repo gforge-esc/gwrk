@@ -4,7 +4,7 @@
 
 import type Database from "better-sqlite3";
 import { getDb } from "./index.js";
-import { firstPerKey, projectScope } from "./project-registry.js";
+import { projectScope } from "./project-registry.js";
 
 export interface IssueRecord {
   id?: number;
@@ -112,13 +112,17 @@ export function listIssues(
 ): IssueRecord[] {
   const conn = db ?? getDb();
   const { canonical, ids, placeholders } = projectScope(conn, projectId);
-  const rows = conn
+  return conn
     .prepare(`
-      SELECT * FROM issues WHERE feature_id = ? AND project_id IN (${placeholders})
-      ORDER BY project_id = ? DESC, project_id
+      WITH ranked AS (
+        SELECT id, feature_id, ROW_NUMBER() OVER (
+          PARTITION BY issue_number ORDER BY project_id = ? DESC, project_id
+        ) AS rank
+        FROM issues WHERE project_id IN (${placeholders})
+      )
+      SELECT * FROM issues
+      WHERE id IN (SELECT id FROM ranked WHERE rank = 1 AND feature_id = ?)
+      ORDER BY created_at DESC, id
     `)
-    .all(featureId, ...ids, canonical) as IssueRecord[];
-  return firstPerKey(rows, (row) => row.issue_number).sort((a, b) =>
-    b.created_at.localeCompare(a.created_at),
-  );
+    .all(canonical, ...ids, featureId) as IssueRecord[];
 }

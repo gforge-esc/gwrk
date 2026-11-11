@@ -7,6 +7,11 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import Database from "better-sqlite3";
+import {
+  computeLegacyProjectIds,
+  computeProjectId,
+} from "../domain/project-id.js";
+import { discoverVerifiedCheckout } from "./project-registry.js";
 
 const GWRK_DIR = process.env.GWRK_DIR || path.join(os.homedir(), ".gwrk");
 const DB_PATH = process.env.GWRK_DB_PATH || path.join(GWRK_DIR, "gwrk.db");
@@ -14,6 +19,9 @@ const MIGRATIONS_DIR = path.join(
   path.dirname(fileURLToPath(import.meta.url)),
   "migrations",
 );
+
+const PROJECT_REGISTRY_MIGRATION =
+  "014-project-registry-and-composite-keys.sql";
 
 let _db: Database.Database | undefined;
 
@@ -98,8 +106,12 @@ function runMigrations(db: Database.Database, migrationsDir: string): void {
     if (applied.has(file)) continue;
 
     const sql = fs.readFileSync(path.join(migrationsDir, file), "utf-8");
-    db.exec(sql);
-    db.prepare("INSERT INTO _migrations (name) VALUES (?)").run(file);
+    if (file === PROJECT_REGISTRY_MIGRATION) {
+      migrateProjectRegistry(db, sql);
+    } else {
+      db.exec(sql);
+      db.prepare("INSERT INTO _migrations (name) VALUES (?)").run(file);
+    }
   }
 
   // Post-migration idempotent column additions.
@@ -127,6 +139,52 @@ function runMigrations(db: Database.Database, migrationsDir: string): void {
   ];
   for (const table of scopedTables) {
     safeAddColumn(db, table, "project_id", "TEXT");
+  }
+}
+
+function migrateProjectRegistry(db: Database.Database, sql: string): void {
+  // Use the same rebuild as standalone SQL and commit the checkout backfill with it.
+  const begin = "BEGIN IMMEDIATE;";
+  const start = sql.indexOf(begin);
+  const end = sql.lastIndexOf("COMMIT;");
+  if (start < 0 || end <= start)
+    throw new Error("Missing migration 014 transaction boundaries");
+  const rebuild = sql.slice(start + begin.length, end);
+
+  db.pragma("foreign_keys = OFF");
+  try {
+    db.transaction(() => {
+      const migration = db.prepare("SELECT 1 FROM _migrations WHERE name = ?");
+      if (migration.get(PROJECT_REGISTRY_MIGRATION)) return;
+      db.exec(rebuild);
+      backfillCheckoutRoots(db);
+      db.prepare("INSERT INTO _migrations (name) VALUES (?)").run(
+        PROJECT_REGISTRY_MIGRATION,
+      );
+    }).immediate();
+  } finally {
+    db.pragma("foreign_keys = ON");
+  }
+}
+
+function backfillCheckoutRoots(db: Database.Database): void {
+  const projects = db
+    .prepare("SELECT id, path FROM projects WHERE path <> ''")
+    .all() as { id: string; path: string }[];
+  const setRoot = db.prepare("UPDATE projects SET local_root = ? WHERE id = ?");
+  const addAlias = db.prepare(`
+    INSERT INTO project_aliases (alias_id, project_id)
+    SELECT @alias, @id WHERE NOT EXISTS (SELECT 1 FROM projects WHERE id = @alias)
+    ON CONFLICT(alias_id) DO NOTHING
+  `);
+  for (const { id, path: checkout } of projects) {
+    const facts = discoverVerifiedCheckout(checkout);
+    if (!facts) continue;
+    const aliases = computeLegacyProjectIds(facts);
+    if (id !== computeProjectId(facts) && !aliases.includes(id)) continue;
+
+    setRoot.run(checkout, id);
+    for (const alias of aliases) addAlias.run({ alias, id });
   }
 }
 

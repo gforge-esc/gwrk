@@ -2,8 +2,15 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import { execFileSync } from "node:child_process";
+import { realpathSync } from "node:fs";
+import { isAbsolute } from "node:path";
 import type Database from "better-sqlite3";
-import { computeLegacyProjectIds } from "../domain/project-id.js";
+import { discoverGitIdentityFacts } from "../adapters/git/project-id.js";
+import {
+  computeLegacyProjectIds,
+  computeProjectId,
+} from "../domain/project-id.js";
 import {
   type EnrolledProject,
   type ProjectRoleBinding,
@@ -16,6 +23,24 @@ import {
 import type { ProjectRegistryPort } from "../ports/store-port.js";
 
 const LEGACY_LOCAL = "legacy-local";
+
+export function discoverVerifiedCheckout(root: string) {
+  if (!isAbsolute(root)) return null;
+  try {
+    const realRoot = realpathSync(root);
+    const topLevel = execFileSync("git", ["rev-parse", "--show-toplevel"], {
+      cwd: root,
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"],
+      timeout: 5_000,
+    }).trim();
+    if (realpathSync(topLevel) !== realRoot) return null;
+    const facts = discoverGitIdentityFacts(root);
+    return facts.gitCommonDir ? facts : null;
+  } catch {
+    return null;
+  }
+}
 
 export function canonicalProjectId(
   db: Database.Database,
@@ -133,10 +158,7 @@ export function createProjectRegistry(
     if (!validated.ok) throw new Error(validated.error);
     const project = validated.value;
     const { projectId } = project;
-    if (
-      projectId === LEGACY_LOCAL ||
-      canonicalProjectId(db, projectId) !== projectId
-    ) {
+    if (projectId === LEGACY_LOCAL) {
       throw new Error(
         `Project ID is reserved or already an alias: ${projectId}`,
       );
@@ -144,6 +166,11 @@ export function createProjectRegistry(
 
     const checkout = project.localRoot ?? project.mirrorPath;
     const aliases = new Set(project.legacyProjectIds);
+    const transitions = new Set<string>();
+    const findLocal = db.prepare(`
+      SELECT local_root, mirror_path, updated_at
+      FROM projects WHERE id = ? AND repo_slug IS NULL
+    `);
     for (const root of [project.localRoot, project.mirrorPath]) {
       if (!root) continue;
       for (const id of computeLegacyProjectIds({ projectRoot: root })) {
@@ -155,6 +182,33 @@ export function createProjectRegistry(
           aliases.add(id);
         }
       }
+
+      const facts = discoverVerifiedCheckout(root);
+      if (!facts || computeProjectId(facts) !== projectId) continue;
+      const localId = computeProjectId({ ...facts, remoteOriginUrl: null });
+      for (const id of computeLegacyProjectIds(facts)) {
+        if (id === projectId || canonicalProjectId(db, id) !== id) continue;
+        const prior = findLocal.get(id) as
+          | Pick<ProjectRow, "local_root" | "mirror_path" | "updated_at">
+          | undefined;
+        if (!prior || (prior.updated_at !== null && id !== localId)) continue;
+        const sameCheckout = [prior.local_root, prior.mirror_path].some(
+          (priorRoot) =>
+            priorRoot === root ||
+            (priorRoot &&
+              discoverVerifiedCheckout(priorRoot)?.gitCommonDir ===
+                facts.gitCommonDir),
+        );
+        if (!sameCheckout) continue;
+        transitions.add(id);
+        aliases.add(id);
+      }
+    }
+    const currentOwner = canonicalProjectId(db, projectId);
+    if (currentOwner !== projectId && !transitions.has(currentOwner)) {
+      throw new Error(
+        `Project ID is reserved or already an alias: ${projectId}`,
+      );
     }
     aliases.delete(projectId);
     for (const alias of aliases) {
@@ -166,11 +220,21 @@ export function createProjectRegistry(
         .get(alias);
       if (
         alias === LEGACY_LOCAL ||
-        enrolled ||
-        (owner !== alias && owner !== projectId)
+        (enrolled && !transitions.has(alias)) ||
+        (owner !== alias && owner !== projectId && !transitions.has(owner))
       ) {
         throw new Error(`Project alias is reserved or already owned: ${alias}`);
       }
+    }
+
+    const retireLocal = db.prepare(
+      "UPDATE projects SET updated_at = NULL WHERE id = ?",
+    );
+    for (const localId of transitions) retireLocal.run(localId);
+    if (currentOwner !== projectId) {
+      db.prepare("DELETE FROM project_aliases WHERE alias_id = ?").run(
+        projectId,
+      );
     }
 
     const row = db
@@ -207,6 +271,11 @@ export function createProjectRegistry(
         shared: project.slack?.sharedChannel ? 1 : 0,
       }) as ProjectRow;
 
+    const retargetAliases = db.prepare(
+      "UPDATE project_aliases SET project_id = ? WHERE project_id = ?",
+    );
+    for (const localId of transitions) retargetAliases.run(projectId, localId);
+
     const addAlias = db.prepare(`
       INSERT INTO project_aliases (alias_id, project_id, created_at) VALUES (?, ?, ?)
       ON CONFLICT(alias_id) DO NOTHING
@@ -219,11 +288,17 @@ export function createProjectRegistry(
   return {
     enrollProject: enroll.immediate,
     getProject(value) {
+      const canonical = canonicalProjectId(db, value);
+      if (canonical !== value) {
+        return findOne(
+          "SELECT * FROM projects WHERE updated_at IS NOT NULL AND id = @value",
+          canonical,
+        );
+      }
       return findOne(
         `
         SELECT * FROM projects WHERE updated_at IS NOT NULL AND (
           id = @value OR slug = @value OR repo_slug = @value
-          OR id = (SELECT project_id FROM project_aliases WHERE alias_id = @value)
         )
       `,
         value,

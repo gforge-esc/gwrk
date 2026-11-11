@@ -2,10 +2,29 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import { execFileSync } from "node:child_process";
+import {
+  copyFileSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  realpathSync,
+  rmSync,
+} from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import type Database from "better-sqlite3";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { discoverGitIdentityFacts } from "../adapters/git/project-id.js";
+import {
+  computeLegacyProjectIds,
+  computeProjectId,
+} from "../domain/project-id.js";
 import { insertCompressionRecord } from "./db.js";
-import { getTestDb } from "./index.js";
+import { getGateResult } from "./gates.js";
+import { getTestDb, openDatabase } from "./index.js";
+import { listIssues } from "./issues.js";
+import { createProjectRegistry } from "./project-registry.js";
 import {
   finishRun,
   getStats,
@@ -14,6 +33,152 @@ import {
   registerProject,
   startRun,
 } from "./runs.js";
+
+describe("Project registry upgrade", () => {
+  const migration = "014-project-registry-and-composite-keys.sql";
+  const source = new URL("./migrations/", import.meta.url);
+  let root: string;
+  let dbPath: string;
+  let migrationsDir: string;
+
+  beforeEach(() => {
+    root = realpathSync(mkdtempSync(join(tmpdir(), "gwrk-upgrade-")));
+    dbPath = join(root, "ledger.sqlite");
+    migrationsDir = join(root, "migrations");
+    mkdirSync(migrationsDir);
+    for (const file of readdirSync(source)) {
+      if (file.endsWith(".sql") && file < migration) {
+        copyFileSync(new URL(file, source), join(migrationsDir, file));
+      }
+    }
+  });
+
+  afterEach(() => rmSync(root, { recursive: true, force: true }));
+
+  function upgrade(seed: (db: Database.Database) => void) {
+    const legacy = openDatabase({ dbPath, migrationsDir });
+    try {
+      seed(legacy);
+    } finally {
+      legacy.close();
+    }
+    copyFileSync(new URL(migration, source), join(migrationsDir, migration));
+    return openDatabase({ dbPath, migrationsDir });
+  }
+
+  it("preserves explicit issue and gate owners when a feature ID collides", () => {
+    const upgraded = upgrade((legacy) => {
+      // The old feature key allowed only Alpha's copy of the shared feature ID.
+      legacy.exec(`
+        INSERT INTO projects (id, name, path) VALUES ('alpha', 'Alpha', '/alpha');
+        INSERT INTO plan_features (id, name, project_id) VALUES ('shared', 'Alpha feature', 'alpha');
+        INSERT INTO plan_phases (id, feature_id, name, seq, project_id)
+          VALUES ('phase', 'shared', 'Alpha phase', 1, 'alpha'),
+                 ('other-phase', 'shared', 'Beta phase', 2, 'beta-unregistered');
+        INSERT INTO issues (issue_number, feature_id, title, created_at, author, project_id)
+          VALUES (7, 'shared', 'Beta issue', '2026-11-11', 'fixture', 'beta-unregistered'),
+                 (8, 'shared', 'Unattributed issue', '2026-11-11', 'fixture', NULL);
+        INSERT INTO gate_results (feature_id, phase_id, task_id, gate_script, project_id)
+          VALUES ('shared', 'phase', 'T001', 'beta.sh', 'beta-unregistered'),
+                 ('shared', 'other-phase', 'T002', 'ambiguous.sh', NULL);
+      `);
+    });
+    try {
+      expect
+        .soft(
+          listIssues("shared", "alpha", upgraded).map(
+            (issue) => issue.issue_number,
+          ),
+        )
+        .toEqual([8]);
+      expect
+        .soft(getGateResult("shared", "phase", "T001", "alpha", upgraded))
+        .toBeUndefined();
+      expect(listIssues("shared", "beta-unregistered", upgraded)).toMatchObject(
+        [{ issue_number: 7, title: "Beta issue" }],
+      );
+      expect(
+        getGateResult("shared", "phase", "T001", "beta-unregistered", upgraded)
+          ?.gate_script,
+      ).toBe("beta.sh");
+      expect(
+        getGateResult("shared", "other-phase", "T002", "legacy-local", upgraded)
+          ?.gate_script,
+      ).toBe("ambiguous.sh");
+    } finally {
+      upgraded.close();
+    }
+  });
+
+  it("backfills checkout roots and path aliases for verified projects", () => {
+    const checkout = join(root, "checkout");
+    const missing = join(root, "missing");
+    mkdirSync(checkout);
+    execFileSync("git", ["init", "--quiet", checkout], { stdio: "ignore" });
+    const nested = join(checkout, "nested");
+    mkdirSync(nested);
+    const facts = discoverGitIdentityFacts(checkout);
+    const [verifiedId] = computeLegacyProjectIds(facts);
+    const missingId = computeProjectId({ projectRoot: missing });
+    const [nestedId] = computeLegacyProjectIds({ projectRoot: nested });
+    const upgraded = upgrade((legacy) => {
+      const insert = legacy.prepare(
+        "INSERT INTO projects (id, name, path) VALUES (?, ?, ?)",
+      );
+      insert.run(verifiedId, "Verified", checkout);
+      insert.run(missingId, "Missing", missing);
+      insert.run(nestedId, "Nested", nested);
+    });
+    try {
+      expect(
+        upgraded
+          .prepare("SELECT local_root FROM projects WHERE id = ?")
+          .pluck()
+          .get(verifiedId),
+      ).toBe(checkout);
+      expect(
+        upgraded
+          .prepare("SELECT local_root FROM projects WHERE id IN (?, ?)")
+          .pluck()
+          .all(missingId, nestedId),
+      ).toEqual([null, null]);
+      expect(
+        upgraded
+          .prepare(
+            "SELECT alias_id, project_id FROM project_aliases ORDER BY alias_id",
+          )
+          .all(),
+      ).toEqual(
+        computeLegacyProjectIds(facts)
+          .filter((id) => id !== verifiedId)
+          .sort()
+          .map((alias_id) => ({ alias_id, project_id: verifiedId })),
+      );
+      const registry = createProjectRegistry(upgraded, () => {});
+      const projectId = computeProjectId(facts);
+      const now = "2026-11-11T12:00:00.000Z";
+      registry.enrollProject({
+        projectId,
+        slug: "verified",
+        name: "Verified",
+        repoSlug: null,
+        trunkBranch: "develop",
+        localRoot: checkout,
+        mirrorPath: null,
+        runnerPolicy: { allowedKinds: ["local"] },
+        slack: null,
+        legacyProjectIds: computeLegacyProjectIds(facts),
+        createdAt: now,
+        updatedAt: now,
+      });
+      for (const alias of computeLegacyProjectIds(facts)) {
+        expect(registry.getProject(alias)?.projectId).toBe(projectId);
+      }
+    } finally {
+      upgraded.close();
+    }
+  });
+});
 
 describe("SQLite execution ledger", () => {
   let db: Database.Database;

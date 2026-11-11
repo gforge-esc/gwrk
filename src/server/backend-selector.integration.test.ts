@@ -5,8 +5,9 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { getDb, getTestDb } from "../db/index.js";
 import type { AgentRegistry } from "./agent-registry.js";
-import { BackendSelector, type TaskContext } from "./backend-selector.js";
+import { BackendSelector } from "./backend-selector.js";
 import { QuotaProber } from "./quota-prober.js";
+import { listRoutingDecisions } from "./routing-decisions.js";
 import { TaskClassification, TaskType } from "./task-classifier.js";
 
 vi.mock("../db/index.js", async () => {
@@ -23,8 +24,9 @@ describe("BackendSelector Integration", () => {
   let prober: QuotaProber;
   let selector: BackendSelector;
 
-  const context: TaskContext = {
+  const context = {
     runId: "integration-run-123",
+    projectId: "alpha",
     feature: "feat-integration",
     phase: "phase-1",
     taskType: TaskType.IMPLEMENT,
@@ -93,6 +95,20 @@ describe("BackendSelector Integration", () => {
     expect(row.quota_percent).toBe(85);
     expect(row.probe_status).toBe("fresh");
     expect(row.run_id).toBe(context.runId);
+  });
+
+  it("scopes decisions for identical feature and nonnumeric run IDs", async () => {
+    await selector.selectBackend(context);
+    prober.markModelFailure("gemini", "gemini-flash");
+    await selector.selectBackend({ ...context, projectId: "beta" });
+
+    expect(listRoutingDecisions("alpha", context.runId, db)).toMatchObject([
+      { projectId: "alpha", selectedModel: "gemini-flash" },
+    ]);
+    expect(listRoutingDecisions("beta", context.runId, db)).toMatchObject([
+      { projectId: "beta", selectedModel: "gemini-pro" },
+    ]);
+    expect(listRoutingDecisions("legacy-local", context.runId, db)).toEqual([]);
   });
 
   it("handles model failover and records it (TR-009)", async () => {

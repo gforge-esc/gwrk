@@ -12,6 +12,7 @@ import { TaskClassification, classifyTask } from "./task-classifier.js";
 
 interface TaskContext {
   runId: string;
+  projectId: string;
   feature: string;
   phase: string;
   taskType: string;
@@ -131,6 +132,7 @@ export class BackendSelector {
         // Record decision
         recordDecision({
           runId: context.runId,
+          projectId: context.projectId,
           feature: context.feature,
           phase: context.phase,
           selectedBackend: selection.backend,

@@ -13,6 +13,7 @@ import {
   insertEdge,
   insertFeature,
   insertPhase,
+  listPhases,
 } from "./plan.js";
 
 describe("src/db/plan.ts (DM-018-001/002/003)", () => {
@@ -58,6 +59,36 @@ describe("src/db/plan.ts (DM-018-001/002/003)", () => {
     insertPhase(phase, projectId, db);
     const result = getPhase("F018-P1", projectId, db);
     expect(result).toMatchObject(phase);
+  });
+
+  it("lists a moved phase under its canonical feature", () => {
+    const phase = {
+      id: "phase",
+      name: "Shared phase",
+      status: "PLANNED",
+      health: "CLEAN",
+      sp_estimate: 0,
+      seq: 1,
+    };
+    for (const [id, featureId] of [
+      ["alias", "old-feature"],
+      [projectId, "current-feature"],
+    ]) {
+      insertFeature(
+        { id: featureId, name: featureId, status: "PLANNED", sp_total: 0 },
+        id,
+        db,
+      );
+      insertPhase({ ...phase, feature_id: featureId }, id, db);
+    }
+    db.prepare(
+      "INSERT INTO project_aliases (alias_id, project_id) VALUES (?, ?)",
+    ).run("alias", projectId);
+
+    expect(listPhases("old-feature", projectId, db)).toEqual([]);
+    expect(listPhases("current-feature", projectId, db)).toEqual([
+      getPhase(phase.id, projectId, db),
+    ]);
   });
 
   it("FR-001: should insert and retrieve edges", () => {

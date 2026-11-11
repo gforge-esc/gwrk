@@ -232,11 +232,19 @@ export function listPhases(
 ): PlanPhase[] {
   const conn = db ?? getDb();
   const { canonical, ids, placeholders } = projectScope(conn, projectId);
-  const rows = conn
-    .prepare(`SELECT * FROM plan_phases WHERE feature_id = ? AND project_id IN (${placeholders})
-      ORDER BY project_id = ? DESC, project_id`)
-    .all(featureId, ...ids, canonical) as PlanPhase[];
-  return firstPerKey(rows, (row) => row.id).sort((a, b) => a.seq - b.seq);
+  return conn
+    .prepare(`
+      WITH ranked AS (
+        SELECT rowid, feature_id, ROW_NUMBER() OVER (
+          PARTITION BY id ORDER BY project_id = ? DESC, project_id
+        ) AS rank
+        FROM plan_phases WHERE project_id IN (${placeholders})
+      )
+      SELECT * FROM plan_phases
+      WHERE rowid IN (SELECT rowid FROM ranked WHERE rank = 1 AND feature_id = ?)
+      ORDER BY seq, id
+    `)
+    .all(canonical, ...ids, featureId) as PlanPhase[];
 }
 
 /**

@@ -126,11 +126,18 @@ export function listCompressionRecords(
   db?: Database.Database,
 ): CompressionRecord[] {
   const conn = db ?? getDb();
-  const { ids, placeholders } = projectScope(conn, projectId);
+  const { canonical, ids, placeholders } = projectScope(conn, projectId);
   return conn
-    .prepare(
-      `SELECT * FROM compression WHERE feature_id = ? AND project_id IN (${placeholders})
-      ORDER BY recorded_at DESC, id DESC`,
-    )
-    .all(featureId, ...ids) as CompressionRecord[];
+    .prepare(`
+      WITH ranked AS (
+        SELECT id, ROW_NUMBER() OVER (
+          PARTITION BY phase_id ORDER BY project_id = ? DESC, recorded_at DESC, id DESC
+        ) AS rank
+        FROM compression WHERE feature_id = ? AND project_id IN (${placeholders})
+      )
+      SELECT * FROM compression
+      WHERE id IN (SELECT id FROM ranked WHERE rank = 1)
+      ORDER BY recorded_at DESC, id DESC
+    `)
+    .all(canonical, featureId, ...ids) as CompressionRecord[];
 }

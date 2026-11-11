@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import { execFileSync } from "node:child_process";
 import {
   copyFileSync,
   mkdirSync,
@@ -15,6 +16,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import Database from "better-sqlite3";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { resolveProjectId } from "../adapters/git/project-id.js";
 import { createSqliteProjectRegistryAdapter } from "../adapters/sqlite/index.js";
 import { computeLegacyProjectIds } from "../domain/project-id.js";
 import type {
@@ -283,6 +285,78 @@ describe("Project registry storage", () => {
       ).toEqual(["Legacy feature"]);
     } finally {
       db.close();
+    }
+  });
+
+  it("transitions a verified local enrollment to its remote identity", () => {
+    const checkout = mkdtempSync(join(tmpdir(), "gwrk-enrollment-"));
+    const db = getTestDb();
+    try {
+      execFileSync("git", ["init", "--quiet", checkout], { stdio: "ignore" });
+      const localId = resolveProjectId(checkout);
+      const registry = createSqliteProjectRegistryAdapter({ db });
+      registry.enrollProject({
+        ...project,
+        projectId: localId,
+        repoSlug: null,
+        localRoot: checkout,
+      });
+      registry.enrollProject({
+        ...project,
+        projectId: "unrelated",
+        slug: "unrelated",
+        repoSlug: "example/unrelated",
+        legacyProjectIds: [],
+      });
+      insertFeature(
+        { id: "shared", name: "Local feature", status: "open", sp_total: 1 },
+        localId,
+        db,
+      );
+
+      execFileSync("git", [
+        "-C",
+        checkout,
+        "remote",
+        "add",
+        "origin",
+        "https://github.com/example/pilot.git",
+      ]);
+      const remoteId = resolveProjectId(checkout);
+      const remote = {
+        ...project,
+        projectId: remoteId,
+        localRoot: checkout,
+        legacyProjectIds: [localId],
+      };
+      expect(() =>
+        registry.enrollProject({
+          ...remote,
+          legacyProjectIds: [localId, "unrelated"],
+        }),
+      ).toThrow(/already owned: unrelated/);
+      expect(registry.getProject(localId)?.projectId).toBe(localId);
+      expect(registry.getProject(remoteId)).toBeNull();
+      expect(registry.getProject("legacy-project")?.projectId).toBe(localId);
+      expect(registry.getProject("unrelated")?.projectId).toBe("unrelated");
+
+      expect(registry.enrollProject(remote).projectId).toBe(remoteId);
+      expect(registry.enrollProject(remote).projectId).toBe(remoteId);
+      for (const id of [localId, remoteId, "legacy-project"]) {
+        expect(registry.getProject(id)?.projectId).toBe(remoteId);
+        expect(getFeature("shared", id, db)?.project_id).toBe(localId);
+      }
+      expect(registry.findByLocalRoot(checkout)?.projectId).toBe(remoteId);
+      expect(
+        registry
+          .listProjects()
+          .map(({ projectId }) => projectId)
+          .sort(),
+      ).toEqual([remoteId, "unrelated"].sort());
+      expect(db.pragma("foreign_key_check")).toEqual([]);
+    } finally {
+      db.close();
+      rmSync(checkout, { recursive: true, force: true });
     }
   });
 
