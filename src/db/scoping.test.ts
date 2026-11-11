@@ -2,10 +2,17 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import Database from "better-sqlite3";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import type {
+  EnrolledProject,
+  SlackActionReceipt,
+} from "../domain/project-registry.js";
 import { getGateResult, recordGateResult } from "./gates.js";
-import { getTestDb } from "./index.js";
+import { getTestDb, openDatabase } from "./index.js";
 import { listIssues, upsertIssue } from "./issues.js";
 import {
   type PlanFeature,
@@ -171,6 +178,100 @@ describe("Shared ledger project isolation", () => {
       expect(listIssues(featureId, id, db).map(({ title }) => title)).toEqual([
         id,
       ]);
+    }
+  });
+});
+
+describe("Project registry storage", () => {
+  const now = "2026-11-11T12:00:00.000Z";
+  const project: EnrolledProject = {
+    projectId: "canonical-project",
+    slug: "pilot",
+    name: "Pilot",
+    repoSlug: "example/pilot",
+    trunkBranch: "develop",
+    localRoot: "/fixtures/pilot",
+    mirrorPath: null,
+    runnerPolicy: { allowedKinds: ["local"] },
+    slack: null,
+    legacyProjectIds: ["legacy-project"],
+    createdAt: now,
+    updatedAt: now,
+  };
+
+  it("reads a legacy feature through the canonical enrollment", async () => {
+    const { createSqliteProjectRegistryAdapter } = await import(
+      "../adapters/sqlite/index.js"
+    );
+    const db = getTestDb();
+    try {
+      registerProject(
+        { id: "legacy-project", name: "Pilot", path: "/fixtures/pilot" },
+        db,
+      );
+      insertFeature(
+        {
+          id: "001-pilot",
+          name: "Legacy feature",
+          status: "open",
+          sp_total: 1,
+        },
+        "legacy-project",
+        db,
+      );
+      const registry = createSqliteProjectRegistryAdapter({ db });
+
+      expect(registry.enrollProject(project).projectId).toBe(project.projectId);
+      expect(registry.getProject("legacy-project")?.projectId).toBe(
+        project.projectId,
+      );
+      expect(
+        listFeatures(project.projectId, db).map(({ name }) => name),
+      ).toEqual(["Legacy feature"]);
+    } finally {
+      db.close();
+    }
+  });
+
+  it("grants one receipt claim across two database connections", async () => {
+    const { createSqliteProjectRegistryAdapter } = await import(
+      "../adapters/sqlite/index.js"
+    );
+    const root = mkdtempSync(join(tmpdir(), "gwrk-action-receipts-"));
+    const dbPath = join(root, "registry.sqlite");
+    const first = openDatabase({ dbPath });
+    const second = openDatabase({ dbPath });
+    try {
+      const owner = createSqliteProjectRegistryAdapter({ db: first });
+      const duplicate = createSqliteProjectRegistryAdapter({ db: second });
+      owner.enrollProject(project);
+      const receipt: SlackActionReceipt = {
+        receiptKey: "verified-action",
+        projectId: project.projectId,
+        actionId: "merge_pr",
+        featureId: "001-pilot",
+        phaseId: null,
+        messageTs: "1731320500.000100",
+        actorUserId: "U_MAINTAINER",
+        outcome: "claimed",
+        recordedAt: now,
+      };
+      expect(owner.claimActionReceipt(receipt)).toBe(true);
+      expect(duplicate.claimActionReceipt(receipt)).toBe(false);
+      expect(duplicate.getActionReceipt(receipt.receiptKey)?.outcome).toBe(
+        "claimed",
+      );
+      expect(owner.completeActionReceipt(receipt.receiptKey, "executed")).toBe(
+        true,
+      );
+      expect(duplicate.claimActionReceipt(receipt)).toBe(false);
+      expect(duplicate.getActionReceipt(receipt.receiptKey)?.outcome).toBe(
+        "executed",
+      );
+    } finally {
+      first.close();
+      second.close();
+      rmSync(root, { recursive: true, force: true });
     }
   });
 });
