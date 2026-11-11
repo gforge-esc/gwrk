@@ -398,28 +398,56 @@ describe("ship with the real AgentPort router", () => {
     );
   });
 
-  it("resolves both role models after one native quota check", async () => {
-    seedQuota(100);
-    vi.mocked(codex.checkQuota)
-      .mockResolvedValueOnce({ status: "available" })
-      .mockResolvedValue({ status: "rate-limited" });
-    const { AgentBackendRegistry } = await import("../plugins/agent-registry.js");
+  it.each([
+    {
+      reviewCooldown: false,
+      reviewModel: "codex-review",
+      reviewEffort: "high",
+    },
+    {
+      reviewCooldown: true,
+      reviewModel: "codex-primary",
+      reviewEffort: "medium",
+    },
+  ])(
+    "resolves both role models after one native quota check with review cooldown $reviewCooldown",
+    async ({ reviewCooldown, reviewModel, reviewEffort }) => {
+      seedQuota(100);
+      vi.mocked(codex.checkQuota)
+        .mockResolvedValueOnce({ status: "available" })
+        .mockResolvedValue({ status: "rate-limited" });
+      const { AgentBackendRegistry } = await import(
+        "../plugins/agent-registry.js"
+      );
+      if (reviewCooldown) {
+        const { QuotaProber } = await import("../server/quota-prober.js");
+        const probeQuota = QuotaProber.prototype.probeQuota;
+        vi.spyOn(QuotaProber.prototype, "probeQuota").mockImplementation(
+          function (this: QuotaProber, ...args) {
+            this.markModelFailure("codex", "codex-review");
+            return probeQuota.apply(this, args);
+          },
+        );
+      }
 
-    await ship();
+      await ship();
 
-    expect(AgentBackendRegistry.prototype.getAgentBackend).toHaveBeenCalledExactlyOnceWith("codex");
-    expect(codex.checkQuota).toHaveBeenCalledTimes(1);
-    expect(ShipOrchestrator).toHaveBeenCalledExactlyOnceWith(
-      expect.objectContaining({
-        backend: "codex",
-        selectedModel: "codex-primary",
-        selectedEffort: "medium",
-        reviewModel: "codex-review",
-        reviewEffort: "high",
-      }),
-      undefined,
-    );
-  });
+      expect(
+        AgentBackendRegistry.prototype.getAgentBackend,
+      ).toHaveBeenCalledExactlyOnceWith("codex");
+      expect(codex.checkQuota).toHaveBeenCalledTimes(1);
+      expect(ShipOrchestrator).toHaveBeenCalledExactlyOnceWith(
+        expect.objectContaining({
+          backend: "codex",
+          selectedModel: "codex-primary",
+          selectedEffort: "medium",
+          reviewModel,
+          reviewEffort,
+        }),
+        undefined,
+      );
+    },
+  );
 
   it("passes through the legacy model environment for provider-default routes", async () => {
     vi.stubEnv("GEMINI_MODEL", "configured-legacy-model");
