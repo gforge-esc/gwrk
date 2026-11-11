@@ -824,6 +824,35 @@ describe("FR-001: architecture-aware workspace profiles (044 phase p01)", () => 
     expect(getTestCommand(profile, ["test_api.py"])).toBeNull();
   });
 
+  it.each([false, true])("finds a nearer workspace config without a root config (nested Git boundary=%s)", async (boundary) => {
+    fs.rmSync(path.join(root, ".gwrkrc.json"));
+    const nearerDesign = { ...design, architecture: "layered", principles: ["clean-code"] };
+    write("services/.gwrkrc.json", JSON.stringify({
+      project: { name: "services", design: nearerDesign },
+      workspaces: {
+        api: { stack: { framework: "Django" }, toolchain: { build: null } },
+      },
+    }));
+    write("services/api/pyproject.toml", '[project]\ndependencies = ["fastapi"]\n');
+    write("services/api/uv.lock", "");
+    write("services/api/pytest.ini", "[pytest]\n");
+    if (boundary) write("services/api/.git", "gitdir: /unused/worktree\n");
+
+    const direct = await detectProfile(path.join(root, "services/api"));
+    const explicit = await resolveWorkspaceProfile(root, "services/api");
+    if (boundary) {
+      expect(explicit.design).toBeUndefined();
+      expect(explicit.stack?.framework).toBe("FastAPI");
+    } else {
+      expect.soft(explicit).toMatchObject({
+        design: nearerDesign,
+        stack: { framework: "Django" },
+        toolchain: { build: null },
+      });
+    }
+    expect(explicit).toEqual(direct);
+  });
+
   it("finds the registered workspace under a nearer local design", async () => {
     const localDesign = { ...design, architecture: "layered" };
     const config = {

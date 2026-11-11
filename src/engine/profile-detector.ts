@@ -46,22 +46,21 @@ interface FilesystemProfile {
 export async function detectProfile(
   projectRoot: string,
 ): Promise<ProjectProfile> {
-  return detectProfileInDirectory(projectRoot, true);
+  return detectProfileInDirectory(projectRoot);
 }
 
 function detectProfileInDirectory(
   projectRoot: string,
-  searchAncestors: boolean,
-  explicitRoot?: { directory: string; config: WorkspaceRootConfig },
+  workspaceRoot?: { directory: string; config?: WorkspaceRootConfig },
 ): ProjectProfile {
   const detected = detectFilesystemProfile(projectRoot);
   const localProject = readLocalProject(projectRoot);
-  if (explicitRoot) {
+  if (workspaceRoot?.config !== undefined) {
     return applyWorkspaceConfig(
-      explicitRoot.directory,
+      workspaceRoot.directory,
       projectRoot,
       detected,
-      explicitRoot.config,
+      workspaceRoot.config,
       { localProject },
     );
   }
@@ -69,8 +68,8 @@ function detectProfileInDirectory(
   const scoped = resolveDetectedProfile(
     projectRoot,
     detected,
-    searchAncestors,
     localProject,
+    workspaceRoot?.directory,
   );
   if (scoped) return scoped;
   return localProject
@@ -478,8 +477,8 @@ function mergeLocalProject(
 function resolveDetectedProfile(
   detectedRoot: string,
   detected: FilesystemProfile,
-  searchAncestors: boolean,
   localProject?: WorkspaceProfileConfig,
+  workspaceRoot?: string,
 ): ProjectProfile | undefined {
   const start = path.resolve(detectedRoot);
   const configPath = path.join(start, ".gwrkrc.json");
@@ -491,12 +490,10 @@ function resolveDetectedProfile(
       projectDesign: DesignSchema.safeParse(config?.project?.design).data,
     });
   }
-  if (!searchAncestors) return undefined;
-
   let nearestConfig:
     | { directory: string; config: WorkspaceRootConfig }
     | undefined;
-  for (const ancestor of ancestorWorkspaceConfigs(start)) {
+  for (const ancestor of ancestorWorkspaceConfigs(start, workspaceRoot)) {
     nearestConfig ??= ancestor;
     const { directory, config } = ancestor;
     const matchedWorkspace = matchWorkspacePath(
@@ -687,13 +684,9 @@ async function detectWorkspaceProfile(
   workspacePath: string,
 ): Promise<ProjectProfile> {
   const workspace = path.resolve(root, workspacePath);
-  const config = readWorkspaceRootConfig(root);
-  if (config === undefined) {
-    return detectProfileInDirectory(workspace, false);
-  }
-  return detectProfileInDirectory(workspace, false, {
+  return detectProfileInDirectory(workspace, {
     directory: root,
-    config,
+    config: readWorkspaceRootConfig(root),
   });
 }
 

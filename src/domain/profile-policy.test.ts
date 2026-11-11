@@ -736,6 +736,38 @@ describe("FR-001: profile design inheritance (044 phase p01)", () => {
     },
   );
 
+  it.each([
+    { runner: undefined, expected: null, command: null },
+    {
+      runner: "pytest" as const,
+      expected: "pytest",
+      command: "pytest test_api.py -v",
+    },
+  ])(
+    "keeps the root test skip unless the workspace sets a runner ($runner)",
+    ({ runner, expected, command }) => {
+      const stack = { language: "Python", buildSystem: "uv" };
+      const profile = resolveWorkspacePolicyProfile(
+        "services/api",
+        { type: "python", stack, toolchain: { test: "pytest" } },
+        {
+          project: { design, stack, toolchain: { test: null } },
+          workspaces: {
+            "services/api": {
+              toolchain: runner
+                ? { build: null, test: runner }
+                : { build: null },
+            },
+          },
+        },
+      );
+      expect
+        .soft(profile.toolchain)
+        .toMatchObject({ test: expected, build: null });
+      expect(getTestCommand(profile, ["test_api.py"])).toBe(command);
+    },
+  );
+
   it("TR-005: selects the longest workspace ancestor for a nested path", () => {
     const nestedDesign = DesignSchema.parse({
       architecture: "clean",

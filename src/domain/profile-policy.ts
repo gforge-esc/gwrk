@@ -315,14 +315,23 @@ export function resolveWorkspacePolicyProfile(
     ? mergeToolchain(matchedToolchain, requestedToolchain)
     : matchedToolchain;
 
+  const {
+    test: _detectedRunner,
+    testCommand: _detectedCommand,
+    ...detectedWithoutTest
+  } = detectedToolchain;
+  const inheritedToolchain = mergeToolchain(
+    rootToolchain,
+    rootToolchain?.test === null ? detectedWithoutTest : detectedToolchain,
+  );
+
   return mergeProfileOverrides({
-    detected:
-      rootToolchain || Object.keys(detectedToolchain).length
-        ? {
-            ...detected,
-            toolchain: mergeToolchain(rootToolchain, detectedToolchain),
-          }
-        : detected,
+    detected: Object.keys(inheritedToolchain).length
+      ? {
+          ...detected,
+          toolchain: inheritedToolchain,
+        }
+      : detected,
     projectDesign,
     projectType: localProject?.type ?? matchedLocalProject?.type,
     projectStack: workspaceStack,
