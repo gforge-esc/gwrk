@@ -5,10 +5,10 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { TaskClassification } from "../../domain/types.js";
 import type { AgentBackendRegistry } from "../../plugins/agent-registry.js";
-import { QuotaProber } from "../../server/quota-prober.js";
 import { dispatchToAgent } from "../../utils/agent.js";
 import { GwrkConfigSchema, loadConfig } from "../../utils/config.js";
 import { createAgentPortAdapter } from "./index.js";
+import { QuotaProber } from "./quota-prober.js";
 import { tryLoadRegistry } from "./registry-loader.js";
 
 vi.mock("../../utils/config.js", async (importOriginal) => ({

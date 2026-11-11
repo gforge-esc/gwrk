@@ -150,14 +150,15 @@
           "id": "T013",
           "title": "Modify agent-registry.ts",
           "description": "DELETE src/server/agent-registry.ts. Remove compatibility re-export shim after migrating all callers",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/phase-03.sh",
-          "sp": 1
+          "sp": 1,
+          "completedAt": "2026-11-11T22:57:26.036Z"
         },
         {
           "id": "T014",
           "title": "Modify model-selector.ts",
-          "description": "DELETE src/server/model-selector.ts. Remove compatibility re-export shim after migrating all callers. Tests: src/server/model-selector.test.ts",
+          "description": "DELETE src/server/model-selector.ts. Remove compatibility re-export shim after migrating all callers. Tests: src/server/model-selector.test.ts\n\nREVIEW FAIL (code): Agent port adapter suite fails to load — FR-001.\n  WHERE: src/adapters/agents/agent-port.test.ts:8-12,23-32 and specs/043-unified-routing-prompt-delivery/gates/phase-03.sh:7-8\n  EXPECTED: import { QuotaProber } from \"./quota-prober.js\"; and pnpm exec vitest run includes src/adapters/agents/agent-port.test.ts in the Phase 3 gate.\n  ACTUAL: import { QuotaProber } from \"../../server/quota-prober.js\"; Vitest reports Cannot find module. The mock uses \"./quota-prober.js\". The Phase 3 gate omits the suite.\n  FIX: Import QuotaProber from \"./quota-prober.js\" so the spy and adapter use the same mock. Add the suite to gates/phase-03.sh and rerun the gate.\n\nREVIEW/GATE DIVERGENCE (T014, gate: gates/phase-03.sh, re-opened by review):\nThe review agent raised a finding on this task and its gate still passes, so the gate does not cover what review found. Add a test that fails on it, then fix, before completing.\n\nDIAGNOSIS (iteration 2):\nFIX: specs/043-unified-routing-prompt-delivery/gates/phase-03.sh — Add `src/adapters/agents/agent-port.test.ts` to `pnpm exec vitest run`. Run the gate before the import fix and confirm it exits nonzero with `Cannot find module`. Rerun after the fix and confirm it exits zero.\nFIX: src/adapters/agents/agent-port.test.ts — Replace `import { QuotaProber } from \"../../server/quota-prober.js\";` with `import { QuotaProber } from \"./quota-prober.js\";`.",
           "status": "open",
           "gateScript": "gates/phase-03.sh",
           "sp": 1
@@ -166,9 +167,10 @@
           "id": "T015",
           "title": "Modify task-classifier.ts",
           "description": "DELETE src/server/task-classifier.ts. Remove compatibility re-export shim after migrating all callers. Tests: src/server/task-classifier.test.ts",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/phase-03.sh",
-          "sp": 1
+          "sp": 1,
+          "completedAt": "2026-11-11T22:57:45.667Z"
         }
       ],
       "sp_estimate": 3,
