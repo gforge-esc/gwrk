@@ -27,12 +27,15 @@ interface GateResult {
  */
 export async function runGate(
   scriptPath: string,
-  opts?: { cwd?: string; env?: NodeJS.ProcessEnv },
+  opts?: { cwd?: string; env?: NodeJS.ProcessEnv; timeoutMs?: number },
 ): Promise<GateResult> {
   try {
     const { stdout, stderr } = await execFilePromise(scriptPath, [], {
       cwd: opts?.cwd,
       env: opts?.env,
+      ...(opts?.timeoutMs === undefined
+        ? {}
+        : { timeout: opts.timeoutMs, killSignal: "SIGKILL" as const }),
     });
     const output = [stdout, stderr]
       .filter(Boolean)
@@ -48,6 +51,8 @@ export async function runGate(
       code?: number | string;
       stdout?: string;
       stderr?: string;
+      killed?: boolean;
+      signal?: NodeJS.Signals;
     };
 
     const exitCode = typeof err.code === "number" ? err.code : 1;
@@ -55,6 +60,16 @@ export async function runGate(
       .filter(Boolean)
       .map((s) => s?.trim())
       .join("\n");
+
+    if (opts?.timeoutMs && err.killed && err.signal === "SIGKILL") {
+      return {
+        passed: false,
+        exitCode,
+        output: [`Gate timed out after ${opts.timeoutMs} ms`, output]
+          .filter(Boolean)
+          .join("\n"),
+      };
+    }
 
     if (err.code === "EACCES") {
       return {

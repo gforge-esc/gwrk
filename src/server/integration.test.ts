@@ -29,6 +29,7 @@ import { listRuns, recordHistory, startRun } from "../db/runs.js";
 import { gatherDeliveryActuals } from "../engine/compression.js";
 import { ShipOrchestrator } from "../engine/ship-orchestrator.js";
 import { execCommand } from "../utils/exec.js";
+import { runTaskGate } from "../utils/gate-exec.js";
 import { syncTrunkForHarvest } from "../utils/git.js";
 import { HarvestWatcher } from "./harvest-watcher.js";
 import { PlanHeartbeat } from "./heartbeat.js";
@@ -884,6 +885,37 @@ describe("Server E2E Integration", () => {
     }
   });
 
+  it("applies a scoped gate deadline to both executable file strategies", async () => {
+    const fixture = await createServerFixture("routes");
+    const { projectRoot } = fixture;
+    const gates = join(projectRoot, "gates");
+    try {
+      mkdirSync(gates);
+      for (const gate of ["T001-gate.sh", "configured.sh"]) {
+        writeFileSync(join(gates, gate), "#!/bin/sh\nexec /bin/sleep 1\n", {
+          mode: 0o700,
+        });
+      }
+      const options = {
+        cwd: projectRoot,
+        featureDir: projectRoot,
+        timeoutMs: 50,
+      };
+      for (const [task, strategy] of [
+        [{ id: "T001" }, "convention"],
+        [{ id: "T002", gateScript: "gates/configured.sh" }, "file"],
+        [{ id: "T003", gateScript: "exec /bin/sleep 1" }, "inline"],
+      ] as const) {
+        expect.soft(await runTaskGate(task, options)).toMatchObject({
+          passed: false,
+          strategy,
+        });
+      }
+    } finally {
+      await fixture.close();
+    }
+  });
+
   it("isolates fixture Git setup and worktrees from inherited repository selectors", async () => {
     const external = await createServerFixture("routes", {
       routes: ["dispatch"],
@@ -908,11 +940,20 @@ describe("Server E2E Integration", () => {
       const original = snapshot();
       vi.stubEnv("GIT_DIR", join(external.projectRoot, ".git"));
       vi.stubEnv("GIT_WORK_TREE", external.projectRoot);
+      vi.stubEnv("GIT_COMMITTER_DATE", "invalid-fixture-date");
+      vi.stubEnv("GIT_AUTHOR_DATE", "invalid-fixture-date");
+      vi.stubEnv("GIT_COMMITTER_NAME", "Inherited Committer");
+      vi.stubEnv("GIT_COMMITTER_EMAIL", "inherited@example.invalid");
       fixture = await createServerFixture("routes", { routes: ["dispatch"] });
       const { projectRoot } = fixture;
       expect(existsSync(join(projectRoot, ".git"))).toBe(true);
       expect(fixtureGit(projectRoot, "log", "-1", "--format=%s")).toBe(
         "Initialize fixture",
+      );
+      expect(
+        fixtureGit(projectRoot, "log", "-1", "--format=%an|%ae|%cn|%ce"),
+      ).toBe(
+        "Gwrk Test|gwrk-test@example.invalid|Gwrk Test|gwrk-test@example.invalid",
       );
       const worktrees = () =>
         fixtureGit(projectRoot, "worktree", "list", "--porcelain").match(

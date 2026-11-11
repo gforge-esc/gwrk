@@ -63,12 +63,12 @@ export async function runTaskGate(
     env?: NodeJS.ProcessEnv;
   },
 ): Promise<TaskGateResult> {
-  const { featureDir, cwd, env } = opts;
+  const { featureDir, cwd, env, timeoutMs = GATE_TIMEOUT_MS } = opts;
 
   // Strategy 1 — convention gate file.
   const conventionPath = path.join(featureDir, "gates", `${task.id}-gate.sh`);
   if (fs.existsSync(conventionPath)) {
-    const r = await runGate(conventionPath, { cwd, env });
+    const r = await runGate(conventionPath, { cwd, env, timeoutMs });
     return {
       passed: r.passed,
       exitCode: r.exitCode,
@@ -92,7 +92,7 @@ export async function runTaskGate(
   // Strategy 2 — gateScript as a file path.
   const scriptPath = path.join(featureDir, gateScript);
   if (fs.existsSync(scriptPath)) {
-    const r = await runGate(scriptPath, { cwd, env });
+    const r = await runGate(scriptPath, { cwd, env, timeoutMs });
     return {
       passed: r.passed,
       exitCode: r.exitCode,
@@ -124,13 +124,7 @@ export async function runTaskGate(
       gatePath: label,
     };
   }
-  return runInlineGate(
-    gateScript,
-    cwd,
-    opts.timeoutMs ?? GATE_TIMEOUT_MS,
-    label,
-    env,
-  );
+  return runInlineGate(gateScript, cwd, timeoutMs, label, env);
 }
 
 /**
