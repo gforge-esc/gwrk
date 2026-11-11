@@ -11,6 +11,7 @@ import {
 } from "../../domain/agent-routing.js";
 import { classifyTask } from "../../domain/types.js";
 import { quotaProbe } from "../../engine/quota.js";
+import type { AgentBackend } from "../../plugins/agent-backend.js";
 import { AgentBackendRegistry } from "../../plugins/agent-registry.js";
 import { PluginLoader } from "../../plugins/loader.js";
 import type { AgentPort, RoutingContext } from "../../ports/agent-port.js";
@@ -67,29 +68,8 @@ async function selectAvailableRoute(
     });
   }
   const agentRegistry = registered.ok ? registered.value : undefined;
-  const requestedRoute = {
-    explicitBackend: context.explicitBackend,
-    explicitModel: context.explicitModel,
-    registry: agentRegistry,
-  };
-  if (context.preview && context.explicitBackend) {
-    const route = selectAgentRoute(context, {
-      ...requestedRoute,
-      availableBackends: [context.explicitBackend],
-    });
-    if (
-      context.explicitModel !== undefined ||
-      agentRegistry?.backends[route.backend]
-    ) {
-      return route;
-    }
-    const backend = await registry
-      .getAgentBackend(route.backend)
-      .catch(() => undefined);
-    const adapterModel = backend?.resolveModel?.({});
-    return { ...route, adapterModel };
-  }
-
+  const explicitPreview =
+    context.preview === true && context.explicitBackend !== undefined;
   const config = loadConfig(projectRoot);
   const quotaFirst = context.historyMode === "quota-tiebreak";
   const installedOnly = context.backendEligibility === "installed";
@@ -116,7 +96,9 @@ async function selectAvailableRoute(
     ? agentRegistry?.fallbackOrder
     : config.agents?.fallbackOrder) ?? ["agy", "claude", "codex"];
   const facts: RoutingFacts = {
-    ...requestedRoute,
+    explicitBackend: context.explicitBackend,
+    explicitModel: context.explicitModel,
+    registry: agentRegistry,
     history,
     historyMode: context.historyMode,
     fallbackOrder,
@@ -225,21 +207,37 @@ async function selectAvailableRoute(
     }
     probed.add(route.backend);
     candidates.delete(route.backend);
-    let available = false;
+    let backend: AgentBackend | undefined;
+    let available = explicitPreview;
     try {
-      const backend = await registry.getAgentBackend(route.backend);
-      if (restrictToRegistry && !(await backend.isAvailable())) continue;
-      available = installedOnly
-        ? await backend.isAvailable()
-        : (await quotaProbe(backend)).status === "available";
+      backend = await registry.getAgentBackend(route.backend);
+      if (!explicitPreview) {
+        if (restrictToRegistry && !(await backend.isAvailable())) continue;
+        available = installedOnly
+          ? await backend.isAvailable()
+          : (await quotaProbe(backend)).status === "available";
+      }
     } catch {
-      // The next candidate can still satisfy the requested role.
+      // An explicit preview can display the route even if the adapter is missing.
     }
     if (available) {
       const useAdapterModelDefaults =
         context.explicitBackend !== undefined &&
         context.explicitModel === undefined &&
         !agentRegistry?.backends[route.backend];
+      const selection = {
+        ...route,
+        ...(useAdapterModelDefaults && { useAdapterModelDefaults }),
+        fallbackUsed: route.fallbackUsed || probed.size > 1,
+      };
+      if (context.preview) {
+        if (!backend?.resolveModel) return selection;
+        const adapterModel = backend.resolveModel({
+          model: useAdapterModelDefaults ? undefined : route.model,
+          env: route.effort ? { GWRK_EFFORT: route.effort } : {},
+        });
+        return { ...selection, adapterModel: adapterModel ?? null };
+      }
       const review =
         context.includeReviewModel && !useAdapterModelDefaults
           ? selectAgentRoute(
@@ -253,16 +251,14 @@ async function selectAvailableRoute(
             )
           : undefined;
       const selected = {
-        ...route,
-        ...(useAdapterModelDefaults && { useAdapterModelDefaults }),
+        ...selection,
         ...(review && {
           reviewModel: review.model,
           reviewEffort: review.effort,
         }),
-        fallbackUsed: route.fallbackUsed || probed.size > 1,
       };
-      const { type, preview, runId, feature, phase, taskSP } = context;
-      if (type === "implement" && !preview && runId && feature && phase) {
+      const { type, runId, feature, phase, taskSP } = context;
+      if (type === "implement" && runId && feature && phase) {
         try {
           recordDecision({
             runId,

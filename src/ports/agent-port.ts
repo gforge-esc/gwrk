@@ -82,7 +82,8 @@ export interface RoutingContext {
 
 export interface SelectedAgentRoute extends RouteSelectionDecision {
   useAdapterModelDefaults?: boolean;
-  adapterModel?: string;
+  /** Null means the adapter omits the model flag. */
+  adapterModel?: string | null;
   reviewModel?: string;
   reviewEffort?: string;
 }

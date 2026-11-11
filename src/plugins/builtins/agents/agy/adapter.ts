@@ -87,6 +87,15 @@ export class AgyAdapter implements AgentBackend {
     }
   }
 
+  resolveModel(task: Pick<TaskDispatch, "model" | "env">): string | undefined {
+    const model = task.model || task.env?.AGY_MODEL;
+    if (!model || model === "default") return undefined;
+    if (!task.env?.AGY_MODEL && LEGACY_GEMINI_MODEL_PATTERN.test(model)) {
+      return undefined;
+    }
+    return model;
+  }
+
   async dispatch(task: TaskDispatch): Promise<AgentDispatch> {
     const rawPrompt = task.prompt ?? "";
     const isExpandedPrompt =
@@ -131,15 +140,8 @@ export class AgyAdapter implements AgentBackend {
       args.push("--json-schema", JSON.stringify(task.outputSchema));
     }
 
-    const rawModel = task.model || task.env?.AGY_MODEL;
-    const explicitEnvModel = Boolean(task.env?.AGY_MODEL);
-    if (
-      rawModel &&
-      rawModel !== "default" &&
-      (explicitEnvModel || !LEGACY_GEMINI_MODEL_PATTERN.test(rawModel))
-    ) {
-      args.push("--model", rawModel);
-    }
+    const model = this.resolveModel(task);
+    if (model) args.push("--model", model);
 
     const effort = task.env?.AGY_EFFORT || task.env?.GWRK_EFFORT;
     if (effort) {

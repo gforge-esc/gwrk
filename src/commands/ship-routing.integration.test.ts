@@ -8,6 +8,7 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ShipOrchestrator } from "../engine/ship-orchestrator.js";
 import type { AgentBackend } from "../plugins/agent-backend.js";
+import { AgyAdapter } from "../plugins/builtins/agents/agy/adapter.js";
 import { CodexAdapter } from "../plugins/builtins/agents/codex/adapter.js";
 import { run } from "../utils/exec.js";
 
@@ -47,7 +48,7 @@ vi.mock("../utils/git.js", () => ({
 
 const feature = "043-routing-fixture";
 
-function backendConfig(name: string) {
+function backendConfig(name: string, primaryModel = `${name}-primary`) {
   return {
     type: "local-cli",
     command: name,
@@ -56,7 +57,7 @@ function backendConfig(name: string) {
     models: [
       {
         name: "primary",
-        modelFlag: `${name}-primary`,
+        modelFlag: primaryModel,
         tier: "fast",
         effort: "medium",
       },
@@ -159,6 +160,7 @@ describe("ship with the real AgentPort router", () => {
   function configureAgents(
     implement = "codex",
     names = ["codex", "claude"],
+    primaryModel?: string,
   ) {
     fs.writeFileSync(
       path.join(root, ".gwrkrc.json"),
@@ -168,7 +170,7 @@ describe("ship with the real AgentPort router", () => {
           implement,
           fallbackOrder: names,
           registry: Object.fromEntries(
-            names.map((name) => [name, backendConfig(name)]),
+            names.map((name) => [name, backendConfig(name, primaryModel)]),
           ),
         },
       }),
@@ -611,6 +613,65 @@ describe("ship with the real AgentPort router", () => {
         model_failover_used: 1,
       },
     ]);
+  });
+
+  it("previews provider default when Antigravity omits the registered model flag", async () => {
+    const registeredModel = "gemini-2.0-flash";
+    configureAgents("agy", ["agy"], registeredModel);
+    vi.stubEnv("AGY_MODEL", undefined);
+    const adapter = new AgyAdapter();
+    const { AgentBackendRegistry } = await import(
+      "../plugins/agent-registry.js"
+    );
+    vi.mocked(AgentBackendRegistry.prototype.getAgentBackend).mockResolvedValue(
+      adapter,
+    );
+
+    await ship("--dry-run", "--agent", "agy");
+
+    const { args } = await adapter.dispatch({
+      agent: "agy",
+      model: registeredModel,
+      env: {},
+    });
+    expect(args).not.toContain("--model");
+    expect(console.log).toHaveBeenCalledWith(
+      expect.stringContaining("backend: agy, model: default, effort: medium"),
+    );
+    expect(ShipOrchestrator).not.toHaveBeenCalled();
+    expect(run).not.toHaveBeenCalled();
+    expect(fs.existsSync(dbPath)).toBe(false);
+  });
+
+  it("previews and ships the same explicit alternate model during cooldown", async () => {
+    const { QuotaProber } = await import("../server/quota-prober.js");
+    vi.spyOn(QuotaProber.prototype, "isModelInCooldown").mockImplementation(
+      (backend, model) => backend === "codex" && model === "codex-primary",
+    );
+    const probeQuota = vi.spyOn(QuotaProber.prototype, "probeQuota");
+
+    await ship("--dry-run", "--agent", "codex");
+
+    expect(ShipOrchestrator).not.toHaveBeenCalled();
+    expect(fs.existsSync(dbPath)).toBe(false);
+    expect(codex.isAvailable).not.toHaveBeenCalled();
+    const previewOutput = vi.mocked(console.log).mock.calls.flat().join("\n");
+
+    await ship("--agent", "codex");
+
+    expect(ShipOrchestrator).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({
+        backend: "codex",
+        selectedModel: "codex-alternate",
+        selectedEffort: "low",
+      }),
+      undefined,
+    );
+    expect(probeQuota).not.toHaveBeenCalled();
+    expect(codex.checkQuota).not.toHaveBeenCalled();
+    expect(previewOutput).toContain(
+      "backend: codex, model: codex-alternate, effort: low",
+    );
   });
 
   it("previews the explicit configured model without creating a routing database", async () => {

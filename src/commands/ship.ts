@@ -817,9 +817,12 @@ Examples:
                 ...implementationRoute,
                 preview: true,
               });
+              const { adapterModel } = implementation;
               const previewModel = opts.legacy
                 ? shipModel(implementation, true)
-                : implementation.adapterModel;
+                : adapterModel === null
+                  ? "default"
+                  : adapterModel;
               logCliOutput(
                 `  🤖 Would build with backend: ${implementation.backend}, model: ${previewModel ?? implementation.model}, effort: ${implementation.effort ?? "default"} (router: ${implementation.reason})`,
               );
