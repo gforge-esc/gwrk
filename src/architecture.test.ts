@@ -97,10 +97,8 @@ describe("Architecture import detection", () => {
 
 const layers = ["domain", "ports", "application", "db", "utils", "engine"];
 
-// Feature 040 removes the domain entries as each effect moves out.
 // The Slack imports move with project-scoped Slack and harvest.
 const migrationBaseline: Record<string, string[]> = {
-  domain: ["domain/toolchain.ts -> package:node:fs"],
   engine: [
     "engine/harvest.ts -> dynamic-dependency:server/slack-messages.js",
     "engine/harvest.ts -> dynamic-dependency:server/slack-notify.js",

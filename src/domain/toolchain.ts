@@ -2,8 +2,6 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import fs from "node:fs";
-import path from "node:path";
 import type { ProjectProfile } from "./types.js";
 
 export const TEST_INVOCATION_VERBS = [
@@ -78,33 +76,38 @@ export function getTestCommand(
   }
 }
 
-export function getBuildCommand(
-  profile: ProjectProfile,
-  cwd: string,
-): string | null {
-  const tc = profile.toolchain;
-  if (tc && "build" in tc) {
-    if (tc.build === null) return null;
-    if (typeof tc.build === "string" && tc.build.length > 0) return tc.build;
-  }
+export interface ToolchainManifestFacts {
+  hasPackageJson?: boolean;
+  hasPackageBuildScript?: boolean;
+  hasPnpmLock?: boolean;
+  hasYarnLock?: boolean;
+  hasCargoToml?: boolean;
+  hasGoMod?: boolean;
+}
 
-  const pkgPath = path.join(cwd, "package.json");
-  if (fs.existsSync(pkgPath)) {
-    try {
-      const pkg = JSON.parse(fs.readFileSync(pkgPath, "utf-8"));
-      if (pkg?.scripts?.build) {
-        if (fs.existsSync(path.join(cwd, "pnpm-lock.yaml")))
-          return "pnpm build";
-        if (fs.existsSync(path.join(cwd, "yarn.lock"))) return "yarn build";
-        return "npm run build";
-      }
-    } catch {
-      // unparseable package.json
-    }
-    return null;
+export function configuredBuildCommand(
+  profile: ProjectProfile,
+): string | null | undefined {
+  const build = profile.toolchain?.build;
+  return build === null || (typeof build === "string" && build.length > 0)
+    ? build
+    : undefined;
+}
+
+export function resolveBuildCommand(
+  profile: ProjectProfile,
+  facts: ToolchainManifestFacts = {},
+): string | null {
+  const configured = configuredBuildCommand(profile);
+  if (configured !== undefined) return configured;
+  if (facts.hasPackageJson) {
+    if (!facts.hasPackageBuildScript) return null;
+    if (facts.hasPnpmLock) return "pnpm build";
+    if (facts.hasYarnLock) return "yarn build";
+    return "npm run build";
   }
-  if (fs.existsSync(path.join(cwd, "Cargo.toml"))) return "cargo build";
-  if (fs.existsSync(path.join(cwd, "go.mod"))) return "go build ./...";
+  if (facts.hasCargoToml) return "cargo build";
+  if (facts.hasGoMod) return "go build ./...";
   return null;
 }
 
