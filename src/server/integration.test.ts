@@ -1073,6 +1073,9 @@ setInterval(() => {}, 1000);
       fixture = await createServerFixture("routes", { routes: ["dispatch"] });
       const { projectRoot } = fixture;
       expect(existsSync(join(projectRoot, ".git"))).toBe(true);
+      expect(fixtureGit(projectRoot, "rev-parse", "--show-object-format")).toBe(
+        "sha1",
+      );
       expect(fixtureGit(projectRoot, "log", "-1", "--format=%s")).toBe(
         "Initialize fixture",
       );

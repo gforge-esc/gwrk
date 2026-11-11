@@ -151,49 +151,67 @@ describe("DispatchQueue (unified ship engine)", () => {
     expect(queue.getActiveCount()).toBe(0);
   });
 
-  it("journals the result and releases its slot while Slack is pending", async () => {
-    let startNotice!: () => void;
-    let finishNotice!: () => void;
-    const noticeStarted = new Promise<void>((resolve) => {
-      startNotice = resolve;
-    });
-    const noticePending = new Promise<void>((resolve) => {
-      finishNotice = resolve;
-    });
-    vi.mocked(notifySlack).mockImplementationOnce(() => {
-      startNotice();
-      return noticePending;
-    });
-    mockMonitor.isThrottled.mockReturnValue(false);
-    vi.useFakeTimers();
-    const record = queue.enqueue({ featureId: "feat-1", phaseId: "phase-01" });
-    try {
-      await noticeStarted;
-      expect
-        .soft(persistDispatch)
-        .toHaveBeenLastCalledWith(
+  it.each([
+    { exitCode: 0, status: "completed", eventType: "review_ready" },
+    { exitCode: 1, status: "failed", eventType: "phase_fail" },
+  ])(
+    "journals a $status dispatch and releases its slot while Slack is pending",
+    async ({ exitCode, status, eventType }) => {
+      let startNotice!: () => void;
+      let finishNotice!: () => void;
+      const noticeStarted = new Promise<void>((resolve) => {
+        startNotice = resolve;
+      });
+      const noticePending = new Promise<void>((resolve) => {
+        finishNotice = resolve;
+      });
+      vi.mocked(notifySlack).mockImplementationOnce(() => {
+        startNotice();
+        return noticePending;
+      });
+      const journalTerminal = vi.fn();
+      mockRun.mockImplementationOnce(async () => {
+        vi.mocked(persistDispatch).mockImplementationOnce(journalTerminal);
+        return exitCode;
+      });
+      mockMonitor.isThrottled.mockReturnValue(false);
+      vi.useFakeTimers();
+      const record = queue.enqueue({
+        featureId: "feat-1",
+        phaseId: "phase-01",
+      });
+      try {
+        await noticeStarted;
+        expect.soft(journalTerminal).toHaveBeenCalledExactlyOnceWith(
           expect.objectContaining({
             id: record.id,
-            status: "completed",
+            status,
             workDir: undefined,
           }),
           projectRoot,
         );
-      expect.soft(mockSandbox.destroySandbox).toHaveBeenCalledOnce();
-      expect.soft(queue.getActiveCount()).toBe(0);
-      let closed = false;
-      const closing = queue.close().then(() => {
-        closed = true;
-      });
-      await vi.advanceTimersByTimeAsync(5_000);
-      expect(closed).toBe(true);
-      await closing;
-    } finally {
-      finishNotice();
-      await queue.close();
-      vi.useRealTimers();
-    }
-  });
+        expect
+          .soft(notifySlack)
+          .toHaveBeenCalledExactlyOnceWith(
+            expect.anything(),
+            expect.objectContaining({ type: eventType }),
+          );
+        expect.soft(mockSandbox.destroySandbox).toHaveBeenCalledOnce();
+        expect.soft(queue.getActiveCount()).toBe(0);
+        let closed = false;
+        const closing = queue.close().then(() => {
+          closed = true;
+        });
+        await vi.advanceTimersByTimeAsync(5_000);
+        expect(closed).toBe(true);
+        await closing;
+      } finally {
+        finishNotice();
+        await queue.close();
+        vi.useRealTimers();
+      }
+    },
+  );
 
   it("marks the dispatch failed and still tears down the worktree when the engine exits non-zero", async () => {
     mockMonitor.isThrottled.mockReturnValue(false);
