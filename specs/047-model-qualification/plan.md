@@ -59,7 +59,10 @@ Add discovery adapters separate from `dispatch()` (`ADR-006`). Support `agy mode
 - `src/plugins/builtins/agents/codex/adapter.ts` (MODIFY: Paginate `model/list`, filter hidden models and forward `effort`)
 - `src/adapters/models/catalog-discovery.ts` (NEW: Collect built-in, external plugin and explicit candidate catalogs with versions)
 - `src/adapters/models/smoke-probe.ts` (NEW: Run bounded exact-model and effort smoke probes in clean temporary directories)
-- `src/adapters/models/catalog-discovery.test.ts` (NEW: Test catalog parsers, unavailable reporting and smoke probes)
+- `src/adapters/models/catalog-discovery.test.ts` (NEW: Test catalog parsers and unavailable reporting)
+- `src/adapters/models/smoke-probe.test.ts` (NEW: Verify the exact route, clean checkout, response schema and probe evidence)
+- `src/utils/agent.ts` (MODIFY: Enforce explicit dispatch deadlines and allow synthetic fixtures to exclude external context)
+- `src/utils/agent.test.ts` (MODIFY: Verify deadline expiry terminates the subprocess and reports a timeout)
 
 #### Test Strategy
 
@@ -67,12 +70,12 @@ Add discovery adapters separate from `dispatch()` (`ADR-006`). Support `agy mode
 |---|---|---|---|
 | TR-005 | unit | `src/adapters/models/catalog-discovery.test.ts` | Discovers new `agy`, `codex` and `claude` models without editing plugin manifests |
 | TR-006 | unit | `src/adapters/models/catalog-discovery.test.ts` | Distinguishes Antigravity Claude routes from native `claude` and reports absent external CLIs |
-| TR-007 | integration | `src/adapters/models/catalog-discovery.test.ts` | Smoke probe checks exact model and effort in a temp workspace and preserves `"unknown"` `observedModel` |
+| TR-007 | integration | `src/adapters/models/smoke-probe.test.ts` | Smoke probe checks exact model and effort in a temp workspace and preserves `"unknown"` `observedModel` |
 
 #### Done When
 
 ```bash
-pnpm exec vitest run src/adapters/models/catalog-discovery.test.ts src/plugins/builtins/agents/agy/adapter.test.ts src/architecture.test.ts
+pnpm exec vitest run src/adapters/models/catalog-discovery.test.ts src/adapters/models/smoke-probe.test.ts src/utils/agent.test.ts src/plugins/builtins/agents/agy/adapter.test.ts src/architecture.test.ts
 ```
 
 ### Phase 3: Synthetic fixtures and two-judge evaluation
@@ -162,7 +165,7 @@ pnpm exec vitest run src/application/models/resolve-route.test.ts src/utils/mani
 |---|---|---|---|
 | Req 1 and Acc 1 | Execution-profile discovery with CLI and adapter versions and zero plugin edits | Phase 2 | `src/adapters/models/catalog-discovery.test.ts` |
 | Req 2 | `agy`, `claude`, `codex` and external adapter discovery separate from `dispatch` | Phase 2 | `src/adapters/models/catalog-discovery.test.ts` |
-| Req 3 | Exact model and effort smoke probe preserving `"unknown"` `observedModel` | Phase 2 | `src/adapters/models/catalog-discovery.test.ts` |
+| Req 3 | Exact model and effort smoke probe preserving `"unknown"` `observedModel` | Phase 2 | `src/adapters/models/smoke-probe.test.ts` |
 | Req 4 | Versioned definition, implementation and review fixtures with repeat gates | Phase 3 | `src/application/models/evaluate-models.test.ts` |
 | Req 5 and Acc 3 | Blinded two-judge comparison from distinct providers and families retaining incumbent | Phase 1 and Phase 3 | `src/application/models/evaluate-models.test.ts` |
 | Req 6 | Coverage-first definition scoring, time-to-green implementation scoring and bidirectional handoff | Phase 3 | `src/application/models/evaluate-models.test.ts` |

@@ -369,3 +369,32 @@ describe("quiet-mode progress against a redirected stdout", () => {
     expect(stdinEnded).toBe(true);
   });
 });
+it("kills a dispatch that exceeds its explicit deadline and returns timeout evidence", async () => {
+  const kill = vi.fn();
+  vi.mocked(spawn).mockImplementationOnce(() => {
+    const child = Object.assign(new EventEmitter(), {
+      stdin: new PassThrough(),
+      stdout: new PassThrough(),
+      stderr: new PassThrough(),
+      kill,
+    });
+    const timer = setTimeout(() => child.emit("close", 0), 150);
+    kill.mockImplementation(() => {
+      clearTimeout(timer);
+      queueMicrotask(() => child.emit("close", null));
+      return true;
+    });
+    return child as unknown as ReturnType<typeof spawn>;
+  });
+
+  const result = await dispatchToAgent({
+    workflow: "gwrk-implement",
+    agent: "agy",
+    stdin: "probe",
+    quiet: true,
+    timeoutMs: 20,
+  });
+
+  expect(kill).toHaveBeenCalledWith("SIGKILL");
+  expect(result).toMatchObject({ exitCode: 124, timedOut: true, status: "failure" });
+});

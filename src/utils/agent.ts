@@ -82,6 +82,8 @@ interface DispatchOptions {
   workDir?: string;
   stdin?: string;
   quiet?: boolean;
+  timeoutMs?: number;
+  logPath?: string;
   outputSchema?: Record<string, unknown>;
   /**
    * When true, the backend's stdout is a stream-json event stream: render it
@@ -164,6 +166,7 @@ async function dispatchAgent(opts: DispatchOptions): Promise<{
   logPath: string;
   stdout: string;
   stderr: string;
+  timedOut: boolean;
 }> {
   const projectRoot = process.cwd();
   const executionRoot = opts.workDir || projectRoot;
@@ -177,7 +180,12 @@ async function dispatchAgent(opts: DispatchOptions): Promise<{
     opts.prebuiltDispatch ?? (await buildCommand(opts, workflowContent));
 
   // Set up .runs/ log file
-  const runsDir = path.join(process.cwd(), ".runs");
+  const requestedLog = opts.logPath
+    ? path.resolve(executionRoot, opts.logPath)
+    : undefined;
+  const runsDir = requestedLog
+    ? path.dirname(requestedLog)
+    : path.join(process.cwd(), ".runs");
   fs.mkdirSync(runsDir, { recursive: true });
   const ts = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
   // Use parent directory name for plugin workflows (PROMPT.md → parent dir name)
@@ -190,7 +198,8 @@ async function dispatchAgent(opts: DispatchOptions): Promise<{
     ? path.basename(opts.featureDir)
     : (opts.prompt ?? "unknown");
   const feature = rawFeature.replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 40);
-  const logPath = path.join(runsDir, `${ts}_${workflow}_${feature}.log`);
+  const logPath =
+    requestedLog ?? path.join(runsDir, `${ts}_${workflow}_${feature}.log`);
   const logStream = fs.createWriteStream(logPath, { flags: "a" });
 
   // Lossless raw event stream sidecar (stream-json backends only). The .log is
@@ -231,6 +240,8 @@ async function dispatchAgent(opts: DispatchOptions): Promise<{
     };
 
     // ADR-008 Layer 2: Hardened environment for agent sub-processes
+    const bounded = opts.timeoutMs !== undefined;
+    const ownProcessGroup = bounded && process.platform !== "win32";
     const child = spawn(command, args, {
       cwd: executionRoot,
       env: {
@@ -240,6 +251,7 @@ async function dispatchAgent(opts: DispatchOptions): Promise<{
         ...(opts.contextPath ? { GWRK_CONTEXT: opts.contextPath } : {}),
       },
       stdio: ["pipe", "pipe", "pipe"],
+      ...(ownProcessGroup ? { detached: true } : {}),
     });
 
     // Quiet mode: progress indicator instead of streaming output. Animates
@@ -254,6 +266,7 @@ async function dispatchAgent(opts: DispatchOptions): Promise<{
       : undefined;
 
     if (child.stdin) {
+      child.stdin.on("error", () => {});
       if (stdin) {
         child.stdin.write(stdin);
       }
@@ -343,9 +356,29 @@ async function dispatchAgent(opts: DispatchOptions): Promise<{
     }
 
     let resolved = false;
-    const finish = (code: number) => {
+    let timedOut = false;
+    const deadline = bounded
+      ? setTimeout(() => {
+          timedOut = true;
+          if (ownProcessGroup && child.pid) {
+            try {
+              process.kill(-child.pid, "SIGKILL");
+            } catch {
+              child.kill("SIGKILL");
+            }
+          } else {
+            child.kill("SIGKILL");
+          }
+          child.stdout?.destroy();
+          child.stderr?.destroy();
+          finish(124);
+        }, opts.timeoutMs)
+      : undefined;
+    const finish = (exitCode: number) => {
       if (resolved) return;
       resolved = true;
+      clearTimeout(deadline);
+      const code = timedOut ? 124 : exitCode;
 
       progress?.stop();
       const elapsed = Math.floor((Date.now() - startEpoch) / 1000);
@@ -381,6 +414,7 @@ async function dispatchAgent(opts: DispatchOptions): Promise<{
         logPath,
         stdout: stdoutLines.join("\n"),
         stderr: stderrLines.join("\n"),
+        timedOut,
       });
     };
 
@@ -389,7 +423,7 @@ async function dispatchAgent(opts: DispatchOptions): Promise<{
 
     // Fallback: Node 25 readline holds FDs open after process exit.
     // If close hasn't fired within 30s of exit, force-resolve.
-    // No overall timeout — agents can run as long as needed.
+    // Explicit deadlines also cover this drain path.
     child.on("exit", (code) => {
       setTimeout(() => {
         if (!resolved) {
@@ -400,7 +434,7 @@ async function dispatchAgent(opts: DispatchOptions): Promise<{
           child.stderr?.destroy();
           finish(code ?? 1);
         }
-      }, 30_000);
+      }, 30_000).unref();
     });
 
     child.on("error", () => {
@@ -419,6 +453,7 @@ async function dispatchAgent(opts: DispatchOptions): Promise<{
 export interface TaskDispatch extends AgentTaskRequest {
   commandOverride?: string;
   dryRun?: boolean;
+  includeExternalContext?: boolean;
 }
 
 export interface TaskResult extends AgentTaskResult {
@@ -483,6 +518,16 @@ async function resolveWorkflowPath(workflowName: string): Promise<string> {
  * Internals are replaced by pluginRegistry.getAgentBackend().dispatch()
  */
 export async function dispatchToAgent(task: TaskDispatch): Promise<TaskResult> {
+  if (
+    task.timeoutMs !== undefined &&
+    (!Number.isInteger(task.timeoutMs) ||
+      task.timeoutMs < 1 ||
+      task.timeoutMs > 2_147_483_647)
+  ) {
+    throw new RangeError(
+      "Agent timeout must be a positive timer duration in milliseconds.",
+    );
+  }
   const projectRoot = task.workDir ?? process.cwd();
   try {
     const config = loadConfig(projectRoot);
@@ -626,9 +671,9 @@ export async function dispatchToAgent(task: TaskDispatch): Promise<TaskResult> {
     ),
   ).slice(0, 12);
   const extContext =
-    extKeywords.length > 0
-      ? await resolveExtensionContext(workDir, extKeywords)
-      : await resolveExtensionContext(workDir);
+    task.includeExternalContext === false
+      ? []
+      : await resolveExtensionContext(workDir, extKeywords);
   if (extContext.length > 0) {
     const contextContent = extContext
       .map((res) => `<${res.source}>\n${res.content}\n</${res.source}>`)
@@ -680,6 +725,8 @@ export async function dispatchToAgent(task: TaskDispatch): Promise<TaskResult> {
     env: dispatch.env ?? task.env,
     workDir: task.workDir,
     outputSchema: task.outputSchema,
+    timeoutMs: task.timeoutMs,
+    logPath: task.logPath,
     emitsStreamJson: adapter.emitsStreamJson,
     prebuiltDispatch: {
       command: dispatch.command,
@@ -693,14 +740,19 @@ export async function dispatchToAgent(task: TaskDispatch): Promise<TaskResult> {
     logPath,
     stdout,
     stderr,
+    timedOut,
   } = await dispatchAgent({
     ...opts,
     stdin: dispatch.stdin,
     quiet: task.quiet,
   });
-  const durationS = Math.round((Date.now() - startTime) / 1000);
+  const durationMs = Date.now() - startTime;
+  const durationS = Math.round(durationMs / 1000);
 
-  const result = adapter.parseResult(stdout, stderr, rawExitCode);
+  const parsed = adapter.parseResult(stdout, stderr, rawExitCode);
+  const result = timedOut
+    ? { ...parsed, exitCode: 124, status: "failure" as const, timedOut: true }
+    : parsed;
 
   // Record routing decision for historical learning
   const taskType =
@@ -711,7 +763,7 @@ export async function dispatchToAgent(task: TaskDispatch): Promise<TaskResult> {
       task_type: taskType,
       selected_backend: agentName,
       outcome: result.exitCode === 0 ? "success" : "failure",
-      duration_ms: durationS * 1000,
+      duration_ms: durationMs,
       error_message: result.errorType ?? undefined,
     },
     projectId,
@@ -720,6 +772,7 @@ export async function dispatchToAgent(task: TaskDispatch): Promise<TaskResult> {
   return {
     ...result,
     durationS,
+    durationMs,
     logPath,
     nativeWriter: adapter.nativeWriter ?? false,
   };
