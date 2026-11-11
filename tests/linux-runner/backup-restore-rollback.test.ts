@@ -14,6 +14,7 @@ import {
   rename,
   rm,
   stat,
+  symlink,
   writeFile,
 } from "node:fs/promises";
 import { createRequire } from "node:module";
@@ -174,6 +175,34 @@ function expectUsageFailure(result: ReturnType<typeof runCli>) {
 }
 
 describe("installed ledger commands outside a checkout", () => {
+  it.each([
+    { alias: false, child: false },
+    { alias: false, child: true },
+    { alias: true, child: false },
+    { alias: true, child: true },
+  ])(
+    "rejects output at the restore marker with alias=$alias and child=$child",
+    async ({ alias, child }) => {
+      const state = join(root, "state");
+      await mkdir(state);
+      const ledger = join(state, "gwrk.db");
+      seedLedger(ledger).close();
+      const stateAlias = join(root, "state-alias");
+      await symlink(state, stateAlias);
+      const marker = join(state, ".restore-pending");
+      const destination = join(
+        alias ? stateAlias : state,
+        ".restore-pending",
+        ...(child ? ["nested", "backup"] : []),
+      );
+
+      const result = runInstalledBackup(ledger, destination);
+      expect.soft(result.status, result.stderr).toBe(1);
+      expect.soft(result.stderr).toContain(marker);
+      await expect(stat(marker)).rejects.toMatchObject({ code: "ENOENT" });
+    },
+  );
+
   it("rejects a device FIFO before publishing a backup", async () => {
     const ledger = join(root, "gwrk.db");
     seedLedger(ledger).close();
@@ -463,6 +492,31 @@ describe("installed ledger commands outside a checkout", () => {
         collectRepositories: () => [],
       });
 
+      const pending = join(root, ".restore-pending");
+      if (mode === "resume") {
+        const realFs =
+          await vi.importActual<typeof import("node:fs/promises")>(
+            "node:fs/promises",
+          );
+        vi.mocked(rename).mockImplementation(async (from, to) => {
+          if (from === join(pending, "install.db") && to === ledger) {
+            throw new Error("Fixture interrupted database installation");
+          }
+          await realFs.rename(from, to);
+        });
+        try {
+          await expect(
+            restoreLedgerBackup({
+              source: backup,
+              stateDirectory: root,
+              force: true,
+            }),
+          ).rejects.toThrow("Fixture interrupted database installation");
+        } finally {
+          vi.mocked(rename).mockReset();
+        }
+      }
+
       const serviceRuntime = join(root, "service");
       const serviceLock = acquireInstanceLock(serviceRuntime, process.pid);
       let ledgerLock: ReturnType<typeof acquireLedgerLock> | undefined;
@@ -474,9 +528,6 @@ describe("installed ledger commands outside a checkout", () => {
         live.prepare("UPDATE runs SET id = 99 WHERE id = 42").run();
         const files = [ledger, `${ledger}-wal`, `${ledger}-shm`];
         const original = await Promise.all(files.map((file) => readFile(file)));
-        const pending = join(root, ".restore-pending");
-        if (mode === "resume") await cp(backup, pending, { recursive: true });
-
         const cli = fileURLToPath(
           new URL("../../dist/cli.js", import.meta.url),
         );
@@ -862,6 +913,53 @@ process.exitCode = 1;
 });
 
 describe("ledger backup", () => {
+  it.each(["pending", "alias", "original"] as const)(
+    "rejects an ordinary backup as a pending restore from the %s path",
+    async (sourcePath) => {
+      const ledger = join(root, "gwrk.db");
+      const live = seedLedger(ledger);
+      try {
+        const backup = join(root, "backup");
+        await createLedgerBackup({
+          dbPath: ledger,
+          destination: backup,
+          createdAt: "2026-11-11T12:00:00.000Z",
+          gwrkVersion: "1.6.0-beta.1",
+          collectDevice: () => null,
+          collectRepositories: () => [],
+        });
+        live.prepare("UPDATE runs SET id = 99 WHERE id = 42").run();
+        const device = join(root, "device.json");
+        await writeFile(device, '{"id":"existing-device"}\n');
+        const pending = join(root, ".restore-pending");
+        await cp(backup, pending, { recursive: true });
+        const alias = join(root, "pending-alias");
+        await symlink(pending, alias);
+        const files = [ledger, `${ledger}-wal`, `${ledger}-shm`, device];
+        const original = await Promise.all(files.map((file) => readFile(file)));
+
+        await expect
+          .soft(
+            restoreLedgerBackup({
+              source: { pending, alias, original: backup }[sourcePath],
+              stateDirectory: root,
+              force: false,
+            }),
+          )
+          .rejects.toThrow(
+            sourcePath === "original"
+              ? /restore transaction/
+              : /reserved restore path/,
+          );
+        expect(await Promise.all(files.map((file) => readFile(file)))).toEqual(
+          original,
+        );
+      } finally {
+        live.close();
+      }
+    },
+  );
+
   it("rejects evidence from a different checkout for a known project", async () => {
     const db = seedLedger();
     const destination = join(root, "backup");
@@ -1010,6 +1108,13 @@ describe("ledger backup", () => {
           restoreLedgerBackup({ ...request, force: true }),
         ).rejects.toThrow("Fixture interrupted database installation");
         expect((await stat(pending)).isDirectory()).toBe(true);
+        const otherBackup = join(root, "other-backup");
+        await cp(destination, otherBackup, { recursive: true });
+        await appendFile(join(otherBackup, "backup-manifest.json"), "\n");
+        await expect(
+          restoreLedgerBackup({ ...request, source: otherBackup }),
+        ).rejects.toThrow(/Retry with its original backup/);
+        expect(await readFile(installedDb)).toEqual(original);
         await mkdir(devicePath);
         await expect(restoreLedgerBackup(request)).rejects.toThrow(
           /Restore target must be a regular file/,
