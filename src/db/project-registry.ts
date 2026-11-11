@@ -361,7 +361,9 @@ export function createProjectRegistry(
           continue;
         }
         const priorRoots = [prior.local_root, prior.mirror_path];
-        if (prior.updated_at === null) priorRoots.push(prior.path);
+        if (prior.updated_at === null || !priorRoots.some(Boolean)) {
+          priorRoots.push(prior.path);
+        }
         const sameRepository = priorRoots.some(
           (priorRoot) =>
             priorRoot &&
@@ -640,10 +642,13 @@ export function createProjectRegistry(
       return row ?? null;
     },
     bindFeatureThread(thread) {
-      return db
+      const row = db
         .prepare(`
         INSERT INTO slack_feature_threads (project_id, feature_id, workspace_id, channel_id, root_ts, updated_at)
-        VALUES (@projectId, @featureId, @workspaceId, @channelId, @rootTs, @updatedAt)
+        SELECT id, @featureId, @workspaceId, @channelId, @rootTs, @updatedAt
+        FROM projects
+        WHERE id = @projectId AND updated_at IS NOT NULL
+          AND slack_workspace_id = @workspaceId AND slack_channel = @channelId
         ON CONFLICT(project_id, feature_id) DO UPDATE SET
           workspace_id = excluded.workspace_id, channel_id = excluded.channel_id,
           root_ts = excluded.root_ts, updated_at = excluded.updated_at
@@ -652,7 +657,9 @@ export function createProjectRegistry(
         .get({
           ...thread,
           projectId: requireEnrolled(thread.projectId),
-        }) as SlackFeatureThread;
+        }) as SlackFeatureThread | undefined;
+      if (!row) throw new Error(`Slack binding mismatch: ${thread.projectId}`);
+      return row;
     },
     getActionReceipt: findActionReceipt,
     claimActionReceipt: claimActionReceipt.immediate,

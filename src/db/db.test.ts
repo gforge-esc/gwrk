@@ -20,6 +20,7 @@ import {
   computeLegacyProjectIds,
   computeProjectId,
 } from "../domain/project-id.js";
+import { listRoutingDecisions } from "../server/routing-decisions.js";
 import { listCompressionRecords } from "./compression.js";
 import { insertCompressionRecord } from "./db.js";
 import { getGateResult } from "./gates.js";
@@ -140,6 +141,64 @@ describe("Project registry upgrade", () => {
           { id: "history-owner", path: "", updated_at: null },
           { id: "run-owner", path: "", updated_at: null },
         ]);
+      expect(upgraded.pragma("foreign_key_check")).toEqual([]);
+    } finally {
+      upgraded.close();
+    }
+  });
+
+  it("recovers legacy ship routing owners only when the evidence agrees", () => {
+    const upgraded = upgrade((legacy) => {
+      legacy.exec(`
+        INSERT INTO projects (id, name, path) VALUES
+          ('alpha', 'Alpha', '/alpha'), ('beta', 'Beta', '/beta');
+        INSERT INTO plan_features (id, name, project_id) VALUES
+          ('feature-one', 'Feature one', 'alpha'),
+          ('conflict', 'Conflicting feature', 'alpha'),
+          ('run-conflict', 'Conflicting run', 'alpha'),
+          ('placeholder', 'Unattributed feature', NULL);
+        INSERT INTO plan_phases (id, feature_id, name, seq, project_id) VALUES
+          ('feature-one/phase-01', 'feature-one', 'Phase 1', 1, 'alpha'),
+          ('conflict/phase-01', 'conflict', 'Phase 1', 1, 'beta'),
+          ('placeholder/phase-01', 'placeholder', 'Phase 1', 1, 'alpha');
+        INSERT INTO runs (id, project_id, feature_id, phase_id, command) VALUES
+          (41, 'alpha', 'feature-one', 'phase-01', 'ship'),
+          (42, 'beta', 'conflict', 'phase-01', 'ship'),
+          (43, 'beta', 'run-conflict', 'phase-01', 'ship'),
+          (44, 'beta', 'feature-one', 'phase-01', 'research'),
+          (45, 'beta', 'feature-one', 'phase-02', 'ship'),
+          (46, 'beta', 'runs-only', 'phase-01', 'ship');
+        INSERT INTO routing_decisions (run_id, feature, phase, selected_backend, reason, probe_status) VALUES
+          ('ship-feature-one-1700000000000', 'feature-one', 'phase-01', 'fixture', 'agreement', 'fresh'),
+          ('ship-conflict-1700000000000', 'conflict', 'phase-01', 'fixture', 'phase conflict', 'fresh'),
+          ('ship-run-conflict-1700000000000', 'run-conflict', 'phase-01', 'fixture', 'run conflict', 'fresh'),
+          ('ship-missing-1700000000000', 'missing', 'phase-01', 'fixture', 'missing', 'fresh'),
+          ('ship-placeholder-1700000000000', 'placeholder', 'phase-01', 'fixture', 'explicit phase', 'fresh'),
+          ('ship-runs-only-1700000000000', 'runs-only', 'phase-01', 'fixture', 'ship run only', 'fresh'),
+          ('ship-feature-one-1700000000000x', 'feature-one', 'phase-01', 'fixture', 'invalid suffix', 'fresh'),
+          ('ship-other-1700000000000', 'feature-one', 'phase-01', 'fixture', 'invalid prefix', 'fresh'),
+          ('42', 'conflict', 'phase-01', 'fixture', 'exact run', 'fresh');
+      `);
+    });
+    try {
+      const cases = [
+        ["ship-feature-one-1700000000000", "alpha", "agreement"],
+        ["ship-conflict-1700000000000", "legacy-local", "phase conflict"],
+        ["ship-run-conflict-1700000000000", "legacy-local", "run conflict"],
+        ["ship-missing-1700000000000", "legacy-local", "missing"],
+        ["ship-placeholder-1700000000000", "alpha", "explicit phase"],
+        ["ship-runs-only-1700000000000", "beta", "ship run only"],
+        ["ship-feature-one-1700000000000x", "legacy-local", "invalid suffix"],
+        ["ship-other-1700000000000", "legacy-local", "invalid prefix"],
+        ["42", "beta", "exact run"],
+      ];
+      for (const [runId, owner, reason] of cases) {
+        for (const projectId of ["alpha", "beta", "legacy-local"]) {
+          expect
+            .soft(listRoutingDecisions(projectId, runId, upgraded), reason)
+            .toMatchObject(projectId === owner ? [{ projectId, reason }] : []);
+        }
+      }
       expect(upgraded.pragma("foreign_key_check")).toEqual([]);
     } finally {
       upgraded.close();

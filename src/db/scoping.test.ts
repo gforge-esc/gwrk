@@ -465,16 +465,33 @@ describe("Project registry storage", () => {
     }
   });
 
-  it("enrolls a verified pre-origin run without an intervening write", () => {
+  it.each([
+    { enrolled: false, suffixed: false },
+    { enrolled: false, suffixed: true },
+    { enrolled: true, suffixed: true },
+  ])("enrolls a pre-origin run with %j", ({ enrolled, suffixed }) => {
     const checkout = mkdtempSync(join(tmpdir(), "gwrk-pre-origin-run-"));
     const db = getTestDb();
     const cwd = vi.spyOn(process, "cwd").mockReturnValue(checkout);
     try {
       execFileSync("git", ["init", "--quiet", checkout]);
       const localId = resolveProjectId(checkout);
-      const runId = startRun({ feature_id: "shared", command: "local" }, db);
       const registry = createSqliteProjectRegistryAdapter({ db });
-      expect(registry.getProject(localId)).toBeNull();
+      if (enrolled) {
+        registry.enrollProject({
+          ...project,
+          projectId: localId,
+          repoSlug: null,
+          localRoot: checkout,
+          legacyProjectIds: [],
+        });
+      }
+      const runId = startRun({ feature_id: "shared", command: "local" }, db);
+      if (suffixed) {
+        db.prepare(
+          "UPDATE projects SET path = ?, local_root = NULL WHERE id = ?",
+        ).run(`${checkout}#${localId}`, localId);
+      }
       expect(listRuns("shared", localId, db)).toMatchObject([{ id: runId }]);
 
       execFileSync("git", [
@@ -497,7 +514,7 @@ describe("Project registry storage", () => {
       );
       setRepository.run("example/other", localId);
       expect(() => registry.enrollProject(enrollment)).toThrow(
-        /different repository or checkout/,
+        /different repository or checkout|already owned/,
       );
       expect(registry.getProject(remoteId)).toBeNull();
       expect(listRuns("shared", localId, db)).toMatchObject([{ id: runId }]);
@@ -532,6 +549,22 @@ describe("Project registry storage", () => {
         sharedChannel: false,
       };
       const registry = createSqliteProjectRegistryAdapter({ db });
+      registry.enrollProject({
+        ...project,
+        projectId: localId,
+        repoSlug: null,
+        localRoot: checkout,
+        legacyProjectIds: [legacyAlias],
+        slack: { ...slack, channelId: "C0" },
+      });
+      registry.bindFeatureThread({
+        projectId: localId,
+        featureId: "old-channel",
+        workspaceId: slack.workspaceId,
+        channelId: "C0",
+        rootTs: "local-old-channel",
+        updatedAt: now,
+      });
       registry.enrollProject({
         ...project,
         projectId: localId,
@@ -596,17 +629,12 @@ describe("Project registry storage", () => {
           role: "maintainer",
         });
       }
-      for (const featureId of [
-        "shared",
-        "same-channel",
-        "stale-remote",
-        "old-channel",
-      ]) {
+      for (const featureId of ["shared", "same-channel", "stale-remote"]) {
         registry.bindFeatureThread({
           projectId: localId,
           featureId,
           workspaceId: slack.workspaceId,
-          channelId: featureId === "old-channel" ? "C0" : slack.channelId,
+          channelId: slack.channelId,
           rootTs: `local-${featureId}`,
           updatedAt: now,
         });
@@ -1133,6 +1161,52 @@ describe("Project registry storage", () => {
     } finally {
       db.close();
       rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("rejects feature thread writes for stale Slack bindings", () => {
+    const db = getTestDb();
+    try {
+      const registry = createSqliteProjectRegistryAdapter({ db });
+      const slack = {
+        workspaceId: "T1",
+        channelId: "C-OLD",
+        sharedChannel: false,
+      };
+      const enrollment = { ...project, legacyProjectIds: [], slack };
+      const thread = {
+        projectId: project.projectId,
+        featureId: "shared",
+        workspaceId: slack.workspaceId,
+        channelId: slack.channelId,
+        rootTs: "1.000",
+        updatedAt: now,
+      };
+      registry.enrollProject(enrollment);
+      registry.bindFeatureThread(thread);
+      registry.enrollProject({
+        ...enrollment,
+        slack: { ...slack, channelId: "C-NEW" },
+      });
+      const current = { ...thread, channelId: "C-NEW", rootTs: "2.000" };
+      registry.bindFeatureThread(current);
+
+      expect
+        .soft(() => registry.bindFeatureThread(thread))
+        .toThrow(/Slack binding mismatch/);
+      expect
+        .soft(registry.getFeatureThread(project.projectId, thread.featureId))
+        .toEqual(current);
+      expect
+        .soft(() =>
+          registry.bindFeatureThread({ ...current, workspaceId: "T2" }),
+        )
+        .toThrow(/Slack binding mismatch/);
+      expect(
+        registry.getFeatureThread(project.projectId, thread.featureId),
+      ).toEqual(current);
+    } finally {
+      db.close();
     }
   });
 
