@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { CodexAdapter } from "./adapter.js";
 
 describe("CodexAdapter", () => {
@@ -31,6 +31,28 @@ describe("CodexAdapter", () => {
     ]);
     expect(result.stdin).toContain("Line 1\nLine 2");
     expect(result.stdin).toContain("<command_safety>Rules</command_safety>");
+  });
+
+  it("only applies CODEX_MODEL supplied by the task", async () => {
+    vi.stubEnv("CODEX_MODEL", "fixture-ambient-model");
+    try {
+      const task = { agent: "codex" as const, prompt: "Fixture" };
+      expect((await adapter.dispatch(task)).args).toEqual([
+        "exec",
+        "--full-auto",
+        "Fixture",
+      ]);
+      expect(
+        (
+          await adapter.dispatch({
+            ...task,
+            env: { CODEX_MODEL: "fixture-task-model" },
+          })
+        ).args,
+      ).toContain("fixture-task-model");
+    } finally {
+      vi.unstubAllEnvs();
+    }
   });
 
   it("normalizes exit codes in parseResult", () => {

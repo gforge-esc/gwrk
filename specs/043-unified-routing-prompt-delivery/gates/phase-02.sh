@@ -16,4 +16,5 @@ pnpm exec vitest run \
   src/server/backend-selector.test.ts \
   src/server/backend-selector.integration.test.ts \
   src/engine/ship-orchestrator.review-gate-divergence.test.ts \
+  src/plugins/builtins/agents/codex/adapter.test.ts \
   src/architecture.test.ts

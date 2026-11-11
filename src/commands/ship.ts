@@ -114,7 +114,10 @@ function shipModel(
       ? process.env.GEMINI_MODEL
       : route.model;
   }
-  return route.useAdapterModelDefaults ? undefined : route.model;
+  if (!route.useAdapterModelDefaults) return route.model;
+  const override =
+    route.backend === "codex" ? process.env.CODEX_MODEL : undefined;
+  return override && override !== "default" ? override : undefined;
 }
 
 /**
@@ -820,9 +823,12 @@ Examples:
               const { adapterModel } = implementation;
               const previewModel = opts.legacy
                 ? shipModel(implementation, true)
-                : adapterModel === null
-                  ? "default"
-                  : adapterModel;
+                : implementation.useAdapterModelDefaults &&
+                    implementation.backend === "codex"
+                  ? (shipModel(implementation, false) ?? "default")
+                  : adapterModel === null
+                    ? "default"
+                    : adapterModel;
               logCliOutput(
                 `  🤖 Would build with backend: ${implementation.backend}, model: ${previewModel ?? implementation.model}, effort: ${implementation.effort ?? "default"} (router: ${implementation.reason})`,
               );
@@ -902,17 +908,25 @@ Examples:
               logCliOutput(
                 `  🤖 Router selected backend: ${implementation.backend} (${implementation.reason})`,
               );
+              const selectedModel = shipModel(
+                implementation,
+                Boolean(opts.legacy),
+              );
               const exitCode = await shipPhase(
                 feature,
                 p,
                 implementation.backend,
                 opts,
                 shipCwd,
-                shipModel(implementation, Boolean(opts.legacy)),
+                selectedModel,
                 {
                   ...overrides,
                   selectedEffort: implementation.effort,
-                  reviewModel: implementation.reviewModel,
+                  reviewModel:
+                    implementation.reviewModel ??
+                    (!opts.legacy && implementation.useAdapterModelDefaults
+                      ? selectedModel
+                      : undefined),
                   reviewEffort: implementation.reviewEffort,
                 },
               );

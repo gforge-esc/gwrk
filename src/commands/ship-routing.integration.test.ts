@@ -493,8 +493,8 @@ describe("ship with the real AgentPort router", () => {
       type: "review",
       env: {},
     });
-    expect(options.selectedModel).toBeUndefined();
-    expect(options.reviewModel).toBeUndefined();
+    expect(options.selectedModel).toBe("environment-model");
+    expect(options.reviewModel).toBe("environment-model");
     for (const { args } of [implementation, review]) {
       const modelFlag = args.indexOf("--model");
       expect(modelFlag).toBeGreaterThanOrEqual(0);
