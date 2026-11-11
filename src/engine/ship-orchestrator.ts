@@ -358,11 +358,13 @@ function inferSpanFromBody(body: string): PrPhaseRecord[] {
   return single ? [{ id: `phase-${single[1].padStart(2, "0")}` }] : [];
 }
 
+type ShipOrchestratorConfig = ShipRunConfig & { gitEnv?: NodeJS.ProcessEnv };
+
 export class ShipOrchestrator extends EventEmitter {
-  private config: ShipRunConfig;
+  private config: ShipOrchestratorConfig;
   private state: ShipState;
 
-  constructor(config: ShipRunConfig, state?: ShipState) {
+  constructor(config: ShipOrchestratorConfig, state?: ShipState) {
     super();
     this.config = config;
     if (state) {
@@ -370,6 +372,13 @@ export class ShipOrchestrator extends EventEmitter {
     } else {
       this.state = this.initializeState();
     }
+  }
+
+  private childOptions() {
+    return {
+      cwd: this.config.cwd,
+      ...(this.config.gitEnv ? { env: this.config.gitEnv } : {}),
+    };
   }
 
   private initializeState(): ShipState {
@@ -450,14 +459,17 @@ export class ShipOrchestrator extends EventEmitter {
       this.state.stage !== ShipStage.CIRCUIT_BREAK
     ) {
       const branchName = this.branchName();
-      const currentBranch = getCurrentBranch(this.config.cwd);
+      const currentBranch = getCurrentBranch(
+        this.config.cwd,
+        this.config.gitEnv,
+      );
       if (currentBranch !== branchName) {
         logCliOutput(
           `  ⚠ Resuming from state but currently on ${currentBranch}. Checking out ${branchName}...`,
         );
         try {
           execSync(`git checkout ${branchName}`, {
-            cwd: this.config.cwd,
+            ...this.childOptions(),
             stdio: "ignore",
           });
         } catch (err: unknown) {
@@ -706,7 +718,7 @@ export class ShipOrchestrator extends EventEmitter {
   private ensurePushable(branchName: string): ShipStageResult | null {
     const remoteRef = `refs/remotes/origin/${branchName}`;
     const git = (cmd: string) =>
-      execSync(cmd, { cwd: this.config.cwd, encoding: "utf-8" }).trim();
+      execSync(cmd, { ...this.childOptions(), encoding: "utf-8" }).trim();
 
     try {
       // Refresh the remote-tracking ref explicitly; the ambient one may predate
@@ -759,7 +771,7 @@ export class ShipOrchestrator extends EventEmitter {
   private async stageBranchSetup(): Promise<ShipStageResult> {
     logCliOutput("  ▸ BRANCH_SETUP");
     // FR-002: Dirty tree fail fast
-    if (await isDirty(this.config.cwd)) {
+    if (await isDirty(this.config.cwd, this.config.gitEnv)) {
       return {
         success: false,
         exitCode: 1,
@@ -768,7 +780,7 @@ export class ShipOrchestrator extends EventEmitter {
     }
 
     const branchName = this.branchName();
-    const currentBranch = getCurrentBranch(this.config.cwd);
+    const currentBranch = getCurrentBranch(this.config.cwd, this.config.gitEnv);
 
     // Already on the correct feature branch — no checkout or merge needed.
     // The develop merge happens at PR merge time, not during ship.
@@ -782,7 +794,10 @@ export class ShipOrchestrator extends EventEmitter {
     }
 
     try {
-      await createBranch(this.config.cwd, branchName, "develop");
+      const gitEnv: [NodeJS.ProcessEnv?] = this.config.gitEnv
+        ? [this.config.gitEnv]
+        : [];
+      await createBranch(this.config.cwd, branchName, "develop", ...gitEnv);
       // A fresh branch off develop plus a stale remote of the same name is
       // exactly the 005 case — check before any agent runs, not at PR_CI.
       const pushable = this.ensurePushable(branchName);
@@ -797,7 +812,7 @@ export class ShipOrchestrator extends EventEmitter {
         try {
           const { execFileSync } = await import("node:child_process");
           execFileSync("git", ["checkout", branchName], {
-            cwd: this.config.cwd,
+            ...this.childOptions(),
             stdio: ["ignore", "ignore", "pipe"],
           });
           logCliOutput(`  Branch ${branchName} exists — checked out`);
@@ -855,9 +870,9 @@ export class ShipOrchestrator extends EventEmitter {
         execSync(
           `git add ${files.join(" ")} && git commit --author="$(git config user.name) <$(git config user.email)>" -m "chore: activate ${this.config.phaseId} tests"`,
           {
-            cwd: this.config.cwd,
+            ...this.childOptions(),
             stdio: "pipe",
-            env: { ...process.env, GWRK_SHIP: "1" },
+            env: { ...(this.config.gitEnv ?? process.env), GWRK_SHIP: "1" },
           },
         );
       } catch {
@@ -932,7 +947,7 @@ export class ShipOrchestrator extends EventEmitter {
       if (!result) {
         result = await runTaskGate(task, {
           featureDir,
-          cwd: this.config.cwd,
+          ...this.childOptions(),
         });
         gateCache.set(task.gateScript, result);
       }
@@ -1000,7 +1015,7 @@ export class ShipOrchestrator extends EventEmitter {
       }
       const gatePath = path.join(featureDir, task.gateScript);
       if (fs.existsSync(gatePath)) {
-        const gateResult = await runGate(gatePath, { cwd: this.config.cwd });
+        const gateResult = await runGate(gatePath, this.childOptions());
         if (gateResult.passed) {
           logCliOutput(`  ✓ pre-flight PASS: ${task.id}`);
           // Mark task as completed in state
@@ -1047,19 +1062,19 @@ export class ShipOrchestrator extends EventEmitter {
         // agent edits. Without this commit, it wipes the implementation too.
         try {
           const porcelain = execSync("git status --porcelain", {
-            cwd: this.config.cwd,
+            ...this.childOptions(),
             encoding: "utf-8",
           }).trim();
           if (porcelain) {
             const phaseNum = this.config.phaseId
               .replace("phase-", "")
               .replace(/^0+/, "");
-            execSync("git add -A", { cwd: this.config.cwd });
+            execSync("git add -A", this.childOptions());
             execSync(
               `git commit --author="$(git config user.name) <$(git config user.email)>" -m "feat(${this.config.featureId}): implement Phase ${phaseNum}"`,
               {
-                cwd: this.config.cwd,
-                env: { ...process.env, GWRK_SHIP: "1" },
+                ...this.childOptions(),
+                env: { ...(this.config.gitEnv ?? process.env), GWRK_SHIP: "1" },
                 stdio: ["ignore", "pipe", "pipe"],
               },
             );
@@ -1117,7 +1132,7 @@ export class ShipOrchestrator extends EventEmitter {
 
     try {
       execSync(buildCommand, {
-        cwd: this.config.cwd,
+        ...this.childOptions(),
         stdio: "pipe",
         timeout: 60_000, // 60s — build should never take longer
       });
@@ -1335,7 +1350,7 @@ export class ShipOrchestrator extends EventEmitter {
       let output: string;
       try {
         output = execSync(cmd, {
-          cwd: this.config.cwd,
+          ...this.childOptions(),
           stdio: "pipe",
           timeout: 300_000,
         }).toString();
@@ -1399,7 +1414,13 @@ export class ShipOrchestrator extends EventEmitter {
     // 026: delegate to the one shared inline executor (gate-exec) so TEST_GATE's
     // phase-gate path runs a gate identically to `gwrk gate`, post-flight, and
     // harvest.
-    const r = runInlineGate(script, this.config.cwd);
+    const r = runInlineGate(
+      script,
+      this.config.cwd,
+      undefined,
+      undefined,
+      this.config.gitEnv,
+    );
     return {
       passed: r.passed,
       offendingLine: r.offendingLine ?? "",
@@ -1446,7 +1467,7 @@ export class ShipOrchestrator extends EventEmitter {
     let output: string;
     try {
       output = execSync(command, {
-        cwd: this.config.cwd,
+        ...this.childOptions(),
         stdio: "pipe",
         timeout: 120_000,
       }).toString();
@@ -1873,7 +1894,7 @@ export class ShipOrchestrator extends EventEmitter {
       if (!gateResult) {
         gateResult = await runTaskGate(task, {
           featureDir,
-          cwd: this.config.cwd,
+          ...this.childOptions(),
         });
         gateCache.set(task.gateScript, gateResult);
       }
@@ -2043,13 +2064,13 @@ export class ShipOrchestrator extends EventEmitter {
     try {
       // Restore all tracked files to HEAD state
       execSync("git checkout -- .", {
-        cwd: this.config.cwd,
+        ...this.childOptions(),
         stdio: ["ignore", "pipe", "pipe"],
       });
 
       // Remove any untracked files the review agent created
       execSync("git clean -fd --exclude=.runs/", {
-        cwd: this.config.cwd,
+        ...this.childOptions(),
         stdio: ["ignore", "pipe", "pipe"],
       });
     } catch (err) {
@@ -2144,7 +2165,7 @@ ${marker}`;
         return execSync(
           `gh pr checks "${prNumber}" --watch${required ? " --required" : ""} --interval 30`,
           {
-            cwd: this.config.cwd,
+            ...this.childOptions(),
             encoding: "utf-8",
             stdio: ["ignore", "pipe", "pipe"],
           },
@@ -2253,9 +2274,14 @@ ${marker}`;
             (Date.now() - new Date(this.state.startedAt).getTime()) / 1000,
           ),
         );
-        const gitCommit = getCurrentCommit(this.config.cwd);
-        const gitBranch = branchName || getCurrentBranch(this.config.cwd);
-        const diff = getDiffStats(this.config.cwd, `${gitCommit}~1`);
+        const gitCommit = getCurrentCommit(this.config.cwd, this.config.gitEnv);
+        const gitBranch =
+          branchName || getCurrentBranch(this.config.cwd, this.config.gitEnv);
+        const diff = getDiffStats(
+          this.config.cwd,
+          `${gitCommit}~1`,
+          this.config.gitEnv,
+        );
         const phaseNum = this.config.phaseId
           .replace("phase-", "")
           .replace(/^0+/, "");
@@ -2305,14 +2331,14 @@ ${marker}`;
     // The orchestrator must own this boundary deterministically.
     try {
       const porcelain = execSync("git status --porcelain", {
-        cwd: this.config.cwd,
+        ...this.childOptions(),
         encoding: "utf-8",
       }).trim();
 
       if (porcelain) {
         const changeCount = porcelain.split("\n").length;
         logCliOutput(`    committing ${changeCount} change(s)`);
-        execSync("git add -A", { cwd: this.config.cwd });
+        execSync("git add -A", this.childOptions());
         const phaseNum = this.config.phaseId
           .replace("phase-", "")
           .replace(/^0+/, "");
@@ -2320,8 +2346,8 @@ ${marker}`;
           execSync(
             `git commit -m "chore(${this.config.featureId}): pre-PR cleanup (Phase ${phaseNum})"`,
             {
-              cwd: this.config.cwd,
-              env: { ...process.env, GWRK_SHIP: "1" },
+              ...this.childOptions(),
+              env: { ...(this.config.gitEnv ?? process.env), GWRK_SHIP: "1" },
               stdio: ["ignore", "pipe", "pipe"],
             },
           ),
@@ -2331,7 +2357,7 @@ ${marker}`;
       // Always push — branch may not be on remote yet, or have unpushed commits
       withSpinner(`pushing ${branchName}`, () =>
         execSync(`git push -u origin ${branchName}`, {
-          cwd: this.config.cwd,
+          ...this.childOptions(),
           stdio: ["ignore", "pipe", "pipe"],
         }),
       );
@@ -2349,7 +2375,7 @@ ${marker}`;
       const prListRaw = withSpinner("checking for existing PR", () =>
         execSync(
           `gh pr list --head "${branchName}" --base develop --json number --jq '.[0].number'`,
-          { cwd: this.config.cwd, encoding: "utf-8" },
+          { ...this.childOptions(), encoding: "utf-8" },
         ).trim(),
       );
 
@@ -2390,7 +2416,7 @@ ${marker}`;
         try {
           existingBody = execSync(
             `gh pr view ${prNumber} --json body --jq '.body'`,
-            { cwd: this.config.cwd, encoding: "utf-8" },
+            { ...this.childOptions(), encoding: "utf-8" },
           ).trim();
         } catch {
           /* best-effort — an unreadable body just restarts the span */
@@ -2425,7 +2451,7 @@ ${marker}`;
             () =>
               execSync(
                 `gh pr edit ${prNumber} --title "${prTitle}" --body-file "${prBodyPath}"`,
-                { cwd: this.config.cwd, encoding: "utf-8" },
+                { ...this.childOptions(), encoding: "utf-8" },
               ),
           );
         } catch (editErr: unknown) {
@@ -2442,7 +2468,7 @@ ${marker}`;
           createOutput = withSpinner("creating PR", () =>
             execSync(
               `gh pr create --title "${prTitle}" --body-file "${prBodyPath}" --base develop`,
-              { cwd: this.config.cwd, encoding: "utf-8" },
+              { ...this.childOptions(), encoding: "utf-8" },
             ),
           );
         } catch (createErr: unknown) {
@@ -2460,8 +2486,11 @@ ${marker}`;
               execSync(
                 `git checkout develop && git merge ${branchName} && git push`,
                 {
-                  cwd: this.config.cwd,
-                  env: { ...process.env, GWRK_SHIP: "1" },
+                  ...this.childOptions(),
+                  env: {
+                    ...(this.config.gitEnv ?? process.env),
+                    GWRK_SHIP: "1",
+                  },
                   stdio: ["ignore", "pipe", "pipe"],
                 },
               );
@@ -2485,7 +2514,7 @@ ${marker}`;
         try {
           this.state.prUrl = execSync(
             `gh pr view ${prNumber} --json url --jq '.url'`,
-            { cwd: this.config.cwd, encoding: "utf-8" },
+            { ...this.childOptions(), encoding: "utf-8" },
           ).trim();
         } catch {
           /* best-effort URL resolution */
@@ -2689,7 +2718,7 @@ ${marker}`;
       const buildCmd = getBuildCommand(diagProfile, this.config.cwd);
       if (buildCmd) {
         execSync(buildCmd, {
-          cwd: this.config.cwd,
+          ...this.childOptions(),
           stdio: "pipe",
           timeout: 60_000,
         });

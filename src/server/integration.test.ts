@@ -172,6 +172,10 @@ describe("Server E2E Integration", () => {
     const schedule = vi.spyOn(globalThis, "setInterval");
     const cancel = vi.spyOn(globalThis, "clearInterval");
     const fixtures: ServerFixture[] = [];
+    let finishShips!: (exitCode: number) => void;
+    const ships = new Promise<number>((resolve) => {
+      finishShips = resolve;
+    });
 
     try {
       const first = await createServerFixture("listen");
@@ -191,13 +195,25 @@ describe("Server E2E Integration", () => {
         expect(fixtureGit(fixture.projectRoot, "remote")).toBe("");
       }
 
+      const run = vi.fn(() => ships);
+      vi.mocked(ShipOrchestrator).mockImplementation(
+        () => ({ run, getResult: () => ({}) }) as ShipOrchestrator,
+      );
+      const responses = await Promise.all(
+        fixtures.map((fixture, index) =>
+          fixture.app.inject({
+            method: "POST",
+            url: "/api/dispatch",
+            payload: { featureId: `feature-${index}`, phaseId: "phase-01" },
+          }),
+        ),
+      );
+      await vi.waitFor(() => expect(run).toHaveBeenCalledTimes(2));
+      finishShips(0);
+
       for (const [index, fixture] of fixtures.entries()) {
         const featureId = `feature-${index}`;
-        const response = await fixture.app.inject({
-          method: "POST",
-          url: "/api/dispatch",
-          payload: { featureId, phaseId: "phase-01" },
-        });
+        const response = responses[index];
         expect(response.statusCode).toBe(201);
         const { id } = response.json();
 
@@ -303,6 +319,7 @@ describe("Server E2E Integration", () => {
       expect(writePid).not.toHaveBeenCalled();
       expect(removePid).not.toHaveBeenCalled();
     } finally {
+      finishShips(0);
       await Promise.all(fixtures.map((fixture) => fixture.close()));
     }
 
@@ -1040,6 +1057,9 @@ setInterval(() => {}, 1000);
   });
 
   it("isolates fixture Git setup and worktrees from inherited repository selectors", async () => {
+    const { ShipOrchestrator: RealShipOrchestrator } = await vi.importActual<
+      typeof import("../engine/ship-orchestrator.js")
+    >("../engine/ship-orchestrator.js");
     const external = await createServerFixture("routes", {
       routes: ["dispatch"],
     });
@@ -1048,10 +1068,18 @@ setInterval(() => {}, 1000);
     const ship = new Promise<number>((resolve) => {
       finishShip = resolve;
     });
-    const run = vi.fn(() => ship);
-    vi.mocked(ShipOrchestrator).mockImplementationOnce(
-      () => ({ run, getResult: () => ({}) }) as unknown as ShipOrchestrator,
-    );
+    const branchSetup = vi.fn();
+    vi.mocked(ShipOrchestrator).mockImplementationOnce((config) => {
+      const orchestrator = new RealShipOrchestrator(config);
+      return {
+        async run() {
+          const result = await orchestrator["stageBranchSetup"]();
+          branchSetup(result);
+          return result.success ? ship : result.exitCode;
+        },
+        getResult: () => ({}),
+      } as ShipOrchestrator;
+    });
     const snapshot = () => [
       fixtureGit(external.projectRoot, "rev-parse", "HEAD"),
       fixtureGit(external.projectRoot, "status", "--porcelain"),
@@ -1060,6 +1088,9 @@ setInterval(() => {}, 1000);
       fixtureGit(external.projectRoot, "worktree", "list", "--porcelain"),
     ];
     try {
+      writeFileSync(join(external.projectRoot, "untracked.txt"), "dirty");
+      const branch = "feat/probe-phase-01";
+      fixtureGit(external.projectRoot, "branch", branch);
       const original = snapshot();
       vi.stubEnv("GIT_DIR", join(external.projectRoot, ".git"));
       vi.stubEnv("GIT_WORK_TREE", external.projectRoot);
@@ -1072,6 +1103,7 @@ setInterval(() => {}, 1000);
       vi.stubEnv("GIT_COMMITTER_EMAIL", "inherited@example.invalid");
       fixture = await createServerFixture("routes", { routes: ["dispatch"] });
       const { projectRoot } = fixture;
+      fixtureGit(projectRoot, "remote", "add", "origin", external.projectRoot);
       expect(existsSync(join(projectRoot, ".git"))).toBe(true);
       expect(fixtureGit(projectRoot, "rev-parse", "--show-object-format")).toBe(
         "sha1",
@@ -1097,7 +1129,11 @@ setInterval(() => {}, 1000);
         payload: { featureId: "probe", phaseId: "phase-01" },
       });
       expect(response.statusCode).toBe(201);
-      await vi.waitFor(() => expect(run).toHaveBeenCalledOnce());
+      await vi.waitFor(() => {
+        expect(branchSetup).toHaveBeenCalledWith(
+          expect.objectContaining({ success: true }),
+        );
+      });
       const workDir = fixture.journal().at(-1)?.workDir;
       expect(workDir).toBeDefined();
       expect(worktrees()).toEqual([
@@ -1105,9 +1141,12 @@ setInterval(() => {}, 1000);
         `worktree ${workDir}`,
       ]);
       expect(snapshot()).toEqual(original);
-      expect(
-        fixtureGit(projectRoot, "branch", "--list", "feat/probe-phase-01"),
-      ).toContain("feat/probe-phase-01");
+      expect(fixtureGit(projectRoot, "branch", "--list", branch)).toContain(
+        branch,
+      );
+      expect(fixtureGit(projectRoot, "rev-parse", `origin/${branch}`)).toBe(
+        original[0],
+      );
 
       finishShip(0);
       await fixture.app.close();
@@ -1121,6 +1160,83 @@ setInterval(() => {}, 1000);
         await Promise.all([fixture?.close(), external.close()]);
       } finally {
         vi.unstubAllEnvs();
+      }
+    }
+  });
+
+  it("ignores inherited Git trace destinations through fixture close", async () => {
+    const external = mkdtempSync(join(tmpdir(), "gwrk-git-trace-"));
+    const trace = join(external, "trace.json");
+    let fixture: ServerFixture | undefined;
+    try {
+      vi.stubEnv("GIT_TRACE2_EVENT", trace);
+      fixture = await createServerFixture("routes", { routes: ["dispatch"] });
+      const response = await fixture.app.inject({
+        method: "POST",
+        url: "/api/dispatch",
+        payload: { featureId: "trace-probe", phaseId: "phase-01" },
+      });
+      expect(response.statusCode).toBe(201);
+      await fixture.app.close();
+      expect(fixture.journal().at(-1)?.status).toBe("completed");
+      expect(existsSync(trace)).toBe(false);
+    } finally {
+      try {
+        await fixture?.close();
+      } finally {
+        rmSync(external, { recursive: true, force: true });
+      }
+    }
+  });
+
+  it("stops polling while server close drains an active dispatch", async () => {
+    stubListener();
+    const stopMonitor = vi.spyOn(SystemMonitor.prototype, "stopPolling");
+    const stopHarvest = vi.spyOn(HarvestWatcher.prototype, "stop");
+    const fixture = await createServerFixture("listen");
+    let finishShip!: (exitCode: number) => void;
+    const ship = new Promise<number>((resolve) => {
+      finishShip = resolve;
+    });
+    const run = vi.fn(() => ship);
+    vi.mocked(ShipOrchestrator).mockImplementationOnce(
+      () => ({ run, getResult: () => ({}) }) as ShipOrchestrator,
+    );
+    let close: Promise<void> | undefined;
+    try {
+      const response = await fixture.app.inject({
+        method: "POST",
+        url: "/api/dispatch",
+        payload: { featureId: "shutdown-drain", phaseId: "phase-01" },
+      });
+      expect(response.statusCode).toBe(201);
+      await vi.waitFor(() => expect(run).toHaveBeenCalledOnce());
+
+      const closed = vi.fn();
+      close = fixture.app.close().then(closed);
+      await vi.waitFor(() => {
+        expect(stopMonitor).toHaveBeenCalledOnce();
+        expect(stopHarvest).toHaveBeenCalledOnce();
+      });
+      expect(closed).not.toHaveBeenCalled();
+      expect(readIfPresent(fixture.pidPath)).toBe(String(process.pid));
+      expect(listRuns("shutdown-drain", fixture.projectId, fixture.db)).toEqual(
+        [expect.objectContaining({ finished_at: null })],
+      );
+
+      finishShip(0);
+      await close;
+      expect(fixture.journal().at(-1)?.status).toBe("completed");
+      expect(listRuns("shutdown-drain", fixture.projectId, fixture.db)).toEqual(
+        [expect.objectContaining({ exit_code: 0 })],
+      );
+      expect(existsSync(fixture.pidPath)).toBe(false);
+    } finally {
+      finishShip(0);
+      try {
+        await close;
+      } finally {
+        await fixture.close();
       }
     }
   });
@@ -1382,6 +1498,7 @@ setInterval(() => {}, 1000);
       projectRoot: fixture.projectRoot,
       handleSignals: false,
       pid,
+      ledger: { projectId: fixture.projectId, db: fixture.db },
     };
     try {
       await startServer(config, options);
@@ -1391,6 +1508,7 @@ setInterval(() => {}, 1000);
       expect.soft(readIfPresent(fixture.pidPath)).toBe(String(process.pid));
       await first.close();
       expect(existsSync(fixture.pidPath)).toBe(false);
+      expect(getDb).not.toHaveBeenCalled();
     } finally {
       await first.close();
       await fixture.close();

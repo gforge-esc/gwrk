@@ -142,6 +142,7 @@ export async function startServer(
     sandbox,
     projectRoot,
     options.ledger,
+    gitEnv,
   );
 
   const lifecycle = new LifecycleMonitor(config);
@@ -195,7 +196,8 @@ export async function startServer(
   });
 
   let ownsPidRecord = false;
-  const cleanup: Array<() => void | Promise<void>> = [() => queue.close()];
+  const stopPollers: Array<() => void | Promise<void>> = [];
+  const cleanup: Array<() => void | Promise<void>> = [];
 
   const shutdown = async () => {
     server.log.info("Shutting down server...");
@@ -219,12 +221,18 @@ export async function startServer(
       ownsPidRecord = false;
       releases.push(() => pid.removePid());
     }
-    for (const release of releases) {
+    const releaseSafely = async (release: () => void | Promise<void>) => {
       try {
         await release();
       } catch (err) {
         errors.push(err);
       }
+    };
+    const drains = stopPollers.splice(0).map(releaseSafely);
+    drains.push(releaseSafely(() => queue.close()));
+    await Promise.all(drains);
+    for (const release of releases) {
+      await releaseSafely(release);
     }
     if (errors.length === 1) throw errors[0];
     if (errors.length > 1)
@@ -253,7 +261,7 @@ export async function startServer(
     const stopPolling = () => monitor.stopPolling();
     const stopLifecycle = () => lifecycle.stop();
     const stopNetwork = () => network.stop();
-    cleanup.push(stopPolling, stopLifecycle, stopNetwork);
+    stopPollers.push(stopPolling, stopLifecycle, stopNetwork);
 
     pid.writePid(process.pid);
     ownsPidRecord = true;
@@ -272,7 +280,7 @@ export async function startServer(
       projectRoot,
       options.ledger,
     );
-    cleanup.push(() => planHeartbeat.stop());
+    stopPollers.push(() => planHeartbeat.stop());
     planHeartbeat.start();
 
     const harvestWatcher = new HarvestWatcher(
@@ -282,7 +290,7 @@ export async function startServer(
       options.ledger,
       gitEnv,
     );
-    cleanup.push(() => harvestWatcher.stop());
+    stopPollers.push(() => harvestWatcher.stop());
     harvestWatcher.start();
 
     if (!slackInUse) {

@@ -59,6 +59,7 @@ export class DispatchQueue {
     private sandbox: SandboxManager,
     private projectRoot: string,
     private ledger?: DispatchLedgerScope,
+    private gitEnv?: () => NodeJS.ProcessEnv,
   ) {}
 
   pause() {
@@ -229,6 +230,7 @@ export class DispatchQueue {
         maxIterations: 3,
         ciTimeout: 30,
         cwd: worktreeDir,
+        gitEnv: this.gitEnv?.(),
         // Crash-recovery state lives in the primary checkout so it survives
         // worktree teardown; ship on the per-feature-phase branch.
         stateRoot: this.projectRoot,

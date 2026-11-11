@@ -179,10 +179,14 @@ export function gitDraftLineCount(
 /**
  * Gets the current commit hash (HEAD).
  */
-export function getCurrentCommit(repoPath: string): string {
+export function getCurrentCommit(
+  repoPath: string,
+  env?: NodeJS.ProcessEnv,
+): string {
   try {
     const stdout = execFileSync("git", ["rev-parse", "HEAD"], {
       cwd: repoPath,
+      env,
       encoding: "utf-8",
       stdio: ["ignore", "pipe", "pipe"],
     });
@@ -218,10 +222,12 @@ export function getCurrentBranch(
 export function getDiffStats(
   repoPath: string,
   ref: string,
+  env?: NodeJS.ProcessEnv,
 ): { filesChanged: number; linesAdded: number; linesDeleted: number } {
   try {
     const stdout = execFileSync("git", ["diff", "--shortstat", ref], {
       cwd: repoPath,
+      env,
       encoding: "utf-8",
       stdio: ["ignore", "pipe", "pipe"],
     });
@@ -248,10 +254,14 @@ export function getDiffStats(
 /**
  * Checks if the working tree is dirty (has uncommitted changes).
  */
-export async function isDirty(repoPath: string): Promise<boolean> {
+export async function isDirty(
+  repoPath: string,
+  env?: NodeJS.ProcessEnv,
+): Promise<boolean> {
   try {
     const stdout = execFileSync("git", ["status", "--porcelain"], {
       cwd: repoPath,
+      env,
       encoding: "utf-8",
       stdio: ["ignore", "pipe", "pipe"],
     });
@@ -268,6 +278,7 @@ export async function createBranch(
   repoPath: string,
   branchName: string,
   baseBranch = "develop",
+  env?: NodeJS.ProcessEnv,
 ): Promise<void> {
   // Cold start: on a fresh repo the base branch (develop) may not exist on the
   // remote yet. Bootstrap it from the current HEAD so the first ship isn't
@@ -275,6 +286,7 @@ export async function createBranch(
   const remoteHasBase =
     execFileSync("git", ["ls-remote", "--heads", "origin", baseBranch], {
       cwd: repoPath,
+      env,
       stdio: ["ignore", "pipe", "pipe"],
     })
       .toString()
@@ -283,6 +295,7 @@ export async function createBranch(
   if (!remoteHasBase) {
     execFileSync("git", ["push", "origin", `HEAD:refs/heads/${baseBranch}`], {
       cwd: repoPath,
+      env,
       stdio: ["ignore", "ignore", "pipe"],
     });
   }
@@ -290,6 +303,7 @@ export async function createBranch(
   // Ensure base branch is fetched and up to date
   execFileSync("git", ["fetch", "origin", baseBranch], {
     cwd: repoPath,
+    env,
     stdio: ["ignore", "ignore", "pipe"],
   });
 
@@ -301,6 +315,7 @@ export async function createBranch(
     ["checkout", "-b", branchName, "--no-track", `origin/${baseBranch}`],
     {
       cwd: repoPath,
+      env,
       stdio: ["ignore", "ignore", "pipe"],
     },
   );

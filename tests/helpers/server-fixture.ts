@@ -47,8 +47,12 @@ interface FixtureOptions {
 }
 
 function fixtureGitEnv(root: string): NodeJS.ProcessEnv {
+  const env = repositoryGitEnv(root);
+  for (const key of Object.keys(env)) {
+    if (/^GIT_TRACE/i.test(key)) delete env[key];
+  }
   return {
-    ...repositoryGitEnv(root),
+    ...env,
     GIT_CONFIG_GLOBAL: devNull,
     GIT_CONFIG_NOSYSTEM: "1",
     GIT_DEFAULT_HASH: "sha1",
@@ -180,6 +184,7 @@ export async function createServerFixture(
         sandbox,
         projectRoot,
         ledger,
+        gitEnv,
       );
       const lifecycle = new LifecycleMonitor(config);
       lifecycle.setStatus("ready");
