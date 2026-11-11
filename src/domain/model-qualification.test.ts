@@ -609,6 +609,26 @@ describe("credential guard", () => {
     );
   });
 
+  it.each([
+    { name: "Authorization", value: "Basic Zml4dHVyZQ==" },
+    { key: "Set-Cookie", value: "session=fixture-session" },
+  ])("rejects inspected credential header records", (record) => {
+    const sanitizedOutput = inspect({ headers: [record] });
+    expect(() => assertNoSecretMaterial({ sanitizedOutput })).toThrow(
+      /secret material/i,
+    );
+  });
+
+  it("allows inspected header records with noncredential values", () => {
+    const sanitizedOutput = inspect({
+      headers: [
+        { name: "Content-Type", value: "text/plain" },
+        { key: "Vary", value: ["Cookie", "Accept-Encoding"] },
+      ],
+    });
+    expect(() => assertNoSecretMaterial({ sanitizedOutput })).not.toThrow();
+  });
+
   it("allows ordinary inspected tuples and multi-value Vary field names", () => {
     const sanitizedOutput = inspect({
       headers: [

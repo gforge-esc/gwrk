@@ -525,11 +525,10 @@ function findJsonTokenEnd(text: string, start: number): number | undefined {
   return undefined;
 }
 
-// Node's inspect can print tuple strings with single quotes, backticks and
-// hexadecimal escapes. Convert only string literals and let JSON parse the array.
-function inspectedArrayAsJson(token: string): string {
-  const strings =
-    /"(?:[^"\\]|\\[\s\S])*"|'(?:[^'\\]|\\[\s\S])*'|\x60(?:[^\x60\\]|\\[\s\S])*\x60/g;
+// Normalize inspect's string literals and bare keys before JSON parsing.
+function inspectedRecordAsJson(token: string): string {
+  const tokens =
+    /"(?:[^"\\]|\\[\s\S])*"|'(?:[^'\\]|\\[\s\S])*'|\x60(?:[^\x60\\]|\\[\s\S])*\x60|([A-Za-z_$][\w$]*)(?=\s*:)/g;
   const escapes: Record<string, string> = {
     "0": "\0",
     b: "\b",
@@ -539,20 +538,22 @@ function inspectedArrayAsJson(token: string): string {
     t: "\t",
     v: "\v",
   };
-  return token.replace(strings, (literal) =>
-    JSON.stringify(
-      literal
-        .slice(1, -1)
-        .replace(
-          /\\(?:x([0-9a-f]{2})|u([0-9a-f]{4})|u\{([0-9a-f]{1,6})\}|([\s\S]))/gi,
-          (_escape, hex, unit, point, char) => {
-            const digits = hex ?? unit ?? point;
-            return digits === undefined
-              ? (escapes[char] ?? char)
-              : String.fromCodePoint(Number.parseInt(digits, 16));
-          },
+  return token.replace(tokens, (literal, key: string | undefined) =>
+    key !== undefined
+      ? JSON.stringify(key)
+      : JSON.stringify(
+          literal
+            .slice(1, -1)
+            .replace(
+              /\\(?:x([0-9a-f]{2})|u([0-9a-f]{4})|u\{([0-9a-f]{1,6})\}|([\s\S]))/gi,
+              (_escape, hex, unit, point, char) => {
+                const digits = hex ?? unit ?? point;
+                return digits === undefined
+                  ? (escapes[char] ?? char)
+                  : String.fromCodePoint(Number.parseInt(digits, 16));
+              },
+            ),
         ),
-    ),
   );
 }
 
@@ -597,9 +598,9 @@ function scanEmbeddedJson(
     try {
       decoded = JSON.parse(token);
     } catch {
-      if (!token.startsWith("[")) continue;
+      if (!token.startsWith("[") && !token.startsWith("{")) continue;
       try {
-        token = inspectedArrayAsJson(token);
+        token = inspectedRecordAsJson(token);
         decoded = JSON.parse(token);
       } catch {
         continue;
