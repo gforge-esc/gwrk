@@ -197,56 +197,47 @@ describe("Phase 9: Enforcement Skills", () => {
     });
   });
 
-  /**
-   * TR-P9-005: dispatchToAgent() stdin includes enforcement skill content
-   */
-  // TR-P9-005: dynamic imports + spawn mocks deadlock on GitHub Actions
-  // shared runners (30s+ hangs). Passes locally in <100ms; covered by
-  // pre-commit hooks. Skip on CI to unblock releases.
-  describe.skipIf(!!process.env.CI)(
-    "TR-P9-005: dispatch context assembly",
-    () => {
-      it(
-        "enforcement skill content appears in assembled dispatch context",
-        { timeout: 15_000 },
+  describe("TR-P9-005: dispatch context assembly", () => {
+    it("enforcement skill content appears in assembled dispatch context", async () => {
+      const skillRuntime = await import("./skill-runtime.js");
+      const { dispatchToAgent } = await import("../utils/agent.js");
+      const { spawn } = await import("node:child_process");
+
+      vi.spyOn(skillRuntime, "resolveEnforcementSkills").mockImplementation(
         async () => {
-          const skillRuntime = await import("./skill-runtime.js");
-          const { dispatchToAgent } = await import("../utils/agent.js");
-          const { spawn } = await import("node:child_process");
-
-          vi.spyOn(skillRuntime, "resolveEnforcementSkills").mockResolvedValue(
-            "# MOCK ENFORCEMENT CONTENT",
-          );
-
-          const mockChild = new EventEmitter() as any;
-          const mockStdinWrite = vi.fn();
-          mockChild.stdin = { write: mockStdinWrite, end: vi.fn() };
-          mockChild.stdout = new PassThrough();
-          mockChild.stderr = new PassThrough();
-
-          (spawn as any).mockReturnValue(mockChild);
-
-          // Trigger the end of the process after a short delay
-          setTimeout(() => {
-            mockChild.stdout.end();
-            mockChild.stderr.end();
-            mockChild.emit("close", 0);
-          }, 50);
-
-          // Provide stdin with the marker to trigger replacement
-          await dispatchToAgent({
-            type: "implement",
-            prompt: "test",
-            agent: "agy",
-            stdin: "Rules:\n{{enforcement}}",
-          });
-
-          expect(mockStdinWrite).toHaveBeenCalled();
-          const finalStdin = mockStdinWrite.mock.calls[0][0];
-          expect(finalStdin).toContain("MOCK ENFORCEMENT CONTENT");
-          expect(finalStdin).not.toContain("{{enforcement}}");
+          await new Promise((resolve) => setTimeout(resolve, 100));
+          return "# MOCK ENFORCEMENT CONTENT";
         },
       );
-    },
-  );
+
+      const mockChild = new EventEmitter() as any;
+      const mockStdinWrite = vi.fn();
+      mockChild.stdin = { write: mockStdinWrite, end: vi.fn() };
+      mockChild.stdout = new PassThrough();
+      mockChild.stderr = new PassThrough();
+
+      vi.mocked(spawn).mockImplementation(() => {
+        setImmediate(() => {
+          mockChild.stdout.end();
+          mockChild.stderr.end();
+          mockChild.emit("close", 0);
+        });
+        return mockChild;
+      });
+
+      // Provide stdin with the marker to trigger replacement
+      await dispatchToAgent({
+        type: "implement",
+        prompt: "test",
+        agent: "agy",
+        workDir: tmpDir,
+        stdin: "Rules:\n{{enforcement}}",
+      });
+
+      expect(mockStdinWrite).toHaveBeenCalled();
+      const finalStdin = mockStdinWrite.mock.calls[0][0];
+      expect(finalStdin).toContain("MOCK ENFORCEMENT CONTENT");
+      expect(finalStdin).not.toContain("{{enforcement}}");
+    });
+  });
 });
