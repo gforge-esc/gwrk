@@ -223,12 +223,23 @@ export function verifyHarvestTarget(
       reason: string;
     };
 
+export interface HarvestStagePlanEntry {
+  phaseKey: string;
+  stage: HarvestStageName;
+  initialStatus: "pending" | "skipped_no_target";
+}
+
+export function scopeManualHarvestToPhases(
+  candidate: HarvestCandidateInput,
+  phaseIds: readonly string[],
+): HarvestCandidateInput[];
+
 export function planHarvestStages(input: {
   terminalEvent: HarvestTerminalEvent;
   phaseIds: readonly string[];
   hasSlackTarget: boolean;
   hasRemoteBranchTarget: boolean;
-}): Array<{ phaseKey: string; stage: HarvestStageName; initialStatus: HarvestStageStatus }>;
+}): HarvestStagePlanEntry[];
 
 export function deriveHarvestTerminalStatus(input: {
   terminalEvent: HarvestTerminalEvent;
@@ -360,7 +371,8 @@ export interface HarvestExecutionPort {
 | `listRecoverableDispatches` | List `accepted` and expired `leased` or `running` rows | Ordered by `created_at` ascending |
 | `recordHarvestIntake` | Record `harvest_deliveries` and upsert `harvest_operations` | One transaction with transport ID reuse rejected on repository or payload digest mismatch |
 | `claimHarvestLease` | Claim or renew harvest operation lease | Increments `lease_epoch` atomically |
-| `transitionHarvestStage` | Update one `harvest_stage_receipts` row | Requires matching owner and epoch on every stage and effect receipt write |
+| `initializeHarvestStages` | Persist the complete initial stage plan in one transaction | Requires the current lease. The same stage keys preserve progress. Changed keys fail. |
+| `transitionHarvestStage` | Update one planned stage receipt | Requires the current lease. An unplanned stage fails. |
 | `enqueueOutbox` | Insert idempotent `notification_outbox` item | Unique `(project_id, dedupe_key)` |
 | `getOutboxItem` | Read accepted delivery context by outbox ID | Leaves the send claim untouched |
 | `claimOutboxItem` | Mark pending or retryable item `sending` | Captures `client_metadata_key` with a fenced delivery claim |

@@ -15,6 +15,7 @@ import type {
   HarvestCandidateInput,
   HarvestOperationStatus,
   HarvestStageName,
+  HarvestStagePlanEntry,
   HarvestStageReceipt,
   HarvestStageStatus,
   HarvestTerminalEvent,
@@ -341,6 +342,17 @@ export interface OperationsStorePort {
     nowIso: string;
     leaseExpiresAt: string;
   }): FencedWrite;
+  /**
+   * Persist the full, nonempty set of initial receipts in one fenced write.
+   * A replay with the same phase and stage keys preserves every receipt.
+   * Reject a changed plan without writing a partial batch.
+   */
+  initializeHarvestStages(input: {
+    fence: LeaseFence;
+    nowIso: string;
+    stages: readonly HarvestStagePlanEntry[];
+  }): FencedWrite | { ok: false; code: "HARVEST_PLAN_CONFLICT" };
+  /** Update a planned receipt. Never add a new stage after initialization. */
   transitionHarvestStage(input: {
     fence: LeaseFence;
     nowIso: string;
@@ -350,7 +362,7 @@ export interface OperationsStorePort {
     evidenceJson?: string | null;
     error?: string | null;
     linkedRunId?: number | null;
-  }): FencedWrite;
+  }): FencedWrite | { ok: false; code: "HARVEST_STAGE_UNPLANNED" };
 
   enqueueOutbox(input: OutboxMessage & { nowIso: string }): OutboxItem;
   /** Read the accepted delivery context without acquiring a send claim. */

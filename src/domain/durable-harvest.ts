@@ -135,6 +135,25 @@ function normalizePhaseId(phaseId: string): string {
   );
 }
 
+export function scopeManualHarvestToPhases(
+  candidate: HarvestCandidateInput,
+  phaseIds: readonly string[],
+): HarvestCandidateInput[] {
+  if (
+    candidate.source !== "manual_cli" ||
+    candidate.prNumber !== null ||
+    candidate.explicitPhaseId !== undefined ||
+    phaseIds.length === 0
+  ) {
+    return [candidate];
+  }
+  return [...new Set(phaseIds.map(normalizePhaseId))].map((phaseId) => ({
+    ...candidate,
+    deliveryId: JSON.stringify([candidate.deliveryId, phaseId]),
+    explicitPhaseId: phaseId,
+  }));
+}
+
 function parseHarvestBranch(headBranch: string | null): HarvestTarget | null {
   const branch = /^(?:feat|phase)\/(.+)$/.exec(headBranch ?? "");
   if (!branch) return null;
@@ -363,16 +382,18 @@ export function verifyHarvestTarget(
   };
 }
 
+export interface HarvestStagePlanEntry {
+  phaseKey: string;
+  stage: HarvestStageName;
+  initialStatus: "pending" | "skipped_no_target";
+}
+
 export function planHarvestStages(input: {
   terminalEvent: HarvestTerminalEvent;
   phaseIds: readonly string[];
   hasSlackTarget: boolean;
   hasRemoteBranchTarget: boolean;
-}): Array<{
-  phaseKey: string;
-  stage: HarvestStageName;
-  initialStatus: HarvestStageStatus;
-}> {
+}): HarvestStagePlanEntry[] {
   const phaseKeys = [...new Set(input.phaseIds)];
   if (input.terminalEvent === "closed_unmerged") {
     return (phaseKeys.length ? phaseKeys : ["feature"]).map((phaseKey) => ({

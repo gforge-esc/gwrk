@@ -12,6 +12,9 @@ import {
   type HarvestCandidateInput,
   type HarvestStageReceipt,
   canCorrelateHarvestIntake,
+  deriveHarvestTerminalStatus,
+  planHarvestStages,
+  scopeManualHarvestToPhases,
   verifyHarvestTarget,
 } from "../domain/durable-harvest.js";
 import type {
@@ -28,6 +31,7 @@ type RecoveryStore = Pick<
   | "listRecoverableHarvests"
   | "claimHarvestLease"
   | "heartbeatHarvestLease"
+  | "initializeHarvestStages"
   | "transitionHarvestStage"
   | "getOutboxItem"
   | "listRecoverableOutboxItems"
@@ -262,7 +266,7 @@ function restoreRecoveryStore(persisted: {
   harvests: DurableHarvestOperation[];
   stages: HarvestStageReceipt[];
   outboxItems: OutboxItem[];
-}): RecoveryStore {
+}) {
   const {
     dispatches = [],
     harvests,
@@ -318,6 +322,42 @@ function restoreRecoveryStore(persisted: {
       row.updatedAt = nowIso;
       return result;
     },
+    initializeHarvestStages({ fence, nowIso, stages: plan }) {
+      const row = harvests.find((row) => row.operationId === fence.operationId);
+      if (!row) return { ok: false, code: "LEASE_FENCED" };
+      const lease = validateLeaseFence(row, fence, nowIso);
+      if (!lease.ok) return lease;
+      const key = ({ phaseKey, stage }: { phaseKey: string; stage: string }) =>
+        JSON.stringify([phaseKey, stage]);
+      const keys = new Set(plan.map(key));
+      const saved = stages.filter(
+        ({ operationId }) => operationId === fence.operationId,
+      );
+      if (
+        !plan.length ||
+        keys.size !== plan.length ||
+        (saved.length &&
+          (saved.length !== keys.size ||
+            !saved.every((entry) => keys.has(key(entry)))))
+      ) {
+        return { ok: false, code: "HARVEST_PLAN_CONFLICT" };
+      }
+      if (!saved.length) {
+        stages.push(
+          ...plan.map(({ phaseKey, stage, initialStatus }) => ({
+            ...learningReceipt(fence.operationId),
+            phaseKey,
+            stage,
+            status: initialStatus,
+            leaseEpoch: fence.leaseEpoch,
+            attemptCount: 0,
+            updatedAt: nowIso,
+            completedAt: null,
+          })),
+        );
+      }
+      return { ok: true };
+    },
     transitionHarvestStage({
       fence,
       nowIso,
@@ -330,10 +370,14 @@ function restoreRecoveryStore(persisted: {
       if (!row) return { ok: false, code: "LEASE_FENCED" };
       const result = validateLeaseFence(row, fence, nowIso);
       if (!result.ok) return result;
-      stages.push({
-        ...learningReceipt(fence.operationId),
-        phaseKey,
-        stage,
+      const receipt = stages.find(
+        (entry) =>
+          entry.operationId === fence.operationId &&
+          entry.phaseKey === phaseKey &&
+          entry.stage === stage,
+      );
+      if (!receipt) return { ok: false, code: "HARVEST_STAGE_UNPLANNED" };
+      Object.assign(receipt, {
         status,
         leaseEpoch: fence.leaseEpoch,
         evidenceJson: evidenceJson ?? null,
@@ -385,7 +429,10 @@ function restoreRecoveryStore(persisted: {
       };
     },
   };
-  return store;
+  return Object.assign(store, {
+    snapshot: () =>
+      structuredClone({ dispatches, harvests, stages, outboxItems }),
+  });
 }
 
 describe("durable recovery store contract", () => {
@@ -564,6 +611,147 @@ describe("durable recovery store contract", () => {
       ok: false,
       code: "LEASE_FENCED",
     });
+  });
+
+  it.each([true, false])(
+    "reuses phase receipts for a whole-feature manual harvest after PR first: %s",
+    (prFirst) => {
+      const manual = harvestIntake("manual", { ...offline, phaseId: null });
+      const children = scopeManualHarvestToPhases(manual.candidate, [
+        "phase-1",
+        "phase-02",
+        "phase-01",
+      ]);
+      expect(children.map(({ explicitPhaseId }) => explicitPhaseId)).toEqual([
+        phaseId,
+        "phase-02",
+      ]);
+      const inputs = children.map((candidate) => ({
+        ...harvestIntake(candidate.deliveryId, {
+          ...offline,
+          phaseId: candidate.explicitPhaseId,
+        }),
+        candidate,
+      }));
+      const pull = harvestIntake("verified-pull");
+      const first = prFirst ? pull : inputs[0];
+      const overlapping = prFirst ? inputs[0] : pull;
+      if (!first.target.accepted) throw new Error("Expected initial intake");
+      const original = first.target.operation;
+      const stage = learningReceipt(original.operationId);
+      const resumed = restoreHarvestIntake({
+        harvests: [original],
+        stages: [stage],
+      });
+      expect(resumed.store.recordHarvestIntake(overlapping)).toMatchObject({
+        deduplicatedWork: true,
+        operation: { operationId: original.operationId },
+      });
+      expect(resumed.store.recordHarvestIntake(inputs[1])).toMatchObject({
+        deduplicatedWork: false,
+        operation: { phaseId: "phase-02" },
+      });
+      expect(resumed.snapshot().harvests.map(({ phaseId }) => phaseId)).toEqual(
+        [phaseId, "phase-02"],
+      );
+      expect(resumed.snapshot().stages).toEqual([stage]);
+    },
+  );
+
+  it("persists a complete phase plan before work and preserves progress after takeover", () => {
+    const store = restoreRecoveryStore({
+      harvests: [harvest("planned", { phaseId: null })],
+      stages: [],
+      outboxItems: [],
+    });
+    const claim = store.claimHarvestLease({
+      operationId: "planned",
+      leaseOwner: "first",
+      nowIso,
+      leaseExpiresAt,
+    });
+    if (!claim) throw new Error("Expected a harvest lease");
+    const phaseIds = [phaseId, "phase-02"];
+    const plan = planHarvestStages({
+      phaseIds,
+      terminalEvent: "merged",
+      hasSlackTarget: true,
+      hasRemoteBranchTarget: true,
+    });
+    const init = { fence: claim.fence, nowIso, stages: plan };
+    const firstStage = {
+      ...init,
+      phaseKey: phaseId,
+      stage: "git_sync" as const,
+      status: "succeeded" as const,
+    };
+    expect(store.transitionHarvestStage(firstStage)).toEqual({
+      ok: false,
+      code: "HARVEST_STAGE_UNPLANNED",
+    });
+    expect(store.initializeHarvestStages(init)).toEqual({ ok: true });
+    const afterPlan = restoreRecoveryStore(store.snapshot());
+    const later = "2026-11-11T12:02:00.000Z";
+    const takeover = afterPlan.claimHarvestLease({
+      operationId: "planned",
+      leaseOwner: "second",
+      nowIso: leaseExpiresAt,
+      leaseExpiresAt: later,
+    });
+    if (!takeover) throw new Error("Expected takeover");
+    expect(takeover.stages).toHaveLength(plan.length);
+    expect(
+      afterPlan.initializeHarvestStages({ ...init, nowIso: leaseExpiresAt }),
+    ).toEqual({
+      ok: false,
+      code: "LEASE_FENCED",
+    });
+    const resumed = { fence: takeover.fence, nowIso: leaseExpiresAt };
+    for (const { phaseKey, stage } of plan.filter(
+      (entry) => entry.phaseKey === phaseId,
+    )) {
+      expect(
+        afterPlan.transitionHarvestStage({
+          ...resumed,
+          phaseKey,
+          stage,
+          status: "succeeded",
+        }),
+      ).toEqual({ ok: true });
+    }
+    expect(
+      afterPlan.initializeHarvestStages({ ...resumed, stages: plan }),
+    ).toEqual({ ok: true });
+    expect(
+      afterPlan.initializeHarvestStages({
+        ...resumed,
+        stages: plan.slice(0, 5),
+      }),
+    ).toEqual({
+      ok: false,
+      code: "HARVEST_PLAN_CONFLICT",
+    });
+    const afterFirstPhase = restoreRecoveryStore(
+      afterPlan.snapshot(),
+    ).claimHarvestLease({
+      operationId: "planned",
+      leaseOwner: "third",
+      nowIso: later,
+      leaseExpiresAt: "2026-11-11T12:03:00.000Z",
+    });
+    if (!afterFirstPhase) throw new Error("Expected second takeover");
+    expect(
+      afterFirstPhase.stages
+        .filter((entry) => entry.status === "pending")
+        .map((entry) => entry.phaseKey),
+    ).toEqual(Array(5).fill("phase-02"));
+    expect(
+      deriveHarvestTerminalStatus({
+        terminalEvent: "merged",
+        phaseIds,
+        stages: afterFirstPhase.stages,
+      }),
+    ).toBe("running");
   });
 
   it("discovers project sends and claims abandoned or uncertain sends for reconciliation", () => {
@@ -817,6 +1005,18 @@ it("records learning for an offline harvest after restart", async () => {
   });
   if (!claim) throw new Error("Expected a learning claim");
   const { operation, fence } = claim;
+  expect(
+    restarted.initializeHarvestStages({
+      fence,
+      nowIso,
+      stages: planHarvestStages({
+        terminalEvent: "merged",
+        phaseIds: [phaseId],
+        hasSlackTarget: false,
+        hasRemoteBranchTarget: false,
+      }),
+    }),
+  ).toEqual({ ok: true });
   const execution: Pick<HarvestExecutionPort, "recordLearningAtCheckout"> = {
     recordLearningAtCheckout: vi.fn(async () => ({
       linkedRunId: null,
@@ -859,7 +1059,10 @@ it("records learning for an offline harvest after restart", async () => {
     nowIso: leaseExpiresAt,
     leaseExpiresAt: "2026-11-11T12:02:00.000Z",
   });
-  expect(replay?.stages).toEqual([
+  expect(replay?.stages).toHaveLength(5);
+  expect(
+    replay?.stages.filter(({ stage }) => stage === "learning_record"),
+  ).toEqual([
     expect.objectContaining({
       operationId: "offline",
       stage: "learning_record",

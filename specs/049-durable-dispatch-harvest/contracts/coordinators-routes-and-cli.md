@@ -79,7 +79,7 @@ export interface DurableHarvestService {
     recipient?: DeliveryRecipient | null;
     updateLocalTaskState: boolean;
     ownerId: string;
-  }): Promise<HarvestExecutionSummary>;
+  }): Promise<HarvestExecutionSummary[]>;
   resumeIncomplete(ownerId: string): Promise<HarvestExecutionSummary[]>;
 }
 
@@ -107,6 +107,10 @@ export interface OutboxDeliveryService {
 Startup recovery runs `DurableDispatchService.recoverOnStartup` before new workers start. Expired or interrupted running leases call `WorkerExecutionPort.inspectRecoveredWork` first. If the prior worker opened or merged a pull request, recovery records completion without starting a second worker. If the prior worker is still running, recovery waits or obtains a confirmed stop before requeueing. An unavailable or ambiguous worker lookup leaves recovery pending. Only a confirmed stopped worker without a terminal pull request can be requeued under a new `leaseEpoch`.
 
 Harvest coordination drives five ordered stages for merged pull requests. Those stages are `git_sync`, `gate_verify` and `learning_record` plus `slack_delivery` and `branch_cleanup`. Each stage checks its `harvest_stage_receipts` row first and skips work marked `succeeded` or `skipped_no_target`. If `gate_verify` fails, the service records `gate_failed` and skips phase promotion. It then queues `harvest_gate_failed` to the feature thread so status reports the failure. Outbox flushing calls `NotificationPort.reconcileDelivery` whenever an item starts in `sending` or `uncertain`. Indeterminate lookup leaves the item uncertain and visible in status. Only confirmed absence permits a new send. Telegram remains disabled across all hosted pilot notifications.
+
+Resolve the phase list from the checkout before accepting a manual commit harvest without an explicit phase. Use `scopeManualHarvestToPhases` to give each phase a stable delivery ID. Verify all scoped candidates before recording the first one. A retried intake uses the same scoped delivery IDs. A verified pull request for a covered phase reuses that phase's operation and receipts in either arrival order.
+
+After acquiring a harvest lease, initialize every planned stage in one store call before running any effect. On takeover, read the complete set of stage receipts from the lease claim. Resume pending stages from those receipts.
 
 ## HTTP, Slack and webhook ingress contracts
 
