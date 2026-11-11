@@ -192,6 +192,7 @@ const restoreCommand = new Command("restore")
 const rollbackCheckCommand = new Command("rollback-check")
   .description("Verify installed releases against the ledger migration history")
   .option("--format <type>", "Output format (json)")
+  .addOption(new Option("--require-ledger-digests").hideHelp())
   .requiredOption("--current <dir>", "Current release directory")
   .requiredOption("--target <dir>", "Target release directory")
   .option(
@@ -205,18 +206,34 @@ const rollbackCheckCommand = new Command("rollback-check")
     ) => {
       await withSignal("db rollback-check", async () => {
         const output = ledgerOutput(command);
-        const [current, target] = await Promise.all([
+        const [, target] = await Promise.all([
           verifyInstalledRelease(resolve(opts.current)),
           verifyInstalledRelease(resolve(opts.target)),
         ]);
+        const migrations = readAppliedMigrations(getDbPath());
+        const appliedDigests = new Map(
+          migrations.map(({ name, sha256 }) => [name, sha256]),
+        );
         const result = evaluateRollbackCompatibility(
-          readAppliedMigrations(getDbPath()),
-          current,
+          [...appliedDigests.keys()],
+          { migrations },
           target,
         );
         if (!result.allowed) {
+          const targetNames = new Set(
+            target.migrations.map(({ name }) => name),
+          );
+          const reasons = result.blockingMigrations.map((name) => {
+            if (!appliedDigests.has(name))
+              return `Unapplied target migration: ${name}`;
+            if (!appliedDigests.get(name))
+              return `Unknown applied migration digest: ${name}`;
+            if (!targetNames.has(name))
+              return `Target is missing applied migration: ${name}`;
+            return `Mismatched applied migration digest: ${name}`;
+          });
           throw new CommandError(
-            `Rollback blocked by migrations: ${result.blockingMigrations.join(", ")}.`,
+            `Rollback blocked by migrations: ${reasons.join(". ")}.`,
             1,
           );
         }

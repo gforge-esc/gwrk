@@ -107,6 +107,8 @@ launch() {
   for attempt in {1..30}; do
     if curl -fsS http://127.0.0.1:18790/health >/dev/null 2>&1; then
       server_pid=$(< /run/gwrk/server.pid)
+      mapfile -d '' -t runner_argv < "/proc/$server_pid/cmdline"
+      test "${runner_argv[1]}" = "$(realpath "$release/dist/cli.js")"
       printf "Runner healthy (pid %s).\n" "$server_pid"
       return
     fi

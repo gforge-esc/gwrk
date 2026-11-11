@@ -82,6 +82,11 @@ const manifestSchema = z
 
 export type ReleaseManifest = Readonly<z.output<typeof manifestSchema>>;
 
+export interface AppliedMigration {
+  readonly name: string;
+  readonly sha256: string | null;
+}
+
 export interface RunnerLayout {
   readonly releaseRoot: string;
   readonly stateRoot: string;
@@ -206,11 +211,11 @@ export function validateRunnerLayout(
 
 export function evaluateRollbackCompatibility(
   appliedMigrations: readonly string[],
-  current: ReleaseManifest,
+  provenance: { readonly migrations: readonly AppliedMigration[] },
   target: ReleaseManifest,
 ): RollbackCompatibility {
   const appliedDigests = new Map(
-    current.migrations.map(({ name, sha256 }) => [name, sha256]),
+    provenance.migrations.map(({ name, sha256 }) => [name, sha256]),
   );
   const targetDigests = new Map(
     target.migrations.map(({ name, sha256 }) => [name, sha256]),
@@ -219,7 +224,7 @@ export function evaluateRollbackCompatibility(
   const blockingMigrations = [
     ...[...applied].filter(
       (name) =>
-        !appliedDigests.has(name) ||
+        !appliedDigests.get(name) ||
         appliedDigests.get(name) !== targetDigests.get(name),
     ),
     ...[...targetDigests.keys()].filter((name) => !applied.has(name)),

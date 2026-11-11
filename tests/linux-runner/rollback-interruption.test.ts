@@ -3,6 +3,7 @@
  * file, you can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { spawn, spawnSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import { once } from "node:events";
 import { existsSync } from "node:fs";
 import {
@@ -11,6 +12,7 @@ import {
   readFile,
   readdir,
   readlink,
+  realpath,
   rm,
   symlink,
   writeFile,
@@ -27,6 +29,48 @@ const repo = fileURLToPath(new URL("../..", import.meta.url));
 const rollback = join(repo, "deploy/linux-runner/rollback-release.sh");
 const serviceScripts = ["credentials.sh", "preflight.sh", "run.sh"] as const;
 
+it("records exact migration digests and keeps legacy provenance unknown", async () => {
+  const root = await mkdtemp(join(tmpdir(), "gwrk-migration-digests-"));
+  const path = join(root, "gwrk.db");
+  try {
+    const legacy = new Database(path);
+    legacy.exec(`
+      CREATE TABLE _migrations (name TEXT NOT NULL UNIQUE);
+      INSERT INTO _migrations VALUES ('999-legacy.sql');
+    `);
+    legacy.close();
+    const initialized = spawnSync(
+      process.execPath,
+      [
+        "--input-type=module",
+        "-e",
+        "const { getDb, closeDb } = await import(process.argv[1]); getDb(); closeDb();",
+        new URL("../../dist/db/index.js", import.meta.url).href,
+      ],
+      {
+        env: { ...process.env, GWRK_DB_PATH: path },
+        encoding: "utf8",
+        timeout: 10_000,
+      },
+    );
+    expect(initialized.status, initialized.stderr).toBe(0);
+    const { migrations } = await readReleaseInventory(repo);
+    expect(migrations.length).toBeGreaterThan(0);
+    const ledger = new Database(path, { readonly: true });
+    try {
+      expect(
+        ledger
+          .prepare("SELECT name, sha256 FROM _migrations ORDER BY name")
+          .all(),
+      ).toEqual([...migrations, { name: "999-legacy.sql", sha256: null }]);
+    } finally {
+      ledger.close();
+    }
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 it.each([
   { signal: "SIGTERM", status: 143, stage: "readiness" },
   { signal: "SIGINT", status: 130, stage: "readiness" },
@@ -40,6 +84,10 @@ it.each([
   { signal: null, status: 1, stage: "running service ledger mismatch" },
   { signal: null, status: 1, stage: "service release root mismatch" },
   { signal: null, status: 1, stage: "running service release root mismatch" },
+  { signal: null, status: 1, stage: "running release differs from current" },
+  { signal: null, status: 1, stage: "running release uses current alias" },
+  { signal: null, status: 1, stage: "applied migration digest mismatch" },
+  { signal: null, status: 1, stage: "legacy applied migration without digest" },
   { signal: null, status: 0, stage: "restarted service stays ready" },
   { signal: null, status: 1, stage: "restarted service runs the wrong CLI" },
   {
@@ -47,12 +95,12 @@ it.each([
     status: 1,
     stage: "restarted service exits during comparison",
   },
-  {
+  ...serviceScripts.slice(1).map((malformedFile) => ({
     signal: null,
     status: 1,
-    stage: "invalid target interpreter",
-    malformedFile: "run.sh",
-  },
+    stage: `invalid target interpreter for ${malformedFile}`,
+    malformedFile,
+  })),
   ...serviceScripts.map((malformedFile) => ({
     signal: null,
     status: 1,
@@ -65,7 +113,10 @@ it.each([
     const { signal, status, stage } = scenario;
     const malformedFile =
       "malformedFile" in scenario ? scenario.malformedFile : undefined;
-    const root = await mkdtemp(join(tmpdir(), "gwrk-rollback-signal-"));
+    const invalidInterpreter = stage.startsWith("invalid target interpreter");
+    const root = await realpath(
+      await mkdtemp(join(tmpdir(), "gwrk-rollback-signal-")),
+    );
     const bin = join(root, "bin");
     const runtime = join(root, "runtime");
     const state = join(root, "state");
@@ -73,13 +124,20 @@ it.each([
     const previous = join(root, "previous");
     const active = "releases/1.1.0";
     const target = "releases/1.0.0";
+    const otherRelease = "releases/1.2.0";
+    const migration = "001-review.sql";
+    const matchingSql = "SELECT 1;\n";
+    const differentSql = "SELECT 2;\n";
     const ledger = join(state, "gwrk.db");
     const serviceLedger = join(state, "service.db");
     const serviceRuntime = join(root, "other runtime");
     const pathMismatch =
       stage.startsWith("service ") || stage.startsWith("running service ");
     const verifiesRestart = stage.startsWith("restarted service ");
-    const running = Boolean(signal || malformedFile || pathMismatch);
+    const provenance =
+      stage.startsWith("running release ") || stage.includes("migration");
+    const usesRealCheck = pathMismatch || provenance;
+    const running = Boolean(signal || malformedFile || usesRealCheck);
     const pidFile = join(runtime, "server.pid");
     const ready = join(runtime, "checking-readiness");
     const releaseReadiness = join(runtime, "release-readiness");
@@ -96,7 +154,10 @@ it.each([
       }
       await symlink(active, current);
       await symlink(target, previous);
-      for (const version of [active, target]) {
+      const releases = provenance
+        ? [active, target, otherRelease]
+        : [active, target];
+      for (const version of releases) {
         const release = join(root, version);
         const service = join(release, "deploy/linux-runner");
         await mkdir(service, { recursive: true });
@@ -106,13 +167,13 @@ it.each([
           join(release, "node_modules"),
         );
         await writeFile(join(release, "package.json"), '{"type":"module"}');
-        if (verifiesRestart && version === target) {
-          await writeFile(join(release, "dist/cli.js"), "");
-        } else {
+        if (stage === "target CLI version mismatch" && version === target) {
           await symlink(
             join(repo, "dist/cli.js"),
             join(release, "dist/cli.js"),
           );
+        } else {
+          await writeFile(join(release, "dist/cli.js"), "");
         }
         await mkdir(join(release, "dist/domain"));
         await symlink(
@@ -129,10 +190,9 @@ it.each([
         ? join(root, target, "deploy/linux-runner", malformedFile)
         : undefined;
       if (malformedPath) {
-        const body =
-          stage === "invalid target interpreter"
-            ? "#!/gwrk-fixture-missing-interpreter\nexit 0\n"
-            : "#!/usr/bin/env bash\nif then\n";
+        const body = invalidInterpreter
+          ? "#!/gwrk-fixture-missing-interpreter\nexit 0\n"
+          : "#!/usr/bin/env bash\nif then\n";
         await writeFile(malformedPath, body);
       }
       const db = new Database(ledger);
@@ -145,6 +205,21 @@ it.each([
         CREATE TABLE history (id INTEGER PRIMARY KEY);
         INSERT INTO runs VALUES (42, '2026-11-11T12:00:00Z');
       `);
+        if (provenance) {
+          if (stage === "legacy applied migration without digest") {
+            db.prepare("INSERT INTO _migrations (name) VALUES (?)").run(
+              migration,
+            );
+          } else {
+            const digest = createHash("sha256")
+              .update(differentSql)
+              .digest("hex");
+            db.exec("ALTER TABLE _migrations ADD COLUMN sha256 TEXT");
+            db.prepare(
+              "INSERT INTO _migrations (name, sha256) VALUES (?, ?)",
+            ).run(migration, digest);
+          }
+        }
       } finally {
         db.close();
       }
@@ -168,12 +243,20 @@ it.each([
         } finally {
           supplied.close();
         }
-        for (const version of [active, target]) {
+      }
+      if (usesRealCheck) {
+        for (const version of releases) {
           const release = join(root, version);
           await mkdir(join(release, "dist/plugins/builtins"), {
             recursive: true,
           });
           await mkdir(join(release, "dist/db/migrations"), { recursive: true });
+          if (provenance) {
+            await writeFile(
+              join(release, "dist/db/migrations", migration),
+              version === otherRelease ? differentSql : matchingSql,
+            );
+          }
           await writeFile(join(release, "pnpm-lock.yaml"), "");
           await writeFile(
             join(release, "package.json"),
@@ -199,17 +282,17 @@ it.each([
           platformOverride,
           'Object.defineProperty(process, "platform", { value: "linux" });\n',
         );
-        const check = (database: string) =>
+        const check = (database: string, currentRelease = current) =>
           spawnSync(
             process.execPath,
             [
               "--require",
               platformOverride,
-              join(root, active, "dist/cli.js"),
+              join(repo, "dist/cli.js"),
               "db",
               "rollback-check",
               "--current",
-              current,
+              currentRelease,
               "--target",
               previous,
             ],
@@ -219,11 +302,17 @@ it.each([
               timeout: 10_000,
             },
           );
-        const rejected = check(serviceLedger);
-        expect(rejected.status, rejected.stderr).toBe(1);
-        expect(rejected.stderr).toContain("999-review.sql");
-        const accepted = check(ledger);
-        expect(accepted.status, accepted.stderr).toBe(0);
+        if (pathMismatch) {
+          const rejected = check(serviceLedger);
+          expect(rejected.status, rejected.stderr).toBe(1);
+          expect(rejected.stderr).toContain("999-review.sql");
+          const accepted = check(ledger);
+          expect(accepted.status, accepted.stderr).toBe(0);
+        } else if (stage === "running release differs from current") {
+          const rejected = check(ledger, join(root, otherRelease));
+          expect(rejected.status, rejected.stderr).toBe(1);
+          expect(rejected.stderr).toContain(migration);
+        }
       }
 
       const shims = {
@@ -241,8 +330,8 @@ if [[ "\${3:-}" == --version && "$FIXTURE_STAGE" != "target CLI version mismatch
 fi
 if [[ "\${3:-}" == db ]]; then
   if [[ "\${4:-}" == rollback-check ]]; then
-    if [[ "$FIXTURE_STAGE" == "service "* || "$FIXTURE_STAGE" == "running service "* ]]; then
-      exec node --require "$FIXTURE_ROOT/linux.cjs" "\${@:2}"
+    if [[ -f "$FIXTURE_ROOT/linux.cjs" ]]; then
+      exec node --require "$FIXTURE_ROOT/linux.cjs" "$FIXTURE_REAL_CLI" "\${@:3}"
     fi
     if [[ "$FIXTURE_STAGE" == "restarted service exits during comparison" && " $* " == *" --against "* ]]; then
       rm -f "$FIXTURE_RUNTIME/server.pid"
@@ -252,9 +341,12 @@ if [[ "\${3:-}" == db ]]; then
     printf '{"allowed":true,"targetVersion":"%s"}\\n' "$version"
     exit 0
   fi
-  if [[ "\${4:-}" == backup && ( "$FIXTURE_STAGE" == "backup with an inactive unit" || "$FIXTURE_STAGE" == "invalid target interpreter" ) ]]; then
-    printf 'Fixture backup failed\\n' >&2
-    exit 1
+  if [[ "\${4:-}" == backup ]]; then
+    if [[ "$FIXTURE_STAGE" == "backup with an inactive unit" || "$FIXTURE_STAGE" == "invalid target interpreter "* ]]; then
+      printf 'Fixture backup failed\\n' >&2
+      exit 1
+    fi
+    exec node "$FIXTURE_REAL_CLI" "\${@:3}"
   fi
 fi
 exec "$@"`,
@@ -290,9 +382,13 @@ case "$FIXTURE_STAGE" in
 esac
 printf '%s\\0' "GWRK_HOME=$state" "GWRK_DB_PATH=$database" "GWRK_RUNTIME_DIR=$runtime" "GWRK_RELEASE_ROOT=$release_root"`,
         cat: `
-if [[ "$1" == -- && "$2" == "/proc/$FIXTURE_PID/cmdline" && "$FIXTURE_STAGE" == "restarted service "* ]]; then
-  cli="$FIXTURE_ROOT/current/dist/cli.js"
-  if [[ "$FIXTURE_STAGE" == "restarted service runs the wrong CLI" ]]; then cli="$FIXTURE_ROOT/previous/dist/cli.js"; fi
+if [[ "$1" == -- && "$2" == "/proc/$FIXTURE_PID/cmdline" ]]; then
+  cli="$FIXTURE_ROOT/$(readlink "$FIXTURE_ROOT/current")/dist/cli.js"
+  case "$FIXTURE_STAGE" in
+    "restarted service runs the wrong CLI") cli="$FIXTURE_ROOT/$(readlink "$FIXTURE_ROOT/previous")/dist/cli.js" ;;
+    "running release differs from current") cli="$FIXTURE_ROOT/releases/1.2.0/dist/cli.js" ;;
+    "running release uses current alias") cli="$FIXTURE_ROOT/current/dist/cli.js" ;;
+  esac
   printf '%s\\0' node "$cli" server start --foreground
   exit 0
 fi
@@ -355,6 +451,7 @@ esac`,
           PATH: [bin, process.env.PATH].join(delimiter),
           GWRK_RUNTIME_DIR: runtime,
           FIXTURE_ROOT: root,
+          FIXTURE_REAL_CLI: join(repo, "dist/cli.js"),
           FIXTURE_RUNTIME: runtime,
           FIXTURE_PID: String(process.pid),
           FIXTURE_STAGE: stage,
@@ -409,9 +506,17 @@ esac`,
                     : "ledger mismatch",
               );
               expect(existsSync(join(state, "backups"))).toBe(false);
+            } else if (provenance) {
+              const diagnostic = stage.startsWith("running release ")
+                ? "The running service does not match the current release"
+                : stage === "legacy applied migration without digest"
+                  ? "Unknown applied migration digest: 001-review.sql"
+                  : "Mismatched applied migration digest: 001-review.sql";
+              expect(output).toContain(diagnostic);
+              expect(existsSync(join(state, "backups"))).toBe(false);
             } else if (malformedPath) {
               expect(output).toContain(malformedPath);
-              if (stage === "invalid target interpreter") {
+              if (invalidInterpreter) {
                 expect(output).toContain("unsupported interpreter");
               }
             } else {

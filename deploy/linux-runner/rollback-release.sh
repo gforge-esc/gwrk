@@ -145,6 +145,17 @@ verify_running_paths() {
   cat -- "/proc/$1/environ" | resolve_service_paths "running unit $unit"
 }
 
+verify_running_release() {
+  local pid="$1" release="$2"
+  local -a args
+  mapfile -d '' -t args < <(cat -- "/proc/$pid/cmdline")
+  [[ "${args[0]:-}" == node || "${args[0]:-}" == */node ]] &&
+    [[ "${args[1]:-}" == "$release/dist/cli.js" &&
+       "${args[2]:-}" == server && "${args[3]:-}" == start &&
+       "${args[4]:-}" == --foreground ]] &&
+    [[ "$(realpath -e -- "${args[1]}")" == "$release/dist/cli.js" ]]
+}
+
 read_unit_environment | resolve_service_paths "loaded unit $unit"
 original_state=$(systemctl show --property=ActiveState --value "$unit") ||
   fail "Could not read the service state for $unit before rollback."
@@ -159,12 +170,16 @@ case "$main_pid" in
   *)
     [[ "$main_pid" =~ ^[1-9][0-9]*$ ]] || fail "Invalid MainPID for $unit."
     verify_running_paths "$main_pid"
+    verify_running_release "$main_pid" "$active" ||
+      fail "The running service does not match the current release: $active"
     ;;
 esac
 ledger_service=("${as_service[@]}" env GWRK_HOME="$state" GWRK_DIR="$state"
   GWRK_DB_PATH="$state/gwrk.db" GWRK_RUNTIME_DIR="$runtime")
 check_rollback() {
-  "${ledger_service[@]}" node "$active/dist/cli.js" db rollback-check --current "$active" --target "$target" "$@"
+  # Older CLIs reject this flag instead of inferring digests from the current manifest.
+  "${ledger_service[@]}" node "$active/dist/cli.js" db rollback-check --require-ledger-digests \
+    --current "$active" --target "$target" "$@"
 }
 compatibility=$(check_rollback --format json)
 verified_version=$(node -e '
@@ -178,6 +193,8 @@ cli_version=$(timeout --kill-after=5s 15s "${as_service[@]}" node "$target/dist/
   fail "Rollback target CLI could not start as $service_user: $target/dist/cli.js"
 [[ "$cli_version" == "$verified_version" ]] ||
   fail "Rollback target CLI version does not match verified release $verified_version."
+[[ "$(realpath -e -- "$target/dist/cli.js")" == "$target/dist/cli.js" ]] ||
+  fail "Rollback target CLI must resolve within the selected release: $target/dist/cli.js"
 timeout --kill-after=5s 15s "${as_service[@]}" node -e '
   const { createRequire } = require("node:module");
   const Database = createRequire(process.argv[1])("better-sqlite3");
@@ -237,10 +254,10 @@ trap on_exit EXIT
 trap 'exit 143' TERM
 trap 'exit 130' INT
 
-[[ "$(systemctl show --property=MainPID --value "$unit")" == "$main_pid" ]] ||
-  fail "MainPID changed for $unit during rollback verification."
 original_state=$(systemctl show --property=ActiveState --value "$unit") ||
   fail "Could not read the service state for $unit before stop."
+[[ "$(systemctl show --property=MainPID --value "$unit")" == "$main_pid" ]] ||
+  fail "MainPID changed for $unit during rollback verification."
 stop_attempted=true
 systemctl stop "$unit"
 [[ -f "$runtime/server.lock" && ! -L "$runtime/server.lock" ]] ||
@@ -287,15 +304,8 @@ while true; do
 done
 [[ "$pid" != "$main_pid" ]] || fail "The service did not start a new process."
 verify_running_paths "$pid"
-mapfile -d '' -t service_argv < <(cat -- "/proc/$pid/cmdline")
-service_executable=${service_argv[0]:-}
-service_cli=${service_argv[1]:-}
-if [[ "${service_executable##*/}" != node || "$service_cli" != /* ||
-      "${service_argv[2]:-}" != server || "${service_argv[3]:-}" != start ||
-      "${service_argv[4]:-}" != --foreground ||
-      "$(realpath -e -- "$service_cli")" != "$target/dist/cli.js" ]]; then
+verify_running_release "$pid" "$target" ||
   fail "The restarted service did not run the selected release."
-fi
 check_rollback --against "$backup"
 [[ "$(timeout 5s systemctl show --property=MainPID --value "$unit")" == "$pid" ]] &&
   runner_ready "$pid" || fail "The restarted service changed during ledger comparison."

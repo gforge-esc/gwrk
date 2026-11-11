@@ -24,6 +24,7 @@ import {
   type LedgerSummary,
   PENDING_LEDGER_RESTORE,
 } from "../../domain/ledger-backup.js";
+import type { AppliedMigration } from "../../domain/release-packaging.js";
 import type { LedgerBackupPort } from "../../ports/release-ops-port.js";
 import { sha256 } from "../release/inventory.js";
 import { readRepositoryEvidence } from "../release/repository-evidence.js";
@@ -42,13 +43,21 @@ async function syncPath(path: string): Promise<void> {
   }
 }
 
-export function readAppliedMigrations(dbPath: string): string[] {
-  const db = new Database(dbPath, { readonly: true, fileMustExist: true });
-  try {
-    return appliedMigrations(db);
-  } finally {
-    db.close();
-  }
+export function readAppliedMigrations(dbPath: string): AppliedMigration[] {
+  return readLedger(dbPath, (db) => {
+    const hasDigest = db
+      .prepare(
+        "SELECT 1 FROM pragma_table_info('_migrations') WHERE name = 'sha256'",
+      )
+      .get();
+    return db
+      .prepare(
+        hasDigest
+          ? "SELECT name, sha256 FROM _migrations ORDER BY name"
+          : "SELECT name, NULL AS sha256 FROM _migrations ORDER BY name",
+      )
+      .all() as AppliedMigration[];
+  });
 }
 
 function appliedMigrations(db: Database.Database): string[] {
