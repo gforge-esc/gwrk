@@ -114,7 +114,6 @@ async function shipPhase(
   opts: Record<string, string | boolean | undefined>,
   cwd: string,
   selectedModel?: string,
-  selectedCommand?: string,
   overrides: { stateRoot?: string; branchName?: string } = {},
 ): Promise<number> {
   // Resolve prefix: "003" → "003-slack"
@@ -288,7 +287,6 @@ async function shipPhase(
           branchName: overrides.branchName,
           dryRun: !!opts.dryRun,
           selectedModel,
-          selectedCommand,
         },
         existingState,
       );
@@ -860,7 +858,6 @@ Examples:
             for (const p of phases) {
               let currentBackend = opts.agent as string as AgentBackendId;
               let selectedModel: string | undefined;
-              let selectedCommand: string | undefined;
 
               if (!currentBackend) {
                 // Select on the primary checkout so the quota cache/cooldown is
@@ -876,7 +873,6 @@ Examples:
                 });
                 currentBackend = selection.backend as AgentBackendId;
                 selectedModel = selection.model;
-                selectedCommand = selection.command;
                 logCliOutput(
                   `  🤖 Router selected backend: ${selection.backend} (${selection.reason})`,
                 );
@@ -889,7 +885,6 @@ Examples:
                 opts,
                 shipCwd,
                 selectedModel,
-                selectedCommand,
                 overrides,
               );
               if (exitCode !== 0) {

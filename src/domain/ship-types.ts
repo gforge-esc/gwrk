@@ -66,7 +66,6 @@ export interface ShipRunConfig {
   branchName?: string;
   dryRun?: boolean;
   selectedModel?: string;
-  selectedCommand?: string;
 }
 
 export type ShipStageResult = {

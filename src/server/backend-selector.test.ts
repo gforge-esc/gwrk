@@ -179,7 +179,7 @@ describe("BackendSelector", () => {
       taskType: TaskType.TEST,
     });
     expect(selection.backend).toBe("gemini");
-    expect(selection.model).toBe("gemini-pro");
+    expect(selection.model).toBe("pro");
     expect(selection.modelFailoverUsed).toBe(true);
   });
 

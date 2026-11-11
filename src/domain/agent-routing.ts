@@ -24,6 +24,8 @@ export interface RoutingFacts {
   readonly registry?: AgentRegistry;
   readonly quotas?: Readonly<Record<string, BackendQuotaSnapshot>>;
   readonly history?: readonly HistoricalBackendStat[];
+  readonly historyMode?: "priority" | "quota-tiebreak";
+  readonly maxBackendAttempts?: number;
   readonly cooledDownModels?: Readonly<Record<string, readonly string[]>>;
   readonly defaultBackend?: string;
 }
@@ -54,6 +56,7 @@ function backendCandidates(
 
   const history = facts.history ?? [];
   const historical =
+    facts.historyMode !== "quota-tiebreak" &&
     history.reduce((total, stat) => total + stat.runs, 0) >= 5
       ? history
           .filter((stat) => stat.successRate > 0.7)
@@ -105,6 +108,7 @@ export function selectAgentRoute(
   const candidates = backendCandidates(context, facts);
   const modelSelector = new ModelSelector();
   const classification = classifyTask(context.type);
+  let attempts = 0;
 
   for (const [index, name] of candidates.entries()) {
     const quota = facts.quotas?.[name];
@@ -114,9 +118,12 @@ export function selectAgentRoute(
 
     const backend = facts.registry?.backends[name];
     if (!facts.availableBackends && facts.registry && !backend) continue;
+    if (++attempts > (facts.maxBackendAttempts ?? candidates.length)) break;
     const cooldown = new Set(facts.cooledDownModels?.[name] ?? []);
     const modelId = (label: string) =>
-      backend?.models.find((entry) => entry.name === label)?.modelFlag ?? label;
+      (label === "review-model-override" ? backend?.reviewModel : undefined) ??
+      backend?.models.find((entry) => entry.name === label)?.modelFlag ??
+      label;
     const unavailable = (label: string) =>
       cooldown.has(label) || cooldown.has(modelId(label));
 
