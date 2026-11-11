@@ -199,6 +199,8 @@ export function evaluatePromotion(input: PromotionEvidence): PromotionDecision {
     families.size !== 2 ||
     providers.has("") ||
     families.has("") ||
+    providers.has("unknown") ||
+    families.has("unknown") ||
     input.judges.some(
       (verdict) =>
         !isConcreteModel(verdict.judge.modelId) ||

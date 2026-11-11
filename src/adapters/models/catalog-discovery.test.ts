@@ -109,8 +109,12 @@ describe("catalog reports", () => {
     });
     const available = {
       isAvailable: async () => true,
-      discoverModels: async () =>
-        parseAgyModelList("claude-opus-5-5-high\tClaude Opus 5.5 (High)"),
+      discoverModels: async (context?: { projectRoot: string }) => {
+        expect(context?.projectRoot).toBe("/fixture");
+        return parseAgyModelList(
+          "claude-opus-5-5-high\tClaude Opus 5.5 (High)",
+        );
+      },
     };
     const catalog = createModelCatalog("/fixture", {
       loadAgent: async (backend) => {
@@ -142,6 +146,7 @@ describe("catalog reports", () => {
         arch: process.arch,
       },
       backends: ["agy", "claude", "goose"],
+      explicitCandidates: parseAgyModelList("gemini-3-flash\tGemini 3 Flash"),
       nowIso: "2026-11-11T12:00:00Z",
     });
     expect(result).toMatchObject([
@@ -155,6 +160,11 @@ describe("catalog reports", () => {
             backend: "agy",
             provider: "anthropic",
             modelId: "claude-opus-5-5-high",
+          },
+          {
+            backend: "agy",
+            provider: "google",
+            modelId: "gemini-3-flash",
           },
         ],
       },

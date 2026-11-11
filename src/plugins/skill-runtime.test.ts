@@ -250,13 +250,11 @@ describe("FR-014: resolveEnforcementSkills", () => {
       status: "active",
     });
 
-    const selectRoute = vi
-      .fn()
-      .mockResolvedValue({
-        backend: "claude",
-        model: "claude-3-opus",
-        effort: "high",
-      });
+    const selectRoute = vi.fn().mockResolvedValue({
+      backend: "claude",
+      model: "claude-3-opus",
+      effort: "high",
+    });
     const execute = vi.fn().mockResolvedValue({
       stdout: "done",
       stderr: "",

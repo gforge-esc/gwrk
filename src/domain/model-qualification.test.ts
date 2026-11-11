@@ -128,6 +128,17 @@ describe("model qualification policy", () => {
         ],
       }),
     ).toMatchObject({ promote: false, reason: "judge-dependence" });
+    for (const unverifiedJudge of [
+      judge("unknown", "family-b"),
+      judge("provider-b", "unknown"),
+    ]) {
+      expect(
+        evaluatePromotion({
+          ...input,
+          judges: [input.judges[0], unverifiedJudge],
+        }),
+      ).toMatchObject({ promote: false, reason: "judge-dependence" });
+    }
     expect(
       evaluatePromotion({ ...input, refs: { ...input.refs, gate: [] } }),
     ).toMatchObject({ promote: false, reason: "invalid-citations" });

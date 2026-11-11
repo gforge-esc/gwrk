@@ -113,27 +113,28 @@ export function createModelCatalog(
             const command = source.manifest.invocation?.command;
             if (command)
               cliVersion = await readVersion(command).catch(() => "unknown");
-            const discovered = (await source.adapter.discoverModels?.()) ?? [];
-            const candidates = discovered.length
-              ? discovered
-              : explicitCandidates;
+            const discovered =
+              (await source.adapter.discoverModels?.({ projectRoot })) ?? [];
             const models = new Map<string, DiscoveredModel>();
-            for (const model of candidates) {
+            for (const model of [...discovered, ...explicitCandidates]) {
               if (
-                model.backend !== backend ||
-                model.hidden ||
-                !isConcreteModel(model.modelId)
-              )
-                continue;
-              models.set(model.modelId, model);
+                model.backend === backend &&
+                isConcreteModel(model.modelId) &&
+                !models.has(model.modelId)
+              ) {
+                models.set(model.modelId, model);
+              }
             }
+            const visible = [...models.values()].filter(
+              (model) => !model.hidden,
+            );
             return {
               backend,
               cliVersion,
               adapterVersion,
               supportsModelForwarding,
-              status: models.size > 0 ? "available" : "unconfigured",
-              models: [...models.values()],
+              status: visible.length > 0 ? "available" : "unconfigured",
+              models: visible,
             };
           } catch (error) {
             return {

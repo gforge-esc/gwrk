@@ -83,7 +83,9 @@ export interface AgentBackend {
    */
   isAvailable(): Promise<boolean>;
 
-  discoverModels?(): Promise<readonly DiscoveredModel[]>;
+  discoverModels?(context?: { projectRoot: string }): Promise<
+    readonly DiscoveredModel[]
+  >;
   checkQuota?(): Promise<QuotaStatus>;
   probe?(): Promise<ProbeResult>;
 

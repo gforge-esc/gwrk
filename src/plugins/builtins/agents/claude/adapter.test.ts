@@ -147,7 +147,8 @@ describe("ClaudeAdapter", () => {
         type: "result",
         subtype: "success",
         is_error: true,
-        result: "Failed to authenticate: OAuth session expired and could not be refreshed",
+        result:
+          "Failed to authenticate: OAuth session expired and could not be refreshed",
       });
       expect(adapter.parseResult(stdout, "", 1)).toMatchObject({
         exitCode: 1,
