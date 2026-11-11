@@ -309,6 +309,9 @@ export interface OperationsStorePort {
    * For a new delivery, verify the entire operation batch against enrollment and
    * checkout coverage with verifyHarvestIntakeOperations before any write.
    * Reject duplicate operation IDs across phase scopes.
+   * Resolve existing work before checking IDs for inserts. Matched work keeps its saved ID.
+   * Reject any insert whose operation ID already exists, even in another project.
+   * Return HARVEST_IDENTITY_MISMATCH and roll back all intake changes on collision.
    * Require accepted status and lease epoch zero on every proposed new row.
    * Require null lease owner, lease expiry, completion time, linked run, last error and planned Slack recipient.
    * Return HARVEST_IDENTITY_MISMATCH before any write if a proposed row fails these checks.
