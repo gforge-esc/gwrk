@@ -150,6 +150,37 @@ describe("credential guard", () => {
   });
 
   it.each([
+    ["Authorization", "Basic Zml4dHVyZQ=="],
+    ["Cookie", "session=fixture-only"],
+    ["sEt-CoOkIe", ["session=fixture-only", "theme=dark"]],
+  ])("rejects a named %s header in persisted evidence", (name, value) => {
+    const response = { headers: [{ name, value }] };
+    const persisted = JSON.parse(JSON.stringify({ response }));
+    expect(() => assertNoSecretMaterial(persisted)).toThrow(/secret material/i);
+  });
+
+  it("rejects a named Set-Cookie header in embedded JSON", () => {
+    const response = {
+      headers: [{ name: "Set-Cookie", value: "session=fixture-only" }],
+    };
+    const sanitizedOutput = `response: ${JSON.stringify({ response })}`;
+    expect(() => assertNoSecretMaterial({ sanitizedOutput })).toThrow(
+      /secret material/i,
+    );
+  });
+
+  it("allows a named Content-Type header in persisted and embedded evidence", () => {
+    const response = {
+      headers: [{ name: "Content-Type", value: "application/json" }],
+    };
+    const record = JSON.stringify({ response });
+    expect(() => assertNoSecretMaterial(JSON.parse(record))).not.toThrow();
+    expect(() =>
+      assertNoSecretMaterial({ sanitizedOutput: `response: ${record}` }),
+    ).not.toThrow();
+  });
+
+  it.each([
     {
       headers: [["Set-Cookie", ["session=fixture", "theme=dark"]]],
     },
