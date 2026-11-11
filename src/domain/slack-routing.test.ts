@@ -707,6 +707,26 @@ describe("FR-003 / TR-003: Click-time Slack action verification, thread binding 
     });
   });
 
+  it("rejects a foreign project ID with a stale thread root as a thread mismatch", async () => {
+    const { evaluateSlackAction } = await loadSlackRouting();
+    expect(
+      evaluateSlackAction(PROJECTS, ROLES, {
+        workspaceId: STORED_THREAD.workspaceId,
+        channelId: STORED_THREAD.channelId,
+        isDirectMessage: false,
+        actorUserId: "U_MAINTAINER",
+        threadTs: "1731329999.999999",
+        messageTs: "1731320500.000200",
+        requiredAccess: "maintain",
+        actionId: "merge_pr",
+        payloadProjectId: "proj-foreign",
+        featureId: STORED_THREAD.featureId,
+        phaseId: "phase-01",
+        storedThread: STORED_THREAD,
+      }),
+    ).toMatchObject({ ok: false, code: "THREAD_PROJECT_MISMATCH" });
+  });
+
   it("TR-003: denies mismatched payloadProjectId or stored feature thread with THREAD_PROJECT_MISMATCH", async () => {
     const { evaluateSlackAction } = await loadSlackRouting();
 

@@ -315,16 +315,18 @@ export function evaluateSlackAction(
     message: "The action does not match the project or feature thread.",
   };
   const rootTs = threadTs ?? messageTs;
-  const matchesThread =
-    Boolean(messageTs) &&
+  const threadInConversation =
     storedThread &&
     storedThread.featureId === input.featureId &&
     storedThread.workspaceId === input.workspaceId &&
-    storedThread.channelId === input.channelId &&
+    storedThread.channelId === input.channelId;
+  const matchesThread =
+    Boolean(messageTs) &&
+    threadInConversation &&
     storedThread.rootTs === rootTs;
 
   if (
-    matchesThread &&
+    threadInConversation &&
     payloadProjectId !== undefined &&
     payloadProjectId !== storedThread.projectId &&
     projects.some(
