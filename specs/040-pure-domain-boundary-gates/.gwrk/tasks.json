@@ -1,0 +1,96 @@
+{
+  "featureId": "040-pure-domain-boundary-gates",
+  "createdAt": "2026-11-11T16:07:11.018Z",
+  "generatedFrom": {
+    "plan": {
+      "hash": "beef3b25fdf0ce02d5704bfdf3983fa9a37fabf748891f1c8f2be9ea82e90815",
+      "modifiedAt": "2026-11-11T16:07:10.748Z"
+    }
+  },
+  "phases": [
+    {
+      "id": "phase-01",
+      "title": "Boundary gate",
+      "tasks": [
+        {
+          "id": "T001",
+          "title": "Create architecture-boundary.ts",
+          "description": "NEW tests/helpers/architecture-boundary.ts. Check TypeScript syntax and layer rules",
+          "status": "open",
+          "gateScript": "pnpm exec vitest run src/architecture.test.ts",
+          "sp": 2
+        }
+      ],
+      "sp_estimate": 2
+    },
+    {
+      "id": "phase-02",
+      "title": "Project identity",
+      "tasks": [
+        {
+          "id": "T002",
+          "title": "Modify project-id.ts",
+          "description": "MODIFY src/domain/project-id.ts. Compute the existing identity from supplied facts",
+          "status": "open",
+          "gateScript": "pnpm exec vitest run src/domain/project-id.test.ts src/utils/project-id.test.ts src/db/runs.test.ts src/architecture.test.ts",
+          "sp": 1
+        },
+        {
+          "id": "T003",
+          "title": "Create project-id.ts",
+          "description": "NEW src/adapters/git/project-id.ts. Discover the remote and main worktree through bounded Git commands",
+          "status": "open",
+          "gateScript": "pnpm exec vitest run src/domain/project-id.test.ts src/utils/project-id.test.ts src/db/runs.test.ts src/architecture.test.ts",
+          "sp": 2
+        }
+      ],
+      "sp_estimate": 3
+    },
+    {
+      "id": "phase-03",
+      "title": "Agent registry",
+      "tasks": [
+        {
+          "id": "T004",
+          "title": "Modify agent-config.ts",
+          "description": "MODIFY src/domain/agent-config.ts. Validate and merge supplied registry layers",
+          "status": "open",
+          "gateScript": "pnpm exec vitest run src/domain/agent-config.test.ts src/server/agent-registry.test.ts src/server/agent-registry.integration.test.ts src/utils/resolve-model.test.ts src/utils/resolve-agent.test.ts src/architecture.test.ts",
+          "sp": 1
+        },
+        {
+          "id": "T005",
+          "title": "Create registry-loader.ts",
+          "description": "NEW src/adapters/agents/registry-loader.ts. Read registry files and keep startup failure handling at the boundary",
+          "status": "open",
+          "gateScript": "pnpm exec vitest run src/domain/agent-config.test.ts src/server/agent-registry.test.ts src/server/agent-registry.integration.test.ts src/utils/resolve-model.test.ts src/utils/resolve-agent.test.ts src/architecture.test.ts",
+          "sp": 2
+        }
+      ],
+      "sp_estimate": 3
+    },
+    {
+      "id": "phase-04",
+      "title": "Toolchain manifest discovery",
+      "tasks": [
+        {
+          "id": "T006",
+          "title": "Modify toolchain.ts",
+          "description": "MODIFY src/domain/toolchain.ts. Resolve the build command from supplied facts",
+          "status": "open",
+          "gateScript": "pnpm exec vitest run src/domain/toolchain.test.ts src/utils/toolchain-mapper.test.ts src/architecture.test.ts src/application/architecture/context.test.ts",
+          "sp": 1
+        },
+        {
+          "id": "T007",
+          "title": "Create manifest-discovery.ts",
+          "description": "NEW src/adapters/toolchain/manifest-discovery.ts. Discover build manifests and preserve explicit overrides",
+          "status": "open",
+          "gateScript": "pnpm exec vitest run src/domain/toolchain.test.ts src/utils/toolchain-mapper.test.ts src/architecture.test.ts src/application/architecture/context.test.ts",
+          "sp": 2
+        }
+      ],
+      "sp_estimate": 3
+    }
+  ]
+}
