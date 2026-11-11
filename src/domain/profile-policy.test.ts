@@ -118,6 +118,24 @@ describe("FR-001: profile design inheritance (044 phase p01)", () => {
     expect(getTestCommand(result, ["test_api.py"])).toBe("pytest test_api.py -v");
   });
 
+  it("keeps a compatible detected runner while filtering build and discovery for a language override", () => {
+    const result = resolveWorkspacePolicyProfile(
+      "services/api",
+      {
+        type: "polyglot-monorepo",
+        stack: { language: "TypeScript", languages: ["TypeScript", "Python"] },
+        toolchain: { test: "pytest", build: "pnpm build", testExtension: ".test.ts" },
+      },
+      {
+        project: { design },
+        workspaces: { "services/api": { stack: { language: "Python" } } },
+      },
+    );
+
+    expect(result.toolchain).toEqual({ test: "pytest" });
+    expect(getTestExtension(result)).toBe(".py");
+  });
+
   it("filters root build and discovery defaults when only the root tools identify the language", () => {
     const result = resolveWorkspacePolicyProfile(
       "services/api",
@@ -160,6 +178,28 @@ describe("FR-001: profile design inheritance (044 phase p01)", () => {
     expect(getTestCommand(result, ["app.test.js"])).toBe(
       "pnpm exec jest app.test.js",
     );
+  });
+
+  it("prefers detected Jest over a compatible root Vitest runner", () => {
+    const result = resolveWorkspacePolicyProfile(
+      "apps/web",
+      {
+        type: "nodejs",
+        stack: { language: "JavaScript" },
+        toolchain: { test: "jest" },
+      },
+      {
+        project: {
+          design,
+          stack: { language: "TypeScript" },
+          toolchain: { test: "vitest" },
+        },
+        workspaces: { "apps/web": { toolchain: { build: null } } },
+      },
+    );
+
+    expect(result).toMatchObject({ design, toolchain: { test: "jest", build: null } });
+    expect(getTestCommand(result, ["app.test.js"])).toBe("npx jest app.test.js");
   });
 
   it("TR-005: selects the longest workspace ancestor for a nested path", () => {

@@ -49,15 +49,16 @@ function languageFamily(language: string | undefined): string | undefined {
   return language === "typescript" ? "javascript" : language;
 }
 
-function compatibleRootToolchain(
+function compatibleToolchain(
   toolchain: ProjectProfile["toolchain"],
-  rootStack: ProjectProfile["stack"],
+  sourceStack: ProjectProfile["stack"],
   workspaceStack: ProjectProfile["stack"],
+  source: "root" | "detected",
 ): ProjectProfile["toolchain"] {
   const workspaceLanguage = profileLanguage(workspaceStack);
   if (!toolchain || !workspaceLanguage) return toolchain;
 
-  const rootLanguage = profileLanguage(rootStack);
+  const sourceLanguage = profileLanguage(sourceStack);
   const workspaceFamily = languageFamily(workspaceLanguage);
   const {
     primary,
@@ -68,23 +69,27 @@ function compatibleRootToolchain(
     testExtension,
     sourceExtension,
   } = toolchain;
-  const rootFamily =
-    languageFamily(rootLanguage) ??
+  const sourceFamily =
+    languageFamily(sourceLanguage) ??
     (test ? toolLanguages[test] : undefined) ??
     (primary ? toolLanguages[primary] : undefined) ??
     (formatter ? toolLanguages[formatter] : undefined);
   const differentFamily =
-    rootFamily !== undefined && rootFamily !== workspaceFamily;
+    sourceFamily !== undefined && sourceFamily !== workspaceFamily;
   const runnerFits =
-    !differentFamily && (!test || toolLanguages[test] === workspaceFamily);
+    (!differentFamily || (source === "detected" && test != null)) &&
+    (!test || toolLanguages[test] === workspaceFamily);
   const extensionsFit =
-    !differentFamily && (!rootLanguage || rootLanguage === workspaceLanguage);
+    !differentFamily &&
+    (!sourceLanguage || sourceLanguage === workspaceLanguage);
   const compatible: Toolchain = {
     ...(primary && toolLanguages[primary] === workspaceFamily && { primary }),
     ...(formatter &&
       toolLanguages[formatter] === workspaceFamily && { formatter }),
     ...(runnerFits && test !== undefined && { test }),
-    ...(runnerFits && testCommand !== undefined && { testCommand }),
+    ...(runnerFits &&
+      !differentFamily &&
+      testCommand !== undefined && { testCommand }),
     ...(!differentFamily && build !== undefined && { build }),
     ...(extensionsFit && testExtension !== undefined && { testExtension }),
     ...(extensionsFit && sourceExtension !== undefined && { sourceExtension }),
@@ -132,6 +137,23 @@ export function mergeProfileOverrides(
   return profile;
 }
 
+export function matchWorkspacePath(
+  relativePath: string,
+  workspacePaths: readonly string[],
+): string | undefined {
+  let bestMatch: string | undefined;
+  for (const workspacePath of workspacePaths) {
+    if (
+      workspacePath.length > (bestMatch?.length ?? 0) &&
+      (relativePath === workspacePath ||
+        relativePath.startsWith(`${workspacePath}/`))
+    ) {
+      bestMatch = workspacePath;
+    }
+  }
+  return bestMatch;
+}
+
 export function resolveWorkspacePolicyProfile(
   workspaceRelPath: string,
   detectedWorkspace: ProjectProfile,
@@ -143,49 +165,60 @@ export function resolveWorkspacePolicyProfile(
     };
     workspaces?: Readonly<Record<string, WorkspaceProfileConfig>>;
   },
-  options?: { requireDesign: boolean },
+  options?: {
+    requireDesign?: boolean;
+    localProject?: WorkspaceProfileConfig;
+  },
 ): ProjectProfile {
-  let bestMatch = "";
-  let workspaceConfig: WorkspaceProfileConfig | undefined;
-  for (const [workspacePath, config] of Object.entries(
-    rootConfig?.workspaces ?? {},
-  )) {
-    if (
-      workspacePath.length > bestMatch.length &&
-      (workspaceRelPath === workspacePath ||
-        workspaceRelPath.startsWith(`${workspacePath}/`))
-    ) {
-      bestMatch = workspacePath;
-      workspaceConfig = config;
-    }
-  }
-
+  const workspaces = rootConfig?.workspaces ?? {};
+  const bestMatch = matchWorkspacePath(
+    workspaceRelPath,
+    Object.keys(workspaces),
+  );
+  const workspaceConfig = bestMatch ? workspaces[bestMatch] : undefined;
+  const localProject = options?.localProject;
   const rootDesign = rootConfig?.project?.design;
-  const hasDesign =
-    rootDesign !== undefined ||
-    detectedWorkspace.design !== undefined ||
-    workspaceConfig?.design !== undefined;
-  if (!hasDesign && (options?.requireDesign || !workspaceConfig)) {
-    return detectedWorkspace;
+  const projectDesign =
+    localProject?.design ?? detectedWorkspace.design ?? rootDesign;
+  if (!projectDesign && !workspaceConfig?.design) {
+    if (options?.requireDesign || !workspaceConfig) return detectedWorkspace;
+    return mergeProfileOverrides({
+      detected: detectedWorkspace,
+      workspaceConfig,
+    });
   }
 
-  const rootToolchain = hasDesign
-    ? compatibleRootToolchain(
-        rootConfig?.project?.toolchain,
-        rootConfig?.project?.stack,
-        { ...detectedWorkspace.stack, ...workspaceConfig?.stack },
-      )
-    : undefined;
-  const detected = rootToolchain
-    ? {
-        ...detectedWorkspace,
-        toolchain: mergeToolchain(rootToolchain, detectedWorkspace.toolchain),
-      }
-    : detectedWorkspace;
+  const workspaceStack = {
+    ...detectedWorkspace.stack,
+    ...localProject?.stack,
+    ...workspaceConfig?.stack,
+  };
+  const rootToolchain = compatibleToolchain(
+    rootConfig?.project?.toolchain,
+    rootConfig?.project?.stack,
+    workspaceStack,
+    "root",
+  );
+  const { toolchain: rawToolchain, ...detected } = detectedWorkspace;
+  const detectedToolchain = compatibleToolchain(
+    rawToolchain,
+    detectedWorkspace.stack,
+    workspaceStack,
+    "detected",
+  );
 
   return mergeProfileOverrides({
-    detected,
-    projectDesign: detectedWorkspace.design ?? rootDesign,
+    detected:
+      rootToolchain || detectedToolchain
+        ? {
+            ...detected,
+            toolchain: mergeToolchain(rootToolchain, detectedToolchain),
+          }
+        : detected,
+    projectDesign,
+    projectType: localProject?.type,
+    projectStack: localProject?.stack,
+    projectToolchain: localProject?.toolchain,
     workspaceConfig,
   });
 }

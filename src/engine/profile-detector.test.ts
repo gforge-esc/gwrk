@@ -6,7 +6,12 @@ import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { getLintCommand, getTestCommand, getTestExtension } from "../domain/toolchain.js";
+import {
+  getLintCommand,
+  getTestCommand,
+  getTestExtension,
+  resolveBuildCommand,
+} from "../domain/toolchain.js";
 import { detectProfile, resolveWorkspaceProfile } from "./profile-detector.js";
 import { conditionPrompt } from "./prompt-conditioner.js";
 
@@ -371,9 +376,10 @@ describe("FR-001: architecture-aware workspace profiles (044 phase p01)", () => 
   });
 
   it.each([
+    { toolchain: undefined, command: "python -m pytest test_api.py" },
     { toolchain: { test: "pytest" }, command: "pytest test_api.py -v" },
     {
-      toolchain: { test: "pytest", testCommand: "uv run pytest {files}" },
+      toolchain: { testCommand: "uv run pytest {files}" },
       command: "uv run pytest test_api.py",
     },
     { toolchain: { test: null }, command: null },
@@ -387,7 +393,8 @@ describe("FR-001: architecture-aware workspace profiles (044 phase p01)", () => 
           project: {
             name: "fixture",
             design,
-            toolchain: { testCommand: "pnpm exec vitest run {files}" },
+            stack: { language: "Python" },
+            toolchain: { testCommand: "python -m pytest {files}" },
           },
           workspaces: { "services/api": { toolchain } },
         }),
@@ -529,6 +536,96 @@ describe("FR-001: architecture-aware workspace profiles (044 phase p01)", () => 
       expect.soft(getLintCommand(profile, ["api.py"])).toBe("ruff check api.py");
       expect.soft(getTestExtension(profile)).toBe(".py");
       expect.soft(profile.toolchain?.build).toBeUndefined();
+      expect.soft(resolveBuildCommand(profile)).toBeNull();
+    }
+  });
+
+  it("uses the configured language to select tools in a mixed workspace", async () => {
+    const config = {
+      project: { name: "fixture", design },
+      workspaces: { "services/api": { stack: { language: "Python" } } },
+    };
+    write(".gwrkrc.json", JSON.stringify(config));
+    write("services/api/package.json", "{}");
+    write("services/api/pyproject.toml", '[project]\ndependencies = ["django"]\n');
+    write("services/api/biome.json", "{}");
+    write("services/api/vitest.config.ts", "");
+
+    const workspace = path.join(root, "services/api");
+    const profiles = [
+      await detectProfile(workspace),
+      await resolveWorkspaceProfile(root, "services/api"),
+      resolveWorkspaceProfile(workspace, root, config),
+    ];
+    for (const profile of profiles) {
+      expect(profile).toMatchObject({ design, stack: { language: "Python" } });
+      if (!profile) throw new Error("Expected workspace profile");
+      expect.soft(getTestCommand(profile, ["test_api.py"])).toBe("pytest test_api.py -v");
+      expect.soft(getLintCommand(profile, ["api.py"])).toBe("ruff check api.py");
+    }
+  });
+
+  it("keeps explicit workspace-local tools above filtered detection", async () => {
+    write("services/api/package.json", "{}");
+    write("services/api/biome.json", "{}");
+    write("services/api/vitest.config.ts", "");
+    write(
+      ".gwrkrc.json",
+      JSON.stringify({
+        project: { name: "fixture", design },
+        workspaces: { "services/api": { stack: { language: "Python" } } },
+      }),
+    );
+    write(
+      "services/api/.gwrkrc.json",
+      JSON.stringify({
+        project: { name: "api", toolchain: { primary: "biome", test: null } },
+      }),
+    );
+
+    const profile = await resolveWorkspaceProfile(root, "services/api");
+    expect(profile).toMatchObject({
+      design,
+      stack: { language: "Python" },
+      toolchain: { primary: "biome", test: null },
+    });
+    expect(profile.toolchain?.formatter).toBeUndefined();
+    expect(getTestCommand(profile, ["test_api.py"])).toBeNull();
+  });
+
+  it("detects the longest matching workspace directory for design-aware resolution", async () => {
+    const config = {
+      project: {
+        name: "fixture",
+        design,
+        stack: { language: "TypeScript" },
+        toolchain: { test: "vitest" },
+      },
+      workspaces: {
+        services: { stack: { language: "TypeScript" } },
+        "services/api": { stack: { framework: "Django" }, toolchain: { build: null } },
+        "services/api/sr": { stack: { language: "TypeScript" } },
+      },
+    };
+    write(".gwrkrc.json", JSON.stringify(config));
+    write("services/api/pyproject.toml", '[project]\ndependencies = ["fastapi"]\n');
+    write("services/api/src/api.py", "");
+
+    const workspace = path.join(root, "services/api");
+    const profiles = [
+      await detectProfile(path.join(workspace, "src")),
+      await resolveWorkspaceProfile(root, "services/api/src"),
+      resolveWorkspaceProfile(workspace, root, config),
+    ];
+    for (const profile of profiles) {
+      expect.soft(profile).toMatchObject({
+        design,
+        type: "python",
+        stack: { language: "Python", framework: "Django" },
+        toolchain: { build: null },
+      });
+      if (!profile) throw new Error("Expected workspace profile");
+      expect.soft(getTestCommand(profile, ["test_api.py"])).toBe("pytest test_api.py -v");
     }
   });
 
