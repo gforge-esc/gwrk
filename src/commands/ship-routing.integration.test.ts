@@ -1085,7 +1085,7 @@ describe("ship with the real AgentPort router", () => {
   });
 
   it("previews and ships the same explicit alternate model during cooldown", async () => {
-    const { QuotaProber } = await import("../server/quota-prober.js");
+    const { QuotaProber } = await import("../adapters/agents/quota-prober.js");
     vi.spyOn(QuotaProber.prototype, "isModelInCooldown").mockImplementation(
       (backend, model) => backend === "codex" && model === "codex-primary",
     );
@@ -1191,7 +1191,7 @@ exitCodeMap: {}
       } else {
         lookup.mockResolvedValue(adapter);
       }
-      const { QuotaProber } = await import("../server/quota-prober.js");
+      const { QuotaProber } = await import("../adapters/agents/quota-prober.js");
       const probeQuota = vi.spyOn(QuotaProber.prototype, "probeQuota");
 
       await ship("--dry-run", "--agent", backend);
