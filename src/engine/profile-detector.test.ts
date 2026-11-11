@@ -1053,6 +1053,50 @@ describe("FR-001: architecture-aware workspace profiles (044 phase p01)", () => 
     }
   });
 
+  it("inherits the root design through an unregistered name-only config", async () => {
+    const layered = { ...design, architecture: "layered", principles: ["clean-code"] };
+    write(".git", "gitdir: /unused/worktree\n");
+    write(".gwrkrc.json", JSON.stringify({ project: { name: "fixture", design: layered } }));
+    write("services/.gwrkrc.json", JSON.stringify({ project: { name: "services" } }));
+    const direct = await detectProfile(path.join(root, "services/api"));
+    expect(direct).toEqual(await resolveWorkspaceProfile(root, "services/api"));
+    expect(direct).toMatchObject({
+      design: layered,
+      stack: { language: "Python", framework: "FastAPI" },
+    });
+  });
+
+  it("uses a valid ancestor registration when local config is malformed", async () => {
+    const outer = {
+      project: { name: "fixture", design },
+      workspaces: {
+        "services/api": { stack: { framework: "Django" }, toolchain: { build: null } },
+      },
+    };
+    write(".git", "gitdir: /unused/worktree\n");
+    write(".gwrkrc.json", JSON.stringify(outer));
+    write("services/api/.gwrkrc.json", "{");
+    const cwd = path.join(root, "services/api");
+    const direct = await detectProfile(cwd);
+    expect(direct).toEqual(await resolveWorkspaceProfile(root, "services/api"));
+    expect(direct).toEqual(resolveWorkspaceProfile(cwd, root, outer));
+    expect(direct).toMatchObject({
+      design,
+      stack: { language: "Python", framework: "Django" },
+      toolchain: { build: null },
+    });
+  });
+
+  it("rejects an invalid supplied workspace registration", () => {
+    const config = {
+      project: { name: "fixture", design },
+      workspaces: { "services/api": { stack: { framework: 42 } } },
+    };
+    expect(
+      resolveWorkspaceProfile(path.join(root, "services/api"), root, config),
+    ).toBeUndefined();
+  });
+
   it.each(["relative", "absolute"])("detects a sibling worktree from a %s path", async (pathKind) => {
     const checkout = path.join(root, "checkout");
     const sibling = path.join(root, "other");
@@ -1306,6 +1350,9 @@ describe("FR-001: architecture-aware workspace profiles (044 phase p01)", () => 
     }
 
     write(".gwrkrc.json", JSON.stringify({ project: config.project }));
+    expect((await detectProfile(child)).design).toEqual(design);
+
+    write(".gwrkrc.json", JSON.stringify({ project: { name: "fixture" } }));
     expect((await detectProfile(child)).design).toBeUndefined();
   });
 

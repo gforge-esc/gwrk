@@ -486,15 +486,6 @@ function resolveDetectedProfile(
   },
 ): ProjectProfile | undefined {
   const start = path.resolve(detectedRoot);
-  const configPath = path.join(start, ".gwrkrc.json");
-  if (
-    workspaceRoot?.config === undefined &&
-    !localProject &&
-    fs.existsSync(configPath)
-  ) {
-    const config = readWorkspaceRootConfig(start);
-    if (config === undefined) return undefined;
-  }
   const ancestors =
     workspaceRoot?.configuredLookup &&
     crossesGitWorktreeBoundary(workspaceRoot.directory, start)
@@ -541,7 +532,7 @@ function resolveDetectedProfile(
     start,
     detected,
     nearestConfig.config,
-    { requireDesign: true, localProject },
+    { requireDesign: true, localProject, ancestorDesign },
   );
   return scoped === detected.profile ? undefined : scoped;
 }
@@ -794,12 +785,13 @@ export function resolveWorkspaceProfile(
   if (config === undefined) {
     return detectWorkspaceProfile(cwd, projectRoot);
   }
+  const workspaces = validateWorkspaceEntries(config);
   const bestMatch = matchWorkspacePath(
     relativeWorkspacePath(projectRoot, cwd),
-    Object.keys(config?.workspaces ?? {}),
+    Object.keys(workspaces),
   );
   const workspace = configuredWorkspaceProfile(
-    bestMatch ? config.workspaces[bestMatch] : undefined,
+    bestMatch ? workspaces[bestMatch] : undefined,
   );
   const scoped = resolveDetectedProfile(
     cwd,
