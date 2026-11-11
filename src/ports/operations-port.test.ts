@@ -18,6 +18,7 @@ import type {
 
 type RecoveryStore = Pick<
   OperationsStorePort,
+  | "getDispatchOperation"
   | "listRecoverableHarvests"
   | "claimHarvestLease"
   | "heartbeatHarvestLease"
@@ -106,16 +107,36 @@ function outbox(
 }
 
 function restoreRecoveryStore(persisted: {
+  dispatches?: DurableDispatchOperation[];
   harvests: DurableHarvestOperation[];
   stages: HarvestStageReceipt[];
   outboxItems: OutboxItem[];
 }): RecoveryStore {
-  const { harvests, stages, outboxItems } = structuredClone(persisted);
+  const {
+    dispatches = [],
+    harvests,
+    stages,
+    outboxItems,
+  } = structuredClone(persisted);
   const resumableHarvests = ["accepted", "running", "delivery_pending"];
   const byCreation = (a: { createdAt: string }, b: { createdAt: string }) =>
     a.createdAt.localeCompare(b.createdAt);
 
   const store: RecoveryStore = {
+    getDispatchOperation({ projectId, featureId, phaseId }) {
+      const [operation] = dispatches
+        .filter(
+          (row) =>
+            row.projectId === projectId &&
+            row.featureId === featureId &&
+            row.phaseId === phaseId,
+        )
+        .sort(
+          (a, b) =>
+            byCreation(b, a) || b.operationId.localeCompare(a.operationId),
+        );
+      return structuredClone(operation ?? null);
+    },
     listRecoverableHarvests({ nowIso, projectId }) {
       return harvests
         .filter((row) => projectId === undefined || row.projectId === projectId)
@@ -193,6 +214,63 @@ function restoreRecoveryStore(persisted: {
 }
 
 describe("durable recovery store contract", () => {
+  it.each(["running", "completed"] as const)(
+    "reads the latest persisted %s dispatch across task scopes after restart",
+    (status) => {
+      const dispatches = [["T001"], ["T002"]].map((taskIds, index) => {
+        const accepted = evaluateDispatchAcceptance({
+          projectId,
+          featureId,
+          phaseId,
+          backend: "test-worker",
+          trunkBranch: "develop",
+          taskIds,
+          newOperationId: `dispatch-${index}`,
+          nowIso: createdAt,
+          existingActive: null,
+        });
+        if (accepted.kind !== "create_new")
+          throw new Error("Expected new dispatch");
+        return accepted.operation;
+      });
+      const [older, latest] = dispatches;
+      const operation: DurableDispatchOperation = {
+        ...latest,
+        status,
+        createdAt: nowIso,
+        updatedAt: nowIso,
+        attemptCount: 1,
+        leaseEpoch: 1,
+        leaseOwner: status === "running" ? "worker" : null,
+        leaseExpiresAt: status === "running" ? leaseExpiresAt : null,
+        completedAt: status === "completed" ? nowIso : null,
+      };
+      const lookup = { projectId, featureId, phaseId };
+      const store = restoreRecoveryStore({
+        dispatches: [
+          { ...older, updatedAt: leaseExpiresAt },
+          { ...operation, operationId: "dispatch-0-tie" },
+          {
+            ...operation,
+            operationId: "other-project",
+            projectId: "project-b",
+          },
+          { ...operation, operationId: "other-feature", featureId: "other" },
+          { ...operation, operationId: "other-phase", phaseId: "phase-02" },
+          operation,
+        ],
+        harvests: [],
+        stages: [],
+        outboxItems: [],
+      });
+
+      expect(store.getDispatchOperation(lookup)).toEqual(operation);
+      expect(
+        store.getDispatchOperation({ ...lookup, projectId: "missing" }),
+      ).toBeNull();
+    },
+  );
+
   it("discovers and claims harvests from durable rows without intake receipts", () => {
     const store = restoreRecoveryStore({
       harvests: [

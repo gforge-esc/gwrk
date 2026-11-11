@@ -288,6 +288,15 @@ export interface OperationsStorePort {
     nowIso: string;
     projectId?: string;
   }): DurableDispatchOperation[];
+  /**
+   * Read the newest dispatch for the project, feature and phase across task scopes and statuses.
+   * Break creation-time ties by greatest operation ID.
+   */
+  getDispatchOperation(input: {
+    projectId: string;
+    featureId: string;
+    phaseId: string;
+  }): DurableDispatchOperation | null;
 
   /**
    * Commit the delivery and operation together with the verified head repository.
