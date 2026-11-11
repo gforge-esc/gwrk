@@ -102,6 +102,22 @@ describe('US-016: Enforcement Skills Dispatch Injection', () => {
     expect(capturedStdin()).toContain('<code_quality>\n# Strict Typing Rule\n</code_quality>');
   });
 
+  it("expands bare enforcement in legacy stdin while preserving scoped input", async () => {
+    vi.mocked(skillRuntime.resolveEnforcementSkills).mockResolvedValue("# Strict Typing Rule");
+    const scopedInput = "<user_input>\nKeep {{enforcement}} as written.\n</user_input>";
+    const result = await dispatchToAgent({
+      workflow: "gwrk-implement",
+      workDir: "/fake/root",
+      agent: "agy",
+      prompt: "Do the work.",
+      stdin: `Rules:\n{{enforcement}}\n\n${scopedInput}`,
+      dryRun: true,
+    });
+
+    expect(result.stdout).toContain("Rules:\n# Strict Typing Rule");
+    expect(result.stdout).toContain(scopedInput);
+  });
+
   it('expands template enforcement even when the template quotes the input tag', async () => {
     vi.mocked(skillRuntime.resolveEnforcementSkills).mockResolvedValue('# Strict Typing Rule');
     const capturedStdin = mockAgentStdin();

@@ -546,12 +546,18 @@ export async function dispatchToAgent(task: TaskDispatch): Promise<TaskResult> {
 
   const startTime = Date.now();
   const { promptParts, ...agentTask } = task;
-  let template = promptParts?.template ?? "";
+  const legacyStdin = task.stdin ?? "";
+  const scopedInput = legacyStdin.search(/^<user_input>(?:\r?$)/m);
+  const templateEnd = scopedInput < 0 ? legacyStdin.length : scopedInput;
+  let template = promptParts?.template ?? legacyStdin.slice(0, templateEnd);
 
   // FR-014: Inject enforcement skills
-  const codeQuality = template.match(/<code_quality>[\s\S]*?<\/code_quality>/);
+  const codeQuality = template.match(
+    /<code_quality>[\s\S]*?<\/code_quality>/,
+  )?.[0];
+  const enforcementMarker = "{{enforcement}}";
 
-  if (codeQuality) {
+  if (codeQuality || template.includes(enforcementMarker)) {
     const scope =
       task.workflow?.includes("review") || task.type?.includes("review")
         ? "review"
@@ -567,17 +573,24 @@ export async function dispatchToAgent(task: TaskDispatch): Promise<TaskResult> {
       profile,
     );
 
-    const section = codeQuality[0];
-    const expandedSection = section.includes("{{enforcement}}")
-      ? section.replaceAll("{{enforcement}}", () => enforcement)
-      : `<code_quality>\n${enforcement}\n</code_quality>`;
-    template = template.replace(section, () => expandedSection);
+    if (codeQuality) {
+      const section = codeQuality.includes(enforcementMarker)
+        ? codeQuality.replaceAll(enforcementMarker, () => enforcement)
+        : `<code_quality>\n${enforcement}\n</code_quality>`;
+      template = template.replace(codeQuality, () => section);
+    } else {
+      template = template.replace(enforcementMarker, () => enforcement);
+    }
   }
 
   const hasCommandSafety = template.includes(COMMAND_SAFETY_BLOCK);
-  let stdinPayload = (promptParts
-    ? [template, promptParts.userInput]
-    : [task.prompt, task.stdin === task.prompt ? undefined : task.stdin]
+  let stdinPayload = (
+    promptParts
+      ? [template, promptParts.userInput]
+      : [
+          task.prompt === task.stdin ? undefined : task.prompt,
+          template + legacyStdin.slice(templateEnd),
+        ]
   )
     .filter(Boolean)
     .join("\n\n");
