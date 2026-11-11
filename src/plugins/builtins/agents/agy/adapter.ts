@@ -191,17 +191,22 @@ export class AgyAdapter implements AgentBackend {
   }
 
   parseResult(stdout: string, stderr: string, rawExitCode: number): TaskResult {
+    let terminalError: string | undefined;
     const normalized = stdout
       .split("\n")
       .map((line) => {
         try {
           const event = JSON.parse(line);
           if (event?.event !== "result" || !event.result) return line;
+          const failed = event.result.status !== "SUCCESS";
+          if (failed && typeof event.result.error === "string") {
+            terminalError ??= event.result.error;
+          }
           return JSON.stringify({
             type: "result",
             result: event.result.response,
             usage: event.result.usage,
-            is_error: event.result.status !== "SUCCESS",
+            is_error: failed,
           });
         } catch {
           return line;
@@ -227,7 +232,13 @@ export class AgyAdapter implements AgentBackend {
       ) {
         errorType = "turn_limit";
         exitCode = 1;
-      } else if (stderr.includes("429") || stderr.includes("Quota exceeded")) {
+      } else if (
+        stderr.includes("429") ||
+        stderr.includes("Quota exceeded") ||
+        /credits balance is too low|quota exceeded|resource_exhausted/i.test(
+          terminalError ?? "",
+        )
+      ) {
         errorType = "rate_limit";
         exitCode = 1;
       } else if (
@@ -258,6 +269,7 @@ export class AgyAdapter implements AgentBackend {
         : {}),
       ...(unwrapped.usage ? { usage: unwrapped.usage } : {}),
       stderr,
+      ...(terminalError ? { error: terminalError } : {}),
       errorType,
       durationS: 0,
     };

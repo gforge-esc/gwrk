@@ -82,7 +82,11 @@ export class CodexAdapter implements AgentBackend {
 
   async dispatch(task: TaskDispatch): Promise<AgentDispatch> {
     const args = [
-      "--ask-for-approval", "never", "exec", "--sandbox", "workspace-write",
+      "--ask-for-approval",
+      "never",
+      "exec",
+      "--sandbox",
+      "workspace-write",
     ];
 
     const rawModel =
@@ -182,7 +186,8 @@ export class CodexAdapter implements AgentBackend {
       // Structured output is optional.
     }
 
-    let exitCode = terminalStatus === "failure" ? rawExitCode || 1 : rawExitCode;
+    let exitCode =
+      terminalStatus === "failure" ? rawExitCode || 1 : rawExitCode;
     if (exitCode !== 0) {
       if (rawExitCode === 127 || stderr.includes("command not found")) {
         errorType = "command_not_found";
