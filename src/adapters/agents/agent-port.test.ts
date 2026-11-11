@@ -2,9 +2,10 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { TaskClassification } from "../../domain/types.js";
 import type { AgentBackendRegistry } from "../../plugins/agent-registry.js";
+import { QuotaProber } from "../../server/quota-prober.js";
 import { dispatchToAgent } from "../../utils/agent.js";
 import { GwrkConfigSchema, loadConfig } from "../../utils/config.js";
 import { createAgentPortAdapter } from "./index.js";
@@ -52,6 +53,8 @@ vi.mock("./registry-loader.js", () => ({
 }));
 
 describe("agent port adapter", () => {
+  afterEach(() => vi.restoreAllMocks());
+
   it("resolves the exact configured provider route and checks availability once", async () => {
     const isAvailable = vi.fn().mockResolvedValue(true);
     const registry = {
@@ -122,6 +125,73 @@ describe("agent port adapter", () => {
     expect(registry.getAgentBackend).toHaveBeenCalledExactlyOnceWith("agy");
     expect(registry.getBackends).not.toHaveBeenCalled();
   });
+
+  it.each([
+    { cacheState: "reports Claude depleted", cacheError: undefined },
+    { cacheState: "fails with EISDIR", cacheError: new Error("EISDIR") },
+  ])(
+    "uses native quota for narrative when the project cache $cacheState",
+    async ({ cacheError }) => {
+      const backends = Object.fromEntries(
+        ["claude", "codex"].map((name) => [
+          name,
+          {
+            name,
+            type: "local-cli" as const,
+            command: name,
+            quotaProbe: { method: "optimistic" as const, cacheTTLMinutes: 5 },
+            maxConcurrent: 1,
+            models: [
+              {
+                name: "frontier",
+                modelFlag: `${name}-frontier`,
+                tier: TaskClassification.THINKING,
+              },
+            ],
+          },
+        ]),
+      );
+      const fallbackOrder = ["claude", "codex"];
+      vi.mocked(loadConfig).mockReturnValueOnce(
+        GwrkConfigSchema.parse({
+          project: { name: "Routing fixture" },
+          agents: { fallbackOrder, registry: backends },
+        }),
+      );
+      vi.mocked(tryLoadRegistry).mockReturnValueOnce({
+        ok: true,
+        value: { fallbackOrder, backends },
+      });
+      const probeQuota = vi.spyOn(QuotaProber.prototype, "probeQuota");
+      if (cacheError) {
+        probeQuota.mockRejectedValue(cacheError);
+      } else {
+        probeQuota.mockImplementation(async ({ name }) => ({
+          percent: name === "claude" ? 0 : 100,
+          resetsIn: "1h",
+          probedAt: "2026-11-11T00:00:00.000Z",
+          status: "cached",
+        }));
+      }
+      const checkQuota = vi.fn().mockResolvedValue({ status: "available" });
+      const registry = {
+        getAgentBackend: vi.fn(async (name: string) => ({ name, checkQuota })),
+        getBackends: vi.fn(),
+      };
+      const adapter = createAgentPortAdapter({
+        registry: registry as unknown as AgentBackendRegistry,
+      });
+
+      expect(
+        await adapter.selectRoute({ type: "skill", skillName: "narrative" }),
+      ).toMatchObject({ backend: "claude", model: "claude-frontier" });
+      expect(registry.getAgentBackend).toHaveBeenCalledExactlyOnceWith(
+        "claude",
+      );
+      expect(checkQuota).toHaveBeenCalledTimes(1);
+      expect(probeQuota).not.toHaveBeenCalled();
+    },
+  );
 
   it("forwards the request and preserves the provider failure result", async () => {
     const request = {

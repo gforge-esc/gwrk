@@ -143,7 +143,7 @@ async function selectAvailableRoute(
     for (const backend of Object.values(agentRegistry.backends)) {
       const { name } = backend;
       if (context.explicitBackend && name !== context.explicitBackend) continue;
-      if (!installedOnly) {
+      if (restrictToRegistry) {
         const reading = await prober.probeQuota(
           backend,
           agentRegistry.backends,
@@ -201,10 +201,7 @@ async function selectAvailableRoute(
           availableBackends: registeredCandidates ?? [...candidates],
           maxBackendAttempts: restrictToRegistry ? 3 : undefined,
           probedUnavailableBackends: restrictToRegistry ? probed : undefined,
-          quotas:
-            agentRegistry && !context.explicitBackend && !installedOnly
-              ? quotas
-              : undefined,
+          quotas: restrictToRegistry ? quotas : undefined,
           cooledDownModels,
         },
       );
