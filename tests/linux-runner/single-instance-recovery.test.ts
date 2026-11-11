@@ -11,7 +11,9 @@ import { pathToFileURL } from "node:url";
 import { describe, expect, it, vi } from "vitest";
 import { acquireInstanceLock } from "../../src/adapters/server/instance-lock.js";
 import { closeDb, getDb } from "../../src/db/index.js";
+import { HarvestWatcher } from "../../src/server/harvest-watcher.js";
 import { startServer } from "../../src/server/index.js";
+import { SandboxManager } from "../../src/server/sandbox.js";
 import { GwrkConfigSchema } from "../../src/utils/config.js";
 
 describe.skipIf(process.platform !== "linux")("Linux instance lock", () => {
@@ -89,6 +91,12 @@ describe.skipIf(process.platform !== "linux")("Linux instance lock", () => {
       project: { name: "linux-test" },
       server: { host: "127.0.0.1", port: 0 },
     });
+    const poll = vi
+      .spyOn(HarvestWatcher.prototype, "runCheck")
+      .mockResolvedValue(undefined);
+    const prune = vi
+      .spyOn(SandboxManager.prototype, "pruneSandboxes")
+      .mockResolvedValue(undefined);
     let server: Awaited<ReturnType<typeof startServer>> | undefined;
     try {
       server = await startServer(config, { handleSignals: false });
@@ -98,6 +106,8 @@ describe.skipIf(process.platform !== "linux")("Linux instance lock", () => {
       await expect(
         startServer(config, { handleSignals: false }),
       ).rejects.toThrow(/already holds/);
+      expect(poll).toHaveBeenCalledTimes(1);
+      expect(prune).toHaveBeenCalledTimes(1);
 
       const db = getDb();
       db.exec("CREATE TABLE recovery_fixture (marker TEXT NOT NULL)");
@@ -118,6 +128,8 @@ describe.skipIf(process.platform !== "linux")("Linux instance lock", () => {
     } finally {
       await server?.close();
       closeDb();
+      poll.mockRestore();
+      prune.mockRestore();
       vi.unstubAllEnvs();
       await rm(root, { recursive: true, force: true });
     }
