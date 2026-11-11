@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import { createHash } from "node:crypto";
 import { z } from "zod";
 import type { DeliveryRecipient } from "./project-registry.js";
 
@@ -81,8 +82,13 @@ export interface DispatchReceipt {
 
 export interface WorkerRecoveryEvidence {
   workerState: "not_started" | "running" | "stopped" | "unknown";
-  openPullRequest: { prNumber: number; prUrl: string } | null;
+  openPullRequest: {
+    operationId: string | null;
+    prNumber: number;
+    prUrl: string;
+  } | null;
   mergedPullRequest: {
+    operationId: string | null;
     prNumber: number;
     prUrl: string;
     mergeCommitSha: string;
@@ -174,6 +180,9 @@ export function evaluateDispatchAcceptance(
     return { kind: "deduplicated", receipt: dispatchReceipt(existing, true) };
   }
 
+  const branchSuffix = createHash("sha256")
+    .update(JSON.stringify([input.projectId, workKey, input.newOperationId]))
+    .digest("hex");
   const operation: DurableDispatchOperation = {
     operationId: input.newOperationId,
     projectId: input.projectId,
@@ -182,7 +191,7 @@ export function evaluateDispatchAcceptance(
     phaseId: input.phaseId,
     taskIds: normalizeTaskIds(input.taskIds),
     backend: input.backend,
-    branchName: `feat/${input.featureId}-${input.phaseId}`,
+    branchName: `feat/${input.featureId}-${input.phaseId}--dispatch-${branchSuffix}`,
     trunkBranch: input.trunkBranch,
     recipient: input.recipient ? { ...input.recipient } : null,
     status: "accepted",
@@ -242,8 +251,9 @@ export function evaluateStaleDispatchReconciliation(input: {
   maxCrashRecoveryAttempts: number;
 }): StaleLeaseDecision {
   const { evidence, operation, maxCrashRecoveryAttempts } = input;
-  if (evidence.mergedPullRequest) {
-    const { prNumber, prUrl, mergeCommitSha } = evidence.mergedPullRequest;
+  const { mergedPullRequest, openPullRequest } = evidence;
+  if (mergedPullRequest?.operationId === operation.operationId) {
+    const { prNumber, prUrl, mergeCommitSha } = mergedPullRequest;
     return {
       action: "complete_from_pr",
       prNumber,
@@ -251,8 +261,9 @@ export function evaluateStaleDispatchReconciliation(input: {
       triggerHarvestMergeSha: mergeCommitSha,
     };
   }
-  if (evidence.openPullRequest) {
-    return { action: "complete_from_pr", ...evidence.openPullRequest };
+  if (openPullRequest?.operationId === operation.operationId) {
+    const { prNumber, prUrl } = openPullRequest;
+    return { action: "complete_from_pr", prNumber, prUrl };
   }
   if (
     evidence.workerState === "running" ||

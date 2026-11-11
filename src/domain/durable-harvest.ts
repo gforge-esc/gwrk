@@ -65,6 +65,7 @@ export interface HarvestCandidateInput {
   source: DeliverySource;
   deliveryId: string;
   repoSlug: string | null;
+  headRepoSlug: string | null;
   baseBranch: string;
   headBranch: string | null;
   expectedHeadSha: string | null;
@@ -138,10 +139,33 @@ function parseHarvestBranch(headBranch: string | null): HarvestTarget | null {
   const branch = /^(?:feat|phase)\/(.+)$/.exec(headBranch ?? "");
   if (!branch) return null;
 
-  const phase = /^(.+)-(phase-\d+)$/.exec(branch[1]);
+  const phase = /^(.+)-(phase-\d+)(?:--dispatch-[a-f0-9]{64})?$/.exec(
+    branch[1],
+  );
   return phase
     ? { featureId: phase[1], phaseId: normalizePhaseId(phase[2]) }
     : { featureId: branch[1], phaseId: null };
+}
+
+function matchesPullRequestUrl(
+  prUrl: string,
+  projectRepoSlug: string | null,
+  prNumber: number,
+): boolean {
+  try {
+    const url = new URL(prUrl);
+    const path = /^\/([^/]+\/[^/]+)\/pull\/([0-9]+)$/.exec(url.pathname);
+    return (
+      url.origin === "https://github.com" &&
+      url.username === "" &&
+      url.password === "" &&
+      path !== null &&
+      isSameRepository(projectRepoSlug, path[1]) &&
+      path[2] === String(prNumber)
+    );
+  } catch {
+    return false;
+  }
 }
 
 export function verifyHarvestTarget(
@@ -153,6 +177,8 @@ export function verifyHarvestTarget(
       ok: false;
       code:
         | "REPO_MISMATCH"
+        | "INVALID_PR_NUMBER"
+        | "PR_URL_MISMATCH"
         | "NOT_CONFIGURED_TRUNK"
         | "NOT_FEATURE_BRANCH"
         | "MISSING_MERGE_SHA"
@@ -164,6 +190,27 @@ export function verifyHarvestTarget(
       ok: false,
       code: "REPO_MISMATCH",
       reason: "Pull request repository differs from enrollment",
+    };
+  }
+  if (!Number.isSafeInteger(candidate.prNumber) || candidate.prNumber <= 0) {
+    return {
+      ok: false,
+      code: "INVALID_PR_NUMBER",
+      reason: "Pull request number must be a positive safe integer",
+    };
+  }
+  if (
+    candidate.prUrl !== null &&
+    !matchesPullRequestUrl(
+      candidate.prUrl,
+      project.repoSlug,
+      candidate.prNumber,
+    )
+  ) {
+    return {
+      ok: false,
+      code: "PR_URL_MISMATCH",
+      reason: "Pull request URL must match the enrolled repository and number",
     };
   }
   if (candidate.baseBranch !== project.trunkBranch) {
@@ -295,6 +342,7 @@ export function deriveHarvestTerminalStatus(input: {
 export function evaluateBranchCleanupSafety(input: {
   projectRepoSlug: string | null;
   candidateRepoSlug: string | null;
+  headRepoSlug: string | null;
   trunkBranch: string;
   headBranch: string | null;
   expectedHeadSha: string | null;
@@ -306,6 +354,7 @@ export function evaluateBranchCleanupSafety(input: {
       action: "block_cleanup";
       code:
         | "REPO_MISMATCH"
+        | "HEAD_REPO_MISMATCH"
         | "PROTECTED_BRANCH"
         | "MISSING_EXPECTED_TIP"
         | "TIP_MOVED";
@@ -313,6 +362,9 @@ export function evaluateBranchCleanupSafety(input: {
   const { headBranch, expectedHeadSha, observedRemoteHeadSha } = input;
   if (!isSameRepository(input.projectRepoSlug, input.candidateRepoSlug)) {
     return { action: "block_cleanup", code: "REPO_MISMATCH" };
+  }
+  if (!isSameRepository(input.projectRepoSlug, input.headRepoSlug)) {
+    return { action: "block_cleanup", code: "HEAD_REPO_MISMATCH" };
   }
   if (
     !headBranch ||

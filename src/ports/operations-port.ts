@@ -29,6 +29,8 @@ export interface ClockPort {
 
 export interface HarvestPullRequestFact {
   repoSlug: string;
+  /** Read the head repository from GitHub. Use null when it is unknown. */
+  headRepoSlug: string | null;
   prNumber: number;
   prUrl: string;
   state: "OPEN" | "CLOSED" | "MERGED";
@@ -61,12 +63,19 @@ export interface GitHubHarvestPort {
 }
 
 export interface WorkerExecutionPort {
+  /**
+   * Set a pull request's evidence operation ID only after verifying its repository.
+   * Require the operation-specific head in that repository or a persisted pull request link.
+   */
   inspectRecoveredWork(input: {
+    operationId: string;
+    workKey: string;
     projectRoot: string;
     repoSlug: string | null;
     featureId: string;
     phaseId: string;
     branchName: string;
+    persistedPullRequest?: { prNumber: number; prUrl: string | null };
   }): Promise<WorkerRecoveryEvidence>;
   launchPhaseShip(input: {
     projectRoot: string;
@@ -141,6 +150,7 @@ export interface DurableHarvestOperation {
   projectId: string;
   workKey: string;
   repoSlug: string | null;
+  headRepoSlug: string | null;
   trunkBranch: string;
   featureId: string;
   phaseId: string | null;
@@ -269,7 +279,10 @@ export interface OperationsStorePort {
     projectId?: string;
   }): DurableDispatchOperation[];
 
-  /** Commit the delivery and operation together. Preserve a verified merge on a later close. */
+  /**
+   * Commit the delivery and operation together with the verified head repository.
+   * Preserve a verified merge on a later close.
+   */
   recordHarvestIntake(input: {
     candidate: HarvestCandidateInput;
     payloadDigest: string;
@@ -285,6 +298,12 @@ export interface OperationsStorePort {
         deduplicatedWork: boolean;
       }
     | { ok: false; code: "DELIVERY_ID_CONFLICT" };
+  /** List unstarted and resumable harvests without live leases in creation order. */
+  listRecoverableHarvests(input: {
+    nowIso: string;
+    projectId?: string;
+  }): DurableHarvestOperation[];
+  /** Recheck eligibility and acquire the lease atomically. */
   claimHarvestLease(input: OperationLeaseRequest): {
     fence: LeaseFence;
     operation: DurableHarvestOperation;
@@ -302,7 +321,12 @@ export interface OperationsStorePort {
   }): FencedWrite;
 
   enqueueOutbox(input: OutboxMessage & { nowIso: string }): OutboxItem;
-  /** Recovered sends require reconciliation before another send. */
+  /** List pending, uncertain and abandoned sending items for the project in creation order. */
+  listRecoverableOutboxItems(input: {
+    nowIso: string;
+    projectId: string;
+  }): OutboxItem[];
+  /** Claim atomically. Route abandoned sending and uncertain items to reconciliation. */
   claimOutboxItem(input: { outboxId: string; nowIso: string }): {
     claim: OutboxClaim;
     item: OutboxItem;

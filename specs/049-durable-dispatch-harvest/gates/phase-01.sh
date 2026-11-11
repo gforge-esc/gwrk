@@ -5,4 +5,4 @@
 
 set -euo pipefail
 pnpm build
-pnpm exec vitest run src/domain/durable-dispatch.test.ts src/domain/durable-harvest.test.ts src/architecture.test.ts
+pnpm exec vitest run src/domain/durable-dispatch.test.ts src/domain/durable-harvest.test.ts src/ports/operations-port.test.ts src/architecture.test.ts

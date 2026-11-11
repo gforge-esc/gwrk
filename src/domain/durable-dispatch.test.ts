@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import { createHash } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import {
   DispatchAttemptStatusSchema,
@@ -116,7 +117,15 @@ describe("FR-001 dispatch work identity and acceptance", () => {
       featureId,
       phaseId,
       workKey: `ship:${featureId}:${phaseId}`,
-      branchName: `feat/${featureId}-${phaseId}`,
+      branchName: `feat/${featureId}-${phaseId}--dispatch-${createHash("sha256")
+        .update(
+          JSON.stringify([
+            request.projectId,
+            `ship:${featureId}:${phaseId}`,
+            request.newOperationId,
+          ]),
+        )
+        .digest("hex")}`,
       status: "accepted",
       attemptCount: 0,
       leaseEpoch: 0,
@@ -245,6 +254,52 @@ describe("FR-003 lease fencing", () => {
 });
 
 describe("FR-001 stale dispatch reconciliation", () => {
+  const first = evaluateDispatchAcceptance({
+    ...request,
+    newOperationId: "first-op",
+    existingActive: null,
+    taskIds: ["T001"],
+  });
+  if (first.kind !== "create_new") throw new Error("Expected first operation");
+  const second = evaluateDispatchAcceptance({
+    ...request,
+    existingActive: first.operation,
+    taskIds: ["T002"],
+  });
+  if (second.kind !== "create_new")
+    throw new Error("Expected second operation");
+
+  it("assigns distinct branches to different task sets in the same phase", () => {
+    expect(second.receipt.branchName).not.toBe(first.receipt.branchName);
+  });
+
+  it.each(["openPullRequest", "mergedPullRequest"] as const)(
+    "requeues stale work with unrelated or unverified %s evidence",
+    (pullRequestKind) => {
+      for (const operationId of [first.operation.operationId, null]) {
+        expect(
+          evaluateStaleDispatchReconciliation({
+            operation: {
+              ...second.operation,
+              status: "running",
+              attemptCount: 1,
+            },
+            evidence: {
+              ...noEvidence,
+              [pullRequestKind]: {
+                operationId,
+                prNumber: 42,
+                prUrl: "https://github.com/acme/a/pull/42",
+                mergeCommitSha: "a".repeat(40),
+              },
+            },
+            maxCrashRecoveryAttempts: 3,
+          }),
+        ).toMatchObject({ action: "requeue_attempt" });
+      }
+    },
+  );
+
   it("TR-001 requeues a pre-launch crash with recovery budget", () => {
     expect(
       evaluateStaleDispatchReconciliation({
@@ -261,6 +316,7 @@ describe("FR-001 stale dispatch reconciliation", () => {
         evidence: {
           ...noEvidence,
           openPullRequest: {
+            operationId: "old-op",
             prNumber: 42,
             prUrl: "https://github.com/acme/a/pull/42",
           },
@@ -280,6 +336,7 @@ describe("FR-001 stale dispatch reconciliation", () => {
         evidence: {
           ...noEvidence,
           mergedPullRequest: {
+            operationId: "old-op",
             prNumber: 42,
             prUrl: "https://github.com/acme/a/pull/42",
             mergeCommitSha: "a".repeat(40),

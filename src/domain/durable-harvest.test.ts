@@ -44,6 +44,7 @@ function candidate(
     source: "github_webhook",
     deliveryId: "delivery-1",
     repoSlug: "acme/a",
+    headRepoSlug: "acme/a",
     baseBranch: "develop",
     headBranch: `phase/${featureId}-${phaseId}`,
     expectedHeadSha: sha,
@@ -82,6 +83,7 @@ const stageNames = [
 const cleanup = {
   projectRepoSlug: "acme/a",
   candidateRepoSlug: "acme/a",
+  headRepoSlug: "Acme/A",
   trunkBranch: "develop",
   headBranch: `phase/${featureId}-${phaseId}`,
   expectedHeadSha: sha,
@@ -163,6 +165,17 @@ describe("FR-002 harvest identity and target verification", () => {
   it.each([
     [{ repoSlug: "acme/b" }, "REPO_MISMATCH"],
     [{ repoSlug: null }, "REPO_MISMATCH"],
+    [{ prNumber: 0, prUrl: null }, "INVALID_PR_NUMBER"],
+    [{ prNumber: 1.5, prUrl: null }, "INVALID_PR_NUMBER"],
+    [
+      { prNumber: Number.MAX_SAFE_INTEGER + 1, prUrl: null },
+      "INVALID_PR_NUMBER",
+    ],
+    [{ prUrl: "bad url" }, "PR_URL_MISMATCH"],
+    [{ prUrl: "https://github.com/acme/b/pull/42" }, "PR_URL_MISMATCH"],
+    [{ prUrl: "https://github.com/acme/a/pull/43" }, "PR_URL_MISMATCH"],
+    [{ prUrl: "http://github.com/acme/a/pull/42" }, "PR_URL_MISMATCH"],
+    [{ prUrl: "https://github.com.example/acme/a/pull/42" }, "PR_URL_MISMATCH"],
     [{ baseBranch: "main" }, "NOT_CONFIGURED_TRUNK"],
     [{ headBranch: "unrelated" }, "NOT_FEATURE_BRANCH"],
     [{ headBranch: null }, "NOT_FEATURE_BRANCH"],
@@ -195,6 +208,20 @@ describe("FR-002 harvest identity and target verification", () => {
       verifyHarvestTarget(
         project,
         candidate({ headBranch: `feat/${featureId}-phase-1` }),
+      ),
+    ).toEqual(verifyHarvestTarget(project, candidate()));
+  });
+
+  it("resolves a dispatch branch to its original harvest target", () => {
+    expect(
+      verifyHarvestTarget(
+        project,
+        candidate({
+          headBranch: `feat/${featureId}-${phaseId}--dispatch-${sha.padEnd(64, "a")}`,
+          explicitFeatureId: featureId,
+          explicitPhaseId: phaseId,
+          prUrl: "https://github.com/ACME/A/pull/42",
+        }),
       ),
     ).toEqual(verifyHarvestTarget(project, candidate()));
   });
@@ -327,6 +354,8 @@ describe("FR-005 closed attempts and branch cleanup", () => {
   });
   it.each([
     [{ candidateRepoSlug: "acme/b" }, "REPO_MISMATCH"],
+    [{ headRepoSlug: "fork/a" }, "HEAD_REPO_MISMATCH"],
+    [{ headRepoSlug: null }, "HEAD_REPO_MISMATCH"],
     [{ headBranch: "develop" }, "PROTECTED_BRANCH"],
     [{ headBranch: "chore/unrelated" }, "PROTECTED_BRANCH"],
     [{ expectedHeadSha: null }, "MISSING_EXPECTED_TIP"],
