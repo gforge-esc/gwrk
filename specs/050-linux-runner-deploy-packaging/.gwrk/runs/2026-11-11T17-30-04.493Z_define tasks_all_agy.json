@@ -1,0 +1,19 @@
+{
+  "runId": "2026-11-11T17:30:04.493Z_define_all",
+  "feature": "050-linux-runner-deploy-packaging",
+  "phase": "all",
+  "command": "define tasks",
+  "agent": "agy",
+  "model": "unknown",
+  "startedAt": "2026-11-11T17:30:04.493Z",
+  "finishedAt": "2026-11-11T17:30:04.762Z",
+  "durationS": 0,
+  "exitCode": 0,
+  "attempt": 1,
+  "filesChanged": 1,
+  "linesAdded": 246,
+  "linesDeleted": 0,
+  "gitCommit": "b06df9811c587e4ee044be34f0e18151362534bd",
+  "gitBranch": "codex/linux-runner-deploy-red",
+  "digest": []
+}
