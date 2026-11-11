@@ -4,6 +4,7 @@
 
 import { execSync } from "node:child_process";
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 
 import { gwrkRuntimeDir } from "../adapters/config/paths.js";
@@ -24,7 +25,7 @@ export function writePid(pid: number): void {
 export function readPid(): number | undefined {
   // 1. Try launchctl first (authority on macOS)
   try {
-    if (process.platform === "darwin" && !process.env.GWRK_RUNTIME_DIR) {
+    if (os.platform() === "darwin" && !process.env.GWRK_RUNTIME_DIR) {
       const cmd = `launchctl list ${SERVICE_NAME} | grep PID | awk '{print $3}' | sed 's/;//'`;
       const output = execSync(cmd, { stdio: ["ignore", "pipe", "ignore"] })
         .toString()
