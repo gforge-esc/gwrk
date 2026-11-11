@@ -22,6 +22,16 @@ vi.mock("../utils/exec.js", () => ({
   runGate: vi.fn(),
 }));
 
+// Command tests exercise orchestration arguments and output without running
+// the orchestrator against the checkout that is running this suite.
+vi.mock("../engine/ship-orchestrator.js", () => ({
+  ShipOrchestrator: vi.fn().mockImplementation(() => ({
+    on: vi.fn(),
+    run: vi.fn().mockResolvedValue(0),
+    getResult: vi.fn().mockReturnValue({}),
+  })),
+}));
+
 vi.mock("../utils/setup-state.js", () => ({
   loadSetupState: vi.fn(),
   isSetupComplete: vi.fn().mockReturnValue(true),
@@ -742,26 +752,17 @@ describe("FR-009/T010: Agent config fail-fast", () => {
     program.addCommand(shipCommand);
   });
 
-  it("FR-009/T010: crashes with exit 1 when agents.implement is missing from config", async () => {
-    // Override config mock to return missing agents.implement
+  it("reports invalid config before recording a ship run", async () => {
     const configModule = await import("../utils/config.js");
-    vi.mocked(configModule.loadConfig).mockReturnValueOnce({
-      project: {
-        name: "test",
-        slack: { channelId: "C123", channelName: "test" },
-      },
-      agents: {},
-      server: { port: 18790, host: "localhost" },
-    } as ReturnType<typeof configModule.loadConfig>);
+    vi.mocked(configModule.loadConfig).mockImplementationOnce(() => {
+      throw new Error("Invalid agent configuration");
+    });
 
     process.exitCode = 0;
-    try {
-      await program.parseAsync(["node", "test", "ship", "004-ship-loop", "1"]);
-    } catch {
-      // Expected: process.exit(1) or thrown error
-    }
+    await program.parseAsync(["node", "test", "ship", "004-ship-loop", "1"]);
 
     expect(process.exitCode).toBe(1);
+    expect(runsModule.startRun).not.toHaveBeenCalled();
   });
 });
 
