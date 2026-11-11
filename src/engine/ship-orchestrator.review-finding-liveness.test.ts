@@ -136,7 +136,7 @@ function loadTaskStateReturns(
 function dispatchedPrompts(): string[] {
   return vi
     .mocked(agentUtils.dispatchToAgent)
-    .mock.calls.map((c) => (c[0] as { prompt: string }).prompt);
+    .mock.calls.map(([task]) => task.stdin ?? task.prompt ?? "");
 }
 
 beforeEach(() => {

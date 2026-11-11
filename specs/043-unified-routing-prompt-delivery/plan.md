@@ -154,7 +154,7 @@ pnpm exec vitest run src/server/model-selector.test.ts src/server/quota-prober.t
 - `src/plugins/builtins/workflows/gwrk-implement/PROMPT.md` (MODIFY: Add `<code_quality>` enforcement placeholder for implementation dispatches)
 - `src/plugins/workflow-runtime.test.ts` (MODIFY: Verify `WorkflowRuntime` populates `stdin` before dispatch and separates native workflow execution from skill execution)
 - `src/utils/agent.test.ts` (MODIFY: Capture planning and implementation dispatches and verify expanded enforcement rules, project context and task instructions)
-- `src/engine/ship-orchestrator.workflow-seam.test.ts` (NEW: Verify `ShipOrchestrator` dispatches implementation and review workflows through `WorkflowRuntime` while preserving post-dispatch gates)
+- `src/engine/ship-orchestrator.review.test.ts` (MODIFY: Verify `ShipOrchestrator` dispatches implementation and review workflows through `WorkflowRuntime` while preserving post-dispatch gates)
 
 #### Governance and skills
 
@@ -169,14 +169,14 @@ pnpm exec vitest run src/server/model-selector.test.ts src/server/quota-prober.t
 |---|---|---|---|
 | TR-012 | integration | `src/utils/agent.test.ts` | Captured planning and implementation dispatches contain expanded enforcement rules, grounding context and complete task instructions without duplication |
 | TR-013 | unit | `src/plugins/workflow-runtime.test.ts` | `WorkflowRuntime` populates `task.stdin` before dispatch and supports `nativeOnly` execution |
-| TR-014 | integration | `src/engine/ship-orchestrator.workflow-seam.test.ts` | `ShipOrchestrator` routes implementation and review stages through `WorkflowRuntime` while preserving scope validation and gate checks |
+| TR-014 | integration | `src/engine/ship-orchestrator.review.test.ts` | `ShipOrchestrator` routes implementation and review stages through `WorkflowRuntime` while preserving scope validation and gate checks |
 | TR-015 | unit | `src/plugins/builtins/workflows/gwrk-plan/prompt-contract.test.ts` | `gwrk-plan` prompt retains exit-based `Done When` and canonical format rules alongside `<code_quality>` |
 
 #### Done When
 
 ```bash
 pnpm build
-pnpm exec vitest run src/utils/agent.test.ts src/utils/agent.grounding-decisions.test.ts src/plugins/workflow-runtime.test.ts src/plugins/skill-runtime.test.ts src/engine/ship-orchestrator.workflow-seam.test.ts src/plugins/builtins/workflows/gwrk-plan/prompt-contract.test.ts src/architecture.test.ts
+pnpm exec vitest run src/utils/agent.test.ts src/utils/agent.grounding-decisions.test.ts src/plugins/workflow-runtime.test.ts src/plugins/skill-runtime.test.ts src/engine/ship-orchestrator.review.test.ts src/plugins/builtins/workflows/gwrk-plan/prompt-contract.test.ts src/architecture.test.ts
 ```
 
 ### Phase 5: Adapter parity and recorded recovery
