@@ -35,33 +35,37 @@
           "id": "T002",
           "title": "Modify package.json",
           "description": "MODIFY package.json. Allowlist the Linux deployment bundle",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/phase-02.sh",
-          "sp": 1
+          "sp": 1,
+          "completedAt": "2026-11-11T17:55:46.664Z"
         },
         {
           "id": "T003",
           "title": "Create build-linux-release.mjs",
           "description": "NEW scripts/release/build-linux-release.mjs. Build from the pinned commit, add the lockfile to the npm archive and emit the manifest and digest",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/phase-02.sh",
-          "sp": 2
+          "sp": 2,
+          "completedAt": "2026-11-11T17:55:47.594Z"
         },
         {
           "id": "T004",
           "title": "Create install-release.sh",
           "description": "NEW deploy/linux-runner/install-release.sh. Verify digest and Node runtime plus native SQLite load before switching `current`",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/phase-02.sh",
-          "sp": 2
+          "sp": 2,
+          "completedAt": "2026-11-11T17:55:48.474Z"
         },
         {
           "id": "T005",
           "title": "Modify release.yml",
           "description": "MODIFY .github/workflows/release.yml. Build and upload `release-manifest.json` and SHA-256 digest with each release. Tests: tests/linux-runner/release-packaging.test.ts",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/phase-02.sh",
-          "sp": 1
+          "sp": 1,
+          "completedAt": "2026-11-11T17:55:49.394Z"
         }
       ],
       "sp_estimate": 6,
