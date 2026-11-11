@@ -144,7 +144,30 @@ node -e 'const fs=require("node:fs"); const p=process.argv[1]; fs.writeFileSync(
 
 cat > /fixture-bin/systemctl <<'SCRIPT'
 #!/usr/bin/env bash
+set -euo pipefail
 printf '%s\n' "$1" >> /tmp/supervisor.calls
+pid_file="$GWRK_RUNTIME_DIR/server.pid"
+case "$1" in
+  stop)
+    if [[ -f "$pid_file" ]]; then
+      kill "$(< "$pid_file")" 2>/dev/null || true
+      rm "$pid_file"
+    fi
+    ;;
+  start)
+    if [[ "${GWRK_FIXTURE_DROP_RUN:-0}" == 1 ]]; then
+      node -e 'const requireRelease=require("node:module").createRequire("/opt/gwrk/current/package.json"); const db=new (requireRelease("better-sqlite3"))(process.env.GWRK_DB_PATH); db.prepare("DELETE FROM runs WHERE id = 42").run(); db.close();'
+    fi
+    sleep 120 8>&- 9>&- >/dev/null 2>&1 &
+    printf '%s\n' "$!" > "$pid_file"
+    ;;
+  show)
+    cat "$pid_file"
+    ;;
+  is-active)
+    [[ -f "$pid_file" ]] && kill -0 "$(< "$pid_file")"
+    ;;
+esac
 SCRIPT
 chmod 0755 /fixture-bin/systemctl
 write_prior_manifest() {
@@ -169,4 +192,8 @@ write_prior_manifest
 bash "$rollback" /opt/gwrk /var/lib/gwrk
 test "$(realpath /opt/gwrk/current)" = "$prior"
 node -e 'const assert=require("node:assert/strict"); const fs=require("node:fs"); const root="/var/lib/gwrk/backups/"; const [dir]=fs.readdirSync(root); assert.deepEqual(require(root+dir+"/backup-manifest.json").summary.completedRunIds,[42]);'
+expect_rejection 'does not match the pre-rollback backup' env GWRK_FIXTURE_DROP_RUN=1 bash "$rollback" /opt/gwrk /var/lib/gwrk
+test "$(realpath /opt/gwrk/current)" = "$prior"
+test ! -e "$GWRK_RUNTIME_DIR/server.pid"
+node -e 'const assert=require("node:assert/strict"); const fs=require("node:fs"); const root="/var/lib/gwrk/backups/"; const dirs=fs.readdirSync(root); assert.equal(dirs.length,2); for(const dir of dirs) assert.deepEqual(require(root+dir+"/backup-manifest.json").summary.completedRunIds,[42]);'
 printf 'Verified install, credential revocation, process restart, clean restore and guarded rollback.\n'

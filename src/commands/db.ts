@@ -13,6 +13,7 @@ import {
   readAppliedMigrations,
   readBackupProjects,
   restoreLedgerBackup,
+  verifyLedgerAgainstBackup,
   verifyLedgerBackup,
 } from "../adapters/sqlite/ledger-backup.js";
 import { restoreOfflineLedger } from "../application/release/backup-restore.js";
@@ -189,8 +190,15 @@ const rollbackCheckCommand = new Command("rollback-check")
   .option("--format <type>", "Output format (json)")
   .requiredOption("--current <dir>", "Current release directory")
   .requiredOption("--target <dir>", "Target release directory")
+  .option(
+    "--against <dir>",
+    "Verify persisted work against a pre-rollback backup",
+  )
   .action(
-    async (opts: { current: string; target: string }, command: Command) => {
+    async (
+      opts: { current: string; target: string; against?: string },
+      command: Command,
+    ) => {
       await withSignal("db rollback-check", async () => {
         const output = ledgerOutput(command);
         const [current, target] = await Promise.all([
@@ -207,6 +215,9 @@ const rollbackCheckCommand = new Command("rollback-check")
             `Rollback blocked by migrations: ${result.blockingMigrations.join(", ")}.`,
             1,
           );
+        }
+        if (opts.against) {
+          await verifyLedgerAgainstBackup(getDbPath(), resolve(opts.against));
         }
         output.write(
           output.isJson

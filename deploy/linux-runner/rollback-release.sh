@@ -37,7 +37,7 @@ done
 active="$release_root/$old_target"
 target="$release_root/$new_target"
 check_rollback() {
-  node "$active/dist/cli.js" db rollback-check --current "$active" --target "$target"
+  node "$active/dist/cli.js" db rollback-check --current "$active" --target "$target" "$@"
 }
 check_rollback
 
@@ -45,6 +45,7 @@ scratch=$(mktemp -d "$release_root/.rollback.XXXXXXXX")
 switched=false
 stopped=false
 lock_held=false
+target_started=false
 point() {
   ln -s -- "$1" "$scratch/pointer"
   mv -Tf -- "$scratch/pointer" "$2"
@@ -54,14 +55,22 @@ on_exit() {
   if $lock_held; then flock -u 9; fi
   if ((status != 0)); then
     if $switched; then
-      point "$old_target" "$current" || true
-      if [[ -n "$old_previous" ]]; then
-        point "$old_previous" "$previous" || true
+      if $target_started && ! systemctl stop "$unit"; then
+        printf 'Could not stop the target release. Current still points to %s.\n' "$new_target" >&2
       else
-        rm -f -- "$previous"
+        point "$old_target" "$current" || true
+        if [[ -n "$old_previous" ]]; then
+          point "$old_previous" "$previous" || true
+        else
+          rm -f -- "$previous"
+        fi
       fi
     fi
-    if $stopped; then systemctl start "$unit" || true; fi
+    if $target_started; then
+      printf 'Verify the ledger and recover from %s before starting the service.\n' "$backup" >&2
+    elif $stopped; then
+      systemctl start "$unit" || true
+    fi
   fi
   rm -rf -- "$scratch"
 }
@@ -83,6 +92,20 @@ switched=true
 point "$old_target" "$previous"
 flock -u 9
 lock_held=false
+target_started=true
 systemctl start "$unit"
-systemctl is-active --quiet "$unit"
+deadline=$((SECONDS + 90))
+while true; do
+  pid=$(timeout 5s systemctl show --property=MainPID --value "$unit") || pid=""
+  if [[ "$pid" =~ ^[1-9][0-9]+$ &&
+        -f "$runtime/server.pid" && ! -L "$runtime/server.pid" &&
+        "$(< "$runtime/server.pid")" == "$pid" ]] &&
+      kill -0 "$pid" &&
+      timeout 5s systemctl is-active --quiet "$unit"; then
+    break
+  fi
+  ((SECONDS < deadline)) || fail "Timed out waiting for the target release to listen."
+  sleep 1
+done
+check_rollback --against "$backup"
 printf 'Activated gwrk %s. Verified pre-rollback backup at %s\n' "${new_target#releases/}" "$backup"

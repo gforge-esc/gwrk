@@ -254,6 +254,16 @@ export const verifyLedgerBackup: LedgerBackupPort["verifyBackup"] = async (
   return { manifest, metadata };
 };
 
+export async function verifyLedgerAgainstBackup(
+  dbPath: string,
+  backupDirectory: string,
+): Promise<void> {
+  const { manifest, metadata } = await verifyLedgerBackup(backupDirectory);
+  if (!isDeepStrictEqual(summarizeLedger(dbPath, metadata), manifest.summary)) {
+    throw new Error("Live ledger does not match the pre-rollback backup.");
+  }
+}
+
 async function statIfPresent(path: string) {
   try {
     return await lstat(path);

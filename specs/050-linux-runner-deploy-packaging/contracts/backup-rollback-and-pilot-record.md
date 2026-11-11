@@ -54,7 +54,8 @@ Run restore as the Linux service user and use the service runtime directory. Sta
 3. If `allowed === false`, print the blocking migration names to stderr and exit `1` before changing `current`.
 4. If `allowed === true`, stop accepting work and stop the supervisor. Run `gwrk db backup` against quiesced state.
 5. Atomically switch `current` to the target release and start the supervisor.
-6. Verify accepted work counts match the pre-rollback summary.
+6. Wait for the restarted service to publish its listening process ID. Compare the live ledger with the pre-rollback summary.
+7. If verification fails, stop the target and restore the release pointers. Preserve the backup for recovery before service restart.
 
 ## Repeatable Linux container harness vs live pilot record
 

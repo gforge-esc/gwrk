@@ -20,6 +20,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   createLedgerBackup,
   restoreLedgerBackup,
+  verifyLedgerAgainstBackup,
   verifyLedgerBackup,
 } from "../../src/adapters/sqlite/ledger-backup.js";
 
@@ -243,6 +244,29 @@ describe("ledger backup", () => {
       } finally {
         restored.close();
       }
+    } finally {
+      db.close();
+    }
+  });
+
+  it("rejects accepted work lost after a rollback restart", async () => {
+    const db = seedLedger();
+    const destination = join(root, "before-rollback");
+    try {
+      await createLedgerBackup({
+        dbPath: db.name,
+        destination,
+        createdAt: "2026-11-11T12:00:00.000Z",
+        gwrkVersion: "1.6.0-beta.1",
+        metadata: { device: null, repositories: [] },
+      });
+      await expect(
+        verifyLedgerAgainstBackup(db.name, destination),
+      ).resolves.toBeUndefined();
+      db.prepare("DELETE FROM runs WHERE id = 42").run();
+      await expect(
+        verifyLedgerAgainstBackup(db.name, destination),
+      ).rejects.toThrow(/does not match the pre-rollback backup/);
     } finally {
       db.close();
     }
