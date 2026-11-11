@@ -51,6 +51,30 @@ describe("resolveModelForTask", () => {
     expect(model).toBe("gemini-3-flash-preview");
   });
 
+  it("returns the exact provider model ID instead of the registry label", () => {
+    vi.mocked(tryLoadRegistry).mockReturnValueOnce({
+      ok: true,
+      value: {
+        backends: {
+          agy: {
+            name: "agy",
+            type: "local-cli",
+            command: "agy",
+            quotaProbe: { method: "optimistic", cacheTTLMinutes: 5 },
+            maxConcurrent: 2,
+            models: [{
+              name: "preferred-definition",
+              modelFlag: "fixture-model-high",
+              tier: "thinking",
+            }],
+          },
+        },
+        fallbackOrder: ["agy"],
+      },
+    });
+    expect(resolveModelForTask("define", "agy", "/fake/project")).toBe("fixture-model-high");
+  });
+
   it("falls back when registry validation fails", () => {
     vi.mocked(tryLoadRegistry).mockReturnValueOnce({
       ok: false,
