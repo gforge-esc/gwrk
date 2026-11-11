@@ -550,33 +550,49 @@ export function deriveHarvestTerminalStatus(input: {
   return closed ? "closed_unmerged" : "completed";
 }
 
+type BranchCleanupTarget = HarvestTarget & {
+  terminalEvent: HarvestTerminalEvent;
+  prNumber: number | null;
+  repoSlug: string | null;
+  headRepoSlug: string | null;
+  trunkBranch: string;
+  headBranch: string | null;
+  expectedHeadSha: string | null;
+};
+
+/** Use repository facts from a verified pull request. */
+export function hasVerifiedBranchCleanupTarget(
+  target: BranchCleanupTarget,
+): boolean {
+  const branch = parseHarvestBranch(target.headBranch);
+  return (
+    target.terminalEvent === "merged" &&
+    target.prNumber !== null &&
+    Number.isSafeInteger(target.prNumber) &&
+    target.prNumber > 0 &&
+    isSameRepository(target.repoSlug, target.headRepoSlug) &&
+    target.headBranch !== target.trunkBranch &&
+    branch?.featureId === target.featureId &&
+    (branch.phaseId === null || branch.phaseId === target.phaseId) &&
+    fullGitObjectId.test(target.expectedHeadSha ?? "")
+  );
+}
+
 export function planLateBranchCleanup(input: {
   operationId: string;
   prior: HarvestCommitScope & { status: HarvestOperationStatus };
-  verified: HarvestCommitScope & {
-    repoSlug: string | null;
-    headRepoSlug: string | null;
-    trunkBranch: string;
-    headBranch: string | null;
-    expectedHeadSha: string | null;
-  };
+  verified: HarvestCommitScope & BranchCleanupTarget;
   stages: readonly HarvestStageReceipt[];
   nowIso: string;
 }): HarvestStageReceipt[] {
   const { operationId, prior, verified, stages, nowIso } = input;
-  const branch = parseHarvestBranch(verified.headBranch);
   if (
     prior.prNumber !== null ||
-    verified.prNumber === null ||
     !canCorrelateHarvestIntake(prior, verified) ||
     !["accepted", "running", "delivery_pending", "completed"].includes(
       prior.status,
     ) ||
-    !isSameRepository(verified.repoSlug, verified.headRepoSlug) ||
-    verified.headBranch === verified.trunkBranch ||
-    branch?.featureId !== prior.featureId ||
-    (branch.phaseId !== null && branch.phaseId !== prior.phaseId) ||
-    !fullGitObjectId.test(verified.expectedHeadSha ?? "")
+    !hasVerifiedBranchCleanupTarget(verified)
   ) {
     return [];
   }

@@ -359,7 +359,8 @@ export interface OperationsStorePort {
   /**
    * Persist the full, nonempty set of initial receipts in one fenced write.
    * Require all stages for the supplied phase IDs and the operation's terminal event.
-   * Validate initial statuses against the resolved targets with isCompleteHarvestStagePlan.
+   * Derive cleanup eligibility from current stored pull request facts under the fence.
+   * Use hasVerifiedBranchCleanupTarget and validate the plan with isCompleteHarvestStagePlan.
    * If the operation names a phase, require that phase alone.
    * A replay with the same phase and stage keys preserves every receipt.
    * Reject incomplete or changed plans without writing a partial batch.
@@ -369,6 +370,7 @@ export interface OperationsStorePort {
     nowIso: string;
     phaseIds: readonly string[];
     hasSlackTarget: boolean;
+    /** Target used to build the proposed plan. Stored facts decide eligibility. */
     hasRemoteBranchTarget: boolean;
     stages: readonly HarvestStagePlanEntry[];
   }): FencedWrite | { ok: false; code: "HARVEST_PLAN_CONFLICT" };
@@ -378,20 +380,30 @@ export interface OperationsStorePort {
    * Write the receipt and derive operation status in the same transaction.
    * Use deriveHarvestTerminalStatus with the terminal event and full saved phase plan.
    * Set updatedAt to nowIso and set completedAt to nowIso for a terminal status.
+   * Require a failure notice when the phase's saved Slack receipt has a target.
+   * Upsert harvest_gate_failed by project, operation and phase in the gate failure transaction.
+   * A fenced replay of the recorded gate failure preserves the receipt and notice.
    * Keep retryable_failure receipts and their errors eligible for a new claim after lease expiry.
    * Set neither the receipt nor the operation completion time for a retryable failure.
    * Exclude terminal operations from recovery scans and claims.
    */
-  transitionHarvestStage(input: {
-    fence: LeaseFence;
-    nowIso: string;
-    phaseKey: string;
-    stage: HarvestStageName;
-    status: HarvestStageStatus;
-    evidenceJson?: string | null;
-    error?: string | null;
-    linkedRunId?: number | null;
-  }):
+  transitionHarvestStage(
+    input: {
+      fence: LeaseFence;
+      nowIso: string;
+      phaseKey: string;
+      stage: HarvestStageName;
+      evidenceJson?: string | null;
+      error?: string | null;
+      linkedRunId?: number | null;
+    } & (
+      | { status: "gate_failed"; failureNotice: OutboxMessage | null }
+      | {
+          status: Exclude<HarvestStageStatus, "gate_failed">;
+          failureNotice?: never;
+        }
+    ),
+  ):
     | FencedWrite
     | {
         ok: false;

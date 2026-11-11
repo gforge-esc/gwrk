@@ -14,6 +14,7 @@ import {
   canCorrelateHarvestIntake,
   deriveHarvestTerminalStatus,
   evaluateBranchCleanupSafety,
+  hasVerifiedBranchCleanupTarget,
   isCompleteHarvestStagePlan,
   isValidHarvestStageTransition,
   planHarvestStages,
@@ -29,6 +30,7 @@ import type {
   OutboxItem,
   WorkerExecutionPort,
 } from "./operations-port.js";
+import type { VcsPort } from "./vcs-port.js";
 
 type RecoveryStore = Pick<
   OperationsStorePort,
@@ -462,7 +464,6 @@ function restoreRecoveryStore(persisted: {
       nowIso,
       phaseIds,
       hasSlackTarget,
-      hasRemoteBranchTarget,
       stages: plan,
     }) {
       const row = harvests.find((row) => row.operationId === fence.operationId);
@@ -476,7 +477,7 @@ function restoreRecoveryStore(persisted: {
           terminalEvent: row.terminalEvent,
           phaseIds,
           hasSlackTarget,
-          hasRemoteBranchTarget,
+          hasRemoteBranchTarget: hasVerifiedBranchCleanupTarget(row),
           stages: plan,
         })
       ) {
@@ -517,6 +518,7 @@ function restoreRecoveryStore(persisted: {
       phaseKey,
       stage,
       status,
+      failureNotice,
       evidenceJson,
       error,
     }) {
@@ -531,11 +533,67 @@ function restoreRecoveryStore(persisted: {
         (entry) => entry.phaseKey === phaseKey && entry.stage === stage,
       );
       if (!receipt) return { ok: false, code: "HARVEST_STAGE_UNPLANNED" };
+      const invalid = {
+        ok: false,
+        code: "HARVEST_STAGE_TRANSITION_INVALID",
+      } as const;
+      if (stage === "gate_verify" && status === "gate_failed") {
+        const slack = planned.find(
+          (entry) =>
+            entry.phaseKey === phaseKey && entry.stage === "slack_delivery",
+        );
+        const hasSlackTarget =
+          slack !== undefined && slack.status !== "skipped_no_target";
+        if (hasSlackTarget !== (failureNotice != null)) return invalid;
+        if (
+          failureNotice &&
+          (failureNotice.eventType !== "harvest_gate_failed" ||
+            failureNotice.ownerKind !== "harvest" ||
+            failureNotice.ownerOperationId !== row.operationId ||
+            failureNotice.projectId !== row.projectId ||
+            failureNotice.recipient.projectId !== row.projectId ||
+            failureNotice.featureId !== row.featureId ||
+            failureNotice.phaseId !== phaseKey)
+        ) {
+          return invalid;
+        }
+        if (row.status === "gate_failed" && receipt.status === "gate_failed") {
+          return result;
+        }
+      }
       if (
         !resumableHarvests.includes(row.status) ||
         !isValidHarvestStageTransition(receipt, status)
       ) {
-        return { ok: false, code: "HARVEST_STAGE_TRANSITION_INVALID" };
+        return invalid;
+      }
+      if (failureNotice) {
+        const dedupeKey = JSON.stringify([
+          "harvest_gate_failed",
+          row.operationId,
+          phaseKey,
+        ]);
+        if (
+          !outboxItems.some(
+            (item) =>
+              item.projectId === row.projectId && item.dedupeKey === dedupeKey,
+          )
+        ) {
+          outboxItems.push({
+            ...failureNotice,
+            dedupeKey,
+            status: "pending",
+            workspaceId: null,
+            channelId: null,
+            threadTs: null,
+            messageTs: null,
+            attemptCount: 0,
+            lastError: null,
+            createdAt: nowIso,
+            updatedAt: nowIso,
+            deliveredAt: null,
+          });
+        }
       }
       Object.assign(receipt, {
         status,
@@ -856,7 +914,9 @@ describe("durable recovery store contract", () => {
 
   it("persists a complete phase plan before work and preserves progress after takeover", () => {
     const store = restoreRecoveryStore({
-      harvests: [harvest("planned", { phaseId: null })],
+      harvests: [
+        harvest("planned", { phaseId: null, headBranch: `feat/${featureId}` }),
+      ],
       stages: [],
       outboxItems: [],
     });
@@ -1021,7 +1081,7 @@ describe("durable recovery store contract", () => {
         terminalEvent: "merged" as const,
         phaseIds: [phaseId],
         hasSlackTarget: false,
-        hasRemoteBranchTarget: false,
+        hasRemoteBranchTarget: true,
       };
       expect(
         store.initializeHarvestStages({
@@ -1038,7 +1098,9 @@ describe("durable recovery store contract", () => {
           nowIso,
           phaseKey: phaseId,
           stage,
-          status,
+          ...(status === "gate_failed"
+            ? { status, failureNotice: null }
+            : { status }),
         }),
       ).toEqual({ ok: false, code: "HARVEST_STAGE_TRANSITION_INVALID" });
       expect(store.snapshot()).toEqual(before);
@@ -1487,8 +1549,11 @@ describe("persisted harvest intake contract", () => {
 });
 
 it("resumes a persisted retryable sync failure after lease expiry", () => {
+  const secondPhase = "phase-02";
   const initial = restoreRecoveryStore({
-    harvests: [harvest("retryable")],
+    harvests: [
+      harvest("retryable", { phaseId: null, headBranch: `feat/${featureId}` }),
+    ],
     stages: [],
     outboxItems: [],
   });
@@ -1501,23 +1566,37 @@ it("resumes a persisted retryable sync failure after lease expiry", () => {
   if (!first) throw new Error("Expected first lease");
   const plan = {
     terminalEvent: "merged" as const,
-    phaseIds: [phaseId],
+    phaseIds: [phaseId, secondPhase],
     hasSlackTarget: false,
     hasRemoteBranchTarget: true,
   };
+  const stages = planHarvestStages(plan);
   expect(
     initial.initializeHarvestStages({
       ...plan,
       fence: first.fence,
       nowIso,
-      stages: planHarvestStages(plan),
+      stages,
     }),
   ).toEqual({ ok: true });
+  for (const { phaseKey, stage } of stages.filter(
+    (entry) => entry.phaseKey === phaseId && entry.initialStatus === "pending",
+  )) {
+    expect(
+      initial.transitionHarvestStage({
+        fence: first.fence,
+        nowIso,
+        phaseKey,
+        stage,
+        status: "succeeded",
+      }),
+    ).toEqual({ ok: true });
+  }
   expect(
     initial.transitionHarvestStage({
       fence: first.fence,
       nowIso,
-      phaseKey: phaseId,
+      phaseKey: secondPhase,
       stage: "git_sync",
       status: "retryable_failure",
       error: "transport timeout",
@@ -1541,26 +1620,31 @@ it("resumes a persisted retryable sync failure after lease expiry", () => {
     leaseExpiresAt: "2026-11-11T12:02:00.000Z",
   });
   expect(next?.fence.leaseEpoch).toBe(first.fence.leaseEpoch + 1);
-  expect(next?.stages.filter(({ stage }) => stage !== "git_sync")).toEqual(
-    initial.snapshot().stages.filter(({ stage }) => stage !== "git_sync"),
+  const firstPhaseReceipts = initial
+    .snapshot()
+    .stages.filter(({ phaseKey }) => phaseKey === phaseId);
+  expect(next?.stages.filter(({ phaseKey }) => phaseKey === phaseId)).toEqual(
+    firstPhaseReceipts,
   );
   expect(next?.stages).toContainEqual(
     expect.objectContaining({
       stage: "git_sync",
+      phaseKey: secondPhase,
       status: "retryable_failure",
       error: "transport timeout",
       completedAt: null,
     }),
   );
   if (!next) throw new Error("Expected retry after lease expiry");
-  for (const { stage } of next.stages.filter(
-    ({ status }) => status !== "skipped_no_target",
+  for (const { phaseKey, stage } of next.stages.filter(
+    (entry) =>
+      entry.phaseKey === secondPhase && entry.status !== "skipped_no_target",
   )) {
     expect(
       restarted.transitionHarvestStage({
         fence: next.fence,
         nowIso: leaseExpiresAt,
-        phaseKey: phaseId,
+        phaseKey,
         stage,
         status: "succeeded",
       }),
@@ -1572,12 +1656,192 @@ it("resumes a persisted retryable sync failure after lease expiry", () => {
       completedAt: leaseExpiresAt,
     }),
   ]);
+  expect(
+    restarted.snapshot().stages.filter(({ phaseKey }) => phaseKey === phaseId),
+  ).toEqual(firstPhaseReceipts);
 });
 
-it("schedules cleanup after a completed offline harvest receives verified pull request evidence", () => {
+it("rejects a stale cleanup skip when pull request evidence arrives after lease claim", () => {
+  const local = harvestIntake("offline-claimed", offline);
+  if (!local.target.accepted) throw new Error("Expected offline operation");
+  const initial = restoreRecoveryStore({
+    harvests: [...local.target.operations],
+    stages: [],
+    outboxItems: [],
+  });
+  const claim = initial.claimHarvestLease({
+    operationId: "offline-claimed",
+    leaseOwner: "worker",
+    nowIso,
+    leaseExpiresAt,
+  });
+  if (!claim) throw new Error("Expected offline lease");
+  const plan = {
+    terminalEvent: "merged" as const,
+    phaseIds: [phaseId],
+    hasSlackTarget: false,
+    hasRemoteBranchTarget: false,
+  };
+  const intake = restoreHarvestIntake(initial.snapshot());
+  expect(
+    intake.store.recordHarvestIntake(harvestIntake("verified-pull")),
+  ).toMatchObject({
+    ok: true,
+    operations: [{ ...claim.fence, prNumber: 42, leaseExpiresAt }],
+  });
+  const persisted = intake.snapshot();
+  const store = restoreRecoveryStore({ ...persisted, outboxItems: [] });
+  const init = { ...plan, fence: claim.fence, nowIso };
+  expect(
+    store.initializeHarvestStages({
+      ...init,
+      stages: planHarvestStages(plan),
+    }),
+  ).toEqual({ ok: false, code: "HARVEST_PLAN_CONFLICT" });
+  expect(store.snapshot().stages).toEqual([]);
+  const current = persisted.harvests.find(
+    ({ operationId }) => operationId === claim.fence.operationId,
+  );
+  if (!current) throw new Error("Expected persisted operation");
+  expect(current).toMatchObject({
+    headRepoSlug: "acme/a",
+    expectedHeadSha: sha,
+  });
+  const currentPlan = {
+    ...plan,
+    hasRemoteBranchTarget: hasVerifiedBranchCleanupTarget(current),
+  };
+  expect(
+    store.initializeHarvestStages({
+      ...init,
+      ...currentPlan,
+      stages: planHarvestStages(currentPlan),
+    }),
+  ).toEqual({ ok: true });
+  expect(store.snapshot().stages).toContainEqual(
+    expect.objectContaining({ stage: "branch_cleanup", status: "pending" }),
+  );
+});
+
+it.each([true, false])(
+  "persists gate failure atomically with its notice when a Slack target exists (%s)",
+  (hasSlackTarget) => {
+    const operationId = "gate-failure";
+    const notice = outbox("gate-notice", "pending", {
+      ownerOperationId: operationId,
+      eventType: "harvest_gate_failed",
+      payload: { text: "Harvest gate failed" },
+    });
+    const initial = restoreRecoveryStore({
+      harvests: [
+        harvest(operationId, {
+          recipient: hasSlackTarget ? notice.recipient : null,
+        }),
+      ],
+      stages: [],
+      outboxItems: [],
+    });
+    const claim = initial.claimHarvestLease({
+      operationId,
+      leaseOwner: "worker",
+      nowIso,
+      leaseExpiresAt,
+    });
+    if (!claim) throw new Error("Expected harvest lease");
+    const plan = {
+      terminalEvent: "merged" as const,
+      phaseIds: [phaseId],
+      hasSlackTarget,
+      hasRemoteBranchTarget: true,
+    };
+    expect(
+      initial.initializeHarvestStages({
+        ...plan,
+        fence: claim.fence,
+        nowIso,
+        stages: planHarvestStages(plan),
+      }),
+    ).toEqual({ ok: true });
+    const transition = {
+      fence: claim.fence,
+      nowIso,
+      phaseKey: phaseId,
+      stage: "gate_verify" as const,
+      status: "gate_failed" as const,
+      failureNotice: hasSlackTarget ? notice : null,
+    };
+    if (hasSlackTarget) {
+      const before = initial.snapshot();
+      for (const failureNotice of [null, { ...notice, phaseId: "phase-02" }]) {
+        expect(
+          initial.transitionHarvestStage({ ...transition, failureNotice }),
+        ).toEqual({ ok: false, code: "HARVEST_STAGE_TRANSITION_INVALID" });
+      }
+      expect(initial.snapshot()).toEqual(before);
+    }
+    expect(initial.transitionHarvestStage(transition)).toEqual({ ok: true });
+    const restarted = restoreRecoveryStore(initial.snapshot());
+    expect(restarted.listRecoverableOutboxItems({ projectId, nowIso })).toEqual(
+      hasSlackTarget
+        ? [
+            expect.objectContaining({
+              eventType: "harvest_gate_failed",
+              ownerOperationId: operationId,
+              phaseId,
+              status: "pending",
+            }),
+          ]
+        : [],
+    );
+    expect(restarted.snapshot().harvests).toEqual([
+      expect.objectContaining({ status: "gate_failed", completedAt: nowIso }),
+    ]);
+    expect(restarted.snapshot().stages).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          stage: "gate_verify",
+          status: "gate_failed",
+        }),
+        expect.objectContaining({
+          stage: "learning_record",
+          status: "pending",
+        }),
+      ]),
+    );
+    expect(
+      restarted.listRecoverableHarvests({ nowIso: leaseExpiresAt }),
+    ).toEqual([]);
+    expect(
+      restarted.transitionHarvestStage({
+        fence: claim.fence,
+        nowIso,
+        phaseKey: phaseId,
+        stage: "learning_record",
+        status: "succeeded",
+      }),
+    ).toEqual({ ok: false, code: "HARVEST_STAGE_TRANSITION_INVALID" });
+    expect(
+      restarted.transitionHarvestStage({
+        ...transition,
+        failureNotice: hasSlackTarget
+          ? { ...notice, outboxId: "duplicate", dedupeKey: "duplicate" }
+          : null,
+      }),
+    ).toEqual({ ok: true });
+    expect(restarted.snapshot()).toEqual(initial.snapshot());
+  },
+);
+
+it("schedules cleanup after a completed offline harvest receives verified pull request evidence", async () => {
   const local = harvestIntake("offline-complete", offline);
   if (!local.target.accepted) throw new Error("Expected offline operation");
   const [operation] = local.target.operations;
+  const originalLease = {
+    leaseOwner: "offline-worker",
+    leaseEpoch: 1,
+    leaseExpiresAt,
+  };
+  const cleanupLeaseExpiresAt = "2026-11-11T12:02:00.000Z";
   const receipts = planHarvestStages({
     phaseIds: [phaseId],
     terminalEvent: "merged",
@@ -1592,7 +1856,14 @@ it("schedules cleanup after a completed offline harvest receives verified pull r
     }),
   );
   const intake = restoreHarvestIntake({
-    harvests: [{ ...operation, status: "completed", completedAt: nowIso }],
+    harvests: [
+      {
+        ...operation,
+        ...originalLease,
+        status: "completed",
+        completedAt: nowIso,
+      },
+    ],
     stages: receipts,
   });
   const pull = harvestIntake("verified-pull");
@@ -1601,6 +1872,7 @@ it("schedules cleanup after a completed offline harvest receives verified pull r
     operations: [
       {
         operationId: operation.operationId,
+        ...originalLease,
         status: "running",
         completedAt: null,
       },
@@ -1610,11 +1882,12 @@ it("schedules cleanup after a completed offline harvest receives verified pull r
     ...intake.snapshot(),
     outboxItems: [],
   });
+  expect(restarted.listRecoverableHarvests({ nowIso })).toEqual([]);
   const next = restarted.claimHarvestLease({
     operationId: operation.operationId,
     leaseOwner: "cleanup",
-    nowIso,
-    leaseExpiresAt,
+    nowIso: leaseExpiresAt,
+    leaseExpiresAt: cleanupLeaseExpiresAt,
   });
   if (!next) throw new Error("Expected cleanup lease");
   expect(next.stages.filter(({ stage }) => stage !== "branch_cleanup")).toEqual(
@@ -1637,13 +1910,26 @@ it("schedules cleanup after a completed offline harvest receives verified pull r
       observedRemoteHeadSha: "b".repeat(40),
     }),
   ).toMatchObject({ action: "block_cleanup", code: "TIP_MOVED" });
+  const vcs: Pick<VcsPort, "deleteRemoteBranchAtTip"> = {
+    deleteRemoteBranchAtTip: vi.fn(async () => ({ deleted: true })),
+  };
+  const decision = evaluateBranchCleanupSafety({
+    ...target,
+    observedRemoteHeadSha: sha,
+  });
+  if (decision.action !== "delete_at_tip")
+    throw new Error("Expected safe cleanup");
   expect(
-    evaluateBranchCleanupSafety({ ...target, observedRemoteHeadSha: sha }),
-  ).toMatchObject({ action: "delete_at_tip" });
+    await vcs.deleteRemoteBranchAtTip(
+      "/repos/a",
+      decision.branch,
+      decision.expectedSha,
+    ),
+  ).toEqual({ deleted: true });
   expect(
     restarted.transitionHarvestStage({
       fence: next.fence,
-      nowIso,
+      nowIso: leaseExpiresAt,
       phaseKey: phaseId,
       stage: "branch_cleanup",
       status: "succeeded",
@@ -1666,11 +1952,19 @@ it("schedules cleanup after a completed offline harvest receives verified pull r
   const persisted = final.snapshot();
   expect(persisted.stages).toEqual(restarted.snapshot().stages);
   expect(
+    persisted.stages.filter(({ stage }) => stage !== "branch_cleanup"),
+  ).toEqual(receipts.filter(({ stage }) => stage !== "branch_cleanup"));
+  expect(vcs.deleteRemoteBranchAtTip).toHaveBeenCalledExactlyOnceWith(
+    "/repos/a",
+    `feat/${featureId}-${phaseId}`,
+    sha,
+  );
+  expect(
     restoreRecoveryStore({
       ...persisted,
       outboxItems: [],
     }).listRecoverableHarvests({
-      nowIso: leaseExpiresAt,
+      nowIso: cleanupLeaseExpiresAt,
     }),
   ).toEqual([]);
 });
