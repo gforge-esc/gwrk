@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { createHash, createHmac } from "node:crypto";
+import { stripVTControlCharacters } from "node:util";
 
 export type ModelRole = "define" | "implement" | "review";
 export type BlindedOption = "A" | "B";
@@ -611,10 +612,18 @@ function assertUniqueJsonKeys(record: string): void {
 }
 
 function scanEmbeddedJson(
-  text: string,
+  raw: string,
   knownSecrets: readonly string[],
   isHeaderCollection = false,
 ): void {
+  const text = stripVTControlCharacters(raw);
+  if (
+    text !== raw &&
+    (containsSensitiveText(text) ||
+      knownSecrets.some((secret) => Boolean(secret) && text.includes(secret)))
+  ) {
+    throw new Error(secretMaterialMessage);
+  }
   const openings = /["[{]/g;
   for (
     let opening = openings.exec(text);

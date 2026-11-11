@@ -619,6 +619,32 @@ describe("credential guard", () => {
     );
   });
 
+  it.each([
+    [
+      [
+        {
+          name: "Authorization",
+          value: "Basic Zml4dHVyZQ==",
+          source: undefined,
+        },
+      ],
+    ],
+    [[["Set-Cookie", "session=fixture-session"]]],
+  ])("rejects credential headers in colored inspection output", (headers) => {
+    const sanitizedOutput = inspect({ headers }, { colors: true });
+    expect(() => assertNoSecretMaterial({ sanitizedOutput })).toThrow(
+      /secret material/i,
+    );
+  });
+
+  it("allows a noncredential header in colored inspection output", () => {
+    const sanitizedOutput = inspect(
+      { headers: [["Content-Type", "text/plain"]] },
+      { colors: true },
+    );
+    expect(() => assertNoSecretMaterial({ sanitizedOutput })).not.toThrow();
+  });
+
   it("allows inspected header records with noncredential values", () => {
     const sanitizedOutput = inspect({
       headers: [
