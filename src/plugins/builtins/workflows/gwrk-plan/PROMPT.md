@@ -23,14 +23,10 @@
 - If the amendment only changes existing phases (e.g., correcting a file path), make the minimal edit — do NOT regenerate the entire plan.
 </scope_constraints>
 
-## Branch Discipline
+## Worktree
 
-> [!IMPORTANT]
-> **Definitional work (specs, plans) lives on `develop`.** Feature branches are created only at `/implement` time. This keeps all specs and plans visible to each other for cross-referencing.
-
-- Verify you are on `develop` before starting: `git rev-parse --abbrev-ref HEAD` should output `develop`.
-- If not on `develop`, switch: `git checkout develop`.
-- Do NOT create feature branches during `/specify` or `/plan`.
+- Use the current worktree and the feature directory supplied by the command.
+- Keep the current branch while writing the plan.
 
 ## Architecture Reference
 
@@ -76,18 +72,10 @@ Reference the project's own architecture documentation and existing directory st
 
 ## Steps
 
-### 1. Run prerequisites check
-// turbo
-```bash
-.specify/scripts/bash/check-prerequisites.sh --json
-```
-- PASS: `FEATURE_DIR` contains spec.md.
-[type: gwrk-native]
-- FAIL: Stop. Run `gwrk define spec <feature>` first.
-[/type]
-[type: generic]
-- FAIL: Stop. Ensure a valid specification exists for the feature.
-[/type]
+### 1. Check the specification
+
+- Check that `{feature_dir}/spec.md` exists in the current worktree.
+- If the file is missing, stop and report the expected path.
 
 ### 2. Load context
 
@@ -101,7 +89,6 @@ Reference the project's own architecture documentation and existing directory st
 [type: generic]
 - Read the project's architecture and planning documents to understand the technical context.
 [/type]
-- Read `.specify/templates/plan-template.md` (required — output skeleton).
 
 ### 2a. Cross-reference sister specs (MANDATORY)
 
@@ -152,8 +139,7 @@ Review the project's governance rules in the `.rules/` or `.gwrk/rules/` directo
 
 ### 4. Generate plan.md
 
-Produce `{feature_dir}/plan.md` using the template at `.specify/templates/plan-template.md`.
-Fill every `{{PLACEHOLDER}}` token. Do not invent sections or skip any.
+Write `{feature_dir}/plan.md` in the canonical format below. Use an existing plan in the project as a formatting reference when available.
 
 <output_rules>
 - Map **every** `US-###` and `FR-###` from the spec to a phase. Unmapped items go in Deferred Items.
@@ -262,7 +248,7 @@ pnpm vitest run path/to/phase.test.ts
 - Not just type shapes — specify which service methods must exist, what they accept, what they return.
 - Write to `{feature_dir}/contracts/`.
 
-### 7. Report via notify_user
+### 7. Report the plan
 
 [type: gwrk-native]
 > "Plan created: {paths}. Next: `gwrk define tasks <feature>` to generate tasks.json and verification gates."
