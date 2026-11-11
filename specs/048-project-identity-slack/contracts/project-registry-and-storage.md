@@ -81,7 +81,7 @@ export interface SlackActionReceipt {
   phaseId: string | null;
   messageTs: string;
   actorUserId: string;
-  outcome: "executed" | "denied";
+  outcome: "claimed" | "executed" | "failed" | "uncertain";
   recordedAt: string;
 }
 
@@ -92,6 +92,8 @@ export function buildActionReceiptKey(input: {
   actionId: string;
   featureId: string;
   phaseId?: string | null;
+  workspaceId: string;
+  channelId: string;
   messageTs: string;
 }): string;
 export function validateProjectEnrollment(
@@ -99,13 +101,15 @@ export function validateProjectEnrollment(
 ): { ok: true; value: EnrolledProject } | { ok: false; error: string };
 ```
 
-`computeProjectId` keeps `MD5(remote:<slug>)` when `remoteOriginUrl` exists. `computeLegacyProjectIds` returns `MD5("path:" + projectRoot)` and `MD5(projectRoot)`. Local checkouts keep historical rows after adding or normalizing a remote URL. Domain modules stay pure and accept timestamps from callers.
+`computeProjectId` keeps `MD5(remote:<slug>)` when `remoteOriginUrl` exists. `computeLegacyProjectIds` returns `MD5("path:" + projectRoot)` and `MD5(projectRoot)`. For a repo without a remote, retain the existing Git common-directory key so linked worktrees keep one project identity. A registered path alias can recover a legacy record after a remote is added. Explicitly bind aliases to the confirmed repository before merging data. Domain modules stay pure and accept timestamps from callers.
 
 ## SQLite schema migration
 
 Source: `src/db/migrations/014-project-registry-and-composite-keys.sql`
 
 Phase: Phase 2
+
+Slack role bindings use a canonical workspace and user pair as `principalId`. The transport adapter derives both from the verified Slack event. Google bindings use the verified issuer and stable subject pair. A request body cannot establish either identity.
 
 ```sql
 ALTER TABLE projects ADD COLUMN slug TEXT;
@@ -170,7 +174,7 @@ Migration `014` also rebuilds six legacy tables with composite `project_id` keys
 | `issues` | `UNIQUE(issue_number)` | `UNIQUE(project_id, issue_number)` | Scoped per project |
 | `routing_decisions` | Unscoped `run_id` | Add `project_id TEXT` | Indexed on `(project_id, run_id)` |
 
-Before table rebuild, migration `014` assigns any remaining `NULL` `project_id` rows to an existing matching `projects.id` or a deterministic `legacy-local` project record. Existing local `projects` rows backfill `local_root = path`, `slug = name` and self plus path-hash rows in `project_aliases`. No historical rows are deleted.
+Before the rebuild, migration `014` resolves legacy rows through an existing project foreign key or an unambiguous parent key. Unattributed rows stay in a reserved `legacy-local` project with no Slack or hosted role bindings. Preserve every row and existing foreign key. Test rollback on an injected migration failure and run `PRAGMA foreign_key_check` after migration. Backfill local roots and path aliases from verified existing paths. Generate unique slugs for duplicate display names.
 
 ## Store and VCS port extensions
 
@@ -196,7 +200,11 @@ export interface ProjectRegistryPort {
   ): SlackFeatureThread | null;
   bindFeatureThread(thread: SlackFeatureThread): SlackFeatureThread;
   getActionReceipt(receiptKey: string): SlackActionReceipt | null;
-  recordActionReceipt(receipt: SlackActionReceipt): boolean;
+  claimActionReceipt(receipt: SlackActionReceipt): boolean;
+  completeActionReceipt(
+    receiptKey: string,
+    outcome: "executed" | "failed" | "uncertain",
+  ): boolean;
   close(): void;
 }
 
@@ -223,4 +231,4 @@ export function createSqliteProjectRegistryAdapter(
 ): ProjectRegistryPort;
 ```
 
-`recordActionReceipt` uses `INSERT OR IGNORE` on `receipt_key`. Replayed button clicks and reactions return `false`. `getProject` checks `projects.id` and `projects.slug`, then `projects.repo_slug` and `project_aliases.alias_id`. SQLite read helpers match canonical IDs and registered aliases without duplicating rows.
+After authorization, `claimActionReceipt` atomically inserts a unique receipt key and reports whether this caller owns the claim. Only the owner invokes the side effect. Complete the receipt after the effect returns. Reconcile a claimed or uncertain merge against the pull request before retrying. An unauthorized attempt never claims the key. `getProject` resolves one exact canonical ID, slug, repo slug or registered alias. An ambiguous alias fails closed. SQLite reads resolve aliases without duplicating rows.

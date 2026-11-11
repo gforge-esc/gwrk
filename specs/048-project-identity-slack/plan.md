@@ -71,7 +71,7 @@ flowchart LR
 |---|---|---|---|
 | TR-001 | unit | `src/domain/project-id.test.ts` | Remote origin keeps canonical hash while emitting legacy path aliases |
 | TR-002 | unit | `src/domain/slack-routing.test.ts` | Policy denies wrong workspace, channel, user, role and ambiguous DM or shared channel |
-| TR-003 | unit | `src/domain/slack-routing.test.ts` | Click-time policy denies wrong project, wrong thread and replayed action receipts |
+| TR-003 | unit | `src/domain/slack-routing.test.ts` | Click-time policy denies wrong project, workspace, thread and replayed action receipts |
 | TR-004 | unit | `src/architecture.test.ts` | New domain and port modules satisfy AST import purity rules |
 
 #### Done When
@@ -145,7 +145,7 @@ pnpm exec vitest run src/db/scoping.test.ts src/db/db.test.ts src/db/plan.test.t
 
 | ID | Type | Target | Assertion |
 |---|---|---|---|
-| TR-009 | integration | `src/server/slack-actions.test.ts` | Button actions reject wrong user, wrong project, wrong thread and replayed clicks |
+| TR-009 | integration | `src/server/slack-actions.test.ts` | Unauthorized clicks leave no claim. Concurrent replay invokes the merge port once |
 | TR-010 | unit | `src/server/slack-messages.test.ts` | Interactive payloads carry `projectId` and `rootTs` metadata |
 | TR-011 | unit | `src/server/slack-agent.test.ts` | Mentions, direct messages and reactions enforce project selection and roles |
 | TR-012 | unit | `src/server/slack-home.test.ts` | App Home lists only projects visible to the requesting Slack user |
@@ -276,7 +276,7 @@ pnpm exec vitest run src/commands/project.test.ts src/commands/status.test.ts sr
 | FR-001: Project enrollment and legacy aliases | Enroll stable repo identity, trunk, checkout, runner policy, Slack binding and legacy hashes | Phase 1, Phase 2 and Phase 6 | `TR-001`, `TR-006` and `TR-021` |
 | FR-002: Slack workspace, channel and role auth | Authorize workspace, channel, user, selector and mutation role before accepting work | Phase 1, Phase 3 and Phase 4 | `TR-002`, `TR-011` and `TR-016` |
 | FR-003: Scoped dispatch, threads and click auth | Thread replies per project feature, carry recipients and re-authorize button clicks with replay receipts | Phase 1, Phase 3, Phase 4 and Phase 5 | `TR-003`, `TR-009`, `TR-013` and `TR-017` |
-| FR-004: Local single-project compatibility | Preserve local CLI workflow via `init` and loopback defaults while denying unauthorized remote requests | Phase 2 and Phase 6 | `TR-006`, `TR-021` and `TR-023` |
+| FR-004: Local single-project compatibility | Preserve local CLI workflow via `init` and loopback defaults while denying unauthenticated hosted requests, including gateway loopback | Phase 2 and Phase 6 | `TR-006`, `TR-021` and `TR-023` |
 | FR-005: Liveness, readiness and ops separation | Separate daemon liveness, project readiness, Slack delivery and explicit operations routing | Phase 4, Phase 5 and Phase 6 | `TR-013`, `TR-019` and `TR-022` |
 | FR-006: Two-repository collision proof | Prove two repos with matching feature and branch names stay isolated across synthetic Slack faults | Phase 2 and Phase 6 | `TR-005` and `TR-024` |
 | FR-007: Downstream recipient contract and Telegram guard | Export `DeliveryRecipient` for durable dispatch and harvest while keeping Telegram disabled in pilot | Phase 4 and Phase 5 | `TR-015`, `TR-017` and `TR-018` |
@@ -285,7 +285,7 @@ pnpm exec vitest run src/commands/project.test.ts src/commands/status.test.ts sr
 
 - Upstream boundary gates: `040-pure-domain-boundary-gates` provides the AST boundary checks in `src/architecture.test.ts`.
 - Upstream port separation: `042-port-adapter-separation` separates `NotificationPort` and SQLite store handles, and blocks integration until review completes.
-- Hosted auth sibling: `041-hosted-google-signin-proof` supplies `google_sub` principals consumed by `ProjectRoleBinding` on hosted HTTP routes.
+- Hosted auth sibling: `041-hosted-google-signin-proof` proves the sign-in boundary. The hosted integration maps verified issuer and subject to `ProjectRoleBinding` before exposing HTTP routes.
 - Downstream consumers: durable dispatch and harvest consume `EnrolledProject` and `DeliveryRecipient` from `contracts/project-registry-and-storage.md`.
 
 ## Deferred items

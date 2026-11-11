@@ -85,7 +85,7 @@ export function evaluateHttpProjectAccess(input: {
   roles: readonly ProjectRoleBinding[];
   requestedProject?: string;
   localDefaultProjectId?: string;
-  isLoopback: boolean;
+  transport: "trusted_local" | "hosted";
   principal?: { principalType: "cli_token" | "google_sub"; principalId: string };
   requiredAccess: CommandAccessLevel;
 }): RouteDecision;
@@ -102,7 +102,7 @@ export function evaluateHttpProjectAccess(input: {
 | Approve, reject and ADR decide commands | `maintain` | `maintainer` |
 | Merge PR, approve buttons and reaction approval | `maintain` | `maintainer` |
 
-Direct messages and shared or multi-project channels return `AMBIGUOUS_PROJECT_SELECTION` without `requestedProject`. Click-time verification rejects mismatched `payloadProjectId` or `storedThread` with `THREAD_PROJECT_MISMATCH`. Non-null `priorReceipt` returns `ACTION_REPLAYED`.
+Direct messages and shared or multi-project channels return `AMBIGUOUS_PROJECT_SELECTION` without `requestedProject`. Click-time verification rejects mismatched `payloadProjectId` or `storedThread` with `THREAD_PROJECT_MISMATCH`. Existing receipts return `ACTION_REPLAYED`. Claim atomically before executing an approved action. Scope the claim key to project, workspace, channel and message so Slack retries cannot run the effect twice.
 
 ## Application coordinator and notification port
 
@@ -170,7 +170,7 @@ export interface ProjectRoutingService {
 }
 ```
 
-`deliverProjectEvent` loads the enrolled project from `ProjectRegistryPort`. When `opsOnly` is `true`, delivery posts to `project.slack.opsChannelId` without binding a feature thread. Feature lifecycle delivery reads `getFeatureThread(projectId, featureId)` and posts to `project.slack.channelId`. The first lifecycle receipt binds `rootTs` for that project and feature. `notifySlack` ignores `process.cwd()` config when `projectId` or `recipient` is set. Presence batching keys away queues by `(projectId, recipientUserId)` instead of workspace-wide user lists. Pilot mode disables Telegram (`reason: "disabled_in_pilot"`) and makes zero Telegram network calls.
+`deliverProjectEvent` loads the enrolled project from `ProjectRegistryPort`. When `opsOnly` is `true`, delivery posts to `project.slack.opsChannelId` without binding a feature thread. Feature lifecycle delivery reads `getFeatureThread(projectId, featureId)` and posts to `project.slack.channelId`. Serialize first-thread creation per project and feature. Persist the winning delivery receipt before sending further replies. `notifySlack` ignores `process.cwd()` config when `projectId` or `recipient` is set. Presence batching keys away queues by `(projectId, recipientUserId)` instead of workspace-wide user lists. Pilot mode disables Telegram (`reason: "disabled_in_pilot"`) and makes zero Telegram network calls.
 
 ## Dispatch, HTTP, readiness and CLI contracts
 
@@ -248,7 +248,7 @@ export interface HealthResponse {
 }
 ```
 
-`DispatchQueue` keys active, queued and historical dispatches by `(projectId, featureId, phaseId)`. Worktrees branch from `project.trunkBranch` inside `project.mirrorPath ?? project.localRoot`. `POST /api/notify` keeps `done_done` on the project feature thread unless the caller sets `opsOnly: true`. Remote requests to `/api/dispatch` and `/api/notify` without a valid project and principal return `401` or `403`. Loopback local CLI calls resolve the enrolled project for `localRoot` or the single local enrollment.
+`DispatchQueue` keys active, queued and historical dispatches by `(projectId, featureId, phaseId)`. Worktrees branch from `project.trunkBranch` inside `project.mirrorPath ?? project.localRoot`. `POST /api/notify` keeps `done_done` on the project feature thread unless the caller sets `opsOnly: true`. Hosted requests to `/api/dispatch` and `/api/notify` require a verified principal and authorized project. This applies when the gateway connects from loopback. Derive trusted local mode from listener configuration and its direct transport. Ignore caller-supplied forwarded identity and address headers outside the trusted gateway boundary. In trusted local mode, direct CLI calls resolve the enrolled project for `localRoot` or the single local enrollment.
 
 CLI enrollment and status commands follow ADR-004 (`[exit:N | Xs]` on stderr and `--format json`):
 
