@@ -31,7 +31,7 @@ it("exposes the documented smoke, repeat and judge contracts to consumers", asyn
       return {
         backend,
         requestedModel: modelId,
-        requestedEffort: effort,
+        ...(effort === undefined ? {} : { requestedEffort: effort }),
         observedModel: "unknown",
         status: "passed",
         schemaValid: true,
@@ -87,13 +87,24 @@ it("exposes the documented smoke, repeat and judge contracts to consumers", asyn
   expect(probe.requestedModel).toBe(route.modelId);
   expect(probe.requestedEffort).toBe(route.effort);
 
+  const probeWithoutEffort = await smoke.runSmokeProbe({
+    scope,
+    backend: route.backend,
+    modelId: route.modelId,
+    timeoutMs: 100,
+  });
+  expect(probeWithoutEffort).not.toHaveProperty("requestedEffort");
+
   const repeat = await runner.runFixtureRepeat({
     fixtureId: "fixture",
     role: "implement",
     repeatIndex: 0,
-    route,
+    route: { backend: route.backend, modelId: route.modelId },
   });
   expect(repeat.requestedModel).toBe(route.modelId);
+  expectTypeOf(repeat.gateChecks).toEqualTypeOf<
+    { checkId: string; passed: boolean; detail: string }[]
+  >();
 
   const result = await judge.judgeComparison(judgeRoute, {
     comparisonId: "comparison",

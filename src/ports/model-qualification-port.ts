@@ -63,7 +63,7 @@ export interface FixtureRepeatEvidence {
   requestedModel: string;
   observedModel: string;
   deterministicGatesPassed: boolean;
-  gateChecks: readonly { checkId: string; passed: boolean; detail: string }[];
+  gateChecks: { checkId: string; passed: boolean; detail: string }[];
   durationMs: number;
   retries: number;
   usage?: { tokensIn?: number; tokensOut?: number; costUsd?: number };
