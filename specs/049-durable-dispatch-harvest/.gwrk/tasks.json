@@ -17,7 +17,7 @@
           "title": "Create durable-dispatch.ts",
           "description": "NEW src/domain/durable-dispatch.ts. Define pure dispatch work keys and acceptance receipts plus lease fencing and crash rules. Tests: src/domain/durable-dispatch.test.ts",
           "status": "open",
-          "gateScript": "pnpm build\npnpm exec vitest run src/domain/durable-dispatch.test.ts src/domain/durable-harvest.test.ts src/architecture.test.ts",
+          "gateScript": "gates/phase-01.sh",
           "sp": 2
         },
         {
@@ -25,7 +25,7 @@
           "title": "Create durable-harvest.ts",
           "description": "NEW src/domain/durable-harvest.ts. Define pure harvest work keys and PR verification plus stage plans and tip checks. Tests: src/domain/durable-harvest.test.ts",
           "status": "open",
-          "gateScript": "pnpm build\npnpm exec vitest run src/domain/durable-dispatch.test.ts src/domain/durable-harvest.test.ts src/architecture.test.ts",
+          "gateScript": "gates/phase-01.sh",
           "sp": 2
         },
         {
@@ -33,7 +33,7 @@
           "title": "Modify index.ts",
           "description": "MODIFY src/domain/index.ts. Export durable dispatch and harvest schemas and policy functions",
           "status": "open",
-          "gateScript": "pnpm build\npnpm exec vitest run src/domain/durable-dispatch.test.ts src/domain/durable-harvest.test.ts src/architecture.test.ts",
+          "gateScript": "gates/phase-01.sh",
           "sp": 1
         },
         {
@@ -41,7 +41,7 @@
           "title": "Create operations-port.ts",
           "description": "NEW src/ports/operations-port.ts. Declare `ClockPort` and `OperationsStorePort` plus `GitHubHarvestPort`, `WorkerExecutionPort` and `HarvestExecutionPort`",
           "status": "open",
-          "gateScript": "pnpm build\npnpm exec vitest run src/domain/durable-dispatch.test.ts src/domain/durable-harvest.test.ts src/architecture.test.ts",
+          "gateScript": "gates/phase-01.sh",
           "sp": 2
         },
         {
@@ -49,7 +49,7 @@
           "title": "Modify vcs-port.ts",
           "description": "MODIFY src/ports/vcs-port.ts. Add detached commit checkout and ancestry checks plus remote tip lookup and compare-and-delete",
           "status": "open",
-          "gateScript": "pnpm build\npnpm exec vitest run src/domain/durable-dispatch.test.ts src/domain/durable-harvest.test.ts src/architecture.test.ts",
+          "gateScript": "gates/phase-01.sh",
           "sp": 1
         },
         {
@@ -57,7 +57,7 @@
           "title": "Modify notification-port.ts",
           "description": "MODIFY src/ports/notification-port.ts. Add `clientMetadataKey` and `reconcileDelivery` contracts for uncertain outbound sends",
           "status": "open",
-          "gateScript": "pnpm build\npnpm exec vitest run src/domain/durable-dispatch.test.ts src/domain/durable-harvest.test.ts src/architecture.test.ts",
+          "gateScript": "gates/phase-01.sh",
           "sp": 1
         }
       ],
