@@ -402,6 +402,9 @@ describe("Server E2E Integration", () => {
       expect(
         listRuns("already-harvested", fixture.projectId, fixture.db),
       ).toEqual([expect.objectContaining({ finished_at: null })]);
+      expect(listRuns("merged-feature", fixture.projectId, fixture.db)).toEqual(
+        [expect.objectContaining({ status: "merged", finished_at: closedAt })],
+      );
       expect(
         getGateResults(
           "merged-feature",
@@ -479,6 +482,45 @@ describe("Server E2E Integration", () => {
     }
   });
 
+  it("releases a dispatch slot and reports a failed ledger insert on close", async () => {
+    stubListener();
+    const fixture = await createServerFixture("listen");
+    try {
+      fixture.db.exec(`
+        CREATE TRIGGER fail_run_insert BEFORE INSERT ON runs
+        BEGIN
+          SELECT RAISE(ABORT, 'fixture ledger insert failed');
+        END;
+      `);
+      const response = await fixture.app.inject({
+        method: "POST",
+        url: "/api/dispatch",
+        payload: {
+          featureId: "ledger-start-failure",
+          phaseId: "phase-01",
+          taskId: "T001",
+        },
+      });
+      expect(response.statusCode).toBe(201);
+      const { id } = response.json();
+      await vi.waitFor(() => {
+        expect(fixture.journal().at(-1)).toMatchObject({
+          id,
+          status: "failed",
+          tasks: [expect.objectContaining({ status: "failed" })],
+        });
+      });
+      const queue = await fixture.app.inject("/api/dispatch/queue");
+      expect(queue.json().active).toEqual([]);
+      expect(ShipOrchestrator).not.toHaveBeenCalled();
+      await expect(fixture.app.close()).rejects.toThrow(
+        "fixture ledger insert failed",
+      );
+    } finally {
+      await fixture.close();
+    }
+  });
+
   it("initializes a separate Git repository with inherited repository selectors", async () => {
     const external = await createServerFixture("routes", {
       routes: ["dispatch"],
@@ -498,11 +540,11 @@ describe("Server E2E Integration", () => {
       } finally {
         vi.unstubAllEnvs();
       }
+      expect(snapshot()).toEqual(original);
       expect(existsSync(join(fixture.projectRoot, ".git"))).toBe(true);
       expect(fixtureGit(fixture.projectRoot, "log", "-1", "--format=%s")).toBe(
         "Initialize fixture",
       );
-      expect(snapshot()).toEqual(original);
     } finally {
       await Promise.all([fixture?.close(), external.close()]);
     }
