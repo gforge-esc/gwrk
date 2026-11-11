@@ -223,10 +223,24 @@ function backfillCheckoutRoots(db: Database.Database): void {
       )
       .map(({ id }) => id),
   );
+  const storedProjects = new Map(projects.map((row) => [row.id, row]));
   for (const { id, canonical, origin, storedRepo, aliases } of verified) {
+    const canonicalRow = storedProjects.get(canonical);
+    const canonicalPath = canonicalRow?.path;
+    const canonicalSuffix = `#${canonical}`;
+    const missingCanonicalCheckout =
+      canonicalPath !== undefined &&
+      !fs.existsSync(canonicalPath) &&
+      (!canonicalPath.endsWith(canonicalSuffix) ||
+        !fs.existsSync(canonicalPath.slice(0, -canonicalSuffix.length)));
+    const hasCanonicalOwner =
+      remoteOwners.has(canonical) ||
+      (origin !== null &&
+        missingCanonicalCheckout &&
+        normalizeRegistryRepo(canonicalRow?.github_repo ?? null) === origin);
     if (
       id !== canonical &&
-      remoteOwners.has(canonical) &&
+      hasCanonicalOwner &&
       origin === storedRepo &&
       aliases.includes(id) &&
       canonicalProjectId(db, canonical) === canonical

@@ -674,6 +674,35 @@ describe("Project registry upgrade", () => {
     }
   });
 
+  it("links verified legacy runs when the canonical checkout moved", () => {
+    const checkout = join(root, "current-checkout");
+    execFileSync("git", ["init", "--quiet", checkout]);
+    execFileSync("git", [
+      "-C", checkout, "remote", "add", "origin", "git@github.com:example/alpha.git",
+    ]);
+    const facts = discoverGitIdentityFacts(checkout);
+    const canonical = computeProjectId(facts);
+    const [legacyId] = computeLegacyProjectIds(facts);
+    const upgraded = upgrade((legacy) => {
+      const insert = legacy.prepare(
+        "INSERT INTO projects (id, name, path, github_repo) VALUES (?, ?, ?, ?)",
+      );
+      insert.run(canonical, "Alpha", join(root, "old-checkout"), "example/alpha");
+      insert.run(legacyId, "Alpha legacy", checkout, "example/alpha");
+      legacy
+        .prepare("INSERT INTO runs (project_id, feature_id, command) VALUES (?, 'shared', 'ship')")
+        .run(legacyId);
+    });
+    try {
+      expect(listRuns("shared", canonical, upgraded)).toMatchObject([
+        { project_id: legacyId, command: "ship" },
+      ]);
+      expect(upgraded.pragma("foreign_key_check")).toEqual([]);
+    } finally {
+      upgraded.close();
+    }
+  });
+
   it("keeps a compression-only path hash out of a new checkout owner's scope", () => {
     const checkout = join(root, "compression-checkout");
     execFileSync("git", ["init", "--quiet", checkout], { stdio: "ignore" });

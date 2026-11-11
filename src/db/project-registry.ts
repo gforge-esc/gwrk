@@ -653,11 +653,14 @@ export function createProjectRegistry(
     },
     setRoleBinding(input) {
       const binding = ProjectRoleBindingSchema.parse(input);
-      db.prepare(`
-        INSERT INTO project_role_bindings (project_id, principal_type, principal_id, role)
-        VALUES (@projectId, @principalType, @principalId, @role)
-        ON CONFLICT(project_id, principal_type, principal_id) DO UPDATE SET role = excluded.role
-      `).run({ ...binding, projectId: requireEnrolled(binding.projectId) });
+      db.transaction(() => {
+        const projectId = requireEnrolled(binding.projectId);
+        db.prepare(`
+          INSERT INTO project_role_bindings (project_id, principal_type, principal_id, role)
+          VALUES (@projectId, @principalType, @principalId, @role)
+          ON CONFLICT(project_id, principal_type, principal_id) DO UPDATE SET role = excluded.role
+        `).run({ ...binding, projectId });
+      }).immediate();
     },
     listRoleBindings(projectId) {
       return db

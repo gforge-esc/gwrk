@@ -26,6 +26,7 @@ import * as database from "./index.js";
 import { createProjectRegistry } from "./project-registry.js";
 import {
   type ProjectRecord,
+  ensureCheckoutProjectId,
   finishRun,
   getStats,
   listCheckoutRuns,
@@ -38,6 +39,40 @@ import {
 } from "./runs.js";
 
 const TEST_PROJECT_ID = "test-project-id";
+
+it("keeps the verified local run owner after removing its first origin", () => {
+  const checkout = mkdtempSync(join(tmpdir(), "gwrk-removed-origin-"));
+  const db = database.getTestDb();
+  const git = (...args: string[]) =>
+    execFileSync("git", ["-C", checkout, ...args]);
+  try {
+    git("init", "--quiet");
+    const localId = ensureCheckoutProjectId(checkout, db);
+    const first = startRun(
+      { feature_id: "shared", command: "first", project_id: localId },
+      db,
+    );
+    git("remote", "add", "origin", "git@github.com:example/alpha.git");
+    expect(ensureCheckoutProjectId(checkout, db)).toBe(localId);
+    git("remote", "remove", "origin");
+    expect(listCheckoutRuns("shared", checkout, db)).toMatchObject([
+      { id: first },
+    ]);
+    expect(ensureCheckoutProjectId(checkout, db)).toBe(localId);
+    const second = startRun(
+      { feature_id: "shared", command: "second", project_id: localId },
+      db,
+    );
+    expect(
+      listCheckoutRuns("shared", checkout, db).map(({ id }) => id),
+    ).toEqual([second, first]);
+    git("remote", "add", "origin", "git@github.com:example/beta.git");
+    expect(listCheckoutRuns("shared", checkout, db)).toEqual([]);
+  } finally {
+    db.close();
+    rmSync(checkout, { recursive: true, force: true });
+  }
+});
 
 describe("runs db", () => {
   let db: Database.Database;

@@ -148,8 +148,45 @@ function resolveCheckoutOwner(conn: Database.Database, root: string) {
       .filter((repo) => repo !== null);
   }
 
+  function sharesGitDirectory(id: string): boolean {
+    if (!facts.gitCommonDir) return false;
+    const local = findProject.get(id);
+    const commonDir = realpathSync(facts.gitCommonDir);
+    return [local?.path, local?.local_root, local?.mirror_path].some(
+      (storedRoot) => {
+        if (!storedRoot) return false;
+        const storedFacts = discoverStoredRepository(
+          storedRoot,
+          id,
+          id === localGitId,
+        );
+        if (
+          !storedFacts?.gitCommonDir ||
+          realpathSync(storedFacts.gitCommonDir) !== commonDir
+        )
+          return false;
+        const storedOrigin = normalizeRegistryRepo(
+          storedFacts.remoteOriginUrl ?? null,
+        );
+        return (
+          storedOrigin === null || computeProjectId(storedFacts) === computedId
+        );
+      },
+    );
+  }
+
+  let checkoutOrigin = origin;
+  if (!origin && computedId === localGitId && sharesGitDirectory(checkoutId)) {
+    const stored = new Set([
+      ...storedRepos(computedId),
+      ...storedRepos(checkoutId),
+    ]);
+    if (stored.size === 1)
+      checkoutOrigin = stored.values().next().value ?? null;
+  }
+
   function hasConflictingRepo(id: string): boolean {
-    return storedRepos(id).some((repo) => repo !== origin);
+    return storedRepos(id).some((repo) => repo !== checkoutOrigin);
   }
 
   if (
@@ -194,32 +231,7 @@ function resolveCheckoutOwner(conn: Database.Database, root: string) {
     !hasConflictingRepo(localGitId) &&
     !hasConflictingRepo(localOwner)
   ) {
-    const local = findProject.get(localOwner);
-    const commonDir = realpathSync(facts.gitCommonDir);
-    const sharesRepository = [
-      local?.path,
-      local?.local_root,
-      local?.mirror_path,
-    ].some((storedRoot) => {
-      if (!storedRoot) return false;
-      const storedFacts = discoverStoredRepository(
-        storedRoot,
-        localOwner,
-        localOwner === localGitId,
-      );
-      if (
-        !storedFacts?.gitCommonDir ||
-        realpathSync(storedFacts.gitCommonDir) !== commonDir
-      )
-        return false;
-      const storedOrigin = normalizeRegistryRepo(
-        storedFacts.remoteOriginUrl ?? null,
-      );
-      return (
-        storedOrigin === null || computeProjectId(storedFacts) === computedId
-      );
-    });
-    if (sharesRepository) {
+    if (sharesGitDirectory(localOwner)) {
       const unboundLocal = storedRepos(localOwner).length === 0;
       return resolved(localOwner, unboundLocal ? localOwner : undefined);
     }

@@ -757,6 +757,95 @@ describe("Project registry storage", () => {
     }
   });
 
+  it("serializes a role downgrade with enrollment on a second connection", () => {
+    const checkout = join(root, "role-transition");
+    const dbPath = join(root, "role-transition.sqlite");
+    const db = openDatabase({ dbPath });
+    const other = openDatabase({ dbPath });
+    const registry = createSqliteProjectRegistryAdapter({ db });
+    const remoteRegistry = createSqliteProjectRegistryAdapter({ db: other });
+    try {
+      execFileSync("git", ["init", "--quiet", checkout]);
+      const localId = resolveProjectId(checkout);
+      const local = {
+        ...project,
+        projectId: localId,
+        localRoot: checkout,
+        repoSlug: null,
+        legacyProjectIds: [],
+      };
+      registry.enrollProject(local);
+      const binding = {
+        projectId: localId,
+        principalId: "U1",
+        principalType: "slack_user" as const,
+        role: "maintainer" as const,
+      };
+      registry.setRoleBinding(binding);
+      execFileSync("git", [
+        "-C",
+        checkout,
+        "remote",
+        "add",
+        "origin",
+        "git@github.com:example/alpha.git",
+      ]);
+      const remoteId = resolveProjectId(checkout);
+      const enroll = () =>
+        remoteRegistry.enrollProject({
+          ...local,
+          projectId: remoteId,
+          repoSlug: "example/alpha",
+        });
+      other.pragma("busy_timeout = 0");
+      let raced = false;
+      let writerWasLocked = false;
+      const prepare = db.prepare.bind(db);
+      const spy = vi.spyOn(db, "prepare").mockImplementation(((sql: string) => {
+        const statement = prepare(sql);
+        if (
+          sql.includes(
+            "VALUES (@projectId, @principalType, @principalId, @role)",
+          )
+        ) {
+          const run = statement.run.bind(statement);
+          vi.spyOn(statement, "run").mockImplementation((...args) => {
+            raced = true;
+            try {
+              enroll();
+            } catch (error) {
+              if ((error as Database.SqliteError).code !== "SQLITE_BUSY")
+                throw error;
+              writerWasLocked = true;
+            }
+            return run(...args);
+          });
+        }
+        return statement;
+      }) as typeof db.prepare);
+      try {
+        registry.setRoleBinding({ ...binding, role: "viewer" });
+      } finally {
+        spy.mockRestore();
+      }
+      expect.soft(raced).toBe(true);
+      expect.soft(writerWasLocked).toBe(true);
+      if (writerWasLocked) enroll();
+      for (const id of [localId, remoteId]) {
+        expect
+          .soft(remoteRegistry.listRoleBindings(id))
+          .toMatchObject([{ role: "viewer" }]);
+      }
+      registry.setRoleBinding({ ...binding, role: "operator" });
+      expect(remoteRegistry.listRoleBindings(remoteId)).toMatchObject([
+        { role: "operator" },
+      ]);
+    } finally {
+      other.close();
+      db.close();
+    }
+  });
+
   it("transitions a verified local enrollment to its remote identity", () => {
     const checkout = mkdtempSync(join(tmpdir(), "gwrk-enrollment-"));
     const dbPath = join(root, "transition.sqlite");
