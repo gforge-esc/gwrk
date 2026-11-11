@@ -1,6 +1,6 @@
 # Architecture-aware policy selection
 
-Carry the project architecture and standards through initialization, workspace profiles and agent prompts. Blocked: implementation depends on unified routing and prompt delivery.
+Carry the project architecture and standards through initialization, workspace profiles and agent prompts. Blocked: shared prompt delivery depends on unified routing (043).
 
 ## Requirements
 

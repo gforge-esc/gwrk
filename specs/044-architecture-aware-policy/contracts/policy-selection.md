@@ -1,6 +1,6 @@
 # Policy selection contracts
 
-Domain policy carries `ProjectDesign` across workspace profiles and composes compatible rules without silent substitution. Initialization stays model-free while checks remain inactive until activation or assessment. Blocked: implementation depends on `043-unified-routing-prompt-delivery`.
+Domain policy carries `ProjectDesign` across workspace profiles and composes compatible rules without silent substitution. Initialization stays model-free while checks remain inactive until activation or assessment. Blocked: Phase 4 prompt delivery depends on unified routing (043).
 
 ## Profile design and workspace inheritance
 

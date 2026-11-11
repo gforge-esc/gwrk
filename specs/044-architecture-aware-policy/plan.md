@@ -1,6 +1,6 @@
 # Architecture-aware policy selection plan
 
-Preserve `ProjectDesign` across workspace profile detection and compose compatible architecture, language and framework rules. Keep `gwrk init` deterministic and model-free while checks remain inactive until explicit configuration. Blocked: implementation depends on `043-unified-routing-prompt-delivery`.
+Preserve `ProjectDesign` across workspace profile detection and compose compatible architecture, language and framework rules. Keep `gwrk init` deterministic and model-free while checks remain inactive until explicit configuration. Blocked: Phase 4 prompt delivery depends on unified routing (043).
 
 ## Target policy architecture
 
@@ -186,7 +186,7 @@ python3 scripts/architecture-context-uat.py
 
 ## Sister spec dependencies
 
-- Upstream prerequisites: `040-pure-domain-boundary-gates` supplies `tests/helpers/architecture-boundary.ts` and pure domain modules. `042-port-adapter-separation` supplies port-purity gates and scoped CLI output. `043-unified-routing-prompt-delivery` supplies unified `WorkflowRuntime` prompt transport and `<code_quality>` expansion. Implementation stays blocked until `043-unified-routing-prompt-delivery` lands.
+- Upstream prerequisites: `040-pure-domain-boundary-gates` supplies `tests/helpers/architecture-boundary.ts` and pure domain modules. `042-port-adapter-separation` supplies port-purity gates and scoped CLI output. `043-unified-routing-prompt-delivery` supplies unified `WorkflowRuntime` prompt transport and `<code_quality>` expansion. Phases 1 through 3 can run on the reviewed port separation base. Phase 4 and final merge review require unified routing and prompt delivery to land.
 - Downstream consumers: Proposal 05 updates hexagonal folder layout guidance in `src/plugins/builtins/workflows/gwrk-plan/PROMPT.md` and exposes readiness in `gwrk project discover`. Proposal 06 exercises effective policy bindings inside hermetic integration gates.
 - Preserved contracts: `specs/039-architecture-context/contracts/context.md` and `specs/043-unified-routing-prompt-delivery/contracts/routing-and-dispatch.md` remain unchanged.
 
