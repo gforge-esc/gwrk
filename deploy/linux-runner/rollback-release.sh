@@ -73,19 +73,20 @@ timeout --kill-after=5s 15s "${as_service[@]}" node -e '
   fail "Rollback target SQLite could not open as $service_user: $target"
 
 scratch=$(mktemp -d "$release_root/.rollback.XXXXXXXX")
-switched=false
+recover_pointers=false
 stopped=false
 lock_held=false
 target_started=false
 point() {
-  ln -s -- "$1" "$scratch/pointer"
+  ln -sfn -- "$1" "$scratch/pointer"
   mv -Tf -- "$scratch/pointer" "$2"
 }
 on_exit() {
   status=$?
+  trap '' TERM INT
   if $lock_held; then flock -u 9; fi
   if ((status != 0)); then
-    if $switched; then
+    if $recover_pointers; then
       if $target_started && ! systemctl stop "$unit"; then
         printf 'Could not stop the target release. Current still points to %s.\n' "$new_target" >&2
       else
@@ -106,6 +107,8 @@ on_exit() {
   rm -rf -- "$scratch"
 }
 trap on_exit EXIT
+trap 'exit 143' TERM
+trap 'exit 130' INT
 
 systemctl stop "$unit"
 stopped=true
@@ -127,8 +130,8 @@ fi
   fail "$service_user cannot write backups in $backup_root."
 backup="$backup_root/rollback-$(date -u +%Y%m%dT%H%M%SZ)-$$"
 "${as_service[@]}" node "$active/dist/cli.js" db backup --out "$backup"
+recover_pointers=true
 point "$new_target" "$current"
-switched=true
 point "$old_target" "$previous"
 flock -u 9
 lock_held=false
@@ -148,4 +151,5 @@ while true; do
   sleep 1
 done
 check_rollback --against "$backup"
+recover_pointers=false
 printf 'Activated gwrk %s. Verified pre-rollback backup at %s\n' "${new_target#releases/}" "$backup"
