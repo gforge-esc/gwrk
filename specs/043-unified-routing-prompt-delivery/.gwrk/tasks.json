@@ -16,65 +16,73 @@
           "id": "T001",
           "title": "Create agent-routing.ts",
           "description": "NEW src/domain/agent-routing.ts. Implement pure `selectAgentRoute` over supplied overrides, quotas, cooldowns and fallback order. Tests: src/domain/agent-routing.test.ts",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/phase-01.sh",
-          "sp": 2
+          "sp": 2,
+          "completedAt": "2026-11-11T18:07:14.925Z"
         },
         {
           "id": "T002",
           "title": "Modify index.ts",
           "description": "MODIFY src/domain/index.ts. Export pure routing contracts and `selectAgentRoute`",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/phase-01.sh",
-          "sp": 1
+          "sp": 1,
+          "completedAt": "2026-11-11T18:07:18.066Z"
         },
         {
           "id": "T003",
           "title": "Modify agent-port.ts",
           "description": "MODIFY src/ports/agent-port.ts. Extend `RoutingContext` and `SelectedAgentRoute` with typed route mode, effort, quota and failover fields. Tests: src/adapters/agents/agent-port.test.ts",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/phase-01.sh",
-          "sp": 1
+          "sp": 1,
+          "completedAt": "2026-11-11T18:07:21.239Z"
         },
         {
           "id": "T004",
           "title": "Create index.ts",
           "description": "NEW src/adapters/agents/index.ts. Implement `createAgentPortAdapter` binding `AgentPort` to `selectAgentRoute`, quota probing and `dispatchToAgent`",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/phase-01.sh",
-          "sp": 2
+          "sp": 2,
+          "completedAt": "2026-11-11T18:07:24.474Z"
         },
         {
           "id": "T005",
           "title": "Modify resolve-model.ts",
           "description": "MODIFY src/utils/resolve-model.ts. Delegate registry model selection to `src/domain/agent-routing.js`",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/phase-01.sh",
-          "sp": 1
+          "sp": 1,
+          "completedAt": "2026-11-11T18:07:27.826Z"
         },
         {
           "id": "T006",
           "title": "Modify resolve-agent.ts",
           "description": "MODIFY src/utils/resolve-agent.ts. Delegate synchronous pillar resolution and fallback selection to `src/domain/agent-routing.js`",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/phase-01.sh",
-          "sp": 1
+          "sp": 1,
+          "completedAt": "2026-11-11T18:07:30.986Z"
         },
         {
           "id": "T007",
           "title": "Modify router.ts",
           "description": "MODIFY src/engine/router.ts. Delegate `selectBackend` decision logic to `src/domain/agent-routing.js` over history and config facts",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/phase-01.sh",
-          "sp": 1
+          "sp": 1,
+          "completedAt": "2026-11-11T18:07:34.153Z"
         },
         {
           "id": "T008",
           "title": "Modify skill-runtime.ts",
           "description": "MODIFY src/plugins/skill-runtime.ts. Route skill backend selection through `createAgentPortAdapter` while preserving `SkillResult` pipe semantics",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/phase-01.sh",
-          "sp": 1
+          "sp": 1,
+          "completedAt": "2026-11-11T18:07:37.429Z"
         }
       ],
       "sp_estimate": 10,
