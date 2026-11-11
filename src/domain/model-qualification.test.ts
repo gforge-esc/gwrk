@@ -288,6 +288,10 @@ describe("credential guard", () => {
   describe.each([
     ["a log prefix", (wrapped: string) => `fixture stdout: ${wrapped}`],
     ["a log suffix", (wrapped: string) => `${wrapped} fixture complete`],
+    [
+      "an unmatched log quote",
+      (wrapped: string) => `stdout: "unterminated ${wrapped}`,
+    ],
   ] as const)("doubly encoded JSON fixture output with %s", (_label, wrap) => {
     it("rejects Set-Cookie headers", () => {
       const wrapped = JSON.stringify(
@@ -310,6 +314,17 @@ describe("credential guard", () => {
         assertNoSecretMaterial({ sanitizedOutput: wrap(wrapped) }),
       ).not.toThrow();
     });
+  });
+
+  it("rejects a bare JSON record after a quoted log message", () => {
+    const record = {
+      headers: [{ name: "Set-Cookie", value: "session=fixture-only" }],
+    };
+    expect(() =>
+      assertNoSecretMaterial({
+        sanitizedOutput: `stdout: "fixture output" ${JSON.stringify(record)}`,
+      }),
+    ).toThrow(/secret material/i);
   });
 
   it.each(["rawHeaders", String.raw`raw\u0048eaders`])(

@@ -443,6 +443,7 @@ function assertUniqueJsonKeys(record: string): void {
 
 function scanEmbeddedJson(text: string, knownSecrets: readonly string[]): void {
   const openings = /["[{]/g;
+  let closingQuote = -1;
   for (
     let opening = openings.exec(text);
     opening !== null;
@@ -459,7 +460,11 @@ function scanEmbeddedJson(text: string, knownSecrets: readonly string[]): void {
     }
     if (typeof decoded !== "string") assertUniqueJsonKeys(token);
     assertNoSecretMaterial(decoded, knownSecrets);
-    openings.lastIndex = end;
+    // A closing quote in log text can also open an encoded record.
+    if (opening.index !== closingQuote) {
+      closingQuote = typeof decoded === "string" ? end - 1 : -1;
+      openings.lastIndex = closingQuote === -1 ? end : closingQuote;
+    }
   }
 }
 
