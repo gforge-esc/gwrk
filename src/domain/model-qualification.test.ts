@@ -1520,19 +1520,33 @@ describe("model qualification policy", () => {
     expect(blindCandidate("fixture-key", "comparison-0")).toBe(options[0]);
   });
 
-  it.each([
+  describe.each([
     "operator@[192.0.2.1]",
     "operator@[IPv6:2001:db8::1]",
     '"Fixture Operator"@[192.0.2.1]',
     "operatör@example.invalid",
-  ])("rejects mailbox %s in keys, values and encoded evidence", (mailbox) => {
-    for (const evidence of [
-      { contact: mailbox },
-      { [mailbox]: "fixture" },
-      { sanitizedOutput: JSON.stringify({ contact: mailbox }) },
-    ]) {
-      expect(() => assertNoSecretMaterial(evidence)).toThrow(/Secret material/);
-    }
+  ])("mailbox %s", (mailbox) => {
+    it("rejects the mailbox in a property value", () => {
+      expect(() => assertNoSecretMaterial({ contact: mailbox })).toThrow(
+        /secret material/i,
+      );
+    });
+
+    it("rejects the mailbox in a property name", () => {
+      expect(() => assertNoSecretMaterial({ [mailbox]: "fixture" })).toThrow(
+        /secret material/i,
+      );
+    });
+
+    it("rejects the mailbox after decoding fixture stdout", () => {
+      const record = JSON.stringify({ contact: mailbox }).replace(
+        "@",
+        "\\u0040",
+      );
+      expect(() =>
+        assertNoSecretMaterial({ sanitizedOutput: `stdout: ${record}` }),
+      ).toThrow(/secret material/i);
+    });
   });
 
   it("allows network addresses and versioned model names", () => {
@@ -1540,6 +1554,7 @@ describe("model qualification policy", () => {
       assertNoSecretMaterial({
         endpoints: ["[192.0.2.1]", "[2001:db8::1]"],
         modelId: "fixture@1.0",
+        sanitizedOutput: 'stdout: {"endpoint":"[192.0.2.1]"}',
       }),
     ).not.toThrow();
   });
