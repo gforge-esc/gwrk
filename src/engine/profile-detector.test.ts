@@ -1055,15 +1055,38 @@ describe("FR-001: architecture-aware workspace profiles (044 phase p01)", () => 
 
   it("inherits the root design through an unregistered name-only config", async () => {
     const layered = { ...design, architecture: "layered", principles: ["clean-code"] };
+    const toolchain = {
+      test: "pytest",
+      testCommand: "uv run pytest {files}",
+      build: null,
+    };
     write(".git", "gitdir: /unused/worktree\n");
-    write(".gwrkrc.json", JSON.stringify({ project: { name: "fixture", design: layered } }));
+    write(".gwrkrc.json", JSON.stringify({
+      project: {
+        name: "fixture",
+        design: layered,
+        stack: { language: "Python", buildSystem: "uv" },
+        toolchain,
+      },
+    }));
     write("services/.gwrkrc.json", JSON.stringify({ project: { name: "services" } }));
+    write("services/api/pyproject.toml", '[project]\ndependencies = ["fastapi"]\n');
+    write("services/api/uv.lock", "");
+
     const direct = await detectProfile(path.join(root, "services/api"));
-    expect(direct).toEqual(await resolveWorkspaceProfile(root, "services/api"));
-    expect(direct).toMatchObject({
-      design: layered,
-      stack: { language: "Python", framework: "FastAPI" },
-    });
+    const explicit = await resolveWorkspaceProfile(root, "services/api");
+    for (const [entryPoint, profile] of Object.entries({ direct, explicit })) {
+      expect.soft(profile, entryPoint).toMatchObject({
+        design: layered,
+        stack: { language: "Python", framework: "FastAPI", buildSystem: "uv" },
+      });
+      expect.soft(profile.toolchain, entryPoint).toStrictEqual(toolchain);
+      expect.soft(getTestCommand(profile, ["test_api.py"]), entryPoint).toBe(
+        "uv run pytest test_api.py",
+      );
+      expect.soft(resolveBuildCommand(profile), entryPoint).toBeNull();
+    }
+    expect(direct).toEqual(explicit);
   });
 
   it("uses a valid ancestor registration when local config is malformed", async () => {

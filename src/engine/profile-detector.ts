@@ -491,8 +491,14 @@ function resolveDetectedProfile(
     crossesGitWorktreeBoundary(workspaceRoot.directory, start)
       ? []
       : [...ancestorWorkspaceConfigs(start, workspaceRoot?.directory)];
-  const nearestConfig = ancestors[0];
-  const ancestorDesign = findNearestAncestorDesign(ancestors);
+  const suppliedRoot =
+    workspaceRoot?.config === undefined
+      ? undefined
+      : { directory: workspaceRoot.directory, config: workspaceRoot.config };
+  const designSource = findNearestAncestorDesign(
+    suppliedRoot ? [...ancestors, suppliedRoot] : ancestors,
+  );
+  const ancestorDesign = designSource?.design;
   for (const { directory, config } of ancestors) {
     const workspaces = validateWorkspaceEntries(config);
     const relativePath = relativeWorkspacePath(directory, start);
@@ -502,36 +508,54 @@ function resolveDetectedProfile(
       requireDesign: true,
       configuredLookup: workspaceRoot?.configuredLookup,
       localProject,
-      ancestorDesign:
-        ancestorDesign ??
-        DesignSchema.safeParse(workspaceRoot?.config?.project?.design).data,
+      ancestorDesign,
       workspaces,
     });
     if (scoped !== detected.profile) return scoped;
     break;
   }
 
-  if (workspaceRoot?.config !== undefined) {
-    return applyWorkspaceConfig(
-      workspaceRoot.directory,
-      start,
-      detected,
-      workspaceRoot.config,
-      {
-        localProject,
-        ancestorDesign,
-        requireDesign: workspaceRoot.configuredLookup,
-        configuredLookup: workspaceRoot.configuredLookup,
-      },
-    );
+  if (suppliedRoot) {
+    const workspaces = validateWorkspaceEntries(suppliedRoot.config);
+    const relativePath = relativeWorkspacePath(suppliedRoot.directory, start);
+    if (
+      workspaceRoot?.configuredLookup ||
+      matchWorkspacePath(relativePath, Object.keys(workspaces))
+    ) {
+      return applyWorkspaceConfig(
+        suppliedRoot.directory,
+        start,
+        detected,
+        suppliedRoot.config,
+        {
+          localProject,
+          ancestorDesign,
+          requireDesign: workspaceRoot?.configuredLookup,
+          configuredLookup: workspaceRoot?.configuredLookup,
+          workspaces,
+        },
+      );
+    }
   }
 
-  if (localProject?.design || !nearestConfig) return undefined;
+  if (localProject?.design && !suppliedRoot) return undefined;
+  const policySource =
+    ancestors.find(
+      ({ directory, config }) =>
+        directory === designSource?.directory ||
+        GwrkConfigSchema.shape.project.shape.stack.safeParse(
+          config?.project?.stack,
+        ).data ||
+        ToolchainConfigSchema.safeParse(config?.project?.toolchain).data,
+    ) ??
+    designSource ??
+    suppliedRoot;
+  if (!policySource) return undefined;
   const scoped = applyWorkspaceConfig(
-    nearestConfig.directory,
+    policySource.directory,
     start,
     detected,
-    nearestConfig.config,
+    policySource.config,
     { requireDesign: true, localProject, ancestorDesign },
   );
   return scoped === detected.profile ? undefined : scoped;
@@ -541,6 +565,11 @@ type WorkspaceRootConfig = {
   project?: { design?: unknown; stack?: unknown; toolchain?: unknown };
   workspaces?: Record<string, unknown>;
 } | null;
+
+interface WorkspaceConfigSource {
+  directory: string;
+  config: WorkspaceRootConfig;
+}
 
 function readWorkspaceRootConfig(
   directory: string,
@@ -572,11 +601,13 @@ function* ancestorWorkspaceConfigs(workspace: string, root?: string) {
 }
 
 function findNearestAncestorDesign(
-  ancestors: readonly { config: WorkspaceRootConfig }[],
+  ancestors: readonly WorkspaceConfigSource[],
 ) {
-  for (const { config } of ancestors) {
-    const design = DesignSchema.safeParse(config?.project?.design).data;
-    if (design) return design;
+  for (const ancestor of ancestors) {
+    const design = DesignSchema.safeParse(
+      ancestor.config?.project?.design,
+    ).data;
+    if (design) return { ...ancestor, design };
   }
   return undefined;
 }
