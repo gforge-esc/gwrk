@@ -33,7 +33,7 @@ scripts/dev/
 .gwrk/dispatches.jsonl
 
 .antigravitycli/
-.antigravitycli/
+/cache/
 
 # random files
 *.err

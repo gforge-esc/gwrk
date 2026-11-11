@@ -217,7 +217,7 @@ gwrk define spec 001 "Cold start protocol"
 ## Plugin Distribution Model
 
 > [!NOTE]
-> The canonical source for plugin architecture decisions is [014 spec](file:///Users/gonzo/Code/gwrk/specs/014-plugin-system/spec.md) and [plugin-architecture-plan.md](file:///Users/gonzo/Code/gwrk/docs/archive/reference/plugin-architecture-plan.md) (archived). Key decision: **Model C** — global `~/.gwrk/plugins/` + local `.gwrk/plugins.yaml` override/disable.
+> The canonical source for plugin architecture decisions is [014 spec](file:///Users/gonzo/Code/gwrk/specs/014-plugin-system/spec.md) and [plugin-architecture-plan.md](https://github.com/gforge-esc/gwrk/blob/cli-v1.6.0-beta.1/docs/archive/reference/plugin-architecture-plan.md) (archived). Key decision: **Model C** — global `~/.gwrk/plugins/` + local `.gwrk/plugins.yaml` override/disable.
 
 ### How `gwrk plugin install` Works Today
 
@@ -480,6 +480,6 @@ gwrk init  # inside a project dir
 - Enforcement skill precedent: [skill-runtime.ts:155-216](file:///Users/gonzo/Code/gwrk/src/plugins/skill-runtime.ts#L155-L216)
 - Plugin install mechanism: [plugin.ts](file:///Users/gonzo/Code/gwrk/src/commands/plugin.ts)
 - gwrk init stub: [init.ts](file:///Users/gonzo/Code/gwrk/src/commands/init.ts) (currently `throw new Error("Not implemented")`)
-- Daily driver audit §V Obsidian, §D init gaps: [daily-driver-audit.md](file:///Users/gonzo/Code/gwrk/docs/daily-driver-audit.md)
+- Daily driver audit §V Obsidian, §D init gaps: [daily-driver-audit.md](https://github.com/gforge-esc/gwrk/blob/cli-v1.6.0-beta.1/docs/daily-driver-audit.md)
 
 
