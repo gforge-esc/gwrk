@@ -1,0 +1,19 @@
+{
+  "runId": "2026-11-11T19:17:01.090Z_define_all",
+  "feature": "047-model-qualification",
+  "phase": "all",
+  "command": "define tasks",
+  "agent": "agy",
+  "model": "unknown",
+  "startedAt": "2026-11-11T19:17:01.090Z",
+  "finishedAt": "2026-11-11T19:17:01.378Z",
+  "durationS": 0,
+  "exitCode": 0,
+  "attempt": 1,
+  "filesChanged": 17,
+  "linesAdded": 494,
+  "linesDeleted": 0,
+  "gitCommit": "d3b7e1de73702e17b5775095653029bc3cac04eb",
+  "gitBranch": "codex/model-qualification-red",
+  "digest": []
+}
