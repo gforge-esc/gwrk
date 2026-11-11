@@ -86,8 +86,8 @@ The completion message overstates skill provisioning. `seedSkills()` attempts to
 Sources:
 
 - [init implementation](../../src/commands/init.ts)
-- [configuration schema](../../src/utils/config.ts:89)
-- [decision path resolution](../../src/engine/adr-scaffold.ts:230)
+- [configuration schema](../../src/utils/config.ts#L89)
+- [decision path resolution](../../src/engine/adr-scaffold.ts#L230)
 - [seeding implementation](../../src/plugins/seed.ts)
 
 ## Preferred standards
@@ -205,8 +205,8 @@ Sources:
 
 - [profile detection](../../src/engine/profile-detector.ts)
 - [manifest schema](../../src/plugins/manifest.ts)
-- [skill resolution](../../src/plugins/skill-runtime.ts:200)
-- [dispatch injection](../../src/utils/agent.ts:555)
+- [skill resolution](../../src/plugins/skill-runtime.ts#L200)
+- [dispatch injection](../../src/utils/agent.ts#L555)
 - [built-in language skills](../../src/plugins/builtins/skills/)
 - [project discovery](../../src/engine/discover.ts)
 - [registry implementation](../../src/engine/registry.ts)
@@ -231,7 +231,7 @@ Sources:
 - [identity implementation](../../src/domain/project-id.ts)
 - [agent configuration](../../src/domain/agent-config.ts)
 - [toolchain policy](../../src/domain/toolchain.ts)
-- [boundary scanner](../../src/architecture.test.ts:32)
+- [boundary scanner](../../src/architecture.test.ts#L32)
 
 These findings contradict the pure-domain assertion in the hexagonal decision. They do not establish that the refactor had no value. The inward relative-import checks and extracted policy functions provide a starting point.
 

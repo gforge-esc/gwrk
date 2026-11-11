@@ -125,8 +125,8 @@ The agent executing this research MUST read and synthesize these sources.
 ### Tier 3 — Supporting (useful for evidence, may be outdated)
 
 7. [`docs/reference/plugin-strategy-audit.md`](file:///Users/gonzo/Code/gwrk/docs/reference/plugin-strategy-audit.md) — F004→F014 migration path, remediation matrix
-8. [`docs/reference/plugin-architecture-plan.md`](file:///Users/gonzo/Code/gwrk/docs/reference/plugin-architecture-plan.md) — original three-phase plan (pre-ADR-006, check for drift)
-9. [`docs/reference/skills-architecture.md`](file:///Users/gonzo/Code/gwrk/docs/reference/skills-architecture.md) — Layer 2 skill manifest design (contrast for Layer 1)
+8. [`docs/reference/plugin-architecture-plan.md`](https://github.com/gforge-esc/gwrk/blob/cli-v1.6.0-beta.1/docs/archive/reference/plugin-architecture-plan.md) — original three-phase plan (pre-ADR-006, check for drift)
+9. [`docs/reference/skills-architecture.md`](https://github.com/gforge-esc/gwrk/blob/cli-v1.6.0-beta.1/docs/archive/reference/skills-architecture.md) — Layer 2 skill manifest design (contrast for Layer 1)
 
 ### Codebase (read actual implementation)
 
