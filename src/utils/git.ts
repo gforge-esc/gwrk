@@ -436,15 +436,23 @@ export function commitPaths(
       cwd: repoPath,
       stdio: ["ignore", "ignore", "pipe"],
     });
-    const staged = execFileSync("git", ["diff", "--cached", "--name-only"], {
-      cwd: repoPath,
-      encoding: "utf-8",
-    }).trim();
+    const staged = execFileSync(
+      "git",
+      ["diff", "--cached", "--name-only", "--", ...paths],
+      { cwd: repoPath, encoding: "utf-8" },
+    ).trim();
     if (!staged) return;
-    execFileSync("git", ["commit", "-m", message], {
-      cwd: repoPath,
-      stdio: ["ignore", "ignore", "pipe"],
-    });
+    const identity = (key: string) =>
+      execFileSync("git", ["config", key], {
+        cwd: repoPath,
+        encoding: "utf-8",
+      }).trim();
+    const author = `${identity("user.name")} <${identity("user.email")}>`;
+    execFileSync(
+      "git",
+      ["commit", "--only", "--author", author, "-m", message, "--", ...paths],
+      { cwd: repoPath, stdio: ["ignore", "ignore", "pipe"] },
+    );
   } catch (e) {
     const err = e as { stderr?: Buffer | string; stdout?: Buffer | string };
     const stderr = err.stderr?.toString() || "";

@@ -15,6 +15,7 @@ import {
   recordHistory as dbRecordHistory,
   startRun as dbStartRun,
 } from "../db/runs.js";
+import { findingsPath } from "../engine/findings-ledger.js";
 import { PlanStore } from "../engine/plan-store.js";
 import { detectProfile } from "../engine/profile-detector.js";
 import { ShipOrchestrator } from "../engine/ship-orchestrator.js";
@@ -425,11 +426,26 @@ async function shipPhase(
     // Post-manifest commit: ensure working tree is clean before returning.
     try {
       const manifestDir = path.join(featureDir, ".gwrk", "runs");
-      await run("git", ["add", manifestDir], { cwd });
+      const evidencePaths = [manifestDir];
+      if (exitCode !== 0 && orchestrator) {
+        evidencePaths.push(
+          ...[
+            path.join(featureDir, ".gwrk", "tasks.json"),
+            findingsPath(featureDir),
+          ].filter((file) => fs.existsSync(file)),
+        );
+      }
+      await run("git", ["add", ...evidencePaths], { cwd });
       if (!isWorkingTreeClean(cwd)) {
         await run(
           "git",
-          ["commit", "-m", `chore(${feature}): add execution manifest`],
+          [
+            "commit",
+            "-m",
+            `chore(${feature}): record ship evidence`,
+            "--",
+            ...evidencePaths,
+          ],
           { cwd, env: { ...process.env, GWRK_SHIP: "1" } },
         );
         const currentBranch = getCurrentBranch(cwd);

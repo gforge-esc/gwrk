@@ -94,6 +94,17 @@ describe("commitPaths", () => {
     expect(dirty()).toEqual(["README.md"]);
   });
 
+  it("preserves unrelated staged changes", () => {
+    write("src/unrelated.ts", "// already staged by the developer\n");
+    git("add", "src/unrelated.ts");
+    write("specs/012/.gwrk/runs/run.json", "{}\n");
+
+    commitPaths(repo, "chore: manifest", ["specs/012/.gwrk/runs"]);
+
+    expect(git("show", "--format=", "--name-only", "HEAD")).toBe("specs/012/.gwrk/runs/run.json");
+    expect(git("diff", "--cached", "--name-only")).toBe("src/unrelated.ts");
+  });
+
   it("makes no commit when the given paths have nothing to stage", () => {
     write("src/unrelated.ts", "still dirty\n");
     const before = git("rev-parse", "HEAD");
