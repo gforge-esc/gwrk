@@ -424,7 +424,8 @@ const headerPattern = new RegExp(
   "i",
 );
 const credentialHeaderNamePattern = new RegExp(`^${credentialHeaders}$`, "i");
-const headersKeyPattern = /^(?:raw)?headers$/i;
+const headersKeyPattern =
+  /^(?:(?:raw|request|response)?headers|headersDistinct)$/i;
 
 function isCredentialHeaderName(value: unknown): boolean {
   return typeof value === "string" && credentialHeaderNamePattern.test(value);

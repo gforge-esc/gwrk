@@ -187,14 +187,43 @@ describe("credential guard", () => {
       }),
     },
   ])("header values in $form", ({ evidence }) => {
-    it.each(["headers", "rawHeaders"])("rejects a Cookie key in %s", (key) => {
-      const response = {
-        [key]: [{ key: "Cookie", value: "session=fixture-only" }],
-      };
-      expect(() => assertNoSecretMaterial(evidence(response))).toThrow(
-        /secret material/i,
-      );
-    });
+    it.each(["headers", "rawHeaders", "requestHeaders", "responseHeaders"])(
+      "rejects a Cookie key in %s",
+      (collection) => {
+        const response = {
+          [collection]: [{ key: "Cookie", value: "session=fixture-only" }],
+        };
+        expect(() => assertNoSecretMaterial(evidence(response))).toThrow(
+          /secret material/i,
+        );
+      },
+    );
+
+    describe.each(["requestHeaders", "responseHeaders", "headersDistinct"])(
+      "%s maps",
+      (collection) => {
+        it.each([
+          ["Cookie", "Accept-Encoding"],
+          ["Accept-Encoding", "Cookie"],
+        ])("allows Vary values %s and %s", (first, second) => {
+          const response = { [collection]: { Vary: [first, second] } };
+          expect(() =>
+            assertNoSecretMaterial(evidence(response)),
+          ).not.toThrow();
+        });
+
+        it("rejects a bearer token in a Vary value", () => {
+          const response = {
+            [collection]: {
+              Vary: ["Accept-Encoding", "Bearer\tfixture-token"],
+            },
+          };
+          expect(() => assertNoSecretMaterial(evidence(response))).toThrow(
+            /secret material/i,
+          );
+        });
+      },
+    );
 
     it("allows a Content-Type key in headers", () => {
       const response = {
