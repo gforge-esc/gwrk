@@ -101,17 +101,19 @@
           "id": "T006",
           "title": "Modify toolchain.ts",
           "description": "MODIFY src/domain/toolchain.ts. Resolve the build command from supplied facts",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T006-gate.sh",
-          "sp": 1
+          "sp": 1,
+          "completedAt": "2026-11-11T16:55:52.870Z"
         },
         {
           "id": "T007",
           "title": "Create manifest-discovery.ts",
           "description": "NEW src/adapters/toolchain/manifest-discovery.ts. Discover build manifests and preserve explicit overrides",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T007-gate.sh",
-          "sp": 2
+          "sp": 2,
+          "completedAt": "2026-11-11T16:55:54.025Z"
         }
       ],
       "sp_estimate": 3,
