@@ -19,9 +19,9 @@ Store account discovery and evaluation runs under `.runs/models/`. Persist promo
 | Alias exclusion | Concrete model ID only, never `default` or `auto` | Reject candidate pin | Phase 1 |
 | Deterministic gates first | Required sections, ADR constraints, RED to GREEN and forbidden paths pass | Short-circuit before judges and keep incumbent | Phase 3 |
 | Repeat calibration floor | Minimum three independent runs per required fixture | Mark incomplete evaluation ineligible | Phase 3 |
-| Judge independence | Two fixed frontier judges from distinct providers and distinct families | Abort evaluation with configuration error | Phase 1 and Phase 3 |
-| Blinded order randomization | Strip identity strings and assign `A` or `B` via HMAC seed | Reject unblinded packet | Phase 1 and Phase 3 |
-| Citation completeness | Structured JSON cites `inputRef`, `outputRef` and `gateRef` | Reject malformed verdict and keep incumbent | Phase 1 and Phase 3 |
+| Judge independence | Two fixed frontier judges from distinct providers and distinct families | Abort when the configured judges are unavailable or fail independence checks | Phase 1 and Phase 3 |
+| Blinded order randomization | Remove route identity metadata and randomize candidate order per comparison | Reject unblinded packet | Phase 1 and Phase 3 |
+| Citation completeness | Each cited reference resolves to a supplied input, output or gate artifact | Reject malformed verdict and keep incumbent | Phase 1 and Phase 3 |
 | Unanimous non-regression | Both judges report zero candidate regression and candidate win | Record disagreement and keep incumbent | Phase 1 and Phase 3 |
 
 ## Role scoring and handoff matrix
@@ -78,11 +78,15 @@ export interface RouteLockDocument {
 }
 ```
 
+## Promotion consistency
+
+Bind an evaluation to the incumbent lock digest, requested runner, role and exact candidate identity. Revalidate those inputs under the same lock used to write the new route. Reject promotion if another writer changed the incumbent during evaluation. Preserve the previous lock only after the replacement validates. Exercise concurrent promotion and rollback against the same runner.
+
 ## Staleness, fallback and credential invariants
 
-`resolveQualifiedRoute` compares the lock's `fixtureSuiteHash` and `workflowPromptHashes` against current workspace digests. It also checks that `modelId` remains available in the latest runner catalog unless `routeMode` is `"provider-default"`. When a digest changes or a provider removes the model, resolution marks the pin `stale` and requires requalification. Valid staleness reasons are `prompt_changed` and `fixture_changed` plus `model_removed`.
+`resolveQualifiedRoute` compares the lock's `fixtureSuiteHash` and `workflowPromptHashes` against current workspace digests. It also checks that `modelId` remains available in the latest runner catalog unless `routeMode` is `"provider-default"`. When a digest changes or a provider removes the model, resolution marks the pin `stale` and requires requalification. Valid staleness reasons include changed prompts, fixtures, tool versions and eligible models. Hash the effective prompt inputs, including applicable project rules and decision records, so a change to expanded instructions expires the evidence.
 
-Pinned execution uses only `fallbackRoutes` that carry their own passing `evaluationId` for the same role and runner profile. Explicit `--backend <name>` overrides resolve through the same lock and report `unavailable_pin` when that backend lacks a qualified route for the role. Explicit `--route provider-default` bypasses model pinning while labeling `routeMode: "provider-default"` and `observedModel` (`string | "unknown"`) in run manifests.
+Pinned execution uses only `fallbackRoutes` that carry their own passing `evaluationId` for the same role and runner profile. Existing explicit agent selection resolves through the same lock and report `unavailable_pin` when that backend lacks a qualified route for the role. Explicit `--route provider-default` bypasses model pinning while labeling `routeMode: "provider-default"` and `observedModel` (`string | "unknown"`) in run manifests.
 
 `assertNoSecretMaterial` scans every discovery snapshot, evaluation bundle and route lock before write. It rejects bearer tokens and `sk-` or `AIza` prefixes. It also rejects `ghp_` or `xoxb-` prefixes and authorization or cookie headers. Email addresses and environment secret values fail the same check. Cross-provider judging uses only synthetic fixtures under `tests/fixtures/model-qualification/`.
 
