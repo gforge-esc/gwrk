@@ -500,11 +500,6 @@ function resolveDetectedProfile(
     ? [...ancestors, suppliedRoot]
     : ancestors;
   const designSource = findNearestAncestorDesign(policyAncestors, start);
-  const toolchainSource = policyAncestors.find(
-    ({ config }) =>
-      ToolchainConfigSchema.safeParse(config?.project?.toolchain).data !==
-      undefined,
-  );
   const ancestorDesign = designSource?.design;
   for (const { directory, config } of ancestors) {
     const workspaces = validateWorkspaceEntries(config);
@@ -516,7 +511,7 @@ function resolveDetectedProfile(
       configuredLookup: workspaceRoot?.configuredLookup,
       localProject,
       ancestorDesign,
-      toolchainSource,
+      policyAncestors,
       workspaces,
     });
     if (scoped !== detected.profile) return scoped;
@@ -537,7 +532,7 @@ function resolveDetectedProfile(
         {
           localProject,
           ancestorDesign,
-          toolchainSource,
+          policyAncestors,
           requireDesign: workspaceRoot?.configuredLookup,
           configuredLookup: workspaceRoot?.configuredLookup,
           workspaces,
@@ -563,7 +558,7 @@ function resolveDetectedProfile(
     start,
     detected,
     policySource.config,
-    { requireDesign: true, localProject, ancestorDesign, toolchainSource },
+    { requireDesign: true, localProject, ancestorDesign, policyAncestors },
   );
   return scoped === detected.profile ? undefined : scoped;
 }
@@ -675,7 +670,7 @@ function applyWorkspaceConfig(
     configuredLookup?: boolean;
     localProject?: WorkspaceProfileConfig;
     ancestorDesign?: WorkspaceProfileConfig["design"];
-    toolchainSource?: WorkspaceConfigSource;
+    policyAncestors?: readonly WorkspaceConfigSource[];
     workspaces?: Record<string, WorkspaceProfileConfig>;
   },
 ): ProjectProfile | undefined {
@@ -731,41 +726,41 @@ function applyWorkspaceConfig(
     }
   }
 
-  const toolchainSource = options?.toolchainSource;
-  const toolchainProject = toolchainSource?.config?.project;
-  const toolchain = ToolchainConfigSchema.safeParse(
-    toolchainProject?.toolchain,
-  ).data;
-  let stack = GwrkConfigSchema.shape.project.shape.stack.safeParse(
-    toolchainProject?.stack,
-  ).data;
-  if (
-    toolchainSource &&
-    (!stack?.buildSystem ||
-      !stack.framework ||
-      (!stack.language && !stack.languages?.[0]))
-  ) {
-    try {
-      const rootDetection = detectFilesystemProfile(toolchainSource.directory);
-      stack = resolveProfileStack(
-        rootDetection.profile.stack,
-        [stack],
-        rootDetection.signals,
-      );
-    } catch {
-      // The configured resolver also accepts paths that are unavailable on disk.
-    }
-  }
+  const ancestorToolchains = [...(options?.policyAncestors ?? [])]
+    .reverse()
+    .flatMap(({ directory, config: source }) => {
+      const toolchain = ToolchainConfigSchema.safeParse(
+        source?.project?.toolchain,
+      ).data;
+      if (!toolchain || Object.keys(toolchain).length === 0) return [];
+
+      let stack = GwrkConfigSchema.shape.project.shape.stack.safeParse(
+        source?.project?.stack,
+      ).data;
+      if (
+        !stack?.buildSystem ||
+        !stack.framework ||
+        (!stack.language && !stack.languages?.[0])
+      ) {
+        try {
+          const detected = detectFilesystemProfile(directory);
+          stack = resolveProfileStack(
+            detected.profile.stack,
+            [stack],
+            detected.signals,
+          );
+        } catch {
+          // A supplied root can describe a checkout absent from this filesystem.
+        }
+      }
+      return [{ stack, toolchain }];
+    });
 
   return resolveWorkspacePolicyProfile(
     relativePath,
     detected.profile,
     {
-      project: {
-        design,
-        stack,
-        toolchain,
-      },
+      project: { design },
       workspaces,
     },
     {
@@ -779,6 +774,7 @@ function applyWorkspaceConfig(
       },
       detectedStacks: detected.signals,
       detectedToolchains: detected.toolchains,
+      ancestorToolchains,
     },
   );
 }

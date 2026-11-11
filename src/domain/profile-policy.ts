@@ -240,6 +240,7 @@ export function resolveWorkspacePolicyProfile(
     matchedLocalProject?: WorkspaceProfileConfig;
     detectedStacks?: readonly Stack[];
     detectedToolchains?: Readonly<Record<string, Toolchain>>;
+    ancestorToolchains?: readonly { stack?: Stack; toolchain: Toolchain }[];
   },
 ): ProjectProfile {
   const workspaces = rootConfig?.workspaces ?? {};
@@ -282,12 +283,21 @@ export function resolveWorkspacePolicyProfile(
     [matchedStack, localStack, entryStack],
     options?.detectedStacks,
   );
-  const rootToolchain = compatibleToolchain(
+  let rootToolchain = compatibleToolchain(
     rootConfig?.project?.toolchain,
     rootConfig?.project?.stack,
     workspaceStack,
     "root",
   );
+  for (const ancestor of options?.ancestorToolchains ?? []) {
+    const compatible = compatibleToolchain(
+      ancestor.toolchain,
+      ancestor.stack,
+      workspaceStack,
+      "root",
+    );
+    if (compatible) rootToolchain = mergeToolchain(rootToolchain, compatible);
+  }
   const {
     stack: rawStack,
     toolchain: rawToolchain,

@@ -1053,7 +1053,12 @@ describe("FR-001: architecture-aware workspace profiles (044 phase p01)", () => 
     }
   });
 
-  it("inherits compatible root tools through a nearer registration", async () => {
+  it.each([
+    { label: "without local defaults", stack: { language: "TypeScript" }, toolchain: undefined, expected: {} },
+    { label: "with empty local defaults", stack: { language: "TypeScript" }, toolchain: {}, expected: {} },
+    { label: "with incompatible Vitest", stack: { language: "TypeScript" }, toolchain: { test: "vitest", testCommand: "pnpm test {files}" }, expected: {} },
+    { label: "with compatible Black", stack: { language: "Python" }, toolchain: { formatter: "black" }, expected: { formatter: "black" } },
+  ])("inherits compatible root tools through a nearer registration $label", async (nearer) => {
     const layered = {
       ...design,
       architecture: "layered",
@@ -1074,7 +1079,7 @@ describe("FR-001: architecture-aware workspace profiles (044 phase p01)", () => 
     write(
       "services/.gwrkrc.json",
       JSON.stringify({
-        project: { name: "services", stack: { language: "TypeScript" } },
+        project: { name: "services", stack: nearer.stack, toolchain: nearer.toolchain },
         workspaces: { api: { stack: { framework: "Django" } } },
       }),
     );
@@ -1092,7 +1097,7 @@ describe("FR-001: architecture-aware workspace profiles (044 phase p01)", () => 
         design: layered,
         stack: { language: "Python", framework: "Django", buildSystem: "uv" },
       });
-      expect.soft(profile?.toolchain, entryPoint).toStrictEqual(toolchain);
+      expect.soft(profile?.toolchain, entryPoint).toStrictEqual({ ...toolchain, ...nearer.expected });
       expect.soft(getTestCommand(profile, ["test_api.py"]), entryPoint).toBe(
         "uv run pytest test_api.py",
       );
