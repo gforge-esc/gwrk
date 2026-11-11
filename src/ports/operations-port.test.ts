@@ -13,9 +13,11 @@ import {
   type HarvestStageReceipt,
   canCorrelateHarvestIntake,
   deriveHarvestTerminalStatus,
+  evaluateBranchCleanupSafety,
   isCompleteHarvestStagePlan,
   isValidHarvestStageTransition,
   planHarvestStages,
+  planLateBranchCleanup,
   scopeManualHarvestToPhases,
   scopeVerifiedMergeToPhases,
   verifyHarvestTarget,
@@ -222,7 +224,7 @@ function restoreHarvestIntake(persisted: {
   const aliases = rows.aliases ?? [];
   const deliveries = rows.deliveries ?? [];
   const store: Pick<OperationsStorePort, "recordHarvestIntake"> = {
-    recordHarvestIntake({ candidate, payloadDigest, target }) {
+    recordHarvestIntake({ candidate, payloadDigest, receivedAt, target }) {
       const key = JSON.stringify([candidate.source, candidate.deliveryId]);
       const repoSlug = candidate.repoSlug?.toLowerCase() ?? null;
       const delivery = deliveries.find((row) => row.key === key);
@@ -247,7 +249,9 @@ function restoreHarvestIntake(persisted: {
         };
       }
       const incoming = target.accepted ? target.operations : [];
-      const operations = incoming.map(matchScope);
+      const operations = incoming.map((operation) =>
+        matchScope(operation, receivedAt),
+      );
       deliveries.push({
         key,
         repoSlug,
@@ -267,6 +271,7 @@ function restoreHarvestIntake(persisted: {
 
   function matchScope(
     incoming: DurableHarvestOperation,
+    receivedAt: string,
   ): DurableHarvestOperation {
     const alias = aliases.find(
       (row) =>
@@ -296,6 +301,13 @@ function restoreHarvestIntake(persisted: {
         operationId: existing.operationId,
       });
       if (existing.prNumber === null && incoming.prNumber !== null) {
+        const cleanup = planLateBranchCleanup({
+          operationId: existing.operationId,
+          prior: existing,
+          verified: incoming,
+          stages: rows.stages,
+          nowIso: receivedAt,
+        });
         const {
           repoSlug,
           headRepoSlug,
@@ -313,7 +325,29 @@ function restoreHarvestIntake(persisted: {
           headBranch,
           expectedHeadSha,
           terminalAt,
+          updatedAt: receivedAt,
         });
+        if (cleanup.length) {
+          for (const planned of cleanup) {
+            const receipt = rows.stages.find(
+              (stage) =>
+                stage.operationId === planned.operationId &&
+                stage.phaseKey === planned.phaseKey &&
+                stage.stage === planned.stage,
+            );
+            if (!receipt) throw new Error("Expected the skipped cleanup receipt");
+            Object.assign(receipt, planned);
+          }
+          const stages = rows.stages.filter(
+            ({ operationId }) => operationId === existing.operationId,
+          );
+          existing.status = deriveHarvestTerminalStatus({
+            terminalEvent: existing.terminalEvent,
+            phaseIds: [...new Set(stages.map(({ phaseKey }) => phaseKey))],
+            stages,
+          });
+          existing.completedAt = null;
+        }
       }
     }
     return existing ?? incoming;
@@ -483,6 +517,7 @@ function restoreRecoveryStore(persisted: {
       stage,
       status,
       evidenceJson,
+      error,
     }) {
       const row = harvests.find((row) => row.operationId === fence.operationId);
       if (!row) return { ok: false, code: "LEASE_FENCED" };
@@ -505,9 +540,13 @@ function restoreRecoveryStore(persisted: {
         status,
         leaseEpoch: fence.leaseEpoch,
         evidenceJson: evidenceJson ?? null,
+        error: error ?? null,
         updatedAt: nowIso,
-        completedAt:
-          status === "pending" || status === "running" ? null : nowIso,
+        completedAt: ["pending", "running", "retryable_failure"].includes(
+          status,
+        )
+          ? null
+          : nowIso,
       });
       row.status = deriveHarvestTerminalStatus({
         terminalEvent: row.terminalEvent,
@@ -1444,6 +1483,152 @@ describe("persisted harvest intake contract", () => {
     });
     expect(replay.snapshot().harvests).toHaveLength(2);
   });
+});
+
+it("resumes a persisted retryable sync failure after lease expiry", () => {
+  const initial = restoreRecoveryStore({
+    harvests: [harvest("retryable")],
+    stages: [],
+    outboxItems: [],
+  });
+  const first = initial.claimHarvestLease({
+    operationId: "retryable",
+    leaseOwner: "first",
+    nowIso,
+    leaseExpiresAt,
+  });
+  if (!first) throw new Error("Expected first lease");
+  const plan = {
+    terminalEvent: "merged" as const,
+    phaseIds: [phaseId],
+    hasSlackTarget: false,
+    hasRemoteBranchTarget: true,
+  };
+  expect(
+    initial.initializeHarvestStages({
+      ...plan,
+      fence: first.fence,
+      nowIso,
+      stages: planHarvestStages(plan),
+    }),
+  ).toEqual({ ok: true });
+  expect(
+    initial.transitionHarvestStage({
+      fence: first.fence,
+      nowIso,
+      phaseKey: phaseId,
+      stage: "git_sync",
+      status: "retryable_failure",
+      error: "transport timeout",
+    }),
+  ).toEqual({ ok: true });
+  const restarted = restoreRecoveryStore(initial.snapshot());
+  expect(restarted.listRecoverableHarvests({ nowIso })).toEqual([]);
+  const next = restarted.claimHarvestLease({
+    operationId: "retryable",
+    leaseOwner: "second",
+    nowIso: leaseExpiresAt,
+    leaseExpiresAt: "2026-11-11T12:02:00.000Z",
+  });
+  expect(next?.fence.leaseEpoch).toBe(first.fence.leaseEpoch + 1);
+  expect(next?.operation.completedAt).toBeNull();
+  expect(next?.stages).toContainEqual(
+    expect.objectContaining({
+      stage: "git_sync",
+      status: "retryable_failure",
+      error: "transport timeout",
+      completedAt: null,
+    }),
+  );
+  if (!next) throw new Error("Expected retry after lease expiry");
+  expect(
+    restarted.transitionHarvestStage({
+      fence: next.fence,
+      nowIso: leaseExpiresAt,
+      phaseKey: phaseId,
+      stage: "git_sync",
+      status: "succeeded",
+    }),
+  ).toEqual({ ok: true });
+});
+
+it("schedules cleanup after a completed offline harvest receives verified pull request evidence", () => {
+  const local = harvestIntake("offline-complete", offline);
+  if (!local.target.accepted) throw new Error("Expected offline operation");
+  const [operation] = local.target.operations;
+  const receipts = planHarvestStages({
+    phaseIds: [phaseId],
+    terminalEvent: "merged",
+    hasSlackTarget: false,
+    hasRemoteBranchTarget: false,
+  }).map(
+    ({ phaseKey, stage, initialStatus }): HarvestStageReceipt => ({
+      ...learningReceipt(operation.operationId),
+      phaseKey,
+      stage,
+      status: initialStatus === "pending" ? "succeeded" : initialStatus,
+    }),
+  );
+  const intake = restoreHarvestIntake({
+    harvests: [{ ...operation, status: "completed", completedAt: nowIso }],
+    stages: receipts,
+  });
+  const pull = harvestIntake("verified-pull");
+  expect(intake.store.recordHarvestIntake(pull)).toMatchObject({
+    ok: true,
+    operations: [
+      {
+        operationId: operation.operationId,
+        status: "running",
+        completedAt: null,
+      },
+    ],
+  });
+  const restarted = restoreRecoveryStore({
+    ...intake.snapshot(),
+    outboxItems: [],
+  });
+  const next = restarted.claimHarvestLease({
+    operationId: operation.operationId,
+    leaseOwner: "cleanup",
+    nowIso,
+    leaseExpiresAt,
+  });
+  if (!next) throw new Error("Expected cleanup lease");
+  expect(next.stages.filter(({ stage }) => stage !== "branch_cleanup")).toEqual(
+    receipts.filter(({ stage }) => stage !== "branch_cleanup"),
+  );
+  expect(
+    next.stages.find(({ stage }) => stage === "branch_cleanup"),
+  ).toMatchObject({ status: "pending", completedAt: null });
+  const target = {
+    projectRepoSlug: "acme/a",
+    candidateRepoSlug: next.operation.repoSlug,
+    headRepoSlug: next.operation.headRepoSlug,
+    trunkBranch: next.operation.trunkBranch,
+    headBranch: next.operation.headBranch,
+    expectedHeadSha: next.operation.expectedHeadSha,
+  };
+  expect(
+    evaluateBranchCleanupSafety({
+      ...target,
+      observedRemoteHeadSha: "b".repeat(40),
+    }),
+  ).toMatchObject({ action: "block_cleanup", code: "TIP_MOVED" });
+  expect(
+    evaluateBranchCleanupSafety({ ...target, observedRemoteHeadSha: sha }),
+  ).toMatchObject({ action: "delete_at_tip" });
+  expect(
+    restarted.transitionHarvestStage({
+      fence: next.fence,
+      nowIso,
+      phaseKey: phaseId,
+      stage: "branch_cleanup",
+      status: "succeeded",
+    }),
+  ).toEqual({ ok: true });
+  const final = restoreRecoveryStore(restarted.snapshot());
+  expect(final.listRecoverableHarvests({ nowIso: leaseExpiresAt })).toEqual([]);
 });
 
 it("records learning for an offline harvest after restart", async () => {

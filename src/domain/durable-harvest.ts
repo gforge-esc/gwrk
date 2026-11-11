@@ -33,6 +33,7 @@ export const HarvestStageStatusSchema = z.enum([
   "uncertain",
   "blocked_tip_mismatch",
   "skipped_no_target",
+  "retryable_failure",
   "failed",
 ]);
 export type HarvestStageStatus = z.infer<typeof HarvestStageStatusSchema>;
@@ -547,6 +548,53 @@ export function deriveHarvestTerminalStatus(input: {
     return "running";
   }
   return closed ? "closed_unmerged" : "completed";
+}
+
+export function planLateBranchCleanup(input: {
+  operationId: string;
+  prior: HarvestCommitScope & { status: HarvestOperationStatus };
+  verified: HarvestCommitScope & {
+    repoSlug: string | null;
+    headRepoSlug: string | null;
+    trunkBranch: string;
+    headBranch: string | null;
+    expectedHeadSha: string | null;
+  };
+  stages: readonly HarvestStageReceipt[];
+  nowIso: string;
+}): HarvestStageReceipt[] {
+  const { operationId, prior, verified, stages, nowIso } = input;
+  const branch = parseHarvestBranch(verified.headBranch);
+  if (
+    prior.prNumber !== null ||
+    verified.prNumber === null ||
+    !canCorrelateHarvestIntake(prior, verified) ||
+    !["accepted", "running", "delivery_pending", "completed"].includes(
+      prior.status,
+    ) ||
+    !isSameRepository(verified.repoSlug, verified.headRepoSlug) ||
+    verified.headBranch === verified.trunkBranch ||
+    branch?.featureId !== prior.featureId ||
+    (branch.phaseId !== null && branch.phaseId !== prior.phaseId) ||
+    !fullGitObjectId.test(verified.expectedHeadSha ?? "")
+  ) {
+    return [];
+  }
+
+  return stages
+    .filter(
+      (receipt) =>
+        receipt.operationId === operationId &&
+        (prior.phaseId === null || receipt.phaseKey === prior.phaseId) &&
+        receipt.stage === "branch_cleanup" &&
+        receipt.status === "skipped_no_target",
+    )
+    .map((receipt) => ({
+      ...receipt,
+      status: "pending",
+      updatedAt: nowIso,
+      completedAt: null,
+    }));
 }
 
 export function evaluateBranchCleanupSafety(input: {

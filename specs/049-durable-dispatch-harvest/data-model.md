@@ -273,6 +273,7 @@ export const HarvestStageStatusSchema = z.enum([
   "uncertain",
   "blocked_tip_mismatch",
   "skipped_no_target",
+  "retryable_failure",
   "failed",
 ]);
 

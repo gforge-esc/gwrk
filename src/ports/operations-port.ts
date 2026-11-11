@@ -313,6 +313,9 @@ export interface OperationsStorePort {
    * Attach verified pull request facts, including the head repository, when they arrive.
    * Persist both work keys for replay and keep distinct verified pull requests separate.
    * Preserve a verified merge on a later close.
+   * Use planLateBranchCleanup on matching offline harvests when verified PR facts arrive.
+   * Persist activated cleanup receipts with the new facts and rederive status atomically.
+   * Clear completedAt when a prior completion becomes recoverable. Preserve its lease fence.
    */
   recordHarvestIntake(input: {
     candidate: HarvestCandidateInput;
@@ -375,6 +378,8 @@ export interface OperationsStorePort {
    * Write the receipt and derive operation status in the same transaction.
    * Use deriveHarvestTerminalStatus with the terminal event and full saved phase plan.
    * Set updatedAt to nowIso and set completedAt to nowIso for a terminal status.
+   * Keep retryable_failure receipts and their errors eligible for a new claim after lease expiry.
+   * Set neither the receipt nor the operation completion time for a retryable failure.
    * Exclude terminal operations from recovery scans and claims.
    */
   transitionHarvestStage(input: {
