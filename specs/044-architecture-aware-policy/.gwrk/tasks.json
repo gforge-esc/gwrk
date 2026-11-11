@@ -17,7 +17,7 @@
           "title": "Modify types.ts",
           "description": "MODIFY src/domain/types.ts. Add optional `design` metadata to `ProjectProfile` and export `WorkspaceProfileConfig`",
           "status": "open",
-          "gateScript": "pnpm build\npnpm exec vitest run src/domain/profile-policy.test.ts src/engine/profile-detector.test.ts src/engine/prompt-conditioner.test.ts src/utils/config.test.ts src/architecture.test.ts",
+          "gateScript": "gates/phase-01.sh",
           "sp": 1
         },
         {
@@ -25,7 +25,7 @@
           "title": "Create profile-policy.ts",
           "description": "NEW src/domain/profile-policy.ts. Implement pure `mergeProfileOverrides` and `resolveWorkspacePolicyProfile`. Tests: src/domain/profile-policy.test.ts",
           "status": "open",
-          "gateScript": "pnpm build\npnpm exec vitest run src/domain/profile-policy.test.ts src/engine/profile-detector.test.ts src/engine/prompt-conditioner.test.ts src/utils/config.test.ts src/architecture.test.ts",
+          "gateScript": "gates/phase-01.sh",
           "sp": 2
         },
         {
@@ -33,7 +33,7 @@
           "title": "Modify prompt-conditioner.ts",
           "description": "MODIFY src/domain/prompt-conditioner.ts. Emit `<design>` inside `<project_context>` only when `profile.design` is set. Tests: src/engine/prompt-conditioner.test.ts",
           "status": "open",
-          "gateScript": "pnpm build\npnpm exec vitest run src/domain/profile-policy.test.ts src/engine/profile-detector.test.ts src/engine/prompt-conditioner.test.ts src/utils/config.test.ts src/architecture.test.ts",
+          "gateScript": "gates/phase-01.sh",
           "sp": 1
         },
         {
@@ -41,7 +41,7 @@
           "title": "Modify index.ts",
           "description": "MODIFY src/domain/index.ts. Export pure profile policy contracts and helpers",
           "status": "open",
-          "gateScript": "pnpm build\npnpm exec vitest run src/domain/profile-policy.test.ts src/engine/profile-detector.test.ts src/engine/prompt-conditioner.test.ts src/utils/config.test.ts src/architecture.test.ts",
+          "gateScript": "gates/phase-01.sh",
           "sp": 1
         },
         {
@@ -49,7 +49,7 @@
           "title": "Modify config.ts",
           "description": "MODIFY src/utils/config.ts. Allow optional `design` overrides inside `GwrkConfigSchema.workspaces`",
           "status": "open",
-          "gateScript": "pnpm build\npnpm exec vitest run src/domain/profile-policy.test.ts src/engine/profile-detector.test.ts src/engine/prompt-conditioner.test.ts src/utils/config.test.ts src/architecture.test.ts",
+          "gateScript": "gates/phase-01.sh",
           "sp": 1
         },
         {
@@ -57,7 +57,7 @@
           "title": "Modify profile-detector.ts",
           "description": "MODIFY src/engine/profile-detector.ts. Read ancestor `.gwrkrc.json` in worktrees and delegate merging to `src/domain/profile-policy.js`. Tests: src/engine/profile-detector.test.ts",
           "status": "open",
-          "gateScript": "pnpm build\npnpm exec vitest run src/domain/profile-policy.test.ts src/engine/profile-detector.test.ts src/engine/prompt-conditioner.test.ts src/utils/config.test.ts src/architecture.test.ts",
+          "gateScript": "gates/phase-01.sh",
           "sp": 1
         }
       ],
