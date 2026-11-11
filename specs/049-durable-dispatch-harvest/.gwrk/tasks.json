@@ -1,0 +1,384 @@
+{
+  "featureId": "049-durable-dispatch-harvest",
+  "createdAt": "2026-11-11T19:03:17.162Z",
+  "generatedFrom": {
+    "plan": {
+      "hash": "667f064ad9da6950cc2c5aebf7b95206b51d12a5cde01c196afecb6dc0d57915",
+      "modifiedAt": "2026-11-11T17:40:24.096Z"
+    }
+  },
+  "phases": [
+    {
+      "id": "phase-01",
+      "title": "Durable policy and ports",
+      "tasks": [
+        {
+          "id": "T001",
+          "title": "Create durable-dispatch.ts",
+          "description": "NEW src/domain/durable-dispatch.ts. Define pure dispatch work keys and acceptance receipts plus lease fencing and crash rules. Tests: src/domain/durable-dispatch.test.ts",
+          "status": "open",
+          "gateScript": "pnpm build\npnpm exec vitest run src/domain/durable-dispatch.test.ts src/domain/durable-harvest.test.ts src/architecture.test.ts",
+          "sp": 2
+        },
+        {
+          "id": "T002",
+          "title": "Create durable-harvest.ts",
+          "description": "NEW src/domain/durable-harvest.ts. Define pure harvest work keys and PR verification plus stage plans and tip checks. Tests: src/domain/durable-harvest.test.ts",
+          "status": "open",
+          "gateScript": "pnpm build\npnpm exec vitest run src/domain/durable-dispatch.test.ts src/domain/durable-harvest.test.ts src/architecture.test.ts",
+          "sp": 2
+        },
+        {
+          "id": "T003",
+          "title": "Modify index.ts",
+          "description": "MODIFY src/domain/index.ts. Export durable dispatch and harvest schemas and policy functions",
+          "status": "open",
+          "gateScript": "pnpm build\npnpm exec vitest run src/domain/durable-dispatch.test.ts src/domain/durable-harvest.test.ts src/architecture.test.ts",
+          "sp": 1
+        },
+        {
+          "id": "T004",
+          "title": "Create operations-port.ts",
+          "description": "NEW src/ports/operations-port.ts. Declare `ClockPort` and `OperationsStorePort` plus `GitHubHarvestPort`, `WorkerExecutionPort` and `HarvestExecutionPort`",
+          "status": "open",
+          "gateScript": "pnpm build\npnpm exec vitest run src/domain/durable-dispatch.test.ts src/domain/durable-harvest.test.ts src/architecture.test.ts",
+          "sp": 2
+        },
+        {
+          "id": "T005",
+          "title": "Modify vcs-port.ts",
+          "description": "MODIFY src/ports/vcs-port.ts. Add detached commit checkout and ancestry checks plus remote tip lookup and compare-and-delete",
+          "status": "open",
+          "gateScript": "pnpm build\npnpm exec vitest run src/domain/durable-dispatch.test.ts src/domain/durable-harvest.test.ts src/architecture.test.ts",
+          "sp": 1
+        },
+        {
+          "id": "T006",
+          "title": "Modify notification-port.ts",
+          "description": "MODIFY src/ports/notification-port.ts. Add `clientMetadataKey` and `reconcileDelivery` contracts for uncertain outbound sends",
+          "status": "open",
+          "gateScript": "pnpm build\npnpm exec vitest run src/domain/durable-dispatch.test.ts src/domain/durable-harvest.test.ts src/architecture.test.ts",
+          "sp": 1
+        }
+      ],
+      "sp_estimate": 9,
+      "testTargets": [
+        "src/domain/durable-dispatch.test.ts",
+        "src/domain/durable-harvest.test.ts",
+        "src/domain/durable-dispatch.test.ts",
+        "src/domain/durable-harvest.test.ts",
+        "src/architecture.test.ts"
+      ]
+    },
+    {
+      "id": "phase-02",
+      "title": "SQLite ledger and fenced store",
+      "tasks": [
+        {
+          "id": "T007",
+          "title": "Create 015-durable-dispatch-and-harvest.sql",
+          "description": "NEW src/db/migrations/015-durable-dispatch-and-harvest.sql. Create dispatch and attempt tables plus delivery, cursor and outbox stage tables",
+          "status": "open",
+          "gateScript": "pnpm build\npnpm exec vitest run src/db/operations.test.ts src/db/db.test.ts src/architecture.test.ts",
+          "sp": 2
+        },
+        {
+          "id": "T008",
+          "title": "Create operations.ts",
+          "description": "NEW src/db/operations.ts. Implement transactional acceptance and fenced leases plus stage receipts, cursors and outbox reads. Tests: src/db/operations.test.ts",
+          "status": "open",
+          "gateScript": "pnpm build\npnpm exec vitest run src/db/operations.test.ts src/db/db.test.ts src/architecture.test.ts",
+          "sp": 2
+        },
+        {
+          "id": "T009",
+          "title": "Create operations.ts",
+          "description": "NEW src/adapters/sqlite/operations.ts. Implement `createSqliteOperationsStoreAdapter` over injected database connections. Tests: src/db/operations.test.ts",
+          "status": "open",
+          "gateScript": "pnpm build\npnpm exec vitest run src/db/operations.test.ts src/db/db.test.ts src/architecture.test.ts",
+          "sp": 2
+        },
+        {
+          "id": "T010",
+          "title": "Modify index.ts",
+          "description": "MODIFY src/adapters/sqlite/index.ts. Export `createSqliteOperationsStoreAdapter` from the SQLite adapter barrel",
+          "status": "open",
+          "gateScript": "pnpm build\npnpm exec vitest run src/db/operations.test.ts src/db/db.test.ts src/architecture.test.ts",
+          "sp": 1
+        },
+        {
+          "id": "T011",
+          "title": "Modify persistence.ts",
+          "description": "MODIFY src/server/persistence.ts. Read legacy `.gwrk/dispatches.jsonl` entries as `legacy_unverified` without mutating the repo tree",
+          "status": "open",
+          "gateScript": "pnpm build\npnpm exec vitest run src/db/operations.test.ts src/db/db.test.ts src/architecture.test.ts",
+          "sp": 1
+        }
+      ],
+      "sp_estimate": 8,
+      "testTargets": [
+        "src/db/operations.test.ts",
+        "src/db/operations.test.ts",
+        "src/db/operations.test.ts",
+        "src/db/db.test.ts"
+      ]
+    },
+    {
+      "id": "phase-03",
+      "title": "Git, GitHub and outbox adapters",
+      "tasks": [
+        {
+          "id": "T012",
+          "title": "Modify git.ts",
+          "description": "MODIFY src/utils/git.ts. Add detached commit worktrees and ancestry checks plus remote tip lookup and `--force-with-lease` delete. Tests: src/adapters/git/harvest-git.test.ts",
+          "status": "open",
+          "gateScript": "pnpm build\npnpm exec vitest run src/adapters/git/harvest-git.test.ts src/adapters/github/github-adapter.test.ts src/adapters/notifications/outbox-reconcile.test.ts src/architecture.test.ts",
+          "sp": 1
+        },
+        {
+          "id": "T013",
+          "title": "Modify index.ts",
+          "description": "MODIFY src/adapters/git/index.ts. Implement detached merge-SHA checkouts, ancestry checks and tip-safe branch deletion on `VcsPort`",
+          "status": "open",
+          "gateScript": "pnpm build\npnpm exec vitest run src/adapters/git/harvest-git.test.ts src/adapters/github/github-adapter.test.ts src/adapters/notifications/outbox-reconcile.test.ts src/architecture.test.ts",
+          "sp": 1
+        },
+        {
+          "id": "T014",
+          "title": "Create index.ts",
+          "description": "NEW src/adapters/github/index.ts. Implement `GitHubHarvestPort` raw-body HMAC verification, cursor pagination and PR lookup",
+          "status": "open",
+          "gateScript": "pnpm build\npnpm exec vitest run src/adapters/git/harvest-git.test.ts src/adapters/github/github-adapter.test.ts src/adapters/notifications/outbox-reconcile.test.ts src/architecture.test.ts",
+          "sp": 2
+        },
+        {
+          "id": "T015",
+          "title": "Modify index.ts",
+          "description": "MODIFY src/adapters/notifications/index.ts. Stamp `clientMetadataKey`, implement `reconcileDelivery` and keep pilot Telegram disabled",
+          "status": "open",
+          "gateScript": "pnpm build\npnpm exec vitest run src/adapters/git/harvest-git.test.ts src/adapters/github/github-adapter.test.ts src/adapters/notifications/outbox-reconcile.test.ts src/architecture.test.ts",
+          "sp": 1
+        },
+        {
+          "id": "T016",
+          "title": "Modify slack-notify.ts",
+          "description": "MODIFY src/server/slack-notify.ts. Return Slack delivery receipts and search thread or channel history for `clientMetadataKey`",
+          "status": "open",
+          "gateScript": "pnpm build\npnpm exec vitest run src/adapters/git/harvest-git.test.ts src/adapters/github/github-adapter.test.ts src/adapters/notifications/outbox-reconcile.test.ts src/architecture.test.ts",
+          "sp": 1
+        },
+        {
+          "id": "T017",
+          "title": "Create synthetic-github.ts",
+          "description": "NEW tests/helpers/synthetic-github.ts. Provide deterministic synthetic GitHub webhook, PR metadata and paginated poller fixtures",
+          "status": "open",
+          "gateScript": "pnpm build\npnpm exec vitest run src/adapters/git/harvest-git.test.ts src/adapters/github/github-adapter.test.ts src/adapters/notifications/outbox-reconcile.test.ts src/architecture.test.ts",
+          "sp": 2
+        }
+      ],
+      "sp_estimate": 8,
+      "testTargets": [
+        "src/adapters/github/github-adapter.test.ts",
+        "src/adapters/notifications/outbox-reconcile.test.ts",
+        "src/adapters/git/harvest-git.test.ts"
+      ]
+    },
+    {
+      "id": "phase-04",
+      "title": "Dispatch, harvest and outbox services",
+      "tasks": [
+        {
+          "id": "T018",
+          "title": "Create outbox.ts",
+          "description": "NEW src/application/delivery/outbox.ts. Coordinate durable outbox claims, uncertain-send reconciliation and recipient thread delivery",
+          "status": "open",
+          "gateScript": "pnpm build\npnpm exec vitest run src/application/dispatch/dispatch-service.test.ts src/application/harvest/harvest-service.test.ts src/engine/harvest.test.ts src/architecture.test.ts",
+          "sp": 2
+        },
+        {
+          "id": "T019",
+          "title": "Create index.ts",
+          "description": "NEW src/application/dispatch/index.ts. Implement `DurableDispatchService` acceptance receipts and startup replay plus stale-lease recovery and fencing",
+          "status": "open",
+          "gateScript": "pnpm build\npnpm exec vitest run src/application/dispatch/dispatch-service.test.ts src/application/harvest/harvest-service.test.ts src/engine/harvest.test.ts src/architecture.test.ts",
+          "sp": 2
+        },
+        {
+          "id": "T020",
+          "title": "Create index.ts",
+          "description": "NEW src/application/harvest/index.ts. Implement `DurableHarvestService` intake dedup and stage resume plus closed-PR and cleanup handling",
+          "status": "open",
+          "gateScript": "pnpm build\npnpm exec vitest run src/application/dispatch/dispatch-service.test.ts src/application/harvest/harvest-service.test.ts src/engine/harvest.test.ts src/architecture.test.ts",
+          "sp": 2
+        },
+        {
+          "id": "T021",
+          "title": "Modify index.ts",
+          "description": "MODIFY src/application/index.ts. Export durable dispatch, harvest and outbox services from the application barrel",
+          "status": "open",
+          "gateScript": "pnpm build\npnpm exec vitest run src/application/dispatch/dispatch-service.test.ts src/application/harvest/harvest-service.test.ts src/engine/harvest.test.ts src/architecture.test.ts",
+          "sp": 1
+        },
+        {
+          "id": "T022",
+          "title": "Create index.ts",
+          "description": "NEW src/adapters/harvest/index.ts. Adapt `reconcileGates`, manifest loading and compression reporting behind `HarvestExecutionPort`",
+          "status": "open",
+          "gateScript": "pnpm build\npnpm exec vitest run src/application/dispatch/dispatch-service.test.ts src/application/harvest/harvest-service.test.ts src/engine/harvest.test.ts src/architecture.test.ts",
+          "sp": 2
+        },
+        {
+          "id": "T023",
+          "title": "Modify reconcile-gates.ts",
+          "description": "MODIFY src/engine/reconcile-gates.ts. Support isolated merge-SHA checkouts without dirtying unrelated trees and return failed task IDs",
+          "status": "open",
+          "gateScript": "pnpm build\npnpm exec vitest run src/application/dispatch/dispatch-service.test.ts src/application/harvest/harvest-service.test.ts src/engine/harvest.test.ts src/architecture.test.ts",
+          "sp": 1
+        },
+        {
+          "id": "T024",
+          "title": "Modify harvest.ts",
+          "description": "MODIFY src/engine/harvest.ts. Route `harvestFeature` through `DurableHarvestService` while keeping single-project local compatibility. Tests: src/application/harvest/harvest-service.test.ts",
+          "status": "open",
+          "gateScript": "pnpm build\npnpm exec vitest run src/application/dispatch/dispatch-service.test.ts src/application/harvest/harvest-service.test.ts src/engine/harvest.test.ts src/architecture.test.ts",
+          "sp": 1
+        }
+      ],
+      "sp_estimate": 11,
+      "testTargets": [
+        "src/application/dispatch/dispatch-service.test.ts",
+        "src/application/harvest/harvest-service.test.ts",
+        "src/application/harvest/harvest-service.test.ts",
+        "src/application/harvest/harvest-service.test.ts"
+      ]
+    },
+    {
+      "id": "phase-05",
+      "title": "Durable server and Slack ingress",
+      "tasks": [
+        {
+          "id": "T025",
+          "title": "Modify types.ts",
+          "description": "MODIFY src/server/types.ts. Add `DispatchReceipt`, `DurableOperationsStatus` and harvest pending-stage fields",
+          "status": "open",
+          "gateScript": "pnpm build\npnpm exec vitest run src/server/dispatch.test.ts src/server/github.test.ts src/server/routes/dispatch.test.ts src/server/slack-commands.test.ts src/server/slack-actions.test.ts src/architecture.test.ts",
+          "sp": 1
+        },
+        {
+          "id": "T026",
+          "title": "Modify dispatch.ts",
+          "description": "MODIFY src/server/dispatch.ts. Back `DispatchQueue` with `DurableDispatchService` and `WorkerExecutionPort` sandbox recovery. Tests: src/server/dispatch.test.ts",
+          "status": "open",
+          "gateScript": "pnpm build\npnpm exec vitest run src/server/dispatch.test.ts src/server/github.test.ts src/server/routes/dispatch.test.ts src/server/slack-commands.test.ts src/server/slack-actions.test.ts src/architecture.test.ts",
+          "sp": 1
+        },
+        {
+          "id": "T027",
+          "title": "Modify dispatch.ts",
+          "description": "MODIFY src/server/routes/dispatch.ts. Persist dispatches before returning HTTP `201` or `200` `DispatchReceipt` responses. Tests: src/server/dispatch.test.ts",
+          "status": "open",
+          "gateScript": "pnpm build\npnpm exec vitest run src/server/dispatch.test.ts src/server/github.test.ts src/server/routes/dispatch.test.ts src/server/slack-commands.test.ts src/server/slack-actions.test.ts src/architecture.test.ts",
+          "sp": 1
+        },
+        {
+          "id": "T028",
+          "title": "Modify slack.ts",
+          "description": "MODIFY src/server/slack.ts. Persist authorized dispatch commands before calling Slack `ack()`",
+          "status": "open",
+          "gateScript": "pnpm build\npnpm exec vitest run src/server/dispatch.test.ts src/server/github.test.ts src/server/routes/dispatch.test.ts src/server/slack-commands.test.ts src/server/slack-actions.test.ts src/architecture.test.ts",
+          "sp": 1
+        },
+        {
+          "id": "T029",
+          "title": "Modify slack-commands.ts",
+          "description": "MODIFY src/server/slack-commands.ts. Return stable `operationId` receipts for `/gwrk dispatch` and `/gwrk ship`",
+          "status": "open",
+          "gateScript": "pnpm build\npnpm exec vitest run src/server/dispatch.test.ts src/server/github.test.ts src/server/routes/dispatch.test.ts src/server/slack-commands.test.ts src/server/slack-actions.test.ts src/architecture.test.ts",
+          "sp": 1
+        },
+        {
+          "id": "T030",
+          "title": "Modify slack-actions.ts",
+          "description": "MODIFY src/server/slack-actions.ts. Persist retry and change-request dispatches before `ack()` and return `operationId` receipts",
+          "status": "open",
+          "gateScript": "pnpm build\npnpm exec vitest run src/server/dispatch.test.ts src/server/github.test.ts src/server/routes/dispatch.test.ts src/server/slack-commands.test.ts src/server/slack-actions.test.ts src/architecture.test.ts",
+          "sp": 1
+        },
+        {
+          "id": "T031",
+          "title": "Modify github.ts",
+          "description": "MODIFY src/server/github.ts. Parse raw webhook bytes, persist deliveries before HTTP `200` and forward closed and merged PRs. Tests: src/server/github.test.ts",
+          "status": "open",
+          "gateScript": "pnpm build\npnpm exec vitest run src/server/dispatch.test.ts src/server/github.test.ts src/server/routes/dispatch.test.ts src/server/slack-commands.test.ts src/server/slack-actions.test.ts src/architecture.test.ts",
+          "sp": 1
+        },
+        {
+          "id": "T032",
+          "title": "Modify harvest-watcher.ts",
+          "description": "MODIFY src/server/harvest-watcher.ts. Poll enrolled repositories from durable cursors and submit PRs to `DurableHarvestService`",
+          "status": "open",
+          "gateScript": "pnpm build\npnpm exec vitest run src/server/dispatch.test.ts src/server/github.test.ts src/server/routes/dispatch.test.ts src/server/slack-commands.test.ts src/server/slack-actions.test.ts src/architecture.test.ts",
+          "sp": 1
+        }
+      ],
+      "sp_estimate": 8,
+      "testTargets": [
+        "src/server/dispatch.test.ts",
+        "src/server/github.test.ts",
+        "src/server/github.test.ts"
+      ]
+    },
+    {
+      "id": "phase-06",
+      "title": "Status, CLI and unattended proof",
+      "tasks": [
+        {
+          "id": "T033",
+          "title": "Modify status.ts",
+          "description": "MODIFY src/server/routes/status.ts. Include `DurableOperationsStatus` queue age and last harvest plus outbox lag, gate failures and legacy counts. Tests: src/server/routes/status.test.ts",
+          "status": "open",
+          "gateScript": "pnpm build\npnpm exec vitest run src/commands/harvest.test.ts src/commands/status.test.ts src/server/routes/status.test.ts src/server/routes/health.test.ts src/server/unattended-recovery.test.ts src/architecture.test.ts",
+          "sp": 1
+        },
+        {
+          "id": "T034",
+          "title": "Modify health.ts",
+          "description": "MODIFY src/server/routes/health.ts. Report outbox degradation, unresolved harvest failures and disabled pilot Telegram state",
+          "status": "open",
+          "gateScript": "pnpm build\npnpm exec vitest run src/commands/harvest.test.ts src/commands/status.test.ts src/server/routes/status.test.ts src/server/routes/health.test.ts src/server/unattended-recovery.test.ts src/architecture.test.ts",
+          "sp": 1
+        },
+        {
+          "id": "T035",
+          "title": "Modify index.ts",
+          "description": "MODIFY src/server/index.ts. Wire `OperationsStorePort` and startup recovery sweeps plus raw-body webhook parsing and outbox flushing",
+          "status": "open",
+          "gateScript": "pnpm build\npnpm exec vitest run src/commands/harvest.test.ts src/commands/status.test.ts src/server/routes/status.test.ts src/server/routes/health.test.ts src/server/unattended-recovery.test.ts src/architecture.test.ts",
+          "sp": 1
+        },
+        {
+          "id": "T036",
+          "title": "Modify harvest.ts",
+          "description": "MODIFY src/commands/harvest.ts. Route manual CLI harvest through `DurableHarvestService` with `--project`, `--format json` and ADR-004 signals. Tests: src/commands/harvest.test.ts",
+          "status": "open",
+          "gateScript": "pnpm build\npnpm exec vitest run src/commands/harvest.test.ts src/commands/status.test.ts src/server/routes/status.test.ts src/server/routes/health.test.ts src/server/unattended-recovery.test.ts src/architecture.test.ts",
+          "sp": 1
+        },
+        {
+          "id": "T037",
+          "title": "Modify status.ts",
+          "description": "MODIFY src/commands/status.ts. Render queue age and pending harvest stages plus unresolved deliveries, gate failures and legacy counts. Tests: src/server/routes/status.test.ts",
+          "status": "open",
+          "gateScript": "pnpm build\npnpm exec vitest run src/commands/harvest.test.ts src/commands/status.test.ts src/server/routes/status.test.ts src/server/routes/health.test.ts src/server/unattended-recovery.test.ts src/architecture.test.ts",
+          "sp": 1
+        }
+      ],
+      "sp_estimate": 5,
+      "testTargets": [
+        "src/commands/harvest.test.ts",
+        "src/commands/status.test.ts",
+        "src/server/unattended-recovery.test.ts"
+      ]
+    }
+  ]
+}
