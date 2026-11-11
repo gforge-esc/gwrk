@@ -126,6 +126,7 @@ CREATE TABLE IF NOT EXISTS harvest_operations (
   merge_commit_sha  TEXT,
   terminal_at       TEXT NOT NULL,
   recipient_json    TEXT,
+  planned_slack_recipient_json TEXT,
   status            TEXT NOT NULL,
   lease_owner       TEXT,
   lease_epoch       INTEGER NOT NULL DEFAULT 0,
@@ -208,7 +209,9 @@ CREATE INDEX IF NOT EXISTS idx_notification_outbox_pending
   ON notification_outbox(project_id, status, created_at);
 ```
 
-Record the delivery, operations, links and aliases in one transaction. Store the normalized repository and payload digest with the original delivery. Replay the linked operations in position order after checking both values. Rejected deliveries have no operation links. Resolve the primary work key and alias before inserting a work key in either table.
+Record the delivery and its linked operations in one transaction. Persist work-key aliases in that transaction. Store the normalized repository and payload digest with the original delivery. Replay the linked operations in position order after checking both values. Rejected deliveries have no operation links. Resolve the primary work key and alias before inserting a work key in either table.
+
+Save the resolved Slack recipient in `planned_slack_recipient_json` in the fenced transaction that initializes the stage receipts. Leave it null when the plan has no Slack target. Reuse the saved recipient on plan replay. Use it for the atomic gate failure notice and the notice's first send claim.
 
 ## Domain Zod schemas
 

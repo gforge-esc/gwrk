@@ -79,6 +79,7 @@ function harvest(
     mergeCommitSha: sha,
     terminalAt: createdAt,
     recipient: null,
+    plannedSlackRecipient: null,
     status: "accepted",
     leaseOwner: null,
     leaseEpoch: 0,
@@ -480,13 +481,19 @@ function restoreRecoveryStore(persisted: {
       if (!row) return { ok: false, code: "LEASE_FENCED" };
       const lease = validateLeaseFence(row, fence, nowIso);
       if (!lease.ok) return lease;
+      const saved = stages.filter(
+        ({ operationId }) => operationId === fence.operationId,
+      );
+      const recipient = saved.length
+        ? row.plannedSlackRecipient
+        : resolveHarvestSlackRecipient(row);
       if (
         (row.phaseId !== null &&
           (phaseIds.length !== 1 || phaseIds[0] !== row.phaseId)) ||
         !isCompleteHarvestStagePlan({
           terminalEvent: row.terminalEvent,
           phaseIds,
-          hasSlackTarget: resolveHarvestSlackRecipient(row) !== null,
+          hasSlackTarget: recipient !== null,
           hasRemoteBranchTarget: hasVerifiedBranchCleanupTarget(row),
           stages: plan,
         })
@@ -496,9 +503,6 @@ function restoreRecoveryStore(persisted: {
       const key = ({ phaseKey, stage }: { phaseKey: string; stage: string }) =>
         JSON.stringify([phaseKey, stage]);
       const keys = new Set(plan.map(key));
-      const saved = stages.filter(
-        ({ operationId }) => operationId === fence.operationId,
-      );
       if (
         saved.length &&
         (saved.length !== keys.size ||
@@ -507,6 +511,7 @@ function restoreRecoveryStore(persisted: {
         return { ok: false, code: "HARVEST_PLAN_CONFLICT" };
       }
       if (!saved.length) {
+        row.plannedSlackRecipient = recipient;
         stages.push(
           ...plan.map(({ phaseKey, stage, initialStatus }) => ({
             ...learningReceipt(fence.operationId),
@@ -560,13 +565,6 @@ function restoreRecoveryStore(persisted: {
         return invalid;
       }
       if (gateFailure) {
-        const slack = planned.find(
-          (entry) =>
-            entry.phaseKey === phaseKey && entry.stage === "slack_delivery",
-        );
-        const hasSlackTarget =
-          slack !== undefined && slack.status !== "skipped_no_target";
-        if (hasSlackTarget !== (failureNotice != null)) return invalid;
         const dedupeKey = JSON.stringify([
           "harvest_gate_failed",
           row.operationId,
@@ -576,8 +574,8 @@ function restoreRecoveryStore(persisted: {
           (item) =>
             item.projectId === row.projectId && item.dedupeKey === dedupeKey,
         );
-        const recipient =
-          savedNotice?.recipient ?? resolveHarvestSlackRecipient(row);
+        const recipient = savedNotice?.recipient ?? row.plannedSlackRecipient;
+        if ((recipient !== null) !== (failureNotice != null)) return invalid;
         if (
           failureNotice &&
           (failureNotice.eventType !== "harvest_gate_failed" ||
@@ -660,8 +658,14 @@ function restoreRecoveryStore(persisted: {
         .find((row) => row.outboxId === outboxId);
       if (!row) return null;
       const action = row.status === "pending" ? "send" : "reconcile";
-      if (action === "send" && row.channelId === null && destination) {
-        Object.assign(row, destination);
+      if (action === "send" && row.channelId === null) {
+        if (row.eventType === "harvest_gate_failed") {
+          row.workspaceId = row.recipient.workspaceId ?? null;
+          row.channelId = row.recipient.channelId ?? null;
+          row.threadTs = row.recipient.threadTs ?? null;
+        } else if (destination) {
+          Object.assign(row, destination);
+        }
       }
       row.status = "sending";
       row.updatedAt = nowIso;
@@ -1886,7 +1890,11 @@ it.each([
       featureThreads: hasFeatureThread ? [thread] : [],
       harvests: [
         harvest(operationId, {
-          recipient: hasSlackTarget ? acceptedNotice.recipient : null,
+          recipient: hasFeatureThread
+            ? { projectId, surface: "slack", workspaceId: thread.workspaceId }
+            : hasSlackTarget
+              ? acceptedNotice.recipient
+              : null,
         }),
       ],
       stages: [],
@@ -1918,14 +1926,13 @@ it.each([
       ).toEqual({ ok: false, code: "HARVEST_PLAN_CONFLICT" });
       expect(initial.snapshot()).toEqual(before);
     }
-    expect(
-      initial.initializeHarvestStages({
-        ...plan,
-        fence: claim.fence,
-        nowIso,
-        stages: planHarvestStages(plan),
-      }),
-    ).toEqual({ ok: true });
+    const initialize = {
+      ...plan,
+      fence: claim.fence,
+      nowIso,
+      stages: planHarvestStages(plan),
+    };
+    expect(initial.initializeHarvestStages(initialize)).toEqual({ ok: true });
     const transition = {
       fence: claim.fence,
       nowIso,
@@ -1934,8 +1941,12 @@ it.each([
       status: "gate_failed" as const,
       failureNotice: hasSlackTarget ? notice : null,
     };
+    const beforeGate = restoreRecoveryStore({
+      ...initial.snapshot(),
+      featureThreads: [],
+    });
     if (hasSlackTarget) {
-      const before = initial.snapshot();
+      const before = beforeGate.snapshot();
       for (const failureNotice of [
         null,
         ...(hasFeatureThread ? [acceptedNotice] : []),
@@ -1946,20 +1957,23 @@ it.each([
         },
       ]) {
         expect(
-          initial.transitionHarvestStage({ ...transition, failureNotice }),
+          beforeGate.transitionHarvestStage({ ...transition, failureNotice }),
         ).toEqual({ ok: false, code: "HARVEST_STAGE_TRANSITION_INVALID" });
       }
-      expect(initial.snapshot()).toEqual(before);
+      expect(beforeGate.snapshot()).toEqual(before);
     }
-    expect(initial.transitionHarvestStage(transition)).toEqual({ ok: true });
-    const persisted = initial.snapshot();
+    const beforeReplay = beforeGate.snapshot();
+    expect(beforeGate.initializeHarvestStages(initialize)).toEqual({
+      ok: true,
+    });
+    expect(beforeGate.snapshot()).toEqual(beforeReplay);
+    expect(beforeGate.transitionHarvestStage(transition)).toEqual({ ok: true });
+    const persisted = beforeGate.snapshot();
     const restartState = {
       ...persisted,
-      featureThreads: persisted.featureThreads.map((thread) => ({
-        ...thread,
-        channelId: "C3",
-        rootTs: "3.1",
-      })),
+      featureThreads: hasFeatureThread
+        ? [{ ...thread, channelId: "C3", rootTs: "3.1" }]
+        : [],
     };
     const restarted = restoreRecoveryStore(restartState);
     expect(restarted.listRecoverableOutboxItems({ projectId, nowIso })).toEqual(
@@ -2011,6 +2025,18 @@ it.each([
       }),
     ).toEqual({ ok: true });
     expect(restarted.snapshot()).toEqual(restartState);
+    if (hasFeatureThread) {
+      expect(
+        restarted.claimOutboxItem({
+          outboxId: notice.outboxId,
+          nowIso,
+          destination: { workspaceId: "W3", channelId: "C3", threadTs: "3.1" },
+        }),
+      ).toMatchObject({
+        action: "send",
+        item: { ...destination, clientMetadataKey: notice.clientMetadataKey },
+      });
+    }
   },
 );
 

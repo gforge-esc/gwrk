@@ -167,6 +167,7 @@ export interface DurableHarvestOperation {
   mergeCommitSha: string | null;
   terminalAt: string;
   recipient: DeliveryRecipient | null;
+  plannedSlackRecipient: DeliveryRecipient | null;
   status: HarvestOperationStatus;
   leaseOwner: string | null;
   leaseEpoch: number;
@@ -363,13 +364,13 @@ export interface OperationsStorePort {
     leaseExpiresAt: string;
   }): FencedWrite;
   /**
-   * Persist the full, nonempty set of initial receipts in one fenced write.
+   * Persist the full, nonempty set of initial receipts and plannedSlackRecipient in one fenced write.
    * Require all stages for the supplied phase IDs and the operation's terminal event.
-   * Derive Slack eligibility from the saved recipient and its project feature thread under the fence.
+   * Resolve the saved recipient and its project feature thread under the fence on first initialization.
    * Derive cleanup eligibility from current stored pull request facts under the fence.
    * Use hasVerifiedBranchCleanupTarget and validate the plan with isCompleteHarvestStagePlan.
    * If the operation names a phase, require that phase alone.
-   * A replay with the same phase and stage keys preserves every receipt.
+   * Validate replay against the saved Slack route and preserve every receipt.
    * Reject incomplete or changed plans without writing a partial batch.
    */
   initializeHarvestStages(input: {
@@ -389,7 +390,7 @@ export interface OperationsStorePort {
    * Use deriveHarvestTerminalStatus with the terminal event and full saved phase plan.
    * Set updatedAt to nowIso and set completedAt to nowIso for a terminal status.
    * Require a failure notice when the phase's saved Slack receipt has a target.
-   * Use the saved operation recipient and prefer its project feature thread for routing.
+   * Use plannedSlackRecipient for gate failure notices.
    * Reject conflicting recipient fields before changing either the receipt or outbox.
    * Upsert harvest_gate_failed by project, operation and phase in the gate failure transaction.
    * On fenced replay, validate against the saved notice recipient and preserve both records.
@@ -430,7 +431,8 @@ export interface OperationsStorePort {
   }): OutboxItem[];
   /**
    * Bind the resolved destination and existing metadata key in the atomic send claim.
-   * A null destination on a first claim permits a skip without sending.
+   * For harvest_gate_failed, use the notice's saved recipient on the first send claim.
+   * For other notices, a null destination on a first claim permits a skip without sending.
    * Reconcile abandoned sending and uncertain items at the stored destination.
    * Keep the stored destination on later claims.
    */

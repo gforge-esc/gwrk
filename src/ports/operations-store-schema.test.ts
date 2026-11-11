@@ -13,6 +13,13 @@ const schemaDocument = new URL(
   import.meta.url,
 );
 const now = "2026-11-11T12:00:00.000Z";
+const slackRoute = JSON.stringify({
+  projectId: "project-a",
+  surface: "slack",
+  workspaceId: "W1",
+  channelId: "C2",
+  threadTs: "2.1",
+});
 
 it("preserves ordered delivery scopes, replay identity and aliases after reopening SQLite", () => {
   const directory = mkdtempSync(join(tmpdir(), "gwrk-harvest-schema-"));
@@ -68,6 +75,9 @@ it("preserves ordered delivery scopes, replay identity and aliases after reopeni
       link.run("delivery-42", 1, "op-1");
       link.run("delivery-42", 0, "op-2");
       alias.run("project-a", "local-2", "op-2");
+      db.prepare(
+        "UPDATE harvest_operations SET planned_slack_recipient_json = ? WHERE operation_id = ?",
+      ).run(slackRoute, "op-2");
     }).immediate();
     expect(() =>
       db
@@ -114,6 +124,13 @@ it("preserves ordered delivery scopes, replay identity and aliases after reopeni
         .pluck();
       expect(workAlias.get("project-a", "local-2")).toBe("op-2");
       expect(workAlias.get("project-b", "local-2")).toBeUndefined();
+      const savedSlackRoute = reopened
+        .prepare(
+          "SELECT planned_slack_recipient_json FROM harvest_operations WHERE operation_id = ?",
+        )
+        .pluck();
+      expect(savedSlackRoute.get("op-2")).toBe(slackRoute);
+      expect(savedSlackRoute.get("op-1")).toBeNull();
     } finally {
       reopened.close();
     }
