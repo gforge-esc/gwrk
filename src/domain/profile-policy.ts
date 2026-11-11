@@ -110,14 +110,27 @@ function compatibleToolchain(
     !workspaceBuildSystem ||
     sourceBuildSystem === workspaceBuildSystem;
   const workspaceLanguage = profileLanguage(workspaceStack);
+  const sourceLanguage = profileLanguage(sourceStack);
+  const workspaceFamily = languageFamily(workspaceLanguage);
+  const configuredSourceFamily = languageFamily(sourceLanguage);
+  if (
+    source === "local" &&
+    (!configuredSourceFamily ||
+      !workspaceFamily ||
+      configuredSourceFamily === workspaceFamily)
+  ) {
+    if (buildSystemsMatch) return toolchain;
+    const { build, testCommand: _command, ...shared } = toolchain;
+    const compatible = { ...shared, ...(build === null && { build }) };
+    return Object.keys(compatible).length ? compatible : undefined;
+  }
+
   if (!workspaceLanguage) {
     if (buildSystemsMatch) return toolchain;
     const { build: _build, testCommand: _command, ...compatible } = toolchain;
     return Object.keys(compatible).length ? compatible : undefined;
   }
 
-  const sourceLanguage = profileLanguage(sourceStack);
-  const workspaceFamily = languageFamily(workspaceLanguage);
   const {
     primary,
     formatter,
@@ -128,7 +141,7 @@ function compatibleToolchain(
     sourceExtension,
   } = toolchain;
   const sourceFamily =
-    languageFamily(sourceLanguage) ??
+    configuredSourceFamily ??
     (test ? toolLanguages[test] : undefined) ??
     (primary ? toolLanguages[primary] : undefined) ??
     (formatter ? toolLanguages[formatter] : undefined);
@@ -277,16 +290,12 @@ export function resolveWorkspacePolicyProfile(
       ? options?.detectedToolchains?.[workspaceFamily]
       : undefined,
   );
-  const localFamily = languageFamily(profileLanguage(localProject?.stack));
-  const localToolchain =
-    localFamily && workspaceFamily && localFamily !== workspaceFamily
-      ? compatibleToolchain(
-          localProject?.toolchain,
-          localProject?.stack,
-          workspaceStack,
-          "local",
-        )
-      : localProject?.toolchain;
+  const localToolchain = compatibleToolchain(
+    localProject?.toolchain,
+    localProject?.stack,
+    workspaceStack,
+    "local",
+  );
 
   return mergeProfileOverrides({
     detected:

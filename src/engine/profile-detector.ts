@@ -311,11 +311,12 @@ function detectFilesystemProfile(projectRoot: string): FilesystemProfile {
         // Keep legacy aggregate detection when a standalone Ruff config exists.
         if (!hasRuffConfig) toolchain.test = python.test;
       }
-      if (!hasRuffConfig) {
-        if (content.includes("[tool.black]"))
-          toolchain.formatter = python.formatter = "black";
-        if (content.includes("[tool.ruff]"))
-          toolchain.primary = python.primary = "ruff";
+      if (content.includes("[tool.black]")) {
+        python.formatter = "black";
+        if (!hasRuffConfig) toolchain.formatter = python.formatter;
+      }
+      if (!hasRuffConfig && content.includes("[tool.ruff]")) {
+        toolchain.primary = python.primary = "ruff";
       }
     } catch {}
   }

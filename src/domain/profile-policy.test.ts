@@ -295,6 +295,65 @@ describe("FR-001: profile design inheritance (044 phase p01)", () => {
     },
   );
 
+  it.each([
+    {
+      localToolchain: { test: "jest", build: "npm run build", testCommand: "npm test -- {files}" },
+      entryToolchain: undefined,
+      buildCommand: "pnpm build",
+      testCommand: "npx jest app.test.ts",
+    },
+    {
+      localToolchain: { test: null, build: null },
+      entryToolchain: undefined,
+      buildCommand: null,
+      testCommand: null,
+    },
+    {
+      localToolchain: { test: "jest", build: "npm run build", testCommand: "npm test -- {files}" },
+      entryToolchain: { build: "pnpm bundle", testCommand: "pnpm test -- {files}" },
+      buildCommand: "pnpm bundle",
+      testCommand: "pnpm test -- app.test.ts",
+    },
+  ] satisfies {
+    localToolchain: WorkspaceProfileConfig["toolchain"];
+    entryToolchain: WorkspaceProfileConfig["toolchain"];
+    buildCommand: string | null;
+    testCommand: string | null;
+  }[])(
+    "resolves local npm overrides under a workspace entry selecting pnpm: $buildCommand",
+    ({ localToolchain, entryToolchain, buildCommand, testCommand }) => {
+      const profile = resolveWorkspacePolicyProfile(
+        "apps/web",
+        { type: "nodejs", stack: { language: "TypeScript", buildSystem: "pnpm" } },
+        {
+          project: { design },
+          workspaces: {
+            "apps/web": {
+              stack: { buildSystem: "pnpm" },
+              toolchain: entryToolchain,
+            },
+          },
+        },
+        {
+          localProject: {
+            stack: { language: "TypeScript", buildSystem: "npm" },
+            toolchain: localToolchain,
+          },
+        },
+      );
+
+      expect(profile).toMatchObject({ design, stack: { buildSystem: "pnpm" } });
+      expect.soft(
+        resolveBuildCommand(profile, {
+          hasPackageJson: true,
+          hasPackageBuildScript: true,
+          hasPnpmLock: true,
+        }),
+      ).toBe(buildCommand);
+      expect(getTestCommand(profile, ["app.test.ts"])).toBe(testCommand);
+    },
+  );
+
   it("drops local stack and tools when the registered workspace selects a different language", () => {
     const local = {
       stack: { language: "TypeScript", framework: "Next.js", buildSystem: "pnpm" },

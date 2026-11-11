@@ -679,6 +679,30 @@ describe("FR-001: architecture-aware workspace profiles (044 phase p01)", () => 
     }
   });
 
+  it("detects Black alongside Ruff only when a workspace design applies", async () => {
+    const config = {
+      project: { name: "fixture", design },
+      workspaces: { "services/api": {} },
+    };
+    write(".gwrkrc.json", JSON.stringify(config));
+    write("services/api/pyproject.toml", "[project]\n[tool.black]\n");
+    write("services/api/ruff.toml", "");
+
+    const workspace = path.join(root, "services/api");
+    const profiles = [
+      await detectProfile(workspace),
+      await resolveWorkspaceProfile(root, "services/api"),
+      resolveWorkspaceProfile(workspace, root, config),
+    ];
+    for (const profile of profiles) {
+      expect.soft(profile?.design).toEqual(design);
+      expect.soft(profile?.toolchain).toEqual({ primary: "ruff", formatter: "black" });
+    }
+
+    write(".gwrkrc.json", JSON.stringify({ project: { name: "fixture" } }));
+    expect((await detectProfile(workspace)).toolchain).toEqual({ primary: "ruff" });
+  });
+
   it("keeps explicit workspace-local tools above filtered detection", async () => {
     write("services/api/package.json", "{}");
     write("services/api/biome.json", "{}");
