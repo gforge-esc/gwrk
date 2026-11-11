@@ -66,6 +66,7 @@ export interface WorkerExecutionPort {
   /**
    * Set a pull request's evidence operation ID only after verifying its repository.
    * Require the operation-specific head in that repository or a persisted pull request link.
+   * Report incomplete or failed lookups as unavailable, even if they return a candidate.
    */
   inspectRecoveredWork(input: {
     operationId: string;
@@ -101,6 +102,7 @@ export interface WorkerExecutionPort {
   ): Promise<void>;
 }
 
+/** Use a detached checkout of a verified commit ID in the repository's object format. */
 export interface HarvestExecutionPort {
   discoverPhasesAtCheckout(
     checkoutDir: string,
@@ -317,6 +319,12 @@ export interface OperationsStorePort {
     operation: DurableHarvestOperation;
     stages: HarvestStageReceipt[];
   } | null;
+  /** Extend a live lease atomically after checking the fence. Keep the epoch unchanged. */
+  heartbeatHarvestLease(input: {
+    fence: LeaseFence;
+    nowIso: string;
+    leaseExpiresAt: string;
+  }): FencedWrite;
   transitionHarvestStage(input: {
     fence: LeaseFence;
     nowIso: string;

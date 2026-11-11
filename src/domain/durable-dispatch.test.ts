@@ -68,6 +68,7 @@ function operation(
 }
 const noEvidence: WorkerRecoveryEvidence = {
   workerState: "stopped",
+  pullRequestLookup: "complete",
   openPullRequest: null,
   mergedPullRequest: null,
   completedManifestRunId: null,
@@ -281,28 +282,63 @@ describe("FR-001 stale dispatch reconciliation", () => {
   });
 
   it.each(["openPullRequest", "mergedPullRequest"] as const)(
-    "requeues stale work with unrelated or unverified %s evidence",
+    "requeues stale work with foreign %s evidence",
     (pullRequestKind) => {
-      for (const operationId of [first.operation.operationId, null]) {
+      expect(
+        evaluateStaleDispatchReconciliation({
+          operation: {
+            ...second.operation,
+            status: "running",
+            attemptCount: 1,
+          },
+          evidence: {
+            ...noEvidence,
+            [pullRequestKind]: {
+              operationId: first.operation.operationId,
+              prNumber: 42,
+              prUrl: "https://github.com/acme/a/pull/42",
+              mergeCommitSha: "a".repeat(40),
+            },
+          },
+          maxCrashRecoveryAttempts: 3,
+        }),
+      ).toMatchObject({ action: "requeue_attempt" });
+    },
+  );
+
+  const unresolvedPullRequest = {
+    operationId: null,
+    prNumber: 42,
+    prUrl: "https://github.com/acme/a/pull/42",
+  };
+  it.each([
+    [
+      "open pull request with unknown ownership",
+      {
+        openPullRequest: unresolvedPullRequest,
+      },
+    ],
+    [
+      "merged pull request with unknown ownership",
+      {
+        mergedPullRequest: {
+          ...unresolvedPullRequest,
+          mergeCommitSha: "a".repeat(40),
+        },
+      },
+    ],
+    ["unavailable lookup", { pullRequestLookup: "unavailable" }],
+  ] as const)(
+    "waits for evidence from a stopped worker with %s",
+    (_label, evidence) => {
+      for (const attemptCount of [1, 3]) {
         expect(
           evaluateStaleDispatchReconciliation({
-            operation: {
-              ...second.operation,
-              status: "running",
-              attemptCount: 1,
-            },
-            evidence: {
-              ...noEvidence,
-              [pullRequestKind]: {
-                operationId,
-                prNumber: 42,
-                prUrl: "https://github.com/acme/a/pull/42",
-                mergeCommitSha: "a".repeat(40),
-              },
-            },
+            operation: { ...second.operation, status: "running", attemptCount },
+            evidence: { ...noEvidence, ...evidence },
             maxCrashRecoveryAttempts: 3,
           }),
-        ).toMatchObject({ action: "requeue_attempt" });
+        ).toMatchObject({ action: "await_pr_evidence" });
       }
     },
   );
@@ -336,12 +372,13 @@ describe("FR-001 stale dispatch reconciliation", () => {
       prUrl: "https://github.com/acme/a/pull/42",
     });
   });
-  it("TR-001 preserves merged evidence even when the retry budget is exhausted", () => {
+  it("TR-001 completes from verified merged evidence even with an incomplete lookup", () => {
     expect(
       evaluateStaleDispatchReconciliation({
         operation: operation({ status: "running", attemptCount: 3 }),
         evidence: {
           ...noEvidence,
+          pullRequestLookup: "unavailable",
           mergedPullRequest: {
             operationId: "old-op",
             prNumber: 42,

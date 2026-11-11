@@ -182,6 +182,7 @@ export function verifyHarvestTarget(
         | "NOT_CONFIGURED_TRUNK"
         | "NOT_FEATURE_BRANCH"
         | "MISSING_MERGE_SHA"
+        | "INVALID_MERGE_SHA"
         | "PHASE_MISMATCH";
       reason: string;
     } {
@@ -243,15 +244,22 @@ export function verifyHarvestTarget(
       reason: "Pull request head does not identify the requested phase",
     };
   }
-  if (
-    candidate.terminalEvent === "merged" &&
-    !candidate.mergeCommitSha?.trim()
-  ) {
-    return {
-      ok: false,
-      code: "MISSING_MERGE_SHA",
-      reason: "Merged pull request requires a merge commit",
-    };
+  if (candidate.terminalEvent === "merged") {
+    const mergeSha = candidate.mergeCommitSha?.trim();
+    if (!mergeSha) {
+      return {
+        ok: false,
+        code: "MISSING_MERGE_SHA",
+        reason: "Merged pull request requires a merge commit",
+      };
+    }
+    if (!/^(?:[0-9a-f]{40}|[0-9a-f]{64})$/i.test(mergeSha)) {
+      return {
+        ok: false,
+        code: "INVALID_MERGE_SHA",
+        reason: "Merge commit must be a full hexadecimal Git object ID",
+      };
+    }
   }
 
   return {

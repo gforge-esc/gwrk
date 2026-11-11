@@ -262,6 +262,7 @@ describe("FR-006 durable operation boundaries", () => {
           "recordHarvestIntake",
           "listRecoverableHarvests",
           "claimHarvestLease",
+          "heartbeatHarvestLease",
           "transitionHarvestStage",
           "enqueueOutbox",
           "listRecoverableOutboxItems",
@@ -351,6 +352,7 @@ describe("FR-006 durable operation boundaries", () => {
         const requiredInputs: Record<string, string> = {
           launchPhaseShip: "taskIds",
           claimOutboxItem: "destination",
+          heartbeatHarvestLease: "fence",
         };
         for (const member of declaration.members) {
           if (!ts.isMethodSignature(member) || !ts.isIdentifier(member.name))

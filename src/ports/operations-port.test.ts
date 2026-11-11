@@ -6,6 +6,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
   type DurableDispatchOperation,
   evaluateDispatchAcceptance,
+  validateLeaseFence,
 } from "../domain/durable-dispatch.js";
 import type { HarvestStageReceipt } from "../domain/durable-harvest.js";
 import type {
@@ -19,6 +20,7 @@ type RecoveryStore = Pick<
   OperationsStorePort,
   | "listRecoverableHarvests"
   | "claimHarvestLease"
+  | "heartbeatHarvestLease"
   | "listRecoverableOutboxItems"
   | "claimOutboxItem"
 >;
@@ -134,6 +136,15 @@ function restoreRecoveryStore(persisted: {
         stages: stages.filter((stage) => stage.operationId === operationId),
       };
     },
+    heartbeatHarvestLease({ fence, nowIso, leaseExpiresAt }) {
+      const row = harvests.find((row) => row.operationId === fence.operationId);
+      if (!row) return { ok: false, code: "LEASE_FENCED" };
+      const result = validateLeaseFence(row, fence, nowIso);
+      if (!result.ok) return result;
+      row.leaseExpiresAt = leaseExpiresAt;
+      row.updatedAt = nowIso;
+      return result;
+    },
     listRecoverableOutboxItems({ projectId, nowIso }) {
       // The fixture treats a send as abandoned after one minute.
       return outboxItems
@@ -236,6 +247,64 @@ describe("durable recovery store contract", () => {
       null,
       null,
     ]);
+  });
+
+  it("renews a live harvest lease and fences the old epoch after takeover", () => {
+    const store = restoreRecoveryStore({
+      harvests: [harvest("interrupted")],
+      stages: [],
+      outboxItems: [],
+    });
+    const [candidate] = store.listRecoverableHarvests({ projectId, nowIso });
+    const claimInput = {
+      operationId: candidate.operationId,
+      leaseOwner: "worker",
+      nowIso,
+      leaseExpiresAt,
+    };
+    const claim = store.claimHarvestLease(claimInput);
+    if (!claim) throw new Error("Expected a harvest lease");
+
+    const renewedUntil = "2026-11-11T12:02:00.000Z";
+    expect(
+      store.heartbeatHarvestLease({
+        fence: claim.fence,
+        nowIso: "2026-11-11T12:00:30.000Z",
+        leaseExpiresAt: renewedUntil,
+      }),
+    ).toEqual({ ok: true });
+    expect(
+      store.listRecoverableHarvests({ projectId, nowIso: leaseExpiresAt }),
+    ).toEqual([]);
+
+    const rejectedRenewal = {
+      fence: claim.fence,
+      nowIso: renewedUntil,
+      leaseExpiresAt: "2026-11-11T12:03:00.000Z",
+    };
+    expect(store.heartbeatHarvestLease(rejectedRenewal)).toEqual({
+      ok: false,
+      code: "LEASE_EXPIRED",
+    });
+    expect(
+      store.listRecoverableHarvests({ projectId, nowIso: renewedUntil }),
+    ).toMatchObject([
+      { leaseEpoch: claim.fence.leaseEpoch, leaseExpiresAt: renewedUntil },
+    ]);
+
+    const takeover = store.claimHarvestLease({
+      ...claimInput,
+      nowIso: renewedUntil,
+      leaseExpiresAt: rejectedRenewal.leaseExpiresAt,
+    });
+    expect(takeover?.fence).toEqual({
+      ...claim.fence,
+      leaseEpoch: claim.fence.leaseEpoch + 1,
+    });
+    expect(store.heartbeatHarvestLease(rejectedRenewal)).toEqual({
+      ok: false,
+      code: "LEASE_FENCED",
+    });
   });
 
   it("discovers project sends and claims abandoned or uncertain sends for reconciliation", () => {

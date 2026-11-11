@@ -181,6 +181,11 @@ describe("FR-002 harvest identity and target verification", () => {
     [{ headBranch: null }, "NOT_FEATURE_BRANCH"],
     [{ mergeCommitSha: null }, "MISSING_MERGE_SHA"],
     [{ mergeCommitSha: "" }, "MISSING_MERGE_SHA"],
+    [{ mergeCommitSha: "  " }, "MISSING_MERGE_SHA"],
+    [{ mergeCommitSha: "HEAD" }, "INVALID_MERGE_SHA"],
+    [{ mergeCommitSha: "refs/heads/develop" }, "INVALID_MERGE_SHA"],
+    [{ mergeCommitSha: sha.slice(0, 12) }, "INVALID_MERGE_SHA"],
+    [{ mergeCommitSha: "g".repeat(40) }, "INVALID_MERGE_SHA"],
     [{ explicitPhaseId: "phase-02" }, "PHASE_MISMATCH"],
   ] as const)("TR-002 rejects invalid target %j", (override, code) => {
     expect(verifyHarvestTarget(project, candidate(override))).toEqual({
@@ -188,6 +193,23 @@ describe("FR-002 harvest identity and target verification", () => {
       code,
       reason: expect.any(String),
     });
+  });
+  it.each([40, 64])("accepts a full %i-digit Git object ID", (length) => {
+    const mergeCommitSha = "ab".repeat(length / 2);
+    const expected = verifyHarvestTarget(
+      project,
+      candidate({ mergeCommitSha }),
+    );
+    expect(expected).toMatchObject({
+      ok: true,
+      workKey: expect.stringContaining(mergeCommitSha),
+    });
+    expect(
+      verifyHarvestTarget(
+        project,
+        candidate({ mergeCommitSha: ` ${mergeCommitSha.toUpperCase()} ` }),
+      ),
+    ).toEqual(expected);
   });
   it("TR-002 accepts a verified close without a merge SHA", () => {
     expect(

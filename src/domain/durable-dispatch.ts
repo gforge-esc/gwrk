@@ -82,6 +82,7 @@ export interface DispatchReceipt {
 
 export interface WorkerRecoveryEvidence {
   workerState: "not_started" | "running" | "stopped" | "unknown";
+  pullRequestLookup: "complete" | "unavailable";
   openPullRequest: {
     operationId: string | null;
     prNumber: number;
@@ -104,6 +105,7 @@ export type StaleLeaseDecision =
       prUrl: string;
       triggerHarvestMergeSha?: string;
     }
+  | { action: "await_pr_evidence"; reason: string }
   | { action: "await_worker_stop"; reason: string }
   | { action: "requeue_attempt"; reason: string }
   | { action: "fail_exhausted"; reason: string };
@@ -263,6 +265,16 @@ export function evaluateStaleDispatchReconciliation(input: {
   if (openPullRequest?.operationId === operation.operationId) {
     const { prNumber, prUrl } = openPullRequest;
     return { action: "complete_from_pr", prNumber, prUrl };
+  }
+  if (
+    evidence.pullRequestLookup !== "complete" ||
+    openPullRequest?.operationId === null ||
+    mergedPullRequest?.operationId === null
+  ) {
+    return {
+      action: "await_pr_evidence",
+      reason: "Pull request lookup or ownership is unresolved",
+    };
   }
   if (
     evidence.workerState === "running" ||
