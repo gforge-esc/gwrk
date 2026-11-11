@@ -42,7 +42,7 @@ flowchart LR
 #### Governance and skills
 
 - Architecture rules: `.gwrk/architecture.md` and `docs/decisions/ADR-013-desired-architecture.md`
-- Decisions: `docs/decisions/ADR-010-polyglot-monorepo-workspaces.md` and `docs/decisions/ADR-011-hexagonal-and-agent-port.md`
+- Decisions: `docs/decisions/ADR-010-decision-records.md` and `docs/decisions/ADR-011-hexagonal-and-agent-port.md`
 - Skills: `compile-gate`
 - Delivers: `FR-001` and `TR-001` for `F08`
 
