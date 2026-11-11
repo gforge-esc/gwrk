@@ -1,0 +1,20 @@
+{
+  "runId": "2026-11-11T19:33:02.631Z_ship_p04",
+  "feature": "050-linux-runner-deploy-packaging",
+  "phase": "phase-04",
+  "command": "ship",
+  "agent": "codex",
+  "model": "unknown",
+  "startedAt": "2026-11-11T19:33:02.631Z",
+  "finishedAt": "2026-11-11T19:53:27.041Z",
+  "durationS": 1224,
+  "exitCode": 1,
+  "attempt": 1,
+  "reviewVerdict": "NO-GO",
+  "filesChanged": 7,
+  "linesAdded": 144,
+  "linesDeleted": 13,
+  "gitCommit": "c43f431bb70f2dca21eb6dba4f7999cb6da44565",
+  "gitBranch": "feat/050-linux-runner-deploy-packaging",
+  "digest": []
+}
