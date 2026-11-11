@@ -201,6 +201,16 @@ function authorizePrincipal(
   return { ok: true, project, role: binding.role, recipient };
 }
 
+function isProjectInSlackConversation(
+  project: EnrolledProject,
+  { workspaceId, channelId, isDirectMessage }: SlackInboundEnvelope,
+): boolean {
+  return (
+    project.slack?.workspaceId === workspaceId &&
+    (isDirectMessage || project.slack.channelId === channelId)
+  );
+}
+
 export function evaluateSlackRoute(
   projects: readonly EnrolledProject[],
   roles: readonly ProjectRoleBinding[],
@@ -223,11 +233,9 @@ export function evaluateSlackRoute(
       message: "Slack workspace is not enrolled.",
     };
   }
-  const candidates = isDirectMessage
-    ? workspaceProjects
-    : workspaceProjects.filter(
-        (project) => project.slack?.channelId === channelId,
-      );
+  const candidates = workspaceProjects.filter((project) =>
+    isProjectInSlackConversation(project, envelope),
+  );
   if (candidates.length === 0) {
     return {
       ok: false,
@@ -306,6 +314,27 @@ export function evaluateSlackAction(
     code: "THREAD_PROJECT_MISMATCH",
     message: "The action does not match the project or feature thread.",
   };
+  const rootTs = threadTs ?? messageTs;
+  const matchesThread =
+    Boolean(messageTs) &&
+    storedThread &&
+    storedThread.featureId === input.featureId &&
+    storedThread.workspaceId === input.workspaceId &&
+    storedThread.channelId === input.channelId &&
+    storedThread.rootTs === rootTs;
+
+  if (
+    matchesThread &&
+    payloadProjectId !== undefined &&
+    payloadProjectId !== storedThread.projectId &&
+    projects.some(
+      (project) =>
+        project.projectId === storedThread.projectId &&
+        isProjectInSlackConversation(project, input),
+    )
+  ) {
+    return threadMismatch;
+  }
 
   const route = evaluateSlackRoute(projects, roles, {
     ...input,
@@ -322,26 +351,13 @@ export function evaluateSlackAction(
     return route;
   }
 
-  const rootTs = threadTs ?? messageTs;
   if (
-    !messageTs ||
+    !matchesThread ||
+    storedThread.projectId !== route.project.projectId ||
     (payloadProjectId !== undefined &&
       payloadProjectId !== route.project.projectId) ||
     (payloadRootTs !== undefined && payloadRootTs !== rootTs)
   ) {
-    return threadMismatch;
-  }
-  if (storedThread) {
-    if (
-      storedThread.projectId !== route.project.projectId ||
-      storedThread.featureId !== input.featureId ||
-      storedThread.workspaceId !== input.workspaceId ||
-      storedThread.channelId !== input.channelId ||
-      storedThread.rootTs !== rootTs
-    ) {
-      return threadMismatch;
-    }
-  } else if (actionAccess !== "read" || rootTs !== messageTs) {
     return threadMismatch;
   }
   if (input.priorReceipt) {
@@ -351,7 +367,10 @@ export function evaluateSlackAction(
       message: "This action already has a receipt.",
     };
   }
-  return { ...route, recipient: { ...route.recipient, threadTs: rootTs } };
+  return {
+    ...route,
+    recipient: { ...route.recipient, threadTs: storedThread.rootTs },
+  };
 }
 
 export function evaluateHttpProjectAccess(input: {

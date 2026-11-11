@@ -16,22 +16,24 @@
           "id": "T001",
           "title": "Modify project-id.ts",
           "description": "MODIFY src/domain/project-id.ts. Add `computeLegacyProjectIds` alongside canonical `computeProjectId`. Tests: src/domain/project-id.test.ts",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/phase-01.sh",
-          "sp": 1
+          "sp": 1,
+          "completedAt": "2026-11-11T18:56:51.250Z"
         },
         {
           "id": "T002",
           "title": "Create project-registry.ts",
           "description": "NEW src/domain/project-registry.ts. Define pure enrollment and role schemas plus thread and action receipt types\n\nREVIEW FAIL (code): Enrollment checkout validation — FR-001 (Project enrollment and legacy aliases).\n  WHERE: src/domain/project-registry.ts:40-53\n  EXPECTED: Enrollment requires at least one non-blank checkout location in localRoot or mirrorPath.\n  ACTUAL: validateProjectEnrollment returns ok: true when both localRoot and mirrorPath are null.\n  FIX: Add a cross-field check to the enrollment schema. Cover local-only and mirror-only success plus both-null rejection.\n\nREVIEW/GATE DIVERGENCE (T002, gate: gates/phase-01.sh, REVIEW FAIL block appended, status left unchanged):\nThe review agent raised a finding on this task and its gate still passes, so the gate does not cover what review found. Add a test that fails on it, then fix, before completing.",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/phase-01.sh",
-          "sp": 2
+          "sp": 2,
+          "completedAt": "2026-11-11T18:56:51.250Z"
         },
         {
           "id": "T003",
           "title": "Create slack-routing.ts",
-          "description": "NEW src/domain/slack-routing.ts. Implement pure Slack and HTTP routing policy with thread and replay checks. Tests: src/domain/slack-routing.test.ts\n\nREVIEW FAIL (code): Stored feature thread verification — FR-003 (Scoped dispatch, threads and click authorization).\n  WHERE: src/domain/slack-routing.ts:307-336\n  EXPECTED: A merge_pr click requires a stored thread matching the project, feature, workspace, channel and actual root timestamp. A missing binding returns THREAD_PROJECT_MISMATCH.\n  ACTUAL: With storedThread: null and threadTs omitted, rootTs equals messageTs. A maintainer click for an unbound feature returns ok: true and assigns that message as the recipient thread.\n  FIX: Require a matching stored binding before authorizing a feature-thread mutation. Add a top-level merge click test with no stored thread.\n\nREVIEW FAIL (code): Workspace-scoped project selection — FR-002 (Slack workspace, channel and role authorization).\n  WHERE: src/domain/slack-routing.ts:208-242\n  EXPECTED: Resolve a selector within the eligible conversation projects. A foreign workspace project cannot introduce ambiguity or appear in candidateSlugs.\n  ACTUAL: selectProject(projects, requestedProject) checks the global registry before checking candidates. A foreign workspace alias matching the local alpha slug returns AMBIGUOUS_PROJECT_SELECTION with candidateSlugs [alpha, beta].\n  FIX: Resolve selectors against conversation candidates before computing ambiguity. Return a generic denial for out-of-scope matches and cover a foreign-workspace alias collision.\n\nREVIEW/GATE DIVERGENCE (T003, gate: gates/phase-01.sh, REVIEW FAIL block appended, status left unchanged):\nThe review agent raised a finding on this task and its gate still passes, so the gate does not cover what review found. Add a test that fails on it, then fix, before completing.",
+          "description": "NEW src/domain/slack-routing.ts. Implement pure Slack and HTTP routing policy with thread and replay checks. Tests: src/domain/slack-routing.test.ts\n\nREVIEW FAIL (code): Stored feature thread verification — FR-003 (Scoped dispatch, threads and click authorization).\n  WHERE: src/domain/slack-routing.ts:307-336\n  EXPECTED: A merge_pr click requires a stored thread matching the project, feature, workspace, channel and actual root timestamp. A missing binding returns THREAD_PROJECT_MISMATCH.\n  ACTUAL: With storedThread: null and threadTs omitted, rootTs equals messageTs. A maintainer click for an unbound feature returns ok: true and assigns that message as the recipient thread.\n  FIX: Require a matching stored binding before authorizing a feature-thread mutation. Add a top-level merge click test with no stored thread.\n\nREVIEW FAIL (code): Workspace-scoped project selection — FR-002 (Slack workspace, channel and role authorization).\n  WHERE: src/domain/slack-routing.ts:208-242\n  EXPECTED: Resolve a selector within the eligible conversation projects. A foreign workspace project cannot introduce ambiguity or appear in candidateSlugs.\n  ACTUAL: selectProject(projects, requestedProject) checks the global registry before checking candidates. A foreign workspace alias matching the local alpha slug returns AMBIGUOUS_PROJECT_SELECTION with candidateSlugs [alpha, beta].\n  FIX: Resolve selectors against conversation candidates before computing ambiguity. Return a generic denial for out-of-scope matches and cover a foreign-workspace alias collision.\n\nREVIEW/GATE DIVERGENCE (T003, gate: gates/phase-01.sh, REVIEW FAIL block appended, status left unchanged):\nThe review agent raised a finding on this task and its gate still passes, so the gate does not cover what review found. Add a test that fails on it, then fix, before completing.\n\nREVIEW FAIL (code): Stored reply thread for review and log clicks — FR-003 (Scoped dispatch, threads and click authorization).\n  WHERE: src/domain/slack-routing.ts:325-354\n  EXPECTED: A feature click can return a reply recipient only with a stored project and feature thread that matches the actual Slack conversation and root timestamp.\n  ACTUAL: A viewer's top-level view_review click with storedThread: null returns ok: true and recipient.threadTs: \"1731320500.000100\" from messageTs.\n  FIX: Require a matching stored binding before returning a feature reply recipient. Add a regression test for an unbound top-level view_review click and a success case for a bound review click.\n\nREVIEW FAIL (code): Cross-workspace payload project mismatch — FR-003 (Scoped dispatch, threads and click authorization).\n  WHERE: src/domain/slack-routing.ts:239-258 and src/domain/slack-routing.ts:310-332\n  EXPECTED: A merge_pr click in a bound conversation with a payload project that disagrees with its stored thread returns THREAD_PROJECT_MISMATCH.\n  ACTUAL: With storedThread.projectId: \"proj-alpha\" and payloadProjectId: \"proj-beta\" enrolled in another workspace, evaluateSlackAction returns UNKNOWN_PROJECT before comparing the payload with the stored thread.\n  FIX: Check the payload against the stored binding before returning a selector miss for an otherwise bound conversation. Keep workspace and channel checks. Add a regression test for a foreign-workspace project ID on a bound thread.\n\nREVIEW/GATE DIVERGENCE (T003, gate: gates/phase-01.sh, REVIEW FAIL block appended, status left unchanged):\nThe review agent raised a finding on this task and its gate still passes, so the gate does not cover what review found. Add a test that fails on it, then fix, before completing.\n\nDIAGNOSIS (iteration 2):\nFIX: src/domain/slack-routing.ts — In `evaluateSlackAction`, remove the `rootTs === messageTs` exception. Return `THREAD_PROJECT_MISMATCH` for `merge_pr` if `storedThread` is null, missing, or mismatched. Keep the project, feature, workspace, channel and `threadTs ?? messageTs` checks.\nFIX: src/domain/slack-routing.ts — In `evaluateSlackRoute`, call `selectProject(candidates, requestedProject)`. On a miss, use a boolean selector match within `workspaceProjects` to preserve `CHANNEL_PROJECT_MISMATCH` for same-workspace channel mismatches. Return `UNKNOWN_PROJECT` for foreign-only selectors without `candidateSlugs`.\nFIX: src/domain/slack-routing.test.ts — Add a maintainer `merge_pr` case with `storedThread: null` and no `threadTs`. Assert `THREAD_PROJECT_MISMATCH`. Add a foreign `PROJECT_BETA` fixture with `legacyProjectIds: [\"alpha\"]`. Assert `alpha` resolves to `PROJECT_ALPHA` and `beta` returns `UNKNOWN_PROJECT` without `candidateSlugs`. Verify both regressions fail before the fix and pass through `specs/048-project-identity-slack/gates/phase-01.sh`, which already runs this suite.\nFIX: src/domain/slack-routing.ts — Apply the required `storedThread` check to `view_review` and `view_logs`. Populate `recipient.threadTs` from `storedThread.rootTs` only after the binding matches the selected project, feature, workspace, channel and actual message root.\nFIX: src/domain/slack-routing.ts — Before payload-based project selection in `evaluateSlackAction`, verify the stored project is eligible in the current conversation and the binding matches the click’s workspace, channel, feature and root. For that verified binding, return `THREAD_PROJECT_MISMATCH` if `payloadProjectId` differs from `storedThread.projectId`. Preserve `UNBOUND_WORKSPACE` and `UNBOUND_CHANNEL`.\nFIX: src/domain/slack-routing.test.ts — Add top-level viewer cases for `view_review` and `view_logs` with `messageTs: STORED_THREAD.rootTs` and no `threadTs`. Assert null bindings return `THREAD_PROJECT_MISMATCH` and matching bindings return `recipient.threadTs: STORED_THREAD.rootTs`. Add a bound `merge_pr` case with `storedThread: STORED_THREAD` and `payloadProjectId: \"proj-beta\"` from a foreign workspace. Assert `THREAD_PROJECT_MISMATCH`. Verify the denial cases fail before the fix and pass through `specs/048-project-identity-slack/gates/phase-01.sh`.",
           "status": "open",
           "gateScript": "gates/phase-01.sh",
           "sp": 2
@@ -40,33 +42,37 @@
           "id": "T004",
           "title": "Modify index.ts",
           "description": "MODIFY src/domain/index.ts. Export project registry and Slack routing contracts from the domain barrel",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/phase-01.sh",
-          "sp": 1
+          "sp": 1,
+          "completedAt": "2026-11-11T18:56:51.250Z"
         },
         {
           "id": "T005",
           "title": "Modify store-port.ts",
           "description": "MODIFY src/ports/store-port.ts. Add `ProjectRegistryPort` to the existing persistence port module",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/phase-01.sh",
-          "sp": 1
+          "sp": 1,
+          "completedAt": "2026-11-11T18:56:51.250Z"
         },
         {
           "id": "T006",
           "title": "Modify notification-port.ts",
           "description": "MODIFY src/ports/notification-port.ts. Add project and recipient fields plus receipt, presence and status contracts",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/phase-01.sh",
-          "sp": 1
+          "sp": 1,
+          "completedAt": "2026-11-11T18:56:51.250Z"
         },
         {
           "id": "T007",
           "title": "Modify vcs-port.ts",
           "description": "MODIFY src/ports/vcs-port.ts. Add identity discovery, pull request lookup and pull request merge methods\n\nREVIEW FAIL (code): Version-control port contract — FR-001 (Project enrollment and legacy aliases) and FR-003 (Scoped dispatch, threads and click authorization).\n  WHERE: src/ports/vcs-port.ts:12-22\n  EXPECTED: VcsPort requires discoverIdentityFacts(cwd), resolvePullRequestUrl(cwd, query) and mergePullRequest(cwd, prNumber) as declared in contracts/project-registry-and-storage.md.\n  ACTUAL: VcsPort declares discoverIdentityFacts?, resolvePullRequestUrl? and mergePullRequest?. TypeScript allows undefined for each method.\n  FIX: Declare all three methods as required on the project-facing VcsPort. Keep the build green by updating adapter typing or exposing a narrower interface for existing branch-only callers. Add a type check that detects optional methods.\n\nREVIEW/GATE DIVERGENCE (T007, gate: gates/phase-01.sh, REVIEW FAIL block appended, status left unchanged):\nThe review agent raised a finding on this task and its gate still passes, so the gate does not cover what review found. Add a test that fails on it, then fix, before completing.",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/phase-01.sh",
-          "sp": 1
+          "sp": 1,
+          "completedAt": "2026-11-11T18:56:51.250Z"
         }
       ],
       "sp_estimate": 9,
