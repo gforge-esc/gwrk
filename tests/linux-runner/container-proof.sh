@@ -172,6 +172,9 @@ case "$1" in
     case "$2" in
       --property=User) printf 'gwrk\n' ;;
       --property=Group) printf 'gwrk\n' ;;
+      --property=ActiveState)
+        if [[ -f "$pid_file" ]]; then printf 'active\n'; else printf 'inactive\n'; fi
+        ;;
       --property=MainPID)
         if [[ "${GWRK_FIXTURE_HOLD_ROLLBACK:-}" == readiness ]]; then hold_rollback; fi
         cat "$pid_file"

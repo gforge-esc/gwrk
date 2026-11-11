@@ -30,8 +30,9 @@ it.each([
   { signal: "SIGINT", status: 130, stage: "readiness" },
   { signal: "SIGTERM", status: 143, stage: "initial stop" },
   { signal: "SIGINT", status: 130, stage: "initial stop" },
+  { signal: null, status: 1, stage: "backup with an inactive unit" },
 ] as const)(
-  "recovers the original release on $signal during $stage",
+  "preserves release state during $stage (exit $status)",
   async ({ signal, status, stage }) => {
     const root = await mkdtemp(join(tmpdir(), "gwrk-rollback-signal-"));
     const bin = join(root, "bin");
@@ -52,7 +53,7 @@ it.each([
       await mkdir(runtime);
       await mkdir(state);
       await writeFile(join(runtime, "server.lock"), "");
-      await writeFile(pidFile, String(process.pid));
+      if (signal) await writeFile(pidFile, String(process.pid));
       await symlink(active, current);
       await symlink(target, previous);
       for (const version of [active, target]) {
@@ -88,8 +89,15 @@ it.each([
         uname: "printf 'Linux\\n'",
         realpath: 'cd -P -- "$3" && pwd -P',
         flock: "exit 0",
-        runuser:
-          'shift 5\n[[ "${3:-}" != db || "${4:-}" != rollback-check ]] || exit 0\nexec "$@"',
+        runuser: `shift 5
+if [[ "\${3:-}" == db ]]; then
+  [[ "\${4:-}" != rollback-check ]] || exit 0
+  if [[ "\${4:-}" == backup && "$FIXTURE_STAGE" == "backup with an inactive unit" ]]; then
+    printf 'Fixture backup failed\\n' >&2
+    exit 1
+  fi
+fi
+exec "$@"`,
         mv: `exec node -e 'require("node:fs").renameSync(process.argv[1], process.argv[2])' "$3" "$4"`,
         timeout: '[[ "$1" != --kill-after=* ]] || shift\nshift\nexec "$@"',
         systemctl: `
@@ -99,7 +107,7 @@ release_readiness="$GWRK_RUNTIME_DIR/release-readiness"
 case "$1" in
   stop)
     printf 'stop\\n' >> "$GWRK_RUNTIME_DIR/supervisor.calls"
-    rm "$pid_file"
+    rm -f "$pid_file"
     if [[ "$FIXTURE_STAGE" == "initial stop" ]]; then
       touch "$ready"
       while [[ ! -e "$release_readiness" ]]; do sleep 0.05; done
@@ -109,6 +117,9 @@ case "$1" in
   show)
     case "$2" in
       --property=User|--property=Group) printf 'gwrk\\n' ;;
+      --property=ActiveState)
+        if [[ -f "$pid_file" ]]; then printf 'active\\n'; else printf 'inactive\\n'; fi
+        ;;
       --property=MainPID)
         if [[ ! -e "$ready" ]]; then
           touch "$ready"
@@ -151,6 +162,15 @@ esac`,
       });
       const closed = once(child, "close");
       try {
+        if (!signal) {
+          expect(await closed, output).toEqual([status, null]);
+          expect(output).toContain("Fixture backup failed");
+          expect(await readFile(calls, "utf8"), output).toBe("stop\n");
+          expect(existsSync(pidFile)).toBe(false);
+          expect(await readlink(current)).toBe(active);
+          expect(await readlink(previous)).toBe(target);
+          return;
+        }
         await vi.waitFor(() => expect(existsSync(ready), output).toBe(true), {
           timeout: 8_000,
         });

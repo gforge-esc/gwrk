@@ -82,7 +82,7 @@ point() {
   mv -Tf -- "$scratch/pointer" "$2"
 }
 on_exit() {
-  status=$?
+  local status=$? current_state
   trap '' TERM INT
   if $lock_held; then flock -u 9; fi
   if ((status != 0)); then
@@ -101,8 +101,20 @@ on_exit() {
     if $target_started; then
       printf 'Verify the ledger and recover from %s before starting the service.\n' "$backup" >&2
     elif $stop_attempted; then
-      systemctl start "$unit" ||
-        printf 'Could not restart the original release for %s.\n' "$unit" >&2
+      case "$original_state" in
+        active|reloading|refreshing)
+          if current_state=$(systemctl show --property=ActiveState --value "$unit"); then
+            case "$current_state" in
+              inactive|failed|deactivating)
+                systemctl start "$unit" ||
+                  printf 'Could not restart the original release for %s.\n' "$unit" >&2
+                ;;
+            esac
+          else
+            printf 'Could not read the service state for %s during recovery.\n' "$unit" >&2
+          fi
+          ;;
+      esac
     fi
   fi
   rm -rf -- "$scratch"
@@ -111,6 +123,8 @@ trap on_exit EXIT
 trap 'exit 143' TERM
 trap 'exit 130' INT
 
+original_state=$(systemctl show --property=ActiveState --value "$unit") ||
+  fail "Could not read the service state for $unit before rollback."
 stop_attempted=true
 systemctl stop "$unit"
 [[ -f "$runtime/server.lock" && ! -L "$runtime/server.lock" ]] ||
