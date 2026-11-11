@@ -178,7 +178,7 @@ export async function startServer(
   });
 
   let pidWriteAttempted = false;
-  const cleanup: Array<() => void | Promise<void>> = [];
+  const cleanup: Array<() => void | Promise<void>> = [() => queue.close()];
 
   const shutdown = async () => {
     server.log.info("Shutting down server...");
@@ -209,7 +209,8 @@ export async function startServer(
         errors.push(err);
       }
     }
-    if (errors.length)
+    if (errors.length === 1) throw errors[0];
+    if (errors.length > 1)
       throw new AggregateError(errors, "Server cleanup failed");
   });
 
@@ -243,15 +244,23 @@ export async function startServer(
     network.start();
 
     const slackApp = slackInUse ? null : getSlackApp();
-    const planHeartbeat = new PlanHeartbeat(config, slackApp, projectRoot);
+    const planHeartbeat = new PlanHeartbeat(
+      config,
+      slackApp,
+      projectRoot,
+      options.ledger,
+    );
     cleanup.push(() => planHeartbeat.stop());
     planHeartbeat.start();
 
-    const harvestWatcher = new HarvestWatcher(config, slackApp, projectRoot);
+    const harvestWatcher = new HarvestWatcher(
+      config,
+      slackApp,
+      projectRoot,
+      options.ledger,
+    );
     cleanup.push(() => harvestWatcher.stop());
     harvestWatcher.start();
-
-    cleanup.push(() => queue.close());
 
     if (!slackInUse) {
       if (slackApp) {

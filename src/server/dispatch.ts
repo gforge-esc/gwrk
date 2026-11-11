@@ -51,6 +51,7 @@ export class DispatchQueue {
   private paused = false;
   private closed = false;
   private inFlight = new Set<Promise<void>>();
+  private errors: unknown[] = [];
 
   constructor(
     private config: GwrkConfig,
@@ -74,6 +75,9 @@ export class DispatchQueue {
     this.closed = true;
     this.pause();
     await Promise.all(this.inFlight);
+    if (this.errors.length === 1) throw this.errors[0];
+    if (this.errors.length > 1)
+      throw new AggregateError(this.errors, "Dispatch queue failed");
   }
 
   /** Ship branch for a feature-phase. Per-phase (`feat/<feature>-phase-NN`) so
@@ -88,7 +92,7 @@ export class DispatchQueue {
     const existing = this.getDispatch(request.featureId, request.phaseId);
     if (
       existing &&
-      (existing.status === "queued" || existing.status === "running")
+      (existing.status === "queued" || this.active.includes(existing))
     ) {
       return existing;
     }
@@ -154,11 +158,13 @@ export class DispatchQueue {
 
     this.active.push(record);
     record.status = "running";
-    persistDispatch(record, this.projectRoot);
 
     // Run in background
     const work = this.runDispatch(record)
-      .catch(console.error)
+      .catch((error: unknown) => {
+        this.errors.push(error);
+        logCliError("Dispatch failed:", error);
+      })
       .finally(() => this.inFlight.delete(work));
     this.inFlight.add(work);
   }
@@ -170,26 +176,26 @@ export class DispatchQueue {
       startedAt: new Date().toISOString(),
     };
 
-    attempt.runId = startRun(
-      {
-        feature_id: record.featureId,
-        phase_id: record.phaseId,
-        command: `gwrk ship ${record.featureId} ${record.phaseId}`,
-        agent_backend: record.backend,
-        workflow: "work-until-done",
-        project_id: this.ledger?.projectId,
-      },
-      this.ledger?.db,
-    );
-
     record.attempts.push(attempt);
 
-    // Foxtrot Charlie: No phaseStart notification.
-    // PE started the dispatch — they know. Only bless messages.
-
     const shipBranch = this.shipBranch(record.featureId, record.phaseId);
+    let exitCode: number;
+    let stderr: string;
 
     try {
+      persistDispatch(record, this.projectRoot);
+      attempt.runId = startRun(
+        {
+          feature_id: record.featureId,
+          phase_id: record.phaseId,
+          command: `gwrk ship ${record.featureId} ${record.phaseId}`,
+          agent_backend: record.backend,
+          workflow: "work-until-done",
+          project_id: this.ledger?.projectId,
+        },
+        this.ledger?.db,
+      );
+
       // Isolate the feature-phase in a git worktree and drive the SAME unified
       // ShipOrchestrator the CLI uses. The orchestrator owns branch setup,
       // implement, build/test gates, review and the PR (→ develop). The daemon
@@ -222,22 +228,22 @@ export class DispatchQueue {
         branchName: shipBranch,
       });
 
-      const exitCode = await orchestrator.run();
+      exitCode = await orchestrator.run();
 
       // Surface PR metadata for the review-ready notification.
       const result = orchestrator.getResult();
       if (result.prNumber) record.prNumber = result.prNumber;
       if (result.prUrl) record.prUrl = result.prUrl;
 
-      await this.handleCompletion(
-        record.id,
-        exitCode,
-        exitCode === 0 ? "" : `ShipOrchestrator exited with code ${exitCode}`,
-      );
-    } catch (e) {
-      const errorMessage = e instanceof Error ? e.message : String(e);
-      await this.handleCompletion(record.id, 1, errorMessage);
+      stderr =
+        exitCode === 0 ? "" : `ShipOrchestrator exited with code ${exitCode}`;
+    } catch (error) {
+      exitCode = 1;
+      stderr = error instanceof Error ? error.message : String(error);
+      if (attempt.runId === undefined) this.errors.push(error);
     }
+
+    await this.handleCompletion(record.id, exitCode, stderr);
   }
 
   async handleCompletion(
@@ -252,6 +258,8 @@ export class DispatchQueue {
     attempt.completedAt = new Date().toISOString();
     attempt.exitCode = exitCode;
     attempt.stderr = stderr;
+    record.status = exitCode === 0 ? "completed" : "failed";
+    record.completedAt = attempt.completedAt;
 
     // Reflect the ship outcome on any task records (status dashboards read them).
     for (const task of record.tasks) {
@@ -263,72 +271,73 @@ export class DispatchQueue {
       }
     }
 
-    if (attempt.runId) {
-      const duration = Math.floor(
-        (new Date(attempt.completedAt).getTime() -
-          new Date(attempt.startedAt).getTime()) /
-          1000,
-      );
-      finishRun(
-        attempt.runId,
-        {
-          exit_code: exitCode,
-          duration_s: duration,
-        },
-        this.ledger?.db,
-      );
-    }
-
     try {
-      if (exitCode === 0) {
-        record.status = "completed";
-        record.completedAt = attempt.completedAt;
-
-        // The unified engine already opened the PR (PR_CI → develop). Notify with
-        // the review/merge CTA. Harvest runs the Done-Done finalizer post-merge.
-        await notifySlack(MessageBuilder.reviewReady(record), {
-          type: "review_ready",
-          feature: record.featureId,
-          phase: record.phaseId,
-          payload: record as unknown as Record<string, unknown>,
-          timestamp: new Date().toISOString(),
-        });
-      } else {
-        // The engine owns iteration/diagnosis/failback internally, so a non-zero
-        // exit is terminal for the daemon — no bespoke outer retry/escalation
-        // (that overlap retired with DispatchOrchestrator, PR-8).
-        record.status = "failed";
-        await notifySlack(MessageBuilder.phaseFail(record, stderr), {
-          type: "phase_fail",
-          feature: record.featureId,
-          phase: record.phaseId,
-          payload: { ...record, stderr } as unknown as Record<string, unknown>,
-          timestamp: new Date().toISOString(),
-        });
+      if (attempt.runId !== undefined) {
+        const duration = Math.floor(
+          (new Date(attempt.completedAt).getTime() -
+            new Date(attempt.startedAt).getTime()) /
+            1000,
+        );
+        finishRun(
+          attempt.runId,
+          {
+            exit_code: exitCode,
+            duration_s: duration,
+          },
+          this.ledger?.db,
+        );
       }
-    } catch (error) {
-      logCliError("Failed to notify dispatch outcome:", error);
-    }
 
-    // Move from active to history.
-    this.active = this.active.filter((r) => r.id !== record.id);
-    this.history.push(record);
-
-    // Always tear down the worktree — ship owns commit/push/PR via PR_CI, so
-    // destroy only removes the tree (no auto commit/push/PR).
-    if (record.workDir) {
       try {
-        await this.sandbox.destroySandbox(record.workDir, record.featureId, {
-          autoCommitPush: false,
-        });
-      } catch (e) {
-        logCliError("Failed to destroy sandbox:", e);
+        if (exitCode === 0) {
+          // The unified engine already opened the PR (PR_CI → develop). Notify with
+          // the review/merge CTA. Harvest runs the Done-Done finalizer post-merge.
+          await notifySlack(MessageBuilder.reviewReady(record), {
+            type: "review_ready",
+            feature: record.featureId,
+            phase: record.phaseId,
+            payload: record as unknown as Record<string, unknown>,
+            timestamp: new Date().toISOString(),
+          });
+        } else {
+          await notifySlack(MessageBuilder.phaseFail(record, stderr), {
+            type: "phase_fail",
+            feature: record.featureId,
+            phase: record.phaseId,
+            payload: { ...record, stderr } as unknown as Record<
+              string,
+              unknown
+            >,
+            timestamp: new Date().toISOString(),
+          });
+        }
+      } catch (error) {
+        logCliError("Failed to notify dispatch outcome:", error);
       }
-      record.workDir = undefined;
-    }
+    } finally {
+      try {
+        if (record.workDir) {
+          await this.sandbox.destroySandbox(record.workDir, record.featureId, {
+            autoCommitPush: false,
+          });
+          record.workDir = undefined;
+        }
+      } catch (error) {
+        this.errors.push(error);
+        logCliError("Failed to destroy sandbox:", error);
+      }
 
-    persistDispatch(record, this.projectRoot);
-    this.processNext();
+      this.active = this.active.filter((r) => r.id !== record.id);
+      this.history.push(record);
+      try {
+        persistDispatch(record, this.projectRoot);
+      } catch (error) {
+        this.errors.push(error);
+        logCliError("Failed to journal dispatch outcome:", error);
+      } finally {
+        this.processNext();
+      }
+    }
   }
 
   getQueue() {

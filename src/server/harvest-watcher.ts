@@ -16,32 +16,42 @@ import { execCommand } from "../utils/exec.js";
 import { parseFeatureBranch } from "../utils/feature-branch.js";
 import { detectDefaultBranch, syncTrunkForHarvest } from "../utils/git.js";
 import { resolveProjectId } from "../utils/project-id.js";
+import type { DispatchLedgerScope } from "./dispatch.js";
 
 export class HarvestWatcher {
   private interval: NodeJS.Timeout | null = null;
+  private inFlight?: Promise<void>;
   private projectId: string;
 
   constructor(
     private config: GwrkConfig,
     private slackApp: App | null,
     private projectRoot: string = process.cwd(),
+    private ledger?: DispatchLedgerScope,
   ) {
-    this.projectId = resolveProjectId(this.projectRoot);
+    this.projectId = ledger?.projectId ?? resolveProjectId(this.projectRoot);
   }
 
   start() {
     // Poll every 5 minutes (300000ms)
     const intervalMs = 5 * 60 * 1000;
-    this.interval = setInterval(() => this.runCheck(), intervalMs);
-    // Run once on startup
-    this.runCheck().catch(console.error);
+    const check = () => {
+      this.inFlight ??= this.runCheck()
+        .catch(console.error)
+        .finally(() => {
+          this.inFlight = undefined;
+        });
+    };
+    this.interval = setInterval(check, intervalMs);
+    check();
   }
 
-  stop() {
+  stop(): void | Promise<void> {
     if (this.interval) {
       clearInterval(this.interval);
       this.interval = null;
     }
+    return this.inFlight;
   }
 
   async runCheck() {
@@ -101,6 +111,7 @@ export class HarvestWatcher {
             featureId,
             phaseId,
             this.projectId,
+            this.ledger?.db,
           );
           if (existing) {
             continue; // Already processed
@@ -132,7 +143,7 @@ export class HarvestWatcher {
 
         try {
           syncTrunkForHarvest(this.projectRoot, baseBranch);
-          await harvestFeature(this.projectRoot, record);
+          await harvestFeature(this.projectRoot, record, this.ledger);
           logCliOutput(
             `HarvestWatcher: Completed harvest for ${featureId} (${phaseId || "all phases"})`,
           );

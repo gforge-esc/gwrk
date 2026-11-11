@@ -45,18 +45,32 @@ interface FixtureOptions {
   pauseDispatch?: boolean;
 }
 
+let gitLocalEnvKeys: string[] | undefined;
+
 export function fixtureGit(root: string, ...args: string[]): string {
-  return execFileSync("git", args, {
+  const options = {
     cwd: root,
-    encoding: "utf8",
-    stdio: ["ignore", "pipe", "pipe"],
+    encoding: "utf8" as const,
+    stdio: ["ignore", "pipe", "pipe"] as ("ignore" | "pipe")[],
     timeout: 5_000,
-    env: {
-      ...process.env,
-      GIT_EDITOR: "true",
-      EDITOR: "true",
-      GIT_TERMINAL_PROMPT: "0",
-    },
+  };
+  const noninteractive = {
+    GIT_EDITOR: "true",
+    EDITOR: "true",
+    GIT_TERMINAL_PROMPT: "0",
+  };
+  gitLocalEnvKeys ??= execFileSync("git", ["rev-parse", "--local-env-vars"], {
+    ...options,
+    env: { PATH: process.env.PATH, ...noninteractive },
+  })
+    .trim()
+    .split(/\r?\n/);
+
+  const env: NodeJS.ProcessEnv = { ...process.env, ...noninteractive };
+  for (const key of gitLocalEnvKeys) delete env[key];
+  return execFileSync("git", args, {
+    ...options,
+    env,
   }).trim();
 }
 

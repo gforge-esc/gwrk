@@ -4,6 +4,7 @@
 
 import fs from "node:fs";
 import path from "node:path";
+import type Database from "better-sqlite3";
 import {
   logCliError,
   logCliOutput,
@@ -123,11 +124,13 @@ export async function finalizeLogs(
 export async function harvestFeature(
   projectPath: string,
   record: HarvestRecord,
+  scope?: { projectId: string; db: Database.Database },
 ): Promise<CompressionReport | undefined> {
   const { featureId, phaseId, mergeCommitSha, prNumber, mergedAt, status } =
     record;
 
-  const projectId = resolveProjectId(projectPath);
+  const projectId = scope?.projectId ?? resolveProjectId(projectPath);
+  const connectionArgs: [Database.Database?] = scope ? [scope.db] : [];
 
   // If no phaseId is specified, discover all phases from plan.md and run harvest for each
   if (!phaseId) {
@@ -147,7 +150,7 @@ export async function harvestFeature(
           logCliOutput(
             `Reconciling/Harvesting phase ${phase.id} for feature ${featureId}...`,
           );
-          await harvestFeature(projectPath, subRecord);
+          await harvestFeature(projectPath, subRecord, scope);
         }
       } catch (err) {
         logCliError(
@@ -165,7 +168,12 @@ export async function harvestFeature(
 
   // 0. Idempotency Guard (FR-H10)
   if (phaseId) {
-    const existing = getCompressionRecord(featureId, phaseId, projectId);
+    const existing = getCompressionRecord(
+      featureId,
+      phaseId,
+      projectId,
+      ...connectionArgs,
+    );
     if (existing) {
       logCliOutput(
         `Harvest already completed for ${featureId} ${phaseId}, skipping.`,
@@ -174,7 +182,7 @@ export async function harvestFeature(
     }
 
     // Fallback: Use the run record itself as an idempotency token if compression is disabled/unimplemented
-    const runs = listRuns(featureId, projectId);
+    const runs = listRuns(featureId, projectId, ...connectionArgs);
     const alreadyProcessedRun = runs.find(
       (r) =>
         r.phase_id === phaseId &&
@@ -198,7 +206,7 @@ export async function harvestFeature(
   }
 
   // 2. Finalize DB Run Records (FR-H03)
-  const runs = listRuns(featureId, projectId);
+  const runs = listRuns(featureId, projectId, ...connectionArgs);
 
   const alreadyProcessedRun = runs.find(
     (r) =>
@@ -218,11 +226,15 @@ export async function harvestFeature(
       `Run record for PR ${prNumber} is already ${status}. Skipping DB update.`,
     );
   } else if (targetRun?.id) {
-    finishRun(targetRun.id, {
-      status: status,
-      merge_commit_sha: mergeCommitSha,
-      finished_at: mergedAt,
-    });
+    finishRun(
+      targetRun.id,
+      {
+        status: status,
+        merge_commit_sha: mergeCommitSha,
+        finished_at: mergedAt,
+      },
+      ...connectionArgs,
+    );
   } else if (status === "merged") {
     warnCli(
       `No matching pending run found for harvest: feature=${featureId}, phase=${phaseId}, PR=${prNumber}. Backfilling run record.`,
@@ -235,33 +247,36 @@ export async function harvestFeature(
         )
         .sort((a, b) => b.startedAt.localeCompare(a.startedAt))[0];
 
-      const backfillId = recordRun({
-        feature_id: featureId,
-        phase_id: phaseId || latestManifest?.phase || undefined,
-        project_id: projectId,
-        command: "ship",
-        agent_backend: latestManifest?.agent,
-        model: latestManifest?.model,
-        status: "merged",
-        exit_code: latestManifest?.exitCode ?? 0,
-        started_at: latestManifest?.startedAt,
-        finished_at: mergedAt || latestManifest?.finishedAt,
-        duration_s: latestManifest?.durationS,
-        attempt: latestManifest?.attempt ?? 1,
-        gate_result: latestManifest?.gateResult,
-        review_verdict: latestManifest?.reviewVerdict,
-        files_changed: latestManifest?.filesChanged,
-        lines_added: latestManifest?.linesAdded,
-        lines_deleted: latestManifest?.linesDeleted,
-        merge_commit_sha: mergeCommitSha,
-        pr_number: prNumber || undefined,
-        pr_url: record.prUrl || undefined,
-        device_id: latestManifest?.deviceId,
-        hostname: latestManifest?.hostname,
-        tokens_in: latestManifest?.usage?.inputTokens,
-        tokens_out: latestManifest?.usage?.outputTokens,
-        cost_usd: latestManifest?.usage?.costUsd,
-      });
+      const backfillId = recordRun(
+        {
+          feature_id: featureId,
+          phase_id: phaseId || latestManifest?.phase || undefined,
+          project_id: projectId,
+          command: "ship",
+          agent_backend: latestManifest?.agent,
+          model: latestManifest?.model,
+          status: "merged",
+          exit_code: latestManifest?.exitCode ?? 0,
+          started_at: latestManifest?.startedAt,
+          finished_at: mergedAt || latestManifest?.finishedAt,
+          duration_s: latestManifest?.durationS,
+          attempt: latestManifest?.attempt ?? 1,
+          gate_result: latestManifest?.gateResult,
+          review_verdict: latestManifest?.reviewVerdict,
+          files_changed: latestManifest?.filesChanged,
+          lines_added: latestManifest?.linesAdded,
+          lines_deleted: latestManifest?.linesDeleted,
+          merge_commit_sha: mergeCommitSha,
+          pr_number: prNumber || undefined,
+          pr_url: record.prUrl || undefined,
+          device_id: latestManifest?.deviceId,
+          hostname: latestManifest?.hostname,
+          tokens_in: latestManifest?.usage?.inputTokens,
+          tokens_out: latestManifest?.usage?.outputTokens,
+          cost_usd: latestManifest?.usage?.costUsd,
+        },
+        ...connectionArgs,
+      );
       logCliOutput(
         `Backfilled run record for ${featureId} ${phaseId} (Run ID: ${backfillId})`,
       );
@@ -302,10 +317,14 @@ export async function harvestFeature(
       for (const r of pendingRuns) {
         if (r.id === undefined) continue;
         try {
-          finishRun(r.id, {
-            status: "closed",
-            finished_at: new Date().toISOString(),
-          });
+          finishRun(
+            r.id,
+            {
+              status: "closed",
+              finished_at: new Date().toISOString(),
+            },
+            ...connectionArgs,
+          );
         } catch (e) {
           warnCli(`Failed to close pending run ${r.id}: ${e}`);
         }
@@ -371,6 +390,7 @@ export async function harvestFeature(
               featureId,
               projectId,
               phaseId,
+              ...connectionArgs,
             );
             if (
               rawTelemetry &&
@@ -395,7 +415,9 @@ export async function harvestFeature(
             ...(telemetry ? { telemetry } : {}),
           };
 
-          createSqliteRunStoreAdapter().recordCompression(report, projectId);
+          createSqliteRunStoreAdapter(
+            scope ? { db: scope.db } : undefined,
+          ).recordCompression(report, projectId);
           logCliOutput(
             `Recorded compression for ${featureId} ${phaseId}: point=${compression.pointCompression.toFixed(1)}x`,
           );

@@ -9,33 +9,44 @@ import { DriftDetector, type DriftResult } from "../engine/drift-detector.js";
 import { PlanStore } from "../engine/plan-store.js";
 import type { GwrkConfig } from "../utils/config.js";
 import { resolveProjectId } from "../utils/project-id.js";
+import type { DispatchLedgerScope } from "./dispatch.js";
 
 export class PlanHeartbeat {
   private interval: NodeJS.Timeout | null = null;
+  private inFlight?: Promise<void>;
   private store: PlanStore;
-  private projectId: string;
 
   constructor(
     private config: GwrkConfig,
     private slackApp: App | null,
     private projectRoot: string = process.cwd(),
+    ledger?: DispatchLedgerScope,
   ) {
-    this.projectId = resolveProjectId(this.projectRoot);
-    this.store = new PlanStore(this.projectId);
+    this.store = new PlanStore(
+      ledger?.projectId ?? resolveProjectId(this.projectRoot),
+      ledger?.db,
+    );
   }
 
   start() {
     const intervalMs = 4 * 60 * 60 * 1000; // 4 hours default
-    this.interval = setInterval(() => this.runCheck(), intervalMs);
-    // Also run once on start
-    this.runCheck().catch(console.error);
+    const check = () => {
+      this.inFlight ??= this.runCheck()
+        .catch(console.error)
+        .finally(() => {
+          this.inFlight = undefined;
+        });
+    };
+    this.interval = setInterval(check, intervalMs);
+    check();
   }
 
-  stop() {
+  stop(): void | Promise<void> {
     if (this.interval) {
       clearInterval(this.interval);
       this.interval = null;
     }
+    return this.inFlight;
   }
 
   async runCheck() {

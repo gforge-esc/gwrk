@@ -13,9 +13,12 @@ import {
   createServerFixture,
   fixtureGit,
 } from "../../tests/helpers/server-fixture.js";
-import { listRuns } from "../db/runs.js";
+import { getDb } from "../db/index.js";
+import { listRuns, startRun } from "../db/runs.js";
 import { ShipOrchestrator } from "../engine/ship-orchestrator.js";
 import { execCommand } from "../utils/exec.js";
+import { syncTrunkForHarvest } from "../utils/git.js";
+import { HarvestWatcher } from "./harvest-watcher.js";
 import { PlanHeartbeat } from "./heartbeat.js";
 import { SystemMonitor } from "./monitor.js";
 import { NetworkMonitor } from "./network.js";
@@ -52,13 +55,17 @@ vi.mock("../engine/ship-orchestrator.js", () => ({
 }));
 vi.mock("../db/index.js", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../db/index.js")>()),
-  getDb: () => {
+  getDb: vi.fn(() => {
     throw new Error("Unexpected access to the default SQLite connection");
-  },
+  }),
 }));
 vi.mock("../utils/exec.js", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../utils/exec.js")>()),
   execCommand: vi.fn(),
+}));
+vi.mock("../utils/git.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../utils/git.js")>()),
+  syncTrunkForHarvest: vi.fn(),
 }));
 
 function readIfPresent(path: string): string | undefined {
@@ -78,12 +85,17 @@ function portOf({ app }: ServerFixture): number {
   return address.port;
 }
 
+function stubListener() {
+  const app = fastify();
+  vi.mocked(fastify).mockReturnValueOnce(app);
+  vi.spyOn(app, "listen").mockResolvedValue("http://127.0.0.1:0");
+}
+
 describe("Server E2E Integration", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.spyOn(SystemMonitor.prototype, "isThrottled").mockReturnValue(false);
     vi.spyOn(NetworkMonitor.prototype, "isOnline").mockReturnValue(true);
-    vi.spyOn(PlanHeartbeat.prototype, "runCheck").mockResolvedValue(undefined);
     vi.mocked(execCommand).mockImplementation(async (command, args) => {
       if (command !== "gh" || args.slice(0, 2).join(" ") !== "pr list") {
         throw new Error(`Unexpected subprocess: ${command}`);
@@ -252,6 +264,174 @@ describe("Server E2E Integration", () => {
     for (const fixture of fixtures) {
       expect(fixture.db.open).toBe(false);
       expect(existsSync(fixture.projectRoot)).toBe(false);
+    }
+  });
+
+  it("uses scoped SQLite in the startup heartbeat", async () => {
+    stubListener();
+    const heartbeat = vi.spyOn(PlanHeartbeat.prototype, "runCheck");
+    const fixture = await createServerFixture("listen");
+    try {
+      expect(heartbeat).toHaveBeenCalledOnce();
+      const [result] = await Promise.allSettled([
+        heartbeat.mock.results[0].value,
+      ]);
+      expect(getDb).not.toHaveBeenCalled();
+      expect(result.status).toBe("fulfilled");
+    } finally {
+      await fixture.close();
+    }
+  });
+
+  it("uses scoped compression and run records when the startup watcher sees closed pull requests", async () => {
+    stubListener();
+    const watcher = vi.spyOn(HarvestWatcher.prototype, "runCheck");
+    let returnPullRequests!: (
+      value: Awaited<ReturnType<typeof execCommand>>,
+    ) => void;
+    vi.mocked(execCommand).mockReturnValueOnce(
+      new Promise((resolve) => {
+        returnPullRequests = resolve;
+      }),
+    );
+    const fixture = await createServerFixture("listen");
+    const closedAt = "2026-01-01T00:00:00Z";
+    const pullRequests = ["already-harvested", "pending-harvest"].map(
+      (featureId, index) => ({
+        number: index + 1,
+        headRefName: `feat/${featureId}-phase-01`,
+        state: "CLOSED",
+        closedAt,
+        url: `https://example.invalid/pr/${index + 1}`,
+      }),
+    );
+    try {
+      try {
+        fixture.db
+          .prepare(`
+        INSERT INTO compression (
+          feature_id, phase_id, project_id, estimated_hours, actual_coding_hours,
+          estimated_days, actual_delivery_days, point_compression, total_compression, merge_timestamp
+        ) VALUES ('already-harvested', 'phase-01', ?, 1, 1, 1, 1, 1, 1, ?)
+      `)
+          .run(fixture.projectId, closedAt);
+        for (const featureId of ["already-harvested", "pending-harvest"]) {
+          startRun(
+            {
+              feature_id: featureId,
+              phase_id: "phase-01",
+              project_id: fixture.projectId,
+              command: "ship",
+            },
+            fixture.db,
+          );
+        }
+      } finally {
+        returnPullRequests({
+          exitCode: 0,
+          stdout: JSON.stringify(pullRequests),
+          stderr: "",
+        });
+        await watcher.mock.results[0]?.value;
+      }
+      expect(watcher).toHaveBeenCalledOnce();
+      expect(getDb).not.toHaveBeenCalled();
+      expect(syncTrunkForHarvest).toHaveBeenCalledOnce();
+      expect(
+        listRuns("pending-harvest", fixture.projectId, fixture.db),
+      ).toEqual([
+        expect.objectContaining({ status: "closed", finished_at: closedAt }),
+      ]);
+      expect(
+        listRuns("already-harvested", fixture.projectId, fixture.db),
+      ).toEqual([expect.objectContaining({ finished_at: null })]);
+    } finally {
+      await fixture.close();
+    }
+  });
+
+  it("releases a dispatch worktree and reports a failed ledger update on close", async () => {
+    stubListener();
+    const fixture = await createServerFixture("listen");
+    try {
+      fixture.db.exec(`
+        CREATE TRIGGER fail_run_update BEFORE UPDATE ON runs
+        BEGIN
+          SELECT RAISE(ABORT, 'fixture ledger update failed');
+        END;
+      `);
+      const response = await fixture.app.inject({
+        method: "POST",
+        url: "/api/dispatch",
+        payload: {
+          featureId: "ledger-failure",
+          phaseId: "phase-01",
+          taskId: "T001",
+        },
+      });
+      expect(response.statusCode).toBe(201);
+      const { id } = response.json();
+
+      await vi.waitFor(() => {
+        expect(fixture.journal().at(-1)).toMatchObject({
+          id,
+          status: "completed",
+          tasks: [expect.objectContaining({ status: "completed" })],
+        });
+      });
+      const workDir = fixture
+        .journal()
+        .find((record) => record.workDir)?.workDir;
+      expect(workDir).toBeDefined();
+      expect(existsSync(workDir ?? "")).toBe(false);
+      const worktrees = fixtureGit(
+        fixture.projectRoot,
+        "worktree",
+        "list",
+        "--porcelain",
+      );
+      expect(worktrees.match(/^worktree .+$/gm)).toEqual([
+        `worktree ${fixture.projectRoot}`,
+      ]);
+      const queue = await fixture.app.inject("/api/dispatch/queue");
+      expect(queue.json().active).toEqual([]);
+      expect(listRuns("ledger-failure", fixture.projectId, fixture.db)).toEqual(
+        [expect.objectContaining({ finished_at: null })],
+      );
+      await expect(fixture.app.close()).rejects.toThrow(
+        "fixture ledger update failed",
+      );
+    } finally {
+      await fixture.close();
+    }
+  });
+
+  it("initializes a separate Git repository with inherited repository selectors", async () => {
+    const external = await createServerFixture("routes", {
+      routes: ["dispatch"],
+    });
+    let fixture: ServerFixture | undefined;
+    const snapshot = () => [
+      fixtureGit(external.projectRoot, "rev-parse", "HEAD"),
+      fixtureGit(external.projectRoot, "status", "--porcelain"),
+      fixtureGit(external.projectRoot, "config", "--local", "--list"),
+    ];
+    try {
+      const original = snapshot();
+      vi.stubEnv("GIT_DIR", join(external.projectRoot, ".git"));
+      vi.stubEnv("GIT_WORK_TREE", external.projectRoot);
+      try {
+        fixture = await createServerFixture("routes", { routes: ["dispatch"] });
+      } finally {
+        vi.unstubAllEnvs();
+      }
+      expect(existsSync(join(fixture.projectRoot, ".git"))).toBe(true);
+      expect(fixtureGit(fixture.projectRoot, "log", "-1", "--format=%s")).toBe(
+        "Initialize fixture",
+      );
+      expect(snapshot()).toEqual(original);
+    } finally {
+      await Promise.all([fixture?.close(), external.close()]);
     }
   });
 
