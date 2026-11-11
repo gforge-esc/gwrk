@@ -291,6 +291,23 @@ describe("ship with the real AgentPort router", () => {
     expect(await decisions()).toEqual([]);
   });
 
+  it("previews an installed backend without calling its native quota hook", async () => {
+    configureAgents("goose", ["goose"]);
+    const goose = provider("goose");
+    const { AgentBackendRegistry } = await import("../plugins/agent-registry.js");
+    vi.mocked(AgentBackendRegistry.prototype.getAgentBackend).mockResolvedValue(goose);
+
+    await ship("--dry-run");
+
+    expect(console.log).toHaveBeenCalledWith(
+      expect.stringContaining("backend: goose, model: goose-primary"),
+    );
+    expect(goose.isAvailable).toHaveBeenCalledOnce();
+    expect(goose.checkQuota).not.toHaveBeenCalled();
+    expect(ShipOrchestrator).not.toHaveBeenCalled();
+    expect(await decisions()).toEqual([]);
+  });
+
   it("falls back to Claude when the higher-quota Codex executable is missing", async () => {
     seedQuota(100, 50);
     const { AgentBackendRegistry } = await import(

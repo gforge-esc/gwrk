@@ -212,10 +212,16 @@ async function selectAvailableRoute(
     try {
       backend = await registry.getAgentBackend(route.backend);
       if (!explicitPreview) {
-        if (restrictToRegistry && !(await backend.isAvailable())) continue;
-        available = installedOnly
-          ? await backend.isAvailable()
-          : (await quotaProbe(backend)).status === "available";
+        const availabilityOnly = context.preview || installedOnly;
+        if (
+          (restrictToRegistry || availabilityOnly) &&
+          !(await backend.isAvailable())
+        ) {
+          continue;
+        }
+        available =
+          availabilityOnly ||
+          (await quotaProbe(backend)).status === "available";
       }
     } catch {
       // An explicit preview can display the route even if the adapter is missing.
