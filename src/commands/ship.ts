@@ -889,7 +889,8 @@ Examples:
                 implementation.backend,
                 opts,
                 shipCwd,
-                opts.legacy && implementation.mode === "provider-default"
+                implementation.useAdapterModelDefaults ||
+                  (opts.legacy && implementation.mode === "provider-default")
                   ? undefined
                   : implementation.model,
                 {

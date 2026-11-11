@@ -228,19 +228,25 @@ async function selectAvailableRoute(
       // The next candidate can still satisfy the requested role.
     }
     if (available) {
-      const review = context.includeReviewModel
-        ? selectAgentRoute(
-            { type: "review" },
-            {
-              explicitBackend: route.backend,
-              availableBackends: [route.backend],
-              registry: agentRegistry,
-              cooledDownModels,
-            },
-          )
-        : undefined;
+      const useAdapterModelDefaults =
+        context.explicitBackend !== undefined &&
+        context.explicitModel === undefined &&
+        !agentRegistry?.backends[route.backend];
+      const review =
+        context.includeReviewModel && !useAdapterModelDefaults
+          ? selectAgentRoute(
+              { type: "review" },
+              {
+                explicitBackend: route.backend,
+                availableBackends: [route.backend],
+                registry: agentRegistry,
+                cooledDownModels,
+              },
+            )
+          : undefined;
       const selected = {
         ...route,
+        ...(useAdapterModelDefaults && { useAdapterModelDefaults }),
         ...(review && {
           reviewModel: review.model,
           reviewEffort: review.effort,

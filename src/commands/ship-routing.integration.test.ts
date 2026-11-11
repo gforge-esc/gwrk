@@ -441,6 +441,27 @@ describe("ship with the real AgentPort router", () => {
     );
   });
 
+  it("preserves the native model environment for an explicit unregistered backend", async () => {
+    configureAgents("claude", ["claude"]);
+    vi.stubEnv("CODEX_MODEL", "environment-model");
+
+    await ship("--agent", "codex");
+
+    const [options] = vi.mocked(ShipOrchestrator).mock.calls[0];
+    expect(options.backend).toBe("codex");
+    const adapter = new CodexAdapter();
+    for (const model of [options.selectedModel, options.reviewModel]) {
+      const dispatch = await adapter.dispatch({
+        agent: "codex",
+        model,
+        env: { CODEX_MODEL: process.env.CODEX_MODEL },
+      });
+      expect(dispatch.args).toEqual(
+        expect.arrayContaining(["--model", "environment-model"]),
+      );
+    }
+  });
+
   it.each([
     {
       reviewCooldown: false,
