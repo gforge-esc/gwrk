@@ -14,10 +14,10 @@ export interface VcsPort {
   isDirty(cwd: string): Promise<boolean> | boolean;
   createBranch(branchName: string, cwd: string): Promise<void> | void;
   syncBranch(branchName: string, cwd: string): Promise<void> | void;
-  discoverIdentityFacts?(cwd: string): ProjectIdentityFacts;
-  resolvePullRequestUrl?(
+  discoverIdentityFacts(cwd: string): ProjectIdentityFacts;
+  resolvePullRequestUrl(
     cwd: string,
     query: { prNumber?: number; headBranch?: string },
   ): Promise<string | null> | string | null;
-  mergePullRequest?(cwd: string, prNumber: number): Promise<string> | string;
+  mergePullRequest(cwd: string, prNumber: number): Promise<string> | string;
 }

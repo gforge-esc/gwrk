@@ -494,6 +494,56 @@ describe("FR-002 / TR-002: Pure Slack command routing and role authorization", (
     });
   });
 
+  it.each(["T_FOREIGN", "T_ACME"])(
+    "ignores selector aliases outside the conversation in workspace %s",
+    async (workspaceId) => {
+      const { evaluateSlackRoute } = await loadSlackRouting();
+      const outsideProject = {
+        ...PROJECT_BETA,
+        slack: { workspaceId, channelId: "C_SHARED", sharedChannel: true },
+        legacyProjectIds: ["alpha"],
+      };
+
+      expect(
+        evaluateSlackRoute([PROJECT_ALPHA, outsideProject], ROLES, {
+          workspaceId: "T_ACME",
+          channelId: "C_ALPHA",
+          isDirectMessage: false,
+          actorUserId: "U_OPERATOR",
+          requestedProject: "alpha",
+          requiredAccess: "read",
+        }),
+      ).toMatchObject({ ok: true, project: PROJECT_ALPHA });
+    },
+  );
+
+  it("denies a foreign-workspace selector without exposing project candidates", async () => {
+    const { evaluateSlackRoute } = await loadSlackRouting();
+    const foreignProject = {
+      ...PROJECT_BETA,
+      slack: {
+        workspaceId: "T_FOREIGN",
+        channelId: "C_ALPHA",
+        sharedChannel: false,
+      },
+    };
+
+    expect(
+      evaluateSlackRoute([PROJECT_ALPHA, foreignProject], ROLES, {
+        workspaceId: "T_ACME",
+        channelId: "C_ALPHA",
+        isDirectMessage: false,
+        actorUserId: "U_OPERATOR",
+        requestedProject: "beta",
+        requiredAccess: "read",
+      }),
+    ).toEqual({
+      ok: false,
+      code: "UNKNOWN_PROJECT",
+      message: "Project is not enrolled for this Slack conversation.",
+    });
+  });
+
   it("TR-002: denies unauthorized users and insufficient roles per project", async () => {
     const { evaluateSlackRoute } = await loadSlackRouting();
 
@@ -870,6 +920,24 @@ describe("FR-003 / TR-003: Click-time Slack action verification, thread binding 
         actionId: "merge_pr",
         featureId: STORED_THREAD.featureId,
         storedThread: STORED_THREAD,
+      }),
+    ).toMatchObject({ ok: false, code: "THREAD_PROJECT_MISMATCH" });
+  });
+
+  it("denies a top-level merge click without a stored feature thread", async () => {
+    const { evaluateSlackAction } = await loadSlackRouting();
+    expect(
+      evaluateSlackAction(PROJECTS, ROLES, {
+        workspaceId: STORED_THREAD.workspaceId,
+        channelId: STORED_THREAD.channelId,
+        isDirectMessage: false,
+        actorUserId: "U_MAINTAINER",
+        messageTs: STORED_THREAD.rootTs,
+        requiredAccess: "maintain",
+        actionId: "merge_pr",
+        payloadProjectId: STORED_THREAD.projectId,
+        featureId: STORED_THREAD.featureId,
+        storedThread: null,
       }),
     ).toMatchObject({ ok: false, code: "THREAD_PROJECT_MISMATCH" });
   });

@@ -143,16 +143,24 @@ function ambiguousProject(projects: readonly EnrolledProject[]): RouteDenial {
   };
 }
 
+function matchesProjectSelector(
+  project: EnrolledProject,
+  selector: string,
+): boolean {
+  return (
+    project.projectId === selector ||
+    project.slug === selector ||
+    project.repoSlug === selector ||
+    project.legacyProjectIds.includes(selector)
+  );
+}
+
 function selectProject(
   projects: readonly EnrolledProject[],
   selector: string,
 ): ProjectSelection {
-  const matches = projects.filter(
-    (project) =>
-      project.projectId === selector ||
-      project.slug === selector ||
-      project.repoSlug === selector ||
-      project.legacyProjectIds.includes(selector),
+  const matches = projects.filter((project) =>
+    matchesProjectSelector(project, selector),
   );
   if (matches.length > 1) return ambiguousProject(matches);
   if (matches.length === 1) return { ok: true, project: matches[0] };
@@ -230,16 +238,26 @@ export function evaluateSlackRoute(
 
   let project: EnrolledProject;
   if (requestedProject !== undefined) {
-    const selection = selectProject(projects, requestedProject);
-    if (!selection.ok) return selection;
-    project = selection.project;
-    if (!candidates.includes(project)) {
+    const selection = selectProject(candidates, requestedProject);
+    if (!selection.ok) {
+      if (selection.code !== "UNKNOWN_PROJECT") return selection;
+      if (
+        workspaceProjects.some((entry) =>
+          matchesProjectSelector(entry, requestedProject),
+        )
+      ) {
+        return {
+          ok: false,
+          code: "CHANNEL_PROJECT_MISMATCH",
+          message: "The selected project is outside this Slack conversation.",
+        };
+      }
       return {
-        ok: false,
-        code: "CHANNEL_PROJECT_MISMATCH",
-        message: "The selected project is outside this Slack conversation.",
+        ...selection,
+        message: "Project is not enrolled for this Slack conversation.",
       };
     }
+    project = selection.project;
   } else {
     if (
       isDirectMessage ||
@@ -323,7 +341,7 @@ export function evaluateSlackAction(
     ) {
       return threadMismatch;
     }
-  } else if (rootTs !== messageTs) {
+  } else if (actionAccess !== "read" || rootTs !== messageTs) {
     return threadMismatch;
   }
   if (input.priorReceipt) {

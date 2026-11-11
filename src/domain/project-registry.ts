@@ -37,20 +37,27 @@ export const ProjectRoleBindingSchema = z.object({
 });
 export type ProjectRoleBinding = z.infer<typeof ProjectRoleBindingSchema>;
 
-export const EnrolledProjectSchema = z.object({
-  projectId: nonBlank,
-  slug: nonBlank,
-  name: nonBlank,
-  repoSlug: nonBlank.nullable(),
-  trunkBranch: nonBlank,
-  localRoot: nonBlank.nullable(),
-  mirrorPath: nonBlank.nullable(),
-  runnerPolicy: ProjectRunnerPolicySchema,
-  slack: ProjectSlackBindingSchema.nullable(),
-  legacyProjectIds: z.array(nonBlank),
-  createdAt: z.string().datetime({ offset: true }),
-  updatedAt: z.string().datetime({ offset: true }),
-});
+export const EnrolledProjectSchema = z
+  .object({
+    projectId: nonBlank,
+    slug: nonBlank,
+    name: nonBlank,
+    repoSlug: nonBlank.nullable(),
+    trunkBranch: nonBlank,
+    localRoot: nonBlank.nullable(),
+    mirrorPath: nonBlank.nullable(),
+    runnerPolicy: ProjectRunnerPolicySchema,
+    slack: ProjectSlackBindingSchema.nullable(),
+    legacyProjectIds: z.array(nonBlank),
+    createdAt: z.string().datetime({ offset: true }),
+    updatedAt: z.string().datetime({ offset: true }),
+  })
+  .refine(
+    ({ localRoot, mirrorPath }) => localRoot !== null || mirrorPath !== null,
+    {
+      message: "Specify a checkout in localRoot or mirrorPath",
+    },
+  );
 export type EnrolledProject = z.infer<typeof EnrolledProjectSchema>;
 
 export interface DeliveryRecipient {

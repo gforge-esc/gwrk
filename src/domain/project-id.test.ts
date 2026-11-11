@@ -24,7 +24,7 @@ function md5(value: string): string {
   return crypto.createHash("md5").update(value).digest("hex");
 }
 
-function getExportedTypeMembers(
+function getExportedRequiredTypeMembers(
   source: string,
   typeName: string,
 ): string[] | null {
@@ -45,6 +45,7 @@ function getExportedTypeMembers(
 
     if (ts.isInterfaceDeclaration(stmt) && stmt.name.text === typeName) {
       return stmt.members
+        .filter((member) => !member.questionToken)
         .map((member) =>
           member.name && ts.isIdentifier(member.name) ? member.name.text : "",
         )
@@ -57,6 +58,7 @@ function getExportedTypeMembers(
       ts.isTypeLiteralNode(stmt.type)
     ) {
       return stmt.type.members
+        .filter((member) => !member.questionToken)
         .map((member) =>
           member.name && ts.isIdentifier(member.name) ? member.name.text : "",
         )
@@ -212,6 +214,12 @@ describe("FR-001 / TR-001: Canonical remote IDs and legacy path alias hashes", (
       value: slackBoundInput,
     });
 
+    const mirrorOnlyInput = { ...slackBoundInput, localRoot: null };
+    expect(validateProjectEnrollment(mirrorOnlyInput)).toEqual({
+      ok: true,
+      value: mirrorOnlyInput,
+    });
+
     const localOnlyInput = {
       projectId: md5("path:/Users/dev/solo"),
       slug: "solo",
@@ -267,6 +275,9 @@ describe("FR-001 / TR-001: Canonical remote IDs and legacy path alias hashes", (
       { ...validBase, slug: "   " },
       { ...validBase, name: "" },
       { ...validBase, trunkBranch: "" },
+      { ...validBase, localRoot: null, mirrorPath: null },
+      { ...validBase, localRoot: "   ", mirrorPath: null },
+      { ...validBase, localRoot: null, mirrorPath: "   " },
       { ...validBase, runnerPolicy: { allowedKinds: ["unsupported_runner"] } },
       {
         ...validBase,
@@ -379,7 +390,7 @@ describe("FR-001 / TR-001: Canonical remote IDs and legacy path alias hashes", (
       [],
     );
 
-    const registryMembers = getExportedTypeMembers(
+    const registryMembers = getExportedRequiredTypeMembers(
       storePortSource,
       "ProjectRegistryPort",
     );
@@ -403,7 +414,7 @@ describe("FR-001 / TR-001: Canonical remote IDs and legacy path alias hashes", (
       ]),
     );
 
-    const prSummaryMembers = getExportedTypeMembers(
+    const prSummaryMembers = getExportedRequiredTypeMembers(
       vcsPortSource,
       "PullRequestSummary",
     );
@@ -411,7 +422,7 @@ describe("FR-001 / TR-001: Canonical remote IDs and legacy path alias hashes", (
       expect.arrayContaining(["prNumber", "prUrl"]),
     );
 
-    const vcsMembers = getExportedTypeMembers(vcsPortSource, "VcsPort");
+    const vcsMembers = getExportedRequiredTypeMembers(vcsPortSource, "VcsPort");
     expect(vcsMembers).toEqual(
       expect.arrayContaining([
         "getCurrentBranch",
