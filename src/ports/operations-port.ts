@@ -435,7 +435,9 @@ export interface OperationsStorePort {
    * Bind the resolved destination and existing metadata key in the atomic send claim.
    * For a pending harvest_gate_failed notice, bind the destination from its saved Slack recipient.
    * Reject the send claim if that recipient lacks a workspace or channel.
-   * For other notices, a null destination on a first claim permits a skip without sending.
+   * For other pending notices, a null destination atomically records skipped_no_target.
+   * A skip returns no claim and preserves the attempt count.
+   * Send and reconcile require a bound workspace, channel and metadata key.
    * Reconcile abandoned sending and uncertain items at the stored destination.
    * Keep the stored destination on later claims.
    */
@@ -443,11 +445,14 @@ export interface OperationsStorePort {
     outboxId: string;
     nowIso: string;
     destination: OutboxDestination | null;
-  }): {
-    claim: OutboxClaim;
-    item: OutboxItem;
-    action: "send" | "reconcile";
-  } | null;
+  }):
+    | {
+        claim: OutboxClaim;
+        item: OutboxItem & OutboxDestination;
+        action: "send" | "reconcile";
+      }
+    | { action: "skipped_no_target"; item: OutboxItem }
+    | null;
   markOutboxUncertain(input: {
     claim: OutboxClaim;
     nowIso: string;

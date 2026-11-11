@@ -241,7 +241,7 @@ export function scopeVerifiedMergeToPhases(
 
 function parseHarvestBranch(headBranch: string | null): HarvestTarget | null {
   const branch = /^(?:feat|phase)\/(.+)$/.exec(headBranch ?? "");
-  if (!branch) return null;
+  if (!branch || branch[1].includes("/")) return null;
 
   const phase = /^(.+)-(phase-\d+)(?:--dispatch-[a-f0-9]{64})?$/.exec(
     branch[1],
@@ -796,16 +796,20 @@ export function evaluateBranchCleanupSafety(input: {
   ) {
     return { action: "block_cleanup", code: "PROTECTED_BRANCH" };
   }
-  if (!expectedHeadSha?.trim()) {
+  if (expectedHeadSha === null || !fullGitObjectId.test(expectedHeadSha)) {
     return { action: "block_cleanup", code: "MISSING_EXPECTED_TIP" };
   }
   if (observedRemoteHeadSha === null) return { action: "already_deleted" };
-  if (expectedHeadSha !== observedRemoteHeadSha) {
+  const expectedSha = expectedHeadSha.toLowerCase();
+  if (
+    !fullGitObjectId.test(observedRemoteHeadSha) ||
+    expectedSha !== observedRemoteHeadSha.toLowerCase()
+  ) {
     return { action: "block_cleanup", code: "TIP_MOVED" };
   }
   return {
     action: "delete_at_tip",
     branch: headBranch,
-    expectedSha: expectedHeadSha,
+    expectedSha,
   };
 }

@@ -656,16 +656,37 @@ function restoreRecoveryStore(persisted: {
         .find((row) => row.outboxId === outboxId);
       if (!row) return null;
       const action = row.status === "pending" ? "send" : "reconcile";
+      let route = {
+        workspaceId: row.workspaceId,
+        channelId: row.channelId,
+        threadTs: row.threadTs,
+      };
       if (action === "send") {
         if (row.eventType === "harvest_gate_failed") {
           if (!isHarvestSlackRecipient(row.recipient)) return null;
-          row.workspaceId = row.recipient.workspaceId;
-          row.channelId = row.recipient.channelId;
-          row.threadTs = row.recipient.threadTs ?? null;
-        } else if (row.channelId === null && destination) {
-          Object.assign(row, destination);
+          route = {
+            workspaceId: row.recipient.workspaceId,
+            channelId: row.recipient.channelId,
+            threadTs: row.recipient.threadTs ?? null,
+          };
+        } else {
+          if (destination === null) {
+            row.status = "skipped_no_target";
+            row.updatedAt = nowIso;
+            return { action: "skipped_no_target", item: { ...row } };
+          }
+          route = destination;
         }
       }
+      const { workspaceId, channelId, threadTs } = route;
+      if (
+        !workspaceId?.trim() ||
+        !channelId?.trim() ||
+        !row.clientMetadataKey.trim()
+      ) {
+        return null;
+      }
+      Object.assign(row, route);
       row.status = "sending";
       row.updatedAt = nowIso;
       row.attemptCount += 1;
@@ -675,7 +696,7 @@ function restoreRecoveryStore(persisted: {
           attemptNumber: row.attemptCount,
           clientMetadataKey: row.clientMetadataKey,
         },
-        item: { ...row },
+        item: { ...row, workspaceId, channelId, threadTs },
         action,
       };
     },
@@ -1211,10 +1232,11 @@ describe("durable recovery store contract", () => {
       harvests: [],
       stages: [],
       outboxItems: [
-        outbox("uncertain", "uncertain", { createdAt: nowIso }),
-        outbox("live", "sending", { updatedAt: nowIso }),
+        outbox("uncertain", "uncertain", { ...destination, createdAt: nowIso }),
+        outbox("live", "sending", { ...destination, updatedAt: nowIso }),
         outbox("delivered", "delivered"),
         outbox("abandoned", "sending", {
+          ...destination,
           createdAt: "2026-11-11T11:59:00.000Z",
         }),
         outbox("other", "pending", { projectId: "project-b" }),
@@ -1281,6 +1303,69 @@ describe("durable recovery store contract", () => {
     });
     expect(store.getOutboxItem("missing")).toBeNull();
   });
+
+  it("persists a no-target claim across restart without retrying delivery", () => {
+    const pending = outbox("no-target", "pending");
+    const store = restoreRecoveryStore({
+      harvests: [],
+      stages: [],
+      outboxItems: [pending],
+    });
+    expect(
+      store.claimOutboxItem({
+        outboxId: pending.outboxId,
+        nowIso,
+        destination: null,
+      }),
+    ).toEqual({
+      action: "skipped_no_target",
+      item: { ...pending, status: "skipped_no_target", updatedAt: nowIso },
+    });
+
+    const restarted = restoreRecoveryStore(store.snapshot());
+    expect(restarted.getOutboxItem(pending.outboxId)).toMatchObject({
+      status: "skipped_no_target",
+      attemptCount: 0,
+    });
+    expect(
+      restarted.listRecoverableOutboxItems({
+        nowIso: leaseExpiresAt,
+        projectId,
+      }),
+    ).toEqual([]);
+    expect(
+      restarted.claimOutboxItem({
+        outboxId: pending.outboxId,
+        nowIso: leaseExpiresAt,
+        destination,
+      }),
+    ).toBeNull();
+  });
+
+  it.each([
+    ["pending", { clientMetadataKey: "" }],
+    ["uncertain", { ...destination, workspaceId: null }],
+    ["sending", { ...destination, channelId: null }],
+    ["uncertain", { ...destination, clientMetadataKey: "" }],
+  ] as const)(
+    "rejects a %s outbox claim with missing delivery facts",
+    (status, overrides) => {
+      const item = outbox("incomplete-delivery", status, overrides);
+      const store = restoreRecoveryStore({
+        harvests: [],
+        stages: [],
+        outboxItems: [item],
+      });
+      expect(
+        store.claimOutboxItem({
+          outboxId: item.outboxId,
+          nowIso: leaseExpiresAt,
+          destination,
+        }),
+      ).toBeNull();
+      expect(store.snapshot().outboxItems).toEqual([item]);
+    },
+  );
 
   it("reconciles at the persisted destination after the feature thread changes", () => {
     const store = restoreRecoveryStore({

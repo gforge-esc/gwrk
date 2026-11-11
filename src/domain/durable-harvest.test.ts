@@ -333,6 +333,7 @@ describe("FR-002 harvest identity and target verification", () => {
     [{ prUrl: "https://github.com.example/acme/a/pull/42" }, "PR_URL_MISMATCH"],
     [{ baseBranch: "main" }, "NOT_CONFIGURED_TRUNK"],
     [{ headBranch: "unrelated" }, "NOT_FEATURE_BRANCH"],
+    [{ headBranch: `feat/${featureId}/scratch` }, "NOT_FEATURE_BRANCH"],
     [{ headBranch: null }, "NOT_FEATURE_BRANCH"],
     [{ mergeCommitSha: null }, "MISSING_MERGE_SHA"],
     [{ mergeCommitSha: "" }, "MISSING_MERGE_SHA"],
@@ -565,6 +566,20 @@ describe("FR-005 closed attempts and branch cleanup", () => {
       expectedSha: sha,
     });
   });
+  it("passes the canonical Git object ID for equivalent mixed-case tips", () => {
+    const expectedSha = "ab".repeat(20);
+    expect(
+      evaluateBranchCleanupSafety({
+        ...cleanup,
+        expectedHeadSha: expectedSha.toUpperCase(),
+        observedRemoteHeadSha: expectedSha,
+      }),
+    ).toEqual({
+      action: "delete_at_tip",
+      branch: cleanup.headBranch,
+      expectedSha,
+    });
+  });
   it("TR-004 reconciles an already deleted remote branch", () => {
     expect(
       evaluateBranchCleanupSafety({ ...cleanup, observedRemoteHeadSha: null }),
@@ -576,8 +591,18 @@ describe("FR-005 closed attempts and branch cleanup", () => {
     [{ headRepoSlug: null }, "HEAD_REPO_MISMATCH"],
     [{ headBranch: "develop" }, "PROTECTED_BRANCH"],
     [{ headBranch: "chore/unrelated" }, "PROTECTED_BRANCH"],
+    [{ headBranch: `feat/${featureId}/scratch` }, "PROTECTED_BRANCH"],
     [{ expectedHeadSha: null }, "MISSING_EXPECTED_TIP"],
     [{ expectedHeadSha: "" }, "MISSING_EXPECTED_TIP"],
+    [
+      { expectedHeadSha: "HEAD", observedRemoteHeadSha: null },
+      "MISSING_EXPECTED_TIP",
+    ],
+    [
+      { expectedHeadSha: "HEAD", observedRemoteHeadSha: "HEAD" },
+      "MISSING_EXPECTED_TIP",
+    ],
+    [{ observedRemoteHeadSha: "HEAD" }, "TIP_MOVED"],
     [{ observedRemoteHeadSha: "b".repeat(40) }, "TIP_MOVED"],
   ] as const)("TR-004 blocks unsafe branch cleanup %j", (override, code) => {
     expect(evaluateBranchCleanupSafety({ ...cleanup, ...override })).toEqual({
