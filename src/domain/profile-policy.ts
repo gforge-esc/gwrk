@@ -59,8 +59,6 @@ function compatibleRootToolchain(
 
   const rootLanguage = profileLanguage(rootStack);
   const workspaceFamily = languageFamily(workspaceLanguage);
-  const differentFamily =
-    rootLanguage && languageFamily(rootLanguage) !== workspaceFamily;
   const {
     primary,
     formatter,
@@ -70,9 +68,17 @@ function compatibleRootToolchain(
     testExtension,
     sourceExtension,
   } = toolchain;
+  const rootFamily =
+    languageFamily(rootLanguage) ??
+    (test ? toolLanguages[test] : undefined) ??
+    (primary ? toolLanguages[primary] : undefined) ??
+    (formatter ? toolLanguages[formatter] : undefined);
+  const differentFamily =
+    rootFamily !== undefined && rootFamily !== workspaceFamily;
   const runnerFits =
     !differentFamily && (!test || toolLanguages[test] === workspaceFamily);
-  const extensionsFit = !rootLanguage || rootLanguage === workspaceLanguage;
+  const extensionsFit =
+    !differentFamily && (!rootLanguage || rootLanguage === workspaceLanguage);
   const compatible: Toolchain = {
     ...(primary && toolLanguages[primary] === workspaceFamily && { primary }),
     ...(formatter &&

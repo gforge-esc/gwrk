@@ -1,7 +1,11 @@
 import { describe, expect, it } from "vitest";
 import { DesignSchema } from "./architecture-context.js";
 import { mergeProfileOverrides, resolveWorkspacePolicyProfile } from "./profile-policy.js";
-import { getTestCommand } from "./toolchain.js";
+import {
+  getSourceExtension,
+  getTestCommand,
+  getTestExtension,
+} from "./toolchain.js";
 import type { ProjectProfile } from "./types.js";
 
 const design = DesignSchema.parse({
@@ -112,6 +116,32 @@ describe("FR-001: profile design inheritance (044 phase p01)", () => {
     );
 
     expect(getTestCommand(result, ["test_api.py"])).toBe("pytest test_api.py -v");
+  });
+
+  it("filters root build and discovery defaults when only the root tools identify the language", () => {
+    const result = resolveWorkspacePolicyProfile(
+      "services/api",
+      { type: "python", stack: { language: "Python" } },
+      {
+        project: {
+          design,
+          toolchain: {
+            test: "vitest",
+            build: "pnpm build",
+            testExtension: ".test.ts",
+            sourceExtension: ".ts",
+          },
+        },
+      },
+    );
+
+    expect(result.design).toEqual(design);
+    expect.soft(result.toolchain?.build).toBeUndefined();
+    expect.soft(getTestExtension(result)).toBe(".py");
+    expect.soft(getSourceExtension(result)).toBe(".py");
+    expect(getTestCommand(result, ["test_api.py"])).toBe(
+      "pytest test_api.py -v",
+    );
   });
 
   it("shares test defaults between JavaScript and TypeScript", () => {

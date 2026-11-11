@@ -487,7 +487,11 @@ function applyWorkspaceConfig(
     config?.project?.stack,
   ).data;
   if (toolchain && !stack?.language && !stack?.languages?.[0]) {
-    stack = detectProfileInDirectory(root, false).stack;
+    try {
+      stack = detectProfileInDirectory(root, false).stack;
+    } catch {
+      // The configured resolver also accepts paths that are unavailable on disk.
+    }
   }
 
   return resolveWorkspacePolicyProfile(

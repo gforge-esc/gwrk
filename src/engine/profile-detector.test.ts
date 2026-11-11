@@ -543,6 +543,29 @@ describe("FR-001: architecture-aware workspace profiles (044 phase p01)", () => 
     expect(getTestCommand(profile, ["test_api.py"])).toBe("pytest test_api.py -v");
   });
 
+  it("resolves a configured workspace when the root directory is unavailable", () => {
+    const missingRoot = path.join(root, "missing");
+    const profile = resolveWorkspaceProfile(
+      path.join(missingRoot, "services/api"),
+      missingRoot,
+      {
+        project: { design, toolchain: { test: "vitest" } },
+        workspaces: {
+          "services/api": {
+            stack: { language: "Python" },
+            toolchain: { build: null },
+          },
+        },
+      },
+    );
+
+    expect(profile).toMatchObject({ design, toolchain: { build: null } });
+    if (!profile) throw new Error("Expected workspace profile");
+    expect(getTestCommand(profile, ["test_api.py"])).toBe(
+      "pytest test_api.py -v",
+    );
+  });
+
   it("keeps the detected workspace language when its framework is overridden", async () => {
     const { resolveWorkspaceProfile } = await import("./profile-detector.js");
     write(
