@@ -1,6 +1,6 @@
 # Hermetic integration checks and blocking lint
 
-Run all six quarantined suites in continuous integration (CI). Make unhandled worker errors and lint defects fail the job. Blocked: the project owner must adopt the proposal. The port separation and unified dispatch gates must pass on the implementation base.
+Run all six quarantined suites in continuous integration (CI). Make unhandled worker errors and lint defects fail the job. Blocked: the port separation and unified dispatch gates must pass on the implementation base.
 
 ## Scope and dependencies
 
