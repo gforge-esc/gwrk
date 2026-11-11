@@ -88,3 +88,5 @@ function createServerFixture(
 ```
 
 Each fixture owns a unique temporary root and migrated store. Route mode registers routes for Fastify injection. Listen mode calls `startServer` with explicit scope. Stub live provider calls in the test. Await dispatch completion before closing the app. `close` then closes the owned database and removes the temporary root. Setup failure rejects after releasing acquired resources.
+
+Route tests register only the routes under test. They do not start the harvest watcher. A daemon fixture uses a temporary Git repository and supplies a controlled harvest result. Verify that the fixture opens only its ledger and leaves the workstation process ID file and Git remotes untouched. A database path override alone leaves harvest and process ID effects active.
