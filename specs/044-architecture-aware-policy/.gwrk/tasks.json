@@ -1,0 +1,230 @@
+{
+  "featureId": "044-architecture-aware-policy",
+  "createdAt": "2026-11-11T18:36:39.633Z",
+  "generatedFrom": {
+    "plan": {
+      "hash": "fb79063d60d8bdbbe1a0e6386273e6ce9f8402fb4f7aa2122be19bf75c9e35f2",
+      "modifiedAt": "2026-11-11T18:36:07.280Z"
+    }
+  },
+  "phases": [
+    {
+      "id": "phase-01",
+      "title": "Profile design and workspace inheritance",
+      "tasks": [
+        {
+          "id": "T001",
+          "title": "Modify types.ts",
+          "description": "MODIFY src/domain/types.ts. Add optional `design` metadata to `ProjectProfile` and export `WorkspaceProfileConfig`",
+          "status": "open",
+          "gateScript": "pnpm build\npnpm exec vitest run src/domain/profile-policy.test.ts src/engine/profile-detector.test.ts src/engine/prompt-conditioner.test.ts src/utils/config.test.ts src/architecture.test.ts",
+          "sp": 1
+        },
+        {
+          "id": "T002",
+          "title": "Create profile-policy.ts",
+          "description": "NEW src/domain/profile-policy.ts. Implement pure `mergeProfileOverrides` and `resolveWorkspacePolicyProfile`. Tests: src/domain/profile-policy.test.ts",
+          "status": "open",
+          "gateScript": "pnpm build\npnpm exec vitest run src/domain/profile-policy.test.ts src/engine/profile-detector.test.ts src/engine/prompt-conditioner.test.ts src/utils/config.test.ts src/architecture.test.ts",
+          "sp": 2
+        },
+        {
+          "id": "T003",
+          "title": "Modify prompt-conditioner.ts",
+          "description": "MODIFY src/domain/prompt-conditioner.ts. Emit `<design>` inside `<project_context>` only when `profile.design` is set. Tests: src/engine/prompt-conditioner.test.ts",
+          "status": "open",
+          "gateScript": "pnpm build\npnpm exec vitest run src/domain/profile-policy.test.ts src/engine/profile-detector.test.ts src/engine/prompt-conditioner.test.ts src/utils/config.test.ts src/architecture.test.ts",
+          "sp": 1
+        },
+        {
+          "id": "T004",
+          "title": "Modify index.ts",
+          "description": "MODIFY src/domain/index.ts. Export pure profile policy contracts and helpers",
+          "status": "open",
+          "gateScript": "pnpm build\npnpm exec vitest run src/domain/profile-policy.test.ts src/engine/profile-detector.test.ts src/engine/prompt-conditioner.test.ts src/utils/config.test.ts src/architecture.test.ts",
+          "sp": 1
+        },
+        {
+          "id": "T005",
+          "title": "Modify config.ts",
+          "description": "MODIFY src/utils/config.ts. Allow optional `design` overrides inside `GwrkConfigSchema.workspaces`",
+          "status": "open",
+          "gateScript": "pnpm build\npnpm exec vitest run src/domain/profile-policy.test.ts src/engine/profile-detector.test.ts src/engine/prompt-conditioner.test.ts src/utils/config.test.ts src/architecture.test.ts",
+          "sp": 1
+        },
+        {
+          "id": "T006",
+          "title": "Modify profile-detector.ts",
+          "description": "MODIFY src/engine/profile-detector.ts. Read ancestor `.gwrkrc.json` in worktrees and delegate merging to `src/domain/profile-policy.js`. Tests: src/engine/profile-detector.test.ts",
+          "status": "open",
+          "gateScript": "pnpm build\npnpm exec vitest run src/domain/profile-policy.test.ts src/engine/profile-detector.test.ts src/engine/prompt-conditioner.test.ts src/utils/config.test.ts src/architecture.test.ts",
+          "sp": 1
+        }
+      ],
+      "sp_estimate": 7,
+      "testTargets": [
+        "src/engine/profile-detector.test.ts",
+        "src/domain/profile-policy.test.ts",
+        "src/engine/prompt-conditioner.test.ts"
+      ]
+    },
+    {
+      "id": "phase-02",
+      "title": "Policy composition and manifest selectors",
+      "tasks": [
+        {
+          "id": "T007",
+          "title": "Modify manifest.ts",
+          "description": "MODIFY src/plugins/manifest.ts. Add optional `architectures` and `principles` and `projectScope` selectors plus `\"define\"` scope. Tests: src/plugins/manifest.test.ts",
+          "status": "open",
+          "gateScript": "pnpm build\npnpm exec vitest run src/plugins/manifest.test.ts src/domain/policy-selection.test.ts src/application/architecture/context.test.ts src/architecture.test.ts",
+          "sp": 1
+        },
+        {
+          "id": "T008",
+          "title": "Modify architecture-context.ts",
+          "description": "MODIFY src/domain/architecture-context.ts. Export pure `lookupLanguageGuidance` and `lookupFrameworkGuidance` helpers",
+          "status": "open",
+          "gateScript": "pnpm build\npnpm exec vitest run src/plugins/manifest.test.ts src/domain/policy-selection.test.ts src/application/architecture/context.test.ts src/architecture.test.ts",
+          "sp": 1
+        },
+        {
+          "id": "T009",
+          "title": "Create policy-selection.ts",
+          "description": "NEW src/domain/policy-selection.ts. Implement pure `evaluateEnforcementCandidate` and `composeEffectivePolicy` with override precedence and gap records. Tests: src/domain/policy-selection.test.ts",
+          "status": "open",
+          "gateScript": "pnpm build\npnpm exec vitest run src/plugins/manifest.test.ts src/domain/policy-selection.test.ts src/application/architecture/context.test.ts src/architecture.test.ts",
+          "sp": 2
+        },
+        {
+          "id": "T010",
+          "title": "Modify index.ts",
+          "description": "MODIFY src/domain/index.ts. Export policy selection contracts and pure helpers",
+          "status": "open",
+          "gateScript": "pnpm build\npnpm exec vitest run src/plugins/manifest.test.ts src/domain/policy-selection.test.ts src/application/architecture/context.test.ts src/architecture.test.ts",
+          "sp": 1
+        }
+      ],
+      "sp_estimate": 5,
+      "testTargets": [
+        "src/domain/policy-selection.test.ts",
+        "src/plugins/manifest.test.ts",
+        "src/domain/policy-selection.test.ts"
+      ]
+    },
+    {
+      "id": "phase-03",
+      "title": "Language baselines and pack compatibility",
+      "tasks": [
+        {
+          "id": "T011",
+          "title": "Create manifest.yaml",
+          "description": "NEW src/plugins/builtins/skills/javascript-standards/manifest.yaml. Declare `javascript-standards` enforcement skill for `JavaScript` across `scope: all`",
+          "status": "open",
+          "gateScript": "pnpm build\npnpm exec vitest run src/plugins/skill-runtime.test.ts src/plugins/skill-runtime.p15.red.test.ts src/plugins/enforcement.test.ts src/plugins/framework-pack-compatibility.test.ts src/plugins/builtins/skills/gwrk-conventions/SKILL.test.ts src/commands/plugin.p15.red.test.ts src/architecture.test.ts",
+          "sp": 2
+        },
+        {
+          "id": "T012",
+          "title": "Create SKILL.md",
+          "description": "NEW src/plugins/builtins/skills/javascript-standards/SKILL.md. Define ESM module boundaries and object port contracts and runtime validation rules",
+          "status": "open",
+          "gateScript": "pnpm build\npnpm exec vitest run src/plugins/skill-runtime.test.ts src/plugins/skill-runtime.p15.red.test.ts src/plugins/enforcement.test.ts src/plugins/framework-pack-compatibility.test.ts src/plugins/builtins/skills/gwrk-conventions/SKILL.test.ts src/commands/plugin.p15.red.test.ts src/architecture.test.ts",
+          "sp": 2
+        },
+        {
+          "id": "T013",
+          "title": "Modify manifest.yaml",
+          "description": "MODIFY src/plugins/builtins/skills/gwrk-conventions/manifest.yaml. Set `projectScope: gwrk` so repository rules stay scoped to `gwrk`",
+          "status": "open",
+          "gateScript": "pnpm build\npnpm exec vitest run src/plugins/skill-runtime.test.ts src/plugins/skill-runtime.p15.red.test.ts src/plugins/enforcement.test.ts src/plugins/framework-pack-compatibility.test.ts src/plugins/builtins/skills/gwrk-conventions/SKILL.test.ts src/commands/plugin.p15.red.test.ts src/architecture.test.ts",
+          "sp": 1
+        },
+        {
+          "id": "T014",
+          "title": "Modify skill-runtime.ts",
+          "description": "MODIFY src/plugins/skill-runtime.ts. Implement `resolveEffectivePolicy` and `formatEffectivePolicyPrompt` and delegate `resolveEnforcementSkills`. Tests: src/plugins/skill-runtime.test.ts",
+          "status": "open",
+          "gateScript": "pnpm build\npnpm exec vitest run src/plugins/skill-runtime.test.ts src/plugins/skill-runtime.p15.red.test.ts src/plugins/enforcement.test.ts src/plugins/framework-pack-compatibility.test.ts src/plugins/builtins/skills/gwrk-conventions/SKILL.test.ts src/commands/plugin.p15.red.test.ts src/architecture.test.ts",
+          "sp": 1
+        },
+        {
+          "id": "T015",
+          "title": "Modify plugin.ts",
+          "description": "MODIFY src/commands/plugin.ts. Route `gwrk plugin list --project` enforcement filtering through `evaluateEnforcementCandidate`. Tests: src/plugins/skill-runtime.test.ts",
+          "status": "open",
+          "gateScript": "pnpm build\npnpm exec vitest run src/plugins/skill-runtime.test.ts src/plugins/skill-runtime.p15.red.test.ts src/plugins/enforcement.test.ts src/plugins/framework-pack-compatibility.test.ts src/plugins/builtins/skills/gwrk-conventions/SKILL.test.ts src/commands/plugin.p15.red.test.ts src/architecture.test.ts",
+          "sp": 1
+        }
+      ],
+      "sp_estimate": 7,
+      "testTargets": [
+        "src/plugins/skill-runtime.test.ts",
+        "src/plugins/enforcement.test.ts",
+        "src/plugins/framework-pack-compatibility.test.ts",
+        "src/commands/plugin.p15.red.test.ts"
+      ]
+    },
+    {
+      "id": "phase-04",
+      "title": "Model-free init and prompt delivery",
+      "tasks": [
+        {
+          "id": "T016",
+          "title": "Modify architecture-context.ts",
+          "description": "MODIFY src/domain/architecture-context.ts. Render explicit policy gap notes in `contextMarkdown` while preserving manifest hashes when gaps are empty",
+          "status": "open",
+          "gateScript": "pnpm build\npnpm exec vitest run src/application/architecture/context.test.ts src/commands/init.test.ts src/utils/agent.policy-binding.test.ts src/utils/agent.grounding-decisions.test.ts src/plugins/workflow-runtime.test.ts src/architecture.test.ts\npython3 scripts/architecture-context-uat.py",
+          "sp": 1
+        },
+        {
+          "id": "T017",
+          "title": "Modify install-context.ts",
+          "description": "MODIFY src/application/architecture/install-context.ts. Compose `EffectivePolicy` deterministically during context installation without certifying existing code",
+          "status": "open",
+          "gateScript": "pnpm build\npnpm exec vitest run src/application/architecture/context.test.ts src/commands/init.test.ts src/utils/agent.policy-binding.test.ts src/utils/agent.grounding-decisions.test.ts src/plugins/workflow-runtime.test.ts src/architecture.test.ts\npython3 scripts/architecture-context-uat.py",
+          "sp": 1
+        },
+        {
+          "id": "T018",
+          "title": "Modify init.ts",
+          "description": "MODIFY src/commands/init.ts. Preserve `workspaces` and `project.design` across fresh and existing and `--workspace` runs with zero agent calls. Tests: src/commands/init.test.ts",
+          "status": "open",
+          "gateScript": "pnpm build\npnpm exec vitest run src/application/architecture/context.test.ts src/commands/init.test.ts src/utils/agent.policy-binding.test.ts src/utils/agent.grounding-decisions.test.ts src/plugins/workflow-runtime.test.ts src/architecture.test.ts\npython3 scripts/architecture-context-uat.py",
+          "sp": 1
+        },
+        {
+          "id": "T019",
+          "title": "Modify agent.ts",
+          "description": "MODIFY src/utils/agent.ts. Resolve `EffectivePolicy` by workflow scope on the shared transport path and inject `<effective_policy>` with `<code_quality>`. Tests: src/utils/agent.policy-binding.test.ts",
+          "status": "open",
+          "gateScript": "pnpm build\npnpm exec vitest run src/application/architecture/context.test.ts src/commands/init.test.ts src/utils/agent.policy-binding.test.ts src/utils/agent.grounding-decisions.test.ts src/plugins/workflow-runtime.test.ts src/architecture.test.ts\npython3 scripts/architecture-context-uat.py",
+          "sp": 1
+        },
+        {
+          "id": "T020",
+          "title": "Modify workflow-runtime.ts",
+          "description": "MODIFY src/plugins/workflow-runtime.ts. Forward workspace or root `ProjectProfile` with `design` into prompt conditioning and dispatch",
+          "status": "open",
+          "gateScript": "pnpm build\npnpm exec vitest run src/application/architecture/context.test.ts src/commands/init.test.ts src/utils/agent.policy-binding.test.ts src/utils/agent.grounding-decisions.test.ts src/plugins/workflow-runtime.test.ts src/architecture.test.ts\npython3 scripts/architecture-context-uat.py",
+          "sp": 1
+        },
+        {
+          "id": "T021",
+          "title": "Modify architecture-context-uat.py",
+          "description": "MODIFY scripts/architecture-context-uat.py. Exercise compiled CLI init across polyglot and missing-framework fixtures with zero model dispatches",
+          "status": "open",
+          "gateScript": "pnpm build\npnpm exec vitest run src/application/architecture/context.test.ts src/commands/init.test.ts src/utils/agent.policy-binding.test.ts src/utils/agent.grounding-decisions.test.ts src/plugins/workflow-runtime.test.ts src/architecture.test.ts\npython3 scripts/architecture-context-uat.py",
+          "sp": 1
+        }
+      ],
+      "sp_estimate": 6,
+      "testTargets": [
+        "src/commands/init.test.ts",
+        "src/application/architecture/context.test.ts",
+        "src/utils/agent.policy-binding.test.ts",
+        "scripts/architecture-context-uat.py"
+      ]
+    }
+  ]
+}
