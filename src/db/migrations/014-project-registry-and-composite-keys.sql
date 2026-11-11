@@ -87,6 +87,8 @@ FROM (
   UNION SELECT project_id FROM plan_edges
   UNION SELECT project_id FROM gate_results
   UNION SELECT project_id FROM issues
+  UNION SELECT project_id FROM runs
+  UNION SELECT project_id FROM history
 )
 WHERE project_id IS NOT NULL;
 

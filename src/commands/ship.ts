@@ -79,19 +79,22 @@ import { CommandError, withSignal } from "../utils/signal.js";
 
 const { GREEN, DIM, RESET, YELLOW, RED } = color;
 
-function openShipLedger(): ReturnType<typeof getDb> | null {
+function loadShipProject(cwd: string): {
+  ledger: ReturnType<typeof getDb> | null;
+  projectId: string;
+} {
   try {
-    return getDb();
+    const ledger = getDb();
+    return { ledger, projectId: ensureCheckoutProjectId(cwd, ledger) };
   } catch (error) {
     const code = error instanceof Error && "code" in error ? error.code : null;
-    if (
-      typeof code !== "string" ||
-      (code !== "SQLITE_CANTOPEN" && !code.startsWith("SQLITE_CANTOPEN_"))
-    ) {
-      throw error;
-    }
+    const accessFailure =
+      typeof code === "string" &&
+      (/^SQLITE_(?:CANTOPEN|READONLY|PERM)(?:_|$)/.test(code) ||
+        ["EACCES", "EPERM", "ENOENT", "ENOTDIR", "EISDIR", "EROFS"].includes(code));
+    if (!accessFailure) throw error;
     warnCli(`${YELLOW}⚠${RESET} Ship ledger unavailable: ${error}`);
-    return null;
+    return { ledger: null, projectId: resolveProjectId(cwd) };
   }
 }
 
@@ -801,10 +804,7 @@ Examples:
             return;
           }
 
-          const ledger = openShipLedger();
-          const projectId = ledger
-            ? ensureCheckoutProjectId(cwd, ledger)
-            : resolveProjectId(cwd);
+          const { ledger, projectId } = loadShipProject(cwd);
 
           // tasks.json and the plan graph are two records of the same fact and
           // can disagree — regenerating tasks.json wipes completion flags, so

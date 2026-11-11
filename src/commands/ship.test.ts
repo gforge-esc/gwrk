@@ -95,6 +95,7 @@ vi.mock("../db/runs.js", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../db/runs.js")>();
   return {
     ...actual,
+    ensureCheckoutProjectId: vi.fn(actual.ensureCheckoutProjectId),
     startRun: vi.fn().mockReturnValue(999),
     finishRun: vi.fn(),
     recordHistory: vi.fn(),
@@ -632,14 +633,25 @@ describe("BackendSelector Integration", () => {
     }
   });
 
-  it.each(["SQLITE_CANTOPEN", "SQLITE_CANTOPEN_ISDIR"])(
-    "ships with the default backend when the ledger open fails with %s",
-    async (code) => {
+  it.each([
+    ["SQLITE_CANTOPEN", "open"],
+    ["SQLITE_CANTOPEN_ISDIR", "open"],
+    ["SQLITE_READONLY", "open"],
+    ["ENOTDIR", "open"],
+    ["SQLITE_READONLY_DBMOVED", "register"],
+  ])(
+    "ships with the default backend when the ledger reports %s during %s",
+    async (code, operation) => {
       const { getBackendSelector } = await import("../server/index.js");
       const selector = getBackendSelector();
-      vi.mocked(getDb).mockImplementation(() => {
-        throw Object.assign(new Error("unable to open database file"), { code });
-      });
+      const unavailable = () => {
+        throw Object.assign(new Error("ledger cannot be written"), { code });
+      };
+      if (operation === "open") {
+        vi.mocked(getDb).mockImplementation(unavailable);
+      } else {
+        vi.mocked(runsModule.ensureCheckoutProjectId).mockImplementationOnce(unavailable);
+      }
       process.exitCode = 0;
 
       await program.parseAsync(["node", "test", "ship", "001-cli-core", "7"]);

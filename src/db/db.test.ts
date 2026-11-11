@@ -120,6 +120,32 @@ describe("Project registry upgrade", () => {
     }
   });
 
+  it("preserves explicit run and history owners missing from the project table", () => {
+    const upgraded = upgrade((legacy) => {
+      legacy.pragma("foreign_keys = OFF");
+      legacy.exec(`
+        INSERT INTO runs (id, project_id, feature_id, command)
+          VALUES (41, 'run-owner', 'fixture', 'ship');
+        INSERT INTO history (project_id, feature_id, run_id)
+          VALUES ('history-owner', 'fixture', 41);
+      `);
+    });
+    try {
+      expect(upgraded.prepare("SELECT project_id FROM runs WHERE id = 41").pluck().get())
+        .toBe("run-owner");
+      expect(upgraded.prepare("SELECT project_id, run_id FROM history WHERE feature_id = 'fixture'").get())
+        .toEqual({ project_id: "history-owner", run_id: 41 });
+      expect(upgraded.prepare("SELECT id, path, updated_at FROM projects WHERE id IN ('run-owner', 'history-owner') ORDER BY id").all())
+        .toEqual([
+          { id: "history-owner", path: "", updated_at: null },
+          { id: "run-owner", path: "", updated_at: null },
+        ]);
+      expect(upgraded.pragma("foreign_key_check")).toEqual([]);
+    } finally {
+      upgraded.close();
+    }
+  });
+
   it("upgrades a historical issue table without html_url", () => {
     const upgraded = upgrade((legacy) => {
       legacy.exec(`
