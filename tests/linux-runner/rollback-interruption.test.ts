@@ -38,6 +38,8 @@ it.each([
   { signal: null, status: 1, stage: "service ledger mismatch" },
   { signal: null, status: 1, stage: "service runtime mismatch" },
   { signal: null, status: 1, stage: "running service ledger mismatch" },
+  { signal: null, status: 1, stage: "service release root mismatch" },
+  { signal: null, status: 1, stage: "running service release root mismatch" },
   {
     signal: null,
     status: 1,
@@ -79,6 +81,7 @@ it.each([
       await mkdir(bin);
       await mkdir(runtime);
       await mkdir(state);
+      await mkdir(join(root, "other release root"));
       await writeFile(join(runtime, "server.lock"), "");
       if (running) {
         await writeFile(pidFile, String(process.pid));
@@ -243,7 +246,7 @@ exec "$@"`,
 case "$6" in
   call) printf '{"type":"o","data":["/fixture/unit"]}\\n' ;;
   get-property)
-    printf '%s\\n' '{"type":"as","data":["GWRK_HOME=/overridden","GWRK_DIR=/unset"]}' \\
+    printf '%s\\n' '{"type":"as","data":["GWRK_HOME=/overridden","GWRK_DIR=/unset","SLACK_BOT_TOKEN=fixture-probe-secret"]}' \\
       '{"type":"a(sb)","data":[["/fixture/runner env",false],["/fixture/optional",true]]}' \\
       '{"type":"as","data":["GWRK_RUNTIME_DIR"]}' \\
       '{"type":"as","data":["GWRK_DIR=/unset"]}'
@@ -251,6 +254,7 @@ case "$6" in
   *) exit 1 ;;
 esac`,
         "systemd-run": `
+if [[ "$*" == *"fixture-probe-secret"* ]]; then touch "$FIXTURE_RUNTIME/probe-argv-leak"; fi
 [[ "$*" == *"--setenv=GWRK_HOME=/overridden"* &&
    "$*" == *"--setenv=GWRK_DIR=/unset"* &&
    "$*" == *"--property=EnvironmentFile=/fixture/runner env"* &&
@@ -260,17 +264,21 @@ esac`,
 state="$FIXTURE_ROOT/state"
 database="$state/gwrk.db"
 runtime="$FIXTURE_RUNTIME"
+release_root="$FIXTURE_ROOT"
 case "$FIXTURE_STAGE" in
   "service ledger mismatch") database="$state/service.db" ;;
   "service runtime mismatch") runtime="$FIXTURE_ROOT/other runtime" ;;
+  "service release root mismatch") release_root="$FIXTURE_ROOT/other release root" ;;
 esac
-printf '%s\\0' "GWRK_HOME=$state" "GWRK_DB_PATH=$database" "GWRK_RUNTIME_DIR=$runtime"`,
+printf '%s\\0' "GWRK_HOME=$state" "GWRK_DB_PATH=$database" "GWRK_RUNTIME_DIR=$runtime" "GWRK_RELEASE_ROOT=$release_root"`,
         cat: `
 if [[ "$1" == -- && "$2" == "/proc/$FIXTURE_PID/environ" ]]; then
   state="$FIXTURE_ROOT/state"
   database="$state/gwrk.db"
+  release_root="$FIXTURE_ROOT"
+  if [[ "$FIXTURE_STAGE" == "running service release root mismatch" ]]; then release_root="$FIXTURE_ROOT/other release root"; fi
   if [[ "$FIXTURE_STAGE" == "running service ledger mismatch" ]]; then database="$state/service.db"; fi
-  printf '%s\\0' "GWRK_HOME=$state" "GWRK_DB_PATH=$database" "GWRK_RUNTIME_DIR=$FIXTURE_RUNTIME"
+  printf '%s\\0' "GWRK_HOME=$state" "GWRK_DB_PATH=$database" "GWRK_RUNTIME_DIR=$FIXTURE_RUNTIME" "GWRK_RELEASE_ROOT=$release_root"
 else
   exec /bin/cat "$@"
 fi`,
@@ -340,6 +348,7 @@ esac`,
       try {
         if (!signal) {
           expect(await closed, output).toEqual([status, null]);
+          expect(existsSync(join(runtime, "probe-argv-leak"))).toBe(false);
           if (stage === "backup with an inactive unit") {
             expect(output).toContain("Fixture backup failed");
             expect(await readFile(calls, "utf8"), output).toBe("stop\n");
@@ -347,9 +356,11 @@ esac`,
             expect(existsSync(calls), output).toBe(false);
             if (pathMismatch) {
               expect(output).toContain(
-                stage === "service runtime mismatch"
-                  ? "runtime mismatch"
-                  : "ledger mismatch",
+                stage.endsWith("release root mismatch")
+                  ? "release root mismatch"
+                  : stage === "service runtime mismatch"
+                    ? "runtime mismatch"
+                    : "ledger mismatch",
               );
               expect(existsSync(join(state, "backups"))).toBe(false);
             } else if (malformedPath) {

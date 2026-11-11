@@ -160,7 +160,18 @@ cat > /fixture-bin/systemd-run <<'SCRIPT'
 #!/usr/bin/env bash
 set -euo pipefail
 [[ "$*" == *"--property=EnvironmentFile=/etc/gwrk/runner.env"* ]]
-printf '%s\0' HOME=/var/lib/gwrk GWRK_HOME=/var/lib/gwrk GWRK_RUNTIME_DIR=/run/gwrk
+printf '%s\0' HOME=/var/lib/gwrk GWRK_HOME=/var/lib/gwrk GWRK_RUNTIME_DIR=/run/gwrk GWRK_RELEASE_ROOT=/opt/gwrk
+SCRIPT
+cat > /fixture-bin/cat <<'SCRIPT'
+#!/usr/bin/env bash
+set -euo pipefail
+runtime=/run/gwrk
+if [[ "$#" == 2 && "$1" == -- && -f "$runtime/server.pid" &&
+      "$2" == "/proc/$(< "$runtime/server.pid")/cmdline" ]]; then
+  printf '%s\0' node "$(< "$runtime/started-cli")" server start --foreground
+else
+  exec /usr/bin/cat "$@"
+fi
 SCRIPT
 cat > /fixture-bin/systemctl <<'SCRIPT'
 #!/usr/bin/env bash
@@ -182,10 +193,15 @@ case "$1" in
     ;;
   start)
     readlink /opt/gwrk/current > "$runtime/started-release"
+    cli=$(realpath /opt/gwrk/current/dist/cli.js)
+    if [[ "${GWRK_FIXTURE_WRONG_CLI:-0}" == 1 ]]; then
+      cli=$(realpath /opt/gwrk/previous/dist/cli.js)
+    fi
+    printf '%s\n' "$cli" > "$runtime/started-cli"
     if [[ "${GWRK_FIXTURE_DROP_RUN:-0}" == 1 ]]; then
       runuser -u gwrk -g gwrk -- node -e 'const requireRelease=require("node:module").createRequire("/opt/gwrk/current/package.json"); const db=new (requireRelease("better-sqlite3"))("/var/lib/gwrk/gwrk.db"); db.prepare("DELETE FROM runs WHERE id = 42").run(); db.close();'
     fi
-    env -i HOME=/var/lib/gwrk GWRK_HOME=/var/lib/gwrk GWRK_RUNTIME_DIR=/run/gwrk \
+    env -i HOME=/var/lib/gwrk GWRK_HOME=/var/lib/gwrk GWRK_RUNTIME_DIR=/run/gwrk GWRK_RELEASE_ROOT=/opt/gwrk \
       /usr/bin/bash -c 'printf "%s\n" "$$" > "$GWRK_RUNTIME_DIR/server.pid"; exec /usr/bin/sleep 120' \
       8>&- 9>&- >/dev/null 2>&1 &
     for attempt in {1..100}; do
@@ -213,7 +229,7 @@ case "$1" in
     ;;
 esac
 SCRIPT
-chmod 0755 /fixture-bin/{busctl,systemctl,systemd-run}
+chmod 0755 /fixture-bin/{busctl,cat,systemctl,systemd-run}
 write_prior_manifest() {
   node --input-type=module - "$prior" <<'NODE'
 import { readFile, writeFile } from "node:fs/promises";
@@ -353,6 +369,16 @@ recovered=/var/lib/gwrk/rollback-recovered
 runuser -u gwrk -g gwrk -- node "$release/dist/cli.js" db restore --from "$recovery_backup" --state-dir "$recovered"
 test "$(stat -c '%U:%G %a' "$recovery_backup")" = 'gwrk:gwrk 700'
 runuser -u gwrk -g gwrk -- cmp "$recovery_backup/gwrk.db" "$recovered/gwrk.db"
+
+wrong_cli_current=$(readlink /opt/gwrk/current)
+wrong_cli_previous=$(readlink /opt/gwrk/previous)
+: > /tmp/supervisor.calls
+expect_rejection 'The restarted service did not run the selected release' \
+  env GWRK_FIXTURE_WRONG_CLI=1 bash "$rollback" /opt/gwrk /var/lib/gwrk
+test "$(readlink /opt/gwrk/current)" = "$wrong_cli_current"
+test "$(readlink /opt/gwrk/previous)" = "$wrong_cli_previous"
+test "$(grep -E '^(stop|start)$' /tmp/supervisor.calls)" = $'stop\nstart\nstop'
+test ! -e "$GWRK_RUNTIME_DIR/server.pid"
 
 for scenario in readiness:SIGTERM readiness:SIGINT stop:SIGTERM stop:SIGINT; do
   stage=${scenario%:*}

@@ -85,15 +85,19 @@ try {
     "Environment", "EnvironmentFiles", "PassEnvironment", "UnsetEnvironment",
   ).trim().split("\n").map((line) => JSON.parse(line).data);
   const [environment, files, pass, unset] = properties;
+  const pathVariables = new Set([
+    "HOME", "GWRK_HOME", "GWRK_DIR", "GWRK_DB_PATH", "GWRK_RUNTIME_DIR", "GWRK_RELEASE_ROOT",
+  ]);
+  const affectsPath = (entry) => pathVariables.has(entry.split("=", 1)[0]);
   // Let the manager apply environment-file syntax and precedence.
   execFileSync("systemd-run", [
     "--system", "--pipe", "--wait", "--collect", "--quiet", "--no-ask-password",
     "--property=RuntimeMaxSec=10s",
     "--uid=" + user, "--gid=" + group,
-    ...environment.map((entry) => "--setenv=" + entry),
+    ...environment.filter(affectsPath).map((entry) => "--setenv=" + entry),
     ...files.map(([file, optional]) => "--property=EnvironmentFile=" + (optional ? "-" : "") + file),
-    ...pass.map((name) => "--property=PassEnvironment=" + name),
-    ...unset.map((entry) => "--property=UnsetEnvironment=" + JSON.stringify(entry)),
+    ...pass.filter(affectsPath).map((name) => "--property=PassEnvironment=" + name),
+    ...unset.filter(affectsPath).map((entry) => "--property=UnsetEnvironment=" + JSON.stringify(entry)),
     "--", "/usr/bin/env", "-0",
   ], { stdio: ["ignore", "inherit", "ignore"], timeout: 15000 });
 } catch {
@@ -110,7 +114,7 @@ resolve_service_paths() {
     import { isAbsolute, join } from "node:path";
     import { pathToFileURL } from "node:url";
 
-    const [active, state, runtime, source] = process.argv.slice(1);
+    const [active, state, runtime, releaseRoot, source] = process.argv.slice(1);
     try {
       const { resolveGwrkPaths } = await import(pathToFileURL(join(active, "dist/domain/gwrk-paths.js")).href);
       const env = Object.create(null);
@@ -121,10 +125,11 @@ resolve_service_paths() {
       delete process.env.HOME;
       const paths = resolveGwrkPaths(env, env.HOME || homedir());
       function verify(label, path, expected) {
-        if (!isAbsolute(path) || realpathSync(path) !== expected) {
+        if (!path || !isAbsolute(path) || realpathSync(path) !== expected) {
           throw new Error(label + " mismatch. Expected " + expected + ".");
         }
       }
+      verify("release root", env.GWRK_RELEASE_ROOT, releaseRoot);
       verify("ledger", paths.database, join(state, "gwrk.db"));
       verify("state directory", paths.home, state);
       if (env.GWRK_DIR) verify("state directory", env.GWRK_DIR, state);
@@ -133,7 +138,7 @@ resolve_service_paths() {
       console.error("Could not verify paths for " + source + ": " + error.message);
       process.exitCode = 1;
     }
-  ' "$active" "$state" "$runtime" "$1"
+  ' "$active" "$state" "$runtime" "$release_root" "$1"
 }
 
 verify_running_paths() {
@@ -276,7 +281,17 @@ while true; do
   ((SECONDS < deadline)) || fail "Timed out waiting for the target release to listen."
   sleep 1
 done
+[[ "$pid" != "$main_pid" ]] || fail "The service did not start a new process."
 verify_running_paths "$pid"
+mapfile -d '' -t service_argv < <(cat -- "/proc/$pid/cmdline")
+service_executable=${service_argv[0]:-}
+service_cli=${service_argv[1]:-}
+if [[ "${service_executable##*/}" != node || "$service_cli" != /* ||
+      "${service_argv[2]:-}" != server || "${service_argv[3]:-}" != start ||
+      "${service_argv[4]:-}" != --foreground ||
+      "$(realpath -e -- "$service_cli")" != "$target/dist/cli.js" ]]; then
+  fail "The restarted service did not run the selected release."
+fi
 check_rollback --against "$backup"
 recover_pointers=false
 printf 'Activated gwrk %s. Verified pre-rollback backup at %s\n' "${new_target#releases/}" "$backup"
