@@ -73,7 +73,21 @@ describe("Project registry upgrade", () => {
 
   afterEach(() => rmSync(root, { recursive: true, force: true }));
 
-  function upgrade(seed: (db: Database.Database) => void) {
+  function writeEarlierRegistryMigration() {
+    const legacyRegistry = readFileSync(
+      new URL(migration, source),
+      "utf8",
+    ).replace(
+      /-- Retain provenance until migration 017[\s\S]*?(?=UPDATE sqlite_sequence)/,
+      "",
+    );
+    writeFileSync(join(migrationsDir, migration), legacyRegistry);
+  }
+
+  function upgrade(
+    seed: (db: Database.Database) => void,
+    registryVersion: "earlier" | "current" = "current",
+  ) {
     const legacy = openDatabase({ dbPath, migrationsDir });
     try {
       seed(legacy);
@@ -82,9 +96,11 @@ describe("Project registry upgrade", () => {
     }
     for (const file of readdirSync(source)) {
       if (file.endsWith(".sql") && file >= migration) {
+        if (registryVersion === "earlier" && file >= "017-") continue;
         copyFileSync(new URL(file, source), join(migrationsDir, file));
       }
     }
+    if (registryVersion === "earlier") writeEarlierRegistryMigration();
     return openDatabase({ dbPath, migrationsDir });
   }
 
@@ -196,14 +212,7 @@ describe("Project registry upgrade", () => {
 
   it("adds parent provenance to a ledger with migration 016 already applied", () => {
     const parentProvenance = "017-plan-parent-provenance.sql";
-    const legacyRegistry = readFileSync(
-      new URL(migration, source),
-      "utf8",
-    ).replace(
-      /-- Retain provenance until migration 017[\s\S]*?(?=UPDATE sqlite_sequence)/,
-      "",
-    );
-    writeFileSync(join(migrationsDir, migration), legacyRegistry);
+    writeEarlierRegistryMigration();
     for (const name of [
       "015-ledger-write-order.sql",
       "016-plan-write-order.sql",
@@ -254,84 +263,148 @@ describe("Project registry upgrade", () => {
     }
   });
 
-  it("preserves real plan parents when first-origin enrollment links migrated placeholders", () => {
-    const checkout = join(root, "checkout");
-    const git = (...args: string[]) =>
-      execFileSync("git", ["-C", checkout, ...args]);
-    execFileSync("git", ["init", "--quiet", checkout]);
-    const localId = computeProjectId(discoverGitIdentityFacts(checkout));
-    const origin = "https://github.com/example/checkout.git";
-    git("remote", "add", "origin", origin);
-    const remoteId = computeProjectId(discoverGitIdentityFacts(checkout));
-    git("remote", "remove", "origin");
+  it.each(["current", "earlier"] as const)(
+    "preserves real plan parents after first-origin enrollment with the %s migration 014",
+    (registryVersion) => {
+      const checkout = join(root, "checkout");
+      const git = (...args: string[]) =>
+        execFileSync("git", ["-C", checkout, ...args]);
+      execFileSync("git", ["init", "--quiet", checkout]);
+      const localId = computeProjectId(discoverGitIdentityFacts(checkout));
+      const origin = "https://github.com/example/checkout.git";
+      git("remote", "add", "origin", origin);
+      const remoteId = computeProjectId(discoverGitIdentityFacts(checkout));
+      git("remote", "remove", "origin");
 
-    const upgraded = upgrade((legacy) => {
-      legacy
-        .prepare("INSERT INTO projects (id, name, path) VALUES (?, ?, ?)")
-        .run(localId, "Checkout", checkout);
-      legacy
-        .prepare(`
+      const upgraded = upgrade((legacy) => {
+        legacy
+          .prepare("INSERT INTO projects (id, name, path) VALUES (?, ?, ?)")
+          .run(localId, "Checkout", checkout);
+        legacy
+          .prepare(`
         INSERT INTO plan_features (id, name, project_id, status, updated_at)
         VALUES ('feature', 'Saved feature', ?, 'SHIPPED', '2026-01-01 10:00:00')
       `)
-        .run(localId);
-      legacy
-        .prepare(`
+          .run(localId);
+        legacy
+          .prepare(`
         INSERT INTO plan_phases (id, feature_id, name, seq, project_id, status, updated_at)
         VALUES ('phase', 'feature', 'Saved phase', 1, ?, 'COMPLETED', '2026-01-01 10:00:00')
       `)
-        .run(localId);
-      legacy
-        .prepare(`
+          .run(localId);
+        legacy
+          .prepare(`
         INSERT INTO plan_proposals (id, target_phase_id, proposal_type, project_id, status)
         VALUES ('proposal', 'phase', 'amend', ?, 'ACCEPTED')
       `)
-        .run(remoteId);
-    });
-    upgraded.close();
-
-    git("remote", "add", "origin", origin);
-    const reopened = openDatabase({ dbPath, migrationsDir });
-    try {
-      createProjectRegistry(reopened, () => {}).enrollProject({
-        projectId: remoteId,
-        slug: "checkout",
-        name: "Checkout",
-        repoSlug: "example/checkout",
-        trunkBranch: "develop",
-        localRoot: checkout,
-        mirrorPath: null,
-        runnerPolicy: { allowedKinds: ["local"] },
-        slack: null,
-        legacyProjectIds: [],
-        createdAt: "2026-11-01T00:00:00Z",
-        updatedAt: "2026-11-01T00:00:00Z",
-      });
-      const feature = {
-        id: "feature",
-        name: "Saved feature",
-        status: "SHIPPED",
-      };
-      const phase = { id: "phase", name: "Saved phase", status: "COMPLETED" };
-      for (const owner of [localId, remoteId]) {
-        expect
-          .soft(getFeature("feature", owner, reopened))
-          .toMatchObject(feature);
-        expect.soft(listFeatures(owner, reopened)).toMatchObject([feature]);
-        expect.soft(getPhase("phase", owner, reopened)).toMatchObject(phase);
-        expect
-          .soft(listPhases("feature", owner, reopened))
-          .toMatchObject([phase]);
-        expect.soft(getProposal("proposal", owner, reopened)).toMatchObject({
-          project_id: remoteId,
-          status: "ACCEPTED",
-        });
+          .run(remoteId);
+      }, registryVersion);
+      try {
+        if (registryVersion === "earlier") {
+          const appliedAt = upgraded
+            .prepare("SELECT applied_at FROM _migrations WHERE name = ?")
+            .pluck()
+            .get(migration);
+          // Model the historical upgrade where both inserts and the migration record share one second.
+          for (const [table, id] of [
+            ["plan_features", "feature"],
+            ["plan_phases", "phase"],
+          ]) {
+            upgraded
+              .prepare(`UPDATE ${table} SET created_at = ?, updated_at = ?
+                WHERE id = ? AND project_id = ?`)
+              .run(appliedAt, appliedAt, id, remoteId);
+          }
+          upgraded
+            .prepare(`
+          INSERT INTO plan_features (id, name, project_id, created_at, updated_at)
+          VALUES ('edited-feature', 'edited-feature', ?, ?, '2099-01-01 00:00:00')
+        `)
+            .run(remoteId, appliedAt);
+          upgraded
+            .prepare(`
+          INSERT INTO plan_phases (id, feature_id, name, seq, project_id, created_at, updated_at)
+          VALUES ('edited-phase', 'edited-feature', 'Edited phase', 0, ?, ?, ?)
+        `)
+            .run(remoteId, appliedAt, appliedAt);
+          upgraded
+            .prepare(`
+          INSERT INTO plan_proposals (id, target_phase_id, proposal_type, project_id)
+          VALUES ('edited-proposal', 'edited-phase', 'amend', ?)
+        `)
+            .run(remoteId);
+          const provenance = "017-plan-parent-provenance.sql";
+          copyFileSync(
+            new URL(provenance, source),
+            join(migrationsDir, provenance),
+          );
+        }
+      } finally {
+        upgraded.close();
       }
-      expect(reopened.pragma("foreign_key_check")).toEqual([]);
-    } finally {
-      reopened.close();
-    }
-  });
+
+      git("remote", "add", "origin", origin);
+      const reopened = openDatabase({ dbPath, migrationsDir });
+      try {
+        createProjectRegistry(reopened, () => {}).enrollProject({
+          projectId: remoteId,
+          slug: "checkout",
+          name: "Checkout",
+          repoSlug: "example/checkout",
+          trunkBranch: "develop",
+          localRoot: checkout,
+          mirrorPath: null,
+          runnerPolicy: { allowedKinds: ["local"] },
+          slack: null,
+          legacyProjectIds: [],
+          createdAt: "2026-11-01T00:00:00Z",
+          updatedAt: "2026-11-01T00:00:00Z",
+        });
+        const feature = {
+          id: "feature",
+          name: "Saved feature",
+          status: "SHIPPED",
+        };
+        const phase = { id: "phase", name: "Saved phase", status: "COMPLETED" };
+        if (registryVersion === "earlier") {
+          for (const [table, id] of [
+            ["plan_features", "edited-feature"],
+            ["plan_phases", "edited-phase"],
+          ]) {
+            expect(
+              reopened
+                .prepare(`SELECT synthetic_parent FROM ${table} WHERE id = ?`)
+                .pluck()
+                .get(id),
+            ).toBe(0);
+          }
+        }
+        for (const owner of [localId, remoteId]) {
+          expect
+            .soft(getFeature("feature", owner, reopened))
+            .toMatchObject(feature);
+          expect
+            .soft(
+              listFeatures(owner, reopened).filter(
+                (row) => row.id === "feature",
+              ),
+            )
+            .toMatchObject([feature]);
+          expect.soft(getPhase("phase", owner, reopened)).toMatchObject(phase);
+          expect
+            .soft(listPhases("feature", owner, reopened))
+            .toMatchObject([phase]);
+          expect.soft(getProposal("proposal", owner, reopened)).toMatchObject({
+            project_id: remoteId,
+            status: "ACCEPTED",
+          });
+        }
+        expect(reopened.pragma("foreign_key_check")).toEqual([]);
+      } finally {
+        reopened.close();
+      }
+    },
+  );
 
   it("retains newer legacy plan state after upgrade and enrollment", () => {
     const checkout = join(root, "checkout");

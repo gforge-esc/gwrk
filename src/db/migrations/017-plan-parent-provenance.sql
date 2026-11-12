@@ -5,12 +5,37 @@
 ALTER TABLE plan_features ADD COLUMN synthetic_parent INTEGER NOT NULL DEFAULT 0 CHECK (synthetic_parent IN (0, 1));
 ALTER TABLE plan_phases ADD COLUMN synthetic_parent INTEGER NOT NULL DEFAULT 0 CHECK (synthetic_parent IN (0, 1));
 
--- A ledger already upgraded by an earlier migration 014 has no provenance to transfer.
-CREATE TABLE IF NOT EXISTS migration_014_plan_parent_provenance (
-  kind TEXT NOT NULL,
-  id TEXT NOT NULL,
-  project_id TEXT NOT NULL,
-  PRIMARY KEY (kind, project_id, id)
+-- Recover only untouched placeholders when migration 014 did not record provenance.
+CREATE TABLE IF NOT EXISTS migration_014_plan_parent_provenance AS
+WITH registry_upgrade AS (
+  SELECT applied_at FROM _migrations WHERE name = '014-project-registry-and-composite-keys.sql'
+)
+SELECT 'feature' AS kind, f.id, f.project_id
+FROM plan_features f JOIN registry_upgrade m ON f.created_at = m.applied_at
+WHERE f.updated_at = f.created_at
+  AND f.write_seq = 0
+  AND f.name = f.id
+  AND f.status = 'PLANNED'
+  AND f.sp_total = 0
+  AND EXISTS (
+    SELECT 1 FROM plan_phases ph WHERE ph.project_id = f.project_id AND ph.feature_id = f.id
+  )
+UNION ALL
+SELECT 'phase', ph.id, ph.project_id
+FROM plan_phases ph JOIN registry_upgrade m ON ph.created_at = m.applied_at
+WHERE ph.updated_at = ph.created_at
+  AND ph.write_seq = 0
+  AND ph.name = ph.id
+  AND ph.status = 'PLANNED'
+  AND ph.health = 'CLEAN'
+  AND ph.seq = 0
+  AND ph.sp_estimate = 0
+  AND ph.sp_actual IS NULL
+  AND ph.duration_ms IS NULL
+  AND ph.completed_at IS NULL
+  AND ph.evidence IS NULL
+  AND EXISTS (
+    SELECT 1 FROM plan_proposals pr WHERE pr.project_id = ph.project_id AND pr.target_phase_id = ph.id
 );
 UPDATE plan_features SET synthetic_parent = 1
 WHERE (project_id, id) IN (
