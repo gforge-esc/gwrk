@@ -5,7 +5,21 @@
   "bin": {
     "gwrk": "./dist/cli.js"
   },
-  "files": ["dist/", "package.json", "README.md", "LICENSE"],
+  "files": [
+    "dist/",
+    "deploy/linux-runner/.env.example",
+    "deploy/linux-runner/README.md",
+    "deploy/linux-runner/credentials.sh",
+    "deploy/linux-runner/gwrk-runner.service",
+    "deploy/linux-runner/live-pilot-record.example.md",
+    "deploy/linux-runner/preflight.sh",
+    "deploy/linux-runner/run.sh",
+    "deploy/linux-runner/install-release.sh",
+    "deploy/linux-runner/rollback-release.sh",
+    "package.json",
+    "README.md",
+    "LICENSE"
+  ],
   "engines": {
     "node": ">=18.0.0"
   },

@@ -3,9 +3,9 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import fs from "node:fs/promises";
-import os from "node:os";
 import path from "node:path";
 import { parse } from "yaml";
+import { gwrkHome } from "../adapters/config/paths.js";
 import { loadManifestFromSkillMarkdown } from "../utils/manifest-loader.js";
 import { type AnyManifest, AnyManifestSchema } from "./manifest.js";
 
@@ -63,8 +63,7 @@ export class PluginLoader {
   private projectDir: string | undefined;
 
   constructor(options: PluginLoaderOptions = {}) {
-    this.globalDir =
-      options.globalDir || path.join(os.homedir(), ".gwrk", "plugins");
+    this.globalDir = options.globalDir || path.join(gwrkHome(), "plugins");
     this.projectDir = options.projectDir;
   }
 
@@ -109,7 +108,7 @@ export class PluginLoader {
   private async loadGlobalConfig(): Promise<{
     plugins?: Record<string, { enabled?: boolean }>;
   }> {
-    const configPath = path.join(os.homedir(), ".gwrk", "config.json");
+    const configPath = path.join(gwrkHome(), "config.json");
     try {
       const content = await fs.readFile(configPath, "utf-8");
       return JSON.parse(content) || {};

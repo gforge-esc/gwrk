@@ -3,7 +3,6 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import fs from "node:fs/promises";
-import os from "node:os";
 import path from "node:path";
 import { parse, stringify } from "yaml";
 import {
@@ -11,6 +10,7 @@ import {
   logCliOutput,
   warnCli,
 } from "../adapters/cli/output-scope.js";
+import { gwrkHome } from "../adapters/config/paths.js";
 
 const FRONTMATTER_REGEX = /^---\n([\s\S]+?)\n---\n?([\s\S]*)$/;
 
@@ -22,7 +22,7 @@ export async function migratePlugins(
   options: MigrateOptions = {},
 ): Promise<void> {
   const projectRoot = process.cwd();
-  const globalDir = path.join(os.homedir(), ".gwrk", "plugins");
+  const globalDir = path.join(gwrkHome(), "plugins");
 
   // ADR-007: Check for legacy directory and warn
   const agentsDir = path.join(projectRoot, ".agents");

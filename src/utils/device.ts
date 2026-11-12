@@ -6,6 +6,8 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { gwrkHome } from "../adapters/config/paths.js";
+import { LedgerBackupMetadataSchema } from "../domain/ledger-backup.js";
 
 export interface DeviceRecord {
   id: string;
@@ -18,9 +20,8 @@ export interface DeviceRecord {
  * Path to the per-machine device identity file.
  * GWRK_HOME overrides ~/.gwrk for testing.
  */
-function devicePath(): string {
-  const gwrkHome = process.env.GWRK_HOME || path.join(os.homedir(), ".gwrk");
-  return path.join(gwrkHome, "device.json");
+export function devicePath(): string {
+  return path.join(gwrkHome(), "device.json");
 }
 
 /** Read the device record, or null if this machine has never run init. */
@@ -33,6 +34,35 @@ export function loadDevice(): DeviceRecord | null {
     return raw as DeviceRecord;
   } catch {
     return null;
+  }
+}
+
+export function loadDeviceStrict(): DeviceRecord | null {
+  const file = devicePath();
+  let descriptor: number | undefined;
+  try {
+    descriptor = fs.openSync(
+      file,
+      fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW | fs.constants.O_NONBLOCK,
+    );
+    if (!fs.fstatSync(descriptor).isFile()) {
+      throw new Error("Expected a regular file.");
+    }
+    const raw: unknown = JSON.parse(fs.readFileSync(descriptor, "utf8"));
+    return LedgerBackupMetadataSchema.shape.device.unwrap().parse(raw);
+  } catch (error) {
+    if (
+      descriptor === undefined &&
+      (error as NodeJS.ErrnoException).code === "ENOENT"
+    ) {
+      return null;
+    }
+    const detail = error instanceof Error ? error.message : String(error);
+    throw new Error(`Could not read device record at ${file}: ${detail}`, {
+      cause: error,
+    });
+  } finally {
+    if (descriptor !== undefined) fs.closeSync(descriptor);
   }
 }
 

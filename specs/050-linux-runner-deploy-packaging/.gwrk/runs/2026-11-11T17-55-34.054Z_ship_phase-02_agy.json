@@ -1,0 +1,26 @@
+{
+  "runId": "2026-11-11T17:55:34.054Z_ship_p02",
+  "feature": "050-linux-runner-deploy-packaging",
+  "phase": "phase-02",
+  "command": "ship",
+  "agent": "agy",
+  "model": "gemini-3.8-flash-high",
+  "usage": {
+    "inputTokens": 500380,
+    "outputTokens": 24023,
+    "totalTokens": 524403
+  },
+  "startedAt": "2026-11-11T17:55:34.054Z",
+  "finishedAt": "2026-11-11T18:02:42.417Z",
+  "durationS": 428,
+  "exitCode": 0,
+  "attempt": 1,
+  "gateResult": "PASS",
+  "reviewVerdict": "GO",
+  "filesChanged": 1,
+  "linesAdded": 12,
+  "linesDeleted": 8,
+  "gitCommit": "236497bed99d02b5a69f9d4c7ca888c2491c916b",
+  "gitBranch": "feat/050-linux-runner-deploy-packaging",
+  "digest": []
+}

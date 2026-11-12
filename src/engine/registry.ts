@@ -8,6 +8,7 @@ import fs from "node:fs";
 import fsp from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import { gwrkHome } from "../adapters/config/paths.js";
 import type { AnyManifest } from "../plugins/manifest.js";
 import { loadManifest } from "../utils/manifest-loader.js";
 
@@ -15,11 +16,9 @@ const REGISTRY_URL =
   process.env.GWRK_REGISTRY_URL ||
   "https://github.com/gforge-esc/gwrk-plugins.git";
 const getRegistryPath = () =>
-  process.env.GWRK_REGISTRY_PATH ||
-  path.join(os.homedir(), ".gwrk", "registry");
-const getPluginsDir = () => path.join(os.homedir(), ".gwrk", "plugins");
-const getPluginsLockPath = () =>
-  path.join(os.homedir(), ".gwrk", "plugins-lock.json");
+  process.env.GWRK_REGISTRY_PATH || path.join(gwrkHome(), "registry");
+const getPluginsDir = () => path.join(gwrkHome(), "plugins");
+const getPluginsLockPath = () => path.join(gwrkHome(), "plugins-lock.json");
 
 export interface RegistryVersionEntry {
   version: string;

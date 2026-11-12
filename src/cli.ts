@@ -3,12 +3,13 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import { existsSync, realpathSync } from "node:fs";
+import { performance } from "node:perf_hooks";
 import { fileURLToPath } from "node:url";
-import { Command, type ParseOptions } from "commander";
+import { Command, Option, type ParseOptions } from "commander";
 import pkg from "../package.json" with { type: "json" };
 import {
   CliExit,
-  exitCli,
   getOutputScope,
   logCliError,
   runWithOutputScope,
@@ -35,6 +36,7 @@ import { createTasksCommand } from "./commands/tasks.js";
 import { createTestCommand } from "./commands/test.js";
 import { loadConfig } from "./utils/config.js";
 import { color } from "./utils/format.js";
+import { writeSignal } from "./utils/signal.js";
 
 const { BOLD, DIM, CYAN, MAGENTA, YELLOW, GREEN, RED, RESET } = color;
 
@@ -72,7 +74,9 @@ export function createCliProgram(): Command {
     .name("gwrk")
     .version(pkg.version)
     .description("The Principal Engineer's Operating System")
-    .option("--format <type>", "Output format (json)")
+    .addOption(
+      new Option("--format <type>", "Output format (json)").choices(["json"]),
+    )
     .option("--workspace <name>", "Select a workspace profile")
     .option("--agent", "Enable Agent-Native Mode (TC-006)", false)
     .configureHelp({
@@ -184,11 +188,6 @@ export function createCliProgram(): Command {
     const scope = getOutputScope();
     if (scope) scope.agentMode ||= opts.agent || process.env.GWRK_AGENT === "1";
 
-    if (opts.format && opts.format !== "json") {
-      logCliError(`Unknown format: ${opts.format}. Supported: json`);
-      exitCli(2);
-    }
-
     // Commands that resolve the project root themselves are exempt from the
     // cwd-anchored preflight. `loadConfig` joins its argument with
     // `.gwrkrc.json` and never walks parents, so preflighting it against
@@ -202,7 +201,8 @@ export function createCliProgram(): Command {
     const resolvesOwnRoot =
       actionCommand.name() === "init" ||
       actionCommand.name() === "assess" ||
-      commandPath === "define adr";
+      commandPath === "define adr" ||
+      ["db backup", "db restore", "db rollback-check"].includes(commandPath);
 
     if (!resolvesOwnRoot) {
       loadConfig(process.cwd());
@@ -223,6 +223,7 @@ export async function runCli(
   argv: readonly string[] = process.argv.slice(2),
   options: RunCliOptions = {},
 ): Promise<number> {
+  const start = performance.now();
   const scope = {
     ...options,
     agentMode: options.agentMode ?? false,
@@ -251,11 +252,15 @@ export async function runCli(
         );
         return 127;
       }
+      if (error.code === "commander.missingArgument") return 2;
       if (
-        error.code === "commander.missingArgument" ||
         error.code === "commander.unknownOption" ||
-        error.code === "commander.missingMandatoryOptionValue"
+        error.code === "commander.invalidArgument" ||
+        error.code === "commander.excessArguments" ||
+        error.code === "commander.missingMandatoryOptionValue" ||
+        error.code === "commander.optionMissingArgument"
       ) {
+        writeSignal(2, performance.now() - start);
         return 2;
       }
       if (!error.code?.startsWith("commander.")) {
@@ -266,6 +271,12 @@ export async function runCli(
   });
 }
 
-if (process.argv[1] === fileURLToPath(import.meta.url)) {
+const entrypoint = process.argv[1];
+const modulePath = fileURLToPath(import.meta.url);
+if (
+  entrypoint &&
+  (entrypoint === modulePath ||
+    (existsSync(entrypoint) && realpathSync(entrypoint) === modulePath))
+) {
   process.exitCode = await runCli();
 }

@@ -3,10 +3,10 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import * as fs from "node:fs";
-import * as os from "node:os";
 import * as path from "node:path";
 import { z } from "zod";
 import { logCliError } from "../adapters/cli/output-scope.js";
+import { gwrkHome } from "../adapters/config/paths.js";
 import { AgentBackendConfigSchema } from "../domain/agent-config.js";
 import { DesignSchema } from "../domain/architecture-context.js";
 import { DEFAULT_LOC_RATES, resolveRoleMultipliers } from "../domain/effort.js";
@@ -355,8 +355,7 @@ export function loadConfig(projectRoot: string): GwrkConfig {
 
   // Layer 3: Machine-wide global config (optional)
   // GWRK_HOME overrides ~/.gwrk for testing and non-standard installations
-  const gwrkHome = process.env.GWRK_HOME || path.join(os.homedir(), ".gwrk");
-  const globalPath = path.join(gwrkHome, "config.json");
+  const globalPath = path.join(gwrkHome(), "config.json");
   const globalOverrides = tryReadJson(globalPath, "~/.gwrk/config.json");
   if (globalOverrides) {
     raw = deepMerge(raw, globalOverrides);

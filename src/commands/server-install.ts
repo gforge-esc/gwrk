@@ -7,10 +7,11 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { logCliOutput } from "../adapters/cli/output-scope.js";
+import { gwrkHome } from "../adapters/config/paths.js";
 
 const PLIST_NAME = "com.gwrk.server.plist";
 const PLIST_PATH = path.join(os.homedir(), "Library/LaunchAgents", PLIST_NAME);
-const LOG_DIR = path.join(os.homedir(), ".gwrk");
+const LOG_DIR = gwrkHome();
 const LOG_PATH = path.join(LOG_DIR, "server.log");
 
 /**

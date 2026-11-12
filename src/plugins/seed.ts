@@ -3,11 +3,11 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import fs from "node:fs/promises";
-import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { stringify } from "yaml";
 import { logCliError, logCliOutput } from "../adapters/cli/output-scope.js";
+import { gwrkHome } from "../adapters/config/paths.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -17,7 +17,7 @@ interface SeedOptions {
 }
 
 export async function seedSkills(options: SeedOptions = {}): Promise<void> {
-  const globalDir = path.join(os.homedir(), ".gwrk", "plugins");
+  const globalDir = path.join(gwrkHome(), "plugins");
 
   // Resolve taxonomy file relative to CLI installation, fallback to cwd()
   const cliRoot = path.resolve(__dirname, "..", "..");

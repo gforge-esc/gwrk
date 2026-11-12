@@ -4,7 +4,6 @@
 
 import { spawn } from "node:child_process";
 import fs from "node:fs";
-import os from "node:os";
 import path from "node:path";
 import { Command } from "commander";
 import {
@@ -12,6 +11,7 @@ import {
   setCliExitCode,
   warnCli,
 } from "../adapters/cli/output-scope.js";
+import { gwrkHome, usesHostedRuntime } from "../adapters/config/paths.js";
 import { startServer } from "../server/index.js";
 import { isPidRunning, readPid, removePid } from "../server/pid.js";
 import { loadConfig } from "../utils/config.js";
@@ -20,8 +20,9 @@ import { getLogs, installServer, uninstallServer } from "./server-install.js";
 
 import { CommandError, withSignal } from "../utils/signal.js";
 
-const GWRK_DIR = path.join(os.homedir(), ".gwrk");
-const LOG_FILE = path.join(GWRK_DIR, "server.log");
+function logFile(): string {
+  return path.join(gwrkHome(), "server.log");
+}
 
 export function createServerCommand(): Command {
   const serverCommand = new Command("server").description(
@@ -46,7 +47,7 @@ export function createServerCommand(): Command {
         const config = loadConfig(projectRoot);
 
         const existingPid = readPid();
-        if (existingPid && isPidRunning(existingPid)) {
+        if (!usesHostedRuntime() && existingPid && isPidRunning(existingPid)) {
           throw new CommandError(
             `Server already running (pid: ${existingPid}). Run 'gwrk server stop' first.`,
             1,
@@ -56,11 +57,9 @@ export function createServerCommand(): Command {
         if (options.foreground) {
           await startServer(config);
         } else {
-          if (!fs.existsSync(GWRK_DIR)) {
-            fs.mkdirSync(GWRK_DIR, { recursive: true });
-          }
-          const out = fs.openSync(LOG_FILE, "a");
-          const err = fs.openSync(LOG_FILE, "a");
+          fs.mkdirSync(gwrkHome(), { recursive: true });
+          const out = fs.openSync(logFile(), "a");
+          const err = fs.openSync(logFile(), "a");
 
           const child = spawn(
             process.argv[0],
@@ -80,18 +79,22 @@ export function createServerCommand(): Command {
           while (attempts < 10) {
             await new Promise((resolve) => setTimeout(resolve, 500));
             const pid = readPid();
-            if (pid && isPidRunning(pid)) {
+            if (
+              pid &&
+              (!usesHostedRuntime() || pid === child.pid) &&
+              isPidRunning(pid)
+            ) {
               logCliOutput(`gwrk server started (pid: ${pid})`);
               logCliOutput(
                 `gwrk server listening on http://${config.server.host}:${config.server.port}`,
               );
-              logCliOutput(`Logs: ${LOG_FILE}`);
+              logCliOutput(`Logs: ${logFile()}`);
               return;
             }
             attempts++;
           }
           throw new CommandError(
-            `Failed to start server. Check ${LOG_FILE} for details.`,
+            `Failed to start server. Check ${logFile()} for details.`,
             1,
           );
         }
@@ -165,7 +168,7 @@ export function createServerCommand(): Command {
         const url = `http://${config.server.host}:${config.server.port}`;
         logCliOutput(`Server: running (pid: ${pid})`);
         logCliOutput(`Listen: ${url}`);
-        logCliOutput(`Logs:   ${LOG_FILE}`);
+        logCliOutput(`Logs:   ${logFile()}`);
 
         // Health check
         try {
