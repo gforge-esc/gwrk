@@ -190,6 +190,7 @@ const restoreCommand = new Command("restore")
             stateDirectory,
             runtimeDirectory,
             configuredDbPath: dbPath,
+            runtimePidPath: gwrkPidPath(),
             force: opts.force,
             pid: process.pid,
           },
