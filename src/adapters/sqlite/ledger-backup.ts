@@ -42,6 +42,7 @@ import {
 } from "../../ports/release-ops-port.js";
 import { sha256 } from "../release/inventory.js";
 import { readRepositoryEvidence } from "../release/repository-evidence.js";
+import { ledgerLockPath } from "../server/instance-lock.js";
 
 const DB_FILE = "gwrk.db";
 const SQLITE_SIDECAR_SUFFIXES = ["-wal", "-shm", "-journal"];
@@ -209,9 +210,16 @@ async function withMaintenanceLock<T>(state: string, run: () => Promise<T>) {
 async function captureLedgerBackup(input: LedgerBackupRequest, dbPath: string) {
   const suppliedPath = resolve(input.destination);
   const destination = await canonicalPath(suppliedPath);
+  const configuredDbPath = resolve(input.dbPath);
   for (const path of [destination, suppliedPath]) {
     rejectRestoreMarkerComponent(path);
-    rejectSqliteSidecarPath(path, dbPath, resolve(input.dbPath));
+    rejectSqliteSidecarPath(path, dbPath, configuredDbPath);
+    rejectPathAtOrBelow(
+      path,
+      ledgerLockPath(configuredDbPath),
+      "ledger lock path",
+    );
+    rejectPathAtOrBelow(path, ledgerLockPath(dbPath), "ledger lock path");
   }
   const configuredPaths = [
     [input.devicePath, "device path"],
@@ -476,7 +484,7 @@ function rejectSqliteSidecarPath(path: string, ...ledgers: string[]): void {
 }
 
 export const resolveRestoreTarget: LedgerBackupPort["resolveRestoreTarget"] =
-  async (stateDirectory, configuredDbPath) => {
+  async (stateDirectory, configuredDbPath, runtimePidPath) => {
     const suppliedPath = resolve(stateDirectory);
     const state = await canonicalPath(suppliedPath);
     rejectRestoreMarkerComponent(state);
@@ -487,6 +495,15 @@ export const resolveRestoreTarget: LedgerBackupPort["resolveRestoreTarget"] =
       rejectSqliteSidecarPath(suppliedPath, configured, physical);
       rejectSqliteSidecarPath(state, configured, physical);
     }
+    if (runtimePidPath) {
+      const pidPath = resolve(runtimePidPath);
+      rejectPathAtOrBelow(suppliedPath, pidPath, "runtime PID path");
+      rejectPathAtOrBelow(
+        state,
+        await canonicalPath(pidPath),
+        "runtime PID path",
+      );
+    }
     return { stateDirectory: state, dbPath: join(state, DB_FILE) };
   };
 
@@ -496,6 +513,7 @@ export const restoreLedgerBackup: LedgerBackupPort["restoreBackup"] = async (
   const { stateDirectory: state } = await resolveRestoreTarget(
     input.stateDirectory,
     input.configuredDbPath,
+    input.runtimePidPath,
   );
   const suppliedPath = resolve(input.source);
   rejectReservedRestorePath(suppliedPath, state);

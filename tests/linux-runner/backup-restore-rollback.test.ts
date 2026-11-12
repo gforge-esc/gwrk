@@ -29,12 +29,14 @@ import {
 } from "../../src/adapters/server/instance-lock.js";
 import {
   createLedgerBackup,
+  resolveRestoreTarget,
   restoreLedgerBackup,
   verifyLedgerAgainstBackup,
   verifyLedgerBackup,
 } from "../../src/adapters/sqlite/ledger-backup.js";
 
 import { readRepositoryEvidence } from "../../src/adapters/release/repository-evidence.js";
+import { restoreOfflineLedger } from "../../src/application/release/backup-restore.js";
 import { writePid } from "../../src/server/pid.js";
 
 vi.mock("node:fs/promises", async (importOriginal) => {
@@ -206,6 +208,17 @@ function expectUsageFailure(result: ReturnType<typeof runCli>) {
   expect(result.stdout).toBe("");
 }
 
+function expectReservedPathFailure(
+  result: ReturnType<typeof runCli>,
+  diagnostic: string,
+) {
+  expect.soft(result.status, result.stderr).toBe(1);
+  expect.soft(result.stderr).toContain(diagnostic);
+  expect(result.stderr.match(/^\[exit:.*$/gm)).toEqual([
+    expect.stringMatching(/^\[exit:1 \| \d+(?:\.\d+)?m?s\]/),
+  ]);
+}
+
 const pathVariants = [
   { alias: false, child: false },
   { alias: false, child: true },
@@ -214,6 +227,116 @@ const pathVariants = [
 ];
 
 describe("installed ledger commands outside a checkout", () => {
+  it.each(pathVariants)(
+    "protects the hosted ledger lock with alias=$alias and child=$child",
+    async ({ alias, child }) => {
+      const state = join(root, "state");
+      const stateAlias = join(root, "state-alias");
+      await mkdir(state);
+      await symlink(state, stateAlias);
+      const ledger = join(state, "gwrk.db");
+      seedLedger(ledger).close();
+      const lockFile = ".gwrk.db.lock";
+      const reserved = join(state, lockFile);
+      await expect(stat(reserved)).rejects.toMatchObject({ code: "ENOENT" });
+
+      const result = runInstalledBackup(
+        ledger,
+        join(alias ? stateAlias : state, lockFile, ...(child ? ["copy"] : [])),
+      );
+      expectReservedPathFailure(
+        result,
+        `reserved ledger lock path ${reserved}`,
+      );
+      await expect(stat(reserved)).rejects.toMatchObject({ code: "ENOENT" });
+
+      if (process.platform === "linux") {
+        const lock = acquireLedgerLock(
+          join(stateAlias, "gwrk.db"),
+          process.pid,
+        );
+        try {
+          expect(lock.lockPath).toBe(reserved);
+        } finally {
+          lock.release();
+        }
+      }
+    },
+  );
+
+  it.each(
+    ["cli", "application", "adapter"].flatMap((entry) =>
+      pathVariants.map((variant) => ({ entry, ...variant })),
+    ),
+  )(
+    "rejects restore into the runner PID path through $entry with alias=$alias and child=$child",
+    async ({ entry, alias, child }) => {
+      const runtimeDirectory = join(root, "runtime");
+      const runtimeAlias = join(root, "runtime-alias");
+      await mkdir(runtimeDirectory);
+      await symlink(runtimeDirectory, runtimeAlias);
+      const runtimePidPath = join(runtimeDirectory, "server.pid");
+      const stateDirectory = join(
+        alias ? runtimeAlias : runtimeDirectory,
+        "server.pid",
+        ...(child ? ["restore"] : []),
+      );
+      const ledger = join(root, "active.db");
+      seedLedger(ledger).close();
+      const source = join(root, "backup");
+      const seeded = runInstalledBackup(ledger, source);
+      expect(seeded.status, seeded.stderr).toBe(0);
+      const diagnostic = `reserved runtime PID path ${runtimePidPath}`;
+      const request = { source, stateDirectory, runtimePidPath, force: false };
+
+      if (entry === "cli") {
+        const result = runInstalledRestoreForPathValidation(
+          ledger,
+          source,
+          stateDirectory,
+        );
+        expectReservedPathFailure(result, diagnostic);
+      } else if (entry === "application") {
+        const locks = {
+          acquireInstanceLock: vi.fn(() => {
+            throw new Error("Instance lock called before target validation");
+          }),
+          acquireLedgerLock: vi.fn(() => {
+            throw new Error("Ledger lock called before target validation");
+          }),
+        };
+        await expect
+          .soft(
+            restoreOfflineLedger(
+              {
+                createBackup: createLedgerBackup,
+                verifyBackup: verifyLedgerBackup,
+                resolveRestoreTarget,
+                restoreBackup: restoreLedgerBackup,
+              },
+              locks,
+              { ...request, runtimeDirectory, pid: process.pid },
+            ),
+          )
+          .rejects.toThrow(diagnostic);
+        expect(locks.acquireInstanceLock).not.toHaveBeenCalled();
+        expect(locks.acquireLedgerLock).not.toHaveBeenCalled();
+      } else {
+        await expect
+          .soft(restoreLedgerBackup(request))
+          .rejects.toThrow(diagnostic);
+      }
+      await expect(stat(runtimePidPath)).rejects.toMatchObject({
+        code: "ENOENT",
+      });
+      await expect(
+        stat(join(runtimeDirectory, "server.lock")),
+      ).rejects.toMatchObject({
+        code: "ENOENT",
+      });
+    },
+  );
+
   it.each(
     ["-wal", "-shm", "-journal"].flatMap((suffix) =>
       pathVariants.map((variant) => ({ suffix, ...variant })),
@@ -283,8 +406,7 @@ describe("installed ledger commands outside a checkout", () => {
         ledger,
         join(alias ? runtimeAlias : runtime, file, ...(child ? ["copy"] : [])),
       );
-      expect.soft(result.status, result.stderr).toBe(1);
-      expect.soft(result.stderr).toContain(`reserved ${label} ${reserved}`);
+      expectReservedPathFailure(result, `reserved ${label} ${reserved}`);
       await expect(stat(reserved)).rejects.toMatchObject({ code: "ENOENT" });
       if (file === "server.pid") {
         vi.stubEnv("GWRK_RUNTIME_DIR", runtime);

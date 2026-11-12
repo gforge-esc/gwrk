@@ -47,6 +47,10 @@ export function instanceLockPath(runtimeDir: string): string {
   return join(runtimeDir, "server.lock");
 }
 
+export function ledgerLockPath(dbPath: string): string {
+  return join(dirname(dbPath), `.${basename(dbPath)}.lock`);
+}
+
 export const acquireInstanceLock: InstanceLockPort["acquireInstanceLock"] = (
   runtimeDir,
   pid,
@@ -69,10 +73,7 @@ export const acquireLedgerLock: InstanceLockPort["acquireLedgerLock"] = (
       `Hosted ledger must be a regular file with a single link: ${database}`,
     );
   }
-  return acquireExclusiveLock(
-    join(dirname(database), `.${basename(database)}.lock`),
-    pid,
-  );
+  return acquireExclusiveLock(ledgerLockPath(database), pid);
 };
 
 function acquireExclusiveLock(

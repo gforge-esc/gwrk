@@ -195,6 +195,7 @@ const createRestoreCommand = () =>
               stateDirectory,
               runtimeDirectory,
               configuredDbPath: dbPath,
+              runtimePidPath: gwrkPidPath(),
               force: opts.force,
               pid: process.pid,
             },

@@ -20,6 +20,7 @@ export async function restoreOfflineLedger(
   const target = await backup.resolveRestoreTarget(
     request.stateDirectory,
     request.configuredDbPath,
+    request.runtimePidPath,
   );
   const lock = instances.acquireInstanceLock(
     request.runtimeDirectory,
