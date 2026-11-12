@@ -35,6 +35,7 @@ import {
 } from "../../src/adapters/sqlite/ledger-backup.js";
 
 import { readRepositoryEvidence } from "../../src/adapters/release/repository-evidence.js";
+import { writePid } from "../../src/server/pid.js";
 
 vi.mock("node:fs/promises", async (importOriginal) => {
   const fs = await importOriginal<typeof import("node:fs/promises")>();
@@ -139,17 +140,19 @@ function runLedgerCommand(...args: string[]) {
 }
 
 function runInstalledLedgerCommand(ledger: string, ...args: string[]) {
-  return runInstalledLedgerCommandAtHome(ledger, dirname(ledger), ...args);
+  return runInstalledLedgerCommandAtHome(ledger, dirname(ledger), args);
 }
 
 function runInstalledLedgerCommandAtHome(
   ledger: string,
   home: string,
-  ...args: string[]
+  args: string[],
+  nodeArgs: string[] = [],
 ) {
   return spawnSync(
     process.execPath,
     [
+      ...nodeArgs,
       fileURLToPath(new URL("../../dist/cli.js", import.meta.url)),
       "db",
       ...args,
@@ -172,6 +175,27 @@ function runInstalledLedgerCommandAtHome(
 
 function runInstalledBackup(ledger: string, destination: string) {
   return runInstalledLedgerCommand(ledger, "backup", "--out", destination);
+}
+
+function runInstalledRestoreForPathValidation(
+  ledger: string,
+  source: string,
+  state: string,
+) {
+  // Restore target validation must run before the hosted command takes locks.
+  const nodeArgs =
+    process.platform === "linux"
+      ? []
+      : [
+          "--import",
+          'data:text/javascript,Object.defineProperty(process,"platform",{value:"linux"})',
+        ];
+  return runInstalledLedgerCommandAtHome(
+    ledger,
+    dirname(ledger),
+    ["restore", "--from", source, "--state-dir", state],
+    nodeArgs,
+  );
 }
 
 function expectUsageFailure(result: ReturnType<typeof runCli>) {
@@ -262,16 +286,23 @@ describe("installed ledger commands outside a checkout", () => {
       expect.soft(result.status, result.stderr).toBe(1);
       expect.soft(result.stderr).toContain(`reserved ${label} ${reserved}`);
       await expect(stat(reserved)).rejects.toMatchObject({ code: "ENOENT" });
+      if (file === "server.pid") {
+        vi.stubEnv("GWRK_RUNTIME_DIR", runtime);
+        try {
+          writePid(process.pid);
+          expect(await readFile(reserved, "utf8")).toBe(String(process.pid));
+        } finally {
+          vi.unstubAllEnvs();
+        }
+      }
     },
   );
 
-  it
-    .skipIf(process.platform !== "linux")
-    .each(
-      ["-wal", "-shm", "-journal"].flatMap((suffix) =>
-        pathVariants.map((variant) => ({ suffix, ...variant })),
-      ),
-    )(
+  it.each(
+    ["-wal", "-shm", "-journal"].flatMap((suffix) =>
+      pathVariants.map((variant) => ({ suffix, ...variant })),
+    ),
+  )(
     "rejects restore into SQLite sidecar $suffix with alias=$alias and child=$child",
     async ({ suffix, alias, child }) => {
       const state = join(root, "state");
@@ -293,12 +324,9 @@ describe("installed ledger commands outside a checkout", () => {
         ...(child ? ["restore"] : []),
       );
 
-      const result = runInstalledLedgerCommand(
+      const result = runInstalledRestoreForPathValidation(
         ledger,
-        "restore",
-        "--from",
         backup,
-        "--state-dir",
         target,
       );
       expect.soft(result.status, result.stderr).toBe(1);
@@ -353,42 +381,10 @@ describe("installed ledger commands outside a checkout", () => {
       const diagnostic = `reserved restore path ${marker}`;
 
       if (entry === "cli") {
-        // The hosted CLI checks the platform before validating restore paths.
-        const platform =
-          process.platform === "linux"
-            ? []
-            : [
-                "--import",
-                'data:text/javascript,Object.defineProperty(process,"platform",{value:"linux"})',
-              ];
-        const cli = fileURLToPath(
-          new URL("../../dist/cli.js", import.meta.url),
-        );
-        const result = spawnSync(
-          process.execPath,
-          [
-            ...platform,
-            cli,
-            "db",
-            "restore",
-            "--from",
-            backup,
-            "--state-dir",
-            target,
-            "--format",
-            "json",
-          ],
-          {
-            cwd: root,
-            env: {
-              ...process.env,
-              GWRK_HOME: state,
-              GWRK_DB_PATH: ledger,
-              GWRK_RUNTIME_DIR: runtime,
-            },
-            encoding: "utf8",
-            timeout: 10_000,
-          },
+        const result = runInstalledRestoreForPathValidation(
+          ledger,
+          backup,
+          target,
         );
         expect.soft(result.status, result.stderr).toBe(1);
         expect.soft(result.stderr).toContain(diagnostic);
@@ -465,9 +461,7 @@ describe("installed ledger commands outside a checkout", () => {
       const homeAlias = join(root, "identity-alias");
       await symlink(home, homeAlias);
       const device = join(home, "device.json");
-      const result = runInstalledLedgerCommandAtHome(
-        ledger,
-        home,
+      const result = runInstalledLedgerCommandAtHome(ledger, home, [
         "backup",
         "--out",
         join(
@@ -475,19 +469,17 @@ describe("installed ledger commands outside a checkout", () => {
           "device.json",
           ...(child ? ["copy"] : []),
         ),
-      );
+      ]);
       expect.soft(result.status, result.stderr).toBe(1);
       expect.soft(result.stderr).toContain(`reserved device path ${device}`);
       await expect(stat(device)).rejects.toMatchObject({ code: "ENOENT" });
 
       const destination = join(root, "safe-backup");
-      const clean = runInstalledLedgerCommandAtHome(
-        ledger,
-        home,
+      const clean = runInstalledLedgerCommandAtHome(ledger, home, [
         "backup",
         "--out",
         destination,
-      );
+      ]);
       expect(clean.status, clean.stderr).toBe(0);
       expect(
         (await verifyLedgerBackup(destination)).metadata.device,
