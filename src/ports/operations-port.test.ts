@@ -40,6 +40,7 @@ import type {
   HarvestExecutionPort,
   OperationsStorePort,
   OutboxItem,
+  OutboxMessage,
   WorkerExecutionPort,
 } from "./operations-port.js";
 import type { VcsPort } from "./vcs-port.js";
@@ -55,6 +56,7 @@ type RecoveryStore = Pick<
   | "getOutboxItem"
   | "listRecoverableOutboxItems"
   | "claimOutboxItem"
+  | "completeOutboxItem"
 >;
 
 const projectId = "project-a";
@@ -817,6 +819,37 @@ function restoreRecoveryStore(persisted: {
         item: { ...row, workspaceId, channelId, threadTs },
         action,
       };
+    },
+    completeOutboxItem({ claim, nowIso, outcome }) {
+      const row = outboxItems.find((item) => item.outboxId === claim.outboxId);
+      if (
+        !row ||
+        row.status !== "sending" ||
+        row.attemptCount !== claim.attemptNumber ||
+        row.clientMetadataKey !== claim.clientMetadataKey
+      ) {
+        return { ok: false, code: "LEASE_FENCED" };
+      }
+      if (
+        row.eventType === "harvest_gate_failed" &&
+        outcome.status === "skipped_no_target"
+      ) {
+        return { ok: false, code: "OUTBOX_TRANSITION_INVALID" };
+      }
+      if (outcome.status === "delivered") {
+        if (
+          outcome.channelId !== row.channelId ||
+          (outcome.threadTs ?? null) !== row.threadTs
+        ) {
+          return { ok: false, code: "OUTBOX_TRANSITION_INVALID" };
+        }
+        row.messageTs = outcome.messageTs;
+        row.deliveredAt = nowIso;
+      }
+      row.status = outcome.status;
+      row.updatedAt = nowIso;
+      row.lastError = outcome.status === "failed" ? outcome.error : null;
+      return { ok: true };
     },
   };
   return Object.assign(store, {
@@ -2827,20 +2860,28 @@ it.each([
         channelId: "C3",
         threadTs: "3.1",
       };
-      expect(
-        restarted.claimOutboxItem({
-          outboxId: notice.outboxId,
-          nowIso,
-          destination: changedDestination,
-        }),
-      ).toMatchObject({
+      const send = restarted.claimOutboxItem({
+        outboxId: notice.outboxId,
+        nowIso,
+        destination: changedDestination,
+      });
+      expect(send).toMatchObject({
         action: "send",
         item: {
           ...savedDestination,
           clientMetadataKey: notice.clientMetadataKey,
         },
       });
+      if (send?.action !== "send") throw new Error("Expected a send claim");
       const sending = restarted.snapshot();
+      expect(
+        restarted.completeOutboxItem({
+          claim: send.claim,
+          nowIso,
+          outcome: { status: "skipped_no_target" },
+        }),
+      ).toEqual({ ok: false, code: "OUTBOX_TRANSITION_INVALID" });
+      expect(restarted.snapshot()).toEqual(sending);
       const afterSend = restoreRecoveryStore(sending);
       expect(afterSend.transitionHarvestStage(transition)).toEqual({
         ok: true,
@@ -2856,13 +2897,32 @@ it.each([
         claim: { clientMetadataKey: notice.clientMetadataKey },
         item: savedDestination,
       });
-      if (!recovery) throw new Error("Expected a reconciliation claim");
+      if (recovery?.action !== "reconcile") {
+        throw new Error("Expected a reconciliation claim");
+      }
       const providerMessages = new Map([
         [outboxDeliveryKey(existingNotice), existingNotice.messageTs],
       ]);
       expect(providerMessages.has(outboxDeliveryKey(recovery.item))).toBe(
         false,
       );
+      expect(
+        afterSend.completeOutboxItem({
+          claim: recovery.claim,
+          nowIso: leaseExpiresAt,
+          outcome: {
+            status: "delivered",
+            channelId: savedDestination.channelId,
+            threadTs: savedDestination.threadTs,
+            messageTs: "12.1",
+          },
+        }),
+      ).toEqual({ ok: true });
+      expect(afterSend.getOutboxItem(notice.outboxId)).toMatchObject({
+        ...savedDestination,
+        status: "delivered",
+        clientMetadataKey: notice.clientMetadataKey,
+      });
     }
   },
 );
