@@ -35,7 +35,7 @@ flowchart LR
 
 ## SQLite migration `017`
 
-Source: `src/db/migrations/017-durable-dispatch-and-harvest.sql`
+Source: `src/db/migrations/018-durable-dispatch-and-harvest.sql`
 
 ```sql
 CREATE TABLE IF NOT EXISTS dispatch_operations (

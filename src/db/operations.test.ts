@@ -19,7 +19,7 @@ import { registerProject, startRun } from "./runs.js";
 
 const now = "2026-11-11T12:00:00.000Z";
 const migrations = fileURLToPath(new URL("./migrations/", import.meta.url));
-const durableMigration = "017-durable-dispatch-and-harvest.sql";
+const durableMigration = "018-durable-dispatch-and-harvest.sql";
 
 describe("durable operations migration", () => {
   let root: string;
@@ -34,7 +34,7 @@ describe("durable operations migration", () => {
     rmSync(root, { recursive: true, force: true });
   });
 
-  it("preserves the existing execution ledger when migration 017 runs", () => {
+  it("preserves the existing execution ledger when migration 018 runs", () => {
     const previousMigrations = join(root, "previous-migrations");
     mkdirSync(previousMigrations);
     cpSync(migrations, previousMigrations, {
@@ -91,6 +91,7 @@ describe("durable operations migration", () => {
       ).toEqual([
         "015-ledger-write-order.sql",
         "016-plan-write-order.sql",
+        "017-plan-parent-provenance.sql",
         durableMigration,
       ]);
       const tables = upgraded

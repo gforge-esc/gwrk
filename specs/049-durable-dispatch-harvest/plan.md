@@ -86,7 +86,7 @@ pnpm exec vitest run src/domain/durable-dispatch.test.ts src/domain/durable-harv
 
 #### Files
 
-- `src/db/migrations/017-durable-dispatch-and-harvest.sql` (NEW: Create dispatch and attempt tables plus delivery, cursor and outbox stage tables)
+- `src/db/migrations/018-durable-dispatch-and-harvest.sql` (NEW: Create dispatch and attempt tables plus delivery, cursor and outbox stage tables)
 - `src/db/operations.ts` (NEW: Implement transactional acceptance and fenced leases plus stage receipts, cursors and outbox reads)
 - `src/adapters/sqlite/operations.ts` (NEW: Implement `createSqliteOperationsStoreAdapter` over injected database connections)
 - `src/adapters/sqlite/index.ts` (MODIFY: Export `createSqliteOperationsStoreAdapter` from the SQLite adapter barrel)

@@ -81,8 +81,8 @@
       "tasks": [
         {
           "id": "T007",
-          "title": "Create 017-durable-dispatch-and-harvest.sql",
-          "description": "NEW src/db/migrations/017-durable-dispatch-and-harvest.sql. Create dispatch and attempt tables plus delivery, cursor and outbox stage tables",
+          "title": "Create 018-durable-dispatch-and-harvest.sql",
+          "description": "NEW src/db/migrations/018-durable-dispatch-and-harvest.sql. Create dispatch and attempt tables plus delivery, cursor and outbox stage tables",
           "status": "open",
           "gateScript": "pnpm build\npnpm exec vitest run src/db/operations.test.ts src/db/db.test.ts src/architecture.test.ts",
           "sp": 2
