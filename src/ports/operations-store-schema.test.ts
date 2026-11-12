@@ -53,7 +53,7 @@ it("preserves ordered delivery scopes, replay identity and aliases after reopeni
     `);
     const link = db.prepare(`
       INSERT INTO harvest_delivery_operations (source, delivery_id, project_id, position, operation_id)
-      VALUES ('github_webhook', ?, 'project-a', ?, ?)
+      VALUES (?, ?, 'project-a', ?, ?)
     `);
     const alias = db.prepare(`
       INSERT INTO harvest_work_key_aliases (project_id, work_key, operation_id)
@@ -72,8 +72,8 @@ it("preserves ordered delivery scopes, replay identity and aliases after reopeni
         now,
       );
       delivery.run("delivery-42", now);
-      link.run("delivery-42", 1, "op-1");
-      link.run("delivery-42", 0, "op-2");
+      link.run("github_webhook", "delivery-42", 1, "op-1");
+      link.run("github_webhook", "delivery-42", 0, "op-2");
       alias.run("project-a", "local-2", "op-2");
       db.prepare(
         "UPDATE harvest_operations SET planned_slack_recipient_json = ? WHERE operation_id = ?",
@@ -83,13 +83,34 @@ it("preserves ordered delivery scopes, replay identity and aliases after reopeni
       db
         .transaction(() => {
           delivery.run("invalid-delivery", now);
-          link.run("invalid-delivery", 0, "foreign");
+          link.run("github_webhook", "invalid-delivery", 0, "foreign");
         })
         .immediate(),
     ).toThrow(/foreign key/i);
     expect(() => alias.run("project-a", "foreign", "foreign")).toThrow(
       /foreign key/i,
     );
+    db.transaction(() => {
+      const localDelivery = db.prepare(`
+        INSERT INTO harvest_deliveries (
+          source, delivery_id, project_id, repo_slug, checkout_repo_slug,
+          payload_digest, event_type, outcome, received_at
+        ) VALUES ('manual_cli', ?, 'project-a', NULL, ?, 'local-digest',
+                  'merged', 'accepted', ?)
+      `);
+      localDelivery.run("known-checkout", "acme/a", now);
+      link.run("manual_cli", "known-checkout", 1, "op-1");
+      link.run("manual_cli", "known-checkout", 0, "op-2");
+      db.prepare(`
+        INSERT INTO harvest_operations (
+          operation_id, project_id, work_key, trunk_branch, feature_id,
+          phase_id, terminal_event, terminal_at, status, created_at, updated_at
+        ) VALUES ('op-local', 'project-a', 'unknown-local-1', 'develop',
+                  '049-example', 'phase-01', 'merged', ?, 'accepted', ?, ?)
+      `).run(now, now, now);
+      localDelivery.run("unknown-checkout", null, now);
+      link.run("manual_cli", "unknown-checkout", 0, "op-local");
+    }).immediate();
     db.close();
 
     const reopened = new Database(ledgerPath);
@@ -98,22 +119,72 @@ it("preserves ordered delivery scopes, replay identity and aliases after reopeni
         .prepare(`
         SELECT operation_id FROM harvest_deliveries
         JOIN harvest_delivery_operations USING (source, delivery_id, project_id)
-        WHERE source = ? AND delivery_id = ? AND repo_slug = ? AND payload_digest = ?
+        WHERE source = ? AND delivery_id = ? AND project_id = ?
+          AND repo_slug IS ? AND checkout_repo_slug IS ? AND payload_digest = ?
         ORDER BY position
       `)
         .pluck();
       expect(
-        replay.all("github_webhook", "delivery-42", "acme/a", "digest-a"),
+        replay.all(
+          "github_webhook",
+          "delivery-42",
+          "project-a",
+          "acme/a",
+          null,
+          "digest-a",
+        ),
       ).toEqual(["op-2", "op-1"]);
       expect(
-        replay.all("github_webhook", "delivery-42", "acme/a", "other-digest"),
+        replay.all(
+          "github_webhook",
+          "delivery-42",
+          "project-a",
+          "acme/a",
+          null,
+          "other-digest",
+        ),
       ).toEqual([]);
       expect(
-        replay.all("github_webhook", "delivery-42", "other/repo", "digest-a"),
+        replay.all(
+          "github_webhook",
+          "delivery-42",
+          "project-a",
+          "other/repo",
+          null,
+          "digest-a",
+        ),
       ).toEqual([]);
+      const replayLocal = (
+        deliveryId: string,
+        projectId: string,
+        checkoutRepoSlug: string | null,
+      ) =>
+        replay.all(
+          "manual_cli",
+          deliveryId,
+          projectId,
+          null,
+          checkoutRepoSlug,
+          "local-digest",
+        );
+      expect(replayLocal("known-checkout", "project-a", "acme/a")).toEqual([
+        "op-2",
+        "op-1",
+      ]);
+      expect(replayLocal("known-checkout", "project-a", "acme/b")).toEqual([]);
+      expect(replayLocal("known-checkout", "project-a", null)).toEqual([]);
+      expect(replayLocal("known-checkout", "project-b", "acme/a")).toEqual([]);
+      expect(replayLocal("unknown-checkout", "project-a", "acme/a")).toEqual(
+        [],
+      );
+      expect(replayLocal("unknown-checkout", "project-a", null)).toEqual([
+        "op-local",
+      ]);
       expect(
         reopened
-          .prepare("SELECT delivery_id FROM harvest_deliveries")
+          .prepare(
+            "SELECT delivery_id FROM harvest_deliveries WHERE source = 'github_webhook'",
+          )
           .pluck()
           .all(),
       ).toEqual(["delivery-42"]);

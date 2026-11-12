@@ -92,12 +92,14 @@ CREATE TABLE IF NOT EXISTS harvest_deliveries (
   delivery_id  TEXT NOT NULL,
   project_id   TEXT REFERENCES projects(id) ON DELETE CASCADE,
   repo_slug    TEXT,
+  checkout_repo_slug TEXT,
   payload_digest TEXT NOT NULL,
   event_type   TEXT NOT NULL,
   outcome      TEXT NOT NULL,
   reason       TEXT,
   received_at  TEXT NOT NULL,
-  -- Replay requires the same resolved project, repository and payload digest.
+  -- Replay compares both repository fields with null-safe equality.
+  -- The resolved project and payload digest must also match.
   PRIMARY KEY (source, delivery_id),
   UNIQUE (source, delivery_id, project_id)
 );

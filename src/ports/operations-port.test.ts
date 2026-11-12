@@ -244,6 +244,7 @@ function restoreHarvestIntake(persisted: {
     key: string;
     projectId: string | null;
     repoSlug: string | null;
+    checkoutRepoSlug: string | null;
     payloadDigest: string;
     operationIds: string[];
   }[];
@@ -260,12 +261,17 @@ function restoreHarvestIntake(persisted: {
         ? target.project.projectId
         : target.projectId;
       const repoSlug = candidate.repoSlug?.toLowerCase() ?? null;
+      const checkoutRepoSlug =
+        candidate.source === "manual_cli" && candidate.prNumber === null
+          ? (candidate.checkoutRepoSlug?.toLowerCase() ?? null)
+          : null;
       const delivery = rows.deliveries.find((row) => row.key === key);
       if (delivery) {
         if (
           delivery.projectId !== projectId ||
           delivery.payloadDigest !== payloadDigest ||
-          delivery.repoSlug !== repoSlug
+          delivery.repoSlug !== repoSlug ||
+          delivery.checkoutRepoSlug !== checkoutRepoSlug
         ) {
           return { ok: false, code: "DELIVERY_ID_CONFLICT" };
         }
@@ -322,6 +328,7 @@ function restoreHarvestIntake(persisted: {
         key,
         projectId,
         repoSlug,
+        checkoutRepoSlug,
         payloadDigest,
         operationIds: operations.map((row) => row.operationId),
       });
@@ -378,6 +385,8 @@ function restoreHarvestIntake(persisted: {
       harvests.push(incoming);
       return incoming;
     }
+    const result = mergeVerifiedHarvestFacts(existing, incoming);
+    if (result.kind === "conflict") return null;
     if (!alias && existing.workKey !== incoming.workKey) {
       aliases.push({
         projectId: incoming.projectId,
@@ -385,8 +394,7 @@ function restoreHarvestIntake(persisted: {
         operationId: existing.operationId,
       });
     }
-    const facts = mergeVerifiedHarvestFacts(existing, incoming);
-    if (!facts) return existing;
+    if (result.kind === "unchanged") return existing;
     const cleanup = planLateBranchCleanup({
       operationId: existing.operationId,
       prior: existing,
@@ -394,7 +402,7 @@ function restoreHarvestIntake(persisted: {
       stages: receipts,
       nowIso: receivedAt,
     });
-    Object.assign(existing, facts, { updatedAt: receivedAt });
+    Object.assign(existing, result.facts, { updatedAt: receivedAt });
     if (cleanup.length) {
       const stages = receipts.filter(
         ({ operationId }) => operationId === existing.operationId,
@@ -1496,6 +1504,110 @@ describe("durable recovery store contract", () => {
 });
 
 describe("persisted harvest intake contract", () => {
+  it.each([true, false])(
+    "checks verified checkout identity on local delivery replay accepted=%s",
+    (accepted) => {
+      const deliveryId = "local-checkout-replay";
+      const request = (checkoutRepoSlug: string | null) => {
+        const intake = harvestIntake(deliveryId, {
+          ...offline,
+          repoSlug: checkoutRepoSlug,
+          checkoutRepoSlug,
+          phaseId: accepted ? phaseId : null,
+        });
+        if (!intake.target.accepted) throw new Error("Expected local target");
+        return {
+          ...intake,
+          candidate: { ...intake.candidate, repoSlug: null },
+          target: accepted
+            ? intake.target
+            : { accepted: false as const, projectId, reason: "No coverage" },
+        };
+      };
+      const original = request("ACME/A");
+      const initial = restoreHarvestIntake({ harvests: [], stages: [] });
+      const result = initial.store.recordHarvestIntake(original);
+      if (!result.ok) throw new Error("Expected original delivery to persist");
+      const saved = initial.snapshot();
+      const reopened = restoreHarvestIntake(saved);
+      for (const checkoutRepoSlug of ["acme/b", null]) {
+        expect(
+          reopened.store.recordHarvestIntake(request(checkoutRepoSlug)),
+        ).toEqual({
+          ok: false,
+          code: "DELIVERY_ID_CONFLICT",
+        });
+        expect(reopened.snapshot()).toEqual(saved);
+      }
+      expect(
+        reopened.store.recordHarvestIntake(request("acme/a")),
+      ).toMatchObject({
+        ok: true,
+        deduplicatedTransport: true,
+        operations: result.operations,
+      });
+    },
+  );
+
+  it.each<HarvestIntakeFacts>([
+    { expectedHeadSha: "b".repeat(40) },
+    { headRepoSlug: "fork/a" },
+    { headBranch: `phase/${featureId}` },
+  ])("rolls back intake on conflicting verified head facts %o", (conflict) => {
+    const phaseIds = ["phase-01", "phase-02"];
+    const facts = {
+      phaseId: null,
+      headBranch: `feat/${featureId}`,
+      expectedHeadSha: "a".repeat(40),
+    };
+    const original = harvestIntake(
+      "original-merge",
+      { ...facts, headRepoSlug: null, expectedHeadSha: null },
+      "github_webhook",
+      phaseIds,
+    );
+    const phaseTwoEvidence = harvestIntake(
+      "verify-phase-two",
+      { ...facts, phaseId: "phase-02" },
+      "manual_cli",
+      phaseIds,
+    );
+    const poll = harvestIntake(
+      "poll-merge",
+      { ...facts, ...conflict },
+      "github_poller",
+      phaseIds,
+    );
+    const initial = restoreHarvestIntake({ harvests: [], stages: [] });
+    const accepted = initial.store.recordHarvestIntake(original);
+    if (!accepted.ok) throw new Error("Expected original merge");
+    expect(initial.store.recordHarvestIntake(phaseTwoEvidence)).toMatchObject({
+      ok: true,
+      deduplicatedWork: true,
+    });
+    const reopened = restoreHarvestIntake({
+      ...initial.snapshot(),
+      stages: accepted.operations.map(({ operationId, phaseId }) => ({
+        ...learningReceipt(operationId),
+        phaseKey: phaseId ?? "feature",
+      })),
+    });
+    const saved = reopened.snapshot();
+    expect(
+      saved.harvests.map(({ expectedHeadSha }) => expectedHeadSha),
+    ).toEqual([null, facts.expectedHeadSha]);
+    expect(reopened.store.recordHarvestIntake(poll)).toEqual({
+      ok: false,
+      code: "HARVEST_IDENTITY_MISMATCH",
+    });
+    expect(reopened.snapshot()).toEqual(saved);
+    expect(reopened.store.recordHarvestIntake(original)).toMatchObject({
+      ok: true,
+      deduplicatedTransport: true,
+      operations: saved.harvests,
+    });
+  });
+
   it.each([true, false])(
     "checks the resolved project before replaying a repository-less delivery accepted=%s",
     (accepted) => {
