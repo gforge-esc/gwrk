@@ -49,7 +49,7 @@ interface FixtureOptions {
 function fixtureGitEnv(root: string): NodeJS.ProcessEnv {
   const env = repositoryGitEnv(root);
   for (const key of Object.keys(env)) {
-    if (/^GIT_TRACE/i.test(key)) delete env[key];
+    if (key === "GIT_EXEC_PATH" || /^GIT_TRACE/i.test(key)) delete env[key];
   }
   return {
     ...env,

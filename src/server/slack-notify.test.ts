@@ -95,6 +95,44 @@ describe("US-003: Slack Event Bridge", () => {
     }
   });
 
+  it("bounds an active Slack request without aborting its server", async () => {
+    vi.mocked(getSlackApp).mockReturnValue(null);
+    vi.stubEnv("TELEGRAM_BOT_TOKEN", undefined);
+    vi.stubEnv("TELEGRAM_CHAT_ID", undefined);
+    const shutdown = new AbortController();
+    const provider = vi
+      .fn<typeof fetch>()
+      .mockImplementation(async (_url, init) => {
+        const signal = init?.signal;
+        if (!signal) throw new Error("Expected a bounded request");
+        return new Promise((_, reject) => {
+          signal.addEventListener("abort", () => reject(signal.reason), {
+            once: true,
+          });
+        });
+      });
+    vi.stubGlobal("fetch", provider);
+    try {
+      const delivery = notifySlack(
+        { text: "Bounded webhook", blocks: [] },
+        undefined,
+        {
+          signal: shutdown.signal,
+          transportTimeoutMs: 10,
+        },
+      );
+      await vi.waitFor(() =>
+        expect(provider.mock.calls[0]?.[1]?.signal?.aborted).toBe(true),
+      );
+      await delivery;
+      expect(shutdown.signal.aborted).toBe(false);
+    } finally {
+      shutdown.abort();
+      vi.unstubAllGlobals();
+      vi.unstubAllEnvs();
+    }
+  });
+
   it("drops cancelled presence notifications and sends summaries to each project", async () => {
     const config = loadConfig("/fixture");
     const getPresence = vi
@@ -126,7 +164,7 @@ describe("US-003: Slack Event Bridge", () => {
       notifySlack(
         { text: feature, blocks: [] },
         { type: "phase_fail", feature, payload: {}, timestamp: "" },
-        { projectRoot, signal },
+        { projectRoot, signal, transportTimeoutMs: 5_000 },
       );
     try {
       await presenceManager.init(config);

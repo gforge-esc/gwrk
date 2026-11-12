@@ -44,7 +44,7 @@ import { removePid, writePid } from "./pid.js";
 import * as slackCommands from "./slack-commands.js";
 import { notifySlack } from "./slack-notify.js";
 import { getSlackApp, startSlackApp } from "./slack.js";
-import { startTelegramBot, stopTelegramBot } from "./telegram.js";
+import { startTelegramBot } from "./telegram.js";
 
 vi.mock("node:child_process", async (importOriginal) => {
   const original = await importOriginal<typeof import("node:child_process")>();
@@ -513,7 +513,6 @@ setInterval(() => {}, 1000);
     vi.mocked(startTelegramBot).mockImplementationOnce(
       telegram.startTelegramBot,
     );
-    vi.mocked(stopTelegramBot).mockImplementationOnce(telegram.stopTelegramBot);
     vi.stubEnv("TELEGRAM_BOT_TOKEN", "fixture-telegram");
     vi.stubEnv("TELEGRAM_CHAT_ID", "123");
     let respond!: (response: Response) => void;
@@ -555,6 +554,75 @@ setInterval(() => {}, 1000);
       respond(Response.json({ ok: true, result: [] }));
       await fixture?.close();
       vi.unstubAllGlobals();
+    }
+  });
+
+  it("lets a configured fixture poll after an unconfigured fixture starts", async () => {
+    const telegram =
+      await vi.importActual<typeof import("./telegram.js")>("./telegram.js");
+    vi.mocked(startTelegramBot)
+      .mockImplementationOnce(telegram.startTelegramBot)
+      .mockImplementationOnce(telegram.startTelegramBot);
+    vi.stubEnv(
+      "GWRK_HOME",
+      join(tmpdir(), "gwrk-fixture-absent-telegram-config"),
+    );
+    vi.stubEnv("TELEGRAM_BOT_TOKEN", undefined);
+    vi.stubEnv("TELEGRAM_CHAT_ID", undefined);
+    const provider = vi
+      .fn<typeof fetch>()
+      .mockResolvedValue(Response.json({ ok: true, result: [] }));
+    vi.stubGlobal("fetch", provider);
+    stubListener();
+    const unconfigured = await createServerFixture("listen");
+    let configured: ServerFixture | undefined;
+    try {
+      vi.stubEnv("TELEGRAM_BOT_TOKEN", "fixture-telegram");
+      vi.stubEnv("TELEGRAM_CHAT_ID", "123");
+      stubListener();
+      configured = await createServerFixture("listen");
+      await vi.waitFor(() => expect(provider).toHaveBeenCalledOnce());
+      const signal = provider.mock.calls[0][1]?.signal;
+      await unconfigured.close();
+      expect(signal?.aborted).toBe(false);
+      await configured.close();
+      expect(signal?.aborted).toBe(true);
+    } finally {
+      await unconfigured.close();
+      await configured?.close();
+      await telegram.stopTelegramBot();
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("fetches from a local fixture without using an inherited Git helper", async () => {
+    const source = await createServerFixture("routes", {
+      routes: ["dispatch"],
+    });
+    const target = await createServerFixture("routes", {
+      routes: ["dispatch"],
+    });
+    const helpers = join(target.projectRoot, "host-helpers");
+    const marker = join(helpers, "invoked");
+    try {
+      mkdirSync(helpers);
+      writeFileSync(
+        join(helpers, "git-upload-pack"),
+        `#!/bin/sh\n: > "${marker}"\nexit 42\n`,
+        { mode: 0o700 },
+      );
+      vi.stubEnv("GIT_EXEC_PATH", helpers);
+      expect(() =>
+        fixtureGit(target.projectRoot, "fetch", source.projectRoot, "develop"),
+      ).not.toThrow();
+      expect(existsSync(marker)).toBe(false);
+      expect(fixtureGit(target.projectRoot, "rev-parse", "FETCH_HEAD")).toBe(
+        fixtureGit(source.projectRoot, "rev-parse", "develop"),
+      );
+    } finally {
+      vi.unstubAllEnvs();
+      await target.close();
+      await source.close();
     }
   });
 

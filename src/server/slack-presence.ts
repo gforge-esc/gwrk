@@ -36,6 +36,7 @@ interface PendingNotification {
   event: SlackEvent;
   projectRoot: string;
   signal?: AbortSignal;
+  transportTimeoutMs?: number;
   detachAbort?: () => void;
   finish?: () => void;
 }
@@ -118,12 +119,18 @@ class PresenceManager {
     signal?: AbortSignal,
     projectRoot = process.cwd(),
     forwardToTelegram?: () => Promise<void>,
+    transportTimeoutMs?: number,
   ): Promise<void> {
     if (signal?.aborted) return;
     if (this.currentPresence === "active") {
       if (signal) {
         const { sendSlackMessage } = await import("./slack-notify.js");
-        await sendSlackMessage(message, signal, projectRoot);
+        await sendSlackMessage(
+          message,
+          signal,
+          projectRoot,
+          transportTimeoutMs,
+        );
       } else {
         await this.sendImmediately(message, projectRoot);
       }
@@ -134,7 +141,12 @@ class PresenceManager {
     logCliOutput(
       `User away. Queuing event: ${event.type} for ${event.feature}`,
     );
-    const pending: PendingNotification = { event, projectRoot, signal };
+    const pending: PendingNotification = {
+      event,
+      projectRoot,
+      signal,
+      transportTimeoutMs,
+    };
     this.queuedEvents.push(pending);
     if (!signal) {
       await forwardToTelegram?.();
@@ -168,38 +180,51 @@ class PresenceManager {
     if (this.queuedEvents.length === 0) return;
 
     const { sendSlackMessage } = await import("./slack-notify.js");
-    const unboundedGroups = new Map<string, PendingNotification[]>();
-    const boundedGroups = new Map<string, PendingNotification[]>();
+    const projects = new Map<
+      string,
+      Map<AbortSignal | undefined, PendingNotification[]>
+    >();
     for (const pending of this.queuedEvents.splice(0)) {
       pending.detachAbort?.();
       if (pending.signal?.aborted) {
         pending.finish?.();
         continue;
       }
-      const groups = pending.signal ? boundedGroups : unboundedGroups;
-      const group = groups.get(pending.projectRoot) ?? [];
+      const owners = projects.get(pending.projectRoot) ?? new Map();
+      const group = owners.get(pending.signal) ?? [];
       group.push(pending);
-      groups.set(pending.projectRoot, group);
+      owners.set(pending.signal, group);
+      projects.set(pending.projectRoot, owners);
     }
-    const sendGroup = async ([projectRoot, group]: [
-      string,
-      PendingNotification[],
-    ]) => {
-      const signals = group.flatMap(({ signal }) => (signal ? [signal] : []));
-      const signal = signals.length ? AbortSignal.any(signals) : undefined;
+    const sendGroup = async (
+      projectRoot: string,
+      signal: AbortSignal | undefined,
+      group: PendingNotification[],
+    ) => {
       const summary = MessageBuilder.batchedSummary(
         group.map(({ event }) => event),
       );
       try {
-        await sendSlackMessage(summary, signal, projectRoot);
+        const deadlines = group.flatMap(({ transportTimeoutMs }) =>
+          transportTimeoutMs === undefined ? [] : [transportTimeoutMs],
+        );
+        await sendSlackMessage(
+          summary,
+          signal,
+          projectRoot,
+          deadlines.length ? Math.min(...deadlines) : undefined,
+        );
       } finally {
         for (const pending of group) pending.finish?.();
       }
     };
-    await Promise.all([
-      ...Array.from(boundedGroups, sendGroup),
-      ...Array.from(unboundedGroups, sendGroup),
-    ]);
+    await Promise.all(
+      Array.from(projects).flatMap(([projectRoot, owners]) =>
+        Array.from(owners, ([signal, group]) =>
+          sendGroup(projectRoot, signal, group),
+        ),
+      ),
+    );
   }
 
   public stop(): void {

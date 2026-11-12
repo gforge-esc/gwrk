@@ -10,6 +10,12 @@ import { type SlackEvent, presenceManager } from "./slack-presence.js";
 import { getSlackApp } from "./slack.js";
 import { loadTelegramConfig, notifyTelegram } from "./telegram-notify.js";
 
+function deliverySignal(signal?: AbortSignal, timeoutMs?: number) {
+  if (timeoutMs === undefined) return signal;
+  const timeout = AbortSignal.timeout(timeoutMs);
+  return signal ? AbortSignal.any([signal, timeout]) : timeout;
+}
+
 /**
  * Dispatches a Slack notification.
  * Priority: Socket Mode app → Webhook URL fallback.
@@ -23,14 +29,19 @@ export async function notifySlack(
     opsOnly?: boolean;
     projectRoot?: string;
     signal?: AbortSignal;
+    transportTimeoutMs?: number;
   } = {},
 ): Promise<void> {
-  const { projectRoot = process.cwd(), signal } = options;
+  const { projectRoot = process.cwd(), signal, transportTimeoutMs } = options;
   if (signal?.aborted) return;
   const app = getSlackApp();
   const forwardToTelegram = async () => {
     if (!signal?.aborted && loadTelegramConfig(projectRoot)) {
-      await notifyTelegram(message, projectRoot, signal);
+      await notifyTelegram(
+        message,
+        projectRoot,
+        deliverySignal(signal, transportTimeoutMs),
+      );
     }
   };
 
@@ -53,13 +64,18 @@ export async function notifySlack(
       signal,
       projectRoot,
       forwardToTelegram,
+      transportTimeoutMs,
     );
     return;
   }
   if (app) {
-    await sendSlackMessage(message, signal, projectRoot);
+    await sendSlackMessage(message, signal, projectRoot, transportTimeoutMs);
   } else {
-    await sendViaWebhook(message, signal, projectRoot);
+    await sendViaWebhook(
+      message,
+      deliverySignal(signal, transportTimeoutMs),
+      projectRoot,
+    );
   }
 
   await forwardToTelegram();
@@ -70,9 +86,11 @@ export async function notifySlack(
  */
 export async function sendSlackMessage(
   message: SlackMessage,
-  signal?: AbortSignal,
+  shutdownSignal?: AbortSignal,
   projectRoot = process.cwd(),
+  transportTimeoutMs?: number,
 ): Promise<void> {
+  const signal = deliverySignal(shutdownSignal, transportTimeoutMs);
   if (signal?.aborted) return;
   const app = getSlackApp();
   if (!app) return;

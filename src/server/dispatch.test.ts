@@ -138,7 +138,11 @@ describe("DispatchQueue (unified ship engine)", () => {
     expect(notifySlack).toHaveBeenCalledWith(
       expect.anything(),
       expect.objectContaining({ type: "review_ready" }),
-      { projectRoot, signal: expect.any(AbortSignal) },
+      {
+        projectRoot,
+        signal: expect.any(AbortSignal),
+        transportTimeoutMs: 5000,
+      },
     );
 
     // Worktree torn down WITHOUT auto commit/push/PR — the engine owns the PR.
@@ -214,14 +218,10 @@ describe("DispatchQueue (unified ship engine)", () => {
           );
         expect.soft(mockSandbox.destroySandbox).toHaveBeenCalledOnce();
         expect.soft(queue.getActiveCount()).toBe(0);
-        let closed = false;
-        const closing = queue.close().then(() => {
-          closed = true;
-        });
-        await vi.advanceTimersByTimeAsync(5_000);
-        expect(closed).toBe(true);
+        await vi.advanceTimersByTimeAsync(5_001);
+        expect.soft(providerFinished).not.toHaveBeenCalled();
+        await queue.close();
         expect(providerFinished).toHaveBeenCalledExactlyOnceWith(true);
-        await closing;
       } finally {
         finishNotice();
         await queue.close();
@@ -244,7 +244,11 @@ describe("DispatchQueue (unified ship engine)", () => {
     expect(notifySlack).toHaveBeenCalledWith(
       expect.anything(),
       expect.objectContaining({ type: "phase_fail" }),
-      { projectRoot, signal: expect.any(AbortSignal) },
+      {
+        projectRoot,
+        signal: expect.any(AbortSignal),
+        transportTimeoutMs: 5000,
+      },
     );
     expect(mockSandbox.destroySandbox).toHaveBeenCalledWith(
       "/work/dir",

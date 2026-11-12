@@ -29,7 +29,7 @@ import { notifyRoutes } from "./routes/notify.js";
 import { statusRoutes } from "./routes/status.js";
 import { SandboxManager } from "./sandbox.js";
 import { getSlackApp, startSlackApp, stopSlackApp } from "./slack.js";
-import { startTelegramBot, stopTelegramBot } from "./telegram.js";
+import { startTelegramBot } from "./telegram.js";
 import type { SandboxInfo } from "./types.js";
 
 import { QuotaProber } from "../adapters/agents/quota-prober.js";
@@ -104,7 +104,6 @@ export class ScopedSandboxManager extends SandboxManager {
 }
 
 let slackInUse = false;
-let telegramInUse = false;
 
 export async function startServer(
   config: GwrkConfig,
@@ -316,17 +315,14 @@ export async function startServer(
       });
     }
 
-    if (!telegramInUse) {
-      telegramInUse = true;
-      stopPollers.push(async () => {
-        try {
-          await stopTelegramBot();
-        } finally {
-          telegramInUse = false;
-        }
-      });
-      await startTelegramBot({ queue, monitor, git, projectRoot, config });
-    }
+    const stopTelegram = await startTelegramBot({
+      queue,
+      monitor,
+      git,
+      projectRoot,
+      config,
+    });
+    if (stopTelegram) stopPollers.push(stopTelegram);
 
     if (options.handleSignals) {
       process.on("SIGTERM", shutdown);

@@ -96,7 +96,7 @@ export async function startTelegramBot(deps: {
   git: GitManager;
   projectRoot: string;
   config: GwrkConfig;
-}): Promise<void> {
+}): Promise<(() => Promise<void>) | undefined> {
   const tgConfig = loadTelegramConfig(deps.projectRoot);
   if (!tgConfig || activeSession) {
     return;
@@ -161,11 +161,14 @@ export async function startTelegramBot(deps: {
 
   schedulePoll(100);
   logCliOutput("✈️ Telegram Bot control plane is running!");
+  return () => stopPollingSession(session);
 }
 
 export async function stopTelegramBot(): Promise<void> {
-  const session = activeSession;
-  if (!session) return;
+  if (activeSession) await stopPollingSession(activeSession);
+}
+
+async function stopPollingSession(session: PollingSession): Promise<void> {
   clearTimeout(session.timer);
   session.controller.abort();
   try {

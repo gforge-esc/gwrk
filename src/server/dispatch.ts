@@ -50,6 +50,7 @@ export class DispatchQueue {
   private history: DispatchRecord[] = [];
   private paused = false;
   private closed = false;
+  private readonly notificationShutdown = new AbortController();
   private inFlight = new Set<Promise<void>>();
   private errors: unknown[] = [];
 
@@ -75,6 +76,7 @@ export class DispatchQueue {
   async close(): Promise<void> {
     this.closed = true;
     this.pause();
+    this.notificationShutdown.abort();
     await Promise.all(this.inFlight);
     if (this.errors.length === 1) throw this.errors[0];
     if (this.errors.length > 1)
@@ -320,8 +322,6 @@ export class DispatchQueue {
         this.processNext();
       }
     }
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 5_000);
     try {
       const reviewReady = exitCode === 0;
       const message = reviewReady
@@ -338,12 +338,14 @@ export class DispatchQueue {
             : { ...record, stderr }) as unknown as Record<string, unknown>,
           timestamp: new Date().toISOString(),
         },
-        { projectRoot: this.projectRoot, signal: controller.signal },
+        {
+          projectRoot: this.projectRoot,
+          signal: this.notificationShutdown.signal,
+          transportTimeoutMs: 5_000,
+        },
       );
     } catch (error) {
       logCliError("Failed to notify dispatch outcome:", error);
-    } finally {
-      clearTimeout(timeout);
     }
   }
 
