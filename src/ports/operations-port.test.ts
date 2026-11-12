@@ -333,7 +333,10 @@ function restoreHarvestIntake(persisted: {
       const incoming = target.accepted
         ? target.operations.map((operation) => ({
             ...operation,
-            recipient: candidate.recipient ?? null,
+            recipient:
+              operation.prNumber === null
+                ? null
+                : (candidate.recipient ?? null),
           }))
         : [];
       const transaction = structuredClone(rows);
@@ -685,6 +688,8 @@ function restoreRecoveryStore(persisted: {
           if (
             !matchesNotice(savedNotice) ||
             savedNotice.status === "skipped_no_target" ||
+            (savedNotice.status === "delivered" &&
+              !savedNotice.messageTs?.trim()) ||
             !savedNotice.clientMetadataKey.trim() ||
             !(unboundPending || matchesDestination)
           ) {
@@ -2653,6 +2658,105 @@ it("resumes a persisted retryable sync failure after lease expiry", () => {
   ).toEqual(firstPhaseReceipts);
 });
 
+it("keeps a local commit harvest Slack-free through restart and pull request enrichment", () => {
+  const operationId = "local-slack-free";
+  const recipient = {
+    projectId,
+    surface: "slack",
+    workspaceId: "W1",
+    channelId: "C1",
+    threadTs: "1.2",
+  } as const;
+  const local = harvestIntake(operationId, verifiedOffline);
+  const delivery = { ...local, candidate: { ...local.candidate, recipient } };
+  const intake = restoreHarvestIntake({ harvests: [], stages: [] });
+  expect.soft(intake.store.recordHarvestIntake(delivery)).toMatchObject({
+    ok: true,
+    operations: [{ operationId, recipient: null }],
+  });
+  const restored = restoreHarvestIntake(intake.snapshot());
+  expect.soft(restored.store.recordHarvestIntake(delivery)).toMatchObject({
+    ok: true,
+    deduplicatedTransport: true,
+    operations: [{ operationId, recipient: null }],
+  });
+
+  const recovery = restoreRecoveryStore({
+    ...restored.snapshot(),
+    slackBindings: {
+      [projectId]: { workspaceId: "W1", channelId: "C1", sharedChannel: false },
+    },
+    featureThreads: [
+      {
+        projectId,
+        featureId,
+        workspaceId: "W1",
+        channelId: "C1",
+        rootTs: "1.2",
+        updatedAt: createdAt,
+      },
+    ],
+    outboxItems: [],
+  });
+  const claim = recovery.claimHarvestLease({
+    operationId,
+    leaseOwner: "worker",
+    nowIso,
+    leaseExpiresAt,
+  });
+  if (!claim) throw new Error("Expected local harvest lease");
+  const plan = {
+    terminalEvent: "merged" as const,
+    phaseIds: [phaseId],
+    hasSlackTarget: false,
+    hasRemoteBranchTarget: false,
+  };
+  expect
+    .soft(
+      recovery.initializeHarvestStages({
+        ...plan,
+        fence: claim.fence,
+        nowIso,
+        stages: planHarvestStages(plan),
+      }),
+    )
+    .toEqual({ ok: true });
+  expect.soft(recovery.snapshot().stages).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({
+        stage: "slack_delivery",
+        status: "skipped_no_target",
+      }),
+      expect.objectContaining({
+        stage: "branch_cleanup",
+        status: "skipped_no_target",
+      }),
+    ]),
+  );
+  expect(recovery.snapshot().outboxItems).toEqual([]);
+
+  const enrich = restoreHarvestIntake(recovery.snapshot());
+  const pull = harvestIntake("local-pull");
+  expect
+    .soft(
+      enrich.store.recordHarvestIntake({
+        ...pull,
+        candidate: { ...pull.candidate, recipient },
+      }),
+    )
+    .toMatchObject({
+      ok: true,
+      operations: [
+        {
+          operationId,
+          prNumber: 42,
+          recipient: null,
+          plannedSlackRecipient: null,
+        },
+      ],
+    });
+});
+
 it("rejects a stale cleanup skip when pull request evidence arrives after lease claim", () => {
   const local = harvestIntake("offline-claimed", verifiedOffline);
   if (!local.target.accepted) throw new Error("Expected offline operation");
@@ -3044,9 +3148,22 @@ it.each([
     { ...gateNoticeDestination, status: "skipped_no_target" },
   ],
   ["partial destination", { channelId: "C1" }],
-] satisfies [string, Partial<OutboxItem>][])(
-  "rejects a restored gate notice with %s before committing or replaying failure",
-  (_label, mismatch) => {
+  [
+    "blank delivered timestamp",
+    { ...gateNoticeDestination, status: "delivered", messageTs: " " },
+  ],
+  [
+    "missing delivered timestamp",
+    { ...gateNoticeDestination, status: "delivered", messageTs: null },
+  ],
+  [
+    "valid delivered receipt",
+    { ...gateNoticeDestination, status: "delivered", messageTs: "2.3" },
+    true,
+  ],
+] satisfies [string, Partial<OutboxItem>, boolean?][])(
+  "validates a restored gate notice with %s before committing or replaying failure",
+  (_label, mismatch, valid = false) => {
     const operationId = "gate-failure";
     const recipient = {
       projectId,
@@ -3123,11 +3240,16 @@ it.each([
         outboxItems: [{ ...notice, ...mismatch }],
       });
       const before = restarted.snapshot();
-      expect.soft(restarted.transitionHarvestStage(transition)).toEqual({
-        ok: false,
-        code: "HARVEST_STAGE_TRANSITION_INVALID",
-      });
-      expect.soft(restarted.snapshot()).toEqual(before);
+      expect
+        .soft(restarted.transitionHarvestStage(transition))
+        .toEqual(
+          valid
+            ? { ok: true }
+            : { ok: false, code: "HARVEST_STAGE_TRANSITION_INVALID" },
+        );
+      if (valid)
+        expect(restarted.snapshot().outboxItems).toEqual(before.outboxItems);
+      else expect.soft(restarted.snapshot()).toEqual(before);
     }
   },
 );

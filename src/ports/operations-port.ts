@@ -317,7 +317,8 @@ export interface OperationsStorePort {
    * Require accepted status and lease epoch zero on every proposed new row.
    * Require null lease owner, lease expiry, completion time, linked run, last error and planned Slack recipient.
    * Return HARVEST_IDENTITY_MISMATCH before any write if a proposed row fails these checks.
-   * Set the recipient of a new row from candidate.recipient, defaulting to null.
+   * For pull requests, set the recipient of a new row from candidate.recipient, defaulting to null.
+   * Persist a null recipient for local commit work and retain it on replay and enrichment.
    * Bind the planned Slack recipient only during fenced stage initialization.
    * Resolve checkout coverage with scopeManualHarvestToPhases or scopeVerifiedMergeToPhases before intake.
    * Derive verified phase work keys from the pull request identity returned by verifyHarvestTarget.
@@ -429,6 +430,7 @@ export interface OperationsStorePort {
    * Upsert harvest_gate_failed by project, operation and phase in the gate failure transaction.
    * An existing dedupe row must match the event, harvest owner, feature, phase and planned recipient.
    * Validate the saved metadata key and destination before either write or fenced replay.
+   * Require a nonblank messageTs for a saved delivered notice.
    * Require a nonblank key and reject skipped_no_target for a required gate failure notice.
    * Allow an unbound destination only while the notice is pending.
    * Otherwise require the saved workspace, channel and thread to match plannedSlackRecipient.
