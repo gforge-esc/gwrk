@@ -440,6 +440,7 @@ function proxyAssignmentHasUserinfo(text: string): boolean {
 }
 
 function hasCredentialBearingUrl(text: string): boolean {
+  if (proxyAssignmentHasUserinfo(text)) return true;
   if (text.split(/[\r\n]+/).some(proxyAssignmentHasUserinfo)) return true;
 
   const quoted = new RegExp(inspectedStringLiteral.source, "g");
@@ -837,8 +838,8 @@ function scanEmbeddedJson(
       assertUniqueJsonKeys(token);
       openings.lastIndex = end;
     } else if (
-      (isCredentialFieldName(decoded) && /^\s*=>/.test(text.slice(end))) ||
-      (/[\r\n]/.test(decoded) && proxyAssignmentHasUserinfo(decoded))
+      isCredentialFieldName(decoded) &&
+      /^\s*=>/.test(text.slice(end))
     ) {
       throw new Error(secretMaterialMessage);
     }

@@ -746,6 +746,45 @@ describe("credential guard", () => {
     });
   });
 
+  describe.each([
+    ["raw assignment", (assignment: string) => assignment],
+    [
+      "embedded JSON",
+      (assignment: string) => JSON.stringify({ proxyReport: assignment }),
+    ],
+  ] as const)("multiline proxy credentials in %s", (_form, render) => {
+    const credential = render(
+      "HTTPS_PROXY = http://pilot:fixture\npassword with space@proxy:8080",
+    );
+    const credentialFree = render(
+      "HTTPS_PROXY = http://proxy:8080/path\nwith space@fixture",
+    );
+
+    it("rejects userinfo in an evidence key", () => {
+      expect(() => assertNoSecretMaterial({ [credential]: true })).toThrow(
+        /secret material/i,
+      );
+    });
+
+    it("rejects userinfo in an evidence value", () => {
+      expect(() => assertNoSecretMaterial({ stdout: credential })).toThrow(
+        /secret material/i,
+      );
+    });
+
+    it("allows a multiline path in an evidence key", () => {
+      expect(() =>
+        assertNoSecretMaterial({ [credentialFree]: true }),
+      ).not.toThrow();
+    });
+
+    it("allows a multiline path in an evidence value", () => {
+      expect(() =>
+        assertNoSecretMaterial({ stdout: credentialFree }),
+      ).not.toThrow();
+    });
+  });
+
   it.each([
     "Proxy URL (http://proxy:8080)",
     "[Proxy (http://proxy:8080)]",
