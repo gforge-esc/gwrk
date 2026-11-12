@@ -7,12 +7,13 @@ ALTER TABLE plan_phases ADD COLUMN synthetic_parent INTEGER NOT NULL DEFAULT 0 C
 
 -- The legacy schema allowed one real row per ID. Infer provenance only for
 -- an untouched default-shaped parent with an independently saved counterpart.
+-- The clock can move back one second before 014 records its applied time.
 CREATE TABLE IF NOT EXISTS migration_014_plan_parent_provenance AS
 WITH registry_upgrade AS (
   SELECT applied_at FROM _migrations WHERE name = '014-project-registry-and-composite-keys.sql'
 )
 SELECT 'feature' AS kind, f.id, f.project_id
-FROM plan_features f JOIN registry_upgrade m ON julianday(f.created_at) <= julianday(m.applied_at)
+FROM plan_features f JOIN registry_upgrade m ON unixepoch(f.created_at) <= unixepoch(m.applied_at) + 1
 WHERE f.updated_at = f.created_at
   AND f.write_seq = 0
   AND f.name = f.id
@@ -30,7 +31,7 @@ WHERE f.updated_at = f.created_at
   )
 UNION ALL
 SELECT 'phase', ph.id, ph.project_id
-FROM plan_phases ph JOIN registry_upgrade m ON julianday(ph.created_at) <= julianday(m.applied_at)
+FROM plan_phases ph JOIN registry_upgrade m ON unixepoch(ph.created_at) <= unixepoch(m.applied_at) + 1
 WHERE ph.updated_at = ph.created_at
   AND ph.write_seq = 0
   AND ph.name = ph.id

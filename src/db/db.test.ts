@@ -267,6 +267,7 @@ describe("Project registry upgrade", () => {
     { registryVersion: "current", clockOffset: 0 },
     { registryVersion: "earlier", clockOffset: 0 },
     { registryVersion: "earlier", clockOffset: 1 },
+    { registryVersion: "earlier", clockOffset: -1 },
   ] as const)(
     "preserves real plan parents after first-origin enrollment with $registryVersion migration 014 and clock offset $clockOffset",
     ({ registryVersion, clockOffset }) => {
@@ -312,7 +313,7 @@ describe("Project registry upgrade", () => {
           const placeholderCreatedAt = upgraded
             .prepare("SELECT datetime(?, ?)")
             .pluck()
-            .get(appliedAt, `-${clockOffset} seconds`);
+            .get(appliedAt, `${-clockOffset} seconds`);
           for (const [table, id] of [
             ["plan_features", "feature"],
             ["plan_phases", "phase"],
@@ -353,6 +354,31 @@ describe("Project registry upgrade", () => {
       git("remote", "add", "origin", origin);
       const reopened = openDatabase({ dbPath, migrationsDir });
       try {
+        if (registryVersion === "earlier") {
+          for (const [table, id] of [
+            ["plan_features", "feature"],
+            ["plan_phases", "phase"],
+          ]) {
+            const provenance = reopened
+              .prepare(
+                `SELECT synthetic_parent FROM ${table} WHERE id = ? AND project_id = ?`,
+              )
+              .pluck();
+            expect.soft(provenance.get(id, remoteId)).toBe(1);
+            expect(provenance.get(id, localId)).toBe(0);
+          }
+          for (const [table, id] of [
+            ["plan_features", "edited-feature"],
+            ["plan_phases", "edited-phase"],
+          ]) {
+            expect(
+              reopened
+                .prepare(`SELECT synthetic_parent FROM ${table} WHERE id = ?`)
+                .pluck()
+                .get(id),
+            ).toBe(0);
+          }
+        }
         createProjectRegistry(reopened, () => {}).enrollProject({
           projectId: remoteId,
           slug: "checkout",
@@ -373,34 +399,6 @@ describe("Project registry upgrade", () => {
           status: "SHIPPED",
         };
         const phase = { id: "phase", name: "Saved phase", status: "COMPLETED" };
-        if (registryVersion === "earlier") {
-          for (const [table, id] of [
-            ["plan_features", "feature"],
-            ["plan_phases", "phase"],
-          ]) {
-            expect
-              .soft(
-                reopened
-                  .prepare(
-                    `SELECT synthetic_parent FROM ${table} WHERE id = ? AND project_id = ?`,
-                  )
-                  .pluck()
-                  .get(id, remoteId),
-              )
-              .toBe(1);
-          }
-          for (const [table, id] of [
-            ["plan_features", "edited-feature"],
-            ["plan_phases", "edited-phase"],
-          ]) {
-            expect(
-              reopened
-                .prepare(`SELECT synthetic_parent FROM ${table} WHERE id = ?`)
-                .pluck()
-                .get(id),
-            ).toBe(0);
-          }
-        }
         for (const owner of [localId, remoteId]) {
           expect
             .soft(getFeature("feature", owner, reopened))
