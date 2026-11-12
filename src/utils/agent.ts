@@ -505,9 +505,26 @@ function findEnforcementSlot(
   template: string,
   fallback: "empty-section" | "scoped-legacy",
 ): RegExpMatchArray | undefined {
+  const outsideFence = ({ index }: RegExpMatchArray): boolean => {
+    let fence: string | undefined;
+    for (const [, delimiter, rest] of template
+      .slice(0, index)
+      .matchAll(/^ {0,3}([`]{3,}|~{3,})([^\r\n]*)/gm)) {
+      if (!fence) fence = delimiter;
+      else if (
+        delimiter[0] === fence[0] &&
+        delimiter.length >= fence.length &&
+        !rest.trim()
+      ) {
+        fence = undefined;
+      }
+    }
+    return fence === undefined;
+  };
+
   const sections = [
     ...template.matchAll(/<code_quality>([\s\S]*?)<\/code_quality>/g),
-  ];
+  ].filter(outsideFence);
   const marked = sections.filter(([, body]) =>
     body.includes(ENFORCEMENT_MARKER),
   );
@@ -516,7 +533,7 @@ function findEnforcementSlot(
   if (fallback === "scoped-legacy") {
     const bareMarkers = [
       ...template.matchAll(/^\{\{enforcement\}\}(?=\r?\n|$)/gm),
-    ];
+    ].filter(outsideFence);
     if (bareMarkers.length > 0) {
       return bareMarkers.length === 1 ? bareMarkers[0] : undefined;
     }
@@ -524,24 +541,8 @@ function findEnforcementSlot(
       ...template.matchAll(
         /^<code_quality>\s*<\/code_quality>(?=[ \t]*(?:\r?\n|$))/gm,
       ),
-    ];
-    const unquoted = emptyLines.filter(({ index }) => {
-      let fence: string | undefined;
-      for (const [, delimiter, rest] of template
-        .slice(0, index)
-        .matchAll(/^ {0,3}([`]{3,}|~{3,})([^\r\n]*)/gm)) {
-        if (!fence) fence = delimiter;
-        else if (
-          delimiter[0] === fence[0] &&
-          delimiter.length >= fence.length &&
-          !rest.trim()
-        ) {
-          fence = undefined;
-        }
-      }
-      return fence === undefined;
-    });
-    return unquoted.length === 1 ? unquoted[0] : undefined;
+    ].filter(outsideFence);
+    return emptyLines.length === 1 ? emptyLines[0] : undefined;
   }
 
   const emptySections = sections.filter(([, body]) => !body.trim());

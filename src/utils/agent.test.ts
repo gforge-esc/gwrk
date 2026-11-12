@@ -125,6 +125,49 @@ describe('US-016: Enforcement Skills Dispatch Injection', () => {
   const enforcementSection = "<code_quality>\r\n{{enforcement}}\r\n</code_quality>";
   const nestedInput = "<user_input>\r\n  Nested example.  \r\n</user_input>";
 
+  it.each([
+    ["section", enforcementSection],
+    ["bare marker", "{{enforcement}}"],
+  ])(
+    "expands the scoped legacy empty slot after a fenced %s example",
+    async (_label, fencedExample) => {
+      const actualSkills = await vi.importActual<typeof skillRuntime>(
+        "../plugins/skill-runtime.js",
+      );
+      vi.mocked(skillRuntime.resolveEnforcementSkills).mockImplementationOnce(
+        actualSkills.resolveEnforcementSkills,
+      );
+      const capturedStdin = mockAgentStdin();
+      const example = [
+        "Example:",
+        "~~~xml",
+        fencedExample,
+        "~~~",
+        "Rules:",
+        "",
+      ].join("\r\n");
+      const slot = "<code_quality></code_quality>";
+      const suffix = `\r\n\r\n${legacyInput}`;
+
+      await dispatchToAgent({
+        workflow: "gwrk-implement",
+        workDir: "/fake/root",
+        agent: "codex",
+        stdin: example + slot + suffix,
+        quiet: true,
+      });
+
+      const payload = capturedStdin();
+      const prefix = `${COMMAND_SAFETY_BLOCK}\n\n${example}<code_quality>\n`;
+      const expandedSuffix = `\n</code_quality>${suffix}`;
+      expect(payload.slice(0, prefix.length)).toBe(prefix);
+      expect(payload.slice(-expandedSuffix.length)).toBe(expandedSuffix);
+      expect(payload.slice(prefix.length, -expandedSuffix.length)).toContain(
+        "<!-- enforcement-skill: typescript-standards -->",
+      );
+    },
+  );
+
   it.each(["structured", "legacy"] as const)(
     "preserves a quoted empty section before the enforcement slot in %s Codex stdin",
     async (transport) => {
