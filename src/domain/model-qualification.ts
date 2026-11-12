@@ -446,6 +446,15 @@ function isCredentialHeaderName(value: unknown): boolean {
   );
 }
 
+function isCredentialFieldName(value: string): boolean {
+  return (
+    isCredentialHeaderName(value) ||
+    /^(?:api[_-]?key|access[_-]?token|password)$/i.test(
+      stripTerminalControls(value),
+    )
+  );
+}
+
 function isCredentialHeaderRecord(
   entry: unknown,
   nameField: "name" | "key",
@@ -653,7 +662,7 @@ function scanInspectedArray(
   }
 }
 
-function isInspectedCredentialHeader(record: string): boolean {
+function isInspectedCredentialRecord(record: string): boolean {
   const tokens = /"(?:[^"\\]|\\[\s\S])*"|[{}[\](),]/g;
   const property =
     /\s*("(?:[^"\\]|\\[\s\S])*")\s*:\s*("(?:[^"\\]|\\[\s\S])*")?/y;
@@ -670,7 +679,7 @@ function isInspectedCredentialHeader(record: string): boolean {
     if (!match) continue;
     const [, key, literal] = match;
     const field = JSON.parse(key) as string;
-    if (isCredentialHeaderName(field)) return true;
+    if (isCredentialFieldName(field)) return true;
     if (field === "value") {
       header.value = undefined;
     } else if ((field === "name" || field === "key") && literal) {
@@ -769,7 +778,7 @@ function scanEmbeddedJson(
       if (inspectedRecord.startsWith("[")) {
         scanInspectedArray(inspectedRecord, knownSecrets, isHeaderCollection);
         openings.lastIndex = end;
-      } else if (isInspectedCredentialHeader(inspectedRecord)) {
+      } else if (isInspectedCredentialRecord(inspectedRecord)) {
         throw new Error(secretMaterialMessage);
       }
       continue;
@@ -778,7 +787,7 @@ function scanEmbeddedJson(
       assertUniqueJsonKeys(token);
       openings.lastIndex = end;
     } else if (
-      isCredentialHeaderName(decoded) &&
+      isCredentialFieldName(decoded) &&
       /^\s*=>/.test(text.slice(end))
     ) {
       throw new Error(secretMaterialMessage);
@@ -865,7 +874,7 @@ function scanEvidence(
         }
       }
       if (
-        isCredentialHeaderName(key) ||
+        isCredentialFieldName(key) ||
         headerPattern.test(key) ||
         containsSensitiveText(key) ||
         isCredentialHeaderRecord(entry, "name") ||

@@ -1102,6 +1102,24 @@ describe("credential guard", () => {
     expect(() => assertNoSecretMaterial({ sanitizedOutput })).not.toThrow();
   });
 
+  it.each(["password", "apiKey", "accessToken", "pass\u001b[31mword"])(
+    "rejects inspected credential field %s alongside BigInt metadata",
+    (field) => {
+      const sanitizedOutput = inspect({
+        [field]: "fixture-only",
+        elapsedNs: 1n,
+      });
+      expect(() => assertNoSecretMaterial({ sanitizedOutput })).toThrow(
+        /secret material/i,
+      );
+    },
+  );
+
+  it("allows inspected status alongside BigInt metadata", () => {
+    const sanitizedOutput = inspect({ status: "ready", elapsedNs: 1n });
+    expect(() => assertNoSecretMaterial({ sanitizedOutput })).not.toThrow();
+  });
+
   it("rejects inspected Map keys with escaped terminal controls", () => {
     const sanitizedOutput = inspect({
       headers: new Map([["coo\u001b[31mkie", "session=fixture-only"]]),
