@@ -80,20 +80,12 @@ function importCommit(commit: FixtureCommit, index: number): string {
   return `${lines.join("\n")}\n\n`;
 }
 
-function isGitFixtureEnvKey(name: string): boolean {
-  return (
-    name === "BASH_ENV" ||
-    name.startsWith("BASH_FUNC_") ||
-    name.startsWith("GIT_")
-  );
-}
-
 export function stubPulseGitEnv(env: NodeJS.ProcessEnv) {
   for (const name of Object.keys(process.env)) {
-    if (isGitFixtureEnvKey(name) && !(name in env)) vi.stubEnv(name, undefined);
+    if (!(name in env)) vi.stubEnv(name, undefined);
   }
   for (const [name, value] of Object.entries(env)) {
-    if (isGitFixtureEnvKey(name)) vi.stubEnv(name, value);
+    vi.stubEnv(name, value);
   }
 }
 
@@ -103,9 +95,13 @@ export async function createPulseGitFixture(history: "branches" | "scale") {
   const globalConfig = path.join(repoDir, "global.gitconfig");
   const globalAttributes = path.join(repoDir, "global.gitattributes");
   const env: NodeJS.ProcessEnv = {
-    ...Object.fromEntries(
-      Object.entries(process.env).filter(([name]) => !isGitFixtureEnvKey(name)),
-    ),
+    PATH: process.env.PATH,
+    TMPDIR: process.env.TMPDIR,
+    TMP: process.env.TMP,
+    TEMP: process.env.TEMP,
+    HOME: repoDir,
+    LC_ALL: "C",
+    TZ: "UTC",
     EDITOR: "true",
     GIT_EDITOR: "true",
     GIT_CONFIG_GLOBAL: globalConfig,

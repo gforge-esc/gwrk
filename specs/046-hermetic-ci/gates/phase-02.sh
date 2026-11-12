@@ -46,4 +46,10 @@ BASH_ENV="$git_fixture/bash-env" pnpm exec vitest run --retry 0 "${pulse_suites[
 printf '\nPulse regression probe with an exported Bash function\n'
 env 'BASH_FUNC_wc%%=() { command wc -w; }' \
   node ./node_modules/vitest/vitest.mjs run --retry 0 "${pulse_suites[@]}" || probe_status=$?
+printf '\nPulse regression probe with inherited shell options\n'
+env SHELLOPTS=noexec \
+  node ./node_modules/vitest/vitest.mjs run --retry 0 "${pulse_suites[@]}" || probe_status=$?
+printf '\nPulse regression probe with inherited tar options\n'
+env TAR_READER_OPTIONS=tar:hdrcharset=UTF-16 TAR_OPTIONS=--gwrk-fixture-invalid-option \
+  node ./node_modules/vitest/vitest.mjs run --retry 0 "${pulse_suites[@]}" || probe_status=$?
 exit "$probe_status"
