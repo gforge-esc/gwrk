@@ -503,7 +503,8 @@ export interface OperationsStorePort {
    * Record the outcome under the current claim and preserve the bound destination.
    * Require a nonblank messageTs for delivered outcomes.
    * Return OUTBOX_TRANSITION_INVALID before any write for a blank timestamp.
-   * Reject skipped_no_target for harvest_gate_failed with OUTBOX_TRANSITION_INVALID before any write.
+   * Reserve skipped_no_target for the initial claim of an ordinary notice without a destination.
+   * Reject runtime skip outcomes with OUTBOX_TRANSITION_INVALID before any write.
    */
   completeOutboxItem(input: {
     claim: OutboxClaim;
@@ -515,7 +516,6 @@ export interface OperationsStorePort {
           messageTs: string;
           threadTs?: string;
         }
-      | { status: "skipped_no_target" }
       | { status: "failed"; error: string };
   }): FencedWrite | { ok: false; code: "OUTBOX_TRANSITION_INVALID" };
 

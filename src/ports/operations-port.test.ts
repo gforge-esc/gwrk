@@ -67,6 +67,11 @@ const nowIso = "2026-11-11T12:00:00.000Z";
 const leaseExpiresAt = "2026-11-11T12:01:00.000Z";
 const sha = "a".repeat(40);
 const destination = { workspaceId: "W1", channelId: "C2", threadTs: "2.1" };
+const runtimeSkipOutcome = {
+  status: "skipped_no_target",
+} as unknown as Parameters<
+  OperationsStorePort["completeOutboxItem"]
+>[0]["outcome"];
 
 function outboxDeliveryKey({
   workspaceId,
@@ -835,10 +840,7 @@ function restoreRecoveryStore(persisted: {
       ) {
         return { ok: false, code: "LEASE_FENCED" };
       }
-      if (
-        row.eventType === "harvest_gate_failed" &&
-        outcome.status === "skipped_no_target"
-      ) {
+      if (outcome.status !== "delivered" && outcome.status !== "failed") {
         return { ok: false, code: "OUTBOX_TRANSITION_INVALID" };
       }
       if (outcome.status === "delivered") {
@@ -1500,6 +1502,53 @@ describe("durable recovery store contract", () => {
         destination,
       }),
     ).toBeNull();
+  });
+
+  it("rejects a runtime skip after takeover of an ordinary send", () => {
+    const pending = outbox("abandoned-notice", "pending");
+    const store = restoreRecoveryStore({
+      harvests: [],
+      stages: [],
+      outboxItems: [pending],
+    });
+    const claimInput = { outboxId: pending.outboxId, destination };
+    expect(store.claimOutboxItem({ ...claimInput, nowIso })?.action).toBe(
+      "send",
+    );
+
+    const restarted = restoreRecoveryStore(store.snapshot());
+    const recovery = restarted.claimOutboxItem({
+      ...claimInput,
+      nowIso: leaseExpiresAt,
+    });
+    if (recovery?.action !== "reconcile") {
+      throw new Error("Expected a reconciliation claim");
+    }
+    const beforeSkip = restarted.snapshot();
+    expect(
+      restarted.completeOutboxItem({
+        claim: recovery.claim,
+        nowIso: leaseExpiresAt,
+        outcome: runtimeSkipOutcome,
+      }),
+    ).toEqual({ ok: false, code: "OUTBOX_TRANSITION_INVALID" });
+    expect(restarted.snapshot()).toEqual(beforeSkip);
+
+    const successor = restoreRecoveryStore(restarted.snapshot());
+    const successorTime = new Date(
+      Date.parse(leaseExpiresAt) + 60_000,
+    ).toISOString();
+    expect(
+      successor.claimOutboxItem({
+        outboxId: pending.outboxId,
+        nowIso: successorTime,
+        destination: null,
+      }),
+    ).toMatchObject({
+      action: "reconcile",
+      item: { ...destination, clientMetadataKey: pending.clientMetadataKey },
+      claim: { clientMetadataKey: pending.clientMetadataKey },
+    });
   });
 
   it.each([
@@ -3075,7 +3124,7 @@ it.each([
         restarted.completeOutboxItem({
           claim: send.claim,
           nowIso,
-          outcome: { status: "skipped_no_target" },
+          outcome: runtimeSkipOutcome,
         }),
       ).toEqual({ ok: false, code: "OUTBOX_TRANSITION_INVALID" });
       expect(restarted.snapshot()).toEqual(sending);
