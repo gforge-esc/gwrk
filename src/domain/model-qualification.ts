@@ -434,6 +434,12 @@ function parsedUrlHasUserinfo(candidate: string): boolean | undefined {
 }
 
 function hasCredentialBearingUrl(text: string): boolean {
+  const proxyAssignments =
+    /^[ \t]*(?:[a-z0-9]+_)*proxy[ \t]*=[ \t]*([^\r\n]+)$/gim;
+  for (const [, url] of text.matchAll(proxyAssignments)) {
+    if (parsedUrlHasUserinfo(url)) return true;
+  }
+
   const quoted = new RegExp(inspectedStringLiteral.source, "g");
   for (const [literal] of text.matchAll(quoted)) {
     const url = literal.slice(1, -1);
@@ -828,14 +834,11 @@ function scanEmbeddedJson(
     if (typeof decoded !== "string") {
       assertUniqueJsonKeys(token);
       openings.lastIndex = end;
-    } else {
-      const proxyAssignment = /^(?:[a-z0-9]+_)*proxy=(.+)$/is.exec(decoded);
-      if (
-        (proxyAssignment && parsedUrlHasUserinfo(proxyAssignment[1])) ||
-        (isCredentialFieldName(decoded) && /^\s*=>/.test(text.slice(end)))
-      ) {
-        throw new Error(secretMaterialMessage);
-      }
+    } else if (
+      isCredentialFieldName(decoded) &&
+      /^\s*=>/.test(text.slice(end))
+    ) {
+      throw new Error(secretMaterialMessage);
     }
     // Quoted log text can overlap the start of a JSON record.
     scanEvidence(decoded, knownSecrets, isHeaderCollection);

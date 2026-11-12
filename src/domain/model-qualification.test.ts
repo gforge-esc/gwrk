@@ -703,6 +703,18 @@ describe("credential guard", () => {
       "HTTPS_PROXY=\x60http://pilot:fixture password@proxy:8080\x60",
     ],
     [
+      "an unquoted assignment with a password containing a space",
+      "HTTPS_PROXY=http://pilot:fixture password@proxy:8080",
+    ],
+    [
+      "an inspected assignment with spaces around the equals sign",
+      inspect("HTTPS_PROXY = http://pilot:fixture password@proxy:8080"),
+    ],
+    [
+      "an assignment on a separate log line",
+      "discovery started\n  HTTPS_PROXY = http://fixture access token@proxy:8080",
+    ],
+    [
       "an inspected assignment with a password containing a space",
       inspect("HTTPS_PROXY=http://pilot:fixture password@proxy:8080"),
     ],
@@ -741,6 +753,9 @@ describe("credential guard", () => {
     'stdout: "unterminated HTTPS_PROXY="http://proxy:8080/path with space@fixture"',
     "HTTPS_PROXY='http://proxy:8080/?name=fixture token@value'",
     "HTTPS_PROXY=\x60http://proxy:8080/#fixture token@value\x60",
+    "HTTPS_PROXY=http://proxy:8080/path with space@fixture",
+    inspect("HTTPS_PROXY = http://proxy:8080/path with space@fixture"),
+    "discovery started\n  HTTPS_PROXY = http://proxy:8080/path with space@fixture",
     inspect("HTTPS_PROXY=http://proxy:8080/path with space@fixture"),
   ])("allows proxy URLs without userinfo: %s", (text) => {
     expect(() =>
