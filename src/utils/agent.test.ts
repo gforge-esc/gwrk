@@ -173,6 +173,9 @@ describe('US-016: Enforcement Skills Dispatch Injection', () => {
 
   const commentedExample = "<!-- <code_quality>{{enforcement}}</code_quality> -->\r\n";
   const commentedFence = ["<!--", "~~~xml", enforcementSection, "<user_input>", "-->", ""].join("\r\n");
+  const indentedExample = "<code_quality>{{enforcement}}</code_quality>";
+  const spaceIndentedExample = `    ${indentedExample}\r\n\r\n`;
+  const tabIndentedExample = `\t${indentedExample}\r\n\r\n`;
 
   it.each([
     ["structured", "empty section", "Quote `<code_quality></code_quality>` as written.\r\n"],
@@ -185,6 +188,10 @@ describe('US-016: Enforcement Skills Dispatch Injection', () => {
     ["legacy", "HTML comment", commentedExample],
     ["structured", "HTML comment with a fence", commentedFence],
     ["legacy", "HTML comment with a fence", commentedFence],
+    ["structured", "four-space indented example", spaceIndentedExample],
+    ["legacy", "four-space indented example", spaceIndentedExample],
+    ["structured", "tab-indented example", tabIndentedExample],
+    ["legacy", "tab-indented example", tabIndentedExample],
   ] as const)(
     "preserves the example before the enforcement slot in %s Codex stdin (%s)",
     async (transport, _label, example) => {
@@ -231,6 +238,32 @@ describe('US-016: Enforcement Skills Dispatch Injection', () => {
     });
 
     expect(capturedStdin()).toBe(`${COMMAND_SAFETY_BLOCK}\n\n${prefix}# Strict Typing Rule${suffix}`);
+  });
+
+  it.each([
+    ["without surrounding whitespace", "", ""],
+    ["with surrounding whitespace", "\r\n \t", " \t\r\n"],
+  ])("expands a standalone legacy marker %s", async (_label, leading, trailing) => {
+    const actualSkills = await vi.importActual<typeof skillRuntime>("../plugins/skill-runtime.js");
+    vi.mocked(skillRuntime.resolveEnforcementSkills).mockImplementationOnce(actualSkills.resolveEnforcementSkills);
+    const capturedStdin = mockAgentStdin();
+
+    await dispatchToAgent({
+      workflow: "gwrk-implement",
+      workDir: "/fake/root",
+      agent: "codex",
+      stdin: `${leading}{{enforcement}}${trailing}`,
+      quiet: true,
+    });
+
+    const payload = capturedStdin();
+    const prefix = `${COMMAND_SAFETY_BLOCK}\n\n${leading}`;
+    const rulesEnd = payload.length - trailing.length;
+    expect(payload.slice(0, prefix.length)).toBe(prefix);
+    expect(payload.slice(rulesEnd)).toBe(trailing);
+    const rules = payload.slice(prefix.length, rulesEnd);
+    expect(rules).toContain("<!-- enforcement-skill: typescript-standards -->");
+    expect(rules).not.toContain("{{enforcement}}");
   });
 
   it.each([
@@ -281,6 +314,7 @@ describe('US-016: Enforcement Skills Dispatch Injection', () => {
 
   it.each([
     ["skill input", { workflow: "skill/fixture", type: "skill/fixture", stdin: `${legacyPrefix}${legacyInput}` }],
+    ["a standalone marker in skill input", { workflow: "skill/fixture", type: "skill/fixture", stdin: "{{enforcement}}" }],
     ["input with text after the closing tag", { stdin: `${legacyPrefix}${legacyInput}More task text` }],
     ["an inline marker", { stdin: `Quote {{enforcement}} here.\r\n\r\n${legacyInput}` }],
     ["an inline quoted empty section", { stdin: `Quote \`<code_quality></code_quality>\` here.\r\n\r\n${legacyInput}` }],

@@ -506,7 +506,7 @@ function maskPromptExamples(template: string): string {
   const mask = (code: string) => code.replace(/[^\r\n]/g, "\0");
   const maskSpans = (text: string) =>
     text
-      .replace(/^ {0,3}>[^\r\n]*/gm, mask)
+      .replace(/^(?: {4}| {0,3}[>\t])[^\r\n]*/gm, mask)
       .split(/(\r?\n[ \t]*\r?\n)/)
       .map((paragraph) =>
         paragraph.replace(/(?<!`)(`+)(?!`)[\s\S]*?(?<!`)\1(?!`)/g, mask),
@@ -626,7 +626,10 @@ function splitLegacyStdin(task: TaskDispatch) {
 
   const inputStart = findLegacyInputStart(stdin);
   if (inputStart === undefined) {
-    const slot = findEnforcementSlot(stdin, "empty-section");
+    const slot =
+      stdin.trim() === ENFORCEMENT_MARKER
+        ? /\{\{enforcement\}\}/.exec(stdin)
+        : findEnforcementSlot(stdin, "empty-section");
     if (
       slot?.index !== undefined &&
       stdin.trim() === stdin.slice(slot.index, slot.index + slot[0].length)
