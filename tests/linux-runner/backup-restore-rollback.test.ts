@@ -378,6 +378,56 @@ describe("installed ledger commands outside a checkout", () => {
         join(root, "next-backup"),
       ]);
       expect(nextBackup.status, nextBackup.stderr).toBe(0);
+      const verified = await verifyLedgerBackup(join(root, "next-backup"));
+      expect(verified.metadata.device).toBeNull();
+    },
+  );
+
+  it.each(pathVariants)(
+    "protects the configured ledger lock during restore with alias=$alias and child=$child",
+    async ({ alias, child }) => {
+      const state = join(root, "state");
+      const stateAlias = join(root, "state-alias");
+      await mkdir(state);
+      await symlink(state, stateAlias);
+      const ledger = join(state, "gwrk.db");
+      seedLedger(ledger).close();
+      const source = join(root, "backup");
+      const seeded = runInstalledBackup(ledger, source);
+      expect(seeded.status, seeded.stderr).toBe(0);
+
+      const lockFile = ".gwrk.db.lock";
+      const reserved = join(state, lockFile);
+      const target = join(
+        alias ? stateAlias : state,
+        lockFile,
+        ...(child ? ["restore"] : []),
+      );
+      const result = runInstalledRestoreForPathValidation(
+        ledger,
+        source,
+        target,
+      );
+      expectReservedPathFailure(
+        result,
+        `reserved ledger lock path ${reserved}`,
+      );
+      await expect(stat(reserved)).rejects.toMatchObject({ code: "ENOENT" });
+      await expect(stat(join(root, "runtime"))).rejects.toMatchObject({
+        code: "ENOENT",
+      });
+
+      if (process.platform === "linux") {
+        const lock = acquireLedgerLock(
+          join(stateAlias, "gwrk.db"),
+          process.pid,
+        );
+        try {
+          expect(lock.lockPath).toBe(reserved);
+        } finally {
+          lock.release();
+        }
+      }
     },
   );
 
