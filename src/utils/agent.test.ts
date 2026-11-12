@@ -237,11 +237,11 @@ describe('US-016: Enforcement Skills Dispatch Injection', () => {
     ["a standalone empty section", "<code_quality></code_quality>"],
     ["a standalone enforcement section", "<code_quality>\r\n{{enforcement}}\r\n</code_quality>"],
     ["a standalone enforcement section with surrounding rules", "<code_quality>\r\nRules:\r\n{{enforcement}}\r\n</code_quality>"],
-    ["a bare marker after a quoted input opener", `Quoted opener:\r\n<user_input>\r\n\r\n${legacyPrefix}${legacyInput}`],
+    ["a bare marker after a block-quoted input opener", `Quoted opener:\r\n> <user_input>\r\n\r\n${legacyPrefix}${legacyInput}`],
     ["an empty section before scoped input", `Rules:\r\n<code_quality></code_quality>\r\n\r\n${legacyInput}`],
     ["a multiline empty section before scoped input", `Rules:\r\n<code_quality>\r\n</code_quality>\r\n\r\n${legacyInput}`],
     ["a code quality slot before scoped input", `Rules:\r\n<code_quality>\r\n{{enforcement}}\r\n</code_quality>\r\n\r\n${legacyInput}`],
-    ["a code quality slot after a quoted input opener", `Quoted opener:\r\n<user_input>\r\n\r\nRules:\r\n<code_quality>\r\n{{enforcement}}\r\n</code_quality>\r\n\r\n${legacyInput}`],
+    ["a code quality slot after a fenced input opener", `Quoted opener:\r\n~~~xml\r\n<user_input>\r\n~~~\r\n\r\nRules:\r\n<code_quality>\r\n{{enforcement}}\r\n</code_quality>\r\n\r\n${legacyInput}`],
     ["a bare marker after a code quality fixture", `Keep <code_quality>example rules</code_quality>.\r\n${legacyPrefix}${legacyInput}`],
     ["a bare marker before scoped input", `${legacyPrefix}${legacyInput}`],
   ])("expands %s in legacy Codex stdin", async (_label, stdin) => {
@@ -379,6 +379,55 @@ describe('US-016: Enforcement Skills Dispatch Injection', () => {
     const rules = payload.slice(prefix.length, -suffix.length);
     expect(rules).toContain("<!-- enforcement-skill: typescript-standards -->");
     expect(rules).not.toContain("{{enforcement}}");
+  });
+
+  const inputWithLiteralOpener = [
+    "<user_input>",
+    enforcementSection,
+    "<user_input>",
+    "  Keep both opening tags.  ",
+    "</user_input>",
+    "",
+  ].join("\r\n");
+
+  it.each([
+    ["without a template slot", "Rules:"],
+    ["with an empty template slot", "Rules:\r\n<code_quality></code_quality>"],
+    ["with a marked template slot", `Rules:\r\n${enforcementSection}`],
+  ])("preserves ambiguous legacy stdin %s", async (_label, template) => {
+    vi.mocked(skillRuntime.resolveEnforcementSkills).mockResolvedValueOnce("# Strict Typing Rule");
+    const capturedStdin = mockAgentStdin();
+    const stdin = `${template}\r\n\r\n${inputWithLiteralOpener}`;
+
+    await dispatchToAgent({
+      workflow: "gwrk-implement",
+      workDir: "/fake/root",
+      agent: "codex",
+      stdin,
+      quiet: true,
+    });
+
+    expect(capturedStdin()).toBe(`${COMMAND_SAFETY_BLOCK}\n\n${stdin}`);
+    expect(skillRuntime.resolveEnforcementSkills).not.toHaveBeenCalled();
+  });
+
+  it("expands the explicit template before input with a literal opener", async () => {
+    vi.mocked(skillRuntime.resolveEnforcementSkills).mockResolvedValueOnce("# Strict Typing Rule");
+    const capturedStdin = mockAgentStdin();
+    const template = `Rules:\r\n${enforcementSection}`;
+    const userInput = inputWithLiteralOpener;
+
+    await dispatchToAgent({
+      workflow: "gwrk-implement",
+      workDir: "/fake/root",
+      agent: "codex",
+      stdin: `${template}\n\n${userInput}`,
+      promptParts: { template, userInput },
+      quiet: true,
+    });
+
+    const expandedTemplate = template.replace("{{enforcement}}", "# Strict Typing Rule");
+    expect(capturedStdin()).toBe(`${COMMAND_SAFETY_BLOCK}\n\n${expandedTemplate}\n\n${userInput}`);
   });
 
   it('expands template enforcement even when the template quotes the input tag', async () => {

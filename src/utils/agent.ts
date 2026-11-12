@@ -601,9 +601,13 @@ function findLegacyInputStart(stdin: string): number | undefined {
   const prefix = maskPromptExamples(stdin.slice(0, closer.index));
   const tags = [...prefix.matchAll(/^<(\/?)user_input>(?=\r?\n|$)/gm)];
   let depth = 1;
-  for (const tag of tags.reverse()) {
+  for (let index = tags.length - 1; index >= 0; index--) {
+    const tag = tags[index];
     depth += tag[1] === "/" ? 1 : -1;
-    if (depth === 0) return tag.index;
+    if (depth === 0) {
+      // An earlier unmasked tag makes the legacy input boundary ambiguous.
+      return index === 0 ? tag.index : undefined;
+    }
   }
   return undefined;
 }
