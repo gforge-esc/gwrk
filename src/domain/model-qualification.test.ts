@@ -687,6 +687,14 @@ describe("credential guard", () => {
       'HTTPS_PROXY="http://pilot:fixture password@proxy:8080"',
     ],
     [
+      "a double-quoted token containing spaces",
+      'HTTPS_PROXY="http://fixture access token@proxy:8080"',
+    ],
+    [
+      "a quoted password containing a space after an unmatched log quote",
+      'stdout: "unterminated HTTPS_PROXY="http://pilot:fixture password@proxy:8080"',
+    ],
+    [
       "a single-quoted token containing spaces",
       "HTTPS_PROXY='http://fixture access token@proxy:8080'",
     ],
@@ -722,6 +730,7 @@ describe("credential guard", () => {
     "HTTPS_PROXY=http://proxy:8080#pilot:fixture@value",
     'HTTP_PROXY=http://pilot:fixture|pass@proxy:invalid HTTPS_PROXY="http://proxy:8080"',
     'HTTPS_PROXY="http://proxy:8080/path with space@fixture"',
+    'stdout: "unterminated HTTPS_PROXY="http://proxy:8080/path with space@fixture"',
     "HTTPS_PROXY='http://proxy:8080/?name=fixture token@value'",
     "HTTPS_PROXY=\x60http://proxy:8080/#fixture token@value\x60",
   ])("allows proxy URLs without userinfo: %s", (text) => {
