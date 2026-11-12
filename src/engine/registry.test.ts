@@ -16,18 +16,12 @@ vi.mock("node:child_process", () => ({
 
 describe("Plugin Registry Engine", () => {
   let tempHome: string;
-  let oldHome: string;
   let registryPath: string;
   let pluginsPath: string;
 
   beforeEach(async () => {
     tempHome = await fsp.mkdtemp(path.join(os.tmpdir(), "gwrk-registry-test-"));
-    oldHome = os.homedir();
-    
-    // We need to mock os.homedir() if we want registry.ts to use our tempHome
-    // But registry.ts imports os and defines constants at the top level.
-    // This is tricky. Let's try to mock os.homedir.
-    vi.spyOn(os, "homedir").mockReturnValue(tempHome);
+    vi.stubEnv("GWRK_HOME", path.join(tempHome, ".gwrk"));
     
     registryPath = path.join(tempHome, ".gwrk", "registry");
     pluginsPath = path.join(tempHome, ".gwrk", "plugins");
@@ -54,7 +48,7 @@ runtime:
   });
 
   afterEach(async () => {
-    vi.restoreAllMocks();
+    vi.unstubAllEnvs();
     await fsp.rm(tempHome, { recursive: true, force: true });
   });
 

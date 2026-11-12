@@ -1,0 +1,19 @@
+{
+  "runId": "2026-11-11T16:29:36.263Z_define_p00",
+  "feature": "050-linux-runner-deploy-packaging",
+  "phase": "p00",
+  "command": "define plan",
+  "agent": "agy",
+  "model": "gemini-4-carbon-high",
+  "startedAt": "2026-11-11T16:29:36.263Z",
+  "finishedAt": "2026-11-11T16:44:33.701Z",
+  "durationS": 897,
+  "exitCode": 0,
+  "attempt": 1,
+  "filesChanged": 5,
+  "linesAdded": 470,
+  "linesDeleted": 0,
+  "gitCommit": "403d625a0d8e7ba42f44bf6115a8cea003ed50b1",
+  "gitBranch": "codex/linux-runner-deploy-plan",
+  "digest": []
+}

@@ -1,0 +1,74 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
+import type {
+  LedgerBackupManifest,
+  LedgerBackupMetadata,
+} from "../domain/ledger-backup.js";
+
+export class InstanceLockBusyError extends Error {
+  constructor(
+    readonly lockPath: string,
+    readonly holderPid?: number,
+  ) {
+    super(`A gwrk server already holds ${lockPath}`);
+    this.name = "InstanceLockBusyError";
+  }
+}
+
+export class PendingLedgerRestoreError extends Error {
+  constructor(readonly markerPath: string) {
+    super(`An unfinished restore exists at ${markerPath}.`);
+    this.name = "PendingLedgerRestoreError";
+  }
+}
+
+export interface InstanceLockHandle {
+  readonly pid: number;
+  readonly lockPath: string;
+  release(): void;
+}
+
+export interface InstanceLockPort {
+  acquireInstanceLock(runtimeDir: string, pid: number): InstanceLockHandle;
+  acquireLedgerLock(dbPath: string, pid: number): InstanceLockHandle;
+}
+
+export interface LedgerBackupRequest {
+  readonly dbPath: string;
+  readonly destination: string;
+  readonly devicePath?: string;
+  readonly runtimeLockPath?: string;
+  readonly runtimePidPath?: string;
+  readonly createdAt: string;
+  readonly gwrkVersion: string;
+  collectDevice(): LedgerBackupMetadata["device"];
+  collectRepositories(
+    projects: readonly { id: string; path: string }[],
+  ): LedgerBackupMetadata["repositories"];
+}
+
+export interface VerifiedLedgerBackup {
+  readonly manifest: LedgerBackupManifest;
+  readonly metadata: LedgerBackupMetadata;
+}
+
+export interface LedgerRestoreRequest {
+  readonly source: string;
+  readonly stateDirectory: string;
+  readonly configuredDbPath?: string;
+  readonly runtimePidPath?: string;
+  readonly force: boolean;
+}
+
+export interface LedgerBackupPort {
+  createBackup(input: LedgerBackupRequest): Promise<LedgerBackupManifest>;
+  verifyBackup(directory: string): Promise<VerifiedLedgerBackup>;
+  resolveRestoreTarget(
+    stateDirectory: string,
+    configuredDbPath?: string,
+    runtimePidPath?: string,
+  ): Promise<{ stateDirectory: string; dbPath: string }>;
+  restoreBackup(input: LedgerRestoreRequest): Promise<VerifiedLedgerBackup>;
+}

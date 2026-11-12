@@ -64,6 +64,10 @@ jobs:
         env:
           CI: "true"
 
+      - name: Hosted sign-in container proof
+        if: matrix.node-version == 22
+        run: node tests/hosted-auth-proof/gateway-proof.mjs
+
       - name: Lint (advisory)
         run: pnpm lint
         continue-on-error: true

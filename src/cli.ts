@@ -3,7 +3,10 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { Command } from "commander";
+import { existsSync, realpathSync } from "node:fs";
+import { performance } from "node:perf_hooks";
+import { fileURLToPath } from "node:url";
+import { Command, Option } from "commander";
 import pkg from "../package.json" with { type: "json" };
 import { assessCommand } from "./commands/assess.js";
 import { dbCommand } from "./commands/db.js";
@@ -26,6 +29,7 @@ import { testCommand } from "./commands/test.js";
 import { processForAgent } from "./utils/agent-layer.js";
 import { loadConfig } from "./utils/config.js";
 import { color } from "./utils/format.js";
+import { writeSignal } from "./utils/signal.js";
 
 const { BOLD, DIM, CYAN, MAGENTA, YELLOW, GREEN, RED, RESET } = color;
 
@@ -38,7 +42,9 @@ program
   .name("gwrk")
   .version(pkg.version)
   .description("The Principal Engineer's Operating System")
-  .option("--format <type>", "Output format (json)")
+  .addOption(
+    new Option("--format <type>", "Output format (json)").choices(["json"]),
+  )
   .option("--workspace <name>", "Select a workspace profile")
   .option("--agent", "Enable Agent-Native Mode (TC-006)", false)
   .configureHelp({
@@ -166,11 +172,6 @@ program.hook("preAction", (thisCommand, actionCommand) => {
     };
   }
 
-  if (opts.format && opts.format !== "json") {
-    console.error(`Unknown format: ${opts.format}. Supported: json`);
-    process.exit(2);
-  }
-
   // Commands that resolve the project root themselves are exempt from the
   // cwd-anchored preflight. `loadConfig` joins its argument with
   // `.gwrkrc.json` and never walks parents, so preflighting it against
@@ -178,13 +179,15 @@ program.hook("preAction", (thisCommand, actionCommand) => {
   // `define adr` walks parents for the marker (adr-scaffold.ts `findProjectRoot`)
   // and must work from any subdirectory (FR-002, US-001 scenario 3), so
   // preflighting it here would defeat the walk before the handler runs.
+  // Ledger maintenance uses state paths even outside a project checkout.
   const commandPath = [actionCommand.parent?.name(), actionCommand.name()]
     .filter(Boolean)
     .join(" ");
   const resolvesOwnRoot =
     actionCommand.name() === "init" ||
     actionCommand.name() === "assess" ||
-    commandPath === "define adr";
+    commandPath === "define adr" ||
+    ["db backup", "db restore", "db rollback-check"].includes(commandPath);
 
   if (!resolvesOwnRoot) {
     // This will process.exit(1) if config is missing or invalid
@@ -192,8 +195,14 @@ program.hook("preAction", (thisCommand, actionCommand) => {
   }
 });
 
-import { fileURLToPath } from "node:url";
-if (process.argv[1] === fileURLToPath(import.meta.url)) {
+const entrypoint = process.argv[1];
+const modulePath = fileURLToPath(import.meta.url);
+if (
+  entrypoint &&
+  (entrypoint === modulePath ||
+    (existsSync(entrypoint) && realpathSync(entrypoint) === modulePath))
+) {
+  const start = performance.now();
   try {
     program.parse();
   } catch (err: unknown) {
@@ -211,19 +220,26 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
       );
       process.exit(127);
     }
-    if (
-      error.code === "commander.missingArgument" ||
-      error.code === "commander.unknownOption" ||
-      error.code === "commander.missingMandatoryOptionValue"
-    ) {
+    if (error.code === "commander.missingArgument") {
       process.exit(2);
     }
-    // Non-commander errors (e.g. config validation in the preAction hook)
-    // would otherwise exit silently — surface the message so the failure is
-    // debuggable instead of producing zero output.
-    if (!error.code?.startsWith("commander.")) {
-      console.error(error.message ?? String(err));
+    if (
+      error.code === "commander.unknownOption" ||
+      error.code === "commander.invalidArgument" ||
+      error.code === "commander.excessArguments" ||
+      error.code === "commander.missingMandatoryOptionValue" ||
+      error.code === "commander.optionMissingArgument"
+    ) {
+      writeSignal(2, performance.now() - start);
+      process.exitCode = 2;
+    } else {
+      // Non-commander errors (e.g. config validation in the preAction hook)
+      // would otherwise exit silently — surface the message so the failure is
+      // debuggable instead of producing zero output.
+      if (!error.code?.startsWith("commander.")) {
+        console.error(error.message ?? String(err));
+      }
+      process.exit(error.exitCode || 1);
     }
-    process.exit(error.exitCode || 1);
   }
 }
