@@ -163,6 +163,31 @@ describe("ShipOrchestrator", () => {
     expect((orchestrator as any).state.iteration).toBe(2);
   });
 
+  it.each([true, false])("runs the authored phase gate file after the profile runs zero tests (gate passes=%s)", async (passed) => {
+    const taskState = state.loadTaskState(config.cwd);
+    const [phase] = taskState.phases;
+    const gatePath = `${config.cwd}/specs/${config.featureId}/gates/phase-01.sh`;
+    phase.tasks[0].description = "Tests: src/foo.test.ts";
+    phase.tasks[0].gateScript = "gates/phase-01.sh";
+    vi.mocked(state.loadTaskState).mockReturnValue(taskState);
+    vi.mocked(fs.existsSync).mockImplementation((path) => path === gatePath);
+    vi.mocked(execSync).mockReturnValue("No test files found, exiting");
+    vi.mocked(gateRunner.runGate).mockResolvedValue({
+      passed,
+      exitCode: passed ? 0 : 1,
+      output: "authored gate result",
+    });
+
+    const orchestrator = new ShipOrchestrator(config);
+    const result = await (orchestrator as any).stageTestGate();
+
+    expect(gateRunner.runGate).toHaveBeenCalledExactlyOnceWith(
+      gatePath,
+      expect.objectContaining({ cwd: config.cwd }),
+    );
+    expect(result.nextStage === ShipStage.CODE_REVIEW).toBe(passed);
+  });
+
   it("TEST_GATE passes when phase tests actually run and pass — liveness", async () => {
     vi.mocked(state.loadTaskState).mockReturnValue({
       featureId: "004-ship-loop",

@@ -55,7 +55,7 @@ export interface TaskGateResult {
 export const GATE_TIMEOUT_MS = 120_000;
 
 export async function runTaskGate(
-  task: { id: string; gateScript?: string },
+  task: { id?: string; gateScript?: string },
   opts: {
     featureDir: string;
     cwd: string;
@@ -66,8 +66,10 @@ export async function runTaskGate(
   const { featureDir, cwd, env, timeoutMs = GATE_TIMEOUT_MS } = opts;
 
   // Strategy 1 — convention gate file.
-  const conventionPath = path.join(featureDir, "gates", `${task.id}-gate.sh`);
-  if (fs.existsSync(conventionPath)) {
+  const conventionPath = task.id
+    ? path.join(featureDir, "gates", `${task.id}-gate.sh`)
+    : undefined;
+  if (conventionPath && fs.existsSync(conventionPath)) {
     const r = await runGate(conventionPath, { cwd, env, timeoutMs });
     return {
       passed: r.passed,
@@ -83,7 +85,7 @@ export async function runTaskGate(
     return {
       passed: false,
       exitCode: 1,
-      output: `No gate defined for ${task.id}`,
+      output: `No gate defined for ${task.id ?? "phase verification"}`,
       strategy: "missing",
       gatePath: "(none)",
     };

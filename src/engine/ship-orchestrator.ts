@@ -38,11 +38,7 @@ import {
 } from "../utils/agent.js";
 import { loadDevice } from "../utils/device.js";
 import { extractFilePaths } from "../utils/file-extract.js";
-import {
-  type TaskGateResult,
-  runInlineGate,
-  runTaskGate,
-} from "../utils/gate-exec.js";
+import { type TaskGateResult, runTaskGate } from "../utils/gate-exec.js";
 import { getPhaseVerificationGate } from "../utils/gate-quality.js";
 import { runGate } from "../utils/gate-runner.js";
 import {
@@ -1008,7 +1004,11 @@ export class ShipOrchestrator extends EventEmitter {
     const tasksToDispatch = [];
     let repairRequired = false;
     for (const task of openTasks) {
-      if (/^REVIEW(?:\/GATE DIVERGENCE| FINDING| FAIL)\b/m.test(task.description ?? "")) {
+      if (
+        /^REVIEW(?:\/GATE DIVERGENCE| FINDING| FAIL)\b/m.test(
+          task.description ?? "",
+        )
+      ) {
         tasksToDispatch.push(task);
         repairRequired = true;
         continue;
@@ -1209,7 +1209,7 @@ export class ShipOrchestrator extends EventEmitter {
         // If there is no authored gate, 0 tests is a genuine liveness fail.
         const phaseGate = this.getPhaseGate();
         if (phaseGate) {
-          const gate = this.runGateScript(phaseGate);
+          const gate = await this.runPhaseGate(phaseGate);
           if (gate.passed) {
             logCliOutput(
               `  ✓ TEST_GATE: Done-When gate passed (${this.config.phaseId}) — profile runner found 0 tests; verified via the phase gate`,
@@ -1221,7 +1221,7 @@ export class ShipOrchestrator extends EventEmitter {
             };
           }
           logCliOutput(
-            `  ✗ TEST_GATE: Done-When gate failed for ${this.config.phaseId} ('${gate.offendingLine}')`,
+            `  ✗ TEST_GATE: Done-When gate failed for ${this.config.phaseId} ('${gate.offendingLine ?? gate.gatePath}')`,
           );
           return this.handleNoGo("TEST_GATE");
         }
@@ -1258,7 +1258,7 @@ export class ShipOrchestrator extends EventEmitter {
     // below (strengthen, never weaken).
     const phaseGate = this.getPhaseGate();
     if (phaseGate) {
-      const gate = this.runGateScript(phaseGate);
+      const gate = await this.runPhaseGate(phaseGate);
       if (gate.passed) {
         logCliOutput(
           `  ✓ TEST_GATE: Done-When gate passed (${this.config.phaseId})`,
@@ -1266,7 +1266,7 @@ export class ShipOrchestrator extends EventEmitter {
         return { success: true, exitCode: 0, nextStage: ShipStage.CODE_REVIEW };
       }
       logCliOutput(
-        `  ✗ TEST_GATE: Done-When gate failed for ${this.config.phaseId} ('${gate.offendingLine}')`,
+        `  ✗ TEST_GATE: Done-When gate failed for ${this.config.phaseId} ('${gate.offendingLine ?? gate.gatePath}')`,
       );
       return this.handleNoGo("TEST_GATE");
     }
@@ -1400,32 +1400,15 @@ export class ShipOrchestrator extends EventEmitter {
     }
   }
 
-  /**
-   * 025 Fix B — run a test-less phase's gate as one `set -e` script (the same
-   * execution shape as `gate.ts:276`; the script is already multi-line, so
-   * inter-line shell state like `cd` is preserved). Passes iff it exits 0. On
-   * failure, names the offending line so a NO-GO reads as navigation (ADR-004).
-   */
-  private runGateScript(script: string): {
-    passed: boolean;
-    offendingLine: string;
-    output: string;
-  } {
-    // 026: delegate to the one shared inline executor (gate-exec) so TEST_GATE's
-    // phase-gate path runs a gate identically to `gwrk gate`, post-flight, and
-    // harvest.
-    const r = runInlineGate(
-      script,
-      this.config.cwd,
-      undefined,
-      undefined,
-      this.config.gitEnv,
+  private runPhaseGate(gateScript: string): Promise<TaskGateResult> {
+    return runTaskGate(
+      { gateScript },
+      {
+        featureDir: path.join(this.config.cwd, "specs", this.config.featureId),
+        cwd: this.config.cwd,
+        env: this.config.gitEnv,
+      },
     );
-    return {
-      passed: r.passed,
-      offendingLine: r.offendingLine ?? "",
-      output: r.output,
-    };
   }
 
   /** Run test suite, return failure count and output.
