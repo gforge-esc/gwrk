@@ -503,19 +503,49 @@ const ENFORCEMENT_MARKER = "{{enforcement}}";
 
 function findEnforcementSlot(
   template: string,
-  fallback: "empty-section" | "bare-marker",
+  fallback: "empty-section" | "scoped-legacy",
 ): RegExpMatchArray | undefined {
   const sections = [
     ...template.matchAll(/<code_quality>([\s\S]*?)<\/code_quality>/g),
   ];
-  const marked = sections.filter(([, body]) => body.includes(ENFORCEMENT_MARKER));
+  const marked = sections.filter(([, body]) =>
+    body.includes(ENFORCEMENT_MARKER),
+  );
   if (marked.length > 0) return marked.length === 1 ? marked[0] : undefined;
 
-  const slots =
-    fallback === "empty-section"
-      ? sections.filter(([, body]) => !body.trim())
-      : [...template.matchAll(/^\{\{enforcement\}\}(?=\r?\n|$)/gm)];
-  return slots.length === 1 ? slots[0] : undefined;
+  if (fallback === "scoped-legacy") {
+    const bareMarkers = [
+      ...template.matchAll(/^\{\{enforcement\}\}(?=\r?\n|$)/gm),
+    ];
+    if (bareMarkers.length > 0) {
+      return bareMarkers.length === 1 ? bareMarkers[0] : undefined;
+    }
+    const emptyLines = [
+      ...template.matchAll(
+        /^<code_quality>\s*<\/code_quality>(?=[ \t]*(?:\r?\n|$))/gm,
+      ),
+    ];
+    const unquoted = emptyLines.filter(({ index }) => {
+      let fence: string | undefined;
+      for (const [, delimiter, rest] of template
+        .slice(0, index)
+        .matchAll(/^ {0,3}([`]{3,}|~{3,})([^\r\n]*)/gm)) {
+        if (!fence) fence = delimiter;
+        else if (
+          delimiter[0] === fence[0] &&
+          delimiter.length >= fence.length &&
+          !rest.trim()
+        ) {
+          fence = undefined;
+        }
+      }
+      return fence === undefined;
+    });
+    return unquoted.length === 1 ? unquoted[0] : undefined;
+  }
+
+  const emptySections = sections.filter(([, body]) => !body.trim());
+  return emptySections.length === 1 ? emptySections[0] : undefined;
 }
 
 function findLegacyInputStart(stdin: string): number | undefined {
@@ -560,7 +590,7 @@ function splitLegacyStdin(task: TaskDispatch) {
   }
 
   const template = stdin.slice(0, inputStart);
-  const slot = findEnforcementSlot(template, "bare-marker");
+  const slot = findEnforcementSlot(template, "scoped-legacy");
   return slot && { template, userInput: stdin.slice(inputStart), slot };
 }
 
@@ -641,7 +671,9 @@ export async function dispatchToAgent(task: TaskDispatch): Promise<TaskResult> {
       : `<code_quality>\n${enforcement}\n</code_quality>`;
     const start = enforcementSlot.index;
     template =
-      template.slice(0, start) + replacement + template.slice(start + slot.length);
+      template.slice(0, start) +
+      replacement +
+      template.slice(start + slot.length);
   }
 
   const hasCommandSafety = promptParts?.template.includes(COMMAND_SAFETY_BLOCK);
