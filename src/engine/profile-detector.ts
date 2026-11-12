@@ -917,20 +917,20 @@ export function resolveWorkspaceProfile(
   const physicalRoot = physicalPath(projectRoot);
   const requestedWorkspace = path.resolve(cwd);
   const physicalWorkspace = physicalPath(requestedWorkspace);
+  const legacyMatch = matchWorkspacePath(
+    relativeWorkspacePath(projectRoot, cwd),
+    Object.keys(workspaces),
+  );
+  const legacyEntry = legacyMatch ? workspaces[legacyMatch] : undefined;
   if (isOutsideWorkspaceRoot(physicalRoot, physicalWorkspace)) {
-    const legacyMatch = matchWorkspacePath(
-      relativeWorkspacePath(projectRoot, cwd),
-      Object.keys(workspaces),
-    );
-    const entry = legacyMatch ? workspaces[legacyMatch] : undefined;
     if (
-      !entry ||
-      entry.design ||
+      !legacyEntry ||
+      legacyEntry.design ||
       DesignSchema.safeParse(config?.project?.design).success
     ) {
       return undefined;
     }
-    return configuredWorkspaceProfile(entry);
+    return configuredWorkspaceProfile(legacyEntry);
   }
   const bestMatch = matchWorkspacePath(
     workspacePathForMatching(
@@ -951,5 +951,6 @@ export function resolveWorkspaceProfile(
     readLocalProject(physicalWorkspace),
     { directory: physicalRoot, config, configuredLookup: true },
   );
-  return !bestMatch && scoped === workspace ? undefined : scoped;
+  if (scoped !== workspace) return scoped;
+  return legacyEntry ? configuredWorkspaceProfile(legacyEntry) : undefined;
 }
