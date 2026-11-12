@@ -53,6 +53,7 @@ CREATE TABLE IF NOT EXISTS harvest_deliveries (
   delivery_id  TEXT NOT NULL,
   project_id   TEXT REFERENCES projects(id) ON DELETE CASCADE,
   repo_slug    TEXT,
+  checkout_repo_slug TEXT,
   payload_digest TEXT NOT NULL,
   event_type   TEXT NOT NULL,
   outcome      TEXT NOT NULL,

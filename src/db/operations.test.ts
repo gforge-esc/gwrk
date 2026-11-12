@@ -196,6 +196,52 @@ describe("durable operations migration", () => {
     }
   });
 
+  it("persists verified checkout identity for offline deliveries", () => {
+    const db = openDatabase({ dbPath });
+    try {
+      registerProject(
+        { id: "alpha", name: "Alpha", path: "/fixture/alpha" },
+        db,
+      );
+      const insert = db.prepare(`
+        INSERT INTO harvest_deliveries (
+          source, delivery_id, project_id, repo_slug, checkout_repo_slug,
+          payload_digest, event_type, outcome, received_at
+        ) VALUES ('manual_cli', ?, 'alpha', NULL, ?, 'fixture-digest',
+          'merged', 'accepted', ?)
+      `);
+      insert.run("with-origin", "example/alpha", now);
+      insert.run("without-origin", null, now);
+    } finally {
+      db.close();
+    }
+
+    const reopened = openDatabase({ dbPath });
+    try {
+      expect(
+        reopened
+          .prepare(`
+          SELECT delivery_id, repo_slug, checkout_repo_slug
+          FROM harvest_deliveries ORDER BY delivery_id
+        `)
+          .all(),
+      ).toEqual([
+        {
+          delivery_id: "with-origin",
+          repo_slug: null,
+          checkout_repo_slug: "example/alpha",
+        },
+        {
+          delivery_id: "without-origin",
+          repo_slug: null,
+          checkout_repo_slug: null,
+        },
+      ]);
+    } finally {
+      reopened.close();
+    }
+  });
+
   it("preserves the resolved Slack recipient separately across reopen", () => {
     const db = openDatabase({ dbPath });
     const recipient = JSON.stringify({
