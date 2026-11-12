@@ -587,6 +587,42 @@ describe("credential guard", () => {
     ).not.toThrow();
   });
 
+  describe.each([
+    ["short hostname", "HTTPS_PROXY=http://pilot:fixture-password@proxy:8080"],
+    [
+      "IPv4 address",
+      "HTTPS_PROXY=http://pilot:fixture-password@127.0.0.1:8080",
+    ],
+    [
+      "IPv6 address and encoded userinfo",
+      "HTTPS_PROXY=http://pi%40lot:fixture%2Fpassword@[2001:db8::1]:8080",
+    ],
+  ])("proxy credentials with %s", (_host, text) => {
+    it("rejects a password in an evidence key", () => {
+      expect(() => assertNoSecretMaterial({ [text]: true })).toThrow(
+        /secret material/i,
+      );
+    });
+
+    it("rejects a password in an evidence value", () => {
+      expect(() => assertNoSecretMaterial({ stdout: text })).toThrow(
+        /secret material/i,
+      );
+    });
+  });
+
+  it.each([
+    "HTTPS_PROXY=http://proxy:8080",
+    "HTTPS_PROXY=http://pilot@proxy:8080",
+    "HTTPS_PROXY=http://proxy:8080/path@fixture",
+    "HTTPS_PROXY=http://proxy:8080?name=pilot:fixture@value",
+    "HTTPS_PROXY=http://proxy:8080#pilot:fixture@value",
+  ])("allows proxy URLs without passwords: %s", (text) => {
+    expect(() =>
+      assertNoSecretMaterial({ [text]: true, stdout: text }),
+    ).not.toThrow();
+  });
+
   it.each([
     ["Set-Cookie", ["session=fixture"]],
     ["Proxy-Authorization", "Basic Zml4dHVyZQ=="],
