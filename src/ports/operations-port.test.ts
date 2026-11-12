@@ -645,7 +645,8 @@ function restoreRecoveryStore(persisted: {
         if ((recipient !== null) !== (failureNotice != null)) return invalid;
         if (
           failureNotice &&
-          (failureNotice.eventType !== "harvest_gate_failed" ||
+          ((!savedNotice && !failureNotice.clientMetadataKey.trim()) ||
+            failureNotice.eventType !== "harvest_gate_failed" ||
             failureNotice.ownerKind !== "harvest" ||
             failureNotice.ownerOperationId !== row.operationId ||
             failureNotice.projectId !== row.projectId ||
@@ -2625,6 +2626,8 @@ it.each([
       for (const failureNotice of [
         null,
         acceptedNotice,
+        { ...notice, clientMetadataKey: "" },
+        { ...notice, clientMetadataKey: " \t" },
         { ...notice, phaseId: "phase-02" },
         {
           ...notice,
