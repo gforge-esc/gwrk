@@ -1926,11 +1926,11 @@ describe("Migration 014", () => {
       }
 
       writeFileSync(file, sql);
-      const writeOrder = "015-ledger-write-order.sql";
-      copyFileSync(
-        new URL(writeOrder, source),
-        join(migrationsDir, writeOrder),
-      );
+      for (const next of readdirSync(source)) {
+        if (next.endsWith(".sql") && next > migration) {
+          copyFileSync(new URL(next, source), join(migrationsDir, next));
+        }
+      }
       const upgraded = openDatabase({ dbPath, migrationsDir });
       try {
         expect(upgraded.pragma("foreign_keys", { simple: true })).toBe(1);

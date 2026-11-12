@@ -27,6 +27,7 @@ const MIGRATIONS_DIR = path.join(
 
 const PROJECT_REGISTRY_MIGRATION =
   "014-project-registry-and-composite-keys.sql";
+const PLAN_WRITE_ORDER_MIGRATION = "016-plan-write-order.sql";
 
 let _db: Database.Database | undefined;
 
@@ -117,7 +118,13 @@ function runMigrations(db: Database.Database, migrationsDir: string): void {
       db.transaction(() => {
         if (db.prepare("SELECT 1 FROM _migrations WHERE name = ?").get(file))
           return;
-        db.exec(sql);
+        if (file === PLAN_WRITE_ORDER_MIGRATION) {
+          for (const table of ["plan_phases", "plan_proposals"]) {
+            safeAddColumn(db, table, "write_seq", "INTEGER NOT NULL DEFAULT 0");
+          }
+        } else {
+          db.exec(sql);
+        }
         db.prepare("INSERT INTO _migrations (name) VALUES (?)").run(file);
       }).immediate();
     }
