@@ -19,7 +19,7 @@ import { registerProject, startRun } from "./runs.js";
 
 const now = "2026-11-11T12:00:00.000Z";
 const migrations = fileURLToPath(new URL("./migrations/", import.meta.url));
-const durableMigration = "016-durable-dispatch-and-harvest.sql";
+const durableMigration = "017-durable-dispatch-and-harvest.sql";
 
 describe("durable operations migration", () => {
   let root: string;
@@ -34,7 +34,7 @@ describe("durable operations migration", () => {
     rmSync(root, { recursive: true, force: true });
   });
 
-  it("preserves the existing execution ledger when migration 016 runs", () => {
+  it("preserves the existing execution ledger when migration 017 runs", () => {
     const previousMigrations = join(root, "previous-migrations");
     mkdirSync(previousMigrations);
     cpSync(migrations, previousMigrations, {
@@ -81,6 +81,18 @@ describe("durable operations migration", () => {
           .pluck()
           .get(durableMigration),
       ).toBe(durableMigration);
+      expect(
+        upgraded
+          .prepare(
+            "SELECT name FROM _migrations WHERE name >= '015' ORDER BY id",
+          )
+          .pluck()
+          .all(),
+      ).toEqual([
+        "015-ledger-write-order.sql",
+        "016-plan-write-order.sql",
+        durableMigration,
+      ]);
       const tables = upgraded
         .prepare("SELECT name FROM sqlite_master WHERE type = 'table'")
         .pluck()
