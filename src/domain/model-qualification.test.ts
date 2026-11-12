@@ -719,6 +719,16 @@ describe("credential guard", () => {
       inspect("HTTPS_PROXY=http://pilot:fixture password@proxy:8080"),
     ],
     [
+      "an inspected assignment with a newline and a space in its password",
+      inspect(
+        "HTTPS_PROXY=http://pilot:fixture\npassword with space@proxy:8080",
+      ),
+    ],
+    [
+      "an inspected assignment with a multiline username and a spaced equals sign",
+      inspect("HTTPS_PROXY = http://fixture\naccess token@proxy:8080"),
+    ],
+    [
       "an inspected assignment with a token containing spaces",
       inspect("HTTPS_PROXY=http://fixture access token@proxy:8080"),
     ],
@@ -757,6 +767,7 @@ describe("credential guard", () => {
     inspect("HTTPS_PROXY = http://proxy:8080/path with space@fixture"),
     "discovery started\n  HTTPS_PROXY = http://proxy:8080/path with space@fixture",
     inspect("HTTPS_PROXY=http://proxy:8080/path with space@fixture"),
+    inspect("HTTPS_PROXY = http://proxy:8080/path\nwith space@fixture"),
   ])("allows proxy URLs without userinfo: %s", (text) => {
     expect(() =>
       assertNoSecretMaterial({ [text]: true, stdout: text }),

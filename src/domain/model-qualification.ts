@@ -433,12 +433,14 @@ function parsedUrlHasUserinfo(candidate: string): boolean | undefined {
   }
 }
 
+function proxyAssignmentHasUserinfo(text: string): boolean {
+  const pattern = /^[ \t]*(?:[a-z0-9]+_)*proxy[ \t]*=[ \t]*(.+)$/is;
+  const assignment = pattern.exec(text);
+  return assignment !== null && parsedUrlHasUserinfo(assignment[1]) === true;
+}
+
 function hasCredentialBearingUrl(text: string): boolean {
-  const proxyAssignments =
-    /^[ \t]*(?:[a-z0-9]+_)*proxy[ \t]*=[ \t]*([^\r\n]+)$/gim;
-  for (const [, url] of text.matchAll(proxyAssignments)) {
-    if (parsedUrlHasUserinfo(url)) return true;
-  }
+  if (text.split(/[\r\n]+/).some(proxyAssignmentHasUserinfo)) return true;
 
   const quoted = new RegExp(inspectedStringLiteral.source, "g");
   for (const [literal] of text.matchAll(quoted)) {
@@ -835,8 +837,8 @@ function scanEmbeddedJson(
       assertUniqueJsonKeys(token);
       openings.lastIndex = end;
     } else if (
-      isCredentialFieldName(decoded) &&
-      /^\s*=>/.test(text.slice(end))
+      (isCredentialFieldName(decoded) && /^\s*=>/.test(text.slice(end))) ||
+      (/[\r\n]/.test(decoded) && proxyAssignmentHasUserinfo(decoded))
     ) {
       throw new Error(secretMaterialMessage);
     }
