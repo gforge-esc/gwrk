@@ -182,7 +182,181 @@ function expectUsageFailure(result: ReturnType<typeof runCli>) {
   expect(result.stdout).toBe("");
 }
 
+const pathVariants = [
+  { alias: false, child: false },
+  { alias: false, child: true },
+  { alias: true, child: false },
+  { alias: true, child: true },
+];
+
 describe("installed ledger commands outside a checkout", () => {
+  it.each(
+    ["-wal", "-shm", "-journal"].flatMap((suffix) =>
+      pathVariants.map((variant) => ({ suffix, ...variant })),
+    ),
+  )(
+    "protects SQLite sidecar $suffix with alias=$alias and child=$child",
+    async ({ suffix, alias, child }) => {
+      const state = join(root, "state");
+      const stateAlias = join(root, "state-alias");
+      await mkdir(state);
+      await symlink(state, stateAlias);
+      const ledger = join(state, "gwrk.db");
+      seedLedger(ledger).close();
+      const sidecar = `${ledger}${suffix}`;
+      await expect(stat(sidecar)).rejects.toMatchObject({ code: "ENOENT" });
+
+      const result = runInstalledBackup(
+        ledger,
+        join(
+          alias ? stateAlias : state,
+          `gwrk.db${suffix}`,
+          ...(child ? ["copy"] : []),
+        ),
+      );
+      expect.soft(result.status, result.stderr).toBe(1);
+      expect
+        .soft(result.stderr)
+        .toContain(`reserved SQLite sidecar ${sidecar}`);
+      await expect(stat(sidecar)).rejects.toMatchObject({ code: "ENOENT" });
+
+      const live = new Database(ledger, { fileMustExist: true });
+      try {
+        live.prepare("UPDATE runs SET exit_code = 7 WHERE id = 42").run();
+        expect(
+          live
+            .prepare("SELECT exit_code FROM runs WHERE id = 42")
+            .pluck()
+            .get(),
+        ).toBe(7);
+      } finally {
+        live.close();
+      }
+    },
+  );
+
+  it.each(pathVariants)(
+    "protects the server lock with alias=$alias and child=$child",
+    async ({ alias, child }) => {
+      const state = join(root, "state");
+      const runtime = join(root, "runtime");
+      const runtimeAlias = join(root, "runtime-alias");
+      await mkdir(state);
+      await mkdir(runtime);
+      await symlink(runtime, runtimeAlias);
+      const ledger = join(state, "gwrk.db");
+      seedLedger(ledger).close();
+      const lock = join(runtime, "server.lock");
+
+      const result = runInstalledBackup(
+        ledger,
+        join(
+          alias ? runtimeAlias : runtime,
+          "server.lock",
+          ...(child ? ["copy"] : []),
+        ),
+      );
+      expect.soft(result.status, result.stderr).toBe(1);
+      expect
+        .soft(result.stderr)
+        .toContain(`reserved runtime lock path ${lock}`);
+      await expect(stat(lock)).rejects.toMatchObject({ code: "ENOENT" });
+    },
+  );
+
+  it.each(
+    ["cli", "adapter"].flatMap((entry) =>
+      pathVariants.map((variant) => ({ entry, ...variant })),
+    ),
+  )(
+    "rejects a restore target in a reserved marker through $entry with alias=$alias and child=$child",
+    async ({ entry, alias, child }) => {
+      const state = join(root, "state");
+      const stateAlias = join(root, "state-alias");
+      const runtime = join(root, "runtime");
+      await mkdir(state);
+      await symlink(state, stateAlias);
+      const ledger = join(state, "gwrk.db");
+      seedLedger(ledger).close();
+      const backup = join(root, "backup");
+      const seeded = runInstalledBackup(ledger, backup);
+      expect(seeded.status, seeded.stderr).toBe(0);
+      const marker = join(state, ".restore-pending");
+      const target = join(
+        alias ? stateAlias : state,
+        ".restore-pending",
+        ...(child ? ["clean"] : []),
+      );
+      const diagnostic = `reserved restore path ${marker}`;
+
+      if (entry === "cli") {
+        // The hosted CLI checks the platform before validating restore paths.
+        const platform =
+          process.platform === "linux"
+            ? []
+            : [
+                "--import",
+                'data:text/javascript,Object.defineProperty(process,"platform",{value:"linux"})',
+              ];
+        const cli = fileURLToPath(
+          new URL("../../dist/cli.js", import.meta.url),
+        );
+        const result = spawnSync(
+          process.execPath,
+          [
+            ...platform,
+            cli,
+            "db",
+            "restore",
+            "--from",
+            backup,
+            "--state-dir",
+            target,
+            "--format",
+            "json",
+          ],
+          {
+            cwd: root,
+            env: {
+              ...process.env,
+              GWRK_HOME: state,
+              GWRK_DB_PATH: ledger,
+              GWRK_RUNTIME_DIR: runtime,
+            },
+            encoding: "utf8",
+            timeout: 10_000,
+          },
+        );
+        expect.soft(result.status, result.stderr).toBe(1);
+        expect.soft(result.stderr).toContain(diagnostic);
+      } else {
+        await expect
+          .soft(
+            restoreLedgerBackup({
+              source: backup,
+              stateDirectory: target,
+              force: false,
+            }),
+          )
+          .rejects.toThrow(diagnostic);
+      }
+      await expect
+        .soft(stat(join(target, "gwrk.db")))
+        .rejects.toMatchObject({ code: "ENOENT" });
+      await expect
+        .soft(stat(runtime))
+        .rejects.toMatchObject({ code: "ENOENT" });
+      await expect(stat(marker)).rejects.toMatchObject({ code: "ENOENT" });
+
+      const after = join(root, "after");
+      const clean = runInstalledBackup(ledger, after);
+      expect(clean.status, clean.stderr).toBe(0);
+      expect(
+        (await verifyLedgerBackup(after)).manifest.summary.completedRunIds,
+      ).toEqual([42]);
+    },
+  );
+
   it.each([
     { alias: false, child: false },
     { alias: false, child: true },

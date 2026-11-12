@@ -44,6 +44,7 @@ import { sha256 } from "../release/inventory.js";
 import { readRepositoryEvidence } from "../release/repository-evidence.js";
 
 const DB_FILE = "gwrk.db";
+const SQLITE_SIDECAR_SUFFIXES = ["-wal", "-shm", "-journal"];
 const METADATA_FILE = "repo-metadata.json";
 const MANIFEST_FILE = "backup-manifest.json";
 const DEVICE_FILE = "device.json";
@@ -208,13 +209,23 @@ async function withMaintenanceLock<T>(state: string, run: () => Promise<T>) {
 async function captureLedgerBackup(input: LedgerBackupRequest, dbPath: string) {
   const suppliedPath = resolve(input.destination);
   const destination = await canonicalPath(suppliedPath);
-  rejectBackupRestoreMarker(destination);
-  rejectBackupRestoreMarker(suppliedPath);
-  if (input.devicePath) {
-    const configuredDevice = resolve(input.devicePath);
-    rejectPathAtOrBelow(suppliedPath, configuredDevice, "device path");
-    const canonicalDevice = await canonicalPath(configuredDevice);
-    rejectPathAtOrBelow(destination, canonicalDevice, "device path");
+  for (const path of [destination, suppliedPath]) {
+    rejectRestoreMarkerComponent(path);
+    for (const ledger of [dbPath, resolve(input.dbPath)]) {
+      for (const suffix of SQLITE_SIDECAR_SUFFIXES) {
+        rejectPathAtOrBelow(path, `${ledger}${suffix}`, "SQLite sidecar");
+      }
+    }
+  }
+  const configuredPaths = [
+    [input.devicePath, "device path"],
+    [input.runtimeLockPath, "runtime lock path"],
+  ] as const;
+  for (const [configuredPath, label] of configuredPaths) {
+    if (!configuredPath) continue;
+    const absolute = resolve(configuredPath);
+    rejectPathAtOrBelow(suppliedPath, absolute, label);
+    rejectPathAtOrBelow(destination, await canonicalPath(absolute), label);
   }
   const parent = dirname(destination);
   await mkdir(parent, { recursive: true, mode: 0o700 });
@@ -424,7 +435,7 @@ async function canonicalPath(path: string): Promise<string> {
   }
 }
 
-function rejectBackupRestoreMarker(path: string): void {
+function rejectRestoreMarkerComponent(path: string): void {
   const parts = path.split(sep);
   const marker = parts.indexOf(PENDING_LEDGER_RESTORE);
   if (marker !== -1) {
@@ -459,10 +470,21 @@ function rejectPathAtOrBelow(
   }
 }
 
+export const resolveRestoreTarget: LedgerBackupPort["resolveRestoreTarget"] =
+  async (stateDirectory) => {
+    const suppliedPath = resolve(stateDirectory);
+    const state = await canonicalPath(suppliedPath);
+    rejectRestoreMarkerComponent(state);
+    rejectRestoreMarkerComponent(suppliedPath);
+    return { stateDirectory: state, dbPath: join(state, DB_FILE) };
+  };
+
 export const restoreLedgerBackup: LedgerBackupPort["restoreBackup"] = async (
   input,
 ) => {
-  const state = await canonicalPath(resolve(input.stateDirectory));
+  const { stateDirectory: state } = await resolveRestoreTarget(
+    input.stateDirectory,
+  );
   const suppliedPath = resolve(input.source);
   rejectReservedRestorePath(suppliedPath, state);
   const sourceDirectory = await canonicalPath(suppliedPath);
@@ -489,9 +511,7 @@ async function installLedgerBackup(
   };
   const targets = [
     DB_FILE,
-    `${DB_FILE}-wal`,
-    `${DB_FILE}-shm`,
-    `${DB_FILE}-journal`,
+    ...SQLITE_SIDECAR_SUFFIXES.map((suffix) => `${DB_FILE}${suffix}`),
     DEVICE_FILE,
   ];
   if (

@@ -39,6 +39,7 @@ export interface LedgerBackupRequest {
   readonly dbPath: string;
   readonly destination: string;
   readonly devicePath?: string;
+  readonly runtimeLockPath?: string;
   readonly createdAt: string;
   readonly gwrkVersion: string;
   collectDevice(): LedgerBackupMetadata["device"];
@@ -61,5 +62,8 @@ export interface LedgerRestoreRequest {
 export interface LedgerBackupPort {
   createBackup(input: LedgerBackupRequest): Promise<LedgerBackupManifest>;
   verifyBackup(directory: string): Promise<VerifiedLedgerBackup>;
+  resolveRestoreTarget(
+    stateDirectory: string,
+  ): Promise<{ stateDirectory: string; dbPath: string }>;
   restoreBackup(input: LedgerRestoreRequest): Promise<VerifiedLedgerBackup>;
 }

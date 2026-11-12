@@ -43,12 +43,16 @@ function readHolderPid(fd: number): number | undefined {
   return undefined;
 }
 
+export function instanceLockPath(runtimeDir: string): string {
+  return join(runtimeDir, "server.lock");
+}
+
 export const acquireInstanceLock: InstanceLockPort["acquireInstanceLock"] = (
   runtimeDir,
   pid,
 ) => {
   mkdirSync(runtimeDir, { recursive: true, mode: 0o750 });
-  return acquireExclusiveLock(join(runtimeDir, "server.lock"), pid);
+  return acquireExclusiveLock(instanceLockPath(runtimeDir), pid);
 };
 
 export const acquireLedgerLock: InstanceLockPort["acquireLedgerLock"] = (

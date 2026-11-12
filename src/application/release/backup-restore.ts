@@ -14,18 +14,21 @@ export async function restoreOfflineLedger(
   instances: InstanceLockPort,
   request: LedgerRestoreRequest & {
     runtimeDirectory: string;
-    dbPath: string;
     pid: number;
   },
 ): Promise<VerifiedLedgerBackup> {
+  const target = await backup.resolveRestoreTarget(request.stateDirectory);
   const lock = instances.acquireInstanceLock(
     request.runtimeDirectory,
     request.pid,
   );
   try {
-    const ledger = instances.acquireLedgerLock(request.dbPath, request.pid);
+    const ledger = instances.acquireLedgerLock(target.dbPath, request.pid);
     try {
-      return await backup.restoreBackup(request);
+      return await backup.restoreBackup({
+        ...request,
+        stateDirectory: target.stateDirectory,
+      });
     } finally {
       ledger.release();
     }

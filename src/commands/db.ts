@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { basename, dirname, join, resolve } from "node:path";
+import { basename, dirname, resolve } from "node:path";
 import { Command, Option } from "commander";
 import { gwrkRuntimeDir, usesHostedRuntime } from "../adapters/config/paths.js";
 import { verifyInstalledRelease } from "../adapters/release/inventory.js";
@@ -10,10 +10,12 @@ import { readRepositoryEvidence } from "../adapters/release/repository-evidence.
 import {
   acquireInstanceLock,
   acquireLedgerLock,
+  instanceLockPath,
 } from "../adapters/server/instance-lock.js";
 import {
   createLedgerBackup,
   readAppliedMigrations,
+  resolveRestoreTarget,
   restoreLedgerBackup,
   verifyLedgerAgainstBackup,
   verifyLedgerBackup,
@@ -67,6 +69,7 @@ export const recordCommand = new Command("record")
 const backupPort = {
   createBackup: createLedgerBackup,
   verifyBackup: verifyLedgerBackup,
+  resolveRestoreTarget,
   restoreBackup: restoreLedgerBackup,
 };
 
@@ -99,6 +102,7 @@ const backupCommand = new Command("backup")
             dbPath: getDbPath(),
             destination,
             devicePath: devicePath(),
+            runtimeLockPath: instanceLockPath(gwrkRuntimeDir()),
             createdAt: new Date().toISOString(),
             gwrkVersion: command.parent?.parent?.version() ?? "unknown",
             collectDevice: loadDeviceStrict,
@@ -180,7 +184,6 @@ const restoreCommand = new Command("restore")
             source: resolve(opts.from),
             stateDirectory,
             runtimeDirectory,
-            dbPath: join(stateDirectory, "gwrk.db"),
             force: opts.force,
             pid: process.pid,
           },
