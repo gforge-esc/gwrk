@@ -733,6 +733,25 @@ describe("credential guard", () => {
     },
   );
 
+  it("recognizes inspected credential map keys with non-JSON metadata", () => {
+    const control = "\u001b[31m";
+    const credential = inspect({
+      headers: {
+        [`coo${control}kie`]: "session=fixture-session",
+        source: undefined,
+      },
+    });
+    const allowed = inspect({
+      headers: { [`content-${control}type`]: "text/plain", source: undefined },
+    });
+    expect(() =>
+      assertNoSecretMaterial({ sanitizedOutput: credential }),
+    ).toThrow(/secret material/i);
+    expect(() =>
+      assertNoSecretMaterial({ sanitizedOutput: allowed }),
+    ).not.toThrow();
+  });
+
   it("allows inspected Content-Type header records with metadata", () => {
     const sanitizedOutput = inspect({
       headers: [

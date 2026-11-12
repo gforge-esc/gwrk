@@ -655,7 +655,8 @@ function scanInspectedArray(
 
 function isInspectedCredentialHeader(record: string): boolean {
   const tokens = /"(?:[^"\\]|\\[\s\S])*"|[{}[\](),]/g;
-  const property = /\s*"(name|key|value)"\s*:\s*("(?:[^"\\]|\\[\s\S])*")?/y;
+  const property =
+    /\s*("(?:[^"\\]|\\[\s\S])*")\s*:\s*("(?:[^"\\]|\\[\s\S])*")?/y;
   const header: { name?: string; key?: string; value?: undefined } = {};
   let depth = 0;
   for (const token of record.matchAll(tokens)) {
@@ -667,7 +668,9 @@ function isInspectedCredentialHeader(record: string): boolean {
     property.lastIndex = token.index + 1;
     const match = property.exec(record);
     if (!match) continue;
-    const [, field, literal] = match;
+    const [, key, literal] = match;
+    const field = JSON.parse(key) as string;
+    if (isCredentialHeaderName(field)) return true;
     if (field === "value") {
       header.value = undefined;
     } else if ((field === "name" || field === "key") && literal) {
