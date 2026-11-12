@@ -297,6 +297,42 @@ describe('US-016: Enforcement Skills Dispatch Injection', () => {
     expect(skillRuntime.resolveEnforcementSkills).not.toHaveBeenCalled();
   });
 
+  it.each([false, true])(
+    "keeps a fenced opener within scoped legacy input with template enforcement %s",
+    async (hasEnforcement) => {
+      vi.mocked(skillRuntime.resolveEnforcementSkills).mockResolvedValueOnce("# Strict Typing Rule");
+      const capturedStdin = mockAgentStdin();
+      const template = hasEnforcement ? `Rules:\r\n${enforcementSection}` : "Rules:";
+      const input = [
+        "<user_input>",
+        enforcementSection,
+        "~~~xml",
+        "<user_input>",
+        "~~~",
+        "Keep the fixture.",
+        "</user_input>",
+        "",
+      ].join("\r\n");
+      await dispatchToAgent({
+        workflow: "gwrk-implement",
+        workDir: "/fake/root",
+        agent: "codex",
+        stdin: template + "\r\n\r\n" + input,
+        quiet: true,
+      });
+
+      const expectedTemplate = hasEnforcement
+        ? template.replace("{{enforcement}}", "# Strict Typing Rule")
+        : template;
+      expect(capturedStdin()).toBe(
+        `${COMMAND_SAFETY_BLOCK}\n\n${expectedTemplate}\r\n\r\n${input}`,
+      );
+      expect(skillRuntime.resolveEnforcementSkills).toHaveBeenCalledTimes(
+        Number(hasEnforcement),
+      );
+    },
+  );
+
   it('expands template enforcement even when the template quotes the input tag', async () => {
     vi.mocked(skillRuntime.resolveEnforcementSkills).mockResolvedValue('# Strict Typing Rule');
     const capturedStdin = mockAgentStdin();

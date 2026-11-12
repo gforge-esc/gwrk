@@ -532,7 +532,12 @@ function maskMarkdownCode(template: string): string {
       fence = undefined;
     }
   }
-  return masked + (fence ? mask(template.slice(fence.start)) : maskSpans(template.slice(textStart)));
+  return (
+    masked +
+    (fence
+      ? mask(template.slice(fence.start))
+      : maskSpans(template.slice(textStart)))
+  );
 }
 
 function findEnforcementSlot(
@@ -568,7 +573,9 @@ function findEnforcementSlot(
 }
 
 function findLegacyInputStart(stdin: string): number | undefined {
-  const tags = [...stdin.matchAll(/^<(\/?)user_input>(?=\r?\n|$)/gm)];
+  const tags = [
+    ...maskMarkdownCode(stdin).matchAll(/^<(\/?)user_input>(?=\r?\n|$)/gm),
+  ];
   const last = tags.at(-1);
   if (
     last?.index === undefined ||
