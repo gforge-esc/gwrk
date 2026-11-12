@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import path from "node:path";
+import { logCliError, warnCli } from "../adapters/cli/output-scope.js";
 import { loadConfig } from "../utils/config.js";
 import type { ContextProvider, ContextResult } from "./context-provider.js";
 import { PluginLoader } from "./loader.js";
@@ -78,7 +79,7 @@ export async function discoverExtensions(
           });
         }
       } catch (err) {
-        console.error(
+        logCliError(
           `Failed to load adapter for extension '${pluginName}':`,
           err,
         );
@@ -89,7 +90,7 @@ export async function discoverExtensions(
         continue;
       }
       // TC-018: Silent Fail for missing or invalid extensions
-      console.warn(`Extension '${name}' enabled in config but not found.`);
+      warnCli(`Extension '${name}' enabled in config but not found.`);
     }
   }
 
@@ -116,7 +117,7 @@ export async function resolveExtensionContext(
       allResults.push(...results);
     } catch (err) {
       // TC-016: Extension Isolation
-      console.error(`Extension '${name}' failed to resolve context:`, err);
+      logCliError(`Extension '${name}' failed to resolve context:`, err);
     }
   }
 

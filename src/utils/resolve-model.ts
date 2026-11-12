@@ -2,11 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import {
-  type ModelEntry,
-  ModelSelector,
-  loadRegistry,
-} from "../domain/agent-config.js";
+import { tryLoadRegistry } from "../adapters/agents/registry-loader.js";
+import { ModelSelector } from "../domain/agent-config.js";
 import { classifyTask } from "../domain/types.js";
 
 /**
@@ -30,8 +27,9 @@ export function resolveModelForTask(
   projectRoot: string = process.cwd(),
 ): string | undefined {
   try {
-    const registry = loadRegistry(projectRoot);
-    const backendConfig = registry.backends[backendName];
+    const result = tryLoadRegistry(projectRoot);
+    if (!result.ok) return undefined;
+    const backendConfig = result.value.backends[backendName];
 
     if (!backendConfig || backendConfig.models.length === 0) {
       return undefined;

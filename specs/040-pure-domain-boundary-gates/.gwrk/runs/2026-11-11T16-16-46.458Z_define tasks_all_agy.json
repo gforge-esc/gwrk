@@ -1,0 +1,19 @@
+{
+  "runId": "2026-11-11T16:16:46.458Z_define_all",
+  "feature": "040-pure-domain-boundary-gates",
+  "phase": "all",
+  "command": "define tasks",
+  "agent": "agy",
+  "model": "unknown",
+  "startedAt": "2026-11-11T16:16:46.458Z",
+  "finishedAt": "2026-11-11T16:16:46.707Z",
+  "durationS": 0,
+  "exitCode": 0,
+  "attempt": 1,
+  "filesChanged": 2,
+  "linesAdded": 77,
+  "linesDeleted": 15,
+  "gitCommit": "54bafd0a192246dec08ce418bf81a9190df4fb7f",
+  "gitBranch": "codex/domain-boundary-red",
+  "digest": []
+}

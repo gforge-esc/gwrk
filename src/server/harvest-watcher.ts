@@ -3,6 +3,11 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import type { App } from "@slack/bolt";
+import {
+  logCliError,
+  logCliOutput,
+  warnCli,
+} from "../adapters/cli/output-scope.js";
 import { getCompressionRecord } from "../db/compression.js";
 import { harvestFeature } from "../engine/harvest.js";
 import type { HarvestRecord } from "../engine/types.js";
@@ -64,7 +69,7 @@ export class HarvestWatcher {
 
       if (result.exitCode !== 0) {
         // Log at warn/debug level; don't throw to prevent daemon crash
-        console.warn(
+        warnCli(
           `HarvestWatcher: Failed to query GitHub CLI (exit code ${result.exitCode}): ${result.stderr.trim()}`,
         );
         return;
@@ -109,7 +114,7 @@ export class HarvestWatcher {
           ? pr.mergedAt || new Date().toISOString()
           : pr.closedAt || new Date().toISOString();
 
-        console.log(
+        logCliOutput(
           `HarvestWatcher: Found ${prStatus} PR #${pr.number} for ${featureId} (${phaseId || "all phases"}). Starting harvest...`,
         );
 
@@ -128,15 +133,15 @@ export class HarvestWatcher {
         try {
           syncTrunkForHarvest(this.projectRoot, baseBranch);
           await harvestFeature(this.projectRoot, record);
-          console.log(
+          logCliOutput(
             `HarvestWatcher: Completed harvest for ${featureId} (${phaseId || "all phases"})`,
           );
         } catch (err) {
-          console.error(`HarvestWatcher: Failed to harvest ${featureId}:`, err);
+          logCliError(`HarvestWatcher: Failed to harvest ${featureId}:`, err);
         }
       }
     } catch (err) {
-      console.error("HarvestWatcher: Error in runCheck:", err);
+      logCliError("HarvestWatcher: Error in runCheck:", err);
     }
   }
 }

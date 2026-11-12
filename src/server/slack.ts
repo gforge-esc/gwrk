@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { App } from "@slack/bolt";
+import { logCliOutput, warnCli } from "../adapters/cli/output-scope.js";
 import type { GwrkConfig } from "../utils/config.js";
 import { loadSlackConfig } from "../utils/slack-client.js";
 import type { DispatchQueue } from "./dispatch.js";
@@ -62,7 +63,7 @@ export async function startSlackApp(deps: {
       const authResult = await slackApp.client.auth.test();
       userId = (authResult.user_id as string) || "U_UNKNOWN";
     } catch (err) {
-      console.warn("Failed to resolve Slack user ID from auth.test():", err);
+      warnCli("Failed to resolve Slack user ID from auth.test():", err);
     }
 
     // Resolve channelId from project config
@@ -113,7 +114,7 @@ export async function startSlackApp(deps: {
     await presenceManager.init(deps.config);
 
     await slackApp.start();
-    console.log("⚡️ Slack Bolt app is running!");
+    logCliOutput("⚡️ Slack Bolt app is running!");
   }
 }
 
@@ -122,7 +123,7 @@ export async function stopSlackApp() {
     presenceManager.stop();
     await app.stop();
     app = null;
-    console.log("🛑 Slack Bolt app stopped.");
+    logCliOutput("🛑 Slack Bolt app stopped.");
   }
 }
 

@@ -4,6 +4,7 @@
 
 import fs from "node:fs";
 import yaml from "yaml";
+import { logCliError } from "../adapters/cli/output-scope.js";
 
 interface ParsedPlan {
   features: PlanFeaturePayload[];
@@ -272,7 +273,7 @@ function parseYamlSeed(content: string): ParsedPlan {
               }
             }
           } catch (e) {
-            console.error("Failed to parse YAML block", e);
+            logCliError("Failed to parse YAML block", e);
           }
         }
       }
@@ -297,7 +298,7 @@ function parseYamlSeed(content: string): ParsedPlan {
             }
           }
         } catch (e) {
-          console.error("Failed to parse Edges YAML block", e);
+          logCliError("Failed to parse Edges YAML block", e);
         }
       }
     }

@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import { logCliOutput } from "../adapters/cli/output-scope.js";
 import type { GwrkConfig } from "../utils/config.js";
 import type { DispatchQueue } from "./dispatch.js";
 import type { GitManager } from "./git-manager.js";
@@ -144,7 +145,7 @@ export async function startTelegramBot(deps: {
   };
 
   pollTimeout = setTimeout(poll, 100);
-  console.log("✈️ Telegram Bot control plane is running!");
+  logCliOutput("✈️ Telegram Bot control plane is running!");
 }
 
 export async function stopTelegramBot(): Promise<void> {

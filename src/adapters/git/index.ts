@@ -10,7 +10,12 @@ import {
   syncBranch,
 } from "../../utils/git.js";
 
-export function createGitVcsAdapter(): VcsPort {
+export { discoverGitIdentityFacts, resolveProjectId } from "./project-id.js";
+
+export function createGitVcsAdapter(): Pick<
+  VcsPort,
+  "getCurrentBranch" | "isDirty" | "createBranch" | "syncBranch"
+> {
   return {
     getCurrentBranch,
     isDirty,

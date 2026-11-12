@@ -7,6 +7,7 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { stringify } from "yaml";
+import { logCliError, logCliOutput } from "../adapters/cli/output-scope.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -61,7 +62,7 @@ export async function seedSkills(options: SeedOptions = {}): Promise<void> {
       }
     }
   } catch (e) {
-    console.error("Failed to seed skills:", e);
+    logCliError("Failed to seed skills:", e);
   }
 }
 
@@ -102,7 +103,7 @@ ${description}
 `;
 
   if (options.dryRun) {
-    console.log(
+    logCliOutput(
       `[DRY RUN] Would seed skill '${name}' (${category}) to ${skillDestDir}`,
     );
     return;
@@ -124,8 +125,8 @@ ${description}
       stringify(manifest),
     );
     await fs.writeFile(path.join(skillDestDir, "SKILL.md"), skillMarkdown);
-    console.log(`Seeded skill '${name}' (${category}).`);
+    logCliOutput(`Seeded skill '${name}' (${category}).`);
   } catch (e) {
-    console.error(`Failed to seed skill '${name}':`, e);
+    logCliError(`Failed to seed skill '${name}':`, e);
   }
 }

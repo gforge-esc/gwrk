@@ -4,6 +4,29 @@
 
 import type Database from "better-sqlite3";
 import { getDb } from "./index.js";
+import {
+  canonicalProjectId,
+  firstPerKey,
+  nextLedgerWriteSequence,
+  planFeatureWriteOrder,
+  projectScope,
+} from "./project-registry.js";
+
+const featureColumns =
+  "id, name, status, sp_total, project_id, created_at, updated_at";
+const phaseColumns =
+  "id, feature_id, name, status, health, sp_estimate, sp_actual, duration_ms, completed_at, evidence, seq, created_at, updated_at, project_id";
+const proposalColumns =
+  "id, target_phase_id, proposal_type, detail, source, status, created_at, resolved_at, project_id, updated_at";
+
+const planChildWriteOrder = `
+  write_seq DESC,
+  CASE WHEN write_seq = 0 THEN
+    COALESCE(julianday(updated_at), julianday(created_at))
+  END DESC,
+  project_id = ? DESC,
+  project_id
+`;
 
 export interface PlanFeature {
   id: string;
@@ -53,7 +76,7 @@ export interface PlanProposal {
 }
 
 /**
- * Insert or replace a feature.
+ * Upsert a feature without cascading to its phases.
  */
 export function insertFeature(
   feature: PlanFeature,
@@ -62,11 +85,29 @@ export function insertFeature(
 ): void {
   const conn = db ?? getDb();
   conn
-    .prepare(
-      `INSERT OR REPLACE INTO plan_features (id, name, status, sp_total, project_id, updated_at)
-       VALUES (@id, @name, @status, @sp_total, @project_id, datetime('now'))`,
-    )
-    .run({ ...feature, project_id: projectId });
+    .transaction(() => {
+      const owner =
+        getFeature(feature.id, projectId, conn)?.project_id ??
+        canonicalProjectId(conn, projectId);
+      conn
+        .prepare(
+          "INSERT INTO projects (id, name, path) VALUES (?, ?, '') ON CONFLICT(id) DO NOTHING",
+        )
+        .run(owner, owner);
+      conn
+        .prepare(
+          `INSERT INTO plan_features (id, name, status, sp_total, project_id, updated_at, write_seq)
+         VALUES (@id, @name, @status, @sp_total, @project_id, datetime('now'), @write_seq)
+         ON CONFLICT(project_id, id) DO UPDATE SET name = excluded.name,
+           status = excluded.status, sp_total = excluded.sp_total, updated_at = excluded.updated_at, write_seq = excluded.write_seq, synthetic_parent = 0`,
+        )
+        .run({
+          ...feature,
+          project_id: owner,
+          write_seq: nextLedgerWriteSequence(conn),
+        });
+    })
+    .immediate();
 }
 
 /**
@@ -78,9 +119,11 @@ export function getFeature(
   db?: Database.Database,
 ): PlanFeature | undefined {
   const conn = db ?? getDb();
+  const { canonical, ids, placeholders } = projectScope(conn, projectId);
   return conn
-    .prepare("SELECT * FROM plan_features WHERE id = ? AND project_id = ?")
-    .get(id, projectId) as PlanFeature | undefined;
+    .prepare(`SELECT ${featureColumns} FROM plan_features WHERE id = ? AND project_id IN (${placeholders})
+      ORDER BY ${planFeatureWriteOrder} LIMIT 1`)
+    .get(id, ...ids, canonical) as PlanFeature | undefined;
 }
 
 /**
@@ -91,15 +134,18 @@ export function listFeatures(
   db?: Database.Database,
 ): PlanFeature[] {
   const conn = db ?? getDb();
-  return conn
-    .prepare("SELECT * FROM plan_features WHERE project_id = ? ORDER BY id ASC")
-    .all(projectId) as PlanFeature[];
+  const { canonical, ids, placeholders } = projectScope(conn, projectId);
+  const rows = conn
+    .prepare(`SELECT ${featureColumns} FROM plan_features WHERE project_id IN (${placeholders})
+      ORDER BY ${planFeatureWriteOrder}`)
+    .all(...ids, canonical) as PlanFeature[];
+  return firstPerKey(rows, (row) => row.id).sort((a, b) =>
+    a.id < b.id ? -1 : Number(a.id > b.id),
+  );
 }
 
 /**
  * Update a feature's status without triggering ON DELETE CASCADE.
- * IMPORTANT: Do NOT use insertFeature() to update status — INSERT OR REPLACE
- * deletes the old row first, cascading to plan_phases.
  */
 export function updateFeatureStatus(
   id: string,
@@ -107,12 +153,7 @@ export function updateFeatureStatus(
   projectId: string,
   db?: Database.Database,
 ): void {
-  const conn = db ?? getDb();
-  conn
-    .prepare(
-      "UPDATE plan_features SET status = ?, updated_at = datetime('now') WHERE id = ? AND project_id = ?",
-    )
-    .run(status, id, projectId);
+  updateFeatureField(id, "status", status, projectId, db ?? getDb());
 }
 
 /**
@@ -124,12 +165,7 @@ export function updateFeatureName(
   projectId: string,
   db?: Database.Database,
 ): void {
-  const conn = db ?? getDb();
-  conn
-    .prepare(
-      "UPDATE plan_features SET name = ?, updated_at = datetime('now') WHERE id = ? AND project_id = ?",
-    )
-    .run(name, id, projectId);
+  updateFeatureField(id, "name", name, projectId, db ?? getDb());
 }
 
 /**
@@ -141,16 +177,32 @@ export function updateFeatureSpTotal(
   projectId: string,
   db?: Database.Database,
 ): void {
-  const conn = db ?? getDb();
+  updateFeatureField(id, "sp_total", spTotal, projectId, db ?? getDb());
+}
+
+function updateFeatureField(
+  id: string,
+  field: "name" | "status" | "sp_total",
+  value: string | number,
+  projectId: string,
+  conn: Database.Database,
+): void {
   conn
-    .prepare(
-      "UPDATE plan_features SET sp_total = ?, updated_at = datetime('now') WHERE id = ? AND project_id = ?",
-    )
-    .run(spTotal, id, projectId);
+    .transaction(() => {
+      const owner = getFeature(id, projectId, conn)?.project_id;
+      if (!owner) return;
+      conn
+        .prepare(`
+      UPDATE plan_features SET ${field} = ?, updated_at = datetime('now'), write_seq = ?, synthetic_parent = 0
+      WHERE id = ? AND project_id = ?
+    `)
+        .run(value, nextLedgerWriteSequence(conn), id, owner);
+    })
+    .immediate();
 }
 
 /**
- * Insert or replace a phase.
+ * Upsert a phase without cascading to its proposals.
  */
 export function insertPhase(
   phase: PlanPhase,
@@ -159,24 +211,54 @@ export function insertPhase(
 ): void {
   const conn = db ?? getDb();
   conn
-    .prepare(
-      `INSERT OR REPLACE INTO plan_phases (
-         id, feature_id, name, status, health, sp_estimate,
-         sp_actual, duration_ms, completed_at, evidence, seq, project_id, updated_at
-       )
-       VALUES (
-         @id, @feature_id, @name, @status, @health, @sp_estimate,
-         @sp_actual, @duration_ms, @completed_at, @evidence, @seq, @project_id, datetime('now')
-       )`,
-    )
-    .run({
-      ...phase,
-      project_id: projectId,
-      sp_actual: phase.sp_actual ?? null,
-      duration_ms: phase.duration_ms ?? null,
-      completed_at: phase.completed_at ?? null,
-      evidence: phase.evidence ?? null,
-    });
+    .transaction(() => {
+      const existing = getPhase(phase.id, projectId, conn);
+      const parent = getFeature(phase.feature_id, projectId, conn);
+      const owner =
+        existing?.project_id ??
+        parent?.project_id ??
+        canonicalProjectId(conn, projectId);
+
+      if (parent?.project_id && parent.project_id !== owner) {
+        // Keep the phase and its proposals under their current foreign key owner.
+        conn
+          .prepare(`
+        INSERT INTO plan_features (id, name, status, sp_total, created_at, updated_at, write_seq, synthetic_parent, project_id)
+        SELECT id, name, status, sp_total, created_at, updated_at, write_seq, synthetic_parent, ?
+        FROM plan_features WHERE id = ? AND project_id = ?
+        ON CONFLICT(project_id, id) DO NOTHING
+      `)
+          .run(owner, phase.feature_id, parent.project_id);
+      }
+
+      conn
+        .prepare(
+          `INSERT INTO plan_phases (
+           id, feature_id, name, status, health, sp_estimate,
+           sp_actual, duration_ms, completed_at, evidence, seq, project_id, updated_at, write_seq
+         )
+         VALUES (
+           @id, @feature_id, @name, @status, @health, @sp_estimate,
+           @sp_actual, @duration_ms, @completed_at, @evidence, @seq, @project_id, datetime('now'), @write_seq
+         )
+         ON CONFLICT(project_id, id) DO UPDATE SET feature_id = excluded.feature_id,
+           name = excluded.name, status = excluded.status, health = excluded.health,
+           sp_estimate = excluded.sp_estimate, sp_actual = excluded.sp_actual,
+           duration_ms = excluded.duration_ms, completed_at = excluded.completed_at,
+           evidence = excluded.evidence, seq = excluded.seq, updated_at = excluded.updated_at,
+           write_seq = excluded.write_seq, synthetic_parent = 0`,
+        )
+        .run({
+          ...phase,
+          project_id: owner,
+          write_seq: nextLedgerWriteSequence(conn),
+          sp_actual: phase.sp_actual ?? null,
+          duration_ms: phase.duration_ms ?? null,
+          completed_at: phase.completed_at ?? null,
+          evidence: phase.evidence ?? null,
+        });
+    })
+    .immediate();
 }
 
 /**
@@ -188,9 +270,11 @@ export function getPhase(
   db?: Database.Database,
 ): PlanPhase | undefined {
   const conn = db ?? getDb();
+  const { canonical, ids, placeholders } = projectScope(conn, projectId);
   return conn
-    .prepare("SELECT * FROM plan_phases WHERE id = ? AND project_id = ?")
-    .get(id, projectId) as PlanPhase | undefined;
+    .prepare(`SELECT ${phaseColumns} FROM plan_phases WHERE id = ? AND project_id IN (${placeholders})
+      ORDER BY synthetic_parent ASC, ${planChildWriteOrder} LIMIT 1`)
+    .get(id, ...ids, canonical) as PlanPhase | undefined;
 }
 
 /**
@@ -202,11 +286,20 @@ export function listPhases(
   db?: Database.Database,
 ): PlanPhase[] {
   const conn = db ?? getDb();
+  const { canonical, ids, placeholders } = projectScope(conn, projectId);
   return conn
-    .prepare(
-      "SELECT * FROM plan_phases WHERE feature_id = ? AND project_id = ? ORDER BY seq ASC",
-    )
-    .all(featureId, projectId) as PlanPhase[];
+    .prepare(`
+      WITH ranked AS (
+        SELECT rowid, feature_id, ROW_NUMBER() OVER (
+          PARTITION BY id ORDER BY synthetic_parent ASC, ${planChildWriteOrder}
+        ) AS rank
+        FROM plan_phases WHERE project_id IN (${placeholders})
+      )
+      SELECT ${phaseColumns} FROM plan_phases
+      WHERE rowid IN (SELECT rowid FROM ranked WHERE rank = 1 AND feature_id = ?)
+      ORDER BY seq, id
+    `)
+    .all(canonical, ...ids, featureId) as PlanPhase[];
 }
 
 /**
@@ -220,10 +313,11 @@ export function insertEdge(
   const conn = db ?? getDb();
   conn
     .prepare(
-      `INSERT OR REPLACE INTO plan_edges (from_id, to_id, edge_type, project_id)
-       VALUES (@from_id, @to_id, @edge_type, @project_id)`,
+      `INSERT INTO plan_edges (from_id, to_id, edge_type, project_id)
+       VALUES (@from_id, @to_id, @edge_type, @project_id)
+       ON CONFLICT(project_id, from_id, to_id, edge_type) DO NOTHING`,
     )
-    .run({ ...edge, project_id: projectId });
+    .run({ ...edge, project_id: canonicalProjectId(conn, projectId) });
 }
 
 /**
@@ -235,9 +329,14 @@ export function getEdgesForFeature(
   db?: Database.Database,
 ): PlanEdge[] {
   const conn = db ?? getDb();
-  return conn
-    .prepare("SELECT * FROM plan_edges WHERE to_id = ? AND project_id = ?")
-    .all(id, projectId) as PlanEdge[];
+  const { canonical, ids, placeholders } = projectScope(conn, projectId);
+  const rows = conn
+    .prepare(`SELECT * FROM plan_edges WHERE to_id = ? AND project_id IN (${placeholders})
+      ORDER BY project_id = ? DESC, project_id`)
+    .all(id, ...ids, canonical) as PlanEdge[];
+  return firstPerKey(rows, (row) =>
+    JSON.stringify([row.from_id, row.to_id, row.edge_type]),
+  );
 }
 
 /**
@@ -248,9 +347,14 @@ export function listAllEdges(
   db?: Database.Database,
 ): PlanEdge[] {
   const conn = db ?? getDb();
-  return conn
-    .prepare("SELECT * FROM plan_edges WHERE project_id = ?")
-    .all(projectId) as PlanEdge[];
+  const { canonical, ids, placeholders } = projectScope(conn, projectId);
+  const rows = conn
+    .prepare(`SELECT * FROM plan_edges WHERE project_id IN (${placeholders})
+      ORDER BY project_id = ? DESC, project_id`)
+    .all(...ids, canonical) as PlanEdge[];
+  return firstPerKey(rows, (row) =>
+    JSON.stringify([row.from_id, row.to_id, row.edge_type]),
+  );
 }
 
 /**
@@ -262,24 +366,28 @@ export function getAllDependencies(
   db?: Database.Database,
 ): PlanFeature[] {
   const conn = db ?? getDb();
-  return conn
+  const { canonical, ids, placeholders } = projectScope(conn, projectId);
+  const rows = conn
     .prepare(
       `
       WITH RECURSIVE
+        scoped_edges AS (
+          SELECT from_id, to_id FROM plan_edges
+          WHERE project_id IN (${placeholders}) AND edge_type = 'DEPENDS_ON'
+        ),
         deps(feature_id) AS (
-          SELECT from_id FROM plan_edges WHERE to_id = ? AND project_id = ? AND edge_type = 'DEPENDS_ON'
+          SELECT from_id FROM scoped_edges WHERE to_id = ?
           UNION
-          SELECT e.from_id
-          FROM plan_edges e
-          JOIN deps d ON e.to_id = d.feature_id
-          WHERE e.project_id = ? AND e.edge_type = 'DEPENDS_ON'
+          SELECT e.from_id FROM scoped_edges e JOIN deps d ON e.to_id = d.feature_id
         )
       SELECT f.* FROM plan_features f
       JOIN deps d ON f.id = d.feature_id
-      WHERE f.project_id = ?
+      WHERE f.project_id IN (${placeholders})
+      ORDER BY ${planFeatureWriteOrder}
     `,
     )
-    .all(id, projectId, projectId, projectId) as PlanFeature[];
+    .all(...ids, id, ...ids, canonical) as PlanFeature[];
+  return firstPerKey(rows, (row) => row.id);
 }
 
 /**
@@ -292,20 +400,45 @@ export function insertProposal(
 ): void {
   const conn = db ?? getDb();
   conn
-    .prepare(
-      `INSERT OR REPLACE INTO plan_proposals (
-         id, target_phase_id, proposal_type, detail, source, status, project_id, updated_at
-       )
-       VALUES (
-         @id, @target_phase_id, @proposal_type, @detail, @source, @status, @project_id, datetime('now')
-       )`,
-    )
-    .run({
-      ...proposal,
-      project_id: projectId,
-      detail: proposal.detail ?? null,
-      source: proposal.source ?? null,
-    });
+    .transaction(() => {
+      const existing = getProposal(proposal.id, projectId, conn);
+      const { canonical, ids, placeholders } = projectScope(conn, projectId);
+      const owner =
+        getPhase(proposal.target_phase_id, projectId, conn)?.project_id ??
+        canonical;
+
+      conn
+        .prepare(`
+      INSERT INTO plan_proposals (
+        id, target_phase_id, proposal_type, detail, source, status, project_id,
+        created_at, resolved_at, updated_at, write_seq
+      ) VALUES (
+        @id, @target_phase_id, @proposal_type, @detail, @source, @status, @project_id,
+        COALESCE(@created_at, datetime('now')), @resolved_at, datetime('now'), @write_seq
+      )
+      ON CONFLICT(project_id, id) DO UPDATE SET target_phase_id = excluded.target_phase_id,
+        proposal_type = excluded.proposal_type, detail = excluded.detail, source = excluded.source,
+        status = excluded.status, created_at = excluded.created_at, resolved_at = excluded.resolved_at,
+        updated_at = excluded.updated_at, write_seq = excluded.write_seq
+    `)
+        .run({
+          ...proposal,
+          project_id: owner,
+          write_seq: nextLedgerWriteSequence(conn),
+          detail: proposal.detail ?? null,
+          source: proposal.source ?? null,
+          created_at: existing?.created_at ?? null,
+          resolved_at: existing?.resolved_at ?? null,
+        });
+
+      conn
+        .prepare(`
+      DELETE FROM plan_proposals WHERE id = ? AND project_id IN (${placeholders})
+        AND project_id <> ?
+    `)
+        .run(proposal.id, ...ids, owner);
+    })
+    .immediate();
 }
 
 /**
@@ -317,9 +450,11 @@ export function getProposal(
   db?: Database.Database,
 ): PlanProposal | undefined {
   const conn = db ?? getDb();
+  const { canonical, ids, placeholders } = projectScope(conn, projectId);
   return conn
-    .prepare("SELECT * FROM plan_proposals WHERE id = ? AND project_id = ?")
-    .get(id, projectId) as PlanProposal | undefined;
+    .prepare(`SELECT ${proposalColumns} FROM plan_proposals WHERE id = ? AND project_id IN (${placeholders})
+      ORDER BY ${planChildWriteOrder} LIMIT 1`)
+    .get(id, ...ids, canonical) as PlanProposal | undefined;
 }
 
 /**
@@ -330,11 +465,14 @@ export function listProposals(
   db?: Database.Database,
 ): PlanProposal[] {
   const conn = db ?? getDb();
-  return conn
-    .prepare(
-      "SELECT * FROM plan_proposals WHERE project_id = ? ORDER BY created_at DESC",
-    )
-    .all(projectId) as PlanProposal[];
+  const { canonical, ids, placeholders } = projectScope(conn, projectId);
+  const rows = conn
+    .prepare(`SELECT ${proposalColumns} FROM plan_proposals WHERE project_id IN (${placeholders})
+      ORDER BY ${planChildWriteOrder}`)
+    .all(...ids, canonical) as PlanProposal[];
+  return firstPerKey(rows, (row) => row.id).sort((a, b) =>
+    (b.created_at ?? "").localeCompare(a.created_at ?? ""),
+  );
 }
 
 /**
@@ -346,9 +484,12 @@ function deleteProposal(
   db?: Database.Database,
 ): void {
   const conn = db ?? getDb();
+  const { ids, placeholders } = projectScope(conn, projectId);
   conn
-    .prepare("DELETE FROM plan_proposals WHERE id = ? AND project_id = ?")
-    .run(id, projectId);
+    .prepare(
+      `DELETE FROM plan_proposals WHERE id = ? AND project_id IN (${placeholders})`,
+    )
+    .run(id, ...ids);
 }
 
 /**
@@ -361,8 +502,19 @@ export function deletePhase(
 ): void {
   const conn = db ?? getDb();
   conn
-    .prepare("DELETE FROM plan_phases WHERE id = ? AND project_id = ?")
-    .run(id, projectId);
+    .transaction(() => {
+      const { ids, placeholders } = projectScope(conn, projectId);
+      for (const proposal of listProposals(projectId, conn)) {
+        if (proposal.target_phase_id === id)
+          deleteProposal(proposal.id, projectId, conn);
+      }
+      conn
+        .prepare(
+          `DELETE FROM plan_phases WHERE id = ? AND project_id IN (${placeholders})`,
+        )
+        .run(id, ...ids);
+    })
+    .immediate();
 }
 
 /**
@@ -376,11 +528,12 @@ export function deleteEdge(
   db?: Database.Database,
 ): void {
   const conn = db ?? getDb();
+  const { ids, placeholders } = projectScope(conn, projectId);
   conn
     .prepare(
-      "DELETE FROM plan_edges WHERE from_id = ? AND to_id = ? AND edge_type = ? AND project_id = ?",
+      `DELETE FROM plan_edges WHERE from_id = ? AND to_id = ? AND edge_type = ? AND project_id IN (${placeholders})`,
     )
-    .run(from_id, to_id, edge_type, projectId);
+    .run(from_id, to_id, edge_type, ...ids);
 }
 
 /**
@@ -393,13 +546,55 @@ export function deleteFeature(
 ): void {
   const conn = db ?? getDb();
   conn
-    .prepare(
-      "DELETE FROM plan_edges WHERE (from_id = ? OR to_id = ?) AND project_id = ?",
-    )
-    .run(id, id, projectId);
-  conn
-    .prepare("DELETE FROM plan_features WHERE id = ? AND project_id = ?")
-    .run(id, projectId);
+    .transaction(() => {
+      const { ids, placeholders } = projectScope(conn, projectId);
+      const phases = listPhases(id, projectId, conn);
+      const phaseIds = new Set(phases.map((phase) => phase.id));
+      const cascades = conn.prepare(`
+        SELECT 1 FROM plan_phases WHERE project_id = ? AND id = ? AND feature_id = ?
+      `);
+      const removeCopies = conn.prepare(`
+        DELETE FROM plan_proposals
+        WHERE id = ? AND project_id IN (${placeholders}) AND project_id <> ?
+      `);
+      const moveProposal = conn.prepare(`
+        UPDATE plan_proposals SET project_id = ? WHERE id = ? AND project_id = ?
+      `);
+      for (const proposal of listProposals(projectId, conn)) {
+        if (phaseIds.has(proposal.target_phase_id)) {
+          deleteProposal(proposal.id, projectId, conn);
+          continue;
+        }
+        if (!cascades.get(proposal.project_id, proposal.target_phase_id, id)) {
+          continue;
+        }
+        const survivingPhase = getPhase(
+          proposal.target_phase_id,
+          projectId,
+          conn,
+        );
+        if (survivingPhase) {
+          removeCopies.run(proposal.id, ...ids, proposal.project_id);
+          moveProposal.run(
+            survivingPhase.project_id,
+            proposal.id,
+            proposal.project_id,
+          );
+        }
+      }
+      for (const phaseId of phaseIds) deletePhase(phaseId, projectId, conn);
+      conn
+        .prepare(
+          `DELETE FROM plan_edges WHERE (from_id = ? OR to_id = ?) AND project_id IN (${placeholders})`,
+        )
+        .run(id, id, ...ids);
+      conn
+        .prepare(
+          `DELETE FROM plan_features WHERE id = ? AND project_id IN (${placeholders})`,
+        )
+        .run(id, ...ids);
+    })
+    .immediate();
 }
 
 /**
@@ -410,9 +605,12 @@ export function isPlanEmpty(
   db?: Database.Database,
 ): boolean {
   const conn = db ?? getDb();
+  const { ids, placeholders } = projectScope(conn, projectId);
   const result = conn
-    .prepare("SELECT COUNT(*) as count FROM plan_features WHERE project_id = ?")
-    .get(projectId) as { count: number };
+    .prepare(
+      `SELECT COUNT(*) as count FROM plan_features WHERE project_id IN (${placeholders})`,
+    )
+    .get(...ids) as { count: number };
   return result.count === 0;
 }
 
@@ -425,6 +623,7 @@ export function getShippedPhases(
   db?: Database.Database,
 ): Set<string> {
   const conn = db ?? getDb();
+  const { ids, placeholders } = projectScope(conn, projectId);
   const rows = conn
     .prepare(
       // exit_code = 0 is load-bearing. `plan init` promotes PLANNED → SHIPPED
@@ -433,9 +632,9 @@ export function getShippedPhases(
       // exited 1 on a transient GitHub error. `= 0` also excludes in-flight runs,
       // whose exit_code is still NULL.
       `SELECT DISTINCT feature_id, phase_id FROM runs
-       WHERE command = 'ship' AND project_id = ? AND exit_code = 0
+       WHERE command = 'ship' AND project_id IN (${placeholders}) AND exit_code = 0
        AND feature_id IS NOT NULL AND phase_id IS NOT NULL`,
     )
-    .all(projectId) as { feature_id: string; phase_id: string }[];
+    .all(...ids) as { feature_id: string; phase_id: string }[];
   return new Set(rows.map((r) => `${r.feature_id}:${r.phase_id}`));
 }

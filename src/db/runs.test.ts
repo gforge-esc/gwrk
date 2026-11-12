@@ -2,13 +2,34 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import { execFileSync } from "node:child_process";
+import {
+  copyFileSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  realpathSync,
+  rmSync,
+} from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import type Database from "better-sqlite3";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { getTestDb } from "./index.js";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { runWithOutputScope } from "../adapters/cli/output-scope.js";
+import { discoverGitIdentityFacts } from "../adapters/git/project-id.js";
+import { createRunsCommand } from "../commands/runs.js";
+import {
+  computeLegacyProjectIds,
+  computeProjectId,
+} from "../domain/project-id.js";
+import * as database from "./index.js";
+import { createProjectRegistry } from "./project-registry.js";
 import {
   type ProjectRecord,
+  ensureCheckoutProjectId,
   finishRun,
   getStats,
+  listCheckoutRuns,
   listProjects,
   listRuns,
   recordHistory,
@@ -19,11 +40,45 @@ import {
 
 const TEST_PROJECT_ID = "test-project-id";
 
+it("keeps the verified local run owner after removing its first origin", () => {
+  const checkout = mkdtempSync(join(tmpdir(), "gwrk-removed-origin-"));
+  const db = database.getTestDb();
+  const git = (...args: string[]) =>
+    execFileSync("git", ["-C", checkout, ...args]);
+  try {
+    git("init", "--quiet");
+    const localId = ensureCheckoutProjectId(checkout, db);
+    const first = startRun(
+      { feature_id: "shared", command: "first", project_id: localId },
+      db,
+    );
+    git("remote", "add", "origin", "git@github.com:example/alpha.git");
+    expect(ensureCheckoutProjectId(checkout, db)).toBe(localId);
+    git("remote", "remove", "origin");
+    expect(listCheckoutRuns("shared", checkout, db)).toMatchObject([
+      { id: first },
+    ]);
+    expect(ensureCheckoutProjectId(checkout, db)).toBe(localId);
+    const second = startRun(
+      { feature_id: "shared", command: "second", project_id: localId },
+      db,
+    );
+    expect(
+      listCheckoutRuns("shared", checkout, db).map(({ id }) => id),
+    ).toEqual([second, first]);
+    git("remote", "add", "origin", "git@github.com:example/beta.git");
+    expect(listCheckoutRuns("shared", checkout, db)).toEqual([]);
+  } finally {
+    db.close();
+    rmSync(checkout, { recursive: true, force: true });
+  }
+});
+
 describe("runs db", () => {
   let db: Database.Database;
 
   beforeEach(() => {
-    db = getTestDb();
+    db = database.getTestDb();
     registerProject(
       {
         id: TEST_PROJECT_ID,
@@ -126,30 +181,538 @@ describe("runs db", () => {
     expect(historyId).toBeGreaterThan(0);
   });
 
-  it("startRun reconciles by path when a stale project id occupies cwd (changed remote)", () => {
-    // Regression: the repo's `origin` remote changed, so resolveProjectId(cwd)
-    // now returns a NEW id, but the projects table still holds a row for the
-    // SAME path under the OLD id. `INSERT OR IGNORE` can't add the new id
-    // (projects.path is UNIQUE), so the runs insert used to fail the FK.
-    const STALE_ID = "stale-remote-id-0000000000000000";
+  it.each(["suffix", "subdirectory"] as const)(
+    "preserves %s ledger rows through first origin enrollment",
+    (layout) => {
+      const checkout = realpathSync(
+        mkdtempSync(join(tmpdir(), "gwrk-first-origin-layout-")),
+      );
+      const subdir = join(checkout, "packages", "app");
+      const cwd = vi
+        .spyOn(process, "cwd")
+        .mockReturnValue(layout === "suffix" ? checkout : subdir);
+      try {
+        execFileSync("git", ["init", "--quiet", checkout]);
+        mkdirSync(subdir, { recursive: true });
+        const localId = computeProjectId(discoverGitIdentityFacts(checkout));
+        const run = startRun({ feature_id: "shared", command: "local" }, db);
+        expect
+          .soft(
+            db
+              .prepare("SELECT path FROM projects WHERE id = ?")
+              .pluck()
+              .get(localId),
+          )
+          .toBe(checkout);
+        db.prepare("UPDATE projects SET path = ? WHERE id = ?").run(
+          layout === "suffix" ? `${checkout}#${localId}` : subdir,
+          localId,
+        );
+        const ids = () =>
+          listCheckoutRuns("shared", checkout, db).map(({ id }) => id);
+        expect(ids()).toEqual([run]);
+        execFileSync("git", [
+          "-C",
+          checkout,
+          "remote",
+          "add",
+          "origin",
+          "https://github.com/org/alpha.git",
+        ]);
+        expect.soft(ids()).toEqual([run]);
+        const remoteId = computeProjectId(discoverGitIdentityFacts(checkout));
+        const now = "2026-11-11T12:00:00.000Z";
+        createProjectRegistry(db, () => {}).enrollProject({
+          projectId: remoteId,
+          slug: "alpha",
+          name: "Alpha",
+          repoSlug: "org/alpha",
+          trunkBranch: "develop",
+          localRoot: checkout,
+          mirrorPath: null,
+          runnerPolicy: { allowedKinds: ["local"] },
+          slack: null,
+          legacyProjectIds: [localId],
+          createdAt: now,
+          updatedAt: now,
+        });
+        expect(listRuns("shared", remoteId, db).map(({ id }) => id)).toEqual([
+          run,
+        ]);
+      } finally {
+        cwd.mockRestore();
+        rmSync(checkout, { recursive: true, force: true });
+      }
+    },
+  );
+
+  it("uses a migrated path-hash owner after the first origin", () => {
+    const checkout = realpathSync(
+      mkdtempSync(join(tmpdir(), "gwrk-migrated-hash-")),
+    );
+    const migrationsDir = join(checkout, "migrations");
+    const dbPath = join(checkout, "ledger.sqlite");
+    const source = new URL("./migrations/", import.meta.url);
+    const migration = "014-project-registry-and-composite-keys.sql";
+    let upgraded: Database.Database | undefined;
+    const cwd = vi.spyOn(process, "cwd").mockReturnValue(checkout);
+    try {
+      execFileSync("git", ["init", "--quiet", checkout]);
+      const facts = discoverGitIdentityFacts(checkout);
+      const localId = computeProjectId(facts);
+      const [hashId] = computeLegacyProjectIds(facts);
+      mkdirSync(migrationsDir);
+      for (const file of readdirSync(source)) {
+        if (file.endsWith(".sql") && file < migration) {
+          copyFileSync(new URL(file, source), join(migrationsDir, file));
+        }
+      }
+      const legacy = database.openDatabase({ dbPath, migrationsDir });
+      let runId: number;
+      try {
+        legacy
+          .prepare(
+            "INSERT INTO projects (id, name, path) VALUES (?, 'Local', ?)",
+          )
+          .run(hashId, `${checkout}#${hashId}`);
+        runId = Number(
+          legacy
+            .prepare(
+              "INSERT INTO runs (project_id, feature_id, command) VALUES (?, 'shared', 'local')",
+            )
+            .run(hashId).lastInsertRowid,
+        );
+      } finally {
+        legacy.close();
+      }
+      for (const file of readdirSync(source)) {
+        if (file.endsWith(".sql") && file >= migration) {
+          copyFileSync(new URL(file, source), join(migrationsDir, file));
+        }
+      }
+      const ledger = database.openDatabase({ dbPath, migrationsDir });
+      upgraded = ledger;
+      expect(listRuns("shared", localId, ledger)).toMatchObject([
+        { id: runId, project_id: hashId },
+      ]);
+      execFileSync("git", [
+        "-C",
+        checkout,
+        "remote",
+        "add",
+        "origin",
+        "https://github.com/example/pilot.git",
+      ]);
+      const history = () => listCheckoutRuns("shared", checkout, ledger);
+      expect.soft(history()).toMatchObject([{ id: runId, project_id: hashId }]);
+      const next = startRun(
+        { feature_id: "shared", command: "first-origin" },
+        ledger,
+      );
+      expect.soft(history()).toMatchObject([
+        { id: next, project_id: hashId },
+        { id: runId, project_id: hashId },
+      ]);
+      expect
+        .soft(
+          ledger
+            .prepare("SELECT github_repo FROM projects WHERE id = ?")
+            .pluck()
+            .get(hashId),
+        )
+        .toBe("example/pilot");
+      execFileSync("git", [
+        "-C",
+        checkout,
+        "remote",
+        "set-url",
+        "origin",
+        "https://github.com/example/beta.git",
+      ]);
+      expect(history()).toEqual([]);
+      expect(listRuns("shared", hashId, ledger).map(({ id }) => id)).toEqual([
+        next,
+        runId,
+      ]);
+    } finally {
+      cwd.mockRestore();
+      upgraded?.close();
+      rmSync(checkout, { recursive: true, force: true });
+    }
+  });
+
+  it("retains pre-origin runs across linked worktrees and separates a later origin", () => {
+    const root = realpathSync(
+      mkdtempSync(join(tmpdir(), "gwrk-first-origin-")),
+    );
+    const checkout = join(root, "primary");
+    const linked = join(root, "linked");
+    const cwd = vi.spyOn(process, "cwd").mockReturnValue(checkout);
+    const ids = (worktree: string) =>
+      listCheckoutRuns("shared", worktree, db).map(({ id }) => id);
+    try {
+      execFileSync("git", ["init", "--quiet", checkout]);
+      execFileSync("git", [
+        "-C",
+        checkout,
+        "-c",
+        "user.name=Test",
+        "-c",
+        "user.email=test@example.com",
+        "-c",
+        "core.hooksPath=/dev/null",
+        "commit",
+        "--quiet",
+        "--allow-empty",
+        "--no-gpg-sign",
+        "-m",
+        "Initial commit",
+      ]);
+      execFileSync("git", [
+        "-C",
+        checkout,
+        "worktree",
+        "add",
+        "--quiet",
+        "--detach",
+        linked,
+      ]);
+      const localId = computeProjectId(discoverGitIdentityFacts(checkout));
+      const local = startRun({ feature_id: "shared", command: "local" }, db);
+      expect(ids(checkout)).toEqual([local]);
+      execFileSync("git", [
+        "-C",
+        checkout,
+        "remote",
+        "add",
+        "origin",
+        "https://github.com/org/alpha.git",
+      ]);
+      expect.soft(ids(checkout)).toEqual([local]);
+      expect.soft(ids(linked)).toEqual([local]);
+      cwd.mockReturnValue(linked);
+      const linkedRun = startRun(
+        { feature_id: "shared", command: "linked" },
+        db,
+      );
+      cwd.mockReturnValue(checkout);
+      const alpha = startRun({ feature_id: "shared", command: "alpha" }, db);
+      expect.soft(ids(checkout)).toEqual([alpha, linkedRun, local]);
+      expect.soft(ids(linked)).toEqual([alpha, linkedRun, local]);
+      expect(
+        db.prepare("SELECT DISTINCT project_id FROM runs").pluck().all(),
+      ).toEqual([localId]);
+      expect(
+        db
+          .prepare("SELECT github_repo FROM projects WHERE id = ?")
+          .pluck()
+          .get(localId),
+      ).toBe("org/alpha");
+      const registry = createProjectRegistry(db, () => {});
+      const remoteId = computeProjectId(discoverGitIdentityFacts(checkout));
+      const now = "2026-11-11T12:00:00.000Z";
+      registry.enrollProject({
+        projectId: remoteId,
+        slug: "alpha",
+        name: "Alpha",
+        repoSlug: "org/alpha",
+        trunkBranch: "develop",
+        localRoot: checkout,
+        mirrorPath: null,
+        runnerPolicy: { allowedKinds: ["local"] },
+        slack: null,
+        legacyProjectIds: [],
+        createdAt: now,
+        updatedAt: now,
+      });
+      expect.soft(ids(checkout)).toEqual([alpha, linkedRun, local]);
+      expect.soft(ids(linked)).toEqual([alpha, linkedRun, local]);
+      execFileSync("git", [
+        "-C",
+        checkout,
+        "remote",
+        "set-url",
+        "origin",
+        "https://github.com/org/beta.git",
+      ]);
+      const beta = startRun({ feature_id: "shared", command: "beta" }, db);
+      expect(ids(checkout)).toEqual([beta]);
+      expect(ids(linked)).toEqual([beta]);
+    } finally {
+      cwd.mockRestore();
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it.each([false, true])(
+    "isolates implicit runs after an origin change with a legacy owner: %s",
+    async (legacyOwner) => {
+      const checkout = realpathSync(
+        mkdtempSync(join(tmpdir(), "gwrk-run-origin-")),
+      );
+      const cwd = vi.spyOn(process, "cwd").mockReturnValue(checkout);
+      const getDb = vi.spyOn(database, "getDb").mockReturnValue(db);
+      async function checkoutHistory() {
+        const output: string[] = [];
+        const scope = {
+          agentMode: false,
+          stdout: (chunk: string) => output.push(chunk),
+          stderr: (chunk: string) => output.push(chunk),
+          exitCode: 0,
+        };
+        await runWithOutputScope(scope, () =>
+          createRunsCommand().parseAsync(["shared", "--json"], {
+            from: "user",
+          }),
+        );
+        expect(scope.exitCode, output.join("")).toBe(0);
+        return (JSON.parse(output[0]) as { id: number }[]).map(({ id }) => id);
+      }
+      try {
+        execFileSync("git", ["init", "--quiet", checkout], { stdio: "ignore" });
+        mkdirSync(join(checkout, "specs", "shared"), { recursive: true });
+        execFileSync("git", [
+          "-C",
+          checkout,
+          "remote",
+          "add",
+          "origin",
+          "https://github.com/org/alpha.git",
+        ]);
+        const alphaFacts = discoverGitIdentityFacts(checkout);
+        const [legacyId] = computeLegacyProjectIds(alphaFacts);
+        const computedId = computeProjectId(alphaFacts);
+        const alphaId = legacyOwner ? legacyId : computedId;
+        if (legacyOwner) {
+          registerProject(
+            {
+              id: legacyId,
+              name: "Alpha",
+              path: checkout,
+              github_repo: "org/alpha",
+            },
+            db,
+          );
+        }
+        const explicit = startRun(
+          { feature_id: "shared", command: "explicit", project_id: computedId },
+          db,
+        );
+        const alphaRun = startRun(
+          { feature_id: "shared", command: "alpha" },
+          db,
+        );
+        expect
+          .soft(
+            db
+              .prepare("SELECT github_repo FROM projects WHERE id = ?")
+              .pluck()
+              .get(alphaId),
+          )
+          .toEqual(expect.stringMatching(/org\/alpha$/));
+        expect.soft(await checkoutHistory()).toEqual([alphaRun, explicit]);
+
+        execFileSync("git", [
+          "-C",
+          checkout,
+          "remote",
+          "set-url",
+          "origin",
+          "https://github.com/org/beta.git",
+        ]);
+        const betaId = computeProjectId(discoverGitIdentityFacts(checkout));
+        const betaRun = startRun({ feature_id: "shared", command: "beta" }, db);
+
+        expect
+          .soft(listRuns("shared", alphaId, db).map(({ id }) => id))
+          .toEqual(legacyOwner ? [alphaRun] : [alphaRun, explicit]);
+        expect(listRuns("shared", betaId, db).map(({ id }) => id)).toEqual([
+          betaRun,
+        ]);
+        expect(await checkoutHistory()).toEqual([betaRun]);
+      } finally {
+        getDb.mockRestore();
+        cwd.mockRestore();
+        rmSync(checkout, { recursive: true, force: true });
+      }
+    },
+  );
+
+  it("keeps implicit runs with the checkout after a write for another project", () => {
+    const checkoutId = TEST_PROJECT_ID;
     registerProject(
-      { id: STALE_ID, name: "cwd-project", path: process.cwd() },
+      {
+        id: checkoutId,
+        name: "Checkout",
+        path: process.cwd(),
+        github_repo: discoverGitIdentityFacts(process.cwd()).remoteOriginUrl,
+      },
       db,
     );
 
-    // No explicit project_id → startRun resolves one from cwd. Must not throw,
-    // and must record the run under the existing (path-bound) project.
-    let runId = 0;
-    expect(() => {
-      runId = startRun(
-        { feature_id: "reconcile-feat", command: "define tests" },
+    startRun(
+      {
+        feature_id: "shared",
+        command: "explicit",
+        project_id: "other-project",
+      },
+      db,
+    );
+    const implicitId = startRun(
+      { feature_id: "shared", command: "implicit" },
+      db,
+    );
+
+    expect(listRuns("shared", checkoutId, db).map(({ id }) => id)).toEqual([
+      implicitId,
+    ]);
+    expect(
+      listRuns("shared", "other-project", db).map(({ command }) => command),
+    ).toEqual(["explicit"]);
+    expect(
+      db.prepare("SELECT id FROM projects ORDER BY id").pluck().all(),
+    ).toEqual(["other-project", checkoutId]);
+    expect(
+      db
+        .prepare("SELECT path, local_root FROM projects WHERE id = ?")
+        .get("other-project"),
+    ).toEqual({ path: "", local_root: null });
+  });
+
+  it("rejects checkout reads and writes through a conflicting alias", () => {
+    const checkout = realpathSync(
+      mkdtempSync(join(tmpdir(), "gwrk-run-alias-")),
+    );
+    try {
+      execFileSync("git", ["init", "--quiet", checkout], { stdio: "ignore" });
+      execFileSync("git", [
+        "-C",
+        checkout,
+        "remote",
+        "add",
+        "origin",
+        "git@github.com:example/beta.git",
+      ]);
+      const betaId = computeProjectId(discoverGitIdentityFacts(checkout));
+      const alphaRoot = join(checkout, "alpha");
+      execFileSync("git", ["init", "--quiet", alphaRoot], { stdio: "ignore" });
+      execFileSync("git", [
+        "-C",
+        alphaRoot,
+        "remote",
+        "add",
+        "origin",
+        "https://github.com/example/alpha.git",
+      ]);
+      const alphaId = computeProjectId(discoverGitIdentityFacts(alphaRoot));
+      createProjectRegistry(db, () => {}).enrollProject({
+        projectId: alphaId,
+        slug: "alpha",
+        name: "Alpha",
+        repoSlug: "example/alpha",
+        trunkBranch: "develop",
+        localRoot: alphaRoot,
+        mirrorPath: null,
+        runnerPolicy: { allowedKinds: ["local"] },
+        slack: null,
+        legacyProjectIds: [],
+        createdAt: "2026-11-11T12:00:00.000Z",
+        updatedAt: "2026-11-11T12:00:00.000Z",
+      });
+      startRun(
+        { feature_id: "shared", command: "alpha-history", project_id: alphaId },
         db,
       );
-    }).not.toThrow();
+      db.prepare(
+        "INSERT INTO project_aliases (alias_id, project_id) VALUES (?, ?)",
+      ).run(betaId, alphaId);
+      const cwd = vi.spyOn(process, "cwd").mockReturnValue(checkout);
+      try {
+        expect
+          .soft(() => listCheckoutRuns("shared", checkout, db))
+          .toThrow(/Project ownership conflict/);
+        expect
+          .soft(() =>
+            startRun({ feature_id: "shared", command: "beta-implicit" }, db),
+          )
+          .toThrow(/Project ownership conflict/);
+        expect(
+          listRuns("shared", alphaId, db).map(({ command }) => command),
+        ).toEqual(["alpha-history"]);
+      } finally {
+        cwd.mockRestore();
+      }
+    } finally {
+      rmSync(checkout, { recursive: true, force: true });
+    }
+  });
 
-    expect(runId).toBeGreaterThan(0);
-    const runs = listRuns("reconcile-feat", STALE_ID, db);
-    expect(runs.length).toBe(1);
+  it("keeps implicit runs with verified legacy history until enrollment", () => {
+    const checkout = realpathSync(
+      mkdtempSync(join(tmpdir(), "gwrk-run-owner-")),
+    );
+    try {
+      execFileSync("git", ["init", "--quiet", checkout], { stdio: "ignore" });
+      const facts = discoverGitIdentityFacts(checkout);
+      const [legacyId] = computeLegacyProjectIds(facts);
+      const computedId = computeProjectId(facts);
+      registerProject({ id: legacyId, name: "Checkout", path: checkout }, db);
+      const cwd = vi.spyOn(process, "cwd").mockReturnValue(checkout);
+      try {
+        const previous = startRun(
+          { feature_id: "shared", command: "previous", project_id: legacyId },
+          db,
+        );
+        const explicit = startRun(
+          { feature_id: "shared", command: "explicit", project_id: computedId },
+          db,
+        );
+        const implicit = startRun(
+          { feature_id: "shared", command: "implicit" },
+          db,
+        );
+
+        expect
+          .soft(listRuns("shared", legacyId, db).map(({ id }) => id))
+          .toEqual([implicit, previous]);
+        expect
+          .soft(listRuns("shared", computedId, db).map(({ id }) => id))
+          .toEqual([explicit]);
+
+        const registry = createProjectRegistry(db, () => {});
+        const now = "2026-11-11T12:00:00.000Z";
+        registry.enrollProject({
+          projectId: computedId,
+          slug: "checkout",
+          name: "Checkout",
+          repoSlug: null,
+          trunkBranch: "develop",
+          localRoot: checkout,
+          mirrorPath: null,
+          runnerPolicy: { allowedKinds: ["local"] },
+          slack: null,
+          legacyProjectIds: [legacyId],
+          createdAt: now,
+          updatedAt: now,
+        });
+        const enrolledRun = startRun(
+          { feature_id: "shared", command: "enrolled" },
+          db,
+        );
+        for (const id of [legacyId, computedId]) {
+          expect(listRuns("shared", id, db).map((run) => run.id)).toEqual([
+            enrolledRun,
+            implicit,
+            explicit,
+            previous,
+          ]);
+        }
+      } finally {
+        cwd.mockRestore();
+      }
+    } finally {
+      rmSync(checkout, { recursive: true, force: true });
+    }
   });
 
   describe("FR-H03: DB Record Finalization", () => {

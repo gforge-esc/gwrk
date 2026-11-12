@@ -6,10 +6,24 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import { realpathSync } from "node:fs";
 import path from "node:path";
 import type Database from "better-sqlite3";
-import { resolveProjectId } from "../domain/project-id.js";
+import {
+  discoverGitIdentityFacts,
+  resolveGitCheckoutRoot,
+} from "../adapters/git/project-id.js";
+import {
+  computeLegacyProjectIds,
+  computeProjectId,
+} from "../domain/project-id.js";
 import { getDb } from "./index.js";
+import {
+  canonicalProjectId,
+  discoverStoredRepository,
+  normalizeRegistryRepo,
+  projectScope,
+} from "./project-registry.js";
 
 export interface RunRecord {
   id?: number;
@@ -58,43 +72,201 @@ function ensureProjectRow(
   conn: Database.Database,
   requestedProjectId?: string | null,
 ): string | null {
-  const projectId = requestedProjectId ?? resolveProjectId(process.cwd());
-  if (!projectId) return null;
-
-  const byId = conn
-    .prepare("SELECT id FROM projects WHERE id = ?")
-    .get(projectId) as { id: string } | undefined;
-  if (byId) return projectId;
-
-  const byPath = conn
-    .prepare("SELECT id FROM projects WHERE path = ?")
-    .get(process.cwd()) as { id: string } | undefined;
-  if (byPath) {
-    if (!requestedProjectId) {
-      return byPath.id;
-    }
+  if (requestedProjectId != null) {
+    if (requestedProjectId === "") return null;
+    const id = canonicalProjectId(conn, requestedProjectId);
     conn
       .prepare(
-        "INSERT OR IGNORE INTO projects (id, name, path) VALUES (@id, @name, @path)",
+        "INSERT OR IGNORE INTO projects (id, name, path) VALUES (?, ?, '')",
       )
-      .run({
-        id: projectId,
-        name: path.basename(process.cwd()),
-        path: `${process.cwd()}#${projectId}`,
-      });
-    return projectId;
+      .run(id, id);
+    return id;
   }
 
-  conn
-    .prepare(
-      "INSERT OR IGNORE INTO projects (id, name, path) VALUES (@id, @name, @path)",
-    )
-    .run({
-      id: projectId,
-      name: path.basename(process.cwd()),
-      path: process.cwd(),
-    });
-  return projectId;
+  return ensureCheckoutProjectId(process.cwd(), conn);
+}
+
+export function resolveCheckoutProjectId(
+  checkout: string,
+  conn: Database.Database = getDb(),
+): string {
+  const { checkoutId, owner } = resolveCheckoutOwner(conn, checkout);
+  return owner ?? checkoutId;
+}
+
+export function ensureCheckoutProjectId(
+  checkout: string,
+  conn: Database.Database = getDb(),
+): string {
+  return conn
+    .transaction(() => {
+      const { checkoutId, owner, origin, root, unboundLocal } =
+        resolveCheckoutOwner(conn, checkout);
+      if (unboundLocal) {
+        conn
+          .prepare("UPDATE projects SET github_repo = ? WHERE id = ?")
+          .run(origin, unboundLocal);
+      }
+      if (owner) return owner;
+      conn
+        .prepare(`
+      INSERT INTO projects (id, name, path, github_repo) VALUES (?, ?, ?, ?)
+      ON CONFLICT(id) DO UPDATE SET path = excluded.path, github_repo = excluded.github_repo
+      WHERE projects.path = '' AND projects.github_repo IS NULL
+    `)
+        .run(checkoutId, path.basename(root), root, origin);
+      return checkoutId;
+    })
+    .immediate();
+}
+
+function resolveCheckoutOwner(conn: Database.Database, root: string) {
+  const facts = discoverGitIdentityFacts(resolveGitCheckoutRoot(root));
+  const computedId = computeProjectId(facts);
+  const checkoutId = canonicalProjectId(conn, computedId);
+  const localGitId = facts.gitCommonDir
+    ? computeProjectId({ ...facts, remoteOriginUrl: null })
+    : null;
+  const origin = normalizeRegistryRepo(facts.remoteOriginUrl ?? null);
+  const findProject = conn.prepare<
+    [string],
+    {
+      path: string;
+      local_root: string | null;
+      mirror_path: string | null;
+      repo_slug: string | null;
+      github_repo: string | null;
+      updated_at: string | null;
+    }
+  >(`SELECT path, local_root, mirror_path, repo_slug, github_repo, updated_at
+     FROM projects WHERE id = ?`);
+
+  function storedRepos(id: string) {
+    const row = findProject.get(id);
+    return [row?.repo_slug, row?.github_repo]
+      .map((repo) => normalizeRegistryRepo(repo ?? null))
+      .filter((repo) => repo !== null);
+  }
+
+  function sharesGitDirectory(id: string): boolean {
+    if (!facts.gitCommonDir) return false;
+    const local = findProject.get(id);
+    const commonDir = realpathSync(facts.gitCommonDir);
+    return [local?.path, local?.local_root, local?.mirror_path].some(
+      (storedRoot) => {
+        if (!storedRoot) return false;
+        const storedFacts = discoverStoredRepository(
+          storedRoot,
+          id,
+          id === localGitId,
+        );
+        if (
+          !storedFacts?.gitCommonDir ||
+          realpathSync(storedFacts.gitCommonDir) !== commonDir
+        )
+          return false;
+        const storedOrigin = normalizeRegistryRepo(
+          storedFacts.remoteOriginUrl ?? null,
+        );
+        return (
+          storedOrigin === null || computeProjectId(storedFacts) === computedId
+        );
+      },
+    );
+  }
+
+  let checkoutOrigin = origin;
+  if (!origin && computedId === localGitId && sharesGitDirectory(checkoutId)) {
+    const stored = new Set([
+      ...storedRepos(computedId),
+      ...storedRepos(checkoutId),
+    ]);
+    if (stored.size === 1)
+      checkoutOrigin = stored.values().next().value ?? null;
+  }
+
+  function hasConflictingRepo(id: string): boolean {
+    return storedRepos(id).some((repo) => repo !== checkoutOrigin);
+  }
+
+  if (
+    hasConflictingRepo(computedId) ||
+    hasConflictingRepo(checkoutId) ||
+    (checkoutId !== computedId &&
+      origin !== null &&
+      !storedRepos(checkoutId).includes(origin))
+  ) {
+    throw new Error(`Project ownership conflict for checkout: ${root}`);
+  }
+
+  function checkoutScope(id: string): string[] {
+    return projectScope(conn, id).ids.filter(
+      (scopedId) => !hasConflictingRepo(scopedId),
+    );
+  }
+
+  function resolved(owner?: string, unboundLocal?: string) {
+    const ids = checkoutScope(checkoutId);
+    if (owner && owner !== checkoutId) ids.push(...checkoutScope(owner));
+    return {
+      checkoutId,
+      owner,
+      origin,
+      root: facts.projectRoot,
+      ids,
+      unboundLocal,
+    };
+  }
+
+  if (findProject.get(checkoutId)?.updated_at != null) {
+    return resolved(checkoutId);
+  }
+
+  const localOwner = localGitId ? canonicalProjectId(conn, localGitId) : null;
+  if (
+    origin &&
+    facts.gitCommonDir &&
+    localGitId &&
+    localOwner &&
+    !hasConflictingRepo(localGitId) &&
+    !hasConflictingRepo(localOwner)
+  ) {
+    if (sharesGitDirectory(localOwner)) {
+      const unboundLocal = storedRepos(localOwner).length === 0;
+      return resolved(localOwner, unboundLocal ? localOwner : undefined);
+    }
+  }
+
+  function checkoutOwner(id: string): string | null {
+    const owner = canonicalProjectId(conn, id);
+    if (hasConflictingRepo(id) || hasConflictingRepo(owner)) return null;
+    if (
+      owner === checkoutId ||
+      (origin !== null && storedRepos(owner).includes(origin))
+    ) {
+      return owner;
+    }
+    return origin === null && owner === id ? owner : null;
+  }
+
+  const atCheckout = conn
+    .prepare(`
+    SELECT id FROM projects WHERE path = @root OR local_root = @root OR mirror_path = @root
+  `)
+    .pluck()
+    .all({ root: facts.projectRoot })
+    .filter((id) => !origin || id !== localGitId) as string[];
+  for (const id of computeLegacyProjectIds(facts)) {
+    if (id === checkoutId || !atCheckout.includes(id)) continue;
+    const owner = checkoutOwner(id);
+    if (owner) return resolved(owner);
+  }
+
+  const owners = new Set(
+    atCheckout.map(checkoutOwner).filter((id) => id !== null),
+  );
+  const [owner] = owners.size === 1 ? owners : [];
+  return resolved(owner);
 }
 
 export function startRun(
@@ -292,9 +464,9 @@ export function getFeatureRunTelemetry(
   db?: Database.Database,
 ): RunTelemetrySummary {
   const conn = db ?? getDb();
-  let query =
-    "SELECT tokens_in, tokens_out, cost_usd, device_id, hostname FROM runs WHERE feature_id = ? AND project_id = ?";
-  const args: string[] = [featureId, projectId];
+  const { ids, placeholders } = projectScope(conn, projectId);
+  let query = `SELECT tokens_in, tokens_out, cost_usd, device_id, hostname FROM runs WHERE feature_id = ? AND project_id IN (${placeholders})`;
+  const args = [featureId, ...ids];
 
   if (phaseId) {
     query += " AND phase_id = ?";
@@ -343,11 +515,30 @@ export function listRuns(
   db?: Database.Database,
 ): RunRecord[] {
   const conn = db ?? getDb();
+  return listRunsInScope(conn, featureId, projectScope(conn, projectId).ids);
+}
+
+export function listCheckoutRuns(
+  featureId: string,
+  checkout: string,
+  db?: Database.Database,
+): RunRecord[] {
+  const conn = db ?? getDb();
+  const { ids } = resolveCheckoutOwner(conn, checkout);
+  return listRunsInScope(conn, featureId, ids);
+}
+
+function listRunsInScope(
+  conn: Database.Database,
+  featureId: string,
+  ids: string[],
+): RunRecord[] {
+  const placeholders = ids.map(() => "?").join(", ");
   return conn
     .prepare(
-      "SELECT * FROM runs WHERE feature_id = ? AND project_id = ? ORDER BY id DESC",
+      `SELECT * FROM runs WHERE feature_id = ? AND project_id IN (${placeholders}) ORDER BY id DESC`,
     )
-    .all(featureId, projectId) as RunRecord[];
+    .all(featureId, ...ids) as RunRecord[];
 }
 
 /**
@@ -361,9 +552,9 @@ export function findOpenPr(
   db?: Database.Database,
 ): { pr_number: number; pr_url: string | null } | null {
   const conn = db ?? getDb();
-  let query =
-    "SELECT pr_number, pr_url FROM runs WHERE feature_id = ? AND project_id = ?";
-  const args: (string | number)[] = [featureId, projectId];
+  const { ids, placeholders } = projectScope(conn, projectId);
+  let query = `SELECT pr_number, pr_url FROM runs WHERE feature_id = ? AND project_id IN (${placeholders})`;
+  const args = [featureId, ...ids];
 
   if (phaseId) {
     query += " AND phase_id = ?";
@@ -388,7 +579,7 @@ export interface ProjectRecord {
 }
 
 /**
- * Register a project in the global DB. Upserts by path.
+ * Register a legacy project in the global DB. Upserts by ID.
  */
 export function registerProject(
   project: ProjectRecord,
@@ -397,8 +588,11 @@ export function registerProject(
   const conn = db ?? getDb();
   conn
     .prepare(
-      `INSERT OR REPLACE INTO projects (id, name, path, github_repo, slack_channel)
-       VALUES (@id, @name, @path, @github_repo, @slack_channel)`,
+      `INSERT INTO projects (id, name, path, github_repo, slack_channel)
+       VALUES (@id, @name, @path, @github_repo, @slack_channel)
+       ON CONFLICT(id) DO UPDATE SET name = excluded.name, path = excluded.path,
+         github_repo = excluded.github_repo, slack_channel = excluded.slack_channel
+       WHERE projects.updated_at IS NULL`,
     )
     .run({
       id: project.id,
@@ -426,6 +620,7 @@ export function getStats(
   db?: Database.Database,
 ): RunStats[] {
   const conn = db ?? getDb();
+  const { ids, placeholders } = projectScope(conn, projectId);
   const query = `SELECT
          command,
          agent_backend,
@@ -434,11 +629,11 @@ export function getStats(
          SUM(CASE WHEN exit_code = 0 THEN 1 ELSE 0 END) as success_runs,
          AVG(duration_s) as avg_duration_s
        FROM runs
-       WHERE exit_code IS NOT NULL AND project_id = ?
+       WHERE exit_code IS NOT NULL AND project_id IN (${placeholders})
        GROUP BY command, agent_backend, workflow
        ORDER BY total_runs DESC`;
 
-  return conn.prepare(query).all(projectId) as RunStats[];
+  return conn.prepare(query).all(...ids) as RunStats[];
 }
 
 /**

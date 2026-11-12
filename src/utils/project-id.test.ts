@@ -54,6 +54,17 @@ describe("resolveProjectId — stable across worktrees (worktree-parallel ship)"
     expect(resolveProjectId(wt)).toBe(resolveProjectId(main));
   });
 
+  it("uses the main worktree when neither checkout has an origin", () => {
+    const main = path.join(tmp, "main");
+    const linked = path.join(tmp, "linked");
+    fs.mkdirSync(main);
+    git(["init", "-q"], main);
+    git(["-c", "user.name=Test", "-c", "user.email=test@example.test", "-c", "commit.gpgsign=false", "commit", "--allow-empty", "-qm", "init"], main);
+    git(["worktree", "add", "-q", "-b", "linked", linked], main);
+
+    expect(resolveProjectId(linked)).toBe(resolveProjectId(main));
+  });
+
   it("resolves different repos (different remotes) to different ids", () => {
     const a = path.join(tmp, "a");
     const b = path.join(tmp, "b");

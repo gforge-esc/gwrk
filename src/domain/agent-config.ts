@@ -2,9 +2,6 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import * as fs from "node:fs";
-import * as os from "node:os";
-import * as path from "node:path";
 import { z } from "zod";
 import { TaskClassification, TaskType } from "./types.js";
 
@@ -164,77 +161,91 @@ export class ModelSelector {
   }
 }
 
-export function loadRegistry(
-  projectRoot: string = process.cwd(),
-): AgentRegistry {
-  const configPath = path.join(projectRoot, ".gwrkrc.json");
+export interface RegistryConfigLayers {
+  projectConfigRaw: string | null;
+  configPath?: string;
+  localConfigRaw?: string | null;
+  globalConfigRaw?: string | null;
+}
 
-  if (!fs.existsSync(configPath)) {
-    console.error(
-      `Missing required config: agents.registry (file .gwrkrc.json not found at ${configPath})`,
+type RegistryErrorCode =
+  | "MISSING_CONFIG_FILE"
+  | "INVALID_CONFIG_JSON"
+  | "MISSING_REGISTRY_CONFIG"
+  | "INVALID_REGISTRY_SCHEMA";
+
+export type RegistryValidationResult =
+  | { ok: true; value: AgentRegistry }
+  | { ok: false; error: { code: RegistryErrorCode; message: string } };
+
+function failure(
+  code: RegistryErrorCode,
+  message: string,
+): RegistryValidationResult {
+  return { ok: false, error: { code, message } };
+}
+
+function record(value: unknown): Record<string, unknown> | null {
+  return value !== null && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null;
+}
+
+export function validateAgentRegistry(
+  layers: RegistryConfigLayers,
+): RegistryValidationResult {
+  if (layers.projectConfigRaw === null) {
+    return failure(
+      "MISSING_CONFIG_FILE",
+      `Missing required config: agents.registry (file .gwrkrc.json not found at ${layers.configPath ?? ".gwrkrc.json"})`,
     );
-    process.exit(1);
-    return {} as AgentRegistry;
   }
 
-  // biome-ignore lint/suspicious/noExplicitAny: Parsed json configuration
-  let raw: Record<string, any>;
+  let raw: Record<string, unknown> | null;
   try {
-    raw = JSON.parse(fs.readFileSync(configPath, "utf-8"));
+    raw = record(JSON.parse(layers.projectConfigRaw));
   } catch {
-    console.error("Configuration error: invalid JSON in .gwrkrc.json");
-    process.exit(1);
-    return {} as AgentRegistry;
+    return failure(
+      "INVALID_CONFIG_JSON",
+      "Configuration error: invalid JSON in .gwrkrc.json",
+    );
   }
 
-  const localPath = path.join(projectRoot, ".gwrkrc.local.json");
-  if (fs.existsSync(localPath)) {
+  for (const layer of [layers.localConfigRaw, layers.globalConfigRaw]) {
+    if (!layer) continue;
     try {
-      const local = JSON.parse(fs.readFileSync(localPath, "utf-8"));
-      raw = deepMerge(raw, local);
+      const overrides = record(JSON.parse(layer));
+      if (overrides) raw = deepMerge(raw ?? {}, overrides);
     } catch {
-      /* non-fatal */
+      // Optional configuration must not prevent a valid project from loading.
     }
   }
 
-  const globalPath = path.join(os.homedir(), ".gwrk", "config.json");
-  if (fs.existsSync(globalPath)) {
-    try {
-      const global = JSON.parse(fs.readFileSync(globalPath, "utf-8"));
-      raw = deepMerge(raw, global);
-    } catch {
-      /* non-fatal */
-    }
-  }
-
-  if (
-    !raw ||
-    !raw.agents ||
-    !raw.agents.registry ||
-    !raw.agents.fallbackOrder
-  ) {
-    console.error(
+  const agents = record(raw?.agents);
+  if (!agents?.registry || !agents.fallbackOrder) {
+    return failure(
+      "MISSING_REGISTRY_CONFIG",
       "Missing required config: agents.registry or agents.fallbackOrder",
     );
-    process.exit(1);
-    return {} as AgentRegistry;
   }
 
-  // biome-ignore lint/suspicious/noExplicitAny: Dynamic config mapping
-  const backends: Record<string, any> = {};
-  for (const [name, config] of Object.entries(raw.agents.registry)) {
-    // biome-ignore lint/suspicious/noExplicitAny: Dynamic config mapping
-    backends[name] = { ...(config as any), name };
-  }
-
+  const registry = record(agents.registry);
+  const backends = registry
+    ? Object.fromEntries(
+        Object.entries(registry).map(([name, config]) => [
+          name,
+          { ...record(config), name },
+        ]),
+      )
+    : agents.registry;
   const result = AgentRegistrySchema.safeParse({
     backends,
-    fallbackOrder: raw.agents.fallbackOrder,
+    fallbackOrder: agents.fallbackOrder,
   });
-  if (!result.success) {
-    console.error(`Invalid agent registry entry: ${result.error.message}`);
-    process.exit(1);
-  }
-
-  return result.data;
+  return result.success
+    ? { ok: true, value: result.data }
+    : failure(
+        "INVALID_REGISTRY_SCHEMA",
+        `Invalid agent registry entry: ${result.error.message}`,
+      );
 }

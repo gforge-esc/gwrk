@@ -13,6 +13,7 @@
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
+import { warnCli } from "../adapters/cli/output-scope.js";
 import { unauthoredGate } from "../utils/gate-quality.js";
 import type { Phase, Task, TaskState } from "../utils/state.js";
 import { getTestCommand, getTestExtension } from "../utils/toolchain-mapper.js";
@@ -473,7 +474,7 @@ export function planToTasks(
       const content = fs.readFileSync(existingTasksPath, "utf-8");
       existingState = JSON.parse(content) as TaskState;
     } catch (err) {
-      console.warn(
+      warnCli(
         `Warning: Could not load existing tasks — completion status will be reset: ${err}`,
       );
     }

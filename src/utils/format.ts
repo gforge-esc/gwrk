@@ -17,6 +17,11 @@
  *   - Duration on every completion/failure banner
  */
 
+import {
+  logCliError,
+  logCliOutput,
+  writeScopedStderr,
+} from "../adapters/cli/output-scope.js";
 import { type ProgressHandle, startProgress } from "./progress.js";
 
 // ANSI escape codes — matches scripts/dev/agent-run.sh exactly
@@ -41,12 +46,12 @@ function timeStamp(): string {
 export function banner(command: string, fields: Record<string, string>): void {
   const ts = timeStamp();
   const line = "─".repeat(50);
-  console.log(`\n${DIM}${line}${RESET}`);
-  console.log(`${BOLD}${CYAN}▸ gwrk ${command}${RESET}  ${DIM}${ts}${RESET}`);
+  logCliOutput(`\n${DIM}${line}${RESET}`);
+  logCliOutput(`${BOLD}${CYAN}▸ gwrk ${command}${RESET}  ${DIM}${ts}${RESET}`);
   for (const [key, value] of Object.entries(fields)) {
-    console.log(`  ${DIM}${key.padEnd(10)}${RESET} ${value}`);
+    logCliOutput(`  ${DIM}${key.padEnd(10)}${RESET} ${value}`);
   }
-  console.log(`${DIM}${line}${RESET}\n`);
+  logCliOutput(`${DIM}${line}${RESET}\n`);
 }
 
 /** Format seconds as Xm Ys */
@@ -63,19 +68,23 @@ export function success(
   runId?: number,
   logFile?: string,
 ): void {
-  console.log("");
-  console.log(`${CYAN}┌─────────────────────────────────────────────┐${RESET}`);
-  console.log(
+  logCliOutput("");
+  logCliOutput(
+    `${CYAN}┌─────────────────────────────────────────────┐${RESET}`,
+  );
+  logCliOutput(
     `${CYAN}│${RESET}  ${GREEN}✓ ${BOLD}${command}${RESET} ${GREEN}complete${RESET}`,
   );
-  console.log(
+  logCliOutput(
     `${CYAN}│${RESET}  Duration: ${BOLD}${humanDuration(durationS)}${RESET}`,
   );
   if (runId !== undefined)
-    console.log(`${CYAN}│${RESET}  Run:      ${DIM}#${runId}${RESET}`);
+    logCliOutput(`${CYAN}│${RESET}  Run:      ${DIM}#${runId}${RESET}`);
   if (logFile)
-    console.log(`${CYAN}│${RESET}  Log:      ${DIM}${logFile}${RESET}`);
-  console.log(`${CYAN}└─────────────────────────────────────────────┘${RESET}`);
+    logCliOutput(`${CYAN}│${RESET}  Log:      ${DIM}${logFile}${RESET}`);
+  logCliOutput(
+    `${CYAN}└─────────────────────────────────────────────┘${RESET}`,
+  );
 }
 
 /** Print failure — matches agent-run.sh box format */
@@ -86,44 +95,40 @@ export function fail(
   runId?: number,
   logFile?: string,
 ): void {
-  console.error("");
-  console.error(
-    `${CYAN}┌─────────────────────────────────────────────┐${RESET}`,
-  );
-  console.error(
+  logCliError("");
+  logCliError(`${CYAN}┌─────────────────────────────────────────────┐${RESET}`);
+  logCliError(
     `${CYAN}│${RESET}  ${RED}✗ ${BOLD}${command}${RESET} ${RED}failed (exit ${exitCode})${RESET}`,
   );
-  console.error(
+  logCliError(
     `${CYAN}│${RESET}  Duration: ${BOLD}${humanDuration(durationS)}${RESET}`,
   );
   if (runId !== undefined)
-    console.error(`${CYAN}│${RESET}  Run:      ${DIM}#${runId}${RESET}`);
+    logCliError(`${CYAN}│${RESET}  Run:      ${DIM}#${runId}${RESET}`);
   if (logFile)
-    console.error(`${CYAN}│${RESET}  Log:      ${DIM}${logFile}${RESET}`);
-  console.error(
-    `${CYAN}└─────────────────────────────────────────────┘${RESET}`,
-  );
+    logCliError(`${CYAN}│${RESET}  Log:      ${DIM}${logFile}${RESET}`);
+  logCliError(`${CYAN}└─────────────────────────────────────────────┘${RESET}`);
 }
 
 /** Print a blocked/validation error */
 export function blocked(message: string): void {
-  console.error(`${RED}✗${RESET} ${YELLOW}[BLOCKED]${RESET} ${message}`);
+  logCliError(`${RED}✗${RESET} ${YELLOW}[BLOCKED]${RESET} ${message}`);
 }
 
 /** Print an info line */
 export function info(message: string): void {
-  console.log(`${CYAN}▸${RESET} ${message}`);
+  logCliOutput(`${CYAN}▸${RESET} ${message}`);
 }
 
 /** Print a warning */
 export function warn(message: string): void {
-  console.log(`${YELLOW}⚠${RESET} ${message}`);
+  logCliOutput(`${YELLOW}⚠${RESET} ${message}`);
 }
 
 /** Print a dry-run notice */
 export function dryRun(command: string, agent?: string): void {
   const agentSuffix = agent ? ` (agent: ${agent})` : "";
-  console.log(
+  logCliOutput(
     `${MAGENTA}[DRY RUN]${RESET} Would execute: ${DIM}${command}${agentSuffix}${RESET}`,
   );
 }
@@ -141,7 +146,7 @@ export function dryRun(command: string, agent?: string): void {
 export function startTimer(label = "working"): ProgressHandle {
   return startProgress({
     label,
-    write: (chunk) => process.stderr.write(chunk),
+    write: (chunk) => writeScopedStderr(chunk),
     isTTY: process.stderr.isTTY === true,
     indent: "  ",
     frameMs: 150,

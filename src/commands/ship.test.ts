@@ -2,13 +2,25 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import { execFileSync } from "node:child_process";
 import fs from "node:fs";
+import { tmpdir } from "node:os";
 import path from "node:path";
 import { Command } from "commander";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { discoverGitIdentityFacts } from "../adapters/git/project-id.js";
+import { getDb, getTestDb } from "../db/index.js";
+import { normalizeRegistryRepo } from "../db/project-registry.js";
 import * as runsModule from "../db/runs.js";
+import { PlanStore } from "../engine/plan-store.js";
+import { ShipOrchestrator } from "../engine/ship-orchestrator.js";
+import {
+  listRoutingDecisions,
+  recordDecision,
+} from "../server/routing-decisions.js";
 import * as execModule from "../utils/exec.js";
 import * as uiModule from "../utils/format.js";
+import { resolveProjectId } from "../utils/project-id.js";
 import * as stateModule from "../utils/state.js";
 import {
   loadSetupState,
@@ -16,10 +28,32 @@ import {
 } from "../utils/setup-state.js";
 import { shipCommand } from "./ship.js";
 
+vi.mock("../db/index.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../db/index.js")>();
+  return { ...actual, getDb: vi.fn() };
+});
+
+let routingDb: ReturnType<typeof getTestDb>;
+beforeEach(() => {
+  routingDb = getTestDb();
+  vi.mocked(getDb).mockReturnValue(routingDb);
+});
+afterEach(() => routingDb.close());
+
 // Mock dependencies
 vi.mock("../utils/exec.js", () => ({
   run: vi.fn(),
   runGate: vi.fn(),
+}));
+
+// Command tests exercise orchestration arguments and output without running
+// the orchestrator against the checkout that is running this suite.
+vi.mock("../engine/ship-orchestrator.js", () => ({
+  ShipOrchestrator: vi.fn().mockImplementation(() => ({
+    on: vi.fn(),
+    run: vi.fn().mockResolvedValue(0),
+    getResult: vi.fn().mockReturnValue({}),
+  })),
 }));
 
 vi.mock("../utils/setup-state.js", () => ({
@@ -57,11 +91,16 @@ vi.mock("../utils/config.js", async (importOriginal) => {
   };
 });
 
-vi.mock("../db/runs.js", () => ({
-  startRun: vi.fn().mockReturnValue(999),
-  finishRun: vi.fn(),
-  recordHistory: vi.fn(),
-}));
+vi.mock("../db/runs.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../db/runs.js")>();
+  return {
+    ...actual,
+    ensureCheckoutProjectId: vi.fn(actual.ensureCheckoutProjectId),
+    startRun: vi.fn().mockReturnValue(999),
+    finishRun: vi.fn(),
+    recordHistory: vi.fn(),
+  };
+});
 
 vi.mock("../utils/format.js", () => ({
   fail: vi.fn(),
@@ -516,16 +555,170 @@ describe("BackendSelector Integration", () => {
     const { getBackendSelector } = await import("../server/index.js");
     const mockSelector = getBackendSelector() as any;
     
-    // Legacy ship to keep it simple for this test
     vi.mocked(execModule.run).mockResolvedValue(undefined);
-
     await program.parseAsync(["node", "test", "ship", "001-cli-core", "1", "--legacy"]);
 
-    expect(mockSelector.selectBackend).toHaveBeenCalled();
+    expect(mockSelector.selectBackend).toHaveBeenCalledWith(
+      expect.objectContaining({ projectId: resolveProjectId(process.cwd()) }),
+    );
     
     const wudCalls = vi.mocked(execModule.run).mock.calls.filter(call => typeof call[0] === "string" && call[0].includes("work-until-done.sh"));
     expect(wudCalls[0][2].env.AGENT_BACKEND).toBe("router-selected-agent");
     expect(wudCalls[0][2].env.GEMINI_MODEL).toBe("router-selected-model");
+  });
+
+  it("uses the verified checkout owner for routing and the run ledger", async () => {
+    const { getBackendSelector } = await import("../server/index.js");
+    const selector = getBackendSelector();
+    const { startRun } =
+      await vi.importActual<typeof runsModule>("../db/runs.js");
+    const checkout = fs.realpathSync(
+      fs.mkdtempSync(path.join(tmpdir(), "gwrk-ship-origin-")),
+    );
+    const cwd = vi.spyOn(process, "cwd").mockReturnValue(checkout);
+    const feature = "001-cli-core";
+    try {
+      execFileSync("git", ["init", "--quiet", checkout]);
+      const spec = path.join(checkout, "specs", feature);
+      fs.mkdirSync(spec, { recursive: true });
+      fs.writeFileSync(path.join(spec, "spec.md"), "# Ship fixture\n");
+      const localId = resolveProjectId(checkout);
+      const priorRun = startRun(
+        { feature_id: feature, command: "local" },
+        routingDb,
+      );
+      execFileSync("git", [
+        "-C",
+        checkout,
+        "remote",
+        "add",
+        "origin",
+        "https://github.com/org/alpha.git",
+      ]);
+      const remoteId = resolveProjectId(checkout);
+      expect(remoteId).not.toBe(localId);
+
+      const selectBackend = vi.mocked(selector.selectBackend);
+      const select = selectBackend.getMockImplementation()!;
+      selectBackend.mockImplementationOnce(async (context) => {
+        const selection = await select(context);
+        recordDecision(
+          {
+            ...context,
+            selectedBackend: selection.backend,
+            reason: selection.reason,
+            probeStatus: selection.probeStatus,
+          },
+          routingDb,
+        );
+        return selection;
+      });
+      vi.mocked(runsModule.startRun).mockImplementationOnce(startRun);
+
+      await program.parseAsync(["node", "test", "ship", feature, "1", "--legacy"]);
+
+      const [selection] = selectBackend.mock.calls[0];
+      const runs = runsModule.listRuns(feature, localId, routingDb);
+      expect(runs).toMatchObject([
+        { command: "ship", project_id: localId },
+        { id: priorRun, command: "local", project_id: localId },
+      ]);
+      expect(listRoutingDecisions(localId, selection.runId, routingDb))
+        .toMatchObject([{ projectId: localId, feature }]);
+      expect(listRoutingDecisions(remoteId, selection.runId, routingDb))
+        .toEqual([]);
+    } finally {
+      cwd.mockRestore();
+      fs.rmSync(checkout, { recursive: true, force: true });
+    }
+  });
+
+  it.each([
+    ["SQLITE_CANTOPEN", "open"],
+    ["SQLITE_CANTOPEN_ISDIR", "open"],
+    ["SQLITE_READONLY", "open"],
+    ["ENOTDIR", "open"],
+    ["SQLITE_READONLY_DBMOVED", "register"],
+  ])(
+    "ships with the default backend when the ledger reports %s during %s",
+    async (code, operation) => {
+      const { getBackendSelector } = await import("../server/index.js");
+      const selector = getBackendSelector();
+      const unavailable = () => {
+        throw Object.assign(new Error("ledger cannot be written"), { code });
+      };
+      if (operation === "open") {
+        vi.mocked(getDb).mockImplementation(unavailable);
+      } else {
+        vi.mocked(runsModule.ensureCheckoutProjectId).mockImplementationOnce(unavailable);
+      }
+      process.exitCode = 0;
+
+      await program.parseAsync(["node", "test", "ship", "001-cli-core", "7"]);
+
+      expect(process.exitCode).toBe(0);
+      expect(selector.selectBackend).toHaveBeenCalledWith(
+        expect.objectContaining({
+          projectId: resolveProjectId(process.cwd()),
+          ledgerAvailable: false,
+        }),
+      );
+      expect(
+        vi.mocked(ShipOrchestrator).mock.results[0]?.value.run,
+      ).toHaveBeenCalledOnce();
+      expect(getDb).toHaveBeenCalledOnce();
+      expect(runsModule.startRun).not.toHaveBeenCalled();
+      expect(runsModule.finishRun).not.toHaveBeenCalled();
+      expect(runsModule.recordHistory).not.toHaveBeenCalled();
+      expect(PlanStore).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each([
+    { backend: "default", agentArgs: [] },
+    { backend: "explicit", agentArgs: ["--agent", "forced-agent"] },
+  ])(
+    "rejects conflicting checkout ownership with the $backend backend",
+    async ({ agentArgs }) => {
+      const { getBackendSelector } = await import("../server/index.js");
+      const selector = getBackendSelector();
+      const id = resolveProjectId(process.cwd());
+      routingDb
+        .prepare(
+          "INSERT INTO projects (id, name, path, github_repo) VALUES (?, ?, '', ?)",
+        )
+        .run(id, "Different repository", "other.example/conflicting/repo");
+      process.exitCode = 0;
+
+      await program.parseAsync([
+        "node", "test", "ship", "001-cli-core", "7", ...agentArgs,
+      ]);
+
+      expect(process.exitCode).toBe(1);
+      expect(selector.selectBackend).not.toHaveBeenCalled();
+      expect(ShipOrchestrator).not.toHaveBeenCalled();
+      expect(runsModule.startRun).not.toHaveBeenCalled();
+    },
+  );
+
+  it("forwards the canonical checkout ID in a dry run", async () => {
+    const { getBackendSelector } = await import("../server/index.js");
+    const selector = getBackendSelector();
+    const { remoteOriginUrl } = discoverGitIdentityFacts(process.cwd());
+    routingDb
+      .prepare("INSERT INTO projects (id, name, path, github_repo) VALUES (?, ?, ?, ?)")
+      .run("canonical", "Checkout", process.cwd(), normalizeRegistryRepo(remoteOriginUrl ?? null));
+    routingDb
+      .prepare("INSERT INTO project_aliases (alias_id, project_id) VALUES (?, ?)")
+      .run(resolveProjectId(process.cwd()), "canonical");
+
+    await program.parseAsync([
+      "node", "test", "ship", "001-cli-core", "1", "--dry-run",
+    ]);
+
+    expect(selector.selectBackend).toHaveBeenCalledWith(
+      expect.objectContaining({ projectId: "canonical" }),
+    );
   });
 
   it("should skip selectBackend() when --agent override IS provided", async () => {
@@ -742,26 +935,17 @@ describe("FR-009/T010: Agent config fail-fast", () => {
     program.addCommand(shipCommand);
   });
 
-  it("FR-009/T010: crashes with exit 1 when agents.implement is missing from config", async () => {
-    // Override config mock to return missing agents.implement
+  it("reports invalid config before recording a ship run", async () => {
     const configModule = await import("../utils/config.js");
-    vi.mocked(configModule.loadConfig).mockReturnValueOnce({
-      project: {
-        name: "test",
-        slack: { channelId: "C123", channelName: "test" },
-      },
-      agents: {},
-      server: { port: 18790, host: "localhost" },
-    } as ReturnType<typeof configModule.loadConfig>);
+    vi.mocked(configModule.loadConfig).mockImplementationOnce(() => {
+      throw new Error("Invalid agent configuration");
+    });
 
     process.exitCode = 0;
-    try {
-      await program.parseAsync(["node", "test", "ship", "004-ship-loop", "1"]);
-    } catch {
-      // Expected: process.exit(1) or thrown error
-    }
+    await program.parseAsync(["node", "test", "ship", "004-ship-loop", "1"]);
 
     expect(process.exitCode).toBe(1);
+    expect(runsModule.startRun).not.toHaveBeenCalled();
   });
 });
 
