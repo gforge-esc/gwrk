@@ -418,6 +418,7 @@ async function dispatchAgent(opts: DispatchOptions): Promise<{
  */
 export interface TaskDispatch extends AgentTaskRequest {
   promptParts?: { template: string; userInput: string };
+  /** Project that selected the backend when execution uses a separate worktree. */
   backendProjectRoot?: string;
   commandOverride?: string;
   dryRun?: boolean;
@@ -498,6 +499,8 @@ function resolvePrimaryCheckout(executionDir: string): string {
   return executionDir;
 }
 
+const ENFORCEMENT_MARKER = "{{enforcement}}";
+
 function splitLegacyStdin(task: TaskDispatch) {
   const { stdin, prompt, type, workflow } = task;
   if (
@@ -509,20 +512,20 @@ function splitLegacyStdin(task: TaskDispatch) {
     return undefined;
   }
 
-  if (
-    /^<code_quality>\s*(?:\{\{enforcement\}\}\s*)?<\/code_quality>$/.test(
-      stdin.trim(),
-    )
-  ) {
-    return { template: stdin, userInput: "" };
+  const slots = stdin.matchAll(
+    /<code_quality>([\s\S]*?)<\/code_quality>|^\{\{enforcement\}\}(?=\r?\n)/gm,
+  );
+  const slot = Array.from(slots).find(([, body]) => {
+    const rules = body?.trim();
+    return !rules || rules.includes(ENFORCEMENT_MARKER);
+  });
+  if (slot?.index === undefined) return undefined;
+
+  if (slot[1] !== undefined && stdin.trim() === slot[0]) {
+    return { template: stdin, userInput: "", slot };
   }
 
   // Legacy scoped templates put the enforcement slot before the task block.
-  const slot =
-    /<code_quality>[\s\S]*?<\/code_quality>|^\{\{enforcement\}\}(?=\r?\n)/m.exec(
-      stdin,
-    );
-  if (!slot) return undefined;
   const inputOpening = /^<user_input>\r?\n/gm;
   inputOpening.lastIndex = slot.index + slot[0].length;
   const boundary = inputOpening.exec(stdin);
@@ -531,7 +534,7 @@ function splitLegacyStdin(task: TaskDispatch) {
   const userInput = stdin.slice(inputStart);
   if (!/\n<\/user_input>(?:\r?\n)*$/.test(userInput)) return undefined;
 
-  return { template: stdin.slice(0, inputStart), userInput };
+  return { template: stdin.slice(0, inputStart), userInput, slot };
 }
 
 /**
@@ -586,11 +589,9 @@ export async function dispatchToAgent(task: TaskDispatch): Promise<TaskResult> {
   let template = promptParts?.template ?? legacyParts?.template ?? "";
 
   // FR-014: Inject enforcement skills
-  const codeQuality = template.match(
-    /<code_quality>[\s\S]*?<\/code_quality>/,
-  )?.[0];
-  const bareEnforcementSlot = /^\{\{enforcement\}\}(?=\r?\n)/m;
-  if (codeQuality || (legacyParts && bareEnforcementSlot.test(template))) {
+  const enforcementSlot =
+    legacyParts?.slot ?? /<code_quality>([\s\S]*?)<\/code_quality>/.exec(template);
+  if (enforcementSlot?.index !== undefined) {
     const scope =
       task.workflow?.includes("review") || task.type?.includes("review")
         ? "review"
@@ -606,15 +607,13 @@ export async function dispatchToAgent(task: TaskDispatch): Promise<TaskResult> {
       profile,
     );
 
-    if (codeQuality) {
-      const enforcementMarker = "{{enforcement}}";
-      const section = codeQuality.includes(enforcementMarker)
-        ? codeQuality.replaceAll(enforcementMarker, () => enforcement)
-        : `<code_quality>\n${enforcement}\n</code_quality>`;
-      template = template.replace(codeQuality, () => section);
-    } else {
-      template = template.replace(bareEnforcementSlot, () => enforcement);
-    }
+    const [slot] = enforcementSlot;
+    const replacement = slot.includes(ENFORCEMENT_MARKER)
+      ? slot.replaceAll(ENFORCEMENT_MARKER, () => enforcement)
+      : `<code_quality>\n${enforcement}\n</code_quality>`;
+    const start = enforcementSlot.index;
+    template =
+      template.slice(0, start) + replacement + template.slice(start + slot.length);
   }
 
   const hasCommandSafety =

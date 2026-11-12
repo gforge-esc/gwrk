@@ -126,8 +126,11 @@ describe('US-016: Enforcement Skills Dispatch Injection', () => {
   it.each([
     ["a standalone empty section", "<code_quality></code_quality>"],
     ["a standalone enforcement section", "<code_quality>\r\n{{enforcement}}\r\n</code_quality>"],
+    ["a standalone enforcement section with surrounding rules", "<code_quality>\r\nRules:\r\n{{enforcement}}\r\n</code_quality>"],
     ["a bare marker after a quoted input opener", `Quoted opener:\r\n<user_input>\r\n\r\n${legacyPrefix}${legacyInput}`],
     ["a code quality slot before scoped input", `Rules:\r\n<code_quality>\r\n{{enforcement}}\r\n</code_quality>\r\n\r\n${legacyInput}`],
+    ["a code quality slot after a quoted input opener", `Quoted opener:\r\n<user_input>\r\n\r\nRules:\r\n<code_quality>\r\n{{enforcement}}\r\n</code_quality>\r\n\r\n${legacyInput}`],
+    ["a bare marker after a code quality fixture", `Keep <code_quality>example rules</code_quality>.\r\n${legacyPrefix}${legacyInput}`],
     ["a bare marker before scoped input", `${legacyPrefix}${legacyInput}`],
   ])("expands %s in legacy Codex stdin", async (_label, stdin) => {
     const actualSkills = await vi.importActual<typeof skillRuntime>("../plugins/skill-runtime.js");
@@ -154,6 +157,9 @@ describe('US-016: Enforcement Skills Dispatch Injection', () => {
     if (!userInput) {
       expect(expandedTemplate).toMatch(/<code_quality>\r?\n/);
       expect(expandedTemplate).toContain("</code_quality>");
+      if (template.includes("Rules:")) {
+        expect(expandedTemplate).toContain("<code_quality>\r\nRules:\r\n");
+      }
     } else {
       const prefix = template.slice(0, template.indexOf("Rules:") + "Rules:\r\n".length);
       expect(expandedTemplate.startsWith(`${COMMAND_SAFETY_BLOCK}\n\n${prefix}`)).toBe(true);
@@ -165,6 +171,7 @@ describe('US-016: Enforcement Skills Dispatch Injection', () => {
     ["skill input", { workflow: "skill/fixture", type: "skill/fixture", stdin: `${legacyPrefix}${legacyInput}` }],
     ["input with text after the closing tag", { stdin: `${legacyPrefix}${legacyInput}More task text` }],
     ["an inline marker", { stdin: `Quote {{enforcement}} here.\r\n\r\n${legacyInput}` }],
+    ["a code quality fixture without an enforcement slot", { stdin: `Keep <code_quality>example rules</code_quality>.\r\n\r\n${legacyInput}` }],
     ["identical prompt and stdin", { prompt: `${legacyPrefix}${legacyInput}`, stdin: `${legacyPrefix}${legacyInput}` }],
   ])("preserves %s in legacy Codex stdin", async (_label, task) => {
     const capturedStdin = mockAgentStdin();
