@@ -40,6 +40,7 @@ import type {
   HarvestExecutionPort,
   OperationsStorePort,
   OutboxItem,
+  OutboxMessage,
   WorkerExecutionPort,
 } from "./operations-port.js";
 import type { VcsPort } from "./vcs-port.js";
@@ -55,6 +56,7 @@ type RecoveryStore = Pick<
   | "getOutboxItem"
   | "listRecoverableOutboxItems"
   | "claimOutboxItem"
+  | "completeOutboxItem"
 >;
 
 const projectId = "project-a";
@@ -331,7 +333,10 @@ function restoreHarvestIntake(persisted: {
       const incoming = target.accepted
         ? target.operations.map((operation) => ({
             ...operation,
-            recipient: candidate.recipient ?? null,
+            recipient:
+              operation.prNumber === null
+                ? null
+                : (candidate.recipient ?? null),
           }))
         : [];
       const transaction = structuredClone(rows);
@@ -668,7 +673,29 @@ function restoreRecoveryStore(persisted: {
           matchesHarvestNoticeRecipient(recipient, notice.recipient) &&
           notice.featureId === row.featureId &&
           notice.phaseId === phaseKey;
-        if (savedNotice && !matchesNotice(savedNotice)) return invalid;
+        if (savedNotice) {
+          const { workspaceId, channelId, threadTs } = savedNotice;
+          const unboundPending =
+            savedNotice.status === "pending" &&
+            workspaceId === null &&
+            channelId === null &&
+            threadTs === null;
+          const matchesDestination =
+            recipient !== null &&
+            workspaceId === recipient.workspaceId &&
+            channelId === recipient.channelId &&
+            threadTs === (recipient.threadTs ?? null);
+          if (
+            !matchesNotice(savedNotice) ||
+            savedNotice.status === "skipped_no_target" ||
+            (savedNotice.status === "delivered" &&
+              !savedNotice.messageTs?.trim()) ||
+            !savedNotice.clientMetadataKey.trim() ||
+            !(unboundPending || matchesDestination)
+          ) {
+            return invalid;
+          }
+        }
         if ((recipient !== null) !== (failureNotice != null)) return invalid;
         if (failureNotice && !matchesNotice(failureNotice)) return invalid;
         if (replay) return recipient && !savedNotice ? invalid : result;
@@ -797,6 +824,38 @@ function restoreRecoveryStore(persisted: {
         item: { ...row, workspaceId, channelId, threadTs },
         action,
       };
+    },
+    completeOutboxItem({ claim, nowIso, outcome }) {
+      const row = outboxItems.find((item) => item.outboxId === claim.outboxId);
+      if (
+        !row ||
+        row.status !== "sending" ||
+        row.attemptCount !== claim.attemptNumber ||
+        row.clientMetadataKey !== claim.clientMetadataKey
+      ) {
+        return { ok: false, code: "LEASE_FENCED" };
+      }
+      if (
+        row.eventType === "harvest_gate_failed" &&
+        outcome.status === "skipped_no_target"
+      ) {
+        return { ok: false, code: "OUTBOX_TRANSITION_INVALID" };
+      }
+      if (outcome.status === "delivered") {
+        if (
+          outcome.messageTs.trim().length === 0 ||
+          outcome.channelId !== row.channelId ||
+          (outcome.threadTs ?? null) !== row.threadTs
+        ) {
+          return { ok: false, code: "OUTBOX_TRANSITION_INVALID" };
+        }
+        row.messageTs = outcome.messageTs;
+        row.deliveredAt = nowIso;
+      }
+      row.status = outcome.status;
+      row.updatedAt = nowIso;
+      row.lastError = outcome.status === "failed" ? outcome.error : null;
+      return { ok: true };
     },
   };
   return Object.assign(store, {
@@ -1520,6 +1579,63 @@ describe("durable recovery store contract", () => {
       "message-1",
     );
   });
+
+  it.each(["", " \t"])(
+    "rejects a blank delivery timestamp %j and reconciles after restart",
+    (messageTs) => {
+      const pending = outbox("notification", "pending");
+      const store = restoreRecoveryStore({
+        harvests: [],
+        stages: [],
+        outboxItems: [pending],
+      });
+      const send = store.claimOutboxItem({
+        outboxId: pending.outboxId,
+        nowIso,
+        destination,
+      });
+      if (send?.action !== "send") throw new Error("Expected a send claim");
+      const sending = store.snapshot();
+      const outcome = {
+        status: "delivered" as const,
+        channelId: destination.channelId,
+        threadTs: destination.threadTs,
+        messageTs,
+      };
+
+      expect(
+        store.completeOutboxItem({ claim: send.claim, nowIso, outcome }),
+      ).toEqual({ ok: false, code: "OUTBOX_TRANSITION_INVALID" });
+      expect(store.snapshot()).toEqual(sending);
+
+      const restarted = restoreRecoveryStore(store.snapshot());
+      const recovery = restarted.claimOutboxItem({
+        outboxId: pending.outboxId,
+        nowIso: leaseExpiresAt,
+        destination: null,
+      });
+      expect(recovery).toMatchObject({
+        action: "reconcile",
+        item: { ...destination, clientMetadataKey: pending.clientMetadataKey },
+      });
+      if (recovery?.action !== "reconcile") {
+        throw new Error("Expected a reconciliation claim");
+      }
+      expect(
+        restarted.completeOutboxItem({
+          claim: recovery.claim,
+          nowIso: leaseExpiresAt,
+          outcome: { ...outcome, messageTs: "12.1" },
+        }),
+      ).toEqual({ ok: true });
+      expect(restarted.getOutboxItem(pending.outboxId)).toMatchObject({
+        ...destination,
+        clientMetadataKey: pending.clientMetadataKey,
+        status: "delivered",
+        messageTs: "12.1",
+      });
+    },
+  );
 });
 
 describe("persisted harvest intake contract", () => {
@@ -2024,14 +2140,18 @@ describe("persisted harvest intake contract", () => {
     ).toMatchObject({ ok: true, operations: [], deduplicatedTransport: true });
   });
 
-  it.each([
-    { checkoutPhaseIds: undefined },
-    { checkoutPhaseIds: [] },
-    { checkoutPhaseIds: ["phase-02"] },
-  ])(
-    "rejects a manual request for phase-01 with checkout coverage $checkoutPhaseIds",
-    ({ checkoutPhaseIds }) => {
-      const manual = harvestIntake("manual-explicit", verifiedOffline);
+  it.each(
+    ["offline", "pull request"].flatMap((target) =>
+      [undefined, [], ["phase-02"]].map((checkoutPhaseIds) => ({
+        target,
+        checkoutPhaseIds,
+      })),
+    ),
+  )(
+    "rejects a manual $target phase-01 request with checkout coverage $checkoutPhaseIds",
+    ({ target, checkoutPhaseIds }) => {
+      const facts = target === "offline" ? verifiedOffline : {};
+      const manual = harvestIntake("manual-explicit", facts, "manual_cli");
       if (!manual.target.accepted) throw new Error("Expected manual target");
       const initial = restoreHarvestIntake({ harvests: [], stages: [] });
       const before = initial.snapshot();
@@ -2049,6 +2169,41 @@ describe("persisted harvest intake contract", () => {
           target: { ...manual.target, checkoutPhaseIds: ["phase-1"] },
         }),
       ).toMatchObject({ ok: true, operations: [{ phaseId }] });
+    },
+  );
+
+  it.each(
+    (["github_webhook", "github_poller", "manual_cli"] as const).flatMap(
+      (source) => [[], ["phase-02"]].map((coverage) => ({ source, coverage })),
+    ),
+  )(
+    "rejects checkout coverage $coverage for a phase branch from $source",
+    ({ source, coverage }) => {
+      const intake = harvestIntake("branch-phase", {}, source);
+      if (!intake.target.accepted) throw new Error("Expected a phase target");
+      const candidate = { ...intake.candidate, explicitPhaseId: undefined };
+      const initial = restoreHarvestIntake({ harvests: [], stages: [] });
+      const before = initial.snapshot();
+
+      expect(
+        initial.store.recordHarvestIntake({
+          ...intake,
+          candidate,
+          target: { ...intake.target, checkoutPhaseIds: coverage },
+        }),
+      ).toEqual({ ok: false, code: "HARVEST_IDENTITY_MISMATCH" });
+      expect(initial.snapshot()).toEqual(before);
+
+      for (const checkoutPhaseIds of [["phase-1"], undefined]) {
+        const store = restoreHarvestIntake(before).store;
+        expect(
+          store.recordHarvestIntake({
+            ...intake,
+            candidate,
+            target: { ...intake.target, checkoutPhaseIds },
+          }),
+        ).toMatchObject({ ok: true, operations: [{ phaseId }] });
+      }
     },
   );
 
@@ -2503,6 +2658,105 @@ it("resumes a persisted retryable sync failure after lease expiry", () => {
   ).toEqual(firstPhaseReceipts);
 });
 
+it("keeps a local commit harvest Slack-free through restart and pull request enrichment", () => {
+  const operationId = "local-slack-free";
+  const recipient = {
+    projectId,
+    surface: "slack",
+    workspaceId: "W1",
+    channelId: "C1",
+    threadTs: "1.2",
+  } as const;
+  const local = harvestIntake(operationId, verifiedOffline);
+  const delivery = { ...local, candidate: { ...local.candidate, recipient } };
+  const intake = restoreHarvestIntake({ harvests: [], stages: [] });
+  expect.soft(intake.store.recordHarvestIntake(delivery)).toMatchObject({
+    ok: true,
+    operations: [{ operationId, recipient: null }],
+  });
+  const restored = restoreHarvestIntake(intake.snapshot());
+  expect.soft(restored.store.recordHarvestIntake(delivery)).toMatchObject({
+    ok: true,
+    deduplicatedTransport: true,
+    operations: [{ operationId, recipient: null }],
+  });
+
+  const recovery = restoreRecoveryStore({
+    ...restored.snapshot(),
+    slackBindings: {
+      [projectId]: { workspaceId: "W1", channelId: "C1", sharedChannel: false },
+    },
+    featureThreads: [
+      {
+        projectId,
+        featureId,
+        workspaceId: "W1",
+        channelId: "C1",
+        rootTs: "1.2",
+        updatedAt: createdAt,
+      },
+    ],
+    outboxItems: [],
+  });
+  const claim = recovery.claimHarvestLease({
+    operationId,
+    leaseOwner: "worker",
+    nowIso,
+    leaseExpiresAt,
+  });
+  if (!claim) throw new Error("Expected local harvest lease");
+  const plan = {
+    terminalEvent: "merged" as const,
+    phaseIds: [phaseId],
+    hasSlackTarget: false,
+    hasRemoteBranchTarget: false,
+  };
+  expect
+    .soft(
+      recovery.initializeHarvestStages({
+        ...plan,
+        fence: claim.fence,
+        nowIso,
+        stages: planHarvestStages(plan),
+      }),
+    )
+    .toEqual({ ok: true });
+  expect.soft(recovery.snapshot().stages).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({
+        stage: "slack_delivery",
+        status: "skipped_no_target",
+      }),
+      expect.objectContaining({
+        stage: "branch_cleanup",
+        status: "skipped_no_target",
+      }),
+    ]),
+  );
+  expect(recovery.snapshot().outboxItems).toEqual([]);
+
+  const enrich = restoreHarvestIntake(recovery.snapshot());
+  const pull = harvestIntake("local-pull");
+  expect
+    .soft(
+      enrich.store.recordHarvestIntake({
+        ...pull,
+        candidate: { ...pull.candidate, recipient },
+      }),
+    )
+    .toMatchObject({
+      ok: true,
+      operations: [
+        {
+          operationId,
+          prNumber: 42,
+          recipient: null,
+          plannedSlackRecipient: null,
+        },
+      ],
+    });
+});
+
 it("rejects a stale cleanup skip when pull request evidence arrives after lease claim", () => {
   const local = harvestIntake("offline-claimed", verifiedOffline);
   if (!local.target.accepted) throw new Error("Expected offline operation");
@@ -2697,31 +2951,36 @@ it.each([
         ).toEqual({ ok: false, code: "HARVEST_STAGE_TRANSITION_INVALID" });
         expect(beforeGate.snapshot()).toEqual(before);
       }
-    }
-    if (hasSlackTarget) {
-      const collision = {
-        ...existingNotice,
-        ownerKind: "dispatch" as const,
-        eventType: "dispatch_completed" as const,
+      const savedNotice = {
+        ...notice,
         dedupeKey: JSON.stringify([
           "harvest_gate_failed",
           operationId,
           phaseId,
         ]),
-        recipient: { ...notice.recipient, channelId: "C9" },
       };
-      const conflicting = restoreRecoveryStore({
-        ...beforeGate.snapshot(),
-        outboxItems: [collision],
-      });
-      const before = conflicting.snapshot();
-      expect(
-        conflicting.transitionHarvestStage({
-          ...transition,
-          failureNotice: { ...notice, recipient: collision.recipient },
-        }),
-      ).toEqual({ ok: false, code: "HARVEST_STAGE_TRANSITION_INVALID" });
-      expect(conflicting.snapshot()).toEqual(before);
+      const identityMismatches = {
+        event: { eventType: "dispatch_completed" },
+        "owner kind": { ownerKind: "dispatch" },
+        "owner operation": { ownerOperationId: "other-operation" },
+        feature: { featureId: "other-feature" },
+        phase: { phaseId: "phase-02" },
+        workspace: { recipient: { ...notice.recipient, workspaceId: "W9" } },
+        channel: { recipient: { ...notice.recipient, channelId: "C9" } },
+        thread: { recipient: { ...notice.recipient, threadTs: "9.9" } },
+      } satisfies Record<string, Partial<OutboxItem>>;
+      for (const [field, mismatch] of Object.entries(identityMismatches)) {
+        const conflicting = restoreRecoveryStore({
+          ...before,
+          outboxItems: [{ ...savedNotice, ...mismatch }],
+        });
+        const beforeConflict = conflicting.snapshot();
+        expect(
+          conflicting.transitionHarvestStage(transition),
+          `saved notice with conflicting ${field}`,
+        ).toEqual({ ok: false, code: "HARVEST_STAGE_TRANSITION_INVALID" });
+        expect(conflicting.snapshot()).toEqual(beforeConflict);
+      }
     }
     const beforeReplay = beforeGate.snapshot();
     const retry = restoreRecoveryStore(beforeReplay);
@@ -2798,20 +3057,33 @@ it.each([
         channelId: "C3",
         threadTs: "3.1",
       };
-      expect(
-        restarted.claimOutboxItem({
-          outboxId: notice.outboxId,
-          nowIso,
-          destination: changedDestination,
-        }),
-      ).toMatchObject({
+      const send = restarted.claimOutboxItem({
+        outboxId: notice.outboxId,
+        nowIso,
+        destination: changedDestination,
+      });
+      expect(send).toMatchObject({
         action: "send",
         item: {
           ...savedDestination,
           clientMetadataKey: notice.clientMetadataKey,
         },
       });
-      const afterSend = restoreRecoveryStore(restarted.snapshot());
+      if (send?.action !== "send") throw new Error("Expected a send claim");
+      const sending = restarted.snapshot();
+      expect(
+        restarted.completeOutboxItem({
+          claim: send.claim,
+          nowIso,
+          outcome: { status: "skipped_no_target" },
+        }),
+      ).toEqual({ ok: false, code: "OUTBOX_TRANSITION_INVALID" });
+      expect(restarted.snapshot()).toEqual(sending);
+      const afterSend = restoreRecoveryStore(sending);
+      expect(afterSend.transitionHarvestStage(transition)).toEqual({
+        ok: true,
+      });
+      expect(afterSend.snapshot()).toEqual(sending);
       const recovery = afterSend.claimOutboxItem({
         outboxId: notice.outboxId,
         nowIso: leaseExpiresAt,
@@ -2822,13 +3094,162 @@ it.each([
         claim: { clientMetadataKey: notice.clientMetadataKey },
         item: savedDestination,
       });
-      if (!recovery) throw new Error("Expected a reconciliation claim");
+      if (recovery?.action !== "reconcile") {
+        throw new Error("Expected a reconciliation claim");
+      }
       const providerMessages = new Map([
         [outboxDeliveryKey(existingNotice), existingNotice.messageTs],
       ]);
       expect(providerMessages.has(outboxDeliveryKey(recovery.item))).toBe(
         false,
       );
+      expect(
+        afterSend.completeOutboxItem({
+          claim: recovery.claim,
+          nowIso: leaseExpiresAt,
+          outcome: {
+            status: "delivered",
+            channelId: savedDestination.channelId,
+            threadTs: savedDestination.threadTs,
+            messageTs: "12.1",
+          },
+        }),
+      ).toEqual({ ok: true });
+      expect(afterSend.getOutboxItem(notice.outboxId)).toMatchObject({
+        ...savedDestination,
+        status: "delivered",
+        clientMetadataKey: notice.clientMetadataKey,
+      });
+    }
+  },
+);
+
+const gateNoticeDestination = {
+  workspaceId: "W1",
+  channelId: "C1",
+  threadTs: "1.2",
+};
+
+it.each([
+  ["blank metadata key", { clientMetadataKey: " \t" }],
+  [
+    "wrong channel and thread",
+    {
+      ...gateNoticeDestination,
+      status: "uncertain",
+      channelId: "C9",
+      threadTs: "9.9",
+    },
+  ],
+  ["wrong workspace", { ...gateNoticeDestination, workspaceId: "W9" }],
+  ["wrong thread", { ...gateNoticeDestination, threadTs: "9.9" }],
+  [
+    "skipped required notice",
+    { ...gateNoticeDestination, status: "skipped_no_target" },
+  ],
+  ["partial destination", { channelId: "C1" }],
+  [
+    "blank delivered timestamp",
+    { ...gateNoticeDestination, status: "delivered", messageTs: " " },
+  ],
+  [
+    "missing delivered timestamp",
+    { ...gateNoticeDestination, status: "delivered", messageTs: null },
+  ],
+  [
+    "valid delivered receipt",
+    { ...gateNoticeDestination, status: "delivered", messageTs: "2.3" },
+    true,
+  ],
+] satisfies [string, Partial<OutboxItem>, boolean?][])(
+  "validates a restored gate notice with %s before committing or replaying failure",
+  (_label, mismatch, valid = false) => {
+    const operationId = "gate-failure";
+    const recipient = {
+      projectId,
+      surface: "slack",
+      ...gateNoticeDestination,
+    } as const;
+    const notice = outbox("gate-notice", "pending", {
+      ownerOperationId: operationId,
+      eventType: "harvest_gate_failed",
+      dedupeKey: JSON.stringify(["harvest_gate_failed", operationId, phaseId]),
+      recipient,
+    });
+    const initial = restoreRecoveryStore({
+      featureThreads: [
+        {
+          projectId,
+          featureId,
+          workspaceId: recipient.workspaceId,
+          channelId: recipient.channelId,
+          rootTs: recipient.threadTs,
+          updatedAt: createdAt,
+        },
+      ],
+      slackBindings: {
+        [projectId]: {
+          workspaceId: recipient.workspaceId,
+          channelId: recipient.channelId,
+          sharedChannel: false,
+        },
+      },
+      harvests: [harvest(operationId, { recipient })],
+      stages: [],
+      outboxItems: [],
+    });
+    const claim = initial.claimHarvestLease({
+      operationId,
+      leaseOwner: "worker",
+      nowIso,
+      leaseExpiresAt,
+    });
+    if (!claim) throw new Error("Expected harvest lease");
+    const plan = {
+      terminalEvent: "merged" as const,
+      phaseIds: [phaseId],
+      hasSlackTarget: true,
+      hasRemoteBranchTarget: true,
+    };
+    expect(
+      initial.initializeHarvestStages({
+        ...plan,
+        fence: claim.fence,
+        nowIso,
+        stages: planHarvestStages(plan),
+      }),
+    ).toEqual({ ok: true });
+    const transition = {
+      fence: claim.fence,
+      nowIso,
+      phaseKey: phaseId,
+      stage: "gate_verify",
+      status: "gate_failed",
+      failureNotice: notice,
+    } as const;
+    const pending = restoreRecoveryStore({
+      ...initial.snapshot(),
+      outboxItems: [notice],
+    });
+    const beforeFailure = pending.snapshot();
+    expect(pending.transitionHarvestStage(transition)).toEqual({ ok: true });
+    expect(pending.snapshot().outboxItems).toEqual([notice]);
+    for (const snapshot of [beforeFailure, pending.snapshot()]) {
+      const restarted = restoreRecoveryStore({
+        ...snapshot,
+        outboxItems: [{ ...notice, ...mismatch }],
+      });
+      const before = restarted.snapshot();
+      expect
+        .soft(restarted.transitionHarvestStage(transition))
+        .toEqual(
+          valid
+            ? { ok: true }
+            : { ok: false, code: "HARVEST_STAGE_TRANSITION_INVALID" },
+        );
+      if (valid)
+        expect(restarted.snapshot().outboxItems).toEqual(before.outboxItems);
+      else expect.soft(restarted.snapshot()).toEqual(before);
     }
   },
 );

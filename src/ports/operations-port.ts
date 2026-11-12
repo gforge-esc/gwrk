@@ -308,7 +308,8 @@ export interface OperationsStorePort {
    * Commit the original delivery and all resolved operations in one transaction.
    * For a new delivery, verify the entire operation batch against enrollment and
    * checkout coverage with verifyHarvestIntakeOperations before any write.
-   * Require checkout coverage for an explicit local phase.
+   * Require checkout coverage for an explicit local or manual merge phase.
+   * When supplied, merge checkout coverage must include the branch-derived phase.
    * Reject duplicate operation IDs across phase scopes.
    * Resolve existing work before checking IDs for inserts. Matched work keeps its saved ID.
    * Reject any insert whose operation ID already exists, even in another project.
@@ -316,7 +317,8 @@ export interface OperationsStorePort {
    * Require accepted status and lease epoch zero on every proposed new row.
    * Require null lease owner, lease expiry, completion time, linked run, last error and planned Slack recipient.
    * Return HARVEST_IDENTITY_MISMATCH before any write if a proposed row fails these checks.
-   * Set the recipient of a new row from candidate.recipient, defaulting to null.
+   * For pull requests, set the recipient of a new row from candidate.recipient, defaulting to null.
+   * Persist a null recipient for local commit work and retain it on replay and enrichment.
    * Bind the planned Slack recipient only during fenced stage initialization.
    * Resolve checkout coverage with scopeManualHarvestToPhases or scopeVerifiedMergeToPhases before intake.
    * Derive verified phase work keys from the pull request identity returned by verifyHarvestTarget.
@@ -427,6 +429,12 @@ export interface OperationsStorePort {
    * Reject conflicting recipient fields before changing either the receipt or outbox.
    * Upsert harvest_gate_failed by project, operation and phase in the gate failure transaction.
    * An existing dedupe row must match the event, harvest owner, feature, phase and planned recipient.
+   * Validate the saved metadata key and destination before either write or fenced replay.
+   * Require a nonblank messageTs for a saved delivered notice.
+   * Require a nonblank key and reject skipped_no_target for a required gate failure notice.
+   * Allow an unbound destination only while the notice is pending.
+   * Otherwise require the saved workspace, channel and thread to match plannedSlackRecipient.
+   * Compare an absent planned thread as null.
    * On fenced replay, require the saved notice if the plan has a target and preserve its metadata key.
    * Keep retryable_failure receipts and their errors eligible for a new claim after lease expiry.
    * Set neither the receipt nor the operation completion time for a retryable failure.
@@ -491,7 +499,12 @@ export interface OperationsStorePort {
     nowIso: string;
     error: string;
   }): FencedWrite;
-  /** Record the outcome under the current claim and preserve the bound destination. */
+  /**
+   * Record the outcome under the current claim and preserve the bound destination.
+   * Require a nonblank messageTs for delivered outcomes.
+   * Return OUTBOX_TRANSITION_INVALID before any write for a blank timestamp.
+   * Reject skipped_no_target for harvest_gate_failed with OUTBOX_TRANSITION_INVALID before any write.
+   */
   completeOutboxItem(input: {
     claim: OutboxClaim;
     nowIso: string;
@@ -504,7 +517,7 @@ export interface OperationsStorePort {
         }
       | { status: "skipped_no_target" }
       | { status: "failed"; error: string };
-  }): FencedWrite;
+  }): FencedWrite | { ok: false; code: "OUTBOX_TRANSITION_INVALID" };
 
   getHarvestCursor(projectId: string): HarvestCursor | null;
   /** Advance the watermark after intake commits through that watermark. */

@@ -202,11 +202,11 @@ describe("FR-002 harvest identity and target verification", () => {
   });
 
   it.each([
-    ["merged", `feat/${featureId}-${phaseId}`],
-    ["closed_unmerged", `feat/${featureId}`],
+    ["merged", `feat/${featureId}-${phaseId}`, undefined],
+    ["closed_unmerged", `feat/${featureId}`, []],
   ] as const)(
     "keeps a single scope for %s on %s",
-    (terminalEvent, headBranch) => {
+    (terminalEvent, headBranch, checkoutPhaseIds) => {
       const fact = {
         repoSlug: "acme/a",
         baseBranch: "develop",
@@ -221,7 +221,7 @@ describe("FR-002 harvest identity and target verification", () => {
       if (!verified.ok || verified.kind !== "pull_request") {
         throw new Error("Expected verified pull request");
       }
-      expect(scopeVerifiedMergeToPhases(verified, [])).toEqual([
+      expect(scopeVerifiedMergeToPhases(verified, checkoutPhaseIds)).toEqual([
         { featureId, phaseId: verified.phaseId, workKey: verified.workKey },
       ]);
     },

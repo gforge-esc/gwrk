@@ -238,13 +238,17 @@ export function scopeVerifiedMergeToPhases(
     requestedPhaseId,
     pullRequestIdentity,
   }: VerifiedPullRequestTarget,
-  phaseIds: readonly string[],
+  phaseIds?: readonly string[],
 ): HarvestWorkScope[] {
-  const covered = [...new Set(phaseIds.map(normalizePhaseId))];
+  if (pullRequestIdentity.terminalEvent !== "merged") {
+    return [{ featureId, phaseId, workKey }];
+  }
+  const covered = [...new Set((phaseIds ?? []).map(normalizePhaseId))];
   if (requestedPhaseId !== undefined && !covered.includes(requestedPhaseId)) {
     return [];
   }
-  if (phaseId !== null || pullRequestIdentity.terminalEvent !== "merged") {
+  if (phaseId !== null) {
+    if (phaseIds !== undefined && !covered.includes(phaseId)) return [];
     return [{ featureId, phaseId, workKey }];
   }
   const selected =
@@ -516,12 +520,11 @@ export function verifyHarvestTarget(
   const needsCheckoutCoverage =
     candidate.source === "manual_cli" &&
     candidate.terminalEvent === "merged" &&
-    target.phaseId === null &&
     requestedPhaseId !== undefined;
   if (
     requestedPhaseId !== undefined &&
     requestedPhaseId !== target.phaseId &&
-    !needsCheckoutCoverage
+    !(needsCheckoutCoverage && target.phaseId === null)
   ) {
     return {
       ok: false,
@@ -605,7 +608,7 @@ export function verifyHarvestIntakeOperations(
 
   let scopes: HarvestWorkScope[] = [verified];
   if (verified.kind === "pull_request") {
-    scopes = scopeVerifiedMergeToPhases(verified, checkoutPhaseIds ?? []);
+    scopes = scopeVerifiedMergeToPhases(verified, checkoutPhaseIds);
   } else if (verified.phaseId === null) {
     scopes = [];
     for (const scoped of scopeManualHarvestToPhases(
