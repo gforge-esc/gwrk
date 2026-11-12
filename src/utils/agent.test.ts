@@ -60,6 +60,8 @@ function mockAgentStdin(onSpawn?: () => void) {
   return () => capturedStdin;
 }
 
+const legacyInput = "<user_input>\r\n  Keep {{enforcement}} and <code_quality></code_quality>.  \r\n</user_input>\r\n";
+
 describe('US-016: Enforcement Skills Dispatch Injection', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -121,7 +123,6 @@ describe('US-016: Enforcement Skills Dispatch Injection', () => {
     expect(skillRuntime.resolveEnforcementSkills).not.toHaveBeenCalled();
   });
 
-  const legacyInput = "<user_input>\r\n  Keep {{enforcement}} and <code_quality></code_quality>.  \r\n</user_input>\r\n";
   const legacyPrefix = "Rules:\r\n{{enforcement}}\r\n\r\n";
   const enforcementSection = "<code_quality>\r\n{{enforcement}}\r\n</code_quality>";
   const nestedInput = "<user_input>\r\n  Nested example.  \r\n</user_input>";
