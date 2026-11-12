@@ -506,6 +506,7 @@ function maskMarkdownCode(template: string): string {
   const mask = (code: string) => code.replace(/[^\r\n]/g, "\0");
   const maskSpans = (text: string) =>
     text
+      .replace(/^ {0,3}>[^\r\n]*/gm, mask)
       .split(/(\r?\n[ \t]*\r?\n)/)
       .map((paragraph) =>
         paragraph.replace(/(?<!`)(`+)(?!`)[\s\S]*?(?<!`)\1(?!`)/g, mask),
@@ -573,20 +574,13 @@ function findEnforcementSlot(
 }
 
 function findLegacyInputStart(stdin: string): number | undefined {
-  const tags = [
-    ...maskMarkdownCode(stdin).matchAll(/^<(\/?)user_input>(?=\r?\n|$)/gm),
-  ];
-  const last = tags.at(-1);
-  if (
-    last?.index === undefined ||
-    last[1] !== "/" ||
-    stdin.slice(last.index + last[0].length).trim()
-  ) {
-    return undefined;
-  }
+  // The transport closer can follow an unclosed fence in the task text.
+  const closer = /(?<=^|\n)<\/user_input>(?=\r?\n|$)\s*$/.exec(stdin);
+  if (!closer) return undefined;
 
-  // Match the outer closing tag before considering slots in the prefix.
-  let depth = 0;
+  const prefix = maskMarkdownCode(stdin.slice(0, closer.index));
+  const tags = [...prefix.matchAll(/^<(\/?)user_input>(?=\r?\n|$)/gm)];
+  let depth = 1;
   for (const tag of tags.reverse()) {
     depth += tag[1] === "/" ? 1 : -1;
     if (depth === 0) return tag.index;
