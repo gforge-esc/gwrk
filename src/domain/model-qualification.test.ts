@@ -625,6 +625,22 @@ describe("credential guard", () => {
       "a password containing a Unicode symbol",
       "HTTPS_PROXY=http://pilot:fixture-🔑@proxy:8080",
     ],
+    [
+      "a password containing brackets",
+      "HTTPS_PROXY=http://pilot:fixture[pass]@proxy:8080",
+    ],
+    [
+      "a password containing a pipe",
+      "HTTPS_PROXY=http://pilot:fixture|pass@proxy:8080",
+    ],
+    [
+      "a password containing an at sign",
+      "HTTPS_PROXY=http://pilot:fixture-pass@@proxy:8080",
+    ],
+    [
+      "a quoted URL after a malformed authority",
+      'HTTP_PROXY=http://pilot:fixture|pass@proxy:invalid HTTPS_PROXY="http://pilot:fixture|pass@proxy:8080"',
+    ],
   ])("proxy credentials with %s", (_host, text) => {
     it("rejects a password in an evidence key", () => {
       expect(() => assertNoSecretMaterial({ [text]: true })).toThrow(
@@ -646,6 +662,7 @@ describe("credential guard", () => {
     "HTTPS_PROXY=http://proxy:8080/path@fixture",
     "HTTPS_PROXY=http://proxy:8080?name=pilot:fixture@value",
     "HTTPS_PROXY=http://proxy:8080#pilot:fixture@value",
+    'HTTP_PROXY=http://pilot:fixture|pass@proxy:invalid HTTPS_PROXY="http://proxy:8080"',
   ])("allows proxy URLs without passwords: %s", (text) => {
     expect(() =>
       assertNoSecretMaterial({ [text]: true, stdout: text }),

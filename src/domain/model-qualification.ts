@@ -423,14 +423,27 @@ const secretPattern = new RegExp(
 );
 const mailboxPattern =
   /(?:[\p{L}\p{M}\p{N}!#$%&'*+/=?^_\x60{|}~.-]{1,64}|"(?:[^"\\\r\n]|\\.){0,64}")@(?:\[[^\]\r\n]{1,255}\]|(?:[\p{L}\p{M}\p{N}-]+\.)+[\p{L}][\p{L}\p{M}\p{N}-]*)/u;
-const passwordBearingUrlPattern =
-  /(?:^|[^a-z\d+.-])[a-z][a-z\d+.-]*:\/\/[\w.%~!$&'()*+,;=\u0080-\u{10FFFF}-]*:[\w.%~!$&'()*+,;=:\u0080-\u{10FFFF}-]+@(?=\[|[\w.%\p{L}\p{N}-])/iu;
+
+function hasPasswordBearingUrl(text: string): boolean {
+  const authorities =
+    /(?<![a-z\d+.-])[a-z][a-z\d+.-]*:\/\/(?=([^\t\n\v\f\r /\\?#]*))/gi;
+  for (const [scheme, authority] of text.matchAll(authorities)) {
+    if (!authority.includes("@")) continue;
+    const candidate = scheme + authority.replace(/["'`]+$/, "");
+    try {
+      if (new URL(candidate).password !== "") return true;
+    } catch {
+      // A malformed authority can precede a valid URL in the same log.
+    }
+  }
+  return false;
+}
 
 function containsSensitiveText(text: string): boolean {
   return (
     secretPattern.test(text) ||
     (text.includes("@") &&
-      (passwordBearingUrlPattern.test(text) || mailboxPattern.test(text)))
+      (hasPasswordBearingUrl(text) || mailboxPattern.test(text)))
   );
 }
 
