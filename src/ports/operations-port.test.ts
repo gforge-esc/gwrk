@@ -668,7 +668,26 @@ function restoreRecoveryStore(persisted: {
           matchesHarvestNoticeRecipient(recipient, notice.recipient) &&
           notice.featureId === row.featureId &&
           notice.phaseId === phaseKey;
-        if (savedNotice && !matchesNotice(savedNotice)) return invalid;
+        if (savedNotice) {
+          const { workspaceId, channelId, threadTs } = savedNotice;
+          const unboundPending =
+            savedNotice.status === "pending" &&
+            workspaceId === null &&
+            channelId === null &&
+            threadTs === null;
+          const matchesDestination =
+            recipient !== null &&
+            workspaceId === recipient.workspaceId &&
+            channelId === recipient.channelId &&
+            threadTs === (recipient.threadTs ?? null);
+          if (
+            !matchesNotice(savedNotice) ||
+            !savedNotice.clientMetadataKey.trim() ||
+            !(unboundPending || matchesDestination)
+          ) {
+            return invalid;
+          }
+        }
         if ((recipient !== null) !== (failureNotice != null)) return invalid;
         if (failureNotice && !matchesNotice(failureNotice)) return invalid;
         if (replay) return recipient && !savedNotice ? invalid : result;
@@ -2816,7 +2835,12 @@ it.each([
           clientMetadataKey: notice.clientMetadataKey,
         },
       });
-      const afterSend = restoreRecoveryStore(restarted.snapshot());
+      const sending = restarted.snapshot();
+      const afterSend = restoreRecoveryStore(sending);
+      expect(afterSend.transitionHarvestStage(transition)).toEqual({
+        ok: true,
+      });
+      expect(afterSend.snapshot()).toEqual(sending);
       const recovery = afterSend.claimOutboxItem({
         outboxId: notice.outboxId,
         nowIso: leaseExpiresAt,
@@ -2834,6 +2858,114 @@ it.each([
       expect(providerMessages.has(outboxDeliveryKey(recovery.item))).toBe(
         false,
       );
+    }
+  },
+);
+
+const gateNoticeDestination = {
+  workspaceId: "W1",
+  channelId: "C1",
+  threadTs: "1.2",
+};
+
+it.each([
+  ["blank metadata key", { clientMetadataKey: " \t" }],
+  [
+    "wrong channel and thread",
+    {
+      ...gateNoticeDestination,
+      status: "uncertain",
+      channelId: "C9",
+      threadTs: "9.9",
+    },
+  ],
+  ["wrong workspace", { ...gateNoticeDestination, workspaceId: "W9" }],
+  ["wrong thread", { ...gateNoticeDestination, threadTs: "9.9" }],
+  ["partial destination", { channelId: "C1" }],
+] satisfies [string, Partial<OutboxItem>][])(
+  "rejects a restored gate notice with %s before committing or replaying failure",
+  (_label, mismatch) => {
+    const operationId = "gate-failure";
+    const recipient = {
+      projectId,
+      surface: "slack",
+      ...gateNoticeDestination,
+    } as const;
+    const notice = outbox("gate-notice", "pending", {
+      ownerOperationId: operationId,
+      eventType: "harvest_gate_failed",
+      dedupeKey: JSON.stringify(["harvest_gate_failed", operationId, phaseId]),
+      recipient,
+    });
+    const initial = restoreRecoveryStore({
+      featureThreads: [
+        {
+          projectId,
+          featureId,
+          workspaceId: recipient.workspaceId,
+          channelId: recipient.channelId,
+          rootTs: recipient.threadTs,
+          updatedAt: createdAt,
+        },
+      ],
+      slackBindings: {
+        [projectId]: {
+          workspaceId: recipient.workspaceId,
+          channelId: recipient.channelId,
+          sharedChannel: false,
+        },
+      },
+      harvests: [harvest(operationId, { recipient })],
+      stages: [],
+      outboxItems: [],
+    });
+    const claim = initial.claimHarvestLease({
+      operationId,
+      leaseOwner: "worker",
+      nowIso,
+      leaseExpiresAt,
+    });
+    if (!claim) throw new Error("Expected harvest lease");
+    const plan = {
+      terminalEvent: "merged" as const,
+      phaseIds: [phaseId],
+      hasSlackTarget: true,
+      hasRemoteBranchTarget: true,
+    };
+    expect(
+      initial.initializeHarvestStages({
+        ...plan,
+        fence: claim.fence,
+        nowIso,
+        stages: planHarvestStages(plan),
+      }),
+    ).toEqual({ ok: true });
+    const transition = {
+      fence: claim.fence,
+      nowIso,
+      phaseKey: phaseId,
+      stage: "gate_verify",
+      status: "gate_failed",
+      failureNotice: notice,
+    } as const;
+    const pending = restoreRecoveryStore({
+      ...initial.snapshot(),
+      outboxItems: [notice],
+    });
+    const beforeFailure = pending.snapshot();
+    expect(pending.transitionHarvestStage(transition)).toEqual({ ok: true });
+    expect(pending.snapshot().outboxItems).toEqual([notice]);
+    for (const snapshot of [beforeFailure, pending.snapshot()]) {
+      const restarted = restoreRecoveryStore({
+        ...snapshot,
+        outboxItems: [{ ...notice, ...mismatch }],
+      });
+      const before = restarted.snapshot();
+      expect.soft(restarted.transitionHarvestStage(transition)).toEqual({
+        ok: false,
+        code: "HARVEST_STAGE_TRANSITION_INVALID",
+      });
+      expect.soft(restarted.snapshot()).toEqual(before);
     }
   },
 );

@@ -427,6 +427,10 @@ export interface OperationsStorePort {
    * Reject conflicting recipient fields before changing either the receipt or outbox.
    * Upsert harvest_gate_failed by project, operation and phase in the gate failure transaction.
    * An existing dedupe row must match the event, harvest owner, feature, phase and planned recipient.
+   * Validate the saved metadata key and destination before either write or fenced replay.
+   * Require a nonblank key. Allow an unbound destination only while the notice is pending.
+   * Otherwise require the saved workspace, channel and thread to match plannedSlackRecipient.
+   * Compare an absent planned thread as null.
    * On fenced replay, require the saved notice if the plan has a target and preserve its metadata key.
    * Keep retryable_failure receipts and their errors eligible for a new claim after lease expiry.
    * Set neither the receipt nor the operation completion time for a retryable failure.
