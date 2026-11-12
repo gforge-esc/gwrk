@@ -1288,6 +1288,83 @@ describe("FR-001: architecture-aware workspace profiles (044 phase p01)", () => 
     expect(explicit).toEqual(direct);
   });
 
+  it("preserves an inherited test command when detection confirms its runner", async () => {
+    const workspacePath = "services/api";
+    const cwd = path.join(root, workspacePath);
+    const config = {
+      project: {
+        design,
+        stack: { language: "Python", buildSystem: "uv" },
+        toolchain: { test: "pytest", testCommand: "uv run pytest -q {files}" },
+      },
+      workspaces: { [workspacePath]: { toolchain: { build: null } } },
+    };
+    write(".gwrkrc.json", JSON.stringify(config));
+    write(`${workspacePath}/pyproject.toml`, '[project]\ndependencies = ["fastapi"]\n');
+    write(`${workspacePath}/uv.lock`, "");
+
+    const resolveProfiles = async (rootConfig: unknown) => ({
+      direct: await detectProfile(cwd),
+      explicit: await resolveWorkspaceProfile(root, workspacePath),
+      configured: resolveWorkspaceProfile(cwd, root, rootConfig),
+    });
+    const before = await resolveProfiles(config);
+    write(`${workspacePath}/pytest.ini`, "");
+    const after = await resolveProfiles(config);
+    for (const [stage, profiles] of Object.entries({ before, after })) {
+      for (const [entryPoint, profile] of Object.entries(profiles)) {
+        expect.soft(profile, `${stage} ${entryPoint}`).toMatchObject({ design });
+        expect.soft(getTestCommand(profile, ["test_api.py"]), `${stage} ${entryPoint}`).toBe(
+          "uv run pytest -q test_api.py",
+        );
+      }
+    }
+
+    for (const [toolchain, command] of [
+      [{ test: "pytest" }, "pytest test_api.py -v"],
+      [{ testCommand: "uv run pytest {files}" }, "uv run pytest test_api.py"],
+      [{ test: null }, null],
+    ] as const) {
+      const overridden = { ...config, workspaces: { [workspacePath]: { toolchain } } };
+      write(".gwrkrc.json", JSON.stringify(overridden));
+      for (const [entryPoint, profile] of Object.entries(await resolveProfiles(overridden))) {
+        expect.soft(getTestCommand(profile, ["test_api.py"]), entryPoint).toBe(command);
+      }
+    }
+  });
+
+  it("matches a workspace registered by its same-worktree symlink", async () => {
+    const alias = path.join(root, "api-alias");
+    const layered = { ...design, architecture: "layered", principles: ["clean-code"] };
+    const workspaces = { "api-alias": { stack: { framework: "Django" } } };
+    const config = {
+      project: { design },
+      workspaces: { "api-alias": { ...workspaces["api-alias"], design: layered } },
+    };
+    write(".git", "gitdir: /unused/worktree\n");
+    write(".gwrkrc.json", JSON.stringify(config));
+    fs.symlinkSync("services/api", alias, "dir");
+
+    const profiles = {
+      direct: await detectProfile(alias),
+      explicit: await resolveWorkspaceProfile(root, "api-alias"),
+      configured: resolveWorkspaceProfile(alias, root, config),
+    };
+    for (const [entryPoint, profile] of Object.entries(profiles)) {
+      expect.soft(profile, entryPoint).toMatchObject({
+        design: layered,
+        stack: { language: "Python", framework: "Django" },
+      });
+    }
+
+    write(".gwrkrc.json", JSON.stringify({ workspaces }));
+    expect(resolveWorkspaceProfile(alias, root, { workspaces })).toStrictEqual({
+      type: "nodejs",
+      stack: { framework: "Django" },
+      layout: "flat",
+    });
+  });
+
   it("uses the physical worktree when a workspace path follows a symlink", async () => {
     const outer = path.join(root, "outer");
     const physicalWorkspace = path.join(root, "other/services/api");

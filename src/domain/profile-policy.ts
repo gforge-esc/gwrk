@@ -341,13 +341,20 @@ export function resolveWorkspacePolicyProfile(
     : matchedToolchain;
 
   const {
-    test: _detectedRunner,
-    testCommand: _detectedCommand,
+    test: detectedRunner,
+    testCommand: detectedCommand,
     ...detectedWithoutTest
   } = detectedToolchain;
+  const confirmsInheritedRunner =
+    detectedRunner != null &&
+    detectedRunner === rootToolchain?.test &&
+    detectedCommand === undefined &&
+    rootToolchain.testCommand !== undefined;
   const inheritedToolchain = mergeToolchain(
     rootToolchain,
-    rootToolchain?.test === null ? detectedWithoutTest : detectedToolchain,
+    rootToolchain?.test === null || confirmsInheritedRunner
+      ? detectedWithoutTest
+      : detectedToolchain,
   );
 
   return mergeProfileOverrides({

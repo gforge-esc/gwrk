@@ -46,17 +46,23 @@ interface FilesystemProfile {
 export async function detectProfile(
   projectRoot: string,
 ): Promise<ProjectProfile> {
-  return detectProfileInDirectory(physicalPath(projectRoot));
+  const requestedWorkspace = path.resolve(projectRoot);
+  return detectProfileInDirectory(
+    physicalPath(requestedWorkspace),
+    requestedWorkspace,
+  );
 }
 
 function detectProfileInDirectory(
   projectRoot: string,
+  requestedWorkspace: string,
   workspaceRoot?: { directory: string; config?: WorkspaceRootConfig },
 ): ProjectProfile {
   const detected = detectFilesystemProfile(projectRoot);
   const localProject = readLocalProject(projectRoot);
   const scoped = resolveDetectedProfile(
     projectRoot,
+    requestedWorkspace,
     detected,
     localProject,
     workspaceRoot,
@@ -477,7 +483,8 @@ function mergeLocalProject(
 }
 
 function resolveDetectedProfile(
-  detectedRoot: string,
+  workspace: string,
+  requestedWorkspace: string,
   detected: FilesystemProfile,
   localProject?: WorkspaceProfileConfig,
   workspaceRoot?: {
@@ -486,9 +493,8 @@ function resolveDetectedProfile(
     configuredLookup?: boolean;
   },
 ): ProjectProfile | undefined {
-  const start = path.resolve(detectedRoot);
   const ancestors = [
-    ...ancestorWorkspaceConfigs(start, workspaceRoot?.directory),
+    ...ancestorWorkspaceConfigs(workspace, workspaceRoot?.directory),
   ];
   const suppliedRoot =
     workspaceRoot?.config === undefined
@@ -497,34 +503,54 @@ function resolveDetectedProfile(
   const policyAncestors = suppliedRoot
     ? [...ancestors, suppliedRoot]
     : ancestors;
-  const designSource = findNearestAncestorDesign(policyAncestors, start);
+  const designSource = findNearestAncestorDesign(
+    policyAncestors,
+    workspace,
+    requestedWorkspace,
+  );
   const ancestorDesign = designSource?.design;
   for (const { directory, config } of ancestors) {
     const workspaces = validateWorkspaceEntries(config);
-    const relativePath = relativeWorkspacePath(directory, start);
+    const relativePath = workspacePathForMatching(
+      directory,
+      workspace,
+      requestedWorkspace,
+      workspaces,
+    );
     if (!matchWorkspacePath(relativePath, Object.keys(workspaces))) continue;
 
-    const scoped = applyWorkspaceConfig(directory, start, detected, config, {
-      requireDesign: true,
-      configuredLookup: workspaceRoot?.configuredLookup,
-      localProject,
-      ancestorDesign,
-      policyAncestors,
-      workspaces,
-    });
+    const scoped = applyWorkspaceConfig(
+      directory,
+      relativePath,
+      detected,
+      config,
+      {
+        requireDesign: true,
+        configuredLookup: workspaceRoot?.configuredLookup,
+        localProject,
+        ancestorDesign,
+        policyAncestors,
+        workspaces,
+      },
+    );
     if (scoped !== detected.profile) return scoped;
   }
 
   if (suppliedRoot) {
     const workspaces = validateWorkspaceEntries(suppliedRoot.config);
-    const relativePath = relativeWorkspacePath(suppliedRoot.directory, start);
+    const relativePath = workspacePathForMatching(
+      suppliedRoot.directory,
+      workspace,
+      requestedWorkspace,
+      workspaces,
+    );
     if (
       workspaceRoot?.configuredLookup ||
       matchWorkspacePath(relativePath, Object.keys(workspaces))
     ) {
       return applyWorkspaceConfig(
         suppliedRoot.directory,
-        start,
+        relativePath,
         detected,
         suppliedRoot.config,
         {
@@ -553,7 +579,7 @@ function resolveDetectedProfile(
   if (!policySource) return undefined;
   const scoped = applyWorkspaceConfig(
     policySource.directory,
-    start,
+    relativeWorkspacePath(policySource.directory, workspace),
     detected,
     policySource.config,
     { requireDesign: true, localProject, ancestorDesign, policyAncestors },
@@ -603,11 +629,17 @@ function* ancestorWorkspaceConfigs(workspace: string, root?: string) {
 function findNearestAncestorDesign(
   ancestors: readonly WorkspaceConfigSource[],
   workspace: string,
+  requestedWorkspace: string,
 ) {
   for (const ancestor of ancestors) {
     const workspaces = validateWorkspaceEntries(ancestor.config);
     const match = matchWorkspacePath(
-      relativeWorkspacePath(ancestor.directory, workspace),
+      workspacePathForMatching(
+        ancestor.directory,
+        workspace,
+        requestedWorkspace,
+        workspaces,
+      ),
       Object.keys(workspaces),
     );
     const design =
@@ -620,6 +652,45 @@ function findNearestAncestorDesign(
 
 function relativeWorkspacePath(root: string, workspace: string): string {
   return path.relative(root, workspace).split(path.sep).join("/");
+}
+
+function workspacePathForMatching(
+  root: string,
+  workspace: string,
+  requestedWorkspace: string,
+  workspaces: Readonly<Record<string, WorkspaceProfileConfig>>,
+): string {
+  const physicalRelative = relativeWorkspacePath(root, workspace);
+  const workspacePaths = Object.keys(workspaces);
+  if (requestedWorkspace === workspace || workspacePaths.length === 0) {
+    return physicalRelative;
+  }
+
+  // A requested path can use an alias for the root as well as the workspace.
+  let relativePath = physicalRelative;
+  for (
+    let directory = path.dirname(requestedWorkspace);
+    directory !== path.dirname(directory);
+    directory = path.dirname(directory)
+  ) {
+    const requestedRelative = relativeWorkspacePath(
+      directory,
+      requestedWorkspace,
+    );
+    const match = matchWorkspacePath(requestedRelative, workspacePaths);
+    if (
+      match &&
+      physicalPath(directory) === root &&
+      !crossesGitWorktreeBoundary(directory, requestedWorkspace) &&
+      !isOutsideWorkspaceRoot(
+        root,
+        physicalPath(path.resolve(directory, match)),
+      )
+    ) {
+      relativePath = requestedRelative;
+    }
+  }
+  return relativePath;
 }
 
 function physicalPath(directory: string): string {
@@ -683,7 +754,7 @@ function validateWorkspaceEntries(
 
 function applyWorkspaceConfig(
   root: string,
-  workspace: string,
+  relativePath: string,
   initialDetection: FilesystemProfile,
   config: WorkspaceRootConfig,
   options?: {
@@ -696,7 +767,6 @@ function applyWorkspaceConfig(
   },
 ): ProjectProfile | undefined {
   const workspaces = options?.workspaces ?? validateWorkspaceEntries(config);
-  const relativePath = relativeWorkspacePath(root, workspace);
   const matchedPath = matchWorkspacePath(relativePath, Object.keys(workspaces));
   const matchedEntry = matchedPath ? workspaces[matchedPath] : undefined;
   if (!matchedEntry && options?.configuredLookup) {
@@ -726,7 +796,7 @@ function applyWorkspaceConfig(
     matchedPath &&
     (options?.configuredLookup || matchedPath !== relativePath)
   ) {
-    const matchedRoot = path.resolve(root, matchedPath);
+    const matchedRoot = physicalPath(path.resolve(root, matchedPath));
     matchedProject =
       matchedPath === relativePath ? undefined : readLocalProject(matchedRoot);
     try {
@@ -799,12 +869,13 @@ async function detectWorkspaceProfile(
   root: string,
   workspacePath: string,
 ): Promise<ProjectProfile> {
-  const workspace = physicalPath(path.resolve(root, workspacePath));
+  const requestedWorkspace = path.resolve(root, workspacePath);
+  const workspace = physicalPath(requestedWorkspace);
   const physicalRoot = physicalPath(root);
   if (isOutsideWorkspaceRoot(physicalRoot, workspace)) {
-    return detectProfileInDirectory(workspace);
+    return detectProfileInDirectory(workspace, requestedWorkspace);
   }
-  return detectProfileInDirectory(workspace, {
+  return detectProfileInDirectory(workspace, requestedWorkspace, {
     directory: physicalRoot,
     config: readWorkspaceRootConfig(physicalRoot),
   });
@@ -844,7 +915,8 @@ export function resolveWorkspaceProfile(
   }
   const workspaces = validateWorkspaceEntries(config);
   const physicalRoot = physicalPath(projectRoot);
-  const physicalWorkspace = physicalPath(cwd);
+  const requestedWorkspace = path.resolve(cwd);
+  const physicalWorkspace = physicalPath(requestedWorkspace);
   if (isOutsideWorkspaceRoot(physicalRoot, physicalWorkspace)) {
     const legacyMatch = matchWorkspacePath(
       relativeWorkspacePath(projectRoot, cwd),
@@ -861,7 +933,12 @@ export function resolveWorkspaceProfile(
     return configuredWorkspaceProfile(entry);
   }
   const bestMatch = matchWorkspacePath(
-    relativeWorkspacePath(physicalRoot, physicalWorkspace),
+    workspacePathForMatching(
+      physicalRoot,
+      physicalWorkspace,
+      requestedWorkspace,
+      workspaces,
+    ),
     Object.keys(workspaces),
   );
   const workspace = configuredWorkspaceProfile(
@@ -869,6 +946,7 @@ export function resolveWorkspaceProfile(
   );
   const scoped = resolveDetectedProfile(
     physicalWorkspace,
+    requestedWorkspace,
     { profile: workspace, signals: [] },
     readLocalProject(physicalWorkspace),
     { directory: physicalRoot, config, configuredLookup: true },
