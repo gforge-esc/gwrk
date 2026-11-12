@@ -838,6 +838,7 @@ function restoreRecoveryStore(persisted: {
       }
       if (outcome.status === "delivered") {
         if (
+          outcome.messageTs.trim().length === 0 ||
           outcome.channelId !== row.channelId ||
           (outcome.threadTs ?? null) !== row.threadTs
         ) {
@@ -1573,6 +1574,63 @@ describe("durable recovery store contract", () => {
       "message-1",
     );
   });
+
+  it.each(["", " \t"])(
+    "rejects a blank delivery timestamp %j and reconciles after restart",
+    (messageTs) => {
+      const pending = outbox("notification", "pending");
+      const store = restoreRecoveryStore({
+        harvests: [],
+        stages: [],
+        outboxItems: [pending],
+      });
+      const send = store.claimOutboxItem({
+        outboxId: pending.outboxId,
+        nowIso,
+        destination,
+      });
+      if (send?.action !== "send") throw new Error("Expected a send claim");
+      const sending = store.snapshot();
+      const outcome = {
+        status: "delivered" as const,
+        channelId: destination.channelId,
+        threadTs: destination.threadTs,
+        messageTs,
+      };
+
+      expect(
+        store.completeOutboxItem({ claim: send.claim, nowIso, outcome }),
+      ).toEqual({ ok: false, code: "OUTBOX_TRANSITION_INVALID" });
+      expect(store.snapshot()).toEqual(sending);
+
+      const restarted = restoreRecoveryStore(store.snapshot());
+      const recovery = restarted.claimOutboxItem({
+        outboxId: pending.outboxId,
+        nowIso: leaseExpiresAt,
+        destination: null,
+      });
+      expect(recovery).toMatchObject({
+        action: "reconcile",
+        item: { ...destination, clientMetadataKey: pending.clientMetadataKey },
+      });
+      if (recovery?.action !== "reconcile") {
+        throw new Error("Expected a reconciliation claim");
+      }
+      expect(
+        restarted.completeOutboxItem({
+          claim: recovery.claim,
+          nowIso: leaseExpiresAt,
+          outcome: { ...outcome, messageTs: "12.1" },
+        }),
+      ).toEqual({ ok: true });
+      expect(restarted.getOutboxItem(pending.outboxId)).toMatchObject({
+        ...destination,
+        clientMetadataKey: pending.clientMetadataKey,
+        status: "delivered",
+        messageTs: "12.1",
+      });
+    },
+  );
 });
 
 describe("persisted harvest intake contract", () => {
@@ -2106,6 +2164,41 @@ describe("persisted harvest intake contract", () => {
           target: { ...manual.target, checkoutPhaseIds: ["phase-1"] },
         }),
       ).toMatchObject({ ok: true, operations: [{ phaseId }] });
+    },
+  );
+
+  it.each(
+    (["github_webhook", "github_poller", "manual_cli"] as const).flatMap(
+      (source) => [[], ["phase-02"]].map((coverage) => ({ source, coverage })),
+    ),
+  )(
+    "rejects checkout coverage $coverage for a phase branch from $source",
+    ({ source, coverage }) => {
+      const intake = harvestIntake("branch-phase", {}, source);
+      if (!intake.target.accepted) throw new Error("Expected a phase target");
+      const candidate = { ...intake.candidate, explicitPhaseId: undefined };
+      const initial = restoreHarvestIntake({ harvests: [], stages: [] });
+      const before = initial.snapshot();
+
+      expect(
+        initial.store.recordHarvestIntake({
+          ...intake,
+          candidate,
+          target: { ...intake.target, checkoutPhaseIds: coverage },
+        }),
+      ).toEqual({ ok: false, code: "HARVEST_IDENTITY_MISMATCH" });
+      expect(initial.snapshot()).toEqual(before);
+
+      for (const checkoutPhaseIds of [["phase-1"], undefined]) {
+        const store = restoreHarvestIntake(before).store;
+        expect(
+          store.recordHarvestIntake({
+            ...intake,
+            candidate,
+            target: { ...intake.target, checkoutPhaseIds },
+          }),
+        ).toMatchObject({ ok: true, operations: [{ phaseId }] });
+      }
     },
   );
 

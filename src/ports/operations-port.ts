@@ -309,6 +309,7 @@ export interface OperationsStorePort {
    * For a new delivery, verify the entire operation batch against enrollment and
    * checkout coverage with verifyHarvestIntakeOperations before any write.
    * Require checkout coverage for an explicit local or manual merge phase.
+   * When supplied, merge checkout coverage must include the branch-derived phase.
    * Reject duplicate operation IDs across phase scopes.
    * Resolve existing work before checking IDs for inserts. Matched work keeps its saved ID.
    * Reject any insert whose operation ID already exists, even in another project.
@@ -498,6 +499,8 @@ export interface OperationsStorePort {
   }): FencedWrite;
   /**
    * Record the outcome under the current claim and preserve the bound destination.
+   * Require a nonblank messageTs for delivered outcomes.
+   * Return OUTBOX_TRANSITION_INVALID before any write for a blank timestamp.
    * Reject skipped_no_target for harvest_gate_failed with OUTBOX_TRANSITION_INVALID before any write.
    */
   completeOutboxItem(input: {
