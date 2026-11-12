@@ -141,6 +141,7 @@ export function nextLedgerWriteSequence(db: Database.Database): number {
 const canonicalWriteOrder = "write_seq DESC, project_id = ? DESC, project_id";
 
 export const planFeatureWriteOrder = `
+  synthetic_parent ASC,
   write_seq DESC,
   CASE WHEN write_seq = 0 THEN julianday(updated_at) END DESC,
   project_id = ? DESC,
@@ -171,12 +172,14 @@ function reconcileLedgerWrites(db: Database.Database, projectId: string): void {
     const fields = [...columns, "write_seq"];
     const writeOrder =
       table === "plan_features" ? planFeatureWriteOrder : canonicalWriteOrder;
+    const visibilityOrder =
+      table === "plan_features" ? "synthetic_parent ASC, " : "";
     db.prepare(`
       WITH ranked AS (
         SELECT rowid, FIRST_VALUE(rowid) OVER (
           PARTITION BY ${key} ORDER BY ${writeOrder}
         ) AS latest_row, ROW_NUMBER() OVER (
-          PARTITION BY ${key} ORDER BY project_id = ? DESC, project_id
+          PARTITION BY ${key} ORDER BY ${visibilityOrder}project_id = ? DESC, project_id
         ) AS visibility_rank
         FROM ${table} WHERE project_id IN (${placeholders})
       )

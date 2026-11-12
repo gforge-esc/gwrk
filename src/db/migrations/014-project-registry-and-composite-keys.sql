@@ -265,6 +265,18 @@ WHERE NOT EXISTS (
 INSERT INTO plan_features_new (id, name, project_id)
 SELECT id, id, project_id FROM migration_014_feature_placeholders;
 
+-- Retain provenance until migration 017 adds it to the parent rows.
+CREATE TABLE migration_014_plan_parent_provenance (
+  kind TEXT NOT NULL,
+  id TEXT NOT NULL,
+  project_id TEXT NOT NULL,
+  PRIMARY KEY (kind, project_id, id)
+);
+INSERT INTO migration_014_plan_parent_provenance
+SELECT 'feature', id, project_id FROM migration_014_feature_placeholders
+UNION ALL
+SELECT 'phase', id, project_id FROM migration_014_phase_placeholders;
+
 UPDATE sqlite_sequence SET seq = MAX(seq, COALESCE(
   (SELECT old.seq FROM sqlite_sequence old WHERE old.name = replace(sqlite_sequence.name, '_new', '')), 0))
 WHERE name IN ('gate_results_new', 'issues_new');
