@@ -501,40 +501,67 @@ function resolvePrimaryCheckout(executionDir: string): string {
 
 const ENFORCEMENT_MARKER = "{{enforcement}}";
 
+function findEnforcementSlot(
+  template: string,
+  fallback: "empty-section" | "bare-marker",
+): RegExpMatchArray | undefined {
+  const sections = [
+    ...template.matchAll(/<code_quality>([\s\S]*?)<\/code_quality>/g),
+  ];
+  const marked = sections.filter(([, body]) => body.includes(ENFORCEMENT_MARKER));
+  if (marked.length > 0) return marked.length === 1 ? marked[0] : undefined;
+
+  const slots =
+    fallback === "empty-section"
+      ? sections.filter(([, body]) => !body.trim())
+      : [...template.matchAll(/^\{\{enforcement\}\}(?=\r?\n|$)/gm)];
+  return slots.length === 1 ? slots[0] : undefined;
+}
+
+function findLegacyInputStart(stdin: string): number | undefined {
+  const tags = [...stdin.matchAll(/^<(\/?)user_input>(?=\r?\n|$)/gm)];
+  const last = tags.at(-1);
+  if (
+    last?.index === undefined ||
+    last[1] !== "/" ||
+    stdin.slice(last.index + last[0].length).trim()
+  ) {
+    return undefined;
+  }
+
+  // Match the outer closing tag before considering slots in the prefix.
+  let depth = 0;
+  for (const tag of tags.reverse()) {
+    depth += tag[1] === "/" ? 1 : -1;
+    if (depth === 0) return tag.index;
+  }
+  return undefined;
+}
+
 function splitLegacyStdin(task: TaskDispatch) {
   const { stdin, prompt, type, workflow } = task;
   if (
     !stdin ||
     stdin === prompt ||
     type?.startsWith("skill/") ||
-    workflow?.startsWith("skill/")
+    workflow?.startsWith("skill/") ||
+    /^<user_input>(?=\r?\n|$)/.test(stdin.trimStart())
   ) {
     return undefined;
   }
 
-  const slots = stdin.matchAll(
-    /<code_quality>([\s\S]*?)<\/code_quality>|^\{\{enforcement\}\}(?=\r?\n)/gm,
-  );
-  const slot = Array.from(slots).find(([, body]) => {
-    const rules = body?.trim();
-    return !rules || rules.includes(ENFORCEMENT_MARKER);
-  });
-  if (slot?.index === undefined) return undefined;
-
-  if (slot[1] !== undefined && stdin.trim() === slot[0]) {
-    return { template: stdin, userInput: "", slot };
+  const inputStart = findLegacyInputStart(stdin);
+  if (inputStart === undefined) {
+    const slot = findEnforcementSlot(stdin, "empty-section");
+    if (slot && stdin.trim() === slot[0]) {
+      return { template: stdin, userInput: "", slot };
+    }
+    return undefined;
   }
 
-  // Legacy scoped templates put the enforcement slot before the task block.
-  const inputOpening = /^<user_input>\r?\n/gm;
-  inputOpening.lastIndex = slot.index + slot[0].length;
-  const boundary = inputOpening.exec(stdin);
-  if (!boundary) return undefined;
-  const inputStart = boundary.index;
-  const userInput = stdin.slice(inputStart);
-  if (!/\n<\/user_input>(?:\r?\n)*$/.test(userInput)) return undefined;
-
-  return { template: stdin.slice(0, inputStart), userInput, slot };
+  const template = stdin.slice(0, inputStart);
+  const slot = findEnforcementSlot(template, "bare-marker");
+  return slot && { template, userInput: stdin.slice(inputStart), slot };
 }
 
 /**
@@ -589,8 +616,9 @@ export async function dispatchToAgent(task: TaskDispatch): Promise<TaskResult> {
   let template = promptParts?.template ?? legacyParts?.template ?? "";
 
   // FR-014: Inject enforcement skills
-  const enforcementSlot =
-    legacyParts?.slot ?? /<code_quality>([\s\S]*?)<\/code_quality>/.exec(template);
+  const enforcementSlot = promptParts
+    ? findEnforcementSlot(template, "empty-section")
+    : legacyParts?.slot;
   if (enforcementSlot?.index !== undefined) {
     const scope =
       task.workflow?.includes("review") || task.type?.includes("review")
@@ -616,8 +644,7 @@ export async function dispatchToAgent(task: TaskDispatch): Promise<TaskResult> {
       template.slice(0, start) + replacement + template.slice(start + slot.length);
   }
 
-  const hasCommandSafety =
-    promptParts !== undefined && template.includes(COMMAND_SAFETY_BLOCK);
+  const hasCommandSafety = promptParts?.template.includes(COMMAND_SAFETY_BLOCK);
   let stdinPayload = (
     promptParts
       ? [template, promptParts.userInput]
