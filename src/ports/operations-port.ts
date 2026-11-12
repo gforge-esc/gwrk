@@ -426,7 +426,8 @@ export interface OperationsStorePort {
    * Return HARVEST_STAGE_TRANSITION_INVALID for invalid notice identity before either write.
    * Reject conflicting recipient fields before changing either the receipt or outbox.
    * Upsert harvest_gate_failed by project, operation and phase in the gate failure transaction.
-   * On fenced replay, validate against the saved recipient and keep the saved metadata key.
+   * An existing dedupe row must match the event, harvest owner, feature, phase and planned recipient.
+   * On fenced replay, require the saved notice if the plan has a target and preserve its metadata key.
    * Keep retryable_failure receipts and their errors eligible for a new claim after lease expiry.
    * Set neither the receipt nor the operation completion time for a retryable failure.
    * Exclude terminal operations from recovery scans and claims.

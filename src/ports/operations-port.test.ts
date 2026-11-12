@@ -658,25 +658,20 @@ function restoreRecoveryStore(persisted: {
           (item) =>
             item.projectId === row.projectId && item.dedupeKey === dedupeKey,
         );
-        const recipient = savedNotice?.recipient ?? row.plannedSlackRecipient;
+        const recipient = row.plannedSlackRecipient;
+        const matchesNotice = (notice: OutboxMessage) =>
+          notice.eventType === "harvest_gate_failed" &&
+          notice.ownerKind === "harvest" &&
+          notice.ownerOperationId === row.operationId &&
+          notice.projectId === row.projectId &&
+          recipient?.projectId === row.projectId &&
+          matchesHarvestNoticeRecipient(recipient, notice.recipient) &&
+          notice.featureId === row.featureId &&
+          notice.phaseId === phaseKey;
+        if (savedNotice && !matchesNotice(savedNotice)) return invalid;
         if ((recipient !== null) !== (failureNotice != null)) return invalid;
-        if (
-          failureNotice &&
-          (failureNotice.eventType !== "harvest_gate_failed" ||
-            failureNotice.ownerKind !== "harvest" ||
-            failureNotice.ownerOperationId !== row.operationId ||
-            failureNotice.projectId !== row.projectId ||
-            recipient?.projectId !== row.projectId ||
-            !matchesHarvestNoticeRecipient(
-              recipient,
-              failureNotice.recipient,
-            ) ||
-            failureNotice.featureId !== row.featureId ||
-            failureNotice.phaseId !== phaseKey)
-        ) {
-          return invalid;
-        }
-        if (replay) return result;
+        if (failureNotice && !matchesNotice(failureNotice)) return invalid;
+        if (replay) return recipient && !savedNotice ? invalid : result;
         if (failureNotice && recipient && !savedNotice) {
           if (
             !failureNotice.clientMetadataKey.trim() ||
@@ -2702,6 +2697,31 @@ it.each([
         ).toEqual({ ok: false, code: "HARVEST_STAGE_TRANSITION_INVALID" });
         expect(beforeGate.snapshot()).toEqual(before);
       }
+    }
+    if (hasSlackTarget) {
+      const collision = {
+        ...existingNotice,
+        ownerKind: "dispatch" as const,
+        eventType: "dispatch_completed" as const,
+        dedupeKey: JSON.stringify([
+          "harvest_gate_failed",
+          operationId,
+          phaseId,
+        ]),
+        recipient: { ...notice.recipient, channelId: "C9" },
+      };
+      const conflicting = restoreRecoveryStore({
+        ...beforeGate.snapshot(),
+        outboxItems: [collision],
+      });
+      const before = conflicting.snapshot();
+      expect(
+        conflicting.transitionHarvestStage({
+          ...transition,
+          failureNotice: { ...notice, recipient: collision.recipient },
+        }),
+      ).toEqual({ ok: false, code: "HARVEST_STAGE_TRANSITION_INVALID" });
+      expect(conflicting.snapshot()).toEqual(before);
     }
     const beforeReplay = beforeGate.snapshot();
     const retry = restoreRecoveryStore(beforeReplay);
