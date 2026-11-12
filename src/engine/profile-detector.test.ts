@@ -1058,17 +1058,47 @@ describe("FR-001: architecture-aware workspace profiles (044 phase p01)", () => 
     { label: "with empty local defaults", stack: { language: "TypeScript" }, toolchain: {}, expected: {} },
     { label: "with incompatible Vitest", stack: { language: "TypeScript" }, toolchain: { test: "vitest", testCommand: "pnpm test {files}" }, expected: {} },
     { label: "with compatible Black", stack: { language: "Python" }, toolchain: { formatter: "black" }, expected: { formatter: "black" } },
+    {
+      label: "with an incompatible pip command for the same runner",
+      stack: { language: "Python", buildSystem: "pip" },
+      toolchain: { test: "pytest", testCommand: "pipenv run pytest {files}" },
+      expected: {},
+    },
+    {
+      label: "with an explicit test skip",
+      stack: { language: "Python", buildSystem: "pip" },
+      toolchain: { test: null },
+      expected: {},
+      expectedTest: { test: null },
+      expectedCommand: null,
+    },
+    {
+      label: "with a compatible nearer command",
+      stack: { language: "Python", buildSystem: "uv" },
+      toolchain: { test: "pytest", testCommand: "uv run pytest -q {files}" },
+      expected: {},
+      expectedTest: { test: "pytest", testCommand: "uv run pytest -q {files}" },
+      expectedCommand: "uv run pytest -q test_api.py",
+    },
+    {
+      label: "with a runner-only override",
+      stack: { language: "Python", buildSystem: "uv" },
+      toolchain: { test: "pytest" },
+      expected: {},
+      expectedTest: { test: "pytest" },
+      expectedCommand: "pytest test_api.py -v",
+    },
   ])("inherits compatible root tools through a nearer registration $label", async (nearer) => {
     const layered = {
       ...design,
       architecture: "layered",
       principles: ["clean-code"],
     };
-    const toolchain = {
+    const inheritedTest = {
       test: "pytest",
       testCommand: "uv run pytest {files}",
-      build: null,
     };
+    const toolchain = { ...inheritedTest, build: null };
     const config = {
       project: { name: "fixture", design: layered, toolchain },
     };
@@ -1097,9 +1127,13 @@ describe("FR-001: architecture-aware workspace profiles (044 phase p01)", () => 
         design: layered,
         stack: { language: "Python", framework: "Django", buildSystem: "uv" },
       });
-      expect.soft(profile?.toolchain, entryPoint).toStrictEqual({ ...toolchain, ...nearer.expected });
+      expect.soft(profile?.toolchain, entryPoint).toStrictEqual({
+        build: null,
+        ...("expectedTest" in nearer ? nearer.expectedTest : inheritedTest),
+        ...nearer.expected,
+      });
       expect.soft(getTestCommand(profile, ["test_api.py"]), entryPoint).toBe(
-        "uv run pytest test_api.py",
+        "expectedCommand" in nearer ? nearer.expectedCommand : "uv run pytest test_api.py",
       );
       if (profile) {
         expect.soft(resolveBuildCommand(profile, { hasCargoToml: true }), entryPoint).toBeNull();
@@ -1252,6 +1286,34 @@ describe("FR-001: architecture-aware workspace profiles (044 phase p01)", () => 
     );
     expect.soft(explicit.design).toBeUndefined();
     expect(explicit).toEqual(direct);
+  });
+
+  it("uses the physical worktree when a workspace path follows a symlink", async () => {
+    const outer = path.join(root, "outer");
+    const physicalWorkspace = path.join(root, "other/services/api");
+    const workspaces = { "linked/api": { stack: { framework: "Django" } } };
+    const config = { project: { design }, workspaces };
+    write("outer/.git", "gitdir: /unused/outer\n");
+    write("outer/.gwrkrc.json", JSON.stringify(config));
+    write("other/.git", "gitdir: /unused/other\n");
+    write("other/services/api/pyproject.toml", '[project]\ndependencies = ["fastapi", "pytest"]\n');
+    fs.symlinkSync(path.join(root, "other/services"), path.join(outer, "linked"), "dir");
+
+    const linkedWorkspace = path.join(outer, "linked/api");
+    const physical = await detectProfile(physicalWorkspace);
+    expect(physical).toMatchObject({
+      stack: { language: "Python", framework: "FastAPI" },
+      toolchain: { test: "pytest" },
+    });
+    expect(physical.design).toBeUndefined();
+    expect.soft(await detectProfile(linkedWorkspace)).toEqual(physical);
+    expect.soft(await resolveWorkspaceProfile(outer, "linked/api")).toEqual(physical);
+    expect.soft(resolveWorkspaceProfile(linkedWorkspace, outer, config)).toBeUndefined();
+    expect(resolveWorkspaceProfile(linkedWorkspace, outer, { workspaces })).toStrictEqual({
+      type: "nodejs",
+      stack: { framework: "Django" },
+      layout: "flat",
+    });
   });
 
   it("keeps a nested worktree registration within its own worktree", async () => {

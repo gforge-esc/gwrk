@@ -296,7 +296,21 @@ export function resolveWorkspacePolicyProfile(
       workspaceStack,
       "root",
     );
-    if (compatible) rootToolchain = mergeToolchain(rootToolchain, compatible);
+    if (!compatible) continue;
+    if (
+      ancestor.toolchain.testCommand !== undefined &&
+      compatible.testCommand === undefined &&
+      compatible.test != null &&
+      compatible.test === rootToolchain?.test &&
+      rootToolchain.testCommand !== undefined
+    ) {
+      rootToolchain = mergeToolchain(rootToolchain, {
+        ...compatible,
+        testCommand: rootToolchain.testCommand,
+      });
+    } else {
+      rootToolchain = mergeToolchain(rootToolchain, compatible);
+    }
   }
   const {
     stack: rawStack,
