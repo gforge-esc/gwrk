@@ -1102,6 +1102,23 @@ describe("credential guard", () => {
     expect(() => assertNoSecretMaterial({ sanitizedOutput })).not.toThrow();
   });
 
+  it("rejects inspected Map keys with escaped terminal controls", () => {
+    const sanitizedOutput = inspect({
+      headers: new Map([["coo\u001b[31mkie", "session=fixture-only"]]),
+    });
+    expect(sanitizedOutput).toContain(String.raw`coo\x1B[31mkie`);
+    expect(() => assertNoSecretMaterial({ sanitizedOutput })).toThrow(
+      /secret material/i,
+    );
+  });
+
+  it("allows an inspected Content-Type Map key with escaped terminal controls", () => {
+    const sanitizedOutput = inspect({
+      headers: new Map([["Content-\u001b[31mType", "text/plain"]]),
+    });
+    expect(() => assertNoSecretMaterial({ sanitizedOutput })).not.toThrow();
+  });
+
   it("rejects Set-Cookie headers in doubly encoded JSON fixture output", () => {
     const payload = {
       headers: [{ name: "Set-Cookie", value: "session=fixture-only" }],

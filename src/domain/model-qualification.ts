@@ -777,6 +777,11 @@ function scanEmbeddedJson(
     if (typeof decoded !== "string") {
       assertUniqueJsonKeys(token);
       openings.lastIndex = end;
+    } else if (
+      isCredentialHeaderName(decoded) &&
+      /^\s*=>/.test(text.slice(end))
+    ) {
+      throw new Error(secretMaterialMessage);
     }
     // Quoted log text can overlap the start of a JSON record.
     scanEvidence(decoded, knownSecrets, isHeaderCollection);
