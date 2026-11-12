@@ -610,6 +610,18 @@ describe("credential guard", () => {
       "HTTPS_PROXY=http://pilot:fixture-p%C3%A4ssword@proxy:8080",
     ],
     [
+      "an encoded non-ASCII username",
+      "HTTPS_PROXY=http://pil%C3%B6t:fixture-password@proxy:8080",
+    ],
+    [
+      "a username containing a nonbreaking space",
+      "HTTPS_PROXY=http://pi\u00a0lot:fixture-password@proxy:8080",
+    ],
+    [
+      "a password containing a narrow nonbreaking space",
+      "HTTPS_PROXY=http://pilot:fixture\u202fpassword@proxy:8080",
+    ],
+    [
       "a password containing a Unicode symbol",
       "HTTPS_PROXY=http://pilot:fixture-🔑@proxy:8080",
     ],
@@ -630,6 +642,7 @@ describe("credential guard", () => {
   it.each([
     "HTTPS_PROXY=http://proxy:8080",
     "HTTPS_PROXY=http://pilot@proxy:8080",
+    "HTTPS_PROXY=http://pi\u00a0lot@proxy:8080",
     "HTTPS_PROXY=http://proxy:8080/path@fixture",
     "HTTPS_PROXY=http://proxy:8080?name=pilot:fixture@value",
     "HTTPS_PROXY=http://proxy:8080#pilot:fixture@value",
