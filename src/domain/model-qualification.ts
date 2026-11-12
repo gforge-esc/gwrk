@@ -424,7 +424,7 @@ const secretPattern = new RegExp(
 const mailboxPattern =
   /(?:[\p{L}\p{M}\p{N}!#$%&'*+/=?^_\x60{|}~.-]{1,64}|"(?:[^"\\\r\n]|\\.){0,64}")@(?:\[[^\]\r\n]{1,255}\]|(?:[\p{L}\p{M}\p{N}-]+\.)+[\p{L}][\p{L}\p{M}\p{N}-]*)/u;
 const passwordBearingUrlPattern =
-  /(?:^|[^a-z\d+.-])[a-z][a-z\d+.-]*:\/\/[\w.%~!$&'()*+,;=-]*:[\w.%~!$&'()*+,;=:-]+@(?=\[|[\w.%\p{L}\p{N}-])/iu;
+  /(?:^|[^a-z\d+.-])[a-z][a-z\d+.-]*:\/\/(?:[\w.%~!$&'()*+,;=-]|(?=\S)[\u0080-\u{10FFFF}])*:(?:[\w.%~!$&'()*+,;=:-]|(?=\S)[\u0080-\u{10FFFF}])+@(?=\[|[\w.%\p{L}\p{N}-])/iu;
 
 function containsSensitiveText(text: string): boolean {
   return (

@@ -597,6 +597,22 @@ describe("credential guard", () => {
       "IPv6 address and encoded userinfo",
       "HTTPS_PROXY=http://pi%40lot:fixture%2Fpassword@[2001:db8::1]:8080",
     ],
+    [
+      "a non-ASCII username",
+      "HTTPS_PROXY=http://pilöt:fixture-password@proxy:8080",
+    ],
+    [
+      "a non-ASCII password",
+      "HTTPS_PROXY=http://pilot:fixture-pässword@proxy:8080",
+    ],
+    [
+      "an encoded non-ASCII password",
+      "HTTPS_PROXY=http://pilot:fixture-p%C3%A4ssword@proxy:8080",
+    ],
+    [
+      "a password containing a Unicode symbol",
+      "HTTPS_PROXY=http://pilot:fixture-🔑@proxy:8080",
+    ],
   ])("proxy credentials with %s", (_host, text) => {
     it("rejects a password in an evidence key", () => {
       expect(() => assertNoSecretMaterial({ [text]: true })).toThrow(
