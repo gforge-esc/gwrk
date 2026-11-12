@@ -645,8 +645,7 @@ function restoreRecoveryStore(persisted: {
         if ((recipient !== null) !== (failureNotice != null)) return invalid;
         if (
           failureNotice &&
-          ((!savedNotice && !failureNotice.clientMetadataKey.trim()) ||
-            failureNotice.eventType !== "harvest_gate_failed" ||
+          (failureNotice.eventType !== "harvest_gate_failed" ||
             failureNotice.ownerKind !== "harvest" ||
             failureNotice.ownerOperationId !== row.operationId ||
             failureNotice.projectId !== row.projectId ||
@@ -662,6 +661,12 @@ function restoreRecoveryStore(persisted: {
         }
         if (replay) return result;
         if (failureNotice && recipient && !savedNotice) {
+          if (
+            !failureNotice.clientMetadataKey.trim() ||
+            outboxItems.some((item) => item.outboxId === failureNotice.outboxId)
+          ) {
+            return invalid;
+          }
           outboxItems.push({
             ...failureNotice,
             recipient,
@@ -2527,6 +2532,7 @@ it.each([
   "persists gate failure with Slack target $hasSlackTarget and feature thread $hasFeatureThread",
   ({ hasSlackTarget, hasFeatureThread }) => {
     const operationId = "gate-failure";
+    const existingNotice = outbox("existing-notice", "delivered");
     const acceptedNotice = outbox("gate-notice", "pending", {
       ownerOperationId: operationId,
       eventType: "harvest_gate_failed",
@@ -2574,7 +2580,7 @@ it.each([
         }),
       ],
       stages: [],
-      outboxItems: [],
+      outboxItems: [existingNotice],
     });
     const claim = initial.claimHarvestLease({
       operationId,
@@ -2628,6 +2634,7 @@ it.each([
         acceptedNotice,
         { ...notice, clientMetadataKey: "" },
         { ...notice, clientMetadataKey: " \t" },
+        { ...notice, outboxId: existingNotice.outboxId },
         { ...notice, phaseId: "phase-02" },
         {
           ...notice,
@@ -2637,16 +2644,17 @@ it.each([
         expect(
           beforeGate.transitionHarvestStage({ ...transition, failureNotice }),
         ).toEqual({ ok: false, code: "HARVEST_STAGE_TRANSITION_INVALID" });
+        expect(beforeGate.snapshot()).toEqual(before);
       }
-      expect(beforeGate.snapshot()).toEqual(before);
     }
     const beforeReplay = beforeGate.snapshot();
-    expect(beforeGate.initializeHarvestStages(initialize)).toEqual({
+    const retry = restoreRecoveryStore(beforeReplay);
+    expect(retry.initializeHarvestStages(initialize)).toEqual({
       ok: true,
     });
-    expect(beforeGate.snapshot()).toEqual(beforeReplay);
-    expect(beforeGate.transitionHarvestStage(transition)).toEqual({ ok: true });
-    const persisted = beforeGate.snapshot();
+    expect(retry.snapshot()).toEqual(beforeReplay);
+    expect(retry.transitionHarvestStage(transition)).toEqual({ ok: true });
+    const persisted = retry.snapshot();
     const restartState = {
       ...persisted,
       featureThreads: hasFeatureThread

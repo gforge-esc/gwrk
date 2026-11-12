@@ -421,7 +421,8 @@ export interface OperationsStorePort {
    * Set updatedAt to nowIso and set completedAt to nowIso for a terminal status.
    * Require a failure notice when the phase's saved Slack receipt has a target.
    * Use plannedSlackRecipient for gate failure notices.
-   * Require a nonblank clientMetadataKey for each new notice before writing either record.
+   * For a new notice, require a nonblank clientMetadataKey and an unused outboxId.
+   * Return HARVEST_STAGE_TRANSITION_INVALID for invalid notice identity before either write.
    * Reject conflicting recipient fields before changing either the receipt or outbox.
    * Upsert harvest_gate_failed by project, operation and phase in the gate failure transaction.
    * On fenced replay, validate against the saved notice recipient and preserve both records.
