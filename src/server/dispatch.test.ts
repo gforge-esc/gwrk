@@ -11,6 +11,7 @@ import {
   it,
   vi,
 } from "vitest";
+import { finishRun } from "../db/runs.js";
 import { ShipOrchestrator } from "../engine/ship-orchestrator.js";
 import type { GwrkConfig } from "../utils/config.js";
 import { DispatchQueue } from "./dispatch.js";
@@ -208,6 +209,11 @@ describe("DispatchQueue (unified ship engine)", () => {
             workDir: undefined,
           }),
           projectRoot,
+        );
+        expect.soft(finishRun).toHaveBeenCalledExactlyOnceWith(
+          123,
+          expect.objectContaining({ exit_code: exitCode }),
+          undefined,
         );
         expect
           .soft(notifySlack)

@@ -248,7 +248,7 @@ export async function startServer(
       ledger: options.ledger,
       gitEnv,
     });
-    await notifyRoutes(server);
+    await notifyRoutes(server, options.projectRoot);
 
     const address = await server.listen({
       port: config.server.port,

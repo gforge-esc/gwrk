@@ -41,6 +41,7 @@ import { SystemMonitor } from "./monitor.js";
 import { NetworkMonitor } from "./network.js";
 import * as persistence from "./persistence.js";
 import { removePid, writePid } from "./pid.js";
+import { notifyRoutes } from "./routes/notify.js";
 import * as slackCommands from "./slack-commands.js";
 import { notifySlack } from "./slack-notify.js";
 import { presenceManager } from "./slack-presence.js";
@@ -631,6 +632,73 @@ setInterval(() => {}, 1000);
     }
   });
 
+  it.each(["listen", "routes", "unscoped"] as const)(
+    "routes POST /api/notify to the configured webhook in %s mode",
+    async (mode) => {
+      const realNotifier =
+        await vi.importActual<typeof import("./slack-notify.js")>(
+          "./slack-notify.js",
+        );
+      const checkout = await createServerFixture("routes");
+      const checkoutWebhook = "https://checkout.invalid/slack";
+      const fixtureWebhook = "https://fixture.invalid/slack";
+      const cwd = process.cwd();
+      const provider = vi
+        .fn<typeof fetch>()
+        .mockImplementation(async () => Response.json({ ok: true }));
+      let fixture: ServerFixture | undefined;
+      const configureWebhook = (target: ServerFixture, webhookUrl: string) => {
+        writeFileSync(
+          join(target.projectRoot, ".gwrkrc.json"),
+          JSON.stringify({ project: { name: target.projectId } }),
+        );
+        writeFileSync(
+          join(target.projectRoot, ".gwrkrc.local.json"),
+          JSON.stringify({
+            project: { slack: { channelId: "C_NOTIFY", webhookUrl } },
+          }),
+        );
+      };
+      vi.stubGlobal("fetch", provider);
+      vi.stubEnv("GWRK_HOME", join(checkout.projectRoot, ".gwrk"));
+      vi.stubEnv("SLACK_WEBHOOK_URL", undefined);
+      vi.stubEnv("TELEGRAM_BOT_TOKEN", undefined);
+      vi.stubEnv("TELEGRAM_CHAT_ID", undefined);
+      try {
+        configureWebhook(checkout, checkoutWebhook);
+        if (mode === "listen") stubListener();
+        fixture = await createServerFixture(
+          mode === "listen" ? "listen" : "routes",
+          { routes: mode === "routes" ? ["notify"] : [] },
+        );
+        configureWebhook(fixture, fixtureWebhook);
+        const app = mode === "unscoped" ? fastify() : fixture.app;
+        try {
+          if (mode === "unscoped") await notifyRoutes(app);
+          process.chdir(checkout.projectRoot);
+          vi.mocked(notifySlack).mockImplementationOnce(realNotifier.notifySlack);
+          const response = await app.inject({
+            method: "POST",
+            url: "/api/notify",
+            payload: { type: "phase_start", feature: "notify-probe" },
+          });
+
+          expect(response.statusCode).toBe(200);
+          expect(response.json()).toEqual({ ok: true });
+          expect(provider.mock.calls.map(([url]) => url)).toEqual([
+            mode === "unscoped" ? checkoutWebhook : fixtureWebhook,
+          ]);
+        } finally {
+          process.chdir(cwd);
+          if (mode === "unscoped") await app.close();
+        }
+      } finally {
+        vi.unstubAllGlobals();
+        await Promise.all([fixture?.close(), checkout.close()]);
+      }
+    },
+  );
+
   it.each(["webhook", "presence"] as const)(
     "routes dispatch notifications to the fixture via %s and Telegram",
     async (transport) => {
@@ -834,6 +902,9 @@ setInterval(() => {}, 1000);
       expect(result.statusCode).toBe(201);
       await vi.waitFor(() => expect(provider).toHaveBeenCalledOnce());
       expect(fixture.journal().at(-1)?.status).toBe("completed");
+      expect(listRuns("notify-probe", fixture.projectId, fixture.db)).toEqual([
+        expect.objectContaining({ exit_code: 0 }),
+      ]);
 
       const closed = vi.fn();
       const closing = fixture.app.close().then(closed);

@@ -200,7 +200,7 @@ export async function createServerFixture(
       if (routes.includes("status"))
         await statusRoutes(app, monitor, queue, sandbox, lifecycle, network);
       if (routes.includes("dispatch")) await dispatchRoutes(app, queue);
-      if (routes.includes("notify")) await notifyRoutes(app);
+      if (routes.includes("notify")) await notifyRoutes(app, projectRoot);
       await app.ready();
     }
 

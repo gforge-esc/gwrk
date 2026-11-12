@@ -8,7 +8,10 @@ import { MessageBuilder, type SlackMessage } from "../slack-messages.js";
 import { notifySlack } from "../slack-notify.js";
 import type { DispatchRecord, NotifyPayload } from "../types.js";
 
-export async function notifyRoutes(server: FastifyInstance) {
+export async function notifyRoutes(
+  server: FastifyInstance,
+  projectRoot?: string,
+) {
   server.post<{ Body: NotifyPayload }>(
     "/api/notify",
     async (request, reply) => {
@@ -124,7 +127,7 @@ export async function notifyRoutes(server: FastifyInstance) {
             payload: payload as unknown as Record<string, unknown>,
             timestamp: new Date().toISOString(),
           },
-          { opsOnly: isOps },
+          { opsOnly: isOps, projectRoot },
         );
 
         return { ok: true };
