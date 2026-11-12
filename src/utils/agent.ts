@@ -501,30 +501,48 @@ function resolvePrimaryCheckout(executionDir: string): string {
 
 const ENFORCEMENT_MARKER = "{{enforcement}}";
 
+function maskMarkdownCode(template: string): string {
+  // Keep offsets and line endings without turning quoted content into whitespace.
+  const mask = (code: string) => code.replace(/[^\r\n]/g, "\0");
+  const maskSpans = (text: string) =>
+    text
+      .split(/(\r?\n[ \t]*\r?\n)/)
+      .map((paragraph) =>
+        paragraph.replace(/(?<!`)(`+)(?!`)[\s\S]*?(?<!`)\1(?!`)/g, mask),
+      )
+      .join("");
+
+  let masked = "";
+  let textStart = 0;
+  let fence: { delimiter: string; start: number } | undefined;
+  for (const { 0: line, 1: delimiter, 2: rest, index } of template.matchAll(
+    /^ {0,3}(`{3,}|~{3,})([^\r\n]*)/gm,
+  )) {
+    if (!fence) {
+      if (delimiter[0] === "`" && rest.includes("`")) continue;
+      masked += maskSpans(template.slice(textStart, index));
+      fence = { delimiter, start: index };
+    } else if (
+      delimiter[0] === fence.delimiter[0] &&
+      delimiter.length >= fence.delimiter.length &&
+      !rest.trim()
+    ) {
+      textStart = index + line.length;
+      masked += mask(template.slice(fence.start, textStart));
+      fence = undefined;
+    }
+  }
+  return masked + (fence ? mask(template.slice(fence.start)) : maskSpans(template.slice(textStart)));
+}
+
 function findEnforcementSlot(
   template: string,
   fallback: "empty-section" | "scoped-legacy",
 ): RegExpMatchArray | undefined {
-  const outsideFence = ({ index }: RegExpMatchArray): boolean => {
-    let fence: string | undefined;
-    for (const [, delimiter, rest] of template
-      .slice(0, index)
-      .matchAll(/^ {0,3}([`]{3,}|~{3,})([^\r\n]*)/gm)) {
-      if (!fence) fence = delimiter;
-      else if (
-        delimiter[0] === fence[0] &&
-        delimiter.length >= fence.length &&
-        !rest.trim()
-      ) {
-        fence = undefined;
-      }
-    }
-    return fence === undefined;
-  };
-
+  const masked = maskMarkdownCode(template);
   const sections = [
-    ...template.matchAll(/<code_quality>([\s\S]*?)<\/code_quality>/g),
-  ].filter(outsideFence);
+    ...masked.matchAll(/<code_quality>([\s\S]*?)<\/code_quality>/g),
+  ];
   const marked = sections.filter(([, body]) =>
     body.includes(ENFORCEMENT_MARKER),
   );
@@ -532,16 +550,16 @@ function findEnforcementSlot(
 
   if (fallback === "scoped-legacy") {
     const bareMarkers = [
-      ...template.matchAll(/^\{\{enforcement\}\}(?=\r?\n|$)/gm),
-    ].filter(outsideFence);
+      ...masked.matchAll(/^\{\{enforcement\}\}(?=\r?\n|$)/gm),
+    ];
     if (bareMarkers.length > 0) {
       return bareMarkers.length === 1 ? bareMarkers[0] : undefined;
     }
     const emptyLines = [
-      ...template.matchAll(
+      ...masked.matchAll(
         /^<code_quality>\s*<\/code_quality>(?=[ \t]*(?:\r?\n|$))/gm,
       ),
-    ].filter(outsideFence);
+    ];
     return emptyLines.length === 1 ? emptyLines[0] : undefined;
   }
 
@@ -584,7 +602,10 @@ function splitLegacyStdin(task: TaskDispatch) {
   const inputStart = findLegacyInputStart(stdin);
   if (inputStart === undefined) {
     const slot = findEnforcementSlot(stdin, "empty-section");
-    if (slot && stdin.trim() === slot[0]) {
+    if (
+      slot?.index !== undefined &&
+      stdin.trim() === stdin.slice(slot.index, slot.index + slot[0].length)
+    ) {
       return { template: stdin, userInput: "", slot };
     }
     return undefined;
@@ -666,15 +687,16 @@ export async function dispatchToAgent(task: TaskDispatch): Promise<TaskResult> {
       profile,
     );
 
-    const [slot] = enforcementSlot;
-    const replacement = slot.includes(ENFORCEMENT_MARKER)
-      ? slot.replaceAll(ENFORCEMENT_MARKER, () => enforcement)
-      : `<code_quality>\n${enforcement}\n</code_quality>`;
     const start = enforcementSlot.index;
-    template =
-      template.slice(0, start) +
-      replacement +
-      template.slice(start + slot.length);
+    const [maskedSlot] = enforcementSlot;
+    const end = start + maskedSlot.length;
+    const originalSlot = template.slice(start, end);
+    const replacement = maskedSlot.includes(ENFORCEMENT_MARKER)
+      ? originalSlot.replaceAll(ENFORCEMENT_MARKER, (marker, offset: number) =>
+          maskedSlot.startsWith(marker, offset) ? enforcement : marker,
+        )
+      : `<code_quality>\n${enforcement}\n</code_quality>`;
+    template = template.slice(0, start) + replacement + template.slice(end);
   }
 
   const hasCommandSafety = promptParts?.template.includes(COMMAND_SAFETY_BLOCK);

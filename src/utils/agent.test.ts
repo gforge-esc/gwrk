@@ -124,6 +124,7 @@ describe('US-016: Enforcement Skills Dispatch Injection', () => {
   const legacyPrefix = "Rules:\r\n{{enforcement}}\r\n\r\n";
   const enforcementSection = "<code_quality>\r\n{{enforcement}}\r\n</code_quality>";
   const nestedInput = "<user_input>\r\n  Nested example.  \r\n</user_input>";
+  const inlineEnforcementExample = "Quote `<code_quality>{{enforcement}}</code_quality>` as written.\r\n";
 
   it.each([
     ["section", enforcementSection],
@@ -168,13 +169,17 @@ describe('US-016: Enforcement Skills Dispatch Injection', () => {
     },
   );
 
-  it.each(["structured", "legacy"] as const)(
-    "preserves a quoted empty section before the enforcement slot in %s Codex stdin",
-    async (transport) => {
+  it.each([
+    ["structured", "empty section", "Quote `<code_quality></code_quality>` as written.\r\n"],
+    ["legacy", "empty section", "Quote `<code_quality></code_quality>` as written.\r\n"],
+    ["structured", "marked section", inlineEnforcementExample],
+    ["legacy", "marked section", inlineEnforcementExample],
+  ] as const)(
+    "preserves the example before the enforcement slot in %s Codex stdin (%s)",
+    async (transport, _label, example) => {
       const actualSkills = await vi.importActual<typeof skillRuntime>("../plugins/skill-runtime.js");
       vi.mocked(skillRuntime.resolveEnforcementSkills).mockImplementationOnce(actualSkills.resolveEnforcementSkills);
       const capturedStdin = mockAgentStdin();
-      const example = "Quote `<code_quality></code_quality>` as written.\r\n";
       const template = example + enforcementSection;
       const userInput = `<user_input>\r\n${enforcementSection}\r\n${nestedInput}\r\n  Keep {{enforcement}}.  \r\n</user_input>\r\n`;
       const separator = transport === "structured" ? "\n\n" : "\r\n\r\n";
@@ -198,6 +203,24 @@ describe('US-016: Enforcement Skills Dispatch Injection', () => {
       expect(rules).not.toContain("{{enforcement}}");
     },
   );
+
+  it("expands the unquoted marker inside a legacy section that also quotes the marker", async () => {
+    const capturedStdin = mockAgentStdin();
+    const example = "Quote ``{{enforcement}} with a single ` backtick``.\r\n";
+    const prefix = `<code_quality>\r\n${example}`;
+    const suffix = "\r\n</code_quality>";
+    vi.mocked(skillRuntime.resolveEnforcementSkills).mockResolvedValueOnce("# Strict Typing Rule");
+
+    await dispatchToAgent({
+      workflow: "gwrk-implement",
+      workDir: "/fake/root",
+      agent: "codex",
+      stdin: `${prefix}{{enforcement}}${suffix}`,
+      quiet: true,
+    });
+
+    expect(capturedStdin()).toBe(`${COMMAND_SAFETY_BLOCK}\n\n${prefix}# Strict Typing Rule${suffix}`);
+  });
 
   it.each([
     ["a standalone empty section", "<code_quality></code_quality>"],
@@ -250,6 +273,8 @@ describe('US-016: Enforcement Skills Dispatch Injection', () => {
     ["input with text after the closing tag", { stdin: `${legacyPrefix}${legacyInput}More task text` }],
     ["an inline marker", { stdin: `Quote {{enforcement}} here.\r\n\r\n${legacyInput}` }],
     ["an inline quoted empty section", { stdin: `Quote \`<code_quality></code_quality>\` here.\r\n\r\n${legacyInput}` }],
+    ["an inline quoted enforcement section", { stdin: `${inlineEnforcementExample}\r\n${legacyInput}` }],
+    ["a bare marker in a multiline code span", { stdin: `Quote \`\`a single \` backtick\r\n{{enforcement}}\r\ninside the span\`\`.\r\n\r\n${legacyInput}` }],
     ["a fenced empty section", { stdin: ["Rules:", "~~~xml", "<code_quality></code_quality>", "~~~", "", legacyInput].join("\r\n") }],
     ["ambiguous standalone empty sections", { stdin: `Rules:\r\n<code_quality></code_quality>\r\n<code_quality></code_quality>\r\n\r\n${legacyInput}` }],
     ["a code quality fixture without an enforcement slot", { stdin: `Keep <code_quality>example rules</code_quality>.\r\n\r\n${legacyInput}` }],
