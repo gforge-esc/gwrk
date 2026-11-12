@@ -682,6 +682,7 @@ function restoreRecoveryStore(persisted: {
             threadTs === (recipient.threadTs ?? null);
           if (
             !matchesNotice(savedNotice) ||
+            savedNotice.status === "skipped_no_target" ||
             !savedNotice.clientMetadataKey.trim() ||
             !(unboundPending || matchesDestination)
           ) {
@@ -2043,14 +2044,18 @@ describe("persisted harvest intake contract", () => {
     ).toMatchObject({ ok: true, operations: [], deduplicatedTransport: true });
   });
 
-  it.each([
-    { checkoutPhaseIds: undefined },
-    { checkoutPhaseIds: [] },
-    { checkoutPhaseIds: ["phase-02"] },
-  ])(
-    "rejects a manual request for phase-01 with checkout coverage $checkoutPhaseIds",
-    ({ checkoutPhaseIds }) => {
-      const manual = harvestIntake("manual-explicit", verifiedOffline);
+  it.each(
+    ["offline", "pull request"].flatMap((target) =>
+      [undefined, [], ["phase-02"]].map((checkoutPhaseIds) => ({
+        target,
+        checkoutPhaseIds,
+      })),
+    ),
+  )(
+    "rejects a manual $target phase-01 request with checkout coverage $checkoutPhaseIds",
+    ({ target, checkoutPhaseIds }) => {
+      const facts = target === "offline" ? verifiedOffline : {};
+      const manual = harvestIntake("manual-explicit", facts, "manual_cli");
       if (!manual.target.accepted) throw new Error("Expected manual target");
       const initial = restoreHarvestIntake({ harvests: [], stages: [] });
       const before = initial.snapshot();
@@ -2881,6 +2886,10 @@ it.each([
   ],
   ["wrong workspace", { ...gateNoticeDestination, workspaceId: "W9" }],
   ["wrong thread", { ...gateNoticeDestination, threadTs: "9.9" }],
+  [
+    "skipped required notice",
+    { ...gateNoticeDestination, status: "skipped_no_target" },
+  ],
   ["partial destination", { channelId: "C1" }],
 ] satisfies [string, Partial<OutboxItem>][])(
   "rejects a restored gate notice with %s before committing or replaying failure",

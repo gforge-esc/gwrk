@@ -516,12 +516,11 @@ export function verifyHarvestTarget(
   const needsCheckoutCoverage =
     candidate.source === "manual_cli" &&
     candidate.terminalEvent === "merged" &&
-    target.phaseId === null &&
     requestedPhaseId !== undefined;
   if (
     requestedPhaseId !== undefined &&
     requestedPhaseId !== target.phaseId &&
-    !needsCheckoutCoverage
+    !(needsCheckoutCoverage && target.phaseId === null)
   ) {
     return {
       ok: false,

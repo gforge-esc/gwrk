@@ -428,7 +428,8 @@ export interface OperationsStorePort {
    * Upsert harvest_gate_failed by project, operation and phase in the gate failure transaction.
    * An existing dedupe row must match the event, harvest owner, feature, phase and planned recipient.
    * Validate the saved metadata key and destination before either write or fenced replay.
-   * Require a nonblank key. Allow an unbound destination only while the notice is pending.
+   * Require a nonblank key and reject skipped_no_target for a required gate failure notice.
+   * Allow an unbound destination only while the notice is pending.
    * Otherwise require the saved workspace, channel and thread to match plannedSlackRecipient.
    * Compare an absent planned thread as null.
    * On fenced replay, require the saved notice if the plan has a target and preserve its metadata key.
@@ -495,7 +496,10 @@ export interface OperationsStorePort {
     nowIso: string;
     error: string;
   }): FencedWrite;
-  /** Record the outcome under the current claim and preserve the bound destination. */
+  /**
+   * Record the outcome under the current claim and preserve the bound destination.
+   * Reject skipped_no_target for harvest_gate_failed with OUTBOX_TRANSITION_INVALID.
+   */
   completeOutboxItem(input: {
     claim: OutboxClaim;
     nowIso: string;
@@ -508,7 +512,7 @@ export interface OperationsStorePort {
         }
       | { status: "skipped_no_target" }
       | { status: "failed"; error: string };
-  }): FencedWrite;
+  }): FencedWrite | { ok: false; code: "OUTBOX_TRANSITION_INVALID" };
 
   getHarvestCursor(projectId: string): HarvestCursor | null;
   /** Advance the watermark after intake commits through that watermark. */
