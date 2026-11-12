@@ -43,6 +43,7 @@ import * as persistence from "./persistence.js";
 import { removePid, writePid } from "./pid.js";
 import * as slackCommands from "./slack-commands.js";
 import { notifySlack } from "./slack-notify.js";
+import { presenceManager } from "./slack-presence.js";
 import { getSlackApp, startSlackApp } from "./slack.js";
 import { startTelegramBot } from "./telegram.js";
 
@@ -571,7 +572,7 @@ setInterval(() => {}, 1000);
     vi.stubEnv("TELEGRAM_CHAT_ID", undefined);
     const provider = vi
       .fn<typeof fetch>()
-      .mockResolvedValue(Response.json({ ok: true, result: [] }));
+      .mockImplementation(async () => Response.json({ ok: true, result: [] }));
     vi.stubGlobal("fetch", provider);
     stubListener();
     const unconfigured = await createServerFixture("listen");
@@ -585,6 +586,10 @@ setInterval(() => {}, 1000);
       const signal = provider.mock.calls[0][1]?.signal;
       await unconfigured.close();
       expect(signal?.aborted).toBe(false);
+      await vi.waitFor(() => expect(provider).toHaveBeenCalledTimes(2), {
+        timeout: 3_000,
+      });
+      expect(provider.mock.calls[1][1]?.signal).toBe(signal);
       await configured.close();
       expect(signal?.aborted).toBe(true);
     } finally {
@@ -698,6 +703,102 @@ setInterval(() => {}, 1000);
       }
     },
   );
+
+  it("sends an away dispatch after five seconds and discards the next one on close", async () => {
+    const realNotifier =
+      await vi.importActual<typeof import("./slack-notify.js")>(
+        "./slack-notify.js",
+      );
+    const fixture = await createServerFixture("routes", {
+      routes: ["dispatch"],
+    });
+    const getPresence = vi
+      .fn()
+      .mockResolvedValue({ ok: true, presence: "away" });
+    const provider = vi
+      .fn<typeof fetch>()
+      .mockImplementation(async () => Response.json({ ok: true }));
+    vi.mocked(getSlackApp).mockReturnValue({
+      client: {
+        token: "fixture-slack",
+        users: {
+          list: vi.fn().mockResolvedValue({
+            ok: true,
+            members: [{ id: "fixture-user", is_bot: false }],
+          }),
+          getPresence,
+        },
+      },
+    } as NonNullable<ReturnType<typeof getSlackApp>>);
+    vi.mocked(notifySlack).mockImplementation(realNotifier.notifySlack);
+    vi.stubGlobal("fetch", provider);
+    vi.stubEnv("GWRK_HOME", join(fixture.projectRoot, ".gwrk"));
+    vi.stubEnv("TELEGRAM_BOT_TOKEN", undefined);
+    vi.stubEnv("TELEGRAM_CHAT_ID", undefined);
+    vi.useFakeTimers({
+      toFake: ["setTimeout", "clearTimeout", "setInterval", "clearInterval"],
+    });
+    try {
+      writeFileSync(
+        join(fixture.projectRoot, ".gwrkrc.json"),
+        JSON.stringify({ project: { name: fixture.projectId } }),
+      );
+      writeFileSync(
+        join(fixture.projectRoot, ".gwrkrc.local.json"),
+        JSON.stringify({
+          project: {
+            name: fixture.projectId,
+            slack: { channelId: "C_FIXTURE" },
+          },
+        }),
+      );
+      await presenceManager.init(
+        GwrkConfigSchema.parse({ project: { name: fixture.projectId } }),
+      );
+      const dispatch = async (featureId: string) => {
+        const response = await fixture.app.inject({
+          method: "POST",
+          url: "/api/dispatch",
+          payload: { featureId, phaseId: "phase-01" },
+        });
+        expect(response.statusCode).toBe(201);
+        await vi.waitFor(() =>
+          expect(fixture.journal().at(-1)).toMatchObject({
+            featureId,
+            status: "completed",
+          }),
+        );
+      };
+
+      await dispatch("delivered-feature");
+      await vi.advanceTimersByTimeAsync(5_001);
+      expect(provider).not.toHaveBeenCalled();
+      getPresence.mockResolvedValue({ ok: true, presence: "active" });
+      await vi.advanceTimersByTimeAsync(60_000);
+      expect(provider).toHaveBeenCalledExactlyOnceWith(
+        "https://slack.com/api/chat.postMessage",
+        expect.objectContaining({
+          body: expect.stringContaining("delivered-feature"),
+          signal: expect.any(AbortSignal),
+        }),
+      );
+
+      getPresence.mockResolvedValue({ ok: true, presence: "away" });
+      await vi.advanceTimersByTimeAsync(60_000);
+      await dispatch("discarded-feature");
+      await fixture.app.close();
+      getPresence.mockResolvedValue({ ok: true, presence: "active" });
+      await vi.advanceTimersByTimeAsync(60_000);
+      expect(provider).toHaveBeenCalledOnce();
+    } finally {
+      presenceManager.stop();
+      vi.useRealTimers();
+      await fixture.close();
+      vi.mocked(notifySlack).mockResolvedValue(undefined);
+      vi.mocked(getSlackApp).mockReturnValue(null);
+      vi.unstubAllGlobals();
+    }
+  });
 
   it("drains an aborted dispatch notification before closing the server", async () => {
     const realNotifier =
