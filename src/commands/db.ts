@@ -4,7 +4,11 @@
 
 import { basename, dirname, resolve } from "node:path";
 import { Command, Option } from "commander";
-import { gwrkRuntimeDir, usesHostedRuntime } from "../adapters/config/paths.js";
+import {
+  gwrkPidPath,
+  gwrkRuntimeDir,
+  usesHostedRuntime,
+} from "../adapters/config/paths.js";
 import { verifyInstalledRelease } from "../adapters/release/inventory.js";
 import { readRepositoryEvidence } from "../adapters/release/repository-evidence.js";
 import {
@@ -103,6 +107,7 @@ const backupCommand = new Command("backup")
             destination,
             devicePath: devicePath(),
             runtimeLockPath: instanceLockPath(gwrkRuntimeDir()),
+            runtimePidPath: gwrkPidPath(),
             createdAt: new Date().toISOString(),
             gwrkVersion: command.parent?.parent?.version() ?? "unknown",
             collectDevice: loadDeviceStrict,
@@ -184,6 +189,7 @@ const restoreCommand = new Command("restore")
             source: resolve(opts.from),
             stateDirectory,
             runtimeDirectory,
+            configuredDbPath: dbPath,
             force: opts.force,
             pid: process.pid,
           },

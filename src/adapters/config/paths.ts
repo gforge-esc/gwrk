@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { homedir } from "node:os";
+import { join } from "node:path";
 import { resolveGwrkPaths } from "../../domain/gwrk-paths.js";
 
 export function gwrkHome(): string {
@@ -11,6 +12,10 @@ export function gwrkHome(): string {
 
 export function gwrkRuntimeDir(): string {
   return resolveGwrkPaths(process.env, homedir()).runtimeDir;
+}
+
+export function gwrkPidPath(): string {
+  return join(gwrkRuntimeDir(), "server.pid");
 }
 
 export function usesHostedRuntime(): boolean {

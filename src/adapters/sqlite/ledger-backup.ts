@@ -211,15 +211,12 @@ async function captureLedgerBackup(input: LedgerBackupRequest, dbPath: string) {
   const destination = await canonicalPath(suppliedPath);
   for (const path of [destination, suppliedPath]) {
     rejectRestoreMarkerComponent(path);
-    for (const ledger of [dbPath, resolve(input.dbPath)]) {
-      for (const suffix of SQLITE_SIDECAR_SUFFIXES) {
-        rejectPathAtOrBelow(path, `${ledger}${suffix}`, "SQLite sidecar");
-      }
-    }
+    rejectSqliteSidecarPath(path, dbPath, resolve(input.dbPath));
   }
   const configuredPaths = [
     [input.devicePath, "device path"],
     [input.runtimeLockPath, "runtime lock path"],
+    [input.runtimePidPath, "runtime PID path"],
   ] as const;
   for (const [configuredPath, label] of configuredPaths) {
     if (!configuredPath) continue;
@@ -470,12 +467,26 @@ function rejectPathAtOrBelow(
   }
 }
 
+function rejectSqliteSidecarPath(path: string, ...ledgers: string[]): void {
+  for (const ledger of ledgers) {
+    for (const suffix of SQLITE_SIDECAR_SUFFIXES) {
+      rejectPathAtOrBelow(path, `${ledger}${suffix}`, "SQLite sidecar");
+    }
+  }
+}
+
 export const resolveRestoreTarget: LedgerBackupPort["resolveRestoreTarget"] =
-  async (stateDirectory) => {
+  async (stateDirectory, configuredDbPath) => {
     const suppliedPath = resolve(stateDirectory);
     const state = await canonicalPath(suppliedPath);
     rejectRestoreMarkerComponent(state);
     rejectRestoreMarkerComponent(suppliedPath);
+    if (configuredDbPath) {
+      const configured = resolve(configuredDbPath);
+      const physical = await canonicalPath(configured);
+      rejectSqliteSidecarPath(suppliedPath, configured, physical);
+      rejectSqliteSidecarPath(state, configured, physical);
+    }
     return { stateDirectory: state, dbPath: join(state, DB_FILE) };
   };
 
@@ -484,6 +495,7 @@ export const restoreLedgerBackup: LedgerBackupPort["restoreBackup"] = async (
 ) => {
   const { stateDirectory: state } = await resolveRestoreTarget(
     input.stateDirectory,
+    input.configuredDbPath,
   );
   const suppliedPath = resolve(input.source);
   rejectReservedRestorePath(suppliedPath, state);

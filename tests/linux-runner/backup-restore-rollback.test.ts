@@ -235,9 +235,16 @@ describe("installed ledger commands outside a checkout", () => {
     },
   );
 
-  it.each(pathVariants)(
-    "protects the server lock with alias=$alias and child=$child",
-    async ({ alias, child }) => {
+  it.each(
+    [
+      { file: "server.lock", label: "runtime lock path" },
+      { file: "server.pid", label: "runtime PID path" },
+    ].flatMap((target) =>
+      pathVariants.map((variant) => ({ ...target, ...variant })),
+    ),
+  )(
+    "protects $file with alias=$alias and child=$child",
+    async ({ file, label, alias, child }) => {
       const state = join(root, "state");
       const runtime = join(root, "runtime");
       const runtimeAlias = join(root, "runtime-alias");
@@ -246,21 +253,77 @@ describe("installed ledger commands outside a checkout", () => {
       await symlink(runtime, runtimeAlias);
       const ledger = join(state, "gwrk.db");
       seedLedger(ledger).close();
-      const lock = join(runtime, "server.lock");
+      const reserved = join(runtime, file);
 
       const result = runInstalledBackup(
         ledger,
-        join(
-          alias ? runtimeAlias : runtime,
-          "server.lock",
-          ...(child ? ["copy"] : []),
-        ),
+        join(alias ? runtimeAlias : runtime, file, ...(child ? ["copy"] : [])),
+      );
+      expect.soft(result.status, result.stderr).toBe(1);
+      expect.soft(result.stderr).toContain(`reserved ${label} ${reserved}`);
+      await expect(stat(reserved)).rejects.toMatchObject({ code: "ENOENT" });
+    },
+  );
+
+  it
+    .skipIf(process.platform !== "linux")
+    .each(
+      ["-wal", "-shm", "-journal"].flatMap((suffix) =>
+        pathVariants.map((variant) => ({ suffix, ...variant })),
+      ),
+    )(
+    "rejects restore into SQLite sidecar $suffix with alias=$alias and child=$child",
+    async ({ suffix, alias, child }) => {
+      const state = join(root, "state");
+      const stateAlias = join(root, "state-alias");
+      await mkdir(state);
+      await symlink(state, stateAlias);
+      const ledger = join(state, "gwrk.db");
+      seedLedger(ledger).close();
+      const backup = join(root, "backup");
+      const source = join(root, "source.db");
+      seedLedger(source).close();
+      const seeded = runInstalledBackup(source, backup);
+      expect(seeded.status, seeded.stderr).toBe(0);
+      const sidecar = `${ledger}${suffix}`;
+      await expect(stat(sidecar)).rejects.toMatchObject({ code: "ENOENT" });
+      const target = join(
+        alias ? stateAlias : state,
+        `gwrk.db${suffix}`,
+        ...(child ? ["restore"] : []),
+      );
+
+      const result = runInstalledLedgerCommand(
+        ledger,
+        "restore",
+        "--from",
+        backup,
+        "--state-dir",
+        target,
       );
       expect.soft(result.status, result.stderr).toBe(1);
       expect
         .soft(result.stderr)
-        .toContain(`reserved runtime lock path ${lock}`);
-      await expect(stat(lock)).rejects.toMatchObject({ code: "ENOENT" });
+        .toContain(`reserved SQLite sidecar ${sidecar}`);
+      await expect
+        .soft(stat(sidecar))
+        .rejects.toMatchObject({ code: "ENOENT" });
+      await expect
+        .soft(stat(join(root, "runtime")))
+        .rejects.toMatchObject({ code: "ENOENT" });
+
+      const live = new Database(ledger, { fileMustExist: true });
+      try {
+        live.prepare("UPDATE runs SET exit_code = 7 WHERE id = 42").run();
+        expect(
+          live
+            .prepare("SELECT exit_code FROM runs WHERE id = 42")
+            .pluck()
+            .get(),
+        ).toBe(7);
+      } finally {
+        live.close();
+      }
     },
   );
 

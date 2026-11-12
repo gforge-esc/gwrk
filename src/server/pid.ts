@@ -7,19 +7,16 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
-import { gwrkRuntimeDir } from "../adapters/config/paths.js";
+import { gwrkPidPath } from "../adapters/config/paths.js";
 
-function pidFile(): string {
-  return path.join(gwrkRuntimeDir(), "server.pid");
-}
 const SERVICE_NAME = "com.gwrk.server";
 
 export function writePid(pid: number): void {
-  const dir = path.dirname(pidFile());
+  const dir = path.dirname(gwrkPidPath());
   if (!fs.existsSync(dir)) {
     fs.mkdirSync(dir, { recursive: true });
   }
-  fs.writeFileSync(pidFile(), pid.toString(), "utf8");
+  fs.writeFileSync(gwrkPidPath(), pid.toString(), "utf8");
 }
 
 export function readPid(): number | undefined {
@@ -42,10 +39,10 @@ export function readPid(): number | undefined {
   }
 
   // 2. Fallback to PID file
-  if (!fs.existsSync(pidFile())) {
+  if (!fs.existsSync(gwrkPidPath())) {
     return undefined;
   }
-  const content = fs.readFileSync(pidFile(), "utf8").trim();
+  const content = fs.readFileSync(gwrkPidPath(), "utf8").trim();
   const pid = Number(content);
   return /^\d+$/.test(content) && Number.isSafeInteger(pid) && pid > 1
     ? pid
@@ -53,11 +50,11 @@ export function readPid(): number | undefined {
 }
 
 export function removePid(): void {
-  if (fs.existsSync(pidFile())) {
+  if (fs.existsSync(gwrkPidPath())) {
     try {
-      const content = fs.readFileSync(pidFile(), "utf8").trim();
+      const content = fs.readFileSync(gwrkPidPath(), "utf8").trim();
       if (content === process.pid.toString()) {
-        fs.unlinkSync(pidFile());
+        fs.unlinkSync(gwrkPidPath());
       }
     } catch {
       // ignore
