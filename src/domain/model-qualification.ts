@@ -426,14 +426,29 @@ const mailboxPattern =
 
 function hasPasswordBearingUrl(text: string): boolean {
   const authorities =
-    /(?<![a-z\d+.-])[a-z][a-z\d+.-]*:\/\/(?=([^\t\n\v\f\r /\\?#]*))/gi;
-  for (const [scheme, authority] of text.matchAll(authorities)) {
-    if (!authority.includes("@")) continue;
-    const candidate = scheme + authority.replace(/["'`]+$/, "");
-    try {
-      if (new URL(candidate).password !== "") return true;
-    } catch {
-      // A malformed authority can precede a valid URL in the same log.
+    /(?<![a-z\d+.-])([a-z][a-z\d+.-]*:)([\/\\]*)(?=([^\t\n\v\f\r /\\?#]*))/gi;
+  const specialScheme = /^(?:https?|wss?|ftp):$/i;
+  const normalized = text.replace(/[\t\n\r]/g, "");
+  for (const log of normalized === text ? [text] : [text, normalized]) {
+    for (const [, scheme, slashes, authority] of log.matchAll(authorities)) {
+      if (!authority.includes("@")) continue;
+      if (!specialScheme.test(scheme) && slashes !== "//") continue;
+
+      // Try the authority as recorded before removing enclosing log punctuation.
+      const unwrapped = authority.replace(/[)"'\x60}>.,;!]+$/, "");
+      const candidates = new Set([
+        authority,
+        unwrapped,
+        unwrapped.replace(/\]+$/, ""),
+      ]);
+      for (const candidate of candidates) {
+        try {
+          if (new URL(scheme + slashes + candidate).password !== "")
+            return true;
+        } catch {
+          // Keep scanning after malformed log text.
+        }
+      }
     }
   }
   return false;

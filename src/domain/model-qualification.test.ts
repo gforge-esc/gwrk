@@ -638,6 +638,30 @@ describe("credential guard", () => {
       "HTTPS_PROXY=http://pilot:fixture-pass@@proxy:8080",
     ],
     [
+      "an extra authority slash",
+      "HTTPS_PROXY=http:///pilot:fixture-password@proxy:8080",
+    ],
+    [
+      "a special URL without authority slashes",
+      "HTTPS_PROXY=http:pilot:fixture-password@proxy:8080",
+    ],
+    [
+      "a tab inside a password",
+      "HTTPS_PROXY=http://pilot:fixture\tpassword@proxy:8080",
+    ],
+    [
+      "a newline inside a username",
+      "HTTPS_PROXY=http://pi\nlot:fixture-password@proxy:8080",
+    ],
+    [
+      "parenthesized log output",
+      "Proxy URL (http://pilot:fixture-password@proxy:8080)",
+    ],
+    [
+      "an angle-bracketed IPv6 authority",
+      "Proxy URL <http://pilot:fixture-password@[::1]>",
+    ],
+    [
       "a quoted URL after a malformed authority",
       'HTTP_PROXY=http://pilot:fixture|pass@proxy:invalid HTTPS_PROXY="http://pilot:fixture|pass@proxy:8080"',
     ],
@@ -656,6 +680,11 @@ describe("credential guard", () => {
   });
 
   it.each([
+    "Proxy URL (http://proxy:8080)",
+    "HTTPS_PROXY=http:///proxy:8080",
+    "HTTPS_PROXY=http:///proxy:8080/path@fixture",
+    "HTTPS_PROXY=http:///proxy:8080?name=pilot:fixture@value",
+    "HTTPS_PROXY=http:///proxy:8080#pilot:fixture@value",
     "HTTPS_PROXY=http://proxy:8080",
     "HTTPS_PROXY=http://pilot@proxy:8080",
     "HTTPS_PROXY=http://pi\u00a0lot@proxy:8080",
