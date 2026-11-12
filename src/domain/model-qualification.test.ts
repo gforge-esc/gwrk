@@ -715,6 +715,17 @@ describe("credential guard", () => {
       "discovery started\n  HTTPS_PROXY = http://fixture access token@proxy:8080",
     ],
     [
+      "a multiline assignment between other log lines",
+      "discovery started\nHTTPS_PROXY = http://pilot:fixture\npassword with space@proxy:8080\nstatus: ready",
+    ],
+    [
+      "a multiline assignment in a JSON report between log lines",
+      JSON.stringify({
+        proxyReport:
+          "discovery started\nHTTPS_PROXY = http://pilot:fixture\npassword with space@proxy:8080\nstatus: ready",
+      }),
+    ],
+    [
       "an inspected assignment with a password containing a space",
       inspect("HTTPS_PROXY=http://pilot:fixture password@proxy:8080"),
     ],
@@ -805,6 +816,8 @@ describe("credential guard", () => {
     "HTTPS_PROXY=http://proxy:8080/path with space@fixture",
     inspect("HTTPS_PROXY = http://proxy:8080/path with space@fixture"),
     "discovery started\n  HTTPS_PROXY = http://proxy:8080/path with space@fixture",
+    "discovery started\nHTTPS_PROXY = http://proxy:8080/path\nwith space@fixture\nstatus: ready",
+    "discovery started\nHTTPS_PROXY = http://proxy:8080\nstatus: ready",
     inspect("HTTPS_PROXY=http://proxy:8080/path with space@fixture"),
     inspect("HTTPS_PROXY = http://proxy:8080/path\nwith space@fixture"),
   ])("allows proxy URLs without userinfo: %s", (text) => {

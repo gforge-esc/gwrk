@@ -441,7 +441,11 @@ function proxyAssignmentHasUserinfo(text: string): boolean {
 
 function hasCredentialBearingUrl(text: string): boolean {
   if (proxyAssignmentHasUserinfo(text)) return true;
-  if (text.split(/[\r\n]+/).some(proxyAssignmentHasUserinfo)) return true;
+  const proxyAuthorities =
+    /^[ \t]*(?:[a-z0-9]+_)*proxy[ \t]*=[ \t]*([a-z][a-z\d+.-]*:[/\\]*[^@/\\?#]*@[^ \t\r\n/\\?#]+)/gim;
+  for (const [, candidate] of text.matchAll(proxyAuthorities)) {
+    if (parsedUrlHasUserinfo(candidate)) return true;
+  }
 
   const quoted = new RegExp(inspectedStringLiteral.source, "g");
   for (const [literal] of text.matchAll(quoted)) {
