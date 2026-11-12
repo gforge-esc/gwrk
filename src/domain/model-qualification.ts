@@ -424,7 +424,7 @@ const secretPattern = new RegExp(
 const mailboxPattern =
   /(?:[\p{L}\p{M}\p{N}!#$%&'*+/=?^_\x60{|}~.-]{1,64}|"(?:[^"\\\r\n]|\\.){0,64}")@(?:\[[^\]\r\n]{1,255}\]|(?:[\p{L}\p{M}\p{N}-]+\.)+[\p{L}][\p{L}\p{M}\p{N}-]*)/u;
 
-function hasPasswordBearingUrl(text: string): boolean {
+function hasCredentialBearingUrl(text: string): boolean {
   const authorities =
     /(?<![a-z\d+.-])([a-z][a-z\d+.-]*:)([\/\\]*)(?=([^\t\n\v\f\r /\\?#]*))/gi;
   const specialScheme = /^(?:https?|wss?|ftp):$/i;
@@ -434,19 +434,17 @@ function hasPasswordBearingUrl(text: string): boolean {
       if (!authority.includes("@")) continue;
       if (!specialScheme.test(scheme) && slashes !== "//") continue;
 
-      // Try the authority as recorded before removing enclosing log punctuation.
-      const unwrapped = authority.replace(/[)"'\x60}>.,;!]+$/, "");
-      const candidates = new Set([
-        authority,
-        unwrapped,
-        unwrapped.replace(/\]+$/, ""),
-      ]);
-      for (const candidate of candidates) {
+      let candidate = authority;
+      while (true) {
         try {
-          if (new URL(scheme + slashes + candidate).password !== "")
-            return true;
+          const url = new URL(scheme + slashes + candidate);
+          if (url.username !== "" || url.password !== "") return true;
+          break;
         } catch {
-          // Keep scanning after malformed log text.
+          // Stop at the first valid authority to preserve IPv6 host brackets.
+          const trimmed = candidate.replace(/[)\]"'\x60}>.,;!]$/, "");
+          if (trimmed === candidate) break;
+          candidate = trimmed;
         }
       }
     }
@@ -458,7 +456,7 @@ function containsSensitiveText(text: string): boolean {
   return (
     secretPattern.test(text) ||
     (text.includes("@") &&
-      (hasPasswordBearingUrl(text) || mailboxPattern.test(text)))
+      (hasCredentialBearingUrl(text) || mailboxPattern.test(text)))
   );
 }
 

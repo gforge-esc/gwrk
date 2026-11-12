@@ -662,17 +662,34 @@ describe("credential guard", () => {
       "Proxy URL <http://pilot:fixture-password@[::1]>",
     ],
     [
+      "nested log delimiters around a hostname",
+      "[Proxy (http://pilot:fixture-password@proxy:8080)]",
+    ],
+    [
+      "nested log delimiters around an IPv6 host",
+      "[Proxy (http://pilot:fixture-password@[::1])]",
+    ],
+    ["a username only", "HTTPS_PROXY=http://pilot@proxy:8080"],
+    [
+      "a username only with a nonbreaking space",
+      "HTTPS_PROXY=http://pi\u00a0lot@proxy:8080",
+    ],
+    [
+      "an access token as the username",
+      "HTTPS_PROXY=http://fixture-access-token@proxy:8080",
+    ],
+    [
       "a quoted URL after a malformed authority",
       'HTTP_PROXY=http://pilot:fixture|pass@proxy:invalid HTTPS_PROXY="http://pilot:fixture|pass@proxy:8080"',
     ],
   ])("proxy credentials with %s", (_host, text) => {
-    it("rejects a password in an evidence key", () => {
+    it("rejects userinfo in an evidence key", () => {
       expect(() => assertNoSecretMaterial({ [text]: true })).toThrow(
         /secret material/i,
       );
     });
 
-    it("rejects a password in an evidence value", () => {
+    it("rejects userinfo in an evidence value", () => {
       expect(() => assertNoSecretMaterial({ stdout: text })).toThrow(
         /secret material/i,
       );
@@ -681,18 +698,18 @@ describe("credential guard", () => {
 
   it.each([
     "Proxy URL (http://proxy:8080)",
+    "[Proxy (http://proxy:8080)]",
+    "[Proxy (http://[::1])]",
     "HTTPS_PROXY=http:///proxy:8080",
     "HTTPS_PROXY=http:///proxy:8080/path@fixture",
     "HTTPS_PROXY=http:///proxy:8080?name=pilot:fixture@value",
     "HTTPS_PROXY=http:///proxy:8080#pilot:fixture@value",
     "HTTPS_PROXY=http://proxy:8080",
-    "HTTPS_PROXY=http://pilot@proxy:8080",
-    "HTTPS_PROXY=http://pi\u00a0lot@proxy:8080",
     "HTTPS_PROXY=http://proxy:8080/path@fixture",
     "HTTPS_PROXY=http://proxy:8080?name=pilot:fixture@value",
     "HTTPS_PROXY=http://proxy:8080#pilot:fixture@value",
     'HTTP_PROXY=http://pilot:fixture|pass@proxy:invalid HTTPS_PROXY="http://proxy:8080"',
-  ])("allows proxy URLs without passwords: %s", (text) => {
+  ])("allows proxy URLs without userinfo: %s", (text) => {
     expect(() =>
       assertNoSecretMaterial({ [text]: true, stdout: text }),
     ).not.toThrow();
