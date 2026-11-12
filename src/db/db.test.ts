@@ -263,9 +263,13 @@ describe("Project registry upgrade", () => {
     }
   });
 
-  it.each(["current", "earlier"] as const)(
-    "preserves real plan parents after first-origin enrollment with the %s migration 014",
-    (registryVersion) => {
+  it.each([
+    { registryVersion: "current", clockOffset: 0 },
+    { registryVersion: "earlier", clockOffset: 0 },
+    { registryVersion: "earlier", clockOffset: 1 },
+  ] as const)(
+    "preserves real plan parents after first-origin enrollment with $registryVersion migration 014 and clock offset $clockOffset",
+    ({ registryVersion, clockOffset }) => {
       const checkout = join(root, "checkout");
       const git = (...args: string[]) =>
         execFileSync("git", ["-C", checkout, ...args]);
@@ -282,14 +286,14 @@ describe("Project registry upgrade", () => {
           .run(localId, "Checkout", checkout);
         legacy
           .prepare(`
-        INSERT INTO plan_features (id, name, project_id, status, updated_at)
-        VALUES ('feature', 'Saved feature', ?, 'SHIPPED', '2026-01-01 10:00:00')
+        INSERT INTO plan_features (id, name, project_id, status, created_at, updated_at)
+        VALUES ('feature', 'Saved feature', ?, 'SHIPPED', '2026-01-01 09:00:00', '2026-01-01 10:00:00')
       `)
           .run(localId);
         legacy
           .prepare(`
-        INSERT INTO plan_phases (id, feature_id, name, seq, project_id, status, updated_at)
-        VALUES ('phase', 'feature', 'Saved phase', 1, ?, 'COMPLETED', '2026-01-01 10:00:00')
+        INSERT INTO plan_phases (id, feature_id, name, seq, project_id, status, created_at, updated_at)
+        VALUES ('phase', 'feature', 'Saved phase', 1, ?, 'COMPLETED', '2026-01-01 09:00:00', '2026-01-01 10:00:00')
       `)
           .run(localId);
         legacy
@@ -305,7 +309,10 @@ describe("Project registry upgrade", () => {
             .prepare("SELECT applied_at FROM _migrations WHERE name = ?")
             .pluck()
             .get(migration);
-          // Model the historical upgrade where both inserts and the migration record share one second.
+          const placeholderCreatedAt = upgraded
+            .prepare("SELECT datetime(?, ?)")
+            .pluck()
+            .get(appliedAt, `-${clockOffset} seconds`);
           for (const [table, id] of [
             ["plan_features", "feature"],
             ["plan_phases", "phase"],
@@ -313,7 +320,7 @@ describe("Project registry upgrade", () => {
             upgraded
               .prepare(`UPDATE ${table} SET created_at = ?, updated_at = ?
                 WHERE id = ? AND project_id = ?`)
-              .run(appliedAt, appliedAt, id, remoteId);
+              .run(placeholderCreatedAt, placeholderCreatedAt, id, remoteId);
           }
           upgraded
             .prepare(`
@@ -367,6 +374,21 @@ describe("Project registry upgrade", () => {
         };
         const phase = { id: "phase", name: "Saved phase", status: "COMPLETED" };
         if (registryVersion === "earlier") {
+          for (const [table, id] of [
+            ["plan_features", "feature"],
+            ["plan_phases", "phase"],
+          ]) {
+            expect
+              .soft(
+                reopened
+                  .prepare(
+                    `SELECT synthetic_parent FROM ${table} WHERE id = ? AND project_id = ?`,
+                  )
+                  .pluck()
+                  .get(id, remoteId),
+              )
+              .toBe(1);
+          }
           for (const [table, id] of [
             ["plan_features", "edited-feature"],
             ["plan_phases", "edited-phase"],
