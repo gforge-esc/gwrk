@@ -111,10 +111,32 @@ it("preserves ordered delivery scopes, replay identity and aliases after reopeni
       localDelivery.run("unknown-checkout", null, now);
       link.run("manual_cli", "unknown-checkout", 0, "op-local");
     }).immediate();
+    const insertNoticeSql = `
+      INSERT INTO notification_outbox (
+        outbox_id, project_id, dedupe_key, owner_kind, owner_operation_id,
+        event_type, feature_id, recipient_json, payload_json,
+        client_metadata_key, status, created_at, updated_at
+      ) VALUES (?, ?, 'gate-notice', 'harvest', 'op-1',
+                'harvest_gate_failed', '049-example', '{}', '{}', ?, 'pending', ?, ?)
+    `;
+    db.prepare(insertNoticeSql).run(
+      "notice-a",
+      "project-a",
+      "provider-key",
+      now,
+      now,
+    );
     db.close();
 
     const reopened = new Database(ledgerPath);
     try {
+      const insertNotice = reopened.prepare(insertNoticeSql);
+      expect(() =>
+        insertNotice.run("notice-b", "project-b", "provider-key", now, now),
+      ).toThrow(
+        /UNIQUE constraint failed: notification_outbox\.client_metadata_key/,
+      );
+      insertNotice.run("notice-b", "project-b", "different-key", now, now);
       const replay = reopened
         .prepare(`
         SELECT operation_id FROM harvest_deliveries

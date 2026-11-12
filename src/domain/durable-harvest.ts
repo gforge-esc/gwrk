@@ -616,6 +616,12 @@ export function verifyHarvestIntakeOperations(
       if (!result.ok) return false;
       scopes.push(result);
     }
+  } else if (
+    !(checkoutPhaseIds ?? []).some(
+      (phaseId) => normalizePhaseId(phaseId) === verified.phaseId,
+    )
+  ) {
+    return false;
   }
 
   const mergeCommitSha =

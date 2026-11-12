@@ -308,6 +308,7 @@ export interface OperationsStorePort {
    * Commit the original delivery and all resolved operations in one transaction.
    * For a new delivery, verify the entire operation batch against enrollment and
    * checkout coverage with verifyHarvestIntakeOperations before any write.
+   * Require checkout coverage for an explicit local phase.
    * Reject duplicate operation IDs across phase scopes.
    * Resolve existing work before checking IDs for inserts. Matched work keeps its saved ID.
    * Reject any insert whose operation ID already exists, even in another project.
@@ -421,9 +422,12 @@ export interface OperationsStorePort {
    * Set updatedAt to nowIso and set completedAt to nowIso for a terminal status.
    * Require a failure notice when the phase's saved Slack receipt has a target.
    * Use plannedSlackRecipient for gate failure notices.
+   * For a new notice, require a globally unique, nonblank clientMetadataKey and an unused outboxId.
+   * Return HARVEST_STAGE_TRANSITION_INVALID for invalid notice identity before either write.
    * Reject conflicting recipient fields before changing either the receipt or outbox.
    * Upsert harvest_gate_failed by project, operation and phase in the gate failure transaction.
-   * On fenced replay, validate against the saved notice recipient and preserve both records.
+   * An existing dedupe row must match the event, harvest owner, feature, phase and planned recipient.
+   * On fenced replay, require the saved notice if the plan has a target and preserve its metadata key.
    * Keep retryable_failure receipts and their errors eligible for a new claim after lease expiry.
    * Set neither the receipt nor the operation completion time for a retryable failure.
    * Exclude terminal operations from recovery scans and claims.
@@ -451,6 +455,7 @@ export interface OperationsStorePort {
         code: "HARVEST_STAGE_UNPLANNED" | "HARVEST_STAGE_TRANSITION_INVALID";
       };
 
+  /** Reject blank or reused metadata keys for new notices. Preserve the saved key on deduplication. */
   enqueueOutbox(input: OutboxMessage & { nowIso: string }): OutboxItem;
   /** Read the accepted delivery context without acquiring a send claim. */
   getOutboxItem(outboxId: string): OutboxItem | null;
