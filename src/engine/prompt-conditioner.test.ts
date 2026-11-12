@@ -123,6 +123,20 @@ describe("FR-001: architecture metadata in prompts (044 phase p01)", () => {
     expect(result).toContain("Inspect ports.");
   });
 
+  it.each([
+    ["React & Vite", "React &amp; Vite"],
+    ['React & "Vite"', "React &amp; &quot;Vite&quot;"],
+  ])("escapes framework %s inside project context", (framework, escaped) => {
+    const result = conditionPrompt("Inspect ports.", {
+      type: "nodejs",
+      design: { architecture: "layered", principles: [], templateVersion: "1.0.0" },
+      stack: { framework },
+    });
+    const context = result.match(/<project_context>([\s\S]*?)<\/project_context>/)?.[1];
+    expect(context).toContain(`framework="${escaped}"`);
+    expect(context).toContain("<architecture>layered</architecture>");
+  });
+
   it("TR-006: does not leak selected design into a later unconfigured prompt", () => {
     const selected = { type: "nodejs", design: { architecture: "layered", principles: [], templateVersion: "1.0.0" } };
     const withDesign = conditionPrompt("Selected", selected);

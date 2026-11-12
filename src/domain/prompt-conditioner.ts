@@ -34,43 +34,51 @@ export function conditionPrompt(
     return "";
   });
 
-  const xml = generateProfileXml(profile);
   if (profile.design) {
+    const xml = generateProfileXml(profile, escapeXml);
     return `${generateProjectContext(profile.design, xml)}\n\n${conditioned.trim()}`;
   }
-  return `${xml}\n\n${conditioned.trim()}`;
+  return `${generateProfileXml(profile)}\n\n${conditioned.trim()}`;
+}
+
+function escapeXml(value: string): string {
+  return value
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&apos;");
 }
 
 function generateProjectContext(
   design: NonNullable<ProjectProfile["design"]>,
   profileXml?: string,
 ): string {
-  const architecture = design.architecture
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;");
   const principles = design.principles.map(
-    (principle) => `    <principle>${principle}</principle>`,
+    (principle) => `    <principle>${escapeXml(principle)}</principle>`,
   );
   return [
     "<project_context>",
     ...(profileXml ? [profileXml] : []),
-    `  <design templateVersion="${design.templateVersion}">`,
-    `    <architecture>${architecture}</architecture>`,
+    `  <design templateVersion="${escapeXml(design.templateVersion)}">`,
+    `    <architecture>${escapeXml(design.architecture)}</architecture>`,
     ...principles,
     "  </design>",
     "</project_context>",
   ].join("\n");
 }
 
-function generateProfileXml(profile: ProjectProfile): string {
+function generateProfileXml(
+  profile: ProjectProfile,
+  renderValue: (value: string) => string = (value) => value,
+): string {
   const stackAttrs = [];
   if (profile.stack?.language)
-    stackAttrs.push(`language="${profile.stack.language}"`);
+    stackAttrs.push(`language="${renderValue(profile.stack.language)}"`);
   if (profile.stack?.framework)
-    stackAttrs.push(`framework="${profile.stack.framework}"`);
+    stackAttrs.push(`framework="${renderValue(profile.stack.framework)}"`);
   if (profile.stack?.buildSystem)
-    stackAttrs.push(`buildSystem="${profile.stack.buildSystem}"`);
+    stackAttrs.push(`buildSystem="${renderValue(profile.stack.buildSystem)}"`);
 
   const stackTag =
     stackAttrs.length > 0 ? `  <stack ${stackAttrs.join(" ")} />\n` : "";
@@ -78,20 +86,20 @@ function generateProfileXml(profile: ProjectProfile): string {
   let languagesTag = "";
   if (profile.stack?.languages && profile.stack.languages.length > 1) {
     const langItems = profile.stack.languages
-      .map((lang) => `    <lang>${lang}</lang>`)
+      .map((lang) => `    <lang>${renderValue(lang)}</lang>`)
       .join("\n");
     languagesTag = `  <languages>\n${langItems}\n  </languages>\n`;
   }
 
   let layoutTag = "";
   if (typeof profile.layout === "string" && profile.layout) {
-    layoutTag = `  <layout type="${profile.layout}" />\n`;
+    layoutTag = `  <layout type="${renderValue(profile.layout)}" />\n`;
   } else if (typeof profile.layout === "object" && profile.layout !== null) {
     const layoutAttrs = Object.entries(profile.layout)
-      .map(([k, v]) => `${k}="${v}"`)
+      .map(([k, v]) => `${k}="${renderValue(String(v))}"`)
       .join(" ");
     layoutTag = `  <layout ${layoutAttrs} />\n`;
   }
 
-  return `<project_profile type="${profile.type}">\n${stackTag}${languagesTag}${layoutTag}</project_profile>`;
+  return `<project_profile type="${renderValue(profile.type)}">\n${stackTag}${languagesTag}${layoutTag}</project_profile>`;
 }

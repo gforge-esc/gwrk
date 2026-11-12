@@ -1369,6 +1369,32 @@ describe("FR-001: architecture-aware workspace profiles (044 phase p01)", () => 
     });
   });
 
+  it("finds a same-worktree alias registration in the requested path's ancestors", async () => {
+    const workspacePath = "services/api-alias";
+    const alias = path.join(root, workspacePath);
+    const layered = { ...design, architecture: "layered", principles: ["clean-code"] };
+    const config = { project: { design } };
+    write(".git", "gitdir: /unused/worktree\n");
+    write(".gwrkrc.json", JSON.stringify(config));
+    write("services/.gwrkrc.json", JSON.stringify({
+      workspaces: { "api-alias": { design: layered, stack: { framework: "Django" } } },
+    }));
+    write("targets/api/pyproject.toml", '[project]\ndependencies = ["fastapi"]\n');
+    fs.symlinkSync("../targets/api", alias, "dir");
+
+    const profiles = {
+      direct: await detectProfile(alias),
+      explicit: await resolveWorkspaceProfile(root, workspacePath),
+      configured: resolveWorkspaceProfile(alias, root, config),
+    };
+    for (const [entryPoint, profile] of Object.entries(profiles)) {
+      expect.soft(profile, entryPoint).toMatchObject({
+        design: layered,
+        stack: { language: "Python", framework: "Django" },
+      });
+    }
+  });
+
   it("keeps an unregistered alias out of the legacy configured lookup", () => {
     const alias = path.join(root, "api-alias");
     const workspaces = { "services/api": { stack: { framework: "Django" } } };
