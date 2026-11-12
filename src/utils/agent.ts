@@ -506,7 +506,9 @@ function maskPromptExamples(template: string): string {
   const mask = (code: string) => code.replace(/[^\r\n]/g, "\0");
   const maskSpans = (text: string) =>
     text
-      .replace(/^(?: {4}| {0,3}[>\t])[^\r\n]*/gm, mask)
+      .replace(/^(?: {4}| {0,3}[>\t])[^\r\n]*/gm, (line) =>
+        line.trim() === ENFORCEMENT_MARKER ? line : mask(line),
+      )
       .split(/(\r?\n[ \t]*\r?\n)/)
       .map((paragraph) =>
         paragraph.replace(/(?<!`)(`+)(?!`)[\s\S]*?(?<!`)\1(?!`)/g, mask),

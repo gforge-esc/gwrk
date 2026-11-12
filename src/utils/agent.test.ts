@@ -222,6 +222,35 @@ describe('US-016: Enforcement Skills Dispatch Injection', () => {
     },
   );
 
+  it.each(["    ", "\t"])("expands an indented active enforcement slot (%j)", async (indent) => {
+    const actualSkills = await vi.importActual<typeof skillRuntime>("../plugins/skill-runtime.js");
+    vi.mocked(skillRuntime.resolveEnforcementSkills).mockImplementationOnce(actualSkills.resolveEnforcementSkills);
+    const capturedStdin = mockAgentStdin();
+    const example = "    {{enforcement}}\r\n\r\n";
+    const opening = example + "<code_quality>\r\n";
+    const fencedExample = "~~~xml\r\n    {{enforcement}}\r\n~~~\r\n";
+    const closing = "\r\n</code_quality>";
+    const template = opening + fencedExample + indent + "{{enforcement}}" + closing;
+
+    await dispatchToAgent({
+      workflow: "gwrk-implement",
+      workDir: "/fake/root",
+      agent: "codex",
+      stdin: template + "\n\n" + legacyInput,
+      promptParts: { template, userInput: legacyInput },
+      quiet: true,
+    });
+
+    const payload = capturedStdin();
+    const prefix = COMMAND_SAFETY_BLOCK + "\n\n" + opening + fencedExample + indent;
+    const suffix = closing + "\n\n" + legacyInput;
+    expect(payload.startsWith(prefix)).toBe(true);
+    expect(payload.endsWith(suffix)).toBe(true);
+    expect(payload.slice(prefix.length, -suffix.length)).toContain(
+      "<!-- enforcement-skill: typescript-standards -->",
+    );
+  });
+
   it("expands the unquoted marker inside a legacy section that also quotes the marker", async () => {
     const capturedStdin = mockAgentStdin();
     const example = "Quote ``{{enforcement}} with a single ` backtick``.\r\n";
