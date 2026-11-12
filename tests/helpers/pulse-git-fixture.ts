@@ -80,12 +80,16 @@ function importCommit(commit: FixtureCommit, index: number): string {
   return `${lines.join("\n")}\n\n`;
 }
 
+function isGitFixtureEnvKey(name: string): boolean {
+  return name === "BASH_ENV" || name.startsWith("GIT_");
+}
+
 export function stubPulseGitEnv(env: NodeJS.ProcessEnv) {
   for (const name of Object.keys(process.env)) {
-    if (name.startsWith("GIT_") && !(name in env)) vi.stubEnv(name, undefined);
+    if (isGitFixtureEnvKey(name) && !(name in env)) vi.stubEnv(name, undefined);
   }
   for (const [name, value] of Object.entries(env)) {
-    if (name.startsWith("GIT_")) vi.stubEnv(name, value);
+    if (isGitFixtureEnvKey(name)) vi.stubEnv(name, value);
   }
 }
 
@@ -96,7 +100,7 @@ export async function createPulseGitFixture(history: "branches" | "scale") {
   const globalAttributes = path.join(repoDir, "global.gitattributes");
   const env: NodeJS.ProcessEnv = {
     ...Object.fromEntries(
-      Object.entries(process.env).filter(([name]) => !name.startsWith("GIT_")),
+      Object.entries(process.env).filter(([name]) => !isGitFixtureEnvKey(name)),
     ),
     EDITOR: "true",
     GIT_EDITOR: "true",

@@ -40,4 +40,7 @@ GIT_DIR="$decoy/.git" pnpm exec vitest run --retry 0 "${pulse_suites[@]}" || pro
 printf '\nPulse regression probe with conflicting global Git attributes\n'
 env -u GIT_DIR GIT_CONFIG_GLOBAL="$git_fixture/attributes.gitconfig" \
   pnpm exec vitest run --retry 0 "${pulse_suites[@]}" || probe_status=$?
+printf '\nPulse regression probe with a Bash startup file\n'
+printf 'export GIT_DIR=%q\n' "$decoy/.git" > "$git_fixture/bash-env"
+BASH_ENV="$git_fixture/bash-env" pnpm exec vitest run --retry 0 "${pulse_suites[@]}" || probe_status=$?
 exit "$probe_status"
