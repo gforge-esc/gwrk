@@ -702,6 +702,14 @@ describe("credential guard", () => {
       "a backtick-quoted password containing a space",
       "HTTPS_PROXY=\x60http://pilot:fixture password@proxy:8080\x60",
     ],
+    [
+      "an inspected assignment with a password containing a space",
+      inspect("HTTPS_PROXY=http://pilot:fixture password@proxy:8080"),
+    ],
+    [
+      "an inspected assignment with a token containing spaces",
+      inspect("HTTPS_PROXY=http://fixture access token@proxy:8080"),
+    ],
   ])("proxy credentials with %s", (_host, text) => {
     it("rejects userinfo in an evidence key", () => {
       expect(() => assertNoSecretMaterial({ [text]: true })).toThrow(
@@ -733,6 +741,7 @@ describe("credential guard", () => {
     'stdout: "unterminated HTTPS_PROXY="http://proxy:8080/path with space@fixture"',
     "HTTPS_PROXY='http://proxy:8080/?name=fixture token@value'",
     "HTTPS_PROXY=\x60http://proxy:8080/#fixture token@value\x60",
+    inspect("HTTPS_PROXY=http://proxy:8080/path with space@fixture"),
   ])("allows proxy URLs without userinfo: %s", (text) => {
     expect(() =>
       assertNoSecretMaterial({ [text]: true, stdout: text }),

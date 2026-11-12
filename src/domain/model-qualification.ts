@@ -828,11 +828,14 @@ function scanEmbeddedJson(
     if (typeof decoded !== "string") {
       assertUniqueJsonKeys(token);
       openings.lastIndex = end;
-    } else if (
-      isCredentialFieldName(decoded) &&
-      /^\s*=>/.test(text.slice(end))
-    ) {
-      throw new Error(secretMaterialMessage);
+    } else {
+      const proxyAssignment = /^(?:[a-z0-9]+_)*proxy=(.+)$/is.exec(decoded);
+      if (
+        (proxyAssignment && parsedUrlHasUserinfo(proxyAssignment[1])) ||
+        (isCredentialFieldName(decoded) && /^\s*=>/.test(text.slice(end)))
+      ) {
+        throw new Error(secretMaterialMessage);
+      }
     }
     // Quoted log text can overlap the start of a JSON record.
     scanEvidence(decoded, knownSecrets, isHeaderCollection);
