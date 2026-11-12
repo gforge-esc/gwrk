@@ -27,6 +27,89 @@ describe("WorkflowRuntime Phase 13: Project Awareness", () => {
     vi.clearAllMocks();
   });
 
+  it("hands a native workflow the complete stdin and leaves intents to its caller", async () => {
+    vi.mocked(PluginLoader.prototype.resolvePlugin).mockResolvedValue({
+      manifest: { name: "native", type: "workflow" } as any,
+      path: "/mock/plugin",
+    });
+    vi.mocked(fs.readFile).mockResolvedValue("Native workflow rules");
+    vi.mocked(detector.detectProfile).mockResolvedValue({ type: "generic" });
+    vi.mocked(conditioner.conditionPrompt).mockImplementation(
+      (prompt) => prompt,
+    );
+    const taskResult = {
+      exitCode: 0,
+      stdout: "wrote files natively",
+      stderr: "",
+      durationS: 1,
+    };
+    const dispatcher = vi.fn().mockResolvedValue(taskResult);
+
+    const result = await new WorkflowRuntime().executeWorkflow(
+      "native",
+      "Scope instructions",
+      {
+        nativeOnly: true,
+        dispatcher,
+        featureDir: "specs/fixture",
+      },
+    );
+
+    expect(result.taskResult).toBe(taskResult);
+    expect(result.intents).toEqual([]);
+    expect(dispatcher).toHaveBeenCalledWith(
+      expect.objectContaining({
+        stdin: expect.stringContaining("Native workflow rules"),
+        featureDir: "specs/fixture",
+      }),
+    );
+    expect(dispatcher.mock.calls[0][0].stdin).toContain("Scope instructions");
+    expect(dispatcher.mock.calls[0][0]).not.toHaveProperty("prompt");
+    expect(agentUtils.dispatchToAgent).not.toHaveBeenCalled();
+  });
+
+  it("conditions the native template and preserves literal profile guards in the task", async () => {
+    const { conditionPrompt } = await vi.importActual<typeof conditioner>(
+      "../engine/prompt-conditioner.js",
+    );
+    vi.mocked(conditioner.conditionPrompt).mockImplementationOnce(conditionPrompt);
+    vi.mocked(detector.detectProfile).mockResolvedValue({
+      type: "pnpm-monorepo",
+      stack: { language: "TypeScript", buildSystem: "pnpm" },
+      layout: "monorepo",
+    });
+    vi.mocked(PluginLoader.prototype.resolvePlugin).mockResolvedValue({
+      manifest: { name: "native", type: "workflow" } as any,
+      path: "/mock/plugin",
+    });
+    vi.mocked(fs.readFile).mockResolvedValue(
+      "Native rules\n[type: unrelated]\nExcluded template text\n[/type]",
+    );
+    const input = "Keep this fixture:\r\n[type: unrelated]\r\n  Task text  \r\n[/type]\r\n";
+    const dispatcher = vi.fn().mockResolvedValue({
+      exitCode: 0,
+      stdout: "",
+      stderr: "",
+      durationS: 0,
+    });
+
+    await new WorkflowRuntime().executeWorkflow("native", input, {
+      nativeOnly: true,
+      dispatcher,
+    });
+
+    const { stdin, promptParts } = dispatcher.mock.calls[0][0];
+    expect(stdin).toContain('<project_profile type="pnpm-monorepo">');
+    expect(stdin).toContain("Native rules");
+    expect(stdin).not.toContain("Excluded template text");
+    const userInput = `<user_input>\n${input}\n</user_input>`;
+    expect(stdin.slice(stdin.indexOf("<user_input>"))).toBe(userInput);
+    expect(promptParts).toEqual({
+      template: stdin.slice(0, -`\n\n${userInput}`.length),
+      userInput,
+    });
+  });
+
   it("039: report-only workflows reject mutation intents before executing them", async () => {
     vi.mocked(PluginLoader.prototype.resolvePlugin).mockResolvedValue({
       manifest: {
@@ -143,11 +226,17 @@ describe("WorkflowRuntime Phase 13: Project Awareness", () => {
     );
     expect(agentUtils.dispatchToAgent).toHaveBeenCalledWith(
       expect.objectContaining({
-        prompt: expect.stringContaining(
+        stdin: expect.stringContaining(
           "<conditioned># Test Prompt</conditioned>",
         ),
       }),
     );
+    const { stdin, promptParts } = vi.mocked(agentUtils.dispatchToAgent).mock.calls[0][0];
+    expect(promptParts).toEqual({
+      template: expect.stringContaining("<output_contract>"),
+      userInput: "<user_input>\ninput data\n</user_input>",
+    });
+    expect(stdin).toBe(`${promptParts?.template}\n\n${promptParts?.userInput}`);
   });
 });
 

@@ -6,7 +6,10 @@ import fs from "node:fs";
 import path from "node:path";
 import { Command } from "commander";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { createAgentPortAdapter } from "../adapters/agents/index.js";
 import * as runsModule from "../db/runs.js";
+import { ShipOrchestrator } from "../engine/ship-orchestrator.js";
+import type { AgentPort } from "../ports/agent-port.js";
 import * as execModule from "../utils/exec.js";
 import * as uiModule from "../utils/format.js";
 import * as stateModule from "../utils/state.js";
@@ -20,6 +23,16 @@ import { shipCommand } from "./ship.js";
 vi.mock("../utils/exec.js", () => ({
   run: vi.fn(),
   runGate: vi.fn(),
+}));
+
+// Command tests exercise orchestration arguments and output without running
+// the orchestrator against the checkout that is running this suite.
+vi.mock("../engine/ship-orchestrator.js", () => ({
+  ShipOrchestrator: vi.fn().mockImplementation(() => ({
+    on: vi.fn(),
+    run: vi.fn().mockResolvedValue(0),
+    getResult: vi.fn().mockReturnValue({}),
+  })),
 }));
 
 vi.mock("../utils/setup-state.js", () => ({
@@ -482,65 +495,137 @@ describe("shipCommand", () => {
 
 });
 
-vi.mock("../server/index.js", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("../server/index.js")>();
-  return {
-    ...actual,
-    getBackendSelector: vi.fn().mockReturnValue({
-      selectBackend: vi.fn().mockResolvedValue({
-        backend: "router-selected-agent",
-        model: "router-selected-model",
-        reason: "highest quota",
-        quotaPercent: 99,
-        probeStatus: "fresh",
-        fallbackUsed: false,
-        modelFailoverUsed: false,
-      }),
-    }),
-  };
-});
+vi.mock("../adapters/agents/index.js", () => ({
+  createAgentPortAdapter: vi.fn(),
+}));
 
-describe("BackendSelector Integration", () => {
+const execute = vi.fn<AgentPort["execute"]>();
+const selectRoute = vi.fn<AgentPort["selectRoute"]>(
+  async ({ type, explicitBackend, includeReviewModel }) => {
+    const backend = explicitBackend ?? "codex";
+    return {
+      backend,
+      model: `${backend}-${type}-model`,
+      effort: type === "review" ? "high" : "medium",
+      ...(includeReviewModel && {
+        reviewModel: `${backend}-review-model`,
+        reviewEffort: "high",
+      }),
+      mode: "selected",
+      reason: "configured model",
+      fallbackUsed: false,
+      modelFailoverUsed: false,
+    };
+  },
+);
+vi.mocked(createAgentPortAdapter).mockReturnValue({ execute, selectRoute });
+
+describe("AgentPort routing", () => {
   let program: Command;
+  const routes = [
+    {
+      override: "without --agent",
+      agentArgs: [],
+      explicitBackend: undefined,
+      backend: "codex",
+    },
+    {
+      override: "with --agent",
+      agentArgs: ["--agent", "claude"],
+      explicitBackend: "claude",
+      backend: "claude",
+    },
+  ];
 
   beforeEach(() => {
     vi.clearAllMocks();
     program = new Command();
     program.addCommand(shipCommand);
-    vi.spyOn(process, "exit").mockImplementation((code) => {
-      throw new Error(`process.exit unexpectedly called with "${code}"`);
-    });
   });
 
-  it("should use selectBackend() when no --agent override is provided", async () => {
-    const { getBackendSelector } = await import("../server/index.js");
-    const mockSelector = getBackendSelector() as any;
-    
-    // Legacy ship to keep it simple for this test
-    vi.mocked(execModule.run).mockResolvedValue(undefined);
+  it.each(routes)(
+    "prints the configured dry-run route $override without dispatching",
+    async ({ agentArgs, explicitBackend, backend }) => {
+      const consoleSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+      try {
+        await program.parseAsync([
+          "node",
+          "test",
+          "ship",
+          "001-cli-core",
+          "1",
+          "--dry-run",
+          ...agentArgs,
+        ]);
 
-    await program.parseAsync(["node", "test", "ship", "001-cli-core", "1", "--legacy"]);
+        expect(createAgentPortAdapter).toHaveBeenCalledWith({
+          projectRoot: process.cwd(),
+        });
+        expect(selectRoute).toHaveBeenCalledExactlyOnceWith(
+          expect.objectContaining({
+            type: "implement",
+            explicitBackend,
+            preview: true,
+            resolveDispatchModel: true,
+            useAmbientModelDefaults: explicitBackend !== undefined,
+          }),
+        );
+        expect(consoleSpy).toHaveBeenCalledWith(
+          expect.stringContaining(
+            `backend: ${backend}, model: ${backend}-implement-model, effort: medium`,
+          ),
+        );
+        expect(execute).not.toHaveBeenCalled();
+        expect(ShipOrchestrator).not.toHaveBeenCalled();
+        expect(execModule.run).not.toHaveBeenCalled();
+      } finally {
+        consoleSpy.mockRestore();
+      }
+    },
+  );
 
-    expect(mockSelector.selectBackend).toHaveBeenCalled();
-    
-    const wudCalls = vi.mocked(execModule.run).mock.calls.filter(call => typeof call[0] === "string" && call[0].includes("work-until-done.sh"));
-    expect(wudCalls[0][2].env.AGENT_BACKEND).toBe("router-selected-agent");
-    expect(wudCalls[0][2].env.GEMINI_MODEL).toBe("router-selected-model");
-  });
+  it.each(routes)(
+    "passes implementation and review routes to the orchestrator $override",
+    async ({ agentArgs, explicitBackend, backend }) => {
+      await program.parseAsync([
+        "node",
+        "test",
+        "ship",
+        "001-cli-core",
+        "1",
+        ...agentArgs,
+      ]);
 
-  it("should skip selectBackend() when --agent override IS provided", async () => {
-    const { getBackendSelector } = await import("../server/index.js");
-    const mockSelector = getBackendSelector() as any;
-    
-    vi.mocked(execModule.run).mockResolvedValue(undefined);
-
-    await program.parseAsync(["node", "test", "ship", "001-cli-core", "1", "--agent", "forced-agent", "--legacy"]);
-
-    expect(mockSelector.selectBackend).not.toHaveBeenCalled();
-    
-    const wudCalls = vi.mocked(execModule.run).mock.calls.filter(call => typeof call[0] === "string" && call[0].includes("work-until-done.sh"));
-    expect(wudCalls[0][2].env.AGENT_BACKEND).toBe("forced-agent");
-  });
+      expect(createAgentPortAdapter).toHaveBeenCalledWith({
+        projectRoot: process.cwd(),
+      });
+      expect(selectRoute).toHaveBeenCalledExactlyOnceWith(
+        expect.objectContaining({
+          type: "implement",
+          explicitBackend,
+          resolveDispatchModel: true,
+          useAmbientModelDefaults: explicitBackend !== undefined,
+          requireRegistry: explicitBackend === undefined,
+          historyMode: explicitBackend === undefined ? "quota-tiebreak" : undefined,
+          backendEligibility: explicitBackend === undefined ? undefined : "installed",
+          includeReviewModel: true,
+          feature: "001-cli-core",
+          phase: "phase-01",
+          runId: expect.stringMatching(/^ship-001-cli-core-/),
+          taskSP: 1,
+          language: "typescript",
+        }),
+      );
+      expect(ShipOrchestrator).toHaveBeenCalledTimes(1);
+      expect(vi.mocked(ShipOrchestrator).mock.calls[0]?.[0]).toMatchObject({
+        backend,
+        selectedModel: `${backend}-implement-model`,
+        selectedEffort: "medium",
+        reviewModel: `${backend}-review-model`,
+        reviewEffort: "high",
+      });
+    },
+  );
 });
 
 describe("FR-014: Phase Skip", () => {
@@ -742,26 +827,17 @@ describe("FR-009/T010: Agent config fail-fast", () => {
     program.addCommand(shipCommand);
   });
 
-  it("FR-009/T010: crashes with exit 1 when agents.implement is missing from config", async () => {
-    // Override config mock to return missing agents.implement
+  it("reports invalid config before recording a ship run", async () => {
     const configModule = await import("../utils/config.js");
-    vi.mocked(configModule.loadConfig).mockReturnValueOnce({
-      project: {
-        name: "test",
-        slack: { channelId: "C123", channelName: "test" },
-      },
-      agents: {},
-      server: { port: 18790, host: "localhost" },
-    } as ReturnType<typeof configModule.loadConfig>);
+    vi.mocked(configModule.loadConfig).mockImplementationOnce(() => {
+      throw new Error("Invalid agent configuration");
+    });
 
     process.exitCode = 0;
-    try {
-      await program.parseAsync(["node", "test", "ship", "004-ship-loop", "1"]);
-    } catch {
-      // Expected: process.exit(1) or thrown error
-    }
+    await program.parseAsync(["node", "test", "ship", "004-ship-loop", "1"]);
 
     expect(process.exitCode).toBe(1);
+    expect(runsModule.startRun).not.toHaveBeenCalled();
   });
 });
 

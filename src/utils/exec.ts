@@ -62,12 +62,94 @@ interface ExecResult {
   stderr: string;
 }
 
+interface ExecOptions {
+  cwd?: string;
+  env?: NodeJS.ProcessEnv;
+  signal?: AbortSignal;
+}
+
+function execCancellableCommand(
+  command: string,
+  args: string[],
+  stdin: string | undefined,
+  options: ExecOptions & { signal: AbortSignal },
+): Promise<ExecResult> {
+  return new Promise((resolve) => {
+    const { signal } = options;
+    if (signal.aborted) {
+      resolve({ exitCode: 1, stdout: "", stderr: "Command aborted" });
+      return;
+    }
+
+    const processGroup = process.platform !== "win32";
+    const child = spawn(command, args, {
+      cwd: options.cwd,
+      env: options.env ?? process.env,
+      detached: processGroup,
+      stdio: ["pipe", "pipe", "pipe"],
+    });
+    const stop = () => {
+      if (!processGroup || child.pid === undefined) {
+        child.kill("SIGKILL");
+        return;
+      }
+      try {
+        process.kill(-child.pid, "SIGKILL");
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== "ESRCH") {
+          child.kill("SIGKILL");
+        }
+      }
+    };
+    const maxOutput = 1024 * 1024;
+    let stdout = "";
+    let stderr = "";
+    let outputExceeded = false;
+    child.stdout.setEncoding("utf8").on("data", (chunk: string) => {
+      stdout = (stdout + chunk).slice(0, maxOutput);
+      if (stdout.length >= maxOutput) {
+        outputExceeded = true;
+        stop();
+      }
+    });
+    child.stderr.setEncoding("utf8").on("data", (chunk: string) => {
+      stderr = (stderr + chunk).slice(0, maxOutput);
+      if (stderr.length >= maxOutput) {
+        outputExceeded = true;
+        stop();
+      }
+    });
+    signal.addEventListener("abort", stop, { once: true });
+    child.once("close", (code) => {
+      signal.removeEventListener("abort", stop);
+      const failure = signal.aborted || outputExceeded;
+      resolve({ exitCode: failure ? 1 : (code ?? 1), stdout, stderr });
+    });
+    child.once("error", (error: NodeJS.ErrnoException) => {
+      const missing = error.code === "ENOENT";
+      resolve({
+        exitCode: missing ? 127 : 1,
+        stdout: "",
+        stderr: missing ? `Command not found: ${command}` : error.message,
+      });
+    });
+    child.stdin.on("error", () => {});
+    child.stdin.end(stdin);
+  });
+}
+
 export function execCommand(
   command: string,
   args: string[],
   stdin?: string,
-  opts?: { cwd?: string; env?: NodeJS.ProcessEnv },
+  opts?: ExecOptions,
 ): Promise<ExecResult> {
+  if (opts?.signal) {
+    return execCancellableCommand(command, args, stdin, {
+      ...opts,
+      signal: opts.signal,
+    });
+  }
   return new Promise((resolve) => {
     const child = execFile(
       command,

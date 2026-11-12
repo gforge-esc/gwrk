@@ -2,36 +2,38 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import type { AgentBackend } from "../plugins/agent-backend.js";
+import type {
+  QuotaStatus as AdapterQuotaStatus,
+  AgentBackend,
+} from "../plugins/agent-backend.js";
 
-interface QuotaStatus {
-  status: "available" | "rate-limited" | "exhausted" | "unavailable";
-  backoffS?: number;
-  remainingRequests?: number;
-  resetAt?: Date;
-}
+type QuotaStatus = Omit<AdapterQuotaStatus, "status"> & {
+  status: AdapterQuotaStatus["status"] | "unavailable";
+};
 
 /**
  * Probes the current quota status of a backend.
  * Uses the backend's native checkQuota if available, otherwise infers from recent errors or isAvailable().
  */
-export async function quotaProbe(backend: AgentBackend): Promise<QuotaStatus> {
-  // 1. Native checkQuota if implemented by the adapter
-  const backendWithQuota = backend as unknown as {
-    checkQuota?: () => Promise<QuotaStatus>;
-  };
+export async function quotaProbe(
+  backend: AgentBackend,
+  signal?: AbortSignal,
+): Promise<QuotaStatus> {
+  if (signal?.aborted) return { status: "unknown" };
 
-  if (typeof backendWithQuota.checkQuota === "function") {
+  // 1. Native checkQuota if implemented by the adapter
+  if (typeof backend.checkQuota === "function") {
     try {
-      return await backendWithQuota.checkQuota();
+      return await backend.checkQuota(signal);
     } catch (err) {
       // If native check fails, fall back to basic availability
     }
   }
 
   // 2. Fallback to basic isAvailable() check
+  if (signal?.aborted) return { status: "unknown" };
   try {
-    const available = await backend.isAvailable();
+    const available = await backend.isAvailable(signal);
     if (!available) {
       return { status: "unavailable" };
     }

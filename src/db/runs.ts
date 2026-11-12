@@ -8,7 +8,7 @@
 
 import path from "node:path";
 import type Database from "better-sqlite3";
-import { resolveProjectId } from "../domain/project-id.js";
+import { resolveProjectId } from "../adapters/git/project-id.js";
 import { getDb } from "./index.js";
 
 export interface RunRecord {

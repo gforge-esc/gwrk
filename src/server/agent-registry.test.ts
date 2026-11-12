@@ -4,7 +4,7 @@
 
 import * as fs from "node:fs";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { loadRegistry } from "./agent-registry";
+import { loadRegistry } from "../adapters/agents/registry-loader.js";
 
 vi.mock("node:fs");
 

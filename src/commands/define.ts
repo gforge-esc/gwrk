@@ -8,6 +8,11 @@
 
 import path from "node:path";
 import { Command } from "commander";
+import {
+  logCliError,
+  setCliExitCode,
+  warnCli,
+} from "../adapters/cli/output-scope.js";
 import { finishRun, recordHistory, startRun } from "../db/runs.js";
 import { DefineOrchestrator } from "../engine/define-orchestrator.js";
 import { PlanStore } from "../engine/plan-store.js";
@@ -20,14 +25,14 @@ import {
 } from "../utils/git.js";
 import { generateRunId, writeManifest } from "../utils/manifest.js";
 
-import { adrCommand } from "./adr.js";
-import { analyzeCommand } from "./analyze.js";
-import { definePlanCommand } from "./define-plan.js";
-import { researchCommand } from "./research.js";
+import { createAdrCommand } from "./adr.js";
+import { createAnalyzeCommand } from "./analyze.js";
+import { createDefinePlanCommand } from "./define-plan.js";
+import { createResearchCommand } from "./research.js";
 // Subcommands — each is a standalone user action
-import { specifyCommand } from "./specify.js";
-import { tasksGenerateCommand } from "./tasks-generate.js";
-import { testsGenerateCommand } from "./tests-generate.js";
+import { createSpecifyCommand } from "./specify.js";
+import { createTasksGenerateCommand } from "./tasks-generate.js";
+import { createTestsGenerateCommand } from "./tests-generate.js";
 
 import { defineOntologyCommand } from "./define-ontology.js";
 
@@ -50,11 +55,12 @@ import { CommandError, withSignal } from "../utils/signal.js";
  * Internal definition stages (NOT exposed as subcommands):
  *   analyze, checklist — run inside the definition loop automatically
  */
-export const defineCommand = new Command("define")
-  .description("Define: spec → plan → tasks → analyze")
-  .addHelpText(
-    "after",
-    `
+export function createDefineCommand(): Command {
+  const defineCommand = new Command("define")
+    .description("Define: spec → plan → tasks → analyze")
+    .addHelpText(
+      "after",
+      `
 Examples:
   gwrk define 001
   gwrk define 001-cli-core --refs docs/grounding/
@@ -63,160 +69,160 @@ Examples:
   gwrk define tasks 001
   gwrk define adr "Decision Records"
 `,
-  )
-  .argument("[feature]", "Feature ID (e.g. 001-cli-core)")
-  .option("--refs <path>", "Path to additional reference docs")
-  .option("--dry-run", "Print the command without executing")
-  .action(
-    async (
-      featureArg: string | undefined,
-      opts: { dryRun?: boolean; refs?: string },
-    ) => {
-      await withSignal("define", async () => {
-        if (!featureArg) {
-          throw new CommandError(
-            "Feature ID required. Run 'gwrk project specs' to list available features.",
-            2,
-          );
-        }
+    )
+    .argument("[feature]", "Feature ID (e.g. 001-cli-core)")
+    .option("--refs <path>", "Path to additional reference docs")
+    .option("--dry-run", "Print the command without executing")
+    .action(
+      async (
+        featureArg: string | undefined,
+        opts: { dryRun?: boolean; refs?: string },
+      ) => {
+        await withSignal("define", async () => {
+          if (!featureArg) {
+            throw new CommandError(
+              "Feature ID required. Run 'gwrk project specs' to list available features.",
+              2,
+            );
+          }
 
-        const cwd = process.cwd();
-        // Resolve prefix: "003" → "003-slack"
-        const feature = resolveFeature(featureArg, cwd);
-        const { backend, model } = resolveAgent("define", cwd);
+          const cwd = process.cwd();
+          // Resolve prefix: "003" → "003-slack"
+          const feature = resolveFeature(featureArg, cwd);
+          const { backend, model } = resolveAgent("define", cwd);
 
-        const startedAt = new Date().toISOString();
-        // A preview must leave no trace: `startRun` used to fire before anything
-        // consulted --dry-run, leaving a run row that never finishes (NULL
-        // exit_code). `runs` is what harvest correlates against and what
-        // getShippedPhases reads, so a row for work that never happened is
-        // false evidence. -1 is the same sentinel a failed ledger write uses.
-        const runId = opts.dryRun
-          ? -1
-          : startRun({
-              feature_id: feature,
-              command: "define",
-              agent_backend: backend,
-              workflow: "define-orchestrator",
+          const startedAt = new Date().toISOString();
+          // A preview must leave no trace: `startRun` used to fire before anything
+          // consulted --dry-run, leaving a run row that never finishes (NULL
+          // exit_code). `runs` is what harvest correlates against and what
+          // getShippedPhases reads, so a row for work that never happened is
+          // false evidence. -1 is the same sentinel a failed ledger write uses.
+          const runId = opts.dryRun
+            ? -1
+            : startRun({
+                feature_id: feature,
+                command: "define",
+                agent_backend: backend,
+                workflow: "define-orchestrator",
+              });
+
+          banner("define", {
+            Feature: feature,
+            Agent: backend,
+            "Run ID": opts.dryRun ? "dry-run" : `${runId}`,
+            ...(opts.refs ? { Refs: opts.refs } : {}),
+          });
+
+          const startTime = Date.now();
+          let exitCode = 0;
+
+          try {
+            const orchestrator = new DefineOrchestrator({
+              featureId: feature,
+              backend,
+              model,
+              cwd,
+              refs: opts.refs,
+              dryRun: opts.dryRun,
             });
 
-        banner("define", {
-          Feature: feature,
-          Agent: backend,
-          "Run ID": opts.dryRun ? "dry-run" : `${runId}`,
-          ...(opts.refs ? { Refs: opts.refs } : {}),
-        });
+            const planStore = new PlanStore(resolveProjectId(cwd));
+            orchestrator.on("plan:define:complete", (event) => {
+              planStore.handleDefineComplete(event);
+            });
 
-        const startTime = Date.now();
-        let exitCode = 0;
+            exitCode = await orchestrator.run();
 
-        try {
-          const orchestrator = new DefineOrchestrator({
-            featureId: feature,
-            backend,
-            model,
-            cwd,
-            refs: opts.refs,
-            dryRun: opts.dryRun,
-          });
+            if (opts.dryRun) {
+              return;
+            }
 
-          const planStore = new PlanStore(resolveProjectId(cwd));
-          orchestrator.on("plan:define:complete", (event) => {
-            planStore.handleDefineComplete(event);
-          });
-
-          exitCode = await orchestrator.run();
-
-          if (opts.dryRun) {
-            return;
-          }
-
-          const durationS = Math.round((Date.now() - startTime) / 1000);
-          finishRun(runId, { exit_code: exitCode, duration_s: durationS });
-          if (exitCode === 0) {
-            success("define", durationS, runId);
-          } else {
+            const durationS = Math.round((Date.now() - startTime) / 1000);
+            finishRun(runId, { exit_code: exitCode, duration_s: durationS });
+            if (exitCode === 0) {
+              success("define", durationS, runId);
+            } else {
+              fail("define", exitCode, durationS, runId);
+            }
+          } catch (error: unknown) {
+            const durationS = Math.round((Date.now() - startTime) / 1000);
+            exitCode = 1;
+            finishRun(runId, { exit_code: exitCode, duration_s: durationS });
             fail("define", exitCode, durationS, runId);
+            logCliError(error);
           }
-        } catch (error: unknown) {
-          const durationS = Math.round((Date.now() - startTime) / 1000);
-          exitCode = 1;
-          finishRun(runId, { exit_code: exitCode, duration_s: durationS });
-          fail("define", exitCode, durationS, runId);
-          console.error(error);
-        }
 
-        // Write Execution Manifest (ADR-003)
-        try {
-          const finishedAt = new Date().toISOString();
-          const durationS = Math.round((Date.now() - startTime) / 1000);
-          const gitCommit = getCurrentCommit(cwd);
-          const gitBranch = getCurrentBranch(cwd);
-          const { filesChanged, linesAdded, linesDeleted } = getDiffStats(
-            cwd,
-            `${gitCommit}~1`,
-          );
+          // Write Execution Manifest (ADR-003)
+          try {
+            const finishedAt = new Date().toISOString();
+            const durationS = Math.round((Date.now() - startTime) / 1000);
+            const gitCommit = getCurrentCommit(cwd);
+            const gitBranch = getCurrentBranch(cwd);
+            const { filesChanged, linesAdded, linesDeleted } = getDiffStats(
+              cwd,
+              `${gitCommit}~1`,
+            );
 
-          const manifestId = generateRunId(startedAt, "define", "p00");
-          const featureDir = path.join(cwd, "specs", feature);
+            const manifestId = generateRunId(startedAt, "define", "p00");
+            const featureDir = path.join(cwd, "specs", feature);
 
-          writeManifest(featureDir, {
-            runId: manifestId,
-            feature,
-            phase: "p00",
-            command: "define",
-            agent: backend,
-            model: model || "unknown",
-            startedAt,
-            finishedAt,
-            durationS,
-            exitCode,
-            attempt: 1,
-            filesChanged,
-            linesAdded,
-            linesDeleted,
-            gitCommit,
-            gitBranch,
-            digest: [],
-          });
+            writeManifest(featureDir, {
+              runId: manifestId,
+              feature,
+              phase: "p00",
+              command: "define",
+              agent: backend,
+              model: model || "unknown",
+              startedAt,
+              finishedAt,
+              durationS,
+              exitCode,
+              attempt: 1,
+              filesChanged,
+              linesAdded,
+              linesDeleted,
+              gitCommit,
+              gitBranch,
+              digest: [],
+            });
 
-          // Record in history table
-          recordHistory({
-            feature_id: feature,
-            run_id: runId,
-            from_status: "open", // Simplified
-            to_status: exitCode === 0 ? "completed" : "open",
-            metadata: JSON.stringify({ command: "define", manifestId }),
-          });
-        } catch (manifestError) {
-          console.warn(
-            `Warning: Could not write execution manifest: ${manifestError}`,
-          );
-        }
+            // Record in history table
+            recordHistory({
+              feature_id: feature,
+              run_id: runId,
+              from_status: "open", // Simplified
+              to_status: exitCode === 0 ? "completed" : "open",
+              metadata: JSON.stringify({ command: "define", manifestId }),
+            });
+          } catch (manifestError) {
+            warnCli(
+              `Warning: Could not write execution manifest: ${manifestError}`,
+            );
+          }
 
-        if (exitCode !== 0) {
-          process.exitCode = exitCode;
-        }
-      });
-    },
-  );
+          if (exitCode !== 0) {
+            setCliExitCode(exitCode);
+          }
+        });
+      },
+    );
 
-// Register user-facing subcommands only
-defineCommand.addCommand(specifyCommand); // gwrk define spec
-defineCommand.addCommand(definePlanCommand); // gwrk define plan
-defineCommand.addCommand(tasksGenerateCommand); // gwrk define tasks
-defineCommand.addCommand(analyzeCommand, { hidden: true }); // gwrk define analyze (internal)
-defineCommand.addCommand(testsGenerateCommand); // gwrk define tests
-defineCommand.addCommand(researchCommand); // gwrk define research
-defineCommand.addCommand(adrCommand); // gwrk define adr
+  // Register user-facing subcommands only
+  defineCommand.addCommand(createSpecifyCommand()); // gwrk define spec
+  defineCommand.addCommand(createDefinePlanCommand()); // gwrk define plan
+  defineCommand.addCommand(createTasksGenerateCommand()); // gwrk define tasks
+  defineCommand.addCommand(createAnalyzeCommand(), { hidden: true }); // gwrk define analyze (internal)
+  defineCommand.addCommand(createTestsGenerateCommand()); // gwrk define tests
+  defineCommand.addCommand(createResearchCommand()); // gwrk define research
+  defineCommand.addCommand(createAdrCommand()); // gwrk define adr
 
-const ontologyCommand = new Command("ontology")
-  .description(
-    "Define project domain ontology (classes, properties, relations)",
-  )
-  .addHelpText(
-    "after",
-    `
+  const ontologyCommand = new Command("ontology")
+    .description(
+      "Define project domain ontology (classes, properties, relations)",
+    )
+    .addHelpText(
+      "after",
+      `
 Examples:
 
   Scaffold the ontology files:
@@ -230,17 +236,24 @@ Examples:
 
   --refs takes a file or a directory. A directory is read recursively.
 `,
-  )
-  .option("--run", "Execute automated construction workflow")
-  .option("--refs <path>", "Reference file or directory to ground construction")
-  .option("--agent <agent>", "Override agent")
-  .option("--model <model>", "Override model")
-  // `--refs` is declared on `define` too, and commander binds it to that
-  // intermediate parent because `define` has its own argument and action.
-  // Without this merge the flag reaches the parent and vanishes, which is the
-  // defect `define research --refs` still carries.
-  .action((opts, command) =>
-    defineOntologyCommand(withParentFlags(opts, command)),
-  );
+    )
+    .option("--run", "Execute automated construction workflow")
+    .option(
+      "--refs <path>",
+      "Reference file or directory to ground construction",
+    )
+    .option("--agent <agent>", "Override agent")
+    .option("--model <model>", "Override model")
+    // `--refs` is declared on `define` too, and commander binds it to that
+    // intermediate parent because `define` has its own argument and action.
+    // Without this merge the flag reaches the parent and vanishes, which is the
+    // defect `define research --refs` still carries.
+    .action((opts, command) =>
+      defineOntologyCommand(withParentFlags(opts, command)),
+    );
 
-defineCommand.addCommand(ontologyCommand);
+  defineCommand.addCommand(ontologyCommand);
+  return defineCommand;
+}
+
+export const defineCommand = createDefineCommand();

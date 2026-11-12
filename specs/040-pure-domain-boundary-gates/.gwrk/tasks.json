@@ -1,0 +1,128 @@
+{
+  "featureId": "040-pure-domain-boundary-gates",
+  "createdAt": "2026-11-11T16:16:46.478Z",
+  "generatedFrom": {
+    "plan": {
+      "hash": "50279d21f9d85b1ac90faf0e4bf6e38bc60b76efd7ae516482d83c758d5fb00d",
+      "modifiedAt": "2026-11-11T16:16:46.148Z"
+    }
+  },
+  "phases": [
+    {
+      "id": "phase-01",
+      "title": "Boundary gate",
+      "tasks": [
+        {
+          "id": "T001",
+          "title": "Create architecture-boundary.ts",
+          "description": "NEW tests/helpers/architecture-boundary.ts. Check TypeScript syntax and layer rules",
+          "status": "completed",
+          "gateScript": "gates/T001-gate.sh",
+          "sp": 2,
+          "completedAt": "2026-11-11T16:17:27.162Z"
+        }
+      ],
+      "sp_estimate": 2,
+      "testTargets": [
+        "src/architecture.test.ts",
+        "src/engine/harvest.test.ts",
+        "src/engine/issues.test.ts"
+      ]
+    },
+    {
+      "id": "phase-02",
+      "title": "Project identity",
+      "tasks": [
+        {
+          "id": "T002",
+          "title": "Modify project-id.ts",
+          "description": "MODIFY src/domain/project-id.ts. Compute the existing identity from supplied facts",
+          "status": "completed",
+          "gateScript": "gates/T002-gate.sh",
+          "sp": 1,
+          "completedAt": "2026-11-11T16:28:53.057Z"
+        },
+        {
+          "id": "T003",
+          "title": "Create project-id.ts",
+          "description": "NEW src/adapters/git/project-id.ts. Discover the remote and main worktree through bounded Git commands",
+          "status": "completed",
+          "gateScript": "gates/T003-gate.sh",
+          "sp": 2,
+          "completedAt": "2026-11-11T16:28:54.778Z"
+        }
+      ],
+      "sp_estimate": 3,
+      "testTargets": [
+        "src/domain/project-id.test.ts",
+        "src/utils/project-id.test.ts",
+        "src/db/runs.test.ts",
+        "src/architecture.test.ts"
+      ]
+    },
+    {
+      "id": "phase-03",
+      "title": "Agent registry",
+      "tasks": [
+        {
+          "id": "T004",
+          "title": "Modify agent-config.ts",
+          "description": "MODIFY src/domain/agent-config.ts. Validate and merge supplied registry layers",
+          "status": "completed",
+          "gateScript": "gates/T004-gate.sh",
+          "sp": 1,
+          "completedAt": "2026-11-11T16:40:32.267Z"
+        },
+        {
+          "id": "T005",
+          "title": "Create registry-loader.ts",
+          "description": "NEW src/adapters/agents/registry-loader.ts. Read registry files and keep startup failure handling at the boundary",
+          "status": "completed",
+          "gateScript": "gates/T005-gate.sh",
+          "sp": 2,
+          "completedAt": "2026-11-11T16:40:33.459Z"
+        }
+      ],
+      "sp_estimate": 3,
+      "testTargets": [
+        "src/domain/agent-config.test.ts",
+        "src/server/agent-registry.test.ts",
+        "src/server/agent-registry.integration.test.ts",
+        "src/utils/resolve-model.test.ts",
+        "src/utils/resolve-agent.test.ts",
+        "src/architecture.test.ts"
+      ]
+    },
+    {
+      "id": "phase-04",
+      "title": "Toolchain manifest discovery",
+      "tasks": [
+        {
+          "id": "T006",
+          "title": "Modify toolchain.ts",
+          "description": "MODIFY src/domain/toolchain.ts. Resolve the build command from supplied facts",
+          "status": "completed",
+          "gateScript": "gates/T006-gate.sh",
+          "sp": 1,
+          "completedAt": "2026-11-11T16:55:52.870Z"
+        },
+        {
+          "id": "T007",
+          "title": "Create manifest-discovery.ts",
+          "description": "NEW src/adapters/toolchain/manifest-discovery.ts. Discover build manifests and preserve explicit overrides",
+          "status": "completed",
+          "gateScript": "gates/T007-gate.sh",
+          "sp": 2,
+          "completedAt": "2026-11-11T16:55:54.025Z"
+        }
+      ],
+      "sp_estimate": 3,
+      "testTargets": [
+        "src/domain/toolchain.test.ts",
+        "src/utils/toolchain-mapper.test.ts",
+        "src/architecture.test.ts",
+        "src/application/architecture/context.test.ts"
+      ]
+    }
+  ]
+}

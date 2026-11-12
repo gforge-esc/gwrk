@@ -6,16 +6,18 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { spawn } from "node:child_process";
+import { execFileSync, spawn } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import readline from "node:readline";
+import { writeScopedStdout } from "../adapters/cli/output-scope.js";
 import { recordRoutingDecision } from "../db/plugins.js";
 import type { AgentBackend } from "../plugins/agent-backend.js";
 import { AgentBackendRegistry } from "../plugins/agent-registry.js";
 import { resolveExtensionContext } from "../plugins/extension-runtime.js";
 import { PluginLoader } from "../plugins/loader.js";
 import { resolveEnforcementSkills } from "../plugins/skill-runtime.js";
+import type { AgentTaskRequest, AgentTaskResult } from "../ports/agent-port.js";
 import { formatResultError, renderStreamStdoutLine } from "./agent-log.js";
 import { type AgentBackendId, loadConfig } from "./config.js";
 import { startProgress } from "./progress.js";
@@ -175,7 +177,7 @@ async function dispatchAgent(opts: DispatchOptions): Promise<{
     opts.prebuiltDispatch ?? (await buildCommand(opts, workflowContent));
 
   // Set up .runs/ log file
-  const runsDir = path.join(projectRoot, ".runs");
+  const runsDir = path.join(process.cwd(), ".runs");
   fs.mkdirSync(runsDir, { recursive: true });
   const ts = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
   // Use parent directory name for plugin workflows (PROMPT.md → parent dir name)
@@ -245,7 +247,7 @@ async function dispatchAgent(opts: DispatchOptions): Promise<{
     const progress = opts.quiet
       ? startProgress({
           label: "agent running",
-          write: (chunk) => process.stdout.write(chunk),
+          write: (chunk) => writeScopedStdout(chunk),
           isTTY: process.stdout.isTTY === true,
           frameMs: 200,
         })
@@ -276,7 +278,7 @@ async function dispatchAgent(opts: DispatchOptions): Promise<{
         const now = new Date();
         const elapsed = Math.floor((Date.now() - startEpoch) / 1000);
         const stamp = `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}:${String(now.getSeconds()).padStart(2, "0")} +${String(Math.floor(elapsed / 60)).padStart(2, "0")}:${String(elapsed % 60).padStart(2, "0")}`;
-        process.stdout.write(
+        writeScopedStdout(
           `${DIM}${stamp}${RESET}  ${YELLOW}⏳ 429 — Rate limited (attempt ${attempt}), retrying…${RESET}\n`,
         );
         logStream.write(`[429] Attempt ${attempt} — rate limited, retrying\n`);
@@ -358,7 +360,7 @@ async function dispatchAgent(opts: DispatchOptions): Promise<{
       if (opts.quiet) {
         const status = code === 0 ? "✓" : "✗";
         const relLogPath = path.relative(process.cwd(), logPath);
-        process.stdout.write(
+        writeScopedStdout(
           `  ${status} agent done (${mins}m ${secs}s) → ${relLogPath}\n`,
         );
         // Surface concise error context on failure (goal: helpful context, not
@@ -366,9 +368,9 @@ async function dispatchAgent(opts: DispatchOptions): Promise<{
         const errSummary = formatResultError(lastResultEvent);
         if (code !== 0 || errSummary) {
           if (errSummary) {
-            process.stdout.write(`  ${YELLOW}⚠ ${errSummary}${RESET}\n`);
+            writeScopedStdout(`  ${YELLOW}⚠ ${errSummary}${RESET}\n`);
           }
-          process.stdout.write(
+          writeScopedStdout(
             `  ${DIM}↳ full transcript: ${relLogPath}${RESET}\n`,
           );
         }
@@ -414,45 +416,15 @@ async function dispatchAgent(opts: DispatchOptions): Promise<{
  * FR-019: Input contract for dispatchToAgent().
  * Maps to ADR-006 AgentBackend.dispatch() input.
  */
-export interface TaskDispatch {
-  type?: string;
-  prompt?: string;
-  agent?: AgentBackendId | string;
-  model?: string;
+export interface TaskDispatch extends AgentTaskRequest {
+  promptParts?: { template: string; userInput: string };
+  /** Project that selected the backend when execution uses a separate worktree. */
+  backendProjectRoot?: string;
   commandOverride?: string;
-  workDir?: string;
-  stdin?: string;
-  env?: Record<string, string>;
-  workflow?: string;
-  featureDir?: string;
-  quiet?: boolean;
   dryRun?: boolean;
-  /**
-   * JSON Schema for the expected output contract. Adapters whose CLI supports
-   * structured output (e.g. Claude's `--json-schema`) pass this through to
-   * force schema-conforming output; adapters that don't simply ignore it.
-   */
-  outputSchema?: Record<string, unknown>;
 }
 
-/**
- * FR-019: Output contract for dispatchToAgent().
- * Normalized result — proprietary exit codes mapped to gwrk standard.
- */
-export interface TaskResult {
-  exitCode: number;
-  rawExitCode?: number;
-  errorType?: string;
-  stdout: string;
-  unwrappedStdout?: string;
-  structuredOutput?: Record<string, unknown>;
-  usage?: {
-    tokensIn?: number;
-    tokensOut?: number;
-    costUsd?: number;
-  };
-  stderr: string;
-  durationS: number;
+export interface TaskResult extends AgentTaskResult {
   logPath?: string;
   /** True when the agent writes files directly via built-in tools. */
   nativeWriter?: boolean;
@@ -506,6 +478,172 @@ async function resolveWorkflowPath(workflowName: string): Promise<string> {
   return workflowName;
 }
 
+function resolvePrimaryCheckout(executionDir: string): string {
+  try {
+    const [firstField] = execFileSync(
+      "git",
+      ["worktree", "list", "--porcelain", "-z"],
+      {
+        cwd: executionDir,
+        encoding: "utf8",
+        stdio: ["ignore", "pipe", "pipe"],
+      },
+    ).split("\0", 1);
+    const prefix = "worktree ";
+    if (firstField.startsWith(prefix)) {
+      return firstField.slice(prefix.length) || executionDir;
+    }
+  } catch {
+    return executionDir;
+  }
+  return executionDir;
+}
+
+const ENFORCEMENT_MARKER = "{{enforcement}}";
+
+function maskPromptExamples(template: string): string {
+  // Keep offsets and line endings without turning quoted content into whitespace.
+  const mask = (code: string) => code.replace(/[^\r\n]/g, "\0");
+  const maskSpans = (text: string) =>
+    text
+      .replace(/^(?: {4}| {0,3}[>\t])[^\r\n]*/gm, mask)
+      .split(/(\r?\n[ \t]*\r?\n)/)
+      .map((paragraph) =>
+        paragraph.replace(/(?<!`)(`+)(?!`)[\s\S]*?(?<!`)\1(?!`)/g, mask),
+      )
+      .join("");
+
+  let masked = "";
+  let textStart = 0;
+  let fence: { delimiter: string; start: number } | undefined;
+  const blocks = /^ {0,3}(`{3,}|~{3,})([^\r\n]*)|<!--/gm;
+  for (
+    let block = blocks.exec(template);
+    block;
+    block = blocks.exec(template)
+  ) {
+    const [line, delimiter, rest] = block;
+    const { index } = block;
+    if (line === "<!--") {
+      if (fence) continue;
+      const closer = template.indexOf("-->", index + line.length);
+      if (closer === -1) continue;
+      const lineEnd = template.indexOf("\n", closer);
+      const visible = maskSpans(
+        template.slice(textStart, lineEnd === -1 ? template.length : lineEnd),
+      );
+      if (!visible.startsWith(line, index - textStart)) continue;
+
+      const end = closer + "-->".length;
+      masked += maskSpans(template.slice(textStart, index));
+      masked += mask(template.slice(index, end));
+      textStart = end;
+      blocks.lastIndex = end;
+    } else if (!fence) {
+      if (delimiter[0] === "`" && rest.includes("`")) continue;
+      masked += maskSpans(template.slice(textStart, index));
+      fence = { delimiter, start: index };
+    } else if (
+      delimiter[0] === fence.delimiter[0] &&
+      delimiter.length >= fence.delimiter.length &&
+      !rest.trim()
+    ) {
+      textStart = index + line.length;
+      masked += mask(template.slice(fence.start, textStart));
+      fence = undefined;
+    }
+  }
+  return (
+    masked +
+    (fence
+      ? mask(template.slice(fence.start))
+      : maskSpans(template.slice(textStart)))
+  );
+}
+
+function findEnforcementSlot(
+  template: string,
+  fallback: "empty-section" | "scoped-legacy",
+): RegExpMatchArray | undefined {
+  const masked = maskPromptExamples(template);
+  const sections = [
+    ...masked.matchAll(/<code_quality>([\s\S]*?)<\/code_quality>/g),
+  ];
+  const marked = sections.filter(([, body]) =>
+    body.includes(ENFORCEMENT_MARKER),
+  );
+  if (marked.length > 0) return marked.length === 1 ? marked[0] : undefined;
+
+  if (fallback === "scoped-legacy") {
+    const bareMarkers = [
+      ...masked.matchAll(/^\{\{enforcement\}\}(?=\r?\n|$)/gm),
+    ];
+    if (bareMarkers.length > 0) {
+      return bareMarkers.length === 1 ? bareMarkers[0] : undefined;
+    }
+    const emptyLines = [
+      ...masked.matchAll(
+        /^<code_quality>\s*<\/code_quality>(?=[ \t]*(?:\r?\n|$))/gm,
+      ),
+    ];
+    return emptyLines.length === 1 ? emptyLines[0] : undefined;
+  }
+
+  const emptySections = sections.filter(([, body]) => !body.trim());
+  return emptySections.length === 1 ? emptySections[0] : undefined;
+}
+
+function findLegacyInputStart(stdin: string): number | undefined {
+  // The transport closer can follow an unclosed fence in the task text.
+  const closer = /(?<=^|\n)<\/user_input>(?=\r?\n|$)\s*$/.exec(stdin);
+  if (!closer) return undefined;
+
+  const prefix = maskPromptExamples(stdin.slice(0, closer.index));
+  const tags = [...prefix.matchAll(/^<(\/?)user_input>(?=\r?\n|$)/gm)];
+  let depth = 1;
+  for (let index = tags.length - 1; index >= 0; index--) {
+    const tag = tags[index];
+    depth += tag[1] === "/" ? 1 : -1;
+    if (depth === 0) {
+      // An earlier unmasked tag makes the legacy input boundary ambiguous.
+      return index === 0 ? tag.index : undefined;
+    }
+  }
+  return undefined;
+}
+
+function splitLegacyStdin(task: TaskDispatch) {
+  const { stdin, prompt, type, workflow } = task;
+  if (
+    !stdin ||
+    stdin === prompt ||
+    type?.startsWith("skill/") ||
+    workflow?.startsWith("skill/") ||
+    /^<user_input>(?=\r?\n|$)/.test(stdin.trimStart())
+  ) {
+    return undefined;
+  }
+
+  const inputStart = findLegacyInputStart(stdin);
+  if (inputStart === undefined) {
+    const slot =
+      stdin.trim() === ENFORCEMENT_MARKER
+        ? /\{\{enforcement\}\}/.exec(stdin)
+        : findEnforcementSlot(stdin, "empty-section");
+    if (
+      slot?.index !== undefined &&
+      stdin.trim() === stdin.slice(slot.index, slot.index + slot[0].length)
+    ) {
+      return { template: stdin, userInput: "", slot };
+    }
+    return undefined;
+  }
+
+  const template = stdin.slice(0, inputStart);
+  const slot = findEnforcementSlot(template, "scoped-legacy");
+  return slot && { template, userInput: stdin.slice(inputStart), slot };
+}
+
 /**
  * FR-019: Dispatch agent work via a single facade.
  * FR-020: Normalizes exit codes — proprietary codes mapped to gwrk standard.
@@ -514,13 +652,14 @@ async function resolveWorkflowPath(workflowName: string): Promise<string> {
  * Internals are replaced by pluginRegistry.getAgentBackend().dispatch()
  */
 export async function dispatchToAgent(task: TaskDispatch): Promise<TaskResult> {
-  const projectRoot = process.cwd();
+  const projectRoot = task.workDir ?? process.cwd();
   try {
-    const config = loadConfig(projectRoot);
+    const primaryCheckout = resolvePrimaryCheckout(projectRoot);
+    const config = loadConfig(primaryCheckout);
     const throttleMs = config.agents.throttleMs ?? 0;
 
     if (throttleMs > 0) {
-      const runsDir = path.join(projectRoot, ".runs");
+      const runsDir = path.join(primaryCheckout, ".runs");
       if (!fs.existsSync(runsDir)) {
         fs.mkdirSync(runsDir, { recursive: true });
       }
@@ -534,7 +673,7 @@ export async function dispatchToAgent(task: TaskDispatch): Promise<TaskResult> {
       if (now - lastDispatch < throttleMs) {
         const wait = throttleMs - (now - lastDispatch);
         const waitSecs = Math.ceil(wait / 1000);
-        process.stdout.write(
+        writeScopedStdout(
           `\x1b[2m\x1b[33m⏳ Metering API limits (waiting ${waitSecs}s)...\x1b[0m\n`,
         );
         await new Promise((resolve) => setTimeout(resolve, wait));
@@ -546,17 +685,21 @@ export async function dispatchToAgent(task: TaskDispatch): Promise<TaskResult> {
   }
 
   const agentName = (task.agent ?? "agy") as string;
-  const registry = new AgentBackendRegistry(new PluginLoader());
+  const { promptParts, backendProjectRoot, ...agentTask } = task;
+  const registry = new AgentBackendRegistry(
+    new PluginLoader({ projectDir: backendProjectRoot ?? projectRoot }),
+  );
   const adapter = await registry.getAgentBackend(agentName);
 
   const startTime = Date.now();
-  let stdinPayload = task.stdin ?? "";
+  const legacyParts = promptParts ? undefined : splitLegacyStdin(task);
+  let template = promptParts?.template ?? legacyParts?.template ?? "";
 
   // FR-014: Inject enforcement skills
-  const hasEnforcementPlaceholder = stdinPayload.includes("{{enforcement}}");
-  const hasCodeQualitySection = stdinPayload.includes("<code_quality>");
-
-  if (hasEnforcementPlaceholder || hasCodeQualitySection) {
+  const enforcementSlot = promptParts
+    ? findEnforcementSlot(template, "empty-section")
+    : legacyParts?.slot;
+  if (enforcementSlot?.index !== undefined) {
     const scope =
       task.workflow?.includes("review") || task.type?.includes("review")
         ? "review"
@@ -564,26 +707,42 @@ export async function dispatchToAgent(task: TaskDispatch): Promise<TaskResult> {
 
     // R007: Detect project profile for language-aware enforcement routing
     const { detectProfile } = await import("../engine/profile-detector.js");
-    const profile = await detectProfile(task.workDir || projectRoot);
+    const profile = await detectProfile(projectRoot);
 
     const enforcement = await resolveEnforcementSkills(
-      task.workDir || projectRoot,
-      scope as "implementation" | "review",
+      projectRoot,
+      scope,
       profile,
     );
 
-    if (hasEnforcementPlaceholder) {
-      stdinPayload = stdinPayload.replace("{{enforcement}}", enforcement);
-    } else if (hasCodeQualitySection) {
-      stdinPayload = stdinPayload.replace(
-        /<code_quality>([\s\S]*?)<\/code_quality>/,
-        `<code_quality>\n${enforcement}\n</code_quality>`,
-      );
-    }
+    const start = enforcementSlot.index;
+    const [maskedSlot] = enforcementSlot;
+    const end = start + maskedSlot.length;
+    const originalSlot = template.slice(start, end);
+    const replacement = maskedSlot.includes(ENFORCEMENT_MARKER)
+      ? originalSlot.replaceAll(ENFORCEMENT_MARKER, (marker, offset: number) =>
+          maskedSlot.startsWith(marker, offset) ? enforcement : marker,
+        )
+      : `<code_quality>\n${enforcement}\n</code_quality>`;
+    template = template.slice(0, start) + replacement + template.slice(end);
   }
 
+  const hasCommandSafety =
+    promptParts &&
+    maskPromptExamples(promptParts.template).includes(COMMAND_SAFETY_BLOCK);
+  let stdinPayload = (
+    promptParts
+      ? [template, promptParts.userInput]
+      : [
+          task.prompt === task.stdin ? undefined : task.prompt,
+          legacyParts ? template + legacyParts.userInput : task.stdin,
+        ]
+  )
+    .filter(Boolean)
+    .join("\n\n");
+
   // ADR-009: Inject project knowledge documents (grounding)
-  const workDir = task.workDir || projectRoot;
+  const workDir = projectRoot;
   const groundingFiles = [
     {
       path: path.join(workDir, ".gwrk/architecture.md"),
@@ -614,13 +773,11 @@ export async function dispatchToAgent(task: TaskDispatch): Promise<TaskResult> {
         const content = fs.readFileSync(filePath, "utf-8");
         grounding += `<${tag}>\n${content}\n</${tag}>\n\n`;
         if (!task.quiet) {
-          process.stdout.write(
-            `${DIM}  → Grounding: <${tag}> injected${RESET}\n`,
-          );
+          writeScopedStdout(`${DIM}  → Grounding: <${tag}> injected${RESET}\n`);
         }
       } catch (err) {
         if (!task.quiet) {
-          process.stdout.write(
+          writeScopedStdout(
             `${DIM}  ⚠ Grounding: <${tag}> unreadable (${err instanceof Error ? err.message : err})${RESET}\n`,
           );
         }
@@ -633,7 +790,10 @@ export async function dispatchToAgent(task: TaskDispatch): Promise<TaskResult> {
   }
 
   // Layer 3: External Context Injection (Phase 21)
-  const rawKeywordSource = [task.featureDir ?? "", task.prompt ?? ""]
+  const rawKeywordSource = [
+    task.featureDir ?? "",
+    promptParts?.userInput ?? task.prompt ?? task.stdin ?? "",
+  ]
     .join(" ")
     .replace(/^specs\//, "")
     .replace(/^\d+-/, " ");
@@ -657,18 +817,14 @@ export async function dispatchToAgent(task: TaskDispatch): Promise<TaskResult> {
   }
 
   // ADR-008 Layer 1: Inject <command_safety> block into prompt stdin
-  if (
-    (stdinPayload || task.prompt) &&
-    !stdinPayload.includes("<command_safety>")
-  ) {
-    stdinPayload = stdinPayload
-      ? `${COMMAND_SAFETY_BLOCK}\n\n${stdinPayload}`
-      : COMMAND_SAFETY_BLOCK;
+  if (stdinPayload && !hasCommandSafety) {
+    stdinPayload = `${COMMAND_SAFETY_BLOCK}\n\n${stdinPayload}`;
   }
 
   const dispatch = await adapter.dispatch({
-    ...task,
-    stdin: stdinPayload || task.stdin,
+    ...agentTask,
+    prompt: undefined,
+    stdin: stdinPayload || undefined,
   });
   if (
     stdinPayload &&

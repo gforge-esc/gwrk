@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import type { App } from "@slack/bolt";
+import { logCliError } from "../adapters/cli/output-scope.js";
 import type { PlanPhase } from "../db/plan.js";
 import { DriftDetector, type DriftResult } from "../engine/drift-detector.js";
 import { PlanStore } from "../engine/plan-store.js";
@@ -103,7 +104,7 @@ export class PlanHeartbeat {
   ) {
     const channelId = this.config.project.slack?.channelId;
     if (!channelId) {
-      console.error(
+      logCliError(
         "Heartbeat: no slack.channelId configured — skipping Slack report",
       );
       return;
@@ -133,7 +134,7 @@ export class PlanHeartbeat {
         text,
       });
     } catch (err) {
-      console.error("Failed to post heartbeat to Slack:", err);
+      logCliError("Failed to post heartbeat to Slack:", err);
     }
   }
 }

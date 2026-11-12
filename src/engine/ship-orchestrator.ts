@@ -15,6 +15,12 @@ import { EventEmitter } from "node:events";
 import fs from "node:fs";
 import path from "node:path";
 import {
+  logCliError,
+  logCliOutput,
+  warnCli,
+  writeScopedStdout,
+} from "../adapters/cli/output-scope.js";
+import {
   resolveReviewPlugin,
   validatePhaseScope,
 } from "../plugins/review-plugin.js";
@@ -24,6 +30,7 @@ import {
   extractFixLines,
   extractOpenTaskErrors,
 } from "../application/ship/index.js";
+import { WorkflowRuntime } from "../plugins/workflow-runtime.js";
 import {
   type TaskDispatch,
   type TaskResult,
@@ -70,7 +77,6 @@ import {
 } from "../utils/toolchain-mapper.js";
 import { appendFinding, findingsPath } from "./findings-ledger.js";
 import { detectProfile } from "./profile-detector.js";
-import { conditionPrompt } from "./prompt-conditioner.js";
 import { parseReturnedVerdict } from "./returned-verdict.js";
 import {
   type ShipRunConfig,
@@ -88,7 +94,7 @@ import { isIntegrationTestCommand, parseTestOutput } from "./test-runner.js";
 function startStageProgress(label: string) {
   return startProgress({
     label,
-    write: (chunk) => process.stdout.write(chunk),
+    write: (chunk) => writeScopedStdout(chunk),
     isTTY: process.stdout.isTTY === true,
     indent: "    ",
     frameMs: 150,
@@ -106,7 +112,7 @@ function withSpinner<T>(label: string, fn: () => T): T {
   const settle = (mark: string) => {
     progress.stop();
     const elapsed = Math.floor((Date.now() - start) / 1000);
-    process.stdout.write(`    ${mark} ${label} (${elapsed}s)\n`);
+    writeScopedStdout(`    ${mark} ${label} (${elapsed}s)\n`);
   };
 
   try {
@@ -133,7 +139,7 @@ async function withSpinnerAsync<T>(
   const settle = (mark: string) => {
     progress.stop();
     const elapsed = Math.floor((Date.now() - start) / 1000);
-    process.stdout.write(`    ${mark} ${label} (${elapsed}s)\n`);
+    writeScopedStdout(`    ${mark} ${label} (${elapsed}s)\n`);
   };
 
   try {
@@ -426,7 +432,7 @@ export class ShipOrchestrator extends EventEmitter {
     const phaseNum = this.config.phaseId
       .replace("phase-", "")
       .replace(/^0+/, "");
-    console.log(
+    logCliOutput(
       `\n▸ ship ${this.config.featureId} Phase ${phaseNum} (Iteration ${this.state.iteration}/${this.config.maxIterations})`,
     );
 
@@ -446,7 +452,7 @@ export class ShipOrchestrator extends EventEmitter {
       const branchName = this.branchName();
       const currentBranch = getCurrentBranch(this.config.cwd);
       if (currentBranch !== branchName) {
-        console.log(
+        logCliOutput(
           `  ⚠ Resuming from state but currently on ${currentBranch}. Checking out ${branchName}...`,
         );
         try {
@@ -455,7 +461,7 @@ export class ShipOrchestrator extends EventEmitter {
             stdio: "ignore",
           });
         } catch (err: unknown) {
-          console.error(
+          logCliError(
             `  ✗ Failed to checkout ${branchName}. Please checkout manually and retry.`,
           );
           return 1;
@@ -511,7 +517,9 @@ export class ShipOrchestrator extends EventEmitter {
       }
 
       if (!result.success) {
-        console.log(`  \x1b[31m✗ ${this.state.stage}\x1b[0m — ${result.error}`);
+        logCliOutput(
+          `  \x1b[31m✗ ${this.state.stage}\x1b[0m — ${result.error}`,
+        );
         this.emit("ship:failed", {
           featureId: this.config.featureId,
           phaseId: this.config.phaseId,
@@ -592,46 +600,16 @@ export class ShipOrchestrator extends EventEmitter {
     const beforeState = loadTaskState(featureDir);
 
     try {
-      // ADR-007: Resolve review prompt from plugin system (PROMPT.md),
-      // then dispatch with raw tool access. Review agents need native
-      // tool access (pnpm build, pnpm lint, gate scripts, jq, git)
-      // which WorkflowRuntime's WRITE_FILE guard blocks. The plugin
-      // system provides the full prompt; raw dispatch provides tool access.
-      let reviewPrompt = prompt;
-      try {
-        const { PluginLoader } = await import("../plugins/loader.js");
-        const loader = new PluginLoader({ projectDir: this.config.cwd });
-        const plugin = await loader.resolvePlugin(workflowName);
-        const promptPath = path.join(plugin.path, "PROMPT.md");
-        if (fs.existsSync(promptPath)) {
-          const basePrompt = fs.readFileSync(promptPath, "utf-8");
-          reviewPrompt = `${basePrompt}\n\n---\n\n## Scope Context\n\n${prompt}`;
-        }
-      } catch {
-        // Plugin resolution failed — fall through with the inline prompt.
-        // This is not fatal: the inline scope context is still useful.
-        console.warn(
-          `    ⚠ Could not resolve PROMPT.md for ${workflowName}, using inline prompt`,
-        );
-      }
-
-      // Phase 13: Project-aware prompt conditioning
-      const profile = await detectProfile(this.config.cwd);
-      const conditionedPrompt = conditionPrompt(reviewPrompt, profile);
-
-      const result = await this.dispatchWithFailback({
-        prompt: conditionedPrompt,
-        featureDir: `specs/${this.config.featureId}`,
-        agent: this.config.backend,
-        env: {},
-        quiet: true,
-      });
-
-      if (result.exitCode !== 0) {
+      const result = await this.runNativeWorkflow(
+        workflowName,
+        prompt,
+        "review",
+      );
+      if (result.status === "failure" || result.exitCode !== 0) {
         return {
           success: false,
-          exitCode: result.exitCode,
-          error: `${workflowName} agent exited ${result.exitCode}`,
+          exitCode: result.exitCode || 1,
+          error: `${workflowName} agent failed: ${result.errorType ?? result.exitCode}`,
         };
       }
 
@@ -676,7 +654,7 @@ export class ShipOrchestrator extends EventEmitter {
         result.stdout,
       );
       this.state.reviewVerdict = verdict;
-      console.log(
+      logCliOutput(
         `    ${workflowName}: ${verdict === "GO" ? "\x1b[32mGO\x1b[0m" : "\x1b[31mNO-GO\x1b[0m"}`,
       );
 
@@ -687,7 +665,7 @@ export class ShipOrchestrator extends EventEmitter {
     } catch (err: unknown) {
       const rawMsg = err instanceof Error ? err.message : String(err);
       const msg = rawMsg.length > 300 ? `${rawMsg.substring(0, 300)}…` : rawMsg;
-      console.error(`  ${workflowName} dispatch error: ${msg}`);
+      logCliError(`  ${workflowName} dispatch error: ${msg}`);
       return {
         success: false,
         exitCode: 1,
@@ -756,7 +734,7 @@ export class ShipOrchestrator extends EventEmitter {
       );
 
       if (ahead === 0) {
-        console.log(
+        logCliOutput(
           `  Branch ${branchName} is ${behind} commit(s) behind origin — fast-forwarding`,
         );
         git(`git merge --ff-only origin/${branchName}`);
@@ -771,7 +749,7 @@ export class ShipOrchestrator extends EventEmitter {
     } catch (err: unknown) {
       // The check itself failing must not block a ship — PR_CI still guards the
       // push. Say so rather than proceeding silently.
-      console.warn(
+      warnCli(
         `  ⚠ Could not compare ${branchName} with origin: ${err instanceof Error ? err.message : err}`,
       );
       return null;
@@ -779,7 +757,7 @@ export class ShipOrchestrator extends EventEmitter {
   }
 
   private async stageBranchSetup(): Promise<ShipStageResult> {
-    console.log("  ▸ BRANCH_SETUP");
+    logCliOutput("  ▸ BRANCH_SETUP");
     // FR-002: Dirty tree fail fast
     if (await isDirty(this.config.cwd)) {
       return {
@@ -795,7 +773,7 @@ export class ShipOrchestrator extends EventEmitter {
     // Already on the correct feature branch — no checkout or merge needed.
     // The develop merge happens at PR merge time, not during ship.
     if (currentBranch === branchName) {
-      console.log(`  Branch ${branchName} — already checked out`);
+      logCliOutput(`  Branch ${branchName} — already checked out`);
       const pushable = this.ensurePushable(branchName);
       if (pushable) return pushable;
       this.state.branchName = branchName;
@@ -822,7 +800,7 @@ export class ShipOrchestrator extends EventEmitter {
             cwd: this.config.cwd,
             stdio: ["ignore", "ignore", "pipe"],
           });
-          console.log(`  Branch ${branchName} exists — checked out`);
+          logCliOutput(`  Branch ${branchName} exists — checked out`);
           const pushable = this.ensurePushable(branchName);
           if (pushable) return pushable;
           this.state.branchName = branchName;
@@ -856,10 +834,10 @@ export class ShipOrchestrator extends EventEmitter {
    * current phase so the agent sees them as RED (not skipped).
    */
   private async stageActivateTests(): Promise<ShipStageResult> {
-    console.log("  ▸ ACTIVATE_TESTS");
+    logCliOutput("  ▸ ACTIVATE_TESTS");
     const testFiles = await this.getPhaseTestFiles();
     if (testFiles.length === 0) {
-      console.log("  ⏭ no phase-scoped test files found");
+      logCliOutput("  ⏭ no phase-scoped test files found");
       return { success: true, exitCode: 0 };
     }
 
@@ -870,7 +848,7 @@ export class ShipOrchestrator extends EventEmitter {
     );
 
     if (activated > 0) {
-      console.log(
+      logCliOutput(
         `  ✓ activated ${activated} test file(s): ${files.join(", ")}`,
       );
       try {
@@ -896,7 +874,7 @@ export class ShipOrchestrator extends EventEmitter {
         // suite that discovered nothing or all-cancelled must NO-GO here — not
         // pass vacuously — so the same hole TEST_GATE closes can't sneak in
         // through ACTIVATE_TESTS.
-        console.log(
+        logCliOutput(
           "  ✗ ACTIVATE_TESTS: activated tests executed 0 tests — cannot establish RED (ADR-005 §10.2.1)",
         );
         return {
@@ -907,7 +885,7 @@ export class ShipOrchestrator extends EventEmitter {
         };
       }
       if (red.testsRun > 0 && red.failCount === 0) {
-        console.log(
+        logCliOutput(
           "  ✗ ACTIVATE_TESTS: activated tests PASS before implementation — not RED (ADR-005 §10.2.3)",
         );
         return {
@@ -917,11 +895,11 @@ export class ShipOrchestrator extends EventEmitter {
             "Activated phase tests are not RED (they pass before implementation) — a test that cannot fail cannot verify",
         };
       }
-      console.log(
+      logCliOutput(
         `  ✓ RED: ${red.failCount} failing test(s) before implementation (${red.testsRun} ran)`,
       );
     } else {
-      console.log("  ⏭ all tests already active");
+      logCliOutput("  ⏭ all tests already active");
     }
 
     return { success: true, exitCode: 0 };
@@ -965,16 +943,16 @@ export class ShipOrchestrator extends EventEmitter {
         task.status = "open";
         task.completedAt = undefined;
         reopenedCount++;
-        console.log(`  ✗ post-flight FAIL: ${task.id} — ${gateLabel}`);
+        logCliOutput(`  ✗ post-flight FAIL: ${task.id} — ${gateLabel}`);
         const failNote = `\n\nPOST-FLIGHT GATE FAIL: ${gateLabel} exited non-zero.\n  OUTPUT: ${gateResult.output.slice(0, 200)}`;
         task.description = (task.description || "") + failNote;
       } else {
-        console.log(`  ✓ post-flight PASS: ${task.id}`);
+        logCliOutput(`  ✓ post-flight PASS: ${task.id}`);
       }
     }
     if (reopenedCount > 0) {
       saveTaskState(featureDir, postFlightState);
-      console.log(
+      logCliOutput(
         `  ⚠ ${reopenedCount} task(s) failed post-flight gates — will retry`,
       );
       return {
@@ -1018,7 +996,7 @@ export class ShipOrchestrator extends EventEmitter {
       if (fs.existsSync(gatePath)) {
         const gateResult = await runGate(gatePath, { cwd: this.config.cwd });
         if (gateResult.passed) {
-          console.log(`  ✓ pre-flight PASS: ${task.id}`);
+          logCliOutput(`  ✓ pre-flight PASS: ${task.id}`);
           // Mark task as completed in state
           task.status = "completed";
           task.completedAt = new Date().toISOString();
@@ -1042,31 +1020,22 @@ export class ShipOrchestrator extends EventEmitter {
       return { success: true, exitCode: 0, nextStage: ShipStage.BUILD_CHECK };
     }
 
-    // FR-019: dispatchToAgent
     try {
       const isRetry = this.state.iteration > 1;
       const prompt = isRetry
         ? this.buildRetryPrompt(tasksToDispatch)
         : this.buildInitialPrompt(tasksToDispatch);
-
-      // Phase 13: Project-aware prompt conditioning
-      const profile = await detectProfile(this.config.cwd);
-      const conditionedPrompt = conditionPrompt(prompt, profile);
-
       const taskIds = tasksToDispatch.map((t) => t.id).join(", ");
-      console.log(
+      logCliOutput(
         `  ▸ IMPLEMENT  ${isRetry ? `retry (${this.state.iteration}/${this.config.maxIterations})` : `${tasksToDispatch.length} task(s) (${taskIds})`}`,
       );
+      const result = await this.runNativeWorkflow(
+        "gwrk-implement",
+        prompt,
+        "implement",
+      );
 
-      const result = await this.dispatchWithFailback({
-        agent: this.config.backend,
-        workflow: "gwrk-implement",
-        featureDir: `specs/${this.config.featureId}`,
-        prompt: conditionedPrompt,
-        quiet: true,
-      });
-
-      if (result.exitCode === 0) {
+      if (result.exitCode === 0 && result.status !== "failure") {
         // Checkpoint: commit implementation work BEFORE code review.
         // revertSourceMutations() does `git checkout -- .` to undo review
         // agent edits. Without this commit, it wipes the implementation too.
@@ -1088,10 +1057,10 @@ export class ShipOrchestrator extends EventEmitter {
                 stdio: ["ignore", "pipe", "pipe"],
               },
             );
-            console.log("    ✓ implementation committed");
+            logCliOutput("    ✓ implementation committed");
           }
         } catch (commitErr: unknown) {
-          console.warn(
+          warnCli(
             `    ⚠ Could not commit implementation: ${commitErr instanceof Error ? commitErr.message : commitErr}`,
           );
           // Non-fatal: proceed to code review with uncommitted changes
@@ -1108,12 +1077,12 @@ export class ShipOrchestrator extends EventEmitter {
       }
       return {
         success: false,
-        exitCode: result.exitCode,
+        exitCode: result.exitCode || 1,
         error: `Agent implementation failed: ${result.errorType || "unknown"}`,
       };
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
-      console.error(`  IMPLEMENT dispatch error: ${msg}`);
+      logCliError(`  IMPLEMENT dispatch error: ${msg}`);
       return {
         success: false,
         exitCode: 1,
@@ -1128,7 +1097,7 @@ export class ShipOrchestrator extends EventEmitter {
    * the iteration retries — preventing broken builds from reaching review.
    */
   private async stageBuildCheck(): Promise<ShipStageResult> {
-    console.log("  ▸ BUILD_CHECK");
+    logCliOutput("  ▸ BUILD_CHECK");
 
     // Resolve the project's build command from its profile/toolchain (ADR-005
     // §11 / 004 FR-022). null = no build toolchain (cold-start Node phase, or an
@@ -1136,7 +1105,7 @@ export class ShipOrchestrator extends EventEmitter {
     const profile = await detectProfile(this.config.cwd);
     const buildCommand = getBuildCommand(profile, this.config.cwd);
     if (!buildCommand) {
-      console.log("  ✓ build skipped (no build toolchain)");
+      logCliOutput("  ✓ build skipped (no build toolchain)");
       return { success: true, exitCode: 0, nextStage: ShipStage.TEST_GATE };
     }
 
@@ -1146,7 +1115,7 @@ export class ShipOrchestrator extends EventEmitter {
         stdio: "pipe",
         timeout: 60_000, // 60s — build should never take longer
       });
-      console.log("  ✓ build passed");
+      logCliOutput("  ✓ build passed");
       return { success: true, exitCode: 0, nextStage: ShipStage.TEST_GATE };
     } catch (err: unknown) {
       // Capture both streams — tools write build errors to stdout as often as
@@ -1157,7 +1126,7 @@ export class ShipOrchestrator extends EventEmitter {
       const lastLines =
         combined.split("\n").slice(-15).join("\n") ||
         "(no build output captured)";
-      console.log(`  ✗ build FAILED:\n${lastLines}`);
+      logCliOutput(`  ✗ build FAILED:\n${lastLines}`);
 
       // Re-open tasks so the retry agent has work to do
       const featureDir = path.join(
@@ -1190,7 +1159,7 @@ export class ShipOrchestrator extends EventEmitter {
    * at BRANCH_SETUP. Pre-existing RED tests don't block unrelated work.
    */
   private async stageTestGate(): Promise<ShipStageResult> {
-    console.log("  ▸ TEST_GATE");
+    logCliOutput("  ▸ TEST_GATE");
 
     // ADR-005 §10.4 — a phase's integration Done-When targets (e.g. `make
     // test:auth`) run here under liveness, before the file-mapped suite.
@@ -1203,10 +1172,10 @@ export class ShipOrchestrator extends EventEmitter {
     // MUST actually execute and pass. A suite that discovered nothing or whose
     // tests all cancelled (testsRun === 0) is a FAIL, never "no regression".
     if (phaseTestFiles.length > 0) {
-      console.log(`    scoped to: ${phaseTestFiles.join(", ")}`);
+      logCliOutput(`    scoped to: ${phaseTestFiles.join(", ")}`);
       const r = await this.runTestSuite(phaseTestFiles);
       if (r.skipped) {
-        console.log("  ✓ tests skipped (no test toolchain)");
+        logCliOutput("  ✓ tests skipped (no test toolchain)");
         return { success: true, exitCode: 0, nextStage: ShipStage.CODE_REVIEW };
       }
       if (r.testsRun === 0) {
@@ -1221,7 +1190,7 @@ export class ShipOrchestrator extends EventEmitter {
         if (phaseGate) {
           const gate = this.runGateScript(phaseGate);
           if (gate.passed) {
-            console.log(
+            logCliOutput(
               `  ✓ TEST_GATE: Done-When gate passed (${this.config.phaseId}) — profile runner found 0 tests; verified via the phase gate`,
             );
             return {
@@ -1230,23 +1199,23 @@ export class ShipOrchestrator extends EventEmitter {
               nextStage: ShipStage.CODE_REVIEW,
             };
           }
-          console.log(
+          logCliOutput(
             `  ✗ TEST_GATE: Done-When gate failed for ${this.config.phaseId} ('${gate.offendingLine}')`,
           );
           return this.handleNoGo("TEST_GATE");
         }
-        console.log(
+        logCliOutput(
           "  ✗ TEST_GATE: phase tests executed 0 tests (none discovered / all cancelled) — not a pass",
         );
         return this.handleNoGo("TEST_GATE");
       }
       if (r.failCount > 0) {
-        console.log(
+        logCliOutput(
           `  ✗ TEST_GATE: ${r.failCount} failing test(s) in phase suite (${r.testsRun} ran)`,
         );
         return this.handleNoGo("TEST_GATE");
       }
-      console.log(
+      logCliOutput(
         `  ✓ tests: ${r.passed} passed, 0 failed (${r.testsRun} ran)`,
       );
 
@@ -1270,12 +1239,12 @@ export class ShipOrchestrator extends EventEmitter {
     if (phaseGate) {
       const gate = this.runGateScript(phaseGate);
       if (gate.passed) {
-        console.log(
+        logCliOutput(
           `  ✓ TEST_GATE: Done-When gate passed (${this.config.phaseId})`,
         );
         return { success: true, exitCode: 0, nextStage: ShipStage.CODE_REVIEW };
       }
-      console.log(
+      logCliOutput(
         `  ✗ TEST_GATE: Done-When gate failed for ${this.config.phaseId} ('${gate.offendingLine}')`,
       );
       return this.handleNoGo("TEST_GATE");
@@ -1283,18 +1252,18 @@ export class ShipOrchestrator extends EventEmitter {
 
     const wholeSuite = await this.runTestSuite(phaseTestFiles);
     if (wholeSuite.skipped) {
-      console.log("  ✓ tests skipped (no test toolchain)");
+      logCliOutput("  ✓ tests skipped (no test toolchain)");
       return { success: true, exitCode: 0, nextStage: ShipStage.CODE_REVIEW };
     }
     const { failCount, output } = wholeSuite;
     const baseline = this.state.testBaseline ?? 0;
 
     if (failCount === 0) {
-      console.log("  ✓ tests passed (0 failures)");
+      logCliOutput("  ✓ tests passed (0 failures)");
       return { success: true, exitCode: 0, nextStage: ShipStage.CODE_REVIEW };
     }
     if (failCount <= baseline) {
-      console.log(
+      logCliOutput(
         `  ✓ tests: ${failCount} failure(s) — baseline was ${baseline}, no regression`,
       );
       return { success: true, exitCode: 0, nextStage: ShipStage.CODE_REVIEW };
@@ -1302,7 +1271,7 @@ export class ShipOrchestrator extends EventEmitter {
 
     const regressionCount = failCount - baseline;
     const lastLines = output.split("\n").slice(-20).join("\n");
-    console.log(
+    logCliOutput(
       `  ✗ TEST_GATE: ${regressionCount} new failure(s) (${failCount} total, baseline ${baseline}):\n${lastLines}`,
     );
 
@@ -1356,7 +1325,7 @@ export class ShipOrchestrator extends EventEmitter {
     if (commands.length === 0) return null;
 
     for (const cmd of commands) {
-      console.log(`    integration: ${cmd}`);
+      logCliOutput(`    integration: ${cmd}`);
       let output: string;
       try {
         output = execSync(cmd, {
@@ -1371,18 +1340,18 @@ export class ShipOrchestrator extends EventEmitter {
       }
       const { testsRun, passed, failed } = parseTestOutput(output);
       if (testsRun === 0) {
-        console.log(
+        logCliOutput(
           `  ✗ TEST_GATE: integration target ran 0 tests (\`${cmd}\`) — liveness fail (ADR-005 §10.2.1)`,
         );
         return this.handleNoGo("TEST_GATE");
       }
       if (failed > 0) {
-        console.log(
+        logCliOutput(
           `  ✗ TEST_GATE: ${failed} failing in integration target \`${cmd}\` (${testsRun} ran)`,
         );
         return this.handleNoGo("TEST_GATE");
       }
-      console.log(
+      logCliOutput(
         `  ✓ integration: ${cmd} — ${passed} passed (${testsRun} ran)`,
       );
     }
@@ -1544,14 +1513,14 @@ export class ShipOrchestrator extends EventEmitter {
 
   /** Snapshot test failure count before IMPLEMENT touches anything. */
   private async captureTestBaseline(): Promise<void> {
-    console.log("  ▸ capturing test baseline...");
+    logCliOutput("  ▸ capturing test baseline...");
     const phaseTestFiles = await this.getPhaseTestFiles();
     if (phaseTestFiles.length > 0) {
-      console.log(`    scoped to: ${phaseTestFiles.join(", ")}`);
+      logCliOutput(`    scoped to: ${phaseTestFiles.join(", ")}`);
     }
     const { failCount } = await this.runTestSuite(phaseTestFiles);
     this.state.testBaseline = failCount;
-    console.log(`  ✓ baseline: ${failCount} pre-existing failure(s)`);
+    logCliOutput(`  ✓ baseline: ${failCount} pre-existing failure(s)`);
 
     // A second, whole-repo baseline. TEST_GATE compares against it to catch a
     // break this phase caused outside its own scope. With no scope the run
@@ -1562,7 +1531,7 @@ export class ShipOrchestrator extends EventEmitter {
     }
     const whole = await this.runTestSuite([]);
     this.state.fullSuiteBaseline = whole.skipped ? 0 : whole.failCount;
-    console.log(
+    logCliOutput(
       `  ✓ baseline: ${this.state.fullSuiteBaseline} pre-existing failure(s) repo-wide`,
     );
   }
@@ -1592,27 +1561,27 @@ export class ShipOrchestrator extends EventEmitter {
     const whole = await this.runTestSuite([]);
     if (whole.skipped || whole.testsRun === 0) return null;
     if (whole.failCount <= baseline) {
-      console.log(
+      logCliOutput(
         `  ✓ repo-wide: ${whole.failCount} failure(s), baseline ${baseline} — no regression outside the phase`,
       );
       return null;
     }
 
     const introduced = whole.failCount - baseline;
-    console.log(
+    logCliOutput(
       `  ✗ TEST_GATE: ${introduced} new failure(s) outside this phase's suites (${whole.failCount} repo-wide, baseline ${baseline}).`,
     );
-    console.log(
+    logCliOutput(
       "    The phase's own tests pass. CI runs everything and would fail on these.",
     );
     const tail = whole.output.split("\n").slice(-20).join("\n");
-    if (tail.trim()) console.log(tail);
+    if (tail.trim()) logCliOutput(tail);
 
     return this.handleNoGo("TEST_GATE");
   }
 
   private async stageCodeReview(): Promise<ShipStageResult> {
-    console.log("  ▸ CODE_REVIEW");
+    logCliOutput("  ▸ CODE_REVIEW");
     const plugin = await resolveReviewPlugin(this.config.cwd);
 
     // Scope code review to THIS phase's tasks only.
@@ -1671,7 +1640,7 @@ export class ShipOrchestrator extends EventEmitter {
   }
 
   private async stageUatReview(): Promise<ShipStageResult> {
-    console.log("  ▸ UAT_REVIEW");
+    logCliOutput("  ▸ UAT_REVIEW");
     const plugin = await resolveReviewPlugin(this.config.cwd);
 
     // Scope UAT prompt to phase-specific user stories.
@@ -1843,7 +1812,7 @@ export class ShipOrchestrator extends EventEmitter {
     if (!phase) return "NO-GO";
 
     if (findings.descriptionOnly.size > 0) {
-      console.log(
+      logCliOutput(
         `    ⚠ ${findings.descriptionOnly.size} finding(s) arrived as a REVIEW FAIL block with the task status left unchanged: ${[...findings.descriptionOnly].join(", ")}`,
       );
     }
@@ -1878,7 +1847,7 @@ export class ShipOrchestrator extends EventEmitter {
         // vacuous GO. Common whenever a phase expresses Done-When as fenced
         // prose instead of per-task gates.
         if (hasFinding) {
-          console.log(
+          logCliOutput(
             `    ⚠ REVIEW FINDING: ${task.id} — ${mechanism}, and no gate covers it`,
           );
           ungatedFindings.push(task.id);
@@ -1909,7 +1878,7 @@ export class ShipOrchestrator extends EventEmitter {
           // the console read GO. Keep the finding: a passing gate covering a
           // review finding means the GATE has a coverage hole, and this is the
           // only moment the system can know that.
-          console.log(
+          logCliOutput(
             `    ⚠ REVIEW/GATE DIVERGENCE: ${task.id} — gate PASSES but review raised a finding (${mechanism})`,
           );
           divergentTasks.push(task.id);
@@ -1925,9 +1894,9 @@ export class ShipOrchestrator extends EventEmitter {
           task.completedAt = new Date().toISOString();
         }
       } else {
-        console.log(`    ⚠ Gate FAILED: ${task.id} (${gateResult.gatePath})`);
-        console.log(`      exit: ${gateResult.exitCode}`);
-        console.log(`      output: ${gateResult.output.slice(0, 500)}`);
+        logCliOutput(`    ⚠ Gate FAILED: ${task.id} (${gateResult.gatePath})`);
+        logCliOutput(`      exit: ${gateResult.exitCode}`);
+        logCliOutput(`      output: ${gateResult.output.slice(0, 500)}`);
         task.status = "open";
         task.completedAt = undefined;
         // Inject gate output so DIAGNOSE can analyze the failure
@@ -1943,20 +1912,20 @@ export class ShipOrchestrator extends EventEmitter {
 
     if (divergentTasks.length > 0) {
       this.state.reviewGateDivergence = divergentTasks;
-      console.log(
+      logCliOutput(
         `    ✗ ${divergentTasks.length} task(s) pass their gate but carry a review finding: ${divergentTasks.join(", ")}`,
       );
-      console.log(
+      logCliOutput(
         "      Treating as NO-GO. A green gate over a review finding is a gate coverage hole, not a cleared finding.",
       );
       return "NO-GO";
     }
 
     if (ungatedFindings.length > 0) {
-      console.log(
+      logCliOutput(
         `    ✗ ${ungatedFindings.length} task(s) carry a review finding with no gate to check them: ${ungatedFindings.join(", ")}`,
       );
-      console.log(
+      logCliOutput(
         "      Treating as NO-GO. An ungated task's review IS its verdict — there is nothing else to consult.",
       );
       return "NO-GO";
@@ -1965,13 +1934,13 @@ export class ShipOrchestrator extends EventEmitter {
     if (failedCount > 0) {
       this.state.gateResult = "FAIL";
       const openTasks = phase.tasks.filter((t: Task) => t.status === "open");
-      console.log(
+      logCliOutput(
         `    ${openTasks.length} task(s) re-opened: ${openTasks.map((t) => t.id).join(", ")}`,
       );
       for (const task of openTasks) {
         if (task.description) {
           const firstLine = task.description.split("\n")[0].trim();
-          console.log(`      ${task.id}: ${firstLine}`);
+          logCliOutput(`      ${task.id}: ${firstLine}`);
         }
       }
       return "NO-GO";
@@ -2012,14 +1981,14 @@ export class ShipOrchestrator extends EventEmitter {
     // NO-GO the returned verdict changes nothing, but it is a second signal
     // saying the same thing — and an operator reading the log is better off
     // knowing the agent agreed than inferring it from a re-opened task alone.
-    console.log(
+    logCliOutput(
       '    ✗ RETURNED VERDICT: the review agent returned "verdict": "NO-GO" in its structured output',
     );
     if (computed === "NO-GO") return computed;
 
     // This is the one NO-GO with no failing gate and no re-opened task behind
     // it, so without this line there is nothing for an operator to act on.
-    console.log(
+    logCliOutput(
       "      Treating as NO-GO. Gates passed and no task carries a finding, so this verdict rests on the agent's returned output alone — read its summary for what it found.",
     );
     return "NO-GO";
@@ -2079,7 +2048,7 @@ export class ShipOrchestrator extends EventEmitter {
       });
     } catch (err) {
       // Non-fatal: if git restore fails, the pre-commit hook will catch issues
-      console.warn(
+      warnCli(
         `    ⚠ Could not revert review mutations: ${err instanceof Error ? err.message : err}`,
       );
       return;
@@ -2179,7 +2148,7 @@ ${marker}`;
         if (!isTransientGhError(msg) || attempt >= delays.length) throw err;
         const wait = delays[attempt];
         attempt++;
-        console.log(
+        logCliOutput(
           `    ⚠ GitHub returned a transient error — retrying in ${wait / 1000}s (${attempt}/${delays.length})`,
         );
         await this.sleep(wait);
@@ -2220,10 +2189,10 @@ ${marker}`;
             : String(requiredErr);
 
         if (NO_REQUIRED_CHECKS.test(msg)) {
-          console.log(
+          logCliOutput(
             "    No required checks on the base branch — waiting on all checks instead.",
           );
-          console.log(
+          logCliOutput(
             "      (Add branch protection to make the required-check gate meaningful.)",
           );
           break;
@@ -2233,13 +2202,13 @@ ${marker}`;
         if (!CHECKS_ABSENT.test(msg)) throw requiredErr;
 
         if (attempt >= ABSENCE_POLL_ATTEMPTS) {
-          console.log(
+          logCliOutput(
             `    Still no check runs after ${attempt} queries — waiting on all checks instead.`,
           );
           break;
         }
 
-        console.log(
+        logCliOutput(
           `    No check runs registered yet — re-querying in ${ABSENCE_POLL_MS / 1000}s (${attempt}/${ABSENCE_POLL_ATTEMPTS}).`,
         );
         await this.sleep(ABSENCE_POLL_MS);
@@ -2251,7 +2220,7 @@ ${marker}`;
     } catch (anyErr: unknown) {
       const msg = anyErr instanceof Error ? anyErr.message : String(anyErr);
       if (CHECKS_ABSENT.test(msg)) {
-        console.log("  No CI checks configured — skipping CI wait.");
+        logCliOutput("  No CI checks configured — skipping CI wait.");
         return;
       }
       throw anyErr; // Re-throw real CI failures
@@ -2259,7 +2228,7 @@ ${marker}`;
   }
 
   private async stagePrCi(): Promise<ShipStageResult> {
-    console.log("  ▸ PR_CI");
+    logCliOutput("  ▸ PR_CI");
     const branchName = this.state.branchName;
     const specName = this.config.featureId;
 
@@ -2336,7 +2305,7 @@ ${marker}`;
 
       if (porcelain) {
         const changeCount = porcelain.split("\n").length;
-        console.log(`    committing ${changeCount} change(s)`);
+        logCliOutput(`    committing ${changeCount} change(s)`);
         execSync("git add -A", { cwd: this.config.cwd });
         const phaseNum = this.config.phaseId
           .replace("phase-", "")
@@ -2457,7 +2426,7 @@ ${marker}`;
           // A stale title is not worth failing a green phase over.
           const editMsg =
             editErr instanceof Error ? editErr.message : String(editErr);
-          console.warn(`    ⚠ Could not update PR #${prNumber}: ${editMsg}`);
+          warnCli(`    ⚠ Could not update PR #${prNumber}: ${editMsg}`);
         }
       }
 
@@ -2478,7 +2447,7 @@ ${marker}`;
             createMsg.includes("same as base branch")
           ) {
             // Code is already on develop — nothing to PR. This is success.
-            console.log(
+            logCliOutput(
               "    ✓ No diff between branches — code already on develop. Merging branch.",
             );
             try {
@@ -2515,7 +2484,7 @@ ${marker}`;
         } catch {
           /* best-effort URL resolution */
         }
-        console.log(`    PR #${prNumber} ready`);
+        logCliOutput(`    PR #${prNumber} ready`);
         // gh pr checks blocks until finished, returning non-zero if failed.
         // If no required checks are configured, treat as pass.
         await this.waitForChecks(prNumber);
@@ -2660,7 +2629,7 @@ ${marker}`;
     // Route through DIAGNOSE before retrying IMPLEMENT.
     // DIAGNOSE uses a thinking model to analyze the error and produce
     // targeted fix instructions, preventing blind retry loops.
-    console.log(
+    logCliOutput(
       `  ↻ NO-GO → DIAGNOSE → IMPLEMENT (${this.state.iteration}/${this.config.maxIterations})`,
     );
     return { success: true, exitCode: 0, nextStage: ShipStage.DIAGNOSE };
@@ -2683,7 +2652,7 @@ ${marker}`;
    * The implement agent then executes the fix with full tool access.
    */
   private async stageDiagnose(): Promise<ShipStageResult> {
-    console.log("  ▸ DIAGNOSE");
+    logCliOutput("  ▸ DIAGNOSE");
     const featureDir = path.join(
       this.config.cwd,
       "specs",
@@ -2703,7 +2672,7 @@ ${marker}`;
     const errorContext = extractOpenTaskErrors(phase.tasks);
 
     if (errorContext.length === 0) {
-      console.log("    ⏭ no error context to diagnose");
+      logCliOutput("    ⏭ no error context to diagnose");
       return { success: true, exitCode: 0, nextStage: ShipStage.IMPLEMENT };
     }
 
@@ -2735,6 +2704,8 @@ ${marker}`;
         agent: this.config.backend,
         prompt: diagnosisPrompt,
         featureDir: `specs/${this.config.featureId}`,
+        workDir: this.config.cwd,
+        backendProjectRoot: this.config.stateRoot ?? this.config.cwd,
         quiet: true,
       });
 
@@ -2743,7 +2714,7 @@ ${marker}`;
 
         if (fixLines.length > 0) {
           const fixBlock = `\n\nDIAGNOSIS (iteration ${this.state.iteration}):\n${fixLines.join("\n")}`;
-          console.log(
+          logCliOutput(
             `    ✓ diagnosis produced ${fixLines.length} fix instruction(s)`,
           );
 
@@ -2755,16 +2726,16 @@ ${marker}`;
           }
           saveTaskState(featureDir, taskState);
         } else {
-          console.log("    ⚠ diagnosis produced no FIX: lines");
+          logCliOutput("    ⚠ diagnosis produced no FIX: lines");
         }
       } else {
-        console.log(
+        logCliOutput(
           `    ⚠ diagnosis dispatch failed (exit ${result.exitCode}), proceeding to IMPLEMENT anyway`,
         );
       }
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
-      console.log(
+      logCliOutput(
         `    ⚠ diagnosis error: ${msg}, proceeding to IMPLEMENT anyway`,
       );
     }
@@ -2773,20 +2744,43 @@ ${marker}`;
     return { success: true, exitCode: 0, nextStage: ShipStage.IMPLEMENT };
   }
 
+  private async runNativeWorkflow(
+    workflow: string,
+    input: string,
+    taskType: "implement" | "review",
+  ): Promise<TaskResult> {
+    const { taskResult } = await new WorkflowRuntime().executeWorkflow(
+      workflow,
+      input,
+      {
+        projectRoot: this.config.cwd,
+        agent: this.config.backend,
+        featureDir: `specs/${this.config.featureId}`,
+        taskType,
+        nativeOnly: true,
+        allowMissingPrompt: true,
+        dispatcher: (task) => this.dispatchWithFailback(task),
+        quiet: true,
+      },
+    );
+    return taskResult;
+  }
+
   /**
    * Dispatch with the Router-selected model when provided; otherwise the backend
    * runs with its own default model.
    */
   private async dispatchWithFailback(task: TaskDispatch): Promise<TaskResult> {
     const env: Record<string, string> = { ...task.env };
-    const model = this.config.selectedModel;
-
-    // 1. Use Router-selected model if available (FR-008/009)
-    if (model) {
-      if (this.config.backend === "claude") env.CLAUDE_MODEL = model;
-      if (this.config.backend === "codex") env.CODEX_MODEL = model;
-      console.log(`    🤖 Router model: ${model}`);
-    }
+    const review = task.type === "review";
+    const model =
+      task.model ??
+      (review ? this.config.reviewModel : this.config.selectedModel);
+    const effort = review
+      ? this.config.reviewEffort
+      : this.config.selectedEffort;
+    if (effort) env.GWRK_EFFORT = effort;
+    if (model) logCliOutput(`    🤖 Router model: ${model}`);
 
     // 2. Dispatch — run the agent in the ship working tree (cwd), not
     // process.cwd(). Identical for the primary checkout; under worktree-isolated
@@ -2796,9 +2790,15 @@ ${marker}`;
     // verdict is answered once; an agent the host suspended or the network cut
     // off never answered at all, and failing the phase on that discards work
     // every earlier stage already proved good.
-    const workDir = task.workDir ?? this.config.cwd;
+    const dispatch = {
+      ...task,
+      model,
+      env,
+      workDir: task.workDir ?? this.config.cwd,
+      backendProjectRoot: this.config.stateRoot ?? this.config.cwd,
+    };
 
-    let result = await dispatchToAgent({ ...task, model, env, workDir });
+    let result = await dispatchToAgent(dispatch);
 
     for (
       let attempt = 0;
@@ -2808,11 +2808,11 @@ ${marker}`;
       attempt++
     ) {
       const wait = AGENT_RETRY_DELAYS_MS[attempt];
-      console.log(
+      logCliOutput(
         `    ⚠ agent dispatch interrupted by the environment — retrying in ${wait / 1000}s (${attempt + 1}/${AGENT_RETRY_DELAYS_MS.length})`,
       );
       await this.sleep(wait);
-      result = await dispatchToAgent({ ...task, model, env, workDir });
+      result = await dispatchToAgent(dispatch);
     }
 
     if (result.usage) {

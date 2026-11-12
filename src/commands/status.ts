@@ -5,6 +5,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { Command } from "commander";
+import { logCliOutput } from "../adapters/cli/output-scope.js";
 import { quotaProbe } from "../engine/quota.js";
 import { AgentBackendRegistry } from "../plugins/agent-registry.js";
 import { PluginLoader } from "../plugins/loader.js";
@@ -18,12 +19,13 @@ import { withSignal } from "../utils/signal.js";
 
 const { BOLD, DIM, CYAN, GREEN, YELLOW, RED, RESET } = color;
 
-export const statusCommand = new Command("status")
-  .description("Show gwrk build server and system status")
-  .option("--json", "Output status as JSON")
-  .addHelpText(
-    "after",
-    `
+export const createStatusCommand = () =>
+  new Command("status")
+    .description("Show gwrk build server and system status")
+    .option("--json", "Output status as JSON")
+    .addHelpText(
+      "after",
+      `
 Type: query (read-only)
 Format: use gwrk --format json for structured output
 Exit codes:
@@ -31,90 +33,96 @@ Exit codes:
   1: Server not responding or config missing
   2: Usage error
 `,
-  )
-  .action(async (options, command) => {
-    await withSignal("status", async () => {
-      const out = options.json ? createOutput("json") : resolveFormat(command);
+    )
+    .action(async (options, command) => {
+      await withSignal("status", async () => {
+        const out = options.json
+          ? createOutput("json")
+          : resolveFormat(command);
 
-      const projectRoot = process.cwd();
-      const config = loadConfig(projectRoot);
+        const projectRoot = process.cwd();
+        const config = loadConfig(projectRoot);
 
-      if (out.isJson) {
-        const branch = getCurrentBranch(projectRoot);
-        const isDirty = !isWorkingTreeClean(projectRoot);
-        const specsDir = path.join(projectRoot, "specs");
-        const specs = fs.existsSync(specsDir)
-          ? fs
-              .readdirSync(specsDir)
-              .filter((d) => fs.statSync(path.join(specsDir, d)).isDirectory())
-          : [];
+        if (out.isJson) {
+          const branch = getCurrentBranch(projectRoot);
+          const isDirty = !isWorkingTreeClean(projectRoot);
+          const specsDir = path.join(projectRoot, "specs");
+          const specs = fs.existsSync(specsDir)
+            ? fs
+                .readdirSync(specsDir)
+                .filter((d) =>
+                  fs.statSync(path.join(specsDir, d)).isDirectory(),
+                )
+            : [];
 
-        const statusData: Record<string, unknown> = {
-          project: {
-            name: config.project.name,
-            root: projectRoot,
-            git: { branch, clean: !isDirty },
-          },
-          specs: specs.length,
-          agents: config.agents,
-        };
+          const statusData: Record<string, unknown> = {
+            project: {
+              name: config.project.name,
+              root: projectRoot,
+              git: { branch, clean: !isDirty },
+            },
+            specs: specs.length,
+            agents: config.agents,
+          };
+
+          const pid = readPid();
+          if (pid) {
+            const url = `http://${config.server.host}:${config.server.port}/api/status`;
+            try {
+              const response = await fetch(url);
+              if (response.ok) {
+                const serverStatus = (await response.json()) as SystemStatus;
+                statusData.server = serverStatus.server;
+                statusData.system = serverStatus.system;
+                statusData.dispatch = serverStatus.dispatch;
+                statusData.sandboxes = serverStatus.sandboxes;
+                statusData.network = serverStatus.network;
+              }
+            } catch (err) {
+              // Ignore fetch errors in JSON mode, just return project info
+            }
+          }
+
+          out.write(statusData);
+          return;
+        }
 
         const pid = readPid();
-        if (pid) {
-          const url = `http://${config.server.host}:${config.server.port}/api/status`;
-          try {
-            const response = await fetch(url);
-            if (response.ok) {
-              const serverStatus = (await response.json()) as SystemStatus;
-              statusData.server = serverStatus.server;
-              statusData.system = serverStatus.system;
-              statusData.dispatch = serverStatus.dispatch;
-              statusData.sandboxes = serverStatus.sandboxes;
-              statusData.network = serverStatus.network;
-            }
-          } catch (err) {
-            // Ignore fetch errors in JSON mode, just return project info
+
+        if (!pid) {
+          logCliOutput(
+            `\n  ${RED}●${RESET} ${BOLD}gwrk server is stopped${RESET}`,
+          );
+          logCliOutput(`    Run 'gwrk server start' to start the server.\n`);
+          await printAgents();
+          return;
+        }
+
+        const url = `http://${config.server.host}:${config.server.port}/api/status`;
+
+        try {
+          const response = await fetch(url);
+          if (!response.ok) {
+            throw new Error(`Server returned ${response.status}`);
           }
+
+          const status = (await response.json()) as SystemStatus;
+          printStatus(status);
+          await printAgents();
+        } catch (err) {
+          logCliOutput(
+            `\n  ${YELLOW}●${RESET} ${BOLD}gwrk server (PID ${pid}) is not responding${RESET}`,
+          );
+          logCliOutput(`    ${DIM}Endpoint: ${url}${RESET}\n`);
+          await printAgents();
         }
-
-        out.write(statusData);
-        return;
-      }
-
-      const pid = readPid();
-
-      if (!pid) {
-        console.log(
-          `\n  ${RED}●${RESET} ${BOLD}gwrk server is stopped${RESET}`,
-        );
-        console.log(`    Run 'gwrk server start' to start the server.\n`);
-        await printAgents();
-        return;
-      }
-
-      const url = `http://${config.server.host}:${config.server.port}/api/status`;
-
-      try {
-        const response = await fetch(url);
-        if (!response.ok) {
-          throw new Error(`Server returned ${response.status}`);
-        }
-
-        const status = (await response.json()) as SystemStatus;
-        printStatus(status);
-        await printAgents();
-      } catch (err) {
-        console.log(
-          `\n  ${YELLOW}●${RESET} ${BOLD}gwrk server (PID ${pid}) is not responding${RESET}`,
-        );
-        console.log(`    ${DIM}Endpoint: ${url}${RESET}\n`);
-        await printAgents();
-      }
+      });
     });
-  });
+
+export const statusCommand = createStatusCommand();
 
 async function printAgents() {
-  console.log(`\n  ${CYAN}Agent Backends${RESET}`);
+  logCliOutput(`\n  ${CYAN}Agent Backends${RESET}`);
   const loader = new PluginLoader();
   const registry = new AgentBackendRegistry(loader);
   const backends = await registry.getBackends();
@@ -132,43 +140,46 @@ async function printAgents() {
       case "exhausted":
         statusStr = `${RED}Exhausted${RESET}`;
         break;
+      case "unknown":
+        statusStr = `${DIM}Unknown quota${RESET}`;
+        break;
       case "unavailable":
         statusStr = `${RED}Unavailable${RESET}`;
         break;
     }
-    console.log(`    ${DIM}${backendName.padEnd(12)}${RESET} | ${statusStr}`);
+    logCliOutput(`    ${DIM}${backendName.padEnd(12)}${RESET} | ${statusStr}`);
   }
 }
 
 function printStatus(status: SystemStatus) {
   const { server, system, dispatch, sandboxes } = status;
 
-  console.log(`\n  ${GREEN}●${RESET} ${BOLD}gwrk server is running${RESET}`);
-  console.log(`    ${DIM}PID:    ${RESET}${server.pid}`);
-  console.log(`    ${DIM}Uptime: ${RESET}${formatUptime(server.uptime || 0)}`);
-  console.log(`    ${DIM}Port:   ${RESET}${server.port}`);
+  logCliOutput(`\n  ${GREEN}●${RESET} ${BOLD}gwrk server is running${RESET}`);
+  logCliOutput(`    ${DIM}PID:    ${RESET}${server.pid}`);
+  logCliOutput(`    ${DIM}Uptime: ${RESET}${formatUptime(server.uptime || 0)}`);
+  logCliOutput(`    ${DIM}Port:   ${RESET}${server.port}`);
 
-  console.log(`\n  ${CYAN}System Resources${RESET}`);
-  console.log(`    ${DIM}CPU:    ${RESET}${formatPercent(system.cpuPercent)}`);
-  console.log(`    ${DIM}Memory: ${RESET}${formatPercent(system.memPercent)}`);
-  console.log(`    ${DIM}Disk:   ${RESET}${system.diskFreeGb} GB free`);
+  logCliOutput(`\n  ${CYAN}System Resources${RESET}`);
+  logCliOutput(`    ${DIM}CPU:    ${RESET}${formatPercent(system.cpuPercent)}`);
+  logCliOutput(`    ${DIM}Memory: ${RESET}${formatPercent(system.memPercent)}`);
+  logCliOutput(`    ${DIM}Disk:   ${RESET}${system.diskFreeGb} GB free`);
 
-  console.log(`\n  ${CYAN}Dispatch Queue${RESET}`);
-  console.log(`    ${DIM}Queued:    ${RESET}${dispatch.queueDepth}`);
-  console.log(`    ${DIM}Active:    ${RESET}${dispatch.activeCount}`);
-  console.log(`    ${DIM}Completed: ${RESET}${dispatch.completedCount}`);
-  console.log(`    ${DIM}Failed:    ${RESET}${dispatch.failedCount}`);
+  logCliOutput(`\n  ${CYAN}Dispatch Queue${RESET}`);
+  logCliOutput(`    ${DIM}Queued:    ${RESET}${dispatch.queueDepth}`);
+  logCliOutput(`    ${DIM}Active:    ${RESET}${dispatch.activeCount}`);
+  logCliOutput(`    ${DIM}Completed: ${RESET}${dispatch.completedCount}`);
+  logCliOutput(`    ${DIM}Failed:    ${RESET}${dispatch.failedCount}`);
 
   if (sandboxes.length > 0) {
-    console.log(`\n  ${CYAN}Active Sandboxes${RESET}`);
+    logCliOutput(`\n  ${CYAN}Active Sandboxes${RESET}`);
     for (const sb of sandboxes) {
-      console.log(
+      logCliOutput(
         `    ${DIM}${sb.taskId.padEnd(12)}${RESET} | ${sb.featureId} | ${sb.phaseId} | ${sb.status}`,
       );
     }
   }
 
-  console.log("");
+  logCliOutput("");
 }
 
 function formatUptime(seconds: number): string {

@@ -91,13 +91,13 @@ describe("Issue #201: Ontology construction methodology, prompt reuse, and domai
       projectRoot: repoRoot,
       agent: "agy",
     });
-    const constructPrompt = spy.mock.calls[0][0].prompt ?? "";
+    const constructPrompt = spy.mock.calls[0][0].stdin ?? "";
 
     await runtime.executeWorkflow("gwrk-research-ontology", "Test input", {
       projectRoot: repoRoot,
       agent: "agy",
     });
-    const researchPrompt = spy.mock.calls[1][0].prompt ?? "";
+    const researchPrompt = spy.mock.calls[1][0].stdin ?? "";
     spy.mockRestore();
 
     // Extract everything before <output_contract>

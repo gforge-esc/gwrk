@@ -11,8 +11,7 @@ import { resolveEnforcementSkills } from "./skill-runtime.js";
 vi.mock("node:fs");
 vi.mock("node:fs/promises");
 vi.mock("./loader.js");
-vi.mock("../engine/router.js");
-vi.mock("../utils/agent.js");
+vi.mock("../adapters/agents/index.js");
 
 describe("FR-014: resolveEnforcementSkills", () => {
   beforeEach(() => {
@@ -230,8 +229,9 @@ describe("FR-014: resolveEnforcementSkills", () => {
 
   it("FR-006: executeSkill passes preferredAgent and preferredModel to router and agent", async () => {
     const { executeSkill } = await import("./skill-runtime.js");
-    const { selectBackend } = await import("../engine/router.js");
-    const { dispatchToAgent } = await import("../utils/agent.js");
+    const { createAgentPortAdapter } = await import(
+      "../adapters/agents/index.js"
+    );
 
     vi.mocked(PluginLoader.prototype.resolvePlugin).mockResolvedValue({
       manifest: {
@@ -250,24 +250,35 @@ describe("FR-014: resolveEnforcementSkills", () => {
       status: "active",
     });
 
-    vi.mocked(selectBackend).mockResolvedValue({ name: "claude" } as any);
-    vi.mocked(dispatchToAgent).mockResolvedValue({
+    const selectRoute = vi.fn().mockResolvedValue({
+      backend: "claude",
+      model: "claude-3-opus",
+      effort: "high",
+    });
+    const execute = vi.fn().mockResolvedValue({
       stdout: "done",
       stderr: "",
       exitCode: 0,
       durationS: 1,
-    } as any);
+    });
+    vi.mocked(createAgentPortAdapter).mockReturnValue({ selectRoute, execute });
 
     await executeSkill("test-skill");
 
-    expect(selectBackend).toHaveBeenCalledWith(
-      expect.objectContaining({ preferredAgent: "claude" }),
-      expect.any(String),
-      expect.any(Object),
+    expect(selectRoute).toHaveBeenCalledWith(
+      expect.objectContaining({
+        preferredAgent: "claude",
+        explicitModel: "claude-3-opus",
+      }),
     );
-
-    expect(dispatchToAgent).toHaveBeenCalledWith(
-      expect.objectContaining({ agent: "claude", model: "claude-3-opus" }),
+    expect(execute).toHaveBeenCalledWith(
+      expect.objectContaining({
+        agent: "claude",
+        model: "claude-3-opus",
+        env: { GWRK_EFFORT: "high" },
+        stdin: expect.stringContaining("test prompt"),
+      }),
     );
+    expect(execute.mock.calls[0][0]).not.toHaveProperty("prompt");
   });
 });

@@ -5,12 +5,13 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import Database from "better-sqlite3";
 
 const GWRK_DIR = process.env.GWRK_DIR || path.join(os.homedir(), ".gwrk");
 const DB_PATH = process.env.GWRK_DB_PATH || path.join(GWRK_DIR, "gwrk.db");
 const MIGRATIONS_DIR = path.join(
-  path.dirname(new URL(import.meta.url).pathname),
+  path.dirname(fileURLToPath(import.meta.url)),
   "migrations",
 );
 
@@ -23,27 +24,37 @@ let _db: Database.Database | undefined;
 export function getDb(): Database.Database {
   if (_db) return _db;
 
-  fs.mkdirSync(GWRK_DIR, { recursive: true });
-
-  _db = new Database(DB_PATH);
-
-  // WAL mode for better concurrent read performance
-  _db.pragma("journal_mode = WAL");
-  _db.pragma("foreign_keys = ON");
-
-  runMigrations(_db);
-
+  _db = openDatabase();
   return _db;
 }
 
-/**
- * Get a database connection for testing (in-memory).
- */
+export interface SqliteDatabaseOptions {
+  dbPath?: string;
+  migrationsDir?: string;
+}
+
+export function openDatabase({
+  dbPath = DB_PATH,
+  migrationsDir = MIGRATIONS_DIR,
+}: SqliteDatabaseOptions = {}): Database.Database {
+  if (dbPath !== ":memory:") {
+    fs.mkdirSync(path.dirname(dbPath), { recursive: true });
+  }
+
+  const connection = new Database(dbPath);
+  try {
+    connection.pragma("journal_mode = WAL");
+    connection.pragma("foreign_keys = ON");
+    runMigrations(connection, migrationsDir);
+    return connection;
+  } catch (error) {
+    connection.close();
+    throw error;
+  }
+}
+
 export function getTestDb(): Database.Database {
-  const db = new Database(":memory:");
-  db.pragma("foreign_keys = ON");
-  runMigrations(db);
-  return db;
+  return openDatabase({ dbPath: ":memory:" });
 }
 
 /**
@@ -60,7 +71,7 @@ export function closeDb(): void {
  * Run all SQL migration files in order.
  * Tracks applied migrations in a _migrations table.
  */
-function runMigrations(db: Database.Database): void {
+function runMigrations(db: Database.Database, migrationsDir: string): void {
   db.exec(`
     CREATE TABLE IF NOT EXISTS _migrations (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -76,17 +87,17 @@ function runMigrations(db: Database.Database): void {
       .map((row) => (row as { name: string }).name),
   );
 
-  if (!fs.existsSync(MIGRATIONS_DIR)) return;
+  if (!fs.existsSync(migrationsDir)) return;
 
   const files = fs
-    .readdirSync(MIGRATIONS_DIR)
+    .readdirSync(migrationsDir)
     .filter((f) => f.endsWith(".sql"))
     .sort();
 
   for (const file of files) {
     if (applied.has(file)) continue;
 
-    const sql = fs.readFileSync(path.join(MIGRATIONS_DIR, file), "utf-8");
+    const sql = fs.readFileSync(path.join(migrationsDir, file), "utf-8");
     db.exec(sql);
     db.prepare("INSERT INTO _migrations (name) VALUES (?)").run(file);
   }

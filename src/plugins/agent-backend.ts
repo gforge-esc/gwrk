@@ -66,12 +66,17 @@ export interface AgentBackend {
    */
   dispatch(task: TaskDispatch): Promise<AgentDispatch>;
 
+  resolveModel?(
+    task: Pick<TaskDispatch, "model" | "env">,
+    ambientEnv?: Readonly<NodeJS.ProcessEnv>,
+  ): string | undefined;
+
   /**
    * Returns true if the backend's required CLI or integration is available.
    */
-  isAvailable(): Promise<boolean>;
+  isAvailable(signal?: AbortSignal): Promise<boolean>;
 
-  checkQuota?(): Promise<QuotaStatus>;
+  checkQuota?(signal?: AbortSignal): Promise<QuotaStatus>;
   probe?(): Promise<ProbeResult>;
 
   /**

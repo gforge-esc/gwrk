@@ -31,6 +31,11 @@ vi.mock("../utils/config.js", () => ({
   loadConfig: mockLoadConfig,
 }));
 
+vi.mock("../db/runs.js", () => ({
+  startRun: vi.fn().mockReturnValue(1),
+  finishRun: vi.fn(),
+}));
+
 vi.mock("../utils/manifest.js", () => ({
   writeManifest: mockWriteManifest,
   generateRunId: vi.fn().mockReturnValue("mock-run-id"),
@@ -151,7 +156,7 @@ outputSchema:
       ]);
 
       const dispatchCall = vi.mocked(agent.dispatchToAgent).mock.calls[0][0];
-      const prompt = dispatchCall.prompt as string;
+      const prompt = dispatchCall.stdin as string;
 
       expect(prompt).toContain("<reference_document");
       expect(prompt).toContain("Reference content");

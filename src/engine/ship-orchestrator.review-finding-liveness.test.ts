@@ -136,7 +136,7 @@ function loadTaskStateReturns(
 function dispatchedPrompts(): string[] {
   return vi
     .mocked(agentUtils.dispatchToAgent)
-    .mock.calls.map((c) => (c[0] as { prompt: string }).prompt);
+    .mock.calls.map(([task]) => task.stdin ?? task.prompt ?? "");
 }
 
 beforeEach(() => {
@@ -231,6 +231,9 @@ describe("D5 — DIAGNOSE reads review findings as error context", () => {
     // @ts-ignore private
     await orchestrator.stageDiagnose();
 
+    expect(agentUtils.dispatchToAgent).toHaveBeenCalledWith(
+      expect.objectContaining({ workDir: mockConfig.cwd }),
+    );
     expect(dispatchedPrompts().join("\n")).toMatch(/DIVERGENCE/);
   });
 

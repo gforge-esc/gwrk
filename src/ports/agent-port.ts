@@ -6,6 +6,11 @@
  * Canonical AgentPort interface and stream-json unwrapping utilities (ADR-006, ADR-011).
  */
 
+import type {
+  RouteSelectionDecision,
+  RoutingFacts,
+} from "../domain/agent-routing.js";
+
 export interface AgentTaskRequest {
   type?: string;
   workflow?: string;
@@ -59,18 +64,33 @@ export interface AgentTaskResult {
 
 export interface RoutingContext {
   type: string;
+  preview?: boolean;
+  requireRegistry?: boolean;
+  historyMode?: RoutingFacts["historyMode"];
+  backendEligibility?: "quota" | "installed" | "script-owned";
+  includeReviewModel?: boolean;
+  resolveDispatchModel?: boolean;
+  /** Allow an explicit backend outside the registry to resolve ambient model defaults. */
+  useAmbientModelDefaults?: boolean;
+  legacyModelDefault?: string;
+  runId?: string;
   skillName?: string;
   feature?: string;
   phase?: string;
   preferredAgent?: string;
+  explicitBackend?: string;
+  explicitModel?: string;
   language?: string;
   taskSP?: number;
 }
 
-export interface SelectedAgentRoute {
-  backend: string;
-  model: string;
-  reason: string;
+export interface SelectedAgentRoute extends RouteSelectionDecision {
+  useAdapterModelDefaults?: boolean;
+  effectiveModel?: string;
+  /** Null means the adapter omits the model flag. */
+  adapterModel?: string | null;
+  reviewModel?: string;
+  reviewEffort?: string;
 }
 
 export interface AgentPort {

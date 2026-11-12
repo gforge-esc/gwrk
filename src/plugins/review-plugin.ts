@@ -4,6 +4,7 @@
 
 import fs from "node:fs";
 import path from "node:path";
+import { warnCli } from "../adapters/cli/output-scope.js";
 import { loadConfig } from "../utils/config.js";
 import {
   type TaskState,
@@ -109,7 +110,7 @@ export function validatePhaseScope(
       if (!beforeTask) continue;
 
       if (afterTask.status !== beforeTask.status) {
-        console.warn(
+        warnCli(
           `  ⚠️  Review violation: Reverted state change for task ${afterTask.id} (Phase ${phase.id} is out of scope)`,
         );
         phase.tasks[i] = JSON.parse(JSON.stringify(beforeTask));
