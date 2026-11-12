@@ -268,6 +268,7 @@ describe("Project registry upgrade", () => {
     { registryVersion: "earlier", clockOffset: 0 },
     { registryVersion: "earlier", clockOffset: 1 },
     { registryVersion: "earlier", clockOffset: -1 },
+    { registryVersion: "earlier", clockOffset: -30 },
     { registryVersion: "earlier", clockOffset: 3600 },
     { registryVersion: "earlier", clockOffset: -3600 },
   ] as const)(
@@ -305,6 +306,24 @@ describe("Project registry upgrade", () => {
         VALUES ('proposal', 'phase', 'amend', ?, 'ACCEPTED')
       `)
           .run(remoteId);
+        legacy
+          .prepare(`
+            INSERT INTO plan_features (id, name, project_id)
+            VALUES ('saved-default-feature', 'saved-default-feature', ?)
+          `)
+          .run(localId);
+        legacy
+          .prepare(`
+            INSERT INTO plan_phases (id, feature_id, name, seq, project_id)
+            VALUES ('saved-default-phase', 'saved-default-feature', 'saved-default-phase', 0, ?)
+          `)
+          .run(localId);
+        legacy
+          .prepare(`
+            INSERT INTO plan_proposals (id, target_phase_id, proposal_type, project_id)
+            VALUES ('saved-default-proposal', 'saved-default-phase', 'amend', ?)
+          `)
+          .run(localId);
       }, registryVersion);
       try {
         if (registryVersion === "earlier") {
@@ -372,6 +391,8 @@ describe("Project registry upgrade", () => {
           for (const [table, id] of [
             ["plan_features", "edited-feature"],
             ["plan_phases", "edited-phase"],
+            ["plan_features", "saved-default-feature"],
+            ["plan_phases", "saved-default-phase"],
           ]) {
             expect(
               reopened
