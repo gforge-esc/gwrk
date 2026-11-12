@@ -493,22 +493,15 @@ function resolveDetectedProfile(
     configuredLookup?: boolean;
   },
 ): ProjectProfile | undefined {
-  const { ancestors, rootRelativePath } = ancestorWorkspaceConfigs(
+  const { ancestors, suppliedRoot } = ancestorWorkspaceConfigs(
     workspace,
     requestedWorkspace,
-    workspaceRoot?.directory,
+    workspaceRoot,
   );
-  const suppliedRoot =
-    workspaceRoot?.config === undefined
-      ? undefined
-      : scopeWorkspaceConfig(
-          workspaceRoot.directory,
-          workspaceRoot.config,
-          rootRelativePath,
-        );
-  const policyAncestors = suppliedRoot
-    ? [...ancestors, suppliedRoot]
-    : ancestors;
+  const policyAncestors =
+    suppliedRoot && !ancestors.includes(suppliedRoot)
+      ? [...ancestors, suppliedRoot]
+      : ancestors;
   const designSource = findNearestAncestorDesign(policyAncestors);
   const ancestorDesign = designSource?.design;
   for (const ancestor of ancestors) {
@@ -618,19 +611,27 @@ function ancestorDirectories(workspace: string, root?: string): string[] {
 function ancestorWorkspaceConfigs(
   workspace: string,
   requestedWorkspace: string,
-  root?: string,
+  workspaceRoot?: { directory: string; config?: WorkspaceRootConfig },
 ) {
+  const root = workspaceRoot?.directory;
   const physical = ancestorDirectories(workspace, root);
   const boundary = physical[physical.length - 1];
   const ancestors: ScopedWorkspaceConfig[] = [];
   const seen = new Set([workspace]);
-  let rootRelativePath = root ? relativeWorkspacePath(root, workspace) : "";
+  let suppliedRoot: ScopedWorkspaceConfig | undefined;
 
   const addAncestor = (directory: string, relativePath: string) => {
     if (seen.has(directory)) return;
     seen.add(directory);
     if (directory === root) {
-      rootRelativePath = relativePath;
+      if (workspaceRoot?.config !== undefined) {
+        suppliedRoot = scopeWorkspaceConfig(
+          directory,
+          workspaceRoot.config,
+          relativePath,
+        );
+        ancestors.push(suppliedRoot);
+      }
       return;
     }
     const config = readWorkspaceRootConfig(directory);
@@ -665,7 +666,10 @@ function ancestorWorkspaceConfigs(
   for (const directory of physical.slice(1)) {
     addAncestor(directory, relativeWorkspacePath(directory, workspace));
   }
-  return { ancestors, rootRelativePath };
+  if (root === workspace && workspaceRoot?.config !== undefined) {
+    suppliedRoot = scopeWorkspaceConfig(root, workspaceRoot.config, "");
+  }
+  return { ancestors, suppliedRoot };
 }
 
 function findNearestAncestorDesign(

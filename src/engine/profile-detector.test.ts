@@ -1369,6 +1369,40 @@ describe("FR-001: architecture-aware workspace profiles (044 phase p01)", () => 
     });
   });
 
+  it("prefers a registered alias when the physical target has its own registration", async () => {
+    const alias = path.join(root, "api-alias");
+    const target = path.join(root, "services/api");
+    const layered = { ...design, architecture: "layered" };
+    const clean = { ...design, architecture: "clean-architecture" };
+    const config = {
+      project: { design },
+      workspaces: { "api-alias": { design: layered, stack: { framework: "Django" } } },
+    };
+    write(".git", "gitdir: /unused/worktree\n");
+    write(".gwrkrc.json", JSON.stringify(config));
+    write("services/.gwrkrc.json", JSON.stringify({
+      workspaces: { api: { design: clean, stack: { framework: "Flask" } } },
+    }));
+    fs.symlinkSync("services/api", alias, "dir");
+
+    for (const [cwd, relativePath, architecture, framework] of [
+      [alias, "api-alias", layered, "Django"],
+      [target, "services/api", clean, "Flask"],
+    ] as const) {
+      const profiles = {
+        direct: await detectProfile(cwd),
+        explicit: await resolveWorkspaceProfile(root, relativePath),
+        configured: resolveWorkspaceProfile(cwd, root, config),
+      };
+      for (const [entryPoint, profile] of Object.entries(profiles)) {
+        expect.soft(profile, `${relativePath} ${entryPoint}`).toMatchObject({
+          design: architecture,
+          stack: { language: "Python", framework },
+        });
+      }
+    }
+  });
+
   it("finds a same-worktree alias registration in the requested path's ancestors", async () => {
     const workspacePath = "services/api-alias";
     const alias = path.join(root, workspacePath);
