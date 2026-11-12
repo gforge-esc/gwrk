@@ -242,21 +242,28 @@ function restoreHarvestIntake(persisted: {
   aliases?: { projectId: string; workKey: string; operationId: string }[];
   deliveries?: {
     key: string;
+    projectId: string | null;
     repoSlug: string | null;
     payloadDigest: string;
     operationIds: string[];
   }[];
 }) {
-  const rows = structuredClone(persisted);
-  const aliases = rows.aliases ?? [];
-  const deliveries = rows.deliveries ?? [];
+  let rows = structuredClone({
+    ...persisted,
+    aliases: persisted.aliases ?? [],
+    deliveries: persisted.deliveries ?? [],
+  });
   const store: Pick<OperationsStorePort, "recordHarvestIntake"> = {
     recordHarvestIntake({ candidate, payloadDigest, receivedAt, target }) {
       const key = JSON.stringify([candidate.source, candidate.deliveryId]);
+      const projectId = target.accepted
+        ? target.project.projectId
+        : target.projectId;
       const repoSlug = candidate.repoSlug?.toLowerCase() ?? null;
-      const delivery = deliveries.find((row) => row.key === key);
+      const delivery = rows.deliveries.find((row) => row.key === key);
       if (delivery) {
         if (
+          delivery.projectId !== projectId ||
           delivery.payloadDigest !== payloadDigest ||
           delivery.repoSlug !== repoSlug
         ) {
@@ -266,7 +273,8 @@ function restoreHarvestIntake(persisted: {
           ok: true,
           operations: delivery.operationIds.map((operationId) => {
             const operation = rows.harvests.find(
-              (row) => row.operationId === operationId,
+              (row) =>
+                row.projectId === projectId && row.operationId === operationId,
             );
             if (!operation) throw new Error("Expected persisted operation");
             return operation;
@@ -303,15 +311,21 @@ function restoreHarvestIntake(persisted: {
             recipient: candidate.recipient ?? null,
           }))
         : [];
-      const operations = incoming.map((operation) =>
-        matchScope(operation, receivedAt),
-      );
-      deliveries.push({
+      const transaction = structuredClone(rows);
+      const operations: DurableHarvestOperation[] = [];
+      for (const operation of incoming) {
+        const matched = matchScope(transaction, operation, receivedAt);
+        if (!matched) return { ok: false, code: "HARVEST_IDENTITY_MISMATCH" };
+        operations.push(matched);
+      }
+      transaction.deliveries.push({
         key,
+        projectId,
         repoSlug,
         payloadDigest,
         operationIds: operations.map((row) => row.operationId),
       });
+      rows = transaction;
       return {
         ok: true,
         operations,
@@ -324,11 +338,12 @@ function restoreHarvestIntake(persisted: {
   };
 
   function matchScope(
+    { harvests, aliases, stages: receipts }: typeof rows,
     incoming: DurableHarvestOperation,
     receivedAt: string,
-  ): DurableHarvestOperation {
+  ): DurableHarvestOperation | null {
     if (incoming.terminalEvent === "closed_unmerged") {
-      const merge = rows.harvests
+      const merge = harvests
         .filter((row) => isStaleHarvestClose(row, incoming))
         .sort(
           (a, b) =>
@@ -343,13 +358,13 @@ function restoreHarvestIntake(persisted: {
         row.workKey === incoming.workKey,
     );
     const existing =
-      rows.harvests.find(
+      harvests.find(
         (row) =>
           sharesHarvestRepositoryScope(row, incoming) &&
           (row.workKey === incoming.workKey ||
             row.operationId === alias?.operationId),
       ) ??
-      rows.harvests
+      harvests
         .filter((row) => canCorrelateHarvestIntake(row, incoming))
         .sort(
           (a, b) =>
@@ -357,7 +372,10 @@ function restoreHarvestIntake(persisted: {
             a.operationId.localeCompare(b.operationId),
         )[0];
     if (!existing) {
-      rows.harvests.push(incoming);
+      if (harvests.some((row) => row.operationId === incoming.operationId)) {
+        return null;
+      }
+      harvests.push(incoming);
       return incoming;
     }
     if (!alias && existing.workKey !== incoming.workKey) {
@@ -373,12 +391,12 @@ function restoreHarvestIntake(persisted: {
       operationId: existing.operationId,
       prior: existing,
       verified: incoming,
-      stages: rows.stages,
+      stages: receipts,
       nowIso: receivedAt,
     });
     Object.assign(existing, facts, { updatedAt: receivedAt });
     if (cleanup.length) {
-      const stages = rows.stages.filter(
+      const stages = receipts.filter(
         ({ operationId }) => operationId === existing.operationId,
       );
       for (const planned of cleanup) {
@@ -401,7 +419,7 @@ function restoreHarvestIntake(persisted: {
 
   return {
     store,
-    snapshot: () => structuredClone({ ...rows, aliases, deliveries }),
+    snapshot: () => structuredClone(rows),
   };
 }
 
@@ -1478,6 +1496,52 @@ describe("durable recovery store contract", () => {
 });
 
 describe("persisted harvest intake contract", () => {
+  it.each([true, false])(
+    "checks the resolved project before replaying a repository-less delivery accepted=%s",
+    (accepted) => {
+      const deliveryId = "shared-manual-delivery";
+      const owner = harvestIntake(deliveryId, { ...offline, projectId });
+      const foreignId = "project-b";
+      const foreign = harvestIntake(deliveryId, {
+        ...offline,
+        projectId: foreignId,
+      });
+      const requests: [HarvestIntake, HarvestIntake] = accepted
+        ? [owner, foreign]
+        : [
+            {
+              ...owner,
+              target: { accepted: false, projectId, reason: "No coverage" },
+            },
+            {
+              ...foreign,
+              target: {
+                accepted: false,
+                projectId: foreignId,
+                reason: "No coverage",
+              },
+            },
+          ];
+      expect(requests[0].candidate).toEqual(requests[1].candidate);
+      expect(requests[0].candidate.repoSlug).toBeNull();
+      const initial = restoreHarvestIntake({ harvests: [], stages: [] });
+      const result = initial.store.recordHarvestIntake(requests[0]);
+      if (!result.ok) throw new Error("Expected original delivery to persist");
+      const saved = initial.snapshot();
+      const reopened = restoreHarvestIntake(saved);
+      expect(reopened.store.recordHarvestIntake(requests[1])).toEqual({
+        ok: false,
+        code: "DELIVERY_ID_CONFLICT",
+      });
+      expect(reopened.snapshot()).toEqual(saved);
+      expect(reopened.store.recordHarvestIntake(requests[0])).toMatchObject({
+        ok: true,
+        deduplicatedTransport: true,
+        operations: result.operations,
+      });
+    },
+  );
+
   it.each(["local", "pull request"])(
     "keeps an unknown checkout separate across restart when %s arrives first",
     (firstSource) => {
@@ -1578,6 +1642,92 @@ describe("persisted harvest intake contract", () => {
       ok: true,
       deduplicatedTransport: true,
       operations: [{ phaseId: "phase-01" }, { phaseId: "phase-02" }],
+    });
+  });
+
+  it("rolls back harvest intake when a new phase reuses another project's operation ID", () => {
+    const original = harvestIntake("project-a-pull-42");
+    const local = harvestIntake("project-b-local", {
+      ...verifiedOffline,
+      projectId: "project-b",
+    });
+    const verified = harvestIntake(
+      "project-b-pull-43",
+      {
+        projectId: "project-b",
+        prNumber: 43,
+        prUrl: "https://github.com/acme/a/pull/43",
+        phaseId: null,
+        headBranch: `feat/${featureId}`,
+      },
+      "github_webhook",
+      ["phase-01", "phase-02"],
+    );
+    if (!verified.target.accepted) throw new Error("Expected verified intake");
+    const [first, second] = verified.target.operations;
+    const initial = restoreHarvestIntake({ harvests: [], stages: [] });
+    const accepted = initial.store.recordHarvestIntake(original);
+    if (!accepted.ok) throw new Error("Expected original intake");
+    const [originalOperation] = accepted.operations;
+    expect(initial.store.recordHarvestIntake(local)).toMatchObject({
+      ok: true,
+    });
+    const restarted = restoreHarvestIntake({
+      ...initial.snapshot(),
+      stages: [
+        learningReceipt(originalOperation.operationId),
+        learningReceipt("project-b-local"),
+      ],
+    });
+    const before = restarted.snapshot();
+
+    expect(
+      restarted.store.recordHarvestIntake({
+        ...verified,
+        target: {
+          ...verified.target,
+          operations: [
+            first,
+            { ...second, operationId: originalOperation.operationId },
+          ],
+        },
+      }),
+    ).toEqual({ ok: false, code: "HARVEST_IDENTITY_MISMATCH" });
+    const saved = restarted.snapshot();
+    expect(saved).toEqual(before);
+
+    const replay = restoreHarvestIntake(saved).store;
+    expect(replay.recordHarvestIntake(original)).toMatchObject({
+      ok: true,
+      deduplicatedTransport: true,
+      operations: [originalOperation],
+    });
+    expect(
+      replay.recordHarvestIntake({
+        ...verified,
+        target: {
+          ...verified.target,
+          operations: [
+            { ...first, operationId: originalOperation.operationId },
+            second,
+          ],
+        },
+      }),
+    ).toMatchObject({
+      ok: true,
+      deduplicatedTransport: false,
+      operations: [
+        {
+          operationId: "project-b-local",
+          projectId: "project-b",
+          prNumber: 43,
+        },
+        {
+          operationId: second.operationId,
+          projectId: "project-b",
+          prNumber: 43,
+        },
+      ],
     });
   });
 

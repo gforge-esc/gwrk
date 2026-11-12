@@ -309,6 +309,9 @@ export interface OperationsStorePort {
    * For a new delivery, verify the entire operation batch against enrollment and
    * checkout coverage with verifyHarvestIntakeOperations before any write.
    * Reject duplicate operation IDs across phase scopes.
+   * Resolve existing work before checking IDs for inserts. Matched work keeps its saved ID.
+   * Reject any insert whose operation ID already exists, even in another project.
+   * Return HARVEST_IDENTITY_MISMATCH and roll back all intake changes on collision.
    * Require accepted status and lease epoch zero on every proposed new row.
    * Require null lease owner, lease expiry, completion time, linked run, last error and planned Slack recipient.
    * Return HARVEST_IDENTITY_MISMATCH before any write if a proposed row fails these checks.
@@ -318,7 +321,8 @@ export interface OperationsStorePort {
    * Derive verified phase work keys from the pull request identity returned by verifyHarvestTarget.
    * Pass accepted: false when checkout coverage yields no scopes.
    * Replay returns every persisted operation in the original scope order.
-   * Reject transport ID reuse with a different repository or payload digest.
+   * Persist the resolved project for every delivery, including rejections.
+   * Reject transport ID reuse with a different project, repository or payload digest before loading operation rows.
    * Scope verified work keys to the normalized repository and configured trunk.
    * Verify compatible repository and trunk before matching a key or saving an alias.
    * Supply checkoutRepoSlug only when checkout verification establishes the repository.
