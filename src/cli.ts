@@ -33,6 +33,7 @@ import { createSkillCommand } from "./commands/skill.js";
 import { createStatusCommand } from "./commands/status.js";
 import { createTasksCommand } from "./commands/tasks.js";
 import { createTestCommand } from "./commands/test.js";
+import { findProjectInfoConfigDirectory } from "./engine/profile-detector.js";
 import { loadConfig } from "./utils/config.js";
 import { color } from "./utils/format.js";
 
@@ -196,18 +197,21 @@ export function createCliProgram(): Command {
     // `define adr` walks parents for the marker (adr-scaffold.ts `findProjectRoot`)
     // and must work from any subdirectory (FR-002, US-001 scenario 3), so
     // preflighting it here would defeat the walk before the handler runs.
-    // Project info resolves profiles from workspace and ancestor configs.
     const commandPath = [actionCommand.parent?.name(), actionCommand.name()]
       .filter(Boolean)
       .join(" ");
     const resolvesOwnRoot =
       actionCommand.name() === "init" ||
       actionCommand.name() === "assess" ||
-      commandPath === "define adr" ||
-      commandPath === "project info";
+      commandPath === "define adr";
 
     if (!resolvesOwnRoot) {
-      loadConfig(process.cwd());
+      const cwd = process.cwd();
+      const configDirectory =
+        commandPath === "project info"
+          ? findProjectInfoConfigDirectory(cwd)
+          : cwd;
+      loadConfig(configDirectory ?? cwd);
     }
   });
   return program;

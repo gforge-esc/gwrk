@@ -607,14 +607,35 @@ function ancestorDirectories(workspace: string, root?: string): string[] {
   return directories;
 }
 
+export function findProjectInfoConfigDirectory(
+  cwd: string,
+): string | undefined {
+  const requestedWorkspace = path.resolve(cwd);
+  const workspace = physicalPath(requestedWorkspace);
+  if (fs.existsSync(path.join(workspace, ".gwrkrc.json"))) return workspace;
+
+  const workspaceKeys = new Map<string, string[]>();
+  for (const { directory, relativePath } of workspaceAncestorPaths(
+    workspace,
+    requestedWorkspace,
+  )) {
+    let keys = workspaceKeys.get(directory);
+    if (!keys) {
+      keys = Object.keys(readWorkspaceRootConfig(directory)?.workspaces ?? {});
+      workspaceKeys.set(directory, keys);
+    }
+    // Match before validation so loadConfig can report errors in the registration.
+    if (matchWorkspacePath(relativePath, keys)) return directory;
+  }
+  return undefined;
+}
+
 function ancestorWorkspaceConfigs(
   workspace: string,
   requestedWorkspace: string,
   workspaceRoot?: { directory: string; config?: WorkspaceRootConfig },
 ) {
   const root = workspaceRoot?.directory;
-  const physical = ancestorDirectories(workspace, root);
-  const boundary = physical[physical.length - 1];
   const scopes = new Map<string, ScopedWorkspaceConfig | undefined>([
     [workspace, undefined],
   ]);
@@ -660,6 +681,27 @@ function ancestorWorkspaceConfigs(
     if (scoped?.matchedPath) registrations.push(scoped);
   };
 
+  for (const {
+    directory,
+    relativePath,
+    physicalFallback,
+  } of workspaceAncestorPaths(workspace, requestedWorkspace, root)) {
+    addAncestor(directory, relativePath, physicalFallback);
+  }
+  if (root === workspace && workspaceRoot?.config !== undefined) {
+    suppliedRoot = scopeWorkspaceConfig(root, workspaceRoot.config, "");
+  }
+  const ancestors = [...scopes.values()].filter((scope) => scope !== undefined);
+  return { ancestors, registrations, suppliedRoot };
+}
+
+function* workspaceAncestorPaths(
+  workspace: string,
+  requestedWorkspace: string,
+  root?: string,
+) {
+  const physical = ancestorDirectories(workspace, root);
+  const boundary = physical[physical.length - 1];
   if (requestedWorkspace !== workspace) {
     const requested = ancestorDirectories(requestedWorkspace, root);
     const requestedBoundary = requested[requested.length - 1];
@@ -677,21 +719,20 @@ function ancestorWorkspaceConfigs(
           ({ directory }) => !isOutsideWorkspaceRoot(boundary, directory),
         )
       ) {
-        for (const { directory, relativePath } of requestedAncestors) {
-          addAncestor(directory, relativePath);
+        for (const ancestor of requestedAncestors) {
+          yield { ...ancestor, physicalFallback: false };
         }
       }
     }
   }
 
   for (const directory of physical.slice(1)) {
-    addAncestor(directory, relativeWorkspacePath(directory, workspace), true);
+    yield {
+      directory,
+      relativePath: relativeWorkspacePath(directory, workspace),
+      physicalFallback: true,
+    };
   }
-  if (root === workspace && workspaceRoot?.config !== undefined) {
-    suppliedRoot = scopeWorkspaceConfig(root, workspaceRoot.config, "");
-  }
-  const ancestors = [...scopes.values()].filter((scope) => scope !== undefined);
-  return { ancestors, registrations, suppliedRoot };
 }
 
 function findNearestAncestorDesign(

@@ -113,3 +113,44 @@ it("resolves registered workspaces through the built CLI with only root config",
     fs.rmSync(root, { recursive: true, force: true });
   }
 });
+
+it.each([
+  { scenario: "unmanaged directory", configDirectory: undefined },
+  { scenario: "invalid local config", configDirectory: "api" },
+  { scenario: "invalid ancestor config", configDirectory: "." },
+  { scenario: "registration outside the worktree", configDirectory: ".", nestedWorktree: true },
+])("rejects $scenario through the built CLI", ({ configDirectory, nestedWorktree }) => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "gwrk-project-info-"));
+  const cli = fileURLToPath(new URL("../../dist/cli.js", import.meta.url));
+  const cwd = path.join(root, "api");
+  try {
+    fs.mkdirSync(path.join(root, ".git"));
+    fs.mkdirSync(cwd);
+    if (nestedWorktree) fs.writeFileSync(path.join(cwd, ".git"), "gitdir: ../.git\n");
+    if (configDirectory !== undefined) {
+      fs.writeFileSync(
+        path.join(root, configDirectory, ".gwrkrc.json"),
+        JSON.stringify({
+          project: { name: "fixture" },
+          workspaces: { api: { stack: { language: nestedWorktree ? "Python" : 42 } } },
+        }),
+      );
+    }
+    const result = spawnSync(process.execPath, [cli, "project", "info", "--format", "json"], {
+      cwd,
+      encoding: "utf8",
+      env: { ...process.env, GWRK_HOME: path.join(root, "home") },
+      timeout: 10_000,
+    });
+    expect.soft(result.status, result.stderr).toBe(1);
+    expect.soft(result.stdout).toBe("");
+    if (configDirectory === undefined || nestedWorktree) {
+      expect(result.stderr).toContain("Configuration file .gwrkrc.json not found");
+    } else {
+      expect(result.stderr).toContain("Configuration error in .gwrkrc.json");
+      expect(result.stderr).toMatch(/"workspaces",\s*"api",\s*"stack",\s*"language"/);
+    }
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
