@@ -819,7 +819,11 @@ export function mergeVerifiedHarvestFacts(
     !Number.isSafeInteger(verified.prNumber) ||
     verified.prNumber <= 0 ||
     (prior.prNumber !== null && prior.prNumber !== verified.prNumber) ||
-    !sharesMergedCommitScope(prior, verified) ||
+    !sharesMergedCommitScope(prior, verified)
+  ) {
+    return { kind: "unchanged" } as const;
+  }
+  if (
     (priorPull?.headRepoSlug &&
       verified.headRepoSlug &&
       !isSameRepository(priorPull.headRepoSlug, verified.headRepoSlug)) ||
@@ -831,7 +835,7 @@ export function mergeVerifiedHarvestFacts(
       priorPull.expectedHeadSha.toLowerCase() !==
         verified.expectedHeadSha.toLowerCase())
   ) {
-    return null;
+    return { kind: "conflict" } as const;
   }
   const facts = {
     headRepoSlug: priorPull?.headRepoSlug ?? verified.headRepoSlug,
@@ -845,8 +849,8 @@ export function mergeVerifiedHarvestFacts(
   return Object.entries(facts).some(
     ([key, value]) => prior[key as keyof typeof facts] !== value,
   )
-    ? facts
-    : null;
+    ? ({ kind: "enriched", facts } as const)
+    : ({ kind: "unchanged" } as const);
 }
 
 export function matchesHarvestNoticeRecipient(
@@ -873,13 +877,13 @@ export function planLateBranchCleanup(input: {
   nowIso: string;
 }): HarvestStageReceipt[] {
   const { operationId, prior, verified, stages, nowIso } = input;
-  const enriched = mergeVerifiedHarvestFacts(prior, verified);
+  const result = mergeVerifiedHarvestFacts(prior, verified);
   if (
-    !enriched ||
+    result.kind !== "enriched" ||
     !["accepted", "running", "delivery_pending", "completed"].includes(
       prior.status,
     ) ||
-    !hasVerifiedBranchCleanupTarget({ ...prior, ...enriched })
+    !hasVerifiedBranchCleanupTarget({ ...prior, ...result.facts })
   ) {
     return [];
   }

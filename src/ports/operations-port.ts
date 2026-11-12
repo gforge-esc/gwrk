@@ -321,8 +321,11 @@ export interface OperationsStorePort {
    * Derive verified phase work keys from the pull request identity returned by verifyHarvestTarget.
    * Pass accepted: false when checkout coverage yields no scopes.
    * Replay returns every persisted operation in the original scope order.
-   * Persist the resolved project for every delivery, including rejections.
-   * Reject transport ID reuse with a different project, repository or payload digest before loading operation rows.
+   * Persist the resolved project and payload digest for accepted and rejected deliveries.
+   * Persist normalized supplied and verified checkout repositories separately.
+   * Record checkout identity only for manual intake without a pull request.
+   * Use null when checkout verification provides no repository.
+   * Return DELIVERY_ID_CONFLICT if any saved delivery identity field differs before loading operation rows.
    * Scope verified work keys to the normalized repository and configured trunk.
    * Verify compatible repository and trunk before matching a key or saving an alias.
    * Supply checkoutRepoSlug only when checkout verification establishes the repository.
@@ -340,7 +343,8 @@ export interface OperationsStorePort {
    * operation ID. Preserve its receipts and do not write a close operation or alias.
    * Take head facts only from the verified pull request on first attachment.
    * Fill missing head facts from later verified deliveries for the same pull request and merge scope.
-   * Reject enrichment that conflicts with existing verified head facts.
+   * Return HARVEST_IDENTITY_MISMATCH on conflicting verified head facts and roll back the full intake batch.
+   * Deduplicate matching work when its verified facts are unchanged.
    * Use planLateBranchCleanup when verified facts enrich a matching local or pull request harvest.
    * Persist activated cleanup receipts with the new facts and rederive status atomically.
    * Clear completedAt when a prior completion becomes recoverable. Preserve its lease fence.
