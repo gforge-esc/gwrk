@@ -476,6 +476,8 @@ export interface OperationsStorePort {
    * Bind the resolved destination and existing metadata key in the atomic send claim.
    * For a pending harvest_gate_failed notice, bind the destination from its saved Slack recipient.
    * Reject the send claim if that recipient lacks a workspace or channel.
+   * For other pending notices, use the saved Slack recipient for the same project.
+   * Resolve only unspecified destination fields. Return null without writes for a conflicting route.
    * For other pending notices, a null destination atomically records skipped_no_target.
    * A skip returns no claim and preserves the attempt count.
    * Send and reconcile require a bound workspace, channel and metadata key.

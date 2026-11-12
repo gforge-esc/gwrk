@@ -19,6 +19,7 @@ import {
   isHarvestSlackRecipient,
   isStaleHarvestClose,
   isValidHarvestStageTransition,
+  matchesAcceptedSlackDestination,
   matchesHarvestNoticeRecipient,
   mergeVerifiedHarvestFacts,
   planHarvestStages,
@@ -66,7 +67,7 @@ const createdAt = "2026-11-11T11:58:00.000Z";
 const nowIso = "2026-11-11T12:00:00.000Z";
 const leaseExpiresAt = "2026-11-11T12:01:00.000Z";
 const sha = "a".repeat(40);
-const destination = { workspaceId: "W1", channelId: "C2", threadTs: "2.1" };
+const destination = { workspaceId: "W1", channelId: "C1", threadTs: "1.2" };
 const runtimeSkipOutcome = {
   status: "skipped_no_target",
 } as unknown as Parameters<
@@ -805,6 +806,15 @@ function restoreRecoveryStore(persisted: {
             row.updatedAt = nowIso;
             return { action: "skipped_no_target", item: { ...row } };
           }
+          if (
+            !matchesAcceptedSlackDestination(
+              row.recipient,
+              row.projectId,
+              destination,
+            )
+          ) {
+            return null;
+          }
           route = destination;
         }
       }
@@ -1465,6 +1475,48 @@ describe("durable recovery store contract", () => {
     });
     expect(store.getOutboxItem("missing")).toBeNull();
   });
+
+  it.each([
+    { workspaceId: "W9" },
+    { channelId: "C9" },
+    { threadTs: "9.1" },
+    { threadTs: null },
+  ])(
+    "rejects a conflicting first Slack route %j and reconciles only at the saved route",
+    (conflict) => {
+      const pending = outbox("routed-notice", "pending", {
+        recipient: { projectId, surface: "slack", ...destination },
+      });
+      const store = restoreRecoveryStore({
+        harvests: [],
+        stages: [],
+        outboxItems: [pending],
+      });
+      const conflicting = { ...destination, ...conflict };
+      const claim = { outboxId: pending.outboxId, nowIso };
+
+      expect(
+        store.claimOutboxItem({ ...claim, destination: conflicting }),
+      ).toBeNull();
+      expect(store.getOutboxItem(pending.outboxId)).toEqual(pending);
+      expect(store.claimOutboxItem({ ...claim, destination })).toMatchObject({
+        action: "send",
+        item: { ...destination, attemptCount: 1 },
+      });
+
+      const restarted = restoreRecoveryStore(store.snapshot());
+      expect(
+        restarted.claimOutboxItem({
+          ...claim,
+          nowIso: leaseExpiresAt,
+          destination: conflicting,
+        }),
+      ).toMatchObject({
+        action: "reconcile",
+        item: { ...destination, attemptCount: 2 },
+      });
+    },
+  );
 
   it("persists a no-target claim across restart without retrying delivery", () => {
     const pending = outbox("no-target", "pending");

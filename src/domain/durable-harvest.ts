@@ -25,6 +25,27 @@ export function isHarvestSlackRecipient(
   );
 }
 
+export function matchesAcceptedSlackDestination(
+  recipient: DeliveryRecipient,
+  projectId: string,
+  destination: {
+    workspaceId: string;
+    channelId: string;
+    threadTs: string | null;
+  },
+): boolean {
+  return (
+    recipient.surface === "slack" &&
+    recipient.projectId === projectId &&
+    (recipient.workspaceId === undefined ||
+      recipient.workspaceId === destination.workspaceId) &&
+    (recipient.channelId === undefined ||
+      recipient.channelId === destination.channelId) &&
+    (recipient.threadTs === undefined ||
+      recipient.threadTs === destination.threadTs)
+  );
+}
+
 export function resolveHarvestSlackRecipient(input: {
   projectId: string;
   featureId: string;
