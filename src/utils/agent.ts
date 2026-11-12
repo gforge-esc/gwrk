@@ -506,8 +506,10 @@ function maskPromptExamples(template: string): string {
   const mask = (code: string) => code.replace(/[^\r\n]/g, "\0");
   const maskSpans = (text: string) =>
     text
-      .replace(/^(?: {4}| {0,3}[>\t])[^\r\n]*/gm, (line) =>
-        line.trim() === ENFORCEMENT_MARKER ? line : mask(line),
+      .replace(/^ {0,3}>[^\r\n]*/gm, mask)
+      .replace(
+        /^(?: {4}| {0,3}\t)[^\r\n]*(?:\r?\n(?:[ \t]*\r?\n)*(?: {4}| {0,3}\t)[^\r\n]*)*/gm,
+        (block) => block.trim() === ENFORCEMENT_MARKER ? block : mask(block),
       )
       .split(/(\r?\n[ \t]*\r?\n)/)
       .map((paragraph) =>
@@ -595,9 +597,12 @@ function findEnforcementSlot(
   return emptySections.length === 1 ? emptySections[0] : undefined;
 }
 
+const LEGACY_INPUT_OPENING = /^<user_input>(?=\r?\n|$)/;
+const LEGACY_INPUT_CLOSING = /(?<=^|\n)<\/user_input>(?=\r?\n|$)\s*$/;
+
 function findLegacyInputStart(stdin: string): number | undefined {
   // The transport closer can follow an unclosed fence in the task text.
-  const closer = /(?<=^|\n)<\/user_input>(?=\r?\n|$)\s*$/.exec(stdin);
+  const closer = LEGACY_INPUT_CLOSING.exec(stdin);
   if (!closer) return undefined;
 
   const prefix = maskPromptExamples(stdin.slice(0, closer.index));
@@ -614,17 +619,43 @@ function findLegacyInputStart(stdin: string): number | undefined {
   return undefined;
 }
 
+function legacyPromptSuffix(prompt: string, stdin: string): string | undefined {
+  if (!LEGACY_INPUT_CLOSING.test(stdin)) return undefined;
+
+  if (stdin.startsWith(prompt)) {
+    const suffix = stdin.slice(prompt.length);
+    const separator = /^\r?\n\r?\n/.exec(suffix)?.[0];
+    if (separator && LEGACY_INPUT_OPENING.test(suffix.slice(separator.length))) {
+      return suffix;
+    }
+  }
+
+  if (LEGACY_INPUT_OPENING.test(stdin.trimStart())) return `\n\n${stdin}`;
+  return undefined;
+}
+
 function splitLegacyStdin(task: TaskDispatch) {
   const { stdin, prompt, type, workflow } = task;
   if (
     !stdin ||
     stdin === prompt ||
     type?.startsWith("skill/") ||
-    workflow?.startsWith("skill/") ||
-    /^<user_input>(?=\r?\n|$)/.test(stdin.trimStart())
+    workflow?.startsWith("skill/")
   ) {
     return undefined;
   }
+
+  const suffix = prompt ? legacyPromptSuffix(prompt, stdin) : undefined;
+  if (prompt && suffix) {
+    return {
+      template: prompt,
+      suffix,
+      includesPrompt: true,
+      slot: findEnforcementSlot(prompt, "scoped-legacy"),
+    };
+  }
+
+  if (LEGACY_INPUT_OPENING.test(stdin.trimStart())) return undefined;
 
   const inputStart = findLegacyInputStart(stdin);
   if (inputStart === undefined) {
@@ -636,14 +667,14 @@ function splitLegacyStdin(task: TaskDispatch) {
       slot?.index !== undefined &&
       stdin.trim() === stdin.slice(slot.index, slot.index + slot[0].length)
     ) {
-      return { template: stdin, userInput: "", slot };
+      return { template: stdin, suffix: "", slot };
     }
     return undefined;
   }
 
   const template = stdin.slice(0, inputStart);
   const slot = findEnforcementSlot(template, "scoped-legacy");
-  return slot && { template, userInput: stdin.slice(inputStart), slot };
+  return slot && { template, suffix: stdin.slice(inputStart), slot };
 }
 
 /**
@@ -736,8 +767,10 @@ export async function dispatchToAgent(task: TaskDispatch): Promise<TaskResult> {
     promptParts
       ? [template, promptParts.userInput]
       : [
-          task.prompt === task.stdin ? undefined : task.prompt,
-          legacyParts ? template + legacyParts.userInput : task.stdin,
+          task.prompt === task.stdin || legacyParts?.includesPrompt
+            ? undefined
+            : task.prompt,
+          legacyParts ? template + legacyParts.suffix : task.stdin,
         ]
   )
     .filter(Boolean)

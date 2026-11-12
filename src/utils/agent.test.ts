@@ -128,6 +128,56 @@ describe('US-016: Enforcement Skills Dispatch Injection', () => {
   const inlineEnforcementExample = "Quote `<code_quality>{{enforcement}}</code_quality>` as written.\r\n";
   const blockQuoteEnforcementExample = "> <code_quality>{{enforcement}}</code_quality>\r\n";
 
+  it("expands a split legacy prompt and preserves its scoped stdin", async () => {
+    const actualSkills = await vi.importActual<typeof skillRuntime>(
+      "../plugins/skill-runtime.js",
+    );
+    vi.mocked(skillRuntime.resolveEnforcementSkills).mockImplementationOnce(
+      actualSkills.resolveEnforcementSkills,
+    );
+    const capturedStdin = mockAgentStdin();
+
+    await dispatchToAgent({
+      workflow: "gwrk-implement",
+      workDir: "/fake/root",
+      agent: "codex",
+      prompt: enforcementSection,
+      stdin: legacyInput,
+      quiet: true,
+    });
+
+    const prefix = `${COMMAND_SAFETY_BLOCK}\n\n<code_quality>\r\n`;
+    const suffix = `\r\n</code_quality>\n\n${legacyInput}`;
+    const payload = capturedStdin();
+    expect(payload.slice(0, prefix.length)).toBe(prefix);
+    expect(payload.slice(-suffix.length)).toBe(suffix);
+    const rules = payload.slice(prefix.length, -suffix.length);
+    expect(rules).toContain("<!-- enforcement-skill: typescript-standards -->");
+    expect(rules).not.toContain("{{enforcement}}");
+  });
+
+  it.each([
+    ["an assembled prompt with LF", "", "\n\n"],
+    ["an assembled prompt with CRLF", "", "\r\n\r\n"],
+    ["a distinct prompt and stdin", "Separate instructions.\n\n", "\n\n"],
+  ])("preserves %s without duplicating instructions", async (_label, extra, separator) => {
+    const capturedStdin = mockAgentStdin();
+    const template = "UNIQUE_INSTRUCTIONS";
+    const stdin = template + separator + legacyInput;
+
+    await dispatchToAgent({
+      workflow: "gwrk-implement",
+      workDir: "/fake/root",
+      agent: "codex",
+      prompt: extra.trimEnd() || template,
+      stdin,
+      quiet: true,
+    });
+
+    expect(capturedStdin()).toBe(`${COMMAND_SAFETY_BLOCK}\n\n${extra}${stdin}`);
+    expect(skillRuntime.resolveEnforcementSkills).not.toHaveBeenCalled();
+  });
+
   it.each([
     ["section", enforcementSection],
     ["bare marker", "{{enforcement}}"],
@@ -229,8 +279,9 @@ describe('US-016: Enforcement Skills Dispatch Injection', () => {
     const example = "    {{enforcement}}\r\n\r\n";
     const opening = example + "<code_quality>\r\n";
     const fencedExample = "~~~xml\r\n    {{enforcement}}\r\n~~~\r\n";
+    const indentedBlock = "    An indented Markdown example:\r\n    {{enforcement}}\r\n\r\n";
     const closing = "\r\n</code_quality>";
-    const template = opening + fencedExample + indent + "{{enforcement}}" + closing;
+    const template = opening + indentedBlock + fencedExample + indent + "{{enforcement}}" + closing;
 
     await dispatchToAgent({
       workflow: "gwrk-implement",
@@ -242,7 +293,7 @@ describe('US-016: Enforcement Skills Dispatch Injection', () => {
     });
 
     const payload = capturedStdin();
-    const prefix = COMMAND_SAFETY_BLOCK + "\n\n" + opening + fencedExample + indent;
+    const prefix = COMMAND_SAFETY_BLOCK + "\n\n" + opening + indentedBlock + fencedExample + indent;
     const suffix = closing + "\n\n" + legacyInput;
     expect(payload.startsWith(prefix)).toBe(true);
     expect(payload.endsWith(suffix)).toBe(true);
