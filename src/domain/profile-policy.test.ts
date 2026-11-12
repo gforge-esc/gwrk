@@ -136,6 +136,25 @@ describe("FR-001: profile design inheritance (044 phase p01)", () => {
     );
   });
 
+  it("retains an inherited command-only test override when pytest is detected", () => {
+    const result = resolveWorkspacePolicyProfile("services/api", detected, {
+      project: {
+        design,
+        stack: { language: "Python", buildSystem: "uv" },
+        toolchain: { testCommand: "uv run pytest -q {files}" },
+      },
+      workspaces: { "services/api": { toolchain: { build: null } } },
+    });
+
+    expect(getTestCommand(result, ["test_api.py"])).toBe(
+      "uv run pytest -q test_api.py",
+    );
+    expect(result).toMatchObject({
+      design,
+      toolchain: { test: "pytest", build: null },
+    });
+  });
+
   it("checks root test defaults against the workspace language override", () => {
     const result = resolveWorkspacePolicyProfile(
       "services/api",
