@@ -5,5 +5,5 @@
 
 set -euo pipefail
 pnpm build
-pnpm exec vitest run src/domain/profile-policy.test.ts src/engine/profile-detector.test.ts src/engine/prompt-conditioner.test.ts src/utils/config.test.ts src/architecture.test.ts
+pnpm exec vitest run src/domain/profile-policy.test.ts src/engine/profile-detector.test.ts src/engine/prompt-conditioner.test.ts src/utils/config.test.ts src/commands/project-info.test.ts src/architecture.test.ts
 pnpm lint --vcs-enabled=true --vcs-client-kind=git --vcs-use-ignore-file=true

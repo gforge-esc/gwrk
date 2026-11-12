@@ -196,13 +196,15 @@ export function createCliProgram(): Command {
     // `define adr` walks parents for the marker (adr-scaffold.ts `findProjectRoot`)
     // and must work from any subdirectory (FR-002, US-001 scenario 3), so
     // preflighting it here would defeat the walk before the handler runs.
+    // Project info resolves profiles from workspace and ancestor configs.
     const commandPath = [actionCommand.parent?.name(), actionCommand.name()]
       .filter(Boolean)
       .join(" ");
     const resolvesOwnRoot =
       actionCommand.name() === "init" ||
       actionCommand.name() === "assess" ||
-      commandPath === "define adr";
+      commandPath === "define adr" ||
+      commandPath === "project info";
 
     if (!resolvesOwnRoot) {
       loadConfig(process.cwd());
