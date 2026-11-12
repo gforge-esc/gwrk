@@ -58,6 +58,8 @@ export interface LedgerRestoreRequest {
   readonly source: string;
   readonly stateDirectory: string;
   readonly configuredDbPath?: string;
+  readonly devicePath?: string;
+  readonly runtimeLockPath?: string;
   readonly runtimePidPath?: string;
   readonly force: boolean;
 }
@@ -66,9 +68,14 @@ export interface LedgerBackupPort {
   createBackup(input: LedgerBackupRequest): Promise<LedgerBackupManifest>;
   verifyBackup(directory: string): Promise<VerifiedLedgerBackup>;
   resolveRestoreTarget(
-    stateDirectory: string,
-    configuredDbPath?: string,
-    runtimePidPath?: string,
+    input: Pick<
+      LedgerRestoreRequest,
+      | "stateDirectory"
+      | "configuredDbPath"
+      | "devicePath"
+      | "runtimeLockPath"
+      | "runtimePidPath"
+    >,
   ): Promise<{ stateDirectory: string; dbPath: string }>;
   restoreBackup(input: LedgerRestoreRequest): Promise<VerifiedLedgerBackup>;
 }

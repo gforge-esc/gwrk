@@ -221,17 +221,11 @@ async function captureLedgerBackup(input: LedgerBackupRequest, dbPath: string) {
     );
     rejectPathAtOrBelow(path, ledgerLockPath(dbPath), "ledger lock path");
   }
-  const configuredPaths = [
+  await rejectConfiguredPaths(suppliedPath, destination, [
     [input.devicePath, "device path"],
     [input.runtimeLockPath, "runtime lock path"],
     [input.runtimePidPath, "runtime PID path"],
-  ] as const;
-  for (const [configuredPath, label] of configuredPaths) {
-    if (!configuredPath) continue;
-    const absolute = resolve(configuredPath);
-    rejectPathAtOrBelow(suppliedPath, absolute, label);
-    rejectPathAtOrBelow(destination, await canonicalPath(absolute), label);
-  }
+  ]);
   const parent = dirname(destination);
   await mkdir(parent, { recursive: true, mode: 0o700 });
   const staging = await mkdtemp(join(parent, `.${basename(destination)}-`));
@@ -483,38 +477,51 @@ function rejectSqliteSidecarPath(path: string, ...ledgers: string[]): void {
   }
 }
 
+async function rejectConfiguredPaths(
+  suppliedPath: string,
+  canonical: string,
+  paths: ReadonlyArray<readonly [string | undefined, string]>,
+): Promise<void> {
+  for (const [configuredPath, label] of paths) {
+    if (!configuredPath) continue;
+    const absolute = resolve(configuredPath);
+    rejectPathAtOrBelow(suppliedPath, absolute, label);
+    rejectPathAtOrBelow(canonical, await canonicalPath(absolute), label);
+  }
+}
+
 export const resolveRestoreTarget: LedgerBackupPort["resolveRestoreTarget"] =
-  async (stateDirectory, configuredDbPath, runtimePidPath) => {
-    const suppliedPath = resolve(stateDirectory);
+  async (input) => {
+    const suppliedPath = resolve(input.stateDirectory);
     const state = await canonicalPath(suppliedPath);
     rejectRestoreMarkerComponent(state);
     rejectRestoreMarkerComponent(suppliedPath);
-    if (configuredDbPath) {
-      const configured = resolve(configuredDbPath);
-      const physical = await canonicalPath(configured);
-      rejectSqliteSidecarPath(suppliedPath, configured, physical);
-      rejectSqliteSidecarPath(state, configured, physical);
+    const configuredDbPath =
+      input.configuredDbPath && resolve(input.configuredDbPath);
+    const physicalDbPath =
+      configuredDbPath && (await canonicalPath(configuredDbPath));
+    if (configuredDbPath && physicalDbPath) {
+      rejectSqliteSidecarPath(suppliedPath, configuredDbPath, physicalDbPath);
+      rejectSqliteSidecarPath(state, configuredDbPath, physicalDbPath);
     }
-    if (runtimePidPath) {
-      const pidPath = resolve(runtimePidPath);
-      rejectPathAtOrBelow(suppliedPath, pidPath, "runtime PID path");
-      rejectPathAtOrBelow(
-        state,
-        await canonicalPath(pidPath),
-        "runtime PID path",
-      );
-    }
+    await rejectConfiguredPaths(suppliedPath, state, [
+      [configuredDbPath, "ledger path"],
+      [
+        configuredDbPath && ledgerLockPath(configuredDbPath),
+        "ledger lock path",
+      ],
+      [physicalDbPath && ledgerLockPath(physicalDbPath), "ledger lock path"],
+      [input.devicePath, "device path"],
+      [input.runtimeLockPath, "runtime lock path"],
+      [input.runtimePidPath, "runtime PID path"],
+    ]);
     return { stateDirectory: state, dbPath: join(state, DB_FILE) };
   };
 
 export const restoreLedgerBackup: LedgerBackupPort["restoreBackup"] = async (
   input,
 ) => {
-  const { stateDirectory: state } = await resolveRestoreTarget(
-    input.stateDirectory,
-    input.configuredDbPath,
-    input.runtimePidPath,
-  );
+  const { stateDirectory: state } = await resolveRestoreTarget(input);
   const suppliedPath = resolve(input.source);
   rejectReservedRestorePath(suppliedPath, state);
   const sourceDirectory = await canonicalPath(suppliedPath);
