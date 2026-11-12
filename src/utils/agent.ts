@@ -501,7 +501,7 @@ function resolvePrimaryCheckout(executionDir: string): string {
 
 const ENFORCEMENT_MARKER = "{{enforcement}}";
 
-function maskMarkdownCode(template: string): string {
+function maskPromptExamples(template: string): string {
   // Keep offsets and line endings without turning quoted content into whitespace.
   const mask = (code: string) => code.replace(/[^\r\n]/g, "\0");
   const maskSpans = (text: string) =>
@@ -516,10 +516,30 @@ function maskMarkdownCode(template: string): string {
   let masked = "";
   let textStart = 0;
   let fence: { delimiter: string; start: number } | undefined;
-  for (const { 0: line, 1: delimiter, 2: rest, index } of template.matchAll(
-    /^ {0,3}(`{3,}|~{3,})([^\r\n]*)/gm,
-  )) {
-    if (!fence) {
+  const blocks = /^ {0,3}(`{3,}|~{3,})([^\r\n]*)|<!--/gm;
+  for (
+    let block = blocks.exec(template);
+    block;
+    block = blocks.exec(template)
+  ) {
+    const [line, delimiter, rest] = block;
+    const { index } = block;
+    if (line === "<!--") {
+      if (fence) continue;
+      const closer = template.indexOf("-->", index + line.length);
+      if (closer === -1) continue;
+      const lineEnd = template.indexOf("\n", closer);
+      const visible = maskSpans(
+        template.slice(textStart, lineEnd === -1 ? template.length : lineEnd),
+      );
+      if (!visible.startsWith(line, index - textStart)) continue;
+
+      const end = closer + "-->".length;
+      masked += maskSpans(template.slice(textStart, index));
+      masked += mask(template.slice(index, end));
+      textStart = end;
+      blocks.lastIndex = end;
+    } else if (!fence) {
       if (delimiter[0] === "`" && rest.includes("`")) continue;
       masked += maskSpans(template.slice(textStart, index));
       fence = { delimiter, start: index };
@@ -545,7 +565,7 @@ function findEnforcementSlot(
   template: string,
   fallback: "empty-section" | "scoped-legacy",
 ): RegExpMatchArray | undefined {
-  const masked = maskMarkdownCode(template);
+  const masked = maskPromptExamples(template);
   const sections = [
     ...masked.matchAll(/<code_quality>([\s\S]*?)<\/code_quality>/g),
   ];
@@ -578,7 +598,7 @@ function findLegacyInputStart(stdin: string): number | undefined {
   const closer = /(?<=^|\n)<\/user_input>(?=\r?\n|$)\s*$/.exec(stdin);
   if (!closer) return undefined;
 
-  const prefix = maskMarkdownCode(stdin.slice(0, closer.index));
+  const prefix = maskPromptExamples(stdin.slice(0, closer.index));
   const tags = [...prefix.matchAll(/^<(\/?)user_input>(?=\r?\n|$)/gm)];
   let depth = 1;
   for (const tag of tags.reverse()) {
@@ -700,7 +720,9 @@ export async function dispatchToAgent(task: TaskDispatch): Promise<TaskResult> {
     template = template.slice(0, start) + replacement + template.slice(end);
   }
 
-  const hasCommandSafety = promptParts?.template.includes(COMMAND_SAFETY_BLOCK);
+  const hasCommandSafety =
+    promptParts &&
+    maskPromptExamples(promptParts.template).includes(COMMAND_SAFETY_BLOCK);
   let stdinPayload = (
     promptParts
       ? [template, promptParts.userInput]

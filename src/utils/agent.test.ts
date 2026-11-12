@@ -171,6 +171,9 @@ describe('US-016: Enforcement Skills Dispatch Injection', () => {
     },
   );
 
+  const commentedExample = "<!-- <code_quality>{{enforcement}}</code_quality> -->\r\n";
+  const commentedFence = ["<!--", "~~~xml", enforcementSection, "<user_input>", "-->", ""].join("\r\n");
+
   it.each([
     ["structured", "empty section", "Quote `<code_quality></code_quality>` as written.\r\n"],
     ["legacy", "empty section", "Quote `<code_quality></code_quality>` as written.\r\n"],
@@ -178,6 +181,10 @@ describe('US-016: Enforcement Skills Dispatch Injection', () => {
     ["legacy", "marked section", inlineEnforcementExample],
     ["structured", "block quote", blockQuoteEnforcementExample],
     ["legacy", "block quote", blockQuoteEnforcementExample],
+    ["structured", "HTML comment", commentedExample],
+    ["legacy", "HTML comment", commentedExample],
+    ["structured", "HTML comment with a fence", commentedFence],
+    ["legacy", "HTML comment with a fence", commentedFence],
   ] as const)(
     "preserves the example before the enforcement slot in %s Codex stdin (%s)",
     async (transport, _label, example) => {
@@ -469,6 +476,24 @@ describe('ADR-008: Command Safety Posture', () => {
   });
 
   describe('Layer 2: SAFE_AGENT_ENV', () => {
+    it("injects command safety when a template contains only a commented copy", async () => {
+      const capturedStdin = mockAgentStdin();
+      const template = `<!--\n${COMMAND_SAFETY_BLOCK}\n-->\nDo the work.`;
+      const userInput = "<user_input>\nImplement the change.\n</user_input>";
+
+      await dispatchToAgent({
+        workflow: "gwrk-implement",
+        workDir: "/fake/root",
+        agent: "codex",
+        promptParts: { template, userInput },
+        quiet: true,
+      });
+
+      expect(capturedStdin()).toBe(
+        `${COMMAND_SAFETY_BLOCK}\n\n${template}\n\n${userInput}`,
+      );
+    });
+
     it('contains all required safety environment variables', () => {
       expect(SAFE_AGENT_ENV.GIT_EDITOR).toBe('true');
       expect(SAFE_AGENT_ENV.EDITOR).toBe('true');
