@@ -424,7 +424,22 @@ const secretPattern = new RegExp(
 const mailboxPattern =
   /(?:[\p{L}\p{M}\p{N}!#$%&'*+/=?^_\x60{|}~.-]{1,64}|"(?:[^"\\\r\n]|\\.){0,64}")@(?:\[[^\]\r\n]{1,255}\]|(?:[\p{L}\p{M}\p{N}-]+\.)+[\p{L}][\p{L}\p{M}\p{N}-]*)/u;
 
+function parsedUrlHasUserinfo(candidate: string): boolean | undefined {
+  try {
+    const { username, password } = new URL(candidate);
+    return username !== "" || password !== "";
+  } catch {
+    return undefined;
+  }
+}
+
 function hasCredentialBearingUrl(text: string): boolean {
+  const quoted = new RegExp(inspectedStringLiteral.source, "g");
+  for (const [literal] of text.matchAll(quoted)) {
+    const url = literal.slice(1, -1);
+    if (url.includes("@") && parsedUrlHasUserinfo(url)) return true;
+  }
+
   const authorities =
     /(?<![a-z\d+.-])([a-z][a-z\d+.-]*:)([\/\\]*)(?=([^\t\n\v\f\r /\\?#]*))/gi;
   const specialScheme = /^(?:https?|wss?|ftp):$/i;
@@ -436,16 +451,14 @@ function hasCredentialBearingUrl(text: string): boolean {
 
       let candidate = authority;
       while (true) {
-        try {
-          const url = new URL(scheme + slashes + candidate);
-          if (url.username !== "" || url.password !== "") return true;
-          break;
-        } catch {
-          // Stop at the first valid authority to preserve IPv6 host brackets.
-          const trimmed = candidate.replace(/[)\]"'\x60}>.,;!]$/, "");
-          if (trimmed === candidate) break;
-          candidate = trimmed;
-        }
+        const hasUserinfo = parsedUrlHasUserinfo(scheme + slashes + candidate);
+        if (hasUserinfo) return true;
+        if (hasUserinfo === false) break;
+
+        // Stop at the first valid authority to preserve IPv6 host brackets.
+        const trimmed = candidate.replace(/[)\]"'\x60}>.,;!]$/, "");
+        if (trimmed === candidate) break;
+        candidate = trimmed;
       }
     }
   }
