@@ -2697,31 +2697,36 @@ it.each([
         ).toEqual({ ok: false, code: "HARVEST_STAGE_TRANSITION_INVALID" });
         expect(beforeGate.snapshot()).toEqual(before);
       }
-    }
-    if (hasSlackTarget) {
-      const collision = {
-        ...existingNotice,
-        ownerKind: "dispatch" as const,
-        eventType: "dispatch_completed" as const,
+      const savedNotice = {
+        ...notice,
         dedupeKey: JSON.stringify([
           "harvest_gate_failed",
           operationId,
           phaseId,
         ]),
-        recipient: { ...notice.recipient, channelId: "C9" },
       };
-      const conflicting = restoreRecoveryStore({
-        ...beforeGate.snapshot(),
-        outboxItems: [collision],
-      });
-      const before = conflicting.snapshot();
-      expect(
-        conflicting.transitionHarvestStage({
-          ...transition,
-          failureNotice: { ...notice, recipient: collision.recipient },
-        }),
-      ).toEqual({ ok: false, code: "HARVEST_STAGE_TRANSITION_INVALID" });
-      expect(conflicting.snapshot()).toEqual(before);
+      const identityMismatches = {
+        event: { eventType: "dispatch_completed" },
+        "owner kind": { ownerKind: "dispatch" },
+        "owner operation": { ownerOperationId: "other-operation" },
+        feature: { featureId: "other-feature" },
+        phase: { phaseId: "phase-02" },
+        workspace: { recipient: { ...notice.recipient, workspaceId: "W9" } },
+        channel: { recipient: { ...notice.recipient, channelId: "C9" } },
+        thread: { recipient: { ...notice.recipient, threadTs: "9.9" } },
+      } satisfies Record<string, Partial<OutboxItem>>;
+      for (const [field, mismatch] of Object.entries(identityMismatches)) {
+        const conflicting = restoreRecoveryStore({
+          ...before,
+          outboxItems: [{ ...savedNotice, ...mismatch }],
+        });
+        const beforeConflict = conflicting.snapshot();
+        expect(
+          conflicting.transitionHarvestStage(transition),
+          `saved notice with conflicting ${field}`,
+        ).toEqual({ ok: false, code: "HARVEST_STAGE_TRANSITION_INVALID" });
+        expect(conflicting.snapshot()).toEqual(beforeConflict);
+      }
     }
     const beforeReplay = beforeGate.snapshot();
     const retry = restoreRecoveryStore(beforeReplay);
