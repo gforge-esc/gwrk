@@ -433,6 +433,19 @@ function parsedUrlHasUserinfo(candidate: string): boolean | undefined {
   }
 }
 
+function loggedAuthorityHasUserinfo(authority: string): boolean {
+  let candidate = authority;
+  while (true) {
+    const hasUserinfo = parsedUrlHasUserinfo(candidate);
+    // Stop at the first valid authority to preserve IPv6 host brackets.
+    if (hasUserinfo !== undefined) return hasUserinfo;
+
+    const trimmed = candidate.replace(/[)\]"'\x60}>.,;!]$/, "");
+    if (trimmed === candidate) return false;
+    candidate = trimmed;
+  }
+}
+
 function proxyAssignmentHasUserinfo(text: string): boolean {
   const pattern = /^[ \t]*(?:[a-z0-9]+_)*proxy[ \t]*=[ \t]*(.+)$/is;
   const assignment = pattern.exec(text);
@@ -444,7 +457,7 @@ function hasCredentialBearingUrl(text: string): boolean {
   const proxyAuthorities =
     /^[ \t]*(?:[a-z0-9]+_)*proxy[ \t]*=[ \t]*([a-z][a-z\d+.-]*:[/\\]*[^@/\\?#]*@[^ \t\r\n/\\?#]+)/gim;
   for (const [, candidate] of text.matchAll(proxyAuthorities)) {
-    if (parsedUrlHasUserinfo(candidate)) return true;
+    if (loggedAuthorityHasUserinfo(candidate)) return true;
   }
 
   const quoted = new RegExp(inspectedStringLiteral.source, "g");
@@ -462,17 +475,7 @@ function hasCredentialBearingUrl(text: string): boolean {
       if (!authority.includes("@")) continue;
       if (!specialScheme.test(scheme) && slashes !== "//") continue;
 
-      let candidate = authority;
-      while (true) {
-        const hasUserinfo = parsedUrlHasUserinfo(scheme + slashes + candidate);
-        if (hasUserinfo) return true;
-        if (hasUserinfo === false) break;
-
-        // Stop at the first valid authority to preserve IPv6 host brackets.
-        const trimmed = candidate.replace(/[)\]"'\x60}>.,;!]$/, "");
-        if (trimmed === candidate) break;
-        candidate = trimmed;
-      }
+      if (loggedAuthorityHasUserinfo(scheme + slashes + authority)) return true;
     }
   }
   return false;

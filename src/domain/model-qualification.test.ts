@@ -716,13 +716,13 @@ describe("credential guard", () => {
     ],
     [
       "a multiline assignment between other log lines",
-      "discovery started\nHTTPS_PROXY = http://pilot:fixture\npassword with space@proxy:8080\nstatus: ready",
+      "discovery started\n  HTTPS_PROXY = http://pilot:fixture\npassword with space@proxy:8080\ndiscovery finished",
     ],
     [
       "a multiline assignment in a JSON report between log lines",
       JSON.stringify({
         proxyReport:
-          "discovery started\nHTTPS_PROXY = http://pilot:fixture\npassword with space@proxy:8080\nstatus: ready",
+          "discovery started\n  HTTPS_PROXY = http://pilot:fixture\npassword with space@proxy:8080\ndiscovery finished",
       }),
     ],
     [
@@ -793,6 +793,35 @@ describe("credential guard", () => {
       expect(() =>
         assertNoSecretMaterial({ stdout: credentialFree }),
       ).not.toThrow();
+    });
+
+    describe.each(["proxy:8080", "[::1]"])(
+      "multiline authority at %s inside nested log delimiters",
+      (host) => {
+        const log = render(
+          `discovery started [Proxy (\n  HTTPS_PROXY = http://pilot:fixture\npassword with space@${host})]\ndiscovery finished`,
+        );
+
+        it("rejects credentials in an evidence key", () => {
+          expect(() => assertNoSecretMaterial({ [log]: true })).toThrow(
+            /secret material/i,
+          );
+        });
+
+        it("rejects credentials in an evidence value", () => {
+          expect(() => assertNoSecretMaterial({ stdout: log })).toThrow(
+            /secret material/i,
+          );
+        });
+      },
+    );
+
+    it("allows a multiline path inside a larger log", () => {
+      const log = render(
+        "discovery started\n  HTTPS_PROXY = http://proxy:8080/path\nwith space@fixture\ndiscovery finished",
+      );
+      expect(() => assertNoSecretMaterial({ [log]: true })).not.toThrow();
+      expect(() => assertNoSecretMaterial({ stdout: log })).not.toThrow();
     });
   });
 
