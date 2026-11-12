@@ -8,6 +8,7 @@ import {
   canonicalProjectId,
   firstPerKey,
   nextLedgerWriteSequence,
+  planFeatureWriteOrder,
   projectScope,
 } from "./project-registry.js";
 
@@ -121,7 +122,7 @@ export function getFeature(
   const { canonical, ids, placeholders } = projectScope(conn, projectId);
   return conn
     .prepare(`SELECT ${featureColumns} FROM plan_features WHERE id = ? AND project_id IN (${placeholders})
-      ORDER BY project_id = ? DESC, project_id LIMIT 1`)
+      ORDER BY ${planFeatureWriteOrder} LIMIT 1`)
     .get(id, ...ids, canonical) as PlanFeature | undefined;
 }
 
@@ -136,7 +137,7 @@ export function listFeatures(
   const { canonical, ids, placeholders } = projectScope(conn, projectId);
   const rows = conn
     .prepare(`SELECT ${featureColumns} FROM plan_features WHERE project_id IN (${placeholders})
-      ORDER BY project_id = ? DESC, project_id`)
+      ORDER BY ${planFeatureWriteOrder}`)
     .all(...ids, canonical) as PlanFeature[];
   return firstPerKey(rows, (row) => row.id).sort((a, b) =>
     a.id < b.id ? -1 : Number(a.id > b.id),
@@ -382,7 +383,7 @@ export function getAllDependencies(
       SELECT f.* FROM plan_features f
       JOIN deps d ON f.id = d.feature_id
       WHERE f.project_id IN (${placeholders})
-      ORDER BY f.project_id = ? DESC, f.project_id
+      ORDER BY ${planFeatureWriteOrder}
     `,
     )
     .all(...ids, id, ...ids, canonical) as PlanFeature[];

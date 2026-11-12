@@ -169,15 +169,6 @@ SELECT pr.id, pr.target_phase_id, pr.proposal_type, pr.detail, pr.source, pr.sta
 FROM plan_proposals pr
 LEFT JOIN plan_phases_new ph ON ph.id = pr.target_phase_id;
 
--- Retain explicit child ownership without copying another project's data.
-INSERT OR IGNORE INTO plan_phases_new (id, feature_id, name, seq, project_id)
-SELECT pr.target_phase_id, COALESCE(ph.feature_id, pr.target_phase_id),
-       pr.target_phase_id, 0, pr.project_id
-FROM plan_proposals_new pr LEFT JOIN plan_phases ph ON ph.id = pr.target_phase_id;
-
-INSERT OR IGNORE INTO plan_features_new (id, name, project_id)
-SELECT feature_id, feature_id, project_id FROM plan_phases_new;
-
 CREATE TABLE plan_edges_new (
   from_id TEXT NOT NULL,
   to_id TEXT NOT NULL,
@@ -189,7 +180,7 @@ CREATE TABLE plan_edges_new (
 INSERT INTO plan_edges_new (from_id, to_id, edge_type, created_at, project_id)
 SELECT e.from_id, e.to_id, e.edge_type, e.created_at,
        COALESCE(e.project_id, (
-         SELECT MIN(f.project_id) FROM plan_features_new f
+         SELECT MIN(f.project_id) FROM plan_features f
          WHERE f.id IN (e.from_id, e.to_id)
          HAVING COUNT(DISTINCT f.project_id) = 1
        ), 'legacy-local')
@@ -215,10 +206,10 @@ SELECT g.id, g.feature_id, g.phase_id, g.task_id, g.gate_script, g.passed,
        COALESCE(g.project_id, (
          SELECT MIN(project_id)
          FROM (
-           SELECT ph.project_id FROM plan_phases_new ph
+           SELECT ph.project_id FROM plan_phases ph
            WHERE ph.id = g.phase_id AND ph.feature_id = g.feature_id
            UNION ALL
-           SELECT f.project_id FROM plan_features_new f WHERE f.id = g.feature_id
+           SELECT f.project_id FROM plan_features f WHERE f.id = g.feature_id
          )
          HAVING COUNT(DISTINCT project_id) = 1
        ), 'legacy-local')
@@ -243,10 +234,36 @@ INSERT INTO issues_new (id, issue_number, feature_id, title, body, state, html_u
 SELECT i.id, i.issue_number, i.feature_id, i.title, i.body, i.state, i.html_url,
        i.created_at, i.closed_at, i.author,
        COALESCE(i.project_id, (
-         SELECT MIN(f.project_id) FROM plan_features_new f WHERE f.id = i.feature_id
-         HAVING COUNT(DISTINCT f.project_id) = 1
+         SELECT MIN(project_id)
+         FROM (
+           SELECT f.project_id FROM plan_features f WHERE f.id = i.feature_id
+           UNION ALL
+           SELECT ph.project_id FROM plan_phases ph WHERE ph.feature_id = i.feature_id
+         )
+         HAVING COUNT(DISTINCT project_id) = 1
        ), 'legacy-local')
 FROM issues i;
+
+-- Keep synthetic parents out of ownership inference.
+CREATE TEMP TABLE migration_014_phase_placeholders AS
+SELECT DISTINCT pr.target_phase_id AS id, pr.project_id,
+       COALESCE(ph.feature_id, pr.target_phase_id) AS feature_id
+FROM plan_proposals_new pr LEFT JOIN plan_phases ph ON ph.id = pr.target_phase_id
+WHERE NOT EXISTS (
+  SELECT 1 FROM plan_phases_new p
+  WHERE p.id = pr.target_phase_id AND p.project_id = pr.project_id
+);
+INSERT INTO plan_phases_new (id, feature_id, name, seq, project_id)
+SELECT id, feature_id, id, 0, project_id FROM migration_014_phase_placeholders;
+
+CREATE TEMP TABLE migration_014_feature_placeholders AS
+SELECT DISTINCT ph.feature_id AS id, ph.project_id FROM plan_phases_new ph
+WHERE NOT EXISTS (
+  SELECT 1 FROM plan_features_new f
+  WHERE f.id = ph.feature_id AND f.project_id = ph.project_id
+);
+INSERT INTO plan_features_new (id, name, project_id)
+SELECT id, id, project_id FROM migration_014_feature_placeholders;
 
 UPDATE sqlite_sequence SET seq = MAX(seq, COALESCE(
   (SELECT old.seq FROM sqlite_sequence old WHERE old.name = replace(sqlite_sequence.name, '_new', '')), 0))
@@ -302,4 +319,6 @@ INSERT INTO migration_014_fk_guard SELECT count(*) FROM pragma_foreign_key_check
 DROP TABLE migration_014_fk_guard;
 
 COMMIT;
+DROP TABLE migration_014_feature_placeholders;
+DROP TABLE migration_014_phase_placeholders;
 PRAGMA foreign_keys = ON;

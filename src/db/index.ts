@@ -175,6 +175,10 @@ function migrateProjectRegistry(db: Database.Database, sql: string): void {
       safeAddColumn(db, "issues", "html_url", "TEXT");
       db.exec(rebuild);
       backfillCheckoutRoots(db);
+      hydratePlanPlaceholders(db);
+      if (db.pragma("foreign_key_check", { simple: true }) !== undefined) {
+        throw new Error("Migration 014 left a foreign key violation");
+      }
       db.prepare("INSERT INTO _migrations (name) VALUES (?)").run(
         PROJECT_REGISTRY_MIGRATION,
       );
@@ -267,6 +271,51 @@ function backfillCheckoutRoots(db: Database.Database): void {
         addAlias.run({ alias, id: owner });
       }
     }
+  }
+}
+
+function hydratePlanPlaceholders(db: Database.Database): void {
+  for (const [table, placeholders, columns] of [
+    [
+      "plan_features",
+      "migration_014_feature_placeholders",
+      ["name", "status", "sp_total", "created_at", "updated_at"],
+    ],
+    [
+      "plan_phases",
+      "migration_014_phase_placeholders",
+      [
+        "name",
+        "status",
+        "health",
+        "sp_estimate",
+        "sp_actual",
+        "duration_ms",
+        "completed_at",
+        "evidence",
+        "seq",
+        "created_at",
+        "updated_at",
+      ],
+    ],
+  ] as const) {
+    db.exec(`
+      UPDATE ${table} AS target
+      SET ${columns.map((column) => `${column} = original.${column}`).join(", ")}
+      FROM ${placeholders} AS placeholder
+      JOIN ${table} AS original
+        ON original.id = placeholder.id AND original.project_id <> placeholder.project_id
+      LEFT JOIN project_aliases AS target_alias ON target_alias.alias_id = placeholder.project_id
+      LEFT JOIN project_aliases AS original_alias ON original_alias.alias_id = original.project_id
+      WHERE target.id = placeholder.id AND target.project_id = placeholder.project_id
+        AND COALESCE(target_alias.project_id, placeholder.project_id) =
+            COALESCE(original_alias.project_id, original.project_id)
+        AND NOT EXISTS (
+          SELECT 1 FROM ${placeholders} AS synthetic
+          WHERE synthetic.id = original.id AND synthetic.project_id = original.project_id
+        );
+      DROP TABLE ${placeholders};
+    `);
   }
 }
 

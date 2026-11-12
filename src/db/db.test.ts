@@ -29,12 +29,14 @@ import { getGateResult } from "./gates.js";
 import { getTestDb, openDatabase } from "./index.js";
 import { listIssues } from "./issues.js";
 import {
+  getAllDependencies,
   getEdgesForFeature,
   getFeature,
   getPhase,
   getProposal,
   insertPhase,
   insertProposal,
+  listFeatures,
   listPhases,
   listProposals,
 } from "./plan.js";
@@ -195,7 +197,7 @@ describe("Project registry upgrade", () => {
     },
   );
 
-  it("retains newer legacy phase and proposal state after upgrade and enrollment", () => {
+  it("retains newer legacy plan state after upgrade and enrollment", () => {
     const checkout = join(root, "checkout");
     execFileSync("git", ["init", "--quiet", checkout]);
     const localId = computeProjectId(discoverGitIdentityFacts(checkout));
@@ -241,7 +243,8 @@ describe("Project registry upgrade", () => {
         legacy,
       );
       const feature = legacy.prepare(
-        "INSERT INTO plan_features (id, name, project_id) VALUES ('feature', 'Feature', ?)",
+        `INSERT INTO plan_features (id, name, project_id, status, updated_at, write_seq)
+         VALUES (?, 'Feature', ?, ?, ?, ?)`,
       );
       const phase = legacy.prepare(
         "INSERT INTO plan_phases (id, feature_id, name, seq, project_id, status, updated_at) VALUES ('phase', 'feature', 'Phase', 1, ?, ?, ?)",
@@ -249,8 +252,16 @@ describe("Project registry upgrade", () => {
       const proposal = legacy.prepare(
         "INSERT INTO plan_proposals (id, target_phase_id, proposal_type, project_id, status, created_at, updated_at) VALUES ('proposal', 'phase', 'amend', ?, ?, ?, ?)",
       );
-      feature.run(localId);
-      feature.run(remoteId);
+      feature.run("feature", remoteId, "PLANNED", "2026-01-01 10:00:00", 0);
+      feature.run("feature", localId, "SHIPPED", "2026-01-01T11:00:00Z", 0);
+      feature.run("sequenced", remoteId, "SHIPPED", "2026-01-01 09:00:00", 1);
+      feature.run("sequenced", localId, "PLANNED", "2026-01-01T12:00:00Z", 0);
+      legacy
+        .prepare(
+          `INSERT INTO plan_edges (from_id, to_id, edge_type, project_id)
+           VALUES ('feature', 'sequenced', 'DEPENDS_ON', ?)`,
+        )
+        .run(localId);
       phase.run(remoteId, "PLANNED", "2026-01-01 10:00:00");
       phase.run(localId, "COMPLETED", "2026-01-01T11:00:00Z");
       proposal.run(
@@ -274,6 +285,19 @@ describe("Project registry upgrade", () => {
       });
       for (const owner of [localId, remoteId]) {
         expect
+          .soft(getFeature("feature", owner, upgraded)?.status)
+          .toBe("SHIPPED");
+        expect
+          .soft(getFeature("sequenced", owner, upgraded)?.status)
+          .toBe("SHIPPED");
+        expect.soft(listFeatures(owner, upgraded)).toMatchObject([
+          { id: "feature", status: "SHIPPED" },
+          { id: "sequenced", status: "SHIPPED" },
+        ]);
+        expect
+          .soft(getAllDependencies("sequenced", owner, upgraded))
+          .toMatchObject([{ id: "feature", status: "SHIPPED" }]);
+        expect
           .soft(getPhase("phase", owner, upgraded)?.status)
           .toBe("COMPLETED");
         expect
@@ -286,6 +310,16 @@ describe("Project registry upgrade", () => {
           .soft(listProposals(owner, upgraded))
           .toMatchObject([{ id: "proposal", status: "ACCEPTED" }]);
       }
+      expect
+        .soft(
+          upgraded
+            .prepare(
+              "SELECT status FROM plan_features WHERE id = 'feature' AND project_id = ?",
+            )
+            .pluck()
+            .get(remoteId),
+        )
+        .toBe("SHIPPED");
       expect(upgraded.pragma("foreign_key_check")).toEqual([]);
     } finally {
       upgraded.close();
@@ -621,17 +655,21 @@ describe("Project registry upgrade", () => {
       legacy.exec(`
         INSERT INTO projects (id, name, path) VALUES ('alpha', 'Alpha', '/alpha');
         INSERT INTO plan_features (id, name, project_id)
-          VALUES ('shared', 'Alpha feature', 'alpha'), ('alpha-only', 'Alpha only', 'alpha');
+          VALUES ('shared', 'Alpha feature', 'alpha'), ('alpha-only', 'Alpha only', 'alpha'),
+                 ('unowned-feature', 'Unowned feature', NULL);
         INSERT INTO plan_phases (id, feature_id, name, seq, project_id)
           VALUES ('phase', 'shared', 'Alpha phase', 1, 'alpha'),
-                 ('other-phase', 'shared', 'Beta phase', 2, 'beta-unregistered');
+                 ('other-phase', 'shared', 'Beta phase', 2, 'beta-unregistered'),
+                 ('owned-phase', 'unowned-feature', 'Owned phase', 1, 'alpha');
         INSERT INTO issues (issue_number, feature_id, title, created_at, author, project_id)
           VALUES (7, 'shared', 'Beta issue', '2026-11-11', 'fixture', 'beta-unregistered'),
                  (8, 'shared', 'Ambiguous issue', '2026-11-11', 'fixture', NULL),
-                 (9, 'alpha-only', 'Unattributed issue', '2026-11-11', 'fixture', NULL);
+                 (9, 'alpha-only', 'Unattributed issue', '2026-11-11', 'fixture', NULL),
+                 (10, 'unowned-feature', 'Issue with an owned phase', '2026-11-11', 'fixture', NULL);
         INSERT INTO gate_results (feature_id, phase_id, task_id, gate_script, project_id)
           VALUES ('shared', 'phase', 'T001', 'beta.sh', 'beta-unregistered'),
-                 ('shared', 'other-phase', 'T002', 'ambiguous.sh', NULL);
+                 ('shared', 'other-phase', 'T002', 'ambiguous.sh', NULL),
+                 ('unowned-feature', 'owned-phase', 'T003', 'alpha.sh', NULL);
       `);
     });
     try {
@@ -648,6 +686,20 @@ describe("Project registry upgrade", () => {
       expect(listIssues("alpha-only", "alpha", upgraded)).toMatchObject([
         { issue_number: 9 },
       ]);
+      expect
+        .soft(listIssues("unowned-feature", "alpha", upgraded))
+        .toMatchObject([{ issue_number: 10 }]);
+      expect
+        .soft(
+          getGateResult(
+            "unowned-feature",
+            "owned-phase",
+            "T003",
+            "alpha",
+            upgraded,
+          ),
+        )
+        .toMatchObject({ gate_script: "alpha.sh" });
       expect
         .soft(getGateResult("shared", "phase", "T001", "alpha", upgraded))
         .toBeUndefined();
@@ -856,6 +908,97 @@ describe("Project registry upgrade", () => {
           .pluck()
           .all(),
       ).toEqual(ids);
+      expect(upgraded.pragma("foreign_key_check")).toEqual([]);
+    } finally {
+      upgraded.close();
+    }
+  });
+
+  it("restores verified plan parents without copying them into unrelated scopes", () => {
+    const checkout = join(root, "checkout");
+    execFileSync("git", ["init", "--quiet", checkout]);
+    execFileSync("git", [
+      "-C",
+      checkout,
+      "remote",
+      "add",
+      "origin",
+      "https://github.com/example/alpha.git",
+    ]);
+    const facts = discoverGitIdentityFacts(checkout);
+    const canonical = computeProjectId(facts);
+    const [alias] = computeLegacyProjectIds(facts);
+    const upgraded = upgrade((legacy) => {
+      const project = legacy.prepare(
+        "INSERT INTO projects (id, name, path, github_repo) VALUES (?, 'Alpha', ?, 'example/alpha')",
+      );
+      project.run(canonical, checkout);
+      project.run(alias, `${checkout}#${alias}`);
+      legacy
+        .prepare(
+          `INSERT INTO plan_features (id, name, project_id, status)
+           VALUES ('feature', 'Real Feature', ?, 'SHIPPED')`,
+        )
+        .run(alias);
+      legacy
+        .prepare(
+          `INSERT INTO plan_phases (id, feature_id, name, seq, project_id, status, created_at, updated_at)
+           VALUES ('phase', 'feature', 'Real Phase', 1, ?, 'COMPLETED', '2026-01-01 09:00:00', '2026-01-01T10:00:00Z')`,
+        )
+        .run(alias);
+      const proposal = legacy.prepare(
+        "INSERT INTO plan_proposals (id, target_phase_id, proposal_type, project_id) VALUES (?, 'phase', 'ADD_TASK', ?)",
+      );
+      proposal.run("alpha-proposal", canonical);
+      proposal.run("beta-proposal", "beta");
+      legacy.exec(`
+        INSERT INTO issues (issue_number, feature_id, title, created_at, author)
+          VALUES (7, 'feature', 'Legacy issue', '2026-01-01', 'fixture');
+        INSERT INTO gate_results (feature_id, phase_id, task_id, gate_script)
+          VALUES ('feature', 'phase', 'T001', 'legacy.sh');
+      `);
+    });
+    try {
+      const expectedPhase = {
+        id: "phase",
+        name: "Real Phase",
+        seq: 1,
+        status: "COMPLETED",
+        created_at: "2026-01-01 09:00:00",
+        updated_at: "2026-01-01T10:00:00Z",
+      };
+      for (const id of [canonical, alias]) {
+        expect.soft(getFeature("feature", id, upgraded)).toMatchObject({
+          name: "Real Feature",
+          status: "SHIPPED",
+        });
+        expect
+          .soft(getPhase("phase", id, upgraded))
+          .toMatchObject(expectedPhase);
+        expect
+          .soft(listPhases("feature", id, upgraded))
+          .toMatchObject([expectedPhase]);
+        expect
+          .soft(listProposals(id, upgraded))
+          .toMatchObject([{ id: "alpha-proposal", project_id: canonical }]);
+        expect.soft(getProposal("alpha-proposal", id, upgraded)).toMatchObject({
+          target_phase_id: "phase",
+          project_id: canonical,
+        });
+        expect
+          .soft(listIssues("feature", id, upgraded))
+          .toMatchObject([{ issue_number: 7, project_id: alias }]);
+        expect
+          .soft(getGateResult("feature", "phase", "T001", id, upgraded))
+          .toMatchObject({ gate_script: "legacy.sh", project_id: alias });
+      }
+      expect(getPhase("phase", "beta", upgraded)).toMatchObject({
+        name: "phase",
+        status: "PLANNED",
+      });
+      expect(listProposals("beta", upgraded)).toMatchObject([
+        { id: "beta-proposal" },
+      ]);
       expect(upgraded.pragma("foreign_key_check")).toEqual([]);
     } finally {
       upgraded.close();
