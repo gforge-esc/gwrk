@@ -1429,6 +1429,40 @@ describe("FR-001: architecture-aware workspace profiles (044 phase p01)", () => 
     }
   });
 
+  it("uses the physical registration for an unregistered alias when design applies", async () => {
+    const alias = path.join(root, "api-alias");
+    const target = path.join(root, "services/api");
+    const layered = { ...design, architecture: "layered" };
+    const config = {
+      project: { design },
+      workspaces: {
+        "services/api": {
+          design: layered,
+          stack: { framework: "Django" },
+          toolchain: { build: null },
+        },
+      },
+    };
+    write(".git", "gitdir: /unused/worktree\n");
+    write(".gwrkrc.json", JSON.stringify(config));
+    fs.symlinkSync("services/api", alias, "dir");
+
+    const physical = await detectProfile(target);
+    expect(physical).toMatchObject({
+      design: layered,
+      stack: { language: "Python", framework: "Django" },
+      toolchain: { build: null },
+    });
+    const profiles = {
+      direct: await detectProfile(alias),
+      explicit: await resolveWorkspaceProfile(root, "api-alias"),
+      configured: resolveWorkspaceProfile(alias, root, config),
+    };
+    for (const [entryPoint, profile] of Object.entries(profiles)) {
+      expect.soft(profile, entryPoint).toStrictEqual(physical);
+    }
+  });
+
   it("keeps an unregistered alias out of the legacy configured lookup", () => {
     const alias = path.join(root, "api-alias");
     const workspaces = { "services/api": { stack: { framework: "Django" } } };

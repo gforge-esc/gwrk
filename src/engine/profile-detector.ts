@@ -493,20 +493,19 @@ function resolveDetectedProfile(
     configuredLookup?: boolean;
   },
 ): ProjectProfile | undefined {
-  const { ancestors, suppliedRoot } = ancestorWorkspaceConfigs(
+  const { ancestors, registrations, suppliedRoot } = ancestorWorkspaceConfigs(
     workspace,
     requestedWorkspace,
     workspaceRoot,
   );
   const policyAncestors =
-    suppliedRoot && !ancestors.includes(suppliedRoot)
+    suppliedRoot &&
+    !ancestors.some(({ directory }) => directory === suppliedRoot.directory)
       ? [...ancestors, suppliedRoot]
       : ancestors;
   const designSource = findNearestAncestorDesign(policyAncestors);
   const ancestorDesign = designSource?.design;
-  for (const ancestor of ancestors) {
-    if (!ancestor.matchedPath) continue;
-
+  for (const ancestor of registrations) {
     const scoped = applyWorkspaceConfig(ancestor, detected, {
       requireDesign: true,
       configuredLookup: workspaceRoot?.configuredLookup,
@@ -571,8 +570,8 @@ function scopeWorkspaceConfig(
   directory: string,
   config: WorkspaceRootConfig,
   relativePath: string,
+  workspaces = validateWorkspaceEntries(config),
 ): ScopedWorkspaceConfig {
-  const workspaces = validateWorkspaceEntries(config);
   return {
     directory,
     config,
@@ -616,27 +615,49 @@ function ancestorWorkspaceConfigs(
   const root = workspaceRoot?.directory;
   const physical = ancestorDirectories(workspace, root);
   const boundary = physical[physical.length - 1];
-  const ancestors: ScopedWorkspaceConfig[] = [];
-  const seen = new Set([workspace]);
+  const scopes = new Map<string, ScopedWorkspaceConfig | undefined>([
+    [workspace, undefined],
+  ]);
+  const registrations: ScopedWorkspaceConfig[] = [];
   let suppliedRoot: ScopedWorkspaceConfig | undefined;
 
-  const addAncestor = (directory: string, relativePath: string) => {
-    if (seen.has(directory)) return;
-    seen.add(directory);
-    if (directory === root) {
-      if (workspaceRoot?.config !== undefined) {
-        suppliedRoot = scopeWorkspaceConfig(
-          directory,
-          workspaceRoot.config,
-          relativePath,
-        );
-        ancestors.push(suppliedRoot);
+  const addAncestor = (
+    directory: string,
+    relativePath: string,
+    physicalFallback = false,
+  ) => {
+    if (scopes.has(directory)) {
+      const previous = scopes.get(directory);
+      if (
+        !physicalFallback ||
+        !previous ||
+        previous.matchedPath ||
+        previous.relativePath === relativePath
+      )
+        return;
+      const scoped = scopeWorkspaceConfig(
+        directory,
+        previous.config,
+        relativePath,
+        previous.workspaces,
+      );
+      if (scoped.matchedPath) {
+        scopes.set(directory, scoped);
+        registrations.push(scoped);
       }
       return;
     }
-    const config = readWorkspaceRootConfig(directory);
-    if (config)
-      ancestors.push(scopeWorkspaceConfig(directory, config, relativePath));
+    const config =
+      directory === root
+        ? workspaceRoot?.config
+        : readWorkspaceRootConfig(directory);
+    const scoped =
+      config !== undefined && (directory === root || config)
+        ? scopeWorkspaceConfig(directory, config, relativePath)
+        : undefined;
+    scopes.set(directory, scoped);
+    if (directory === root) suppliedRoot = scoped;
+    if (scoped?.matchedPath) registrations.push(scoped);
   };
 
   if (requestedWorkspace !== workspace) {
@@ -664,12 +685,13 @@ function ancestorWorkspaceConfigs(
   }
 
   for (const directory of physical.slice(1)) {
-    addAncestor(directory, relativeWorkspacePath(directory, workspace));
+    addAncestor(directory, relativeWorkspacePath(directory, workspace), true);
   }
   if (root === workspace && workspaceRoot?.config !== undefined) {
     suppliedRoot = scopeWorkspaceConfig(root, workspaceRoot.config, "");
   }
-  return { ancestors, suppliedRoot };
+  const ancestors = [...scopes.values()].filter((scope) => scope !== undefined);
+  return { ancestors, registrations, suppliedRoot };
 }
 
 function findNearestAncestorDesign(
