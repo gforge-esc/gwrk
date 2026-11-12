@@ -31,7 +31,7 @@ flowchart LR
 | `harvest_cursors` | `project_id` | Per-project GitHub polling watermark and last error | Poller catch-up cursor |
 | `harvest_operations` | `operation_id`, `(project_id, work_key)` | Single harvest record per verified work scope | Operational harvest ledger |
 | `harvest_stage_receipts` | `(operation_id, phase_key, stage)` | Independent progress for sync, gates, learning, Slack and cleanup | Stage recovery state |
-| `notification_outbox` | `outbox_id`, `(project_id, dedupe_key)` | Durable recipient routing and uncertain-send reconciliation | Outbound delivery ledger |
+| `notification_outbox` | `outbox_id`, `(project_id, dedupe_key)`, `client_metadata_key` | Durable recipient routing and uncertain-send reconciliation | Outbound delivery ledger |
 
 ## SQLite migration `015`
 
@@ -205,7 +205,8 @@ CREATE TABLE IF NOT EXISTS notification_outbox (
   created_at          TEXT NOT NULL,
   updated_at          TEXT NOT NULL,
   delivered_at        TEXT,
-  UNIQUE (project_id, dedupe_key)
+  UNIQUE (project_id, dedupe_key),
+  UNIQUE (client_metadata_key)
 );
 
 CREATE INDEX IF NOT EXISTS idx_notification_outbox_pending

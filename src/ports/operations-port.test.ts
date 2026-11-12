@@ -66,6 +66,15 @@ const leaseExpiresAt = "2026-11-11T12:01:00.000Z";
 const sha = "a".repeat(40);
 const destination = { workspaceId: "W1", channelId: "C2", threadTs: "2.1" };
 
+function outboxDeliveryKey({
+  workspaceId,
+  channelId,
+  threadTs,
+  clientMetadataKey,
+}: OutboxItem): string {
+  return JSON.stringify([workspaceId, channelId, threadTs, clientMetadataKey]);
+}
+
 function harvest(
   operationId: string,
   overrides: Partial<DurableHarvestOperation> = {},
@@ -161,7 +170,15 @@ function harvestIntake(
   if (checkoutPhaseIds === undefined) {
     return {
       ...delivery,
-      target: { accepted: true, project, operations: [operation] },
+      target: {
+        accepted: true,
+        project,
+        checkoutPhaseIds:
+          verified.kind === "local_commit" && verified.phaseId !== null
+            ? [verified.phaseId]
+            : undefined,
+        operations: [operation],
+      },
     };
   }
   if (verified.kind !== "pull_request")
@@ -663,7 +680,11 @@ function restoreRecoveryStore(persisted: {
         if (failureNotice && recipient && !savedNotice) {
           if (
             !failureNotice.clientMetadataKey.trim() ||
-            outboxItems.some((item) => item.outboxId === failureNotice.outboxId)
+            outboxItems.some(
+              (item) =>
+                item.outboxId === failureNotice.outboxId ||
+                item.clientMetadataKey === failureNotice.clientMetadataKey,
+            )
           ) {
             return invalid;
           }
@@ -1466,14 +1487,9 @@ describe("durable recovery store contract", () => {
     });
     expect(send).toMatchObject({ action: "send", item: destination });
     if (!send) throw new Error("Expected a send claim");
-    const deliveryKey = ({
-      workspaceId,
-      channelId,
-      threadTs,
-      clientMetadataKey,
-    }: OutboxItem) =>
-      JSON.stringify([workspaceId, channelId, threadTs, clientMetadataKey]);
-    const providerMessages = new Map([[deliveryKey(send.item), "message-1"]]);
+    const providerMessages = new Map([
+      [outboxDeliveryKey(send.item), "message-1"],
+    ]);
 
     const restartAt = leaseExpiresAt;
     const restarted = restoreRecoveryStore({
@@ -1505,7 +1521,9 @@ describe("durable recovery store contract", () => {
       item: destination,
     });
     if (!recovery) throw new Error("Expected a reconciliation claim");
-    expect(providerMessages.get(deliveryKey(recovery.item))).toBe("message-1");
+    expect(providerMessages.get(outboxDeliveryKey(recovery.item))).toBe(
+      "message-1",
+    );
   });
 });
 
@@ -2010,6 +2028,34 @@ describe("persisted harvest intake contract", () => {
       restoreHarvestIntake(saved).store.recordHarvestIntake(intake),
     ).toMatchObject({ ok: true, operations: [], deduplicatedTransport: true });
   });
+
+  it.each([
+    { checkoutPhaseIds: undefined },
+    { checkoutPhaseIds: [] },
+    { checkoutPhaseIds: ["phase-02"] },
+  ])(
+    "rejects a manual request for phase-01 with checkout coverage $checkoutPhaseIds",
+    ({ checkoutPhaseIds }) => {
+      const manual = harvestIntake("manual-explicit", verifiedOffline);
+      if (!manual.target.accepted) throw new Error("Expected manual target");
+      const initial = restoreHarvestIntake({ harvests: [], stages: [] });
+      const before = initial.snapshot();
+
+      expect(
+        initial.store.recordHarvestIntake({
+          ...manual,
+          target: { ...manual.target, checkoutPhaseIds },
+        }),
+      ).toEqual({ ok: false, code: "HARVEST_IDENTITY_MISMATCH" });
+      expect(initial.snapshot()).toEqual(before);
+      expect(
+        initial.store.recordHarvestIntake({
+          ...manual,
+          target: { ...manual.target, checkoutPhaseIds: ["phase-1"] },
+        }),
+      ).toMatchObject({ ok: true, operations: [{ phaseId }] });
+    },
+  );
 
   it.each([
     ["phase", "develop"],
@@ -2532,7 +2578,6 @@ it.each([
   "persists gate failure with Slack target $hasSlackTarget and feature thread $hasFeatureThread",
   ({ hasSlackTarget, hasFeatureThread }) => {
     const operationId = "gate-failure";
-    const existingNotice = outbox("existing-notice", "delivered");
     const acceptedNotice = outbox("gate-notice", "pending", {
       ownerOperationId: operationId,
       eventType: "harvest_gate_failed",
@@ -2561,6 +2606,16 @@ it.each([
             threadTs: undefined,
           },
     };
+    const savedDestination = {
+      workspaceId: notice.recipient.workspaceId,
+      channelId: notice.recipient.channelId,
+      threadTs: notice.recipient.threadTs ?? null,
+    };
+    const existingNotice = outbox("existing-notice", "delivered", {
+      ...savedDestination,
+      messageTs: "4.1",
+      deliveredAt: createdAt,
+    });
     const initial = restoreRecoveryStore({
       featureThreads: hasFeatureThread ? [thread] : [],
       slackBindings: {
@@ -2634,6 +2689,7 @@ it.each([
         acceptedNotice,
         { ...notice, clientMetadataKey: "" },
         { ...notice, clientMetadataKey: " \t" },
+        { ...notice, clientMetadataKey: existingNotice.clientMetadataKey },
         { ...notice, outboxId: existingNotice.outboxId },
         { ...notice, phaseId: "phase-02" },
         {
@@ -2706,17 +2762,17 @@ it.each([
       restarted.transitionHarvestStage({
         ...transition,
         failureNotice: hasSlackTarget
-          ? { ...notice, outboxId: "duplicate", dedupeKey: "duplicate" }
+          ? {
+              ...notice,
+              outboxId: "duplicate",
+              dedupeKey: "duplicate",
+              clientMetadataKey: existingNotice.clientMetadataKey,
+            }
           : null,
       }),
     ).toEqual({ ok: true });
     expect(restarted.snapshot()).toEqual(restartState);
     if (hasSlackTarget) {
-      const savedDestination = {
-        workspaceId: notice.recipient.workspaceId,
-        channelId: notice.recipient.channelId,
-        threadTs: notice.recipient.threadTs ?? null,
-      };
       const changedDestination = {
         workspaceId: "W3",
         channelId: "C3",
@@ -2736,17 +2792,23 @@ it.each([
         },
       });
       const afterSend = restoreRecoveryStore(restarted.snapshot());
-      expect(
-        afterSend.claimOutboxItem({
-          outboxId: notice.outboxId,
-          nowIso: leaseExpiresAt,
-          destination: changedDestination,
-        }),
-      ).toMatchObject({
+      const recovery = afterSend.claimOutboxItem({
+        outboxId: notice.outboxId,
+        nowIso: leaseExpiresAt,
+        destination: changedDestination,
+      });
+      expect(recovery).toMatchObject({
         action: "reconcile",
         claim: { clientMetadataKey: notice.clientMetadataKey },
         item: savedDestination,
       });
+      if (!recovery) throw new Error("Expected a reconciliation claim");
+      const providerMessages = new Map([
+        [outboxDeliveryKey(existingNotice), existingNotice.messageTs],
+      ]);
+      expect(providerMessages.has(outboxDeliveryKey(recovery.item))).toBe(
+        false,
+      );
     }
   },
 );
