@@ -183,6 +183,7 @@ function runInstalledRestoreForPathValidation(
   ledger: string,
   source: string,
   state: string,
+  home = dirname(ledger),
 ) {
   // Restore target validation must run before the hosted command takes locks.
   const nodeArgs =
@@ -194,7 +195,7 @@ function runInstalledRestoreForPathValidation(
         ];
   return runInstalledLedgerCommandAtHome(
     ledger,
-    dirname(ledger),
+    home,
     ["restore", "--from", source, "--state-dir", state],
     nodeArgs,
   );
@@ -334,6 +335,75 @@ describe("installed ledger commands outside a checkout", () => {
       ).rejects.toMatchObject({
         code: "ENOENT",
       });
+    },
+  );
+
+  it.each(pathVariants)(
+    "protects the configured device file during restore with alias=$alias and child=$child",
+    async ({ alias, child }) => {
+      const home = join(root, "home");
+      const homeAlias = join(root, "home-alias");
+      const ledgerDirectory = join(root, "state");
+      await mkdir(home);
+      await mkdir(ledgerDirectory);
+      await symlink(home, homeAlias);
+      const ledger = join(ledgerDirectory, "gwrk.db");
+      seedLedger(ledger).close();
+      const source = join(root, "backup");
+      const seeded = runInstalledBackup(ledger, source);
+      expect(seeded.status, seeded.stderr).toBe(0);
+
+      const deviceFile = join(home, "device.json");
+      const target = join(
+        alias ? homeAlias : home,
+        "device.json",
+        ...(child ? ["restore"] : []),
+      );
+      const result = runInstalledRestoreForPathValidation(
+        ledger,
+        source,
+        target,
+        home,
+      );
+      expectReservedPathFailure(result, `reserved device path ${deviceFile}`);
+      await expect(stat(deviceFile)).rejects.toMatchObject({ code: "ENOENT" });
+      await expect(
+        stat(join(root, "runtime", "server.lock")),
+      ).rejects.toMatchObject({
+        code: "ENOENT",
+      });
+      const nextBackup = runInstalledLedgerCommandAtHome(ledger, home, [
+        "backup",
+        "--out",
+        join(root, "next-backup"),
+      ]);
+      expect(nextBackup.status, nextBackup.stderr).toBe(0);
+    },
+  );
+
+  it.each([
+    { target: "state/gwrk.db", label: "ledger path" },
+    { target: "state/.gwrk.db.lock", label: "ledger lock path" },
+    { target: "runtime/server.lock", label: "runtime lock path" },
+  ])(
+    "protects the absent configured $label during restore",
+    async ({ target, label }) => {
+      const originalLedger = join(root, "original.db");
+      seedLedger(originalLedger).close();
+      const source = join(root, "backup");
+      const seeded = runInstalledBackup(originalLedger, source);
+      expect(seeded.status, seeded.stderr).toBe(0);
+
+      const configuredLedger = join(root, "state", "gwrk.db");
+      const reserved = join(root, target);
+      const result = runInstalledRestoreForPathValidation(
+        configuredLedger,
+        source,
+        join(reserved, "restore"),
+        root,
+      );
+      expectReservedPathFailure(result, `reserved ${label} ${reserved}`);
+      await expect(stat(reserved)).rejects.toMatchObject({ code: "ENOENT" });
     },
   );
 

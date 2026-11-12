@@ -17,11 +17,7 @@ export async function restoreOfflineLedger(
     pid: number;
   },
 ): Promise<VerifiedLedgerBackup> {
-  const target = await backup.resolveRestoreTarget(
-    request.stateDirectory,
-    request.configuredDbPath,
-    request.runtimePidPath,
-  );
+  const target = await backup.resolveRestoreTarget(request);
   const lock = instances.acquireInstanceLock(
     request.runtimeDirectory,
     request.pid,
