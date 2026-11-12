@@ -81,7 +81,11 @@ function importCommit(commit: FixtureCommit, index: number): string {
 }
 
 function isGitFixtureEnvKey(name: string): boolean {
-  return name === "BASH_ENV" || name.startsWith("GIT_");
+  return (
+    name === "BASH_ENV" ||
+    name.startsWith("BASH_FUNC_") ||
+    name.startsWith("GIT_")
+  );
 }
 
 export function stubPulseGitEnv(env: NodeJS.ProcessEnv) {
