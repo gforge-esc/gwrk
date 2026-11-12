@@ -268,6 +268,8 @@ describe("Project registry upgrade", () => {
     { registryVersion: "earlier", clockOffset: 0 },
     { registryVersion: "earlier", clockOffset: 1 },
     { registryVersion: "earlier", clockOffset: -1 },
+    { registryVersion: "earlier", clockOffset: 3600 },
+    { registryVersion: "earlier", clockOffset: -3600 },
   ] as const)(
     "preserves real plan parents after first-origin enrollment with $registryVersion migration 014 and clock offset $clockOffset",
     ({ registryVersion, clockOffset }) => {
