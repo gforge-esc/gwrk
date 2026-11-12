@@ -128,6 +128,40 @@ describe('US-016: Enforcement Skills Dispatch Injection', () => {
   const inlineEnforcementExample = "Quote `<code_quality>{{enforcement}}</code_quality>` as written.\r\n";
   const blockQuoteEnforcementExample = "> <code_quality>{{enforcement}}</code_quality>\r\n";
 
+  it.each(["gwrk-implement", "skill/fixture"])(
+    "sends equal legacy enforcement input once for %s",
+    async (workflow) => {
+      const marker = "{{enforcement}}";
+      const capturedStdin = mockAgentStdin();
+      const actualSkills = await vi.importActual<typeof skillRuntime>(
+        "../plugins/skill-runtime.js",
+      );
+      vi.mocked(skillRuntime.resolveEnforcementSkills).mockImplementationOnce(
+        actualSkills.resolveEnforcementSkills,
+      );
+
+      await dispatchToAgent({
+        workflow,
+        workDir: "/fake/root",
+        agent: "codex",
+        prompt: marker,
+        stdin: marker,
+        quiet: true,
+      });
+
+      const payload = capturedStdin();
+      if (workflow.startsWith("skill/")) {
+        expect(payload).toBe(`${COMMAND_SAFETY_BLOCK}\n\n${marker}`);
+        expect(skillRuntime.resolveEnforcementSkills).not.toHaveBeenCalled();
+      } else {
+        expect(payload).not.toContain(marker);
+        expect(payload.match(/<!-- enforcement-skill: typescript-standards -->/g))
+          .toHaveLength(1);
+        expect(skillRuntime.resolveEnforcementSkills).toHaveBeenCalledTimes(1);
+      }
+    },
+  );
+
   it("expands a split legacy prompt and preserves its scoped stdin", async () => {
     const actualSkills = await vi.importActual<typeof skillRuntime>(
       "../plugins/skill-runtime.js",
@@ -272,7 +306,12 @@ describe('US-016: Enforcement Skills Dispatch Injection', () => {
     },
   );
 
-  it.each(["    ", "\t"])("expands an indented active enforcement slot (%j)", async (indent) => {
+  it.each([
+    ["structured", "    ", ""],
+    ["structured", "\t", ""],
+    ["structured", "    ", "    Preserve this rule.  \r\n"],
+    ["legacy", "    ", "    Preserve this rule.  \r\n"],
+  ])("expands an indented active enforcement slot in %s stdin (%j, %j)", async (mode, indent, rulesLine) => {
     const actualSkills = await vi.importActual<typeof skillRuntime>("../plugins/skill-runtime.js");
     vi.mocked(skillRuntime.resolveEnforcementSkills).mockImplementationOnce(actualSkills.resolveEnforcementSkills);
     const capturedStdin = mockAgentStdin();
@@ -281,25 +320,27 @@ describe('US-016: Enforcement Skills Dispatch Injection', () => {
     const fencedExample = "~~~xml\r\n    {{enforcement}}\r\n~~~\r\n";
     const indentedBlock = "    An indented Markdown example:\r\n    {{enforcement}}\r\n\r\n";
     const closing = "\r\n</code_quality>";
-    const template = opening + indentedBlock + fencedExample + indent + "{{enforcement}}" + closing;
+    const beforeMarker = opening + indentedBlock + fencedExample + rulesLine + indent;
+    const template = beforeMarker + "{{enforcement}}" + closing;
 
     await dispatchToAgent({
       workflow: "gwrk-implement",
       workDir: "/fake/root",
       agent: "codex",
       stdin: template + "\n\n" + legacyInput,
-      promptParts: { template, userInput: legacyInput },
+      promptParts: mode === "structured" ? { template, userInput: legacyInput } : undefined,
       quiet: true,
     });
 
     const payload = capturedStdin();
-    const prefix = COMMAND_SAFETY_BLOCK + "\n\n" + opening + indentedBlock + fencedExample + indent;
+    const prefix = COMMAND_SAFETY_BLOCK + "\n\n" + beforeMarker;
     const suffix = closing + "\n\n" + legacyInput;
     expect(payload.startsWith(prefix)).toBe(true);
     expect(payload.endsWith(suffix)).toBe(true);
     expect(payload.slice(prefix.length, -suffix.length)).toContain(
       "<!-- enforcement-skill: typescript-standards -->",
     );
+    expect(payload.slice(prefix.length, -suffix.length)).not.toContain("{{enforcement}}");
   });
 
   it("expands the unquoted marker inside a legacy section that also quotes the marker", async () => {
@@ -635,6 +676,26 @@ describe('ADR-008: Command Safety Posture', () => {
       });
 
       expect(capturedStdin()).toBe(`${template}\n\n${userInput}`);
+    });
+
+    it.each([
+      ["active", COMMAND_SAFETY_BLOCK, legacyInput, ""],
+      ["fenced", `~~~text\n${COMMAND_SAFETY_BLOCK}\n~~~`, legacyInput, COMMAND_SAFETY_BLOCK],
+      ["scoped input", "Do the work.", `<user_input>\r\n${COMMAND_SAFETY_BLOCK}\r\n</user_input>\r\n`, COMMAND_SAFETY_BLOCK],
+    ])("sends an active policy in legacy stdin with an %s policy copy", async (_label, template, input, injectedPolicy) => {
+      const capturedStdin = mockAgentStdin();
+      const stdin = `${template}\n\n${input}`;
+
+      await dispatchToAgent({
+        workflow: "gwrk-implement",
+        workDir: "/fake/root",
+        agent: "codex",
+        stdin,
+        quiet: true,
+      });
+
+      expect(capturedStdin()).toBe([injectedPolicy, stdin].filter(Boolean).join("\n\n"));
+      expect(skillRuntime.resolveEnforcementSkills).not.toHaveBeenCalled();
     });
   });
 
