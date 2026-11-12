@@ -2,15 +2,16 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { execSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { performance } from "node:perf_hooks";
 // src/engine/pulse-integration.test.ts
 // Integration tests for 006-pulse
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { createPulseGitFixture } from "../../tests/helpers/pulse-git-fixture.js";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
+import {
+  createPulseGitFixture,
+  stubPulseGitEnv,
+} from "../../tests/helpers/pulse-git-fixture.js";
 import { scanRepository } from "./pulse.js";
 import { PulseSnapshotSchema } from "./types.js";
 
@@ -19,9 +20,11 @@ describe("TR-007: Integration test — real git repo", () => {
 
   beforeAll(async () => {
     fixture = await createPulseGitFixture("branches");
+    stubPulseGitEnv(fixture.env);
   });
 
   afterAll(async () => {
+    vi.unstubAllEnvs();
     await fixture?.cleanup();
   });
 
@@ -66,48 +69,54 @@ describe("TR-007: Integration test — real git repo", () => {
     };
     expect(withoutTimestamp(snapshot1)).toEqual(withoutTimestamp(snapshot2));
   });
+
+  describe("FR-002: Error handling for invalid paths", () => {
+    it("VR-002: throws for non-git-repo path", () => {
+      const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "not-a-repo-"));
+      try {
+        expect(() => scanRepository(tempDir)).toThrow(/Not a git repository/);
+      } finally {
+        fs.rmSync(tempDir, { recursive: true, force: true });
+      }
+    });
+
+    it("FR-002 error state: throws for non-existent path", () => {
+      const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "pulse-missing-"));
+      try {
+        expect(() => scanRepository(path.join(tempDir, "missing"))).toThrow(
+          /Path not found/,
+        );
+      } finally {
+        fs.rmSync(tempDir, { recursive: true, force: true });
+      }
+    });
+  });
 });
 
 describe("Pulse scan scale", () => {
-  it("scans 100 commits", async () => {
-    const fixture = await createPulseGitFixture("scale");
-    try {
-      const snapshot = scanRepository(fixture.repoDir);
-      expect(snapshot.mainLoc).toBe(100);
-      expect(snapshot.weeklyBuckets).toEqual([
-        {
-          weekStart: "2026-01-05T00:00:00.000Z",
-          totalMain: 100,
-          totalDrafts: 0,
-          added: 100,
-          deleted: 0,
-        },
-      ]);
-    } finally {
-      await fixture.cleanup();
-    }
+  let fixture: Awaited<ReturnType<typeof createPulseGitFixture>>;
+
+  beforeAll(async () => {
+    fixture = await createPulseGitFixture("scale");
+    stubPulseGitEnv(fixture.env);
+  });
+
+  afterAll(async () => {
+    vi.unstubAllEnvs();
+    await fixture?.cleanup();
+  });
+
+  it("scans 100 commits", () => {
+    const snapshot = scanRepository(fixture.repoDir);
+    expect(snapshot.mainLoc).toBe(100);
+    expect(snapshot.weeklyBuckets).toEqual([
+      {
+        weekStart: "2026-01-05T00:00:00.000Z",
+        totalMain: 100,
+        totalDrafts: 0,
+        added: 100,
+        deleted: 0,
+      },
+    ]);
   });
 });
-
-describe("FR-002: Error handling for invalid paths", () => {
-  it("VR-002: throws for non-git-repo path", () => {
-    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "not-a-repo-"));
-    try {
-      expect(() => scanRepository(tempDir)).toThrow(/Not a git repository/);
-    } finally {
-      fs.rmSync(tempDir, { recursive: true, force: true });
-    }
-  });
-
-  it("FR-002 error state: throws for non-existent path", () => {
-    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "pulse-missing-"));
-    try {
-      expect(() => scanRepository(path.join(tempDir, "missing"))).toThrow(
-        /Path not found/,
-      );
-    } finally {
-      fs.rmSync(tempDir, { recursive: true, force: true });
-    }
-  });
-});
-

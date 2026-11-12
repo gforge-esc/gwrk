@@ -2,70 +2,50 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { exec, execSync } from "node:child_process";
 import { execFile } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { vi } from "vitest";
-import { createPulseGitFixture } from "../tests/helpers/pulse-git-fixture.js";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
+import {
+  createPulseGitFixture,
+  stubPulseGitEnv,
+} from "../tests/helpers/pulse-git-fixture.js";
 import { runCli as runScopedCli } from "./cli.js";
 
-const execAsync = promisify(exec);
 const execFileAsync = promisify(execFile);
 const childTimeoutMs = 10_000;
 const CLI_PATH = path.resolve(process.cwd(), "dist/cli.js");
 
 async function runCli(
-  args: string | string[],
-  cwd?: string,
+  args: string[],
+  cwd: string,
+  env: NodeJS.ProcessEnv,
 ): Promise<{ stdout: string; stderr: string; exitCode: number }> {
-  if (typeof args !== "string") {
-    if (!cwd)
-      throw new Error("Pulse config tests require a child working directory");
-
-    try {
-      const { stdout, stderr } = await execFileAsync(
-        process.execPath,
-        [CLI_PATH, ...args],
-        {
-          cwd,
-          timeout: childTimeoutMs,
-          killSignal: "SIGKILL",
-          env: { ...process.env, GWRK_HOME: path.join(cwd, "gwrk-home") },
-        },
-      );
-      return { stdout, stderr, exitCode: 0 };
-    } catch (error) {
-      const childError = error as {
-        code?: number;
-        stdout: string;
-        stderr: string;
-      };
-      if (typeof childError.code !== "number") throw error;
-      return {
-        stdout: childError.stdout,
-        stderr: childError.stderr,
-        exitCode: childError.code,
-      };
-    }
-  }
-
   try {
-    const { stdout, stderr } = await execAsync(`node ${CLI_PATH} ${args}`, {
-      cwd,
-      timeout: childTimeoutMs,
-      killSignal: "SIGKILL",
-    });
+    const { stdout, stderr } = await execFileAsync(
+      process.execPath,
+      [CLI_PATH, ...args],
+      {
+        cwd,
+        timeout: childTimeoutMs,
+        killSignal: "SIGKILL",
+        env: { ...env, GWRK_HOME: path.join(cwd, "gwrk-home") },
+      },
+    );
     return { stdout, stderr, exitCode: 0 };
-  } catch (err: unknown) {
-    const e = err as { stdout?: string; stderr?: string; code?: number };
+  } catch (error) {
+    const childError = error as {
+      code?: number;
+      stdout: string;
+      stderr: string;
+    };
+    if (typeof childError.code !== "number") throw error;
     return {
-      stdout: e.stdout || "",
-      stderr: e.stderr || "",
-      exitCode: e.code || 1,
+      stdout: childError.stdout,
+      stderr: childError.stderr,
+      exitCode: childError.code,
     };
   }
 }
@@ -92,6 +72,7 @@ describe("Pulse E2E", () => {
 
   beforeAll(async () => {
     fixture = await createPulseGitFixture("branches");
+    stubPulseGitEnv(fixture.env);
     vi.stubEnv("GWRK_HOME", path.join(fixture.repoDir, "gwrk-home"));
   });
 
@@ -156,10 +137,12 @@ describe("Pulse E2E", () => {
       const { stdout, stderr, exitCode } = await runCli(
         ["measure", "pulse"],
         projectDir,
+        fixture.env,
       );
       expect(exitCode, stderr).toBe(0);
       expect(stdout).toContain("GWRK PULSE SNAPSHOT");
       expect(stdout).toContain(path.basename(fixture.repoDir));
+      expect(stdout).toContain("LOC: 5 (Main) / 2 (Draft)");
       expect(stderr).toMatch(/\[exit:0 \| [^\]]+\]/);
     } finally {
       fs.rmSync(projectDir, { recursive: true, force: true });
@@ -192,6 +175,7 @@ describe("Pulse E2E", () => {
       const { stdout, stderr, exitCode } = await runCli(
         ["measure", "pulse"],
         projectDir,
+        fixture.env,
       );
       expect(exitCode).toBe(1);
       expect(stdout).toBe("");

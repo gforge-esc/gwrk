@@ -3,12 +3,13 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { execFile } from "node:child_process";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import { promisify } from "node:util";
+import { vi } from "vitest";
 
 const execFileAsync = promisify(execFile);
 const gitTimeoutMs = 10_000;
@@ -79,27 +80,44 @@ function importCommit(commit: FixtureCommit, index: number): string {
   return `${lines.join("\n")}\n\n`;
 }
 
+export function stubPulseGitEnv(env: NodeJS.ProcessEnv) {
+  for (const name of Object.keys(process.env)) {
+    if (name.startsWith("GIT_") && !(name in env)) vi.stubEnv(name, undefined);
+  }
+  for (const [name, value] of Object.entries(env)) {
+    if (name.startsWith("GIT_")) vi.stubEnv(name, value);
+  }
+}
+
 export async function createPulseGitFixture(history: "branches" | "scale") {
   const repoDir = await mkdtemp(path.join(tmpdir(), "pulse git-"));
   const cleanup = () => rm(repoDir, { recursive: true, force: true });
-  const env = Object.fromEntries(
-    Object.entries(process.env).filter(([name]) => !name.startsWith("GIT_")),
-  );
+  const globalConfig = path.join(repoDir, "global.gitconfig");
+  const globalAttributes = path.join(repoDir, "global.gitattributes");
+  const env: NodeJS.ProcessEnv = {
+    ...Object.fromEntries(
+      Object.entries(process.env).filter(([name]) => !name.startsWith("GIT_")),
+    ),
+    EDITOR: "true",
+    GIT_EDITOR: "true",
+    GIT_CONFIG_GLOBAL: globalConfig,
+    GIT_CONFIG_NOSYSTEM: "1",
+    GIT_ATTR_NOSYSTEM: "1",
+    GIT_CONFIG_COUNT: "1",
+    GIT_CONFIG_KEY_0: "core.attributesFile",
+    GIT_CONFIG_VALUE_0: globalAttributes,
+    GIT_TERMINAL_PROMPT: "0",
+  };
   const options = {
     cwd: repoDir,
     timeout: gitTimeoutMs,
     killSignal: "SIGKILL" as const,
-    env: {
-      ...env,
-      EDITOR: "true",
-      GIT_EDITOR: "true",
-      GIT_CONFIG_GLOBAL: path.join(repoDir, "unused-global.gitconfig"),
-      GIT_CONFIG_NOSYSTEM: "1",
-      GIT_TERMINAL_PROMPT: "0",
-    },
+    env,
   };
 
   try {
+    await writeFile(globalConfig, "");
+    await writeFile(globalAttributes, "");
     await execFileAsync(
       "git",
       ["init", "--initial-branch=main", "--template=", "--quiet"],
@@ -134,7 +152,7 @@ export async function createPulseGitFixture(history: "branches" | "scale") {
     ]);
     if (importResult.status === "rejected") throw importResult.reason;
     if (inputResult.status === "rejected") throw inputResult.reason;
-    return { repoDir, cleanup };
+    return { repoDir, env, cleanup };
   } catch (error) {
     await cleanup();
     throw error;
