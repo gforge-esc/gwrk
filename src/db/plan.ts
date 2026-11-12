@@ -18,6 +18,15 @@ const phaseColumns =
 const proposalColumns =
   "id, target_phase_id, proposal_type, detail, source, status, created_at, resolved_at, project_id, updated_at";
 
+const planChildWriteOrder = `
+  write_seq DESC,
+  CASE WHEN write_seq = 0 THEN
+    COALESCE(julianday(updated_at), julianday(created_at))
+  END DESC,
+  project_id = ? DESC,
+  project_id
+`;
+
 export interface PlanFeature {
   id: string;
   name: string;
@@ -263,7 +272,7 @@ export function getPhase(
   const { canonical, ids, placeholders } = projectScope(conn, projectId);
   return conn
     .prepare(`SELECT ${phaseColumns} FROM plan_phases WHERE id = ? AND project_id IN (${placeholders})
-      ORDER BY write_seq DESC, project_id = ? DESC, project_id LIMIT 1`)
+      ORDER BY ${planChildWriteOrder} LIMIT 1`)
     .get(id, ...ids, canonical) as PlanPhase | undefined;
 }
 
@@ -281,7 +290,7 @@ export function listPhases(
     .prepare(`
       WITH ranked AS (
         SELECT rowid, feature_id, ROW_NUMBER() OVER (
-          PARTITION BY id ORDER BY write_seq DESC, project_id = ? DESC, project_id
+          PARTITION BY id ORDER BY ${planChildWriteOrder}
         ) AS rank
         FROM plan_phases WHERE project_id IN (${placeholders})
       )
@@ -443,7 +452,7 @@ export function getProposal(
   const { canonical, ids, placeholders } = projectScope(conn, projectId);
   return conn
     .prepare(`SELECT ${proposalColumns} FROM plan_proposals WHERE id = ? AND project_id IN (${placeholders})
-      ORDER BY write_seq DESC, project_id = ? DESC, project_id LIMIT 1`)
+      ORDER BY ${planChildWriteOrder} LIMIT 1`)
     .get(id, ...ids, canonical) as PlanProposal | undefined;
 }
 
@@ -458,7 +467,7 @@ export function listProposals(
   const { canonical, ids, placeholders } = projectScope(conn, projectId);
   const rows = conn
     .prepare(`SELECT ${proposalColumns} FROM plan_proposals WHERE project_id IN (${placeholders})
-      ORDER BY write_seq DESC, project_id = ? DESC, project_id`)
+      ORDER BY ${planChildWriteOrder}`)
     .all(...ids, canonical) as PlanProposal[];
   return firstPerKey(rows, (row) => row.id).sort((a, b) =>
     (b.created_at ?? "").localeCompare(a.created_at ?? ""),
