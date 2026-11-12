@@ -125,6 +125,8 @@ describe('US-016: Enforcement Skills Dispatch Injection', () => {
 
   it.each([
     ["a standalone empty section", "<code_quality></code_quality>"],
+    ["a standalone enforcement section", "<code_quality>\r\n{{enforcement}}\r\n</code_quality>"],
+    ["a bare marker after a quoted input opener", `Quoted opener:\r\n<user_input>\r\n\r\n${legacyPrefix}${legacyInput}`],
     ["a code quality slot before scoped input", `Rules:\r\n<code_quality>\r\n{{enforcement}}\r\n</code_quality>\r\n\r\n${legacyInput}`],
     ["a bare marker before scoped input", `${legacyPrefix}${legacyInput}`],
   ])("expands %s in legacy Codex stdin", async (_label, stdin) => {
@@ -148,11 +150,13 @@ describe('US-016: Enforcement Skills Dispatch Injection', () => {
     expect(expandedTemplate).toContain("<!-- enforcement-skill: typescript-standards -->");
     expect(expandedTemplate).not.toContain("{{enforcement}}");
     expect(payload.slice(expandedTemplate.length)).toBe(userInput);
-    if (template === "<code_quality></code_quality>") {
-      expect(expandedTemplate).toContain("<code_quality>\n");
+    expect(expandedTemplate.startsWith(`${COMMAND_SAFETY_BLOCK}\n\n`)).toBe(true);
+    if (!userInput) {
+      expect(expandedTemplate).toMatch(/<code_quality>\r?\n/);
       expect(expandedTemplate).toContain("</code_quality>");
     } else {
-      expect(expandedTemplate).toMatch(/^<command_safety>[\s\S]*<\/command_safety>\n\nRules:\r\n/);
+      const prefix = template.slice(0, template.indexOf("Rules:") + "Rules:\r\n".length);
+      expect(expandedTemplate.startsWith(`${COMMAND_SAFETY_BLOCK}\n\n${prefix}`)).toBe(true);
       expect(expandedTemplate.endsWith("\r\n\r\n")).toBe(true);
     }
   });

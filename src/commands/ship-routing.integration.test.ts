@@ -1169,10 +1169,23 @@ exitCodeMap: {}
       agent: options.backend,
       model: options.selectedModel,
       workDir,
+      backendProjectRoot: root,
       dryRun: true,
     });
     expect(result.exitCode).toBe(0);
     expect(result.stdout).toBe("fixture dispatch: fixture-fast");
+    const worktreePlugin = path.join(workDir, ".gwrk", "plugins", "agents", backend);
+    fs.mkdirSync(path.dirname(worktreePlugin), { recursive: true });
+    fs.renameSync(pluginDir, worktreePlugin);
+    await expect(dispatchToAgent({
+      agent: options.backend,
+      model: options.selectedModel,
+      workDir,
+      dryRun: true,
+    })).resolves.toMatchObject({
+      exitCode: 0,
+      stdout: "fixture dispatch: fixture-fast",
+    });
   });
 
   it.each(["missing", "unavailable"])(

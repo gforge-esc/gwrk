@@ -418,6 +418,7 @@ async function dispatchAgent(opts: DispatchOptions): Promise<{
  */
 export interface TaskDispatch extends AgentTaskRequest {
   promptParts?: { template: string; userInput: string };
+  backendProjectRoot?: string;
   commandOverride?: string;
   dryRun?: boolean;
 }
@@ -508,13 +509,25 @@ function splitLegacyStdin(task: TaskDispatch) {
     return undefined;
   }
 
-  if (stdin.trim() === "<code_quality></code_quality>") {
+  if (
+    /^<code_quality>\s*(?:\{\{enforcement\}\}\s*)?<\/code_quality>$/.test(
+      stdin.trim(),
+    )
+  ) {
     return { template: stdin, userInput: "" };
   }
 
-  // Legacy templates place the task in a final block with tags on their own lines.
-  const inputStart = stdin.search(/^<user_input>\r?\n/m);
-  if (inputStart < 0) return undefined;
+  // Legacy scoped templates put the enforcement slot before the task block.
+  const slot =
+    /<code_quality>[\s\S]*?<\/code_quality>|^\{\{enforcement\}\}(?=\r?\n)/m.exec(
+      stdin,
+    );
+  if (!slot) return undefined;
+  const inputOpening = /^<user_input>\r?\n/gm;
+  inputOpening.lastIndex = slot.index + slot[0].length;
+  const boundary = inputOpening.exec(stdin);
+  if (!boundary) return undefined;
+  const inputStart = boundary.index;
   const userInput = stdin.slice(inputStart);
   if (!/\n<\/user_input>(?:\r?\n)*$/.test(userInput)) return undefined;
 
@@ -562,14 +575,13 @@ export async function dispatchToAgent(task: TaskDispatch): Promise<TaskResult> {
   }
 
   const agentName = (task.agent ?? "agy") as string;
-  // Discover the adapter in the same project that selected the route.
+  const { promptParts, backendProjectRoot, ...agentTask } = task;
   const registry = new AgentBackendRegistry(
-    new PluginLoader({ projectDir: process.cwd() }),
+    new PluginLoader({ projectDir: backendProjectRoot ?? projectRoot }),
   );
   const adapter = await registry.getAgentBackend(agentName);
 
   const startTime = Date.now();
-  const { promptParts, ...agentTask } = task;
   const legacyParts = promptParts ? undefined : splitLegacyStdin(task);
   let template = promptParts?.template ?? legacyParts?.template ?? "";
 
