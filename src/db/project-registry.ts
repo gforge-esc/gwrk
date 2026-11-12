@@ -138,6 +138,16 @@ export function nextLedgerWriteSequence(db: Database.Database): number {
   return sequence;
 }
 
+const canonicalWriteOrder = "write_seq DESC, project_id = ? DESC, project_id";
+
+export const planFeatureWriteOrder = `
+  synthetic_parent ASC,
+  write_seq DESC,
+  CASE WHEN write_seq = 0 THEN julianday(updated_at) END DESC,
+  project_id = ? DESC,
+  project_id
+`;
+
 function reconcileLedgerWrites(db: Database.Database, projectId: string): void {
   const { canonical, ids, placeholders } = projectScope(db, projectId);
   if (ids.length === 1) return;
@@ -160,12 +170,16 @@ function reconcileLedgerWrites(db: Database.Database, projectId: string): void {
     ],
   ] as const) {
     const fields = [...columns, "write_seq"];
+    const writeOrder =
+      table === "plan_features" ? planFeatureWriteOrder : canonicalWriteOrder;
+    const visibilityOrder =
+      table === "plan_features" ? "synthetic_parent ASC, " : "";
     db.prepare(`
       WITH ranked AS (
         SELECT rowid, FIRST_VALUE(rowid) OVER (
-          PARTITION BY ${key} ORDER BY write_seq DESC, project_id = ? DESC, project_id
+          PARTITION BY ${key} ORDER BY ${writeOrder}
         ) AS latest_row, ROW_NUMBER() OVER (
-          PARTITION BY ${key} ORDER BY project_id = ? DESC, project_id
+          PARTITION BY ${key} ORDER BY ${visibilityOrder}project_id = ? DESC, project_id
         ) AS visibility_rank
         FROM ${table} WHERE project_id IN (${placeholders})
       )
@@ -173,7 +187,7 @@ function reconcileLedgerWrites(db: Database.Database, projectId: string): void {
       SET ${fields.map((field) => `${field} = latest.${field}`).join(", ")}
       FROM ranked JOIN ${table} AS latest ON latest.rowid = ranked.latest_row
       WHERE visible.rowid = ranked.rowid AND ranked.visibility_rank = 1
-        AND latest.write_seq > visible.write_seq
+        AND latest.rowid <> visible.rowid
     `).run(canonical, canonical, ...ids);
   }
 }

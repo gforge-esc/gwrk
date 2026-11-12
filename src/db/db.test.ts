@@ -29,12 +29,16 @@ import { getGateResult } from "./gates.js";
 import { getTestDb, openDatabase } from "./index.js";
 import { listIssues } from "./issues.js";
 import {
+  getAllDependencies,
   getEdgesForFeature,
   getFeature,
   getPhase,
   getProposal,
   insertPhase,
   insertProposal,
+  listFeatures,
+  listPhases,
+  listProposals,
 } from "./plan.js";
 import { getRoutingHistory } from "./plugins.js";
 import { createProjectRegistry } from "./project-registry.js";
@@ -121,11 +125,8 @@ describe("Project registry upgrade", () => {
         legacy.close();
       }
 
-      if (readdirSync(source).includes(planMigration)) {
-        copyFileSync(
-          new URL(planMigration, source),
-          join(migrationsDir, planMigration),
-        );
+      for (const name of [planMigration, "017-plan-parent-provenance.sql"]) {
+        copyFileSync(new URL(name, source), join(migrationsDir, name));
       }
       const projectId = "legacy-local";
       const upgraded = openDatabase({ dbPath, migrationsDir });
@@ -193,6 +194,279 @@ describe("Project registry upgrade", () => {
     },
   );
 
+  it("adds parent provenance to a ledger with migration 016 already applied", () => {
+    const parentProvenance = "017-plan-parent-provenance.sql";
+    const legacyRegistry = readFileSync(
+      new URL(migration, source),
+      "utf8",
+    ).replace(
+      /-- Retain provenance until migration 017[\s\S]*?(?=UPDATE sqlite_sequence)/,
+      "",
+    );
+    writeFileSync(join(migrationsDir, migration), legacyRegistry);
+    for (const name of [
+      "015-ledger-write-order.sql",
+      "016-plan-write-order.sql",
+    ]) {
+      copyFileSync(new URL(name, source), join(migrationsDir, name));
+    }
+
+    const prior = openDatabase({ dbPath, migrationsDir });
+    try {
+      prior.exec(`
+        INSERT INTO projects (id, name, path, slug) VALUES ('alpha', 'Alpha', '/fixture/alpha', 'alpha');
+        INSERT INTO plan_features (id, name, project_id, status)
+          VALUES ('feature', 'Saved feature', 'alpha', 'SHIPPED');
+        INSERT INTO plan_phases (id, name, feature_id, project_id, status, seq, write_seq)
+          VALUES ('phase', 'Saved phase', 'feature', 'alpha', 'COMPLETED', 1, 3);
+      `);
+    } finally {
+      prior.close();
+    }
+
+    copyFileSync(
+      new URL(parentProvenance, source),
+      join(migrationsDir, parentProvenance),
+    );
+    for (let reopen = 0; reopen < 2; reopen++) {
+      const db = openDatabase({ dbPath, migrationsDir });
+      try {
+        expect(getFeature("feature", "alpha", db)).toMatchObject({
+          status: "SHIPPED",
+        });
+        expect(getPhase("phase", "alpha", db)).toMatchObject({
+          status: "COMPLETED",
+        });
+        expect(
+          db
+            .prepare("SELECT synthetic_parent, write_seq FROM plan_phases")
+            .get(),
+        ).toEqual({ synthetic_parent: 0, write_seq: 3 });
+        expect(
+          db
+            .prepare("SELECT COUNT(*) FROM _migrations WHERE name = ?")
+            .pluck()
+            .get(parentProvenance),
+        ).toBe(1);
+      } finally {
+        db.close();
+      }
+    }
+  });
+
+  it("preserves real plan parents when first-origin enrollment links migrated placeholders", () => {
+    const checkout = join(root, "checkout");
+    const git = (...args: string[]) =>
+      execFileSync("git", ["-C", checkout, ...args]);
+    execFileSync("git", ["init", "--quiet", checkout]);
+    const localId = computeProjectId(discoverGitIdentityFacts(checkout));
+    const origin = "https://github.com/example/checkout.git";
+    git("remote", "add", "origin", origin);
+    const remoteId = computeProjectId(discoverGitIdentityFacts(checkout));
+    git("remote", "remove", "origin");
+
+    const upgraded = upgrade((legacy) => {
+      legacy
+        .prepare("INSERT INTO projects (id, name, path) VALUES (?, ?, ?)")
+        .run(localId, "Checkout", checkout);
+      legacy
+        .prepare(`
+        INSERT INTO plan_features (id, name, project_id, status, updated_at)
+        VALUES ('feature', 'Saved feature', ?, 'SHIPPED', '2026-01-01 10:00:00')
+      `)
+        .run(localId);
+      legacy
+        .prepare(`
+        INSERT INTO plan_phases (id, feature_id, name, seq, project_id, status, updated_at)
+        VALUES ('phase', 'feature', 'Saved phase', 1, ?, 'COMPLETED', '2026-01-01 10:00:00')
+      `)
+        .run(localId);
+      legacy
+        .prepare(`
+        INSERT INTO plan_proposals (id, target_phase_id, proposal_type, project_id, status)
+        VALUES ('proposal', 'phase', 'amend', ?, 'ACCEPTED')
+      `)
+        .run(remoteId);
+    });
+    upgraded.close();
+
+    git("remote", "add", "origin", origin);
+    const reopened = openDatabase({ dbPath, migrationsDir });
+    try {
+      createProjectRegistry(reopened, () => {}).enrollProject({
+        projectId: remoteId,
+        slug: "checkout",
+        name: "Checkout",
+        repoSlug: "example/checkout",
+        trunkBranch: "develop",
+        localRoot: checkout,
+        mirrorPath: null,
+        runnerPolicy: { allowedKinds: ["local"] },
+        slack: null,
+        legacyProjectIds: [],
+        createdAt: "2026-11-01T00:00:00Z",
+        updatedAt: "2026-11-01T00:00:00Z",
+      });
+      const feature = {
+        id: "feature",
+        name: "Saved feature",
+        status: "SHIPPED",
+      };
+      const phase = { id: "phase", name: "Saved phase", status: "COMPLETED" };
+      for (const owner of [localId, remoteId]) {
+        expect
+          .soft(getFeature("feature", owner, reopened))
+          .toMatchObject(feature);
+        expect.soft(listFeatures(owner, reopened)).toMatchObject([feature]);
+        expect.soft(getPhase("phase", owner, reopened)).toMatchObject(phase);
+        expect
+          .soft(listPhases("feature", owner, reopened))
+          .toMatchObject([phase]);
+        expect.soft(getProposal("proposal", owner, reopened)).toMatchObject({
+          project_id: remoteId,
+          status: "ACCEPTED",
+        });
+      }
+      expect(reopened.pragma("foreign_key_check")).toEqual([]);
+    } finally {
+      reopened.close();
+    }
+  });
+
+  it("retains newer legacy plan state after upgrade and enrollment", () => {
+    const checkout = join(root, "checkout");
+    execFileSync("git", ["init", "--quiet", checkout]);
+    const localId = computeProjectId(discoverGitIdentityFacts(checkout));
+    const enrollment = {
+      projectId: localId,
+      slug: "checkout",
+      name: "Checkout",
+      repoSlug: null,
+      trunkBranch: "develop",
+      localRoot: checkout,
+      mirrorPath: null,
+      runnerPolicy: { allowedKinds: ["local" as const] },
+      slack: null,
+      legacyProjectIds: [],
+      createdAt: "2026-01-01T00:00:00Z",
+      updatedAt: "2026-01-01T00:00:00Z",
+    };
+    const ledgerOrder = "015-ledger-write-order.sql";
+    const planOrder = "016-plan-write-order.sql";
+    for (const name of [migration, ledgerOrder]) {
+      copyFileSync(new URL(name, source), join(migrationsDir, name));
+    }
+    const legacy = openDatabase({ dbPath, migrationsDir });
+    let remoteId: string;
+    try {
+      createProjectRegistry(legacy, () => {}).enrollProject(enrollment);
+      execFileSync("git", [
+        "-C",
+        checkout,
+        "remote",
+        "add",
+        "origin",
+        "https://github.com/example/checkout.git",
+      ]);
+      remoteId = computeProjectId(discoverGitIdentityFacts(checkout));
+      registerProject(
+        {
+          id: remoteId,
+          name: "Checkout",
+          path: checkout,
+          github_repo: "example/checkout",
+        },
+        legacy,
+      );
+      const feature = legacy.prepare(
+        `INSERT INTO plan_features (id, name, project_id, status, updated_at, write_seq)
+         VALUES (?, 'Feature', ?, ?, ?, ?)`,
+      );
+      const phase = legacy.prepare(
+        "INSERT INTO plan_phases (id, feature_id, name, seq, project_id, status, updated_at) VALUES ('phase', 'feature', 'Phase', 1, ?, ?, ?)",
+      );
+      const proposal = legacy.prepare(
+        "INSERT INTO plan_proposals (id, target_phase_id, proposal_type, project_id, status, created_at, updated_at) VALUES ('proposal', 'phase', 'amend', ?, ?, ?, ?)",
+      );
+      feature.run("feature", remoteId, "PLANNED", "2026-01-01 10:00:00", 0);
+      feature.run("feature", localId, "SHIPPED", "2026-01-01T11:00:00Z", 0);
+      feature.run("sequenced", remoteId, "SHIPPED", "2026-01-01 09:00:00", 1);
+      feature.run("sequenced", localId, "PLANNED", "2026-01-01T12:00:00Z", 0);
+      legacy
+        .prepare(
+          `INSERT INTO plan_edges (from_id, to_id, edge_type, project_id)
+           VALUES ('feature', 'sequenced', 'DEPENDS_ON', ?)`,
+        )
+        .run(localId);
+      phase.run(remoteId, "PLANNED", "2026-01-01 10:00:00");
+      phase.run(localId, "COMPLETED", "2026-01-01T11:00:00Z");
+      proposal.run(
+        remoteId,
+        "PENDING",
+        "2026-01-01 09:00:00",
+        "2026-01-01 10:00:00",
+      );
+      proposal.run(localId, "ACCEPTED", "2026-01-01T11:00:00Z", null);
+    } finally {
+      legacy.close();
+    }
+
+    copyFileSync(new URL(planOrder, source), join(migrationsDir, planOrder));
+    const parentProvenance = "017-plan-parent-provenance.sql";
+    copyFileSync(
+      new URL(parentProvenance, source),
+      join(migrationsDir, parentProvenance),
+    );
+    const upgraded = openDatabase({ dbPath, migrationsDir });
+    try {
+      createProjectRegistry(upgraded, () => {}).enrollProject({
+        ...enrollment,
+        projectId: remoteId,
+        repoSlug: "example/checkout",
+      });
+      for (const owner of [localId, remoteId]) {
+        expect
+          .soft(getFeature("feature", owner, upgraded)?.status)
+          .toBe("SHIPPED");
+        expect
+          .soft(getFeature("sequenced", owner, upgraded)?.status)
+          .toBe("SHIPPED");
+        expect.soft(listFeatures(owner, upgraded)).toMatchObject([
+          { id: "feature", status: "SHIPPED" },
+          { id: "sequenced", status: "SHIPPED" },
+        ]);
+        expect
+          .soft(getAllDependencies("sequenced", owner, upgraded))
+          .toMatchObject([{ id: "feature", status: "SHIPPED" }]);
+        expect
+          .soft(getPhase("phase", owner, upgraded)?.status)
+          .toBe("COMPLETED");
+        expect
+          .soft(listPhases("feature", owner, upgraded))
+          .toMatchObject([{ id: "phase", status: "COMPLETED" }]);
+        expect
+          .soft(getProposal("proposal", owner, upgraded)?.status)
+          .toBe("ACCEPTED");
+        expect
+          .soft(listProposals(owner, upgraded))
+          .toMatchObject([{ id: "proposal", status: "ACCEPTED" }]);
+      }
+      expect
+        .soft(
+          upgraded
+            .prepare(
+              "SELECT status FROM plan_features WHERE id = 'feature' AND project_id = ?",
+            )
+            .pluck()
+            .get(remoteId),
+        )
+        .toBe("SHIPPED");
+      expect(upgraded.pragma("foreign_key_check")).toEqual([]);
+    } finally {
+      upgraded.close();
+    }
+  });
+
   it("preserves history and records the IDs of missing legacy runs", () => {
     const upgraded = upgrade((legacy) => {
       legacy.pragma("foreign_keys = OFF");
@@ -250,15 +524,29 @@ describe("Project registry upgrade", () => {
       `);
     });
     try {
-      expect(upgraded.prepare("SELECT project_id FROM runs WHERE id = 41").pluck().get())
-        .toBe("run-owner");
-      expect(upgraded.prepare("SELECT project_id, run_id FROM history WHERE feature_id = 'fixture'").get())
-        .toEqual({ project_id: "history-owner", run_id: 41 });
-      expect(upgraded.prepare("SELECT id, path, updated_at FROM projects WHERE id IN ('run-owner', 'history-owner') ORDER BY id").all())
-        .toEqual([
-          { id: "history-owner", path: "", updated_at: null },
-          { id: "run-owner", path: "", updated_at: null },
-        ]);
+      expect(
+        upgraded
+          .prepare("SELECT project_id FROM runs WHERE id = 41")
+          .pluck()
+          .get(),
+      ).toBe("run-owner");
+      expect(
+        upgraded
+          .prepare(
+            "SELECT project_id, run_id FROM history WHERE feature_id = 'fixture'",
+          )
+          .get(),
+      ).toEqual({ project_id: "history-owner", run_id: 41 });
+      expect(
+        upgraded
+          .prepare(
+            "SELECT id, path, updated_at FROM projects WHERE id IN ('run-owner', 'history-owner') ORDER BY id",
+          )
+          .all(),
+      ).toEqual([
+        { id: "history-owner", path: "", updated_at: null },
+        { id: "run-owner", path: "", updated_at: null },
+      ]);
       expect(upgraded.pragma("foreign_key_check")).toEqual([]);
     } finally {
       upgraded.close();
@@ -508,17 +796,21 @@ describe("Project registry upgrade", () => {
       legacy.exec(`
         INSERT INTO projects (id, name, path) VALUES ('alpha', 'Alpha', '/alpha');
         INSERT INTO plan_features (id, name, project_id)
-          VALUES ('shared', 'Alpha feature', 'alpha'), ('alpha-only', 'Alpha only', 'alpha');
+          VALUES ('shared', 'Alpha feature', 'alpha'), ('alpha-only', 'Alpha only', 'alpha'),
+                 ('unowned-feature', 'Unowned feature', NULL);
         INSERT INTO plan_phases (id, feature_id, name, seq, project_id)
           VALUES ('phase', 'shared', 'Alpha phase', 1, 'alpha'),
-                 ('other-phase', 'shared', 'Beta phase', 2, 'beta-unregistered');
+                 ('other-phase', 'shared', 'Beta phase', 2, 'beta-unregistered'),
+                 ('owned-phase', 'unowned-feature', 'Owned phase', 1, 'alpha');
         INSERT INTO issues (issue_number, feature_id, title, created_at, author, project_id)
           VALUES (7, 'shared', 'Beta issue', '2026-11-11', 'fixture', 'beta-unregistered'),
                  (8, 'shared', 'Ambiguous issue', '2026-11-11', 'fixture', NULL),
-                 (9, 'alpha-only', 'Unattributed issue', '2026-11-11', 'fixture', NULL);
+                 (9, 'alpha-only', 'Unattributed issue', '2026-11-11', 'fixture', NULL),
+                 (10, 'unowned-feature', 'Issue with an owned phase', '2026-11-11', 'fixture', NULL);
         INSERT INTO gate_results (feature_id, phase_id, task_id, gate_script, project_id)
           VALUES ('shared', 'phase', 'T001', 'beta.sh', 'beta-unregistered'),
-                 ('shared', 'other-phase', 'T002', 'ambiguous.sh', NULL);
+                 ('shared', 'other-phase', 'T002', 'ambiguous.sh', NULL),
+                 ('unowned-feature', 'owned-phase', 'T003', 'alpha.sh', NULL);
       `);
     });
     try {
@@ -535,6 +827,20 @@ describe("Project registry upgrade", () => {
       expect(listIssues("alpha-only", "alpha", upgraded)).toMatchObject([
         { issue_number: 9 },
       ]);
+      expect
+        .soft(listIssues("unowned-feature", "alpha", upgraded))
+        .toMatchObject([{ issue_number: 10 }]);
+      expect
+        .soft(
+          getGateResult(
+            "unowned-feature",
+            "owned-phase",
+            "T003",
+            "alpha",
+            upgraded,
+          ),
+        )
+        .toMatchObject({ gate_script: "alpha.sh" });
       expect
         .soft(getGateResult("shared", "phase", "T001", "alpha", upgraded))
         .toBeUndefined();
@@ -749,6 +1055,97 @@ describe("Project registry upgrade", () => {
     }
   });
 
+  it("restores verified plan parents without copying them into unrelated scopes", () => {
+    const checkout = join(root, "checkout");
+    execFileSync("git", ["init", "--quiet", checkout]);
+    execFileSync("git", [
+      "-C",
+      checkout,
+      "remote",
+      "add",
+      "origin",
+      "https://github.com/example/alpha.git",
+    ]);
+    const facts = discoverGitIdentityFacts(checkout);
+    const canonical = computeProjectId(facts);
+    const [alias] = computeLegacyProjectIds(facts);
+    const upgraded = upgrade((legacy) => {
+      const project = legacy.prepare(
+        "INSERT INTO projects (id, name, path, github_repo) VALUES (?, 'Alpha', ?, 'example/alpha')",
+      );
+      project.run(canonical, checkout);
+      project.run(alias, `${checkout}#${alias}`);
+      legacy
+        .prepare(
+          `INSERT INTO plan_features (id, name, project_id, status)
+           VALUES ('feature', 'Real Feature', ?, 'SHIPPED')`,
+        )
+        .run(alias);
+      legacy
+        .prepare(
+          `INSERT INTO plan_phases (id, feature_id, name, seq, project_id, status, created_at, updated_at)
+           VALUES ('phase', 'feature', 'Real Phase', 1, ?, 'COMPLETED', '2026-01-01 09:00:00', '2026-01-01T10:00:00Z')`,
+        )
+        .run(alias);
+      const proposal = legacy.prepare(
+        "INSERT INTO plan_proposals (id, target_phase_id, proposal_type, project_id) VALUES (?, 'phase', 'ADD_TASK', ?)",
+      );
+      proposal.run("alpha-proposal", canonical);
+      proposal.run("beta-proposal", "beta");
+      legacy.exec(`
+        INSERT INTO issues (issue_number, feature_id, title, created_at, author)
+          VALUES (7, 'feature', 'Legacy issue', '2026-01-01', 'fixture');
+        INSERT INTO gate_results (feature_id, phase_id, task_id, gate_script)
+          VALUES ('feature', 'phase', 'T001', 'legacy.sh');
+      `);
+    });
+    try {
+      const expectedPhase = {
+        id: "phase",
+        name: "Real Phase",
+        seq: 1,
+        status: "COMPLETED",
+        created_at: "2026-01-01 09:00:00",
+        updated_at: "2026-01-01T10:00:00Z",
+      };
+      for (const id of [canonical, alias]) {
+        expect.soft(getFeature("feature", id, upgraded)).toMatchObject({
+          name: "Real Feature",
+          status: "SHIPPED",
+        });
+        expect
+          .soft(getPhase("phase", id, upgraded))
+          .toMatchObject(expectedPhase);
+        expect
+          .soft(listPhases("feature", id, upgraded))
+          .toMatchObject([expectedPhase]);
+        expect
+          .soft(listProposals(id, upgraded))
+          .toMatchObject([{ id: "alpha-proposal", project_id: canonical }]);
+        expect.soft(getProposal("alpha-proposal", id, upgraded)).toMatchObject({
+          target_phase_id: "phase",
+          project_id: canonical,
+        });
+        expect
+          .soft(listIssues("feature", id, upgraded))
+          .toMatchObject([{ issue_number: 7, project_id: alias }]);
+        expect
+          .soft(getGateResult("feature", "phase", "T001", id, upgraded))
+          .toMatchObject({ gate_script: "legacy.sh", project_id: alias });
+      }
+      expect(getPhase("phase", "beta", upgraded)).toMatchObject({
+        name: "phase",
+        status: "PLANNED",
+      });
+      expect(listProposals("beta", upgraded)).toMatchObject([
+        { id: "beta-proposal" },
+      ]);
+      expect(upgraded.pragma("foreign_key_check")).toEqual([]);
+    } finally {
+      upgraded.close();
+    }
+  });
+
   it("backfills the local checkout owner when the first origin predates the upgrade", () => {
     const checkout = join(root, "first-origin");
     execFileSync("git", ["init", "--quiet", checkout], { stdio: "ignore" });
@@ -759,7 +1156,9 @@ describe("Project registry upgrade", () => {
         .prepare("INSERT INTO projects (id, name, path) VALUES (?, ?, ?)")
         .run(localId, "Local", checkout);
       legacy
-        .prepare("INSERT INTO runs (project_id, feature_id, command) VALUES (?, ?, ?)")
+        .prepare(
+          "INSERT INTO runs (project_id, feature_id, command) VALUES (?, ?, ?)",
+        )
         .run(localId, "fixture", "ship");
       execFileSync("git", [
         "-C",
@@ -784,7 +1183,9 @@ describe("Project registry upgrade", () => {
         .pluck();
       expect.soft(getRoot.get(localId)).toBe(checkout);
       expect(getAliases.all(localId)).toEqual(
-        computeLegacyProjectIds(facts).filter((alias) => alias !== localId).sort(),
+        computeLegacyProjectIds(facts)
+          .filter((alias) => alias !== localId)
+          .sort(),
       );
     } finally {
       upgraded.close();
@@ -795,7 +1196,12 @@ describe("Project registry upgrade", () => {
     const checkout = join(root, "current-checkout");
     execFileSync("git", ["init", "--quiet", checkout]);
     execFileSync("git", [
-      "-C", checkout, "remote", "add", "origin", "git@github.com:example/alpha.git",
+      "-C",
+      checkout,
+      "remote",
+      "add",
+      "origin",
+      "git@github.com:example/alpha.git",
     ]);
     const facts = discoverGitIdentityFacts(checkout);
     const canonical = computeProjectId(facts);
@@ -804,10 +1210,17 @@ describe("Project registry upgrade", () => {
       const insert = legacy.prepare(
         "INSERT INTO projects (id, name, path, github_repo) VALUES (?, ?, ?, ?)",
       );
-      insert.run(canonical, "Alpha", join(root, "old-checkout"), "example/alpha");
+      insert.run(
+        canonical,
+        "Alpha",
+        join(root, "old-checkout"),
+        "example/alpha",
+      );
       insert.run(legacyId, "Alpha legacy", checkout, "example/alpha");
       legacy
-        .prepare("INSERT INTO runs (project_id, feature_id, command) VALUES (?, 'shared', 'ship')")
+        .prepare(
+          "INSERT INTO runs (project_id, feature_id, command) VALUES (?, 'shared', 'ship')",
+        )
         .run(legacyId);
     });
     try {

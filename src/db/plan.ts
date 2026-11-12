@@ -8,6 +8,7 @@ import {
   canonicalProjectId,
   firstPerKey,
   nextLedgerWriteSequence,
+  planFeatureWriteOrder,
   projectScope,
 } from "./project-registry.js";
 
@@ -17,6 +18,15 @@ const phaseColumns =
   "id, feature_id, name, status, health, sp_estimate, sp_actual, duration_ms, completed_at, evidence, seq, created_at, updated_at, project_id";
 const proposalColumns =
   "id, target_phase_id, proposal_type, detail, source, status, created_at, resolved_at, project_id, updated_at";
+
+const planChildWriteOrder = `
+  write_seq DESC,
+  CASE WHEN write_seq = 0 THEN
+    COALESCE(julianday(updated_at), julianday(created_at))
+  END DESC,
+  project_id = ? DESC,
+  project_id
+`;
 
 export interface PlanFeature {
   id: string;
@@ -89,7 +99,7 @@ export function insertFeature(
           `INSERT INTO plan_features (id, name, status, sp_total, project_id, updated_at, write_seq)
          VALUES (@id, @name, @status, @sp_total, @project_id, datetime('now'), @write_seq)
          ON CONFLICT(project_id, id) DO UPDATE SET name = excluded.name,
-           status = excluded.status, sp_total = excluded.sp_total, updated_at = excluded.updated_at, write_seq = excluded.write_seq`,
+           status = excluded.status, sp_total = excluded.sp_total, updated_at = excluded.updated_at, write_seq = excluded.write_seq, synthetic_parent = 0`,
         )
         .run({
           ...feature,
@@ -112,7 +122,7 @@ export function getFeature(
   const { canonical, ids, placeholders } = projectScope(conn, projectId);
   return conn
     .prepare(`SELECT ${featureColumns} FROM plan_features WHERE id = ? AND project_id IN (${placeholders})
-      ORDER BY project_id = ? DESC, project_id LIMIT 1`)
+      ORDER BY ${planFeatureWriteOrder} LIMIT 1`)
     .get(id, ...ids, canonical) as PlanFeature | undefined;
 }
 
@@ -127,7 +137,7 @@ export function listFeatures(
   const { canonical, ids, placeholders } = projectScope(conn, projectId);
   const rows = conn
     .prepare(`SELECT ${featureColumns} FROM plan_features WHERE project_id IN (${placeholders})
-      ORDER BY project_id = ? DESC, project_id`)
+      ORDER BY ${planFeatureWriteOrder}`)
     .all(...ids, canonical) as PlanFeature[];
   return firstPerKey(rows, (row) => row.id).sort((a, b) =>
     a.id < b.id ? -1 : Number(a.id > b.id),
@@ -183,7 +193,7 @@ function updateFeatureField(
       if (!owner) return;
       conn
         .prepare(`
-      UPDATE plan_features SET ${field} = ?, updated_at = datetime('now'), write_seq = ?
+      UPDATE plan_features SET ${field} = ?, updated_at = datetime('now'), write_seq = ?, synthetic_parent = 0
       WHERE id = ? AND project_id = ?
     `)
         .run(value, nextLedgerWriteSequence(conn), id, owner);
@@ -213,8 +223,8 @@ export function insertPhase(
         // Keep the phase and its proposals under their current foreign key owner.
         conn
           .prepare(`
-        INSERT INTO plan_features (id, name, status, sp_total, created_at, updated_at, write_seq, project_id)
-        SELECT id, name, status, sp_total, created_at, updated_at, write_seq, ?
+        INSERT INTO plan_features (id, name, status, sp_total, created_at, updated_at, write_seq, synthetic_parent, project_id)
+        SELECT id, name, status, sp_total, created_at, updated_at, write_seq, synthetic_parent, ?
         FROM plan_features WHERE id = ? AND project_id = ?
         ON CONFLICT(project_id, id) DO NOTHING
       `)
@@ -236,7 +246,7 @@ export function insertPhase(
            sp_estimate = excluded.sp_estimate, sp_actual = excluded.sp_actual,
            duration_ms = excluded.duration_ms, completed_at = excluded.completed_at,
            evidence = excluded.evidence, seq = excluded.seq, updated_at = excluded.updated_at,
-           write_seq = excluded.write_seq`,
+           write_seq = excluded.write_seq, synthetic_parent = 0`,
         )
         .run({
           ...phase,
@@ -263,7 +273,7 @@ export function getPhase(
   const { canonical, ids, placeholders } = projectScope(conn, projectId);
   return conn
     .prepare(`SELECT ${phaseColumns} FROM plan_phases WHERE id = ? AND project_id IN (${placeholders})
-      ORDER BY write_seq DESC, project_id = ? DESC, project_id LIMIT 1`)
+      ORDER BY synthetic_parent ASC, ${planChildWriteOrder} LIMIT 1`)
     .get(id, ...ids, canonical) as PlanPhase | undefined;
 }
 
@@ -281,7 +291,7 @@ export function listPhases(
     .prepare(`
       WITH ranked AS (
         SELECT rowid, feature_id, ROW_NUMBER() OVER (
-          PARTITION BY id ORDER BY write_seq DESC, project_id = ? DESC, project_id
+          PARTITION BY id ORDER BY synthetic_parent ASC, ${planChildWriteOrder}
         ) AS rank
         FROM plan_phases WHERE project_id IN (${placeholders})
       )
@@ -373,7 +383,7 @@ export function getAllDependencies(
       SELECT f.* FROM plan_features f
       JOIN deps d ON f.id = d.feature_id
       WHERE f.project_id IN (${placeholders})
-      ORDER BY f.project_id = ? DESC, f.project_id
+      ORDER BY ${planFeatureWriteOrder}
     `,
     )
     .all(...ids, id, ...ids, canonical) as PlanFeature[];
@@ -443,7 +453,7 @@ export function getProposal(
   const { canonical, ids, placeholders } = projectScope(conn, projectId);
   return conn
     .prepare(`SELECT ${proposalColumns} FROM plan_proposals WHERE id = ? AND project_id IN (${placeholders})
-      ORDER BY write_seq DESC, project_id = ? DESC, project_id LIMIT 1`)
+      ORDER BY ${planChildWriteOrder} LIMIT 1`)
     .get(id, ...ids, canonical) as PlanProposal | undefined;
 }
 
@@ -458,7 +468,7 @@ export function listProposals(
   const { canonical, ids, placeholders } = projectScope(conn, projectId);
   const rows = conn
     .prepare(`SELECT ${proposalColumns} FROM plan_proposals WHERE project_id IN (${placeholders})
-      ORDER BY write_seq DESC, project_id = ? DESC, project_id`)
+      ORDER BY ${planChildWriteOrder}`)
     .all(...ids, canonical) as PlanProposal[];
   return firstPerKey(rows, (row) => row.id).sort((a, b) =>
     (b.created_at ?? "").localeCompare(a.created_at ?? ""),
