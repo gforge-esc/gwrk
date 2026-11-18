@@ -826,12 +826,14 @@ export async function dispatchToAgent(task: TaskDispatch): Promise<TaskResult> {
   ];
 
   let grounding = "";
+  let hasReadableArchitectureTarget = false;
   for (const { path: filePath, tag } of groundingFiles) {
     if (fs.existsSync(filePath)) {
       try {
         const content = fs.readFileSync(filePath, "utf-8");
         grounding += `<${tag}>\n${content}\n</${tag}>\n\n`;
-        if (tag === "architecture_decisions") {
+        if (tag === "architecture_target") hasReadableArchitectureTarget = true;
+        if (tag === "architecture_decisions" && hasReadableArchitectureTarget) {
           grounding +=
             "<decision_authority>\nRead the complete applicable records and preserve every recorded status. Proposed targets require human ratification. They do not supersede Decided constraints. If a Proposed target conflicts with a Decided constraint, follow the Decided constraint and record the conflict in the plan. Resolve the conflict before implementation. Superseded records preserve history and lineage. Do not enforce their replaced constraints as current decisions.\n</decision_authority>\n\n";
         }

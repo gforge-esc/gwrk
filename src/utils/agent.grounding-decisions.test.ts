@@ -252,9 +252,17 @@ describe("029 FR-013: every dispatch learns what it may not do (US-004)", () => 
 
 
 describe("decision status authority", () => {
+  it.each(["missing", "unreadable"])("preserves the decision index without shared target authority when the target is %s", async state => {
+    writeIndexFixture(workDir);
+    if (state === "unreadable") mkdirSync(path.join(workDir, ".gwrk/architecture.md"));
+    const prompt = await assembledPrompt(workDir);
+    expect(prompt).toContain(`<architecture_decisions>\n${INDEX_BODY}\n</architecture_decisions>`);
+    expect(prompt).not.toContain("<decision_authority>");
+  });
   it("preserves mixed decision statuses and adds conflict guidance", async () => {
     const index = INDEX_BODY + "\n| " + adr("998") + " | target | Decided | Preserve the adopted boundary. |\n| " + adr("997") + " | old boundary | Superseded | Retain for lineage. |\n";
     writeIndexFixture(workDir, index);
+    writeFileSync(path.join(workDir, ".gwrk/architecture.md"), "# Target\nSelected architecture context.\n");
     const prompt = await assembledPrompt(workDir);
     expect(prompt).toContain(`<architecture_decisions>\n${index}\n</architecture_decisions>`);
     const authority = prompt.match(/<decision_authority>([\s\S]*?)<\/decision_authority>/)?.[1];

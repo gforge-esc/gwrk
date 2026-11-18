@@ -244,20 +244,18 @@ export async function resolveEnforcementSkills(
         ].includes(manifest.name);
 
       if (!isProjectLocal && isBuiltinOrFrameworkSkill && profile) {
-        // Language filtering
-        if (manifest.language && profile.stack?.language) {
-          const manifestLang = manifest.language.toLowerCase();
-          // Polyglot: check against languages array if present
-          if (profile.stack.languages && profile.stack.languages.length > 1) {
-            const profileLangs = profile.stack.languages.map((l) =>
-              l.toLowerCase(),
-            );
-            if (!profileLangs.includes(manifestLang)) {
-              continue;
-            }
-          } else if (manifestLang !== profile.stack.language.toLowerCase()) {
-            continue;
-          }
+        const manifestLanguage = manifest.language?.trim().toLowerCase();
+        if (manifestLanguage && !["global", "all"].includes(manifestLanguage)) {
+          const languages = [
+            profile.stack?.language,
+            ...(profile.stack?.languages ?? []),
+          ]
+            .filter(
+              (language): language is string =>
+                typeof language === "string" && Boolean(language.trim()),
+            )
+            .map((language) => language.trim().toLowerCase());
+          if (!languages.includes(manifestLanguage)) continue;
         }
 
         // Framework filtering

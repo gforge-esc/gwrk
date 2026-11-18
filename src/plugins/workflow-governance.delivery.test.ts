@@ -118,7 +118,7 @@ describe("governance prompt delivery", () => {
     await mkdir(policyDir, { recursive: true });
     await writeFile(
       join(policyDir, "manifest.yaml"),
-      "type: skill\nname: phase-01-policy\nversion: 1.0.0\ndescription: Phase 1 test policy\ntier: enforcement\nscope: implementation\n",
+      "type: skill\nname: phase-01-policy\nversion: 1.0.0\ndescription: Phase 1 test policy\ntier: enforcement\nscope: all\n",
     );
     const rule = "Record dependency provenance in the release checklist.";
     await writeFile(join(policyDir, "SKILL.md"), `${rule}\n`);
@@ -158,6 +158,10 @@ describe("governance prompt delivery", () => {
         /docs\/grounding\/architecture\.md|specs\/000-build-plan\.md|pnpm run build|python -m pytest|\[type:[^\]]*\]|\[\/type\]|<project_profile\b/g,
       );
       expect(excluded ?? []).toEqual([]);
+      for (const language of ["typescript", "python", "rust", "go"])
+        expect(captured).not.toContain(
+          `<!-- enforcement-skill: ${language}-standards -->`,
+        );
     },
   );
 });

@@ -49,6 +49,7 @@ Apply the single dispatch path decision (ADR-007) and the decision records contr
 - `src/plugins/builtins/workflows/gwrk-specify/PROMPT.md` — **amend** — Use selected architecture and the current project layout. FR-001.
 - `src/plugins/builtins/workflows/gwrk-plan/PROMPT.md` — **amend** — Use current hexagonal boundaries and preserve the parser contract. FR-001.
 - `src/plugins/builtins/personas/principal-engineer.md` — **amend** — Use the project's verification commands and schema standards. FR-001.
+- `src/plugins/skill-runtime.ts` (MODIFY: Match builtin enforcement to known project languages during definition dispatch)
 - `src/utils/agent.ts` — **amend** — Add shared conflict guidance beside the intact decision index. FR-002.
 - `src/utils/agent.grounding-decisions.test.ts` — **amend** — Assert status visibility and conflict guidance across dispatch stages. FR-002.
 - `src/plugins/workflow-governance.test.ts` — **create** — Check conditioned specification and planning guidance for gwrk and Python. Verify that the persona preserves review reporting requirements. FR-001.
@@ -185,3 +186,5 @@ Phase 1 review regressions keep the GWRK build-plan path inside the native profi
 The reviewed routing foundation reduced the legacy full-suite baseline from 24 failures to one obsolete enforcement fixture. Backport the trusted-slot dry-run regression from feature 044 without its later policy-runtime API. Keep the assertion that enforcement content reaches dispatch and that no inference process starts.
 
 After the reviewed foundation merge and legacy fixture repair, the full CI test command passes 2171 tests. Seven tests remain skipped and six remain todo under the existing configuration. The Phase 1 gate passes 62 tests and the prepared Phase 2 gate passes 57 tests with one existing skipped test. The earlier 24-failure baseline is resolved.
+
+Phase 1 captured prompts omit unrelated language packs for an unknown profile. Applicable unscoped project-local policy remains present. Shared decision authority requires both a readable target and readable index while the index remains independent. Four regressions failed before repair. The phase gate passes 67 checks. The full suite passes 2176 tests with seven existing skips and six todo cases.
