@@ -23,7 +23,6 @@ WHERE f.updated_at = f.created_at
     WHERE saved.id = f.id AND saved.project_id <> f.project_id
       AND saved.write_seq = 0
       AND saved.rowid < f.rowid
-      AND (saved.name <> saved.id OR saved.status <> 'PLANNED' OR saved.sp_total <> 0)
   )
 UNION ALL
 SELECT 'phase', ph.id, ph.project_id
@@ -48,9 +47,6 @@ WHERE ph.updated_at = ph.created_at
       AND saved.write_seq = 0
       AND saved.feature_id = ph.feature_id
       AND saved.rowid < ph.rowid
-      AND (saved.name <> saved.id OR saved.status <> 'PLANNED' OR saved.health <> 'CLEAN'
-        OR saved.seq <> 0 OR saved.sp_estimate <> 0 OR saved.sp_actual IS NOT NULL
-        OR saved.duration_ms IS NOT NULL OR saved.completed_at IS NOT NULL OR saved.evidence IS NOT NULL)
   );
 UPDATE plan_features SET synthetic_parent = 1
 WHERE (project_id, id) IN (
