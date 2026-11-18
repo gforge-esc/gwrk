@@ -78,9 +78,10 @@
           "id": "T005",
           "title": "Modify db.ts",
           "description": "DELETE src/db/db.ts. Remove the throwing compression insert stub after confirming it has no production consumer. FR-004.. Tests: src/db/db.test.ts",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/phase-03.sh",
-          "sp": 1
+          "sp": 1,
+          "completedAt": "2026-11-18T17:25:09.803Z"
         }
       ],
       "sp_estimate": 1,
