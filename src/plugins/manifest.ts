@@ -124,9 +124,9 @@ const EnforcementSkillManifestSchema = PluginBaseSchema.extend({
   tier: z.literal("enforcement"),
   scope: z.enum(["define", "implementation", "review", "all"]).default("all"),
   /** Language this enforcement skill applies to (e.g. "TypeScript", "Python"). Omit to load for all projects. */
-  language: z.string().optional(),
+  language: z.string().trim().min(1).optional(),
   /** Framework this enforcement skill applies to (e.g. "React", "Express"). Omit to load for all projects. */
-  framework: z.string().optional(),
+  framework: z.string().trim().min(1).optional(),
   architectures: z.array(z.string()).optional(),
   principles: z
     .array(z.enum(["functional-core", "clean-code", "tdd"]))
@@ -151,12 +151,23 @@ const DomainSkillManifestSchema = PluginBaseSchema.extend({
 /**
  * Unified Skill Manifest (Discriminated Union on 'tier')
  */
-export const SkillManifestSchema = z.discriminatedUnion("tier", [
-  AtomicSkillManifestSchema,
-  CompoundSkillManifestSchema,
-  EnforcementSkillManifestSchema,
-  DomainSkillManifestSchema,
-]);
+export const SkillManifestSchema = z
+  .discriminatedUnion("tier", [
+    AtomicSkillManifestSchema,
+    CompoundSkillManifestSchema,
+    EnforcementSkillManifestSchema,
+    DomainSkillManifestSchema,
+  ])
+  .refine(
+    (manifest) =>
+      manifest.tier !== "enforcement" ||
+      manifest.framework === undefined ||
+      manifest.language !== undefined,
+    {
+      path: ["language"],
+      message: "Framework enforcement skills must declare a language.",
+    },
+  );
 
 /**
  * Agent Invocation (Layer 1)
@@ -279,8 +290,7 @@ const ChannelManifestSchema = PluginBaseSchema.extend({
 /**
  * Any Plugin Manifest (Union of all types)
  * We use z.union instead of z.discriminatedUnion at the top level because
- * SkillManifestSchema is itself a discriminated union, and members of
- * a top-level discriminated union must be object schemas.
+ * SkillManifestSchema validates a union of skill tiers.
  */
 export const AnyManifestSchema = z.union([
   SkillManifestSchema,

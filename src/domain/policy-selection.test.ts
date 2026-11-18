@@ -431,6 +431,94 @@ describe("Project policy composition", () => {
 });
 
 describe("reviewed policy coverage regressions", () => {
+  it("reports incompatible bundled framework guidance for TypeScript and Django", async () => {
+    const { composeEffectivePolicy } = await import("./policy-selection.js");
+    const result = composeEffectivePolicy({
+      profile: {
+        ...profile,
+        stack: { language: "TypeScript", framework: "Django" },
+      },
+      candidates: [],
+    });
+
+    expect(result.frameworkGuidance).toBeUndefined();
+    expect(result.gaps).toEqual([
+      expect.objectContaining({
+        kind: "incompatible-framework-policy",
+        subject: "Django",
+      }),
+    ]);
+  });
+
+  it("returns bundled ORM guidance for Python and Django", async () => {
+    const { composeEffectivePolicy } = await import("./policy-selection.js");
+    const result = composeEffectivePolicy({
+      profile: {
+        ...profile,
+        stack: { language: "Python", framework: "Django" },
+      },
+      candidates: [],
+    });
+
+    expect(result.frameworkGuidance).toContain("Django ORM");
+    expect(result.gaps).toEqual([]);
+  });
+
+  it.each([
+    { scope: "implementation", projectScope: "any", suppressed: true },
+    { scope: "review", projectScope: "any", suppressed: false },
+    { scope: "implementation", projectScope: "gwrk", suppressed: false },
+  ] as const)(
+    "applies a stale disable in $scope with project scope $projectScope",
+    async ({ scope, projectScope, suppressed }) => {
+      const { composeEffectivePolicy } = await import("./policy-selection.js");
+      const manifest = {
+        ...fastify,
+        name: "svelte-policy",
+        framework: "Svelte",
+        architectures: ["clean"],
+      };
+      const global = {
+        name: manifest.name,
+        source: "global" as const,
+        manifest,
+      };
+      const result = composeEffectivePolicy({
+        profile: {
+          ...profile,
+          stack: { language: "TypeScript", framework: "Svelte" },
+          design: { ...profile.design, architecture: "Clean" },
+          _isGwrk: false,
+        },
+        scope,
+        candidates: [
+          global,
+          {
+            name: manifest.name,
+            source: "project-local",
+            manifest: {
+              ...manifest,
+              scope: "implementation",
+              projectScope,
+              disabled: true,
+              architectures: ["layered"],
+            },
+          },
+        ],
+      });
+
+      expect(result.selectedSkills).toEqual(suppressed ? [] : [global]);
+      if (suppressed) {
+        expect(result.excludedSkills).toContainEqual({
+          name: manifest.name,
+          source: "global",
+          reason: "shadowed-by-override",
+        });
+      }
+      expect(result.gaps).toEqual([]);
+    },
+  );
+
   it("returns no language guidance for inherited table keys", async () => {
     const { lookupLanguageGuidance } = await import(
       "./architecture-context.js"

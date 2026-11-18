@@ -85,6 +85,65 @@ describe("FR-013 / US-016: SkillManifestSchema Enforcement Tier", () => {
   });
 });
 
+describe.each([
+  { name: "SkillManifestSchema", schema: SkillManifestSchema },
+  { name: "AnyManifestSchema", schema: AnyManifestSchema },
+])("$name enforcement selectors", ({ schema }) => {
+  const manifest = {
+    name: "svelte-policy",
+    type: "skill",
+    tier: "enforcement",
+    version: "1.0.0",
+    description: "Svelte project policy",
+  };
+
+  it.each([
+    { selectors: { framework: "Svelte" }, selector: "language" },
+    { selectors: { framework: "Svelte", language: "" }, selector: "language" },
+    {
+      selectors: { framework: "Svelte", language: "   " },
+      selector: "language",
+    },
+    {
+      selectors: { framework: "", language: "TypeScript" },
+      selector: "framework",
+    },
+    {
+      selectors: { framework: "   ", language: "TypeScript" },
+      selector: "framework",
+    },
+  ])("rejects invalid selectors $selectors", ({ selectors, selector }) => {
+    expect(schema.safeParse({ ...manifest, ...selectors })).toMatchObject({
+      success: false,
+      error: {
+        issues: expect.arrayContaining([
+          expect.objectContaining({ path: [selector] }),
+        ]),
+      },
+    });
+  });
+
+  it("accepts a valid framework and language pair", () => {
+    expect(
+      schema.safeParse({
+        ...manifest,
+        framework: "Svelte",
+        language: "TypeScript",
+      }),
+    ).toMatchObject({
+      success: true,
+      data: { framework: "Svelte", language: "TypeScript" },
+    });
+  });
+
+  it("defaults an unscoped legacy manifest to all workflows", () => {
+    expect(schema.safeParse(manifest)).toMatchObject({
+      success: true,
+      data: { scope: "all" },
+    });
+  });
+});
+
 describe("ExtensionManifestSchema (Phase 19)", () => {
   it("FR-L3-001: validates a valid extension manifest", () => {
     const manifest = {

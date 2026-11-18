@@ -51,23 +51,62 @@ const LANGUAGE_GUIDANCE: Record<string, string> = {
   go: "Define small consumer-owned interfaces. Keep domain packages independent of transport and persistence packages.",
   rust: "Use traits for ports and explicit Result values. Keep infrastructure crates outside the domain dependency graph.",
 };
-const FRAMEWORK_GUIDANCE: Record<string, string> = {
-  fastapi:
-    "FastAPI routers and Depends wiring belong in adapters or composition. Domain types must not depend on FastAPI or transport schemas.",
-  django:
-    "Keep Django ORM models and transactions in persistence adapters. Domain policy uses plain values and ports.",
-  fastify:
-    "Fastify routes and plugin registration belong in transport adapters. Composition supplies domain services.",
-  express:
-    "Express middleware and request objects stay in transport adapters. Domain operations accept plain inputs.",
-  react:
-    "Keep rendering and hooks outside domain transformations. Pass external effects through explicit interfaces.",
-  nextjs:
-    "Keep Next.js routes and server actions outside domain policy. Inject persistence and network adapters.",
-  gin: "Gin contexts stay in HTTP adapters. Domain services accept typed values and consumer-owned interfaces.",
-  chi: "Chi routing and HTTP handlers stay outside domain policy. Inject ports at composition.",
-  axum: "Axum extractors and State belong in transport adapters. Domain services use plain types and traits.",
-  clap: "Clap parsing belongs at the CLI boundary. Domain policy accepts typed inputs without command-line dependencies.",
+interface FrameworkBinding {
+  readonly guidance: string;
+  readonly languages: readonly string[];
+}
+
+const FRAMEWORK_BINDINGS: Record<string, FrameworkBinding> = {
+  fastapi: {
+    guidance:
+      "FastAPI routers and Depends wiring belong in adapters or composition. Domain types must not depend on FastAPI or transport schemas.",
+    languages: ["python"],
+  },
+  django: {
+    guidance:
+      "Keep Django ORM models and transactions in persistence adapters. Domain policy uses plain values and ports.",
+    languages: ["python"],
+  },
+  fastify: {
+    guidance:
+      "Fastify routes and plugin registration belong in transport adapters. Composition supplies domain services.",
+    languages: ["typescript", "javascript"],
+  },
+  express: {
+    guidance:
+      "Express middleware and request objects stay in transport adapters. Domain operations accept plain inputs.",
+    languages: ["typescript", "javascript"],
+  },
+  react: {
+    guidance:
+      "Keep rendering and hooks outside domain transformations. Pass external effects through explicit interfaces.",
+    languages: ["typescript", "javascript"],
+  },
+  nextjs: {
+    guidance:
+      "Keep Next.js routes and server actions outside domain policy. Inject persistence and network adapters.",
+    languages: ["typescript", "javascript"],
+  },
+  gin: {
+    guidance:
+      "Gin contexts stay in HTTP adapters. Domain services accept typed values and consumer-owned interfaces.",
+    languages: ["go"],
+  },
+  chi: {
+    guidance:
+      "Chi routing and HTTP handlers stay outside domain policy. Inject ports at composition.",
+    languages: ["go"],
+  },
+  axum: {
+    guidance:
+      "Axum extractors and State belong in transport adapters. Domain services use plain types and traits.",
+    languages: ["rust"],
+  },
+  clap: {
+    guidance:
+      "Clap parsing belongs at the CLI boundary. Domain policy accepts typed inputs without command-line dependencies.",
+    languages: ["rust"],
+  },
 };
 
 export function lookupLanguageGuidance(language?: string): string | undefined {
@@ -78,14 +117,20 @@ export function lookupLanguageGuidance(language?: string): string | undefined {
     : undefined;
 }
 
+export function lookupFrameworkBinding(
+  framework?: string,
+): FrameworkBinding | undefined {
+  if (!framework) return undefined;
+  const key = framework.toLowerCase().replace(/[^a-z0-9]/g, "");
+  return Object.hasOwn(FRAMEWORK_BINDINGS, key)
+    ? FRAMEWORK_BINDINGS[key]
+    : undefined;
+}
+
 export function lookupFrameworkGuidance(
   framework?: string,
 ): string | undefined {
-  if (!framework) return undefined;
-  const key = framework.toLowerCase().replace(/[^a-z0-9]/g, "");
-  return Object.hasOwn(FRAMEWORK_GUIDANCE, key)
-    ? FRAMEWORK_GUIDANCE[key]
-    : undefined;
+  return lookupFrameworkBinding(framework)?.guidance;
 }
 export function designRules(design: ProjectDesign): string[] {
   const rules: string[] = [];
@@ -133,7 +178,7 @@ export function contextMarkdown(
     .map((rule) => `- ${rule}`)
     .join(
       "\n",
-    )}\n\n## Language guidance\n\n${LANGUAGE_GUIDANCE[language] ?? "No bundled language binding. Assess language-specific boundaries explicitly."}\n\n## Framework guidance\n\n${framework ? (FRAMEWORK_GUIDANCE[framework] ?? "No bundled framework binding. Framework compatibility remains unassessed.") : "No framework selected."}\n\n## Project decisions\n\n${decisions.map((file) => `- ${file}`).join("\n")}\n\nRead the complete decision corpus and preserve existing Decided constraints. Generated target records remain Proposed until human ratification. Resolve conflicts before implementation.\n\n## Later assessment\n\nRun \`gwrk assess\` to assess the existing code against this target. The portable gwrk-assess skill uses the same method. Assessment proposes feature specs and never certifies the entire codebase.\n`;
+    )}\n\n## Language guidance\n\n${LANGUAGE_GUIDANCE[language] ?? "No bundled language binding. Assess language-specific boundaries explicitly."}\n\n## Framework guidance\n\n${framework ? (lookupFrameworkGuidance(framework) ?? "No bundled framework binding. Framework compatibility remains unassessed.") : "No framework selected."}\n\n## Project decisions\n\n${decisions.map((file) => `- ${file}`).join("\n")}\n\nRead the complete decision corpus and preserve existing Decided constraints. Generated target records remain Proposed until human ratification. Resolve conflicts before implementation.\n\n## Later assessment\n\nRun \`gwrk assess\` to assess the existing code against this target. The portable gwrk-assess skill uses the same method. Assessment proposes feature specs and never certifies the entire codebase.\n`;
 }
 
 export function decisionMarkdown(
