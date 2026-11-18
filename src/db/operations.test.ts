@@ -1665,6 +1665,85 @@ describe("durable operations review regressions", () => {
     ).toEqual(["a-first", "offset", "notice"]);
   });
 
+  function seedGateFailureOwner(threadTs?: string) {
+    const [op] = accept(harvestIntake("gate-owner", [phaseOne]));
+    const recipient = {
+      surface: "slack",
+      projectId: "alpha",
+      workspaceId: "W-alpha",
+      channelId: "C-alpha",
+      ...(threadTs ? { threadTs } : {}),
+    };
+    db.prepare(
+      "UPDATE harvest_operations SET planned_slack_recipient_json = ?, status = 'gate_failed' WHERE operation_id = ?",
+    ).run(JSON.stringify(recipient), op.operationId);
+    db.prepare(`INSERT INTO harvest_stage_receipts
+      (operation_id, phase_key, stage, status, lease_epoch, attempt_count, updated_at, completed_at)
+      VALUES (?, ?, 'gate_verify', 'gate_failed', 0, 1, ?, ?)`).run(
+      op.operationId,
+      phaseOne,
+      now,
+      now,
+    );
+    return op.operationId;
+  }
+
+  it.each(["missing receipt", "planned route changed", "foreign feature"])(
+    "rejects a gate notice with %s after database reopen without mutation",
+    (scenario) => {
+      const ownerOperationId = seedGateFailureOwner();
+      const item = store.enqueueOutbox({
+        outboxId: "invalid-gate",
+        projectId: "alpha",
+        dedupeKey: "invalid-gate",
+        ownerKind: "harvest",
+        ownerOperationId,
+        eventType: "harvest_gate_failed",
+        featureId,
+        phaseId: phaseOne,
+        recipient: {
+          surface: "slack",
+          projectId: "alpha",
+          workspaceId: "W-alpha",
+          channelId: "C-alpha",
+        },
+        payload: { text: "Gate failed" },
+        clientMetadataKey: "invalid-gate",
+        nowIso: now,
+      });
+      if (scenario === "missing receipt") {
+        db.prepare(
+          "DELETE FROM harvest_stage_receipts WHERE operation_id = ?",
+        ).run(ownerOperationId);
+      } else if (scenario === "planned route changed") {
+        db.prepare(
+          "UPDATE harvest_operations SET planned_slack_recipient_json = ? WHERE operation_id = ?",
+        ).run(
+          JSON.stringify({ ...item.recipient, channelId: "C-other" }),
+          ownerOperationId,
+        );
+      } else {
+        db.prepare(
+          "UPDATE notification_outbox SET feature_id = '002-foreign' WHERE outbox_id = ?",
+        ).run(item.outboxId);
+      }
+      db.close();
+      db = openDatabase({ dbPath });
+      store = createSqliteOperationsStoreAdapter({ db });
+      const before = store.getOutboxItem(item.outboxId);
+      expect
+        .soft(
+          store.claimOutboxItem({
+            outboxId: item.outboxId,
+            nowIso: now,
+            destination: null,
+          }),
+        )
+        .toBeNull();
+      expect(store.getOutboxItem(item.outboxId)).toEqual(before);
+    },
+  );
+
   it.each([
     { status: "pending", recipientProject: "alpha", boundProject: null },
     { status: "pending", recipientProject: "beta", boundProject: null },
@@ -1694,12 +1773,13 @@ describe("durable operations review regressions", () => {
       recipientThreadTs,
       boundThreadTs = null,
     }) => {
+      const ownerOperationId = seedGateFailureOwner(recipientThreadTs);
       const notice = store.enqueueOutbox({
         outboxId: "gate-failure",
         projectId: "alpha",
         dedupeKey: "gate-failure",
         ownerKind: "harvest",
-        ownerOperationId: "op",
+        ownerOperationId,
         eventType: "harvest_gate_failed",
         featureId,
         phaseId: phaseOne,

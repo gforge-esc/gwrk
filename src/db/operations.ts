@@ -1715,9 +1715,29 @@ export function createOperationsStore(
 
           if (row.eventType === "harvest_gate_failed") {
             const { recipient } = row;
+            const ownerRow = db
+              .prepare<string[], HarvestOperationRow>(
+                "SELECT * FROM harvest_operations WHERE operation_id = ? AND project_id = ? AND feature_id = ?",
+              )
+              .get(row.ownerOperationId, row.projectId, row.featureId);
+            const owner = ownerRow ? rowToHarvestOperation(ownerRow) : null;
+            const failedGate = db
+              .prepare(
+                "SELECT 1 FROM harvest_stage_receipts WHERE operation_id = ? AND phase_key = ? AND stage = 'gate_verify' AND status = 'gate_failed' AND completed_at IS NOT NULL",
+              )
+              .get(row.ownerOperationId, row.phaseId);
             if (
+              row.ownerKind !== "harvest" ||
+              !owner ||
+              (owner.phaseId !== null && owner.phaseId !== row.phaseId) ||
+              !failedGate ||
               !isHarvestSlackRecipient(recipient) ||
-              recipient.projectId !== row.projectId
+              recipient.projectId !== row.projectId ||
+              !owner.plannedSlackRecipient ||
+              !matchesHarvestNoticeRecipient(
+                owner.plannedSlackRecipient,
+                recipient,
+              )
             ) {
               return null;
             }
