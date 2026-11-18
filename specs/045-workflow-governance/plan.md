@@ -81,6 +81,7 @@ Delivers FR-003, scoped discovery. Reuse the selected design and managed target 
 - `src/engine/discover.ts` — **amend** — Attach additive readiness data to the existing discovery result. FR-003.
 - `src/engine/discover.test.ts` — **amend** — Verify discovery with and without architecture context and without SQLite. FR-003.
 - `src/commands/project-discover.ts` — **amend** — Render target, context and latest assessment in text and JSON. FR-003.
+- `src/commands/project-discover.readiness.test.ts` (NEW: Test the compiled CLI in temporary projects with global and local JSON options, agent mode and no ledger creation)
 - `src/commands/project.test.ts` — **amend** — Verify text and JSON output plus the terminal stderr signal. FR-003.
 
 #### Test Strategy

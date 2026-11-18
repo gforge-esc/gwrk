@@ -15,3 +15,9 @@ The initial suite failed while the adapter was absent. Ten behavior checks then 
 All thirteen adapter checks and seventeen architecture checks now pass. Build and targeted Biome checks passed. Logs are /tmp/gwrk-045-readiness-red.log and /tmp/gwrk-045-readiness-regressions-red.log. The final result is /tmp/gwrk-045-readiness-final-green.log.
 
 The checkout environment helper is reused from reviewed feature 046. This preparation does not complete phase 2 tasks for engine discovery or command output.
+
+## Discovery integration
+
+The prepared discovery path now passes 57 phase checks with one existing skipped test. A real compiled CLI fixture checks local and global JSON format options plus agent mode. Text output names missing context and missing assessment evidence. The fixture asserts one terminal stderr signal and verifies that no execution ledger appears. Two CLI failures preceded the output repair. The engine adapter call also failed before the additive field was connected.
+
+Reviewed architecture phases 1 and 2 from feature 044 and reviewed routing 043 are merged into this preparation branch. Feature 045 phase 1 review clearance remains separate.
