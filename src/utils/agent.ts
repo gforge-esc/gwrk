@@ -17,7 +17,10 @@ import {
   lookupLanguageGuidance,
   normalizeFramework,
 } from "../domain/architecture-context.js";
-import { composeEffectivePolicy } from "../domain/policy-selection.js";
+import {
+  composeEffectivePolicy,
+  resolveWorkflowPolicyScope,
+} from "../domain/policy-selection.js";
 import type { ProjectProfile } from "../domain/types.js";
 import type { AgentBackend } from "../plugins/agent-backend.js";
 import { AgentBackendRegistry } from "../plugins/agent-registry.js";
@@ -842,18 +845,7 @@ export async function dispatchToAgent(task: TaskDispatch): Promise<TaskResult> {
     ? findEnforcementSlot(template, "empty-section")
     : legacyParts?.slot;
   if (enforcementSlot?.index !== undefined) {
-    const workflow = task.workflow ?? "";
-    const isExplicitDefine =
-      task.type === "define" && !/^(?:gwrk-)?implement$/.test(workflow);
-    const scope =
-      workflow.includes("review") || task.type?.includes("review")
-        ? "review"
-        : isExplicitDefine ||
-            /^(?:gwrk-(?:spec(?:ify)?|plan|research|brief|tasks|adr)|define)/.test(
-              task.workflow ?? task.type ?? "",
-            )
-          ? "define"
-          : "implementation";
+    const scope = resolveWorkflowPolicyScope(task.workflow, task.type);
 
     // R007: Detect project profile for language-aware enforcement routing
     const { detectProfile } = await import("../engine/profile-detector.js");

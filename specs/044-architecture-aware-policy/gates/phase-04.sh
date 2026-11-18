@@ -5,6 +5,7 @@
 
 set -euo pipefail
 tests=(
+  src/domain/policy-selection.test.ts
   src/application/architecture/context.test.ts
   src/commands/init.test.ts
   src/utils/agent.test.ts

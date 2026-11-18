@@ -79,10 +79,18 @@ describe("shared effective policy dispatch", () => {
     expect(rendered).not.toContain("Keep Django ORM models");
   });
 
-  it("uses definition policy for a custom workflow with an explicit define task", async () => {
+  it.each([
+    { workflow: "fixture-workflow", type: "define", expected: "define" },
+    { workflow: "fixture-preview", type: "define", expected: "define" },
+    { workflow: "gwrk-plan-fixture", type: "implement", expected: "implementation" },
+    { workflow: "gwrk-specify", type: "workflow", expected: "define" },
+    { workflow: "gwrk-implement", type: "workflow", expected: "implementation" },
+    { workflow: "gwrk-review-code", type: "workflow", expected: "review" },
+  ])("uses $expected policy for $workflow with task type $type", async ({ workflow, type, expected }) => {
     for (const [scope, rules] of [
       ["define", "Fixture define policy."],
       ["implementation", "Fixture implementation policy."],
+      ["review", "Fixture review policy."],
     ]) {
       const name = `fixture-${scope}`;
       const pack = join(root, ".gwrk/plugins/skills", name);
@@ -95,13 +103,14 @@ describe("shared effective policy dispatch", () => {
     }
 
     const rendered = await prompt(
-      "fixture-workflow",
+      workflow,
       { type: "nodejs", stack: { language: "TypeScript" } },
-      "define",
+      type,
     );
     const policy = rendered.match(/<effective_policy>\n([\s\S]*?)\n<\/effective_policy>/)?.[1];
-    expect.soft(policy).toContain("Fixture define policy.");
-    expect(policy).not.toContain("Fixture implementation policy.");
+    expect(policy?.match(/Fixture (?:define|implementation|review) policy\./g)).toEqual([
+      `Fixture ${expected} policy.`,
+    ]);
   });
 });
 

@@ -152,6 +152,7 @@ bash specs/044-architecture-aware-policy/gates/phase-03.sh
 - `src/adapters/architecture/context-files.ts` (MODIFY: Resolve installed policy candidates before passing their deterministic composition into context installation)
 - `src/application/architecture/install-context.ts` (MODIFY: Compose `EffectivePolicy` deterministically during context installation without certifying existing code)
 - `src/commands/init.ts` (MODIFY: Preserve `workspaces` and `project.design` across fresh and existing and `--workspace` runs with zero agent calls)
+- `src/domain/policy-selection.ts` (MODIFY: Resolve explicit task scope and built-in workflow scope as pure policy)
 - `src/utils/agent.ts` (MODIFY: Resolve `EffectivePolicy` by workflow scope on the shared transport path and inject `<effective_policy>` with `<code_quality>`)
 - `src/plugins/skill-runtime.ts` (MODIFY: Omit generated rules already present in the architecture target)
 - `src/plugins/builtins/workflows/gwrk-specify/PROMPT.md` (MODIFY: Add the trusted enforcement slot)
