@@ -100,17 +100,19 @@
           "id": "T006",
           "title": "Modify vitest.config.ts",
           "description": "MODIFY vitest.config.ts. Remove integration quarantine and unhandled error suppression. Keep general exclusions and worker isolation. FR-001, FR-003.",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/phase-04.sh",
-          "sp": 1
+          "sp": 1,
+          "completedAt": "2026-11-18T17:49:30.749Z"
         },
         {
           "id": "T007",
           "title": "Modify package.json",
           "description": "MODIFY package.json. Keep `test:ci` as a full Vitest run without the quarantine flag. FR-001, FR-003.",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/phase-04.sh",
-          "sp": 1
+          "sp": 1,
+          "completedAt": "2026-11-18T17:49:30.749Z"
         }
       ],
       "sp_estimate": 2,
