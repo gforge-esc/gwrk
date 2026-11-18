@@ -187,3 +187,5 @@ pnpm exec vitest run src/application/models/resolve-route.test.ts src/utils/mani
 - Live qualification runs for the local macOS workstation and hosted Linux runner execute outside hermetic CI under `docs/operations/model-qualification-live.md`.
 
 Phase 3 regressions reject candidate and incumbent review route identity failures before judging. Missing executables and signaled commands cannot supply seeded RED evidence. Four observed failures preceded the repair. An inherited Git selector regression also proved that fixture setup and delegated Git commands could modify another temporary repository. Both paths now remove inherited repository selectors. Dispatch environments support explicit removal through undefined values. The phase gate passes 650 tests after the isolation repair.
+
+Inherited Git selectors are removed from fixture commands and delegated agent environments. The agent environment contract permits undefined entries so the subprocess merge can remove inherited values. The behavioral fixture proves that a delegated Git command leaves another repository configuration unchanged.
