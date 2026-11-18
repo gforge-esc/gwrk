@@ -6,4 +6,4 @@ View Logs uses exact scoped lookup for the feature authorized by the review card
 
 The reviewer patch is retained in the tests and plan. RED evidence is `/tmp/gwrk-048-exact-feature-identity-red.log`. It records three failed cases and 96 passing cases. GREEN evidence is `/tmp/gwrk-048-exact-feature-identity-green.log`. The gate includes both test files.
 
-Review and diagnosis history remains in `.gwrk/review-history/phase-03-through-2026-11-18T2258Z.json`. No receipts or live Slack messages were created by these synthetic checks.
+Review and diagnosis history remains in `.gwrk/review-history/phase-03-through-2026-11-18T2258Z.json`. The synthetic checks created no live Slack messages.
