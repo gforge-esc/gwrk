@@ -224,7 +224,7 @@ export function insertPhase(
         conn
           .prepare(`
         INSERT INTO plan_features (id, name, status, sp_total, created_at, updated_at, write_seq, synthetic_parent, project_id)
-        SELECT id, name, status, sp_total, created_at, updated_at, write_seq, synthetic_parent, ?
+        SELECT id, name, status, sp_total, created_at, updated_at, 0, 1, ?
         FROM plan_features WHERE id = ? AND project_id = ?
         ON CONFLICT(project_id, id) DO NOTHING
       `)

@@ -535,9 +535,58 @@ describe("src/db/plan.ts (DM-018-001/002/003)", () => {
     for (const id of [projectId, "alias"]) {
       const moved = getPhase(phase.id, id, db);
       expect.soft(moved?.feature_id).toBe("destination");
+      expect.soft(getFeature("destination", id, db)?.project_id).toBe("alias");
       expect.soft(listPhases(phase.feature_id, id, db)).toEqual([]);
       expect.soft(listPhases("destination", id, db)).toEqual([moved]);
       expect.soft(getProposal(proposal.id, id, db)).toMatchObject(proposal);
+    }
+    expect(db.pragma("foreign_key_check")).toEqual([]);
+  });
+
+  it("ranks saved default-valued parents ahead of newer synthetic parents across both IDs", () => {
+    db.exec(`
+      INSERT INTO projects (id, name, path) VALUES ('alias', 'Alias', ''), ('test-project', 'Canonical', '');
+      INSERT INTO project_aliases (alias_id, project_id) VALUES ('alias', 'test-project');
+      INSERT INTO plan_features (id, name, status, sp_total, project_id, created_at, updated_at, write_seq, synthetic_parent)
+        VALUES
+          ('feature', 'feature', 'PLANNED', 0, 'alias', '2026-01-01 09:00:00', '2026-01-01 09:00:00', 0, 0),
+          ('feature', 'feature', 'PLANNED', 0, 'test-project', '2026-11-12 01:10:02', '2026-11-12 01:10:02', 0, 1);
+      INSERT INTO plan_phases (id, feature_id, name, status, health, sp_estimate, seq, project_id, created_at, updated_at, write_seq, synthetic_parent)
+        VALUES
+          ('phase', 'feature', 'phase', 'PLANNED', 'CLEAN', 0, 0, 'alias', '2026-01-01 09:00:00', '2026-01-01 09:00:00', 0, 0),
+          ('phase', 'feature', 'phase', 'PLANNED', 'CLEAN', 0, 0, 'test-project', '2026-11-12 01:10:02', '2026-11-12 01:10:02', 0, 1);
+      INSERT INTO plan_proposals (id, target_phase_id, proposal_type, status, project_id)
+        VALUES ('proposal', 'phase', 'amend', 'ACCEPTED', 'test-project');
+    `);
+    const expectedFeature = {
+      id: "feature",
+      name: "feature",
+      status: "PLANNED",
+      project_id: "alias",
+      created_at: "2026-01-01 09:00:00",
+      updated_at: "2026-01-01 09:00:00",
+    };
+    const expectedPhase = {
+      id: "phase",
+      name: "phase",
+      status: "PLANNED",
+      project_id: "alias",
+      created_at: "2026-01-01 09:00:00",
+      updated_at: "2026-01-01 09:00:00",
+    };
+    for (const owner of ["alias", projectId]) {
+      expect
+        .soft(getFeature("feature", owner, db))
+        .toMatchObject(expectedFeature);
+      expect.soft(listFeatures(owner, db)).toMatchObject([expectedFeature]);
+      expect.soft(getPhase("phase", owner, db)).toMatchObject(expectedPhase);
+      expect
+        .soft(listPhases("feature", owner, db))
+        .toMatchObject([expectedPhase]);
+      expect.soft(getProposal("proposal", owner, db)).toMatchObject({
+        project_id: projectId,
+        status: "ACCEPTED",
+      });
     }
     expect(db.pragma("foreign_key_check")).toEqual([]);
   });

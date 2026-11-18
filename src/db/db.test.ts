@@ -337,6 +337,24 @@ describe("Project registry upgrade", () => {
             VALUES ('saved-default-proposal', 'saved-default-phase', 'amend', ?)
           `)
           .run(localId);
+        legacy
+          .prepare(`
+            INSERT INTO plan_features (id, name, project_id, created_at, updated_at)
+            VALUES ('updated-saved-feature', 'updated-saved-feature', ?, '2026-01-01 09:00:00', '2026-01-01 09:00:00')
+          `)
+          .run(localId);
+        legacy
+          .prepare(`
+            INSERT INTO plan_phases (id, feature_id, name, seq, project_id, created_at, updated_at)
+            VALUES ('updated-saved-phase', 'updated-saved-feature', 'updated-saved-phase', 0, ?, '2026-01-01 09:00:00', '2026-01-01 09:00:00')
+          `)
+          .run(localId);
+        legacy
+          .prepare(`
+            INSERT INTO plan_proposals (id, target_phase_id, proposal_type, project_id, status)
+            VALUES ('updated-saved-proposal', 'updated-saved-phase', 'amend', ?, 'ACCEPTED')
+          `)
+          .run(remoteId);
       }, registryVersion);
       try {
         if (registryVersion === "earlier") {
@@ -351,12 +369,39 @@ describe("Project registry upgrade", () => {
           for (const [table, id] of [
             ["plan_features", "feature"],
             ["plan_phases", "phase"],
+            ["plan_features", "updated-saved-feature"],
+            ["plan_phases", "updated-saved-phase"],
           ]) {
             upgraded
               .prepare(`UPDATE ${table} SET created_at = ?, updated_at = ?
                 WHERE id = ? AND project_id = ?`)
               .run(placeholderCreatedAt, placeholderCreatedAt, id, remoteId);
           }
+          upgraded
+            .prepare(`
+              UPDATE plan_features
+              SET status = 'SHIPPED', updated_at = '2026-06-01 00:00:00', write_seq = 1
+              WHERE id = 'updated-saved-feature' AND project_id = ?
+            `)
+            .run(localId);
+          upgraded
+            .prepare(`
+              UPDATE plan_phases
+              SET name = 'Updated phase', status = 'COMPLETED', seq = 1,
+                updated_at = '2026-06-01 00:00:00', write_seq = 2
+              WHERE id = 'updated-saved-phase' AND project_id = ?
+            `)
+            .run(localId);
+          upgraded.exec(`
+            INSERT INTO projects (id, name, path) VALUES ('beta', 'Beta', '');
+            INSERT INTO plan_features (id, name, status, sp_total, project_id, write_seq)
+              VALUES ('saved-default-feature', 'saved-default-feature', 'PLANNED', 0, 'beta', 3);
+            INSERT INTO plan_phases (id, feature_id, name, status, health, sp_estimate, seq, project_id, write_seq)
+              VALUES ('saved-default-phase', 'saved-default-feature', 'saved-default-phase', 'PLANNED', 'CLEAN', 0, 0, 'beta', 4);
+            INSERT INTO plan_proposals (id, target_phase_id, proposal_type, status, project_id, write_seq)
+              VALUES ('beta-default-proposal', 'saved-default-phase', 'amend', 'PENDING', 'beta', 5);
+            UPDATE ledger_write_order SET sequence = 5 WHERE id = 1;
+          `);
           upgraded
             .prepare(`
           INSERT INTO plan_features (id, name, project_id, created_at, updated_at)
@@ -392,6 +437,8 @@ describe("Project registry upgrade", () => {
           for (const [table, id] of [
             ["plan_features", "feature"],
             ["plan_phases", "phase"],
+            ["plan_features", "updated-saved-feature"],
+            ["plan_phases", "updated-saved-phase"],
           ]) {
             const provenance = reopened
               .prepare(
@@ -401,17 +448,21 @@ describe("Project registry upgrade", () => {
             expect.soft(provenance.get(id, remoteId)).toBe(1);
             expect(provenance.get(id, localId)).toBe(0);
           }
-          for (const [table, id] of [
-            ["plan_features", "edited-feature"],
-            ["plan_phases", "edited-phase"],
-            ["plan_features", "saved-default-feature"],
-            ["plan_phases", "saved-default-phase"],
+          for (const [table, id, owner] of [
+            ["plan_features", "edited-feature", remoteId],
+            ["plan_phases", "edited-phase", remoteId],
+            ["plan_features", "saved-default-feature", localId],
+            ["plan_phases", "saved-default-phase", localId],
+            ["plan_features", "saved-default-feature", "beta"],
+            ["plan_phases", "saved-default-phase", "beta"],
           ]) {
             expect(
               reopened
-                .prepare(`SELECT synthetic_parent FROM ${table} WHERE id = ?`)
+                .prepare(
+                  `SELECT synthetic_parent FROM ${table} WHERE id = ? AND project_id = ?`,
+                )
                 .pluck()
-                .get(id),
+                .get(id, owner),
             ).toBe(0);
           }
         }
@@ -433,6 +484,7 @@ describe("Project registry upgrade", () => {
           id: "feature",
           name: defaultSaved ? "feature" : "Saved feature",
           status: defaultSaved ? "PLANNED" : "SHIPPED",
+          project_id: localId,
           created_at: "2026-01-01 09:00:00",
           updated_at: defaultSaved
             ? "2026-01-01 09:00:00"
@@ -442,6 +494,7 @@ describe("Project registry upgrade", () => {
           id: "phase",
           name: defaultSaved ? "phase" : "Saved phase",
           status: defaultSaved ? "PLANNED" : "COMPLETED",
+          project_id: localId,
           created_at: "2026-01-01 09:00:00",
           updated_at: defaultSaved
             ? "2026-01-01 09:00:00"
@@ -466,6 +519,44 @@ describe("Project registry upgrade", () => {
             project_id: remoteId,
             status: "ACCEPTED",
           });
+          expect
+            .soft(
+              listProposals(owner, reopened).filter(
+                (row) => row.id === "proposal",
+              ),
+            )
+            .toMatchObject([
+              {
+                id: "proposal",
+                project_id: remoteId,
+                status: "ACCEPTED",
+              },
+            ]);
+          if (registryVersion === "earlier") {
+            expect
+              .soft(getFeature("updated-saved-feature", owner, reopened))
+              .toMatchObject({
+                id: "updated-saved-feature",
+                status: "SHIPPED",
+                project_id: localId,
+                created_at: "2026-01-01 09:00:00",
+              });
+            expect
+              .soft(getPhase("updated-saved-phase", owner, reopened))
+              .toMatchObject({
+                id: "updated-saved-phase",
+                name: "Updated phase",
+                status: "COMPLETED",
+                project_id: localId,
+                created_at: "2026-01-01 09:00:00",
+              });
+            expect
+              .soft(getProposal("updated-saved-proposal", owner, reopened))
+              .toMatchObject({
+                project_id: remoteId,
+                status: "ACCEPTED",
+              });
+          }
         }
         expect(reopened.pragma("foreign_key_check")).toEqual([]);
       } finally {
