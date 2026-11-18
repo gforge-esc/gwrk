@@ -199,7 +199,7 @@
         {
           "id": "T017",
           "title": "Create gwrk-runner.service",
-          "description": "NEW deploy/linux-runner/gwrk-runner.service. Run foreground server as `gwrk:gwrk` on a private bind with separated state and secrets\nPrior review history and failed attempts remain in .gwrk/review-history/phase-05-through-2026-11-18T2220Z.json and findings.jsonl. Preflight resolves the installed approved adapter and checks isAvailable inside a bounded process. The false availability regression failed before repair. Seven phase checks pass. Live pilot records remain pending. Independent clearance remains required.",
+          "description": "NEW deploy/linux-runner/gwrk-runner.service. Run foreground server as `gwrk:gwrk` on a private bind with separated state and secrets\nPrior review history and failed attempts remain in .gwrk/review-history/phase-05-through-2026-11-18T2220Z.json and findings.jsonl. Preflight resolves the installed approved adapter and checks isAvailable inside a bounded process. The false availability regression failed before repair. Seven phase checks pass. Live pilot records remain pending. Independent clearance remains required.\n\nREVIEW FAIL (code): Hosted dispatch accepts a backend override — TR-004, one approved Linux agent.\n  WHERE: deploy/linux-runner/gwrk-runner.service:15-18, deploy/linux-runner/preflight.sh:74-83 and src/server/dispatch.ts:69-112\n  EXPECTED: Every queued dispatch for the Linux runner uses GWRK_APPROVED_AGENT. A conflicting request can be rejected before enqueueing.\n  ACTUAL: After successful preflight and restart, the installed runner returned HTTP 201 with backend unapproved-fixture while GWRK_APPROVED_AGENT was fixture. The queue forwards request.backend to pillarBackend and accepts it before persistence and worker startup.\n  FIX: Enforce the configured approval at hosted dispatch admission. Reject conflicting overrides before enqueueing or pin every dispatch record to the approved backend. Preserve backend selection for callers outside the hosted runner.\n\nREVIEW/GATE DIVERGENCE (T017, gate: gates/phase-05.sh, re-opened by review):\nThe review agent raised a finding on this task and its gate still passes, so the gate does not cover what review found. Add a test that fails on it, then fix, before completing.\n\nDIAGNOSIS (iteration 2):\nFIX: src/server/dispatch.ts — Add `private readonly approvedBackend?: AgentBackendId` to the `DispatchQueue` constructor. In `enqueue`, use `this.approvedBackend ?? pillarBackend(this.config, \"implement\", request.backend)` for the dispatch and every task record. In `src/server/index.ts`, pass `process.env.GWRK_APPROVED_AGENT` through `startLockedServer` when `usesHostedRuntime()` is true.\nFIX: specs/050-linux-runner-deploy-packaging/gates/phase-05.sh — Add `src/server/routes/dispatch.test.ts` to the Vitest command and the Phase 5 test strategy in `plan.md`. Test through `startServer` with `GWRK_APPROVED_AGENT=fixture` and a throttled queue. Assert HTTP 201 and `fixture` in the response and queued task records for conflicting and omitted overrides. Assert that a non-hosted request retains its explicit backend. Run the gate before and after the repair.\nFIX: tests/linux-runner/container-proof.sh — Keep the conflicting POST and the empty-queue check on rejection. Assert that the active record and its attempt both use `fixture`. Retain the worker completion and backup, restore, and rollback assertions.\nFIX: specs/050-linux-runner-deploy-packaging/gates/phase-05-container.sh — After the dispatch repair, rerun with `python3 /Users/gonzo/Code/gwrk/.runs/run-heavy-check.py -- bash specs/050-linux-runner-deploy-packaging/gates/phase-05-container.sh`.",
           "status": "open",
           "gateScript": "gates/phase-05.sh",
           "sp": 2
@@ -208,42 +208,45 @@
           "id": "T018",
           "title": "Create .env.example",
           "description": "NEW deploy/linux-runner/.env.example. Name non-secret Linux paths and private bind address plus pilot repo and agent backend\nPrior review history and failed attempts remain in .gwrk/review-history/phase-05-through-2026-11-18T2220Z.json and findings.jsonl. Preflight resolves the installed approved adapter and checks isAvailable inside a bounded process. The false availability regression failed before repair. Seven phase checks pass. Live pilot records remain pending. Independent clearance remains required.",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/phase-05.sh",
-          "sp": 2
+          "sp": 2,
+          "completedAt": "2026-11-18T23:03:08.945Z"
         },
         {
           "id": "T019",
           "title": "Create preflight.sh",
           "description": "NEW deploy/linux-runner/preflight.sh. Verify Linux service user and secret modes plus unattended Git and headless agent probes\nPrior review history and failed attempts remain in .gwrk/review-history/phase-05-through-2026-11-18T2220Z.json and findings.jsonl. Preflight resolves the installed approved adapter and checks isAvailable inside a bounded process. The false availability regression failed before repair. Seven phase checks pass. Live pilot records remain pending. Independent clearance remains required.",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/phase-05.sh",
-          "sp": 2
+          "sp": 2,
+          "completedAt": "2026-11-18T23:03:19.282Z"
         },
         {
           "id": "T020",
           "title": "Create README.md",
           "description": "NEW deploy/linux-runner/README.md. Document gateway boundary and secret supply plus credential revocation and rollback\nPrior review history and failed attempts remain in .gwrk/review-history/phase-05-through-2026-11-18T2220Z.json and findings.jsonl. Preflight resolves the installed approved adapter and checks isAvailable inside a bounded process. The false availability regression failed before repair. Seven phase checks pass. Live pilot records remain pending. Independent clearance remains required.",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/phase-05.sh",
-          "sp": 2
+          "sp": 2,
+          "completedAt": "2026-11-18T23:03:36.998Z"
         },
         {
           "id": "T021",
           "title": "Create live-pilot-record.example.md",
           "description": "NEW deploy/linux-runner/live-pilot-record.example.md. Provide separate pending record for live host and credentials plus observed worker run\nPrior review history and failed attempts remain in .gwrk/review-history/phase-05-through-2026-11-18T2220Z.json and findings.jsonl. Preflight resolves the installed approved adapter and checks isAvailable inside a bounded process. The false availability regression failed before repair. Seven phase checks pass. Live pilot records remain pending. Independent clearance remains required.",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/phase-05.sh",
-          "sp": 2
+          "sp": 2,
+          "completedAt": "2026-11-18T23:03:44.926Z"
         },
         {
           "id": "T022",
           "title": "Create container-harness.mjs",
-          "description": "NEW tests/linux-runner/container-harness.mjs. Run clean Linux containers without source checkout to test install and restart plus restore and rollback\nFull review history: .gwrk/review-history/phase-05-through-2026-11-18T2152Z.json. Preserve authenticated Git preflight, installed CLI and state paths, synthetic post-restart worker proof and pending live records. The runbook now provisions Git identity before enablement and documents repository-scoped write permissions. Two observed failures now pass through the seven-check phase gate. Independent clearance remains required.",
-          "status": "completed",
+          "description": "NEW tests/linux-runner/container-harness.mjs. Run clean Linux containers without source checkout to test install and restart plus restore and rollback\nFull review history: .gwrk/review-history/phase-05-through-2026-11-18T2152Z.json. Preserve authenticated Git preflight, installed CLI and state paths, synthetic post-restart worker proof and pending live records. The runbook now provisions Git identity before enablement and documents repository-scoped write permissions. Two observed failures now pass through the seven-check phase gate. Independent clearance remains required.\n\nREVIEW FAIL (code): Installed container proof fails approved backend enforcement — TR-004, one approved Linux agent.\n  WHERE: tests/linux-runner/container-proof.sh:282-297\n  EXPECTED: A conflicting backend request leaves the queue empty on rejection or runs through the approved fixture backend. The approved worker still completes and its run survives restore.\n  ACTUAL: The original gate passed. The added installed-release regression exits 1 after HTTP 201 returned unapproved-fixture instead of fixture.\n  FIX: Repair hosted dispatch admission under T017. Retain the conflicting-backend regression and the existing worker, backup and rollback assertions. Rerun the installed container gate.\n\nPOST-FLIGHT GATE FAIL (T022, gate: gates/phase-05-container.sh):\nexit: 1\nadded 1 package in 1s\nLockfile is up to date, resolution step is skipped\nProgress: resolved 1, reused 0, downloaded 0, added 0\nPackages: +380\n++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++\n\n   ╭───────────────────────────────────────────────────────────────────╮\n   │                                                                   │\n   │                Update available! 9.15.9 → 12.21.0.                │\n   │   Changelog: https://github.com/pnpm/pnpm/releases/t\n\nDIAGNOSIS (iteration 2):\nFIX: src/server/dispatch.ts — Add `private readonly approvedBackend?: AgentBackendId` to the `DispatchQueue` constructor. In `enqueue`, use `this.approvedBackend ?? pillarBackend(this.config, \"implement\", request.backend)` for the dispatch and every task record. In `src/server/index.ts`, pass `process.env.GWRK_APPROVED_AGENT` through `startLockedServer` when `usesHostedRuntime()` is true.\nFIX: specs/050-linux-runner-deploy-packaging/gates/phase-05.sh — Add `src/server/routes/dispatch.test.ts` to the Vitest command and the Phase 5 test strategy in `plan.md`. Test through `startServer` with `GWRK_APPROVED_AGENT=fixture` and a throttled queue. Assert HTTP 201 and `fixture` in the response and queued task records for conflicting and omitted overrides. Assert that a non-hosted request retains its explicit backend. Run the gate before and after the repair.\nFIX: tests/linux-runner/container-proof.sh — Keep the conflicting POST and the empty-queue check on rejection. Assert that the active record and its attempt both use `fixture`. Retain the worker completion and backup, restore, and rollback assertions.\nFIX: specs/050-linux-runner-deploy-packaging/gates/phase-05-container.sh — After the dispatch repair, rerun with `python3 /Users/gonzo/Code/gwrk/.runs/run-heavy-check.py -- bash specs/050-linux-runner-deploy-packaging/gates/phase-05-container.sh`.",
+          "status": "open",
           "gateScript": "gates/phase-05-container.sh",
-          "sp": 2,
-          "completedAt": "2026-11-18T21:40:29.883Z"
+          "sp": 2
         }
       ],
       "sp_estimate": 12,

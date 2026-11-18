@@ -14,7 +14,7 @@ import { closeDb, getDbPath } from "../db/index.js";
 import { PENDING_LEDGER_RESTORE } from "../domain/ledger-backup.js";
 import { isPrivateRunnerBind } from "../domain/release-packaging.js";
 import type { InstanceLockHandle } from "../ports/release-ops-port.js";
-import type { GwrkConfig } from "../utils/config.js";
+import type { AgentBackendId, GwrkConfig } from "../utils/config.js";
 import { DispatchQueue } from "./dispatch.js";
 import { GitManager } from "./git-manager.js";
 import { githubWebhookPlugin } from "./github.js";
@@ -74,7 +74,13 @@ export async function startServer(
         "An unfinished ledger restore blocks startup. Retry 'gwrk db restore' with the original backup.",
       );
     }
-    return await startLockedServer(config, options, instanceLock, ledgerLock);
+    return await startLockedServer(
+      config,
+      options,
+      instanceLock,
+      ledgerLock,
+      hosted ? process.env.GWRK_APPROVED_AGENT : undefined,
+    );
   } catch (error) {
     ledgerLock?.release();
     instanceLock?.release();
@@ -87,6 +93,7 @@ async function startLockedServer(
   options: { handleSignals?: boolean },
   instanceLock: InstanceLockHandle | undefined,
   ledgerLock: InstanceLockHandle | undefined,
+  approvedBackend: AgentBackendId | undefined,
 ) {
   const projectRoot = process.cwd();
   const server = fastify({
@@ -104,7 +111,13 @@ async function startLockedServer(
   const sandbox = new SandboxManager();
 
   const git = new GitManager(projectRoot);
-  const queue = new DispatchQueue(config, monitor, sandbox, projectRoot);
+  const queue = new DispatchQueue(
+    config,
+    monitor,
+    sandbox,
+    projectRoot,
+    approvedBackend,
+  );
 
   const lifecycle = new LifecycleMonitor(config);
   const network = new NetworkMonitor(config);

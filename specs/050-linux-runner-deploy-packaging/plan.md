@@ -158,8 +158,12 @@ Governance follows `ADR-006`, `ADR-008` and `.gwrk/rules/workspace.md`. Validate
 | TR-002 | integration | `tests/linux-runner/container-harness.mjs` | Clean Linux container installs and runs release artifact without source checkout |
 | TR-003 | integration | `tests/linux-runner/container-proof.sh` via `container-harness.mjs` | One live worker completes a fresh dispatch after `SIGKILL` with both run IDs preserved in backup manifests |
 | TR-004 | integration | `tests/linux-runner/bundle-and-live-record.test.ts` and `tests/linux-runner/container-proof.sh` | Accepted and revoked Git credentials distinguished after successful anonymous ref reads, plus preflight rejection of a missing plugin or a manifest without its adapter with working credentials and probe |
+| TR-004 | integration | `src/server/routes/dispatch.test.ts` | Approved backend on dispatch and task records for hosted requests with conflicting or omitted overrides |
+| TR-004 | integration | `src/server/routes/dispatch.test.ts` | Explicit backend on dispatch and task records for non-hosted requests |
 | TR-005 | integration | `tests/linux-runner/bundle-and-live-record.test.ts` | Runbook commands initialize the pilot checkout and recover the service ledger with `gwrk` absent from `PATH` |
 | TR-007 | unit | `tests/linux-runner/bundle-and-live-record.test.ts` | Live pilot record keeps host and worker checks separate from synthetic fixtures |
+
+TR-004 checks the timeout on adapter availability and each credential probe. The container fixture submits a conflicting backend and checks the approved backend on the active dispatch and its worker attempt.
 
 The runbook regression checks for the probe and credential files at service enablement.
 
@@ -167,7 +171,7 @@ The runbook regression checks for the probe and credential files at service enab
 
 ```bash
 pnpm run build
-pnpm exec vitest run tests/linux-runner/bundle-and-live-record.test.ts
+env -u GWRK_SKIP_INTEGRATION pnpm exec vitest run tests/linux-runner/bundle-and-live-record.test.ts src/server/routes/dispatch.test.ts
 node tests/linux-runner/container-harness.mjs
 ```
 
@@ -195,3 +199,5 @@ Verify restore against persisted ledger entries and repository state in this fea
 Live cloud host provisioning and public DNS allocation belong to prerequisite `041-hosted-google-signin-proof` and operator rollout. Multi-project authorization and live Slack workspace enrollment belong to the downstream integrated pilot in [R013](../../docs/research/R013-hosted-gwrk-server/brief.md).
 
 Phase 5 runbook regression executes a fresh-host setup without inherited Git identity. Service enablement requires author and committer identity in the pilot checkout. The permission check requires scoped repository contents and pull request write access. Both failed before the runbook repair. The repaired phase gate passes seven checks. Live host configuration remains outside this implementation.
+
+The Phase 5 dispatch gate failed both hosted cases before the repair and passed all 13 checks afterward. The installed container gate verified worker completion after restart, clean restore and guarded rollback. Independent review and the live pilot record remain pending.

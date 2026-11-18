@@ -279,15 +279,22 @@ async function read(url) {
   return response.json();
 }
 
-const response = await request(base, {
+const dispatch = (backend) => request(base, {
   method: "POST",
   headers: { "content-type": "application/json" },
-  body: JSON.stringify({ featureId, phaseId }),
+  body: JSON.stringify({ featureId, phaseId, backend }),
 });
+let response = await dispatch("unapproved-fixture");
+if (response.status >= 400 && response.status < 500) {
+  const { active, queued } = await read(`${base}/queue`);
+  assert.deepEqual(active, []);
+  assert.deepEqual(queued, []);
+  response = await dispatch();
+}
 assert.equal(response.status, 201);
 const { id, backend } = await response.json();
 assert(id);
-assert.equal(backend, "fixture");
+assert.equal(backend, "fixture", "The hosted runner must select its approved backend.");
 
 const startDeadline = Date.now() + 10_000;
 while (!existsSync(`${worker}/started`)) {
@@ -299,6 +306,8 @@ while (!existsSync(`${worker}/started`)) {
 const { active, queued } = await read(`${base}/queue`);
 assert.deepEqual(active.map((record) => record.id), [id]);
 assert.equal(active[0].status, "running");
+assert.equal(active[0].backend, "fixture");
+assert.equal(active[0].attempts[0].backend, "fixture");
 assert.deepEqual(queued, []);
 const started = readFileSync(`${worker}/started`, "utf8");
 assert.match(started, /^\d+\n$/);

@@ -167,8 +167,13 @@ exitCodeMap: {}
         bin,
         "timeout",
         `
-[[ "$1" == --kill-after=2s ]]
-case "$3" in git|gh) [[ "$2" == 20s ]] ;; *) [[ "$2" == 30s ]] ;; esac
+[[ "$1" == --kill-after=2s ]] || exit 2
+case "$3" in
+  node|git|gh) [[ "$2" == 20s ]] || exit 2 ;;
+  */agent-probe) [[ "$2" == 30s ]] || exit 2 ;;
+  *) exit 2 ;;
+esac
+printf 'timeout:%s:%s\\n' "\${3##*/}" "$2" >> "$TRACE"
 shift 2
 exec "$@"`,
       );
@@ -235,7 +240,18 @@ fi`,
         writeFileSync(join(secrets, "pilot-git-credential"), `${token}\n`);
         const result = preflight(suffix);
         expect(result.status, result.stderr).toBe(status);
-        expect(readFileSync(trace, "utf8"), result.stderr).toBe("ref\napi\n");
+        const expectedCalls = [
+          "timeout:node:20s",
+          "timeout:git:20s",
+          "ref",
+          "timeout:gh:20s",
+          "api",
+        ];
+        if (status === 0) expectedCalls.push("timeout:agent-probe:30s");
+        expect(
+          readFileSync(trace, "utf8").trim().split("\n"),
+          result.stderr,
+        ).toEqual(expectedCalls);
         expect(result.stdout + result.stderr).not.toContain(token);
         expect(status === 1 ? result.stderr : result.stdout).toContain(
           status === 1 ? "Pilot Git authentication failed" : "preflight passed",
