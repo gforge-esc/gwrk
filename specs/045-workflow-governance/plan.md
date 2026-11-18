@@ -53,11 +53,12 @@ Apply the single dispatch path decision (ADR-007) and the decision records contr
 - `src/plugins/builtins/reviews/review-code-cli/PROMPT.md` (MODIFY: Load Principal Engineer guidance and limit GWRK commands to the native profile. FR-001.)
 - `src/plugins/workflow-runtime.ts` (MODIFY: Render host review guidance for unknown profiles. FR-001.)
 - `src/plugins/skill-runtime.ts` (MODIFY: Match builtin enforcement to known project languages during definition dispatch)
-- `src/engine/profile-detector.ts` — **amend** — Identify Python hosts that have `docs/architecture.md` and preserve GWRK self-detection. FR-001.
+- Amend `src/engine/profile-detector.ts` to resolve configured Python hosts with `docs/architecture.md`. Preserve GWRK self-detection through `@gwrk/cli`. FR-001.
+- Amend `src/engine/profile-detector.test.ts` to check that an architecture document alone leaves the profile unknown. Verify that the profile includes the root design. FR-001.
 - `src/utils/agent.ts` — **amend** — Add shared conflict guidance beside the intact decision index. FR-002.
 - `src/utils/agent.grounding-decisions.test.ts` — **amend** — Assert status visibility and conflict guidance across dispatch stages. FR-002.
 - `src/plugins/workflow-governance.test.ts` — **create** — Check conditioned specification and planning guidance for gwrk and Python. Verify that the persona preserves review reporting requirements. FR-001.
-- `src/plugins/workflow-governance.delivery.test.ts` — **create** — Capture specification, planning and CLI review prompts through shared dry-run dispatch. FR-001 and FR-002.
+- Create `src/plugins/workflow-governance.delivery.test.ts` to capture definition and code review prompts through shared dry-run dispatch. FR-001 and FR-002.
 
 #### Test Strategy
 
@@ -66,11 +67,15 @@ Apply the single dispatch path decision (ADR-007) and the decision records contr
 | TR-001 | integration | `src/plugins/workflow-governance.test.ts` | Profile-specific architecture guidance and gate examples with persona reporting triggers |
 | TR-002 | integration | `src/utils/agent.grounding-decisions.test.ts` | Verbatim Proposed and Decided rows plus conflict guidance across stages |
 | TR-003 | integration | `src/plugins/builtins/workflows/gwrk-plan/prompt-contract.test.ts` | Canonical gates and exit-based assertions |
-| TR-012 | integration | `src/plugins/workflow-governance.delivery.test.ts` | Decision index integrity, one conflict instruction, host guidance and enforcement, CLI review standards and reporting |
+| TR-012 | integration | `src/plugins/workflow-governance.delivery.test.ts` | Decision index integrity, one conflict instruction, host guidance and enforcement, code review standards and reporting |
 
 The host dispatch cases in TR-012 pair `docs/architecture.md` with `pyproject.toml`, `Cargo.toml` or `go.mod`. Both prompts use the detected language's enforcement and omit GWRK paths and TypeScript enforcement. The Python cases also exclude the built-in GWRK repository conventions. `gwrk-specify` gives host dependency guidance. `gwrk-plan` gives host verification guidance. Its Python Done When example runs `python -m pytest tests/test_phase.py` in a fenced `bash` block. Unknown profiles receive host guidance and applicable project-local enforcement. The shared authority block requires agents to record conflicts in the plan.
 
 The CLI review cases in TR-012 check that Python and unknown profiles receive host verification and schema guidance. Both exclude native build and lint commands. They also exclude native autofix and test commands. The Python case checks Python enforcement. It verifies Principal Engineer attribution and project lead escalation in pull requests. The `@gwrk/cli` fixture checks that native reviews retain their verification commands.
+
+The TR-012 host dispatch fixture uses `docs/architecture.md` and sets `project.type` to `python` in `.gwrkrc.json`. It omits language manifests and `stack.language`. The gate runs `gwrk-specify` and `gwrk-plan`. It also runs `review-code-cli` and `review-code-webapp`.
+
+Each dry run checks for Python enforcement and host guidance. It excludes GWRK paths and verification commands. It also excludes TypeScript enforcement and GWRK repository conventions.
 
 #### Done When
 
@@ -200,3 +205,5 @@ Phase 1 captured prompts omit unrelated language packs for an unknown profile. A
 Both Python dispatch regressions failed before the profile detector repair. The phase gate now passes 69 checks, including the native examples and parser tests. The full CI suite passes 2178 tests with seven skips and six todo cases.
 
 The Phase 1 gate includes the existing source and built review prompt parity checks. Both review workflows now carry the same host guidance and persona reporting rules. Captured Python, unknown and native profiles exercise both workflows. The phase gate passes 194 checks after the parity regressions failed.
+
+The four configured Python dry runs failed before the profile detector repair. All 198 phase gate checks pass after the repair. The CI suite passes 2245 tests with seven skips and six todo cases.

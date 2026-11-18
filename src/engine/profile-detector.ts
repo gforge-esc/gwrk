@@ -64,11 +64,7 @@ function detectProfileInDirectory(
     workspaceRoot,
   );
   if (scoped) return scoped;
-  if (
-    localProject?.design &&
-    !detected.profile._isGwrk &&
-    detected.profile.type !== "gwrk-native"
-  ) {
+  if (localProject?.design && !detected.profile._isGwrk) {
     return resolveWorkspacePolicyProfile("", detected.profile, undefined, {
       localProject,
       detectedStacks: detected.signals,
@@ -231,16 +227,6 @@ function detectFilesystemProfile(projectRoot: string): FilesystemProfile {
   }
 
   // 3. Resolve profile from collected signals
-  if (
-    signals.length === 0 &&
-    fs.existsSync(path.join(projectRoot, "docs", "architecture.md"))
-  ) {
-    profile.type = "gwrk-native";
-    profile.stack.language = "TypeScript";
-    profile.layout = "src-nested";
-    return { profile, signals: [] };
-  }
-
   if (signals.length > 1) {
     // Priority: Cargo.toml over package.json for single projects (backward compat with test)
     if (
@@ -443,9 +429,14 @@ function readLocalProject(
     const rc = JSON.parse(fs.readFileSync(rcPath, "utf-8"));
     if (!rc.project) return undefined;
     const projectSchema = GwrkConfigSchema.shape.project.shape;
+    const type = projectSchema.type.safeParse(rc.project.type).data || undefined;
+    const stack = projectSchema.stack.safeParse(rc.project.stack).data;
     return {
-      type: projectSchema.type.safeParse(rc.project.type).data || undefined,
-      stack: projectSchema.stack.safeParse(rc.project.stack).data,
+      type,
+      stack:
+        type === "python" && stack?.language === undefined
+          ? { ...stack, language: "Python" }
+          : stack,
       toolchain: ToolchainConfigSchema.safeParse(rc.project.toolchain).data,
       design: DesignSchema.safeParse(rc.project.design).data,
     };
@@ -458,7 +449,7 @@ function mergeLocalProject(
   detected: ProjectProfile,
   localProject: WorkspaceProfileConfig,
 ): ProjectProfile {
-  if (detected._isGwrk || detected.type === "gwrk-native") {
+  if (detected._isGwrk) {
     return mergeProfileOverrides({
       detected,
       projectDesign: localProject.design,

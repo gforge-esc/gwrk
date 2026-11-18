@@ -191,6 +191,51 @@ describe("governance prompt delivery", () => {
     },
   );
 
+  it.each([
+    {
+      workflow: "gwrk-specify",
+      guidance: ["host repository's dependency evidence"],
+    },
+    {
+      workflow: "gwrk-plan",
+      guidance: [
+        "Read the host repository's architecture and planning documents",
+        "Use the host repository's verification commands in each gate.",
+      ],
+    },
+    { workflow: "review-code-cli", guidance: hostReviewGuidance },
+    { workflow: "review-code-webapp", guidance: hostReviewGuidance },
+  ])(
+    "TR-012: uses the configured Python profile in $workflow with docs/architecture.md and no language manifest",
+    async ({ workflow, guidance }) => {
+      await mkdir(join(root, "docs"));
+      await writeFile(join(root, "docs/architecture.md"), "# Host architecture\n");
+      await writeFile(
+        join(root, ".gwrkrc.json"),
+        JSON.stringify({ project: { name: "host", type: "python" } }),
+      );
+
+      const captured = await captureDispatch(workflow);
+
+      expect.soft(captured).toContain('language="Python"');
+      expect
+        .soft(captured)
+        .toContain("<!-- enforcement-skill: python-standards -->");
+      for (const instruction of guidance) {
+        expect.soft(captured).toContain(instruction);
+      }
+      for (const nativeContent of [
+        "docs/grounding/architecture.md",
+        "specs/000-build-plan.md",
+        "<!-- enforcement-skill: typescript-standards -->",
+        "<!-- enforcement-skill: gwrk-conventions -->",
+      ]) {
+        expect.soft(captured).not.toContain(nativeContent);
+      }
+      expect.soft(captured.match(nativeReviewCommandPattern) ?? []).toEqual([]);
+    },
+  );
+
   it("delivers project-local enforcement inside both definition prompts", async () => {
     const policyDir = join(root, ".gwrk/plugins/skills/phase-01-policy");
     await mkdir(policyDir, { recursive: true });

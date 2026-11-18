@@ -71,12 +71,16 @@ describe("profile-detector", () => {
     expect(profile.stack.framework).toBe("Express");
   });
 
-  it("should detect gwrk-native via docs/architecture.md", async () => {
+  it("leaves the profile unknown when only docs/architecture.md is present", async () => {
     fs.mkdirSync(path.join(tmpDir, "docs"), { recursive: true });
-    fs.writeFileSync(path.join(tmpDir, "docs", "architecture.md"), "# Architecture");
-    
+    fs.writeFileSync(
+      path.join(tmpDir, "docs", "architecture.md"),
+      "# Architecture",
+    );
+
     const profile = await detectProfile(tmpDir);
-    expect(profile.type).toBe("gwrk-native");
+    expect(profile.type).toBe("unknown");
+    expect(profile.stack?.language).toBeUndefined();
   });
 
   it("should follow priority rules: Cargo.toml over package.json", async () => {
@@ -288,11 +292,19 @@ describe("FR-001: architecture-aware workspace profiles (044 phase p01)", () => 
     expect(result).toMatchObject({ design, stack: { language, framework }, toolchain });
   });
 
-  it.each(["gwrk-native", "gwrk", "unknown"])("TR-001: attaches root design for %s detection", async (kind) => {
-    if (kind === "gwrk-native") write("docs/architecture.md", "# Architecture");
-    if (kind === "gwrk") write("package.json", JSON.stringify({ name: "@gwrk/cli" }));
+  it.each([
+    { kind: "architecture document", expected: { type: "unknown" } },
+    { kind: "GWRK package", expected: { type: "pnpm-monorepo", _isGwrk: true } },
+    { kind: "no manifest", expected: { type: "unknown" } },
+  ])("TR-001: attaches root design with $kind", async ({ kind, expected }) => {
+    if (kind === "architecture document") {
+      write("docs/architecture.md", "# Architecture");
+    }
+    if (kind === "GWRK package") {
+      write("package.json", JSON.stringify({ name: "@gwrk/cli" }));
+    }
     const result = await detectProfile(root);
-    expect(result).toMatchObject({ design, type: kind === "gwrk" ? "pnpm-monorepo" : kind });
+    expect(result).toMatchObject({ design, ...expected });
   });
 
   it("TR-001: resolves the public two-argument workspace contract", async () => {
