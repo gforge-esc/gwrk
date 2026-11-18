@@ -10,7 +10,8 @@
       "src/utils/*.test.ts",
       "src/engine/*.test.ts",
       "src/commands/*.test.ts",
-      "src/scripts-e2e.test.ts"
+      "src/scripts-e2e.test.ts",
+      ".gwrkrc.local.json"
     ]
   },
   "organizeImports": {

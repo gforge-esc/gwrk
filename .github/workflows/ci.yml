@@ -53,17 +53,10 @@ jobs:
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
 
-      # Runs the hermetic suite. Non-hermetic daemon/dispatch integration tests
-      # and slow CLI-spawn suites are quarantined via GWRK_SKIP_INTEGRATION
-      # (single source of truth: QUARANTINED_INTEGRATION in vitest.config.ts).
-      # They still run locally via `pnpm test` (pre-commit hook on develop/main).
-      # TODO(gwrk): isolate them (temp dirs, random ports, in-process help) and
-      # remove the quarantine.
       - name: Test
         run: pnpm test:ci
         env:
           CI: "true"
 
-      - name: Lint (advisory)
+      - name: Lint
         run: pnpm lint
-        continue-on-error: true
