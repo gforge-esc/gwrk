@@ -8,7 +8,11 @@ import {
   normalizeGitRemoteSlug,
 } from "../../domain/project-id.js";
 import type { MergeTarget } from "../../domain/project-registry.js";
-import type { PullRequestMergeOutcome, VcsPort } from "../../ports/vcs-port.js";
+import {
+  MergePreflightError,
+  type PullRequestMergeOutcome,
+  type VcsPort,
+} from "../../ports/vcs-port.js";
 import {
   createBranch,
   getCurrentBranch,
@@ -30,16 +34,21 @@ function runGh(
   timeout: number,
   expectedRepository?: string,
 ): string {
-  const remote = discoverGitIdentityFacts(cwd).remoteOriginUrl;
-  const repository = remote ? normalizeGitRemoteSlug(remote) : null;
+  const { remoteOriginUrl, gitCommonDir } = discoverGitIdentityFacts(cwd);
+  const repository = remoteOriginUrl
+    ? normalizeGitRemoteSlug(remoteOriginUrl)
+    : null;
   if (
+    !gitCommonDir ||
     !repository ||
     !/^[a-z0-9.-]+\/[a-z0-9_.-]+\/[a-z0-9_.-]+$/i.test(repository)
   ) {
-    throw new Error("Cannot verify the checkout's GitHub repository.");
+    throw new MergePreflightError(
+      "Cannot verify the checkout's GitHub repository.",
+    );
   }
   if (expectedRepository !== undefined && repository !== expectedRepository) {
-    throw new Error(
+    throw new MergePreflightError(
       "The checkout's GitHub repository differs from the merge target.",
     );
   }
@@ -127,7 +136,9 @@ export function mergePullRequest(
   expectedRepository?: string,
 ): string {
   if (!isPrNumber(prNumber)) {
-    throw new Error("Pull request number must be a positive integer.");
+    throw new MergePreflightError(
+      "Pull request number must be a positive integer.",
+    );
   }
   return runGh(
     cwd,

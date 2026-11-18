@@ -30,6 +30,7 @@ export function discoverGitIdentityFacts(
 ): ProjectIdentityFacts {
   const remoteOriginUrl = readGit(projectRoot, [
     "config",
+    "--local",
     "--get",
     "remote.origin.url",
   ]);

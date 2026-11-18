@@ -123,12 +123,12 @@ pnpm exec vitest run src/db/scoping.test.ts src/db/db.test.ts src/db/plan.test.t
 
 #### Files
 
-- `src/ports/vcs-port.ts` (MODIFY: Add typed inspection for uncertain merge reconciliation within the authorized repository)
+- `src/ports/vcs-port.ts` (MODIFY: Type merge preflight errors and inspection outcomes)
 - `src/domain/project-registry.ts` (MODIFY: Add the repository and pull request number to merge receipts)
 - `src/ports/store-port.ts` (MODIFY: Allow receipt updates to require an expected outcome)
 - `src/db/project-registry.ts` (MODIFY: Store merge targets and condition receipt updates on the current outcome)
 - `src/db/migrations/018-slack-merge-receipt-target.sql` (CREATE: Add nullable merge target columns)
-- `src/adapters/git/project-id.ts` (MODIFY: Read identity from the authorized checkout without inherited Git selectors)
+- `src/adapters/git/project-id.ts` (MODIFY: Read origin from the checkout's repository config)
 - `src/adapters/git/process-env.ts` (CREATE: Reuse the reviewed checkout environment isolation helper)
 - `src/adapters/filesystem/scoped-feature.ts` (CREATE: Validate feature paths and file containment before scoped reads)
 - `src/engine/pulse.ts` (MODIFY: Count contained specification and plan files for scoped Pulse reports)
@@ -145,7 +145,8 @@ pnpm exec vitest run src/db/scoping.test.ts src/db/db.test.ts src/db/plan.test.t
 - `src/server/slack-agent.ts` (MODIFY: Require authorized project resolution for mentions, direct messages and reactions)
 - `src/server/slack-home.ts` (MODIFY: Render only enrolled projects where the Slack viewer holds a role)
 - `src/server/slack-home.test.ts` (MODIFY: Cover first open, viewer redaction and scoped Pulse totals)
-- `src/server/slack.ts` (MODIFY: Remove single-project startup context and resolve workspace, channel and user per event)
+- `src/server/slack.ts` (MODIFY: Resolve workspace, channel and user per event and deliver private thread replies)
+- `src/server/slack.test.ts` (MODIFY: Verify slash command callback delivery)
 - `tests/helpers/synthetic-slack.ts` (NEW: Provide deterministic synthetic Slack fixtures with zero network calls)
 - `src/server/slack-actions.test.ts` (MODIFY: Test click-time re-authorization and thread mismatch plus click replay and `VcsPort` merge)
 
@@ -160,13 +161,18 @@ pnpm exec vitest run src/db/scoping.test.ts src/db/db.test.ts src/db/plan.test.t
 
 | ID | Type | Target | Assertion |
 |---|---|---|---|
-| TR-009 | integration | `src/server/slack-actions.test.ts` and `src/adapters/git/index.test.ts` | Receipt transitions for the stored pull request across all inspection outcomes |
+| TR-009 | integration | `src/server/slack-actions.test.ts` and `src/adapters/git/index.test.ts` | Checkout origin validation and merge receipt transitions |
 | TR-010 | unit | `src/server/slack-messages.test.ts` | Interactive payloads carry `projectId` and `rootTs` metadata |
 | TR-011 | unit | `src/server/slack-agent.test.ts` | Mentions, direct messages and reactions enforce project selection and roles |
 | TR-012 | unit | `src/server/slack-home.test.ts` | App Home project visibility and Pulse totals limited to authorized checkouts |
 | TR-012a | integration | `src/server/slack-commands.test.ts` and `src/utils/agent-context.test.ts` | Local files accepted and external links excluded from status, logs, effort, Pulse and mention context |
+| TR-012b | integration | `src/server/slack.test.ts` | Private threaded status, public threaded dispatch and unthreaded help |
 
 For the merge receipt tests (TR-009), block unauthorized claims and retries from Bolt redelivery. Inspect the stored repository and pull request after a timeout, even if the card changes. Complete the original receipt on confirmed merge. Keep it uncertain when inspection fails or is unavailable. Allow one claim across concurrent retries after confirmed rejection or preflight failure.
+
+For GitHub origin validation (TR-009), require a checkout-local origin before inspection or merge. Require it for pull request lookups by number or branch too. An origin mismatch records a failed receipt with zero `gh` calls. After the origin is restored, concurrent clicks by the same caller execute one retry without inspection.
+
+For slash command delivery (TR-012b), send status via `chat.postEphemeral` to the caller in the authorized channel at the stored thread root. Send public dispatch and unthreaded help via `respond`. Set `replace_original: false` for public threaded replies.
 
 #### Done When
 
@@ -292,7 +298,7 @@ pnpm exec vitest run src/commands/project.test.ts src/commands/status.test.ts sr
 |---|---|---|---|
 | FR-001: Project enrollment and legacy aliases | Enroll stable repo identity, trunk, checkout, runner policy, Slack binding and legacy hashes | Phase 1, Phase 2 and Phase 6 | `TR-001`, `TR-006` and `TR-021` |
 | FR-002: Slack workspace, channel and role auth | Authorize workspace, channel, user, selector and mutation role before accepting work | Phase 1, Phase 3 and Phase 4 | `TR-002`, `TR-011` and `TR-016` |
-| FR-003: Scoped dispatch, threads and click auth | Thread replies per project feature, carry recipients and re-authorize button clicks with replay receipts | Phase 1, Phase 3, Phase 4 and Phase 5 | `TR-003`, `TR-009`, `TR-013` and `TR-017` |
+| FR-003: Scoped dispatch, threads and click auth | Thread replies per project feature, carry recipients and re-authorize button clicks with replay receipts | Phase 1, Phase 3, Phase 4 and Phase 5 | `TR-003`, `TR-009`, `TR-012b`, `TR-013` and `TR-017` |
 | FR-004: Local single-project compatibility | Preserve local CLI workflow via `init` and loopback defaults while denying unauthenticated hosted requests, including gateway loopback | Phase 2 and Phase 6 | `TR-006`, `TR-021` and `TR-023` |
 | FR-005: Liveness, readiness and ops separation | Separate daemon liveness, project readiness, Slack delivery and explicit operations routing | Phase 4, Phase 5 and Phase 6 | `TR-013`, `TR-019` and `TR-022` |
 | FR-006: Two-repository collision proof | Prove two repos with matching feature and branch names stay isolated across synthetic Slack faults | Phase 2 and Phase 6 | `TR-005` and `TR-024` |

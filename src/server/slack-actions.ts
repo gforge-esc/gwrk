@@ -14,6 +14,7 @@ import type {
 } from "../domain/project-registry.js";
 import { requiredAccessForSlackAction } from "../domain/slack-routing.js";
 import { PlanStore } from "../engine/plan-store.js";
+import { MergePreflightError } from "../ports/vcs-port.js";
 import { resolveProjectId } from "../utils/project-id.js";
 import {
   type CommandContext,
@@ -258,7 +259,10 @@ async function handleMerge(
   try {
     await context.vcs.mergePullRequest(auth.projectRoot, prNumber, repository);
   } catch (error) {
-    await reportFailure(error, "uncertain");
+    await reportFailure(
+      error,
+      error instanceof MergePreflightError ? "failed" : "uncertain",
+    );
     return;
   }
 
@@ -276,6 +280,7 @@ async function handleMerge(
 
 export async function registerSlackActions(app: App, context: CommandContext) {
   const defaultProjectId = resolveProjectId(context.projectRoot);
+  const activeMergeClicks = new Set<string>();
 
   // Handle button actions
   app.action<BlockAction<ButtonAction>>(
@@ -283,14 +288,28 @@ export async function registerSlackActions(app: App, context: CommandContext) {
     async ({ ack, body, context: boltContext, client, logger }) => {
       await ack();
       const payload = parseActionPayload(body.actions?.[0]?.value);
-      await handleMerge(
-        body,
-        payload,
-        context,
-        client,
-        logger,
-        !boltContext?.retryNum,
-      );
+      const actionBody: MergeActionBody = body;
+      const clickKey = JSON.stringify([
+        actionBody.team?.id ?? actionBody.team_id ?? context.workspaceId,
+        actionBody.channel?.id ?? context.channelId,
+        actionBody.message?.ts ?? actionBody.message?.thread_ts,
+        actionBody.user.id,
+      ]);
+      // A concurrent click from this actor must leave the active claim to its owner.
+      const concurrent = activeMergeClicks.has(clickKey);
+      if (!concurrent) activeMergeClicks.add(clickKey);
+      try {
+        await handleMerge(
+          actionBody,
+          payload,
+          context,
+          client,
+          logger,
+          !concurrent && !boltContext?.retryNum,
+        );
+      } finally {
+        if (!concurrent) activeMergeClicks.delete(clickKey);
+      }
     },
   );
 

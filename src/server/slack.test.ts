@@ -167,7 +167,7 @@ describe("Slack Server Integration", () => {
     expect(console.log).toHaveBeenCalledWith("🛑 Slack Bolt app stopped.");
   });
 
-  it("responds to a feature slash command in its stored thread", async () => {
+  async function runFeatureSlashCommand(commandText: string) {
     vi.mocked(slackClient.loadSlackConfig).mockReturnValue({
       botToken: "xoxb-test",
       appToken: "xapp-test",
@@ -183,18 +183,27 @@ describe("Slack Server Integration", () => {
     const handler = vi.mocked(app.command).mock.calls[0][1];
     const ack = vi.fn();
     const respond = vi.fn();
+    const postEphemeral = vi.fn();
     await handler({
       command: {
         command: "/gwrk",
-        text: `dispatch ${featureId} 3`,
+        text: commandText.replace("<feature>", featureId),
         channel_id: SYNTHETIC_CHANNEL_ALPHA,
         user_id: SYNTHETIC_USER_MAINTAINER,
         team_id: SYNTHETIC_WORKSPACE_ID,
       },
       ack,
       respond,
+      client: { chat: { postEphemeral } },
     } as Parameters<typeof handler>[0]);
     expect(ack).toHaveBeenCalledOnce();
+    return { featureId, respond, postEphemeral };
+  }
+
+  it("responds to a public dispatch in its stored thread", async () => {
+    const { featureId, respond, postEphemeral } = await runFeatureSlashCommand(
+      "dispatch <feature> 3",
+    );
     expect(mockDeps.queue.enqueue).toHaveBeenCalledWith({
       featureId,
       phaseId: "phase-03",
@@ -206,6 +215,38 @@ describe("Slack Server Integration", () => {
         replace_original: false,
       }),
     );
+    expect(postEphemeral).not.toHaveBeenCalled();
+  });
+
+  it("posts threaded status privately to the caller in the authorized channel", async () => {
+    const { featureId, respond, postEphemeral } =
+      await runFeatureSlashCommand("status <feature>");
+    expect.soft(respond).not.toHaveBeenCalled();
+    expect(postEphemeral).toHaveBeenCalledExactlyOnceWith({
+      channel: SYNTHETIC_CHANNEL_ALPHA,
+      user: SYNTHETIC_USER_MAINTAINER,
+      thread_ts: SYNTHETIC_THREAD_ALPHA.rootTs,
+      blocks: expect.arrayContaining([
+        {
+          type: "section",
+          text: {
+            type: "mrkdwn",
+            text: `*Feature ${featureId}:* No dispatch runs found.`,
+          },
+        },
+      ]),
+    });
+  });
+
+  it("uses the response URL for unthreaded help", async () => {
+    const { respond, postEphemeral } = await runFeatureSlashCommand("help");
+    expect(respond).toHaveBeenCalledOnce();
+    const [response] = respond.mock.calls[0];
+    expect(response.response_type).toBe("ephemeral");
+    expect(response.blocks[0].type).toBe("header");
+    expect(response).not.toHaveProperty("thread_ts");
+    expect(response).not.toHaveProperty("replace_original");
+    expect(postEphemeral).not.toHaveBeenCalled();
   });
 
   it("limits registered queue commands to the startup project with matching feature IDs", async () => {

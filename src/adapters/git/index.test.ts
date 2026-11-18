@@ -140,6 +140,47 @@ describe("project GitHub commands", () => {
 
   const target = { repository: "github.com/org/alpha", prNumber: 42 };
 
+  it("blocks GitHub commands when the matching origin exists only in global config", () => {
+    execFileSync("git", ["-C", root, "remote", "remove", "origin"]);
+    const globalConfig = join(root, "global.gitconfig");
+    writeFileSync(
+      globalConfig,
+      '[remote "origin"]\n\turl = https://github.com/org/alpha.git\n',
+    );
+    vi.stubEnv("GIT_CONFIG_GLOBAL", globalConfig);
+
+    vi.stubEnv("GWRK_GH_REPLY_FIXTURE", '{"number":42,"state":"MERGED"}');
+    expect.soft(inspectPullRequestMerge(root, target)).toBe("unavailable");
+    vi.stubEnv(
+      "GWRK_GH_REPLY_FIXTURE",
+      '{"url":"https://github.com/org/alpha/pull/42"}',
+    );
+    expect
+      .soft(
+        resolvePullRequestUrl(root, {
+          prNumber: target.prNumber,
+          expectedRepository: target.repository,
+        }),
+      )
+      .toBeNull();
+    vi.stubEnv(
+      "GWRK_GH_REPLY_FIXTURE",
+      '[{"url":"https://github.com/org/alpha/pull/42"}]',
+    );
+    expect
+      .soft(
+        resolvePullRequestUrl(root, {
+          headBranch: "feature",
+          expectedRepository: target.repository,
+        }),
+      )
+      .toBeNull();
+    expect
+      .soft(() => mergePullRequest(root, target.prNumber, target.repository))
+      .toThrow(/Cannot verify the checkout/);
+    expect(existsSync(join(root, "arguments"))).toBe(false);
+  });
+
   it.each([
     ['{"number":42,"state":"MERGED"}', "merged"],
     ['{"number":42,"state":"CLOSED"}', "rejected"],

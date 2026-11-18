@@ -3,7 +3,13 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { execFileSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import {
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { App } from "@slack/bolt";
@@ -21,7 +27,10 @@ import {
   createSyntheticRegistry,
   createSyntheticVcsPort,
 } from "../../tests/helpers/synthetic-slack.js";
-import { resolveProjectId } from "../adapters/git/index.js";
+import {
+  createGitVcsAdapter,
+  resolveProjectId,
+} from "../adapters/git/index.js";
 import { createSqliteProjectRegistryAdapter } from "../adapters/sqlite/index.js";
 import { createProjectRoutingService } from "../application/project-routing/index.js";
 import { findOpenPr } from "../db/runs.js";
@@ -1209,6 +1218,65 @@ describe("slack-actions (FR-007, US-004, US-005)", () => {
         actionId: attempt ? `merge_pr:retry:${attempt}` : "merge_pr",
       });
     }
+
+    it("records origin drift as failed and allows one retry after origin is restored", async () => {
+      const { registry, project } = createSqliteRegistry();
+      const root = project.localRoot;
+      const calls = join(root, "gh-calls");
+      writeFileSync(calls, "");
+      writeFileSync(
+        join(root, "gh"),
+        '#!/bin/sh\nprintf \'%s\\n\' "$*" >> "$GWRK_TEST_GH_CALLS"\nprintf \'%s\\n\' \'{"number":42,"state":"OPEN"}\'\n',
+        { mode: 0o755 },
+      );
+      vi.stubEnv("PATH", `${root}:${process.env.PATH}`);
+      vi.stubEnv("GWRK_TEST_GH_CALLS", calls);
+      onTestFinished(() => vi.unstubAllEnvs());
+
+      const vcs = createGitVcsAdapter();
+      await registerSlackActions(mockApp as App, {
+        ...mockContext,
+        routingService: createProjectRoutingService({ registry }),
+        vcs,
+      });
+      const click = clickArgs("merge_pr", project.projectId);
+      const receiptKey = mergeReceiptKey(project.projectId);
+      function setOrigin(repository: string) {
+        execFileSync("git", [
+          "-C",
+          root,
+          "remote",
+          "set-url",
+          "origin",
+          repository,
+        ]);
+      }
+
+      setOrigin("https://github.com/org/beta.git");
+      await actionHandlers.merge_pr(click);
+      expect.soft(readFileSync(calls, "utf8")).toBe("");
+      expect.soft(registry.getActionReceipt(receiptKey)).toMatchObject({
+        outcome: "failed",
+        mergeTarget,
+      });
+
+      setOrigin("https://github.com/org/alpha.git");
+      await Promise.all([
+        actionHandlers.merge_pr(clickArgs("merge_pr", project.projectId)),
+        actionHandlers.merge_pr(clickArgs("merge_pr", project.projectId)),
+      ]);
+      expect
+        .soft(readFileSync(calls, "utf8").trim().split("\n"))
+        .toEqual([
+          "pr merge 42 --merge --delete-branch --repo github.com/org/alpha",
+        ]);
+      expect
+        .soft(registry.getActionReceipt(mergeReceiptKey(project.projectId, 1)))
+        .toMatchObject({ outcome: "executed", mergeTarget });
+      expect(
+        registry.getActionReceipt(mergeReceiptKey(project.projectId, 2)),
+      ).toBeNull();
+    });
 
     it.each(["button", "reaction"])(
       "reconciles a crash-left claimed receipt for a remotely merged %s without a second merge",

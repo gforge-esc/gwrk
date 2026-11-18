@@ -99,7 +99,7 @@ export async function startSlackApp(deps: {
     };
 
     // Register slash command /gwrk with per-event context resolution
-    slackApp.command("/gwrk", async ({ command, ack, respond }) => {
+    slackApp.command("/gwrk", async ({ command, ack, respond, client }) => {
       await ack();
       const eventContext: CommandContext = {
         ...baseContext,
@@ -108,6 +108,15 @@ export async function startSlackApp(deps: {
         workspaceId: command.team_id,
       };
       const response = await handleSlashCommand(command.text, eventContext);
+      if (response.response_type === "ephemeral" && response.thread_ts) {
+        await client.chat.postEphemeral({
+          channel: eventContext.channelId,
+          user: command.user_id,
+          thread_ts: response.thread_ts,
+          blocks: response.blocks,
+        });
+        return;
+      }
       await respond(
         response.thread_ts
           ? { ...response, replace_original: false }

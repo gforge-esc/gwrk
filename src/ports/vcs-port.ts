@@ -7,6 +7,8 @@ import type { MergeTarget } from "../domain/project-registry.js";
 
 export type PullRequestMergeOutcome = "merged" | "rejected" | "unavailable";
 
+export class MergePreflightError extends Error {}
+
 export interface PullRequestSummary {
   prNumber: number;
   prUrl: string | null;
@@ -30,6 +32,7 @@ export interface VcsPort {
     cwd: string,
     target: MergeTarget,
   ): PullRequestMergeOutcome | Promise<PullRequestMergeOutcome>;
+  /** @throws {MergePreflightError} When validation fails before the merge command starts. */
   mergePullRequest(
     cwd: string,
     prNumber: number,
