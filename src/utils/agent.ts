@@ -515,6 +515,17 @@ function withoutGeneratedPolicySections(target: string): string {
   const selection = (name: string) =>
     new RegExp(`^- ${name}: (.+)$`, "m").exec(masked)?.[1]?.trim();
   const language = selection("Language");
+  const languageIsUnset = !language || /^(?:none|unspecified)$/i.test(language);
+  const languageFallback =
+    "No bundled language binding. Assess language-specific boundaries explicitly.";
+  const generatedLanguageGuidance = languageIsUnset
+    ? [
+        languageFallback,
+        ...["TypeScript", "JavaScript", "Python", "Go", "Rust"]
+          .map(lookupLanguageGuidance)
+          .filter((guidance) => guidance !== undefined),
+      ]
+    : [lookupLanguageGuidance(language) ?? languageFallback];
   const framework = selection("Framework");
   const hasFramework = normalizeFramework(framework) !== undefined;
   const architecture = selection("Architecture");
@@ -535,13 +546,7 @@ function withoutGeneratedPolicySections(target: string): string {
     candidates: [],
   });
   const generated = new Map<string, string[]>([
-    [
-      "Language guidance",
-      [
-        lookupLanguageGuidance(language) ??
-          "No bundled language binding. Assess language-specific boundaries explicitly.",
-      ],
-    ],
+    ["Language guidance", generatedLanguageGuidance],
     [
       "Framework guidance",
       hasFramework
@@ -837,10 +842,14 @@ export async function dispatchToAgent(task: TaskDispatch): Promise<TaskResult> {
     ? findEnforcementSlot(template, "empty-section")
     : legacyParts?.slot;
   if (enforcementSlot?.index !== undefined) {
+    const workflow = task.workflow ?? "";
+    const isExplicitDefine =
+      task.type === "define" && !/^(?:gwrk-)?implement$/.test(workflow);
     const scope =
-      task.workflow?.includes("review") || task.type?.includes("review")
+      workflow.includes("review") || task.type?.includes("review")
         ? "review"
-        : /^(?:gwrk-(?:spec(?:ify)?|plan|research|brief|tasks|adr)|define)/.test(
+        : isExplicitDefine ||
+            /^(?:gwrk-(?:spec(?:ify)?|plan|research|brief|tasks|adr)|define)/.test(
               task.workflow ?? task.type ?? "",
             )
           ? "define"

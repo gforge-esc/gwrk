@@ -18,13 +18,17 @@ beforeEach(() => {
 });
 afterEach(() => rmSync(root, { recursive: true, force: true }));
 
-async function prompt(workflow: string, profile: ProjectProfile) {
+async function prompt(
+  workflow: string,
+  profile: ProjectProfile,
+  type = workflow.includes("review") ? "review" : "workflow",
+) {
   const template = "Trusted workflow\n<code_quality>\n{{enforcement}}\n</code_quality>";
   const result = await dispatchToAgent({
     agent: "agy",
     workflow,
     profile,
-    type: workflow.includes("review") ? "review" : "workflow",
+    type,
     workDir: root,
     stdin: template,
     promptParts: { template, userInput: "<user_input>Keep task text</user_input>" },
@@ -73,6 +77,31 @@ describe("shared effective policy dispatch", () => {
     expect(rendered).toContain("## Policy gaps");
     expect(rendered).toContain("No compatible policy found for framework Django");
     expect(rendered).not.toContain("Keep Django ORM models");
+  });
+
+  it("uses definition policy for a custom workflow with an explicit define task", async () => {
+    for (const [scope, rules] of [
+      ["define", "Fixture define policy."],
+      ["implementation", "Fixture implementation policy."],
+    ]) {
+      const name = `fixture-${scope}`;
+      const pack = join(root, ".gwrk/plugins/skills", name);
+      mkdirSync(pack, { recursive: true });
+      writeFileSync(
+        join(pack, "manifest.yaml"),
+        `type: skill\nname: ${name}\nversion: 1.0.0\ndescription: Fixture policy\ntier: enforcement\nscope: ${scope}\n`,
+      );
+      writeFileSync(join(pack, "SKILL.md"), rules);
+    }
+
+    const rendered = await prompt(
+      "fixture-workflow",
+      { type: "nodejs", stack: { language: "TypeScript" } },
+      "define",
+    );
+    const policy = rendered.match(/<effective_policy>\n([\s\S]*?)\n<\/effective_policy>/)?.[1];
+    expect.soft(policy).toContain("Fixture define policy.");
+    expect(policy).not.toContain("Fixture implementation policy.");
   });
 });
 
@@ -221,6 +250,62 @@ it("omits the incompatible Django root gap and fallback from a FastAPI workspace
   expect(rendered).not.toContain(gap);
   expect(rendered).not.toContain(fallback);
   expect(readFileSync(target, "utf8")).toBe(original);
+});
+
+async function installPolyglotTarget(language: "none" | "unspecified") {
+  const design = resolveDesign({ architecture: "hexagonal-functional" });
+  const stack = { language, languages: ["Python", "Go"] };
+  writeFileSync(
+    join(root, ".gwrkrc.json"),
+    JSON.stringify({ project: { name: "binding-fixture", type: "polyglot-monorepo", stack, design } }),
+  );
+  await installArchitectureContext(root, {
+    projectName: "binding-fixture",
+    design,
+    language,
+    decisionsDir: "docs/decisions",
+  });
+  return {
+    target: join(root, ".gwrk/architecture.md"),
+    profile: { type: "go", stack: { language: "Go" }, design } satisfies ProjectProfile,
+  };
+}
+
+it.each(["absent", "none", "unspecified"] as const)(
+  "omits generated Python guidance from a Go workspace when the saved primary is %s",
+  async (primary) => {
+    const { target, profile } = await installPolyglotTarget(primary === "unspecified" ? primary : "none");
+    if (primary === "absent") {
+      writeFileSync(target, readFileSync(target, "utf8").replace(/^- Language: none\n/m, ""));
+    }
+    const original = readFileSync(target);
+    expect(original.toString()).toContain("Use typing.Protocol for ports.");
+
+    const rendered = await prompt("gwrk-implement", profile);
+    expect.soft(rendered).toContain("Define small consumer-owned interfaces.");
+    expect.soft(rendered).not.toContain("Use typing.Protocol for ports.");
+    expect(readFileSync(target)).toEqual(original);
+  },
+);
+
+it("preserves edited and quoted Python guidance when the saved primary is unset", async () => {
+  const { target, profile } = await installPolyglotTarget("none");
+  const original = readFileSync(target, "utf8");
+  const guidance = original.match(/## Language guidance\n\n([^\n]+)\n\n/)?.[1];
+  expect(guidance).toContain("Use typing.Protocol for ports.");
+  const section = [
+    `${guidance}\nUse SPDX license headers on new workspace modules.`,
+    `\`\`\`markdown\n## Language guidance\n\n${guidance}\n\`\`\``,
+    `> ${guidance}`,
+  ].join("\n\n");
+  const edited = original.replace(`\n\n${guidance}\n\n`, `\n\n${section}\n\n`);
+  writeFileSync(target, edited);
+
+  const rendered = await prompt("gwrk-implement", profile);
+  const injected = rendered.match(/<architecture_target>\n([\s\S]*?)\n<\/architecture_target>/)?.[1];
+  expect(injected).toContain(`## Language guidance\n\n${section}\n\n`);
+  expect(rendered).toContain("Define small consumer-owned interfaces.");
+  expect(readFileSync(target, "utf8")).toBe(edited);
 });
 
 it("preserves maintainer additions while replacing generated root stack guidance", async () => {

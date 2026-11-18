@@ -182,6 +182,9 @@ bash specs/044-architecture-aware-policy/gates/phase-03.sh
 | TR-013 | integration | `src/utils/agent.policy-binding.test.ts` | One current secondary-language gap before its pack loads and zero afterward, including older saved targets |
 | TR-013 | integration | `src/utils/agent.policy-binding.test.ts` | Byte equality for the saved target and decision index after pack repair |
 | TR-013 | integration | `src/utils/agent.policy-binding.test.ts` | FastAPI router guidance without the TypeScript root target's Django gap and fallback |
+| TR-013 | integration | `src/utils/agent.policy-binding.test.ts` | Go guidance in place of generated Python guidance for absent, `none` and `unspecified` primary languages |
+| TR-013 | integration | `src/utils/agent.policy-binding.test.ts` | Byte equality for saved polyglot targets and preservation of edited and quoted Python guidance |
+| TR-013 | integration | `src/utils/agent.policy-binding.test.ts` | Definition skill only in `<effective_policy>` for a custom workflow with task type `define` |
 | TR-013 | integration | `src/utils/agent.policy-binding.test.ts` | Byte equality for maintainer-edited guidance paragraphs and gap items with continuation lines |
 | TR-013 | integration | `src/utils/agent.test.ts` | Built-in `gwrk-specify` delivers the definition skill once and preserves user input |
 | TR-013 | integration | `src/utils/agent.test.ts` | Built-in `gwrk-implement` delivers the target rule once and retains the selected skill and framework gap |
