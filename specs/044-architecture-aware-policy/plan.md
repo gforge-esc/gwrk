@@ -104,6 +104,7 @@ pnpm exec vitest run src/plugins/manifest.test.ts src/domain/policy-selection.te
 - `src/plugins/skill-runtime.ts` (MODIFY: Implement `resolveEffectivePolicy` and `formatEffectivePolicyPrompt` and delegate `resolveEnforcementSkills`)
 - `src/commands/plugin.ts` (MODIFY: Route `gwrk plugin list --project` enforcement filtering through `evaluateEnforcementCandidate`)
 - `src/plugins/skill-runtime.test.ts` (MODIFY: Verify `resolveEffectivePolicy` composition and override precedence and `gwrk-conventions` scoping)
+- `src/plugins/skill-runtime.p15.red.test.ts` — **amend** — Adapt the legacy loader mock and require consistent selectors across builtin, global and project-local sources.
 - `src/plugins/enforcement.test.ts` (MODIFY: Verify `javascript-standards` loading and confirm external projects exclude `gwrk-conventions` even when their display name matches)
 - `src/plugins/framework-pack-compatibility.test.ts` (NEW: Verify all five language baselines and all ten external framework pack contracts plus gap cases)
 - `src/commands/plugin.p15.red.test.ts` (MODIFY: Verify `--project` listing honors architecture and framework and `projectScope` selectors)
