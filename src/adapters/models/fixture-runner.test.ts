@@ -584,6 +584,40 @@ describe("fixture runner adapter", () => {
     expect(forbiddenCheck?.passed).toBe(true);
   });
 
+  it.each(["prose", "structured"])(
+    "reads a %s review verdict without confusing prose braces",
+    async (mode) => {
+      const verdict = {
+        verdict: "NO-GO",
+        reopenedTasks: ["T001"],
+        intents: [],
+      };
+      const dispatcher = vi.fn(
+        async (): Promise<TaskResult> => ({
+          exitCode: 0,
+          stdout: `Notes {policy} before the result.\n\`\`\`json\n${JSON.stringify(verdict)}\n\`\`\`\nReview finished.`,
+          ...(mode === "structured" ? { structuredOutput: verdict } : {}),
+          stderr: "",
+          durationS: 0,
+        }),
+      );
+      const result = await createFixtureRunner({ dispatcher }).runFixtureRepeat(
+        {
+          fixtureId: "implement-seeded-defect",
+          role: "review",
+          repeatIndex: 0,
+          route: candidateRoute,
+        },
+      );
+      expect(result.deterministicGatesPassed).toBe(true);
+      expect(
+        result.gateChecks.find(
+          ({ checkId }) => checkId === "review-required-T001",
+        ),
+      ).toMatchObject({ passed: true });
+    },
+  );
+
   it("dispatches mapped workflows and includes persona prompt headers for each role", async () => {
     const roles: Array<{
       role: "define" | "implement" | "review";

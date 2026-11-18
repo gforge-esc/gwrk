@@ -15,7 +15,10 @@ import type {
   ModelRole,
 } from "../../domain/model-qualification.js";
 import { PluginLoader } from "../../plugins/loader.js";
-import { WorkflowRuntime } from "../../plugins/workflow-runtime.js";
+import {
+  WorkflowRuntime,
+  extractJsonFromOutput,
+} from "../../plugins/workflow-runtime.js";
 import type {
   FixtureRepeatEvidence,
   FixtureRepeatRequest,
@@ -480,26 +483,24 @@ export class FixtureRunner
 
       const reopenedTasks = new Set<string>();
       if (request.role === "review") {
-        const text = taskResult.unwrappedStdout ?? taskResult.stdout;
-        const jsonBlocks = [...text.matchAll(/\{[\s\S]*?\}(?=[^}]*$)/g)];
-        if (jsonBlocks.length > 0) {
-          try {
-            const last = JSON.parse(jsonBlocks[jsonBlocks.length - 1][0]);
-            if (Array.isArray(last?.reopenedTasks)) {
-              for (const t of last.reopenedTasks) {
-                if (typeof t === "string") reopenedTasks.add(t);
-              }
+        try {
+          const parsed =
+            taskResult.structuredOutput ??
+            extractJsonFromOutput(
+              taskResult.unwrappedStdout ?? taskResult.stdout,
+            );
+          if (
+            parsed &&
+            typeof parsed === "object" &&
+            "reopenedTasks" in parsed &&
+            Array.isArray(parsed.reopenedTasks)
+          ) {
+            for (const task of parsed.reopenedTasks) {
+              if (typeof task === "string") reopenedTasks.add(task);
             }
-          } catch {}
-        } else {
-          try {
-            const last = JSON.parse(text.trim());
-            if (Array.isArray(last?.reopenedTasks)) {
-              for (const t of last.reopenedTasks) {
-                if (typeof t === "string") reopenedTasks.add(t);
-              }
-            }
-          } catch {}
+          }
+        } catch {
+          // Missing structured evidence leaves the required-task gate failing.
         }
 
         try {
