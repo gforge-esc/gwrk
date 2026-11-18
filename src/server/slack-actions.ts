@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { spawn } from "node:child_process";
+import { realpathSync } from "node:fs";
 import type { App, BlockAction, ButtonAction } from "@slack/bolt";
 import type { ActionsBlock } from "@slack/types";
 import { verifyEnrolledCheckout } from "../adapters/git/project-id.js";
@@ -99,7 +100,9 @@ async function verifyAndClaimClick(
   const usesStartupQueue =
     actionId === "retry_phase" || actionId === "request_changes";
   const revisesCheckout =
-    actionId === "revise_spec" || actionId === "revise_plan";
+    actionId === "revise_spec" ||
+    actionId === "revise_plan" ||
+    actionId === "approve_spec";
 
   const input = {
     workspaceId,
@@ -131,7 +134,20 @@ async function verifyAndClaimClick(
     decision = context.routingService.authorizeAndClaimAction({
       ...input,
       nowIso,
-      resolveCheckout: revisesCheckout ? resolveProjectCheckout : undefined,
+      resolveCheckout: usesStartupQueue
+        ? (project: EnrolledProject) => {
+            const checkout = resolveProjectCheckout(project);
+            try {
+              return checkout === realpathSync(context.projectRoot)
+                ? checkout
+                : undefined;
+            } catch {
+              return undefined;
+            }
+          }
+        : revisesCheckout
+          ? resolveProjectCheckout
+          : undefined,
       requiredProjectId: usesStartupQueue
         ? (context.queueProjectId ?? null)
         : undefined,

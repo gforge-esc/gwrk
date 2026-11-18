@@ -278,7 +278,14 @@ const handlers: Record<string, SlashCommandHandler> = {
     }
 
     try {
-      const resolved = resolveFeature(featureId, context.projectRoot);
+      const resolved = resolveScopedSlackFeature(
+        context.projectRoot,
+        featureId,
+      )?.featureId;
+      if (!resolved)
+        throw new Error(
+          "Feature is unavailable inside this project's checkout.",
+        );
       const phaseId = phaseArg
         ? phaseArg.startsWith("phase-")
           ? phaseArg
@@ -675,7 +682,14 @@ const handlers: Record<string, SlashCommandHandler> = {
     }
 
     try {
-      const resolved = resolveFeature(featureId, context.projectRoot);
+      const resolved = resolveScopedSlackFeature(
+        context.projectRoot,
+        featureId,
+      )?.featureId;
+      if (!resolved)
+        throw new Error(
+          "Feature is unavailable inside this project's checkout.",
+        );
 
       // Spawn gwrk define <sub> <feature> as background process
       const child = spawn("gwrk", ["define", subcommand, resolved], {
@@ -757,13 +771,13 @@ const handlers: Record<string, SlashCommandHandler> = {
     const sub = args[0] || "list";
 
     if (sub === "list") {
-      const indexPath = path.join(
+      const indexPath = scopedFeaturePath(
         context.projectRoot,
         ".gwrk",
         "decisions",
         "index.md",
       );
-      if (!fs.existsSync(indexPath)) {
+      if (!indexPath) {
         return {
           response_type: "ephemeral",
           blocks: [
@@ -1272,6 +1286,31 @@ export async function handleSlashCommand(
         },
       ],
     };
+  }
+
+  if (checkout && ["define", "ship"].includes(subcommand) && args[0]) {
+    const featureInput =
+      subcommand === "define" ? (args[1] ?? args[0]) : args[0];
+    try {
+      const featureId = resolveFeature(featureInput, checkout);
+      if (!scopedFeatureDirectory(checkout, featureId)) {
+        return {
+          response_type: "ephemeral",
+          thread_ts: threadTs,
+          blocks: [
+            {
+              type: "section",
+              text: {
+                type: "mrkdwn",
+                text: ":warning: Feature is unavailable inside this project's checkout.",
+              },
+            },
+          ],
+        };
+      }
+    } catch {
+      // New feature definitions have no existing directory.
+    }
   }
 
   if (checkout && needsFeatureThread) {
