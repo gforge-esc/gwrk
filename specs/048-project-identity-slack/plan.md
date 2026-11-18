@@ -308,3 +308,5 @@ pnpm exec vitest run src/commands/project.test.ts src/commands/status.test.ts sr
 ## Deferred items
 
 None. Full coverage of `specs/048-project-identity-slack/spec.md`.
+
+Phase 3 review regressions cover enrolled repository propagation in URL lookup and slash approval, crash-left claimed merge reconciliation and synthetic receipt compare-and-set guards. Seven failures preceded the repair. The repaired phase gate passes 162 tests.
