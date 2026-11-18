@@ -509,7 +509,12 @@ function maskPromptExamples(template: string): string {
       .replace(/^ {0,3}>[^\r\n]*/gm, mask)
       .replace(
         /^(?: {4}| {0,3}\t)[^\r\n]*(?:\r?\n(?:[ \t]*\r?\n)*(?: {4}| {0,3}\t)[^\r\n]*)*/gm,
-        (block) => block.trim() === ENFORCEMENT_MARKER ? block : mask(block),
+        (block, offset: number, text: string) =>
+          block.trim() === ENFORCEMENT_MARKER ||
+          (block.trimEnd().endsWith(ENFORCEMENT_MARKER) &&
+            /^\r?\n<\/code_quality>/.test(text.slice(offset + block.length)))
+            ? block
+            : mask(block),
       )
       .split(/(\r?\n[ \t]*\r?\n)/)
       .map((paragraph) =>
@@ -625,7 +630,10 @@ function legacyPromptSuffix(prompt: string, stdin: string): string | undefined {
   if (stdin.startsWith(prompt)) {
     const suffix = stdin.slice(prompt.length);
     const separator = /^\r?\n\r?\n/.exec(suffix)?.[0];
-    if (separator && LEGACY_INPUT_OPENING.test(suffix.slice(separator.length))) {
+    if (
+      separator &&
+      LEGACY_INPUT_OPENING.test(suffix.slice(separator.length))
+    ) {
       return suffix;
     }
   }
@@ -638,7 +646,7 @@ function splitLegacyStdin(task: TaskDispatch) {
   const { stdin, prompt, type, workflow } = task;
   if (
     !stdin ||
-    stdin === prompt ||
+    (stdin === prompt && findLegacyInputStart(stdin) !== undefined) ||
     type?.startsWith("skill/") ||
     workflow?.startsWith("skill/")
   ) {
@@ -760,9 +768,17 @@ export async function dispatchToAgent(task: TaskDispatch): Promise<TaskResult> {
     template = template.slice(0, start) + replacement + template.slice(end);
   }
 
+  const policyTemplate =
+    promptParts?.template ??
+    legacyParts?.template ??
+    task.prompt ??
+    task.stdin?.slice(
+      0,
+      findLegacyInputStart(task.stdin) ?? task.stdin.length,
+    ) ??
+    "";
   const hasCommandSafety =
-    promptParts &&
-    maskPromptExamples(promptParts.template).includes(COMMAND_SAFETY_BLOCK);
+    maskPromptExamples(policyTemplate).includes(COMMAND_SAFETY_BLOCK);
   let stdinPayload = (
     promptParts
       ? [template, promptParts.userInput]

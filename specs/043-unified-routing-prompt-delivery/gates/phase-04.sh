@@ -20,4 +20,4 @@ pnpm exec vitest run \
   src/review-dispatch.test.ts \
   src/plugins/builtins/workflows/gwrk-plan/prompt-contract.test.ts \
   src/architecture.test.ts
-pnpm lint
+pnpm lint --vcs-enabled=true --vcs-client-kind=git --vcs-use-ignore-file=true

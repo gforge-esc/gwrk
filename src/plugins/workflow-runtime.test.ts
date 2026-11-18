@@ -72,7 +72,9 @@ describe("WorkflowRuntime Phase 13: Project Awareness", () => {
     const { conditionPrompt } = await vi.importActual<typeof conditioner>(
       "../engine/prompt-conditioner.js",
     );
-    vi.mocked(conditioner.conditionPrompt).mockImplementationOnce(conditionPrompt);
+    vi.mocked(conditioner.conditionPrompt).mockImplementationOnce(
+      conditionPrompt,
+    );
     vi.mocked(detector.detectProfile).mockResolvedValue({
       type: "pnpm-monorepo",
       stack: { language: "TypeScript", buildSystem: "pnpm" },
@@ -85,7 +87,8 @@ describe("WorkflowRuntime Phase 13: Project Awareness", () => {
     vi.mocked(fs.readFile).mockResolvedValue(
       "Native rules\n[type: unrelated]\nExcluded template text\n[/type]",
     );
-    const input = "Keep this fixture:\r\n[type: unrelated]\r\n  Task text  \r\n[/type]\r\n";
+    const input =
+      "Keep this fixture:\r\n[type: unrelated]\r\n  Task text  \r\n[/type]\r\n";
     const dispatcher = vi.fn().mockResolvedValue({
       exitCode: 0,
       stdout: "",
@@ -231,7 +234,8 @@ describe("WorkflowRuntime Phase 13: Project Awareness", () => {
         ),
       }),
     );
-    const { stdin, promptParts } = vi.mocked(agentUtils.dispatchToAgent).mock.calls[0][0];
+    const { stdin, promptParts } = vi.mocked(agentUtils.dispatchToAgent).mock
+      .calls[0][0];
     expect(promptParts).toEqual({
       template: expect.stringContaining("<output_contract>"),
       userInput: "<user_input>\ninput data\n</user_input>",
