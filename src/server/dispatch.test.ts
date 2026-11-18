@@ -210,11 +210,13 @@ describe("DispatchQueue (unified ship engine)", () => {
           }),
           projectRoot,
         );
-        expect.soft(finishRun).toHaveBeenCalledExactlyOnceWith(
-          123,
-          expect.objectContaining({ exit_code: exitCode }),
-          undefined,
-        );
+        expect
+          .soft(finishRun)
+          .toHaveBeenCalledExactlyOnceWith(
+            123,
+            expect.objectContaining({ exit_code: exitCode }),
+            undefined,
+          );
         expect
           .soft(notifySlack)
           .toHaveBeenCalledExactlyOnceWith(

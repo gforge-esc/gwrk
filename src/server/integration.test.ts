@@ -676,7 +676,9 @@ setInterval(() => {}, 1000);
         try {
           if (mode === "unscoped") await notifyRoutes(app);
           process.chdir(checkout.projectRoot);
-          vi.mocked(notifySlack).mockImplementationOnce(realNotifier.notifySlack);
+          vi.mocked(notifySlack).mockImplementationOnce(
+            realNotifier.notifySlack,
+          );
           const response = await app.inject({
             method: "POST",
             url: "/api/notify",

@@ -155,7 +155,7 @@ describe("FR-014 / Phase 4: Routing & Intelligence", () => {
         expect(backend.name).toBe('agy');
     });
 
-    it("defaults to agy for implement tasks even if not in fallbackOrder", async () => {
+    it("uses the configured fallback when no task-specific backend is set", async () => {
         vi.spyOn(configModule, 'loadConfig').mockReturnValue({
             agents: {
               fallbackOrder: ['gemini', 'claude']
@@ -176,7 +176,7 @@ describe("FR-014 / Phase 4: Routing & Intelligence", () => {
 
         const task = { type: 'implement' };
         const backend = await selectBackend(task, process.cwd(), registry);
-        expect(backend.name).toBe('agy');
+        expect(backend.name).toBe('gemini');
     });
   });
 
