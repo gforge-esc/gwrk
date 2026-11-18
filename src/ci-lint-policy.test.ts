@@ -61,6 +61,11 @@ it("runs the CI lint command against clean and defective tracked source", () => 
       )}\n`,
     );
     copyFileSync(join(repo, "biome.json"), join(root, "biome.json"));
+    mkdirSync(join(root, "scripts"));
+    copyFileSync(
+      join(repo, "scripts/lint.mjs"),
+      join(root, "scripts/lint.mjs"),
+    );
     symlinkSync(join(repo, "node_modules"), join(root, "node_modules"), "dir");
     writeFileSync(
       join(root, ".gitignore"),
@@ -72,10 +77,14 @@ it("runs the CI lint command against clean and defective tracked source", () => 
     );
     mkdirSync(join(root, "src"));
     const source = join(root, "src/value.ts");
+    const nestedConfig = join(root, "src/.gwrkrc.local.json");
+    const validConfig = "{}\n";
     writeFileSync(source, "export const value = 1;\n");
+    writeFileSync(nestedConfig, validConfig);
     for (const args of [
       ["init", "-q"],
-      ["add", "src/value.ts"],
+      ["add", "--", "src/value.ts"],
+      ["add", "-f", "--", "src/.gwrkrc.local.json"],
     ]) {
       const result = spawnSync("git", args, {
         cwd: root,
@@ -97,6 +106,14 @@ it("runs the CI lint command against clean and defective tracked source", () => 
     };
     const clean = run();
     expect(clean.status, clean.stdout + clean.stderr).toBe(0);
+    writeFileSync(nestedConfig, "{ invalid tracked config");
+    const malformed = run();
+    const diagnostics = malformed.stdout + malformed.stderr;
+    expect(malformed.status, diagnostics).toBe(1);
+    expect(diagnostics).toMatch(
+      /src[/\\]\.gwrkrc\.local\.json:\d+:\d+ parse\b/,
+    );
+    writeFileSync(nestedConfig, validConfig);
     writeFileSync(source, "export  const value=1;\n");
     const defective = run();
     expect(defective.status, defective.stdout + defective.stderr).not.toBe(0);
