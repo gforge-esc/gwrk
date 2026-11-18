@@ -7,6 +7,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { stripVTControlCharacters } from "node:util";
 import { expect, it } from "vitest";
 
 const repo = fileURLToPath(new URL("..", import.meta.url));
@@ -24,6 +25,8 @@ function runVitest(root: string, args: string[], legacyFlag: boolean) {
   const env = {
     ...process.env,
     CI: "true",
+    FORCE_COLOR: "1",
+    NO_COLOR: undefined,
     GWRK_SKIP_INTEGRATION: legacyFlag ? "1" : undefined,
   };
   const result = spawnSync(
@@ -40,7 +43,10 @@ function runVitest(root: string, args: string[], legacyFlag: boolean) {
   );
   expect(result.error).toBeUndefined();
   expect(result.signal).toBeNull();
-  return { status: result.status, output: result.stdout + result.stderr };
+  return {
+    status: result.status,
+    output: stripVTControlCharacters(result.stdout + result.stderr),
+  };
 }
 
 it.each([false, true])(
