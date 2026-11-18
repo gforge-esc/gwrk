@@ -5,7 +5,14 @@
 import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
 import { existsSync } from "node:fs";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import {
+  mkdir,
+  mkdtemp,
+  readFile,
+  readdir,
+  rm,
+  writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { promisify } from "node:util";
@@ -61,6 +68,14 @@ const ROLE_WORKFLOWS: Record<ModelRole, string> = {
   review: "gwrk-review-code",
 };
 
+async function readOptionalFile(path: string): Promise<string | undefined> {
+  try {
+    return await readFile(path, "utf8");
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+  }
+}
+
 export interface FixtureRunnerOptions {
   readonly fixturesDir?: string;
   readonly workflowRuntime?: WorkflowRuntime;
@@ -71,7 +86,7 @@ export interface FixtureRunnerOptions {
 interface FixtureManifest {
   readonly schemaVersion: number;
   readonly id: string;
-  readonly roles: readonly string[];
+  readonly roles: readonly ModelRole[];
   readonly prompt: string;
   readonly files: Record<string, string>;
   readonly gates?: {
@@ -104,30 +119,35 @@ export class FixtureRunner
     this.timeoutMs = options.timeoutMs ?? 30_000;
   }
 
+  private async readSuite() {
+    const content = await readOptionalFile(
+      join(this.fixturesDir, "suite.json"),
+    );
+    const suite =
+      content === undefined
+        ? undefined
+        : (JSON.parse(content) as {
+            fixtures: readonly { id: string; manifest?: string }[];
+          });
+    const manifests = (suite?.fixtures ?? []).map(({ id, manifest }) => ({
+      id,
+      path: join(this.fixturesDir, manifest ?? join(id, "fixture.json")),
+    }));
+    return { content, manifests };
+  }
+
   async loadSuite(): Promise<{
     fixtures: readonly { id: string; roles: readonly ModelRole[] }[];
   }> {
-    const suitePath = join(this.fixturesDir, "suite.json");
-    if (!existsSync(suitePath)) {
-      return { fixtures: [] };
-    }
-    const suiteRaw = await readFile(suitePath, "utf8");
-    const suite = JSON.parse(suiteRaw) as {
-      fixtures: readonly { id: string; manifest?: string }[];
-    };
-    const fixtures: { id: string; roles: readonly ModelRole[] }[] = [];
-    for (const item of suite.fixtures ?? []) {
-      const manifestRel = item.manifest ?? join(item.id, "fixture.json");
-      const manifestPath = join(this.fixturesDir, manifestRel);
-      if (existsSync(manifestPath)) {
-        const manifestRaw = await readFile(manifestPath, "utf8");
-        const manifest = JSON.parse(manifestRaw) as FixtureManifest;
-        fixtures.push({
-          id: item.id,
-          roles: (manifest.roles ?? []) as readonly ModelRole[],
-        });
-      }
-    }
+    const { manifests } = await this.readSuite();
+    const fixtures = await Promise.all(
+      manifests.map(async ({ id, path }) => {
+        const manifest = JSON.parse(
+          await readFile(path, "utf8"),
+        ) as FixtureManifest;
+        return { id, roles: manifest.roles };
+      }),
+    );
     return { fixtures };
   }
 
@@ -135,42 +155,58 @@ export class FixtureRunner
     fixtureSuiteHash: string;
     workflowPromptHashes: Record<string, string>;
   }> {
-    const suitePath = join(this.fixturesDir, "suite.json");
-    const suiteContent = existsSync(suitePath)
-      ? await readFile(suitePath, "utf8")
-      : "";
-
-    const suiteHasher = createHash("sha256").update(suiteContent);
-    const suite = await this.loadSuite();
-    for (const fixture of suite.fixtures) {
-      const fixturePath = join(this.fixturesDir, fixture.id, "fixture.json");
-      if (existsSync(fixturePath)) {
-        const fixtureContent = await readFile(fixturePath, "utf8");
-        suiteHasher.update(fixtureContent);
-      }
+    const { content, manifests } = await this.readSuite();
+    const suiteHasher = createHash("sha256").update(content ?? "");
+    for (const { path } of manifests) {
+      suiteHasher.update(await readFile(path, "utf8"));
     }
     const fixtureSuiteHash = suiteHasher.digest("hex");
 
-    const workflowsDir = resolve(
-      process.cwd(),
-      "src/plugins/builtins/workflows",
-    );
-
-    const hashPrompt = async (workflowName: string): Promise<string> => {
-      const promptFile = join(workflowsDir, workflowName, "PROMPT.md");
-      if (!existsSync(promptFile)) {
-        return createHash("sha256").update(workflowName).digest("hex");
-      }
-      let content = await readFile(promptFile, "utf8");
-      const includes = /<!--\s*@include\s+([^\s]+)\s*-->/g;
-      for (const match of [...content.matchAll(includes)]) {
-        const target = resolve(dirname(promptFile), match[1]);
-        if (existsSync(target)) {
-          const included = await readFile(target, "utf8");
-          content = content.replace(match[0], () => included);
+    const projectRoot = process.cwd();
+    const governancePaths = [
+      "AGENTS.md",
+      ".gwrk/agent-context.md",
+      ".gwrk/architecture.md",
+      ".gwrk/ontology/domain.md",
+      ".gwrk/perspective/hierarchy.md",
+      ".gwrk/perspective/ux-posture.md",
+      ".gwrk/decisions/index.md",
+    ];
+    for (const directory of [".gwrk/rules", "docs/decisions"]) {
+      const path = join(projectRoot, directory);
+      if (!existsSync(path)) continue;
+      const entries = await readdir(path, { withFileTypes: true });
+      for (const entry of entries) {
+        if (entry.isFile() && entry.name.endsWith(".md")) {
+          governancePaths.push(join(directory, entry.name));
         }
       }
-      return createHash("sha256").update(content).digest("hex");
+    }
+    const governance = await Promise.all(
+      governancePaths
+        .sort()
+        .map(async (path) => [
+          path,
+          await readOptionalFile(join(projectRoot, path)),
+        ]),
+    );
+
+    const loader = new PluginLoader();
+    const hashPrompt = async (workflowName: string): Promise<string> => {
+      const { path, manifest } = await loader.resolvePlugin(workflowName);
+      if (manifest.type !== "workflow")
+        throw new Error(`Not a workflow: ${workflowName}`);
+      const promptFile = resolve(path, manifest.prompt || "PROMPT.md");
+      let prompt = await readFile(promptFile, "utf8");
+      const includes = /<!--\s*@include\s+([^\s]+)\s*-->/g;
+      for (const match of [...prompt.matchAll(includes)]) {
+        const target = resolve(dirname(promptFile), match[1]);
+        const included = await readFile(target, "utf8");
+        prompt = prompt.replace(match[0], () => included);
+      }
+      return createHash("sha256")
+        .update(JSON.stringify([prompt, governance]))
+        .digest("hex");
     };
 
     const workflowPromptHashes: Record<string, string> = {};
@@ -186,17 +222,28 @@ export class FixtureRunner
   async runFixtureRepeat(
     request: FixtureRepeatRequest,
   ): Promise<FixtureRepeatEvidence> {
-    const fixturePath = join(
-      this.fixturesDir,
-      request.fixtureId,
-      "fixture.json",
-    );
+    if (request.handoffArtifactDir && request.role !== "implement") {
+      throw new Error("handoffArtifactDir is only valid for implement");
+    }
+    const suite = await this.readSuite();
+    const declared = suite.manifests.find(({ id }) => id === request.fixtureId);
+    if (suite.content !== undefined && !declared) {
+      throw new Error(`Fixture not declared in suite: ${request.fixtureId}`);
+    }
+    const fixturePath =
+      declared?.path ??
+      join(this.fixturesDir, request.fixtureId, "fixture.json");
     if (!existsSync(fixturePath)) {
       throw new Error(`Fixture not found: ${fixturePath}`);
     }
 
     const fixtureRaw = await readFile(fixturePath, "utf8");
     const fixture = JSON.parse(fixtureRaw) as FixtureManifest;
+    if (!fixture.roles.includes(request.role)) {
+      throw new Error(
+        `Fixture ${request.fixtureId} does not declare role ${request.role}`,
+      );
+    }
     const workspaceDir = await mkdtemp(
       join(tmpdir(), "gwrk-model-fixture-ws-"),
     );
@@ -227,14 +274,31 @@ export class FixtureRunner
       }
 
       if (request.handoffArtifactDir) {
-        if (request.role !== "implement") {
-          throw new Error("handoffArtifactDir is only valid for implement");
+        const planContent = await readOptionalFile(
+          join(request.handoffArtifactDir, "plan.md"),
+        );
+        const workspacePlan = join(workspaceDir, "plan.md");
+        if (!planContent?.trim()) {
+          await rm(workspacePlan, { force: true });
+          return {
+            fixtureId: request.fixtureId,
+            repeatIndex: request.repeatIndex,
+            requestedModel: request.route.modelId,
+            observedModel: "unknown",
+            deterministicGatesPassed: false,
+            gateChecks: [
+              {
+                checkId: "handoff-plan",
+                passed: false,
+                detail: "Candidate handoff plan is missing or blank",
+              },
+            ],
+            durationMs: 0,
+            retries: 0,
+            sanitizedOutput: "",
+          };
         }
-        const handoffPlan = join(request.handoffArtifactDir, "plan.md");
-        const planContent = await readFile(handoffPlan, "utf8");
-        if (!planContent.trim())
-          throw new Error("Candidate handoff plan is empty");
-        await writeFile(join(workspaceDir, "plan.md"), planContent, "utf8");
+        await writeFile(workspacePlan, planContent, "utf8");
       }
 
       await execFileAsync("git", ["-C", workspaceDir, "add", "-A"]);
@@ -351,8 +415,12 @@ export class FixtureRunner
         ),
       ];
 
-      if (Array.isArray(fixture.gates?.allowedChangedPaths)) {
-        const allowed = new Set(fixture.gates.allowedChangedPaths);
+      const allowedChangedPaths =
+        request.role === "review"
+          ? ["tasks.md"]
+          : fixture.gates?.allowedChangedPaths;
+      if (allowedChangedPaths) {
+        const allowed = new Set(allowedChangedPaths);
         const forbidden = changedFiles.filter((path) => !allowed.has(path));
         if (forbidden.length > 0) {
           gateChecks.push({
@@ -564,14 +632,21 @@ export class FixtureRunner
 
       let sanitizedOutput = "";
       if (request.role === "define") {
-        const specPath = join(workspaceDir, "spec.md");
-        const planPath = join(workspaceDir, "plan.md");
-        const parts: string[] = [];
-        if (existsSync(specPath)) {
-          parts.push(await readFile(specPath, "utf8"));
+        if (request.artifactOutputDir) {
+          await mkdir(request.artifactOutputDir, { recursive: true });
         }
-        if (existsSync(planPath)) {
-          parts.push(await readFile(planPath, "utf8"));
+        const parts: string[] = [];
+        for (const file of ["spec.md", "plan.md"]) {
+          const content = await readOptionalFile(join(workspaceDir, file));
+          if (content !== undefined) parts.push(content);
+          if (request.artifactOutputDir) {
+            const destination = join(request.artifactOutputDir, file);
+            if (content === undefined) {
+              await rm(destination, { force: true });
+            } else {
+              await writeFile(destination, content, "utf8");
+            }
+          }
         }
         sanitizedOutput = parts.join("\n\n");
       } else {
@@ -602,25 +677,6 @@ export class FixtureRunner
         sanitizedOutput,
       };
     } finally {
-      if (request.artifactOutputDir && request.role === "define") {
-        await mkdir(request.artifactOutputDir, { recursive: true });
-        const specSrc = join(workspaceDir, "spec.md");
-        const planSrc = join(workspaceDir, "plan.md");
-        if (existsSync(specSrc)) {
-          await writeFile(
-            join(request.artifactOutputDir, "spec.md"),
-            await readFile(specSrc, "utf8"),
-            "utf8",
-          );
-        }
-        if (existsSync(planSrc)) {
-          await writeFile(
-            join(request.artifactOutputDir, "plan.md"),
-            await readFile(planSrc, "utf8"),
-            "utf8",
-          );
-        }
-      }
       await rm(workspaceDir, { recursive: true, force: true });
     }
   }
@@ -718,7 +774,11 @@ export class FixtureRunner
       await writeFile(join(workflowDir, "manifest.yaml"), manifestYaml, "utf8");
       await writeFile(
         join(workflowDir, "PROMPT.md"),
-        "# Model Judge Prompt\n\nEvaluate blinded options without route metadata.",
+        [
+          "# Model Judge Prompt",
+          "",
+          "Evaluate the blinded options. Cite a fixture ID from the fixture summary, `optionA` or `optionB`, and a gate check ID from the gate evidence summary.",
+        ].join("\n"),
         "utf8",
       );
 

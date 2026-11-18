@@ -4,9 +4,9 @@
 
 import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import type { ModelCandidate } from "../../domain/model-qualification.js";
 import type { JudgeVerdictPacket } from "../../ports/model-qualification-port.js";
@@ -175,24 +175,35 @@ describe("fixture runner adapter", () => {
     });
   });
 
-  it("rejects missing candidate plans before implementation dispatch", async () => {
-    const handoff = await mkdtemp(join(tmpdir(), "gwrk-missing-plan-"));
-    const dispatcher = vi.fn();
-    try {
-      await expect(
-        createFixtureRunner({ dispatcher }).runFixtureRepeat({
+  it.each([undefined, " \n"])(
+    "fails the handoff gate before dispatch for plan %s",
+    async (plan) => {
+      const handoff = await mkdtemp(join(tmpdir(), "gwrk-missing-plan-"));
+      const dispatcher = vi.fn();
+      try {
+        if (plan !== undefined) await writeFile(join(handoff, "plan.md"), plan);
+        const evidence = await createFixtureRunner({
+          dispatcher,
+        }).runFixtureRepeat({
           fixtureId: "implement-seeded-defect",
           role: "implement",
           repeatIndex: 0,
           route: candidateRoute,
           handoffArtifactDir: handoff,
-        }),
-      ).rejects.toThrow(/plan/i);
-      expect(dispatcher).not.toHaveBeenCalled();
-    } finally {
-      await rm(handoff, { recursive: true, force: true });
-    }
-  });
+        });
+        expect(evidence.deterministicGatesPassed).toBe(false);
+        expect(evidence.gateChecks).toContainEqual(
+          expect.objectContaining({
+            checkId: "handoff-plan",
+            passed: false,
+          }),
+        );
+        expect(dispatcher).not.toHaveBeenCalled();
+      } finally {
+        await rm(handoff, { recursive: true, force: true });
+      }
+    },
+  );
 
   it("proves fixed-plan and candidate-plan handoffs", async () => {
     let observedFixedPlan = "";
@@ -466,6 +477,85 @@ describe("fixture runner adapter", () => {
     }
   });
 
+  it("loads and dispatches the fixture at its declared manifest path", async () => {
+    const fixturesDir = await mkdtemp(
+      join(tmpdir(), "gwrk-manifest-dispatch-"),
+    );
+    try {
+      await writeFile(
+        join(fixturesDir, "suite.json"),
+        JSON.stringify({
+          fixtures: [{ id: "alias", manifest: "alternative.json" }],
+        }),
+      );
+      await writeFile(
+        join(fixturesDir, "alternative.json"),
+        JSON.stringify({
+          id: "alias",
+          roles: ["define"],
+          prompt: "Distinct manifest prompt",
+          files: { "README.md": "Synthetic fixture" },
+        }),
+      );
+      const dispatcher = vi.fn(
+        async (_task: TaskDispatch): Promise<TaskResult> => ({
+          exitCode: 0,
+          stdout: "",
+          stderr: "",
+          durationS: 0,
+        }),
+      );
+      const runner = createFixtureRunner({ fixturesDir, dispatcher });
+
+      expect(await runner.loadSuite()).toEqual({
+        fixtures: [{ id: "alias", roles: ["define"] }],
+      });
+      await runner.runFixtureRepeat({
+        fixtureId: "alias",
+        role: "define",
+        repeatIndex: 0,
+        route: candidateRoute,
+      });
+      expect(dispatcher.mock.calls[0][0].stdin).toContain(
+        "Distinct manifest prompt",
+      );
+    } finally {
+      await rm(fixturesDir, { recursive: true, force: true });
+    }
+  });
+
+  it("invalidates workflow hashes when project governance changes", async () => {
+    const projectRoot = await mkdtemp(join(tmpdir(), "gwrk-governance-hash-"));
+    const cwd = vi.spyOn(process, "cwd").mockReturnValue(projectRoot);
+    try {
+      const runner = createFixtureRunner();
+      let previous = await runner.computeSuiteHashes();
+      for (const path of [
+        "AGENTS.md",
+        ".gwrk/decisions/index.md",
+        ".gwrk/rules/workspace.md",
+      ]) {
+        const file = join(projectRoot, path);
+        await mkdir(dirname(file), { recursive: true });
+        await writeFile(file, "Initial rules");
+        const initial = await runner.computeSuiteHashes();
+        expect(initial.workflowPromptHashes).not.toEqual(
+          previous.workflowPromptHashes,
+        );
+        await writeFile(file, "Updated rules");
+        const updated = await runner.computeSuiteHashes();
+        expect(updated.workflowPromptHashes).not.toEqual(
+          initial.workflowPromptHashes,
+        );
+        expect(updated.fixtureSuiteHash).toBe(previous.fixtureSuiteHash);
+        previous = updated;
+      }
+    } finally {
+      cwd.mockRestore();
+      await rm(projectRoot, { recursive: true, force: true });
+    }
+  });
+
   it("computes reproducible suite and workflow prompt hashes", async () => {
     const runner = createFixtureRunner();
     const { fixtureSuiteHash, workflowPromptHashes } =
@@ -574,6 +664,42 @@ describe("fixture runner adapter", () => {
       (c) => c.checkId === "review-required-T001",
     );
     expect(requiredCheck?.passed).toBe(false);
+  });
+
+  it.each([
+    { path: "tasks.md", allowed: true },
+    { path: "src/domain/select-queue.mjs", allowed: false },
+  ])("checks whether a review can change $path", async ({ path, allowed }) => {
+    const dispatcher = async (task: TaskDispatch): Promise<TaskResult> => {
+      const file = join(task.workDir!, path);
+      writeFileSync(file, `${readFileSync(file, "utf8")}\n// Review note\n`);
+      return {
+        exitCode: 0,
+        stdout: JSON.stringify({
+          verdict: "NO-GO",
+          reopenedTasks: ["T001"],
+          intents: [],
+        }),
+        stderr: "",
+        durationS: 0,
+      };
+    };
+
+    const evidence = await createFixtureRunner({ dispatcher }).runFixtureRepeat(
+      {
+        fixtureId: "implement-seeded-defect",
+        role: "review",
+        repeatIndex: 0,
+        route: candidateRoute,
+      },
+    );
+
+    expect(evidence.gateChecks).toContainEqual(
+      expect.objectContaining({
+        checkId: "forbidden-file-mutation",
+        passed: allowed,
+      }),
+    );
   });
 
   it("passes review repeat for a report-only reviewer that reopens required tasks and preserves baseline", async () => {

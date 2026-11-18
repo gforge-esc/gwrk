@@ -13,4 +13,4 @@ for test_file in "${tests[@]}"; do
 done
 bash specs/047-model-qualification/gates/phase-01.sh
 pnpm exec vitest run "${tests[@]}"
-pnpm exec biome check --vcs-enabled=true --vcs-client-kind=git --vcs-use-ignore-file=true
+pnpm lint
