@@ -1,0 +1,19 @@
+{
+  "runId": "2026-11-18T19:25:59.049Z_tasks-done_T009",
+  "feature": "046-hermetic-ci",
+  "phase": "phase-05",
+  "command": "tasks-done",
+  "agent": "manual",
+  "model": "none",
+  "startedAt": "2026-11-18T19:25:59.049Z",
+  "finishedAt": "2026-11-18T19:26:23.907Z",
+  "durationS": 25,
+  "exitCode": 0,
+  "attempt": 1,
+  "filesChanged": 3,
+  "linesAdded": 277,
+  "linesDeleted": 9,
+  "gitCommit": "f6f7942b3734968e52c59ee69f3284c95ab8c2b8",
+  "gitBranch": "feat/046-hermetic-ci",
+  "digest": []
+}
