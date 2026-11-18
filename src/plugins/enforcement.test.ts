@@ -2,15 +2,16 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { EventEmitter } from "node:events";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { PassThrough } from "node:stream";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { PluginLoader } from "./loader.js";
 import { SkillManifestSchema } from "./manifest.js";
-import { resolveEnforcementSkills } from "./skill-runtime.js";
+import {
+  resolveEffectivePolicy,
+  resolveEnforcementSkills,
+} from "./skill-runtime.js";
 
 // Mock child_process for TR-P9-005
 vi.mock("node:child_process", () => {
@@ -20,7 +21,8 @@ vi.mock("node:child_process", () => {
 });
 
 // Mock config to disable throttle for TR-P9-005
-vi.mock("../utils/config.js", () => ({
+vi.mock("../utils/config.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../utils/config.js")>()),
   loadConfig: vi.fn().mockReturnValue({
     agents: {
       throttleMs: 0,
@@ -100,12 +102,93 @@ describe("Phase 9: Enforcement Skills", () => {
       expect(content).toContain("gwrk-conventions");
       expect(content.length).toBeGreaterThan(100);
     });
+
+    it("uses JavaScript guidance in an external project named gwrk", async () => {
+      const projectRoot = path.join(tmpDir, "external");
+      const home = path.join(tmpDir, "home");
+      await Promise.all([fs.mkdir(projectRoot), fs.mkdir(home)]);
+      await fs.writeFile(
+        path.join(projectRoot, ".gwrkrc.json"),
+        JSON.stringify({ project: { name: "gwrk" } }),
+      );
+      await fs.writeFile(
+        path.join(projectRoot, "package.json"),
+        JSON.stringify({ name: "gwrk", type: "module" }),
+      );
+      vi.stubEnv("HOME", home);
+      try {
+        const content = await resolveEnforcementSkills(
+          projectRoot,
+          "implementation",
+        );
+        expect
+          .soft(content)
+          .toContain("<!-- enforcement-skill: javascript-standards -->");
+        expect
+          .soft(content)
+          .not.toContain("<!-- enforcement-skill: typescript-standards -->");
+        expect
+          .soft(content)
+          .not.toContain("<!-- enforcement-skill: gwrk-conventions -->");
+      } finally {
+        vi.unstubAllEnvs();
+      }
+    });
   });
 
   /**
    * TR-P9-002: Project-local override takes precedence over builtin
    */
   describe("TR-P9-002: enforcement skill resolution order", () => {
+    it("preserves a disabled local copy and an explicit project enable", async () => {
+      const name = "fixture-enforcement";
+      const globalDir = path.join(tmpDir, "global");
+      const projectConfig = path.join(tmpDir, ".gwrk", "plugins.json");
+      const layers = [
+        [path.join(tmpDir, ".gwrk", "plugins"), true],
+        [globalDir, false],
+      ] as const;
+      for (const [base, disabled] of layers) {
+        const dir = path.join(base, "skills", name);
+        await fs.mkdir(dir, { recursive: true });
+        await fs.writeFile(
+          path.join(dir, "manifest.yaml"),
+          JSON.stringify({
+            type: "skill",
+            tier: "enforcement",
+            name,
+            version: "1.0.0",
+            description: name,
+            disabled,
+          }),
+        );
+        await fs.writeFile(path.join(dir, "SKILL.md"), base);
+      }
+      const options = { globalDir, profile: { type: "unknown" } };
+      const disabled = await resolveEffectivePolicy(tmpDir, options);
+      expect(
+        disabled.selectedSkills.find((skill) => skill.name === name),
+      ).toBeUndefined();
+      expect(disabled.excludedSkills).toContainEqual({
+        name,
+        source: "global",
+        reason: "shadowed-by-override",
+      });
+
+      await fs.writeFile(
+        projectConfig,
+        JSON.stringify({ plugins: { [name]: { enabled: true } } }),
+      );
+      const enabled = await resolveEffectivePolicy(tmpDir, options);
+      expect(enabled.selectedSkills).toContainEqual(
+        expect.objectContaining({
+          name,
+          source: "project-local",
+          content: layers[0][0],
+        }),
+      );
+    });
+
     it("prefers project-local .gwrk/plugins/skills/ over builtin", async () => {
       const projectPluginDir = path.join(
         tmpDir,
@@ -197,48 +280,33 @@ describe("Phase 9: Enforcement Skills", () => {
     });
   });
 
+  /**
+   * TR-P9-005: dispatchToAgent() stdin includes enforcement skill content
+   */
   describe("TR-P9-005: dispatch context assembly", () => {
-    it("enforcement skill content appears in assembled dispatch context", async () => {
+    it("expands the trusted enforcement slot without an inference call", async () => {
       const skillRuntime = await import("./skill-runtime.js");
       const { dispatchToAgent } = await import("../utils/agent.js");
       const { spawn } = await import("node:child_process");
-
-      vi.spyOn(skillRuntime, "resolveEnforcementSkills").mockImplementation(
-        async () => {
-          await new Promise((resolve) => setTimeout(resolve, 100));
-          return "# MOCK ENFORCEMENT CONTENT";
-        },
-      );
-
-      const mockChild = new EventEmitter() as any;
-      mockChild.stdin = new PassThrough();
-      const mockStdinWrite = vi.spyOn(mockChild.stdin, "write");
-      mockChild.stdout = new PassThrough();
-      mockChild.stderr = new PassThrough();
-
-      vi.mocked(spawn).mockImplementation(() => {
-        setImmediate(() => {
-          mockChild.stdout.end();
-          mockChild.stderr.end();
-          mockChild.emit("close", 0);
-        });
-        return mockChild;
-      });
-
-      const template = "Rules:\n<code_quality>{{enforcement}}</code_quality>";
-      await dispatchToAgent({
+      const resolve = vi
+        .spyOn(skillRuntime, "resolveEnforcementSkills")
+        .mockResolvedValue("# MOCK ENFORCEMENT CONTENT");
+      const result = await dispatchToAgent({
         type: "implement",
         agent: "agy",
         workDir: tmpDir,
-        stdin: template,
-        promptParts: { template, userInput: "" },
+        promptParts: {
+          template: "Rules:\n<code_quality>\n{{enforcement}}\n</code_quality>",
+          userInput: "test",
+        },
+        dryRun: true,
+        quiet: true,
       });
-
-      expect(mockStdinWrite).toHaveBeenCalled();
-      const finalStdin = JSON.parse(mockStdinWrite.mock.calls[0][0]).message
-        .content;
-      expect(finalStdin).toContain("MOCK ENFORCEMENT CONTENT");
-      expect(finalStdin).not.toContain("{{enforcement}}");
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout).toContain("MOCK ENFORCEMENT CONTENT");
+      expect(result.stdout).not.toContain("{{enforcement}}");
+      expect(resolve).toHaveBeenCalledOnce();
+      expect(spawn).not.toHaveBeenCalled();
     });
   });
 });
