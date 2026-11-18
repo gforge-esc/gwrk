@@ -225,7 +225,10 @@ const createRollbackCheckCommand = () =>
     .description(
       "Verify installed releases against the ledger migration history",
     )
-    .option("--format <type>", "Output format (json)")
+    .addOption(
+      new Option("--format <type>", "Output format (json)").choices(["json"]),
+    )
+    .allowExcessArguments(false)
     .addOption(new Option("--require-ledger-digests").hideHelp())
     .requiredOption("--current <dir>", "Current release directory")
     .requiredOption("--target <dir>", "Target release directory")

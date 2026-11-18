@@ -57,6 +57,7 @@ export interface VerifiedLedgerBackup {
 export interface LedgerRestoreRequest {
   readonly source: string;
   readonly stateDirectory: string;
+  readonly runtimeDirectory?: string;
   readonly configuredDbPath?: string;
   readonly devicePath?: string;
   readonly runtimeLockPath?: string;
@@ -71,6 +72,7 @@ export interface LedgerBackupPort {
     input: Pick<
       LedgerRestoreRequest,
       | "stateDirectory"
+      | "runtimeDirectory"
       | "configuredDbPath"
       | "devicePath"
       | "runtimeLockPath"

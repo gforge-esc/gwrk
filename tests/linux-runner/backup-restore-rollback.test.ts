@@ -338,12 +338,17 @@ describe("installed ledger commands outside a checkout", () => {
     },
   );
 
-  it.each(pathVariants)(
-    "protects the configured device file during restore with alias=$alias and child=$child",
-    async ({ alias, child }) => {
+  it.each(
+    ["cli", "application", "adapter"].flatMap((entry) =>
+      pathVariants.map((variant) => ({ entry, ...variant })),
+    ),
+  )(
+    "protects the configured device file during restore through $entry with alias=$alias and child=$child",
+    async ({ entry, alias, child }) => {
       const home = join(root, "home");
       const homeAlias = join(root, "home-alias");
       const ledgerDirectory = join(root, "state");
+      const runtimeDirectory = join(root, "runtime");
       await mkdir(home);
       await mkdir(ledgerDirectory);
       await symlink(home, homeAlias);
@@ -354,21 +359,61 @@ describe("installed ledger commands outside a checkout", () => {
       expect(seeded.status, seeded.stderr).toBe(0);
 
       const deviceFile = join(home, "device.json");
-      const target = join(
+      const stateDirectory = join(
         alias ? homeAlias : home,
         "device.json",
         ...(child ? ["restore"] : []),
       );
-      const result = runInstalledRestoreForPathValidation(
-        ledger,
+      const diagnostic = `reserved device path ${deviceFile}`;
+      const request = {
         source,
-        target,
-        home,
-      );
-      expectReservedPathFailure(result, `reserved device path ${deviceFile}`);
+        stateDirectory,
+        configuredDbPath: ledger,
+        devicePath: deviceFile,
+        force: false,
+      };
+
+      if (entry === "cli") {
+        const result = runInstalledRestoreForPathValidation(
+          ledger,
+          source,
+          stateDirectory,
+          home,
+        );
+        expectReservedPathFailure(result, diagnostic);
+      } else if (entry === "application") {
+        const locks = {
+          acquireInstanceLock: vi.fn(() => {
+            throw new Error("Instance lock called before target validation");
+          }),
+          acquireLedgerLock: vi.fn(() => {
+            throw new Error("Ledger lock called before target validation");
+          }),
+        };
+        await expect
+          .soft(
+            restoreOfflineLedger(
+              {
+                createBackup: createLedgerBackup,
+                verifyBackup: verifyLedgerBackup,
+                resolveRestoreTarget,
+                restoreBackup: restoreLedgerBackup,
+              },
+              locks,
+              { ...request, runtimeDirectory, pid: process.pid },
+            ),
+          )
+          .rejects.toThrow(diagnostic);
+        expect(locks.acquireInstanceLock).not.toHaveBeenCalled();
+        expect(locks.acquireLedgerLock).not.toHaveBeenCalled();
+      } else {
+        await expect
+          .soft(restoreLedgerBackup(request))
+          .rejects.toThrow(diagnostic);
+      }
       await expect(stat(deviceFile)).rejects.toMatchObject({ code: "ENOENT" });
       await expect(
-        stat(join(root, "runtime", "server.lock")),
+        stat(join(runtimeDirectory, "server.lock")),
       ).rejects.toMatchObject({
         code: "ENOENT",
       });
@@ -378,8 +423,241 @@ describe("installed ledger commands outside a checkout", () => {
         join(root, "next-backup"),
       ]);
       expect(nextBackup.status, nextBackup.stderr).toBe(0);
+      const verified = await verifyLedgerBackup(join(root, "next-backup"));
+      expect(verified.metadata.device).toBeNull();
     },
   );
+
+  it.each(
+    ["cli", "application", "adapter"].flatMap((entry) =>
+      pathVariants.map((variant) => ({ entry, ...variant })),
+    ),
+  )(
+    "protects the configured ledger lock during restore through $entry with alias=$alias and child=$child",
+    async ({ entry, alias, child }) => {
+      const state = join(root, "state");
+      const stateAlias = join(root, "state-alias");
+      const runtimeDirectory = join(root, "runtime");
+      await mkdir(state);
+      await symlink(state, stateAlias);
+      const ledger = join(state, "gwrk.db");
+      seedLedger(ledger).close();
+      const source = join(root, "backup");
+      const seeded = runInstalledBackup(ledger, source);
+      expect(seeded.status, seeded.stderr).toBe(0);
+
+      const lockFile = ".gwrk.db.lock";
+      const reserved = join(state, lockFile);
+      const stateDirectory = join(
+        alias ? stateAlias : state,
+        lockFile,
+        ...(child ? ["restore"] : []),
+      );
+      const diagnostic = `reserved ledger lock path ${reserved}`;
+      const request = {
+        source,
+        stateDirectory,
+        configuredDbPath: ledger,
+        force: false,
+      };
+
+      if (entry === "cli") {
+        const result = runInstalledRestoreForPathValidation(
+          ledger,
+          source,
+          stateDirectory,
+        );
+        expectReservedPathFailure(result, diagnostic);
+      } else if (entry === "application") {
+        const locks = {
+          acquireInstanceLock: vi.fn(() => {
+            throw new Error("Instance lock called before target validation");
+          }),
+          acquireLedgerLock: vi.fn(() => {
+            throw new Error("Ledger lock called before target validation");
+          }),
+        };
+        await expect
+          .soft(
+            restoreOfflineLedger(
+              {
+                createBackup: createLedgerBackup,
+                verifyBackup: verifyLedgerBackup,
+                resolveRestoreTarget,
+                restoreBackup: restoreLedgerBackup,
+              },
+              locks,
+              { ...request, runtimeDirectory, pid: process.pid },
+            ),
+          )
+          .rejects.toThrow(diagnostic);
+        expect(locks.acquireInstanceLock).not.toHaveBeenCalled();
+        expect(locks.acquireLedgerLock).not.toHaveBeenCalled();
+      } else {
+        await expect
+          .soft(restoreLedgerBackup(request))
+          .rejects.toThrow(diagnostic);
+      }
+      await expect(stat(reserved)).rejects.toMatchObject({ code: "ENOENT" });
+      await expect(stat(runtimeDirectory)).rejects.toMatchObject({
+        code: "ENOENT",
+      });
+
+      if (process.platform === "linux") {
+        const lock = acquireLedgerLock(
+          join(stateAlias, "gwrk.db"),
+          process.pid,
+        );
+        try {
+          expect(lock.lockPath).toBe(reserved);
+        } finally {
+          lock.release();
+        }
+      }
+    },
+  );
+
+  it.each(
+    ["backup", "restore"].flatMap((command) =>
+      [".ledger-maintenance.db", ".ledger-maintenance.db-journal"].flatMap(
+        (file) =>
+          pathVariants.map((variant) => ({ command, file, ...variant })),
+      ),
+    ),
+  )(
+    "protects $file during $command with alias=$alias and child=$child",
+    async ({ command, file, alias, child }) => {
+      const state = join(root, "state");
+      const stateAlias = join(root, "state-alias");
+      await mkdir(state);
+      await symlink(state, stateAlias);
+      const ledger = join(state, "gwrk.db");
+      seedLedger(ledger).close();
+
+      const sourceLedger = join(root, "source.db");
+      seedLedger(sourceLedger).close();
+      const source = join(root, "source-backup");
+      expect(runInstalledBackup(sourceLedger, source).status).toBe(0);
+
+      const reserved = join(state, file);
+      const target = join(
+        alias ? stateAlias : state,
+        file,
+        ...(child ? ["nested"] : []),
+      );
+      const result =
+        command === "backup"
+          ? runInstalledBackup(sourceLedger, target)
+          : runInstalledRestoreForPathValidation(ledger, source, target);
+      expectReservedPathFailure(
+        result,
+        `reserved maintenance lock path ${reserved}`,
+      );
+      await expect(stat(reserved)).rejects.toMatchObject({ code: "ENOENT" });
+
+      const cleanBackup = join(root, "clean-backup");
+      const next = runInstalledBackup(ledger, cleanBackup);
+      expect(next.status, next.stderr).toBe(0);
+    },
+  );
+
+  it.each([
+    { runtimeSubpath: "state/.restore-pending", label: "restore path" },
+    {
+      runtimeSubpath: "state/.ledger-maintenance.db",
+      label: "maintenance lock path",
+    },
+    { runtimeSubpath: "state/.gwrk.db.lock", label: "ledger lock path" },
+    { runtimeSubpath: "state/gwrk.db-wal", label: "SQLite sidecar" },
+    { runtimeSubpath: "home/device.json", label: "device path" },
+    { runtimeSubpath: "clean/.restore-pending", label: "restore path" },
+    { runtimeSubpath: "clean/device.json", label: "device path" },
+    { runtimeSubpath: "clean/.gwrk.db.lock", label: "ledger lock path" },
+  ])(
+    "rejects restore before lock acquisition when runtimeDirectory uses $runtimeSubpath",
+    async ({ runtimeSubpath, label }) => {
+      const state = join(root, "state");
+      const home = join(root, "home");
+      await mkdir(state);
+      await mkdir(home);
+      const ledger = join(state, "gwrk.db");
+      seedLedger(ledger).close();
+      const sourceLedger = join(root, "source.db");
+      seedLedger(sourceLedger).close();
+      const source = join(root, "backup");
+      expect(runInstalledBackup(sourceLedger, source).status).toBe(0);
+
+      const runtimeDirectory = join(root, runtimeSubpath);
+      const stateDirectory = join(root, "clean");
+      const locks = {
+        acquireInstanceLock: vi.fn(() => {
+          throw new Error("Instance lock called before runtime validation");
+        }),
+        acquireLedgerLock: vi.fn(() => {
+          throw new Error("Ledger lock called before runtime validation");
+        }),
+      };
+      await expect(
+        restoreOfflineLedger(
+          {
+            createBackup: createLedgerBackup,
+            verifyBackup: verifyLedgerBackup,
+            resolveRestoreTarget,
+            restoreBackup: restoreLedgerBackup,
+          },
+          locks,
+          {
+            source,
+            stateDirectory,
+            runtimeDirectory,
+            configuredDbPath: ledger,
+            devicePath: join(home, "device.json"),
+            force: false,
+            pid: process.pid,
+          },
+        ),
+      ).rejects.toThrow(`reserved ${label}`);
+      expect(locks.acquireInstanceLock).not.toHaveBeenCalled();
+      expect(locks.acquireLedgerLock).not.toHaveBeenCalled();
+      await expect(stat(runtimeDirectory)).rejects.toMatchObject({
+        code: "ENOENT",
+      });
+    },
+  );
+
+  it("allows clean restore when an unrelated configured device path is a dangling symlink", async () => {
+    const oldHome = join(root, "old-home");
+    const state = join(root, "state");
+    await mkdir(oldHome);
+    await mkdir(state);
+    const ledger = join(state, "gwrk.db");
+    seedLedger(ledger).close();
+    const source = join(root, "backup");
+    expect(runInstalledBackup(ledger, source).status).toBe(0);
+
+    const brokenDevice = join(oldHome, "device.json");
+    await symlink(join(root, "missing-target"), brokenDevice);
+
+    const cleanTarget = join(root, "clean-restored");
+    const restored = await restoreLedgerBackup({
+      source,
+      stateDirectory: cleanTarget,
+      configuredDbPath: ledger,
+      devicePath: brokenDevice,
+      force: false,
+    });
+    expect(restored.manifest.summary.completedRunIds).toEqual([42]);
+
+    await expect(
+      restoreLedgerBackup({
+        source,
+        stateDirectory: brokenDevice,
+        configuredDbPath: ledger,
+        devicePath: brokenDevice,
+        force: false,
+      }),
+    ).rejects.toThrow(`reserved device path ${brokenDevice}`);
+  });
 
   it.each([
     { target: "state/gwrk.db", label: "ledger path" },

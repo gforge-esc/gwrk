@@ -42,10 +42,15 @@ import {
 } from "../../ports/release-ops-port.js";
 import { sha256 } from "../release/inventory.js";
 import { readRepositoryEvidence } from "../release/repository-evidence.js";
-import { ledgerLockPath } from "../server/instance-lock.js";
+import { instanceLockPath, ledgerLockPath } from "../server/instance-lock.js";
 
 const DB_FILE = "gwrk.db";
+const MAINTENANCE_DB_FILE = ".ledger-maintenance.db";
 const SQLITE_SIDECAR_SUFFIXES = ["-wal", "-shm", "-journal"];
+const RESERVED_MAINTENANCE_COMPONENTS = new Set([
+  MAINTENANCE_DB_FILE,
+  ...SQLITE_SIDECAR_SUFFIXES.map((suffix) => `${MAINTENANCE_DB_FILE}${suffix}`),
+]);
 const METADATA_FILE = "repo-metadata.json";
 const MANIFEST_FILE = "backup-manifest.json";
 const DEVICE_FILE = "device.json";
@@ -184,7 +189,7 @@ export const createLedgerBackup: LedgerBackupPort["createBackup"] = async (
 
 async function withMaintenanceLock<T>(state: string, run: () => Promise<T>) {
   // A separate database keeps the maintenance lock independent of server writes.
-  const lock = new Database(join(state, ".ledger-maintenance.db"), {
+  const lock = new Database(join(state, MAINTENANCE_DB_FILE), {
     timeout: 0,
   });
   try {
@@ -209,10 +214,12 @@ async function withMaintenanceLock<T>(state: string, run: () => Promise<T>) {
 
 async function captureLedgerBackup(input: LedgerBackupRequest, dbPath: string) {
   const suppliedPath = resolve(input.destination);
-  const destination = await canonicalPath(suppliedPath);
+  const suppliedEntry = await canonicalParentEntry(suppliedPath);
+  const provisionalDestination =
+    (await tryCanonicalPath(suppliedPath)) ?? suppliedEntry;
   const configuredDbPath = resolve(input.dbPath);
-  for (const path of [destination, suppliedPath]) {
-    rejectRestoreMarkerComponent(path);
+  for (const path of [provisionalDestination, suppliedEntry, suppliedPath]) {
+    rejectReservedComponents(path);
     rejectSqliteSidecarPath(path, dbPath, configuredDbPath);
     rejectPathAtOrBelow(
       path,
@@ -221,11 +228,14 @@ async function captureLedgerBackup(input: LedgerBackupRequest, dbPath: string) {
     );
     rejectPathAtOrBelow(path, ledgerLockPath(dbPath), "ledger lock path");
   }
-  await rejectConfiguredPaths(suppliedPath, destination, [
+  await rejectConfiguredPaths(suppliedPath, provisionalDestination, [
+    [configuredDbPath, "ledger path"],
+    [dbPath, "ledger path"],
     [input.devicePath, "device path"],
     [input.runtimeLockPath, "runtime lock path"],
     [input.runtimePidPath, "runtime PID path"],
   ]);
+  const destination = await canonicalPath(suppliedPath);
   const parent = dirname(destination);
   await mkdir(parent, { recursive: true, mode: 0o700 });
   const staging = await mkdtemp(join(parent, `.${basename(destination)}-`));
@@ -434,6 +444,23 @@ async function canonicalPath(path: string): Promise<string> {
   }
 }
 
+async function canonicalParentEntry(path: string): Promise<string> {
+  const parent = dirname(path);
+  if (parent === path) return realpath(path);
+  const resolvedParent = await tryCanonicalPath(parent);
+  return join(resolvedParent ?? parent, basename(path));
+}
+
+async function tryCanonicalPath(path: string): Promise<string | undefined> {
+  try {
+    return await canonicalPath(path);
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException).code;
+    if (code === "ENOENT" || code === "ENOTDIR") return undefined;
+    throw error;
+  }
+}
+
 function rejectRestoreMarkerComponent(path: string): void {
   const parts = path.split(sep);
   const marker = parts.indexOf(PENDING_LEDGER_RESTORE);
@@ -442,6 +469,21 @@ function rejectRestoreMarkerComponent(path: string): void {
       path,
       parts.slice(0, marker + 1).join(sep),
       "restore path",
+    );
+  }
+}
+
+function rejectReservedComponents(path: string): void {
+  rejectRestoreMarkerComponent(path);
+  const parts = path.split(sep);
+  const index = parts.findIndex((part) =>
+    RESERVED_MAINTENANCE_COMPONENTS.has(part),
+  );
+  if (index !== -1) {
+    rejectPathAtOrBelow(
+      path,
+      parts.slice(0, index + 1).join(sep),
+      "maintenance lock path",
     );
   }
 }
@@ -482,39 +524,97 @@ async function rejectConfiguredPaths(
   canonical: string,
   paths: ReadonlyArray<readonly [string | undefined, string]>,
 ): Promise<void> {
+  const suppliedEntry = await canonicalParentEntry(suppliedPath);
   for (const [configuredPath, label] of paths) {
     if (!configuredPath) continue;
     const absolute = resolve(configuredPath);
-    rejectPathAtOrBelow(suppliedPath, absolute, label);
-    rejectPathAtOrBelow(canonical, await canonicalPath(absolute), label);
+    const parentEntry = await canonicalParentEntry(absolute);
+    const resolved = await tryCanonicalPath(absolute);
+    for (const candidate of [canonical, suppliedEntry, suppliedPath]) {
+      if (resolved) rejectPathAtOrBelow(candidate, resolved, label);
+      rejectPathAtOrBelow(candidate, parentEntry, label);
+      rejectPathAtOrBelow(candidate, absolute, label);
+    }
   }
 }
 
 export const resolveRestoreTarget: LedgerBackupPort["resolveRestoreTarget"] =
   async (input) => {
     const suppliedPath = resolve(input.stateDirectory);
-    const state = await canonicalPath(suppliedPath);
-    rejectRestoreMarkerComponent(state);
-    rejectRestoreMarkerComponent(suppliedPath);
+    const suppliedEntry = await canonicalParentEntry(suppliedPath);
+    const provisionalState =
+      (await tryCanonicalPath(suppliedPath)) ?? suppliedEntry;
+    for (const candidate of [provisionalState, suppliedEntry, suppliedPath]) {
+      rejectReservedComponents(candidate);
+    }
     const configuredDbPath =
       input.configuredDbPath && resolve(input.configuredDbPath);
+    const configuredDbEntry =
+      configuredDbPath && (await canonicalParentEntry(configuredDbPath));
     const physicalDbPath =
-      configuredDbPath && (await canonicalPath(configuredDbPath));
-    if (configuredDbPath && physicalDbPath) {
-      rejectSqliteSidecarPath(suppliedPath, configuredDbPath, physicalDbPath);
-      rejectSqliteSidecarPath(state, configuredDbPath, physicalDbPath);
+      configuredDbPath &&
+      ((await tryCanonicalPath(configuredDbPath)) ?? configuredDbEntry);
+    const configuredLedgers = [
+      physicalDbPath,
+      configuredDbEntry,
+      configuredDbPath,
+    ].filter((ledger): ledger is string => Boolean(ledger));
+    if (configuredLedgers.length > 0) {
+      for (const candidate of [provisionalState, suppliedEntry, suppliedPath]) {
+        rejectSqliteSidecarPath(candidate, ...configuredLedgers);
+      }
     }
-    await rejectConfiguredPaths(suppliedPath, state, [
-      [configuredDbPath, "ledger path"],
-      [
-        configuredDbPath && ledgerLockPath(configuredDbPath),
-        "ledger lock path",
-      ],
-      [physicalDbPath && ledgerLockPath(physicalDbPath), "ledger lock path"],
+    if (input.runtimeDirectory) {
+      const suppliedRuntime = resolve(input.runtimeDirectory);
+      const runtimeEntry = await canonicalParentEntry(suppliedRuntime);
+      const provisionalRuntime =
+        (await tryCanonicalPath(suppliedRuntime)) ?? runtimeEntry;
+      const targetLedgers = [
+        join(provisionalState, DB_FILE),
+        join(suppliedEntry, DB_FILE),
+        join(suppliedPath, DB_FILE),
+      ];
+      for (const candidate of [
+        provisionalRuntime,
+        runtimeEntry,
+        suppliedRuntime,
+      ]) {
+        rejectReservedComponents(candidate);
+        rejectSqliteSidecarPath(
+          candidate,
+          ...configuredLedgers,
+          ...targetLedgers,
+        );
+      }
+      await rejectConfiguredPaths(suppliedRuntime, provisionalRuntime, [
+        ...configuredLedgers.map((ledger) => [ledger, "ledger path"] as const),
+        ...configuredLedgers.map(
+          (ledger) => [ledgerLockPath(ledger), "ledger lock path"] as const,
+        ),
+        ...targetLedgers.map((ledger) => [ledger, "ledger path"] as const),
+        ...targetLedgers.map(
+          (ledger) => [ledgerLockPath(ledger), "ledger lock path"] as const,
+        ),
+        [input.devicePath, "device path"],
+        [join(provisionalState, DEVICE_FILE), "device path"],
+        [join(suppliedEntry, DEVICE_FILE), "device path"],
+        [join(suppliedPath, DEVICE_FILE), "device path"],
+      ]);
+      await canonicalPath(suppliedRuntime);
+    }
+    const runtimeLockPath =
+      input.runtimeLockPath ??
+      (input.runtimeDirectory && instanceLockPath(input.runtimeDirectory));
+    await rejectConfiguredPaths(suppliedPath, provisionalState, [
+      ...configuredLedgers.map((ledger) => [ledger, "ledger path"] as const),
+      ...configuredLedgers.map(
+        (ledger) => [ledgerLockPath(ledger), "ledger lock path"] as const,
+      ),
       [input.devicePath, "device path"],
-      [input.runtimeLockPath, "runtime lock path"],
+      [runtimeLockPath, "runtime lock path"],
       [input.runtimePidPath, "runtime PID path"],
     ]);
+    const state = await canonicalPath(suppliedPath);
     return { stateDirectory: state, dbPath: join(state, DB_FILE) };
   };
 
