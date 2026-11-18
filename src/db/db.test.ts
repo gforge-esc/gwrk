@@ -5,6 +5,7 @@
 import { execFileSync } from "node:child_process";
 import {
   copyFileSync,
+  cpSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
@@ -14,13 +15,12 @@ import {
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
-import { cpSync } from "node:fs";
-import { basename } from "node:path";
+import { basename, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import type Database from "better-sqlite3";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { discoverGitIdentityFacts } from "../adapters/git/project-id.js";
+import { createSqliteOperationsStoreAdapter } from "../adapters/sqlite/index.js";
 import {
   computeLegacyProjectIds,
   computeProjectId,
@@ -45,7 +45,6 @@ import {
 } from "./plan.js";
 import { getRoutingHistory } from "./plugins.js";
 import { createProjectRegistry } from "./project-registry.js";
-import { createSqliteOperationsStoreAdapter } from "../adapters/sqlite/index.js";
 import {
   finishRun,
   getStats,
@@ -1782,11 +1781,15 @@ describe("TR-005: Durable operations migration backward compatibility", () => {
     const dbPath = join(root, "ledger.sqlite");
     const previousMigrations = join(root, "previous-migrations");
     mkdirSync(previousMigrations);
-    const sourceMigrations = fileURLToPath(new URL("./migrations/", import.meta.url));
+    const sourceMigrations = fileURLToPath(
+      new URL("./migrations/", import.meta.url),
+    );
 
     cpSync(sourceMigrations, previousMigrations, {
       recursive: true,
-      filter: (source) => basename(source) !== "018-durable-dispatch-and-harvest.sql",
+      filter: (source) =>
+        !basename(source).endsWith(".sql") ||
+        basename(source) < "018-durable-dispatch-and-harvest.sql",
     });
 
     const previous = openDatabase({
