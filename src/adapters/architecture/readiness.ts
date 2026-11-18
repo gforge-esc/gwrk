@@ -47,6 +47,7 @@ export interface ArchitectureReadiness {
 const ManifestSchema = z.object({
   version: z.literal(1),
   files: z.record(z.string().regex(/^[a-f0-9]{64}$/)),
+  decisions: z.record(z.array(z.string())),
 });
 const ProvenanceSchema = z.object({
   generatedAt: z.string().datetime({ offset: true }),
