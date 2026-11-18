@@ -40,6 +40,57 @@ describe("AgyAdapter", () => {
     });
   });
 
+  describe("probe", () => {
+    it("rejects a quota failure even when the process exits zero", async () => {
+      vi.mocked(execCommand).mockResolvedValue({
+        exitCode: 0,
+        stdout: JSON.stringify({
+          event: "result",
+          result: {
+            status: "ERROR",
+            response: "",
+            error: "RESOURCE_EXHAUSTED: model capacity exhausted",
+          },
+        }),
+        stderr: "",
+      });
+      expect(await adapter.probe()).toMatchObject({ status: "rate_limited" });
+    });
+
+    it("uses bounded headless invocation and requires the expected response", async () => {
+      vi.mocked(execCommand).mockResolvedValue({
+        exitCode: 0,
+        stdout: JSON.stringify({
+          event: "result",
+          result: { status: "SUCCESS", response: "1" },
+        }),
+        stderr: "",
+      });
+      expect(await adapter.probe()).toMatchObject({ status: "available" });
+      expect(execCommand).toHaveBeenCalledWith(
+        "agy",
+        expect.arrayContaining([
+          "-p",
+          "--print-timeout",
+          "15s",
+          "--output-format",
+          "stream-json",
+        ]),
+        undefined,
+        expect.objectContaining({ signal: expect.any(AbortSignal) }),
+      );
+    });
+
+    it("rejects an empty response", async () => {
+      vi.mocked(execCommand).mockResolvedValue({
+        exitCode: 0,
+        stdout: "",
+        stderr: "",
+      });
+      expect(await adapter.probe()).toMatchObject({ status: "unavailable" });
+    });
+  });
+
   describe("syncGovernance", () => {
     it("creates AGENTS.md with markers if it doesn't exist", async () => {
       vi.mocked(fs.readFile).mockRejectedValue(new Error("File not found"));

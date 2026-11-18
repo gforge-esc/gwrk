@@ -53,33 +53,38 @@ export class AgyAdapter implements AgentBackend {
   async probe(): Promise<ProbeResult> {
     const start = Date.now();
     try {
-      const { exitCode, stderr } = await execCommand("agy", [
-        "chat",
-        "-m",
-        "respond with 1",
-        "--mode",
-        "agent",
-      ]);
+      const { exitCode, stdout, stderr } = await execCommand(
+        "agy",
+        [
+          "-p",
+          "Reply with only 1. Do not use tools.",
+          "--mode",
+          "plan",
+          "--output-format",
+          "stream-json",
+          "--print-timeout",
+          "15s",
+        ],
+        undefined,
+        { signal: AbortSignal.timeout(20_000) },
+      );
       const latencyMs = Date.now() - start;
-
-      if (exitCode === 0) {
+      const result = this.parseResult(stdout, stderr, exitCode);
+      if (
+        result.exitCode === 0 &&
+        result.terminalStatus === "success" &&
+        result.unwrappedStdout?.trim() === "1"
+      ) {
         return { status: "available", latencyMs };
       }
-
-      if (stderr.includes("429") || stderr.includes("Quota exceeded")) {
-        return { status: "rate_limited", latencyMs, error: stderr.trim() };
+      const error = result.error ?? stderr.trim();
+      if (result.errorType === "rate_limit") {
+        return { status: "rate_limited", latencyMs, error };
       }
-
-      if (
-        stderr.includes("401") ||
-        stderr.includes("403") ||
-        stderr.includes("auth") ||
-        stderr.includes("Sign in")
-      ) {
-        return { status: "auth_error", latencyMs, error: stderr.trim() };
+      if (result.errorType === "auth_failure") {
+        return { status: "auth_error", latencyMs, error };
       }
-
-      return { status: "unavailable", latencyMs, error: stderr.trim() };
+      return { status: "unavailable", latencyMs, error };
     } catch (err: unknown) {
       const error = err instanceof Error ? err.message : String(err);
       return {
