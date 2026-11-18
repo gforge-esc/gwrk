@@ -127,6 +127,8 @@ pnpm exec vitest run src/db/operations.test.ts src/db/db.test.ts src/architectur
 - `src/adapters/notifications/index.ts` (MODIFY: Stamp `clientMetadataKey`, implement `reconcileDelivery` and keep pilot Telegram disabled)
 - `src/server/slack-notify.ts` (MODIFY: Return Slack delivery receipts and search thread or channel history for `clientMetadataKey`)
 - `tests/helpers/synthetic-github.ts` (NEW: Provide deterministic synthetic GitHub webhook, PR metadata and paginated poller fixtures)
+- `src/adapters/git/harvest-git.ts` (NEW: Implement the approved VcsHarvestExtensions behind a separate factory for later VcsPort composition)
+- `src/adapters/git/process-env.ts` (NEW: Reuse reviewed repository-selector isolation)
 - `src/adapters/git/harvest-git.test.ts` (NEW: Test isolated merge-SHA checkouts, trunk ancestry checks and moved-tip delete blocking)
 - `src/adapters/github/github-adapter.test.ts` (NEW: Test raw-body signature verification, cursor catch-up and per-repo PR isolation)
 - `src/adapters/notifications/outbox-reconcile.test.ts` (NEW: Test uncertain Slack send reconciliation by metadata key and pilot Telegram suppression)
@@ -289,3 +291,5 @@ pnpm exec vitest run src/commands/harvest.test.ts src/commands/status.test.ts sr
 ## Deferred items
 
 None. Full coverage of `specs/049-durable-dispatch-harvest/spec.md`.
+
+Phase 3 Git adapter preparation passes five real repository tests. The race fixture moves the remote branch after inspection and before push. Atomic lease deletion preserves the newer tip. Detached checkouts leave developer changes untouched. This preparation does not complete notification reconciliation or application wiring.
