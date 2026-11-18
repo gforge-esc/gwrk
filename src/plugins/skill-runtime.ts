@@ -221,9 +221,19 @@ export async function resolveEffectivePolicy(
 }
 
 export function formatEffectivePolicyPrompt(policy: EffectivePolicy): string {
-  const sections = policy.selectedSkills.flatMap(({ name, content }) =>
-    content ? [`<!-- enforcement-skill: ${name} -->\n${content}`] : [],
-  );
+  const sections: string[] = [];
+  const lastSelectedPath = new Map<string, number>();
+  policy.selectedSkills.forEach(({ path, content }, index) => {
+    if (path !== undefined && content) lastSelectedPath.set(path, index);
+  });
+  for (const [
+    index,
+    { manifest, path, content },
+  ] of policy.selectedSkills.entries()) {
+    if (!content) continue;
+    if (path !== undefined && lastSelectedPath.get(path) !== index) continue;
+    sections.push(`<!-- enforcement-skill: ${manifest.name} -->\n${content}`);
+  }
   if (policy.gaps.length > 0) {
     const notes = policy.gaps.map(({ message }) => `- ${message}`).join("\n");
     sections.push(`## Policy gaps\n\n${notes}`);

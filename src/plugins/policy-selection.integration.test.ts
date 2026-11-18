@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { spawnSync } from "node:child_process";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
 import os, { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -146,6 +146,7 @@ async function listProjectPlugins(
 describe("project enforcement candidate discovery", () => {
   const framework = "Fixture Framework";
   const name = "fixture-framework-policy";
+  const frontmatter = "---\r\ndescription: Fixture policy metadata\r\n---";
   const profile: ProjectProfile = {
     type: "nodejs",
     stack: { language: "TypeScript", framework },
@@ -261,8 +262,19 @@ describe("project enforcement candidate discovery", () => {
         }),
       ]);
       const rendered = await resolveEnforcementSkills(root);
-      expect(rendered).toContain(overrideBody);
+      expect
+        .soft(rendered)
+        .toContain(
+          `<!-- enforcement-skill: ${renamedPolicy} -->\n${overrideBody}`,
+        );
       expect(rendered).not.toContain(entryBody);
+
+      const listed = await listProjectPlugins(root);
+      expect(
+        listed.filter((plugin) => [name, renamedPolicy].includes(plugin.name)),
+      ).toEqual([
+        expect.objectContaining({ name, version: "2.0.0", status: "active" }),
+      ]);
     });
 
     it.each(
@@ -318,28 +330,31 @@ describe("project enforcement candidate discovery", () => {
     );
   });
 
-  it.each(["", "   \n\t"])(
-    "reports a framework gap for blank body %j",
+  it.each(["", "   \n\t", frontmatter])(
+    "reports a framework gap and omits an override with empty instructions %j",
     async (body) => {
+      const override = join(root, "overrides", name);
       await writePolicyPack(
-        join(root, ".gwrk/plugins/skills", name),
+        override,
         { name, framework, version: "2.0.0" },
         body,
       );
       await writeFile(
         join(root, ".gwrk/plugins.json"),
-        JSON.stringify({ inherits: false }),
+        JSON.stringify({ inherits: false, override: { [name]: override } }),
       );
-      expect((await resolveEffectivePolicy(root)).gaps).toContainEqual(
+      expect.soft((await resolveEffectivePolicy(root)).gaps).toContainEqual(
         expect.objectContaining({
           kind: "missing-framework-binding",
           subject: framework,
         }),
       );
-      expect(await resolveEnforcementSkills(root)).toContain("## Policy gaps");
-      expect((await listProjectPlugins(root)).map((p) => p.name)).not.toContain(
-        name,
-      );
+      expect
+        .soft(await resolveEnforcementSkills(root))
+        .toContain("## Policy gaps");
+      expect(
+        (await listProjectPlugins(root)).filter((p) => p.name === name),
+      ).toEqual([]);
     },
   );
 
@@ -400,60 +415,101 @@ describe("project enforcement candidate discovery", () => {
     },
   );
 
-  it("falls back from a blank compatible override to a usable entry", async () => {
-    const override = join(root, "overrides", name);
-    await writePolicyPack(
-      override,
-      { name, framework, version: "2.0.0" },
-      " \n",
-    );
-    await writePolicyPack(
-      join(root, "entry/skills", name),
-      { name, framework, version: "1.0.0" },
-      "Compatible entry policy",
-    );
-    await writeFile(
-      join(root, ".gwrk/plugins.json"),
-      JSON.stringify({
-        inherits: false,
-        entries: ["entry"],
-        override: { [name]: override },
-      }),
-    );
-    expect(await resolveEnforcementSkills(root)).toContain(
-      "Compatible entry policy",
-    );
-    expect(
-      (await listProjectPlugins(root)).filter((p) => p.name === name),
-    ).toEqual([
-      expect.objectContaining({ status: "active", version: "1.0.0" }),
-    ]);
-  });
-
-  it.each([
-    { disable: ["fixture-framework-policy"] },
-    { plugins: { "fixture-framework-policy": { enabled: false } } },
-  ])(
-    "preserves the installed identity when a shared-path alias is disabled by %j",
-    async (setting) => {
-      const installed = join(root, "entry/skills/renamed-policy");
+  it.each([" \n", `${frontmatter}\r\n \t`])(
+    "falls back to a usable entry when the override has empty instructions %j",
+    async (body) => {
+      const override = join(root, "overrides", name);
       await writePolicyPack(
-        installed,
-        { name: "renamed-policy", framework, version: "2.0.0" },
-        "Installed identity rules",
+        override,
+        { name, framework, version: "2.0.0" },
+        body,
+      );
+      await writePolicyPack(
+        join(root, "entry/skills", name),
+        { name, framework, version: "1.0.0" },
+        `${frontmatter}\r\n\r\nCompatible entry policy`,
       );
       await writeFile(
         join(root, ".gwrk/plugins.json"),
         JSON.stringify({
           inherits: false,
           entries: ["entry"],
-          override: { [name]: installed },
-          ...setting,
+          override: { [name]: override },
         }),
       );
       expect
         .soft(await resolveEnforcementSkills(root))
-        .toContain("Installed identity rules");
+        .toContain("Compatible entry policy");
+      expect(
+        (await listProjectPlugins(root)).filter((p) => p.name === name),
+      ).toEqual([
+        expect.objectContaining({ status: "active", version: "1.0.0" }),
+      ]);
+    },
+  );
+
+  it.each([
+    { setting: {}, aliasStatus: "active", pathKind: "direct path" },
+    { setting: {}, aliasStatus: "active", pathKind: "symbolic link" },
+    {
+      setting: { disable: [name] },
+      aliasStatus: "disabled",
+      pathKind: "symbolic link",
+    },
+    {
+      setting: { plugins: { [name]: { enabled: false } } },
+      aliasStatus: "disabled",
+      pathKind: "symbolic link",
+    },
+    {
+      setting: { disable: [name] },
+      aliasStatus: "disabled",
+      pathKind: "direct path",
+    },
+    {
+      setting: { plugins: { [name]: { enabled: false } } },
+      aliasStatus: "disabled",
+      pathKind: "direct path",
+    },
+  ])(
+    "renders a shared pack once with alias status $aliasStatus through a $pathKind under $setting",
+    async ({ setting, aliasStatus, pathKind }) => {
+      const installed = join(root, "entry/skills/renamed-policy");
+      await writePolicyPack(
+        installed,
+        { name: "renamed-policy", framework, version: "2.0.0" },
+        "Installed identity rules",
+      );
+      await writePolicyPack(
+        join(root, "entry/skills/zzz-other-policy"),
+        { name: "zzz-other-policy", framework, version: "1.0.0" },
+        "Other project entry rules",
+      );
+      let override = installed;
+      if (pathKind === "symbolic link") {
+        override = join(root, "linked-policy");
+        await symlink(installed, override, "dir");
+      }
+      await writeFile(
+        join(root, ".gwrk/plugins.json"),
+        JSON.stringify({
+          inherits: false,
+          entries: ["entry"],
+          override: { [name]: override },
+          ...setting,
+        }),
+      );
+      const rendered = await resolveEnforcementSkills(root);
+      expect.soft(rendered.match(/Installed identity rules/g)).toHaveLength(1);
+      if (aliasStatus === "active") {
+        expect
+          .soft(rendered.indexOf("Other project entry rules"))
+          .toBeLessThan(rendered.indexOf("Installed identity rules"));
+      } else {
+        expect
+          .soft(rendered.indexOf("Installed identity rules"))
+          .toBeLessThan(rendered.indexOf("Other project entry rules"));
+      }
       expect.soft((await resolveEffectivePolicy(root)).gaps).toEqual([]);
       const listed = (await listProjectPlugins(root)).filter((p) =>
         [name, "renamed-policy"].includes(p.name),
@@ -463,7 +519,7 @@ describe("project enforcement candidate discovery", () => {
           expect.objectContaining({
             name,
             version: "2.0.0",
-            status: "disabled",
+            status: aliasStatus,
           }),
           expect.objectContaining({
             name: "renamed-policy",

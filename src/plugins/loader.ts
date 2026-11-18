@@ -243,7 +243,10 @@ export class PluginLoader {
       source: PolicySourceLayer,
       overrideName?: string,
     ) => {
-      const resolvedPath = path.resolve(pluginPath);
+      const resolvedPath = await fs
+        .realpath(path.resolve(pluginPath))
+        .catch(() => undefined);
+      if (resolvedPath === undefined) return;
       const manifest = await this.loadManifest(resolvedPath).catch(
         () => undefined,
       );
@@ -268,7 +271,11 @@ export class PluginLoader {
             path.join(resolvedPath, "SKILL.md"),
             "utf-8",
           );
-          if (!content.trim()) return;
+          const body = content.replace(
+            /^\uFEFF?---[ \t]*\r?\n(?:[^\n]*\n)*?---[ \t]*(?:\r?\n|$)/,
+            "",
+          );
+          if (!body.trim()) return;
         } catch {
           return;
         }
