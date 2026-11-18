@@ -33,8 +33,10 @@ function runnerFixture(run: (fixture: string, bin: string) => void) {
 }
 
 function stub(bin: string, name: string, body: string) {
+  rmSync(join(bin, name), { force: true });
   writeFileSync(join(bin, name), `#!/bin/bash\nset -eu\n${body}\n`, {
     mode: 0o755,
+    flag: "wx",
   });
 }
 
@@ -151,6 +153,16 @@ exitCodeMap: {}
           },
         }),
       );
+      const versionShim = join(fixture, "node-version.cjs");
+      writeFileSync(
+        versionShim,
+        'Object.defineProperty(process.versions, "node", { value: process.env.FIXTURE_NODE_VERSION });\n',
+      );
+      stub(
+        bin,
+        "node",
+        'exec "$FIXTURE_NODE_EXECUTABLE" --require "$FIXTURE_NODE_VERSION_SHIM" "$@"',
+      );
       stub(bin, "uname", "printf 'Linux\\n'");
       stub(
         bin,
@@ -208,7 +220,7 @@ fi`,
       );
       writeFileSync(join(secrets, "agent-credential"), "agent-token\n");
 
-      const preflight = (suffix: string) =>
+      const preflight = (suffix: string, nodeVersion = "22.0.0") =>
         spawnSync("bash", [`${root}/preflight.sh`], {
           env: {
             PATH: `${bin}:${process.env.PATH}`,
@@ -227,10 +239,26 @@ fi`,
             GWRK_LISTEN_HOST: "127.0.0.1",
             GWRK_LISTEN_PORT: "18790",
             TRACE: trace,
+            FIXTURE_NODE_VERSION: nodeVersion,
+            FIXTURE_NODE_EXECUTABLE: process.execPath,
+            FIXTURE_NODE_VERSION_SHIM: versionShim,
           },
           encoding: "utf8",
           timeout: 5000,
         });
+      writeFileSync(join(secrets, "pilot-git-credential"), "accepted\n");
+      for (const version of ["18.0.0", "20.0.0"]) {
+        writeFileSync(trace, "");
+        const unsupported = preflight(".git", version);
+        expect.soft(unsupported.status, unsupported.stderr).toBe(1);
+        expect
+          .soft(unsupported.stderr)
+          .toContain("Node.js 22 or newer is required");
+        expect
+          .soft(readFileSync(trace, "utf8").trim().split("\n"))
+          .toEqual(["timeout:node:20s"]);
+      }
+
       for (const [token, suffix, status] of [
         ["revoked", ".git", 1],
         ["accepted", ".git", 0],
