@@ -37,6 +37,7 @@ import type { AppliedMigration } from "../../domain/release-packaging.js";
 import {
   type LedgerBackupPort,
   type LedgerBackupRequest,
+  MissingLedgerError,
   PendingLedgerRestoreError,
   type VerifiedLedgerBackup,
 } from "../../ports/release-ops-port.js";
@@ -168,16 +169,30 @@ function summarizeLedger(
   };
 }
 
+async function resolveLedgerPath(path: string, configuredDbPath: string) {
+  try {
+    return await realpath(path);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+      throw new MissingLedgerError(configuredDbPath);
+    }
+    throw error;
+  }
+}
+
 export const createLedgerBackup: LedgerBackupPort["createBackup"] = async (
   input,
 ) => {
   const absolute = resolve(input.dbPath);
-  const state = await realpath(dirname(absolute));
+  const state = await resolveLedgerPath(dirname(absolute), absolute);
   return withMaintenanceLock(state, async () => {
     const pending = join(state, PENDING_LEDGER_RESTORE);
     if (await exists(pending)) throw new PendingLedgerRestoreError(pending);
 
-    const dbPath = await realpath(join(state, basename(absolute)));
+    const dbPath = await resolveLedgerPath(
+      join(state, basename(absolute)),
+      absolute,
+    );
     if (dirname(dbPath) !== state) {
       throw new Error(
         `Ledger path must resolve within its state directory: ${absolute}`,

@@ -30,6 +30,7 @@ import { recordRun } from "../db/runs.js";
 import { evaluateRollbackCompatibility } from "../domain/release-packaging.js";
 import {
   InstanceLockBusyError,
+  MissingLedgerError,
   PendingLedgerRestoreError,
 } from "../ports/release-ops-port.js";
 import { devicePath, loadDeviceStrict } from "../utils/device.js";
@@ -130,6 +131,12 @@ const backupCommand = new Command("backup")
             if (error instanceof PendingLedgerRestoreError) {
               throw new CommandError(
                 `${error.message} Finish 'gwrk db restore' with the original backup before creating a new backup.`,
+                1,
+              );
+            }
+            if (error instanceof MissingLedgerError) {
+              throw new CommandError(
+                `${error.message} Set GWRK_DB_PATH to the path of your existing ledger and retry 'gwrk db backup'.`,
                 1,
               );
             }

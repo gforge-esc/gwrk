@@ -24,6 +24,13 @@ export class PendingLedgerRestoreError extends Error {
   }
 }
 
+export class MissingLedgerError extends Error {
+  constructor(readonly dbPath: string) {
+    super(`Ledger not found at ${dbPath}.`);
+    this.name = "MissingLedgerError";
+  }
+}
+
 export interface InstanceLockHandle {
   readonly pid: number;
   readonly lockPath: string;

@@ -228,6 +228,30 @@ const pathVariants = [
 ];
 
 describe("installed ledger commands outside a checkout", () => {
+  it.each(["empty", "missing"])(
+    "reports how to find the ledger when the state directory is %s",
+    async (scenario) => {
+      const state = join(root, "state");
+      if (scenario === "empty") await mkdir(state);
+      const ledger = join(state, "gwrk.db");
+      const destination = join(root, "backup");
+
+      const result = runInstalledBackup(ledger, destination);
+
+      expect(result.status, result.stderr).toBe(1);
+      expect(result.stdout).toBe("");
+      const signals = result.stderr.match(/^\[exit:.*$/gm);
+      expect(signals).toEqual([
+        expect.stringMatching(/^\[exit:1 \| \d+(?:\.\d+)?m?s\]/),
+      ]);
+      await expect(stat(destination)).rejects.toMatchObject({ code: "ENOENT" });
+      expect(signals?.[0]).toContain(`Ledger not found at ${ledger}.`);
+      expect(signals?.[0]).toContain(
+        "Set GWRK_DB_PATH to the path of your existing ledger and retry 'gwrk db backup'.",
+      );
+    },
+  );
+
   it.each(pathVariants)(
     "protects the hosted ledger lock with alias=$alias and child=$child",
     async ({ alias, child }) => {
