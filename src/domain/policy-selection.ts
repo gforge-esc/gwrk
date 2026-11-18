@@ -249,7 +249,6 @@ function resolveCandidates(input: ComposePolicyInput, scope: EnforcementScope) {
       (a, b) => LAYER_PRECEDENCE[a.source] - LAYER_PRECEDENCE[b.source],
     );
 
-    const incompatibleGroup: PolicyCandidate[] = [];
     let selectedForSkill: PolicyCandidate | undefined;
     let suppressedByDisabled = false;
 
@@ -278,7 +277,7 @@ function resolveCandidates(input: ComposePolicyInput, scope: EnforcementScope) {
             "principle-mismatch",
           ].includes(evaluation.reason)
         ) {
-          incompatibleGroup.push(candidate);
+          incompatibleSkills.push(candidate);
         }
         excludedSkills.push({
           name: candidate.name,
@@ -290,14 +289,12 @@ function resolveCandidates(input: ComposePolicyInput, scope: EnforcementScope) {
 
       if (candidate.manifest.disabled) {
         suppressedByDisabled = true;
-        incompatibleGroup.length = 0;
         continue;
       }
 
       selectedForSkill = candidate;
       selectedSkills.push(candidate);
     }
-    incompatibleSkills.push(...incompatibleGroup);
   }
 
   selectedSkills.sort((a, b) => {
@@ -342,6 +339,7 @@ export function composeEffectivePolicy(
 
   // Framework gap
   const framework = input.profile?.stack?.framework;
+  const frameworkGuidance = lookupFrameworkGuidance(framework);
   if (
     framework &&
     framework.toLowerCase() !== "unspecified" &&
@@ -361,7 +359,7 @@ export function composeEffectivePolicy(
           subject: framework,
           message: `No compatible policy found for framework ${framework}.`,
         });
-      } else if (!lookupFrameworkGuidance(framework)) {
+      } else if (frameworkGuidance === undefined) {
         gaps.push({
           kind: "missing-framework-binding",
           subject: framework,
@@ -374,9 +372,8 @@ export function composeEffectivePolicy(
   // Architecture gap
   const architecture = design?.architecture;
   if (architecture) {
-    const normArch = architecture.toLowerCase().trim();
     const bundled = ["hexagonal-functional", "layered", "clean"];
-    if (!bundled.includes(normArch)) {
+    if (!bundled.includes(architecture)) {
       gaps.push({
         kind: "unbundled-architecture",
         subject: architecture,
@@ -391,7 +388,7 @@ export function composeEffectivePolicy(
     checksStatus: input.checksConfigured ? "configured" : "inactive",
     architectureRules: design ? designRules(design) : [],
     languageGuidance: lookupLanguageGuidance(languages[0]),
-    frameworkGuidance: lookupFrameworkGuidance(input.profile?.stack?.framework),
+    frameworkGuidance,
     selectedSkills,
     excludedSkills,
     gaps,

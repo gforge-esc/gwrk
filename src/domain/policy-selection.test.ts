@@ -152,6 +152,7 @@ describe("Project policy composition", () => {
       ],
     });
     expect(disabledResult.selectedSkills).toHaveLength(0);
+    expect(disabledResult.gaps).toEqual([]);
     expect(disabledResult.excludedSkills).toContainEqual(
       expect.objectContaining({
         source: "builtin",
@@ -208,10 +209,7 @@ describe("Project policy composition", () => {
 
     // Bundled framework guidance suppresses missing-framework-binding gap
     const fastifyResult = composeEffectivePolicy({
-      profile: {
-        type: "webapp",
-        stack: { language: "TypeScript", framework: "Fastify" },
-      },
+      profile,
       candidates: [],
     });
     expect(fastifyResult.frameworkGuidance).toBeDefined();
@@ -402,6 +400,13 @@ describe("reviewed policy coverage regressions", () => {
       gap: undefined,
     },
     {
+      title: "other workflow without bundled guidance",
+      override: { scope: "implementation" },
+      scope: "define",
+      framework: "Svelte",
+      gap: undefined,
+    },
+    {
       title: "foreign repository",
       override: { projectScope: "gwrk" },
       scope: "define",
@@ -444,9 +449,36 @@ describe("reviewed policy coverage regressions", () => {
           },
         ],
       });
+      expect(result.selectedSkills).toEqual([]);
       expect(result.gaps.map(({ kind }) => kind)).toEqual(gap ? [gap] : []);
     },
   );
+
+  it("reports an incompatible framework policy above a disabled copy", async () => {
+    const { composeEffectivePolicy } = await import("./policy-selection.js");
+    const result = composeEffectivePolicy({
+      profile,
+      candidates: [
+        {
+          name: fastify.name,
+          source: "project-local",
+          manifest: { ...fastify, architectures: ["layered"] },
+        },
+        {
+          name: fastify.name,
+          source: "global",
+          manifest: { ...fastify, disabled: true },
+        },
+      ],
+    });
+
+    expect(result.gaps).toContainEqual(
+      expect.objectContaining({
+        kind: "incompatible-framework-policy",
+        subject: "Fastify",
+      }),
+    );
+  });
 
   it.each([
     {
@@ -482,12 +514,19 @@ describe("reviewed policy coverage regressions", () => {
     },
   );
 
-  it.each(["all", "implementation"] as const)(
-    "accepts custom language coverage in scope %s",
-    async (scope) => {
+  it.each([
+    { stack: { language: "Kotlin" }, scope: "all" },
+    { stack: { languages: ["Rust", "Kotlin"] }, scope: "all" },
+    { stack: { languages: ["Rust", "Kotlin"] }, scope: "implementation" },
+  ] satisfies Array<{
+    stack: ProjectProfile["stack"];
+    scope: "all" | "implementation";
+  }>)(
+    "accepts custom language coverage for $stack in scope $scope",
+    async ({ stack, scope }) => {
       const { composeEffectivePolicy } = await import("./policy-selection.js");
       const result = composeEffectivePolicy({
-        profile: { ...profile, stack: { languages: ["Rust", "Kotlin"] } },
+        profile: { ...profile, stack },
         scope: "define",
         candidates: [
           {
@@ -503,8 +542,8 @@ describe("reviewed policy coverage regressions", () => {
           },
         ],
       });
+      expect(result.selectedSkills).toHaveLength(scope === "all" ? 1 : 0);
       expect(result.gaps).toEqual([]);
-      expect(result.languageGuidance).toContain("traits");
     },
   );
 
@@ -527,13 +566,13 @@ describe("reviewed policy coverage regressions", () => {
   });
 
   it.each([
-    "hexagonal",
-    "Hexagonal-Functional",
-    "hexagonal-with-functional-core",
-    "Hexagonal with functional core",
+    ["hexagonal", "Hexagonal-Functional"],
+    ["Hexagonal-Functional", "hexagonal"],
+    ["hexagonal-with-functional-core", "hexagonal"],
+    ["Hexagonal with functional core", "hexagonal"],
   ])(
-    "normalizes the profile and manifest architecture %s",
-    async (architecture) => {
+    "matches profile architecture %s with manifest architecture %s",
+    async (architecture, manifestArchitecture) => {
       const { composeEffectivePolicy } = await import("./policy-selection.js");
       const inputProfile = {
         ...profile,
@@ -546,7 +585,7 @@ describe("reviewed policy coverage regressions", () => {
           {
             name: fastify.name,
             source: "project-entry",
-            manifest: { ...fastify, architectures: ["hexagonal"] },
+            manifest: { ...fastify, architectures: [manifestArchitecture] },
           },
         ],
       });
