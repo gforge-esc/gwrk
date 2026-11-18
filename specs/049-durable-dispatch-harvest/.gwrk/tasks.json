@@ -83,7 +83,7 @@
           "id": "T007",
           "title": "Create 018-durable-dispatch-and-harvest.sql",
           "description": "NEW src/db/migrations/018-durable-dispatch-and-harvest.sql. Create dispatch and attempt tables plus delivery, cursor and outbox stage tables\n\nReview history: .gwrk/review-history/phase-02-through-2026-11-18T1957Z.json. All original findings and diagnoses remain there and in findings.jsonl.\nCurrent verification: Three review regressions failed before repair. A forward migration enforces metadata uniqueness on previously upgraded ledgers and preserves outbox rows. Stage execution counts increment on new execution attempts and survive retry leases. The legacy decoder preserves the original phase-wide dispatch shape without invented timestamps or task scope. All 101 phase checks pass. The lint inventory script is reused unchanged from reviewed feature 046 commit 35c510de. Independent review remains pending.",
-          "status": "completed",
+          "status": "open",
           "gateScript": "gates/phase-02.sh",
           "sp": 2,
           "completedAt": "2026-11-18T20:08:53.300Z"
@@ -92,7 +92,7 @@
           "id": "T008",
           "title": "Create operations.ts",
           "description": "NEW src/db/operations.ts. Implement transactional acceptance and fenced leases plus stage receipts, cursors and outbox reads. Tests: src/db/operations.test.ts\n\nReview history: .gwrk/review-history/phase-02-through-2026-11-18T1957Z.json. All original findings and diagnoses remain there and in findings.jsonl.\nCurrent verification: Three review regressions failed before repair. A forward migration enforces metadata uniqueness on previously upgraded ledgers and preserves outbox rows. Stage execution counts increment on new execution attempts and survive retry leases. The legacy decoder preserves the original phase-wide dispatch shape without invented timestamps or task scope. All 101 phase checks pass. The lint inventory script is reused unchanged from reviewed feature 046 commit 35c510de. Independent review remains pending.",
-          "status": "completed",
+          "status": "open",
           "gateScript": "gates/phase-02.sh",
           "sp": 2,
           "completedAt": "2026-11-18T20:09:05.081Z"
@@ -101,7 +101,7 @@
           "id": "T009",
           "title": "Create operations.ts",
           "description": "NEW src/adapters/sqlite/operations.ts. Implement `createSqliteOperationsStoreAdapter` over injected database connections. Tests: src/db/operations.test.ts\n\nReview history: .gwrk/review-history/phase-02-through-2026-11-18T1957Z.json. All original findings and diagnoses remain there and in findings.jsonl.\nCurrent verification: Three review regressions failed before repair. A forward migration enforces metadata uniqueness on previously upgraded ledgers and preserves outbox rows. Stage execution counts increment on new execution attempts and survive retry leases. The legacy decoder preserves the original phase-wide dispatch shape without invented timestamps or task scope. All 101 phase checks pass. The lint inventory script is reused unchanged from reviewed feature 046 commit 35c510de. Independent review remains pending.",
-          "status": "completed",
+          "status": "open",
           "gateScript": "gates/phase-02.sh",
           "sp": 2,
           "completedAt": "2026-11-18T18:16:00.000Z"
@@ -110,7 +110,7 @@
           "id": "T010",
           "title": "Modify index.ts",
           "description": "MODIFY src/adapters/sqlite/index.ts. Export `createSqliteOperationsStoreAdapter` from the SQLite adapter barrel\n\nReview history: .gwrk/review-history/phase-02-through-2026-11-18T1957Z.json. All original findings and diagnoses remain there and in findings.jsonl.\nCurrent verification: Three review regressions failed before repair. A forward migration enforces metadata uniqueness on previously upgraded ledgers and preserves outbox rows. Stage execution counts increment on new execution attempts and survive retry leases. The legacy decoder preserves the original phase-wide dispatch shape without invented timestamps or task scope. All 101 phase checks pass. The lint inventory script is reused unchanged from reviewed feature 046 commit 35c510de. Independent review remains pending.",
-          "status": "completed",
+          "status": "open",
           "gateScript": "gates/phase-02.sh",
           "sp": 1,
           "completedAt": "2026-11-18T18:16:00.000Z"
@@ -119,7 +119,7 @@
           "id": "T011",
           "title": "Modify persistence.ts",
           "description": "MODIFY src/server/persistence.ts. Read legacy `.gwrk/dispatches.jsonl` entries as `legacy_unverified` without mutating the repo tree\n\nReview history: .gwrk/review-history/phase-02-through-2026-11-18T1957Z.json. All original findings and diagnoses remain there and in findings.jsonl.\nCurrent verification: Three review regressions failed before repair. A forward migration enforces metadata uniqueness on previously upgraded ledgers and preserves outbox rows. Stage execution counts increment on new execution attempts and survive retry leases. The legacy decoder preserves the original phase-wide dispatch shape without invented timestamps or task scope. All 101 phase checks pass. The lint inventory script is reused unchanged from reviewed feature 046 commit 35c510de. Independent review remains pending.",
-          "status": "completed",
+          "status": "open",
           "gateScript": "gates/phase-02.sh",
           "sp": 1,
           "completedAt": "2026-11-18T20:09:16.948Z"
