@@ -2709,8 +2709,9 @@ ${marker}`;
         quiet: true,
       });
 
-      if (result.exitCode === 0 && result.stdout) {
-        const fixLines = extractFixLines(result.stdout);
+      const diagnosis = result.unwrappedStdout ?? result.stdout;
+      if (result.exitCode === 0 && diagnosis) {
+        const fixLines = extractFixLines(diagnosis);
 
         if (fixLines.length > 0) {
           const fixBlock = `\n\nDIAGNOSIS (iteration ${this.state.iteration}):\n${fixLines.join("\n")}`;

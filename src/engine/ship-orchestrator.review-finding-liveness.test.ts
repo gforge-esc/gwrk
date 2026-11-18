@@ -219,6 +219,30 @@ describe("D2 — a re-open on a task with no gate still reports NO-GO", () => {
 });
 
 describe("D5 — DIAGNOSE reads review findings as error context", () => {
+  it("persists fix instructions from the normalized provider response", async () => {
+    const state = stateWith("open", {
+      gateScript: "gates/T006-gate.sh",
+      description: "REVIEW FAIL (code): preserve accepted delivery.",
+    });
+    vi.mocked(stateUtils.loadTaskState).mockReturnValue(state as never);
+    const fix = "FIX: src/delivery.ts - preserve the saved recipient and test restart.";
+    vi.mocked(agentUtils.dispatchToAgent).mockResolvedValueOnce({
+      exitCode: 0,
+      stdout: JSON.stringify({ event: "result", result: { status: "SUCCESS", response: fix } }),
+      unwrappedStdout: fix,
+      stderr: "",
+      durationS: 0,
+    });
+    const orchestrator = new ShipOrchestrator(mockConfig as never);
+
+    // @ts-ignore private
+    await orchestrator.stageDiagnose();
+
+    expect(state.phases[0].tasks[0].description).toContain(fix);
+    expect(stateUtils.saveTaskState).toHaveBeenCalled();
+  });
+
+
   it("diagnoses a task carrying a REVIEW/GATE DIVERGENCE note", async () => {
     const withNote = stateWith("open", {
       gateScript: "gates/T006-gate.sh",
