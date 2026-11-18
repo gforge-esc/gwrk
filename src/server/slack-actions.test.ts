@@ -24,6 +24,7 @@ import {
 import { resolveProjectId } from "../adapters/git/index.js";
 import { createSqliteProjectRegistryAdapter } from "../adapters/sqlite/index.js";
 import { createProjectRoutingService } from "../application/project-routing/index.js";
+import { findOpenPr } from "../db/runs.js";
 import { buildActionReceiptKey } from "../domain/project-registry.js";
 import type { DispatchQueue } from "./dispatch.js";
 import type { GitManager } from "./git-manager.js";
@@ -531,6 +532,7 @@ describe("slack-actions (FR-007, US-004, US-005)", () => {
                 featureId: SYNTHETIC_THREAD_ALPHA.featureId,
                 phaseId: "phase-01",
                 rootTs: SYNTHETIC_THREAD_ALPHA.rootTs,
+                prNumber: 42,
               }),
             },
           ],
@@ -841,6 +843,10 @@ describe("slack-actions (FR-007, US-004, US-005)", () => {
     it.each([
       {
         channelId: SYNTHETIC_CHANNEL_ALPHA,
+        messageTs: "2026-11-18T10:00:00.000Z",
+      },
+      {
+        channelId: SYNTHETIC_CHANNEL_ALPHA,
         threadTs: SYNTHETIC_THREAD_ALPHA.rootTs,
       },
       { channelId: SYNTHETIC_CHANNEL_BETA },
@@ -869,6 +875,52 @@ describe("slack-actions (FR-007, US-004, US-005)", () => {
         ).toEqual(receipt);
         expect(bind).not.toHaveBeenCalled();
         expect(registry.getFeatureThread(projectId, featureId)).toBeNull();
+      },
+    );
+
+    it.each([null, "C_OPS"])(
+      "routes operations events using only the enrolled operations channel %s",
+      async (opsChannelId) => {
+        const project = {
+          ...SYNTHETIC_PROJECT_ALPHA,
+          slack: { ...SYNTHETIC_PROJECT_ALPHA.slack!, opsChannelId },
+        };
+        const registry = createSyntheticRegistry({ projects: [project] });
+        const bind = vi.spyOn(registry, "bindFeatureThread");
+        const notify = vi.fn().mockResolvedValue({
+          delivered: true,
+          channelId: opsChannelId,
+          messageTs,
+        });
+        const routing = createProjectRoutingService({
+          registry,
+          notificationPort: { notify },
+        });
+
+        const receipt = await routing.deliverProjectEvent({
+          projectId: project.projectId,
+          featureId: SYNTHETIC_THREAD_ALPHA.featureId,
+          eventType: "health",
+          opsOnly: true,
+          message: { text: "Operations event" },
+          nowIso: "2026-11-18T10:00:00.000Z",
+        });
+
+        if (opsChannelId) {
+          expect(receipt.delivered).toBe(true);
+          expect(notify).toHaveBeenCalledExactlyOnceWith(
+            expect.objectContaining({
+              channel: opsChannelId,
+              recipient: expect.objectContaining({ channelId: opsChannelId }),
+              opsOnly: true,
+            }),
+          );
+          expect(notify.mock.calls[0][0].threadTs).toBeUndefined();
+        } else {
+          expect(receipt).toEqual({ delivered: false });
+          expect(notify).not.toHaveBeenCalled();
+        }
+        expect(bind).not.toHaveBeenCalled();
       },
     );
 
@@ -1011,7 +1063,11 @@ describe("slack-actions (FR-007, US-004, US-005)", () => {
       );
     });
 
-    function reactionArgs(projectId: string) {
+    function reactionArgs(
+      projectId: string,
+      cardTs = messageTs,
+      value = { ...actionValue, projectId },
+    ) {
       return {
         event: {
           type: "reaction_added",
@@ -1021,7 +1077,7 @@ describe("slack-actions (FR-007, US-004, US-005)", () => {
           item: {
             type: "message",
             channel: SYNTHETIC_CHANNEL_ALPHA,
-            ts: messageTs,
+            ts: cardTs,
           },
           event_ts: "1731320000.000400",
         },
@@ -1032,7 +1088,7 @@ describe("slack-actions (FR-007, US-004, US-005)", () => {
           reactions: {
             get: vi.fn().mockResolvedValue({
               message: {
-                ts: messageTs,
+                ts: cardTs,
                 text: "Review Ready",
                 thread_ts: SYNTHETIC_THREAD_ALPHA.rootTs,
                 blocks: [
@@ -1042,7 +1098,7 @@ describe("slack-actions (FR-007, US-004, US-005)", () => {
                       {
                         type: "button",
                         action_id: "merge_pr",
-                        value: JSON.stringify({ ...actionValue, projectId }),
+                        value: JSON.stringify(value),
                       },
                     ],
                   },
@@ -1054,6 +1110,51 @@ describe("slack-actions (FR-007, US-004, US-005)", () => {
         logger: { error: vi.fn() },
       };
     }
+
+    it.each(["phase-02", "phase-01"])(
+      "keeps a phase-01 review card for PR 101 from merging PR 202 in %s",
+      async (openPhase) => {
+        const card = { ...actionValue, prNumber: 101 };
+        const registry = createSyntheticRegistry();
+        const vcs = createSyntheticVcsPort();
+        const merge = vi.spyOn(vcs, "mergePullRequest");
+        await registerSlackActions(mockApp as App, {
+          ...mockContext,
+          routingService: createProjectRoutingService({ registry }),
+          vcs,
+        });
+        const click = clickArgs("merge_pr");
+        click.body.actions[0].value = JSON.stringify(card);
+        const reaction = reactionArgs(
+          card.projectId,
+          "1731320000.000300",
+          card,
+        );
+
+        const lookup = vi.mocked(findOpenPr);
+        await lookup.withImplementation(
+          (_featureId, _projectId, phaseId) =>
+            phaseId === undefined || phaseId === openPhase
+              ? {
+                  pr_number: 202,
+                  pr_url: "https://github.com/org/alpha/pull/202",
+                }
+              : null,
+          async () => {
+            await actionHandlers.merge_pr(click);
+            await eventHandlers.reaction_added(reaction);
+          },
+        );
+
+        expect.soft(merge).not.toHaveBeenCalled();
+        expect.soft(click.client.chat.postMessage).not.toHaveBeenCalled();
+        expect.soft(reaction.client.chat.postMessage).not.toHaveBeenCalled();
+        expect(lookup.mock.calls).toEqual([
+          [card.featureId, card.projectId, card.phaseId],
+          [card.featureId, card.projectId, card.phaseId],
+        ]);
+      },
+    );
 
     it("marks a failed reaction merge and grants one claim when retried", async () => {
       const { registry, project } = createSqliteRegistry();
@@ -1117,32 +1218,41 @@ describe("slack-actions (FR-007, US-004, US-005)", () => {
       );
     });
 
-    it("T017: deliverProjectEvent with void-returning NotificationPort leaves getFeatureThread null", async () => {
-      const registry = createSyntheticRegistry();
-      const voidNotificationPort = {
-        notify: vi.fn().mockResolvedValue(undefined),
-      };
-      const routingService = createProjectRoutingService({
-        registry,
-        notificationPort: voidNotificationPort,
-      });
+    it.each([
+      { featureId: "999-new-feature" },
+      { featureId: "999-new-feature", opsOnly: true },
+      {},
+    ])(
+      "reports an undelivered event when the port returns void for %j",
+      async (scope) => {
+        const registry = createSyntheticRegistry();
+        const bind = vi.spyOn(registry, "bindFeatureThread");
+        const voidNotificationPort = {
+          notify: vi.fn().mockResolvedValue(undefined),
+        };
+        const routingService = createProjectRoutingService({
+          registry,
+          notificationPort: voidNotificationPort,
+        });
 
-      const receipt = await routingService.deliverProjectEvent({
-        projectId: SYNTHETIC_PROJECT_ALPHA.projectId,
-        featureId: "999-new-feature",
-        eventType: "spec_ready",
-        message: { text: "Spec ready for review" },
-        nowIso: "2026-11-18T10:00:00.000Z",
-      });
+        const receipt = await routingService.deliverProjectEvent({
+          projectId: SYNTHETIC_PROJECT_ALPHA.projectId,
+          ...scope,
+          eventType: "spec_ready",
+          message: { text: "Spec ready for review" },
+          nowIso: "2026-11-18T10:00:00.000Z",
+        });
 
-      expect(receipt.delivered).toBe(false);
-      expect(receipt.messageTs).toBeUndefined();
-      expect(
-        registry.getFeatureThread(
-          SYNTHETIC_PROJECT_ALPHA.projectId,
-          "999-new-feature",
-        ),
-      ).toBeNull();
-    });
+        expect(receipt).toEqual({ delivered: false });
+        expect(voidNotificationPort.notify).toHaveBeenCalledOnce();
+        expect(bind).not.toHaveBeenCalled();
+        expect(
+          registry.getFeatureThread(
+            SYNTHETIC_PROJECT_ALPHA.projectId,
+            "999-new-feature",
+          ),
+        ).toBeNull();
+      },
+    );
   });
 });

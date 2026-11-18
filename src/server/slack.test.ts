@@ -279,25 +279,29 @@ describe("Slack Server Integration", () => {
     const say = vi.fn();
     const message = {
       user: SYNTHETIC_USER_MAINTAINER,
-      ts: "1731320000.000100",
+      ts: "1731320000.000200",
     };
 
-    await handlers.app_mention({
-      event: {
-        ...message,
-        type: "app_mention",
-        text: "<@B_TEST> status of 003-slack",
-        channel: SYNTHETIC_CHANNEL_ALPHA,
-      },
-      body: { team_id: SYNTHETIC_WORKSPACE_ID },
-      context: {},
-      say,
-    });
-    expect(say).toHaveBeenLastCalledWith(
-      expect.objectContaining({
-        text: expect.stringContaining("Checking status"),
-      }),
-    );
+    for (const threadTs of [undefined, SYNTHETIC_THREAD_ALPHA.rootTs]) {
+      await handlers.app_mention({
+        event: {
+          ...message,
+          type: "app_mention",
+          text: "<@B_TEST> status of 003-slack",
+          channel: SYNTHETIC_CHANNEL_ALPHA,
+          ...(threadTs ? { thread_ts: threadTs } : {}),
+        },
+        body: { team_id: SYNTHETIC_WORKSPACE_ID },
+        context: {},
+        say,
+      });
+      expect.soft(say).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          text: expect.stringContaining("Checking status"),
+          thread_ts: threadTs ?? message.ts,
+        }),
+      );
+    }
 
     await handlers.message({
       event: {

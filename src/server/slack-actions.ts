@@ -146,27 +146,30 @@ function completeReceipt(
   }
 }
 
-/**
- * Look up the PR for a feature/phase from the runs table.
- * Returns { pr_number, pr_url } or throws with a user-friendly message.
- */
 function lookupPr(
   featureId: string,
-  phaseId: string,
   projectId: string,
-): { pr_number: number; pr_url: string | null } {
-  const pr = findOpenPr(featureId, projectId, phaseId);
-  if (!pr) {
-    // Try without phase filter as fallback
-    const anyPr = findOpenPr(featureId, projectId, undefined);
-    if (anyPr) {
-      return anyPr;
-    }
+  phaseId: string | undefined,
+  prNumber: number | undefined,
+): number {
+  if (
+    typeof phaseId !== "string" ||
+    !phaseId.trim() ||
+    typeof prNumber !== "number" ||
+    !Number.isInteger(prNumber) ||
+    prNumber <= 0
+  ) {
     throw new Error(
-      `No open PR found for ${featureId} ${phaseId}. Has the ship loop created a PR?`,
+      "This review card must specify a phase and pull request number.",
     );
   }
-  return pr;
+  const pr = findOpenPr(featureId, projectId, phaseId);
+  if (pr?.pr_number !== prNumber) {
+    throw new Error(
+      `PR #${prNumber} is no longer the open pull request for ${featureId} ${phaseId}.`,
+    );
+  }
+  return prNumber;
 }
 
 export async function registerSlackActions(app: App, context: CommandContext) {
@@ -182,7 +185,7 @@ export async function registerSlackActions(app: App, context: CommandContext) {
     const payloadObj = parseActionPayload(payload);
     if (!payloadObj?.featureId) return;
 
-    const { featureId, phaseId } = payloadObj;
+    const { featureId, phaseId, prNumber } = payloadObj;
     const auth = await verifyAndClaimClick(
       "merge_pr",
       actionBody,
@@ -196,14 +199,14 @@ export async function registerSlackActions(app: App, context: CommandContext) {
     try {
       if (!context.vcs)
         throw new Error("VCS port is required to merge pull requests.");
-      const pr = lookupPr(featureId, phaseId ?? "", auth.projectId);
-      await context.vcs.mergePullRequest(auth.projectRoot, pr.pr_number);
+      const approvedPr = lookupPr(featureId, auth.projectId, phaseId, prNumber);
+      await context.vcs.mergePullRequest(auth.projectRoot, approvedPr);
       completeReceipt(context, auth.receiptKey, "executed");
 
       await client.chat.postMessage({
         channel: actionBody.channel?.id || "",
         thread_ts: auth.threadTs,
-        text: `✅ PR #${pr.pr_number} for *${featureId}*${phaseId ? ` phase *${phaseId}*` : ""} merged by <@${actionBody.user.id}>`,
+        text: `✅ PR #${approvedPr} for *${featureId}* phase *${phaseId}* merged by <@${actionBody.user.id}>`,
       });
     } catch (error) {
       completeReceipt(context, auth.receiptKey, "failed");
@@ -618,9 +621,14 @@ export async function registerSlackActions(app: App, context: CommandContext) {
         if (!auth.ok) return;
         receiptKey = auth.receiptKey;
 
-        const { featureId, phaseId } = payload;
-        const pr = lookupPr(featureId, phaseId ?? "", auth.projectId);
-        await context.vcs.mergePullRequest(auth.projectRoot, pr.pr_number);
+        const { featureId, phaseId, prNumber } = payload;
+        const approvedPr = lookupPr(
+          featureId,
+          auth.projectId,
+          phaseId,
+          prNumber,
+        );
+        await context.vcs.mergePullRequest(auth.projectRoot, approvedPr);
         const mergedReceiptKey = receiptKey;
         receiptKey = undefined;
         completeReceipt(context, mergedReceiptKey, "executed");
@@ -628,7 +636,7 @@ export async function registerSlackActions(app: App, context: CommandContext) {
         await client.chat.postMessage({
           channel,
           thread_ts: auth.threadTs,
-          text: `✅ Reaction-approval detected! Merged PR #${pr.pr_number} for *${featureId}*${phaseId ? ` phase *${phaseId}*` : ""}.`,
+          text: `✅ Reaction-approval detected! Merged PR #${approvedPr} for *${featureId}* phase *${phaseId}*.`,
         });
       } catch (error) {
         completeReceipt(context, receiptKey, "failed");

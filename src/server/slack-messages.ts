@@ -108,6 +108,7 @@ export const MessageBuilder = {
       ...routing,
       featureId: dispatch.featureId,
       phaseId: dispatch.phaseId,
+      prNumber: dispatch.prNumber,
     });
 
     const blocks: KnownBlock[] = [

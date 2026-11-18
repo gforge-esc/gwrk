@@ -430,10 +430,24 @@ const handlers: Record<string, SlashCommandHandler> = {
   pulse: async (args, context) => {
     const { generatePulseReport } = await import("../engine/pulse.js");
     const { loadConfig } = await import("../utils/config.js");
-    const config = loadConfig(context.projectRoot);
 
     try {
-      const report = generatePulseReport(config);
+      const config = loadConfig(context.projectRoot);
+      const checkout = fs.realpathSync(context.projectRoot);
+      const tracksCheckout = config.pulse?.repos.some((repo) => {
+        try {
+          return fs.realpathSync(repo) === checkout;
+        } catch {
+          return false;
+        }
+      });
+      const report = generatePulseReport(
+        {
+          ...config,
+          pulse: { ...config.pulse, repos: tracksCheckout ? [checkout] : [] },
+        },
+        { specRoots: [checkout] },
+      );
       let text = `📊 *Pulse Daily Summary* (${new Date(report.generatedAt).toLocaleDateString()})\n`;
       for (const repo of report.repositories) {
         text += `• *${repo.repoName}*: ${repo.mainLoc} LOC (+${repo.draftLoc} draft)\n`;

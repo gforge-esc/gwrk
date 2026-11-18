@@ -2,12 +2,32 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { type Mocked, beforeEach, describe, expect, it, vi } from "vitest";
+import { execFileSync } from "node:child_process";
+import {
+  mkdirSync,
+  mkdtempSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import {
+  type Mocked,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  onTestFinished,
+  vi,
+} from "vitest";
 import {
   SYNTHETIC_CHANNEL_ALPHA,
   SYNTHETIC_PROJECT_ALPHA,
+  SYNTHETIC_PROJECT_BETA,
   SYNTHETIC_THREAD_ALPHA,
   SYNTHETIC_USER_MAINTAINER,
+  SYNTHETIC_USER_VIEWER,
   SYNTHETIC_WORKSPACE_ID,
   createSyntheticRegistry,
   createSyntheticVcsPort,
@@ -231,6 +251,72 @@ describe("slack-commands (FR-015, US-004)", () => {
     const response = await handleSlashCommand("pause", context);
     expect(mockQueue.pause).toHaveBeenCalled();
     expect(response.blocks[0].text.text).toContain("Dispatch queue paused");
+  });
+
+  it("reports Pulse repositories and spec totals only for the authorized checkout", async () => {
+    const root = mkdtempSync(join(tmpdir(), "gwrk-slash-pulse-"));
+    vi.stubEnv("GWRK_HOME", join(root, "home"));
+    onTestFinished(() => {
+      vi.unstubAllEnvs();
+      rmSync(root, { recursive: true, force: true });
+    });
+    const alpha = {
+      ...SYNTHETIC_PROJECT_ALPHA,
+      localRoot: join(root, "alpha-pulse"),
+    };
+    const beta = {
+      ...SYNTHETIC_PROJECT_BETA,
+      localRoot: join(root, "beta-pulse"),
+    };
+    for (const [project, features] of [
+      [alpha, ["001-alpha", "002-alpha"]],
+      [beta, ["001-beta", "002-beta", "003-beta"]],
+    ] as const) {
+      for (const feature of features) {
+        const specDir = join(project.localRoot, "specs", feature);
+        mkdirSync(specDir, { recursive: true });
+        writeFileSync(join(specDir, "spec.md"), "# Spec\n");
+      }
+      const gitOptions = {
+        cwd: project.localRoot,
+        stdio: "ignore" as const,
+        timeout: 5_000,
+      };
+      execFileSync("git", ["init", "--quiet"], gitOptions);
+      execFileSync(
+        "git",
+        [
+          "symbolic-ref",
+          "refs/remotes/origin/HEAD",
+          "refs/remotes/origin/main",
+        ],
+        gitOptions,
+      );
+    }
+    writeFileSync(join(alpha.localRoot, "specs/001-alpha/plan.md"), "# Plan\n");
+    const alphaAlias = join(root, "alpha-alias");
+    symlinkSync(alpha.localRoot, alphaAlias, "dir");
+    writeFileSync(
+      join(alpha.localRoot, ".gwrkrc.json"),
+      JSON.stringify({
+        project: { name: alpha.name },
+        pulse: { repos: [alphaAlias, beta.localRoot] },
+      }),
+    );
+
+    const response = await handleSlashCommand("pulse --project alpha", {
+      ...context,
+      userId: SYNTHETIC_USER_VIEWER,
+      projectRoot: beta.localRoot,
+      routingService: createProjectRoutingService({
+        registry: createSyntheticRegistry({ projects: [alpha, beta] }),
+      }),
+    });
+
+    const blocks = JSON.stringify(response.blocks);
+    expect.soft(blocks).toContain("*alpha-pulse*:");
+    expect.soft(blocks).not.toContain("beta-pulse");
+    expect(blocks).toContain("1/2 plans ready");
   });
 
   it("returns help for empty command", async () => {

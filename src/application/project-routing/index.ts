@@ -231,7 +231,8 @@ export function createProjectRoutingService(
       }
 
       if (input.opsOnly) {
-        const channel = project.slack.opsChannelId ?? project.slack.channelId;
+        const channel = project.slack.opsChannelId;
+        if (!channel) return { delivered: false };
         const payload: NotificationPayload = {
           projectId: project.projectId,
           featureId: input.featureId,
@@ -300,6 +301,7 @@ export function createProjectRoutingService(
           receipt.delivered &&
           !thread &&
           receipt.messageTs &&
+          /^\d+\.\d+$/.test(receipt.messageTs) &&
           receipt.channelId === channel &&
           (receipt.threadTs === undefined ||
             receipt.threadTs === receipt.messageTs)

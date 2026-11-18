@@ -27,15 +27,7 @@ export async function handleMention({
   const { requestedProject, cleanedText } = parseProjectSelector(event.text);
   const text = cleanedText.toLowerCase();
 
-  // US-015: Maintain thread context.
-  // TR-017: If it's a continuation message, use the existing thread_ts.
-  // TR-016: For a fresh mention, start a thread using its own ts.
-  const thread_ts =
-    text.includes("tell me more") ||
-    text.includes("plugin system") ||
-    text.includes("stress test")
-      ? (event as { thread_ts?: string }).thread_ts || event.ts
-      : event.ts;
+  const thread_ts = event.thread_ts ?? event.ts;
 
   if (!routingService) {
     await say({
@@ -58,7 +50,7 @@ export async function handleMention({
     channelId,
     isDirectMessage,
     actorUserId,
-    threadTs: (event as { thread_ts?: string }).thread_ts,
+    threadTs: event.thread_ts,
     messageTs: event.ts,
     requestedProject,
     requiredAccess: invokesSkill ? "operate" : "read",
