@@ -152,10 +152,14 @@ describe('US-016: Enforcement Skills Dispatch Injection', () => {
   const inlineEnforcementExample = "Quote `<code_quality>{{enforcement}}</code_quality>` as written.\r\n";
   const blockQuoteEnforcementExample = "> <code_quality>{{enforcement}}</code_quality>\r\n";
 
-  it.each(["gwrk-implement", "skill/fixture"])(
-    "sends equal legacy enforcement input once for %s",
-    async (workflow) => {
-      const marker = "{{enforcement}}";
+  it.each([
+    ["gwrk-implement", "{{enforcement}}"],
+    ["gwrk-implement", "Rules:\r\n<code_quality>\r\n{{enforcement}}\r\n</code_quality>"],
+    ["skill/fixture", "{{enforcement}}"],
+    ["skill/fixture", "Rules:\r\n<code_quality>\r\n{{enforcement}}\r\n</code_quality>"],
+  ])(
+    "sends equal legacy enforcement input once for %s (%j)",
+    async (workflow, marker) => {
       const capturedStdin = mockAgentStdin();
       const actualSkills = await vi.importActual<typeof skillRuntime>(
         "../plugins/skill-runtime.js",

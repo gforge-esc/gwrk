@@ -653,6 +653,14 @@ function splitLegacyStdin(task: TaskDispatch) {
     return undefined;
   }
 
+  if (stdin === prompt) {
+    return {
+      template: prompt,
+      suffix: "",
+      slot: findEnforcementSlot(prompt, "scoped-legacy"),
+    };
+  }
+
   const suffix = prompt ? legacyPromptSuffix(prompt, stdin) : undefined;
   if (prompt && suffix) {
     return {
