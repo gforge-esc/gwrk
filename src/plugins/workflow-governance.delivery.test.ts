@@ -167,9 +167,12 @@ describe("governance prompt delivery", () => {
       const codeQuality = captured.match(
         /<code_quality>([\s\S]*?)<\/code_quality>/,
       )?.[1];
-      expect.soft(codeQuality).toContain(
-        "<!-- enforcement-skill: python-standards -->",
-      );
+      expect
+        .soft(codeQuality)
+        .toContain("<!-- enforcement-skill: python-standards -->");
+      expect
+        .soft(codeQuality)
+        .not.toContain("<!-- enforcement-skill: gwrk-conventions -->");
       for (const nativeContent of [
         "docs/grounding/architecture.md",
         "specs/000-build-plan.md",
@@ -177,6 +180,55 @@ describe("governance prompt delivery", () => {
         "pnpm run build",
       ]) {
         expect.soft(captured).not.toContain(nativeContent);
+      }
+    },
+  );
+
+  it.each([
+    {
+      language: "Rust",
+      manifest: "Cargo.toml",
+      contents: '[package]\nname = "host"\nversion = "0.1.0"\n',
+    },
+    {
+      language: "Go",
+      manifest: "go.mod",
+      contents: "module example.com/host\n",
+    },
+  ])(
+    "uses the detected $language profile in both definition workflows with docs/architecture.md",
+    async ({ language, manifest, contents }) => {
+      await writeFile(join(root, manifest), contents);
+      await mkdir(join(root, "docs"));
+      await writeFile(
+        join(root, "docs/architecture.md"),
+        "# Host architecture\n",
+      );
+
+      for (const [workflow, guidance] of [
+        ["gwrk-specify", "host repository's dependency evidence"],
+        [
+          "gwrk-plan",
+          "Use the host repository's verification commands in each gate.",
+        ],
+      ]) {
+        const captured = await captureDispatch(workflow);
+        const codeQuality = captured.match(
+          /<code_quality>([\s\S]*?)<\/code_quality>/,
+        )?.[1];
+
+        expect.soft(captured, workflow).toContain(`language="${language}"`);
+        expect.soft(captured, workflow).toContain(guidance);
+        expect
+          .soft(codeQuality, workflow)
+          .toContain(
+            `<!-- enforcement-skill: ${language.toLowerCase()}-standards -->`,
+          );
+        expect
+          .soft(captured, workflow)
+          .not.toMatch(
+            /docs\/grounding\/architecture\.md|specs\/000-build-plan\.md|pnpm run build|<!-- enforcement-skill: typescript-standards -->/,
+          );
       }
     },
   );
