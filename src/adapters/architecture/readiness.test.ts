@@ -186,6 +186,20 @@ describe("repository architecture readiness", () => {
     });
   });
 
+  it("finds default CLI timestamp directories without Git or provenance", async () => {
+    await put(
+      "docs/architecture/assessments/2026-11-18T10-00-00-000Z/report.md",
+      "# Earlier report\n",
+    );
+    await put(
+      "docs/architecture/assessments/2026-11-18T12-00-00-000Z/report.md",
+      "# Later report\n",
+    );
+    expect(
+      (await readArchitectureReadiness(root))?.assessment.latest?.reportPath,
+    ).toBe("docs/architecture/assessments/2026-11-18T12-00-00-000Z/report.md");
+  });
+
   it("does not inspect report directories outside the project", async () => {
     const external = await realpath(
       await mkdtemp(join(tmpdir(), "gwrk-outside-readiness-")),

@@ -89,13 +89,25 @@ function json(file: FileRead): unknown {
   }
 }
 function archiveTimestamp(directory: string): number | undefined {
-  const date = /^(\d{4}-\d{2}-\d{2})(?:$|[-_])/.exec(directory)?.[1];
+  const date = /^(\d{4}-\d{2}-\d{2})(?:$|[-_T])/.exec(directory)?.[1];
   if (!date) return undefined;
   const timestamp = Date.parse(`${date}T00:00:00Z`);
-  return Number.isFinite(timestamp) &&
-    new Date(timestamp).toISOString().slice(0, 10) === date
-    ? timestamp
-    : undefined;
+  if (
+    !Number.isFinite(timestamp) ||
+    new Date(timestamp).toISOString().slice(0, 10) !== date
+  )
+    return undefined;
+  const clock = /^\d{4}-\d{2}-\d{2}T(\d{2})-(\d{2})-(\d{2})-(\d{3})Z$/.exec(
+    directory,
+  );
+  if (!clock) return timestamp;
+  const precise = Date.parse(
+    `${date}T${clock[1]}:${clock[2]}:${clock[3]}.${clock[4]}Z`,
+  );
+  return Number.isFinite(precise) &&
+    new Date(precise).toISOString().slice(0, 10) === date
+    ? precise
+    : timestamp;
 }
 
 export async function readArchitectureReadiness(

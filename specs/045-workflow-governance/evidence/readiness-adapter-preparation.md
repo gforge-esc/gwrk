@@ -10,8 +10,8 @@ The adapter finds dated archive reports and custom evidence through tracked or n
 
 ## Verification
 
-The initial suite failed while the adapter was absent. Ten behavior checks then passed. Two additional regressions exposed empty reports hiding earlier evidence and optional provenance fields hiding valid custom output. Both failed before repair.
+The initial suite failed while the adapter was absent. Ten behavior checks then passed. Three additional regressions exposed compatibility gaps. Empty reports hid earlier evidence. Optional provenance fields hid valid custom output. Default CLI timestamp directories were absent from the archive scan. Each case failed before repair.
 
-All twelve adapter checks and seventeen architecture checks now pass. Build and targeted Biome checks passed. Logs are /tmp/gwrk-045-readiness-red.log and /tmp/gwrk-045-readiness-regressions-red.log. The final result is /tmp/gwrk-045-readiness-final-green.log.
+All thirteen adapter checks and seventeen architecture checks now pass. Build and targeted Biome checks passed. Logs are /tmp/gwrk-045-readiness-red.log and /tmp/gwrk-045-readiness-regressions-red.log. The final result is /tmp/gwrk-045-readiness-final-green.log.
 
 The checkout environment helper is reused from reviewed feature 046. This preparation does not complete phase 2 tasks for engine discovery or command output.
