@@ -304,6 +304,72 @@ describe("fixture runner adapter", () => {
     });
   });
 
+  it.each([
+    { label: "null packet", output: null },
+    { label: "null regression flag", output: { optionARegression: null } },
+    { label: "string regression flag", output: { optionBRegression: "false" } },
+    {
+      label: "string score",
+      output: { scores: { optionA: "99", optionB: 40 } },
+    },
+    { label: "null score", output: { scores: { optionA: null, optionB: 40 } } },
+    { label: "unknown winner", output: { winner: "candidate" } },
+  ])("rejects $label without coercing judge evidence", async ({ output }) => {
+    const valid = {
+      summary: "Evidence-backed comparison",
+      intents: [],
+      winner: "A",
+      optionARegression: false,
+      optionBRegression: true,
+      scores: { optionA: 99, optionB: 40 },
+      citations: [
+        {
+          inputRef: "fixture",
+          outputRef: "optionA",
+          gateRef: "behavior",
+          claim: "Passed",
+        },
+      ],
+    };
+    const dispatcher = vi.fn(
+      async (): Promise<TaskResult> => ({
+        exitCode: 0,
+        stdout: JSON.stringify(
+          output === null ? null : { ...valid, ...output },
+        ),
+        stderr: "",
+        durationS: 0,
+        observedModel: "judge-v1",
+      }),
+    );
+    const runner = createFixtureRunner({ dispatcher });
+    await expect(
+      runner.judgeComparison(
+        {
+          backend: "fixture",
+          provider: "fixture",
+          family: "judge",
+          modelId: "judge-v1",
+          effort: "high",
+        },
+        {
+          comparisonId: "blinded",
+          role: "implement",
+          fixtureSummary: "Fixture",
+          optionA: "A",
+          optionB: "B",
+          gateEvidenceSummary: "Both passed",
+          roleScore: {
+            role: "implement",
+            candidateMedianMsToGreen: 10,
+            incumbentMedianMsToGreen: 20,
+            speedup: 2,
+          },
+        },
+      ),
+    ).rejects.toThrow();
+  });
+
   it("computes reproducible suite and workflow prompt hashes", async () => {
     const runner = createFixtureRunner();
     const { fixtureSuiteHash, workflowPromptHashes } =
@@ -377,7 +443,9 @@ describe("fixture runner adapter", () => {
       route: candidateRoute,
     });
 
-    expect(evidenceAlpha.sanitizedOutput).not.toBe(evidenceBeta.sanitizedOutput);
+    expect(evidenceAlpha.sanitizedOutput).not.toBe(
+      evidenceBeta.sanitizedOutput,
+    );
     expect(evidenceAlpha.sanitizedOutput).toContain("IMPLEMENTATION ALPHA");
     expect(evidenceAlpha.sanitizedOutput).toContain("Agent report ALPHA");
     expect(evidenceBeta.sanitizedOutput).toContain("IMPLEMENTATION BETA");
@@ -572,11 +640,7 @@ describe("fixture runner adapter", () => {
   it("throws when handoffArtifactDir is provided to a define request and does not pre-seed plan.md", async () => {
     const fakeHandoff = await mkdtemp(join(tmpdir(), "gwrk-fake-handoff-"));
     try {
-      writeFileSync(
-        join(fakeHandoff, "plan.md"),
-        "# Preseeded Plan\n",
-        "utf8",
-      );
+      writeFileSync(join(fakeHandoff, "plan.md"), "# Preseeded Plan\n", "utf8");
       const runner = createFixtureRunner();
       await expect(
         runner.runFixtureRepeat({
