@@ -25,7 +25,8 @@ vi.mock('node:child_process', async (importOriginal) => ({
   ...await importOriginal<typeof import('node:child_process')>(),
   spawn: vi.fn(),
 }));
-vi.mock('../engine/profile-detector.js', () => ({
+vi.mock('../engine/profile-detector.js', async (importOriginal) => ({
+  ...await importOriginal<typeof import('../engine/profile-detector.js')>(),
   detectProfile: vi.fn().mockResolvedValue({
     type: 'nodejs',
     stack: { language: 'TypeScript' },

@@ -22,6 +22,10 @@ import {
   resolveWorkflowPolicyScope,
 } from "../domain/policy-selection.js";
 import type { ProjectProfile } from "../domain/types.js";
+import {
+  detectProfile,
+  resolveWorkspacePolicyRoot,
+} from "../engine/profile-detector.js";
 import type { AgentBackend } from "../plugins/agent-backend.js";
 import { AgentBackendRegistry } from "../plugins/agent-registry.js";
 import { resolveExtensionContext } from "../plugins/extension-runtime.js";
@@ -515,8 +519,19 @@ const ENFORCEMENT_MARKER = "{{enforcement}}";
 
 function withoutGeneratedPolicySections(target: string): string {
   const masked = maskPromptExamples(target);
+  const headings = Array.from(masked.matchAll(/^#{1,2}[ \t]+([^\r\n]*)/gm));
+  const selectionIndex = headings.findIndex(
+    (heading) => heading[0].startsWith("##") && heading[1].trim() === "Selection",
+  );
+  const selectionHeading = headings[selectionIndex];
+  const selectionBody = selectionHeading
+    ? masked.slice(
+        selectionHeading.index + selectionHeading[0].length,
+        headings[selectionIndex + 1]?.index ?? masked.length,
+      )
+    : "";
   const selection = (name: string) =>
-    new RegExp(`^- ${name}: (.+)$`, "m").exec(masked)?.[1]?.trim();
+    new RegExp(`^- ${name}: (.+)$`, "m").exec(selectionBody)?.[1]?.trim();
   const language = selection("Language");
   const languageIsUnset = !language || /^(?:none|unspecified)$/i.test(language);
   const languageFallback =
@@ -572,7 +587,6 @@ function withoutGeneratedPolicySections(target: string): string {
       ],
     ],
   ]);
-  const headings = Array.from(masked.matchAll(/^#{1,2}[ \t]+([^\r\n]*)/gm));
   let projected = "";
   let start = 0;
   for (const [index, heading] of headings.entries()) {
@@ -793,25 +807,26 @@ export async function dispatchToAgent(task: TaskDispatch): Promise<TaskResult> {
   const startTime = Date.now();
   // ADR-009: Inject project knowledge documents (grounding)
   const workDir = projectRoot;
+  const policyRoot = resolveWorkspacePolicyRoot(workDir);
   const groundingFiles = [
     {
-      path: path.join(workDir, ".gwrk/architecture.md"),
+      path: path.join(policyRoot, ".gwrk/architecture.md"),
       tag: "architecture_target",
     },
     {
-      path: path.join(workDir, ".gwrk/ontology/domain.md"),
+      path: path.join(policyRoot, ".gwrk/ontology/domain.md"),
       tag: "domain_ontology",
     },
     {
-      path: path.join(workDir, ".gwrk/perspective/hierarchy.md"),
+      path: path.join(policyRoot, ".gwrk/perspective/hierarchy.md"),
       tag: "information_hierarchy",
     },
     {
-      path: path.join(workDir, ".gwrk/perspective/ux-posture.md"),
+      path: path.join(policyRoot, ".gwrk/perspective/ux-posture.md"),
       tag: "ux_posture",
     },
     {
-      path: path.join(workDir, ".gwrk/decisions/index.md"),
+      path: path.join(policyRoot, ".gwrk/decisions/index.md"),
       tag: "architecture_decisions",
     },
   ];
@@ -848,11 +863,10 @@ export async function dispatchToAgent(task: TaskDispatch): Promise<TaskResult> {
     const scope = resolveWorkflowPolicyScope(task.workflow, task.type);
 
     // R007: Detect project profile for language-aware enforcement routing
-    const { detectProfile } = await import("../engine/profile-detector.js");
-    const profile = task.profile ?? (await detectProfile(projectRoot));
+    const profile = task.profile ?? (await detectProfile(workDir));
 
     const resolvedPolicy = await resolveEnforcementSkills(
-      projectRoot,
+      policyRoot,
       scope,
       profile,
       { architectureTarget },

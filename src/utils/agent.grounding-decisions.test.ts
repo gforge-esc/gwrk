@@ -27,7 +27,8 @@ vi.mock("../plugins/skill-runtime.js", () => ({
 vi.mock("../plugins/extension-runtime.js", () => ({
   resolveExtensionContext: vi.fn().mockResolvedValue([]),
 }));
-vi.mock("../engine/profile-detector.js", () => ({
+vi.mock("../engine/profile-detector.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../engine/profile-detector.js")>()),
   detectProfile: vi.fn().mockResolvedValue({
     type: "nodejs",
     stack: { language: "TypeScript" },

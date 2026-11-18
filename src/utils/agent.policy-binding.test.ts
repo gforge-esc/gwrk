@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import { execFileSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -9,7 +10,8 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { installArchitectureContext } from "../adapters/architecture/context-files.js";
 import { resolveDesign } from "../domain/architecture-context.js";
 import type { ProjectProfile } from "../domain/types.js";
-import { dispatchToAgent } from "./agent.js";
+import { WorkflowRuntime } from "../plugins/workflow-runtime.js";
+import { dispatchToAgent, SAFE_AGENT_ENV } from "./agent.js";
 
 let root: string;
 beforeEach(() => {
@@ -38,6 +40,91 @@ async function prompt(
   return JSON.parse(result.stdout).message.content as string;
 }
 describe("shared effective policy dispatch", () => {
+  it("uses the owning worktree policy and grounding for a registered workspace", async () => {
+    const worktree = join(root, "worktree");
+    const workspace = join(worktree, "services/api");
+    const git = (...args: string[]) =>
+      execFileSync("git", args, {
+        cwd: root,
+        env: { ...process.env, ...SAFE_AGENT_ENV },
+        stdio: "pipe",
+      });
+    git("init");
+    git(
+      "-c", "user.name=Test",
+      "-c", "user.email=test@example.com",
+      "-c", "commit.gpgsign=false",
+      "-c", "core.hooksPath=/dev/null",
+      "commit", "--author=Test <test@example.com>", "--no-edit", "--allow-empty",
+      "-m", "Fixture",
+    );
+    git("worktree", "add", "--detach", worktree, "HEAD");
+
+    const design = resolveDesign({ architecture: "hexagonal-functional" });
+    const projectStack = { language: "TypeScript", framework: "Fastify" };
+    const workspaceStack = { language: "Python", framework: "FastAPI" };
+    writeFileSync(
+      join(worktree, ".gwrkrc.json"),
+      JSON.stringify({
+        project: { name: "binding-fixture", type: "nodejs", stack: projectStack, design },
+        workspaces: { "services/api": { type: "python", stack: workspaceStack } },
+      }),
+    );
+    mkdirSync(workspace, { recursive: true });
+    writeFileSync(join(workspace, "requirements.txt"), "fastapi\n");
+    await installArchitectureContext(worktree, {
+      projectName: "binding-fixture",
+      design,
+      ...projectStack,
+      decisionsDir: "docs/decisions",
+    });
+    const index = "# Architecture Decision Index\n\nWorktree decisions for the fixture API.\n";
+    mkdirSync(join(worktree, ".gwrk/decisions"), { recursive: true });
+    writeFileSync(join(worktree, ".gwrk/decisions/index.md"), index);
+    const pack = join(worktree, ".gwrk/plugins/skills/fixture-fastapi");
+    mkdirSync(pack, { recursive: true });
+    writeFileSync(
+      join(pack, "manifest.yaml"),
+      [
+        "type: skill",
+        "name: fixture-fastapi",
+        "version: 1.0.0",
+        "description: Fixture FastAPI policy",
+        "tier: enforcement",
+        "scope: implementation",
+        "language: Python",
+        "framework: FastAPI",
+      ].join("\n"),
+    );
+    const packRules = "Fixture FastAPI pack requires typed response models.";
+    writeFileSync(join(pack, "SKILL.md"), packRules);
+
+    const { taskResult } = await new WorkflowRuntime().executeWorkflow(
+      "gwrk-implement",
+      "Keep workspace task text.",
+      {
+        projectRoot: workspace,
+        agent: "agy",
+        nativeOnly: true,
+        quiet: true,
+        dispatcher: (task) => {
+          expect(task.workDir).toBe(workspace);
+          expect(task.profile?.stack).toMatchObject(workspaceStack);
+          expect(task.profile?.design).toEqual(design);
+          return dispatchToAgent({ ...task, dryRun: true });
+        },
+      },
+    );
+    expect(taskResult.exitCode).toBe(0);
+    const rendered: string = JSON.parse(taskResult.stdout).message.content;
+    const policy = rendered.match(/<code_quality>\s*<effective_policy>([\s\S]*?)<\/effective_policy>\s*<\/code_quality>/)?.[1];
+    expect(policy).toContain("FastAPI routers");
+    expect.soft(policy).toContain(packRules);
+    const target = rendered.match(/<architecture_target>\n([\s\S]*?)\n<\/architecture_target>/)?.[1];
+    expect.soft(target ?? "").toContain("Domain policy MUST depend inward");
+    expect.soft(rendered).toContain(`<architecture_decisions>\n${index}\n</architecture_decisions>`);
+  });
+
   it.each(["gwrk-spec", "gwrk-implement", "review-code-cli"])(
     "binds the selected workspace profile once in %s without launching an agent",
     async (workflow) => {
@@ -328,6 +415,50 @@ it("preserves maintainer additions while replacing generated root stack guidance
   expect.soft(rendered).not.toContain("Use interfaces for ports");
   expect.soft(rendered).toContain("typing.Protocol");
   expect(readFileSync(path, "utf8")).toBe(target);
+});
+
+it("reads projection fields from the active Selection section", async () => {
+  const design = resolveDesign({ architecture: "hexagonal-functional" });
+  await installArchitectureContext(root, {
+    projectName: "binding-fixture",
+    design,
+    language: "TypeScript",
+    framework: "Fastify",
+    decisionsDir: "docs/decisions",
+  });
+  const target = join(root, ".gwrk/architecture.md");
+  const maintainerNote = [
+    "## Maintainer notes",
+    "",
+    "- Language: Go",
+    "- Framework: Gin",
+    "",
+    "```markdown",
+    "## Selection",
+    "- Language: Go",
+    "- Framework: Gin",
+    "```",
+  ].join("\n");
+  const original = Buffer.from(
+    readFileSync(target, "utf8").replace(
+      /^## Selection$/m,
+      `${maintainerNote}\n\n## Selection`,
+    ),
+  );
+  writeFileSync(target, original);
+  expect(original.toString()).toContain("Use interfaces for ports");
+  expect(original.toString()).toContain("Fastify routes");
+
+  const rendered = await prompt("gwrk-implement", {
+    type: "python",
+    stack: { language: "Python", framework: "FastAPI" },
+    design,
+  });
+  expect(rendered).toContain(maintainerNote);
+  expect(rendered).toContain("FastAPI routers");
+  expect.soft(rendered).not.toContain("Use interfaces for ports");
+  expect.soft(rendered).not.toContain("Fastify routes");
+  expect(readFileSync(target)).toEqual(original);
 });
 
 it.each([
