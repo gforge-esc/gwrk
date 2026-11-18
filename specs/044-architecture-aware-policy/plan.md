@@ -208,3 +208,5 @@ Record pack versions and compatibility results in the feature review. A pack tha
 Phase 3 regression coverage rejects blank skill bodies before selection. The CLI reports disabled overrides when they suppress a compatible lower copy. RED reproduced four failures in `/tmp/gwrk-044-blank-policy-red.log`. The repaired phase gate passes 86 tests.
 
 Phase 3 shared-path alias regression keeps an installed policy active when a disabled override alias points to the same directory. Both project disable mechanisms failed before the effective-name deduplication repair. The phase gate now passes 95 checks.
+
+Phase 3 canonical pack identity regression observes duplicate prompt rules when an override uses a symbolic link. Candidate discovery now resolves physical directories before prompt deduplication while preserving each effective policy name. The symbolic-link case failed before repair. Both disable mechanisms are also covered through links. All 101 phase checks pass.

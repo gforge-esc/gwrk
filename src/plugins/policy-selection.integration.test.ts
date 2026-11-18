@@ -443,6 +443,16 @@ describe("project enforcement candidate discovery", () => {
     {
       setting: { disable: [name] },
       aliasStatus: "disabled",
+      pathKind: "symbolic link",
+    },
+    {
+      setting: { plugins: { [name]: { enabled: false } } },
+      aliasStatus: "disabled",
+      pathKind: "symbolic link",
+    },
+    {
+      setting: { disable: [name] },
+      aliasStatus: "disabled",
       pathKind: "direct path",
     },
     {

@@ -243,7 +243,10 @@ export class PluginLoader {
       source: PolicySourceLayer,
       overrideName?: string,
     ) => {
-      const resolvedPath = path.resolve(pluginPath);
+      const resolvedPath = await fs
+        .realpath(path.resolve(pluginPath))
+        .catch(() => undefined);
+      if (resolvedPath === undefined) return;
       const manifest = await this.loadManifest(resolvedPath).catch(
         () => undefined,
       );
