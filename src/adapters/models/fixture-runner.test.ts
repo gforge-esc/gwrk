@@ -289,12 +289,6 @@ describe("fixture runner adapter", () => {
       optionA: "Clean pure domain queue selection function implementation",
       optionB: "Incomplete queue selection function without triage handling",
       gateEvidenceSummary: "Option A passed all deterministic gates",
-      roleScore: {
-        role: "implement",
-        candidateMedianMsToGreen: 100,
-        incumbentMedianMsToGreen: 120,
-        speedup: 1.2,
-      },
     };
 
     const judgeDispatcher = vi.fn(
@@ -414,12 +408,6 @@ describe("fixture runner adapter", () => {
           optionA: "A",
           optionB: "B",
           gateEvidenceSummary: "Both passed",
-          roleScore: {
-            role: "implement",
-            candidateMedianMsToGreen: 10,
-            incumbentMedianMsToGreen: 20,
-            speedup: 2,
-          },
         },
       ),
     ).rejects.toThrow();

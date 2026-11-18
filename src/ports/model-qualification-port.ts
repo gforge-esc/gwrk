@@ -9,7 +9,6 @@ import type {
   DiscoverySnapshot,
   ModelCandidate,
   ModelRole,
-  RoleScore,
   RunnerScope,
 } from "../domain/model-qualification.js";
 
@@ -100,7 +99,6 @@ export interface JudgeVerdictPacket {
   optionA: string;
   optionB: string;
   gateEvidenceSummary: string;
-  roleScore: RoleScore;
 }
 
 export interface StructuredJudgeVerdict {

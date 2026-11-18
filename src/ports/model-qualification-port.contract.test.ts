@@ -199,12 +199,6 @@ it("exposes the documented smoke, repeat and judge contracts to consumers", asyn
     optionA: "first output",
     optionB: "second output",
     gateEvidenceSummary: "Both passed",
-    roleScore: {
-      role: "implement",
-      candidateMedianMsToGreen: 10,
-      incumbentMedianMsToGreen: 20,
-      speedup: 2,
-    },
   });
   expect(result).toMatchObject({
     judgeBackend: judgeRoute.backend,

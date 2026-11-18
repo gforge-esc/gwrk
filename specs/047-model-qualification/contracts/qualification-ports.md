@@ -80,6 +80,7 @@ export interface FixtureRepeatRequest {
     effort?: string;
   };
   handoffArtifactDir?: string;
+  artifactOutputDir?: string;
 }
 
 export interface FixtureRepeatEvidence {
@@ -147,6 +148,9 @@ export interface SmokeProbePort {
 }
 
 export interface QualificationRunnerPort {
+  loadSuite(): Promise<{
+    fixtures: readonly { id: string; roles: readonly ("define" | "implement" | "review")[] }[];
+  }>;
   computeSuiteHashes(): Promise<{
     fixtureSuiteHash: string;
     workflowPromptHashes: Record<string, string>;

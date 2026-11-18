@@ -363,7 +363,6 @@ export async function evaluateModels(
   );
 
   let rawGateEvidenceSummary = "";
-  let packetRoleScore: RoleScore;
 
   if (roleScore.role === "define") {
     const candidateScore = roleScore;
@@ -381,7 +380,6 @@ export async function evaluateModels(
         ? incumbentScore.coverage
         : candidateScore.coverage;
     rawGateEvidenceSummary = `Option A coverage ${optACoverage}, Option B coverage ${optBCoverage}`;
-    packetRoleScore = candidateOption === "A" ? candidateScore : incumbentScore;
   } else if (roleScore.role === "implement") {
     const optAMs =
       candidateOption === "A"
@@ -392,23 +390,6 @@ export async function evaluateModels(
         ? roleScore.incumbentMedianMsToGreen
         : roleScore.candidateMedianMsToGreen;
     rawGateEvidenceSummary = `Option A ${optAMs}ms to green, Option B ${optBMs}ms`;
-    if (candidateOption === "A") {
-      packetRoleScore = roleScore;
-    } else {
-      const speedup =
-        roleScore.incumbentMedianMsToGreen !== null &&
-        roleScore.candidateMedianMsToGreen !== null &&
-        roleScore.incumbentMedianMsToGreen > 0
-          ? roleScore.candidateMedianMsToGreen /
-            roleScore.incumbentMedianMsToGreen
-          : null;
-      packetRoleScore = {
-        role: "implement",
-        candidateMedianMsToGreen: roleScore.incumbentMedianMsToGreen,
-        incumbentMedianMsToGreen: roleScore.candidateMedianMsToGreen,
-        speedup,
-      };
-    }
   } else {
     const candidateScore = roleScore;
     const incumbentScore = scoreRole(
@@ -425,7 +406,6 @@ export async function evaluateModels(
         ? incumbentScore.coverage
         : candidateScore.coverage;
     rawGateEvidenceSummary = `Option A coverage ${optACoverage}, Option B coverage ${optBCoverage}`;
-    packetRoleScore = candidateOption === "A" ? candidateScore : incumbentScore;
   }
 
   const gateEvidenceSummary = sanitizeIdentityText(
@@ -440,7 +420,6 @@ export async function evaluateModels(
     optionA,
     optionB,
     gateEvidenceSummary,
-    roleScore: packetRoleScore,
   };
 
   assertNoSecretMaterial(packet);

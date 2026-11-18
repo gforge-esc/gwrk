@@ -102,6 +102,18 @@ const input = {
 };
 
 describe("model qualification orchestration", () => {
+  it("keeps candidate and incumbent role scores outside blinded judge packets", async () => {
+    const { deps, judgeComparison } = setup();
+    const result = await evaluateModels(deps, input);
+    expect(result.roleScore).toBeDefined();
+    expect(judgeComparison).toHaveBeenCalledTimes(2);
+    for (const [, packet] of judgeComparison.mock.calls) {
+      expect(packet).not.toHaveProperty("roleScore");
+      expect(JSON.stringify(packet)).not.toContain("candidateMedianMsToGreen");
+      expect(JSON.stringify(packet)).not.toContain("incumbentMedianMsToGreen");
+    }
+  });
+
   it.each([true, false])(
     "rejects secret fixture evidence before judge dispatch with gatePasses=%s",
     async (gatePasses) => {
