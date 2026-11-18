@@ -8,6 +8,7 @@ import { createAgentPortAdapter } from "../adapters/agents/index.js";
 import {
   type EffectivePolicy,
   type EnforcementScope,
+  type PolicySourceLayer,
   composeEffectivePolicy,
 } from "../domain/policy-selection.js";
 import type { ProjectProfile } from "../engine/profile-detector.js";
@@ -222,16 +223,17 @@ export async function resolveEffectivePolicy(
 
 export function formatEffectivePolicyPrompt(policy: EffectivePolicy): string {
   const sections: string[] = [];
-  const lastSelectedPath = new Map<string, number>();
-  policy.selectedSkills.forEach(({ path, content }, index) => {
-    if (path !== undefined && content) lastSelectedPath.set(path, index);
-  });
-  for (const [
-    index,
-    { manifest, path, content },
-  ] of policy.selectedSkills.entries()) {
+  const highestSelectedLayer = new Map<string, PolicySourceLayer>();
+  // Policy composition orders selected skills from lowest to highest precedence.
+  for (const { path, source, content } of policy.selectedSkills) {
+    if (path !== undefined && content) highestSelectedLayer.set(path, source);
+  }
+  for (const { manifest, path, source, content } of policy.selectedSkills) {
     if (!content) continue;
-    if (path !== undefined && lastSelectedPath.get(path) !== index) continue;
+    if (path !== undefined) {
+      if (highestSelectedLayer.get(path) !== source) continue;
+      highestSelectedLayer.delete(path);
+    }
     sections.push(`<!-- enforcement-skill: ${manifest.name} -->\n${content}`);
   }
   if (policy.gaps.length > 0) {
