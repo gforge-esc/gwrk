@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import fs from "node:fs/promises";
+import { basename, dirname, isAbsolute, join, relative, sep } from "node:path";
 import { Command } from "commander";
 import { logCliOutput } from "../adapters/cli/output-scope.js";
 import { amendAtSection, appendSection, decide } from "../engine/adr-amend.js";
@@ -76,6 +77,8 @@ export interface AdrArgs {
   body?: string;
   /** Where the project-root walk starts. Defaults to the working directory. */
   cwd?: string;
+  /** Restrict a decision to this canonical checkout. */
+  verifiedCheckoutRoot?: string;
 }
 
 /** Stands in for the title in a `--print` dump, which names no record. */
@@ -101,12 +104,64 @@ function normalizeAdrId(raw: string): string {
   return trimmed;
 }
 
+async function resolveIndexDestination(filePath: string): Promise<string> {
+  try {
+    await fs.lstat(filePath);
+  } catch (error) {
+    const parent = dirname(filePath);
+    if (
+      (error as NodeJS.ErrnoException).code !== "ENOENT" ||
+      parent === filePath
+    ) {
+      throw error;
+    }
+    return join(await resolveIndexDestination(parent), basename(filePath));
+  }
+  return fs.realpath(filePath);
+}
+
+async function resolveAdrPathInCheckout(
+  checkout: string,
+  filePath: string,
+  resolvePath: (path: string) => Promise<string> = fs.realpath,
+): Promise<string> {
+  const resolved = await resolvePath(filePath).catch(() => undefined);
+  if (resolved) {
+    const suffix = relative(checkout, resolved);
+    if (
+      suffix !== ".." &&
+      !suffix.startsWith(`..${sep}`) &&
+      !isAbsolute(suffix)
+    ) {
+      return resolved;
+    }
+  }
+  throw new CommandError(
+    "Could not verify ADR paths inside the verified checkout.",
+    1,
+  );
+}
+
 async function resolveTargetRecord(
   cwd: string,
   target: string | undefined,
+  checkout?: string,
 ): Promise<{ projectRoot: string; decisionsDir: string; record: AdrRecord }> {
-  const projectRoot = await findProjectRoot(cwd);
-  const decisionsDir = await resolveDecisionsDir(projectRoot);
+  const discoveredRoot = await findProjectRoot(cwd);
+  const projectRoot = checkout
+    ? await resolveAdrPathInCheckout(checkout, discoveredRoot)
+    : discoveredRoot;
+  const configuredDir = await resolveDecisionsDir(projectRoot);
+  const decisionsDir = checkout
+    ? await resolveAdrPathInCheckout(checkout, configuredDir)
+    : configuredDir;
+  if (checkout) {
+    await resolveAdrPathInCheckout(
+      checkout,
+      join(projectRoot, ".gwrk", "decisions", "index.md"),
+      resolveIndexDestination,
+    );
+  }
   const records = await parseCorpus(decisionsDir);
   const id = normalizeAdrId(target ?? "");
   const record = records.find(
@@ -184,7 +239,15 @@ export async function adrCommandHandler(args: AdrArgs): Promise<string> {
   }
 
   if (args.decide) {
-    const { record } = await resolveTargetRecord(cwd, args.target);
+    const { verifiedCheckoutRoot } = args;
+    const { projectRoot, decisionsDir, record } = await resolveTargetRecord(
+      cwd,
+      args.target,
+      verifiedCheckoutRoot,
+    );
+    const filePath = verifiedCheckoutRoot
+      ? await resolveAdrPathInCheckout(verifiedCheckoutRoot, record.filePath)
+      : record.filePath;
     let result: ReturnType<typeof decide>;
     try {
       result = decide(record, todayLocal());
@@ -192,9 +255,13 @@ export async function adrCommandHandler(args: AdrArgs): Promise<string> {
       const message = error instanceof Error ? error.message : String(error);
       throw new CommandError(message, 1);
     }
-    await fs.writeFile(result.filePath, result.content, "utf-8");
-    await reindexProject(cwd);
-    return result.filePath;
+    await fs.writeFile(filePath, result.content, "utf-8");
+    if (verifiedCheckoutRoot) {
+      await writeIndex(projectRoot, await parseCorpus(decisionsDir));
+    } else {
+      await reindexProject(cwd);
+    }
+    return filePath;
   }
 
   if (args.amend || args.appendSection) {

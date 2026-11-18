@@ -176,7 +176,7 @@ Send private merge warnings to the authorized actor in the bound feature thread 
 
 For log and revision buttons (TR-009), replace Alpha's checkout with Beta. Return a checkout warning for logs and leave both revision receipts unclaimed. After restoring Alpha, show its logs and start one revision per button across concurrent clicks.
 
-For View Logs (TR-009), keep a review card bound to a missing feature. Save a run log under a longer feature ID with the same prefix. Send a private reply in the bound thread that reports missing logs. Assert the reply excludes the other feature's gate result and leaves receipts untouched.
+For View Logs (TR-009), leave the bound feature directory missing or link it to a sibling feature. Put a run log in that sibling with a longer ID that shares the prefix. Assert one private no-logs reply in the bound thread. Assert zero sibling gate results, receipt claims and receipt completions.
 
 Replace Alpha's checkout with Beta for Approve Spec and both redispatch buttons (TR-009). Deny those clicks before claiming a receipt or starting work. After restoring Alpha, accept one claim and one launch or enqueue per button across concurrent clicks. Approve Spec runs `gwrk define plan <feature>` from the verified checkout and records one executed receipt.
 
@@ -193,6 +193,8 @@ For App Home Pulse (TR-012), exclude the replacement repository and its specs wh
 Status, logs and effort read files inside the verified checkout (TR-012a). Apply the same file boundary to Pulse and mention context. Skip filesystem-based thread lookup and disk history when the checkout fails verification. Use a verified mirror for logs and verify the queue's own checkout before dispatch.
 
 Test external feature links for dispatch, define and ship (TR-012a). Deny all three commands. The ADR list command shows the local decision index. Omit the index content when the same path links to another checkout.
+
+Decide a local ADR and verify its status and generated index (TR-012a). Reject a configured or linked corpus outside the checkout. Reject an index file or directory linked outside the checkout and a dangling index link. Assert a private reply and zero ADR or index writes for each denial.
 
 Point Alpha's specs at Beta's specs and request a missing feature with `ship` and `approve` (TR-012a). Both commands return a private checkout-scoped error without listing features. Assert zero process launches, pull request lookups and merges. Give `ship` a prefix that matches a local feature and a linked foreign feature. Assert it resolves the local feature and replies in its thread.
 

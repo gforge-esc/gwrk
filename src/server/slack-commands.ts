@@ -879,6 +879,7 @@ const handlers: Record<string, SlashCommandHandler> = {
           target: adrId,
           decide: true,
           cwd: context.projectRoot,
+          verifiedCheckoutRoot: context.verifiedCheckoutRoot,
         });
         return {
           response_type: "in_channel",
@@ -980,7 +981,7 @@ export function buildSlackLogResponse(
 
   // Read ship run JSON files from specs/<feature>/.gwrk/runs/
   const featureDir = options.exactFeature
-    ? scopedFeatureDirectory(projectRoot, featureId)
+    ? scopedFeatureDirectory(projectRoot, featureId, { exactId: true })
     : resolveScopedSlackFeature(projectRoot, featureId)?.directory;
   const runsDir = featureDir
     ? scopedFeaturePath(featureDir, ".gwrk", "runs")

@@ -29,14 +29,17 @@ export function scopedSpecsDirectory(projectRoot: string): string | undefined {
 export function scopedFeatureDirectory(
   projectRoot: string,
   featureId: string,
+  options: { exactId?: boolean } = {},
 ): string | undefined {
   if (!/^[a-zA-Z0-9][a-zA-Z0-9_-]*$/.test(featureId)) return undefined;
   const specs = scopedSpecsDirectory(projectRoot);
   if (!specs) return undefined;
   try {
-    const feature = realpathSync(join(specs, featureId));
+    const expected = join(specs, featureId);
+    const feature = realpathSync(expected);
     return within(specs, feature) &&
       feature !== specs &&
+      (!options.exactId || feature === expected) &&
       statSync(feature).isDirectory()
       ? feature
       : undefined;

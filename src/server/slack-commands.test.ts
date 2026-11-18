@@ -4,8 +4,10 @@
 
 import { execFileSync } from "node:child_process";
 import {
+  existsSync,
   mkdirSync,
   mkdtempSync,
+  readFileSync,
   realpathSync,
   renameSync,
   rmSync,
@@ -13,7 +15,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, relative } from "node:path";
 import {
   type Mocked,
   beforeEach,
@@ -103,6 +105,14 @@ function registryFor(
     threads: [{ ...SYNTHETIC_THREAD_ALPHA, projectId: alpha.projectId }],
   });
 }
+
+const proposedAdr = `# ADR-010: Track the decision
+
+> **Status:** Proposed
+> **Date:** 2026-01-01
+> **Decision:** Track the decision in the index.
+> **Decision Scope:** Slack
+`;
 
 describe("slack-commands (FR-015, US-004)", () => {
   let mockQueue: Mocked<DispatchQueue>;
@@ -522,6 +532,94 @@ describe("slack-commands (FR-015, US-004)", () => {
       "Beta private decision index",
     );
   });
+
+  it("decides a local ADR and creates its index inside the authorized checkout", async () => {
+    const decisions = join(context.projectRoot, "docs", "decisions");
+    const adrPath = join(decisions, "ADR-010-track-the-decision.md");
+    writeFileSync(
+      join(context.projectRoot, ".gwrkrc.json"),
+      JSON.stringify({ project: { name: "alpha" } }),
+    );
+    mkdirSync(decisions, { recursive: true });
+    writeFileSync(adrPath, proposedAdr);
+
+    const response = await handleSlashCommand("adr decide ADR-010", context);
+
+    expect(response.response_type).toBe("in_channel");
+    expect(readFileSync(adrPath, "utf-8")).toContain("**Status:** Decided");
+    expect(
+      readFileSync(
+        join(context.projectRoot, ".gwrk/decisions/index.md"),
+        "utf-8",
+      ),
+    ).toContain("| ADR-010 | Slack | Decided |");
+  });
+
+  it.each([
+    "linked corpus",
+    "configured foreign corpus",
+    "linked index",
+    "linked index directory",
+    "dangling index",
+  ])(
+    "rejects an ADR decision with a %s before either write",
+    async (boundary) => {
+      const root = mkdtempSync(join(tmpdir(), "gwrk-slash-adr-boundary-"));
+      onTestFinished(() => rmSync(root, { recursive: true, force: true }));
+      const beta = initCheckout(SYNTHETIC_PROJECT_BETA, join(root, "beta"));
+      const alpha = context.projectRoot;
+      const localDecisions = join(alpha, "docs", "decisions");
+      const foreignDecisions = join(beta.localRoot, "docs", "decisions");
+      const localIndexDir = join(alpha, ".gwrk", "decisions");
+      const foreignIndexDir = join(beta.localRoot, ".gwrk", "decisions");
+      const localIndex = join(localIndexDir, "index.md");
+      const foreignIndex = join(foreignIndexDir, "index.md");
+      const adrName = "ADR-010-track-the-decision.md";
+      const foreignAdr = join(foreignDecisions, adrName);
+      const localAdr = join(localDecisions, adrName);
+
+      mkdirSync(foreignDecisions, { recursive: true });
+      mkdirSync(foreignIndexDir, { recursive: true });
+      writeFileSync(foreignAdr, proposedAdr);
+      const project = {
+        name: "alpha",
+        architecture:
+          boundary === "configured foreign corpus"
+            ? { decisions: relative(alpha, foreignDecisions) }
+            : undefined,
+      };
+      writeFileSync(join(alpha, ".gwrkrc.json"), JSON.stringify({ project }));
+      if (boundary === "linked corpus") {
+        mkdirSync(join(alpha, "docs"));
+        symlinkSync(foreignDecisions, localDecisions, "dir");
+      } else {
+        mkdirSync(localDecisions, { recursive: true });
+        writeFileSync(localAdr, proposedAdr);
+      }
+      if (boundary === "linked index directory") {
+        mkdirSync(join(alpha, ".gwrk"));
+        symlinkSync(foreignIndexDir, localIndexDir, "dir");
+      } else if (boundary === "linked index" || boundary === "dangling index") {
+        mkdirSync(localIndexDir, { recursive: true });
+        if (boundary === "linked index")
+          writeFileSync(foreignIndex, "Beta index");
+        symlinkSync(foreignIndex, localIndex);
+      }
+
+      const response = await handleSlashCommand("adr decide ADR-010", context);
+
+      expect.soft(response.response_type).toBe("ephemeral");
+      expect.soft(response.blocks[0].text.text).toContain("verified checkout");
+      expect.soft(readFileSync(localAdr, "utf-8")).toBe(proposedAdr);
+      expect.soft(readFileSync(foreignAdr, "utf-8")).toBe(proposedAdr);
+      if (boundary === "linked index") {
+        expect(readFileSync(foreignIndex, "utf-8")).toBe("Beta index");
+      } else {
+        expect.soft(existsSync(localIndex)).toBe(false);
+        expect(existsSync(foreignIndex)).toBe(false);
+      }
+    },
+  );
 
   it("handles approve command — merges PR via VCS port", async () => {
     const merge = vi.spyOn(context.vcs!, "mergePullRequest");
