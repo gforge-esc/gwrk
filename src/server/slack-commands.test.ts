@@ -84,6 +84,7 @@ describe("slack-commands (FR-015, US-004)", () => {
       projectRoot: "/tmp",
       buildServerUrl: "http://localhost:3000",
       queue: mockQueue,
+      queueProjectId: SYNTHETIC_PROJECT_ALPHA.projectId,
       monitor: mockMonitor,
       git: mockGit,
       routingService,
@@ -92,6 +93,8 @@ describe("slack-commands (FR-015, US-004)", () => {
   });
 
   it("returns ephemeral REMOTE_AUTH_REQUIRED denial and runs no side effect when routingService is undefined", async () => {
+    const { spawn } = await import("node:child_process");
+    const merge = vi.spyOn(context.vcs!, "mergePullRequest");
     const contextWithoutRouting: CommandContext = {
       ...context,
       routingService: undefined,
@@ -103,6 +106,8 @@ describe("slack-commands (FR-015, US-004)", () => {
     expect(response.response_type).toBe("ephemeral");
     expect(response.blocks[0].text.text).toContain("REMOTE_AUTH_REQUIRED");
     expect(mockQueue.enqueue).not.toHaveBeenCalled();
+    expect(spawn).not.toHaveBeenCalled();
+    expect(merge).not.toHaveBeenCalled();
   });
 
   it("handles status command without args", async () => {

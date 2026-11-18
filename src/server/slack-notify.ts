@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { logCliError, warnCli } from "../adapters/cli/output-scope.js";
+import type { NotificationReceipt } from "../ports/notification-port.js";
 import { loadConfig } from "../utils/config.js";
 import type { SlackMessage } from "./slack-messages.js";
 import { type SlackEvent, presenceManager } from "./slack-presence.js";
@@ -19,8 +20,9 @@ export async function notifySlack(
   message: SlackMessage,
   event?: SlackEvent,
   options: { opsOnly?: boolean } = {},
-): Promise<void> {
+): Promise<NotificationReceipt | undefined> {
   const app = getSlackApp();
+  let receipt: NotificationReceipt | undefined;
 
   if (options.opsOnly) {
     try {
@@ -39,7 +41,7 @@ export async function notifySlack(
     if (event) {
       await presenceManager.handleNotification(event, message);
     } else {
-      await sendSlackMessage(message);
+      receipt = await sendSlackMessage(message);
     }
   } else {
     // Webhook fallback — fire-and-forget, no interactive elements
@@ -50,12 +52,16 @@ export async function notifySlack(
   if (loadTelegramConfig()) {
     await notifyTelegram(message);
   }
+  return receipt;
 }
 
 /**
  * Send a message via Socket Mode app (rich: blocks, buttons, actions).
  */
-export async function sendSlackMessage(message: SlackMessage): Promise<void> {
+export async function sendSlackMessage(
+  message: SlackMessage,
+  options: { webhookFallback?: boolean } = {},
+): Promise<NotificationReceipt | undefined> {
   const app = getSlackApp();
   if (!app) return;
 
@@ -76,18 +82,29 @@ export async function sendSlackMessage(message: SlackMessage): Promise<void> {
   }
 
   try {
-    await app.client.chat.postMessage({
+    const response = await app.client.chat.postMessage({
       channel: channelId,
       text: message.text,
       blocks: message.blocks,
+      thread_ts: message.thread_ts,
     });
+    if (response.ok) {
+      return {
+        delivered: true,
+        channelId: response.channel,
+        messageTs: response.ts,
+        threadTs: response.message?.thread_ts ?? message.thread_ts,
+      };
+    }
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
     logCliError(`Failed to post Slack notification: ${errorMessage}`);
 
-    // Fallback to webhook on Socket Mode failure
-    await sendViaWebhook(message);
+    if (options.webhookFallback !== false) {
+      await sendViaWebhook(message);
+    }
   }
+  return undefined;
 }
 
 /**

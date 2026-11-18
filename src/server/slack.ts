@@ -5,6 +5,7 @@
 import { App } from "@slack/bolt";
 import { logCliOutput, warnCli } from "../adapters/cli/output-scope.js";
 import { createGitVcsAdapter } from "../adapters/git/index.js";
+import { createSlackNotificationAdapter } from "../adapters/notifications/index.js";
 import { createSqliteProjectRegistryAdapter } from "../adapters/sqlite/index.js";
 import {
   type ProjectRoutingService,
@@ -78,7 +79,11 @@ export async function startSlackApp(deps: {
     }
 
     const routingService =
-      deps.routingService ?? createProjectRoutingService({ registry });
+      deps.routingService ??
+      createProjectRoutingService({
+        registry,
+        notificationPort: createSlackNotificationAdapter(),
+      });
 
     const vcs = deps.vcs ?? createGitVcsAdapter();
 
@@ -86,6 +91,7 @@ export async function startSlackApp(deps: {
       projectRoot: deps.projectRoot,
       buildServerUrl: `http://${deps.config.server.host}:${deps.config.server.port}`,
       queue: deps.queue,
+      queueProjectId: registry.findByLocalRoot(deps.projectRoot)?.projectId,
       monitor: deps.monitor,
       git: deps.git,
       routingService,

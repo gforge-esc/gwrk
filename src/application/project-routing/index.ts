@@ -27,7 +27,11 @@ type ActionInput = Omit<
   SlackActionVerificationInput,
   "storedThread" | "priorReceipt"
 >;
-type ActionClaimInput = ActionInput & { nowIso: string; retryFailed?: boolean };
+type ActionClaimInput = ActionInput & {
+  nowIso: string;
+  retryFailed?: boolean;
+  requiredProjectId?: string | null;
+};
 type ActionClaimDecision =
   | (Extract<RouteDecision, { ok: true }> & { receiptKey?: string })
   | Extract<RouteDecision, { ok: false }>;
@@ -153,6 +157,16 @@ export function createProjectRoutingService(
     authorizeAndClaimAction(input: ActionClaimInput): ActionClaimDecision {
       const decision = authorizeAction(input);
       if (!decision.ok || input.requiredAccess === "read") return decision;
+      if (
+        input.requiredProjectId !== undefined &&
+        decision.project.projectId !== input.requiredProjectId
+      ) {
+        return {
+          ok: false,
+          code: "REMOTE_AUTH_REQUIRED",
+          message: "The dispatch queue is unavailable for this project.",
+        };
+      }
 
       const scope = {
         projectId: decision.project.projectId,
@@ -282,12 +296,19 @@ export function createProjectRoutingService(
         const result = await notifyPort.notify(payload);
         const receipt: NotificationReceipt = result ?? { delivered: false };
 
-        if (receipt.delivered && !thread && receipt.messageTs) {
+        if (
+          receipt.delivered &&
+          !thread &&
+          receipt.messageTs &&
+          receipt.channelId === channel &&
+          (receipt.threadTs === undefined ||
+            receipt.threadTs === receipt.messageTs)
+        ) {
           deps.registry.bindFeatureThread({
             projectId: project.projectId,
             featureId,
             workspaceId: slackConfig.workspaceId,
-            channelId: receipt.channelId ?? channel,
+            channelId: channel,
             rootTs: receipt.messageTs,
             updatedAt: input.nowIso,
           });

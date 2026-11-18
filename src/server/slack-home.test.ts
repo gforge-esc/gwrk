@@ -2,16 +2,28 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import { execFileSync } from "node:child_process";
+import {
+  mkdirSync,
+  mkdtempSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import type { App } from "@slack/bolt";
 import type { HeaderBlock, SectionBlock } from "@slack/types";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, onTestFinished, vi } from "vitest";
 import {
   SYNTHETIC_PROJECT_ALPHA,
   SYNTHETIC_PROJECT_BETA,
+  SYNTHETIC_ROLES,
   SYNTHETIC_USER_VIEWER,
   SYNTHETIC_WORKSPACE_ID,
   createSyntheticRegistry,
 } from "../../tests/helpers/synthetic-slack.js";
+import { generatePulseReport } from "../engine/pulse.js";
 import type { GwrkConfig } from "../utils/config.js";
 import { getStatusData } from "./routes/status.js";
 import { buildHomeTab, registerSlackHomeHandler } from "./slack-home.js";
@@ -34,18 +46,6 @@ vi.mock("../engine/pulse.js", () => ({
       totalPlans: 5,
     },
   })),
-}));
-
-vi.mock("node:fs", () => ({
-  existsSync: vi.fn(() => true),
-  readFileSync: vi.fn(() =>
-    JSON.stringify({
-      featureId: "001-cli-core",
-      phaseId: "phase-01",
-      status: "completed",
-      createdAt: new Date().toISOString(),
-    }),
-  ),
 }));
 
 const { mockGetPlanStatus, mockIsEmpty } = vi.hoisted(() => ({
@@ -191,9 +191,23 @@ describe("slack-home", () => {
   });
 
   describe("TR-012: Enrolled project visibility and role-gated startup project details", () => {
-    it.each(["body", "context"] as const)(
-      "uses the %s workspace on first App Home open",
-      async (source) => {
+    it.each([
+      {
+        source: "body",
+        userId: SYNTHETIC_USER_VIEWER,
+        project: SYNTHETIC_PROJECT_ALPHA,
+      },
+      {
+        source: "context",
+        userId: SYNTHETIC_USER_VIEWER,
+        project: SYNTHETIC_PROJECT_ALPHA,
+      },
+      { source: "body", userId: "U_BETA", project: SYNTHETIC_PROJECT_BETA },
+      { source: "body", userId: "U_UNBOUND", project: undefined },
+      { source: "body", userId: "U_BARE", project: undefined },
+    ])(
+      "uses the $source workspace and checks $userId on first App Home open",
+      async ({ source, userId, project }) => {
         const event = vi.fn();
         const publish = vi.fn();
         vi.mocked(getStatusData).mockResolvedValue(mockStatus);
@@ -202,7 +216,23 @@ describe("slack-home", () => {
           {
             config: mockConfig,
             projectRoot: SYNTHETIC_PROJECT_ALPHA.localRoot!,
-            registry: createSyntheticRegistry(),
+            registry: createSyntheticRegistry({
+              roles: [
+                ...SYNTHETIC_ROLES,
+                {
+                  projectId: SYNTHETIC_PROJECT_BETA.projectId,
+                  principalType: "slack_user",
+                  principalId: `${SYNTHETIC_WORKSPACE_ID}:U_BETA`,
+                  role: "viewer",
+                },
+                {
+                  projectId: SYNTHETIC_PROJECT_ALPHA.projectId,
+                  principalType: "slack_user",
+                  principalId: "U_BARE",
+                  role: "viewer",
+                },
+              ],
+            }),
           } as Parameters<typeof registerSlackHomeHandler>[1],
         );
         expect(event).toHaveBeenCalledWith(
@@ -213,7 +243,7 @@ describe("slack-home", () => {
           event: {
             type: "app_home_opened",
             tab: "home",
-            user: SYNTHETIC_USER_VIEWER,
+            user: userId,
           },
           body: source === "body" ? { team_id: SYNTHETIC_WORKSPACE_ID } : {},
           context:
@@ -223,14 +253,91 @@ describe("slack-home", () => {
         });
         expect(publish).toHaveBeenCalledOnce();
         const { view } = publish.mock.calls[0][0];
-        expect(JSON.stringify(view.blocks)).toContain(
-          SYNTHETIC_PROJECT_ALPHA.name,
-        );
-        expect(JSON.stringify(view.blocks)).not.toContain(
-          SYNTHETIC_PROJECT_BETA.name,
-        );
+        const blocks = JSON.stringify(view.blocks);
+        if (project === SYNTHETIC_PROJECT_ALPHA) {
+          expect(blocks).toContain(SYNTHETIC_PROJECT_ALPHA.name);
+          expect(blocks).not.toContain(SYNTHETIC_PROJECT_BETA.name);
+          expect(blocks).toContain("001-cli-core");
+          expect(blocks).toContain("Queue Depth");
+        } else {
+          expect(blocks).toContain(
+            project?.name ?? "No enrolled projects accessible",
+          );
+          expect(blocks).not.toContain(SYNTHETIC_PROJECT_ALPHA.name);
+          expect(blocks).not.toContain("001-cli-core");
+          expect(blocks).not.toContain("Queue Depth");
+          expect(blocks).not.toContain("Plan DAG Status");
+        }
       },
     );
+
+    it("scans Pulse repositories and spec progress only for visible checkouts", async () => {
+      const actual =
+        await vi.importActual<typeof import("../engine/pulse.js")>(
+          "../engine/pulse.js",
+        );
+      vi.mocked(generatePulseReport).mockImplementationOnce(
+        actual.generatePulseReport,
+      );
+      const root = mkdtempSync(join(tmpdir(), "gwrk-home-pulse-"));
+      onTestFinished(() => rmSync(root, { recursive: true, force: true }));
+      const alpha = {
+        ...SYNTHETIC_PROJECT_ALPHA,
+        localRoot: join(root, "alpha-pulse"),
+      };
+      const beta = {
+        ...SYNTHETIC_PROJECT_BETA,
+        localRoot: join(root, "beta-pulse"),
+      };
+      for (const [project, features] of [
+        [alpha, ["001-alpha", "002-alpha"]],
+        [beta, ["001-beta", "002-beta", "003-beta"]],
+      ] as const) {
+        for (const feature of features) {
+          const specRoot = join(project.localRoot, "specs", feature);
+          mkdirSync(specRoot, { recursive: true });
+          writeFileSync(join(specRoot, "spec.md"), "# Spec\n");
+        }
+        writeFileSync(
+          join(project.localRoot, "specs", features[0], "plan.md"),
+          "# Plan\n",
+        );
+        const gitOptions = {
+          cwd: project.localRoot,
+          stdio: "ignore" as const,
+          timeout: 5_000,
+        };
+        execFileSync("git", ["init", "--quiet"], gitOptions);
+        execFileSync(
+          "git",
+          [
+            "symbolic-ref",
+            "refs/remotes/origin/HEAD",
+            "refs/remotes/origin/main",
+          ],
+          gitOptions,
+        );
+      }
+      const alphaAlias = join(root, "alpha-alias");
+      symlinkSync(alpha.localRoot, alphaAlias, "dir");
+      const view = await buildHomeTab(
+        mockStatus,
+        {
+          ...mockConfig,
+          pulse: { repos: [alphaAlias, beta.localRoot] },
+        },
+        alpha.localRoot,
+        {
+          registry: createSyntheticRegistry({ projects: [alpha, beta] }),
+          userId: SYNTHETIC_USER_VIEWER,
+          workspaceId: SYNTHETIC_WORKSPACE_ID,
+        },
+      );
+      const blocks = JSON.stringify(view.blocks);
+      expect.soft(blocks).toContain("*alpha-pulse*:");
+      expect.soft(blocks).not.toContain("beta-pulse");
+      expect(blocks).toContain("Spec Progress: 1/2 plans ready");
+    });
 
     it("hides sandbox details and queue counts from an unbound user", async () => {
       const view = await buildHomeTab(

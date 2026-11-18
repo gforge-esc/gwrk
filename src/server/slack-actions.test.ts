@@ -10,6 +10,7 @@ import type { App } from "@slack/bolt";
 import { beforeEach, describe, expect, it, onTestFinished, vi } from "vitest";
 import {
   SYNTHETIC_CHANNEL_ALPHA,
+  SYNTHETIC_CHANNEL_BETA,
   SYNTHETIC_PROJECT_ALPHA,
   SYNTHETIC_PROJECT_BETA,
   SYNTHETIC_ROLES,
@@ -787,10 +788,21 @@ describe("slack-actions (FR-007, US-004, US-005)", () => {
 
     it("serializes slug and canonical deliveries on one feature thread", async () => {
       const { registry, project } = createSqliteRegistry();
+      const bind = vi.spyOn(registry, "bindFeatureThread");
       const givenTs = "1731320000.000300";
       const notify = vi
         .fn()
-        .mockResolvedValue({ delivered: true, messageTs: givenTs });
+        .mockResolvedValueOnce({
+          delivered: true,
+          channelId: SYNTHETIC_CHANNEL_ALPHA,
+          messageTs: givenTs,
+        })
+        .mockResolvedValueOnce({
+          delivered: true,
+          channelId: SYNTHETIC_CHANNEL_ALPHA,
+          messageTs: "1731320000.000400",
+          threadTs: givenTs,
+        });
       const routingService = createProjectRoutingService({
         registry,
         notificationPort: { notify },
@@ -815,6 +827,7 @@ describe("slack-actions (FR-007, US-004, US-005)", () => {
       expect(
         registry.getFeatureThread(project.projectId, event.featureId)?.rootTs,
       ).toBe(givenTs);
+      expect(bind).toHaveBeenCalledOnce();
       expect(notify).toHaveBeenCalledTimes(2);
       expect(notify).toHaveBeenNthCalledWith(
         2,
@@ -824,6 +837,84 @@ describe("slack-actions (FR-007, US-004, US-005)", () => {
         }),
       );
     });
+
+    it.each([
+      {
+        channelId: SYNTHETIC_CHANNEL_ALPHA,
+        threadTs: SYNTHETIC_THREAD_ALPHA.rootTs,
+      },
+      { channelId: SYNTHETIC_CHANNEL_BETA },
+      { channelId: undefined },
+    ])(
+      "leaves the feature unbound for receipt metadata %j",
+      async (metadata) => {
+        const registry = createSyntheticRegistry();
+        const bind = vi.spyOn(registry, "bindFeatureThread");
+        const receipt = { delivered: true, messageTs, ...metadata };
+        const routingService = createProjectRoutingService({
+          registry,
+          notificationPort: { notify: vi.fn().mockResolvedValue(receipt) },
+        });
+        const projectId = SYNTHETIC_PROJECT_ALPHA.projectId;
+        const featureId = "999-new";
+
+        expect(
+          await routingService.deliverProjectEvent({
+            projectId,
+            featureId,
+            eventType: "review_ready",
+            message: { text: "Ready for review" },
+            nowIso: "2026-11-18T10:00:00.000Z",
+          }),
+        ).toEqual(receipt);
+        expect(bind).not.toHaveBeenCalled();
+        expect(registry.getFeatureThread(projectId, featureId)).toBeNull();
+      },
+    );
+
+    it.each(["retry_phase", "request_changes"])(
+      "denies %s on Beta’s thread before claiming or using Alpha’s queue",
+      async (actionId) => {
+        const betaThread = {
+          ...SYNTHETIC_THREAD_ALPHA,
+          projectId: SYNTHETIC_PROJECT_BETA.projectId,
+          channelId: SYNTHETIC_CHANNEL_BETA,
+          rootTs: "1731320010.000100",
+        };
+        const registry = createSyntheticRegistry({
+          threads: [SYNTHETIC_THREAD_ALPHA, betaThread],
+        });
+        const claim = vi.spyOn(registry, "claimActionReceipt");
+        const queueContext = {
+          ...mockContext,
+          queueProjectId: SYNTHETIC_PROJECT_ALPHA.projectId,
+          routingService: createProjectRoutingService({ registry }),
+        };
+        await registerSlackActions(mockApp as App, queueContext);
+        const click = clickArgs(actionId, betaThread.projectId);
+        click.body.channel.id = betaThread.channelId;
+        click.body.message.thread_ts = betaThread.rootTs;
+        click.body.actions[0].value = JSON.stringify({
+          ...actionValue,
+          projectId: betaThread.projectId,
+          rootTs: betaThread.rootTs,
+        });
+
+        await actionHandlers[actionId](click);
+
+        expect(click.ack).toHaveBeenCalledOnce();
+        expect(click.client.chat.postEphemeral).toHaveBeenCalledWith(
+          expect.objectContaining({ text: expect.stringContaining("queue") }),
+        );
+        expect(claim).not.toHaveBeenCalled();
+        expect(mockContext.queue.enqueue).not.toHaveBeenCalled();
+        expect(click.client.chat.postMessage).not.toHaveBeenCalled();
+
+        await actionHandlers[actionId](clickArgs(actionId));
+        expect(claim).toHaveBeenCalledOnce();
+        expect(mockContext.queue.enqueue).toHaveBeenCalledOnce();
+      },
+    );
 
     it("reads the authorized project's logs for multiple actors without claiming the button", async () => {
       const root = mkdtempSync(join(tmpdir(), "gwrk-view-logs-"));
@@ -870,6 +961,20 @@ describe("slack-actions (FR-007, US-004, US-005)", () => {
             }),
           );
         }
+        const unbound = clickArgs(
+          "view_logs",
+          actionValue.projectId,
+          "U_UNBOUND",
+        );
+        await actionHandlers.view_logs(unbound);
+        expect(unbound.logger.error).toHaveBeenCalledWith(
+          expect.stringContaining("UNAUTHORIZED_USER"),
+        );
+        expect(unbound.client.chat.postEphemeral).toHaveBeenCalledWith(
+          expect.objectContaining({
+            text: expect.stringContaining("Action unauthorized"),
+          }),
+        );
         expect(claim).not.toHaveBeenCalled();
       } finally {
         rmSync(root, { recursive: true, force: true });
@@ -995,6 +1100,15 @@ describe("slack-actions (FR-007, US-004, US-005)", () => {
 
       expect(merge).toHaveBeenCalledTimes(2);
       expect(merge).toHaveBeenLastCalledWith(project.localRoot, 42);
+      const retryKey = buildActionReceiptKey({
+        ...actionValue,
+        projectId: project.projectId,
+        workspaceId: SYNTHETIC_WORKSPACE_ID,
+        channelId: SYNTHETIC_CHANNEL_ALPHA,
+        messageTs,
+        actionId: "merge_pr:retry:1",
+      });
+      expect(registry.getActionReceipt(retryKey)?.outcome).toBe("executed");
       expect(reaction.client.chat.postMessage).toHaveBeenCalledExactlyOnceWith(
         expect.objectContaining({
           channel: SYNTHETIC_CHANNEL_ALPHA,

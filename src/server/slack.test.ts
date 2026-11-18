@@ -2,11 +2,24 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { App } from "@slack/bolt";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  onTestFinished,
+  vi,
+} from "vitest";
 import {
   SYNTHETIC_CHANNEL_ALPHA,
+  SYNTHETIC_CHANNEL_BETA,
   SYNTHETIC_PROJECT_ALPHA,
+  SYNTHETIC_PROJECT_BETA,
   SYNTHETIC_THREAD_ALPHA,
   SYNTHETIC_USER_MAINTAINER,
   SYNTHETIC_WORKSPACE_ID,
@@ -33,6 +46,8 @@ import { registerSlackHomeHandler } from "./slack-home";
 vi.mock("../adapters/sqlite/index", () => ({
   createSqliteProjectRegistryAdapter: vi.fn(),
 }));
+
+vi.mock("../db/runs.js", () => ({ listRuns: vi.fn(() => []) }));
 
 vi.mock("@slack/bolt", () => {
   const mockApp = {
@@ -77,10 +92,16 @@ vi.mock("./slack-presence", () => ({
 
 describe("Slack Server Integration", () => {
   const mockDeps = {
-    queue: { enqueue: vi.fn() } as unknown as DispatchQueue,
+    queue: {
+      enqueue: vi.fn(),
+      getQueue: vi.fn(() => ({ active: [], queued: [], paused: false })),
+      getDispatch: vi.fn(),
+      pause: vi.fn(),
+    } as unknown as DispatchQueue,
     monitor: {
       startPolling: vi.fn(),
       stopPolling: vi.fn(),
+      getResources: vi.fn(() => ({ cpuPercent: 0, memPercent: 0 })),
     } as unknown as SystemMonitor,
     sandbox: { checkDocker: vi.fn() } as unknown as SandboxManager,
     lifecycle: {
@@ -156,7 +177,7 @@ describe("Slack Server Integration", () => {
       projects: [{ ...SYNTHETIC_PROJECT_ALPHA, localRoot: process.cwd() }],
       threads: [{ ...SYNTHETIC_THREAD_ALPHA, featureId }],
     });
-    await startSlackApp({ ...mockDeps, registry });
+    await startSlackApp({ ...mockDeps, projectRoot: process.cwd(), registry });
     const app = getSlackApp()!;
     expect(app.command).toHaveBeenCalledWith("/gwrk", expect.any(Function));
     const handler = vi.mocked(app.command).mock.calls[0][1];
@@ -185,6 +206,66 @@ describe("Slack Server Integration", () => {
         replace_original: false,
       }),
     );
+  });
+
+  it("limits registered queue commands to the startup project with matching feature IDs", async () => {
+    vi.mocked(slackClient.loadSlackConfig).mockReturnValue({
+      botToken: "xoxb-test",
+      appToken: "xapp-test",
+    });
+    const featureId = SYNTHETIC_THREAD_ALPHA.featureId;
+    const root = mkdtempSync(join(tmpdir(), "gwrk-slack-queue-"));
+    onTestFinished(() => rmSync(root, { recursive: true, force: true }));
+    const alpha = {
+      ...SYNTHETIC_PROJECT_ALPHA,
+      localRoot: join(root, "alpha"),
+    };
+    const beta = { ...SYNTHETIC_PROJECT_BETA, localRoot: join(root, "beta") };
+    for (const project of [alpha, beta]) {
+      mkdirSync(join(project.localRoot, "specs", featureId), {
+        recursive: true,
+      });
+    }
+    await startSlackApp({
+      ...mockDeps,
+      projectRoot: alpha.localRoot,
+      registry: createSyntheticRegistry({ projects: [alpha, beta] }),
+    });
+    const handler = vi.mocked(getSlackApp()!.command).mock.calls[0][1];
+    async function run(text: string, channelId: string) {
+      const respond = vi.fn();
+      await handler({
+        command: {
+          command: "/gwrk",
+          text,
+          channel_id: channelId,
+          user_id: SYNTHETIC_USER_MAINTAINER,
+          team_id: SYNTHETIC_WORKSPACE_ID,
+        },
+        ack: vi.fn(),
+        respond,
+      } as Parameters<typeof handler>[0]);
+      return respond.mock.calls[0][0];
+    }
+
+    const dispatch = `dispatch ${featureId} phase-03`;
+    const alphaResponse = await run(dispatch, SYNTHETIC_CHANNEL_ALPHA);
+    expect(alphaResponse.response_type).toBe("in_channel");
+    expect(mockDeps.queue.enqueue).toHaveBeenCalledExactlyOnceWith({
+      featureId,
+      phaseId: "phase-03",
+    });
+    vi.mocked(mockDeps.queue.enqueue).mockClear();
+
+    for (const command of [dispatch, `status ${featureId}`, "pause"]) {
+      const response = await run(command, SYNTHETIC_CHANNEL_BETA);
+      expect.soft(response.response_type).toBe("ephemeral");
+      expect.soft(JSON.stringify(response.blocks)).toContain("queue");
+    }
+    expect(mockDeps.queue.enqueue).not.toHaveBeenCalled();
+    expect(mockDeps.queue.getQueue).not.toHaveBeenCalled();
+    expect(mockDeps.queue.getDispatch).not.toHaveBeenCalled();
+    expect(mockDeps.queue.pause).not.toHaveBeenCalled();
   });
 
   it("uses the Events API envelope for mentions and Bolt context for DMs", async () => {
@@ -239,11 +320,7 @@ describe("Slack Server Integration", () => {
     );
   });
 
-  it.each([
-    { bot_id: "B_SELF" },
-    { subtype: "bot_message" },
-    { subtype: "message_changed" },
-  ])("does not reply to DM events with %j", async (metadata) => {
+  it("replies only to the human DM when the workspace is on the envelope", async () => {
     vi.mocked(slackClient.loadSlackConfig).mockReturnValue({
       botToken: "xoxb-test",
       appToken: "xapp-test",
@@ -252,19 +329,37 @@ describe("Slack Server Integration", () => {
     const app = getSlackApp()!;
     const handlers = Object.fromEntries(vi.mocked(app.event).mock.calls);
     const say = vi.fn();
-    await handlers.message({
-      event: {
-        ...metadata,
-        type: "message",
-        channel_type: "im",
-        channel: "D_TEST",
-        ts: "1731320000.000100",
-      },
-      body: { team_id: SYNTHETIC_WORKSPACE_ID },
+    const humanMessage = {
+      type: "message",
+      text: "hello --project alpha",
+      channel_type: "im",
+      channel: "D_TEST",
+      user: SYNTHETIC_USER_MAINTAINER,
+      ts: "1731320000.000100",
+    };
+    const envelope = {
+      body: { type: "event_callback", team_id: SYNTHETIC_WORKSPACE_ID },
       context: {},
       say,
-    });
-    expect(say).not.toHaveBeenCalled();
+    };
+    await handlers.message({ ...envelope, event: humanMessage });
+    for (const metadata of [
+      { bot_id: "B_SELF" },
+      { subtype: "bot_message" },
+      { subtype: "message_changed" },
+    ]) {
+      await handlers.message({
+        ...envelope,
+        event: { ...humanMessage, ...metadata },
+      });
+    }
+    expect(say).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({
+        text: expect.stringContaining(
+          "Direct message received for *Project Alpha*",
+        ),
+      }),
+    );
   });
 
   it("asserts no handler executes work when the registry throws", async () => {

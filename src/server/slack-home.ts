@@ -6,6 +6,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import type { App } from "@slack/bolt";
 import type { HomeView, KnownBlock } from "@slack/types";
+import type { EnrolledProject } from "../domain/project-registry.js";
 import { generatePulseReport } from "../engine/pulse.js";
 import type { ProjectRegistryPort } from "../ports/store-port.js";
 import type { GwrkConfig } from "../utils/config.js";
@@ -17,6 +18,42 @@ import type { NetworkMonitor } from "./network.js";
 import { getStatusData } from "./routes/status.js";
 import type { SandboxManager } from "./sandbox.js";
 import type { DispatchRecord, SandboxInfo, SystemStatus } from "./types.js";
+
+function canonicalCheckout(checkout: string | null): string | undefined {
+  if (!checkout) return undefined;
+  try {
+    return fs.realpathSync(checkout);
+  } catch {
+    return undefined;
+  }
+}
+
+function generateHomePulseReport(
+  config: GwrkConfig,
+  projects: readonly EnrolledProject[],
+) {
+  const visiblePaths = new Set<string>();
+  const specRoots = new Set<string>();
+  for (const project of projects) {
+    const local = canonicalCheckout(project.localRoot);
+    const mirror = canonicalCheckout(project.mirrorPath);
+    if (local) visiblePaths.add(local);
+    if (mirror) visiblePaths.add(mirror);
+    const specRoot = local ?? mirror;
+    if (specRoot) specRoots.add(specRoot);
+  }
+
+  const repos = new Set<string>();
+  for (const repo of config.pulse?.repos ?? []) {
+    const checkout = canonicalCheckout(repo);
+    if (checkout && visiblePaths.has(checkout)) repos.add(checkout);
+  }
+
+  return generatePulseReport(
+    { ...config, pulse: { ...config.pulse, repos: [...repos] } },
+    { specRoots: [...specRoots] },
+  );
+}
 
 export async function buildHomeTab(
   status: SystemStatus,
@@ -211,7 +248,9 @@ export async function buildHomeTab(
     });
 
     try {
-      const report = generatePulseReport(config);
+      const report = registry
+        ? generateHomePulseReport(config, visibleProjects)
+        : generatePulseReport(config);
       for (const repo of report.repositories.slice(0, 3)) {
         blocks.push({
           type: "section",

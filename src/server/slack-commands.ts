@@ -32,6 +32,7 @@ export interface CommandContext {
   projectRoot: string;
   buildServerUrl: string;
   queue: DispatchQueue;
+  queueProjectId?: string;
   monitor: SystemMonitor;
   git: GitManager;
   workspaceId?: string;
@@ -995,6 +996,8 @@ const featureCommands = new Set([
   "status",
 ]);
 
+const queueCommands = new Set(["dispatch", "status", "pause"]);
+
 export async function handleSlashCommand(
   commandText: string,
   context: CommandContext,
@@ -1114,6 +1117,24 @@ export async function handleSlashCommand(
           text: {
             type: "mrkdwn",
             text,
+          },
+        },
+      ],
+    };
+  }
+
+  if (
+    queueCommands.has(subcommand) &&
+    context.queueProjectId !== decision.project.projectId
+  ) {
+    return {
+      response_type: "ephemeral",
+      blocks: [
+        {
+          type: "section",
+          text: {
+            type: "mrkdwn",
+            text: ":warning: The dispatch queue is unavailable for this project.",
           },
         },
       ],

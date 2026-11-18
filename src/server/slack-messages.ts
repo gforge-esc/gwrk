@@ -12,6 +12,7 @@ import type { DispatchRecord } from "./types.js";
 
 export interface SlackMessage {
   channel?: string;
+  thread_ts?: string;
   blocks: KnownBlock[];
   text: string;
 }

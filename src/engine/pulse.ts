@@ -213,10 +213,13 @@ export function scanSpecProgress(projectRoot: string): SpecProgress {
 /**
  * Scans multiple repos and aggregates a PulseReport.
  */
-export function generatePulseReport(config: GwrkConfig): PulseReport {
-  const repos = config.pulse?.repos;
+export function generatePulseReport(
+  config: GwrkConfig,
+  options: { specRoots?: readonly string[] } = {},
+): PulseReport {
+  const repos = config.pulse?.repos ?? [];
 
-  if (!repos || repos.length === 0) {
+  if (repos.length === 0 && options.specRoots === undefined) {
     throw new Error(
       "No repositories tracked. Add repos to .gwrkrc.json pulse.repos",
     );
@@ -227,8 +230,12 @@ export function generatePulseReport(config: GwrkConfig): PulseReport {
     repositories.push(scanRepository(repo));
   }
 
-  // Assuming current working directory is the main project root
-  const specProgress = scanSpecProgress(process.cwd());
+  const specProgress = { totalSpecs: 0, totalPlans: 0 };
+  for (const root of options.specRoots ?? [process.cwd()]) {
+    const progress = scanSpecProgress(root);
+    specProgress.totalSpecs += progress.totalSpecs;
+    specProgress.totalPlans += progress.totalPlans;
+  }
 
   const report: PulseReport = {
     generatedAt: new Date().toISOString(),

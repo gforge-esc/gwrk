@@ -11,17 +11,21 @@ import type { SlackMessage } from "../../server/slack-messages.js";
 
 export function createSlackNotificationAdapter(): NotificationPort {
   return {
-    async notify(payload: NotificationPayload): Promise<void> {
-      const { notifySlack } = await import("../../server/slack-notify.js");
-      await notifySlack(
-        {
-          text: payload.text,
-          channel: payload.channel,
-          blocks: payload.blocks as SlackMessage["blocks"],
-        },
-        undefined,
-        { opsOnly: payload.opsOnly },
+    async notify(payload: NotificationPayload) {
+      const { notifySlack, sendSlackMessage } = await import(
+        "../../server/slack-notify.js"
       );
+      const message: SlackMessage = {
+        text: payload.text,
+        channel: payload.channel ?? payload.recipient?.channelId,
+        thread_ts: payload.threadTs,
+        blocks: payload.blocks as SlackMessage["blocks"],
+      };
+      if (payload.projectId || payload.recipient) {
+        if (!message.channel) return undefined;
+        return sendSlackMessage(message, { webhookFallback: false });
+      }
+      return notifySlack(message, undefined, { opsOnly: payload.opsOnly });
     },
   };
 }

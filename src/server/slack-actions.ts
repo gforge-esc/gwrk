@@ -79,6 +79,8 @@ async function verifyAndClaimClick(
   const messageTs = actionBody.message?.ts;
   const threadTs = actionBody.message?.thread_ts;
   const requiredAccess = requiredAccessForSlackAction(actionId);
+  const usesStartupQueue =
+    actionId === "retry_phase" || actionId === "request_changes";
 
   const input = {
     workspaceId,
@@ -101,6 +103,9 @@ async function verifyAndClaimClick(
           ...input,
           nowIso: new Date().toISOString(),
           retryFailed,
+          requiredProjectId: usesStartupQueue
+            ? (context.queueProjectId ?? null)
+            : undefined,
         });
 
   if (!decision.ok) {
