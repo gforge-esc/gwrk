@@ -8,6 +8,11 @@ import path from "node:path";
 import { Command } from "commander";
 import { parse, stringify } from "yaml";
 import { logCliOutput } from "../adapters/cli/output-scope.js";
+import {
+  type PolicyCandidate,
+  composeEffectivePolicy,
+  evaluateEnforcementCandidate,
+} from "../domain/policy-selection.js";
 import { detectProfile } from "../engine/profile-detector.js";
 import {
   doctorPlugins,
@@ -78,6 +83,54 @@ export async function removePlugin(
   return plugin.manifest;
 }
 
+async function listProjectEnforcement(
+  loader: PluginLoader,
+  projectRoot: string,
+): Promise<PluginSummary[]> {
+  const [profile, candidates] = await Promise.all([
+    detectProfile(projectRoot),
+    loader.listEnforcementCandidates(),
+  ]);
+  const { selectedSkills, excludedSkills } = composeEffectivePolicy({
+    profile,
+    candidates,
+  });
+  const summarize = (
+    { name, manifest }: PolicyCandidate,
+    status: PluginSummary["status"],
+  ): PluginSummary => ({
+    name,
+    type: "skill",
+    tier: "enforcement",
+    version: manifest.version,
+    description: manifest.description,
+    status,
+  });
+  const active = selectedSkills.map((candidate) =>
+    summarize(candidate, "active"),
+  );
+  const disabled = excludedSkills.flatMap(({ name, source, reason }) => {
+    if (reason !== "disabled") return [];
+    const candidate = candidates.find(
+      (candidate) =>
+        candidate.name === name &&
+        candidate.source === source &&
+        evaluateEnforcementCandidate(candidate, profile, "all").reason ===
+          "disabled",
+    );
+    if (!candidate) return [];
+
+    const enabled = {
+      ...candidate,
+      manifest: { ...candidate.manifest, disabled: false },
+    };
+    return evaluateEnforcementCandidate(enabled, profile, "all").included
+      ? [summarize(candidate, "disabled")]
+      : [];
+  });
+  return [...active, ...disabled];
+}
+
 /**
  * FR-003: List installed plugins.
  */
@@ -101,45 +154,16 @@ export async function listPlugins(
     category: options.category,
   });
 
-  // Filter by profile language if --project is used (Phase 15 requirement)
-  if (options.project && projectRoot) {
-    const profile = await detectProfile(projectRoot);
-    if (profile.stack?.language) {
-      const lang = profile.stack.language.toLowerCase();
-
-      // We need the full manifest to check the language field
-      const filtered: PluginSummary[] = [];
-      for (const p of plugins) {
-        try {
-          const loaded = await loader.resolvePlugin(p.name);
-          const manifest = loaded.manifest as {
-            type?: string;
-            tier?: string;
-            language?: string;
-          };
-
-          if (
-            manifest.type === "skill" &&
-            manifest.tier === "enforcement" &&
-            manifest.language
-          ) {
-            const manifestLang = manifest.language.toLowerCase();
-            if (profile.stack.languages && profile.stack.languages.length > 1) {
-              const profileLangs = profile.stack.languages.map((l) =>
-                l.toLowerCase(),
-              );
-              if (!profileLangs.includes(manifestLang)) continue;
-            } else if (manifestLang !== lang) {
-              continue;
-            }
-          }
-          filtered.push(p);
-        } catch {
-          filtered.push(p);
-        }
-      }
-      plugins = filtered;
-    }
+  if (
+    projectRoot &&
+    (!options.type || options.type === "skill") &&
+    (!options.tier || options.tier === "enforcement")
+  ) {
+    const enforcement = await listProjectEnforcement(loader, projectRoot);
+    plugins = [
+      ...plugins.filter((plugin) => plugin.tier !== "enforcement"),
+      ...enforcement,
+    ];
   }
 
   if (options.format === "json") {

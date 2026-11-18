@@ -4,14 +4,16 @@ Use JavaScript consistently with the project's adopted decisions and selected ar
 
 ## Modules
 
-- Keep the module format consistent with package settings and neighboring code.
-- Import through declared module entry points. Keep dependencies explicit.
+- Use ECMAScript module (ESM) syntax at package and feature boundaries in ESM packages.
+- Import through declared package exports. Include extensions on relative ESM imports.
+- Adapt CommonJS dependencies at the boundary that owns the integration.
 - Use descriptive domain names and small functions with one responsibility.
 
 ## Boundaries
 
-- Document port contracts as explicit object shapes and observable return values.
-- Validate external values at adapter boundaries with the project's schema tools.
+- Document port inputs and results as objects with named fields. Specify which fields are optional.
+- Validate configuration, request data and other external values with the project's schema tools before passing them to the core.
+- Return explicit validation errors from the boundary.
 - Pass configuration and clock values as arguments. Keep effect ownership visible.
 - For hexagonal or clean architecture, keep framework objects outside domain contracts.
 - When functional core is selected, return decisions from pure functions and perform effects through injected ports.

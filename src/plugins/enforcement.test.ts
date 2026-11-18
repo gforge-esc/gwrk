@@ -10,7 +10,10 @@ import { PassThrough } from "node:stream";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { PluginLoader } from "./loader.js";
 import { SkillManifestSchema } from "./manifest.js";
-import { resolveEnforcementSkills } from "./skill-runtime.js";
+import {
+  resolveEffectivePolicy,
+  resolveEnforcementSkills,
+} from "./skill-runtime.js";
 
 // Mock child_process for TR-P9-005
 vi.mock("node:child_process", () => {
@@ -20,7 +23,8 @@ vi.mock("node:child_process", () => {
 });
 
 // Mock config to disable throttle for TR-P9-005
-vi.mock("../utils/config.js", () => ({
+vi.mock("../utils/config.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../utils/config.js")>()),
   loadConfig: vi.fn().mockReturnValue({
     agents: {
       throttleMs: 0,
@@ -109,16 +113,15 @@ describe("Phase 9: Enforcement Skills", () => {
         path.join(projectRoot, ".gwrkrc.json"),
         JSON.stringify({ project: { name: "gwrk" } }),
       );
+      await fs.writeFile(
+        path.join(projectRoot, "package.json"),
+        JSON.stringify({ name: "gwrk", type: "module" }),
+      );
       vi.stubEnv("HOME", home);
       try {
         const content = await resolveEnforcementSkills(
           projectRoot,
           "implementation",
-          {
-            type: "nodejs",
-            stack: { language: "JavaScript" },
-            _isGwrk: false,
-          },
         );
         expect
           .soft(content)
@@ -139,6 +142,55 @@ describe("Phase 9: Enforcement Skills", () => {
    * TR-P9-002: Project-local override takes precedence over builtin
    */
   describe("TR-P9-002: enforcement skill resolution order", () => {
+    it("preserves a disabled local copy and an explicit project enable", async () => {
+      const name = "fixture-enforcement";
+      const globalDir = path.join(tmpDir, "global");
+      const projectConfig = path.join(tmpDir, ".gwrk", "plugins.json");
+      const layers = [
+        [path.join(tmpDir, ".gwrk", "plugins"), true],
+        [globalDir, false],
+      ] as const;
+      for (const [base, disabled] of layers) {
+        const dir = path.join(base, "skills", name);
+        await fs.mkdir(dir, { recursive: true });
+        await fs.writeFile(
+          path.join(dir, "manifest.yaml"),
+          JSON.stringify({
+            type: "skill",
+            tier: "enforcement",
+            name,
+            version: "1.0.0",
+            description: name,
+            disabled,
+          }),
+        );
+        await fs.writeFile(path.join(dir, "SKILL.md"), base);
+      }
+      const options = { globalDir, profile: { type: "unknown" } };
+      const disabled = await resolveEffectivePolicy(tmpDir, options);
+      expect(
+        disabled.selectedSkills.find((skill) => skill.name === name),
+      ).toBeUndefined();
+      expect(disabled.excludedSkills).toContainEqual({
+        name,
+        source: "global",
+        reason: "shadowed-by-override",
+      });
+
+      await fs.writeFile(
+        projectConfig,
+        JSON.stringify({ plugins: { [name]: { enabled: true } } }),
+      );
+      const enabled = await resolveEffectivePolicy(tmpDir, options);
+      expect(enabled.selectedSkills).toContainEqual(
+        expect.objectContaining({
+          name,
+          source: "project-local",
+          content: layers[0][0],
+        }),
+      );
+    });
+
     it("prefers project-local .gwrk/plugins/skills/ over builtin", async () => {
       const projectPluginDir = path.join(
         tmpDir,

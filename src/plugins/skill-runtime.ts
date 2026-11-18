@@ -5,7 +5,13 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { createAgentPortAdapter } from "../adapters/agents/index.js";
+import {
+  type EffectivePolicy,
+  type EnforcementScope,
+  composeEffectivePolicy,
+} from "../domain/policy-selection.js";
 import type { ProjectProfile } from "../engine/profile-detector.js";
+import { detectProfile } from "../engine/profile-detector.js";
 import { processForAgent } from "../utils/agent-layer.js";
 import { CommandError } from "../utils/signal.js";
 import { AgentBackendRegistry } from "./agent-registry.js";
@@ -13,7 +19,6 @@ import { PluginLoader } from "./loader.js";
 import type {
   AtomicSkillManifest,
   CompoundSkillManifest,
-  EnforcementSkillManifest,
   SkillManifest,
 } from "./manifest.js";
 
@@ -188,100 +193,62 @@ export async function executeSkill(
   };
 }
 
-/**
- * FR-014: Resolves all enforcement skills applicable to the project.
- * Returns combined SKILL.md content.
- * Resolution order in string: builtins -> global -> project-local.
- * Precedence: project-local overrides global, global overrides builtins.
- */
+export interface ResolvePolicyOptions {
+  scope?: EnforcementScope;
+  profile?: ProjectProfile;
+  globalDir?: string;
+  checksConfigured?: boolean;
+}
+
+export async function resolveEffectivePolicy(
+  projectRoot: string,
+  options: ResolvePolicyOptions = {},
+): Promise<EffectivePolicy> {
+  const loader = new PluginLoader({
+    projectDir: projectRoot,
+    globalDir: options.globalDir,
+  });
+  const [profile, candidates] = await Promise.all([
+    options.profile ?? detectProfile(projectRoot),
+    loader.listEnforcementCandidates(),
+  ]);
+  const policy = composeEffectivePolicy({
+    profile,
+    candidates,
+    scope: options.scope,
+    checksConfigured: options.checksConfigured,
+  });
+  const selected = new Set(policy.selectedSkills);
+  await Promise.all(
+    candidates
+      .filter((candidate) => selected.has(candidate))
+      .map(async (candidate) => {
+        candidate.content = await fs
+          .readFile(path.join(candidate.path, "SKILL.md"), "utf-8")
+          .catch(() => undefined);
+      }),
+  );
+  return policy;
+}
+
+export function formatEffectivePolicyPrompt(policy: EffectivePolicy): string {
+  const sections = policy.selectedSkills.flatMap(({ name, content }) =>
+    content ? [`<!-- enforcement-skill: ${name} -->\n${content}`] : [],
+  );
+  if (policy.gaps.length > 0) {
+    const notes = policy.gaps.map(({ message }) => `- ${message}`).join("\n");
+    sections.push(`## Policy gaps\n\n${notes}`);
+  }
+  return sections.join("\n\n---\n\n");
+}
+
+/** FR-014: Resolves and renders applicable enforcement skills. */
 export async function resolveEnforcementSkills(
   projectRoot: string,
-  scope: "implementation" | "review" | "all" = "all",
+  scope: EnforcementScope = "all",
   profile?: ProjectProfile,
 ): Promise<string> {
-  const loader = new PluginLoader({ projectDir: projectRoot });
-  const allPlugins = await loader.listPlugins({ tier: "enforcement" });
-
-  // loader.listPlugins returns [project, global, builtins].
-  // We want to process them such that we find the highest-precedence version of each skill,
-  // but keep the final string order as [builtins, global, project].
-  const visitedNames = new Set<string>();
-  const skillMap = new Map<string, string>();
-
-  // Reverse to get [builtins, global, project] order for the final string
-  const orderedSummaries = [...allPlugins].reverse();
-
-  for (const summary of orderedSummaries) {
-    if (visitedNames.has(summary.name)) continue;
-
-    try {
-      // loader.resolvePlugin always returns the highest precedence version
-      const loaded = await loader.resolvePlugin(summary.name);
-      const manifest = loaded.manifest as EnforcementSkillManifest;
-
-      // Filter by scope
-      const manifestScope = manifest.scope ?? "all";
-      if (
-        scope !== "all" &&
-        manifestScope !== "all" &&
-        manifestScope !== scope
-      ) {
-        continue;
-      }
-
-      // Filter by language/framework (R007: profile-aware enforcement routing)
-      const isProjectLocal =
-        loaded.path.startsWith(path.resolve(projectRoot)) ||
-        loaded.path.includes("/project/local/");
-      const isBuiltinOrFrameworkSkill =
-        loaded.path.includes("builtins") ||
-        Boolean(manifest.framework) ||
-        [
-          "typescript-standards",
-          "python-standards",
-          "rust-standards",
-          "go-standards",
-        ].includes(manifest.name);
-
-      if (!isProjectLocal && isBuiltinOrFrameworkSkill && profile) {
-        // Language filtering
-        if (manifest.language && profile.stack?.language) {
-          const manifestLang = manifest.language.toLowerCase();
-          // Polyglot: check against languages array if present
-          if (profile.stack.languages && profile.stack.languages.length > 1) {
-            const profileLangs = profile.stack.languages.map((l) =>
-              l.toLowerCase(),
-            );
-            if (!profileLangs.includes(manifestLang)) {
-              continue;
-            }
-          } else if (manifestLang !== profile.stack.language.toLowerCase()) {
-            continue;
-          }
-        }
-
-        // Framework filtering
-        if (manifest.framework) {
-          const profileFramework = profile.stack?.framework?.toLowerCase();
-          const manifestFramework = manifest.framework.toLowerCase();
-          if (profileFramework !== manifestFramework) {
-            continue;
-          }
-        }
-      }
-
-      const skillMdPath = path.join(loaded.path, "SKILL.md");
-      const content = await fs.readFile(skillMdPath, "utf-8");
-
-      skillMap.set(
-        summary.name,
-        `<!-- enforcement-skill: ${manifest.name} -->\n${content}`,
-      );
-      visitedNames.add(summary.name);
-    } catch (e) {
-      // Skip invalid/failed plugins
-    }
-  }
-
-  return Array.from(skillMap.values()).join("\n\n---\n\n");
+  return formatEffectivePolicyPrompt(
+    await resolveEffectivePolicy(projectRoot, { scope, profile }),
+  );
 }
