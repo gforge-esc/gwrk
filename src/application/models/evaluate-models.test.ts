@@ -170,6 +170,36 @@ function winningImplementationVerdict(
 }
 
 describe("model qualification orchestration", () => {
+  it.each(["define", "review"] as const)(
+    "supplies blinded elapsed duration after coverage for %s ranking",
+    async (role) => {
+      const { deps, runFixtureRepeat, judgeComparison } = setup();
+      const original = runFixtureRepeat.getMockImplementation()!;
+      runFixtureRepeat.mockImplementation(async (request) => ({
+        ...(await original(request)),
+        durationMs: request.route.modelId === candidate.modelId ? 250 : 400,
+      }));
+      await evaluateModels(deps, {
+        ...input,
+        role,
+        fixtures: [
+          {
+            id:
+              role === "define"
+                ? "define-long-context"
+                : "implement-seeded-defect",
+          },
+        ],
+      });
+      expect(judgeComparison).toHaveBeenCalledTimes(2);
+      for (const [, packet] of judgeComparison.mock.calls) {
+        expect(packet.gateEvidenceSummary).toContain("250ms elapsed");
+        expect(packet.gateEvidenceSummary).toContain("400ms elapsed");
+        expect(packet.gateEvidenceSummary).toContain("coverage");
+        expect(packet.gateEvidenceSummary).toContain("secondary");
+      }
+    },
+  );
   it.each(["requested identity", "observed identity", "incumbent gate"])(
     "rejects invalid repeat evidence before judging: %s",
     async (defect) => {

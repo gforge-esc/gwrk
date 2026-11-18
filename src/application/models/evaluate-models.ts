@@ -13,6 +13,7 @@ import {
   type RoleScore,
   assertNoSecretMaterial,
   blindCandidate,
+  computeMedian,
   evaluatePromotion,
   scoreRole,
 } from "../../domain/model-qualification.js";
@@ -525,8 +526,15 @@ export async function evaluateModels(
   const gateSummaries = comparisons.map(
     ({ gatePassRate, roleScore, repeats }, index) => {
       const label = comparisonLabels[index];
+      const elapsed = (route: RouteKey) => {
+        const median = computeMedian(
+          repeats[route].map(({ durationMs }) => durationMs),
+        );
+        return median === null ? "no elapsed evidence" : `${median}ms elapsed`;
+      };
+      const elapsedRanking = `Option A ${elapsed(left)}, Option B ${elapsed(right)}. Coverage is primary. Elapsed duration is secondary.`;
       if (gatePassRate) {
-        return `${label}: Option A gate pass rate ${gatePassRate[left]}, Option B gate pass rate ${gatePassRate[right]}`;
+        return `${label}: Option A gate pass rate ${gatePassRate[left]}, Option B gate pass rate ${gatePassRate[right]}. ${elapsedRanking}`;
       }
       if (roleScore?.role === "implement") {
         const times = {
@@ -543,7 +551,7 @@ export async function evaluateModels(
         const score = scoreRole(input.role, repeats[route], []);
         return "coverage" in score ? score.coverage : 0;
       };
-      return `${label}: Option A coverage ${coverage(left)}, Option B coverage ${coverage(right)}`;
+      return `${label}: Option A coverage ${coverage(left)}, Option B coverage ${coverage(right)}. ${elapsedRanking}`;
     },
   );
 

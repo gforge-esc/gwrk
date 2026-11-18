@@ -1066,6 +1066,7 @@ export class FixtureRunner
       }
 
       const reopenedTasks = new Set<string>();
+      let validatedReviewReport: ReviewReport | undefined;
       if (request.role === "review") {
         let report: ReviewReport | undefined;
         try {
@@ -1079,8 +1080,10 @@ export class FixtureRunner
               : extractJsonFromOutput(
                   taskResult.unwrappedStdout ?? taskResult.stdout,
                 );
-          if (matchesReviewSchema(parsed, outputSchema))
+          if (matchesReviewSchema(parsed, outputSchema)) {
             report = parsed as ReviewReport;
+            validatedReviewReport = report;
+          }
         } catch {
           // Review output is required even when the workspace changed.
         }
@@ -1198,6 +1201,9 @@ export class FixtureRunner
         ]);
         const agentReport = taskResult.unwrappedStdout ?? taskResult.stdout;
         sanitizedOutput = `## Diff\n${diffOut}\n\n## Agent report\n${agentReport}`;
+        if (validatedReviewReport) {
+          sanitizedOutput += `\n\n## Validated review report\n${JSON.stringify(validatedReviewReport)}`;
+        }
       }
 
       const evidence: FixtureRepeatEvidence = {

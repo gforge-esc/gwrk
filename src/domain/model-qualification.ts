@@ -231,7 +231,7 @@ export type RoleScore =
       readonly coverage: number;
     };
 
-function computeMedian(numbers: readonly number[]): number | null {
+export function computeMedian(numbers: readonly number[]): number | null {
   if (numbers.length === 0) return null;
   const sorted = [...numbers].sort((a, b) => a - b);
   const mid = Math.floor(sorted.length / 2);

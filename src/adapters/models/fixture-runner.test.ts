@@ -1929,7 +1929,10 @@ describe("fixture runner adapter", () => {
       const dispatcher = vi.fn(
         async (): Promise<TaskResult> => ({
           exitCode: 0,
-          stdout: `Notes {policy} before the result.\n\`\`\`json\n${JSON.stringify(verdict)}\n\`\`\`\nReview finished.`,
+          stdout:
+            mode === "structured"
+              ? "Review complete. Read the structured result."
+              : `Notes {policy} before the result.\n\`\`\`json\n${JSON.stringify(verdict)}\n\`\`\`\nReview finished.`,
           ...(mode === "structured" ? { structuredOutput: verdict } : {}),
           stderr: "",
           durationS: 0,
@@ -1944,6 +1947,8 @@ describe("fixture runner adapter", () => {
         },
       );
       expect(result.deterministicGatesPassed).toBe(true);
+      expect(result.sanitizedOutput).toContain(verdict.summary);
+      expect(result.sanitizedOutput).toContain("T001");
       expect(
         result.gateChecks.find(
           ({ checkId }) => checkId === "review-required-T001",
