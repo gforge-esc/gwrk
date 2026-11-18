@@ -23,13 +23,14 @@ describe("setup-state utility (Phase 10)", () => {
   const setupFile = path.join(TEST_HOME, ".gwrk", "setup.json");
 
   beforeEach(() => {
-    // Clean between tests
+    vi.stubEnv("GWRK_HOME", path.dirname(setupFile));
     if (fs.existsSync(setupFile)) {
       fs.unlinkSync(setupFile);
     }
   });
 
   afterEach(() => {
+    vi.unstubAllEnvs();
     if (fs.existsSync(setupFile)) {
       fs.unlinkSync(setupFile);
     }

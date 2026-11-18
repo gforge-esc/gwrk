@@ -103,12 +103,9 @@ describe("FR-006: First-Class Gate Checking", () => {
 		}
 	});
 
-	it("gate command is registered in cli.ts", () => {
-		const cliSource = fs.readFileSync(
-			path.resolve("src/cli.ts"),
-			"utf-8",
-		);
-		expect(cliSource).toContain("gateCommand");
+	it("registers the gate command on a fresh program", async () => {
+		const { createCliProgram } = await import("../cli.js");
+		expect(createCliProgram().commands.map((command) => command.name())).toContain("gate");
 	});
 });
 

@@ -151,7 +151,7 @@ outputSchema:
       ]);
 
       const dispatchCall = vi.mocked(agent.dispatchToAgent).mock.calls[0][0];
-      const prompt = dispatchCall.prompt as string;
+      const prompt = dispatchCall.stdin as string;
 
       expect(prompt).toContain("<reference_document");
       expect(prompt).toContain("Reference content");

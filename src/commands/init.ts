@@ -9,6 +9,7 @@ import path from "node:path";
 import readline from "node:readline/promises";
 import { Command } from "commander";
 import { installArchitectureContext } from "../adapters/architecture/context-files.js";
+import { writeScopedStdout } from "../adapters/cli/output-scope.js";
 import { resolveDesign } from "../domain/architecture-context.js";
 import { resolveDecisionsDir } from "../engine/adr-scaffold.js";
 import { detectExtensions } from "../engine/extension-detector.js";
@@ -247,7 +248,7 @@ export const initAction = async (options: any): Promise<void> => {
     };
 
     fs.writeFileSync(configPath, JSON.stringify(config, null, 2));
-    process.stdout.write(
+    writeScopedStdout(
       `Added workspace '${options.workspace}' at ${relativePath} to ${configPath}\n`,
     );
     return;
@@ -298,7 +299,7 @@ export const initAction = async (options: any): Promise<void> => {
       context.status = "incomplete";
       context.conflicts.push(`Decision index: ${(error as Error).message}`);
     }
-    process.stdout.write(
+    writeScopedStdout(
       `${JSON.stringify({ context, architecture: project.design.architecture }, null, 2)}\n`,
     );
     return;
@@ -321,8 +322,8 @@ export const initAction = async (options: any): Promise<void> => {
     deviceRole = "remote";
   } else {
     // First run on this machine — ask
-    process.stdout.write("\n🦩 First-time gwrk setup on this machine.\n\n");
-    process.stdout.write(
+    writeScopedStdout("\n🦩 First-time gwrk setup on this machine.\n\n");
+    writeScopedStdout(
       "  gwrk uses a single server device for harvest, Slack, and the\n" +
         "  autonomous daemon. All other machines are remote — they run\n" +
         "  agents locally and push work to GitHub.\n\n",
@@ -337,11 +338,11 @@ export const initAction = async (options: any): Promise<void> => {
   // Save device identity (idempotent on id)
   const device = saveDevice(deviceRole);
   if (!existingDevice) {
-    process.stdout.write(
+    writeScopedStdout(
       `Device registered: ${device.hostname} (${deviceRole})\n`,
     );
   } else if (existingDevice.role !== deviceRole) {
-    process.stdout.write(
+    writeScopedStdout(
       `Device role changed: ${existingDevice.role} → ${deviceRole}\n`,
     );
   }
@@ -419,11 +420,11 @@ export const initAction = async (options: any): Promise<void> => {
 
   if (!isNonInteractive) {
     if (root === cwd) {
-      process.stdout.write(
+      writeScopedStdout(
         "\n🦩 gwrk is already initialized here. Let's verify your setup.\n\n",
       );
     } else {
-      process.stdout.write("\n🦩 Welcome to gwrk init wizard!\n\n");
+      writeScopedStdout("\n🦩 Welcome to gwrk init wizard!\n\n");
     }
 
     config.project.name = await prompt("Project name", config.project.name);
@@ -480,30 +481,30 @@ export const initAction = async (options: any): Promise<void> => {
 
     if (await confirm("Perform workstation provisioning (SSH, gh auth)?")) {
       const { ssh, gh } = detectWorkstation();
-      process.stdout.write(
+      writeScopedStdout(
         ssh
           ? "✅ SSH keys detected.\n"
           : '⚠️ No SSH keys detected in ~/.ssh/. Generate one with: ssh-keygen -t ed25519 -C "you@example.com"\n',
       );
-      process.stdout.write(
+      writeScopedStdout(
         gh
           ? "✅ GitHub CLI authenticated.\n"
           : "⚠️ GitHub CLI (gh) not authenticated. Run 'gh auth login'.\n",
       );
-      process.stdout.write(
+      writeScopedStdout(
         "ℹ️  Note: If gwrk encounters file permission errors, ensure your Terminal has 'Full Disk Access' in macOS System Settings > Privacy & Security (TCC).\n",
       );
     }
 
     // Agent selection
     if (detectedAgents.length > 0) {
-      process.stdout.write("\nDetected agent backends:\n");
+      writeScopedStdout("\nDetected agent backends:\n");
       for (const a of detectedAgents) {
         const icon = a.available ? "✅" : "❌";
         const status = a.available ? "Available" : "Installed but unavailable";
-        process.stdout.write(`  ${icon} ${a.name.padEnd(12)} ${status}\n`);
+        writeScopedStdout(`  ${icon} ${a.name.padEnd(12)} ${status}\n`);
       }
-      process.stdout.write("\n");
+      writeScopedStdout("\n");
 
       if (availableAgents.length > 0) {
         selectedDefault = await prompt(
@@ -512,7 +513,7 @@ export const initAction = async (options: any): Promise<void> => {
         );
         // Validate selection
         if (!availableNames.includes(selectedDefault)) {
-          process.stdout.write(
+          writeScopedStdout(
             `⚠️ '${selectedDefault}' is not available. Using ${autoDefault}.\n`,
           );
           selectedDefault = autoDefault;
@@ -540,12 +541,12 @@ export const initAction = async (options: any): Promise<void> => {
           selectedFallback,
         );
       } else {
-        process.stdout.write(
+        writeScopedStdout(
           "⚠️ No available agent backends. Install agy, claude, or codex.\n",
         );
       }
     } else {
-      process.stdout.write(
+      writeScopedStdout(
         "⚠️ No agent backends detected. Install agy, claude, or codex.\n",
       );
     }
@@ -564,7 +565,7 @@ export const initAction = async (options: any): Promise<void> => {
 
   // 5. Registry Sync (server-only — remote devices don't run the daemon)
   if (deviceRole === "server") {
-    process.stdout.write("Syncing plugin registry...\n");
+    writeScopedStdout("Syncing plugin registry...\n");
     await syncRegistry();
   }
 
@@ -576,7 +577,7 @@ export const initAction = async (options: any): Promise<void> => {
     try {
       await setupSlack({ ...options, nonInteractive: isNonInteractive });
       if (config.project.slack?.channelId) {
-        process.stdout.write(
+        writeScopedStdout(
           `Provisioning Slack channel ${config.project.slack.channelId}...\n`,
         );
         const channelId = await ensureSlackChannel(
@@ -586,7 +587,7 @@ export const initAction = async (options: any): Promise<void> => {
       }
     } catch (e) {
       if (!isNonInteractive) {
-        process.stdout.write("⚠️ Slack setup skipped or failed.\n");
+        writeScopedStdout("⚠️ Slack setup skipped or failed.\n");
       }
     }
   }
@@ -735,51 +736,54 @@ export const initAction = async (options: any): Promise<void> => {
       extensions: config.extensions,
       agents: config.agents,
     };
-    process.stdout.write(`${JSON.stringify(output, null, 2)}\n`);
+    writeScopedStdout(`${JSON.stringify(output, null, 2)}\n`);
   } else {
-    process.stdout.write("\n✅ gwrk initialized successfully.\n");
-    process.stdout.write(`Project config written to ${configPath}\n`);
-    process.stdout.write(
+    writeScopedStdout("\n✅ gwrk initialized successfully.\n");
+    writeScopedStdout(`Project config written to ${configPath}\n`);
+    writeScopedStdout(
       `Agent config written to ${localConfigPath} (gitignored — personal to your machine)\n`,
     );
-    process.stdout.write(
+    writeScopedStdout(
       `Shareable template written to ${exampleConfigPath} (commit this; teammates copy it to .gwrkrc.local.json)\n`,
     );
-    process.stdout.write(
+    writeScopedStdout(
       `Architecture context: ${context.status}. Code conformance: unassessed.\n`,
     );
     if (context.conflicts.length)
-      process.stdout.write(
+      writeScopedStdout(
         `Preserved edited files: ${context.conflicts.join(", ")}\n`,
       );
-    process.stdout.write("Next steps:\n  gwrk assess\n");
-    process.stdout.write("  gwrk define spec my-feature\n");
-    process.stdout.write("  gwrk status\n\n");
+    writeScopedStdout("Next steps:\n  gwrk assess\n");
+    writeScopedStdout("  gwrk define spec my-feature\n");
+    writeScopedStdout("  gwrk status\n\n");
   }
 };
 
-export const initCommand = new Command("init")
-  .description("Initialize a new gwrk project")
-  .option(
-    "--context-only",
-    "Install project context without machine or agent provisioning",
-  )
-  .option(
-    "--architecture <target>",
-    "Desired architecture target without assessing code",
-  )
-  .option(
-    "--principles <list>",
-    "Comma-separated functional-core, clean-code, tdd",
-  )
-  .option("--language <name>", "Primary language for context composition")
-  .option("--framework <name>", "Framework for context composition")
-  .option("--non-interactive", "Run without interactive prompts")
-  .option("--agent", "Agent-optimized init mode")
-  .option("--workspace <name>", "Select a workspace profile")
-  .option(
-    "--remote",
-    "Register this machine as a remote device (no daemon, no harvest)",
-  )
-  .option("--server", "Register this machine as the gwrk server")
-  .action(initAction);
+export const createInitCommand = () =>
+  new Command("init")
+    .description("Initialize a new gwrk project")
+    .option(
+      "--context-only",
+      "Install project context without machine or agent provisioning",
+    )
+    .option(
+      "--architecture <target>",
+      "Desired architecture target without assessing code",
+    )
+    .option(
+      "--principles <list>",
+      "Comma-separated functional-core, clean-code, tdd",
+    )
+    .option("--language <name>", "Primary language for context composition")
+    .option("--framework <name>", "Framework for context composition")
+    .option("--non-interactive", "Run without interactive prompts")
+    .option("--agent", "Agent-optimized init mode")
+    .option("--workspace <name>", "Select a workspace profile")
+    .option(
+      "--remote",
+      "Register this machine as a remote device (no daemon, no harvest)",
+    )
+    .option("--server", "Register this machine as the gwrk server")
+    .action(initAction);
+
+export const initCommand = createInitCommand();

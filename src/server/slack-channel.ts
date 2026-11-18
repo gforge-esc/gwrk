@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import { logCliError } from "../adapters/cli/output-scope.js";
 import { loadSlackConfig } from "../utils/slack-client.js";
 
 interface SlackChannel {
@@ -22,9 +23,13 @@ interface SlackUser {
  * Bolt's app.client sometimes misroutes tokens in Socket Mode,
  * causing spurious 'missing_scope' errors on valid scopes.
  */
-async function slackFetch(method: string, body: Record<string, unknown> = {}) {
-  const tokens = loadSlackConfig();
-  if (!tokens) {
+async function slackFetch(
+  method: string,
+  body: Record<string, unknown> = {},
+  token = loadSlackConfig()?.botToken,
+  signal?: AbortSignal,
+) {
+  if (!token) {
     throw new Error("Slack not configured. Run gwrk setup slack first.");
   }
 
@@ -32,11 +37,23 @@ async function slackFetch(method: string, body: Record<string, unknown> = {}) {
     method: "POST",
     headers: {
       "Content-Type": "application/json; charset=utf-8",
-      Authorization: `Bearer ${tokens.botToken}`,
+      Authorization: `Bearer ${token}`,
     },
     body: JSON.stringify(body),
+    signal,
   });
   return res.json();
+}
+
+export async function postSlackMessageWithSignal(
+  token: string | undefined,
+  message: { channel: string; text: string; blocks?: unknown[] },
+  signal: AbortSignal,
+): Promise<void> {
+  signal.throwIfAborted();
+  if (!token) throw new Error("Slack client has no bot token.");
+  const response = await slackFetch("chat.postMessage", message, token, signal);
+  if (!response.ok) throw new Error("Slack rejected the message.");
 }
 
 /**
@@ -62,7 +79,7 @@ async function inviteOwnerToChannel(channelId: string): Promise<void> {
 
     // already_in_channel is fine — idempotent
     if (!inviteRes.ok && inviteRes.error !== "already_in_channel") {
-      console.error(
+      logCliError(
         `Warning: could not invite user to channel: ${inviteRes.error}`,
       );
     }

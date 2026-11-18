@@ -8,7 +8,16 @@ import { MessageBuilder, type SlackMessage } from "../slack-messages.js";
 import { notifySlack } from "../slack-notify.js";
 import type { DispatchRecord, NotifyPayload } from "../types.js";
 
-export async function notifyRoutes(server: FastifyInstance) {
+export async function notifyRoutes(
+  server: FastifyInstance,
+  projectRoot?: string,
+) {
+  const shutdown = new AbortController();
+  const deliveries = new Set<Promise<void>>();
+  server.addHook("preClose", async () => {
+    shutdown.abort();
+    await Promise.allSettled(deliveries);
+  });
   server.post<{ Body: NotifyPayload }>(
     "/api/notify",
     async (request, reply) => {
@@ -114,7 +123,7 @@ export async function notifyRoutes(server: FastifyInstance) {
         payload.type === "pulse";
 
       try {
-        await notifySlack(
+        const delivery = notifySlack(
           message,
           {
             type: payload.type,
@@ -124,8 +133,19 @@ export async function notifyRoutes(server: FastifyInstance) {
             payload: payload as unknown as Record<string, unknown>,
             timestamp: new Date().toISOString(),
           },
-          { opsOnly: isOps },
+          {
+            opsOnly: isOps,
+            projectRoot,
+            signal: shutdown.signal,
+            transportTimeoutMs: 5_000,
+          },
         );
+        deliveries.add(delivery);
+        try {
+          await delivery;
+        } finally {
+          deliveries.delete(delivery);
+        }
 
         return { ok: true };
       } catch (error) {

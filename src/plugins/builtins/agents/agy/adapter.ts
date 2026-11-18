@@ -191,25 +191,22 @@ export class AgyAdapter implements AgentBackend {
   }
 
   parseResult(stdout: string, stderr: string, rawExitCode: number): TaskResult {
-    let terminalFailure = false;
-    let terminalSeen = false;
+    let terminalError: string | undefined;
     const normalized = stdout
       .split("\n")
       .map((line) => {
         try {
           const event = JSON.parse(line);
-          if (
-            event.event !== "result" ||
-            !event.result ||
-            typeof event.result.response !== "string"
-          )
-            return line;
-          terminalSeen = true;
-          terminalFailure = event.result.status !== "SUCCESS";
+          if (event?.event !== "result" || !event.result) return line;
+          const failed = event.result.status !== "SUCCESS";
+          if (failed && typeof event.result.error === "string") {
+            terminalError ??= event.result.error;
+          }
           return JSON.stringify({
             type: "result",
             result: event.result.response,
             usage: event.result.usage,
+            is_error: failed,
           });
         } catch {
           return line;
@@ -218,7 +215,8 @@ export class AgyAdapter implements AgentBackend {
       .join("\n");
     const unwrapped = unwrapStreamJson(normalized);
     let errorType: TaskResult["errorType"];
-    let exitCode = terminalFailure && rawExitCode === 0 ? 1 : rawExitCode;
+    let exitCode =
+      unwrapped.terminalStatus === "failure" ? rawExitCode || 1 : rawExitCode;
 
     if (exitCode !== 0) {
       if (rawExitCode === 127 || stderr.includes("command not found")) {
@@ -234,7 +232,13 @@ export class AgyAdapter implements AgentBackend {
       ) {
         errorType = "turn_limit";
         exitCode = 1;
-      } else if (stderr.includes("429") || stderr.includes("Quota exceeded")) {
+      } else if (
+        stderr.includes("429") ||
+        stderr.includes("Quota exceeded") ||
+        /credits balance is too low|quota exceeded|resource_exhausted/i.test(
+          terminalError ?? "",
+        )
+      ) {
         errorType = "rate_limit";
         exitCode = 1;
       } else if (
@@ -254,12 +258,9 @@ export class AgyAdapter implements AgentBackend {
     return {
       exitCode,
       rawExitCode,
-      ...(terminalSeen
-        ? {
-            status: terminalFailure
-              ? ("failure" as const)
-              : ("success" as const),
-          }
+      status: exitCode === 0 ? "success" : "failure",
+      ...(unwrapped.terminalStatus
+        ? { terminalStatus: unwrapped.terminalStatus }
         : {}),
       stdout,
       unwrappedStdout: unwrapped.text,
@@ -268,6 +269,7 @@ export class AgyAdapter implements AgentBackend {
         : {}),
       ...(unwrapped.usage ? { usage: unwrapped.usage } : {}),
       stderr,
+      ...(terminalError ? { error: terminalError } : {}),
       errorType,
       durationS: 0,
     };

@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import { logCliOutput } from "../adapters/cli/output-scope.js";
 import type { GwrkConfig } from "../utils/config.js";
 import type { DispatchQueue } from "./dispatch.js";
 import type { GitManager } from "./git-manager.js";
@@ -23,8 +24,13 @@ interface TelegramUpdate {
   };
 }
 
-let pollingActive = false;
-let pollTimeout: ReturnType<typeof setTimeout> | null = null;
+interface PollingSession {
+  controller: AbortController;
+  timer?: ReturnType<typeof setTimeout>;
+  inFlight?: Promise<void>;
+}
+
+let activeSession: PollingSession | undefined;
 
 /**
  * Normalizes a Telegram message text into a `handleSlashCommand` string.
@@ -90,13 +96,15 @@ export async function startTelegramBot(deps: {
   git: GitManager;
   projectRoot: string;
   config: GwrkConfig;
-}): Promise<void> {
+}): Promise<(() => Promise<void>) | undefined> {
   const tgConfig = loadTelegramConfig(deps.projectRoot);
-  if (!tgConfig || pollingActive) {
+  if (!tgConfig || activeSession) {
     return;
   }
 
-  pollingActive = true;
+  const session: PollingSession = { controller: new AbortController() };
+  activeSession = session;
+  const { signal } = session.controller;
   let lastUpdateId = 0;
 
   const context: CommandContext = {
@@ -110,26 +118,29 @@ export async function startTelegramBot(deps: {
   };
 
   const poll = async () => {
-    if (!pollingActive) return;
     try {
       const url = `https://api.telegram.org/bot${tgConfig.botToken}/getUpdates?offset=${lastUpdateId + 1}&timeout=15`;
-      const res = await fetch(url);
+      const res = await fetch(url, { signal });
+      if (signal.aborted) return;
       if (res.ok) {
         const payload = (await res.json()) as {
           ok: boolean;
           result?: TelegramUpdate[];
         };
         for (const update of payload.result ?? []) {
+          if (signal.aborted) return;
           lastUpdateId = Math.max(lastUpdateId, update.update_id);
           const msg = update.message;
           if (!msg?.text) continue;
           if (String(msg.chat.id) !== String(tgConfig.chatId)) continue;
 
           const reply = await handleTelegramCommand(msg.text, context);
+          if (signal.aborted) return;
           if (reply) {
             await notifyTelegram(
               { text: reply, chatId: String(msg.chat.id) },
               deps.projectRoot,
+              signal,
             );
           }
         }
@@ -138,19 +149,31 @@ export async function startTelegramBot(deps: {
       // Network hiccup during long poll — retry after backoff
     }
 
-    if (pollingActive) {
-      pollTimeout = setTimeout(poll, 2000);
-    }
+    schedulePoll(2000);
   };
 
-  pollTimeout = setTimeout(poll, 100);
-  console.log("✈️ Telegram Bot control plane is running!");
+  function schedulePoll(delay: number) {
+    if (signal.aborted) return;
+    session.timer = setTimeout(() => {
+      if (!signal.aborted) session.inFlight = poll();
+    }, delay);
+  }
+
+  schedulePoll(100);
+  logCliOutput("✈️ Telegram Bot control plane is running!");
+  return () => stopPollingSession(session);
 }
 
 export async function stopTelegramBot(): Promise<void> {
-  pollingActive = false;
-  if (pollTimeout) {
-    clearTimeout(pollTimeout);
-    pollTimeout = null;
+  if (activeSession) await stopPollingSession(activeSession);
+}
+
+async function stopPollingSession(session: PollingSession): Promise<void> {
+  clearTimeout(session.timer);
+  session.controller.abort();
+  try {
+    await session.inFlight;
+  } finally {
+    if (activeSession === session) activeSession = undefined;
   }
 }

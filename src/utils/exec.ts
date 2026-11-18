@@ -66,7 +66,7 @@ export function execCommand(
   command: string,
   args: string[],
   stdin?: string,
-  opts?: { cwd?: string; env?: NodeJS.ProcessEnv },
+  opts?: { cwd?: string; env?: NodeJS.ProcessEnv; timeoutMs?: number },
 ): Promise<ExecResult> {
   return new Promise((resolve) => {
     const child = execFile(
@@ -76,6 +76,9 @@ export function execCommand(
         encoding: "utf-8",
         cwd: opts?.cwd,
         env: opts?.env ?? process.env,
+        ...(opts?.timeoutMs === undefined
+          ? {}
+          : { timeout: opts.timeoutMs, killSignal: "SIGKILL" as const }),
       },
       (error, stdout, stderr) => {
         if (error) {

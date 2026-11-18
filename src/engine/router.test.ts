@@ -8,10 +8,12 @@ import * as quotaModule from "./quota.js";
 import { AgentBackendRegistry } from "../plugins/agent-registry.js";
 import * as configModule from "../utils/config.js";
 import { getRoutingHistory } from "../db/plugins.js";
+import { tryLoadRegistry } from "../adapters/agents/registry-loader.js";
 
 vi.mock("../plugins/agent-registry.js");
 vi.mock("../utils/config.js");
 vi.mock("../db/plugins.js");
+vi.mock("../adapters/agents/registry-loader.js");
 // Removed vi.mock("./quota.js") to allow testing actual quotaProbe
 
 describe("FR-014 / Phase 4: Routing & Intelligence", () => {
@@ -19,6 +21,10 @@ describe("FR-014 / Phase 4: Routing & Intelligence", () => {
     vi.clearAllMocks();
     vi.restoreAllMocks();
     vi.mocked(getRoutingHistory).mockReturnValue([]);
+    vi.mocked(tryLoadRegistry).mockReturnValue({
+      ok: false,
+      error: { message: "No registry in this fixture." },
+    } as never);
   });
 
   describe("selectBackend() (FR-014 / FR-P4-001)", () => {

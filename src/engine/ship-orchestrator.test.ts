@@ -95,25 +95,26 @@ describe("ShipOrchestrator", () => {
   });
 
   it("should complete full lifecycle successfully", async () => {
-    let callCount = 0;
-    vi.mocked(state.loadTaskState).mockImplementation(() => {
-      callCount++;
-      return {
-        featureId: "004-ship-loop",
-        createdAt: new Date().toISOString(),
-        phases: [{ 
-          id: "phase-01", 
-          title: "Phase 1", 
-          tasks: [{ id: "T001", title: "Task 1", description: "Desc 1", status: callCount >= 2 ? "completed" : "open", gateScript: "gates/T001-gate.sh" }] 
-        }]
-      };
-    });
+    let implemented = false;
+    vi.mocked(state.loadTaskState).mockImplementation(() => ({
+      featureId: "004-ship-loop",
+      createdAt: new Date().toISOString(),
+      phases: [{
+        id: "phase-01",
+        title: "Phase 1",
+        tasks: [{
+          id: "T001",
+          title: "Task 1",
+          description: "Desc 1",
+          status: implemented ? "completed" : "open",
+          gateScript: "gates/T001-gate.sh",
+        }],
+      }],
+    }));
 
-    vi.mocked(agent.dispatchToAgent).mockResolvedValue({
-      exitCode: 0,
-      stdout: "Success",
-      stderr: "",
-      durationS: 10
+    vi.mocked(agent.dispatchToAgent).mockImplementation(async (task) => {
+      if (task.workflow === "gwrk-implement") implemented = true;
+      return { exitCode: 0, stdout: "Success", stderr: "", durationS: 10 };
     });
     vi.mocked(gateRunner.runGate)
       .mockResolvedValueOnce({ passed: false, exitCode: 1, output: "Fail" })  // pre-flight: triggers implement
@@ -126,6 +127,11 @@ describe("ShipOrchestrator", () => {
     expect((orchestrator as any).state.stage).toBe(ShipStage.DONE);
     expect(git.createBranch).toHaveBeenCalledWith(config.cwd, "feat/004-ship-loop", "develop");
     expect(agent.dispatchToAgent).toHaveBeenCalledTimes(3); // IMPLEMENT + CODE_REVIEW + UAT_REVIEW
+    expect(agent.dispatchToAgent).toHaveBeenCalledWith(expect.objectContaining({
+      type: "implement",
+      workflow: "gwrk-implement",
+      stdin: expect.stringContaining("T001"),
+    }));
   });
 
   it("TEST_GATE fails (NO-GO) when phase tests execute 0 tests — liveness (ADR-005 §10)", async () => {
@@ -155,6 +161,31 @@ describe("ShipOrchestrator", () => {
     // Liveness FAIL routes through NO-GO (retry), never advancing to review.
     expect(result.nextStage).not.toBe(ShipStage.CODE_REVIEW);
     expect((orchestrator as any).state.iteration).toBe(2);
+  });
+
+  it.each([true, false])("runs the authored phase gate file after the profile runs zero tests (gate passes=%s)", async (passed) => {
+    const taskState = state.loadTaskState(config.cwd);
+    const [phase] = taskState.phases;
+    const gatePath = `${config.cwd}/specs/${config.featureId}/gates/phase-01.sh`;
+    phase.tasks[0].description = "Tests: src/foo.test.ts";
+    phase.tasks[0].gateScript = "gates/phase-01.sh";
+    vi.mocked(state.loadTaskState).mockReturnValue(taskState);
+    vi.mocked(fs.existsSync).mockImplementation((path) => path === gatePath);
+    vi.mocked(execSync).mockReturnValue("No test files found, exiting");
+    vi.mocked(gateRunner.runGate).mockResolvedValue({
+      passed,
+      exitCode: passed ? 0 : 1,
+      output: "authored gate result",
+    });
+
+    const orchestrator = new ShipOrchestrator(config);
+    const result = await (orchestrator as any).stageTestGate();
+
+    expect(gateRunner.runGate).toHaveBeenCalledExactlyOnceWith(
+      gatePath,
+      expect.objectContaining({ cwd: config.cwd }),
+    );
+    expect(result.nextStage === ShipStage.CODE_REVIEW).toBe(passed);
   });
 
   it("TEST_GATE passes when phase tests actually run and pass — liveness", async () => {
@@ -312,6 +343,29 @@ describe("ShipOrchestrator", () => {
     expect(exitCode).toBe(1);
     expect((orchestrator as any).state.stage).toBe(ShipStage.BRANCH_SETUP);
     expect(git.createBranch).not.toHaveBeenCalled();
+  });
+
+  it("dispatches a repair when a reviewer reopened a task with a passing gate", async () => {
+    const taskState = vi.mocked(state.loadTaskState)("");
+    taskState.phases[0].tasks[0].description +=
+      "\n\nREVIEW/GATE DIVERGENCE (T001): Add a gate that reproduces the defect.";
+    vi.mocked(state.loadTaskState).mockReturnValue(taskState);
+    vi.mocked(gateRunner.runGate).mockResolvedValue({
+      passed: true, exitCode: 0, output: "Pass",
+    });
+    vi.mocked(agent.dispatchToAgent).mockResolvedValue({
+      exitCode: 0, stdout: "Repaired", stderr: "", durationS: 1,
+    });
+
+    const orchestrator = new ShipOrchestrator(config);
+    vi.spyOn(orchestrator as any, "runPostFlightGates").mockResolvedValue(null);
+    await (orchestrator as any).stageImplement();
+
+    expect(agent.dispatchToAgent).toHaveBeenCalledWith(expect.objectContaining({
+      workflow: "gwrk-implement",
+      stdin: expect.stringContaining("REVIEW/GATE DIVERGENCE"),
+    }));
+    expect(taskState.phases[0].tasks[0].status).toBe("open");
   });
 
   it("should skip implementation if pre-flight gate passes", async () => {

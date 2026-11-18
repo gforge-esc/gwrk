@@ -4,6 +4,7 @@
 
 import crypto from "node:crypto";
 import type { FastifyInstance } from "fastify";
+import { createSlackNotificationAdapter } from "../adapters/notifications/index.js";
 import { type IssueRecord, updateIssue, upsertIssue } from "../db/issues.js";
 import { harvestFeature } from "../engine/harvest.js";
 import {
@@ -15,12 +16,33 @@ import type { GwrkConfig } from "../utils/config.js";
 import { parseFeatureBranch } from "../utils/feature-branch.js";
 import { syncTrunkForHarvest } from "../utils/git.js";
 import { resolveProjectId } from "../utils/project-id.js";
+import type { DispatchLedgerScope } from "./dispatch.js";
 
 export async function githubWebhookPlugin(
   fastify: FastifyInstance,
-  options: { config: GwrkConfig; projectRoot: string },
+  options: {
+    config: GwrkConfig;
+    projectRoot: string;
+    ledger?: DispatchLedgerScope;
+    gitEnv?: () => NodeJS.ProcessEnv;
+  },
 ) {
-  const { config, projectRoot } = options;
+  const { config, projectRoot, ledger, gitEnv } = options;
+  const shutdown = new AbortController();
+  const issueNotifier = createSlackNotificationAdapter({
+    projectRoot,
+    signal: shutdown.signal,
+    transportTimeoutMs: 5_000,
+  });
+  const issueDeliveries = new Set<Promise<void>>();
+  const inFlight = new Set<Promise<void>>();
+  fastify.addHook("preClose", async () => {
+    shutdown.abort();
+    await Promise.allSettled(issueDeliveries);
+  });
+  fastify.addHook("onClose", async () => {
+    await Promise.all(inFlight);
+  });
 
   fastify.post("/webhook/github", async (request, reply) => {
     const signature = request.headers["x-hub-signature-256"] as string;
@@ -63,10 +85,13 @@ export async function githubWebhookPlugin(
 
       if (action === "opened" || action === "labeled" || action === "closed") {
         // FR-H13: Issue-to-feature association
-        const featureId = associateIssueWithFeature({
-          title: issue.title,
-          labels: issue.labels?.map((l: { name: string }) => l.name) || [],
-        });
+        const featureId = associateIssueWithFeature(
+          {
+            title: issue.title,
+            labels: issue.labels?.map((l: { name: string }) => l.name) || [],
+          },
+          projectRoot,
+        );
 
         if (!featureId) {
           return reply
@@ -86,20 +111,28 @@ export async function githubWebhookPlugin(
           author: issue.user?.login || "unknown",
         };
 
-        const projectId = resolveProjectId(projectRoot);
+        const projectId = ledger?.projectId ?? resolveProjectId(projectRoot);
 
         // FR-H14: Record in issues table
         if (action === "opened" || action === "labeled") {
-          upsertIssue(record, projectId);
+          upsertIssue(record, projectId, ledger?.db);
           // FR-H15: Slack notification
           if (action === "opened") {
-            await notifyIssueOpened(record);
+            const delivery = notifyIssueOpened(record, issueNotifier);
+            issueDeliveries.add(delivery);
+            try {
+              await delivery;
+            } finally {
+              issueDeliveries.delete(delivery);
+            }
           }
         } else if (action === "closed") {
-          updateIssue(issue.number, projectId, {
-            state: "closed",
-            closed_at: issue.closed_at,
-          });
+          updateIssue(
+            issue.number,
+            projectId,
+            { state: "closed", closed_at: issue.closed_at },
+            ledger?.db,
+          );
         }
 
         return reply
@@ -161,14 +194,17 @@ export async function githubWebhookPlugin(
     };
 
     // 5. Trigger Harvest (FR-H01)
-    syncTrunkForHarvest(projectRoot, baseRef);
-    harvestFeature(projectRoot, record)
-      .then(async (_report) => {
+    const env = gitEnv?.();
+    syncTrunkForHarvest(projectRoot, baseRef, env);
+    const harvest = harvestFeature(projectRoot, record, ledger, env)
+      .then(() => {
         fastify.log.info(`Harvest complete for ${featureId}`);
       })
       .catch((err) => {
         fastify.log.error(`Harvest failed for ${featureId}: ${err.message}`);
-      });
+      })
+      .finally(() => inFlight.delete(harvest));
+    inFlight.add(harvest);
 
     return reply.status(200).send({ status: "accepted", featureId, phaseId });
   });

@@ -6,7 +6,9 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { createToolchainAdapter } from "../adapters/toolchain/index.js";
 import type { ProjectProfile } from "../engine/prompt-conditioner.js";
+import * as toolchainPort from "../ports/toolchain-port.js";
 import {
   getBuildCommand,
   getSourceExtension,
@@ -113,6 +115,21 @@ describe("getBuildCommand (021 FR-004 — string | null)", () => {
     it("package.json scripts.build + pnpm-lock → pnpm build", () => {
       expect(getBuildCommand(p({}), dir)).toBe("pnpm build");
     });
+    it("keeps manifest discovery on the adapter's normal entry point", () => {
+      expect(createToolchainAdapter(p({})).getBuildCommand(dir)).toBe("pnpm build");
+    });
+
+    it("does not fall through after malformed package JSON", () => {
+      const invalid = fs.mkdtempSync(path.join(os.tmpdir(), "gwrk-build-invalid-"));
+      try {
+        fs.writeFileSync(path.join(invalid, "package.json"), "{");
+        fs.writeFileSync(path.join(invalid, "go.mod"), "module fixture");
+        expect(getBuildCommand(p({}), invalid)).toBeNull();
+      } finally {
+        fs.rmSync(invalid, { recursive: true, force: true });
+      }
+    });
+
     it("no build script anywhere → null", () => {
       const empty = fs.mkdtempSync(path.join(os.tmpdir(), "gwrk-nobuild-"));
       expect(getBuildCommand(p({}), empty)).toBeNull();
@@ -125,5 +142,11 @@ describe("getBuildCommand (021 FR-004 — string | null)", () => {
       expect(getBuildCommand(p({}), d)).toBeNull();
       fs.rmSync(d, { recursive: true, force: true });
     });
+  });
+});
+
+describe("Toolchain port boundary", () => {
+  it("exports only type contracts from the port module", () => {
+    expect(Object.keys(toolchainPort)).toEqual([]);
   });
 });

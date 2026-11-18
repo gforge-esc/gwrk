@@ -37,6 +37,25 @@ describe('US-016: Enforcement Skills Dispatch Injection', () => {
     vi.clearAllMocks();
   });
 
+  it("expands prompt policy before transport and sends overlapping input once", async () => {
+    vi.mocked(skillRuntime.resolveEnforcementSkills).mockResolvedValue("# Scoped architecture rule");
+    const prompt = "Plan the requested phase.\n<code_quality>{{enforcement}}</code_quality>";
+    const result = await dispatchToAgent({
+      workflow: "gwrk-plan",
+      workDir: "/fake/root",
+      agent: "agy",
+      prompt,
+      stdin: prompt,
+      dryRun: true,
+      quiet: true,
+    });
+
+    expect(result.stdout.match(/Plan the requested phase\./g)).toHaveLength(1);
+    expect(result.stdout.match(/# Scoped architecture rule/g)).toHaveLength(1);
+    expect(result.stdout).not.toContain("{{enforcement}}");
+    expect(result.stdout.match(/<command_safety>/g)).toHaveLength(1);
+  });
+
   it('TR-P9-005: injects enforcement skills into <code_quality> section', async () => {
     vi.mocked(skillRuntime.resolveEnforcementSkills).mockResolvedValue('# Strict Typing Rule');
     

@@ -10,12 +10,14 @@ import { spawn } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import readline from "node:readline";
+import { writeScopedStdout } from "../adapters/cli/output-scope.js";
 import { recordRoutingDecision } from "../db/plugins.js";
 import type { AgentBackend } from "../plugins/agent-backend.js";
 import { AgentBackendRegistry } from "../plugins/agent-registry.js";
 import { resolveExtensionContext } from "../plugins/extension-runtime.js";
 import { PluginLoader } from "../plugins/loader.js";
 import { resolveEnforcementSkills } from "../plugins/skill-runtime.js";
+import type { AgentTaskRequest, AgentTaskResult } from "../ports/agent-port.js";
 import { formatResultError, renderStreamStdoutLine } from "./agent-log.js";
 import { type AgentBackendId, loadConfig } from "./config.js";
 import { startProgress } from "./progress.js";
@@ -175,7 +177,7 @@ async function dispatchAgent(opts: DispatchOptions): Promise<{
     opts.prebuiltDispatch ?? (await buildCommand(opts, workflowContent));
 
   // Set up .runs/ log file
-  const runsDir = path.join(projectRoot, ".runs");
+  const runsDir = path.join(process.cwd(), ".runs");
   fs.mkdirSync(runsDir, { recursive: true });
   const ts = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
   // Use parent directory name for plugin workflows (PROMPT.md → parent dir name)
@@ -245,7 +247,7 @@ async function dispatchAgent(opts: DispatchOptions): Promise<{
     const progress = opts.quiet
       ? startProgress({
           label: "agent running",
-          write: (chunk) => process.stdout.write(chunk),
+          write: (chunk) => writeScopedStdout(chunk),
           isTTY: process.stdout.isTTY === true,
           frameMs: 200,
         })
@@ -276,7 +278,7 @@ async function dispatchAgent(opts: DispatchOptions): Promise<{
         const now = new Date();
         const elapsed = Math.floor((Date.now() - startEpoch) / 1000);
         const stamp = `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}:${String(now.getSeconds()).padStart(2, "0")} +${String(Math.floor(elapsed / 60)).padStart(2, "0")}:${String(elapsed % 60).padStart(2, "0")}`;
-        process.stdout.write(
+        writeScopedStdout(
           `${DIM}${stamp}${RESET}  ${YELLOW}⏳ 429 — Rate limited (attempt ${attempt}), retrying…${RESET}\n`,
         );
         logStream.write(`[429] Attempt ${attempt} — rate limited, retrying\n`);
@@ -358,7 +360,7 @@ async function dispatchAgent(opts: DispatchOptions): Promise<{
       if (opts.quiet) {
         const status = code === 0 ? "✓" : "✗";
         const relLogPath = path.relative(process.cwd(), logPath);
-        process.stdout.write(
+        writeScopedStdout(
           `  ${status} agent done (${mins}m ${secs}s) → ${relLogPath}\n`,
         );
         // Surface concise error context on failure (goal: helpful context, not
@@ -366,9 +368,9 @@ async function dispatchAgent(opts: DispatchOptions): Promise<{
         const errSummary = formatResultError(lastResultEvent);
         if (code !== 0 || errSummary) {
           if (errSummary) {
-            process.stdout.write(`  ${YELLOW}⚠ ${errSummary}${RESET}\n`);
+            writeScopedStdout(`  ${YELLOW}⚠ ${errSummary}${RESET}\n`);
           }
-          process.stdout.write(
+          writeScopedStdout(
             `  ${DIM}↳ full transcript: ${relLogPath}${RESET}\n`,
           );
         }
@@ -414,45 +416,12 @@ async function dispatchAgent(opts: DispatchOptions): Promise<{
  * FR-019: Input contract for dispatchToAgent().
  * Maps to ADR-006 AgentBackend.dispatch() input.
  */
-export interface TaskDispatch {
-  type?: string;
-  prompt?: string;
-  agent?: AgentBackendId | string;
-  model?: string;
+export interface TaskDispatch extends AgentTaskRequest {
   commandOverride?: string;
-  workDir?: string;
-  stdin?: string;
-  env?: Record<string, string>;
-  workflow?: string;
-  featureDir?: string;
-  quiet?: boolean;
   dryRun?: boolean;
-  /**
-   * JSON Schema for the expected output contract. Adapters whose CLI supports
-   * structured output (e.g. Claude's `--json-schema`) pass this through to
-   * force schema-conforming output; adapters that don't simply ignore it.
-   */
-  outputSchema?: Record<string, unknown>;
 }
 
-/**
- * FR-019: Output contract for dispatchToAgent().
- * Normalized result — proprietary exit codes mapped to gwrk standard.
- */
-export interface TaskResult {
-  exitCode: number;
-  rawExitCode?: number;
-  errorType?: string;
-  stdout: string;
-  unwrappedStdout?: string;
-  structuredOutput?: Record<string, unknown>;
-  usage?: {
-    tokensIn?: number;
-    tokensOut?: number;
-    costUsd?: number;
-  };
-  stderr: string;
-  durationS: number;
+export interface TaskResult extends AgentTaskResult {
   logPath?: string;
   /** True when the agent writes files directly via built-in tools. */
   nativeWriter?: boolean;
@@ -514,7 +483,7 @@ async function resolveWorkflowPath(workflowName: string): Promise<string> {
  * Internals are replaced by pluginRegistry.getAgentBackend().dispatch()
  */
 export async function dispatchToAgent(task: TaskDispatch): Promise<TaskResult> {
-  const projectRoot = process.cwd();
+  const projectRoot = task.workDir ?? process.cwd();
   try {
     const config = loadConfig(projectRoot);
     const throttleMs = config.agents.throttleMs ?? 0;
@@ -534,7 +503,7 @@ export async function dispatchToAgent(task: TaskDispatch): Promise<TaskResult> {
       if (now - lastDispatch < throttleMs) {
         const wait = throttleMs - (now - lastDispatch);
         const waitSecs = Math.ceil(wait / 1000);
-        process.stdout.write(
+        writeScopedStdout(
           `\x1b[2m\x1b[33m⏳ Metering API limits (waiting ${waitSecs}s)...\x1b[0m\n`,
         );
         await new Promise((resolve) => setTimeout(resolve, wait));
@@ -546,11 +515,18 @@ export async function dispatchToAgent(task: TaskDispatch): Promise<TaskResult> {
   }
 
   const agentName = (task.agent ?? "agy") as string;
-  const registry = new AgentBackendRegistry(new PluginLoader());
+  const registry = new AgentBackendRegistry(
+    new PluginLoader({ projectDir: projectRoot }),
+  );
   const adapter = await registry.getAgentBackend(agentName);
 
   const startTime = Date.now();
-  let stdinPayload = task.stdin ?? "";
+  let stdinPayload = [
+    task.prompt,
+    task.stdin === task.prompt ? undefined : task.stdin,
+  ]
+    .filter(Boolean)
+    .join("\n\n");
 
   // FR-014: Inject enforcement skills
   const hasEnforcementPlaceholder = stdinPayload.includes("{{enforcement}}");
@@ -573,7 +549,10 @@ export async function dispatchToAgent(task: TaskDispatch): Promise<TaskResult> {
     );
 
     if (hasEnforcementPlaceholder) {
-      stdinPayload = stdinPayload.replace("{{enforcement}}", enforcement);
+      stdinPayload = stdinPayload.replaceAll(
+        "{{enforcement}}",
+        () => enforcement,
+      );
     } else if (hasCodeQualitySection) {
       stdinPayload = stdinPayload.replace(
         /<code_quality>([\s\S]*?)<\/code_quality>/,
@@ -583,7 +562,7 @@ export async function dispatchToAgent(task: TaskDispatch): Promise<TaskResult> {
   }
 
   // ADR-009: Inject project knowledge documents (grounding)
-  const workDir = task.workDir || projectRoot;
+  const workDir = projectRoot;
   const groundingFiles = [
     {
       path: path.join(workDir, ".gwrk/architecture.md"),
@@ -614,13 +593,11 @@ export async function dispatchToAgent(task: TaskDispatch): Promise<TaskResult> {
         const content = fs.readFileSync(filePath, "utf-8");
         grounding += `<${tag}>\n${content}\n</${tag}>\n\n`;
         if (!task.quiet) {
-          process.stdout.write(
-            `${DIM}  → Grounding: <${tag}> injected${RESET}\n`,
-          );
+          writeScopedStdout(`${DIM}  → Grounding: <${tag}> injected${RESET}\n`);
         }
       } catch (err) {
         if (!task.quiet) {
-          process.stdout.write(
+          writeScopedStdout(
             `${DIM}  ⚠ Grounding: <${tag}> unreadable (${err instanceof Error ? err.message : err})${RESET}\n`,
           );
         }
@@ -633,7 +610,10 @@ export async function dispatchToAgent(task: TaskDispatch): Promise<TaskResult> {
   }
 
   // Layer 3: External Context Injection (Phase 21)
-  const rawKeywordSource = [task.featureDir ?? "", task.prompt ?? ""]
+  const rawKeywordSource = [
+    task.featureDir ?? "",
+    task.prompt ?? task.stdin ?? "",
+  ]
     .join(" ")
     .replace(/^specs\//, "")
     .replace(/^\d+-/, " ");
@@ -668,7 +648,8 @@ export async function dispatchToAgent(task: TaskDispatch): Promise<TaskResult> {
 
   const dispatch = await adapter.dispatch({
     ...task,
-    stdin: stdinPayload || task.stdin,
+    prompt: undefined,
+    stdin: stdinPayload || undefined,
   });
   if (
     stdinPayload &&

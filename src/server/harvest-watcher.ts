@@ -3,6 +3,11 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import type { App } from "@slack/bolt";
+import {
+  logCliError,
+  logCliOutput,
+  warnCli,
+} from "../adapters/cli/output-scope.js";
 import { getCompressionRecord } from "../db/compression.js";
 import { harvestFeature } from "../engine/harvest.js";
 import type { HarvestRecord } from "../engine/types.js";
@@ -11,36 +16,54 @@ import { execCommand } from "../utils/exec.js";
 import { parseFeatureBranch } from "../utils/feature-branch.js";
 import { detectDefaultBranch, syncTrunkForHarvest } from "../utils/git.js";
 import { resolveProjectId } from "../utils/project-id.js";
+import type { DispatchLedgerScope } from "./dispatch.js";
+
+const GH_POLL_TIMEOUT_MS = 5_000;
 
 export class HarvestWatcher {
   private interval: NodeJS.Timeout | null = null;
+  private inFlight?: Promise<void>;
+  private stopping = false;
   private projectId: string;
 
   constructor(
     private config: GwrkConfig,
     private slackApp: App | null,
     private projectRoot: string = process.cwd(),
+    private ledger?: DispatchLedgerScope,
+    private gitEnv?: () => NodeJS.ProcessEnv,
   ) {
-    this.projectId = resolveProjectId(this.projectRoot);
+    this.projectId = ledger?.projectId ?? resolveProjectId(this.projectRoot);
   }
 
   start() {
+    this.stopping = false;
     // Poll every 5 minutes (300000ms)
     const intervalMs = 5 * 60 * 1000;
-    this.interval = setInterval(() => this.runCheck(), intervalMs);
-    // Run once on startup
-    this.runCheck().catch(console.error);
+    const check = () => {
+      this.inFlight ??= this.runCheck()
+        .catch(console.error)
+        .finally(() => {
+          this.inFlight = undefined;
+        });
+    };
+    this.interval = setInterval(check, intervalMs);
+    check();
   }
 
-  stop() {
+  stop(): void | Promise<void> {
+    this.stopping = true;
     if (this.interval) {
       clearInterval(this.interval);
       this.interval = null;
     }
+    return this.inFlight;
   }
 
   async runCheck() {
+    if (this.stopping) return;
     try {
+      const env = this.gitEnv?.();
       const baseBranch = detectDefaultBranch(this.projectRoot, "develop");
 
       // Execute GitHub CLI command to get merged and closed PRs
@@ -59,12 +82,13 @@ export class HarvestWatcher {
           "number,headRefName,mergedAt,mergeCommit,url,state,closedAt",
         ],
         undefined,
-        { cwd: this.projectRoot },
+        { cwd: this.projectRoot, env, timeoutMs: GH_POLL_TIMEOUT_MS },
       );
 
+      if (this.stopping) return;
       if (result.exitCode !== 0) {
         // Log at warn/debug level; don't throw to prevent daemon crash
-        console.warn(
+        warnCli(
           `HarvestWatcher: Failed to query GitHub CLI (exit code ${result.exitCode}): ${result.stderr.trim()}`,
         );
         return;
@@ -81,6 +105,7 @@ export class HarvestWatcher {
       }>;
 
       for (const pr of prs) {
+        if (this.stopping) break;
         if (pr.state === "OPEN") continue;
 
         const headRef = pr.headRefName;
@@ -96,6 +121,7 @@ export class HarvestWatcher {
             featureId,
             phaseId,
             this.projectId,
+            this.ledger?.db,
           );
           if (existing) {
             continue; // Already processed
@@ -109,7 +135,7 @@ export class HarvestWatcher {
           ? pr.mergedAt || new Date().toISOString()
           : pr.closedAt || new Date().toISOString();
 
-        console.log(
+        logCliOutput(
           `HarvestWatcher: Found ${prStatus} PR #${pr.number} for ${featureId} (${phaseId || "all phases"}). Starting harvest...`,
         );
 
@@ -126,17 +152,17 @@ export class HarvestWatcher {
         };
 
         try {
-          syncTrunkForHarvest(this.projectRoot, baseBranch);
-          await harvestFeature(this.projectRoot, record);
-          console.log(
+          syncTrunkForHarvest(this.projectRoot, baseBranch, env);
+          await harvestFeature(this.projectRoot, record, this.ledger, env);
+          logCliOutput(
             `HarvestWatcher: Completed harvest for ${featureId} (${phaseId || "all phases"})`,
           );
         } catch (err) {
-          console.error(`HarvestWatcher: Failed to harvest ${featureId}:`, err);
+          logCliError(`HarvestWatcher: Failed to harvest ${featureId}:`, err);
         }
       }
     } catch (err) {
-      console.error("HarvestWatcher: Error in runCheck:", err);
+      logCliError("HarvestWatcher: Error in runCheck:", err);
     }
   }
 }

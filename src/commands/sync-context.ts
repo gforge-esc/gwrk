@@ -5,6 +5,7 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { Command } from "commander";
+import { logCliOutput, warnCli } from "../adapters/cli/output-scope.js";
 import { AgentBackendRegistry } from "../plugins/agent-registry.js";
 import { PluginLoader } from "../plugins/loader.js";
 import { color } from "../utils/format.js";
@@ -22,7 +23,7 @@ export async function syncAgentContext() {
   try {
     governance = await fs.readFile(contextPath, "utf-8");
   } catch (e) {
-    console.warn(
+    warnCli(
       `${YELLOW}Warning: .gwrk/agent-context.md not found. Using empty governance.${RESET}`,
     );
   }
@@ -34,15 +35,18 @@ export async function syncAgentContext() {
 /**
  * Command definition for gwrk plugin sync-context
  */
-export const syncContextCommand = new Command("sync-context")
-  .description(
-    "Synchronize agent context files (GEMINI.md, CLAUDE.md) from .gwrk/agent-context.md",
-  )
-  .action(async () => {
-    await withSignal("plugin sync-context", async () => {
-      await syncAgentContext();
-      console.log(
-        `${GREEN}Synchronized context files for all active agent backends.${RESET}`,
-      );
+export const createSyncContextCommand = () =>
+  new Command("sync-context")
+    .description(
+      "Synchronize agent context files (GEMINI.md, CLAUDE.md) from .gwrk/agent-context.md",
+    )
+    .action(async () => {
+      await withSignal("plugin sync-context", async () => {
+        await syncAgentContext();
+        logCliOutput(
+          `${GREEN}Synchronized context files for all active agent backends.${RESET}`,
+        );
+      });
     });
-  });
+
+export const syncContextCommand = createSyncContextCommand();

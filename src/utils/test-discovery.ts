@@ -8,7 +8,7 @@ import {
   getColocatedTestCandidates,
   isPolyglotTestFile,
   normalizeTestStem,
-} from "../ports/toolchain-port.js";
+} from "../domain/test-rules.js";
 
 /**
  * The one definition of "what is a test file" (FR-003, TC-005). Returns true when
