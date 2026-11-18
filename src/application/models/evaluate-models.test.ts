@@ -35,7 +35,11 @@ function setup({ gatePasses = true } = {}) {
     observedModel: "unknown",
     deterministicGatesPassed: gatePasses,
     gateChecks: [
-      { checkId: "behavior", passed: gatePasses, detail: "expected output" },
+      {
+        checkId: "candidate-gate",
+        passed: gatePasses,
+        detail: "expected output",
+      },
     ],
     durationMs: 100,
     retries: 0,
@@ -70,6 +74,12 @@ function setup({ gatePasses = true } = {}) {
     judgeComparison,
     deps: {
       runner: {
+        loadSuite: async () => ({
+          fixtures: [
+            { id: "define-long-context", roles: ["define"] },
+            { id: "implement-seeded-defect", roles: ["implement", "review"] },
+          ],
+        }),
         runFixtureRepeat,
         computeSuiteHashes: async () => ({
           fixtureSuiteHash: "fixture-hash",
@@ -167,8 +177,8 @@ describe("model qualification orchestration", () => {
         citations: [
           {
             inputRef: "define-long-context",
-            outputRef: "output",
-            gateRef: "behavior",
+            outputRef: "optionA",
+            gateRef: "candidate-gate",
             claim: "Plan coverage verified",
           },
         ],
@@ -195,30 +205,200 @@ describe("model qualification orchestration", () => {
           planSource: "fixed" as const,
         },
       ],
-      handoffArtifactDir: "/tmp/fake-artifacts",
+      artifactRoot: "/art",
     };
 
     const result = await evaluateModels(deps, handoffInput);
 
-    // 1 base fixture + 2 handoff fixtures = 3 fixture runs * 3 repeats = 9 runs per route
-    const candidateCalls = runFixtureRepeat.mock.calls
+    const defineCalls = runFixtureRepeat.mock.calls
       .map(([req]) => req)
-      .filter((req) => req.route.modelId === candidate.modelId);
-    expect(candidateCalls.length).toBe(9);
+      .filter((req) => req.fixtureId === "define-long-context");
+    expect(defineCalls.length).toBe(6);
+    for (const call of defineCalls) {
+      expect(call.handoffArtifactDir).toBeUndefined();
+      expect(call.artifactOutputDir).toBeDefined();
+      expect(call.artifactOutputDir).toBe(
+        call.route.modelId === candidate.modelId
+          ? `/art/candidate/define-long-context/repeat-${call.repeatIndex}`
+          : `/art/incumbent/define-long-context/repeat-${call.repeatIndex}`,
+      );
+    }
 
-    const defineCalls = candidateCalls.filter(
-      (req) => req.fixtureId === "define-long-context",
-    );
-    expect(defineCalls.map((r) => r.repeatIndex).sort()).toEqual([0, 1, 2]);
+    const candidatePlanCalls = runFixtureRepeat.mock.calls
+      .map(([req]) => req)
+      .filter(
+        (req) =>
+          req.fixtureId === "implement-seeded-defect" &&
+          req.handoffArtifactDir !== undefined,
+      );
+    expect(candidatePlanCalls.length).toBe(6);
 
-    const implementCalls = candidateCalls.filter(
-      (req) => req.fixtureId === "implement-seeded-defect",
+    const incumbentImplementCalls = candidatePlanCalls.filter(
+      (req) => req.route.modelId === incumbent.modelId,
     );
-    expect(implementCalls.length).toBe(6);
+    expect(incumbentImplementCalls.length).toBe(3);
+    for (const call of incumbentImplementCalls) {
+      expect(call.handoffArtifactDir).toBe(
+        `/art/candidate/define-long-context/repeat-${call.repeatIndex}`,
+      );
+    }
+
+    const candidateImplementCalls = candidatePlanCalls.filter(
+      (req) => req.route.modelId === candidate.modelId,
+    );
+    expect(candidateImplementCalls.length).toBe(3);
+    for (const call of candidateImplementCalls) {
+      expect(call.handoffArtifactDir).toBe(
+        `/art/incumbent/define-long-context/repeat-${call.repeatIndex}`,
+      );
+    }
+
+    const fixedPlanCalls = runFixtureRepeat.mock.calls
+      .map(([req]) => req)
+      .filter(
+        (req) =>
+          req.fixtureId === "implement-seeded-defect" &&
+          req.handoffArtifactDir === undefined,
+      );
+    expect(fixedPlanCalls.length).toBe(6);
+    for (const call of fixedPlanCalls) {
+      expect(call.handoffArtifactDir).toBeUndefined();
+    }
 
     expect(judgeComparison).toHaveBeenCalledTimes(2);
     expect(result.decision).toEqual({ promote: true });
     expect(result.candidateOption).toBe(expectedOption);
+  });
+
+  it("narrows fixtures to those declaring the evaluation role and avoids dispatching mismatched fixtures", async () => {
+    const { deps, runFixtureRepeat } = setup();
+    const result = await evaluateModels(deps, {
+      ...input,
+      role: "define",
+      fixtures: [
+        { id: "define-long-context" },
+        { id: "implement-seeded-defect" },
+      ],
+    });
+
+    const calls = runFixtureRepeat.mock.calls.map(([req]) => req);
+    const implementAsDefine = calls.filter(
+      (req) =>
+        req.fixtureId === "implement-seeded-defect" && req.role === "define",
+    );
+    expect(implementAsDefine).toHaveLength(0);
+    expect(result.decision.reason).not.toBe("gate-failure");
+  });
+
+  it("rejects generic citations that do not cite supplied artifacts", async () => {
+    const { deps, judgeComparison } = setup();
+    judgeComparison.mockImplementation(
+      async (judge: ModelCandidate): Promise<StructuredJudgeVerdict> => ({
+        judgeBackend: judge.backend,
+        judgeProvider: judge.provider,
+        judgeFamily: judge.family,
+        judgeModelId: judge.modelId,
+        observedJudgeModel: "unknown",
+        winner: "A",
+        optionARegression: false,
+        optionBRegression: false,
+        scores: { optionA: 90, optionB: 70 },
+        citations: [
+          {
+            inputRef: "input",
+            outputRef: "output",
+            gateRef: "gate",
+            claim: "Generic citation",
+          },
+        ],
+      }),
+    );
+
+    const result = await evaluateModels(deps, input);
+    expect(result.decision).toEqual({
+      promote: false,
+      reason: "invalid-citations",
+    });
+  });
+
+  it("computes roleScore for define coverage and includes it in gateEvidenceSummary", async () => {
+    const { deps, runFixtureRepeat, judgeComparison } = setup();
+    runFixtureRepeat.mockImplementation(async (request) => ({
+      fixtureId: request.fixtureId,
+      repeatIndex: request.repeatIndex,
+      requestedModel: request.route.modelId,
+      observedModel: "unknown",
+      deterministicGatesPassed: true,
+      gateChecks: [
+        { checkId: "spec-ref-ADR-001", passed: true, detail: "ok" },
+        { checkId: "spec-ref-ADR-002", passed: false, detail: "missing" },
+        { checkId: "plan-ref-queue", passed: true, detail: "ok" },
+        { checkId: "plan-ref-test", passed: true, detail: "ok" },
+      ],
+      durationMs: 100,
+      retries: 0,
+      sanitizedOutput: "define output",
+    }));
+
+    let capturedPacket: JudgeVerdictPacket | undefined;
+    judgeComparison.mockImplementation(async (judge, packet) => {
+      capturedPacket = packet;
+      return {
+        judgeBackend: judge.backend,
+        judgeProvider: judge.provider,
+        judgeFamily: judge.family,
+        judgeModelId: judge.modelId,
+        observedJudgeModel: "unknown",
+        winner: "tie",
+        optionARegression: false,
+        optionBRegression: false,
+        scores: { optionA: 80, optionB: 80 },
+        citations: [],
+      };
+    });
+
+    const result = await evaluateModels(deps, {
+      ...input,
+      role: "define",
+      fixtures: [{ id: "define-long-context" }],
+    });
+
+    expect(result.roleScore).toBeDefined();
+    expect(result.roleScore?.role).toBe("define");
+    if (result.roleScore?.role === "define") {
+      expect(result.roleScore.coverage).toBe(0.75);
+      expect(result.roleScore.passedChecks).toBe(9);
+      expect(result.roleScore.totalChecks).toBe(12);
+    }
+    expect(capturedPacket?.gateEvidenceSummary).toContain("coverage 0.75");
+  });
+
+  it("computes roleScore for implement time-to-green and speedup", async () => {
+    const { deps, runFixtureRepeat } = setup();
+    runFixtureRepeat.mockImplementation(async (request) => {
+      const isCandidate = request.route.modelId === candidate.modelId;
+      const durations = isCandidate ? [100, 150, 200] : [300, 400, 500];
+      return {
+        fixtureId: request.fixtureId,
+        repeatIndex: request.repeatIndex,
+        requestedModel: request.route.modelId,
+        observedModel: "unknown",
+        deterministicGatesPassed: true,
+        gateChecks: [{ checkId: "candidate-gate", passed: true, detail: "ok" }],
+        durationMs: durations[request.repeatIndex],
+        retries: 0,
+        sanitizedOutput: "implement output",
+      };
+    });
+
+    const result = await evaluateModels(deps, input);
+    expect(result.roleScore).toBeDefined();
+    expect(result.roleScore?.role).toBe("implement");
+    if (result.roleScore?.role === "implement") {
+      expect(result.roleScore.candidateMedianMsToGreen).toBe(150);
+      expect(result.roleScore.incumbentMedianMsToGreen).toBe(400);
+      expect(result.roleScore.speedup).toBeCloseTo(400 / 150);
+    }
   });
 
   it("enforces distinct judge providers and families and rejects dependent configurations", async () => {
@@ -278,8 +458,8 @@ describe("model qualification orchestration", () => {
           citations: [
             {
               inputRef: "implement-seeded-defect",
-              outputRef: "output",
-              gateRef: "behavior",
+              outputRef: "optionA",
+              gateRef: "candidate-gate",
               claim: "Split verdict",
             },
           ],
