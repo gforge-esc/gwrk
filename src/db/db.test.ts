@@ -263,17 +263,22 @@ describe("Project registry upgrade", () => {
     }
   });
 
-  it.each([
-    { registryVersion: "current", clockOffset: 0 },
-    { registryVersion: "earlier", clockOffset: 0 },
-    { registryVersion: "earlier", clockOffset: 1 },
-    { registryVersion: "earlier", clockOffset: -1 },
-    { registryVersion: "earlier", clockOffset: -30 },
-    { registryVersion: "earlier", clockOffset: 3600 },
-    { registryVersion: "earlier", clockOffset: -3600 },
-  ] as const)(
-    "preserves real plan parents after first-origin enrollment with $registryVersion migration 014 and clock offset $clockOffset",
-    ({ registryVersion, clockOffset }) => {
+  it.each(
+    [
+      { registryVersion: "current", clockOffset: 0 },
+      { registryVersion: "earlier", clockOffset: 0 },
+      { registryVersion: "earlier", clockOffset: 1 },
+      { registryVersion: "earlier", clockOffset: -1 },
+      { registryVersion: "earlier", clockOffset: -30 },
+      { registryVersion: "earlier", clockOffset: 3600 },
+      { registryVersion: "earlier", clockOffset: -3600 },
+    ].flatMap((entry) => [
+      { ...entry, defaultSaved: false },
+      { ...entry, defaultSaved: true },
+    ]),
+  )(
+    "preserves real plan parents after first-origin enrollment with $registryVersion migration 014 and clock offset $clockOffset and defaults=$defaultSaved",
+    ({ registryVersion, clockOffset, defaultSaved }) => {
       const checkout = join(root, "checkout");
       const git = (...args: string[]) =>
         execFileSync("git", ["-C", checkout, ...args]);
@@ -300,6 +305,14 @@ describe("Project registry upgrade", () => {
         VALUES ('phase', 'feature', 'Saved phase', 1, ?, 'COMPLETED', '2026-01-01 09:00:00', '2026-01-01 10:00:00')
       `)
           .run(localId);
+        if (defaultSaved) {
+          legacy.exec(`
+            UPDATE plan_features SET name = id, status = 'PLANNED',
+              updated_at = created_at WHERE id = 'feature';
+            UPDATE plan_phases SET name = id, status = 'PLANNED', seq = 0,
+              updated_at = created_at WHERE id = 'phase';
+          `);
+        }
         legacy
           .prepare(`
         INSERT INTO plan_proposals (id, target_phase_id, proposal_type, project_id, status)
@@ -418,10 +431,22 @@ describe("Project registry upgrade", () => {
         });
         const feature = {
           id: "feature",
-          name: "Saved feature",
-          status: "SHIPPED",
+          name: defaultSaved ? "feature" : "Saved feature",
+          status: defaultSaved ? "PLANNED" : "SHIPPED",
+          created_at: "2026-01-01 09:00:00",
+          updated_at: defaultSaved
+            ? "2026-01-01 09:00:00"
+            : "2026-01-01 10:00:00",
         };
-        const phase = { id: "phase", name: "Saved phase", status: "COMPLETED" };
+        const phase = {
+          id: "phase",
+          name: defaultSaved ? "phase" : "Saved phase",
+          status: defaultSaved ? "PLANNED" : "COMPLETED",
+          created_at: "2026-01-01 09:00:00",
+          updated_at: defaultSaved
+            ? "2026-01-01 09:00:00"
+            : "2026-01-01 10:00:00",
+        };
         for (const owner of [localId, remoteId]) {
           expect
             .soft(getFeature("feature", owner, reopened))
