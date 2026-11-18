@@ -240,9 +240,10 @@
           "id": "T022",
           "title": "Create container-harness.mjs",
           "description": "NEW tests/linux-runner/container-harness.mjs. Run clean Linux containers without source checkout to test install and restart plus restore and rollback",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/phase-05-container.sh",
-          "sp": 2
+          "sp": 2,
+          "completedAt": "2026-11-18T21:00:26.586Z"
         }
       ],
       "sp_estimate": 12,
