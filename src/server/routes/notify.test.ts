@@ -45,6 +45,53 @@ describe("notify routes (FR-003, FR-007, US-003, US-007)", () => {
     }
   });
 
+  it("aborts and drains scoped notification delivery before fixture removal", async () => {
+    const fixture = await createServerFixture("routes", { routes: ["notify"] });
+    let signal: AbortSignal | undefined;
+    let timeout: number | undefined;
+    let settled = false;
+    let release: (() => void) | undefined;
+    vi.mocked(slackNotify.notifySlack).mockImplementationOnce(
+      async (_message, _event, options) => {
+        signal = options?.signal;
+        timeout = options?.transportTimeoutMs;
+        await new Promise<void>((resolve) => {
+          release = resolve;
+          signal?.addEventListener(
+            "abort",
+            () => {
+              settled = true;
+              resolve();
+            },
+            { once: true },
+          );
+        });
+      },
+    );
+    const request = fixture.app.inject({
+      method: "POST",
+      url: "/api/notify",
+      payload: { type: "phase_start", feature: "shutdown-probe" },
+    });
+    const response = Promise.resolve(request);
+    try {
+      await vi.waitFor(() =>
+        expect(slackNotify.notifySlack).toHaveBeenCalled(),
+      );
+      expect(signal).toBeInstanceOf(AbortSignal);
+      expect(timeout).toBeGreaterThan(0);
+      const closing = fixture.close();
+      await vi.waitFor(() => expect(signal?.aborted).toBe(true));
+      await closing;
+      expect(settled).toBe(true);
+      await response;
+    } finally {
+      release?.();
+      await response;
+      await fixture.close();
+    }
+  });
+
   it("FR-003, US-003: should return 400 for missing required fields", async () => {
     const fixture = await createServerFixture("routes", { routes: ["notify"] });
     const server = fixture.app;

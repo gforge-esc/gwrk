@@ -12,6 +12,12 @@ export async function notifyRoutes(
   server: FastifyInstance,
   projectRoot?: string,
 ) {
+  const shutdown = new AbortController();
+  const deliveries = new Set<Promise<void>>();
+  server.addHook("preClose", async () => {
+    shutdown.abort();
+    await Promise.allSettled(deliveries);
+  });
   server.post<{ Body: NotifyPayload }>(
     "/api/notify",
     async (request, reply) => {
@@ -117,7 +123,7 @@ export async function notifyRoutes(
         payload.type === "pulse";
 
       try {
-        await notifySlack(
+        const delivery = notifySlack(
           message,
           {
             type: payload.type,
@@ -127,8 +133,19 @@ export async function notifyRoutes(
             payload: payload as unknown as Record<string, unknown>,
             timestamp: new Date().toISOString(),
           },
-          { opsOnly: isOps, projectRoot },
+          {
+            opsOnly: isOps,
+            projectRoot,
+            signal: shutdown.signal,
+            transportTimeoutMs: 5_000,
+          },
         );
+        deliveries.add(delivery);
+        try {
+          await delivery;
+        } finally {
+          deliveries.delete(delivery);
+        }
 
         return { ok: true };
       } catch (error) {

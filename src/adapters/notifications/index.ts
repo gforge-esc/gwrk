@@ -9,7 +9,13 @@ import type {
 } from "../../ports/notification-port.js";
 import type { SlackMessage } from "../../server/slack-messages.js";
 
-export function createSlackNotificationAdapter(): NotificationPort {
+export function createSlackNotificationAdapter(
+  options: {
+    projectRoot?: string;
+    signal?: AbortSignal;
+    transportTimeoutMs?: number;
+  } = {},
+): NotificationPort {
   return {
     async notify(payload: NotificationPayload): Promise<void> {
       const { notifySlack } = await import("../../server/slack-notify.js");
@@ -20,7 +26,7 @@ export function createSlackNotificationAdapter(): NotificationPort {
           blocks: payload.blocks as SlackMessage["blocks"],
         },
         undefined,
-        { opsOnly: payload.opsOnly },
+        { ...options, opsOnly: payload.opsOnly },
       );
     },
   };
