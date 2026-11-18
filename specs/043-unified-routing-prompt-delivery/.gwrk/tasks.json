@@ -260,7 +260,7 @@
         {
           "id": "T023",
           "title": "Modify adapter.ts",
-          "description": "MODIFY src/plugins/builtins/agents/claude/adapter.ts. Populate `status` and force non-zero `exitCode` when stream-json terminal events report failure on raw exit `0`. Tests: src/plugins/builtins/agents/agy/adapter.test.ts",
+          "description": "MODIFY src/plugins/builtins/agents/claude/adapter.ts. Populate `status` and force non-zero `exitCode` when stream-json terminal events report failure on raw exit `0`. Tests: src/plugins/builtins/agents/claude/adapter.test.ts",
           "status": "open",
           "gateScript": "gates/phase-05.sh",
           "sp": 1
@@ -268,7 +268,7 @@
         {
           "id": "T024",
           "title": "Modify adapter.ts",
-          "description": "MODIFY src/plugins/builtins/agents/codex/adapter.ts. Populate `status`, `unwrappedStdout` and `structuredOutput` across JSON and plain-text responses. Tests: src/plugins/builtins/agents/agy/adapter.test.ts",
+          "description": "MODIFY src/plugins/builtins/agents/codex/adapter.ts. Populate `status`, `unwrappedStdout` and `structuredOutput` across JSON and plain-text responses. Tests: src/plugins/builtins/agents/codex/adapter.test.ts",
           "status": "open",
           "gateScript": "gates/phase-05.sh",
           "sp": 1

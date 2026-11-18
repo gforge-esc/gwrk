@@ -4,6 +4,7 @@
 
 import fs from "node:fs/promises";
 import path from "node:path";
+import { readCodexModelCatalog } from "../../../../adapters/models/codex-catalog.js";
 import type {
   AgentTaskRequest as TaskDispatch,
   AgentTaskResult as TaskResult,
@@ -27,6 +28,7 @@ export class CodexAdapter implements AgentBackend {
   readonly displayName = "Codex CLI";
   readonly emitsStreamJson = false;
   readonly nativeWriter = true;
+  readonly supportsModelForwarding = true;
 
   async isAvailable(signal?: AbortSignal): Promise<boolean> {
     try {
@@ -38,6 +40,10 @@ export class CodexAdapter implements AgentBackend {
     } catch {
       return false;
     }
+  }
+
+  discoverModels() {
+    return readCodexModelCatalog();
   }
 
   async checkQuota(): Promise<QuotaStatus> {
@@ -103,6 +109,10 @@ export class CodexAdapter implements AgentBackend {
 
     const model = this.resolveModel(task);
     if (model) args.push("--model", model);
+
+    const effort = task.effort || task.env?.GWRK_EFFORT;
+    if (effort)
+      args.push("-c", `model_reasoning_effort=${JSON.stringify(effort)}`);
 
     const rawPrompt = task.prompt ?? "";
     const isExpandedPrompt =
@@ -227,6 +237,7 @@ export class CodexAdapter implements AgentBackend {
       ...(terminalStatus ? { terminalStatus } : {}),
       stdout,
       unwrappedStdout,
+      observedModel: "unknown",
       ...(structuredOutput ? { structuredOutput } : {}),
       stderr,
       errorType,

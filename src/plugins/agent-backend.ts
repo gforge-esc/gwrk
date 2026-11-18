@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import type { DiscoveredModel } from "../domain/model-qualification.js";
 import type {
   AgentTaskRequest as TaskDispatch,
   AgentTaskResult as TaskResult,
@@ -12,6 +13,16 @@ export interface QuotaStatus {
   remaining?: number;
   resetAt?: string;
   backoffS?: number;
+}
+
+export class ModelDiscoveryError extends Error {
+  constructor(
+    readonly status: "auth_error" | "rate_limited",
+    message: string,
+  ) {
+    super(message);
+    this.name = "ModelDiscoveryError";
+  }
 }
 
 export interface ProbeResult {
@@ -38,6 +49,7 @@ export interface AgentBackend {
    */
   readonly name: string;
   readonly displayName?: string;
+  readonly supportsModelForwarding?: boolean;
 
   /**
    * When true, this agent writes files directly via its own tools rather than
@@ -77,6 +89,9 @@ export interface AgentBackend {
    */
   isAvailable(signal?: AbortSignal): Promise<boolean>;
 
+  discoverModels?(context?: { projectRoot: string }): Promise<
+    readonly DiscoveredModel[]
+  >;
   checkQuota?(signal?: AbortSignal): Promise<QuotaStatus>;
   probe?(): Promise<ProbeResult>;
 

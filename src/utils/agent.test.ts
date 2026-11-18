@@ -126,6 +126,25 @@ describe('US-016: Enforcement Skills Dispatch Injection', () => {
     expect(result.stdout.match(/<command_safety>/g)).toHaveLength(1);
   });
 
+  it("expands prompt policy before transport and sends overlapping input once", async () => {
+    vi.mocked(skillRuntime.resolveEnforcementSkills).mockResolvedValue("# Scoped architecture rule");
+    const prompt = "Plan the requested phase.\n<code_quality>{{enforcement}}</code_quality>";
+    const result = await dispatchToAgent({
+      workflow: "gwrk-plan",
+      workDir: "/fake/root",
+      agent: "agy",
+      prompt,
+      stdin: prompt,
+      dryRun: true,
+      quiet: true,
+    });
+
+    expect(result.stdout.match(/Plan the requested phase\./g)).toHaveLength(1);
+    expect(result.stdout.match(/# Scoped architecture rule/g)).toHaveLength(1);
+    expect(result.stdout).not.toContain("{{enforcement}}");
+    expect(result.stdout.match(/<command_safety>/g)).toHaveLength(1);
+  });
+
   it('TR-P9-005: injects enforcement skills into <code_quality> section', async () => {
     vi.mocked(skillRuntime.resolveEnforcementSkills).mockResolvedValue('# Strict Typing Rule');
 
@@ -1036,4 +1055,33 @@ describe("quiet-mode progress against a redirected stdout", () => {
     expect(capturedArgs).toContain('high');
     expect(stdinEnded).toBe(true);
   });
+});
+it("kills a dispatch that exceeds its explicit deadline and returns timeout evidence", async () => {
+  const kill = vi.fn();
+  vi.mocked(spawn).mockImplementationOnce(() => {
+    const child = Object.assign(new EventEmitter(), {
+      stdin: new PassThrough(),
+      stdout: new PassThrough(),
+      stderr: new PassThrough(),
+      kill,
+    });
+    const timer = setTimeout(() => child.emit("close", 0), 150);
+    kill.mockImplementation(() => {
+      clearTimeout(timer);
+      queueMicrotask(() => child.emit("close", null));
+      return true;
+    });
+    return child as unknown as ReturnType<typeof spawn>;
+  });
+
+  const result = await dispatchToAgent({
+    workflow: "gwrk-implement",
+    agent: "agy",
+    stdin: "probe",
+    quiet: true,
+    timeoutMs: 20,
+  });
+
+  expect(kill).toHaveBeenCalledWith("SIGKILL");
+  expect(result).toMatchObject({ exitCode: 124, timedOut: true, status: "failure" });
 });
