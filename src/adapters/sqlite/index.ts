@@ -71,3 +71,8 @@ export function createSqliteProjectRegistryAdapter(
     if (!db && connection.open) connection.close();
   });
 }
+
+export {
+  type SqliteOperationsStoreOptions,
+  createSqliteOperationsStoreAdapter,
+} from "./operations.js";

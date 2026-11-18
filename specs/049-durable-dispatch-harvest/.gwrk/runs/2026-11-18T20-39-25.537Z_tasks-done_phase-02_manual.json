@@ -1,0 +1,19 @@
+{
+  "runId": "2026-11-18T20:39:25.537Z_tasks-done_T008",
+  "feature": "049-durable-dispatch-harvest",
+  "phase": "phase-02",
+  "command": "tasks-done",
+  "agent": "manual",
+  "model": "none",
+  "startedAt": "2026-11-18T20:39:25.537Z",
+  "finishedAt": "2026-11-18T20:39:36.795Z",
+  "durationS": 11,
+  "exitCode": 0,
+  "attempt": 1,
+  "filesChanged": 3,
+  "linesAdded": 35,
+  "linesDeleted": 3,
+  "gitCommit": "bbfcf8216b6dbb1a45c93b1853e2cdc61a906d7b",
+  "gitBranch": "codex/durable-phase2-review-repair",
+  "digest": []
+}

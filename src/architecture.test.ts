@@ -301,3 +301,185 @@ describe("034-hexagonal-architecture: Decomposed Ship Stage Handlers", () => {
     ).toBe(true);
   });
 });
+
+describe("FR-006 durable operation boundaries", () => {
+  it("TR-005 exports durable policy through the domain barrel with pure implementations", async () => {
+    const domain = await import("./domain/index.js");
+    expect(Object.keys(domain)).toEqual(
+      expect.arrayContaining([
+        "computeDispatchWorkKey",
+        "evaluateDispatchAcceptance",
+        "validateLeaseFence",
+        "evaluateStaleDispatchReconciliation",
+        "computeHarvestWorkKey",
+        "verifyHarvestTarget",
+        "planHarvestStages",
+        "deriveHarvestTerminalStatus",
+        "evaluateBranchCleanupSafety",
+        "EvidenceLevelSchema",
+        "DispatchOperationStatusSchema",
+        "DispatchAttemptStatusSchema",
+        "DeliverySourceSchema",
+        "HarvestTerminalEventSchema",
+        "HarvestOperationStatusSchema",
+        "HarvestStageNameSchema",
+        "HarvestStageStatusSchema",
+        "OutboxStatusSchema",
+      ]),
+    );
+    for (const file of [
+      "domain/durable-dispatch.ts",
+      "domain/durable-harvest.ts",
+    ]) {
+      const source = fs.readFileSync(path.resolve("src", file), "utf8");
+      expect(architectureViolations(file, source)).toEqual([]);
+      expect(architectureViolations(file, `${source}\nDate.now();`)).toContain(
+        `${file} -> ambient:Date.now`,
+      );
+      expect(
+        architectureViolations(file, `${source}\nimport fs from 'node:fs';`),
+      ).toContain(`${file} -> package:node:fs`);
+    }
+  });
+
+  it("TR-005 declares durable effect ports using type-only inward imports", async () => {
+    const ts = await import("typescript");
+    const required: Record<string, Record<string, string[]>> = {
+      "ports/operations-port.ts": {
+        ClockPort: ["nowIso", "nowMs"],
+        OperationsStorePort: [
+          "acceptDispatch",
+          "claimDispatchLease",
+          "heartbeatDispatchLease",
+          "completeDispatchAttempt",
+          "listRecoverableDispatches",
+          "getDispatchOperation",
+          "recordHarvestIntake",
+          "listRecoverableHarvests",
+          "claimHarvestLease",
+          "heartbeatHarvestLease",
+          "initializeHarvestStages",
+          "transitionHarvestStage",
+          "enqueueOutbox",
+          "getOutboxItem",
+          "listRecoverableOutboxItems",
+          "claimOutboxItem",
+          "markOutboxUncertain",
+          "completeOutboxItem",
+          "getHarvestCursor",
+          "saveHarvestCursor",
+          "getOperationsStatus",
+        ],
+        GitHubHarvestPort: [
+          "verifyWebhookSignature",
+          "listTerminalPullRequests",
+          "getPullRequest",
+        ],
+        WorkerExecutionPort: [
+          "inspectRecoveredWork",
+          "launchPhaseShip",
+          "cleanupStaleSandbox",
+        ],
+        HarvestExecutionPort: [
+          "discoverPhasesAtCheckout",
+          "verifyGatesAtCheckout",
+          "recordLearningAtCheckout",
+        ],
+      },
+      "ports/vcs-port.ts": {
+        VcsPort: [
+          "fetchBranch",
+          "resolveRefSha",
+          "isCommitAncestorOfRef",
+          "createDetachedCheckout",
+          "removeDetachedCheckout",
+          "getRemoteBranchSha",
+          "deleteRemoteBranchAtTip",
+        ],
+        VcsHarvestExtensions: [
+          "fetchBranch",
+          "resolveRefSha",
+          "isCommitAncestorOfRef",
+          "createDetachedCheckout",
+          "removeDetachedCheckout",
+          "getRemoteBranchSha",
+          "deleteRemoteBranchAtTip",
+        ],
+      },
+      "ports/notification-port.ts": {
+        NotificationPayload: ["clientMetadataKey"],
+        NotificationPort: ["reconcileDelivery"],
+      },
+    };
+    const files = Object.keys(required).map((file) =>
+      path.resolve("src", file),
+    );
+    const program = ts.createProgram(files, {
+      noEmit: true,
+      skipLibCheck: true,
+      strictNullChecks: true,
+    });
+    const checker = program.getTypeChecker();
+    for (const [file, interfaces] of Object.entries(required)) {
+      const source = fs.readFileSync(path.resolve("src", file), "utf8");
+      expect(architectureViolations(file, source)).toEqual([]);
+      expect(
+        architectureViolations(
+          file,
+          `${source}\nimport { value } from '../domain/durable-dispatch.js';`,
+        ),
+      ).toContain(
+        `${file} -> runtime-domain-dependency:domain/durable-dispatch.js`,
+      );
+      const ast = program.getSourceFile(path.resolve("src", file));
+      expect(ast).toBeDefined();
+      if (!ast) throw new Error(`Missing source ${file}`);
+      for (const [name, methods] of Object.entries(interfaces)) {
+        const declaration = ast.statements.find(
+          (node) => ts.isInterfaceDeclaration(node) && node.name.text === name,
+        );
+        expect(declaration, `${file} must declare ${name}`).toBeDefined();
+        if (!declaration || !ts.isInterfaceDeclaration(declaration))
+          throw new Error(`Missing interface ${name}`);
+        expect(
+          checker
+            .getTypeAtLocation(declaration)
+            .getProperties()
+            .map((symbol) => symbol.name),
+        ).toEqual(expect.arrayContaining(methods));
+        const requiredInputs: Record<string, string> = {
+          launchPhaseShip: "taskIds",
+          claimOutboxItem: "destination",
+          heartbeatHarvestLease: "fence",
+        };
+        for (const member of declaration.members) {
+          if (!ts.isMethodSignature(member) || !ts.isIdentifier(member.name))
+            continue;
+          if (
+            name === "HarvestExecutionPort" &&
+            member.name.text === "recordLearningAtCheckout"
+          ) {
+            const parameter = checker.getTypeAtLocation(member.parameters[0]);
+            const prNumber = parameter.getProperty("prNumber");
+            expect(prNumber).toBeDefined();
+            if (!prNumber) throw new Error("Missing prNumber");
+            expect(
+              checker.typeToString(
+                checker.getTypeOfSymbolAtLocation(prNumber, member),
+              ),
+            ).toBe("number | null");
+          }
+          const field = requiredInputs[member.name.text];
+          if (!field) continue;
+          const property = checker
+            .getTypeAtLocation(member.parameters[0])
+            .getProperty(field);
+          expect(
+            property && (property.flags & ts.SymbolFlags.Optional) === 0,
+            `${name}.${member.name.text} must require ${field}`,
+          ).toBe(true);
+        }
+      }
+    }
+  });
+});

@@ -15,3 +15,5 @@ export * from "./verdict.js";
 export * from "./profile-policy.js";
 export * from "./architecture-context.js";
 export * from "./policy-selection.js";
+export * from "./durable-dispatch.js";
+export * from "./durable-harvest.js";

@@ -5,6 +5,7 @@
 import { execFileSync } from "node:child_process";
 import {
   copyFileSync,
+  cpSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
@@ -14,10 +15,12 @@ import {
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { basename, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import type Database from "better-sqlite3";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { discoverGitIdentityFacts } from "../adapters/git/project-id.js";
+import { createSqliteOperationsStoreAdapter } from "../adapters/sqlite/index.js";
 import { listRoutingDecisions } from "../adapters/sqlite/routing-decisions.js";
 import {
   computeLegacyProjectIds,
@@ -1758,5 +1761,60 @@ describe("SQLite execution ledger", () => {
     expect(stats[1]?.total_runs).toBe(1);
     expect(stats[1]?.success_runs).toBe(1);
     expect(stats[1]?.avg_duration_s).toBe(300);
+  });
+});
+
+describe("TR-005: Durable operations migration backward compatibility", () => {
+  it("preserves legacy rows and marks unverified records across migration 018", () => {
+    const root = mkdtempSync(join(tmpdir(), "gwrk-legacy-upgrade-"));
+    const dbPath = join(root, "ledger.sqlite");
+    const previousMigrations = join(root, "previous-migrations");
+    mkdirSync(previousMigrations);
+    const sourceMigrations = fileURLToPath(
+      new URL("./migrations/", import.meta.url),
+    );
+
+    cpSync(sourceMigrations, previousMigrations, {
+      recursive: true,
+      filter: (source) =>
+        !basename(source).endsWith(".sql") ||
+        basename(source) < "018-durable-dispatch-and-harvest.sql",
+    });
+
+    const previous = openDatabase({
+      dbPath,
+      migrationsDir: previousMigrations,
+    });
+
+    try {
+      registerProject(
+        { id: "legacy-alpha", name: "Legacy Alpha", path: root },
+        previous,
+      );
+      startRun(
+        {
+          feature_id: "001-legacy",
+          phase_id: "phase-01",
+          project_id: "legacy-alpha",
+          command: "ship",
+          agent_backend: "codex",
+          workflow: "ship-done",
+        },
+        previous,
+      );
+    } finally {
+      previous.close();
+    }
+
+    const upgraded = openDatabase({ dbPath });
+    try {
+      expect(upgraded.pragma("foreign_key_check")).toEqual([]);
+      const store = createSqliteOperationsStoreAdapter({ db: upgraded });
+      const status = store.getOperationsStatus("legacy-alpha");
+      expect(status.historical.legacyUnverifiedRuns).toBe(1);
+    } finally {
+      upgraded.close();
+      rmSync(root, { recursive: true, force: true });
+    }
   });
 });
