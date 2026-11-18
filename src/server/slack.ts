@@ -23,7 +23,11 @@ import type { NetworkMonitor } from "./network.js";
 import type { SandboxManager } from "./sandbox.js";
 import { registerSlackActions } from "./slack-actions.js";
 import { handleDirectMessage, handleMention } from "./slack-agent.js";
-import { type CommandContext, handleSlashCommand } from "./slack-commands.js";
+import {
+  type CommandContext,
+  handleSlashCommand,
+  resolveSlackCheckout,
+} from "./slack-commands.js";
 import { registerSlackHomeHandler } from "./slack-home.js";
 import { presenceManager } from "./slack-presence.js";
 
@@ -87,11 +91,18 @@ export async function startSlackApp(deps: {
 
     const vcs = deps.vcs ?? createGitVcsAdapter();
 
+    const queueProjects = registry
+      .listProjects()
+      .filter(
+        (project) =>
+          resolveSlackCheckout(project, deps.projectRoot) !== undefined,
+      );
     const baseContext = {
       projectRoot: deps.projectRoot,
       buildServerUrl: `http://${deps.config.server.host}:${deps.config.server.port}`,
       queue: deps.queue,
-      queueProjectId: registry.findByLocalRoot(deps.projectRoot)?.projectId,
+      queueProjectId:
+        queueProjects.length === 1 ? queueProjects[0].projectId : undefined,
       monitor: deps.monitor,
       git: deps.git,
       routingService,

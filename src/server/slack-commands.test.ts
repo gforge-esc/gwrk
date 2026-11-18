@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { execFileSync } from "node:child_process";
+import { ChildProcess, execFileSync } from "node:child_process";
 import {
   existsSync,
   mkdirSync,
@@ -32,6 +32,7 @@ import {
   SYNTHETIC_ROLES,
   SYNTHETIC_THREAD_ALPHA,
   SYNTHETIC_USER_MAINTAINER,
+  SYNTHETIC_USER_OPERATOR,
   SYNTHETIC_USER_VIEWER,
   SYNTHETIC_WORKSPACE_ID,
   createSyntheticRegistry,
@@ -685,6 +686,61 @@ describe("slack-commands (FR-015, US-004)", () => {
     expect.soft(response.blocks[0].text.text).toMatch(/checkout/i);
     expect(spawn).not.toHaveBeenCalled();
   });
+
+  it.each(["spawn", "error"] as const)(
+    "reports ADR authoring launch outcome after the child emits %s",
+    async (event) => {
+      const { spawn } = await import("node:child_process");
+      writeFileSync(
+        join(context.projectRoot, ".gwrkrc.json"),
+        JSON.stringify({ project: { name: "alpha" } }),
+      );
+      const child = new ChildProcess();
+      child.on("error", vi.fn());
+      const unref = vi.spyOn(child, "unref");
+      const error = new Error("Could not start the ADR authoring process");
+      vi.mocked(spawn).mockReturnValueOnce(child);
+
+      const settled = vi.fn();
+      const pending = handleSlashCommand("adr record Track the decision", {
+        ...context,
+        userId: SYNTHETIC_USER_OPERATOR,
+      }).then((response) => {
+        settled();
+        return response;
+      });
+      await vi.waitFor(() => expect(spawn).toHaveBeenCalledOnce());
+      expect.soft(settled).not.toHaveBeenCalled();
+      expect.soft(unref).not.toHaveBeenCalled();
+
+      if (event === "error") child.emit("error", error);
+      else child.emit("spawn");
+      const response = await pending;
+
+      expect(spawn).toHaveBeenCalledExactlyOnceWith(
+        "gwrk",
+        ["define", "adr", "Track the decision", "--run"],
+        expect.objectContaining({
+          cwd: context.projectRoot,
+          env: expect.objectContaining({
+            GWRK_ADR_CHECKOUT_ROOT: context.projectRoot,
+            PATH: process.env.PATH,
+          }),
+        }),
+      );
+      if (event === "error") {
+        expect.soft(response.response_type).toBe("ephemeral");
+        expect.soft(response.blocks[0].text.text).toContain(error.message);
+        expect(unref).not.toHaveBeenCalled();
+      } else {
+        expect.soft(response.response_type).toBe("in_channel");
+        expect
+          .soft(response.blocks[0].text.text)
+          .toContain("Track the decision");
+        expect(unref).toHaveBeenCalledOnce();
+      }
+    },
+  );
 
   it("handles approve command — merges PR via VCS port", async () => {
     const merge = vi.spyOn(context.vcs!, "mergePullRequest");

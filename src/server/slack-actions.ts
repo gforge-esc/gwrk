@@ -2,17 +2,13 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { spawn } from "node:child_process";
-import { realpathSync } from "node:fs";
 import type { App, BlockAction, ButtonAction } from "@slack/bolt";
 import type { ActionsBlock } from "@slack/types";
 import { scopedFeatureDirectory } from "../adapters/filesystem/scoped-feature.js";
-import { verifyEnrolledCheckout } from "../adapters/git/project-id.js";
 import type { ProjectRoutingService } from "../application/project-routing/index.js";
 import { findOpenPr } from "../db/runs.js";
 import { normalizeGitRemoteSlug } from "../domain/project-id.js";
 import type {
-  EnrolledProject,
   MergeTarget,
   SlackActionReceipt,
 } from "../domain/project-registry.js";
@@ -23,31 +19,9 @@ import { resolveProjectId } from "../utils/project-id.js";
 import {
   type CommandContext,
   buildSlackLogResponse,
+  resolveSlackCheckout,
 } from "./slack-commands.js";
-
-async function launchDetachedGwrk(
-  args: string[],
-  projectRoot: string,
-): Promise<void> {
-  const child = spawn("gwrk", args, {
-    cwd: projectRoot,
-    detached: true,
-    stdio: "ignore",
-  });
-  await new Promise<void>((resolve, reject) => {
-    const failed = (error: Error) => {
-      child.removeListener("spawn", launched);
-      reject(error);
-    };
-    const launched = () => {
-      child.removeListener("error", failed);
-      resolve();
-    };
-    child.once("error", failed);
-    child.once("spawn", launched);
-  });
-  child.unref();
-}
+import { launchDetachedGwrk } from "./slack-launch.js";
 
 function parseActionPayload(rawPayload?: string): {
   featureId?: string;
@@ -76,13 +50,6 @@ interface ActionVerificationResult {
   threadTs?: string;
   receiptKey?: string;
   mergeTarget?: MergeTarget;
-}
-
-function resolveProjectCheckout(project: EnrolledProject): string | undefined {
-  return (
-    verifyEnrolledCheckout(project, "localRoot") ??
-    verifyEnrolledCheckout(project, "mirrorPath")
-  );
 }
 
 async function verifyAndClaimClick(
@@ -162,7 +129,10 @@ async function verifyAndClaimClick(
       resolveCheckout:
         usesStartupQueue || revisesCheckout
           ? (project) => {
-              const checkout = resolveProjectCheckout(project);
+              const checkout = resolveSlackCheckout(
+                project,
+                usesStartupQueue ? context.projectRoot : undefined,
+              );
               if (
                 !checkout ||
                 !scopedFeatureDirectory(checkout, input.featureId, {
@@ -171,14 +141,7 @@ async function verifyAndClaimClick(
               ) {
                 return undefined;
               }
-              if (!usesStartupQueue) return checkout;
-              try {
-                return checkout === realpathSync(context.projectRoot)
-                  ? checkout
-                  : undefined;
-              } catch {
-                return undefined;
-              }
+              return checkout;
             }
           : undefined,
       requiredProjectId: usesStartupQueue
@@ -195,6 +158,9 @@ async function verifyAndClaimClick(
       await client.chat.postEphemeral({
         channel: channelId,
         user: actorUserId,
+        ...(decision.recipient?.threadTs
+          ? { thread_ts: decision.recipient.threadTs }
+          : {}),
         text: `:warning: Action unauthorized: ${decision.message}`,
       });
     }
@@ -204,7 +170,7 @@ async function verifyAndClaimClick(
   const needsCheckout = actionId === "view_logs" || revisesCheckout;
   const checkoutRoot =
     actionId === "view_logs"
-      ? resolveProjectCheckout(decision.project)
+      ? resolveSlackCheckout(decision.project)
       : decision.checkoutRoot;
   if (needsCheckout && !checkoutRoot) {
     await client.chat.postEphemeral({

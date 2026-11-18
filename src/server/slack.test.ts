@@ -3,7 +3,13 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { execFileSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, realpathSync, rmSync } from "node:fs";
+import {
+  mkdirSync,
+  mkdtempSync,
+  realpathSync,
+  rmSync,
+  symlinkSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { App } from "@slack/bolt";
@@ -294,6 +300,78 @@ describe("Slack Server Integration", () => {
     expect(response).not.toHaveProperty("thread_ts");
     expect(response).not.toHaveProperty("replace_original");
     expect(postEphemeral).not.toHaveBeenCalled();
+  });
+
+  it("dispatches from the canonical startup path of an enrolled mirror", async () => {
+    vi.mocked(slackClient.loadSlackConfig).mockReturnValue({
+      botToken: "xoxb-test",
+      appToken: "xapp-test",
+    });
+    const root = mkdtempSync(join(tmpdir(), "gwrk-slack-mirror-"));
+    onTestFinished(() => rmSync(root, { recursive: true, force: true }));
+    const featureId = SYNTHETIC_THREAD_ALPHA.featureId;
+    const alpha = initCheckout(
+      SYNTHETIC_PROJECT_ALPHA,
+      join(root, "alpha"),
+      featureId,
+    );
+    const mirror = initCheckout(
+      SYNTHETIC_PROJECT_ALPHA,
+      join(root, "mirror"),
+      featureId,
+    );
+    const mirrorPath = join(realpathSync(root), "mirror-link");
+    symlinkSync(mirror.localRoot, mirrorPath, "dir");
+    const sqlite = await vi.importActual<
+      typeof import("../adapters/sqlite/index")
+    >("../adapters/sqlite/index");
+    const registry = sqlite.createSqliteProjectRegistryAdapter({
+      dbPath: ":memory:",
+    });
+    onTestFinished(() => registry.close());
+    registry.enrollProject({ ...alpha, mirrorPath, legacyProjectIds: [] });
+    for (const role of rolesFor(alpha)) {
+      if (role.projectId === alpha.projectId) registry.setRoleBinding(role);
+    }
+    registry.bindFeatureThread({
+      ...SYNTHETIC_THREAD_ALPHA,
+      projectId: alpha.projectId,
+    });
+    await startSlackApp({
+      ...mockDeps,
+      projectRoot: mirror.localRoot,
+      registry,
+    });
+
+    const handler = vi.mocked(getSlackApp()!.command).mock.calls[0][1];
+    const respond = vi.fn();
+    const postEphemeral = vi.fn();
+    await handler({
+      command: {
+        command: "/gwrk",
+        text: `dispatch ${featureId} 3`,
+        channel_id: SYNTHETIC_CHANNEL_ALPHA,
+        user_id: SYNTHETIC_USER_MAINTAINER,
+        team_id: SYNTHETIC_WORKSPACE_ID,
+      },
+      ack: vi.fn(),
+      respond,
+      client: { chat: { postEphemeral } },
+    } as Parameters<typeof handler>[0]);
+
+    const [, actionContext] = vi.mocked(registerSlackActions).mock.calls[0];
+    expect.soft(actionContext.queueProjectId).toBe(alpha.projectId);
+    expect.soft(mockDeps.queue.enqueue).toHaveBeenCalledExactlyOnceWith({
+      featureId,
+      phaseId: "phase-03",
+    });
+    expect(respond).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({
+        response_type: "in_channel",
+        thread_ts: SYNTHETIC_THREAD_ALPHA.rootTs,
+        replace_original: false,
+      }),
+    );
   });
 
   it("limits registered queue commands to the startup project with matching feature IDs", async () => {
