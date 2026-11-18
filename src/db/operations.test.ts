@@ -14,9 +14,9 @@ import { basename, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import Database from "better-sqlite3";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { computeHarvestWorkKey } from "../domain/durable-harvest.js";
 import { openDatabase } from "./index.js";
 import { registerProject, startRun } from "./runs.js";
-import { computeHarvestWorkKey } from "../domain/durable-harvest.js";
 
 const now = "2026-11-11T12:00:00.000Z";
 const migrations = fileURLToPath(new URL("./migrations/", import.meta.url));
@@ -296,6 +296,92 @@ describe("durable operations migration", () => {
     }
   });
 
+  it.each(["expired", "terminal"])(
+    "fences dispatch writes for a %s lease",
+    async (state) => {
+      const { createSqliteOperationsStoreAdapter } = await import(
+        "../adapters/sqlite/operations.js"
+      );
+      const db = openDatabase({ dbPath });
+      try {
+        registerProject(
+          { id: "alpha", name: "Alpha", path: "/fixture/alpha" },
+          db,
+        );
+        const store = createSqliteOperationsStoreAdapter({ db });
+        const request = {
+          projectId: "alpha",
+          featureId: "001-fixture",
+          phaseId: "phase-01",
+          trunkBranch: "develop",
+          backend: "codex",
+          newOperationId: "fenced",
+          nowIso: now,
+        };
+        store.acceptDispatch(request);
+        const claim = store.claimDispatchLease({
+          operationId: "fenced",
+          leaseOwner: "worker",
+          nowIso: now,
+          leaseExpiresAt: "2026-11-11T12:00:10.000Z",
+        });
+        if (!claim) throw new Error("Missing fixture lease");
+        const finish = {
+          fence: claim.fence,
+          nowIso:
+            state === "expired"
+              ? "2026-11-11T12:00:10.000Z"
+              : "2026-11-11T12:00:01.000Z",
+          operationStatus: "completed" as const,
+          attemptStatus: "completed" as const,
+          exitCode: 0,
+        };
+        if (state === "expired") {
+          const before = db
+            .prepare("SELECT * FROM dispatch_attempts WHERE operation_id = ?")
+            .get("fenced");
+          expect(store.completeDispatchAttempt(finish)).toEqual({
+            ok: false,
+            code: "LEASE_EXPIRED",
+          });
+          expect(
+            db
+              .prepare("SELECT * FROM dispatch_attempts WHERE operation_id = ?")
+              .get("fenced"),
+          ).toEqual(before);
+        } else {
+          expect(store.completeDispatchAttempt(finish)).toEqual({ ok: true });
+          expect(store.getDispatchOperation(request)).toMatchObject({
+            status: "completed",
+            leaseOwner: null,
+            leaseExpiresAt: null,
+            heartbeatAt: null,
+          });
+          expect(
+            store.completeDispatchAttempt({
+              ...finish,
+              operationStatus: "failed",
+              attemptStatus: "failed",
+              exitCode: 1,
+            }),
+          ).toEqual({ ok: false, code: "LEASE_FENCED" });
+          expect(
+            store.heartbeatDispatchLease({
+              fence: claim.fence,
+              nowIso: finish.nowIso,
+              leaseExpiresAt: "2026-11-11T12:01:00.000Z",
+            }),
+          ).toEqual({ ok: false, code: "LEASE_FENCED" });
+          expect(store.getDispatchOperation(request)).toMatchObject({
+            status: "completed",
+          });
+        }
+      } finally {
+        db.close();
+      }
+    },
+  );
+
   it("reopens accepted dispatches in order and fences a superseded worker", async () => {
     const { createSqliteOperationsStoreAdapter } = await import(
       "../adapters/sqlite/operations.js"
@@ -470,10 +556,7 @@ describe("durable operations migration", () => {
         { id: "alpha", name: "Alpha", path: "/fixture/alpha" },
         db,
       );
-      registerProject(
-        { id: "beta", name: "Beta", path: "/fixture/beta" },
-        db,
-      );
+      registerProject({ id: "beta", name: "Beta", path: "/fixture/beta" }, db);
       db.prepare("UPDATE projects SET repo_slug = ? WHERE id = ?").run(
         "example/alpha",
         "alpha",
@@ -714,10 +797,7 @@ describe("durable operations migration", () => {
 
     const db = openDatabase({ dbPath });
     try {
-      registerProject(
-        { id: "alpha", name: "Alpha", path: projectRoot },
-        db,
-      );
+      registerProject({ id: "alpha", name: "Alpha", path: projectRoot }, db);
       db.prepare("UPDATE projects SET local_root = ? WHERE id = ?").run(
         projectRoot,
         "alpha",
@@ -760,7 +840,8 @@ describe("durable operations migration", () => {
         claim: { outboxId: "outbox-1", attemptNumber: 1 },
       });
 
-      if (!claim || claim.action !== "send") throw new Error("Expected outbox claim");
+      if (!claim || claim.action !== "send")
+        throw new Error("Expected outbox claim");
 
       const completeResult = store.completeOutboxItem({
         claim: claim.claim,

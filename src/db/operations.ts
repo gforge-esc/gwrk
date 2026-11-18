@@ -196,7 +196,9 @@ function matchHarvestScope(
     .prepare(
       `SELECT operation_id FROM harvest_work_key_aliases WHERE project_id = ? AND work_key = ?`,
     )
-    .get(incoming.projectId, incoming.workKey) as { operation_id: string } | undefined;
+    .get(incoming.projectId, incoming.workKey) as
+    | { operation_id: string }
+    | undefined;
 
   const projectOps = db
     .prepare(
@@ -209,9 +211,9 @@ function matchHarvestScope(
     projectOps.find(
       (row) =>
         sharesHarvestRepositoryScope(row, incoming) &&
-        (row.workKey === incoming.workKey || row.operationId === aliasRow?.operation_id),
-    ) ??
-    projectOps.find((row) => canCorrelateHarvestIntake(row, incoming));
+        (row.workKey === incoming.workKey ||
+          row.operationId === aliasRow?.operation_id),
+    ) ?? projectOps.find((row) => canCorrelateHarvestIntake(row, incoming));
 
   if (!existing) {
     const idConflict = db
@@ -245,7 +247,9 @@ function matchHarvestScope(
       incoming.mergeCommitSha,
       incoming.terminalAt,
       incoming.recipient ? JSON.stringify(incoming.recipient) : null,
-      incoming.plannedSlackRecipient ? JSON.stringify(incoming.plannedSlackRecipient) : null,
+      incoming.plannedSlackRecipient
+        ? JSON.stringify(incoming.plannedSlackRecipient)
+        : null,
       incoming.status,
       incoming.leaseOwner,
       incoming.leaseEpoch,
@@ -378,7 +382,9 @@ export function createOperationsStore(
           )
           .get(input.projectId, workKey);
 
-        const existingActive = existingRow ? rowToDispatchOperation(existingRow) : null;
+        const existingActive = existingRow
+          ? rowToDispatchOperation(existingRow)
+          : null;
         const decision = evaluateDispatchAcceptance({
           ...input,
           existingActive,
@@ -431,27 +437,38 @@ export function createOperationsStore(
       nowIso: string;
       leaseExpiresAt: string;
     }): { fence: LeaseFence; operation: DurableDispatchOperation } | null {
-      return db.transaction((): { fence: LeaseFence; operation: DurableDispatchOperation } | null => {
-        const row = db
-          .prepare(`SELECT * FROM dispatch_operations WHERE operation_id = ?`)
-          .get(input.operationId);
-        if (!row) return null;
-        const op = rowToDispatchOperation(row);
+      return db.transaction(
+        (): {
+          fence: LeaseFence;
+          operation: DurableDispatchOperation;
+        } | null => {
+          const row = db
+            .prepare(`SELECT * FROM dispatch_operations WHERE operation_id = ?`)
+            .get(input.operationId);
+          if (!row) return null;
+          const op = rowToDispatchOperation(row);
 
-        const claimableStatuses: DispatchOperationStatus[] = ["accepted", "leased", "running"];
-        if (!claimableStatuses.includes(op.status)) {
-          return null;
-        }
-        if (op.leaseExpiresAt !== null && Date.parse(input.nowIso) < Date.parse(op.leaseExpiresAt)) {
-          return null;
-        }
+          const claimableStatuses: DispatchOperationStatus[] = [
+            "accepted",
+            "leased",
+            "running",
+          ];
+          if (!claimableStatuses.includes(op.status)) {
+            return null;
+          }
+          if (
+            op.leaseExpiresAt !== null &&
+            Date.parse(input.nowIso) < Date.parse(op.leaseExpiresAt)
+          ) {
+            return null;
+          }
 
-        const nextEpoch = op.leaseEpoch + 1;
-        const nextAttempt = op.attemptCount + 1;
+          const nextEpoch = op.leaseEpoch + 1;
+          const nextAttempt = op.attemptCount + 1;
 
-        const res = db
-          .prepare(
-            `UPDATE dispatch_operations SET
+          const res = db
+            .prepare(
+              `UPDATE dispatch_operations SET
               lease_owner = ?,
               lease_epoch = ?,
               lease_expires_at = ?,
@@ -460,48 +477,49 @@ export function createOperationsStore(
               attempt_count = ?,
               updated_at = ?
             WHERE operation_id = ? AND lease_epoch = ?`,
-          )
-          .run(
-            input.leaseOwner,
-            nextEpoch,
-            input.leaseExpiresAt,
-            input.nowIso,
-            nextAttempt,
-            input.nowIso,
-            input.operationId,
-            op.leaseEpoch,
-          );
+            )
+            .run(
+              input.leaseOwner,
+              nextEpoch,
+              input.leaseExpiresAt,
+              input.nowIso,
+              nextAttempt,
+              input.nowIso,
+              input.operationId,
+              op.leaseEpoch,
+            );
 
-        if (res.changes === 0) return null;
+          if (res.changes === 0) return null;
 
-        db.prepare(
-          `INSERT INTO dispatch_attempts (
+          db.prepare(
+            `INSERT INTO dispatch_attempts (
             operation_id, attempt_number, lease_epoch, lease_owner, backend,
             status, run_id, worktree_dir, exit_code, error, started_at, finished_at
           ) VALUES (?, ?, ?, ?, ?, 'running', NULL, NULL, NULL, NULL, ?, NULL)`,
-        ).run(
-          input.operationId,
-          nextAttempt,
-          nextEpoch,
-          input.leaseOwner,
-          op.backend,
-          input.nowIso,
-        );
+          ).run(
+            input.operationId,
+            nextAttempt,
+            nextEpoch,
+            input.leaseOwner,
+            op.backend,
+            input.nowIso,
+          );
 
-        const updatedRow = db
-          .prepare(`SELECT * FROM dispatch_operations WHERE operation_id = ?`)
-          .get(input.operationId);
-        const updatedOp = rowToDispatchOperation(updatedRow);
+          const updatedRow = db
+            .prepare(`SELECT * FROM dispatch_operations WHERE operation_id = ?`)
+            .get(input.operationId);
+          const updatedOp = rowToDispatchOperation(updatedRow);
 
-        return {
-          fence: {
-            operationId: input.operationId,
-            leaseOwner: input.leaseOwner,
-            leaseEpoch: nextEpoch,
-          },
-          operation: updatedOp,
-        };
-      })();
+          return {
+            fence: {
+              operationId: input.operationId,
+              leaseOwner: input.leaseOwner,
+              leaseEpoch: nextEpoch,
+            },
+            operation: updatedOp,
+          };
+        },
+      )();
     },
 
     heartbeatDispatchLease(input: {
@@ -509,31 +527,36 @@ export function createOperationsStore(
       nowIso: string;
       leaseExpiresAt: string;
     }): FencedWrite {
-      return db.transaction((): FencedWrite => {
-        const row = db
-          .prepare(`SELECT * FROM dispatch_operations WHERE operation_id = ?`)
-          .get(input.fence.operationId);
-        if (!row) return { ok: false, code: "LEASE_FENCED" };
-        const op = rowToDispatchOperation(row);
-        const validation = validateLeaseFence(op, input.fence, input.nowIso);
-        if (!validation.ok) return validation;
+      return db
+        .transaction((): FencedWrite => {
+          const row = db
+            .prepare(`SELECT * FROM dispatch_operations WHERE operation_id = ?`)
+            .get(input.fence.operationId);
+          if (!row) return { ok: false, code: "LEASE_FENCED" };
+          const op = rowToDispatchOperation(row);
+          const validation = validateLeaseFence(op, input.fence, input.nowIso);
+          if (!["leased", "running", "reconciling"].includes(op.status)) {
+            return { ok: false, code: "LEASE_FENCED" };
+          }
+          if (!validation.ok) return validation;
 
-        db.prepare(
-          `UPDATE dispatch_operations SET
+          db.prepare(
+            `UPDATE dispatch_operations SET
             lease_expires_at = ?,
             heartbeat_at = ?,
             updated_at = ?
           WHERE operation_id = ? AND lease_epoch = ?`,
-        ).run(
-          input.leaseExpiresAt,
-          input.nowIso,
-          input.nowIso,
-          input.fence.operationId,
-          input.fence.leaseEpoch,
-        );
+          ).run(
+            input.leaseExpiresAt,
+            input.nowIso,
+            input.nowIso,
+            input.fence.operationId,
+            input.fence.leaseEpoch,
+          );
 
-        return { ok: true };
-      })();
+          return { ok: true };
+        })
+        .immediate();
     },
 
     completeDispatchAttempt(input: {
@@ -548,23 +571,21 @@ export function createOperationsStore(
       prUrl?: string;
       error?: string;
     }): FencedWrite {
-      return db.transaction((): FencedWrite => {
-        const row = db
-          .prepare(`SELECT * FROM dispatch_operations WHERE operation_id = ?`)
-          .get(input.fence.operationId);
-        if (!row) return { ok: false, code: "LEASE_FENCED" };
-        const op = rowToDispatchOperation(row);
+      return db
+        .transaction((): FencedWrite => {
+          const row = db
+            .prepare(`SELECT * FROM dispatch_operations WHERE operation_id = ?`)
+            .get(input.fence.operationId);
+          if (!row) return { ok: false, code: "LEASE_FENCED" };
+          const op = rowToDispatchOperation(row);
 
-        if (
-          op.leaseEpoch !== input.fence.leaseEpoch ||
-          op.leaseOwner !== input.fence.leaseOwner ||
-          op.operationId !== input.fence.operationId
-        ) {
-          return { ok: false, code: "LEASE_FENCED" };
-        }
-
-        db.prepare(
-          `UPDATE dispatch_attempts SET
+          if (!["leased", "running", "reconciling"].includes(op.status)) {
+            return { ok: false, code: "LEASE_FENCED" };
+          }
+          const validation = validateLeaseFence(op, input.fence, input.nowIso);
+          if (!validation.ok) return validation;
+          db.prepare(
+            `UPDATE dispatch_attempts SET
             status = ?,
             run_id = COALESCE(?, run_id),
             worktree_dir = COALESCE(?, worktree_dir),
@@ -572,23 +593,25 @@ export function createOperationsStore(
             error = COALESCE(?, error),
             finished_at = ?
           WHERE operation_id = ? AND lease_epoch = ?`,
-        ).run(
-          input.attemptStatus,
-          input.runId ?? null,
-          input.worktreeDir ?? null,
-          input.exitCode ?? null,
-          input.error ?? null,
-          input.nowIso,
-          input.fence.operationId,
-          input.fence.leaseEpoch,
-        );
+          ).run(
+            input.attemptStatus,
+            input.runId ?? null,
+            input.worktreeDir ?? null,
+            input.exitCode ?? null,
+            input.error ?? null,
+            input.nowIso,
+            input.fence.operationId,
+            input.fence.leaseEpoch,
+          );
 
-        const isTerminal = ["completed", "failed", "superseded"].includes(input.operationStatus);
-        const completedAt = isTerminal ? input.nowIso : null;
+          const isTerminal = ["completed", "failed", "superseded"].includes(
+            input.operationStatus,
+          );
+          const completedAt = isTerminal ? input.nowIso : null;
 
-        if (input.operationStatus === "accepted") {
-          db.prepare(
-            `UPDATE dispatch_operations SET
+          if (input.operationStatus === "accepted") {
+            db.prepare(
+              `UPDATE dispatch_operations SET
               status = ?,
               lease_owner = NULL,
               lease_expires_at = NULL,
@@ -600,20 +623,23 @@ export function createOperationsStore(
               updated_at = ?,
               completed_at = NULL
             WHERE operation_id = ? AND lease_epoch = ?`,
-          ).run(
-            input.operationStatus,
-            input.runId ?? null,
-            input.error ?? null,
-            input.prNumber ?? null,
-            input.prUrl ?? null,
-            input.nowIso,
-            input.fence.operationId,
-            input.fence.leaseEpoch,
-          );
-        } else {
-          db.prepare(
-            `UPDATE dispatch_operations SET
+            ).run(
+              input.operationStatus,
+              input.runId ?? null,
+              input.error ?? null,
+              input.prNumber ?? null,
+              input.prUrl ?? null,
+              input.nowIso,
+              input.fence.operationId,
+              input.fence.leaseEpoch,
+            );
+          } else {
+            db.prepare(
+              `UPDATE dispatch_operations SET
               status = ?,
+              lease_owner = NULL,
+              lease_expires_at = NULL,
+              heartbeat_at = NULL,
               last_run_id = COALESCE(?, last_run_id),
               last_error = COALESCE(?, last_error),
               pr_number = COALESCE(?, pr_number),
@@ -621,21 +647,22 @@ export function createOperationsStore(
               updated_at = ?,
               completed_at = ?
             WHERE operation_id = ? AND lease_epoch = ?`,
-          ).run(
-            input.operationStatus,
-            input.runId ?? null,
-            input.error ?? null,
-            input.prNumber ?? null,
-            input.prUrl ?? null,
-            input.nowIso,
-            completedAt,
-            input.fence.operationId,
-            input.fence.leaseEpoch,
-          );
-        }
+            ).run(
+              input.operationStatus,
+              input.runId ?? null,
+              input.error ?? null,
+              input.prNumber ?? null,
+              input.prUrl ?? null,
+              input.nowIso,
+              completedAt,
+              input.fence.operationId,
+              input.fence.leaseEpoch,
+            );
+          }
 
-        return { ok: true };
-      })();
+          return { ok: true };
+        })
+        .immediate();
     },
 
     listRecoverableDispatches(input: {
@@ -692,146 +719,160 @@ export function createOperationsStore(
           deduplicatedTransport: boolean;
           deduplicatedWork: boolean;
         }
-      | { ok: false; code: "DELIVERY_ID_CONFLICT" | "HARVEST_IDENTITY_MISMATCH" } {
-      return db.transaction(():
-        | {
-            ok: true;
-            operations: DurableHarvestOperation[];
-            deduplicatedTransport: boolean;
-            deduplicatedWork: boolean;
-          }
-        | { ok: false; code: "DELIVERY_ID_CONFLICT" | "HARVEST_IDENTITY_MISMATCH" } => {
-        const repoSlug = input.candidate.repoSlug?.toLowerCase() ?? null;
-        const checkoutRepoSlug =
-          input.candidate.source === "manual_cli" && input.candidate.prNumber === null
-            ? (input.candidate.checkoutRepoSlug?.toLowerCase() ?? null)
-            : null;
-        const targetProjectId = input.target.accepted
-          ? input.target.project.projectId
-          : input.target.projectId;
+      | {
+          ok: false;
+          code: "DELIVERY_ID_CONFLICT" | "HARVEST_IDENTITY_MISMATCH";
+        } {
+      return db.transaction(
+        ():
+          | {
+              ok: true;
+              operations: DurableHarvestOperation[];
+              deduplicatedTransport: boolean;
+              deduplicatedWork: boolean;
+            }
+          | {
+              ok: false;
+              code: "DELIVERY_ID_CONFLICT" | "HARVEST_IDENTITY_MISMATCH";
+            } => {
+          const repoSlug = input.candidate.repoSlug?.toLowerCase() ?? null;
+          const checkoutRepoSlug =
+            input.candidate.source === "manual_cli" &&
+            input.candidate.prNumber === null
+              ? (input.candidate.checkoutRepoSlug?.toLowerCase() ?? null)
+              : null;
+          const targetProjectId = input.target.accepted
+            ? input.target.project.projectId
+            : input.target.projectId;
 
-        const existingDelivery = db
-          .prepare(`SELECT * FROM harvest_deliveries WHERE source = ? AND delivery_id = ?`)
-          .get(input.candidate.source, input.candidate.deliveryId) as any;
-
-        if (existingDelivery) {
-          const deliveryProj = existingDelivery.project_id ?? null;
-          const targetProj = targetProjectId ?? null;
-          const deliveryRepo = existingDelivery.repo_slug ? existingDelivery.repo_slug.toLowerCase() : null;
-          const deliveryCheckoutRepo = existingDelivery.checkout_repo_slug
-            ? existingDelivery.checkout_repo_slug.toLowerCase()
-            : null;
-
-          if (
-            deliveryProj !== targetProj ||
-            existingDelivery.payload_digest !== input.payloadDigest ||
-            deliveryRepo !== repoSlug ||
-            deliveryCheckoutRepo !== checkoutRepoSlug
-          ) {
-            return { ok: false, code: "DELIVERY_ID_CONFLICT" };
-          }
-
-          const linkedRows = db
+          const existingDelivery = db
             .prepare(
-              `SELECT h.* FROM harvest_delivery_operations d
+              `SELECT * FROM harvest_deliveries WHERE source = ? AND delivery_id = ?`,
+            )
+            .get(input.candidate.source, input.candidate.deliveryId) as any;
+
+          if (existingDelivery) {
+            const deliveryProj = existingDelivery.project_id ?? null;
+            const targetProj = targetProjectId ?? null;
+            const deliveryRepo = existingDelivery.repo_slug
+              ? existingDelivery.repo_slug.toLowerCase()
+              : null;
+            const deliveryCheckoutRepo = existingDelivery.checkout_repo_slug
+              ? existingDelivery.checkout_repo_slug.toLowerCase()
+              : null;
+
+            if (
+              deliveryProj !== targetProj ||
+              existingDelivery.payload_digest !== input.payloadDigest ||
+              deliveryRepo !== repoSlug ||
+              deliveryCheckoutRepo !== checkoutRepoSlug
+            ) {
+              return { ok: false, code: "DELIVERY_ID_CONFLICT" };
+            }
+
+            const linkedRows = db
+              .prepare(
+                `SELECT h.* FROM harvest_delivery_operations d
                JOIN harvest_operations h ON h.project_id = d.project_id AND h.operation_id = d.operation_id
                WHERE d.source = ? AND d.delivery_id = ?
                ORDER BY d.position ASC`,
-            )
-            .all(input.candidate.source, input.candidate.deliveryId);
+              )
+              .all(input.candidate.source, input.candidate.deliveryId);
 
-          const operations = linkedRows.map(rowToHarvestOperation);
-          return {
-            ok: true,
-            operations,
-            deduplicatedTransport: true,
-            deduplicatedWork: operations.length > 0,
-          };
-        }
+            const operations = linkedRows.map(rowToHarvestOperation);
+            return {
+              ok: true,
+              operations,
+              deduplicatedTransport: true,
+              deduplicatedWork: operations.length > 0,
+            };
+          }
 
-        if (
-          input.target.accepted &&
-          (!verifyHarvestIntakeOperations(
-            input.target.project,
-            input.candidate,
-            input.target.checkoutPhaseIds,
-            input.target.operations,
-          ) ||
-            input.target.operations.some(
-              (row) =>
-                row.status !== "accepted" ||
-                row.leaseEpoch !== 0 ||
-                row.leaseOwner !== null ||
-                row.leaseExpiresAt !== null ||
-                row.completedAt !== null ||
-                row.linkedRunId !== null ||
-                row.lastError !== null ||
-                row.plannedSlackRecipient !== null,
-            ))
-        ) {
-          return { ok: false, code: "HARVEST_IDENTITY_MISMATCH" };
-        }
+          if (
+            input.target.accepted &&
+            (!verifyHarvestIntakeOperations(
+              input.target.project,
+              input.candidate,
+              input.target.checkoutPhaseIds,
+              input.target.operations,
+            ) ||
+              input.target.operations.some(
+                (row) =>
+                  row.status !== "accepted" ||
+                  row.leaseEpoch !== 0 ||
+                  row.leaseOwner !== null ||
+                  row.leaseExpiresAt !== null ||
+                  row.completedAt !== null ||
+                  row.linkedRunId !== null ||
+                  row.lastError !== null ||
+                  row.plannedSlackRecipient !== null,
+              ))
+          ) {
+            return { ok: false, code: "HARVEST_IDENTITY_MISMATCH" };
+          }
 
-        const incoming: DurableHarvestOperation[] = input.target.accepted
-          ? input.target.operations.map((operation) => ({
-              ...operation,
-              recipient:
-                operation.prNumber === null
-                  ? null
-                  : (input.candidate.recipient ?? null),
-            }))
-          : [];
+          const incoming: DurableHarvestOperation[] = input.target.accepted
+            ? input.target.operations.map((operation) => ({
+                ...operation,
+                recipient:
+                  operation.prNumber === null
+                    ? null
+                    : (input.candidate.recipient ?? null),
+              }))
+            : [];
 
-        const operations: DurableHarvestOperation[] = [];
-        for (const operation of incoming) {
-          const matched = matchHarvestScope(db, operation, input.receivedAt);
-          if (!matched) return { ok: false, code: "HARVEST_IDENTITY_MISMATCH" };
-          operations.push(matched);
-        }
+          const operations: DurableHarvestOperation[] = [];
+          for (const operation of incoming) {
+            const matched = matchHarvestScope(db, operation, input.receivedAt);
+            if (!matched)
+              return { ok: false, code: "HARVEST_IDENTITY_MISMATCH" };
+            operations.push(matched);
+          }
 
-        db.prepare(
-          `INSERT INTO harvest_deliveries (
+          db.prepare(
+            `INSERT INTO harvest_deliveries (
             source, delivery_id, project_id, repo_slug, checkout_repo_slug,
             payload_digest, event_type, outcome, reason, received_at
           ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        ).run(
-          input.candidate.source,
-          input.candidate.deliveryId,
-          targetProjectId,
-          repoSlug,
-          checkoutRepoSlug,
-          input.payloadDigest,
-          input.candidate.terminalEvent,
-          input.target.accepted ? "accepted" : "rejected",
-          input.target.accepted ? null : input.target.reason,
-          input.receivedAt,
-        );
-
-        const insertDeliveryOp = db.prepare(
-          `INSERT INTO harvest_delivery_operations (
-            source, delivery_id, project_id, position, operation_id
-          ) VALUES (?, ?, ?, ?, ?)`,
-        );
-
-        for (let i = 0; i < operations.length; i++) {
-          insertDeliveryOp.run(
+          ).run(
             input.candidate.source,
             input.candidate.deliveryId,
             targetProjectId,
-            i,
-            operations[i].operationId,
+            repoSlug,
+            checkoutRepoSlug,
+            input.payloadDigest,
+            input.candidate.terminalEvent,
+            input.target.accepted ? "accepted" : "rejected",
+            input.target.accepted ? null : input.target.reason,
+            input.receivedAt,
           );
-        }
 
-        return {
-          ok: true,
-          operations,
-          deduplicatedTransport: false,
-          deduplicatedWork:
-            operations.length > 0 &&
-            operations.every((row, index) => row !== incoming[index]),
-        };
-      })();
+          const insertDeliveryOp = db.prepare(
+            `INSERT INTO harvest_delivery_operations (
+            source, delivery_id, project_id, position, operation_id
+          ) VALUES (?, ?, ?, ?, ?)`,
+          );
+
+          for (let i = 0; i < operations.length; i++) {
+            insertDeliveryOp.run(
+              input.candidate.source,
+              input.candidate.deliveryId,
+              targetProjectId,
+              i,
+              operations[i].operationId,
+            );
+          }
+
+          return {
+            ok: true,
+            operations,
+            deduplicatedTransport: false,
+            deduplicatedWork:
+              operations.length > 0 &&
+              operations.every((row, index) => row !== incoming[index]),
+          };
+        },
+      )();
     },
 
     listRecoverableHarvests(input: {
@@ -861,56 +902,64 @@ export function createOperationsStore(
       operation: DurableHarvestOperation;
       stages: HarvestStageReceipt[];
     } | null {
-      return db.transaction((): {
-        fence: LeaseFence;
-        operation: DurableHarvestOperation;
-        stages: HarvestStageReceipt[];
-      } | null => {
-        const recoverable = this.listRecoverableHarvests({ nowIso: input.nowIso });
-        const op = recoverable.find((r) => r.operationId === input.operationId);
-        if (!op) return null;
+      return db.transaction(
+        (): {
+          fence: LeaseFence;
+          operation: DurableHarvestOperation;
+          stages: HarvestStageReceipt[];
+        } | null => {
+          const recoverable = this.listRecoverableHarvests({
+            nowIso: input.nowIso,
+          });
+          const op = recoverable.find(
+            (r) => r.operationId === input.operationId,
+          );
+          if (!op) return null;
 
-        const nextEpoch = op.leaseEpoch + 1;
-        const res = db
-          .prepare(
-            `UPDATE harvest_operations SET
+          const nextEpoch = op.leaseEpoch + 1;
+          const res = db
+            .prepare(
+              `UPDATE harvest_operations SET
               lease_owner = ?,
               lease_epoch = ?,
               lease_expires_at = ?,
               updated_at = ?
             WHERE operation_id = ? AND lease_epoch = ?`,
-          )
-          .run(
-            input.leaseOwner,
-            nextEpoch,
-            input.leaseExpiresAt,
-            input.nowIso,
-            input.operationId,
-            op.leaseEpoch,
-          );
+            )
+            .run(
+              input.leaseOwner,
+              nextEpoch,
+              input.leaseExpiresAt,
+              input.nowIso,
+              input.operationId,
+              op.leaseEpoch,
+            );
 
-        if (res.changes === 0) return null;
+          if (res.changes === 0) return null;
 
-        const updatedRow = db
-          .prepare(`SELECT * FROM harvest_operations WHERE operation_id = ?`)
-          .get(input.operationId);
-        const updatedOp = rowToHarvestOperation(updatedRow);
+          const updatedRow = db
+            .prepare(`SELECT * FROM harvest_operations WHERE operation_id = ?`)
+            .get(input.operationId);
+          const updatedOp = rowToHarvestOperation(updatedRow);
 
-        const stages = db
-          .prepare(`SELECT * FROM harvest_stage_receipts WHERE operation_id = ?`)
-          .all(input.operationId)
-          .map(rowToHarvestStageReceipt);
+          const stages = db
+            .prepare(
+              `SELECT * FROM harvest_stage_receipts WHERE operation_id = ?`,
+            )
+            .all(input.operationId)
+            .map(rowToHarvestStageReceipt);
 
-        return {
-          fence: {
-            operationId: input.operationId,
-            leaseOwner: input.leaseOwner,
-            leaseEpoch: nextEpoch,
-          },
-          operation: updatedOp,
-          stages,
-        };
-      })();
+          return {
+            fence: {
+              operationId: input.operationId,
+              leaseOwner: input.leaseOwner,
+              leaseEpoch: nextEpoch,
+            },
+            operation: updatedOp,
+            stages,
+          };
+        },
+      )();
     },
 
     heartbeatHarvestLease(input: {
@@ -932,7 +981,12 @@ export function createOperationsStore(
             lease_expires_at = ?,
             updated_at = ?
           WHERE operation_id = ? AND lease_epoch = ?`,
-        ).run(input.leaseExpiresAt, input.nowIso, input.fence.operationId, input.fence.leaseEpoch);
+        ).run(
+          input.leaseExpiresAt,
+          input.nowIso,
+          input.fence.operationId,
+          input.fence.leaseEpoch,
+        );
 
         return { ok: true };
       })();
@@ -946,278 +1000,313 @@ export function createOperationsStore(
       hasRemoteBranchTarget: boolean;
       stages: readonly HarvestStagePlanEntry[];
     }): FencedWrite | { ok: false; code: "HARVEST_PLAN_CONFLICT" } {
-      return db.transaction((): FencedWrite | { ok: false; code: "HARVEST_PLAN_CONFLICT" } => {
-        const row = db
-          .prepare(`SELECT * FROM harvest_operations WHERE operation_id = ?`)
-          .get(input.fence.operationId);
-        if (!row) return { ok: false, code: "LEASE_FENCED" };
-        const op = rowToHarvestOperation(row);
-        const lease = validateLeaseFence(op, input.fence, input.nowIso);
-        if (!lease.ok) return lease;
+      return db.transaction(
+        (): FencedWrite | { ok: false; code: "HARVEST_PLAN_CONFLICT" } => {
+          const row = db
+            .prepare(`SELECT * FROM harvest_operations WHERE operation_id = ?`)
+            .get(input.fence.operationId);
+          if (!row) return { ok: false, code: "LEASE_FENCED" };
+          const op = rowToHarvestOperation(row);
+          const lease = validateLeaseFence(op, input.fence, input.nowIso);
+          if (!lease.ok) return lease;
 
-        const saved = db
-          .prepare(`SELECT * FROM harvest_stage_receipts WHERE operation_id = ?`)
-          .all(input.fence.operationId)
-          .map(rowToHarvestStageReceipt);
-
-        let recipient: HarvestSlackRecipient | null;
-        if (saved.length) {
-          recipient = op.plannedSlackRecipient;
-        } else {
-          const projectRow = db
-            .prepare(`SELECT * FROM projects WHERE id = ?`)
-            .get(op.projectId) as any;
-          const binding: ProjectSlackBinding | null =
-            projectRow?.slack_workspace_id && projectRow?.slack_channel
-              ? {
-                  workspaceId: projectRow.slack_workspace_id,
-                  channelId: projectRow.slack_channel,
-                  ...(projectRow.slack_channel_name
-                    ? { channelName: projectRow.slack_channel_name }
-                    : {}),
-                  ...(projectRow.slack_ops_channel_id
-                    ? { opsChannelId: projectRow.slack_ops_channel_id }
-                    : {}),
-                  sharedChannel: projectRow.shared_channel === 1,
-                }
-              : null;
-
-          const threadRow = db
+          const saved = db
             .prepare(
-              `SELECT * FROM slack_feature_threads WHERE project_id = ? AND feature_id = ?`,
+              `SELECT * FROM harvest_stage_receipts WHERE operation_id = ?`,
             )
-            .get(op.projectId, op.featureId) as any;
-          const thread: SlackFeatureThread | undefined = threadRow
-            ? {
-                projectId: threadRow.project_id,
-                featureId: threadRow.feature_id,
-                workspaceId: threadRow.workspace_id,
-                channelId: threadRow.channel_id,
-                rootTs: threadRow.root_ts,
-                updatedAt: threadRow.updated_at,
-              }
-            : undefined;
+            .all(input.fence.operationId)
+            .map(rowToHarvestStageReceipt);
 
-          recipient = resolveHarvestSlackRecipient({
-            projectId: op.projectId,
-            featureId: op.featureId,
-            recipient: op.recipient,
-            binding,
-            thread,
-          });
-        }
+          let recipient: HarvestSlackRecipient | null;
+          if (saved.length) {
+            recipient = op.plannedSlackRecipient;
+          } else {
+            const projectRow = db
+              .prepare(`SELECT * FROM projects WHERE id = ?`)
+              .get(op.projectId) as any;
+            const binding: ProjectSlackBinding | null =
+              projectRow?.slack_workspace_id && projectRow?.slack_channel
+                ? {
+                    workspaceId: projectRow.slack_workspace_id,
+                    channelId: projectRow.slack_channel,
+                    ...(projectRow.slack_channel_name
+                      ? { channelName: projectRow.slack_channel_name }
+                      : {}),
+                    ...(projectRow.slack_ops_channel_id
+                      ? { opsChannelId: projectRow.slack_ops_channel_id }
+                      : {}),
+                    sharedChannel: projectRow.shared_channel === 1,
+                  }
+                : null;
 
-        if (
-          (op.phaseId !== null &&
-            (input.phaseIds.length !== 1 || input.phaseIds[0] !== op.phaseId)) ||
-          !isCompleteHarvestStagePlan({
-            terminalEvent: op.terminalEvent,
-            phaseIds: input.phaseIds,
-            hasSlackTarget: recipient !== null,
-            hasRemoteBranchTarget: hasVerifiedBranchCleanupTarget(op),
-            stages: input.stages,
-          })
-        ) {
-          return { ok: false, code: "HARVEST_PLAN_CONFLICT" };
-        }
+            const threadRow = db
+              .prepare(
+                `SELECT * FROM slack_feature_threads WHERE project_id = ? AND feature_id = ?`,
+              )
+              .get(op.projectId, op.featureId) as any;
+            const thread: SlackFeatureThread | undefined = threadRow
+              ? {
+                  projectId: threadRow.project_id,
+                  featureId: threadRow.feature_id,
+                  workspaceId: threadRow.workspace_id,
+                  channelId: threadRow.channel_id,
+                  rootTs: threadRow.root_ts,
+                  updatedAt: threadRow.updated_at,
+                }
+              : undefined;
 
-        const key = ({ phaseKey, stage }: { phaseKey: string; stage: string }) =>
-          JSON.stringify([phaseKey, stage]);
-        const keys = new Set(input.stages.map(key));
-        if (
-          saved.length &&
-          (saved.length !== keys.size || !saved.every((entry) => keys.has(key(entry))))
-        ) {
-          return { ok: false, code: "HARVEST_PLAN_CONFLICT" };
-        }
+            recipient = resolveHarvestSlackRecipient({
+              projectId: op.projectId,
+              featureId: op.featureId,
+              recipient: op.recipient,
+              binding,
+              thread,
+            });
+          }
 
-        if (!saved.length) {
-          db.prepare(
-            `UPDATE harvest_operations SET
+          if (
+            (op.phaseId !== null &&
+              (input.phaseIds.length !== 1 ||
+                input.phaseIds[0] !== op.phaseId)) ||
+            !isCompleteHarvestStagePlan({
+              terminalEvent: op.terminalEvent,
+              phaseIds: input.phaseIds,
+              hasSlackTarget: recipient !== null,
+              hasRemoteBranchTarget: hasVerifiedBranchCleanupTarget(op),
+              stages: input.stages,
+            })
+          ) {
+            return { ok: false, code: "HARVEST_PLAN_CONFLICT" };
+          }
+
+          const key = ({
+            phaseKey,
+            stage,
+          }: { phaseKey: string; stage: string }) =>
+            JSON.stringify([phaseKey, stage]);
+          const keys = new Set(input.stages.map(key));
+          if (
+            saved.length &&
+            (saved.length !== keys.size ||
+              !saved.every((entry) => keys.has(key(entry))))
+          ) {
+            return { ok: false, code: "HARVEST_PLAN_CONFLICT" };
+          }
+
+          if (!saved.length) {
+            db.prepare(
+              `UPDATE harvest_operations SET
               planned_slack_recipient_json = ?,
               updated_at = ?
             WHERE operation_id = ? AND lease_epoch = ?`,
-          ).run(
-            recipient ? JSON.stringify(recipient) : null,
-            input.nowIso,
-            input.fence.operationId,
-            input.fence.leaseEpoch,
-          );
+            ).run(
+              recipient ? JSON.stringify(recipient) : null,
+              input.nowIso,
+              input.fence.operationId,
+              input.fence.leaseEpoch,
+            );
 
-          const insertStage = db.prepare(
-            `INSERT INTO harvest_stage_receipts (
+            const insertStage = db.prepare(
+              `INSERT INTO harvest_stage_receipts (
               operation_id, phase_key, stage, status, lease_epoch, attempt_count,
               evidence_json, error, updated_at, completed_at
             ) VALUES (?, ?, ?, ?, ?, 0, NULL, NULL, ?, NULL)`,
-          );
-          for (const entry of input.stages) {
-            insertStage.run(
-              input.fence.operationId,
-              entry.phaseKey,
-              entry.stage,
-              entry.initialStatus,
-              input.fence.leaseEpoch,
-              input.nowIso,
             );
+            for (const entry of input.stages) {
+              insertStage.run(
+                input.fence.operationId,
+                entry.phaseKey,
+                entry.stage,
+                entry.initialStatus,
+                input.fence.leaseEpoch,
+                input.nowIso,
+              );
+            }
           }
-        }
 
-        return { ok: true };
-      })();
+          return { ok: true };
+        },
+      )();
     },
 
-    transitionHarvestStage(input: {
-      fence: LeaseFence;
-      nowIso: string;
-      phaseKey: string;
-      stage: HarvestStageName;
-      evidenceJson?: string | null;
-      error?: string | null;
-      linkedRunId?: number | null;
-    } & (
-      | { status: "gate_failed"; failureNotice: OutboxMessage | null }
-      | { status: Exclude<HarvestStageStatus, "gate_failed">; failureNotice?: never }
-    )):
+    transitionHarvestStage(
+      input: {
+        fence: LeaseFence;
+        nowIso: string;
+        phaseKey: string;
+        stage: HarvestStageName;
+        evidenceJson?: string | null;
+        error?: string | null;
+        linkedRunId?: number | null;
+      } & (
+        | { status: "gate_failed"; failureNotice: OutboxMessage | null }
+        | {
+            status: Exclude<HarvestStageStatus, "gate_failed">;
+            failureNotice?: never;
+          }
+      ),
+    ):
       | FencedWrite
       | {
           ok: false;
           code: "HARVEST_STAGE_UNPLANNED" | "HARVEST_STAGE_TRANSITION_INVALID";
         } {
-      return db.transaction(():
-        | FencedWrite
-        | {
-            ok: false;
-            code: "HARVEST_STAGE_UNPLANNED" | "HARVEST_STAGE_TRANSITION_INVALID";
-          } => {
-        const row = db
-          .prepare(`SELECT * FROM harvest_operations WHERE operation_id = ?`)
-          .get(input.fence.operationId);
-        if (!row) return { ok: false, code: "LEASE_FENCED" };
-        const op = rowToHarvestOperation(row);
-        const lease = validateLeaseFence(op, input.fence, input.nowIso);
-        if (!lease.ok) return lease;
+      return db.transaction(
+        ():
+          | FencedWrite
+          | {
+              ok: false;
+              code:
+                | "HARVEST_STAGE_UNPLANNED"
+                | "HARVEST_STAGE_TRANSITION_INVALID";
+            } => {
+          const row = db
+            .prepare(`SELECT * FROM harvest_operations WHERE operation_id = ?`)
+            .get(input.fence.operationId);
+          if (!row) return { ok: false, code: "LEASE_FENCED" };
+          const op = rowToHarvestOperation(row);
+          const lease = validateLeaseFence(op, input.fence, input.nowIso);
+          if (!lease.ok) return lease;
 
-        const planned = db
-          .prepare(`SELECT * FROM harvest_stage_receipts WHERE operation_id = ?`)
-          .all(input.fence.operationId)
-          .map(rowToHarvestStageReceipt);
+          const planned = db
+            .prepare(
+              `SELECT * FROM harvest_stage_receipts WHERE operation_id = ?`,
+            )
+            .all(input.fence.operationId)
+            .map(rowToHarvestStageReceipt);
 
-        const receipt = planned.find(
-          (entry) => entry.phaseKey === input.phaseKey && entry.stage === input.stage,
-        );
-        if (!receipt) return { ok: false, code: "HARVEST_STAGE_UNPLANNED" };
+          const receipt = planned.find(
+            (entry) =>
+              entry.phaseKey === input.phaseKey && entry.stage === input.stage,
+          );
+          if (!receipt) return { ok: false, code: "HARVEST_STAGE_UNPLANNED" };
 
-        const invalid = {
-          ok: false,
-          code: "HARVEST_STAGE_TRANSITION_INVALID",
-        } as const;
-        const gateFailure = input.stage === "gate_verify" && input.status === "gate_failed";
-        const replay = gateFailure && op.status === "gate_failed" && receipt.status === "gate_failed";
-        const resumableHarvests = ["accepted", "running", "delivery_pending"];
+          const invalid = {
+            ok: false,
+            code: "HARVEST_STAGE_TRANSITION_INVALID",
+          } as const;
+          const gateFailure =
+            input.stage === "gate_verify" && input.status === "gate_failed";
+          const replay =
+            gateFailure &&
+            op.status === "gate_failed" &&
+            receipt.status === "gate_failed";
+          const resumableHarvests = ["accepted", "running", "delivery_pending"];
 
-        if (
-          !replay &&
-          (!resumableHarvests.includes(op.status) ||
-            !isValidHarvestStageTransition(receipt, input.status))
-        ) {
-          return invalid;
-        }
-
-        if (gateFailure) {
-          const dedupeKey = JSON.stringify([
-            "harvest_gate_failed",
-            op.operationId,
-            input.phaseKey,
-          ]);
-          const savedNoticeRow = db
-            .prepare(`SELECT * FROM notification_outbox WHERE project_id = ? AND dedupe_key = ?`)
-            .get(op.projectId, dedupeKey);
-          const savedNotice = savedNoticeRow ? rowToOutboxItem(savedNoticeRow) : null;
-          const recipient = op.plannedSlackRecipient;
-
-          const matchesNotice = (notice: OutboxMessage) =>
-            notice.eventType === "harvest_gate_failed" &&
-            notice.ownerKind === "harvest" &&
-            notice.ownerOperationId === op.operationId &&
-            notice.projectId === op.projectId &&
-            recipient?.projectId === op.projectId &&
-            matchesHarvestNoticeRecipient(recipient, notice.recipient) &&
-            notice.featureId === op.featureId &&
-            notice.phaseId === input.phaseKey;
-
-          if (savedNotice) {
-            const { workspaceId, channelId, threadTs } = savedNotice;
-            const unboundPending =
-              savedNotice.status === "pending" &&
-              workspaceId === null &&
-              channelId === null &&
-              threadTs === null;
-            const matchesDestination =
-              recipient !== null &&
-              workspaceId === recipient.workspaceId &&
-              channelId === recipient.channelId &&
-              threadTs === (recipient.threadTs ?? null);
-
-            if (
-              !matchesNotice(savedNotice) ||
-              savedNotice.status === "skipped_no_target" ||
-              (savedNotice.status === "delivered" && !savedNotice.messageTs?.trim()) ||
-              !savedNotice.clientMetadataKey.trim() ||
-              !(unboundPending || matchesDestination)
-            ) {
-              return invalid;
-            }
+          if (
+            !replay &&
+            (!resumableHarvests.includes(op.status) ||
+              !isValidHarvestStageTransition(receipt, input.status))
+          ) {
+            return invalid;
           }
 
-          const failureNotice = (input as any).failureNotice;
-          if ((recipient !== null) !== (failureNotice != null)) return invalid;
-          if (failureNotice && !matchesNotice(failureNotice)) return invalid;
-          if (replay) return recipient && !savedNotice ? invalid : { ok: true };
-
-          if (failureNotice && recipient && !savedNotice) {
-            if (!failureNotice.clientMetadataKey?.trim()) {
-              return invalid;
-            }
-            const existingOutbox = db
+          if (gateFailure) {
+            const dedupeKey = JSON.stringify([
+              "harvest_gate_failed",
+              op.operationId,
+              input.phaseKey,
+            ]);
+            const savedNoticeRow = db
               .prepare(
-                `SELECT 1 FROM notification_outbox WHERE outbox_id = ? OR client_metadata_key = ?`,
+                `SELECT * FROM notification_outbox WHERE project_id = ? AND dedupe_key = ?`,
               )
-              .get(failureNotice.outboxId, failureNotice.clientMetadataKey);
-            if (existingOutbox) {
-              return invalid;
+              .get(op.projectId, dedupeKey);
+            const savedNotice = savedNoticeRow
+              ? rowToOutboxItem(savedNoticeRow)
+              : null;
+            const recipient = op.plannedSlackRecipient;
+
+            const matchesNotice = (notice: OutboxMessage) =>
+              notice.eventType === "harvest_gate_failed" &&
+              notice.ownerKind === "harvest" &&
+              notice.ownerOperationId === op.operationId &&
+              notice.projectId === op.projectId &&
+              recipient?.projectId === op.projectId &&
+              matchesHarvestNoticeRecipient(recipient, notice.recipient) &&
+              notice.featureId === op.featureId &&
+              notice.phaseId === input.phaseKey;
+
+            if (savedNotice) {
+              const { workspaceId, channelId, threadTs } = savedNotice;
+              const unboundPending =
+                savedNotice.status === "pending" &&
+                workspaceId === null &&
+                channelId === null &&
+                threadTs === null;
+              const matchesDestination =
+                recipient !== null &&
+                workspaceId === recipient.workspaceId &&
+                channelId === recipient.channelId &&
+                threadTs === (recipient.threadTs ?? null);
+
+              if (
+                !matchesNotice(savedNotice) ||
+                savedNotice.status === "skipped_no_target" ||
+                (savedNotice.status === "delivered" &&
+                  !savedNotice.messageTs?.trim()) ||
+                !savedNotice.clientMetadataKey.trim() ||
+                !(unboundPending || matchesDestination)
+              ) {
+                return invalid;
+              }
             }
 
-            db.prepare(
-              `INSERT INTO notification_outbox (
+            const failureNotice = (input as any).failureNotice;
+            if ((recipient !== null) !== (failureNotice != null))
+              return invalid;
+            if (failureNotice && !matchesNotice(failureNotice)) return invalid;
+            if (replay)
+              return recipient && !savedNotice ? invalid : { ok: true };
+
+            if (failureNotice && recipient && !savedNotice) {
+              if (!failureNotice.clientMetadataKey?.trim()) {
+                return invalid;
+              }
+              const existingOutbox = db
+                .prepare(
+                  `SELECT 1 FROM notification_outbox WHERE outbox_id = ? OR client_metadata_key = ?`,
+                )
+                .get(failureNotice.outboxId, failureNotice.clientMetadataKey);
+              if (existingOutbox) {
+                return invalid;
+              }
+
+              db.prepare(
+                `INSERT INTO notification_outbox (
                 outbox_id, project_id, dedupe_key, owner_kind, owner_operation_id,
                 event_type, feature_id, phase_id, recipient_json, payload_json,
                 client_metadata_key, status, workspace_id, channel_id, thread_ts,
                 message_ts, attempt_count, last_error, created_at, updated_at, delivered_at
               ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', NULL, NULL, NULL, NULL, 0, NULL, ?, ?, NULL)`,
-            ).run(
-              failureNotice.outboxId,
-              op.projectId,
-              dedupeKey,
-              failureNotice.ownerKind,
-              failureNotice.ownerOperationId,
-              failureNotice.eventType,
-              failureNotice.featureId,
-              failureNotice.phaseId,
-              JSON.stringify(recipient),
-              JSON.stringify(failureNotice.payload),
-              failureNotice.clientMetadataKey,
-              input.nowIso,
-              input.nowIso,
-            );
+              ).run(
+                failureNotice.outboxId,
+                op.projectId,
+                dedupeKey,
+                failureNotice.ownerKind,
+                failureNotice.ownerOperationId,
+                failureNotice.eventType,
+                failureNotice.featureId,
+                failureNotice.phaseId,
+                JSON.stringify(recipient),
+                JSON.stringify(failureNotice.payload),
+                failureNotice.clientMetadataKey,
+                input.nowIso,
+                input.nowIso,
+              );
+            }
           }
-        }
 
-        const completedAt = ["pending", "running", "retryable_failure"].includes(input.status)
-          ? null
-          : input.nowIso;
+          const completedAt = [
+            "pending",
+            "running",
+            "retryable_failure",
+          ].includes(input.status)
+            ? null
+            : input.nowIso;
 
-        db.prepare(
-          `UPDATE harvest_stage_receipts SET
+          db.prepare(
+            `UPDATE harvest_stage_receipts SET
             status = ?,
             lease_epoch = ?,
             evidence_json = ?,
@@ -1225,67 +1314,72 @@ export function createOperationsStore(
             updated_at = ?,
             completed_at = ?
           WHERE operation_id = ? AND phase_key = ? AND stage = ?`,
-        ).run(
-          input.status,
-          input.fence.leaseEpoch,
-          input.evidenceJson ?? null,
-          input.error ?? null,
-          input.nowIso,
-          completedAt,
-          input.fence.operationId,
-          input.phaseKey,
-          input.stage,
-        );
+          ).run(
+            input.status,
+            input.fence.leaseEpoch,
+            input.evidenceJson ?? null,
+            input.error ?? null,
+            input.nowIso,
+            completedAt,
+            input.fence.operationId,
+            input.phaseKey,
+            input.stage,
+          );
 
-        Object.assign(receipt, {
-          status: input.status,
-          leaseEpoch: input.fence.leaseEpoch,
-          evidenceJson: input.evidenceJson ?? null,
-          error: input.error ?? null,
-          updatedAt: input.nowIso,
-          completedAt,
-        });
+          Object.assign(receipt, {
+            status: input.status,
+            leaseEpoch: input.fence.leaseEpoch,
+            evidenceJson: input.evidenceJson ?? null,
+            error: input.error ?? null,
+            updatedAt: input.nowIso,
+            completedAt,
+          });
 
-        if (
-          input.stage === "learning_record" &&
-          input.status === "succeeded" &&
-          input.linkedRunId !== undefined
-        ) {
-          op.linkedRunId = input.linkedRunId;
-        }
+          if (
+            input.stage === "learning_record" &&
+            input.status === "succeeded" &&
+            input.linkedRunId !== undefined
+          ) {
+            op.linkedRunId = input.linkedRunId;
+          }
 
-        const newStatus = deriveHarvestTerminalStatus({
-          terminalEvent: op.terminalEvent,
-          phaseIds: [...new Set(planned.map((entry) => entry.phaseKey))],
-          stages: planned,
-        });
+          const newStatus = deriveHarvestTerminalStatus({
+            terminalEvent: op.terminalEvent,
+            phaseIds: [...new Set(planned.map((entry) => entry.phaseKey))],
+            stages: planned,
+          });
 
-        const opCompletedAt = resumableHarvests.includes(newStatus) ? null : input.nowIso;
+          const opCompletedAt = resumableHarvests.includes(newStatus)
+            ? null
+            : input.nowIso;
 
-        db.prepare(
-          `UPDATE harvest_operations SET
+          db.prepare(
+            `UPDATE harvest_operations SET
             status = ?,
             linked_run_id = COALESCE(?, linked_run_id),
             updated_at = ?,
             completed_at = ?
           WHERE operation_id = ? AND lease_epoch = ?`,
-        ).run(
-          newStatus,
-          op.linkedRunId,
-          input.nowIso,
-          opCompletedAt,
-          input.fence.operationId,
-          input.fence.leaseEpoch,
-        );
+          ).run(
+            newStatus,
+            op.linkedRunId,
+            input.nowIso,
+            opCompletedAt,
+            input.fence.operationId,
+            input.fence.leaseEpoch,
+          );
 
-        return { ok: true };
-      })();
+          return { ok: true };
+        },
+      )();
     },
 
     enqueueOutbox(input: OutboxMessage & { nowIso: string }): OutboxItem {
       return db.transaction((): OutboxItem => {
         const existing = db
-          .prepare(`SELECT * FROM notification_outbox WHERE project_id = ? AND dedupe_key = ?`)
+          .prepare(
+            `SELECT * FROM notification_outbox WHERE project_id = ? AND dedupe_key = ?`,
+          )
           .get(input.projectId, input.dedupeKey);
         if (existing) {
           return rowToOutboxItem(existing);
@@ -1296,10 +1390,14 @@ export function createOperationsStore(
         }
 
         const keyConflict = db
-          .prepare(`SELECT 1 FROM notification_outbox WHERE client_metadata_key = ?`)
+          .prepare(
+            `SELECT 1 FROM notification_outbox WHERE client_metadata_key = ?`,
+          )
           .get(input.clientMetadataKey);
         if (keyConflict) {
-          throw new Error(`clientMetadataKey "${input.clientMetadataKey}" already exists`);
+          throw new Error(
+            `clientMetadataKey "${input.clientMetadataKey}" already exists`,
+          );
         }
 
         const idConflict = db
@@ -1364,7 +1462,8 @@ export function createOperationsStore(
         (row) =>
           row.status === "pending" ||
           row.status === "uncertain" ||
-          (row.status === "sending" && nowMs - Date.parse(row.updatedAt) >= 60_000),
+          (row.status === "sending" &&
+            nowMs - Date.parse(row.updatedAt) >= 60_000),
       );
     },
 
@@ -1380,128 +1479,134 @@ export function createOperationsStore(
         }
       | { action: "skipped_no_target"; item: OutboxItem }
       | null {
-      return db.transaction(():
-        | {
-            claim: OutboxClaim;
-            item: OutboxItem & OutboxDestination;
-            action: "send" | "reconcile";
-          }
-        | { action: "skipped_no_target"; item: OutboxItem }
-        | null => {
-        const candidateRow = db
-          .prepare(`SELECT * FROM notification_outbox WHERE outbox_id = ?`)
-          .get(input.outboxId);
-        if (!candidateRow) return null;
-        const candidate = rowToOutboxItem(candidateRow);
+      return db.transaction(
+        ():
+          | {
+              claim: OutboxClaim;
+              item: OutboxItem & OutboxDestination;
+              action: "send" | "reconcile";
+            }
+          | { action: "skipped_no_target"; item: OutboxItem }
+          | null => {
+          const candidateRow = db
+            .prepare(`SELECT * FROM notification_outbox WHERE outbox_id = ?`)
+            .get(input.outboxId);
+          if (!candidateRow) return null;
+          const candidate = rowToOutboxItem(candidateRow);
 
-        const recoverable = this.listRecoverableOutboxItems({
-          projectId: candidate.projectId,
-          nowIso: input.nowIso,
-        });
-        const row = recoverable.find((r) => r.outboxId === input.outboxId);
-        if (!row) return null;
+          const recoverable = this.listRecoverableOutboxItems({
+            projectId: candidate.projectId,
+            nowIso: input.nowIso,
+          });
+          const row = recoverable.find((r) => r.outboxId === input.outboxId);
+          if (!row) return null;
 
-        const action: "send" | "reconcile" = row.status === "pending" ? "send" : "reconcile";
-        let route = {
-          workspaceId: row.workspaceId,
-          channelId: row.channelId,
-          threadTs: row.threadTs,
-        };
+          const action: "send" | "reconcile" =
+            row.status === "pending" ? "send" : "reconcile";
+          let route = {
+            workspaceId: row.workspaceId,
+            channelId: row.channelId,
+            threadTs: row.threadTs,
+          };
 
-        if (action === "send") {
-          if (row.eventType === "harvest_gate_failed") {
-            if (!isHarvestSlackRecipient(row.recipient)) return null;
-            route = {
-              workspaceId: row.recipient.workspaceId,
-              channelId: row.recipient.channelId,
-              threadTs: row.recipient.threadTs ?? null,
-            };
-          } else {
-            const explicitWorkspaceId =
-              row.workspaceId?.trim() ||
-              (row.recipient.surface === "slack"
-                ? row.recipient.workspaceId?.trim()
-                : undefined);
-            const explicitChannelId =
-              row.channelId?.trim() ||
-              (row.recipient.surface === "slack"
-                ? row.recipient.channelId?.trim()
-                : undefined);
-            const explicitThreadTs =
-              row.threadTs !== null
-                ? row.threadTs
-                : row.recipient.surface === "slack" &&
-                    row.recipient.threadTs !== undefined
-                  ? row.recipient.threadTs
-                  : undefined;
+          if (action === "send") {
+            if (row.eventType === "harvest_gate_failed") {
+              if (!isHarvestSlackRecipient(row.recipient)) return null;
+              route = {
+                workspaceId: row.recipient.workspaceId,
+                channelId: row.recipient.channelId,
+                threadTs: row.recipient.threadTs ?? null,
+              };
+            } else {
+              const explicitWorkspaceId =
+                row.workspaceId?.trim() ||
+                (row.recipient.surface === "slack"
+                  ? row.recipient.workspaceId?.trim()
+                  : undefined);
+              const explicitChannelId =
+                row.channelId?.trim() ||
+                (row.recipient.surface === "slack"
+                  ? row.recipient.channelId?.trim()
+                  : undefined);
+              const explicitThreadTs =
+                row.threadTs !== null
+                  ? row.threadTs
+                  : row.recipient.surface === "slack" &&
+                      row.recipient.threadTs !== undefined
+                    ? row.recipient.threadTs
+                    : undefined;
 
-            if (input.destination === null) {
+              if (input.destination === null) {
+                if (
+                  (explicitWorkspaceId && explicitChannelId) ||
+                  isHarvestSlackRecipient(row.recipient)
+                ) {
+                  return null;
+                }
+                db.prepare(
+                  `UPDATE notification_outbox SET status = 'skipped_no_target', updated_at = ? WHERE outbox_id = ?`,
+                ).run(input.nowIso, input.outboxId);
+                row.status = "skipped_no_target";
+                row.updatedAt = input.nowIso;
+                return {
+                  action: "skipped_no_target" as const,
+                  item: { ...row },
+                };
+              }
+
               if (
-                (explicitWorkspaceId && explicitChannelId) ||
-                isHarvestSlackRecipient(row.recipient)
+                !matchesAcceptedSlackDestination(
+                  row.recipient,
+                  row.projectId,
+                  input.destination,
+                )
               ) {
                 return null;
               }
-              db.prepare(
-                `UPDATE notification_outbox SET status = 'skipped_no_target', updated_at = ? WHERE outbox_id = ?`,
-              ).run(input.nowIso, input.outboxId);
-              row.status = "skipped_no_target";
-              row.updatedAt = input.nowIso;
-              return { action: "skipped_no_target" as const, item: { ...row } };
-            }
 
-            if (
-              !matchesAcceptedSlackDestination(
-                row.recipient,
-                row.projectId,
-                input.destination,
-              )
-            ) {
-              return null;
-            }
+              if (
+                explicitWorkspaceId &&
+                input.destination.workspaceId !== explicitWorkspaceId
+              ) {
+                return null;
+              }
+              if (
+                explicitChannelId &&
+                input.destination.channelId !== explicitChannelId
+              ) {
+                return null;
+              }
+              if (
+                explicitThreadTs !== undefined &&
+                input.destination.threadTs !== explicitThreadTs
+              ) {
+                return null;
+              }
 
-            if (
-              explicitWorkspaceId &&
-              input.destination.workspaceId !== explicitWorkspaceId
-            ) {
-              return null;
+              route = {
+                workspaceId:
+                  explicitWorkspaceId ?? input.destination.workspaceId,
+                channelId: explicitChannelId ?? input.destination.channelId,
+                threadTs:
+                  explicitThreadTs !== undefined
+                    ? explicitThreadTs
+                    : input.destination.threadTs,
+              };
             }
-            if (
-              explicitChannelId &&
-              input.destination.channelId !== explicitChannelId
-            ) {
-              return null;
-            }
-            if (
-              explicitThreadTs !== undefined &&
-              input.destination.threadTs !== explicitThreadTs
-            ) {
-              return null;
-            }
-
-            route = {
-              workspaceId: explicitWorkspaceId ?? input.destination.workspaceId,
-              channelId: explicitChannelId ?? input.destination.channelId,
-              threadTs:
-                explicitThreadTs !== undefined
-                  ? explicitThreadTs
-                  : input.destination.threadTs,
-            };
           }
-        }
 
-        const { workspaceId, channelId, threadTs } = route;
-        if (
-          !workspaceId?.trim() ||
-          !channelId?.trim() ||
-          !row.clientMetadataKey.trim()
-        ) {
-          return null;
-        }
+          const { workspaceId, channelId, threadTs } = route;
+          if (
+            !workspaceId?.trim() ||
+            !channelId?.trim() ||
+            !row.clientMetadataKey.trim()
+          ) {
+            return null;
+          }
 
-        const nextAttempt = row.attemptCount + 1;
-        db.prepare(
-          `UPDATE notification_outbox SET
+          const nextAttempt = row.attemptCount + 1;
+          db.prepare(
+            `UPDATE notification_outbox SET
             workspace_id = ?,
             channel_id = ?,
             thread_ts = ?,
@@ -1509,39 +1614,40 @@ export function createOperationsStore(
             updated_at = ?,
             attempt_count = ?
           WHERE outbox_id = ?`,
-        ).run(
-          workspaceId,
-          channelId,
-          threadTs,
-          input.nowIso,
-          nextAttempt,
-          input.outboxId,
-        );
-
-        Object.assign(row, {
-          workspaceId,
-          channelId,
-          threadTs,
-          status: "sending" as OutboxStatus,
-          updatedAt: input.nowIso,
-          attemptCount: nextAttempt,
-        });
-
-        return {
-          claim: {
-            outboxId: input.outboxId,
-            attemptNumber: nextAttempt,
-            clientMetadataKey: row.clientMetadataKey,
-          },
-          item: {
-            ...row,
+          ).run(
             workspaceId,
             channelId,
             threadTs,
-          },
-          action,
-        };
-      })();
+            input.nowIso,
+            nextAttempt,
+            input.outboxId,
+          );
+
+          Object.assign(row, {
+            workspaceId,
+            channelId,
+            threadTs,
+            status: "sending" as OutboxStatus,
+            updatedAt: input.nowIso,
+            attemptCount: nextAttempt,
+          });
+
+          return {
+            claim: {
+              outboxId: input.outboxId,
+              attemptNumber: nextAttempt,
+              clientMetadataKey: row.clientMetadataKey,
+            },
+            item: {
+              ...row,
+              workspaceId,
+              channelId,
+              threadTs,
+            },
+            action,
+          };
+        },
+      )();
     },
 
     markOutboxUncertain(input: {
@@ -1570,7 +1676,12 @@ export function createOperationsStore(
             last_error = ?,
             updated_at = ?
           WHERE outbox_id = ? AND attempt_count = ?`,
-        ).run(input.error, input.nowIso, input.claim.outboxId, input.claim.attemptNumber);
+        ).run(
+          input.error,
+          input.nowIso,
+          input.claim.outboxId,
+          input.claim.attemptNumber,
+        );
 
         return { ok: true };
       })();
@@ -1588,60 +1699,70 @@ export function createOperationsStore(
           }
         | { status: "failed"; error: string };
     }): FencedWrite | { ok: false; code: "OUTBOX_TRANSITION_INVALID" } {
-      return db.transaction((): FencedWrite | { ok: false; code: "OUTBOX_TRANSITION_INVALID" } => {
-        const row = db
-          .prepare(`SELECT * FROM notification_outbox WHERE outbox_id = ?`)
-          .get(input.claim.outboxId);
-        if (!row) return { ok: false, code: "LEASE_FENCED" };
-        const item = rowToOutboxItem(row);
+      return db.transaction(
+        (): FencedWrite | { ok: false; code: "OUTBOX_TRANSITION_INVALID" } => {
+          const row = db
+            .prepare(`SELECT * FROM notification_outbox WHERE outbox_id = ?`)
+            .get(input.claim.outboxId);
+          if (!row) return { ok: false, code: "LEASE_FENCED" };
+          const item = rowToOutboxItem(row);
 
-        if (
-          item.status !== "sending" ||
-          item.attemptCount !== input.claim.attemptNumber ||
-          item.clientMetadataKey !== input.claim.clientMetadataKey
-        ) {
-          return { ok: false, code: "LEASE_FENCED" };
-        }
-
-        if (input.outcome.status !== "delivered" && input.outcome.status !== "failed") {
-          return { ok: false, code: "OUTBOX_TRANSITION_INVALID" };
-        }
-
-        if (input.outcome.status === "delivered") {
           if (
-            !input.outcome.messageTs?.trim() ||
-            input.outcome.channelId !== item.channelId ||
-            (input.outcome.threadTs ?? null) !== item.threadTs
+            item.status !== "sending" ||
+            item.attemptCount !== input.claim.attemptNumber ||
+            item.clientMetadataKey !== input.claim.clientMetadataKey
+          ) {
+            return { ok: false, code: "LEASE_FENCED" };
+          }
+
+          if (
+            input.outcome.status !== "delivered" &&
+            input.outcome.status !== "failed"
           ) {
             return { ok: false, code: "OUTBOX_TRANSITION_INVALID" };
           }
-          db.prepare(
-            `UPDATE notification_outbox SET
+
+          if (input.outcome.status === "delivered") {
+            if (
+              !input.outcome.messageTs?.trim() ||
+              input.outcome.channelId !== item.channelId ||
+              (input.outcome.threadTs ?? null) !== item.threadTs
+            ) {
+              return { ok: false, code: "OUTBOX_TRANSITION_INVALID" };
+            }
+            db.prepare(
+              `UPDATE notification_outbox SET
               status = 'delivered',
               message_ts = ?,
               delivered_at = ?,
               updated_at = ?,
               last_error = NULL
             WHERE outbox_id = ? AND attempt_count = ?`,
-          ).run(
-            input.outcome.messageTs,
-            input.nowIso,
-            input.nowIso,
-            input.claim.outboxId,
-            input.claim.attemptNumber,
-          );
-        } else {
-          db.prepare(
-            `UPDATE notification_outbox SET
+            ).run(
+              input.outcome.messageTs,
+              input.nowIso,
+              input.nowIso,
+              input.claim.outboxId,
+              input.claim.attemptNumber,
+            );
+          } else {
+            db.prepare(
+              `UPDATE notification_outbox SET
               status = 'failed',
               last_error = ?,
               updated_at = ?
             WHERE outbox_id = ? AND attempt_count = ?`,
-          ).run(input.outcome.error, input.nowIso, input.claim.outboxId, input.claim.attemptNumber);
-        }
+            ).run(
+              input.outcome.error,
+              input.nowIso,
+              input.claim.outboxId,
+              input.claim.attemptNumber,
+            );
+          }
 
-        return { ok: true };
-      })();
+          return { ok: true };
+        },
+      )();
     },
 
     getHarvestCursor(projectId: string): HarvestCursor | null {
@@ -1708,7 +1829,9 @@ export function createOperationsStore(
            WHERE project_id = ? AND status = 'completed'
            ORDER BY completed_at DESC, operation_id DESC LIMIT 1`,
         )
-        .get(projectId) as { completed_at: string | null; merge_commit_sha: string | null } | undefined;
+        .get(projectId) as
+        | { completed_at: string | null; merge_commit_sha: string | null }
+        | undefined;
 
       const pendingOperations = (
         db
@@ -1800,11 +1923,14 @@ export function createOperationsStore(
       let legacyUnverifiedDispatches = 0;
       const projectRow = db
         .prepare(`SELECT local_root, path FROM projects WHERE id = ?`)
-        .get(projectId) as { local_root: string | null; path: string | null } | undefined;
+        .get(projectId) as
+        | { local_root: string | null; path: string | null }
+        | undefined;
       const root = projectRow?.local_root || projectRow?.path;
       if (root) {
         if (typeof options === "object" && options?.readLegacyDispatches) {
-          legacyUnverifiedDispatches = options.readLegacyDispatches(root).length;
+          legacyUnverifiedDispatches =
+            options.readLegacyDispatches(root).length;
         } else {
           const file = path.join(root, ".gwrk", "dispatches.jsonl");
           if (fs.existsSync(file)) {
@@ -1854,7 +1980,5 @@ export function createOperationsStore(
 
   const closeCallback =
     typeof options === "function" ? options : options?.close;
-  return closeCallback
-    ? Object.assign(store, { close: closeCallback })
-    : store;
+  return closeCallback ? Object.assign(store, { close: closeCallback }) : store;
 }
