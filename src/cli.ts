@@ -34,6 +34,10 @@ import { createSkillCommand } from "./commands/skill.js";
 import { createStatusCommand } from "./commands/status.js";
 import { createTasksCommand } from "./commands/tasks.js";
 import { createTestCommand } from "./commands/test.js";
+import {
+  resolveProjectInfoConfigDirectories,
+  resolveWorkingDirectory,
+} from "./engine/profile-detector.js";
 import { loadConfig } from "./utils/config.js";
 import { color } from "./utils/format.js";
 import { writeSignal } from "./utils/signal.js";
@@ -205,7 +209,19 @@ export function createCliProgram(): Command {
       ["db backup", "db restore", "db rollback-check"].includes(commandPath);
 
     if (!resolvesOwnRoot) {
-      loadConfig(process.cwd());
+      if (commandPath === "project info") {
+        const cwd = resolveWorkingDirectory(process.cwd(), process.env.PWD);
+        const configDirectories = resolveProjectInfoConfigDirectories(cwd);
+        if (configDirectories.length === 0) {
+          loadConfig(cwd);
+        } else {
+          for (const directory of configDirectories) {
+            loadConfig(directory);
+          }
+        }
+      } else {
+        loadConfig(process.cwd());
+      }
     }
   });
   return program;

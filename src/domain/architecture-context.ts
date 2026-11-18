@@ -20,16 +20,18 @@ export interface ContextInput {
   decisionsDir: string;
 }
 
+export function normalizeArchitecture(value: string): string {
+  let architecture = value.trim().toLowerCase().replace(/\s+/g, "-");
+  if (["hexagonal", "hexagonal-with-functional-core"].includes(architecture))
+    architecture = "hexagonal-functional";
+  return architecture;
+}
+
 export function resolveDesign(input: {
   architecture: string;
   principles?: string[];
 }): ProjectDesign {
-  let architecture = input.architecture
-    .trim()
-    .toLowerCase()
-    .replace(/\s+/g, "-");
-  if (["hexagonal", "hexagonal-with-functional-core"].includes(architecture))
-    architecture = "hexagonal-functional";
+  const architecture = normalizeArchitecture(input.architecture);
   const principles = [...new Set(input.principles ?? ["clean-code", "tdd"])];
   if (
     architecture === "hexagonal-functional" &&
@@ -49,24 +51,92 @@ const LANGUAGE_GUIDANCE: Record<string, string> = {
   go: "Define small consumer-owned interfaces. Keep domain packages independent of transport and persistence packages.",
   rust: "Use traits for ports and explicit Result values. Keep infrastructure crates outside the domain dependency graph.",
 };
-const FRAMEWORK_GUIDANCE: Record<string, string> = {
-  fastapi:
-    "FastAPI routers and Depends wiring belong in adapters or composition. Domain types must not depend on FastAPI or transport schemas.",
-  django:
-    "Keep Django ORM models and transactions in persistence adapters. Domain policy uses plain values and ports.",
-  fastify:
-    "Fastify routes and plugin registration belong in transport adapters. Composition supplies domain services.",
-  express:
-    "Express middleware and request objects stay in transport adapters. Domain operations accept plain inputs.",
-  react:
-    "Keep rendering and hooks outside domain transformations. Pass external effects through explicit interfaces.",
-  nextjs:
-    "Keep Next.js routes and server actions outside domain policy. Inject persistence and network adapters.",
-  gin: "Gin contexts stay in HTTP adapters. Domain services accept typed values and consumer-owned interfaces.",
-  chi: "Chi routing and HTTP handlers stay outside domain policy. Inject ports at composition.",
-  axum: "Axum extractors and State belong in transport adapters. Domain services use plain types and traits.",
-  clap: "Clap parsing belongs at the CLI boundary. Domain policy accepts typed inputs without command-line dependencies.",
+interface FrameworkBinding {
+  readonly guidance: string;
+  readonly languages: readonly string[];
+}
+
+const FRAMEWORK_BINDINGS: Record<string, FrameworkBinding> = {
+  fastapi: {
+    guidance:
+      "FastAPI routers and Depends wiring belong in adapters or composition. Domain types must not depend on FastAPI or transport schemas.",
+    languages: ["python"],
+  },
+  django: {
+    guidance:
+      "Keep Django ORM models and transactions in persistence adapters. Domain policy uses plain values and ports.",
+    languages: ["python"],
+  },
+  fastify: {
+    guidance:
+      "Fastify routes and plugin registration belong in transport adapters. Composition supplies domain services.",
+    languages: ["typescript", "javascript"],
+  },
+  express: {
+    guidance:
+      "Express middleware and request objects stay in transport adapters. Domain operations accept plain inputs.",
+    languages: ["typescript", "javascript"],
+  },
+  react: {
+    guidance:
+      "Keep rendering and hooks outside domain transformations. Pass external effects through explicit interfaces.",
+    languages: ["typescript", "javascript"],
+  },
+  nextjs: {
+    guidance:
+      "Keep Next.js routes and server actions outside domain policy. Inject persistence and network adapters.",
+    languages: ["typescript", "javascript"],
+  },
+  gin: {
+    guidance:
+      "Gin contexts stay in HTTP adapters. Domain services accept typed values and consumer-owned interfaces.",
+    languages: ["go"],
+  },
+  chi: {
+    guidance:
+      "Chi routing and HTTP handlers stay outside domain policy. Inject ports at composition.",
+    languages: ["go"],
+  },
+  axum: {
+    guidance:
+      "Axum extractors and State belong in transport adapters. Domain services use plain types and traits.",
+    languages: ["rust"],
+  },
+  clap: {
+    guidance:
+      "Clap parsing belongs at the CLI boundary. Domain policy accepts typed inputs without command-line dependencies.",
+    languages: ["rust"],
+  },
 };
+
+export function lookupLanguageGuidance(language?: string): string | undefined {
+  if (!language) return undefined;
+  const key = language.toLowerCase().trim();
+  return Object.hasOwn(LANGUAGE_GUIDANCE, key)
+    ? LANGUAGE_GUIDANCE[key]
+    : undefined;
+}
+
+export function lookupFrameworkBinding(
+  framework?: string,
+): FrameworkBinding | undefined {
+  const key = normalizeFramework(framework);
+  if (!key || !Object.hasOwn(FRAMEWORK_BINDINGS, key)) return undefined;
+  const binding = FRAMEWORK_BINDINGS[key];
+  return { guidance: binding.guidance, languages: [...binding.languages] };
+}
+
+export function normalizeFramework(framework?: string): string | undefined {
+  const value = framework?.trim().toLowerCase();
+  if (!value || value === "none" || value === "unspecified") return undefined;
+  return value === "next.js" ? "nextjs" : value;
+}
+
+export function lookupFrameworkGuidance(
+  framework?: string,
+): string | undefined {
+  return lookupFrameworkBinding(framework)?.guidance;
+}
 export function designRules(design: ProjectDesign): string[] {
   const rules: string[] = [];
   if (design.architecture === "hexagonal-functional")
@@ -105,15 +175,14 @@ export function contextMarkdown(
   decisions: string[],
 ): string {
   const language = input.language?.toLowerCase() ?? "";
-  const framework =
-    input.framework?.toLowerCase().replace(/[^a-z0-9]/g, "") ?? "";
+  const framework = normalizeFramework(input.framework);
   return `# Project architecture target\n\nTarget context guides future work. Code conformance remains unassessed by initialization. Blocked: none.\n\n## Selection\n\n- Project: ${input.projectName}\n- Architecture: ${input.design.architecture}\n- Language: ${input.language ?? "unspecified"}\n- Framework: ${input.framework ?? "unspecified"}\n- Template version: ${input.design.templateVersion}\n- Architecture checks: activation unchanged by initialization\n\n## Rules\n\n${designRules(
     input.design,
   )
     .map((rule) => `- ${rule}`)
     .join(
       "\n",
-    )}\n\n## Language guidance\n\n${LANGUAGE_GUIDANCE[language] ?? "No bundled language binding. Assess language-specific boundaries explicitly."}\n\n## Framework guidance\n\n${framework ? (FRAMEWORK_GUIDANCE[framework] ?? "No bundled framework binding. Framework compatibility remains unassessed.") : "No framework selected."}\n\n## Project decisions\n\n${decisions.map((file) => `- ${file}`).join("\n")}\n\nRead the complete decision corpus and preserve existing Decided constraints. Generated target records remain Proposed until human ratification. Resolve conflicts before implementation.\n\n## Later assessment\n\nRun \`gwrk assess\` to assess the existing code against this target. The portable gwrk-assess skill uses the same method. Assessment proposes feature specs and never certifies the entire codebase.\n`;
+    )}\n\n## Language guidance\n\n${LANGUAGE_GUIDANCE[language] ?? "No bundled language binding. Assess language-specific boundaries explicitly."}\n\n## Framework guidance\n\n${framework ? (lookupFrameworkGuidance(framework) ?? "No bundled framework binding. Framework compatibility remains unassessed.") : "No framework selected."}\n\n## Project decisions\n\n${decisions.map((file) => `- ${file}`).join("\n")}\n\nRead the complete decision corpus and preserve existing Decided constraints. Generated target records remain Proposed until human ratification. Resolve conflicts before implementation.\n\n## Later assessment\n\nRun \`gwrk assess\` to assess the existing code against this target. The portable gwrk-assess skill uses the same method. Assessment proposes feature specs and never certifies the entire codebase.\n`;
 }
 
 export function decisionMarkdown(
