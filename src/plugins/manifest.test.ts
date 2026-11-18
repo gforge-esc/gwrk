@@ -50,6 +50,28 @@ describe("FR-013 / US-016: SkillManifestSchema Enforcement Tier", () => {
     expect(legacy.scope).toBe("all");
   });
 
+  it("TR-007: validates optional architectures and principles and projectScope selectors", () => {
+    const validWithAny = {
+      name: "universal-policy",
+      type: "skill",
+      tier: "enforcement",
+      version: "1.0.0",
+      description: "Universal enforcement policy",
+      projectScope: "any",
+      architectures: ["clean", "layered"],
+      principles: ["clean-code" as const],
+    };
+    expect(SkillManifestSchema.parse(validWithAny)).toMatchObject(validWithAny);
+
+    const invalidProjectScope = {
+      ...validWithAny,
+      projectScope: "invalid-scope",
+    };
+    expect(SkillManifestSchema.safeParse(invalidProjectScope).success).toBe(
+      false,
+    );
+  });
+
   it("rejects invalid scope for enforcement skills", () => {
     const manifest = {
       name: "bad-skill",

@@ -122,11 +122,16 @@ const CompoundSkillManifestSchema = PluginBaseSchema.extend({
 const EnforcementSkillManifestSchema = PluginBaseSchema.extend({
   type: z.literal("skill"),
   tier: z.literal("enforcement"),
-  scope: z.enum(["implementation", "review", "all"]).optional(),
+  scope: z.enum(["define", "implementation", "review", "all"]).default("all"),
   /** Language this enforcement skill applies to (e.g. "TypeScript", "Python"). Omit to load for all projects. */
   language: z.string().optional(),
   /** Framework this enforcement skill applies to (e.g. "React", "Express"). Omit to load for all projects. */
   framework: z.string().optional(),
+  architectures: z.array(z.string()).optional(),
+  principles: z
+    .array(z.enum(["functional-core", "clean-code", "tdd"]))
+    .optional(),
+  projectScope: z.enum(["any", "gwrk"]).optional(),
   tags: z.array(z.string()).optional(),
 });
 

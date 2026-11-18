@@ -67,6 +67,20 @@ const FRAMEWORK_GUIDANCE: Record<string, string> = {
   axum: "Axum extractors and State belong in transport adapters. Domain services use plain types and traits.",
   clap: "Clap parsing belongs at the CLI boundary. Domain policy accepts typed inputs without command-line dependencies.",
 };
+
+export function lookupLanguageGuidance(language?: string): string | undefined {
+  if (!language) return undefined;
+  const key = language.toLowerCase().trim();
+  return LANGUAGE_GUIDANCE[key];
+}
+
+export function lookupFrameworkGuidance(
+  framework?: string,
+): string | undefined {
+  if (!framework) return undefined;
+  const key = framework.toLowerCase().replace(/[^a-z0-9]/g, "");
+  return FRAMEWORK_GUIDANCE[key];
+}
 export function designRules(design: ProjectDesign): string[] {
   const rules: string[] = [];
   if (design.architecture === "hexagonal-functional")
