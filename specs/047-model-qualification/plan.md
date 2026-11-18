@@ -90,19 +90,41 @@ Create versioned synthetic fixtures for long-context definition and seeded-defec
 - `src/application/models/evaluate-models.ts` (NEW: Orchestrate repeat fixtures, handoff checks and blinded two-judge scoring)
 - `src/adapters/models/fixture-runner.ts` (NEW: Materialize synthetic workspaces and run report-only judge prompts via `WorkflowRuntime`)
 - `src/application/models/evaluate-models.test.ts` (NEW: Seam tests with injected runner and judge ports for gates and judge splits)
+- `src/adapters/models/fixture-runner.test.ts` (NEW: Exercise built-in workflows through the fixture runner with an injected dispatcher)
+- `src/domain/model-qualification.ts` (UPDATE: Add the promotion rejection reason for implementation timing)
 
 #### Test Strategy
 
 | ID | Type | Target | Expected result |
 |---|---|---|---|
 | TR-008 | integration | `src/application/models/evaluate-models.test.ts` | Executes three repeats per fixture and scores both `define` and `implement` handoff directions |
-| TR-009 | unit | `src/application/models/evaluate-models.test.ts` | Rejects candidate on deterministic gate failure before calling `PromotionJudgePort` |
+| TR-009 | unit | `src/application/models/evaluate-models.test.ts` | Rejects gate failures before judging, including route mismatches on either generated-plan handoff |
 | TR-010 | unit | `src/application/models/evaluate-models.test.ts` | Enforces distinct judge providers and families, randomized blinding and citations to supplied artifacts |
+| TR-017 | integration | `src/adapters/models/fixture-runner.test.ts` | Rejects a model mismatch in either definition stage and retains the mismatch after a matching planning dispatch |
+| TR-018 | integration | `src/adapters/models/fixture-runner.test.ts` | Rejects a rewritten acceptance rule or deleted specification during planning |
+| TR-019 | integration | `src/adapters/models/fixture-runner.test.ts` | Rejects an added continuation under T002, the completed adapter task |
+| TR-020 | unit | `src/application/models/evaluate-models.test.ts` | Rejects substituted routes and identity mismatches while accepting an unknown observed model |
+| TR-021 | unit | `src/application/models/evaluate-models.test.ts` | Requires a lower finite candidate median on fixed-plan runs even when direct runs favor the candidate |
+| TR-022 | integration | `src/adapters/models/fixture-runner.test.ts` | Rejects a timed-out judge dispatch with a zero exit code and a valid verdict |
+| TR-023 | integration | `src/adapters/models/fixture-runner.test.ts` | Blocks opaque environment credentials in definition artifacts, repeat stdout, judge packets, verdicts and nested transport errors |
+| TR-024 | unit | `src/application/models/evaluate-models.test.ts` | Rejects a failed implementation check on either route before judging when the repeat reports a passing aggregate |
+| TR-025 | integration | `src/adapters/models/fixture-runner.test.ts` | Recomputes the recorded judge workflow hash from the dispatched prompt file and output schema |
+| TR-026 | unit | `src/application/models/evaluate-models.test.ts` | Reports definition coverage on candidate gate failure and sends both coverage scores to judges when only the incumbent fails a reference check |
+| TR-027 | integration | `src/adapters/models/fixture-runner.test.ts` | Records 250 ms for a 200 ms specification dispatch and a 50 ms planning dispatch |
+| TR-028 | integration | `src/adapters/models/fixture-runner.test.ts` | Citable fixture inputs and gate results by blinded option and repeat, rejection of absent references, and recorded generated handoff inputs |
+
+The matching-model handoff case keeps behavior pass rates of 1 and 0. A passing definition repeat exports the original specification and generated plan. The review cases accept report-only and canonical reopenings of T001, the routing task.
+
+Six regression cases failed before the repair. After the repair, the shared gate exited 0 with 645 passing Phase 3 tests and a clean lint run.
+
+The four retry regressions produced 13 failing cases before the repair. The repaired Phase 3 gate passed 665 tests and lint. The prerequisite gate passed 543 tests.
+
+The definition timing and judge citation regressions produced four failures before the repair. After the repair, the Phase 3 gate passed 679 tests and lint. The prerequisite gate passed 543 tests.
 
 #### Done When
 
 ```bash
-pnpm exec vitest run src/application/models/evaluate-models.test.ts src/architecture.test.ts
+bash specs/047-model-qualification/gates/phase-03.sh
 ```
 
 ### Phase 4: Route lock store and CLI
@@ -177,3 +199,9 @@ pnpm exec vitest run src/application/models/resolve-route.test.ts src/utils/mani
 
 - Live production cutover in Phase 5 waits on `03-unified-agent-dispatch-and-stream-contracts` unifying `src/server/backend-selector.ts` and `src/engine/router.ts` with `src/utils/resolve-agent.ts`.
 - Live qualification runs for the local macOS workstation and hosted Linux runner execute outside hermetic CI under `docs/operations/model-qualification-live.md`.
+
+Phase 3 regressions reject candidate and incumbent review route identity failures before judging. Missing executables and signaled commands cannot supply seeded RED evidence. Four observed failures preceded the repair. An inherited Git selector regression also proved that fixture setup and delegated Git commands could modify another temporary repository. Both paths now remove inherited repository selectors. Dispatch environments support explicit removal through undefined values. The phase gate passes 650 tests after the isolation repair.
+
+Inherited Git selectors are removed from fixture commands and delegated agent environments. The agent environment contract permits undefined entries so the subprocess merge can remove inherited values. The behavioral fixture proves that a delegated Git command leaves another repository configuration unchanged.
+
+TR-023 now guards judge packets, raw dispatch results, transport error messages and assembled verdicts with the known dispatch credentials. Four cases failed before repair. They cover citation claims, reported runtime identity, failed stderr and thrown transport errors. The repaired phase gate passes 669 tests and lint.

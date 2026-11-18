@@ -35,7 +35,7 @@ export interface AgentDispatch {
   command: string;
   args: string[];
   stdin: string;
-  env?: Record<string, string>;
+  env?: Record<string, string | undefined>;
   outputFormat?: "text" | "json" | "stream-json";
 }
 

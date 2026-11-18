@@ -1,0 +1,38 @@
+{
+  "schemaVersion": 1,
+  "id": "implement-seeded-defect",
+  "roles": ["implement", "review"],
+  "prompt": "Use the fixed plan and repair the seeded ticket routing behavior. For review, report the failing routing task and preserve the completed adapter task.",
+  "candidateHandoffPrompt": "Repair the seeded ticket routing behavior using the generated requirements and implementation steps.",
+  "reviewPrompt": "Review the seeded ticket routing behavior against the feature documents and run the routing test from the repository root. Report the failing routing task and preserve the completed adapter task. A structured report is sufficient to record a reopening.",
+  "files": {
+    "AGENTS.md": "# Project rules\n\nRead both architecture decisions and the fixture research brief. Keep policy pure. Run the failing behavior test before implementing changes.\n",
+    "package.json": "{\"name\":\"fixture-ticket-router\",\"private\":true,\"type\":\"module\",\"scripts\":{\"test\":\"node --test\"}}\n",
+    "docs/decisions/ADR-001-ticket-boundaries.md": "# Ticket routing boundaries\n\nStatus: Decided\n\nThe domain returns a routing decision from ticket data. It has no access to the clock or the network. The adapter owns transport and retries. Use the caller-supplied receipt time as an input.\n",
+    "docs/decisions/ADR-002-unknown-priority.md": "# Unknown priority handling\n\nStatus: Decided\n\nUnknown priority goes to triage. Keep the raw input for the receiving queue. A proposed direct-to-standard shortcut is still open.\n",
+    "docs/refs/queue-contract.md": "# Queue contract\n\nReturn one of `urgent`, `standard` or `triage`. Valid priorities are `high` and `normal`. The adapter does not send a second message after a retryable response.\n",
+    "docs/research/routing-brief.md": "# Routing research brief\n\nIncoming priorities sometimes have leading or trailing whitespace. Preserve the raw value and normalize only for selection. An unrecognized priority has appeared on the same record as an old receipt time. Unknown priority takes precedence over age.\n",
+    "docs/refs/acceptance.md": "# Acceptance inputs\n\nKnown high priority routes to urgent. Known normal priority routes to standard until the receipt is 30 minutes old. At the exact 30-minute boundary it routes to urgent. A future receipt is treated as age zero. Unknown priorities go to triage at any age.\n",
+    "src/domain/select-queue.mjs": "export function selectQueue({ priority }) {\n  return { queue: priority === \"high\" ? \"urgent\" : \"standard\", rawPriority: priority };\n}\n",
+    "src/domain/select-queue.test.mjs": "import assert from \"node:assert/strict\";\nimport { test } from \"node:test\";\n\nconst receivedAtMs = 1_000_000;\nconst thirtyMinutes = 30 * 60_000;\nconst cases = [\n  [\"high\", \" high \", 0, \"urgent\"],\n  [\"normal before cutoff\", \"normal\", thirtyMinutes - 1, \"standard\"],\n  [\"normal at cutoff\", \"normal\", thirtyMinutes, \"urgent\"],\n  [\"future receipt\", \"normal\", -1, \"standard\"],\n  [\"unknown before age\", \"unknown\", thirtyMinutes, \"triage\"],\n  [\"fresh unknown\", \"unknown\", 0, \"triage\"],\n  [\"future unknown\", \"unknown\", -1, \"triage\"],\n];\n\ntest(\"uses only the supplied clock at import and for routing\", async (context) => {\n  const clock = context.mock.method(Date, \"now\", () => {\n    throw new Error(\"The domain must use the supplied nowMs\");\n  });\n  const { selectQueue } = await import(\"./select-queue.mjs\");\n  for (const [name, priority, ageMs, queue] of cases) {\n    await context.test(name, () => {\n      assert.deepEqual(\n        selectQueue({ priority, receivedAtMs, nowMs: receivedAtMs + ageMs }),\n        { queue, rawPriority: priority },\n      );\n    });\n  }\n  assert.equal(clock.mock.callCount(), 0, \"The domain read the ambient clock\");\n});\n",
+    "src/adapters/ticket-input.mjs": "import { selectQueue } from \"../domain/select-queue.mjs\";\n\nexport function routeReceivedTicket(ticket, nowMs) {\n  return selectQueue({ ...ticket, nowMs });\n}\n",
+    "plan.md": "# Ticket routing repair\n\nImplement the acceptance rules in the existing pure domain function. Keep the adapter unchanged. Run `node --test src/domain/select-queue.test.mjs` and record RED and GREEN.\n",
+    "tasks.md": "# Review tasks\n\nT001 Repair the queue selection policy.\n\nT002 Keep the adapter passing the caller clock to the policy. This task is complete.\n"
+  },
+  "reviewFiles": {
+    "package.json": "{\"name\":\"fixture-ticket-router\",\"private\":true,\"type\":\"module\",\"scripts\":{\"build\":\"node --check src/domain/select-queue.mjs && node --check src/adapters/ticket-input.mjs\",\"test\":\"node --test\"}}\n",
+    "tasks.md": "# Review tasks\n\n- [x] T001 Repair the queue selection policy.\n\n- [x] T002 Keep the adapter passing the caller clock to the policy. This task is complete.\n",
+    "specs/001-ticket-routing/spec.md": "# Ticket routing\n\n## Requirements\n\nStrip surrounding whitespace from recognized priorities for routing and retain the raw value. Route high priority to urgent. Route normal priority to standard before 30 minutes and urgent at 30 minutes. Treat a future receipt as age zero. Route unknown priorities to triage at any age. Keep the policy pure. The adapter supplies the caller clock.\n",
+    "specs/001-ticket-routing/plan.md": "# Ticket routing repair\n\n### Phase 1: Queue selection\n\nT001 implements the pure routing rules in `src/domain/select-queue.mjs`. T002 keeps `src/adapters/ticket-input.mjs` passing the caller clock to the policy. The routing gate runs `node --test src/domain/select-queue.test.mjs` from the repository root.\n",
+    "specs/001-ticket-routing/.gwrk/tasks.json": "{\n  \"featureId\": \"001-ticket-routing\",\n  \"createdAt\": \"2026-01-01T00:00:00.000Z\",\n  \"phases\": [\n    {\n      \"id\": \"phase-01\",\n      \"title\": \"Queue selection\",\n      \"tasks\": [\n        {\n          \"id\": \"T001\",\n          \"title\": \"Repair the queue selection policy\",\n          \"description\": \"Implement the pure routing rules in src/domain/select-queue.mjs.\",\n          \"status\": \"completed\",\n          \"completedAt\": \"2026-01-01T00:00:00.000Z\",\n          \"gateScript\": \"gates/run-all-gates.sh\"\n        },\n        {\n          \"id\": \"T002\",\n          \"title\": \"Pass the caller clock\",\n          \"description\": \"Keep the adapter passing the caller clock to the policy.\",\n          \"status\": \"completed\",\n          \"completedAt\": \"2026-01-01T00:00:00.000Z\",\n          \"gateScript\": \"\"\n        }\n      ]\n    }\n  ]\n}\n",
+    "specs/001-ticket-routing/gates/run-all-gates.sh": "#!/usr/bin/env bash\n# AUTHORED\nset -euo pipefail\nnode --test src/domain/select-queue.test.mjs\n"
+  },
+  "gates": {
+    "command": ["node", "--test", "src/domain/select-queue.test.mjs"],
+    "baselineExitCode": 1,
+    "candidateExitCode": 0,
+    "allowedChangedPaths": ["src/domain/select-queue.mjs"],
+    "reviewRequiredReopenedTasks": ["T001"],
+    "reviewForbiddenReopenedTasks": ["T002"]
+  }
+}

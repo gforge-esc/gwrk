@@ -11,6 +11,7 @@ import {
   type JudgeVerdict,
   type ModelCandidate,
   type PromotionEvidence,
+  type ScoredRepeat,
   assertNoSecretMaterial,
   blindCandidate,
   checkCandidate,
@@ -18,6 +19,7 @@ import {
   evaluatePromotion,
   isConcreteModel,
   qualificationStaleness,
+  scoreRole,
 } from "./model-qualification.js";
 
 const scope = {
@@ -2497,4 +2499,130 @@ describe("model qualification policy", () => {
       );
     },
   );
+});
+
+describe("scoreRole", () => {
+  it("scores define coverage across outputs, references, sections and executable plan gates", () => {
+    const candidateRepeats: ScoredRepeat[] = [
+      {
+        deterministicGatesPassed: true,
+        durationMs: 100,
+        gateChecks: [
+          { checkId: "required-output-spec.md", passed: true },
+          { checkId: "required-output-plan.md", passed: true },
+          { checkId: "spec-ref-ADR-001", passed: true },
+          { checkId: "plan-ref-node-test", passed: false },
+          { checkId: "required-section-spec-Requirements", passed: true },
+          { checkId: "executable-plan-gate", passed: false },
+          { checkId: "candidate-gate", passed: true }, // should be ignored
+          { checkId: "forbidden-file-mutation", passed: true }, // should be ignored
+        ],
+      },
+      {
+        deterministicGatesPassed: false,
+        durationMs: 120,
+        gateChecks: [
+          { checkId: "required-output-spec.md", passed: true },
+          { checkId: "required-output-plan.md", passed: false },
+          { checkId: "spec-ref-ADR-001", passed: false },
+          { checkId: "plan-ref-node-test", passed: false },
+        ],
+      },
+    ];
+
+    const score = scoreRole("define", candidateRepeats, []);
+    expect(score).toEqual({
+      role: "define",
+      coverage: 5 / 10,
+      passedChecks: 5,
+      totalChecks: 10,
+    });
+  });
+
+  it("scores implement by ignoring red repeats and computing median and speedup", () => {
+    const candidateRepeats: ScoredRepeat[] = [
+      {
+        deterministicGatesPassed: true,
+        durationMs: 50,
+        gateChecks: [{ checkId: "candidate-gate", passed: true }],
+      },
+      {
+        deterministicGatesPassed: false,
+        durationMs: 10, // red repeat, ignored
+        gateChecks: [{ checkId: "candidate-gate", passed: false }],
+      },
+      {
+        deterministicGatesPassed: true,
+        durationMs: 70,
+        gateChecks: [{ checkId: "candidate-gate", passed: true }],
+      },
+    ];
+
+    const incumbentRepeats: ScoredRepeat[] = [
+      {
+        deterministicGatesPassed: true,
+        durationMs: 120,
+        gateChecks: [{ checkId: "candidate-gate", passed: true }],
+      },
+      {
+        deterministicGatesPassed: true,
+        durationMs: 180,
+        gateChecks: [{ checkId: "candidate-gate", passed: true }],
+      },
+    ];
+
+    const score = scoreRole("implement", candidateRepeats, incumbentRepeats);
+    expect(score).toEqual({
+      role: "implement",
+      candidateMedianMsToGreen: 60, // median of [50, 70]
+      incumbentMedianMsToGreen: 150, // median of [120, 180]
+      speedup: 150 / 60, // 2.5
+    });
+  });
+
+  it("returns null for implement when a route has no green repeat", () => {
+    const candidateRepeats: ScoredRepeat[] = [
+      {
+        deterministicGatesPassed: false,
+        durationMs: 50,
+        gateChecks: [{ checkId: "candidate-gate", passed: false }],
+      },
+    ];
+    const incumbentRepeats: ScoredRepeat[] = [
+      {
+        deterministicGatesPassed: true,
+        durationMs: 100,
+        gateChecks: [{ checkId: "candidate-gate", passed: true }],
+      },
+    ];
+
+    const score = scoreRole("implement", candidateRepeats, incumbentRepeats);
+    expect(score).toEqual({
+      role: "implement",
+      candidateMedianMsToGreen: null,
+      incumbentMedianMsToGreen: 100,
+      speedup: null,
+    });
+  });
+
+  it("scores review coverage counting only review-* checks", () => {
+    const candidateRepeats: ScoredRepeat[] = [
+      {
+        deterministicGatesPassed: true,
+        durationMs: 100,
+        gateChecks: [
+          { checkId: "review-required-T001", passed: true },
+          { checkId: "review-forbidden-T002", passed: false },
+          { checkId: "review-baseline-preserved", passed: true },
+          { checkId: "candidate-gate", passed: false }, // ignored
+        ],
+      },
+    ];
+
+    const score = scoreRole("review", candidateRepeats, []);
+    expect(score).toEqual({
+      role: "review",
+      coverage: 2 / 3,
+    });
+  });
 });
