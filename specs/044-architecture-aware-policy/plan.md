@@ -179,6 +179,7 @@ bash specs/044-architecture-aware-policy/gates/phase-03.sh
 | TR-013 | integration | `src/utils/agent.policy-binding.test.ts` | Define, implement and review prompts include Python and FastAPI workspace policy once and omit guidance from the installed TypeScript and Fastify root target |
 | TR-013 | integration | `src/utils/agent.policy-binding.test.ts` | Policy expansion preserves every byte of a target without generated policy sections, including literal `$$` in a Make recipe rule and headings in a fenced example |
 | TR-013 | integration | `src/utils/agent.policy-binding.test.ts` | One current gap per missing or incompatible framework pack before repair and zero after compatible rules load |
+| TR-013 | integration | `src/utils/agent.policy-binding.test.ts` | One current secondary-language gap before its pack loads and zero afterward, including older saved targets |
 | TR-013 | integration | `src/utils/agent.policy-binding.test.ts` | Byte equality for the saved target and decision index after pack repair |
 | TR-013 | integration | `src/utils/agent.policy-binding.test.ts` | FastAPI router guidance without the TypeScript root target's Django gap and fallback |
 | TR-013 | integration | `src/utils/agent.policy-binding.test.ts` | Byte equality for maintainer-edited guidance paragraphs and gap items with continuation lines |

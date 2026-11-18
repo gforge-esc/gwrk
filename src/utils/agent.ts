@@ -579,7 +579,12 @@ function withoutGeneratedPolicySections(target: string): string {
     let body = "";
     let keptFrom = 0;
     for (const [lineIndex, line] of lines.entries()) {
-      if (!content.includes(line[1])) continue;
+      const generatedLanguageGap =
+        section === "Policy gaps" &&
+        /^- No bundled language binding or selected policy for .+\. Assess language-specific boundaries explicitly\.$/.test(
+          line[1],
+        );
+      if (!content.includes(line[1]) && !generatedLanguageGap) continue;
       const next = line.index + line[0].length;
       const nextLine = lines[lineIndex + 1]?.[1];
       if (section === "Policy gaps") {

@@ -159,6 +159,43 @@ it.each([
   expect(unexpanded.stdout).toContain(gap);
 });
 
+it("refreshes a saved gap for a secondary language after installing compatible rules", async () => {
+  const design = resolveDesign({ architecture: "hexagonal-functional" });
+  const stack = { language: "TypeScript", languages: ["TypeScript", "COBOL"] };
+  const profile: ProjectProfile = { type: "polyglot-monorepo", stack, design };
+  writeFileSync(
+    join(root, ".gwrkrc.json"),
+    JSON.stringify({ project: { name: "binding-fixture", ...profile } }),
+  );
+  await installArchitectureContext(root, {
+    projectName: "binding-fixture",
+    design,
+    language: stack.language,
+    decisionsDir: "docs/decisions",
+  });
+  const gap = "No bundled language binding or selected policy for COBOL. Assess language-specific boundaries explicitly.";
+  const target = join(root, ".gwrk/architecture.md");
+  const original = readFileSync(target, "utf8");
+  expect(original).toContain(`- ${gap}\n`);
+
+  const before = await prompt("gwrk-implement", profile);
+  expect.soft(before.split(gap).length - 1).toBe(1);
+  expect(before.match(/<effective_policy>\n([\s\S]*?)\n<\/effective_policy>/)?.[1]).toContain(gap);
+
+  const pack = join(root, ".gwrk/plugins/skills/fixture-cobol");
+  mkdirSync(pack, { recursive: true });
+  writeFileSync(
+    join(pack, "manifest.yaml"),
+    "type: skill\nname: fixture-cobol\nversion: 1.0.0\ndescription: Fixture COBOL policy\ntier: enforcement\nscope: all\nlanguage: COBOL\n",
+  );
+  writeFileSync(join(pack, "SKILL.md"), "Compatible COBOL rules.");
+
+  const after = await prompt("gwrk-implement", profile);
+  expect(after).toContain("Compatible COBOL rules.");
+  expect.soft(after).not.toContain(gap);
+  expect(readFileSync(target, "utf8")).toBe(original);
+});
+
 it("omits the incompatible Django root gap and fallback from a FastAPI workspace prompt", async () => {
   const design = resolveDesign({ architecture: "hexagonal-functional" });
   await installArchitectureContext(root, {
