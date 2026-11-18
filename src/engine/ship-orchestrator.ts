@@ -30,6 +30,7 @@ import {
   extractFixLines,
   extractOpenTaskErrors,
 } from "../application/ship/index.js";
+import { WorkflowRuntime } from "../plugins/workflow-runtime.js";
 import {
   type TaskDispatch,
   type TaskResult,
@@ -76,7 +77,6 @@ import {
 } from "../utils/toolchain-mapper.js";
 import { appendFinding, findingsPath } from "./findings-ledger.js";
 import { detectProfile } from "./profile-detector.js";
-import { conditionPrompt } from "./prompt-conditioner.js";
 import { parseReturnedVerdict } from "./returned-verdict.js";
 import {
   type ShipRunConfig,
@@ -600,46 +600,16 @@ export class ShipOrchestrator extends EventEmitter {
     const beforeState = loadTaskState(featureDir);
 
     try {
-      // ADR-007: Resolve review prompt from plugin system (PROMPT.md),
-      // then dispatch with raw tool access. Review agents need native
-      // tool access (pnpm build, pnpm lint, gate scripts, jq, git)
-      // which WorkflowRuntime's WRITE_FILE guard blocks. The plugin
-      // system provides the full prompt; raw dispatch provides tool access.
-      let reviewPrompt = prompt;
-      try {
-        const { PluginLoader } = await import("../plugins/loader.js");
-        const loader = new PluginLoader({ projectDir: this.config.cwd });
-        const plugin = await loader.resolvePlugin(workflowName);
-        const promptPath = path.join(plugin.path, "PROMPT.md");
-        if (fs.existsSync(promptPath)) {
-          const basePrompt = fs.readFileSync(promptPath, "utf-8");
-          reviewPrompt = `${basePrompt}\n\n---\n\n## Scope Context\n\n${prompt}`;
-        }
-      } catch {
-        // Plugin resolution failed — fall through with the inline prompt.
-        // This is not fatal: the inline scope context is still useful.
-        warnCli(
-          `    ⚠ Could not resolve PROMPT.md for ${workflowName}, using inline prompt`,
-        );
-      }
-
-      // Phase 13: Project-aware prompt conditioning
-      const profile = await detectProfile(this.config.cwd);
-      const conditionedPrompt = conditionPrompt(reviewPrompt, profile);
-
-      const result = await this.dispatchWithFailback({
-        prompt: conditionedPrompt,
-        featureDir: `specs/${this.config.featureId}`,
-        agent: this.config.backend,
-        env: {},
-        quiet: true,
-      });
-
-      if (result.exitCode !== 0) {
+      const result = await this.runNativeWorkflow(
+        workflowName,
+        prompt,
+        "review",
+      );
+      if (result.status === "failure" || result.exitCode !== 0) {
         return {
           success: false,
-          exitCode: result.exitCode,
-          error: `${workflowName} agent exited ${result.exitCode}`,
+          exitCode: result.exitCode || 1,
+          error: `${workflowName} agent failed: ${result.errorType ?? result.exitCode}`,
         };
       }
 
@@ -681,7 +651,7 @@ export class ShipOrchestrator extends EventEmitter {
       //    tighten the result it arrived at.
       const verdict = this.ratchetOnReturnedVerdict(
         await this.readVerdict(reviewFindings),
-        result.stdout,
+        result.unwrappedStdout ?? result.stdout,
       );
       this.state.reviewVerdict = verdict;
       logCliOutput(
@@ -1050,31 +1020,22 @@ export class ShipOrchestrator extends EventEmitter {
       return { success: true, exitCode: 0, nextStage: ShipStage.BUILD_CHECK };
     }
 
-    // FR-019: dispatchToAgent
     try {
       const isRetry = this.state.iteration > 1;
       const prompt = isRetry
         ? this.buildRetryPrompt(tasksToDispatch)
         : this.buildInitialPrompt(tasksToDispatch);
-
-      // Phase 13: Project-aware prompt conditioning
-      const profile = await detectProfile(this.config.cwd);
-      const conditionedPrompt = conditionPrompt(prompt, profile);
-
       const taskIds = tasksToDispatch.map((t) => t.id).join(", ");
       logCliOutput(
         `  ▸ IMPLEMENT  ${isRetry ? `retry (${this.state.iteration}/${this.config.maxIterations})` : `${tasksToDispatch.length} task(s) (${taskIds})`}`,
       );
+      const result = await this.runNativeWorkflow(
+        "gwrk-implement",
+        prompt,
+        "implement",
+      );
 
-      const result = await this.dispatchWithFailback({
-        agent: this.config.backend,
-        workflow: "gwrk-implement",
-        featureDir: `specs/${this.config.featureId}`,
-        prompt: conditionedPrompt,
-        quiet: true,
-      });
-
-      if (result.exitCode === 0) {
+      if (result.exitCode === 0 && result.status !== "failure") {
         // Checkpoint: commit implementation work BEFORE code review.
         // revertSourceMutations() does `git checkout -- .` to undo review
         // agent edits. Without this commit, it wipes the implementation too.
@@ -1116,7 +1077,7 @@ export class ShipOrchestrator extends EventEmitter {
       }
       return {
         success: false,
-        exitCode: result.exitCode,
+        exitCode: result.exitCode || 1,
         error: `Agent implementation failed: ${result.errorType || "unknown"}`,
       };
     } catch (err: unknown) {
@@ -2743,11 +2704,14 @@ ${marker}`;
         agent: this.config.backend,
         prompt: diagnosisPrompt,
         featureDir: `specs/${this.config.featureId}`,
+        workDir: this.config.cwd,
+        backendProjectRoot: this.config.stateRoot ?? this.config.cwd,
         quiet: true,
       });
 
-      if (result.exitCode === 0 && result.stdout) {
-        const fixLines = extractFixLines(result.stdout);
+      const diagnosis = result.unwrappedStdout ?? result.stdout;
+      if (result.exitCode === 0 && diagnosis) {
+        const fixLines = extractFixLines(diagnosis);
 
         if (fixLines.length > 0) {
           const fixBlock = `\n\nDIAGNOSIS (iteration ${this.state.iteration}):\n${fixLines.join("\n")}`;
@@ -2781,20 +2745,43 @@ ${marker}`;
     return { success: true, exitCode: 0, nextStage: ShipStage.IMPLEMENT };
   }
 
+  private async runNativeWorkflow(
+    workflow: string,
+    input: string,
+    taskType: "implement" | "review",
+  ): Promise<TaskResult> {
+    const { taskResult } = await new WorkflowRuntime().executeWorkflow(
+      workflow,
+      input,
+      {
+        projectRoot: this.config.cwd,
+        agent: this.config.backend,
+        featureDir: `specs/${this.config.featureId}`,
+        taskType,
+        nativeOnly: true,
+        allowMissingPrompt: true,
+        dispatcher: (task) => this.dispatchWithFailback(task),
+        quiet: true,
+      },
+    );
+    return taskResult;
+  }
+
   /**
    * Dispatch with the Router-selected model when provided; otherwise the backend
    * runs with its own default model.
    */
   private async dispatchWithFailback(task: TaskDispatch): Promise<TaskResult> {
     const env: Record<string, string> = { ...task.env };
-    const model = this.config.selectedModel;
-
-    // 1. Use Router-selected model if available (FR-008/009)
-    if (model) {
-      if (this.config.backend === "claude") env.CLAUDE_MODEL = model;
-      if (this.config.backend === "codex") env.CODEX_MODEL = model;
-      logCliOutput(`    🤖 Router model: ${model}`);
-    }
+    const review = task.type === "review";
+    const model =
+      task.model ??
+      (review ? this.config.reviewModel : this.config.selectedModel);
+    const effort = review
+      ? this.config.reviewEffort
+      : this.config.selectedEffort;
+    if (effort) env.GWRK_EFFORT = effort;
+    if (model) logCliOutput(`    🤖 Router model: ${model}`);
 
     // 2. Dispatch — run the agent in the ship working tree (cwd), not
     // process.cwd(). Identical for the primary checkout; under worktree-isolated
@@ -2804,9 +2791,15 @@ ${marker}`;
     // verdict is answered once; an agent the host suspended or the network cut
     // off never answered at all, and failing the phase on that discards work
     // every earlier stage already proved good.
-    const workDir = task.workDir ?? this.config.cwd;
+    const dispatch = {
+      ...task,
+      model,
+      env,
+      workDir: task.workDir ?? this.config.cwd,
+      backendProjectRoot: this.config.stateRoot ?? this.config.cwd,
+    };
 
-    let result = await dispatchToAgent({ ...task, model, env, workDir });
+    let result = await dispatchToAgent(dispatch);
 
     for (
       let attempt = 0;
@@ -2820,7 +2813,7 @@ ${marker}`;
         `    ⚠ agent dispatch interrupted by the environment — retrying in ${wait / 1000}s (${attempt + 1}/${AGENT_RETRY_DELAYS_MS.length})`,
       );
       await this.sleep(wait);
-      result = await dispatchToAgent({ ...task, model, env, workDir });
+      result = await dispatchToAgent(dispatch);
     }
 
     if (result.usage) {

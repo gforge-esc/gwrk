@@ -40,6 +40,57 @@ describe("AgyAdapter", () => {
     });
   });
 
+  describe("probe", () => {
+    it("rejects a quota failure even when the process exits zero", async () => {
+      vi.mocked(execCommand).mockResolvedValue({
+        exitCode: 0,
+        stdout: JSON.stringify({
+          event: "result",
+          result: {
+            status: "ERROR",
+            response: "",
+            error: "RESOURCE_EXHAUSTED: model capacity exhausted",
+          },
+        }),
+        stderr: "",
+      });
+      expect(await adapter.probe()).toMatchObject({ status: "rate_limited" });
+    });
+
+    it("uses bounded headless invocation and requires the expected response", async () => {
+      vi.mocked(execCommand).mockResolvedValue({
+        exitCode: 0,
+        stdout: JSON.stringify({
+          event: "result",
+          result: { status: "SUCCESS", response: "1" },
+        }),
+        stderr: "",
+      });
+      expect(await adapter.probe()).toMatchObject({ status: "available" });
+      expect(execCommand).toHaveBeenCalledWith(
+        "agy",
+        expect.arrayContaining([
+          "-p",
+          "--print-timeout",
+          "15s",
+          "--output-format",
+          "stream-json",
+        ]),
+        undefined,
+        expect.objectContaining({ signal: expect.any(AbortSignal) }),
+      );
+    });
+
+    it("rejects an empty response", async () => {
+      vi.mocked(execCommand).mockResolvedValue({
+        exitCode: 0,
+        stdout: "",
+        stderr: "",
+      });
+      expect(await adapter.probe()).toMatchObject({ status: "unavailable" });
+    });
+  });
+
   describe("syncGovernance", () => {
     it("creates AGENTS.md with markers if it doesn't exist", async () => {
       vi.mocked(fs.readFile).mockRejectedValue(new Error("File not found"));
@@ -135,26 +186,27 @@ describe("AgyAdapter", () => {
       expect(result.args).not.toContain("false");
     });
 
-    it("delivers expanded multi-line prompts via stdin without slash-command prefix", async () => {
+    it("serializes the complete prompt into one Antigravity input event", async () => {
+      const prompt = "# Workflow Prompt\nRead spec.md";
+      const stdin =
+        '<user_input>\nKeep quoted "text" and \\ paths.\n</user_input>\n';
       const result = await adapter.dispatch({
         workflow: "gwrk-plan",
-        featureDir: "specs/031-unified-agent-port",
-        prompt:
-          "# Workflow Prompt\nStep 1: Read spec.md\nStep 2: Write plan.md",
-        stdin: "<command_safety>Rules</command_safety>",
-        model: "claude-sonnet-4-6",
+        prompt,
+        stdin,
+        model: "gemini-4-carbon-high",
         agent: "agy",
       });
 
-      expect(result.args).toContain("-p");
-      expect(result.args).toContain(
-        "Execute gwrk-plan instructions from stdin",
-      );
-      expect(result.args).toContain("--model");
-      expect(result.args).toContain("claude-sonnet-4-6");
-      expect(result.stdin).toContain("# Workflow Prompt");
-      expect(result.stdin).toContain("<command_safety>Rules</command_safety>");
-      expect(result.stdin).not.toContain("/gwrk-plan");
+      expect(result.args).toContain("--input-format");
+      expect(result.args).not.toContain("-p");
+      expect(result.args).toContain("gemini-4-carbon-high");
+      expect(result.inputFormat).toBe("stream-json");
+      expect(JSON.parse(result.stdin)).toEqual({
+        event: "user",
+        message: { content: `${prompt}\n\n${stdin}` },
+      });
+      expect(result.stdin.split("\n").filter(Boolean)).toHaveLength(1);
     });
 
     it("unwraps stream-json output and detects turn_limit in parseResult", () => {
@@ -213,5 +265,27 @@ describe("AgyAdapter", () => {
         0,
       ).exitCode,
     ).toBe(1);
+  });
+  it("rejects a failed terminal without response even after a success payload", () => {
+    const adapter = new AgyAdapter();
+    const stdout = [
+      { event: "result", result: { status: "SUCCESS", response: "GO" } },
+      {
+        event: "result",
+        result: {
+          status: "ERROR",
+          error: "Your AI credits balance is too low to continue.",
+        },
+      },
+    ]
+      .map((event) => JSON.stringify(event))
+      .join("\n");
+
+    expect(adapter.parseResult(stdout, "", 0)).toMatchObject({
+      status: "failure",
+      errorType: "rate_limit",
+      exitCode: 1,
+      unwrappedStdout: "GO",
+    });
   });
 });

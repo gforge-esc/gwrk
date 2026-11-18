@@ -4,12 +4,12 @@
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { getDb, getTestDb } from "../db/index.js";
-import type { AgentRegistry } from "./agent-registry.js";
+import type { AgentRegistry } from "../domain/agent-config.js";
+import { TaskClassification, TaskType } from "../domain/types.js";
 import { BackendSelector, type TaskContext } from "./backend-selector.js";
-import { TaskClassification, TaskType } from "./task-classifier.js";
 
 // Mock recordDecision to avoid DB side effects in non-db tests
-vi.mock("./routing-decisions.js", () => ({
+vi.mock("../adapters/sqlite/routing-decisions.js", () => ({
   recordDecision: vi.fn(),
 }));
 
@@ -179,7 +179,7 @@ describe("BackendSelector", () => {
       taskType: TaskType.TEST,
     });
     expect(selection.backend).toBe("gemini");
-    expect(selection.model).toBe("gemini-pro");
+    expect(selection.model).toBe("pro");
     expect(selection.modelFailoverUsed).toBe(true);
   });
 
