@@ -802,6 +802,7 @@ function restoreRecoveryStore(persisted: {
           };
         } else {
           if (destination === null) {
+            if (isHarvestSlackRecipient(row.recipient)) return null;
             row.status = "skipped_no_target";
             row.updatedAt = nowIso;
             return { action: "skipped_no_target", item: { ...row } };
@@ -1439,26 +1440,29 @@ describe("durable recovery store contract", () => {
 
   it("resolves a pending delivery by ID before claiming its destination", () => {
     const outboxId = "resumed-notification";
+    const recipient = { projectId, surface: "slack", channelId: "C1" } as const;
+    const featureDestination = { ...destination, threadTs: "2.1" };
     const store = restoreRecoveryStore({
       harvests: [],
       stages: [],
-      outboxItems: [outbox(outboxId, "pending")],
+      outboxItems: [outbox(outboxId, "pending", { recipient })],
     });
     const pending = store.getOutboxItem(outboxId);
     expect(pending).toMatchObject({
       projectId,
       featureId,
       status: "pending",
-      recipient: { channelId: "C1", threadTs: "1.2" },
+      recipient,
     });
     if (!pending) throw new Error("Expected an outbox item");
+    expect(pending.recipient.threadTs).toBeUndefined();
     const featureThreads = new Map([
-      [`${projectId}/${featureId}`, destination],
+      [`${projectId}/${featureId}`, featureDestination],
     ]);
     const resolved = featureThreads.get(
       `${pending.projectId}/${pending.featureId}`,
     );
-    expect(resolved).toEqual(destination);
+    expect(resolved).toEqual(featureDestination);
     expect(store.getOutboxItem(outboxId)).toMatchObject({
       status: "pending",
       attemptCount: 0,
@@ -1471,7 +1475,7 @@ describe("durable recovery store contract", () => {
       }),
     ).toMatchObject({
       action: "send",
-      item: { ...destination, status: "sending" },
+      item: { ...featureDestination, status: "sending" },
     });
     expect(store.getOutboxItem("missing")).toBeNull();
   });
@@ -1481,6 +1485,7 @@ describe("durable recovery store contract", () => {
     { channelId: "C9" },
     { threadTs: "9.1" },
     { threadTs: null },
+    null,
   ])(
     "rejects a conflicting first Slack route %j and reconciles only at the saved route",
     (conflict) => {
@@ -1492,7 +1497,8 @@ describe("durable recovery store contract", () => {
         stages: [],
         outboxItems: [pending],
       });
-      const conflicting = { ...destination, ...conflict };
+      const conflicting =
+        conflict === null ? null : { ...destination, ...conflict };
       const claim = { outboxId: pending.outboxId, nowIso };
 
       expect(

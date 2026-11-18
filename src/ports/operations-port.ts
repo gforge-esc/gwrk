@@ -478,7 +478,8 @@ export interface OperationsStorePort {
    * Reject the send claim if that recipient lacks a workspace or channel.
    * For other pending notices, use the saved Slack recipient for the same project.
    * Resolve only unspecified destination fields. Return null without writes for a conflicting route.
-   * For other pending notices, a null destination atomically records skipped_no_target.
+   * Return null without writes if a caller supplies no destination for a saved Slack workspace and channel.
+   * For other pending notices with no resolved destination, atomically record skipped_no_target.
    * A skip returns no claim and preserves the attempt count.
    * Send and reconcile require a bound workspace, channel and metadata key.
    * Reconcile abandoned sending and uncertain items at the stored destination.
