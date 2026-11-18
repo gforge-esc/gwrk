@@ -174,3 +174,5 @@ The proposed [feature spec](spec.md) uses unnumbered bullets and numbered accept
 | Feature 045 implementation | The completed [architecture-aware policy contract](../044-architecture-aware-policy/contracts/policy-selection.md) |
 
 All five required changes and four acceptance criteria have phase coverage. The [reviewed findings](../../docs/architecture/assessments/2026-11-11-self-assessment/report.md) assign this feature workflow guidance (F09) and governance visibility (F10). Feature 043 owns the transport repair. The existing context determinism regression stays in the Phase 2 gate.
+
+Phase 1 delivery coverage executes WorkflowRuntime for specification, planning and code review. It captures the shared dispatch payload with dry-run transport. Assertions cover Python project guidance, Proposed ratification, Decided authority and Superseded lineage. No agent process starts.
