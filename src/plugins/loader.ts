@@ -248,25 +248,40 @@ export class PluginLoader {
       );
       if (manifest?.type !== "skill" || manifest.tier !== "enforcement") return;
 
+      const disabled = this.evaluateDisabledStatus(
+        manifest,
+        "skills",
+        config,
+        globalConfig,
+      );
+      let content: string | undefined;
+      if (!disabled) {
+        try {
+          content = await fs.readFile(
+            path.join(resolvedPath, "SKILL.md"),
+            "utf-8",
+          );
+        } catch {
+          return;
+        }
+      }
+
       candidates.push({
         name: overrideName ?? manifest.name,
         source,
         path: resolvedPath,
-        manifest: {
-          ...manifest,
-          disabled: this.evaluateDisabledStatus(
-            manifest,
-            "skills",
-            config,
-            globalConfig,
-          ),
-        },
+        manifest: { ...manifest, disabled },
+        content,
       });
     };
 
     for (const [name, directory] of Object.entries(config.override ?? {})) {
       if (typeof directory === "string") {
-        await addCandidate(directory, "project-local", name);
+        await addCandidate(
+          path.resolve(this.projectDir ?? ".", directory),
+          "project-local",
+          name,
+        );
       }
     }
     for (const { directory, source } of this.pluginLocations(config)) {

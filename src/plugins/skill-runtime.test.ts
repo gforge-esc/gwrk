@@ -29,6 +29,9 @@ function candidate(
     name,
     source,
     path: `/fake/${source}/${name}`,
+    content: selectors.disabled
+      ? undefined
+      : `/fake/${source}/${name}/SKILL.md`,
     manifest: {
       type: "skill",
       tier: "enforcement",
@@ -55,7 +58,6 @@ describe("FR-014: resolveEnforcementSkills", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.mocked(detectProfile).mockResolvedValue(profile);
-    vi.mocked(fsp.readFile).mockImplementation(async (file) => String(file));
   });
 
   it("detects the profile and composes compatible architecture, language and framework rules", async () => {
@@ -91,7 +93,7 @@ describe("FR-014: resolveEnforcementSkills", () => {
       "typescript-standards",
       "express-standards",
     ]);
-    expect(fsp.readFile).toHaveBeenCalledTimes(2);
+    expect(fsp.readFile).not.toHaveBeenCalled();
   });
 
   it("uses the highest compatible override and keeps the legacy prompt headers", async () => {
@@ -111,7 +113,9 @@ describe("FR-014: resolveEnforcementSkills", () => {
       "<!-- enforcement-skill: typescript-standards -->",
     );
     expect(rendered).toContain(local.path);
-    expect(fsp.readFile).toHaveBeenCalledTimes(1);
+    expect(rendered).not.toContain("/fake/global/typescript-standards");
+    expect(rendered).not.toContain("/fake/builtin/typescript-standards");
+    expect(fsp.readFile).not.toHaveBeenCalled();
   });
 
   it("suppresses lower copies when the local override is disabled", async () => {

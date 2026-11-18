@@ -212,23 +212,12 @@ export async function resolveEffectivePolicy(
     options.profile ?? detectProfile(projectRoot),
     loader.listEnforcementCandidates(),
   ]);
-  const policy = composeEffectivePolicy({
+  return composeEffectivePolicy({
     profile,
     candidates,
     scope: options.scope,
     checksConfigured: options.checksConfigured,
   });
-  const selected = new Set(policy.selectedSkills);
-  await Promise.all(
-    candidates
-      .filter((candidate) => selected.has(candidate))
-      .map(async (candidate) => {
-        candidate.content = await fs
-          .readFile(path.join(candidate.path, "SKILL.md"), "utf-8")
-          .catch(() => undefined);
-      }),
-  );
-  return policy;
 }
 
 export function formatEffectivePolicyPrompt(policy: EffectivePolicy): string {

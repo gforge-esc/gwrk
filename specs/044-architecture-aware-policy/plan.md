@@ -101,13 +101,15 @@ pnpm exec vitest run src/plugins/manifest.test.ts src/domain/policy-selection.te
 - `src/plugins/builtins/skills/javascript-standards/manifest.yaml` (NEW: Declare `javascript-standards` enforcement skill for `JavaScript` across `scope: all`)
 - `src/plugins/builtins/skills/javascript-standards/SKILL.md` (NEW: Define ESM module boundaries and object port contracts and runtime validation rules)
 - `src/plugins/builtins/skills/gwrk-conventions/manifest.yaml` (MODIFY: Set `projectScope: gwrk` so repository rules stay scoped to `gwrk`)
+- `src/plugins/loader.ts` (MODIFY: Resolve project overrides and read enabled skill bodies before policy selection)
 - `src/plugins/skill-runtime.ts` (MODIFY: Implement `resolveEffectivePolicy` and `formatEffectivePolicyPrompt` and delegate `resolveEnforcementSkills`)
 - `src/commands/plugin.ts` (MODIFY: Route `gwrk plugin list --project` enforcement filtering through `evaluateEnforcementCandidate`)
-- `src/plugins/skill-runtime.test.ts` (MODIFY: Verify `resolveEffectivePolicy` composition and override precedence and `gwrk-conventions` scoping)
-- `src/plugins/skill-runtime.p15.red.test.ts` — **amend** — Adapt the legacy loader mock and require consistent selectors across builtin, global and project-local sources.
+- `src/plugins/skill-runtime.test.ts` (MODIFY: Verify policy composition, override precedence and `gwrk-conventions` scoping with loader-provided bodies)
+- `src/plugins/skill-runtime.p15.red.test.ts` (AMEND: Adapt the legacy loader mock to supply skill bodies. Verify consistent selectors across built-in, global and project-local sources.)
 - `src/plugins/enforcement.test.ts` (MODIFY: Verify `javascript-standards` loading and confirm external projects exclude `gwrk-conventions` even when their display name matches)
 - `src/plugins/framework-pack-compatibility.test.ts` (NEW: Verify all five language baselines and all ten external framework pack contracts plus gap cases)
 - `src/commands/plugin.p15.red.test.ts` (MODIFY: Verify `--project` listing honors architecture and framework and `projectScope` selectors)
+- `src/plugins/policy-selection.integration.test.ts` (MODIFY: Exercise real loader precedence and project listing with incomplete packs)
 
 #### Governance and skills
 
@@ -123,13 +125,14 @@ pnpm exec vitest run src/plugins/manifest.test.ts src/domain/policy-selection.te
 | TR-002 | integration | `src/plugins/skill-runtime.test.ts` | New and existing projects compose chosen architecture with compatible language and framework guidance while excluding unrelated and `gwrk` rules |
 | TR-009 | integration | `src/plugins/enforcement.test.ts` | Built-in `javascript-standards` loads for JavaScript projects and `gwrk-conventions` loads only when `_isGwrk` is true |
 | TR-010 | integration | `src/plugins/framework-pack-compatibility.test.ts` | All five baselines and pinned manifests for ten published packs resolve compatible stacks or report a gap |
-| TR-011 | integration | `src/commands/plugin.p15.red.test.ts` | CLI `plugin list --project` matches runtime policy selection across legacy and architecture-scoped skills |
+| TR-011 | integration | `src/commands/plugin.p15.red.test.ts` and `src/plugins/policy-selection.integration.test.ts` | Matching runtime and CLI policy selection across legacy and architecture-scoped skills |
+
+Project policy selection tests cover relative and absolute overrides from outside the project. An enabled override without `SKILL.md` lets a compatible lower copy supply the rules. If no compatible framework pack supplies a body, the runtime reports a gap. The project listing omits the incomplete pack. A disabled override stays listed as disabled and suppresses the lower copy even without `SKILL.md`.
 
 #### Done When
 
 ```bash
-pnpm build
-pnpm exec vitest run src/plugins/skill-runtime.test.ts src/plugins/skill-runtime.p15.red.test.ts src/plugins/enforcement.test.ts src/plugins/framework-pack-compatibility.test.ts src/plugins/builtins/skills/gwrk-conventions/SKILL.test.ts src/commands/plugin.p15.red.test.ts src/architecture.test.ts
+bash specs/044-architecture-aware-policy/gates/phase-03.sh
 ```
 
 ### Phase 4: Model-free init and prompt delivery

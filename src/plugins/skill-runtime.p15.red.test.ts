@@ -30,6 +30,7 @@ describe.each(sources)("enforcement selectors from %s", (source) => {
         name: "fixture-rules",
         source,
         path: "/fixture/rules",
+        content: "# Fixture Rules",
         manifest: {
           name: "fixture-rules",
           type: "skill",
@@ -42,7 +43,6 @@ describe.each(sources)("enforcement selectors from %s", (source) => {
         },
       },
     ]);
-    vi.mocked(fsp.readFile).mockResolvedValue("# Fixture Rules");
     const rendered = await resolveEnforcementSkills(
       "/fixture",
       scenario === "foreign workflow" ? "implementation" : "review",
@@ -58,7 +58,7 @@ describe.each(sources)("enforcement selectors from %s", (source) => {
     expect(
       PluginLoader.prototype.listEnforcementCandidates,
     ).toHaveBeenCalledOnce();
-    if (scenario !== "matching") expect(fsp.readFile).not.toHaveBeenCalled();
+    expect(fsp.readFile).not.toHaveBeenCalled();
   });
 
   it("preserves an unscoped legacy review skill", async () => {
@@ -69,6 +69,7 @@ describe.each(sources)("enforcement selectors from %s", (source) => {
         name: "legacy-review",
         source,
         path: "/fixture/legacy",
+        content: "# Legacy Review",
         manifest: {
           name: "legacy-review",
           type: "skill",
@@ -79,7 +80,6 @@ describe.each(sources)("enforcement selectors from %s", (source) => {
         },
       },
     ]);
-    vi.mocked(fsp.readFile).mockResolvedValue("# Legacy Review");
     expect(
       await resolveEnforcementSkills("/fixture", "review", {
         type: "python",
