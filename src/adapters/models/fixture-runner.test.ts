@@ -42,6 +42,66 @@ const fixedPassingQueueImplementation = `export function selectQueue({ priority,
 `;
 
 describe("fixture runner adapter", () => {
+  it.each(["missing executable", "signal"])(
+    "does not accept %s as seeded RED evidence",
+    async (mode) => {
+      const root = await mkdtemp(join(tmpdir(), "gwrk-broken-gate-"));
+      try {
+        const fixture = JSON.parse(
+          readFileSync(
+            "tests/fixtures/model-qualification/implement-seeded-defect/fixture.json",
+            "utf8",
+          ),
+        );
+        fixture.gates.command =
+          mode === "missing executable"
+            ? [join(root, "absent")]
+            : [process.execPath, "-e", "process.kill(process.pid, 'SIGTERM')"];
+        const directory = join(root, fixture.id);
+        await mkdir(directory);
+        await writeFile(
+          join(directory, "fixture.json"),
+          JSON.stringify(fixture),
+        );
+        const result = await createFixtureRunner({
+          fixturesDir: root,
+          dispatcher: async (task) => {
+            writeFileSync(
+              join(task.workDir!, "tasks.md"),
+              readFileSync(join(task.workDir!, "tasks.md"), "utf8").replace(
+                "[x] T001",
+                "[ ] T001",
+              ),
+            );
+            return {
+              exitCode: 0,
+              stdout: JSON.stringify({
+                summary: "Seed defect",
+                verdict: "NO-GO",
+                reopenedTasks: ["T001"],
+                intents: [],
+              }),
+              stderr: "",
+              durationS: 0,
+            };
+          },
+        }).runFixtureRepeat({
+          fixtureId: fixture.id,
+          role: "review",
+          repeatIndex: 0,
+          route: candidateRoute,
+        });
+        expect(result.deterministicGatesPassed).toBe(false);
+        for (const checkId of ["baseline-gate", "review-baseline-preserved"])
+          expect(result.gateChecks).toContainEqual(
+            expect.objectContaining({ checkId, passed: false }),
+          );
+      } finally {
+        await rm(root, { recursive: true, force: true });
+      }
+    },
+  );
+
   it.each(["markdown", "canonical"])(
     "rejects review deletion of %s task state with a valid report",
     async (format) => {

@@ -408,20 +408,18 @@ export async function evaluateModels(
   });
 
   if (!(await inputsAreCurrent())) return reject("stale-evaluation-inputs");
-  const handoffRouteMismatch = comparisons.some(
-    ({ handoff, repeats }) =>
-      handoff?.planSource === "candidate" &&
-      routeKeys.some((route) =>
-        repeats[route].some(({ gateChecks }) =>
-          gateChecks.some(
-            ({ checkId, passed }) =>
-              checkId === "fixture-route-identity" && !passed,
-          ),
+  const routeMismatch = comparisons.some(({ repeats }) =>
+    routeKeys.some((route) =>
+      repeats[route].some(({ gateChecks }) =>
+        gateChecks.some(
+          ({ checkId, passed }) =>
+            checkId === "fixture-route-identity" && !passed,
         ),
       ),
+    ),
   );
   if (
-    handoffRouteMismatch ||
+    routeMismatch ||
     comparisons.some(({ repeats }) =>
       [
         ...repeats.candidate,

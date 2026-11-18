@@ -47,6 +47,17 @@ import { type TaskState, TaskStateSchema } from "../../utils/state.js";
 
 const execFileAsync = promisify(execFile);
 
+function normalFailureExitCode(error: unknown): number | null {
+  if (!error || typeof error !== "object") return null;
+  const failure = error as Record<string, unknown>;
+  if (failure.signal || failure.killed === true) return null;
+  return typeof failure.code === "number" &&
+    Number.isInteger(failure.code) &&
+    failure.code >= 0
+    ? failure.code
+    : null;
+}
+
 const JudgeOutput = z.object({
   summary: z.string().min(1),
   intents: z.array(z.never()).max(0),
@@ -629,7 +640,7 @@ export class FixtureRunner
         [];
 
       if (fixture.gates?.command) {
-        let baselineExitCode: number;
+        let baselineExitCode: number | null;
         try {
           const [cmd, ...args] = fixture.gates.command;
           await execFileAsync(cmd, args, {
@@ -638,9 +649,7 @@ export class FixtureRunner
           });
           baselineExitCode = 0;
         } catch (error: unknown) {
-          const err = error as { code?: number; status?: number };
-          baselineExitCode =
-            typeof err.code === "number" ? err.code : (err.status ?? 1);
+          baselineExitCode = normalFailureExitCode(error);
         }
 
         if (fixture.gates.baselineExitCode !== undefined) {
@@ -816,7 +825,7 @@ export class FixtureRunner
 
       if (request.role === "implement") {
         if (fixture.gates?.command) {
-          let candidateExitCode: number;
+          let candidateExitCode: number | null;
           try {
             const [cmd, ...args] = fixture.gates.command;
             await execFileAsync(cmd, args, {
@@ -825,9 +834,7 @@ export class FixtureRunner
             });
             candidateExitCode = 0;
           } catch (error: unknown) {
-            const err = error as { code?: number; status?: number };
-            candidateExitCode =
-              typeof err.code === "number" ? err.code : (err.status ?? 1);
+            candidateExitCode = normalFailureExitCode(error);
           }
           if (implementationStart !== undefined) {
             implementationDuration = performance.now() - implementationStart;
@@ -844,7 +851,7 @@ export class FixtureRunner
         }
       } else if (request.role === "review") {
         if (fixture.gates?.command) {
-          let reviewExitCode: number;
+          let reviewExitCode: number | null;
           try {
             const [cmd, ...args] = fixture.gates.command;
             await execFileAsync(cmd, args, {
@@ -853,9 +860,7 @@ export class FixtureRunner
             });
             reviewExitCode = 0;
           } catch (error: unknown) {
-            const err = error as { code?: number; status?: number };
-            reviewExitCode =
-              typeof err.code === "number" ? err.code : (err.status ?? 1);
+            reviewExitCode = normalFailureExitCode(error);
           }
           const expectedCode = fixture.gates.baselineExitCode ?? 1;
           const passed = reviewExitCode === expectedCode;

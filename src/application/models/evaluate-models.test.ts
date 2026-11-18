@@ -179,6 +179,37 @@ describe("model qualification orchestration", () => {
     },
   );
 
+  it.each(["candidate", "incumbent"])(
+    "rejects %s review route identity evidence before judging",
+    async (side) => {
+      const { deps, runFixtureRepeat, judgeComparison } = setup();
+      const original = runFixtureRepeat.getMockImplementation()!;
+      runFixtureRepeat.mockImplementation(async (request) => ({
+        ...(await original(request)),
+        gateChecks:
+          request.route.modelId ===
+          (side === "candidate" ? candidate : incumbent).modelId
+            ? [
+                {
+                  checkId: "fixture-route-identity",
+                  passed: false,
+                  detail: "unexpected model",
+                },
+              ]
+            : [
+                {
+                  checkId: "fixture-route-identity",
+                  passed: true,
+                  detail: "expected model",
+                },
+              ],
+      }));
+      const result = await evaluateModels(deps, { ...input, role: "review" });
+      expect(result.decision.promote).toBe(false);
+      expect(judgeComparison).not.toHaveBeenCalled();
+    },
+  );
+
   it("requires the suite-declared handoff even when callers supply only fixtures", async () => {
     const { deps, runFixtureRepeat, judgeComparison } = setup({
       handoffs: [candidateHandoff],

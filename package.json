@@ -5,7 +5,12 @@
   "bin": {
     "gwrk": "./dist/cli.js"
   },
-  "files": ["dist/", "package.json", "README.md", "LICENSE"],
+  "files": [
+    "dist/",
+    "package.json",
+    "README.md",
+    "LICENSE"
+  ],
   "engines": {
     "node": ">=18.0.0"
   },
@@ -21,7 +26,7 @@
     "test:coverage": "vitest run --coverage",
     "test:watch": "vitest watch",
     "test:report": "tsx scripts/dev/test-report.ts",
-    "lint": "biome check",
+    "lint": "node scripts/lint.mjs",
     "format": "biome format --write"
   },
   "dependencies": {
