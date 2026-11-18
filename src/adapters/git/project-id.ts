@@ -7,12 +7,14 @@ import {
   type ProjectIdentityFacts,
   computeProjectId,
 } from "../../domain/project-id.js";
+import { repositoryGitEnv } from "./process-env.js";
 
 function readGit(projectRoot: string, args: string[]): string | null {
   try {
     return (
       execFileSync("git", args, {
         cwd: projectRoot,
+        env: repositoryGitEnv(projectRoot),
         stdio: ["ignore", "pipe", "ignore"],
         encoding: "utf-8",
         timeout: 5_000,

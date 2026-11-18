@@ -269,13 +269,21 @@ export function createProjectRoutingService(
       }
 
       const featureId = input.featureId;
-      const slackConfig = project.slack;
       const lockKey = `${project.projectId}:${featureId}`;
       return withThreadLock(lockKey, async () => {
-        const thread = deps.registry.getFeatureThread(
+        const currentProject = deps.registry.getProject(project.projectId);
+        if (!currentProject?.slack) return { delivered: false };
+        const channel = currentProject.slack.channelId;
+        const slackConfig = currentProject.slack;
+        const storedThread = deps.registry.getFeatureThread(
           project.projectId,
           featureId,
         );
+        const thread =
+          storedThread?.workspaceId === slackConfig.workspaceId &&
+          storedThread?.channelId === channel
+            ? storedThread
+            : undefined;
         const payload: NotificationPayload = {
           projectId: project.projectId,
           featureId,

@@ -8,6 +8,7 @@ pnpm build
 pnpm lint
 pnpm exec vitest run \
   src/adapters/git/index.test.ts \
+  src/utils/agent-context.test.ts \
   src/engine/issues.test.ts \
   src/server/slack-actions.test.ts \
   src/server/slack-agent.test.ts \

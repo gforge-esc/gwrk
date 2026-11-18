@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import { execFileSync } from "node:child_process";
 import {
   existsSync,
   mkdtempSync,
@@ -17,6 +18,16 @@ import { mergePullRequest, resolvePullRequestUrl } from "./index.js";
 let root: string;
 beforeEach(() => {
   root = mkdtempSync(join(tmpdir(), "gwrk-gh-arguments-"));
+  execFileSync("git", ["init", "--quiet", root]);
+  execFileSync("git", [
+    "-C",
+    root,
+    "remote",
+    "add",
+    "origin",
+    "https://github.com/org/alpha.git",
+  ]);
+  vi.stubEnv("GH_REPO", "org/beta");
   writeFileSync(
     join(root, "gh"),
     '#!/bin/sh\necho "$GH_PROMPT_DISABLED" > "$GWRK_GH_ARGS_FIXTURE.prompt"\nprintf \'%s\\n\' "$@" > "$GWRK_GH_ARGS_FIXTURE"\nprintf \'%s\\n\' "$GWRK_GH_REPLY_FIXTURE"\n',
@@ -39,8 +50,29 @@ describe("project GitHub commands", () => {
     expect(existsSync(marker)).toBe(false);
     expect(
       readFileSync(join(root, "arguments"), "utf8").trim().split("\n"),
-    ).toEqual(["pr", "list", "--head", branch, "--json", "url"]);
+    ).toEqual([
+      "pr",
+      "list",
+      "--head",
+      branch,
+      "--json",
+      "url",
+      "--repo",
+      "github.com/org/alpha",
+    ]);
   });
+  it("pins number lookups to the verified checkout repository", () => {
+    vi.stubEnv(
+      "GWRK_GH_REPLY_FIXTURE",
+      '{"url":"https://github.com/org/alpha/pull/42"}',
+    );
+    resolvePullRequestUrl(root, { prNumber: 42 });
+    const args = readFileSync(join(root, "arguments"), "utf8")
+      .trim()
+      .split("\n");
+    expect(args.slice(-2)).toEqual(["--repo", "github.com/org/alpha"]);
+  });
+
   it("returns null for an empty GitHub result", () => {
     vi.stubEnv("GWRK_GH_REPLY_FIXTURE", "[]");
     expect(resolvePullRequestUrl(root, { headBranch: "feature" })).toBeNull();
@@ -71,6 +103,14 @@ describe("project GitHub commands", () => {
     expect(mergePullRequest(root, 42)).toContain("pull/42");
     expect(
       readFileSync(join(root, "arguments"), "utf8").trim().split("\n"),
-    ).toEqual(["pr", "merge", "42", "--merge", "--delete-branch"]);
+    ).toEqual([
+      "pr",
+      "merge",
+      "42",
+      "--merge",
+      "--delete-branch",
+      "--repo",
+      "github.com/org/alpha",
+    ]);
   });
 });

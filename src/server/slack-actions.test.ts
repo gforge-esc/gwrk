@@ -788,6 +788,46 @@ describe("slack-actions (FR-007, US-004, US-005)", () => {
       return { registry, project };
     }
 
+    it("uses current enrollment when a queued feature delivery acquires its lock", async () => {
+      const { registry, project } = createSqliteRegistry();
+      let current = project;
+      vi.spyOn(registry, "getProject").mockImplementation(() => current);
+      let release: (() => void) | undefined;
+      const notify = vi
+        .fn()
+        .mockImplementationOnce(async () => {
+          await new Promise<void>((resolve) => {
+            release = resolve;
+          });
+          return { delivered: false };
+        })
+        .mockResolvedValue({ delivered: false });
+      const service = createProjectRoutingService({
+        registry,
+        notificationPort: { notify },
+      });
+      const event = {
+        projectId: project.projectId,
+        featureId: "999-queued",
+        eventType: "review_ready",
+        message: { text: "Review" },
+        nowIso: "2026-11-18T10:00:00Z",
+      };
+      const first = service.deliverProjectEvent(event);
+      await vi.waitFor(() => expect(notify).toHaveBeenCalledTimes(1));
+      const second = service.deliverProjectEvent(event);
+      current = {
+        ...project,
+        slack: { ...project.slack!, channelId: "C_MOVED" },
+      };
+      release!();
+      await Promise.all([first, second]);
+      expect(notify.mock.calls.map(([payload]) => payload.channel)).toEqual([
+        SYNTHETIC_CHANNEL_ALPHA,
+        "C_MOVED",
+      ]);
+    });
+
     it("serializes slug and canonical deliveries on one feature thread", async () => {
       const { registry, project } = createSqliteRegistry();
       const bind = vi.spyOn(registry, "bindFeatureThread");
@@ -1155,6 +1195,42 @@ describe("slack-actions (FR-007, US-004, US-005)", () => {
         ]);
       },
     );
+
+    it("does not repeat a merge after an ambiguous transport timeout", async () => {
+      const { registry, project } = createSqliteRegistry();
+      const vcs = createSyntheticVcsPort();
+      const merge = vi
+        .spyOn(vcs, "mergePullRequest")
+        .mockRejectedValueOnce(
+          Object.assign(
+            new Error("Merge response timed out after remote effect"),
+            { code: "ETIMEDOUT" },
+          ),
+        );
+      await registerSlackActions(mockApp as App, {
+        ...mockContext,
+        routingService: createProjectRoutingService({ registry }),
+        vcs,
+      });
+      const reaction = reactionArgs(project.projectId);
+      const receiptKey = buildActionReceiptKey({
+        ...actionValue,
+        projectId: project.projectId,
+        workspaceId: SYNTHETIC_WORKSPACE_ID,
+        channelId: SYNTHETIC_CHANNEL_ALPHA,
+        messageTs,
+        actionId: "merge_pr",
+      });
+      await eventHandlers.reaction_added(reaction);
+      expect
+        .soft(registry.getActionReceipt(receiptKey)?.outcome)
+        .toBe("uncertain");
+      await eventHandlers.reaction_added({
+        ...reaction,
+        event: { ...reaction.event, event_ts: "1731320000.000500" },
+      });
+      expect(merge).toHaveBeenCalledOnce();
+    });
 
     it("marks a failed reaction merge and grants one claim when retried", async () => {
       const { registry, project } = createSqliteRegistry();

@@ -3,7 +3,10 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { execFileSync } from "node:child_process";
-import type { ProjectIdentityFacts } from "../../domain/project-id.js";
+import {
+  type ProjectIdentityFacts,
+  normalizeGitRemoteSlug,
+} from "../../domain/project-id.js";
 import type { VcsPort } from "../../ports/vcs-port.js";
 import {
   createBranch,
@@ -11,6 +14,7 @@ import {
   isDirty,
   syncBranch,
 } from "../../utils/git.js";
+import { repositoryGitEnv } from "./process-env.js";
 import { discoverGitIdentityFacts } from "./project-id.js";
 
 export { discoverGitIdentityFacts, resolveProjectId } from "./project-id.js";
@@ -20,10 +24,18 @@ export function discoverIdentityFacts(cwd: string): ProjectIdentityFacts {
 }
 
 function runGh(cwd: string, args: string[], timeout: number): string {
-  return execFileSync("gh", args, {
+  const remote = discoverGitIdentityFacts(cwd).remoteOriginUrl;
+  const repository = remote ? normalizeGitRemoteSlug(remote) : null;
+  if (
+    !repository ||
+    !/^[a-z0-9.-]+\/[a-z0-9_.-]+\/[a-z0-9_.-]+$/i.test(repository)
+  ) {
+    throw new Error("Cannot verify the checkout's GitHub repository.");
+  }
+  return execFileSync("gh", [...args, "--repo", repository], {
     cwd,
     encoding: "utf-8",
-    env: { ...process.env, GH_PROMPT_DISABLED: "1" },
+    env: { ...repositoryGitEnv(cwd), GH_PROMPT_DISABLED: "1" },
     stdio: ["ignore", "pipe", "pipe"],
     timeout,
   }).trim();

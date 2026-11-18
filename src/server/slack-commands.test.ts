@@ -36,7 +36,11 @@ import { createProjectRoutingService } from "../application/project-routing/inde
 import type { DispatchQueue } from "./dispatch.js";
 import type { GitManager } from "./git-manager.js";
 import type { SystemMonitor } from "./monitor.js";
-import { type CommandContext, handleSlashCommand } from "./slack-commands.js";
+import {
+  type CommandContext,
+  buildSlackLogResponse,
+  handleSlashCommand,
+} from "./slack-commands.js";
 
 // Mock findOpenPr for approve command
 vi.mock("../db/runs.js", () => ({
@@ -333,4 +337,55 @@ describe("slack-commands (FR-015, US-004)", () => {
       "Unknown command: `unknown`",
     );
   });
+});
+
+describe("checkout-scoped Slack log reads", () => {
+  it.each(["feature", "runs", "file"])(
+    "rejects an external %s symlink",
+    (boundary) => {
+      const root = mkdtempSync(join(tmpdir(), "gwrk-slack-log-scope-"));
+      try {
+        const alpha = join(root, "alpha");
+        const beta = join(root, "beta");
+        const external = join(beta, "foreign.json");
+        mkdirSync(beta, { recursive: true });
+        writeFileSync(
+          external,
+          JSON.stringify({
+            feature_id: "foreign-private-metadata",
+            exit_code: 0,
+          }),
+        );
+        mkdirSync(join(alpha, "specs"), { recursive: true });
+        const feature = join(alpha, "specs", "001-scoped");
+        if (boundary === "feature") {
+          mkdirSync(join(beta, ".gwrk", "runs"), { recursive: true });
+          writeFileSync(
+            join(beta, ".gwrk", "runs", "foreign.json"),
+            JSON.stringify({
+              feature_id: "foreign-private-metadata",
+              exit_code: 0,
+            }),
+          );
+          symlinkSync(beta, feature);
+        } else {
+          mkdirSync(join(feature, ".gwrk"), { recursive: true });
+          if (boundary === "runs")
+            symlinkSync(beta, join(feature, ".gwrk", "runs"));
+          else {
+            mkdirSync(join(feature, ".gwrk", "runs"));
+            symlinkSync(
+              external,
+              join(feature, ".gwrk", "runs", "foreign.json"),
+            );
+          }
+        }
+        expect(
+          JSON.stringify(buildSlackLogResponse(["001-scoped"], alpha)),
+        ).not.toContain("foreign-private-metadata");
+      } finally {
+        rmSync(root, { recursive: true, force: true });
+      }
+    },
+  );
 });

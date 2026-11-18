@@ -6,6 +6,10 @@ import { spawn } from "node:child_process";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import type { KnownBlock } from "@slack/types";
+import {
+  scopedFeatureDirectory,
+  scopedFeaturePath,
+} from "../adapters/filesystem/scoped-feature.js";
 import type { ProjectRoutingService } from "../application/project-routing/index.js";
 import { findOpenPr } from "../db/runs.js";
 import {
@@ -48,6 +52,21 @@ export type SlashCommandHandler = (
   args: string[],
   context: CommandContext,
 ) => Promise<SlackBlockKit>;
+
+function resolveScopedSlackFeature(
+  projectRoot: string,
+  featureId: string,
+): string | undefined {
+  if (!/^[a-zA-Z0-9][a-zA-Z0-9_-]*$/.test(featureId)) return undefined;
+  try {
+    return scopedFeatureDirectory(
+      projectRoot,
+      resolveFeature(featureId, projectRoot),
+    );
+  } catch {
+    return undefined;
+  }
+}
 
 const handlers: Record<string, SlashCommandHandler> = {
   status: async (args, context) => {
@@ -118,17 +137,21 @@ const handlers: Record<string, SlashCommandHandler> = {
       // add a query here: SELECT phase, completed, total FROM task_state WHERE feature_id = ?
 
       // Also check for spec-local ship runs
-      const runsDir = path.join(
+      const scopedFeature = resolveScopedSlackFeature(
         context.projectRoot,
-        "specs",
         featureId,
-        ".gwrk",
-        "runs",
       );
-      if (fs.existsSync(runsDir)) {
+      const runsDir = scopedFeature
+        ? scopedFeaturePath(scopedFeature, ".gwrk", "runs")
+        : undefined;
+      if (runsDir) {
         const files = fs
           .readdirSync(runsDir)
-          .filter((f) => f.endsWith(".json"))
+          .filter(
+            (f) =>
+              f.endsWith(".json") &&
+              scopedFeaturePath(runsDir, f) !== undefined,
+          )
           .sort()
           .reverse();
         if (files.length > 0) {
@@ -492,11 +515,14 @@ const handlers: Record<string, SlashCommandHandler> = {
     try {
       const config = loadConfig(context.projectRoot);
       const roleMultipliers = resolveRoleMultipliers(config);
-      const featureDir = path.join(
-        context.projectRoot,
-        "specs",
-        featureId || "",
-      );
+      const featureDir = featureId
+        ? resolveScopedSlackFeature(context.projectRoot, featureId)
+        : undefined;
+      if (!featureDir || !scopedFeaturePath(featureDir, "spec.md")) {
+        throw new Error(
+          "Feature specification is unavailable inside this project's checkout.",
+        );
+      }
 
       const stories = extractStories(featureDir);
       const report = computeEffort(stories, roleMultipliers, 1.25);
@@ -896,8 +922,11 @@ export function buildSlackLogResponse(
   }
 
   // Read ship run JSON files from specs/<feature>/.gwrk/runs/
-  const runsDir = path.join(projectRoot, "specs", featureId, ".gwrk", "runs");
-  if (!fs.existsSync(runsDir)) {
+  const featureDir = resolveScopedSlackFeature(projectRoot, featureId);
+  const runsDir = featureDir
+    ? scopedFeaturePath(featureDir, ".gwrk", "runs")
+    : undefined;
+  if (!runsDir) {
     return {
       response_type: "ephemeral",
       blocks: [
@@ -914,7 +943,9 @@ export function buildSlackLogResponse(
 
   let files = fs
     .readdirSync(runsDir)
-    .filter((f) => f.endsWith(".json"))
+    .filter(
+      (f) => f.endsWith(".json") && scopedFeaturePath(runsDir, f) !== undefined,
+    )
     .sort()
     .reverse();
 
@@ -948,7 +979,10 @@ export function buildSlackLogResponse(
   const blocks: KnownBlock[] = [];
 
   try {
-    const content = fs.readFileSync(path.join(runsDir, latestFile), "utf-8");
+    const logPath = scopedFeaturePath(runsDir, latestFile);
+    if (!logPath)
+      throw new Error("Log file is outside the authorized feature.");
+    const content = fs.readFileSync(logPath, "utf-8");
     const run = JSON.parse(content);
 
     const status =
