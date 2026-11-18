@@ -503,6 +503,16 @@ function resolvePrimaryCheckout(executionDir: string): string {
 
 const ENFORCEMENT_MARKER = "{{enforcement}}";
 
+function withoutGeneratedPolicyGaps(target: string): string {
+  const masked = maskPromptExamples(target);
+  const heading = /^##[ \t]+Policy gaps[ \t]*\r?$/m.exec(masked);
+  if (!heading) return target;
+  const contentStart = heading.index + heading[0].length;
+  const nextHeading = /^#{1,2}[ \t]+/m.exec(masked.slice(contentStart));
+  const end = nextHeading ? contentStart + nextHeading.index : target.length;
+  return target.slice(0, heading.index) + target.slice(end);
+}
+
 function maskPromptExamples(template: string): string {
   // Keep offsets and line endings without turning quoted content into whitespace.
   const mask = (code: string) => code.replace(/[^\r\n]/g, "\0");
@@ -817,6 +827,12 @@ export async function dispatchToAgent(task: TaskDispatch): Promise<TaskResult> {
       { architectureTarget },
     );
     const enforcement = `<effective_policy>\n${resolvedPolicy}\n</effective_policy>`;
+    if (architectureTarget !== undefined) {
+      grounding = grounding.replace(
+        `<architecture_target>\n${architectureTarget}\n</architecture_target>`,
+        `<architecture_target>\n${withoutGeneratedPolicyGaps(architectureTarget)}\n</architecture_target>`,
+      );
+    }
 
     const start = enforcementSlot.index;
     const [maskedSlot] = enforcementSlot;
