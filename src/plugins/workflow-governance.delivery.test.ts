@@ -310,6 +310,41 @@ describe("governance prompt delivery", () => {
     },
   );
 
+  it.each(["gwrk-native", "gwrk-cli"])(
+    "TR-012: keeps GWRK guidance out of Python host prompts with project.type %s",
+    async (type) => {
+      await writeFile(
+        join(root, "pyproject.toml"),
+        '[project]\nname = "host"\nversion = "0.1.0"\n',
+      );
+      await writeFile(
+        join(root, ".gwrkrc.json"),
+        JSON.stringify({ project: { name: "host", type } }),
+      );
+
+      for (const workflow of [
+        "gwrk-specify",
+        "gwrk-plan",
+        "review-code-cli",
+        "review-code-webapp",
+      ]) {
+        const captured = await captureDispatch(workflow);
+        expect.soft(captured, workflow).toContain('language="Python"');
+        expect
+          .soft(
+            captured.match(
+              /docs\/grounding\/architecture\.md|specs\/000-build-plan\.md|src\/application\//g,
+            ) ?? [],
+            workflow,
+          )
+          .toEqual([]);
+        expect
+          .soft(captured.match(nativeReviewCommandPattern) ?? [], workflow)
+          .toEqual([]);
+      }
+    },
+  );
+
   it("delivers project-local enforcement inside both definition prompts", async () => {
     const policies = {
       all: "Record dependency provenance in the release checklist.",

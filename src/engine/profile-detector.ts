@@ -429,7 +429,8 @@ function readLocalProject(
     const rc = JSON.parse(fs.readFileSync(rcPath, "utf-8"));
     if (!rc.project) return undefined;
     const projectSchema = GwrkConfigSchema.shape.project.shape;
-    const type = projectSchema.type.safeParse(rc.project.type).data || undefined;
+    const type =
+      projectSchema.type.safeParse(rc.project.type).data || undefined;
     const stack = projectSchema.stack.safeParse(rc.project.stack).data;
     return {
       type,

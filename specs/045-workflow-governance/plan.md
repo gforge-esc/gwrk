@@ -79,6 +79,8 @@ The TR-012 host dispatch fixture uses `docs/architecture.md` and sets `project.t
 
 Each dry run checks for Python enforcement and host guidance. It excludes GWRK paths and verification commands. It also excludes TypeScript enforcement and GWRK repository conventions.
 
+TR-012 also checks both definition and code review workflows in Python hosts configured with `project.type` set to `gwrk-native` or `gwrk-cli`. Only verified GWRK checkouts receive GWRK-specific paths and commands.
+
 #### Done When
 
 ```bash
