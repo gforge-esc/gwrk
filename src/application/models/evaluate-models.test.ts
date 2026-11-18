@@ -92,6 +92,47 @@ const input = {
 };
 
 describe("model qualification orchestration", () => {
+  it("rejects a candidate-plan handoff when the source run has no generated artifacts", async () => {
+    const { deps, judgeComparison } = setup();
+    const winner = blindCandidate(input.blindingSecret, input.evaluationId);
+    judgeComparison.mockImplementation(async (judge) => ({
+      judgeBackend: judge.backend,
+      judgeProvider: judge.provider,
+      judgeFamily: judge.family,
+      judgeModelId: judge.modelId,
+      observedJudgeModel: "unknown",
+      winner,
+      optionARegression: false,
+      optionBRegression: false,
+      scores: {
+        optionA: winner === "A" ? 95 : 70,
+        optionB: winner === "B" ? 95 : 70,
+      },
+      citations: [
+        {
+          inputRef: "define-long-context",
+          outputRef: "output",
+          gateRef: "behavior",
+          claim: "Equivalent fixture behavior",
+        },
+      ],
+    }));
+    const result = await evaluateModels(deps, {
+      ...input,
+      role: "define",
+      fixtures: [{ id: "define-long-context" }],
+      handoffs: [
+        {
+          from: "define-long-context",
+          to: "implement-seeded-defect",
+          planSource: "candidate",
+        },
+      ],
+    });
+    expect(result.decision).toEqual({ promote: false, reason: "gate-failure" });
+    expect(judgeComparison).not.toHaveBeenCalled();
+  });
+
   it("runs each route three times and skips judges when behavior fails", async () => {
     const { deps, runFixtureRepeat, judgeComparison } = setup({
       gatePasses: false,
