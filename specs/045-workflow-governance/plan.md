@@ -181,3 +181,7 @@ All five required changes and four acceptance criteria have phase coverage. The 
 Phase 1 delivery coverage executes WorkflowRuntime for specification, planning and code review. It captures the shared dispatch payload with dry-run transport. Assertions cover Python project guidance, Proposed ratification, Decided authority and Superseded lineage. No agent process starts.
 
 Phase 1 review regressions keep the GWRK build-plan path inside the native profile and preserve conditional requirements checklist authority for specification and implementation review. Both cases failed before the repair. The repaired phase gate passes 53 checks.
+
+The reviewed routing foundation reduced the legacy full-suite baseline from 24 failures to one obsolete enforcement fixture. Backport the trusted-slot dry-run regression from feature 044 without its later policy-runtime API. Keep the assertion that enforcement content reaches dispatch and that no inference process starts.
+
+After the reviewed foundation merge and legacy fixture repair, the full CI test command passes 2171 tests. Seven tests remain skipped and six remain todo under the existing configuration. The Phase 1 gate passes 62 tests and the prepared Phase 2 gate passes 57 tests with one existing skipped test. The earlier 24-failure baseline is resolved.

@@ -2,11 +2,9 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { EventEmitter } from "node:events";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { PassThrough } from "node:stream";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { PluginLoader } from "./loader.js";
 import { SkillManifestSchema } from "./manifest.js";
@@ -200,53 +198,30 @@ describe("Phase 9: Enforcement Skills", () => {
   /**
    * TR-P9-005: dispatchToAgent() stdin includes enforcement skill content
    */
-  // TR-P9-005: dynamic imports + spawn mocks deadlock on GitHub Actions
-  // shared runners (30s+ hangs). Passes locally in <100ms; covered by
-  // pre-commit hooks. Skip on CI to unblock releases.
-  describe.skipIf(!!process.env.CI)(
-    "TR-P9-005: dispatch context assembly",
-    () => {
-      it(
-        "enforcement skill content appears in assembled dispatch context",
-        { timeout: 15_000 },
-        async () => {
-          const skillRuntime = await import("./skill-runtime.js");
-          const { dispatchToAgent } = await import("../utils/agent.js");
-          const { spawn } = await import("node:child_process");
-
-          vi.spyOn(skillRuntime, "resolveEnforcementSkills").mockResolvedValue(
-            "# MOCK ENFORCEMENT CONTENT",
-          );
-
-          const mockChild = new EventEmitter() as any;
-          const mockStdinWrite = vi.fn();
-          mockChild.stdin = { write: mockStdinWrite, end: vi.fn() };
-          mockChild.stdout = new PassThrough();
-          mockChild.stderr = new PassThrough();
-
-          (spawn as any).mockReturnValue(mockChild);
-
-          // Trigger the end of the process after a short delay
-          setTimeout(() => {
-            mockChild.stdout.end();
-            mockChild.stderr.end();
-            mockChild.emit("close", 0);
-          }, 50);
-
-          // Provide stdin with the marker to trigger replacement
-          await dispatchToAgent({
-            type: "implement",
-            prompt: "test",
-            agent: "agy",
-            stdin: "Rules:\n{{enforcement}}",
-          });
-
-          expect(mockStdinWrite).toHaveBeenCalled();
-          const finalStdin = mockStdinWrite.mock.calls[0][0];
-          expect(finalStdin).toContain("MOCK ENFORCEMENT CONTENT");
-          expect(finalStdin).not.toContain("{{enforcement}}");
+  describe("TR-P9-005: dispatch context assembly", () => {
+    it("expands the trusted enforcement slot without an inference call", async () => {
+      const skillRuntime = await import("./skill-runtime.js");
+      const { dispatchToAgent } = await import("../utils/agent.js");
+      const { spawn } = await import("node:child_process");
+      const resolve = vi
+        .spyOn(skillRuntime, "resolveEnforcementSkills")
+        .mockResolvedValue("# MOCK ENFORCEMENT CONTENT");
+      const result = await dispatchToAgent({
+        type: "implement",
+        agent: "agy",
+        workDir: tmpDir,
+        promptParts: {
+          template: "Rules:\n<code_quality>\n{{enforcement}}\n</code_quality>",
+          userInput: "test",
         },
-      );
-    },
-  );
+        dryRun: true,
+        quiet: true,
+      });
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout).toContain("MOCK ENFORCEMENT CONTENT");
+      expect(result.stdout).not.toContain("{{enforcement}}");
+      expect(resolve).toHaveBeenCalledOnce();
+      expect(spawn).not.toHaveBeenCalled();
+    });
+  });
 });
