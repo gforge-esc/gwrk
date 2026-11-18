@@ -5,6 +5,7 @@
 import { execFileSync } from "node:child_process";
 import {
   copyFileSync,
+  cpSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
@@ -13,10 +14,8 @@ import {
   rmSync,
   writeFileSync,
 } from "node:fs";
-import { cpSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
-import { basename } from "node:path";
+import { basename, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import type Database from "better-sqlite3";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";

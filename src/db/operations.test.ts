@@ -32,6 +32,7 @@ import {
   persistDispatch,
   readLegacyDispatches,
 } from "../server/persistence.js";
+import type { DispatchRecord } from "../server/types.js";
 import { openDatabase } from "./index.js";
 import { createOperationsStore } from "./operations.js";
 import { registerProject, startRun } from "./runs.js";
@@ -1098,6 +1099,44 @@ describe("durable operations review regressions", () => {
     expect(snapshot()).toEqual(before);
   });
 
+  it.each([
+    { event: "merged", conflict: "proposed operation ID" },
+    { event: "closed_unmerged", conflict: "proposed operation ID" },
+    { event: "closed_unmerged", conflict: "work-key alias" },
+  ] as const)(
+    "links a $event delivery despite a conflicting $conflict",
+    ({ event, conflict }) => {
+      const [saved] = accept(harvestIntake("saved-merge", [phaseOne]));
+      const [other] = accept(
+        harvestIntake("other-merge", [phaseOne], { prNumber: 43, prUrl: null }),
+      );
+      const delivery = harvestIntake("matched-delivery", [phaseOne], {
+        source: event === "merged" ? "github_poller" : "github_webhook",
+        terminalEvent: event,
+        mergeCommitSha: event === "merged" ? saved.mergeCommitSha : null,
+      });
+      const [incoming] = delivery.target.operations;
+      if (conflict === "proposed operation ID") {
+        incoming.operationId = other.operationId;
+      } else {
+        db.prepare(
+          "INSERT INTO harvest_work_key_aliases (project_id, work_key, operation_id) VALUES (?, ?, ?)",
+        ).run(project.projectId, incoming.workKey, other.operationId);
+      }
+
+      const match = { ok: true, operations: [saved], deduplicatedWork: true };
+      expect(store.recordHarvestIntake(delivery)).toEqual({
+        ...match,
+        deduplicatedTransport: false,
+      });
+      expect(store.recordHarvestIntake(delivery)).toEqual({
+        ...match,
+        deduplicatedTransport: true,
+      });
+      expect(store.listRecoverableHarvests({ nowIso: now })).toHaveLength(2);
+    },
+  );
+
   it("persists the verified pull request terminal time across reopen", () => {
     const [local] = accept(localIntake());
     const [enriched] = accept(harvestIntake("enrich", [phaseOne]));
@@ -1400,6 +1439,86 @@ describe("durable operations review regressions", () => {
     expect(existsSync(join(aliasDir, ".gwrk"))).toBe(false);
   });
 
+  it("preserves the latest cursor when an older poll saves on another connection", () => {
+    const older = {
+      projectId: project.projectId,
+      lastPolledAt: "2026-11-11T12:50:00+01:00",
+      lastTerminalAt: "2026-11-11T12:40:00+01:00",
+      lastPrNumber: 41,
+      lastError: "older poll failed",
+    };
+    const newer = {
+      projectId: project.projectId,
+      lastPolledAt: now,
+      lastTerminalAt: "2026-11-11T11:50:00Z",
+      lastPrNumber: 45,
+      lastError: null,
+    };
+    const secondDb = openDatabase({ dbPath });
+    try {
+      const secondStore = createOperationsStore(secondDb);
+      store.saveHarvestCursor(newer);
+      secondStore.saveHarvestCursor(older);
+      expect(store.getHarvestCursor(project.projectId)).toEqual(newer);
+    } finally {
+      secondDb.close();
+    }
+  });
+
+  it("advances the terminal and poll cursor fields independently", () => {
+    const initial = {
+      projectId: project.projectId,
+      lastPolledAt: now,
+      lastTerminalAt: null,
+      lastPrNumber: null,
+      lastError: null,
+    };
+    store.saveHarvestCursor(initial);
+    expect(store.getHarvestCursor(project.projectId)).toEqual(initial);
+
+    const watermark = {
+      lastTerminalAt: "2026-11-11T11:50:00Z",
+      lastPrNumber: 45,
+    };
+    store.saveHarvestCursor({ ...initial, ...watermark });
+    expect(store.getHarvestCursor(project.projectId)).toEqual({
+      ...initial,
+      ...watermark,
+    });
+
+    const nextPoll = {
+      ...initial,
+      lastPolledAt: "2026-11-11T11:10:00-01:00",
+      lastError: "poll failed",
+    };
+    store.saveHarvestCursor(nextPoll);
+    expect(store.getHarvestCursor(project.projectId)).toEqual({
+      ...nextPoll,
+      ...watermark,
+    });
+
+    const nextWatermark = {
+      lastTerminalAt: "2026-11-11T11:00:00-01:00",
+      lastPrNumber: 46,
+    };
+    store.saveHarvestCursor({ ...initial, ...nextWatermark });
+    expect(store.getHarvestCursor(project.projectId)).toEqual({
+      ...nextPoll,
+      ...nextWatermark,
+    });
+
+    store.saveHarvestCursor({
+      ...initial,
+      lastPolledAt: "2026-11-11T12:10:00Z",
+      lastTerminalAt: now,
+      lastPrNumber: 47,
+    });
+    expect(store.getHarvestCursor(project.projectId)).toEqual({
+      ...nextPoll,
+      ...nextWatermark,
+    });
+  });
+
   it("skips malformed JSONL and leaves missing .gwrk directories untouched", () => {
     const storeWithoutReader = createOperationsStore(db);
     const directory = join(root, ".gwrk");
@@ -1411,6 +1530,11 @@ describe("durable operations review regressions", () => {
     expect(existsSync(directory)).toBe(false);
     const { attempts: _attempts, ...withoutAttempts } = legacyRecord;
     const { tasks: _tasks, ...withoutTasks } = legacyRecord;
+    const historicalRecord = {
+      ...withoutTasks,
+      id: "historical",
+      taskId: "T001",
+    };
     mkdirSync(directory);
     writeFileSync(
       join(directory, "dispatches.jsonl"),
@@ -1428,19 +1552,29 @@ describe("durable operations review regressions", () => {
           { ...legacyRecord, backend: " " },
           withoutAttempts,
           withoutTasks,
+          { ...withoutTasks, taskId: " " },
+          historicalRecord,
           legacyRecord,
         ].map((value) => JSON.stringify(value)),
       ].join("\n"),
     );
-    expect(readLegacyDispatches(root)).toEqual([
+    expect.soft(readLegacyDispatches(root)).toEqual([
+      { ...historicalRecord, evidenceLevel: "legacy_unverified" },
       { ...legacyRecord, evidenceLevel: "legacy_unverified" },
     ]);
-    expect(
-      store.getOperationsStatus("alpha").historical.legacyUnverifiedDispatches,
-    ).toBe(1);
-    expect(
-      storeWithoutReader.getOperationsStatus("alpha").historical
-        .legacyUnverifiedDispatches,
-    ).toBe(1);
+    expect
+      .soft(
+        store.getOperationsStatus("alpha").historical
+          .legacyUnverifiedDispatches,
+        "injected reader count",
+      )
+      .toBe(2);
+    expect
+      .soft(
+        storeWithoutReader.getOperationsStatus("alpha").historical
+          .legacyUnverifiedDispatches,
+        "fallback reader count",
+      )
+      .toBe(2);
   });
 });

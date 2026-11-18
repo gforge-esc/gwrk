@@ -42,6 +42,7 @@ import {
   sharesHarvestRepositoryScope,
   verifyHarvestIntakeOperations,
 } from "../domain/durable-harvest.js";
+import { decodeLegacyDispatchLine } from "../domain/legacy-dispatch.js";
 import type {
   DeliveryRecipient,
   EnrolledProject,
@@ -217,42 +218,6 @@ function leaseIsRecoverable(
   return leaseExpiresAt === null || Date.parse(leaseExpiresAt) <= nowMs;
 }
 
-function isLegacyDispatchLine(line: string): boolean {
-  try {
-    const value: unknown = JSON.parse(line);
-    if (
-      typeof value !== "object" ||
-      value === null ||
-      Array.isArray(value) ||
-      Object.getPrototypeOf(value) !== Object.prototype
-    ) {
-      return false;
-    }
-    const record = value as Record<string, unknown>;
-    const requiredStrings = [
-      "id",
-      "featureId",
-      "phaseId",
-      "backend",
-      "branchName",
-      "createdAt",
-    ];
-    const statuses = ["queued", "running", "completed", "failed", "retrying"];
-    return (
-      requiredStrings.every((key) => {
-        const field = record[key];
-        return typeof field === "string" && field.trim().length > 0;
-      }) &&
-      typeof record.status === "string" &&
-      statuses.includes(record.status) &&
-      Array.isArray(record.attempts) &&
-      Array.isArray(record.tasks)
-    );
-  } catch {
-    return false;
-  }
-}
-
 function rowToDispatchOperation(
   row: DispatchOperationRow,
 ): DurableDispatchOperation {
@@ -377,18 +342,23 @@ function matchHarvestScope(
   incoming: DurableHarvestOperation,
   receivedAt: string,
 ): DurableHarvestOperation | null {
-  const aliasRow = db
-    .prepare<[string, string], { operation_id: string }>(
-      "SELECT operation_id FROM harvest_work_key_aliases WHERE project_id = ? AND work_key = ?",
-    )
-    .get(incoming.projectId, incoming.workKey);
-
   const projectOps = db
     .prepare<[string], HarvestOperationRow>(
       "SELECT * FROM harvest_operations WHERE project_id = ? ORDER BY created_at ASC, operation_id ASC",
     )
     .all(incoming.projectId)
     .map(rowToHarvestOperation);
+
+  const staleMerge = projectOps.find((row) =>
+    isStaleHarvestClose(row, incoming),
+  );
+  if (staleMerge) return staleMerge;
+
+  const aliasRow = db
+    .prepare<[string, string], { operation_id: string }>(
+      "SELECT operation_id FROM harvest_work_key_aliases WHERE project_id = ? AND work_key = ?",
+    )
+    .get(incoming.projectId, incoming.workKey);
 
   const keyOwners = projectOps.filter(
     (row) =>
@@ -410,17 +380,12 @@ function matchHarvestScope(
   if (keyOwners.some((row) => row.operationId !== existing?.operationId))
     return null;
 
-  const staleMerge = projectOps.find((row) =>
-    isStaleHarvestClose(row, incoming),
-  );
-  const matched = staleMerge ?? existing;
-  const idConflict = db
-    .prepare("SELECT 1 FROM harvest_operations WHERE operation_id = ?")
-    .get(incoming.operationId);
-  if (idConflict && incoming.operationId !== matched?.operationId) return null;
-  if (staleMerge) return staleMerge;
-
   if (!existing) {
+    const idConflict = db
+      .prepare("SELECT 1 FROM harvest_operations WHERE operation_id = ?")
+      .get(incoming.operationId);
+    if (idConflict) return null;
+
     db.prepare(
       `INSERT INTO harvest_operations (
         operation_id, project_id, work_key, repo_slug, head_repo_slug,
@@ -2012,6 +1977,21 @@ export function createOperationsStore(
 
     saveHarvestCursor(cursor: HarvestCursor): void {
       db.transaction(() => {
+        const saved = store.getHarvestCursor(cursor.projectId);
+        const poll =
+          !saved ||
+          Date.parse(cursor.lastPolledAt) > Date.parse(saved.lastPolledAt)
+            ? cursor
+            : saved;
+        const terminal =
+          !saved ||
+          (cursor.lastTerminalAt !== null &&
+            (saved.lastTerminalAt === null ||
+              Date.parse(cursor.lastTerminalAt) >
+                Date.parse(saved.lastTerminalAt)))
+            ? cursor
+            : saved;
+
         db.prepare(
           `INSERT INTO harvest_cursors (project_id, last_polled_at, last_terminal_at, last_pr_number, last_error)
          VALUES (?, ?, ?, ?, ?)
@@ -2022,10 +2002,10 @@ export function createOperationsStore(
            last_error = excluded.last_error`,
         ).run(
           cursor.projectId,
-          cursor.lastPolledAt,
-          cursor.lastTerminalAt,
-          cursor.lastPrNumber,
-          cursor.lastError,
+          poll.lastPolledAt,
+          terminal.lastTerminalAt,
+          terminal.lastPrNumber,
+          poll.lastError,
         );
       }).immediate();
     },
@@ -2184,11 +2164,12 @@ export function createOperationsStore(
           const file = path.join(root, ".gwrk", "dispatches.jsonl");
           if (fs.existsSync(file)) {
             try {
-              const lines = fs
+              legacyUnverifiedDispatches = fs
                 .readFileSync(file, "utf8")
                 .split("\n")
-                .filter(isLegacyDispatchLine);
-              legacyUnverifiedDispatches = lines.length;
+                .filter(
+                  (line) => decodeLegacyDispatchLine(line) !== null,
+                ).length;
             } catch {
               legacyUnverifiedDispatches = 0;
             }

@@ -4,6 +4,10 @@
 
 import * as fs from "node:fs";
 import * as path from "node:path";
+import {
+  type LegacyDispatchPayload,
+  decodeLegacyDispatchLine,
+} from "../domain/legacy-dispatch.js";
 import type { DispatchRecord } from "./types.js";
 
 /**
@@ -25,40 +29,9 @@ export function persistDispatch(
   fs.appendFileSync(dispatchesFile, line, "utf-8");
 }
 
-export interface LegacyDispatchRecord extends DispatchRecord {
+export type LegacyDispatchRecord = LegacyDispatchPayload & {
   evidenceLevel: "legacy_unverified";
-}
-
-function isDispatchRecord(value: unknown): value is DispatchRecord {
-  if (
-    typeof value !== "object" ||
-    value === null ||
-    Array.isArray(value) ||
-    Object.getPrototypeOf(value) !== Object.prototype
-  ) {
-    return false;
-  }
-  const record = value as Record<string, unknown>;
-  const requiredStrings = [
-    "id",
-    "featureId",
-    "phaseId",
-    "backend",
-    "branchName",
-    "createdAt",
-  ];
-  const statuses = ["queued", "running", "completed", "failed", "retrying"];
-  return (
-    requiredStrings.every((key) => {
-      const field = record[key];
-      return typeof field === "string" && field.trim().length > 0;
-    }) &&
-    typeof record.status === "string" &&
-    statuses.includes(record.status) &&
-    Array.isArray(record.attempts) &&
-    Array.isArray(record.tasks)
-  );
-}
+};
 
 /**
  * Reads legacy .gwrk/dispatches.jsonl entries tagged with evidenceLevel: "legacy_unverified".
@@ -78,17 +51,12 @@ export function readLegacyDispatches(
     const records: LegacyDispatchRecord[] = [];
 
     for (const line of lines) {
-      const trimmed = line.trim();
-      if (!trimmed) continue;
-      try {
-        const parsed: unknown = JSON.parse(trimmed);
-        if (!isDispatchRecord(parsed)) continue;
+      const parsed = decodeLegacyDispatchLine(line);
+      if (parsed) {
         records.push({
           ...parsed,
           evidenceLevel: "legacy_unverified",
         });
-      } catch {
-        // Skip malformed legacy records
       }
     }
 
