@@ -120,11 +120,16 @@ export function lookupLanguageGuidance(language?: string): string | undefined {
 export function lookupFrameworkBinding(
   framework?: string,
 ): FrameworkBinding | undefined {
-  if (!framework) return undefined;
-  const key = framework.toLowerCase().replace(/[^a-z0-9]/g, "");
-  return Object.hasOwn(FRAMEWORK_BINDINGS, key)
-    ? FRAMEWORK_BINDINGS[key]
-    : undefined;
+  const key = normalizeFramework(framework);
+  if (!key || !Object.hasOwn(FRAMEWORK_BINDINGS, key)) return undefined;
+  const binding = FRAMEWORK_BINDINGS[key];
+  return { guidance: binding.guidance, languages: [...binding.languages] };
+}
+
+export function normalizeFramework(framework?: string): string | undefined {
+  const value = framework?.trim().toLowerCase();
+  if (!value || value === "none" || value === "unspecified") return undefined;
+  return value.replace(/[^a-z0-9]/g, "") || value;
 }
 
 export function lookupFrameworkGuidance(

@@ -6,6 +6,26 @@ import { describe, expect, it } from "vitest";
 import { AnyManifestSchema, SkillManifestSchema } from "./manifest.js";
 
 describe("FR-013 / US-016: SkillManifestSchema Enforcement Tier", () => {
+  it.each(["", "   "])(
+    "keeps legacy review scope with an empty language (%s)",
+    (language) => {
+      const manifest = {
+        type: "skill",
+        tier: "enforcement",
+        name: "legacy-review",
+        version: "1.0.0",
+        description: "Legacy review rules",
+        scope: "review",
+        language,
+      };
+      for (const schema of [SkillManifestSchema, AnyManifestSchema]) {
+        const parsed = schema.parse(manifest);
+        expect(parsed).toMatchObject({ tier: "enforcement", scope: "review" });
+        expect("language" in parsed && parsed.language).toBe("");
+      }
+    },
+  );
+
   it("TR-P9-003: accepts tier: enforcement and scope: implementation", () => {
     const manifest = {
       name: "typescript-standards",

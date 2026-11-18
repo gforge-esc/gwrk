@@ -26,6 +26,75 @@ const fastify = {
 };
 
 describe("Project policy composition", () => {
+  it.each([
+    undefined,
+    "",
+    "   ",
+    "none",
+    "NONE",
+    " None ",
+    "unspecified",
+    " Unspecified ",
+  ])("treats framework placeholder %s as absent", async (framework) => {
+    const { composeEffectivePolicy } = await import("./policy-selection.js");
+    const result = composeEffectivePolicy({
+      profile: { ...profile, stack: { language: "TypeScript", framework } },
+      candidates: [
+        {
+          name: "placeholder-policy",
+          source: "global",
+          manifest: {
+            ...fastify,
+            name: "placeholder-policy",
+            framework: "None",
+          },
+        },
+      ],
+    });
+    expect(result.selectedSkills).toEqual([]);
+    expect(result.gaps).toEqual([]);
+  });
+
+  it("keeps framework composition stable after a caller mutates a returned binding", async () => {
+    const { lookupFrameworkBinding } = await import(
+      "./architecture-context.js"
+    );
+    const { composeEffectivePolicy } = await import("./policy-selection.js");
+    const input = {
+      profile: {
+        ...profile,
+        stack: { language: "TypeScript", framework: "Django" },
+      },
+      candidates: [],
+    };
+    const before = composeEffectivePolicy(input);
+    const binding = lookupFrameworkBinding("Django") as {
+      guidance: string;
+      languages: string[];
+    };
+    const original = {
+      guidance: binding.guidance,
+      languages: [...binding.languages],
+    };
+    try {
+      try {
+        binding.languages.push("typescript");
+        binding.guidance = "Changed guidance";
+      } catch {}
+      expect(composeEffectivePolicy(input)).toEqual(before);
+      expect(lookupFrameworkBinding("Django")).toEqual(original);
+    } finally {
+      try {
+        binding.languages.splice(
+          0,
+          binding.languages.length,
+          ...original.languages,
+        );
+        binding.guidance = original.guidance;
+      } catch {}
+    }
+  });
+
   it.each([undefined, "", "   "])(
     "rejects a framework policy without a nonblank language selector (%s)",
     async (language) => {

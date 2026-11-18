@@ -9,6 +9,7 @@ import {
   lookupFrameworkGuidance,
   lookupLanguageGuidance,
   normalizeArchitecture,
+  normalizeFramework,
 } from "./architecture-context.js";
 import type { ProjectProfile } from "./types.js";
 
@@ -135,11 +136,9 @@ function frameworkMatches(
   candidate: PolicyCandidate,
   framework: string,
 ): boolean {
-  const normalize = (value: string) =>
-    value.toLowerCase().replace(/[^a-z0-9]/g, "");
+  const candidateFramework = normalizeFramework(candidate.manifest.framework);
   return Boolean(
-    candidate.manifest.framework &&
-      normalize(candidate.manifest.framework) === normalize(framework),
+    candidateFramework && candidateFramework === normalizeFramework(framework),
   );
 }
 
@@ -192,12 +191,8 @@ function evaluateEligibleCandidate(
 
   // Framework check
   if (manifest.framework) {
-    const candidateFw = manifest.framework
-      .toLowerCase()
-      .replace(/[^a-z0-9]/g, "");
-    const profileFw = profile?.stack?.framework
-      ?.toLowerCase()
-      .replace(/[^a-z0-9]/g, "");
+    const candidateFw = normalizeFramework(manifest.framework);
+    const profileFw = normalizeFramework(profile?.stack?.framework);
     if (!profileFw || profileFw !== candidateFw) {
       return { included: false, reason: "framework-mismatch" };
     }
@@ -363,7 +358,9 @@ export function composeEffectivePolicy(
   }
 
   // Framework gap
-  const framework = input.profile?.stack?.framework;
+  const framework = normalizeFramework(input.profile?.stack?.framework)
+    ? input.profile?.stack?.framework?.trim()
+    : undefined;
   const frameworkBinding = lookupFrameworkBinding(framework);
   const frameworkGuidance =
     frameworkBinding &&
@@ -372,11 +369,7 @@ export function composeEffectivePolicy(
     )
       ? frameworkBinding.guidance
       : undefined;
-  if (
-    framework &&
-    framework.toLowerCase() !== "unspecified" &&
-    framework.toLowerCase() !== "none"
-  ) {
+  if (framework) {
     const covered = coveringSkills.some((candidate) =>
       frameworkMatches(candidate, framework),
     );

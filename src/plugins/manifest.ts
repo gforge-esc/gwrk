@@ -124,7 +124,7 @@ const EnforcementSkillManifestSchema = PluginBaseSchema.extend({
   tier: z.literal("enforcement"),
   scope: z.enum(["define", "implementation", "review", "all"]).default("all"),
   /** Language this enforcement skill applies to (e.g. "TypeScript", "Python"). Omit to load for all projects. */
-  language: z.string().trim().min(1).optional(),
+  language: z.string().trim().optional(),
   /** Framework this enforcement skill applies to (e.g. "React", "Express"). Omit to load for all projects. */
   framework: z.string().trim().min(1).optional(),
   architectures: z.array(z.string()).optional(),
@@ -162,7 +162,7 @@ export const SkillManifestSchema = z
     (manifest) =>
       manifest.tier !== "enforcement" ||
       manifest.framework === undefined ||
-      manifest.language !== undefined,
+      Boolean(manifest.language),
     {
       path: ["language"],
       message: "Framework enforcement skills must declare a language.",
