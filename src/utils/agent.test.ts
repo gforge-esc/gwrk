@@ -8,6 +8,7 @@ import * as skillRuntime from '../plugins/skill-runtime.js';
 import * as profileDetector from '../engine/profile-detector.js';
 import * as extensionRuntime from '../plugins/extension-runtime.js';
 import { WorkflowRuntime } from '../plugins/workflow-runtime.js';
+import { resolveDesign } from '../domain/architecture-context.js';
 import { execFileSync, spawn } from 'node:child_process';
 import { EventEmitter } from 'node:events';
 import fs from 'node:fs';
@@ -129,6 +130,7 @@ describe('US-016: Enforcement Skills Dispatch Injection', () => {
       '/fake/root',
       'implementation',
       expect.objectContaining({ stack: { language: 'TypeScript' } }),
+      { architectureTarget: undefined },
     );
     expect(capturedStdin()).toContain('<code_quality>\n<effective_policy>\n# Strict Typing Rule\n</effective_policy>\n</code_quality>');
   });
@@ -976,6 +978,77 @@ describe("TR-012: Captured Planning and Implementation Workflow Seam Tests", () 
       expect(stdin.match(/# \/gwrk-implement/g)).toHaveLength(1);
       expect(stdin.match(/<user_input>/g)).toHaveLength(1);
       expect(stdin).toContain(`<user_input>\n${input}\n</user_input>`);
+    });
+  });
+});
+
+describe("Phase 4: Effective policy in built-in workflow stdin", () => {
+  it("delivers definition policy in gwrk-specify and preserves the user input", async () => {
+    const input = "Specify the policy change. Keep {{enforcement}} in this description.";
+    const capturedStdin = mockAgentStdin(undefined, '{"summary":"ok","intents":[]}');
+
+    await withHermeticProjectRoot(async (projectRoot) => {
+      for (const scope of ["define", "implementation"]) {
+        const name = `fixture-${scope}-policy`;
+        const directory = path.join(projectRoot, ".gwrk/plugins/skills", name);
+        fs.mkdirSync(directory, { recursive: true });
+        fs.writeFileSync(
+          path.join(directory, "manifest.yaml"),
+          `type: skill\nname: ${name}\nversion: 1.0.0\ndescription: Fixture policy\ntier: enforcement\nscope: ${scope}\n`,
+        );
+        fs.writeFileSync(path.join(directory, "SKILL.md"), `Fixture policy for ${scope}.\n`);
+      }
+
+      await new WorkflowRuntime().executeWorkflow("gwrk-specify", input, {
+        agent: "codex",
+        profile: { type: "app" },
+        projectRoot,
+        quiet: true,
+      });
+
+      const stdin = capturedStdin();
+      const policy = stdin.match(/<effective_policy>[\s\S]*?<\/effective_policy>/g) ?? [];
+      expect(policy).toHaveLength(1);
+      expect(stdin).toContain(`<code_quality>\n${policy[0]}\n</code_quality>`);
+      expect(policy[0].match(/<!-- enforcement-skill: [^>]+ -->/g)).toEqual([
+        "<!-- enforcement-skill: fixture-define-policy -->",
+      ]);
+      expect(policy[0]).toContain("Fixture policy for define.");
+      expect(stdin).not.toContain("fixture-implementation-policy");
+      expect(stdin).toContain(`<user_input>\n${input}\n</user_input>`);
+    });
+  });
+
+  it("delivers the target rule once in gwrk-implement and keeps the selected skill and gap", async () => {
+    const capturedStdin = mockAgentStdin();
+    const rule = "Domain policy MUST depend inward";
+
+    await withHermeticProjectRoot(async (projectRoot) => {
+      fs.writeFileSync(
+        path.join(projectRoot, ".gwrk/architecture.md"),
+        `# Project architecture target\n\n## Rules\n\n- ${rule}. Ports declare boundaries. Adapters implement effects. Composition wires dependencies.\n\n## Framework guidance\n\nNo framework selected.\n`,
+      );
+
+      await new WorkflowRuntime().executeWorkflow("gwrk-implement", "Implement the change.", {
+        agent: "codex",
+        nativeOnly: true,
+        profile: {
+          type: "nodejs",
+          stack: { language: "TypeScript", framework: "Django" },
+          design: resolveDesign({ architecture: "hexagonal-functional" }),
+        },
+        projectRoot,
+        quiet: true,
+      });
+
+      const stdin = capturedStdin();
+      const target = stdin.match(/<architecture_target>([\s\S]*?)<\/architecture_target>/)?.[1];
+      const policy = stdin.match(/<effective_policy>([\s\S]*?)<\/effective_policy>/)?.[1];
+      expect(stdin.split(rule)).toHaveLength(2);
+      expect(target).toContain(rule);
+      expect(policy).toContain("Domain code MUST NOT access external state");
+      expect(policy).toContain("<!-- enforcement-skill: typescript-standards -->");
+      expect(policy).toContain("No compatible policy found for framework Django.");
     });
   });
 });

@@ -62,15 +62,18 @@ export async function installArchitectureContext(
   input: ContextInput,
 ) {
   const detected = await detectProfile(root);
-  const profile = {
-    ...detected,
-    design: input.design,
-    stack: {
-      ...detected.stack,
-      language: input.language,
-      framework: input.framework,
-    },
+  const stack = {
+    ...detected.stack,
+    ...(input.language !== undefined ? { language: input.language } : {}),
+    ...(input.framework !== undefined ? { framework: input.framework } : {}),
   };
-  const policy = await resolveEffectivePolicy(root, { profile });
-  return installContext(contextFiles(root), input, policy);
+  const effectivePolicy = await resolveEffectivePolicy(root, {
+    profile: { ...detected, design: input.design, stack },
+  });
+  const { language, framework } = stack;
+  return installContext(
+    contextFiles(root),
+    { ...input, effectivePolicy },
+    { language, framework },
+  );
 }

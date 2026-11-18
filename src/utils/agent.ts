@@ -743,6 +743,52 @@ export async function dispatchToAgent(task: TaskDispatch): Promise<TaskResult> {
   const adapter = await registry.getAgentBackend(agentName);
 
   const startTime = Date.now();
+  // ADR-009: Inject project knowledge documents (grounding)
+  const workDir = projectRoot;
+  const groundingFiles = [
+    {
+      path: path.join(workDir, ".gwrk/architecture.md"),
+      tag: "architecture_target",
+    },
+    {
+      path: path.join(workDir, ".gwrk/ontology/domain.md"),
+      tag: "domain_ontology",
+    },
+    {
+      path: path.join(workDir, ".gwrk/perspective/hierarchy.md"),
+      tag: "information_hierarchy",
+    },
+    {
+      path: path.join(workDir, ".gwrk/perspective/ux-posture.md"),
+      tag: "ux_posture",
+    },
+    {
+      path: path.join(workDir, ".gwrk/decisions/index.md"),
+      tag: "architecture_decisions",
+    },
+  ];
+
+  let architectureTarget: string | undefined;
+  let grounding = "";
+  for (const { path: filePath, tag } of groundingFiles) {
+    if (fs.existsSync(filePath)) {
+      try {
+        const content = fs.readFileSync(filePath, "utf-8");
+        if (tag === "architecture_target") architectureTarget = content;
+        grounding += `<${tag}>\n${content}\n</${tag}>\n\n`;
+        if (!task.quiet) {
+          writeScopedStdout(`${DIM}  → Grounding: <${tag}> injected${RESET}\n`);
+        }
+      } catch (err) {
+        if (!task.quiet) {
+          writeScopedStdout(
+            `${DIM}  ⚠ Grounding: <${tag}> unreadable (${err instanceof Error ? err.message : err})${RESET}\n`,
+          );
+        }
+      }
+    }
+  }
+
   const legacyParts = promptParts ? undefined : splitLegacyStdin(task);
   let template = promptParts?.template ?? legacyParts?.template ?? "";
 
@@ -768,6 +814,7 @@ export async function dispatchToAgent(task: TaskDispatch): Promise<TaskResult> {
       projectRoot,
       scope,
       profile,
+      { architectureTarget },
     );
     const enforcement = `<effective_policy>\n${resolvedPolicy}\n</effective_policy>`;
 
@@ -806,50 +853,6 @@ export async function dispatchToAgent(task: TaskDispatch): Promise<TaskResult> {
   )
     .filter(Boolean)
     .join("\n\n");
-
-  // ADR-009: Inject project knowledge documents (grounding)
-  const workDir = projectRoot;
-  const groundingFiles = [
-    {
-      path: path.join(workDir, ".gwrk/architecture.md"),
-      tag: "architecture_target",
-    },
-    {
-      path: path.join(workDir, ".gwrk/ontology/domain.md"),
-      tag: "domain_ontology",
-    },
-    {
-      path: path.join(workDir, ".gwrk/perspective/hierarchy.md"),
-      tag: "information_hierarchy",
-    },
-    {
-      path: path.join(workDir, ".gwrk/perspective/ux-posture.md"),
-      tag: "ux_posture",
-    },
-    {
-      path: path.join(workDir, ".gwrk/decisions/index.md"),
-      tag: "architecture_decisions",
-    },
-  ];
-
-  let grounding = "";
-  for (const { path: filePath, tag } of groundingFiles) {
-    if (fs.existsSync(filePath)) {
-      try {
-        const content = fs.readFileSync(filePath, "utf-8");
-        grounding += `<${tag}>\n${content}\n</${tag}>\n\n`;
-        if (!task.quiet) {
-          writeScopedStdout(`${DIM}  → Grounding: <${tag}> injected${RESET}\n`);
-        }
-      } catch (err) {
-        if (!task.quiet) {
-          writeScopedStdout(
-            `${DIM}  ⚠ Grounding: <${tag}> unreadable (${err instanceof Error ? err.message : err})${RESET}\n`,
-          );
-        }
-      }
-    }
-  }
 
   if (grounding) {
     stdinPayload = `${grounding}${stdinPayload}`;

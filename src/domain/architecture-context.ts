@@ -19,6 +19,10 @@ export interface ContextInput {
   language?: string;
   framework?: string;
   decisionsDir: string;
+  effectivePolicy?: Pick<
+    EffectivePolicy,
+    "checksStatus" | "architectureRules" | "languageGuidance" | "frameworkGuidance" | "gaps"
+  >;
 }
 
 export function normalizeArchitecture(value: string): string {
@@ -174,8 +178,8 @@ export function designRules(design: ProjectDesign): string[] {
 export function contextMarkdown(
   input: ContextInput,
   decisions: string[],
-  policy?: EffectivePolicy,
 ): string {
+  const policy = input.effectivePolicy;
   const language = input.language?.toLowerCase() ?? "";
   const framework = normalizeFramework(input.framework);
   return `# Project architecture target\n\nTarget context guides future work. Code conformance remains unassessed by initialization. Blocked: none.\n\n## Selection\n\n- Project: ${input.projectName}\n- Architecture: ${input.design.architecture}\n- Language: ${input.language ?? "unspecified"}\n- Framework: ${input.framework ?? "unspecified"}\n- Template version: ${input.design.templateVersion}\n- Architecture checks: activation unchanged by initialization\n\n## Rules\n\n${(

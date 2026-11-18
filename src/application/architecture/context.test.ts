@@ -7,7 +7,11 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { installArchitectureContext } from "../../adapters/architecture/context-files.js";
-import { resolveDesign } from "../../domain/architecture-context.js";
+import {
+  contextMarkdown,
+  resolveDesign,
+} from "../../domain/architecture-context.js";
+import { composeEffectivePolicy } from "../../domain/policy-selection.js";
 
 const roots: string[] = [];
 async function fixture() {
@@ -28,6 +32,49 @@ describe("architecture context", () => {
     });
     expect(design.architecture).toBe("hexagonal-functional");
     expect(design.principles).toContain("functional-core");
+  });
+
+  it("renders the projected compatibility gap in a two-argument call", () => {
+    const design = resolveDesign({ architecture: "hexagonal-functional" });
+    const stack = { language: "TypeScript", framework: "Django" };
+    const input = {
+      projectName: "mixed-choice",
+      design,
+      ...stack,
+      decisionsDir: "docs/decisions",
+      effectivePolicy: composeEffectivePolicy({
+        profile: { type: "nodejs", design, stack },
+        candidates: [],
+      }),
+    };
+
+    const context = contextMarkdown(input, []);
+
+    expect(context).toContain(
+      "## Policy gaps\n\n- No compatible policy found for framework Django.",
+    );
+    expect(context).not.toContain("Keep Django ORM models and transactions");
+  });
+
+  it("preserves the legacy render bytes when the projected policy has no gaps", () => {
+    const design = resolveDesign({ architecture: "hexagonal-functional" });
+    const stack = { language: "Python", framework: "FastAPI" };
+    const input = {
+      projectName: "compatible-choice",
+      design,
+      ...stack,
+      decisionsDir: "docs/decisions",
+    };
+    const decisions = ["docs/decisions/ADR-001-desired-architecture.md"];
+    const effectivePolicy = composeEffectivePolicy({
+      profile: { type: "python", design, stack },
+      candidates: [],
+    });
+
+    expect(effectivePolicy.gaps).toEqual([]);
+    expect(contextMarkdown({ ...input, effectivePolicy }, decisions)).toBe(
+      contextMarkdown(input, decisions),
+    );
   });
 
   it("reports an incompatible framework choice without rendering another language's binding", async () => {

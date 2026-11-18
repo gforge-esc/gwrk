@@ -153,6 +153,8 @@ bash specs/044-architecture-aware-policy/gates/phase-03.sh
 - `src/application/architecture/install-context.ts` (MODIFY: Compose `EffectivePolicy` deterministically during context installation without certifying existing code)
 - `src/commands/init.ts` (MODIFY: Preserve `workspaces` and `project.design` across fresh and existing and `--workspace` runs with zero agent calls)
 - `src/utils/agent.ts` (MODIFY: Resolve `EffectivePolicy` by workflow scope on the shared transport path and inject `<effective_policy>` with `<code_quality>`)
+- `src/plugins/skill-runtime.ts` (MODIFY: Omit generated rules already present in the architecture target)
+- `src/plugins/builtins/workflows/gwrk-specify/PROMPT.md` (MODIFY: Add the trusted enforcement slot)
 - `src/plugins/workflow-runtime.ts` (MODIFY: Forward workspace or root `ProjectProfile` with `design` into prompt conditioning and dispatch)
 - `src/application/architecture/context.test.ts` (MODIFY: Verify context rendering reflects composed rules and explicit gap notes while keeping checks inactive)
 - `src/commands/init.test.ts` (MODIFY: Verify zero agent dispatches and preserved source files and human `Decided` ADRs across fresh and repeat runs)
@@ -173,14 +175,19 @@ bash specs/044-architecture-aware-policy/gates/phase-03.sh
 |---|---|---|---|
 | TR-004 | integration | `src/commands/init.test.ts` | Fresh and repeated init calls make zero agent dispatches and preserve existing source code and human `Decided` ADRs |
 | TR-012 | unit | `src/application/architecture/context.test.ts` | Deterministic context rendering preserves manifest hashes without gaps and records explicit gap notes when bindings are missing |
+| TR-012 | unit | `src/application/architecture/context.test.ts` | Two-argument rendering uses the projected policy for TypeScript and Django and preserves Python and FastAPI output bytes when there are no gaps |
 | TR-013 | integration | `src/utils/agent.policy-binding.test.ts` | Shared prompt transport includes compatible policy once across define, implement and review scopes |
+| TR-013 | integration | `src/utils/agent.test.ts` | Built-in `gwrk-specify` delivers the definition skill once and preserves user input |
+| TR-013 | integration | `src/utils/agent.test.ts` | Built-in `gwrk-implement` delivers the target rule once and retains the selected skill and framework gap |
 | TR-014 | e2e | `scripts/architecture-context-uat.py` | Built CLI init and assessment preview complete with zero model invocations across fresh and existing and polyglot fixtures |
+| TR-014 | e2e | `scripts/architecture-context-uat.py` | Context-only init combines detected Python and configured FastAPI without policy gaps or agent calls |
+| TR-014 | e2e | `scripts/architecture-context-uat.py` | Detecting Python on repeat init preserves the installed decision |
 
 #### Done When
 
 ```bash
 pnpm build
-pnpm exec vitest run src/application/architecture/context.test.ts src/commands/init.test.ts src/utils/agent.policy-binding.test.ts src/utils/agent.grounding-decisions.test.ts src/plugins/workflow-runtime.test.ts src/architecture.test.ts
+pnpm exec vitest run src/application/architecture/context.test.ts src/commands/init.test.ts src/utils/agent.test.ts src/utils/agent.policy-binding.test.ts src/utils/agent.grounding-decisions.test.ts src/plugins/workflow-runtime.test.ts src/architecture.test.ts
 python3 scripts/architecture-context-uat.py
 ```
 

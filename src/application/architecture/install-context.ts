@@ -7,10 +7,7 @@ import {
   contextMarkdown,
   decisionMarkdown,
 } from "../../domain/architecture-context.js";
-import {
-  type EffectivePolicy,
-  composeEffectivePolicy,
-} from "../../domain/policy-selection.js";
+import { composeEffectivePolicy } from "../../domain/policy-selection.js";
 import type { ContextFilesPort } from "../../ports/context-files-port.js";
 
 interface ContextManifest {
@@ -30,14 +27,18 @@ const END = "<!-- gwrk:architecture:end -->";
 export async function installContext(
   files: ContextFilesPort,
   input: ContextInput,
-  effectivePolicy?: EffectivePolicy,
+  stack: Pick<ContextInput, "language" | "framework"> = {
+    language: input.language,
+    framework: input.framework,
+  },
 ): Promise<ContextInstallation> {
+  const { effectivePolicy, ...selection } = input;
   const policy =
     effectivePolicy ??
     composeEffectivePolicy({
       profile: {
         type: "app",
-        stack: { language: input.language, framework: input.framework },
+        stack,
         design: input.design,
       },
       candidates: [],
@@ -48,7 +49,8 @@ export async function installContext(
     ? JSON.parse(prior)
     : { version: 1, files: {}, decisions: {} };
   const conflicts: string[] = [];
-  const key = JSON.stringify(input);
+  // Keep the original selection as the decision identity when detection changes.
+  const key = JSON.stringify(selection);
   let decisions = manifest.decisions[key];
   if (!decisions) {
     const entries = await files.list(input.decisionsDir);
@@ -104,7 +106,10 @@ export async function installContext(
   }
   await managed(
     ".gwrk/architecture.md",
-    contextMarkdown(input, decisions, policy),
+    contextMarkdown(
+      { ...selection, ...stack, effectivePolicy: policy },
+      decisions,
+    ),
   );
   const instruction = `${BEGIN}\nRead .gwrk/architecture.md and .gwrk/decisions/index.md before design or implementation.\nThe selected architecture is a target. Initialization does not assess code conformance.\nUse the gwrk-assess skill for explicit assessment or run gwrk assess.\n${END}`;
   for (const file of ["AGENTS.md", "CLAUDE.md", "GEMINI.md"])

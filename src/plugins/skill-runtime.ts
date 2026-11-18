@@ -221,15 +221,31 @@ export async function resolveEffectivePolicy(
   });
 }
 
-export function formatEffectivePolicyPrompt(policy: EffectivePolicy): string {
+interface EffectivePolicyPromptOptions {
+  architectureTarget?: string;
+}
+
+export function formatEffectivePolicyPrompt(
+  policy: EffectivePolicy,
+  { architectureTarget }: EffectivePolicyPromptOptions = {},
+): string {
   const sections: string[] = [];
   if (policy.design) {
     sections.push(
       "Initialization does not assess code conformance. Architecture checks remain unchanged by initialization.",
     );
-    sections.push(
-      `## Architecture rules\n\n${policy.architectureRules.map((rule) => `- ${rule}`).join("\n")}`,
+    const targetRulesSection = architectureTarget
+      ?.split(/^#{1,2}[ \t]+/m)
+      .slice(1)
+      .find((section) => section.split("\n", 1)[0].trim() === "Rules");
+    const targetRules = new Set(
+      targetRulesSection?.split("\n").map((line) => line.trim()),
     );
+    const rules = policy.architectureRules
+      .map((rule) => `- ${rule}`)
+      .filter((rule) => !targetRules.has(rule));
+    if (rules.length > 0)
+      sections.push(`## Architecture rules\n\n${rules.join("\n")}`);
   }
   if (policy.languageGuidance)
     sections.push(`## Language guidance\n\n${policy.languageGuidance}`);
@@ -260,8 +276,10 @@ export async function resolveEnforcementSkills(
   projectRoot: string,
   scope: EnforcementScope = "all",
   profile?: ProjectProfile,
+  options?: EffectivePolicyPromptOptions,
 ): Promise<string> {
   return formatEffectivePolicyPrompt(
     await resolveEffectivePolicy(projectRoot, { scope, profile }),
+    options,
   );
 }
