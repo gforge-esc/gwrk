@@ -3,11 +3,11 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { getDb, getTestDb } from "../db/index.js";
 import {
   type RoutingDecisionRecord,
   recordDecision,
-} from "./routing-decisions.js";
+} from "../adapters/sqlite/routing-decisions.js";
+import { getDb, getTestDb } from "../db/index.js";
 
 vi.mock("../db/index.js", async () => {
   const actual = (await vi.importActual("../db/index.js")) as any;

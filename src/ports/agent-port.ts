@@ -6,6 +6,11 @@
  * Canonical AgentPort interface and stream-json unwrapping utilities (ADR-006, ADR-011).
  */
 
+import type {
+  RouteSelectionDecision,
+  RoutingFacts,
+} from "../domain/agent-routing.js";
+
 export interface AgentTaskRequest {
   type?: string;
   workflow?: string;
@@ -29,6 +34,7 @@ export interface AgentDispatchSpec {
   stdin?: string;
   env?: Record<string, string>;
   outputFormat?: "text" | "json" | "stream-json";
+  inputFormat?: "text" | "stream-json";
 }
 
 export interface AgentTaskResult {
@@ -42,6 +48,7 @@ export interface AgentTaskResult {
   durationMs?: number;
   timedOut?: boolean;
   status?: "success" | "failure";
+  terminalStatus?: "success" | "failure";
   error?: string;
   errorType?:
     | "rate_limit"
@@ -59,18 +66,33 @@ export interface AgentTaskResult {
 
 export interface RoutingContext {
   type: string;
+  preview?: boolean;
+  requireRegistry?: boolean;
+  historyMode?: RoutingFacts["historyMode"];
+  backendEligibility?: "quota" | "installed" | "script-owned";
+  includeReviewModel?: boolean;
+  resolveDispatchModel?: boolean;
+  /** Allow an explicit backend outside the registry to resolve ambient model defaults. */
+  useAmbientModelDefaults?: boolean;
+  legacyModelDefault?: string;
+  runId?: string;
   skillName?: string;
   feature?: string;
   phase?: string;
   preferredAgent?: string;
+  explicitBackend?: string;
+  explicitModel?: string;
   language?: string;
   taskSP?: number;
 }
 
-export interface SelectedAgentRoute {
-  backend: string;
-  model: string;
-  reason: string;
+export interface SelectedAgentRoute extends RouteSelectionDecision {
+  useAdapterModelDefaults?: boolean;
+  effectiveModel?: string;
+  /** Null means the adapter omits the model flag. */
+  adapterModel?: string | null;
+  reviewModel?: string;
+  reviewEffort?: string;
 }
 
 export interface AgentPort {
@@ -85,6 +107,7 @@ export interface UnwrappedStreamResult {
   text: string;
   structuredOutput?: Record<string, unknown>;
   isTurnLimit?: boolean;
+  terminalStatus?: "success" | "failure";
   usage?: {
     tokensIn?: number;
     tokensOut?: number;
@@ -107,6 +130,7 @@ export function unwrapStreamJson(stdout: string): UnwrappedStreamResult {
   let lastStructuredOutput: Record<string, unknown> | undefined;
   const assistantChunks: string[] = [];
   let isTurnLimit = false;
+  let terminalStatus: UnwrappedStreamResult["terminalStatus"];
   let usage: UnwrappedStreamResult["usage"];
   let parsedAnyEvent = false;
 
@@ -148,6 +172,14 @@ export function unwrapStreamJson(stdout: string): UnwrappedStreamResult {
       }
     } else if (evt.type === "result") {
       parsedAnyEvent = true;
+      if (
+        evt.is_error === true ||
+        (typeof evt.subtype === "string" && evt.subtype.startsWith("error_"))
+      ) {
+        terminalStatus = "failure";
+      } else if (terminalStatus !== "failure") {
+        terminalStatus = "success";
+      }
       if (evt.structured_output && typeof evt.structured_output === "object") {
         lastStructuredOutput = evt.structured_output as Record<string, unknown>;
       }
@@ -187,6 +219,7 @@ export function unwrapStreamJson(stdout: string): UnwrappedStreamResult {
     text,
     ...(lastStructuredOutput ? { structuredOutput: lastStructuredOutput } : {}),
     ...(isTurnLimit ? { isTurnLimit: true } : {}),
+    ...(terminalStatus ? { terminalStatus } : {}),
     ...(usage ? { usage } : {}),
   };
 }

@@ -6,6 +6,11 @@ import * as fsSync from "node:fs";
 import * as fsPromises from "node:fs/promises";
 import path from "node:path";
 import { Command } from "commander";
+import {
+  exitCli,
+  logCliError,
+  logCliOutput,
+} from "../adapters/cli/output-scope.js";
 import { ResearchScaffolder } from "../engine/research-scaffold.js";
 import { WorkflowRuntime } from "../plugins/workflow-runtime.js";
 import { info, startTimer, stopTimer, success } from "../utils/format.js";
@@ -138,11 +143,12 @@ export async function researchCommandHandler(
 /**
  * commander definition for 'gwrk define research'
  */
-export const researchCommand = new Command("research")
-  .description("Scaffold research directories and briefs (R0XX)")
-  .addHelpText(
-    "after",
-    `
+export const createResearchCommand = () =>
+  new Command("research")
+    .description("Scaffold research directories and briefs (R0XX)")
+    .addHelpText(
+      "after",
+      `
 Examples:
 
   Scaffold a new research initiative:
@@ -162,34 +168,37 @@ Examples:
 
   Available methodologies: technical (default), jtbd, ontology
 `,
-  )
-  .argument(
-    "<initiative>",
-    "Research initiative name or R0XX prefix (e.g. 'polyglot-monorepo' or 'R011')",
-  )
-  .option(
-    "--methodology <type>",
-    "Research methodology: technical, jtbd, ontology (default: brief frontmatter, else technical)",
-  )
-  .option("--run", "Execute the methodology plugin (reads brief.md as input)")
-  .option("--refs <path>", "Path to additional reference docs")
-  .action(
-    async (
-      initiative: string,
-      opts: { methodology: string; run?: boolean; refs?: string },
-    ) => {
-      try {
-        const output = await researchCommandHandler({
-          initiative,
-          methodology: opts.methodology,
-          run: opts.run,
-          refs: opts.refs,
-        });
-        console.log(output);
-      } catch (error: unknown) {
-        const message = error instanceof Error ? error.message : String(error);
-        console.error(`Error: ${message}`);
-        process.exit(1);
-      }
-    },
-  );
+    )
+    .argument(
+      "<initiative>",
+      "Research initiative name or R0XX prefix (e.g. 'polyglot-monorepo' or 'R011')",
+    )
+    .option(
+      "--methodology <type>",
+      "Research methodology: technical, jtbd, ontology (default: brief frontmatter, else technical)",
+    )
+    .option("--run", "Execute the methodology plugin (reads brief.md as input)")
+    .option("--refs <path>", "Path to additional reference docs")
+    .action(
+      async (
+        initiative: string,
+        opts: { methodology: string; run?: boolean; refs?: string },
+      ) => {
+        try {
+          const output = await researchCommandHandler({
+            initiative,
+            methodology: opts.methodology,
+            run: opts.run,
+            refs: opts.refs,
+          });
+          logCliOutput(output);
+        } catch (error: unknown) {
+          const message =
+            error instanceof Error ? error.message : String(error);
+          logCliError(`Error: ${message}`);
+          exitCli(1);
+        }
+      },
+    );
+
+export const researchCommand = createResearchCommand();

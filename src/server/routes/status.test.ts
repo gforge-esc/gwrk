@@ -5,9 +5,15 @@
 import { describe, expect, it, vi } from "vitest";
 import type { GwrkConfig } from "../../utils/config.js";
 import { startServer } from "../index.js";
-import { removePid } from "../pid.js";
+import { SandboxManager } from "../sandbox.js";
 
-// Mock dependencies
+vi.mock("../pid.js", () => ({
+  readPid: vi.fn(),
+  writePid: vi.fn(),
+  removePid: vi.fn(),
+  isPidRunning: vi.fn().mockReturnValue(false),
+}));
+
 vi.mock("../docker.js", () => ({
   ensureDocker: vi.fn().mockResolvedValue({ installed: true, running: true }),
 }));
@@ -22,8 +28,8 @@ const mockConfig: GwrkConfig = {
   agents: { define: "gemini", implement: "gemini" },
   server: {
     githubWebhookSecret: "mock_secret",
-    port: 18892,
-    host: "localhost",
+    port: 0,
+    host: "127.0.0.1",
     heartbeatIntervalMs: 1000,
     networkCheckIntervalMs: 1000,
   },
@@ -34,34 +40,36 @@ const mockConfig: GwrkConfig = {
 };
 
 describe("status routes (FR-004, US-002)", () => {
-  it("should respond to /api/status with SystemStatus JSON — RED (No sandboxes)", async () => {
-    removePid();
-    const server = await startServer(mockConfig, { handleSignals: false });
+  it("responds with status when the sandbox inventory is empty", async () => {
+    const inventory = vi
+      .spyOn(SandboxManager.prototype, "listSandboxes")
+      .mockResolvedValue([]);
+    let server: Awaited<ReturnType<typeof startServer>> | undefined;
+    try {
+      server = await startServer(mockConfig, { handleSignals: false });
 
-    const response = await server.inject({
-      method: "GET",
-      url: "/api/status",
-    });
+      const response = await server.inject({
+        method: "GET",
+        url: "/api/status",
+      });
 
-    expect(response.statusCode).toBe(200);
-    const body = response.json();
+      expect(response.statusCode).toBe(200);
+      const body = response.json();
 
-    expect(body.server.status).toBe("running");
-    expect(body.server.lifecycle).toBe("ready");
-    expect(body.server.pid).toBe(process.pid);
+      expect(body.server.status).toBe("running");
+      expect(body.server.lifecycle).toBe("ready");
+      expect(body.server.pid).toBe(process.pid);
 
-    // Sandboxes still returned as [] (full removal is Phase 3+ work)
-    expect(body.sandboxes).toEqual([]);
+      expect(body.sandboxes).toEqual([]);
 
-    // Verify system metrics
-    expect(body.system.cpuPercent).toBeDefined();
-    expect(body.system.memPercent).toBeDefined();
-    expect(body.system.diskFreeGb).toBeDefined();
+      expect(body.system.cpuPercent).toBeDefined();
+      expect(body.system.memPercent).toBeDefined();
+      expect(body.system.diskFreeGb).toBeDefined();
 
-    // Verify network
-    expect(body.network.status).toBeDefined();
-
-    await server.close();
-    removePid();
+      expect(body.network.status).toBeDefined();
+    } finally {
+      inventory.mockRestore();
+      await server?.close();
+    }
   });
 });

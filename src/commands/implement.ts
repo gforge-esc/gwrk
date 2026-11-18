@@ -9,6 +9,12 @@
 import fs from "node:fs";
 import path from "node:path";
 import { Command } from "commander";
+import {
+  logCliError,
+  logCliOutput,
+  setCliExitCode,
+  writeScopedStderr,
+} from "../adapters/cli/output-scope.js";
 import { finishRun, startRun } from "../db/runs.js";
 import { run } from "../utils/exec.js";
 import { banner, color, dryRun, fail, success } from "../utils/format.js";
@@ -80,7 +86,7 @@ export const implementAction = async (
         if (fs.existsSync(gatePath)) {
           const result = await runGate(gatePath);
           if (result.passed) {
-            console.log(
+            logCliOutput(
               `${YELLOW}⚠${RESET} ${task.id} pre-flight PASS — gate already satisfied, skipping`,
             );
             const currentState = loadTaskState(specDir);
@@ -109,7 +115,9 @@ export const implementAction = async (
           continue;
         }
 
-        console.log(`${GREEN}▶${RESET} Implementing ${task.id}: ${task.title}`);
+        logCliOutput(
+          `${GREEN}▶${RESET} Implementing ${task.id}: ${task.title}`,
+        );
         await run(scriptPath, ["implement", feature, phase, task.id], {
           cwd,
           env: {
@@ -122,10 +130,10 @@ export const implementAction = async (
 
         // Verify the gate after agent execution
         if (fs.existsSync(gatePath)) {
-          console.log(`\n${DIM}Verifying gate for ${task.id}...${RESET}`);
+          logCliOutput(`\n${DIM}Verifying gate for ${task.id}...${RESET}`);
           const postResult = await runGate(gatePath);
           if (postResult.passed) {
-            console.log(
+            logCliOutput(
               `${GREEN}✓${RESET} ${task.id} gate passed. Marking completed.`,
             );
             const currentState = loadTaskState(specDir);
@@ -146,10 +154,10 @@ export const implementAction = async (
               });
             }
           } else {
-            console.log(
+            logCliOutput(
               `${YELLOW}⚠${RESET} ${task.id} gate failed after implementation.`,
             );
-            if (postResult.output) process.stderr.write(postResult.output);
+            if (postResult.output) writeScopedStderr(postResult.output);
             throw new Error(`Gate failed for ${task.id}`);
           }
         }
@@ -166,7 +174,7 @@ export const implementAction = async (
       });
       success("implement", durationS, runId);
     } catch (err: unknown) {
-      console.error(err);
+      logCliError(err);
       const durationS = Math.round((Date.now() - startTime) / 1000);
       const stats = getDiffStats(cwd, startCommit);
       exitCode =
@@ -181,7 +189,7 @@ export const implementAction = async (
         lines_deleted: stats.linesDeleted,
       });
       fail("implement", exitCode, durationS, runId);
-      process.exitCode = exitCode;
+      setCliExitCode(exitCode);
     }
   });
 };

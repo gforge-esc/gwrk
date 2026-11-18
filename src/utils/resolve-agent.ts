@@ -43,11 +43,7 @@ export function resolveAgent(
   const config = loadConfig(projectRoot);
   const backend = pillarBackend(config, pillar, overrides.agent);
 
-  // Only consult the registry when the config declares one. `loadRegistry`
-  // calls process.exit(1) on a config without `agents.registry`, which is not
-  // throwable, so `resolveModelForTask`'s own try/catch cannot see it and
-  // `withSignal` never emits its exit line. A project with no registry is
-  // legal: it simply has no model to pick, and the dispatcher uses its default.
+  // Projects without a registry use the provider default.
   const agents = config.agents as {
     registry?: Record<string, unknown>;
     fallbackOrder?: string[];

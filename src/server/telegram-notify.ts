@@ -6,6 +6,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import type { KnownBlock } from "@slack/types";
+import { warnCli } from "../adapters/cli/output-scope.js";
 import type { SlackMessage } from "./slack-messages.js";
 
 export interface TelegramConfig {
@@ -129,7 +130,7 @@ export async function notifyTelegram(
     return res.ok;
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    console.warn(`Failed to send Telegram notification: ${msg}`);
+    warnCli(`Failed to send Telegram notification: ${msg}`);
     return false;
   }
 }

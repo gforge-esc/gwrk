@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { Command } from "commander";
+import { logCliOutput } from "../adapters/cli/output-scope.js";
 import { SandboxManager } from "../server/sandbox.js";
 import { loadConfig } from "../utils/config.js";
 import { color } from "../utils/format.js";
@@ -11,9 +12,12 @@ import { withSignal } from "../utils/signal.js";
 
 const { BOLD, DIM, GREEN, YELLOW, RESET } = color;
 
-export const sandboxCommand = new Command("sandbox").description(
-  "Inspect and reap worktree sandboxes created by ship",
-);
+export const createSandboxCommand = () =>
+  new Command("sandbox").description(
+    "Inspect and reap worktree sandboxes created by ship",
+  );
+
+export const sandboxCommand = createSandboxCommand();
 
 sandboxCommand
   .command("list")
@@ -30,20 +34,20 @@ sandboxCommand
       }
 
       if (records.length === 0) {
-        console.log("No sandboxes recorded.");
+        logCliOutput("No sandboxes recorded.");
         return;
       }
 
-      console.log(`${BOLD}Sandboxes${RESET}\n`);
+      logCliOutput(`${BOLD}Sandboxes${RESET}\n`);
       for (const r of records) {
         const tag = r.orphaned
           ? `${YELLOW}orphaned${RESET}`
           : `${GREEN}live${RESET}`;
-        console.log(`  ${r.id}  ${tag}${DIM}  ${r.createdAt}${RESET}`);
+        logCliOutput(`  ${r.id}  ${tag}${DIM}  ${r.createdAt}${RESET}`);
       }
       const orphans = records.filter((r) => r.orphaned).length;
       if (orphans > 0) {
-        console.log(
+        logCliOutput(
           `\n${DIM}${orphans} orphaned — run 'gwrk sandbox prune' to release them.${RESET}`,
         );
       }
@@ -78,32 +82,32 @@ sandboxCommand
       // release anything the project started. Say so rather than reporting a
       // clean sweep that freed nothing.
       if (!teardown && (result.pruned.length > 0 || result.failed.length > 0)) {
-        console.log(
+        logCliOutput(
           `${YELLOW}⚠${RESET} No ${BOLD}worktree.teardown${RESET} configured — records will be dropped, but nothing the project started is released.`,
         );
-        console.log(
+        logCliOutput(
           `${DIM}  Add it to .gwrkrc.json, e.g. { "worktree": { "teardown": "make worktree:down" } },${RESET}`,
         );
-        console.log(
+        logCliOutput(
           `${DIM}  and have it target the sandbox via $GWRK_SANDBOX_ID (the worktree is already gone).${RESET}\n`,
         );
       }
 
       if (options.dryRun) {
-        console.log(
+        logCliOutput(
           `${BOLD}Would prune ${result.pruned.length}${RESET}${DIM} (keeping ${result.kept.length} live)${RESET}`,
         );
       } else {
-        console.log(
+        logCliOutput(
           `${GREEN}✓${RESET} pruned ${result.pruned.length}${DIM}, kept ${result.kept.length} live${RESET}`,
         );
       }
-      for (const id of result.pruned) console.log(`    ${id}`);
+      for (const id of result.pruned) logCliOutput(`    ${id}`);
       if (result.failed.length > 0) {
-        console.log(
+        logCliOutput(
           `${YELLOW}⚠${RESET} ${result.failed.length} teardown(s) failed — records kept for retry:`,
         );
-        for (const id of result.failed) console.log(`    ${id}`);
+        for (const id of result.failed) logCliOutput(`    ${id}`);
       }
     });
   });
