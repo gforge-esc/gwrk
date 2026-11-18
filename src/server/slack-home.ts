@@ -6,7 +6,10 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import type { App } from "@slack/bolt";
 import type { HomeView, KnownBlock } from "@slack/types";
+import { verifyEnrolledCheckout } from "../adapters/git/project-id.js";
+import type { EnrolledProject } from "../domain/project-registry.js";
 import { generatePulseReport } from "../engine/pulse.js";
+import type { ProjectRegistryPort } from "../ports/store-port.js";
 import type { GwrkConfig } from "../utils/config.js";
 import { resolveProjectId } from "../utils/project-id.js";
 import type { DispatchQueue } from "./dispatch.js";
@@ -17,10 +20,50 @@ import { getStatusData } from "./routes/status.js";
 import type { SandboxManager } from "./sandbox.js";
 import type { DispatchRecord, SandboxInfo, SystemStatus } from "./types.js";
 
+function canonicalCheckout(checkout: string): string | undefined {
+  try {
+    return fs.realpathSync(checkout);
+  } catch {
+    return undefined;
+  }
+}
+
+function generateHomePulseReport(
+  config: GwrkConfig,
+  projects: readonly EnrolledProject[],
+) {
+  const visiblePaths = new Set<string>();
+  const specRoots = new Set<string>();
+  for (const project of projects) {
+    const local = verifyEnrolledCheckout(project, "localRoot");
+    const mirror = verifyEnrolledCheckout(project, "mirrorPath");
+    if (local) visiblePaths.add(local);
+    if (mirror) visiblePaths.add(mirror);
+    const specRoot = local ?? mirror;
+    if (specRoot) specRoots.add(specRoot);
+  }
+
+  const repos = new Set<string>();
+  for (const repo of config.pulse?.repos ?? []) {
+    const checkout = canonicalCheckout(repo);
+    if (checkout && visiblePaths.has(checkout)) repos.add(checkout);
+  }
+
+  return generatePulseReport(
+    { ...config, pulse: { ...config.pulse, repos: [...repos] } },
+    { specRoots: [...specRoots] },
+  );
+}
+
 export async function buildHomeTab(
   status: SystemStatus,
   config: GwrkConfig,
   projectRoot: string,
+  options?: {
+    userId?: string;
+    workspaceId?: string;
+    registry?: ProjectRegistryPort;
+  },
 ): Promise<HomeView> {
   const blocks: KnownBlock[] = [
     {
@@ -41,55 +84,86 @@ export async function buildHomeTab(
     { type: "divider" },
   ];
 
-  // 1. Active Agents (Sandboxes)
-  blocks.push({
-    type: "section",
-    text: { type: "mrkdwn", text: "👷 *Active Agents*" },
-  });
+  const registry = options?.registry;
+  const startupProject =
+    registry?.findByLocalRoot(projectRoot) ??
+    registry?.getProject(resolveProjectId(projectRoot));
+  const startupProjectId =
+    startupProject?.projectId ?? resolveProjectId(projectRoot);
+  const visibleProjects =
+    registry && options.userId && options.workspaceId
+      ? registry.listProjects().filter((project) => {
+          if (project.slack?.workspaceId !== options.workspaceId) {
+            return false;
+          }
+          const roles = registry.listRoleBindings(project.projectId);
+          const targetPrincipal = `${options.workspaceId}:${options.userId}`;
+          return roles.some(
+            (r) =>
+              r.principalType === "slack_user" &&
+              r.principalId === targetPrincipal,
+          );
+        })
+      : [];
 
-  if (status.sandboxes.length === 0) {
+  const showStartupProjectDetails = registry
+    ? visibleProjects.some((p) => p.projectId === startupProjectId)
+    : true;
+
+  if (showStartupProjectDetails) {
+    // 1. Active Agents (Sandboxes)
     blocks.push({
       type: "section",
-      text: { type: "mrkdwn", text: "_No active agents._" },
+      text: { type: "mrkdwn", text: "👷 *Active Agents*" },
     });
-  } else {
-    for (const sb of status.sandboxes.slice(0, 5)) {
-      blocks.push({
-        type: "section",
-        text: {
-          type: "mrkdwn",
-          text: `• *${sb.featureId}* (${sb.phaseId}) - \`${sb.backend}\` [${sb.status}]\n  Task: \`${sb.taskId}\``,
-        },
-      });
-    }
-    if (status.sandboxes.length > 5) {
-      blocks.push({
-        type: "section",
-        text: {
-          type: "mrkdwn",
-          text: `_...and ${status.sandboxes.length - 5} more agents active._`,
-        },
-      });
-    }
-  }
 
-  // 2. Dispatch Queue
-  blocks.push({
-    type: "section",
-    text: { type: "mrkdwn", text: "📥 *Dispatch Queue*" },
-  });
-  blocks.push({
-    type: "section",
-    fields: [
-      { type: "mrkdwn", text: `*Queue Depth:* ${status.dispatch.queueDepth}` },
-      { type: "mrkdwn", text: `*Active:* ${status.dispatch.activeCount}` },
-      {
-        type: "mrkdwn",
-        text: `*Completed:* ${status.dispatch.completedCount}`,
-      },
-      { type: "mrkdwn", text: `*Failed:* ${status.dispatch.failedCount}` },
-    ],
-  });
+    if (status.sandboxes.length === 0) {
+      blocks.push({
+        type: "section",
+        text: { type: "mrkdwn", text: "_No active agents._" },
+      });
+    } else {
+      for (const sb of status.sandboxes.slice(0, 5)) {
+        blocks.push({
+          type: "section",
+          text: {
+            type: "mrkdwn",
+            text: `• *${sb.featureId}* (${sb.phaseId}) - \`${sb.backend}\` [${sb.status}]\n  Task: \`${sb.taskId}\``,
+          },
+        });
+      }
+      if (status.sandboxes.length > 5) {
+        blocks.push({
+          type: "section",
+          text: {
+            type: "mrkdwn",
+            text: `_...and ${status.sandboxes.length - 5} more agents active._`,
+          },
+        });
+      }
+    }
+
+    // 2. Dispatch Queue
+    blocks.push({
+      type: "section",
+      text: { type: "mrkdwn", text: "📥 *Dispatch Queue*" },
+    });
+    blocks.push({
+      type: "section",
+      fields: [
+        {
+          type: "mrkdwn",
+          text: `*Queue Depth:* ${status.dispatch.queueDepth}`,
+        },
+        { type: "mrkdwn", text: `*Active:* ${status.dispatch.activeCount}` },
+        {
+          type: "mrkdwn",
+          text: `*Completed:* ${status.dispatch.completedCount}`,
+        },
+        { type: "mrkdwn", text: `*Failed:* ${status.dispatch.failedCount}` },
+      ],
+    });
+  }
 
   // 3. System Resources
   blocks.push({
@@ -114,90 +188,122 @@ export async function buildHomeTab(
     ],
   });
 
-  // 4. Build Plan (from Plan DAG)
-  blocks.push({ type: "divider" });
-  blocks.push({
-    type: "section",
-    text: { type: "mrkdwn", text: "📐 *Plan DAG Status*" },
-  });
+  if (showStartupProjectDetails) {
+    // 4. Build Plan (from Plan DAG)
+    blocks.push({ type: "divider" });
+    blocks.push({
+      type: "section",
+      text: { type: "mrkdwn", text: "📐 *Plan DAG Status*" },
+    });
 
-  try {
-    const { PlanStore } = await import("../engine/plan-store.js");
-    const projectId = resolveProjectId(projectRoot);
-    const store = new PlanStore(projectId);
-    if (!store.isEmpty()) {
-      const planStatus = store.getPlanStatus();
+    try {
+      const { PlanStore } = await import("../engine/plan-store.js");
+      const store = new PlanStore(startupProjectId);
+      if (!store.isEmpty()) {
+        const planStatus = store.getPlanStatus();
 
-      const statusEmoji: Record<string, string> = {
-        SHIPPED: "✅",
-        IN_PROGRESS: "🔄",
-        DEFINED: "📐",
-        READY: "🟢",
-        BLOCKED: "🔴",
-        PLANNED: "⬜",
-      };
+        const statusEmoji: Record<string, string> = {
+          SHIPPED: "✅",
+          IN_PROGRESS: "🔄",
+          DEFINED: "📐",
+          READY: "🟢",
+          BLOCKED: "🔴",
+          PLANNED: "⬜",
+        };
 
-      for (const f of planStatus.features.slice(0, 10)) {
-        const emoji = statusEmoji[f.status] || "⬜";
-        const phaseCount = f.phases?.length || 0;
-        const shippedCount =
-          f.phases?.filter((p) => p.status === "SHIPPED").length || 0;
+        for (const f of planStatus.features.slice(0, 10)) {
+          const emoji = statusEmoji[f.status] || "⬜";
+          const phaseCount = f.phases?.length || 0;
+          const shippedCount =
+            f.phases?.filter((p) => p.status === "SHIPPED").length || 0;
+          blocks.push({
+            type: "section",
+            text: {
+              type: "mrkdwn",
+              text: `${emoji} *${f.id}* — ${f.status} (${shippedCount}/${phaseCount} shipped)`,
+            },
+          });
+        }
+      } else {
         blocks.push({
           type: "section",
           text: {
             type: "mrkdwn",
-            text: `${emoji} *${f.id}* — ${f.status} (${shippedCount}/${phaseCount} shipped)`,
+            text: "_No active plans._",
           },
         });
       }
-    } else {
+    } catch {
       blocks.push({
         type: "section",
-        text: {
-          type: "mrkdwn",
-          text: "_No active plans._",
-        },
+        text: { type: "mrkdwn", text: "_Plan data unavailable._" },
       });
     }
-  } catch {
+
+    // 5. Pulse Summary
+    blocks.push({ type: "divider" });
     blocks.push({
       type: "section",
-      text: { type: "mrkdwn", text: "_Plan data unavailable._" },
+      text: { type: "mrkdwn", text: "📉 *Pulse Summary*" },
     });
+
+    try {
+      const report = registry
+        ? generateHomePulseReport(config, visibleProjects)
+        : generatePulseReport(config);
+      for (const repo of report.repositories.slice(0, 3)) {
+        blocks.push({
+          type: "section",
+          text: {
+            type: "mrkdwn",
+            text: `*${repo.repoName}*: ${repo.mainLoc} LOC (+${repo.draftLoc} draft)`,
+          },
+        });
+      }
+      blocks.push({
+        type: "context",
+        elements: [
+          {
+            type: "mrkdwn",
+            text: `Spec Progress: ${report.specProgress.totalPlans}/${report.specProgress.totalSpecs} plans ready`,
+          },
+        ],
+      });
+    } catch (err) {
+      blocks.push({
+        type: "section",
+        text: { type: "mrkdwn", text: "_Pulse data unavailable._" },
+      });
+    }
   }
 
-  // 5. Pulse Summary
-  blocks.push({ type: "divider" });
-  blocks.push({
-    type: "section",
-    text: { type: "mrkdwn", text: "📉 *Pulse Summary*" },
-  });
+  // 6. Enrolled Projects visible to user
+  if (options?.registry) {
+    blocks.push({ type: "divider" });
+    blocks.push({
+      type: "section",
+      text: { type: "mrkdwn", text: "📁 *Enrolled Projects*" },
+    });
 
-  try {
-    const report = generatePulseReport(config);
-    for (const repo of report.repositories.slice(0, 3)) {
+    if (visibleProjects.length === 0) {
       blocks.push({
         type: "section",
         text: {
           type: "mrkdwn",
-          text: `*${repo.repoName}*: ${repo.mainLoc} LOC (+${repo.draftLoc} draft)`,
+          text: "_No enrolled projects accessible for your account._",
         },
       });
+    } else {
+      for (const p of visibleProjects) {
+        blocks.push({
+          type: "section",
+          text: {
+            type: "mrkdwn",
+            text: `*${p.name}* (\`${p.slug}\`)\nTrunk: \`${p.trunkBranch}\` · Channel: <#${p.slack?.channelId || "unbound"}>`,
+          },
+        });
+      }
     }
-    blocks.push({
-      type: "context",
-      elements: [
-        {
-          type: "mrkdwn",
-          text: `Spec Progress: ${report.specProgress.totalPlans}/${report.specProgress.totalSpecs} plans ready`,
-        },
-      ],
-    });
-  } catch (err) {
-    blocks.push({
-      type: "section",
-      text: { type: "mrkdwn", text: "_Pulse data unavailable._" },
-    });
   }
 
   blocks.push({
@@ -260,30 +366,44 @@ export async function registerSlackHomeHandler(
     network: NetworkMonitor;
     config: GwrkConfig;
     projectRoot: string;
+    registry?: ProjectRegistryPort;
+    workspaceId?: string;
   },
 ) {
-  slackApp.event("app_home_opened", async ({ event, client, logger }) => {
-    try {
-      const status = await getStatusData(
-        deps.monitor,
-        deps.queue,
-        deps.sandbox,
-        deps.lifecycle,
-        deps.network,
-      );
+  slackApp.event(
+    "app_home_opened",
+    async ({ event, body, context, client, logger }) => {
+      try {
+        const status = await getStatusData(
+          deps.monitor,
+          deps.queue,
+          deps.sandbox,
+          deps.lifecycle,
+          deps.network,
+        );
 
-      const homeView = await buildHomeTab(
-        status,
-        deps.config,
-        deps.projectRoot,
-      );
+        const homeView = await buildHomeTab(
+          status,
+          deps.config,
+          deps.projectRoot,
+          {
+            userId: event.user,
+            workspaceId:
+              body?.team_id ??
+              context?.teamId ??
+              (event.view as { team_id?: string } | undefined)?.team_id ??
+              deps.workspaceId,
+            registry: deps.registry,
+          },
+        );
 
-      await client.views.publish({
-        user_id: event.user,
-        view: homeView,
-      });
-    } catch (error) {
-      logger.error("Error publishing home tab: ", error);
-    }
-  });
+        await client.views.publish({
+          user_id: event.user,
+          view: homeView,
+        });
+      } catch (error) {
+        logger.error("Error publishing home tab: ", error);
+      }
+    },
+  );
 }

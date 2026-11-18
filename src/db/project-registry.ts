@@ -2,15 +2,18 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { execFileSync } from "node:child_process";
 import { realpathSync } from "node:fs";
 import { isAbsolute } from "node:path";
 import type Database from "better-sqlite3";
-import { discoverGitIdentityFacts } from "../adapters/git/project-id.js";
+import {
+  discoverGitIdentityFacts,
+  discoverVerifiedCheckout,
+  discoverVerifiedMirror,
+  normalizeRegistryRepo,
+} from "../adapters/git/project-id.js";
 import {
   computeLegacyProjectIds,
   computeProjectId,
-  normalizeGitRemoteSlug,
 } from "../domain/project-id.js";
 import {
   type EnrolledProject,
@@ -25,42 +28,7 @@ import type { ProjectRegistryPort } from "../ports/store-port.js";
 
 const LEGACY_LOCAL = "legacy-local";
 
-export function normalizeRegistryRepo(repo: string | null): string | null {
-  return repo
-    ? (normalizeGitRemoteSlug(repo)?.replace(/^github\.com\//, "") ?? null)
-    : null;
-}
-
-export function discoverVerifiedCheckout(root: string) {
-  if (!isAbsolute(root)) return null;
-  try {
-    const realRoot = realpathSync(root);
-    const topLevel = execFileSync("git", ["rev-parse", "--show-toplevel"], {
-      cwd: root,
-      encoding: "utf8",
-      stdio: ["ignore", "pipe", "ignore"],
-      timeout: 5_000,
-    }).trim();
-    if (realpathSync(topLevel) !== realRoot) return null;
-    const facts = discoverGitIdentityFacts(root);
-    return facts.gitCommonDir ? facts : null;
-  } catch {
-    return null;
-  }
-}
-
-function discoverVerifiedMirror(root: string) {
-  if (!isAbsolute(root)) return null;
-  try {
-    const facts = discoverGitIdentityFacts(root);
-    return facts.gitCommonDir &&
-      realpathSync(facts.gitCommonDir) === realpathSync(root)
-      ? facts
-      : null;
-  } catch {
-    return null;
-  }
-}
+export { discoverVerifiedCheckout, normalizeRegistryRepo };
 
 export function discoverStoredRepository(
   root: string,
@@ -322,7 +290,8 @@ export function createProjectRegistry(
   function findActionReceipt(receiptKey: string): SlackActionReceipt | null {
     const select = `SELECT receipt_key AS receiptKey, project_id AS projectId,
       action_id AS actionId, feature_id AS featureId, phase_id AS phaseId,
-      message_ts AS messageTs, actor_user_id AS actorUserId, outcome, recorded_at AS recordedAt
+      message_ts AS messageTs, actor_user_id AS actorUserId, outcome, recorded_at AS recordedAt,
+      merge_repository AS mergeRepository, merge_pr_number AS mergePrNumber
       FROM slack_action_receipts`;
     const scope = receiptScope(receiptKey);
     const row = scope
@@ -332,7 +301,19 @@ export function createProjectRegistry(
           ORDER BY receipt_key = ? DESC, receipt_key LIMIT 1`)
           .get(...scope.keys, ...scope.ids, scope.keys[0])
       : db.prepare(`${select} WHERE receipt_key = ?`).get(receiptKey);
-    return (row as SlackActionReceipt | undefined) ?? null;
+    if (!row) return null;
+    const { mergeRepository, mergePrNumber, ...receipt } =
+      row as SlackActionReceipt & {
+        mergeRepository: string | null;
+        mergePrNumber: number | null;
+      };
+    if (mergeRepository !== null && mergePrNumber !== null) {
+      receipt.mergeTarget = {
+        repository: mergeRepository,
+        prNumber: mergePrNumber,
+      };
+    }
+    return receipt;
   }
 
   const claimActionReceipt = db.transaction((receipt: SlackActionReceipt) => {
@@ -345,14 +326,20 @@ export function createProjectRegistry(
     const result = db
       .prepare(`
       INSERT INTO slack_action_receipts (
-        receipt_key, project_id, action_id, feature_id, phase_id, message_ts, actor_user_id, outcome, recorded_at
-      ) VALUES (@receiptKey, @projectId, @actionId, @featureId, @phaseId, @messageTs, @actorUserId, 'claimed', @recordedAt)
+        receipt_key, project_id, action_id, feature_id, phase_id, message_ts, actor_user_id,
+        outcome, recorded_at, merge_repository, merge_pr_number
+      ) VALUES (
+        @receiptKey, @projectId, @actionId, @featureId, @phaseId, @messageTs, @actorUserId,
+        'claimed', @recordedAt, @mergeRepository, @mergePrNumber
+      )
       ON CONFLICT(receipt_key) DO NOTHING
     `)
       .run({
         ...receipt,
         projectId,
         receiptKey: scope?.keys[0] ?? receipt.receiptKey,
+        mergeRepository: receipt.mergeTarget?.repository ?? null,
+        mergePrNumber: receipt.mergeTarget?.prNumber ?? null,
       });
     return result.changes === 1;
   });
@@ -361,6 +348,7 @@ export function createProjectRegistry(
     (
       receiptKey: string,
       outcome: Parameters<ProjectRegistryPort["completeActionReceipt"]>[1],
+      expectedOutcome?: SlackActionReceipt["outcome"],
     ) => {
       const receipt = findActionReceipt(receiptKey);
       if (!receipt) return false;
@@ -368,8 +356,14 @@ export function createProjectRegistry(
         .prepare(`
       UPDATE slack_action_receipts SET outcome = ?
       WHERE receipt_key = ? AND outcome IN ('claimed', 'uncertain')
+        AND (? IS NULL OR outcome = ?)
     `)
-        .run(outcome, receipt.receiptKey);
+        .run(
+          outcome,
+          receipt.receiptKey,
+          expectedOutcome ?? null,
+          expectedOutcome ?? null,
+        );
       return result.changes === 1;
     },
   );

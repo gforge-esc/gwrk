@@ -134,6 +134,7 @@ pnpm exec vitest run src/db/operations.test.ts src/db/db.test.ts src/architectur
 - `src/adapters/git/index.ts` (MODIFY: Implement detached merge-SHA checkouts, ancestry checks and tip-safe branch deletion on `VcsPort`)
 - `src/adapters/github/index.ts` (NEW: Implement `GitHubHarvestPort` raw-body HMAC verification, cursor pagination and PR lookup)
 - `src/adapters/notifications/index.ts` (MODIFY: Stamp `clientMetadataKey`, implement `reconcileDelivery` and keep pilot Telegram disabled)
+- `src/server/slack-durable-notify.test.ts` (NEW: Verify workspace admission and durable metadata transmission without webhook fallback)
 - `src/server/slack-notify.ts` (MODIFY: Return Slack delivery receipts and search thread or channel history for `clientMetadataKey`)
 - `tests/helpers/synthetic-github.ts` (NEW: Provide deterministic synthetic GitHub webhook, PR metadata and paginated poller fixtures)
 - `src/adapters/git/harvest-git.ts` (NEW: Implement the approved VcsHarvestExtensions behind a separate factory for later VcsPort composition)

@@ -4,6 +4,11 @@
 
 import fs from "node:fs";
 import path from "node:path";
+import {
+  scopedFeatureDirectory,
+  scopedFeaturePath,
+  scopedSpecsDirectory,
+} from "../adapters/filesystem/scoped-feature.js";
 import type { GwrkConfig } from "../utils/config.js";
 import {
   detectDefaultBranch,
@@ -210,13 +215,38 @@ export function scanSpecProgress(projectRoot: string): SpecProgress {
   return { totalSpecs, totalPlans };
 }
 
+function scanScopedSpecProgress(projectRoot: string): SpecProgress {
+  const progress = { totalSpecs: 0, totalPlans: 0 };
+  const specs = scopedSpecsDirectory(projectRoot);
+  if (!specs) return progress;
+
+  for (const entry of fs.readdirSync(specs, { withFileTypes: true })) {
+    if (!entry.isDirectory()) continue;
+    const feature = scopedFeatureDirectory(projectRoot, entry.name);
+    if (!feature) continue;
+
+    const spec = scopedFeaturePath(feature, "spec.md");
+    if (spec && fs.statSync(spec, { throwIfNoEntry: false })?.isFile()) {
+      progress.totalSpecs++;
+    }
+    const plan = scopedFeaturePath(feature, "plan.md");
+    if (plan && fs.statSync(plan, { throwIfNoEntry: false })?.isFile()) {
+      progress.totalPlans++;
+    }
+  }
+  return progress;
+}
+
 /**
  * Scans multiple repos and aggregates a PulseReport.
  */
-export function generatePulseReport(config: GwrkConfig): PulseReport {
-  const repos = config.pulse?.repos;
+export function generatePulseReport(
+  config: GwrkConfig,
+  options: { specRoots?: readonly string[] } = {},
+): PulseReport {
+  const repos = config.pulse?.repos ?? [];
 
-  if (!repos || repos.length === 0) {
+  if (repos.length === 0 && options.specRoots === undefined) {
     throw new Error(
       "No repositories tracked. Add repos to .gwrkrc.json pulse.repos",
     );
@@ -227,8 +257,14 @@ export function generatePulseReport(config: GwrkConfig): PulseReport {
     repositories.push(scanRepository(repo));
   }
 
-  // Assuming current working directory is the main project root
-  const specProgress = scanSpecProgress(process.cwd());
+  const specProgress = { totalSpecs: 0, totalPlans: 0 };
+  const scan =
+    options.specRoots === undefined ? scanSpecProgress : scanScopedSpecProgress;
+  for (const root of options.specRoots ?? [process.cwd()]) {
+    const progress = scan(root);
+    specProgress.totalSpecs += progress.totalSpecs;
+    specProgress.totalPlans += progress.totalPlans;
+  }
 
   const report: PulseReport = {
     generatedAt: new Date().toISOString(),

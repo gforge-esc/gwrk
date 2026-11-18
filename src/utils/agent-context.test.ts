@@ -23,6 +23,17 @@ describe("agent-context", () => {
     fs.rmSync(projectRoot, { recursive: true, force: true });
   });
 
+  it("does not expose feature files outside the authorized checkout", async () => {
+    const external = fs.mkdtempSync(path.join(os.tmpdir(), "gwrk-foreign-ctx-"));
+    try {
+      fs.writeFileSync(path.join(external, "spec.md"), "Foreign project spec");
+      fs.symlinkSync(external, path.join(projectRoot, "specs", "099-foreign"));
+      const context = await buildProjectContext(projectRoot);
+      expect(context).toContain("003-slack");
+      expect(context).not.toContain("099-foreign");
+    } finally { fs.rmSync(external, { recursive: true, force: true }); }
+  });
+
   it("should assemble deep project context including specs, plans, and tasks (Phase 2)", async () => {
     const context = await buildProjectContext(projectRoot);
 

@@ -164,6 +164,7 @@ describe("durable operations migration", () => {
         "016-plan-write-order.sql",
         "017-plan-parent-provenance.sql",
         durableMigration,
+        "018-slack-merge-receipt-target.sql",
         "019-outbox-metadata-uniqueness.sql",
       ]);
       const tables = upgraded

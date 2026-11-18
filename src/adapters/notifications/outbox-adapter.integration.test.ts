@@ -59,3 +59,30 @@ describe("durable notification adapter composition", () => {
     );
   });
 });
+
+it.each([
+  { projectId: "beta" },
+  { projectId: "alpha", channel: "C-other" },
+  { projectId: "alpha", threadTs: "1700000000.999999" },
+])(
+  "rejects a conflicting durable delivery scope before sending %j",
+  async (change) => {
+    const adapter = createSlackNotificationAdapter();
+    await adapter
+      .notify({
+        ...change,
+        featureId: "001-fixture",
+        text: "Private result",
+        clientMetadataKey: "notice-1",
+        recipient: {
+          projectId: "alpha",
+          surface: "slack",
+          workspaceId: "W1",
+          channelId: "C1",
+          threadTs: "1700000000.000000",
+        },
+      })
+      .catch(() => undefined);
+    expect(sendSlackMessage).not.toHaveBeenCalled();
+  },
+);
