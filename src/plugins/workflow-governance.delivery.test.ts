@@ -26,8 +26,8 @@ afterEach(async () => {
   await rm(root, { recursive: true, force: true });
 });
 
-async function captureDispatch(workflow: string, profile: ProjectProfile) {
-  vi.spyOn(detector, "detectProfile").mockResolvedValue(profile);
+async function captureDispatch(workflow: string, profile?: ProjectProfile) {
+  if (profile) vi.spyOn(detector, "detectProfile").mockResolvedValue(profile);
   let captured = "";
   const transport = vi
     .spyOn(agents, "dispatchToAgent")
@@ -130,6 +130,56 @@ describe("governance prompt delivery", () => {
       expect.soft(codeQuality, workflow).toContain(rule);
     }
   });
+
+  it.each([
+    {
+      workflow: "gwrk-specify",
+      guidance: ["host repository's dependency evidence"],
+    },
+    {
+      workflow: "gwrk-plan",
+      guidance: [
+        "Read the host repository's architecture and planning documents",
+        "Use the host repository's verification commands in each gate.",
+        "**Done When** uses a fenced `bash` code block.",
+        "#### Done When\n```bash\npython -m pytest tests/test_phase.py\n```",
+      ],
+    },
+  ])(
+    "uses the detected Python profile in $workflow with docs/architecture.md",
+    async ({ workflow, guidance }) => {
+      await writeFile(
+        join(root, "pyproject.toml"),
+        '[project]\nname = "host"\nversion = "0.1.0"\n',
+      );
+      await mkdir(join(root, "docs"));
+      await writeFile(
+        join(root, "docs/architecture.md"),
+        "# Host architecture\n",
+      );
+
+      const captured = await captureDispatch(workflow);
+
+      expect.soft(captured).toContain('language="Python"');
+      for (const instruction of guidance) {
+        expect.soft(captured).toContain(instruction);
+      }
+      const codeQuality = captured.match(
+        /<code_quality>([\s\S]*?)<\/code_quality>/,
+      )?.[1];
+      expect.soft(codeQuality).toContain(
+        "<!-- enforcement-skill: python-standards -->",
+      );
+      for (const nativeContent of [
+        "docs/grounding/architecture.md",
+        "specs/000-build-plan.md",
+        "<!-- enforcement-skill: typescript-standards -->",
+        "pnpm run build",
+      ]) {
+        expect.soft(captured).not.toContain(nativeContent);
+      }
+    },
+  );
 
   it.each([
     {

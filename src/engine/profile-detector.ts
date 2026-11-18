@@ -105,20 +105,6 @@ function detectFilesystemProfile(projectRoot: string): FilesystemProfile {
     /* no package.json */
   }
 
-  // gwrk-native detection via docs/architecture.md
-  if (
-    !isGwrk &&
-    fs.existsSync(path.join(projectRoot, "docs", "architecture.md"))
-  ) {
-    profile.type = "gwrk-native";
-    profile.stack.language = "TypeScript";
-    profile.layout = "src-nested";
-    return { profile, signals: [] };
-  }
-
-  // 2. Scan ALL language markers (not first-match-wins)
-  const signals: LanguageSignal[] = [];
-
   if (isGwrk) {
     profile.type = "pnpm-monorepo";
     profile.stack.language = "TypeScript";
@@ -130,8 +116,11 @@ function detectFilesystemProfile(projectRoot: string): FilesystemProfile {
       formatter: "biome",
       test: "vitest",
     };
-    return { profile, signals };
+    return { profile, signals: [] };
   }
+
+  // 2. Scan ALL language markers (not first-match-wins)
+  const signals: LanguageSignal[] = [];
 
   // pnpm workspace / lockfile or package.json detection
   if (
@@ -242,6 +231,16 @@ function detectFilesystemProfile(projectRoot: string): FilesystemProfile {
   }
 
   // 3. Resolve profile from collected signals
+  if (
+    !signals.some(({ type }) => type === "python") &&
+    fs.existsSync(path.join(projectRoot, "docs", "architecture.md"))
+  ) {
+    profile.type = "gwrk-native";
+    profile.stack.language = "TypeScript";
+    profile.layout = "src-nested";
+    return { profile, signals: [] };
+  }
+
   if (signals.length > 1) {
     // Priority: Cargo.toml over package.json for single projects (backward compat with test)
     if (
