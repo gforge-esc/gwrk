@@ -203,6 +203,7 @@ bash specs/048-project-identity-slack/gates/phase-03.sh
 - `src/server/slack-presence.ts` (MODIFY: Batch away notifications per `(projectId, recipientUserId)` instead of global `users.list`)
 - `src/server/telegram.ts` (MODIFY: Disable Telegram transport in hosted pilot mode with zero outbound calls)
 - `src/server/slack-notify.test.ts` (MODIFY: Verify per-project channel, feature thread and explicit ops channel delivery)
+- `src/adapters/notifications/project-delivery.test.ts` (NEW: Verify accepted recipient thread, project and workspace rejection plus requested-recipient presence through the real adapter)
 - `src/server/slack-presence.test.ts` (MODIFY: Verify away queues stay isolated per project and recipient user)
 - `src/server/telegram.test.ts` (MODIFY: Verify pilot mode disables Telegram even when credentials exist)
 - `src/server/slack-commands.test.ts` (MODIFY: Verify slash commands reject wrong workspace or channel plus unauthorized users and ambiguous bindings)
@@ -332,3 +333,5 @@ None. Full coverage of `specs/048-project-identity-slack/spec.md`.
 Phase 3 review regressions cover enrolled repository propagation in URL lookup and slash approval, crash-left claimed merge reconciliation and synthetic receipt compare-and-set guards. Seven failures preceded the repair. The repaired phase gate passes 162 tests.
 
 Phase 3 final regression repairs classify missing and nonexecutable GitHub CLI launch as typed preflight failures with the original cause. A started process still has an uncertain outcome. Both authorized actors receive private review links at the stored root thread. Three tests failed before repair. The full phase gate passes 168 tests. Slack supports threaded private replies through chat.postEphemeral. Source: https://docs.slack.dev/reference/methods/chat.postEphemeral/.
+
+Phase 4 preparation reproduces five adapter boundary failures. Accepted recipient threads are omitted. Cross-project recipient mismatches and conflicting channel hints reach Slack. Another workspace also reaches the active client. Recipient presence lookup is absent. The required phase gate includes these behavioral regressions. All existing completed phases remain preserved.

@@ -279,7 +279,7 @@
           "title": "Modify index.ts",
           "description": "MODIFY src/adapters/notifications/index.ts. Implement scoped `NotificationPort` receipts, presence lookup and delivery status",
           "status": "open",
-          "gateScript": "pnpm build\npnpm exec vitest run src/server/slack-notify.test.ts src/server/slack-presence.test.ts src/server/telegram.test.ts src/server/slack-commands.test.ts src/architecture.test.ts",
+          "gateScript": "gates/phase-04.sh",
           "sp": 1
         },
         {
@@ -287,7 +287,7 @@
           "title": "Modify slack-notify.ts",
           "description": "MODIFY src/server/slack-notify.ts. Route by enrolled project and stored feature thread without `process.cwd()` fallback. Tests: src/server/slack-notify.test.ts",
           "status": "open",
-          "gateScript": "pnpm build\npnpm exec vitest run src/server/slack-notify.test.ts src/server/slack-presence.test.ts src/server/telegram.test.ts src/server/slack-commands.test.ts src/architecture.test.ts",
+          "gateScript": "gates/phase-04.sh",
           "sp": 1
         },
         {
@@ -295,7 +295,7 @@
           "title": "Modify slack-presence.ts",
           "description": "MODIFY src/server/slack-presence.ts. Batch away notifications per `(projectId, recipientUserId)` instead of global `users.list`. Tests: src/server/slack-presence.test.ts",
           "status": "open",
-          "gateScript": "pnpm build\npnpm exec vitest run src/server/slack-notify.test.ts src/server/slack-presence.test.ts src/server/telegram.test.ts src/server/slack-commands.test.ts src/architecture.test.ts",
+          "gateScript": "gates/phase-04.sh",
           "sp": 1
         },
         {
@@ -303,7 +303,7 @@
           "title": "Modify telegram.ts",
           "description": "MODIFY src/server/telegram.ts. Disable Telegram transport in hosted pilot mode with zero outbound calls. Tests: src/server/telegram.test.ts",
           "status": "open",
-          "gateScript": "pnpm build\npnpm exec vitest run src/server/slack-notify.test.ts src/server/slack-presence.test.ts src/server/telegram.test.ts src/server/slack-commands.test.ts src/architecture.test.ts",
+          "gateScript": "gates/phase-04.sh",
           "sp": 1
         }
       ],
@@ -312,7 +312,8 @@
         "src/server/slack-notify.test.ts",
         "src/server/slack-presence.test.ts",
         "src/server/telegram.test.ts",
-        "src/server/slack-commands.test.ts"
+        "src/server/slack-commands.test.ts",
+        "src/adapters/notifications/project-delivery.test.ts"
       ]
     },
     {
