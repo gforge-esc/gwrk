@@ -101,9 +101,10 @@ pnpm exec vitest run src/plugins/manifest.test.ts src/domain/policy-selection.te
 - `src/plugins/builtins/skills/javascript-standards/manifest.yaml` (NEW: Declare `javascript-standards` enforcement skill for `JavaScript` across `scope: all`)
 - `src/plugins/builtins/skills/javascript-standards/SKILL.md` (NEW: Define ESM module boundaries and object port contracts and runtime validation rules)
 - `src/plugins/builtins/skills/gwrk-conventions/manifest.yaml` (MODIFY: Set `projectScope: gwrk` so repository rules stay scoped to `gwrk`)
-- `src/plugins/loader.ts` (MODIFY: Resolve project overrides and read enabled skill bodies before policy selection)
-- `src/plugins/skill-runtime.ts` (MODIFY: Implement `resolveEffectivePolicy` and `formatEffectivePolicyPrompt` and delegate `resolveEnforcementSkills`)
-- `src/commands/plugin.ts` (MODIFY: Route `gwrk plugin list --project` enforcement filtering through `evaluateEnforcementCandidate`)
+- `src/plugins/loader.ts` (MODIFY: Resolve project overrides and require Markdown instructions in enabled packs before policy selection)
+- `src/domain/policy-selection.ts` (MODIFY: Carry the optional pack path through policy selection)
+- `src/plugins/skill-runtime.ts` (MODIFY: Implement `resolveEffectivePolicy` and `formatEffectivePolicyPrompt` and delegate `resolveEnforcementSkills`. Render each selected pack directory once.)
+- `src/commands/plugin.ts` (MODIFY: Build active `gwrk plugin list --project` rows from shared policy selection and use `evaluateEnforcementCandidate` for disabled rows)
 - `src/plugins/skill-runtime.test.ts` (MODIFY: Verify policy composition, override precedence and `gwrk-conventions` scoping with loader-provided bodies)
 - `src/plugins/skill-runtime.p15.red.test.ts` (AMEND: Adapt the legacy loader mock to supply skill bodies. Verify consistent selectors across built-in, global and project-local sources.)
 - `src/plugins/enforcement.test.ts` (MODIFY: Verify `javascript-standards` loading and confirm external projects exclude `gwrk-conventions` even when their display name matches)
@@ -127,9 +128,13 @@ pnpm exec vitest run src/plugins/manifest.test.ts src/domain/policy-selection.te
 | TR-010 | integration | `src/plugins/framework-pack-compatibility.test.ts` | All five baselines and pinned manifests for ten published packs resolve compatible stacks or report a gap |
 | TR-011 | integration | `src/commands/plugin.p15.red.test.ts` and `src/plugins/policy-selection.integration.test.ts` | Matching runtime and CLI policy selection across legacy and architecture-scoped skills |
 
-Project policy selection tests cover relative and absolute overrides from outside the project. An enabled override without `SKILL.md` lets a compatible lower copy supply the rules. If no compatible framework pack supplies a body, the runtime reports a gap. The project listing omits the incomplete pack. A disabled override stays listed as disabled and suppresses the lower copy even without `SKILL.md`.
+Project policy selection tests cover relative and absolute overrides from outside the project. The runtime uses the compatible version `1.0.0` entry when the version `2.0.0` override has a missing, blank or frontmatter-only `SKILL.md`. The JSON project listing shows one active row at version `1.0.0`.
+
+Without a usable entry, the runtime reports `missing-framework-binding` and the listing omits the pack. A disabled override stays listed as disabled and suppresses the lower copy even without `SKILL.md`.
 
 The loader tests apply both project disable settings to an override whose manifest uses a different name. Both settings suppress the override and the compatible entry. With neither setting, only the override supplies rules. The compiled CLI tests use an override for a different architecture and a compatible entry. They expect one disabled row with the configured name and override version. They check both disable settings with matching and renamed manifests.
+
+When an override alias and an installed name point to the same directory, the runtime renders the rules once. The listing keeps both names and their statuses. Both project disable settings preserve the installed policy when they disable only the alias.
 
 #### Done When
 

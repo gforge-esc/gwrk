@@ -268,7 +268,11 @@ export class PluginLoader {
             path.join(resolvedPath, "SKILL.md"),
             "utf-8",
           );
-          if (!content.trim()) return;
+          const body = content.replace(
+            /^\uFEFF?---[ \t]*\r?\n(?:[^\n]*\n)*?---[ \t]*(?:\r?\n|$)/,
+            "",
+          );
+          if (!body.trim()) return;
         } catch {
           return;
         }
