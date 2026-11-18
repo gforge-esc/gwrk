@@ -428,6 +428,10 @@ it("reads projection fields from the active Selection section", async () => {
   });
   const target = join(root, ".gwrk/architecture.md");
   const maintainerNote = [
+    "## Rules",
+    "",
+    "- Preserve maintainer policy.",
+    "",
     "## Maintainer notes",
     "",
     "- Language: Go",
@@ -455,6 +459,7 @@ it("reads projection fields from the active Selection section", async () => {
     design,
   });
   expect(rendered).toContain(maintainerNote);
+  expect.soft(rendered.split("Domain policy MUST depend inward").length - 1).toBe(1);
   expect(rendered).toContain("FastAPI routers");
   expect.soft(rendered).not.toContain("Use interfaces for ports");
   expect.soft(rendered).not.toContain("Fastify routes");

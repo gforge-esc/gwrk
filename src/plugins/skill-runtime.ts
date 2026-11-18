@@ -235,12 +235,14 @@ export function formatEffectivePolicyPrompt(
     sections.push(
       "Initialization does not assess code conformance. Architecture checks remain unchanged by initialization.",
     );
-    const targetRulesSection = maskPromptExamples(architectureTarget ?? "")
+    const targetRulesSections = maskPromptExamples(architectureTarget ?? "")
       .split(/^#{1,2}[ \t]+/m)
       .slice(1)
-      .find((section) => section.split("\n", 1)[0].trim() === "Rules");
+      .filter((section) => section.split("\n", 1)[0].trim() === "Rules");
     const targetRules = new Set(
-      targetRulesSection?.split("\n").map((line) => line.trim()),
+      targetRulesSections.flatMap((section) =>
+        section.split("\n").map((line) => line.trim()),
+      ),
     );
     const rules = policy.architectureRules
       .map((rule) => `- ${rule}`)
