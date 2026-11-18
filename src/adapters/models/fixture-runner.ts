@@ -1188,7 +1188,8 @@ export class FixtureRunner
 
     try {
       const dispatchEnv = isolatedDispatchEnv(judgeDir);
-      assertNoSecretMaterial(packet, dispatchCredentials(dispatchEnv));
+      const knownSecrets = dispatchCredentials(dispatchEnv);
+      assertNoSecretMaterial(packet, knownSecrets);
       await execFileAsync("git", ["init", "--quiet", judgeDir], {
         timeout: 5000,
       });
@@ -1304,15 +1305,27 @@ export class FixtureRunner
           effort: judge.effort,
           quiet: true,
           dispatcher: async (task) => {
-            const tr = await this.dispatcher({
-              ...task,
-              env: dispatchEnv,
-              effort: judge.effort,
-              routeMode: "pinned",
-              timeoutMs: this.timeoutMs,
-              logPath: join(judgeDir, ".runs", "judge.log"),
-              includeExternalContext: false,
-            });
+            let tr: TaskResult;
+            try {
+              tr = await this.dispatcher({
+                ...task,
+                env: dispatchEnv,
+                effort: judge.effort,
+                routeMode: "pinned",
+                timeoutMs: this.timeoutMs,
+                logPath: join(judgeDir, ".runs", "judge.log"),
+                includeExternalContext: false,
+              });
+            } catch (error) {
+              assertNoSecretMaterial(
+                error instanceof Error
+                  ? { message: error.message, stack: error.stack }
+                  : error,
+                knownSecrets,
+              );
+              throw error;
+            }
+            assertNoSecretMaterial(tr, knownSecrets);
             if (tr.timedOut === true)
               throw new Error("Judge dispatch timed out");
             observedJudgeModel = tr.observedModel ?? "unknown";
@@ -1323,7 +1336,7 @@ export class FixtureRunner
 
       const parsed = JudgeOutput.parse(execution.output);
 
-      return {
+      const verdict: StructuredJudgeVerdict = {
         judgeBackend: judge.backend,
         judgeProvider: judge.provider,
         judgeFamily: judge.family,
@@ -1335,6 +1348,8 @@ export class FixtureRunner
         scores: parsed.scores,
         citations: parsed.citations,
       };
+      assertNoSecretMaterial(verdict, knownSecrets);
+      return verdict;
     } finally {
       await rm(judgeDir, { recursive: true, force: true });
     }

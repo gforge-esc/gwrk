@@ -1055,108 +1055,145 @@ describe("fixture runner adapter", () => {
     { label: "accepts a report-only verdict", timedOut: false },
     { label: "TR-022 rejects a timed-out verdict", timedOut: true },
     { label: "TR-023 blocks a credential in the judge packet", secret: true },
-  ])("$label", async ({ timedOut, secret }) => {
-    const judge: ModelCandidate = {
-      backend: "frontier-judge-cli",
-      provider: "frontier-provider",
-      family: "frontier-family",
-      modelId: "frontier-judge-v1",
-      effort: "high",
-    };
+    {
+      label: "TR-023 blocks a credential in a judge verdict",
+      secretVerdict: true,
+    },
+    {
+      label: "TR-023 blocks a credential in observed judge identity",
+      secretObserved: true,
+    },
+    {
+      label: "TR-023 blocks a credential in failed judge stderr",
+      secretStderr: true,
+    },
+    {
+      label: "TR-023 blocks a credential in a judge transport error",
+      secretError: true,
+    },
+  ])(
+    "$label",
+    async ({
+      timedOut,
+      secret,
+      secretVerdict,
+      secretObserved,
+      secretStderr,
+      secretError,
+    }) => {
+      const judge: ModelCandidate = {
+        backend: "frontier-judge-cli",
+        provider: "frontier-provider",
+        family: "frontier-family",
+        modelId: "frontier-judge-v1",
+        effort: "high",
+      };
 
-    const packet: JudgeVerdictPacket = {
-      comparisonId: "eval-blinded-42",
-      role: "implement",
-      fixtureSummary: "Synthetic evaluation for ticket routing repair",
-      optionA: secret
-        ? opaqueFixtureCredential
-        : "Clean pure domain queue selection function implementation",
-      optionB: "Incomplete queue selection function without triage handling",
-      gateEvidenceSummary: "Option A passed all deterministic gates",
-    };
+      const packet: JudgeVerdictPacket = {
+        comparisonId: "eval-blinded-42",
+        role: "implement",
+        fixtureSummary: "Synthetic evaluation for ticket routing repair",
+        optionA: secret
+          ? opaqueFixtureCredential
+          : "Clean pure domain queue selection function implementation",
+        optionB: "Incomplete queue selection function without triage handling",
+        gateEvidenceSummary: "Option A passed all deterministic gates",
+      };
 
-    const judgeDispatcher = vi.fn(
-      async (task: TaskDispatch): Promise<TaskResult> => {
-        expect(task.workflow).toBe("gwrk-model-judge");
-        expect(task.agent).toBe(judge.backend);
-        expect(task.model).toBe(judge.modelId);
-        expect(task.effort).toBe(judge.effort);
-        expect(task.stdin).toContain("Comparison ID: eval-blinded-42");
-        expect(task.stdin).toContain("Option A:");
-        expect(task.stdin).toContain("Option B:");
+      const judgeDispatcher = vi.fn(
+        async (task: TaskDispatch): Promise<TaskResult> => {
+          expect(task.workflow).toBe("gwrk-model-judge");
+          expect(task.agent).toBe(judge.backend);
+          expect(task.model).toBe(judge.modelId);
+          expect(task.effort).toBe(judge.effort);
+          expect(task.stdin).toContain("Comparison ID: eval-blinded-42");
+          expect(task.stdin).toContain("Option A:");
+          expect(task.stdin).toContain("Option B:");
 
-        const judgeOutput = {
-          summary: "Blinded comparison verdict",
-          intents: [],
-          winner: "A",
-          optionARegression: false,
-          optionBRegression: true,
-          scores: { optionA: 96, optionB: 40 },
-          citations: [
-            {
-              inputRef: "implement-seeded-defect",
-              outputRef: "optionA",
-              gateRef: "behavior",
-              claim: "Option A resolves all boundary conditions correctly",
-            },
-          ],
-        };
+          if (secretError) throw new Error(opaqueFixtureCredential);
+          const judgeOutput = {
+            summary: "Blinded comparison verdict",
+            intents: [],
+            winner: "A",
+            optionARegression: false,
+            optionBRegression: true,
+            scores: { optionA: 96, optionB: 40 },
+            citations: [
+              {
+                inputRef: "implement-seeded-defect",
+                outputRef: "optionA",
+                gateRef: "behavior",
+                claim: secretVerdict
+                  ? opaqueFixtureCredential
+                  : "Option A resolves all boundary conditions correctly",
+              },
+            ],
+          };
 
-        return {
-          exitCode: 0,
-          timedOut,
-          stdout: JSON.stringify(judgeOutput),
-          stderr: "",
-          durationS: 0,
-          durationMs: 250,
-          observedModel: "frontier-judge-v1",
-        };
-      },
-    );
-
-    const runner = createFixtureRunner({ dispatcher: judgeDispatcher });
-    if (secret) {
-      vi.stubEnv("OPENAI_API_KEY", opaqueFixtureCredential);
-      try {
-        await expect(runner.judgeComparison(judge, packet)).rejects.toThrow(
-          /secret material/i,
-        );
-        expect(judgeDispatcher).not.toHaveBeenCalled();
-      } finally {
-        vi.unstubAllEnvs();
-      }
-      return;
-    }
-    if (timedOut) {
-      await expect(runner.judgeComparison(judge, packet)).rejects.toThrow(
-        /timed out/i,
-      );
-      expect(judgeDispatcher).toHaveBeenCalledTimes(1);
-      return;
-    }
-    const verdict = await runner.judgeComparison(judge, packet);
-
-    expect(judgeDispatcher).toHaveBeenCalledTimes(1);
-    expect(verdict).toEqual({
-      judgeBackend: "frontier-judge-cli",
-      judgeProvider: "frontier-provider",
-      judgeFamily: "frontier-family",
-      judgeModelId: "frontier-judge-v1",
-      observedJudgeModel: "frontier-judge-v1",
-      winner: "A",
-      optionARegression: false,
-      optionBRegression: true,
-      scores: { optionA: 96, optionB: 40 },
-      citations: [
-        {
-          inputRef: "implement-seeded-defect",
-          outputRef: "optionA",
-          gateRef: "behavior",
-          claim: "Option A resolves all boundary conditions correctly",
+          return {
+            exitCode: secretStderr ? 1 : 0,
+            timedOut,
+            stdout: JSON.stringify(judgeOutput),
+            stderr: secretStderr ? opaqueFixtureCredential : "",
+            durationS: 0,
+            durationMs: 250,
+            observedModel: secretObserved
+              ? opaqueFixtureCredential
+              : "frontier-judge-v1",
+          };
         },
-      ],
-    });
-  });
+      );
+
+      const runner = createFixtureRunner({ dispatcher: judgeDispatcher });
+      if (
+        secret ||
+        secretVerdict ||
+        secretObserved ||
+        secretStderr ||
+        secretError
+      ) {
+        vi.stubEnv("OPENAI_API_KEY", opaqueFixtureCredential);
+        try {
+          await expect(runner.judgeComparison(judge, packet)).rejects.toThrow(
+            /secret material/i,
+          );
+          expect(judgeDispatcher).toHaveBeenCalledTimes(secret ? 0 : 1);
+        } finally {
+          vi.unstubAllEnvs();
+        }
+        return;
+      }
+      if (timedOut) {
+        await expect(runner.judgeComparison(judge, packet)).rejects.toThrow(
+          /timed out/i,
+        );
+        expect(judgeDispatcher).toHaveBeenCalledTimes(1);
+        return;
+      }
+      const verdict = await runner.judgeComparison(judge, packet);
+
+      expect(judgeDispatcher).toHaveBeenCalledTimes(1);
+      expect(verdict).toEqual({
+        judgeBackend: "frontier-judge-cli",
+        judgeProvider: "frontier-provider",
+        judgeFamily: "frontier-family",
+        judgeModelId: "frontier-judge-v1",
+        observedJudgeModel: "frontier-judge-v1",
+        winner: "A",
+        optionARegression: false,
+        optionBRegression: true,
+        scores: { optionA: 96, optionB: 40 },
+        citations: [
+          {
+            inputRef: "implement-seeded-defect",
+            outputRef: "optionA",
+            gateRef: "behavior",
+            claim: "Option A resolves all boundary conditions correctly",
+          },
+        ],
+      });
+    },
+  );
 
   it.each([
     { label: "null packet", output: null },
