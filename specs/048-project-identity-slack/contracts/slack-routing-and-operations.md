@@ -258,3 +258,12 @@ CLI enrollment and status commands follow ADR-004 (`[exit:N | Xs]` on stderr and
 | `gwrk project list` | query | List enrolled projects, aliases, Slack bindings and readiness | Directs caller to `gwrk project enroll` when empty |
 | `gwrk project show <project>` | query | Show one enrolled project, legacy aliases and role bindings | Lists known project slugs on miss |
 | `gwrk status` | query | Report local project, daemon liveness, remote reachability, project readiness and Slack delivery | Exits `1` with explicit `serverReachable: false` when a configured or running server fails health or status checks |
+
+
+## Merge outcome reconciliation
+
+Buttons and reactions share merge outcome handling. A transport timeout after a remote effect leaves an uncertain receipt. Another user event must not repeat the merge while that outcome remains uncertain.
+
+Use a typed inspection method on VcsPort to reconcile the exact pull request in the authorized checkout's verified repository. A confirmed merged state completes the original receipt without another merge. Missing inspection capability and unavailable evidence remain uncertain. Only a confirmed failure permits another claim. Keep concurrent retries on one receipt attempt.
+
+The GitHub adapter pins the verified host and repository for inspection and mutation commands. Ambient GH_REPO and checkout default-repository settings must not select another project. Distinguish confirmed rejection from an ambiguous transport failure at the boundary.

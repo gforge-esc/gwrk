@@ -123,6 +123,14 @@ pnpm exec vitest run src/db/scoping.test.ts src/db/db.test.ts src/db/plan.test.t
 
 #### Files
 
+- `src/ports/vcs-port.ts` (MODIFY: Add typed inspection for uncertain merge reconciliation within the authorized repository)
+- `src/adapters/git/project-id.ts` (MODIFY: Read identity from the authorized checkout without inherited Git selectors)
+- `src/adapters/git/process-env.ts` (CREATE: Reuse the reviewed checkout environment isolation helper)
+- `src/adapters/filesystem/scoped-feature.ts` (CREATE: Validate feature paths and file containment before scoped reads)
+- `src/utils/agent-context.ts` (MODIFY: Exclude feature entries and files outside the authorized checkout)
+- `src/utils/agent-context.test.ts` (MODIFY: Cover canonical feature containment)
+- `src/server/slack-commands.test.ts` (MODIFY: Cover scoped status, logs and effort reads)
+
 - `src/application/project-routing/index.ts` (NEW: Coordinate project resolution and role checks plus action receipts and thread delivery)
 - `src/adapters/git/index.ts` (MODIFY: Implement identity discovery, pull request URL lookup and pull request merge on `VcsPort`)
 - `src/server/slack-messages.ts` (MODIFY: Stamp `projectId`, project slug and `rootTs` into Slack blocks and action values)
