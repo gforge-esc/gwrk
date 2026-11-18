@@ -16,33 +16,37 @@
           "id": "T001",
           "title": "Modify PROMPT.md",
           "description": "MODIFY src/plugins/builtins/workflows/gwrk-specify/PROMPT.md. Use selected architecture and the current project layout. FR-001.",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/phase-01.sh",
-          "sp": 1
+          "sp": 1,
+          "completedAt": "2026-11-18T19:54:09.765Z"
         },
         {
           "id": "T002",
           "title": "Modify PROMPT.md",
           "description": "MODIFY src/plugins/builtins/workflows/gwrk-plan/PROMPT.md. Use current hexagonal boundaries and preserve the parser contract. FR-001.",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/phase-01.sh",
-          "sp": 1
+          "sp": 1,
+          "completedAt": "2026-11-18T19:54:16.930Z"
         },
         {
           "id": "T003",
           "title": "Modify principal-engineer.md",
           "description": "MODIFY src/plugins/builtins/personas/principal-engineer.md. Use the project's verification commands and schema standards. FR-001.",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/phase-01.sh",
-          "sp": 1
+          "sp": 1,
+          "completedAt": "2026-11-18T19:54:20.864Z"
         },
         {
           "id": "T004",
           "title": "Modify agent.ts",
           "description": "MODIFY src/utils/agent.ts. Add shared conflict guidance beside the intact decision index. FR-002.. Tests: src/utils/agent.grounding-decisions.test.ts",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/phase-01.sh",
-          "sp": 1
+          "sp": 1,
+          "completedAt": "2026-11-18T19:54:24.327Z"
         }
       ],
       "sp_estimate": 4,

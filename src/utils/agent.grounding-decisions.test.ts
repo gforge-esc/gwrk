@@ -249,3 +249,18 @@ describe("029 FR-013: every dispatch learns what it may not do (US-004)", () => 
     }
   });
 });
+
+
+describe("decision status authority", () => {
+  it("preserves mixed decision statuses and adds conflict guidance", async () => {
+    const index = INDEX_BODY + "\n| " + adr("998") + " | target | Decided | Preserve the adopted boundary. |\n| " + adr("997") + " | old boundary | Superseded | Retain for lineage. |\n";
+    writeIndexFixture(workDir, index);
+    const prompt = await assembledPrompt(workDir);
+    expect(prompt).toContain(`<architecture_decisions>\n${index}\n</architecture_decisions>`);
+    const authority = prompt.match(/<decision_authority>([\s\S]*?)<\/decision_authority>/)?.[1];
+    expect(authority).toMatch(/Proposed[\s\S]*Decided/);
+    expect(authority).toMatch(/conflict[\s\S]*(?:stop|resolve)/i);
+    expect(authority).toMatch(/Superseded[\s\S]*(?:lineage|history)/);
+    expect(authority).toMatch(/ratif/i);
+  });
+});

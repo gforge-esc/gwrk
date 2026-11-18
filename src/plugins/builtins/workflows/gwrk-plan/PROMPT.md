@@ -42,14 +42,13 @@ The plan MUST be grounded in `docs/grounding/architecture.md`:
 - **Foxtrot Charlie Pillars**: Discovery, Definition, Shipping, Delivery — commands align to pillars.
 - **Agent-Native Contract** ([ADR-004](docs/decisions/ADR-004-agent-native-output.md)): Every command emits `[exit:N | Xs]` on stderr. `--format json` is independent. `--agent` activates Layer 2 protections.
 
-Source Layout:
-- CLI entry + Commander routing → `src/cli.ts`
-- Command handlers → `src/commands/`
-- Business logic + discovery → `src/engine/`
-- Build server + dispatch → `src/server/`
-- Shared utilities (exec, config, state, signal, output) → `src/utils/`
-- SQLite schema + queries → `src/db/`
-- Zod schemas → co-located with consumers
+Source layout follows the hexagonal dependency direction:
+- Pure domain policy and validated domain values belong in `src/domain/`.
+- Boundary contracts belong in `src/ports/`.
+- Use cases belong in `src/application/` and depend inward on domain and port contracts.
+- Filesystem, database, network and CLI effects belong in `src/adapters/`.
+- Composition wires adapters to ports. Preserve existing compatibility entry points during migration.
+- Read the current source tree before naming files. Legacy engine and server modules remain migration surfaces.
 
 Database Standards:
 - **SQLite**: Local-first via `better-sqlite3`. WAL mode.
@@ -63,7 +62,7 @@ Decisions:
 [/type]
 
 [type: generic]
-Reference the project's own architecture documentation and existing directory structure for file layout decisions.
+Read the selected architecture target and decision index when present. Use the project's language, framework, toolchain and existing directory structure. Target context does not establish existing code conformance.
 [/type]
 
 ## Inputs
@@ -158,14 +157,9 @@ Fill every `{{PLACEHOLDER}}` token. Do not invent sections or skip any.
 <output_rules>
 - Map **every** `US-###` and `FR-###` from the spec to a phase. Unmapped items go in Deferred Items.
 [type: gwrk-native]
-- Use the gwrk source layout for file paths:
-  - CLI entry → `src/cli.ts`
-  - Command handlers → `src/commands/<command>.ts`
-  - Business logic + discovery → `src/engine/<module>.ts`
-  - Build server routes → `src/server/<module>.ts`
-  - Shared utilities → `src/utils/<module>.ts`
-  - SQLite → `src/db/index.ts`, `src/db/migrations/`
-  - Tests → co-located `<module>.test.ts`
+- Map pure policy to `src/domain/`, boundary contracts to `src/ports/`, use cases to `src/application/` and effects to `src/adapters/`.
+- Inspect the current source tree and composition before selecting paths. Preserve compatibility entry points required by the phase.
+- Keep framework and storage types outside domain signatures. Pass clocks and environment values through ports or explicit inputs.
 [/type]
 [type: generic]
 - Use the project's existing source layout for file paths.
@@ -252,8 +246,8 @@ pnpm vitest run path/to/phase.test.ts
 
 ### 5. Generate `data-model.md` (if entities exist in spec)
 
-- Define SQLite schema additions (SQL CREATE TABLE statements).
-- Define Zod types for domain schemas.
+- Use the project's selected storage and schema validation standards. Define storage changes only when the feature requires them.
+- Define validated domain values and boundary contracts in the project's language. Keep framework types outside the domain.
 - Write to `{feature_dir}/data-model.md`.
 
 ### 6. Generate `contracts/` (MANDATORY if APIs or shared types exist)

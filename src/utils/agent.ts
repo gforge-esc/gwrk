@@ -614,6 +614,9 @@ export async function dispatchToAgent(task: TaskDispatch): Promise<TaskResult> {
       try {
         const content = fs.readFileSync(filePath, "utf-8");
         grounding += `<${tag}>\n${content}\n</${tag}>\n\n`;
+        if (tag === "architecture_decisions") {
+          grounding += `<decision_authority>\nRead the complete applicable records and preserve every recorded status. Proposed targets require human ratification. They do not supersede Decided constraints. If a target conflicts with a Decided constraint, stop and resolve the conflict before implementation. Superseded records preserve history and lineage. Do not enforce their replaced constraints as current decisions.\n</decision_authority>\n\n`;
+        }
         if (!task.quiet) {
           writeScopedStdout(`${DIM}  → Grounding: <${tag}> injected${RESET}\n`);
         }
