@@ -69,12 +69,16 @@ it("runs the CI lint command against clean and defective tracked source", () => 
     symlinkSync(join(repo, "node_modules"), join(root, "node_modules"), "dir");
     writeFileSync(
       join(root, ".gitignore"),
-      ".gwrkrc.local.json\nnode_modules\n",
+      ".gwrkrc.local.json\nnode_modules\n.runs/\n",
     );
     writeFileSync(
       join(root, ".gwrkrc.local.json"),
       "{ invalid ignored machine config",
     );
+    mkdirSync(join(root, ".runs"));
+    writeFileSync(join(root, ".runs/sandbox-registry.json"), "[]");
+    const trackedRuntimeSource = join(root, ".runs/tracked.ts");
+    writeFileSync(trackedRuntimeSource, "export const tracked = 1;\n");
     mkdirSync(join(root, "src"));
     const source = join(root, "src/value.ts");
     const nestedConfig = join(root, "src/.gwrkrc.local.json");
@@ -85,6 +89,7 @@ it("runs the CI lint command against clean and defective tracked source", () => 
       ["init", "-q"],
       ["add", "--", "src/value.ts"],
       ["add", "-f", "--", "src/.gwrkrc.local.json"],
+      ["add", "-f", "--", ".runs/tracked.ts"],
     ]) {
       const result = spawnSync("git", args, {
         cwd: root,
@@ -106,6 +111,18 @@ it("runs the CI lint command against clean and defective tracked source", () => 
     };
     const clean = run();
     expect(clean.status, clean.stdout + clean.stderr).toBe(0);
+    writeFileSync(trackedRuntimeSource, "export  const tracked=1;\n");
+    const trackedFailure = run();
+    expect(
+      trackedFailure.status,
+      trackedFailure.stdout + trackedFailure.stderr,
+    ).toBe(1);
+    expect(trackedFailure.stdout + trackedFailure.stderr).toContain(
+      ".runs/tracked.ts",
+    );
+    rmSync(trackedRuntimeSource);
+    const deleted = run();
+    expect(deleted.status, deleted.stdout + deleted.stderr).toBe(0);
     writeFileSync(nestedConfig, "{ invalid tracked config");
     const malformed = run();
     const diagnostics = malformed.stdout + malformed.stderr;
