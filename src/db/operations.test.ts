@@ -2414,7 +2414,7 @@ describe("durable operations review regressions", () => {
     });
   });
 
-  it("skips malformed JSONL and leaves missing .gwrk directories untouched", () => {
+  it("reads historical dispatch formats and leaves missing .gwrk directories untouched", () => {
     const storeWithoutReader = createOperationsStore(db);
     const directory = join(root, ".gwrk");
     expect(readLegacyDispatches(root)).toEqual([]);
@@ -2431,6 +2431,16 @@ describe("durable operations review regressions", () => {
       taskId: "T001",
     };
     const { createdAt: _createdAt, ...phaseWideRecord } = withoutTasks;
+    const timestampedPhaseWideRecord = {
+      id: "timestamped-phase-wide",
+      featureId,
+      phaseId: phaseOne,
+      backend: legacyRecord.backend,
+      status: "queued",
+      branchName: `phase/${featureId}-${phaseOne}`,
+      attempts: [],
+      createdAt: now,
+    };
     mkdirSync(directory);
     writeFileSync(
       join(directory, "dispatches.jsonl"),
@@ -2447,18 +2457,22 @@ describe("durable operations review regressions", () => {
           { ...legacyRecord, status: "unknown" },
           { ...legacyRecord, backend: " " },
           withoutAttempts,
-          withoutTasks,
+          { ...withoutTasks, createdAt: " " },
+          { ...withoutTasks, createdAt: null },
           { ...withoutTasks, taskId: " " },
+          { ...withoutTasks, tasks: "T001" },
           historicalRecord,
           legacyRecord,
           phaseWideRecord,
+          timestampedPhaseWideRecord,
         ].map((value) => JSON.stringify(value)),
       ].join("\n"),
     );
-    expect.soft(readLegacyDispatches(root)).toEqual([
+    expect.soft(readLegacyDispatches(root)).toStrictEqual([
       { ...historicalRecord, evidenceLevel: "legacy_unverified" },
       { ...legacyRecord, evidenceLevel: "legacy_unverified" },
       { ...phaseWideRecord, evidenceLevel: "legacy_unverified" },
+      { ...timestampedPhaseWideRecord, evidenceLevel: "legacy_unverified" },
     ]);
     expect
       .soft(
@@ -2466,13 +2480,13 @@ describe("durable operations review regressions", () => {
           .legacyUnverifiedDispatches,
         "injected reader count",
       )
-      .toBe(3);
+      .toBe(4);
     expect
       .soft(
         storeWithoutReader.getOperationsStatus("alpha").historical
           .legacyUnverifiedDispatches,
         "fallback reader count",
       )
-      .toBe(3);
+      .toBe(4);
   });
 });

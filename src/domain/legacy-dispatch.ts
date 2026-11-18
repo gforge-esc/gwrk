@@ -24,7 +24,7 @@ export type LegacyDispatchPayload = Record<string, unknown> &
   } & (
     | { createdAt: string; taskId: string }
     | { createdAt: string; tasks: unknown[] }
-    | { createdAt?: never; taskId?: never; tasks?: never }
+    | { createdAt?: string; taskId?: never; tasks?: never }
   );
 
 function isNonblankString(value: unknown): value is string {
@@ -49,9 +49,9 @@ function isLegacyDispatchPayload(
     Array.isArray(record.attempts) &&
     ((isNonblankString(record.createdAt) &&
       (isNonblankString(record.taskId) || Array.isArray(record.tasks))) ||
-      (record.createdAt === undefined &&
-        record.taskId === undefined &&
-        record.tasks === undefined))
+      (record.taskId === undefined &&
+        record.tasks === undefined &&
+        (record.createdAt === undefined || isNonblankString(record.createdAt))))
   );
 }
 

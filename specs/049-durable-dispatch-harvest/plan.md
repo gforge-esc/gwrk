@@ -116,6 +116,7 @@ pnpm exec vitest run src/domain/durable-dispatch.test.ts src/domain/durable-harv
 | TR-003 | integration | `src/db/operations.test.ts` | Duplicate gate failure claim rejection without writes after restart for pending, uncertain and expired sending rows |
 | TR-003 | integration | `src/db/operations.test.ts` | Send and reconciliation after restart for the committed gate failure notice using its saved Slack thread and metadata key |
 | TR-005 | integration | `src/db/db.test.ts` | Migration `018` preserves legacy rows and marks unverified records |
+| TR-005 | integration | `src/db/operations.test.ts` | Four historical dispatch shapes preserved as `legacy_unverified` and counted by both SQLite status paths with malformed lines excluded |
 
 #### Done When
 
