@@ -10,6 +10,8 @@ import { execSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { Command } from "commander";
+import { createAgentPortAdapter } from "../adapters/agents/index.js";
+import { InvalidAgentRegistryError } from "../adapters/agents/registry-loader.js";
 import {
   logCliError,
   logCliOutput,
@@ -67,7 +69,7 @@ import {
   saveTaskState,
 } from "../utils/state.js";
 
-import { getBackendSelector } from "../server/index.js";
+import type { SelectedAgentRoute } from "../ports/agent-port.js";
 import { SandboxManager } from "../server/sandbox.js";
 import { resolveProjectId } from "../utils/project-id.js";
 import { pillarBackend } from "../utils/resolve-agent.js";
@@ -104,6 +106,18 @@ function recordHistory(...args: Parameters<typeof dbRecordHistory>): void {
   }
 }
 
+function shipModel(
+  route: SelectedAgentRoute,
+  legacy: boolean,
+): string | undefined {
+  if (legacy) {
+    return route.useAdapterModelDefaults ? route.effectiveModel : route.model;
+  }
+  return route.useAdapterModelDefaults
+    ? (route.adapterModel ?? undefined)
+    : route.model;
+}
+
 /**
  * Ship a single phase through the full lifecycle.
  * Returns the exit code (0 = success, non-zero = failure).
@@ -115,8 +129,13 @@ async function shipPhase(
   opts: Record<string, string | boolean | undefined>,
   cwd: string,
   selectedModel?: string,
-  selectedCommand?: string,
-  overrides: { stateRoot?: string; branchName?: string } = {},
+  overrides: {
+    stateRoot?: string;
+    branchName?: string;
+    selectedEffort?: string;
+    reviewModel?: string;
+    reviewEffort?: string;
+  } = {},
 ): Promise<number> {
   // Resolve prefix: "003" → "003-slack"
   const feature = resolveFeature(featureInput, cwd);
@@ -247,7 +266,7 @@ async function shipPhase(
           MAX_ITERATIONS: opts.maxIterations as string,
           CI_TIMEOUT: opts.ciTimeout as string,
           AGENT_BACKEND: backend,
-          GEMINI_MODEL: selectedModel || process.env.GEMINI_MODEL,
+          GEMINI_MODEL: selectedModel,
         },
         stdio: "inherit",
       });
@@ -289,7 +308,9 @@ async function shipPhase(
           branchName: overrides.branchName,
           dryRun: !!opts.dryRun,
           selectedModel,
-          selectedCommand,
+          selectedEffort: overrides.selectedEffort,
+          reviewModel: overrides.reviewModel,
+          reviewEffort: overrides.reviewEffort,
         },
         existingState,
       );
@@ -625,8 +646,7 @@ Examples:
           }
 
           // FR-022: Workstation setup pre-flight check.
-          // A dry-run only prints what would happen — it never touches git or the
-          // agent, so it must not require a provisioned workstation.
+          // Dry-run previews routing without dispatching work.
           const setupState = loadSetupState();
           if (!opts.dryRun && !isSetupComplete(setupState)) {
             blocked("Run gwrk init first");
@@ -639,7 +659,8 @@ Examples:
           const taskState = loadTaskState(specDir);
 
           if (phase) {
-            const phaseId = `phase-${phase.padStart(2, "0")}`;
+            const phaseNumber = phase.replace(/^phase-/, "");
+            const phaseId = `phase-${phaseNumber.padStart(2, "0")}`;
             const phaseData = taskState.phases.find((p) => p.id === phaseId);
 
             // --force: always clear stale orchestrator state, regardless of task status
@@ -680,7 +701,7 @@ Examples:
                 `${YELLOW}⚠${RESET} Force mode: resetting Phase ${phase} tasks to open`,
               );
             }
-            phases = [phase];
+            phases = [phaseNumber];
           } else {
             const allPhases = taskState.phases.map((p) =>
               p.id.replace("phase-", ""),
@@ -789,33 +810,60 @@ Examples:
             );
           }
 
+          const agentPort = createAgentPortAdapter({ projectRoot: cwd });
+          const explicitBackend = opts.agent as string | undefined;
+          const routeContext = { feature, language: "typescript", taskSP: 1 };
+          const implementationRoute = {
+            type: "implement" as const,
+            explicitBackend,
+            resolveDispatchModel: !opts.legacy,
+            useAmbientModelDefaults:
+              !opts.legacy && explicitBackend !== undefined,
+            legacyModelDefault:
+              opts.legacy && explicitBackend !== undefined
+                ? process.env.GEMINI_MODEL
+                : undefined,
+            requireRegistry: explicitBackend === undefined,
+            historyMode:
+              explicitBackend === undefined
+                ? ("quota-tiebreak" as const)
+                : undefined,
+            backendEligibility: opts.legacy
+              ? ("script-owned" as const)
+              : explicitBackend === undefined
+                ? undefined
+                : ("installed" as const),
+          };
+
           if (opts.dryRun) {
-            // Report the backend that would build without invoking the agent.
-            // With --agent it's authoritative; otherwise the router selects at
-            // run time by quota — resolve it through the real selector so the
-            // dry-run matches the actual run.
-            if (opts.agent) {
+            try {
+              const implementation = await agentPort.selectRoute({
+                ...implementationRoute,
+                preview: true,
+              });
+              const { adapterModel } = implementation;
+              const previewModel = opts.legacy
+                ? shipModel(implementation, true)
+                : adapterModel === null
+                  ? "default"
+                  : adapterModel;
+              const provisional = explicitBackend === undefined;
+              const label = provisional
+                ? "Provisional route with"
+                : "Would build with";
               logCliOutput(
-                `  🤖 Would build with backend: ${opts.agent} (--agent override)`,
+                `  🤖 ${label} backend: ${implementation.backend}, model: ${previewModel ?? implementation.model}, effort: ${implementation.effort ?? "default"} (router: ${implementation.reason})`,
               );
-            } else {
-              try {
-                const selection = await getBackendSelector(cwd).selectBackend({
-                  runId: `ship-dryrun-${feature}`,
-                  feature,
-                  phase: `phase-${phases[0].padStart(2, "0")}`,
-                  taskType: "implement",
-                  language: "typescript",
-                  taskSP: 1,
-                });
+              if (provisional) {
                 logCliOutput(
-                  `  🤖 Would build with backend: ${selection.backend} (router: ${selection.reason})`,
-                );
-              } catch {
-                logCliOutput(
-                  `  🤖 Router default: ${pillarBackend(config, "implement")} (agents.implement)`,
+                  "  Live quota checks can change the backend and model.",
                 );
               }
+            } catch (error) {
+              if (error instanceof InvalidAgentRegistryError) throw error;
+              logCliOutput(
+                `  🤖 Could not select an implementation route: ${error}`,
+              );
             }
             if (opts.worktree) {
               dryRunFmt(
@@ -874,39 +922,40 @@ Examples:
 
           try {
             for (const p of phases) {
-              let currentBackend = opts.agent as string as AgentBackendId;
-              let selectedModel: string | undefined;
-              let selectedCommand: string | undefined;
-
-              if (!currentBackend) {
-                // Select on the primary checkout so the quota cache/cooldown is
-                // shared, not scattered across ephemeral worktrees.
-                const selector = getBackendSelector(cwd);
-                const selection = await selector.selectBackend({
-                  runId: `ship-${feature}-${Date.now()}`,
-                  feature,
-                  phase: `phase-${p.padStart(2, "0")}`,
-                  taskType: "implement",
-                  language: "typescript",
-                  taskSP: 1, // Default for orchestrator
-                });
-                currentBackend = selection.backend as AgentBackendId;
-                selectedModel = selection.model;
-                selectedCommand = selection.command;
-                logCliOutput(
-                  `  🤖 Router selected backend: ${selection.backend} (${selection.reason})`,
-                );
-              }
-
+              const phaseContext = {
+                ...routeContext,
+                runId: `ship-${feature}-${Date.now()}`,
+                phase: `phase-${p.padStart(2, "0")}`,
+              };
+              const implementation = await agentPort.selectRoute({
+                ...phaseContext,
+                ...implementationRoute,
+                includeReviewModel: true,
+              });
+              logCliOutput(
+                `  🤖 Router selected backend: ${implementation.backend} (${implementation.reason})`,
+              );
+              const selectedModel = shipModel(
+                implementation,
+                Boolean(opts.legacy),
+              );
               const exitCode = await shipPhase(
                 feature,
                 p,
-                currentBackend,
+                implementation.backend,
                 opts,
                 shipCwd,
                 selectedModel,
-                selectedCommand,
-                overrides,
+                {
+                  ...overrides,
+                  selectedEffort: implementation.effort,
+                  reviewModel:
+                    implementation.reviewModel ??
+                    (!opts.legacy && implementation.useAdapterModelDefaults
+                      ? selectedModel
+                      : undefined),
+                  reviewEffort: implementation.reviewEffort,
+                },
               );
               if (exitCode !== 0) {
                 finalExitCode = exitCode;

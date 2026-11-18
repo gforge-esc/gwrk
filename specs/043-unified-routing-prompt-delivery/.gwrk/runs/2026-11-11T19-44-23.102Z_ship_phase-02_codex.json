@@ -1,0 +1,20 @@
+{
+  "runId": "2026-11-11T19:44:23.102Z_ship_p02",
+  "feature": "043-unified-routing-prompt-delivery",
+  "phase": "phase-02",
+  "command": "ship",
+  "agent": "codex",
+  "model": "unknown",
+  "startedAt": "2026-11-11T19:44:23.102Z",
+  "finishedAt": "2026-11-11T20:00:57.284Z",
+  "durationS": 994,
+  "exitCode": 1,
+  "attempt": 1,
+  "reviewVerdict": "NO-GO",
+  "filesChanged": 4,
+  "linesAdded": 37,
+  "linesDeleted": 5,
+  "gitCommit": "8306ff8f82665ae1b86134dc319e0edb4fb6cc2c",
+  "gitBranch": "feat/043-unified-routing-prompt-delivery",
+  "digest": []
+}

@@ -4,10 +4,10 @@
 
 import * as fs from "node:fs";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { QuotaProber } from "../adapters/agents/quota-prober.js";
+import type { AgentBackendConfig } from "../domain/agent-config.js";
+import { TaskClassification } from "../domain/types.js";
 import { execCommand } from "../utils/exec.js";
-import type { AgentBackendConfig } from "./agent-registry.js";
-import { QuotaProber } from "./quota-prober.js";
-import { TaskClassification } from "./task-classifier.js";
 
 vi.mock("node:fs");
 vi.mock("../utils/exec.js");
