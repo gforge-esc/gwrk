@@ -2,15 +2,18 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { execFileSync } from "node:child_process";
 import { realpathSync } from "node:fs";
 import { isAbsolute } from "node:path";
 import type Database from "better-sqlite3";
-import { discoverGitIdentityFacts } from "../adapters/git/project-id.js";
+import {
+  discoverGitIdentityFacts,
+  discoverVerifiedCheckout,
+  discoverVerifiedMirror,
+  normalizeRegistryRepo,
+} from "../adapters/git/project-id.js";
 import {
   computeLegacyProjectIds,
   computeProjectId,
-  normalizeGitRemoteSlug,
 } from "../domain/project-id.js";
 import {
   type EnrolledProject,
@@ -25,42 +28,7 @@ import type { ProjectRegistryPort } from "../ports/store-port.js";
 
 const LEGACY_LOCAL = "legacy-local";
 
-export function normalizeRegistryRepo(repo: string | null): string | null {
-  return repo
-    ? (normalizeGitRemoteSlug(repo)?.replace(/^github\.com\//, "") ?? null)
-    : null;
-}
-
-export function discoverVerifiedCheckout(root: string) {
-  if (!isAbsolute(root)) return null;
-  try {
-    const realRoot = realpathSync(root);
-    const topLevel = execFileSync("git", ["rev-parse", "--show-toplevel"], {
-      cwd: root,
-      encoding: "utf8",
-      stdio: ["ignore", "pipe", "ignore"],
-      timeout: 5_000,
-    }).trim();
-    if (realpathSync(topLevel) !== realRoot) return null;
-    const facts = discoverGitIdentityFacts(root);
-    return facts.gitCommonDir ? facts : null;
-  } catch {
-    return null;
-  }
-}
-
-function discoverVerifiedMirror(root: string) {
-  if (!isAbsolute(root)) return null;
-  try {
-    const facts = discoverGitIdentityFacts(root);
-    return facts.gitCommonDir &&
-      realpathSync(facts.gitCommonDir) === realpathSync(root)
-      ? facts
-      : null;
-  } catch {
-    return null;
-  }
-}
+export { discoverVerifiedCheckout, normalizeRegistryRepo };
 
 export function discoverStoredRepository(
   root: string,

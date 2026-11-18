@@ -7,6 +7,8 @@ import {
   mkdirSync,
   mkdtempSync,
   readFileSync,
+  realpathSync,
+  renameSync,
   rmSync,
   writeFileSync,
 } from "node:fs";
@@ -1024,69 +1026,145 @@ describe("slack-actions (FR-007, US-004, US-005)", () => {
     );
 
     it("reads the authorized project's logs for multiple actors without claiming the button", async () => {
-      const root = mkdtempSync(join(tmpdir(), "gwrk-view-logs-"));
-      try {
-        const runs = join(
-          root,
-          "specs",
-          actionValue.featureId,
-          ".gwrk",
-          "runs",
+      const { project, registry } = createSqliteRegistry();
+      const root = project.localRoot;
+      const runs = join(root, "specs", actionValue.featureId, ".gwrk", "runs");
+      mkdirSync(runs, { recursive: true });
+      writeFileSync(
+        join(runs, "phase-01.json"),
+        JSON.stringify({ exit_code: 0, gate_result: "project alpha gate" }),
+      );
+      const claim = vi.spyOn(registry, "claimActionReceipt");
+      await registerSlackActions(mockApp as App, {
+        ...mockContext,
+        routingService: createProjectRoutingService({ registry }),
+      });
+
+      for (const user of [SYNTHETIC_USER_VIEWER, SYNTHETIC_USER_MAINTAINER]) {
+        const click = clickArgs("view_logs", project.projectId, user);
+        await actionHandlers.view_logs(click);
+        expect(click.ack).toHaveBeenCalledOnce();
+        expect(click.client.chat.postEphemeral).toHaveBeenCalledWith(
+          expect.objectContaining({
+            user,
+            thread_ts: SYNTHETIC_THREAD_ALPHA.rootTs,
+            blocks: expect.arrayContaining([
+              expect.objectContaining({
+                text: expect.objectContaining({
+                  text: expect.stringContaining("project alpha gate"),
+                }),
+              }),
+            ]),
+          }),
         );
-        mkdirSync(runs, { recursive: true });
-        writeFileSync(
-          join(runs, "phase-01.json"),
-          JSON.stringify({ exit_code: 0, gate_result: "project alpha gate" }),
+      }
+      const unbound = clickArgs("view_logs", project.projectId, "U_UNBOUND");
+      await actionHandlers.view_logs(unbound);
+      expect(unbound.logger.error).toHaveBeenCalledWith(
+        expect.stringContaining("UNAUTHORIZED_USER"),
+      );
+      expect(unbound.client.chat.postEphemeral).toHaveBeenCalledWith(
+        expect.objectContaining({
+          text: expect.stringContaining("Action unauthorized"),
+        }),
+      );
+      expect(claim).not.toHaveBeenCalled();
+    });
+
+    it.each(["revise_spec", "revise_plan"])(
+      "protects logs and %s from a replaced checkout and allows one revision after restoration",
+      async (actionId) => {
+        const { project, registry } = createSqliteRegistry();
+        const alpha = project.localRoot;
+        const root = mkdtempSync(join(tmpdir(), "gwrk-action-replacement-"));
+        onTestFinished(() => rmSync(root, { recursive: true, force: true }));
+        const beta = join(root, "beta");
+        const savedAlpha = join(root, "alpha");
+        for (const [checkout, gate] of [
+          [alpha, "Alpha restored gate"],
+          [beta, "Beta private gate"],
+        ]) {
+          const runs = join(
+            checkout,
+            "specs",
+            actionValue.featureId,
+            ".gwrk",
+            "runs",
+          );
+          mkdirSync(runs, { recursive: true });
+          writeFileSync(
+            join(runs, "phase-01.json"),
+            JSON.stringify({ gate_result: gate }),
+          );
+        }
+        const gitOptions = {
+          cwd: beta,
+          stdio: "ignore" as const,
+          timeout: 5_000,
+        };
+        execFileSync("git", ["init", "--quiet"], gitOptions);
+        execFileSync(
+          "git",
+          ["remote", "add", "origin", "https://github.com/org/beta.git"],
+          gitOptions,
         );
-        const registry = createSyntheticRegistry({
-          projects: [
-            { ...SYNTHETIC_PROJECT_ALPHA, localRoot: root },
-            SYNTHETIC_PROJECT_BETA,
-          ],
-        });
         const claim = vi.spyOn(registry, "claimActionReceipt");
         await registerSlackActions(mockApp as App, {
           ...mockContext,
           routingService: createProjectRoutingService({ registry }),
         });
 
-        for (const user of [SYNTHETIC_USER_VIEWER, SYNTHETIC_USER_MAINTAINER]) {
-          const click = clickArgs("view_logs", actionValue.projectId, user);
-          await actionHandlers.view_logs(click);
-          expect(click.ack).toHaveBeenCalledOnce();
-          expect(click.client.chat.postEphemeral).toHaveBeenCalledWith(
-            expect.objectContaining({
-              user,
-              thread_ts: SYNTHETIC_THREAD_ALPHA.rootTs,
-              blocks: expect.arrayContaining([
-                expect.objectContaining({
-                  text: expect.objectContaining({
-                    text: expect.stringContaining("project alpha gate"),
-                  }),
-                }),
-              ]),
-            }),
-          );
-        }
-        const unbound = clickArgs(
-          "view_logs",
-          actionValue.projectId,
-          "U_UNBOUND",
-        );
-        await actionHandlers.view_logs(unbound);
-        expect(unbound.logger.error).toHaveBeenCalledWith(
-          expect.stringContaining("UNAUTHORIZED_USER"),
-        );
-        expect(unbound.client.chat.postEphemeral).toHaveBeenCalledWith(
+        renameSync(alpha, savedAlpha);
+        renameSync(beta, alpha);
+        const logs = clickArgs("view_logs", project.projectId);
+        await actionHandlers.view_logs(logs);
+        expect.soft(logs.client.chat.postEphemeral).toHaveBeenCalledWith(
           expect.objectContaining({
-            text: expect.stringContaining("Action unauthorized"),
+            text: expect.stringContaining("checkout is unavailable"),
           }),
         );
-        expect(claim).not.toHaveBeenCalled();
-      } finally {
-        rmSync(root, { recursive: true, force: true });
-      }
-    });
+        expect
+          .soft(JSON.stringify(logs.client.chat.postEphemeral.mock.calls))
+          .not.toContain("Beta private gate");
+
+        const denied = clickArgs(actionId, project.projectId);
+        await actionHandlers[actionId](denied);
+        expect.soft(denied.client.chat.postEphemeral).toHaveBeenCalledWith(
+          expect.objectContaining({
+            text: expect.stringContaining("checkout is unavailable"),
+          }),
+        );
+        expect.soft(claim).not.toHaveBeenCalled();
+        expect.soft(mockSpawn).not.toHaveBeenCalled();
+
+        renameSync(alpha, beta);
+        renameSync(savedAlpha, alpha);
+        const restoredLogs = clickArgs("view_logs", project.projectId);
+        await actionHandlers.view_logs(restoredLogs);
+        expect
+          .soft(
+            JSON.stringify(restoredLogs.client.chat.postEphemeral.mock.calls),
+          )
+          .toContain("Alpha restored gate");
+        await Promise.all([
+          actionHandlers[actionId](clickArgs(actionId, project.projectId)),
+          actionHandlers[actionId](clickArgs(actionId, project.projectId)),
+        ]);
+        const successfulClaims = claim.mock.results.filter(
+          ({ value }) => value === true,
+        );
+        expect.soft(successfulClaims).toHaveLength(1);
+        expect(mockSpawn).toHaveBeenCalledExactlyOnceWith(
+          "gwrk",
+          [
+            "define",
+            actionId === "revise_spec" ? "spec" : "plan",
+            actionValue.featureId,
+          ],
+          expect.objectContaining({ cwd: realpathSync(alpha) }),
+        );
+      },
+    );
 
     it("reports no open PR when the VCS port returns no URL", async () => {
       const { execSync } = await import("node:child_process");

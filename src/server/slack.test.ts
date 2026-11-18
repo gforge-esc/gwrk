@@ -2,7 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
+import { execFileSync } from "node:child_process";
+import { mkdirSync, mkdtempSync, realpathSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { App } from "@slack/bolt";
@@ -20,12 +21,15 @@ import {
   SYNTHETIC_CHANNEL_BETA,
   SYNTHETIC_PROJECT_ALPHA,
   SYNTHETIC_PROJECT_BETA,
+  SYNTHETIC_ROLES,
   SYNTHETIC_THREAD_ALPHA,
   SYNTHETIC_USER_MAINTAINER,
   SYNTHETIC_WORKSPACE_ID,
   createSyntheticRegistry,
 } from "../../tests/helpers/synthetic-slack";
+import { resolveProjectId } from "../adapters/git/project-id.js";
 import { createSqliteProjectRegistryAdapter } from "../adapters/sqlite/index";
+import { getStats, listRuns } from "../db/runs.js";
 import type { GwrkConfig } from "../utils/config";
 import * as slackClient from "../utils/slack-client";
 import type { DispatchQueue } from "./dispatch";
@@ -47,7 +51,10 @@ vi.mock("../adapters/sqlite/index", () => ({
   createSqliteProjectRegistryAdapter: vi.fn(),
 }));
 
-vi.mock("../db/runs.js", () => ({ listRuns: vi.fn(() => []) }));
+vi.mock("../db/runs.js", () => ({
+  getStats: vi.fn(() => []),
+  listRuns: vi.fn(() => []),
+}));
 
 vi.mock("@slack/bolt", () => {
   const mockApp = {
@@ -89,6 +96,36 @@ vi.mock("./slack-presence", () => ({
     stop: vi.fn(),
   },
 }));
+
+function initCheckout(
+  project: typeof SYNTHETIC_PROJECT_ALPHA,
+  root: string,
+  featureId: string,
+) {
+  mkdirSync(join(root, "specs", featureId), { recursive: true });
+  const localRoot = realpathSync(root);
+  const options = { cwd: localRoot, stdio: "ignore" as const, timeout: 5_000 };
+  execFileSync("git", ["init", "--quiet"], options);
+  execFileSync(
+    "git",
+    ["remote", "add", "origin", `https://github.com/${project.repoSlug}.git`],
+    options,
+  );
+  return { ...project, localRoot, projectId: resolveProjectId(localRoot) };
+}
+
+function rolesFor(
+  alpha: typeof SYNTHETIC_PROJECT_ALPHA,
+  beta = SYNTHETIC_PROJECT_BETA,
+) {
+  return SYNTHETIC_ROLES.map((role) => ({
+    ...role,
+    projectId:
+      role.projectId === SYNTHETIC_PROJECT_ALPHA.projectId
+        ? alpha.projectId
+        : beta.projectId,
+  }));
+}
 
 describe("Slack Server Integration", () => {
   const mockDeps = {
@@ -173,11 +210,21 @@ describe("Slack Server Integration", () => {
       appToken: "xapp-test",
     });
     const featureId = "048-project-identity-slack";
+    const root = mkdtempSync(join(tmpdir(), "gwrk-slack-thread-"));
+    onTestFinished(() => rmSync(root, { recursive: true, force: true }));
+    const alpha = initCheckout(SYNTHETIC_PROJECT_ALPHA, root, featureId);
     const registry = createSyntheticRegistry({
-      projects: [{ ...SYNTHETIC_PROJECT_ALPHA, localRoot: process.cwd() }],
-      threads: [{ ...SYNTHETIC_THREAD_ALPHA, featureId }],
+      projects: [alpha],
+      roles: rolesFor(alpha),
+      threads: [
+        { ...SYNTHETIC_THREAD_ALPHA, featureId, projectId: alpha.projectId },
+      ],
     });
-    await startSlackApp({ ...mockDeps, projectRoot: process.cwd(), registry });
+    await startSlackApp({
+      ...mockDeps,
+      projectRoot: alpha.localRoot,
+      registry,
+    });
     const app = getSlackApp()!;
     expect(app.command).toHaveBeenCalledWith("/gwrk", expect.any(Function));
     const handler = vi.mocked(app.command).mock.calls[0][1];
@@ -257,20 +304,23 @@ describe("Slack Server Integration", () => {
     const featureId = SYNTHETIC_THREAD_ALPHA.featureId;
     const root = mkdtempSync(join(tmpdir(), "gwrk-slack-queue-"));
     onTestFinished(() => rmSync(root, { recursive: true, force: true }));
-    const alpha = {
-      ...SYNTHETIC_PROJECT_ALPHA,
-      localRoot: join(root, "alpha"),
-    };
-    const beta = { ...SYNTHETIC_PROJECT_BETA, localRoot: join(root, "beta") };
-    for (const project of [alpha, beta]) {
-      mkdirSync(join(project.localRoot, "specs", featureId), {
-        recursive: true,
-      });
-    }
+    const alpha = initCheckout(
+      SYNTHETIC_PROJECT_ALPHA,
+      join(root, "alpha"),
+      featureId,
+    );
+    const beta = initCheckout(
+      SYNTHETIC_PROJECT_BETA,
+      join(root, "beta"),
+      featureId,
+    );
     await startSlackApp({
       ...mockDeps,
       projectRoot: alpha.localRoot,
-      registry: createSyntheticRegistry({ projects: [alpha, beta] }),
+      registry: createSyntheticRegistry({
+        projects: [alpha, beta],
+        roles: rolesFor(alpha, beta),
+      }),
     });
     const handler = vi.mocked(getSlackApp()!.command).mock.calls[0][1];
     async function run(text: string, channelId: string) {
@@ -298,11 +348,32 @@ describe("Slack Server Integration", () => {
     });
     vi.mocked(mockDeps.queue.enqueue).mockClear();
 
-    for (const command of [dispatch, `status ${featureId}`, "pause"]) {
+    for (const command of [dispatch, "pause"]) {
       const response = await run(command, SYNTHETIC_CHANNEL_BETA);
       expect.soft(response.response_type).toBe("ephemeral");
       expect.soft(JSON.stringify(response.blocks)).toContain("queue");
     }
+    vi.mocked(listRuns).mockReturnValueOnce([
+      {
+        feature_id: featureId,
+        project_id: beta.projectId,
+        command: "ship",
+        phase_id: "phase-07",
+        gate_result: "Beta ledger gate",
+      },
+    ]);
+    const status = await run(
+      `status ${featureId} --project beta`,
+      SYNTHETIC_CHANNEL_BETA,
+    );
+    expect.soft(status.response_type).toBe("ephemeral");
+    expect
+      .soft(listRuns)
+      .toHaveBeenCalledExactlyOnceWith(featureId, beta.projectId);
+    expect.soft(JSON.stringify(status.blocks)).toContain("Beta ledger gate");
+    const summary = await run("status --project beta", SYNTHETIC_CHANNEL_BETA);
+    expect.soft(summary.response_type).toBe("ephemeral");
+    expect.soft(getStats).toHaveBeenCalledExactlyOnceWith(beta.projectId);
     expect(mockDeps.queue.enqueue).not.toHaveBeenCalled();
     expect(mockDeps.queue.getQueue).not.toHaveBeenCalled();
     expect(mockDeps.queue.getDispatch).not.toHaveBeenCalled();

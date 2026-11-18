@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import type { SlackEventMiddlewareArgs } from "@slack/bolt";
+import { verifyEnrolledCheckout } from "../adapters/git/project-id.js";
 import type { ProjectRoutingService } from "../application/project-routing/index.js";
 import { parseProjectSelector } from "../domain/slack-routing.js";
 import { buildProjectContext } from "../utils/agent-context.js";
@@ -13,7 +14,6 @@ import { buildProjectContext } from "../utils/agent-context.js";
 export async function handleMention({
   event,
   say,
-  projectRoot,
   routingService,
   workspaceId,
 }: {
@@ -68,9 +68,6 @@ export async function handleMention({
     return;
   }
 
-  const effectiveRoot =
-    decision.project.localRoot ?? decision.project.mirrorPath ?? projectRoot;
-
   // TR-016: Check for specific file mentions (e.g. workflows or specs)
   if (text.includes("workflows/")) {
     const workflowMatch = event.text.match(
@@ -86,7 +83,17 @@ export async function handleMention({
 
   // TR-016: Check for project status queries
   if (text.includes("status of the project")) {
-    const context = await buildProjectContext(effectiveRoot);
+    const checkout =
+      verifyEnrolledCheckout(decision.project, "localRoot") ??
+      verifyEnrolledCheckout(decision.project, "mirrorPath");
+    if (!checkout) {
+      await say({
+        thread_ts,
+        text: ":warning: The project checkout is unavailable.",
+      });
+      return;
+    }
+    const context = await buildProjectContext(checkout);
     await say({
       thread_ts,
       text: `📊 *Project Status Update*\n\n${context}\n\nDoes this help you understand where we are?`,

@@ -161,18 +161,28 @@ pnpm exec vitest run src/db/scoping.test.ts src/db/db.test.ts src/db/plan.test.t
 
 | ID | Type | Target | Assertion |
 |---|---|---|---|
-| TR-009 | integration | `src/server/slack-actions.test.ts` and `src/adapters/git/index.test.ts` | Checkout origin validation and merge receipt transitions |
+| TR-009 | integration | `src/server/slack-actions.test.ts` and `src/adapters/git/index.test.ts` | Checkout origin validation, merge receipt transitions and revision replay |
 | TR-010 | unit | `src/server/slack-messages.test.ts` | Interactive payloads carry `projectId` and `rootTs` metadata |
-| TR-011 | unit | `src/server/slack-agent.test.ts` | Mentions, direct messages and reactions enforce project selection and roles |
-| TR-012 | unit | `src/server/slack-home.test.ts` | App Home project visibility and Pulse totals limited to authorized checkouts |
-| TR-012a | integration | `src/server/slack-commands.test.ts` and `src/utils/agent-context.test.ts` | Local files accepted and external links excluded from status, logs, effort, Pulse and mention context |
-| TR-012b | integration | `src/server/slack.test.ts` | Private threaded status, public threaded dispatch and unthreaded help |
+| TR-011 | unit | `src/server/slack-agent.test.ts` | Project selection, roles and verified checkout summaries |
+| TR-012 | unit | `src/server/slack-home.test.ts` | Role-based enrollment visibility and Pulse totals from verified checkouts |
+| TR-012a | integration | `src/server/slack-commands.test.ts` and `src/utils/agent-context.test.ts` | Scoped file reads, checkout replacement, mirror fallback and dispatch checkout verification |
+| TR-012b | integration | `src/server/slack.test.ts` | Scoped ledger status, startup queue restrictions and thread delivery |
 
 For the merge receipt tests (TR-009), block unauthorized claims and retries from Bolt redelivery. Inspect the stored repository and pull request after a timeout, even if the card changes. Complete the original receipt on confirmed merge. Keep it uncertain when inspection fails or is unavailable. Allow one claim across concurrent retries after confirmed rejection or preflight failure.
 
 For GitHub origin validation (TR-009), require a checkout-local origin before inspection or merge. Require it for pull request lookups by number or branch too. An origin mismatch records a failed receipt with zero `gh` calls. After the origin is restored, concurrent clicks by the same caller execute one retry without inspection.
 
+For log and revision buttons (TR-009), replace Alpha's checkout with Beta. Return a checkout warning for logs and leave both revision receipts unclaimed. After restoring Alpha, show its logs and start one revision per button across concurrent clicks.
+
+For mention summaries (TR-011), reply in the original thread when Beta replaces Alpha's checkout. Show Alpha's feature after restoration.
+
+For App Home Pulse (TR-012), exclude the replacement repository and its specs while keeping Alpha's enrollment visible. Count Alpha's specs and plans from a verified mirror when the local checkout fails verification.
+
+Status, logs and effort read files inside the verified checkout (TR-012a). Apply the same file boundary to Pulse and mention context. Skip filesystem-based thread lookup and disk history when the checkout fails verification. Use a verified mirror for logs and verify the queue's own checkout before dispatch.
+
 For slash command delivery (TR-012b), send status via `chat.postEphemeral` to the caller in the authorized channel at the stored thread root. Send public dispatch and unthreaded help via `respond`. Set `replace_original: false` for public threaded replies.
+
+For slash command status (TR-012b), read Beta's ledger while the daemon serves Alpha. Scope feature history and summary statistics to Beta and leave the startup queue untouched. Deny dispatch and pause for Beta.
 
 #### Done When
 

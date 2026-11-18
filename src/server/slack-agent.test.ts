@@ -2,13 +2,17 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import { execFileSync } from "node:child_process";
 import * as fs from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import type { App, SlackEventMiddlewareArgs } from "@slack/bolt";
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it, onTestFinished, vi } from "vitest";
 import {
   SYNTHETIC_CHANNEL_ALPHA,
   SYNTHETIC_PROJECT_ALPHA,
   SYNTHETIC_PROJECT_BETA,
+  SYNTHETIC_ROLES,
   SYNTHETIC_THREAD_ALPHA,
   SYNTHETIC_USER_MAINTAINER,
   SYNTHETIC_USER_VIEWER,
@@ -16,6 +20,7 @@ import {
   createSyntheticRegistry,
   createSyntheticVcsPort,
 } from "../../tests/helpers/synthetic-slack.js";
+import { resolveProjectId } from "../adapters/git/project-id.js";
 import { createProjectRoutingService } from "../application/project-routing/index.js";
 import { registerSlackActions } from "./slack-actions.js";
 import { handleDirectMessage, handleMention } from "./slack-agent.js";
@@ -88,6 +93,79 @@ describe("TR-011: Slack project selection and role enforcement", () => {
         text: expect.stringContaining("UNAUTHORIZED_USER"),
       }),
     );
+  });
+
+  it("replies in the original thread when a project's checkout is replaced", async () => {
+    const root = fs.mkdtempSync(join(tmpdir(), "gwrk-mention-checkout-"));
+    onTestFinished(() => fs.rmSync(root, { recursive: true, force: true }));
+    const alphaRoot = join(root, "alpha");
+    const betaRoot = join(root, "beta");
+    for (const [checkout, slug, feature] of [
+      [alphaRoot, "alpha", "001-alpha-feature"],
+      [betaRoot, "beta", "001-beta-private-feature"],
+    ]) {
+      fs.mkdirSync(join(checkout, "specs", feature), { recursive: true });
+      const options = {
+        cwd: checkout,
+        stdio: "ignore" as const,
+        timeout: 5_000,
+      };
+      execFileSync("git", ["init", "--quiet"], options);
+      execFileSync(
+        "git",
+        ["remote", "add", "origin", `https://github.com/org/${slug}.git`],
+        options,
+      );
+    }
+    const alpha = {
+      ...SYNTHETIC_PROJECT_ALPHA,
+      projectId: resolveProjectId(alphaRoot),
+      localRoot: alphaRoot,
+    };
+    const registry = createSyntheticRegistry({
+      projects: [alpha],
+      roles: SYNTHETIC_ROLES.filter(
+        (role) => role.projectId === SYNTHETIC_PROJECT_ALPHA.projectId,
+      ).map((role) => ({ ...role, projectId: alpha.projectId })),
+    });
+    const threadTs = SYNTHETIC_THREAD_ALPHA.rootTs;
+    const say = vi.fn();
+    const input = {
+      event: {
+        type: "app_mention" as const,
+        text: "@gwrk status of the project",
+        channel: SYNTHETIC_CHANNEL_ALPHA,
+        user: SYNTHETIC_USER_VIEWER,
+        ts: "1731320000.000200",
+        event_ts: "1731320000.000200",
+        thread_ts: threadTs,
+      },
+      say,
+      projectRoot: alphaRoot,
+      routingService: createProjectRoutingService({ registry }),
+      workspaceId: SYNTHETIC_WORKSPACE_ID,
+    };
+    const saved = join(root, "saved-alpha");
+    fs.renameSync(alphaRoot, saved);
+    fs.renameSync(betaRoot, alphaRoot);
+    await handleMention(input);
+
+    expect.soft(say).toHaveBeenCalledExactlyOnceWith({
+      thread_ts: threadTs,
+      text: expect.stringContaining("checkout is unavailable"),
+    });
+    expect
+      .soft(JSON.stringify(say.mock.calls))
+      .not.toContain("001-beta-private-feature");
+
+    fs.renameSync(alphaRoot, betaRoot);
+    fs.renameSync(saved, alphaRoot);
+    say.mockClear();
+    await handleMention(input);
+    expect(say).toHaveBeenCalledExactlyOnceWith({
+      thread_ts: threadTs,
+      text: expect.stringContaining("001-alpha-feature"),
+    });
   });
 
   it.each(["stress test", "/skill", "plugin system"])(

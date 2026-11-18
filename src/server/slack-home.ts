@@ -6,6 +6,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import type { App } from "@slack/bolt";
 import type { HomeView, KnownBlock } from "@slack/types";
+import { verifyEnrolledCheckout } from "../adapters/git/project-id.js";
 import type { EnrolledProject } from "../domain/project-registry.js";
 import { generatePulseReport } from "../engine/pulse.js";
 import type { ProjectRegistryPort } from "../ports/store-port.js";
@@ -19,8 +20,7 @@ import { getStatusData } from "./routes/status.js";
 import type { SandboxManager } from "./sandbox.js";
 import type { DispatchRecord, SandboxInfo, SystemStatus } from "./types.js";
 
-function canonicalCheckout(checkout: string | null): string | undefined {
-  if (!checkout) return undefined;
+function canonicalCheckout(checkout: string): string | undefined {
   try {
     return fs.realpathSync(checkout);
   } catch {
@@ -35,8 +35,8 @@ function generateHomePulseReport(
   const visiblePaths = new Set<string>();
   const specRoots = new Set<string>();
   for (const project of projects) {
-    const local = canonicalCheckout(project.localRoot);
-    const mirror = canonicalCheckout(project.mirrorPath);
+    const local = verifyEnrolledCheckout(project, "localRoot");
+    const mirror = verifyEnrolledCheckout(project, "mirrorPath");
     if (local) visiblePaths.add(local);
     if (mirror) visiblePaths.add(mirror);
     const specRoot = local ?? mirror;

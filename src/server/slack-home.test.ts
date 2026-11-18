@@ -6,6 +6,7 @@ import { execFileSync } from "node:child_process";
 import {
   mkdirSync,
   mkdtempSync,
+  renameSync,
   rmSync,
   symlinkSync,
   writeFileSync,
@@ -23,6 +24,7 @@ import {
   SYNTHETIC_WORKSPACE_ID,
   createSyntheticRegistry,
 } from "../../tests/helpers/synthetic-slack.js";
+import { resolveProjectId } from "../adapters/git/project-id.js";
 import { generatePulseReport } from "../engine/pulse.js";
 import type { GwrkConfig } from "../utils/config.js";
 import { getStatusData } from "./routes/status.js";
@@ -68,6 +70,46 @@ vi.mock("../engine/plan-store.js", () => ({
     isEmpty: mockIsEmpty,
   })),
 }));
+
+function initPulseCheckout(
+  project: typeof SYNTHETIC_PROJECT_ALPHA,
+  localRoot: string,
+) {
+  mkdirSync(localRoot, { recursive: true });
+  const gitOptions = {
+    cwd: localRoot,
+    stdio: "ignore" as const,
+    timeout: 5_000,
+  };
+  execFileSync("git", ["init", "--quiet"], gitOptions);
+  execFileSync(
+    "git",
+    ["remote", "add", "origin", `https://github.com/${project.repoSlug}.git`],
+    gitOptions,
+  );
+  execFileSync(
+    "git",
+    ["symbolic-ref", "refs/remotes/origin/HEAD", "refs/remotes/origin/main"],
+    gitOptions,
+  );
+  return { ...project, projectId: resolveProjectId(localRoot), localRoot };
+}
+
+function pulseRegistry(
+  alpha: typeof SYNTHETIC_PROJECT_ALPHA,
+  beta: typeof SYNTHETIC_PROJECT_ALPHA,
+) {
+  return createSyntheticRegistry({
+    projects: [alpha, beta],
+    roles: SYNTHETIC_ROLES.map((role) => ({
+      ...role,
+      projectId:
+        role.projectId === SYNTHETIC_PROJECT_ALPHA.projectId
+          ? alpha.projectId
+          : beta.projectId,
+    })),
+  });
+}
 
 describe("slack-home", () => {
   const mockStatus: SystemStatus = {
@@ -281,14 +323,14 @@ describe("slack-home", () => {
       );
       const root = mkdtempSync(join(tmpdir(), "gwrk-home-pulse-"));
       onTestFinished(() => rmSync(root, { recursive: true, force: true }));
-      const alpha = {
-        ...SYNTHETIC_PROJECT_ALPHA,
-        localRoot: join(root, "alpha-pulse"),
-      };
-      const beta = {
-        ...SYNTHETIC_PROJECT_BETA,
-        localRoot: join(root, "beta-pulse"),
-      };
+      const alpha = initPulseCheckout(
+        SYNTHETIC_PROJECT_ALPHA,
+        join(root, "alpha-pulse"),
+      );
+      const beta = initPulseCheckout(
+        SYNTHETIC_PROJECT_BETA,
+        join(root, "beta-pulse"),
+      );
       for (const [project, features] of [
         [alpha, ["001-alpha", "002-alpha"]],
         [beta, ["001-beta", "002-beta", "003-beta"]],
@@ -301,21 +343,6 @@ describe("slack-home", () => {
         writeFileSync(
           join(project.localRoot, "specs", features[0], "plan.md"),
           "# Plan\n",
-        );
-        const gitOptions = {
-          cwd: project.localRoot,
-          stdio: "ignore" as const,
-          timeout: 5_000,
-        };
-        execFileSync("git", ["init", "--quiet"], gitOptions);
-        execFileSync(
-          "git",
-          [
-            "symbolic-ref",
-            "refs/remotes/origin/HEAD",
-            "refs/remotes/origin/main",
-          ],
-          gitOptions,
         );
       }
       mkdirSync(join(alpha.localRoot, "specs/004-foreign"));
@@ -333,7 +360,7 @@ describe("slack-home", () => {
         },
         alpha.localRoot,
         {
-          registry: createSyntheticRegistry({ projects: [alpha, beta] }),
+          registry: pulseRegistry(alpha, beta),
           userId: SYNTHETIC_USER_VIEWER,
           workspaceId: SYNTHETIC_WORKSPACE_ID,
         },
@@ -343,6 +370,74 @@ describe("slack-home", () => {
       expect.soft(blocks).not.toContain("beta-pulse");
       expect(blocks).toContain("Spec Progress: 1/2 plans ready");
     });
+
+    it.each([false, true])(
+      "excludes a replacement checkout from Pulse with verified mirror available: %s",
+      async (useMirror) => {
+        const actual =
+          await vi.importActual<typeof import("../engine/pulse.js")>(
+            "../engine/pulse.js",
+          );
+        vi.mocked(generatePulseReport).mockImplementationOnce(
+          actual.generatePulseReport,
+        );
+        const root = mkdtempSync(join(tmpdir(), "gwrk-home-replacement-"));
+        onTestFinished(() => rmSync(root, { recursive: true, force: true }));
+        const alpha = initPulseCheckout(
+          SYNTHETIC_PROJECT_ALPHA,
+          join(root, "alpha-enrolled-path"),
+        );
+        const beta = initPulseCheckout(
+          SYNTHETIC_PROJECT_BETA,
+          join(root, "beta"),
+        );
+        const betaFeature = join(beta.localRoot, "specs", "001-beta");
+        mkdirSync(betaFeature, { recursive: true });
+        writeFileSync(join(betaFeature, "spec.md"), "# Beta spec");
+        renameSync(alpha.localRoot, join(root, "saved-alpha"));
+        renameSync(beta.localRoot, alpha.localRoot);
+
+        const repos = [alpha.localRoot];
+        let mirrorPath: string | null = null;
+        if (useMirror) {
+          const mirror = initPulseCheckout(
+            SYNTHETIC_PROJECT_ALPHA,
+            join(root, "alpha-mirror"),
+          );
+          const alphaFeature = join(mirror.localRoot, "specs", "001-alpha");
+          mkdirSync(alphaFeature, { recursive: true });
+          writeFileSync(join(alphaFeature, "spec.md"), "# Alpha spec");
+          writeFileSync(join(alphaFeature, "plan.md"), "# Alpha plan");
+          mirrorPath = mirror.localRoot;
+          repos.push(mirror.localRoot);
+        }
+        const view = await buildHomeTab(
+          mockStatus,
+          {
+            ...mockConfig,
+            pulse: { repos },
+          },
+          alpha.localRoot,
+          {
+            registry: pulseRegistry({ ...alpha, mirrorPath }, beta),
+            userId: SYNTHETIC_USER_VIEWER,
+            workspaceId: SYNTHETIC_WORKSPACE_ID,
+          },
+        );
+        const blocks = JSON.stringify(view.blocks);
+        expect.soft(blocks).toContain(alpha.name);
+        expect.soft(blocks).not.toContain(beta.name);
+        expect.soft(blocks).not.toContain("*alpha-enrolled-path*:");
+        expect
+          .soft(blocks)
+          .toContain(
+            useMirror
+              ? "Spec Progress: 1/1 plans ready"
+              : "Spec Progress: 0/0 plans ready",
+          );
+        if (useMirror) expect(blocks).toContain("*alpha-mirror*:");
+      },
+    );
 
     it("hides sandbox details and queue counts from an unbound user", async () => {
       const view = await buildHomeTab(

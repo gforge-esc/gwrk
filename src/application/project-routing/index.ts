@@ -34,10 +34,12 @@ type ActionClaimInput = ActionInput & {
   nowIso: string;
   retryFailed?: boolean;
   requiredProjectId?: string | null;
+  resolveCheckout?: (project: EnrolledProject) => string | undefined;
 };
 type ActionClaimDecision =
   | (Extract<RouteDecision, { ok: true }> & {
       receiptKey?: string;
+      checkoutRoot?: string;
       mergeTarget?: MergeTarget;
     })
   | Extract<RouteDecision, { ok: false }>;
@@ -231,6 +233,15 @@ export function createProjectRoutingService(
         };
       }
 
+      const checkoutRoot = input.resolveCheckout?.(decision.project);
+      if (input.resolveCheckout && !checkoutRoot) {
+        return {
+          ok: false,
+          code: "REMOTE_AUTH_REQUIRED",
+          message: "The project checkout is unavailable.",
+        };
+      }
+
       const scope = actionScope(decision.project.projectId, input);
       let receiptKey = attemptKey(scope, 0);
 
@@ -244,7 +255,8 @@ export function createProjectRoutingService(
         receiptKey = attemptKey(scope, attempt);
       }
 
-      return claimAction(decision, input, scope, receiptKey);
+      const claim = claimAction(decision, input, scope, receiptKey);
+      return claim.ok && checkoutRoot ? { ...claim, checkoutRoot } : claim;
     },
 
     async authorizeAndClaimMerge(input): Promise<ActionClaimDecision> {

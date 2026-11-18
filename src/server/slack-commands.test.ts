@@ -6,6 +6,8 @@ import { execFileSync } from "node:child_process";
 import {
   mkdirSync,
   mkdtempSync,
+  realpathSync,
+  renameSync,
   rmSync,
   symlinkSync,
   writeFileSync,
@@ -25,6 +27,7 @@ import {
   SYNTHETIC_CHANNEL_ALPHA,
   SYNTHETIC_PROJECT_ALPHA,
   SYNTHETIC_PROJECT_BETA,
+  SYNTHETIC_ROLES,
   SYNTHETIC_THREAD_ALPHA,
   SYNTHETIC_USER_MAINTAINER,
   SYNTHETIC_USER_VIEWER,
@@ -32,6 +35,7 @@ import {
   createSyntheticRegistry,
   createSyntheticVcsPort,
 } from "../../tests/helpers/synthetic-slack.js";
+import { resolveProjectId } from "../adapters/git/project-id.js";
 import { createProjectRoutingService } from "../application/project-routing/index.js";
 import type { DispatchQueue } from "./dispatch.js";
 import type { GitManager } from "./git-manager.js";
@@ -62,10 +66,42 @@ vi.mock("node:child_process", async (importOriginal) => {
   };
 });
 
-// Mock resolveFeature to pass through
-vi.mock("../utils/resolve-feature.js", () => ({
-  resolveFeature: vi.fn().mockImplementation((input: string) => input),
-}));
+function initCheckout(
+  project: typeof SYNTHETIC_PROJECT_ALPHA,
+  root: string,
+  bare = false,
+) {
+  mkdirSync(root, { recursive: true });
+  const options = { cwd: root, stdio: "ignore" as const, timeout: 5_000 };
+  execFileSync(
+    "git",
+    bare ? ["init", "--quiet", "--bare"] : ["init", "--quiet"],
+    options,
+  );
+  execFileSync(
+    "git",
+    ["remote", "add", "origin", `https://github.com/${project.repoSlug}.git`],
+    options,
+  );
+  return { ...project, localRoot: root, projectId: resolveProjectId(root) };
+}
+
+function registryFor(
+  alpha: typeof SYNTHETIC_PROJECT_ALPHA,
+  beta = SYNTHETIC_PROJECT_BETA,
+) {
+  return createSyntheticRegistry({
+    projects: [alpha, beta],
+    roles: SYNTHETIC_ROLES.map((role) => ({
+      ...role,
+      projectId:
+        role.projectId === SYNTHETIC_PROJECT_ALPHA.projectId
+          ? alpha.projectId
+          : beta.projectId,
+    })),
+    threads: [{ ...SYNTHETIC_THREAD_ALPHA, projectId: alpha.projectId }],
+  });
+}
 
 describe("slack-commands (FR-015, US-004)", () => {
   let mockQueue: Mocked<DispatchQueue>;
@@ -97,7 +133,13 @@ describe("slack-commands (FR-015, US-004)", () => {
       mergePhaseBack: vi.fn(),
     } as unknown as Mocked<GitManager>;
 
-    const registry = createSyntheticRegistry();
+    const root = realpathSync(mkdtempSync(join(tmpdir(), "gwrk-slash-")));
+    onTestFinished(() => rmSync(root, { recursive: true, force: true }));
+    const alpha = initCheckout(SYNTHETIC_PROJECT_ALPHA, root);
+    mkdirSync(join(root, "specs", SYNTHETIC_THREAD_ALPHA.featureId), {
+      recursive: true,
+    });
+    const registry = registryFor(alpha);
     const routingService = createProjectRoutingService({ registry });
     const mockVcs = createSyntheticVcsPort();
 
@@ -105,10 +147,10 @@ describe("slack-commands (FR-015, US-004)", () => {
       userId: SYNTHETIC_USER_MAINTAINER,
       channelId: SYNTHETIC_CHANNEL_ALPHA,
       workspaceId: SYNTHETIC_WORKSPACE_ID,
-      projectRoot: "/tmp",
+      projectRoot: root,
       buildServerUrl: "http://localhost:3000",
       queue: mockQueue,
-      queueProjectId: SYNTHETIC_PROJECT_ALPHA.projectId,
+      queueProjectId: alpha.projectId,
       monitor: mockMonitor,
       git: mockGit,
       routingService,
@@ -163,11 +205,8 @@ describe("slack-commands (FR-015, US-004)", () => {
         vi.unstubAllEnvs();
         rmSync(root, { recursive: true, force: true });
       });
-      const alpha = {
-        ...SYNTHETIC_PROJECT_ALPHA,
-        localRoot: join(root, "alpha"),
-      };
-      const beta = { ...SYNTHETIC_PROJECT_BETA, localRoot: join(root, "beta") };
+      const alpha = initCheckout(SYNTHETIC_PROJECT_ALPHA, join(root, "alpha"));
+      const beta = initCheckout(SYNTHETIC_PROJECT_BETA, join(root, "beta"));
       const featureId = "001-scoped";
       const run = ".gwrk/runs/phase-01.json";
       const alphaFeature = join(alpha.localRoot, "specs", featureId);
@@ -206,7 +245,7 @@ describe("slack-commands (FR-015, US-004)", () => {
         userId: SYNTHETIC_USER_VIEWER,
         projectRoot: beta.localRoot,
         routingService: createProjectRoutingService({
-          registry: createSyntheticRegistry({ projects: [alpha, beta] }),
+          registry: registryFor(alpha, beta),
         }),
       };
       const status = await handleSlashCommand(
@@ -231,6 +270,84 @@ describe("slack-commands (FR-015, US-004)", () => {
       }
     },
   );
+
+  it("rejects logs and skips thread lookup when another repository replaces the enrolled checkout", async () => {
+    const root = context.projectRoot;
+    const alpha = initCheckout(SYNTHETIC_PROJECT_ALPHA, join(root, "alpha"));
+    const beta = initCheckout(SYNTHETIC_PROJECT_BETA, join(root, "beta"));
+    const featureId = SYNTHETIC_THREAD_ALPHA.featureId;
+    const runs = join(beta.localRoot, "specs", featureId, ".gwrk/runs");
+    mkdirSync(runs, { recursive: true });
+    writeFileSync(
+      join(runs, "beta-run.json"),
+      JSON.stringify({ gate_result: "Beta private gate" }),
+    );
+    renameSync(alpha.localRoot, join(root, "saved-alpha"));
+    renameSync(beta.localRoot, alpha.localRoot);
+
+    const registry = registryFor(alpha, beta);
+    const getThread = vi.spyOn(registry, "getFeatureThread");
+    const scopedContext = {
+      ...context,
+      routingService: createProjectRoutingService({ registry }),
+    };
+    const logs = await handleSlashCommand(`logs ${featureId}`, scopedContext);
+    expect.soft(logs.response_type).toBe("ephemeral");
+    expect
+      .soft(JSON.stringify(logs.blocks))
+      .toContain("checkout is unavailable");
+    expect.soft(JSON.stringify(logs.blocks)).not.toContain("Beta private gate");
+    expect.soft(logs.thread_ts).toBeUndefined();
+
+    const status = await handleSlashCommand(
+      `status ${featureId}`,
+      scopedContext,
+    );
+    expect
+      .soft(JSON.stringify(status.blocks))
+      .toContain("No dispatch runs found");
+    expect.soft(JSON.stringify(status.blocks)).not.toContain("beta-run.json");
+    expect(getThread).not.toHaveBeenCalled();
+  });
+
+  it("uses a verified mirror for logs and refuses dispatch through a replaced queue checkout", async () => {
+    const root = context.projectRoot;
+    const alpha = initCheckout(SYNTHETIC_PROJECT_ALPHA, join(root, "alpha"));
+    const beta = initCheckout(SYNTHETIC_PROJECT_BETA, join(root, "beta"));
+    const mirror = initCheckout(
+      SYNTHETIC_PROJECT_ALPHA,
+      join(root, "alpha.git"),
+      true,
+    );
+    const featureId = SYNTHETIC_THREAD_ALPHA.featureId;
+    const runs = join(mirror.localRoot, "specs", featureId, ".gwrk/runs");
+    mkdirSync(runs, { recursive: true });
+    writeFileSync(
+      join(runs, "mirror-run.json"),
+      JSON.stringify({ gate_result: "Alpha mirror gate" }),
+    );
+    renameSync(alpha.localRoot, join(root, "saved-alpha"));
+    renameSync(beta.localRoot, alpha.localRoot);
+    mkdirSync(join(alpha.localRoot, "specs", featureId), { recursive: true });
+    const scopedContext = {
+      ...context,
+      projectRoot: alpha.localRoot,
+      queueProjectId: alpha.projectId,
+      routingService: createProjectRoutingService({
+        registry: registryFor({ ...alpha, mirrorPath: mirror.localRoot }),
+      }),
+    };
+
+    const logs = await handleSlashCommand("logs 003", scopedContext);
+    expect.soft(JSON.stringify(logs.blocks)).toContain("Alpha mirror gate");
+    expect.soft(logs.thread_ts).toBe(SYNTHETIC_THREAD_ALPHA.rootTs);
+    const dispatch = await handleSlashCommand(
+      `dispatch ${featureId} 3`,
+      scopedContext,
+    );
+    expect.soft(dispatch.response_type).toBe("ephemeral");
+    expect(mockQueue.enqueue).not.toHaveBeenCalled();
+  });
 
   it.each(["dispatch 003-slack 3", "approve 003-slack phase-01"])(
     "threads %s in the bound Slack conversation",
@@ -275,7 +392,7 @@ describe("slack-commands (FR-015, US-004)", () => {
     expect((context.vcs as any).mergedPrs).toHaveLength(1);
     expect((context.vcs as any).mergedPrs[0].prNumber).toBe(42);
     expect(merge).toHaveBeenCalledWith(
-      SYNTHETIC_PROJECT_ALPHA.localRoot,
+      context.projectRoot,
       42,
       "github.com/org/alpha",
     );
@@ -290,7 +407,7 @@ describe("slack-commands (FR-015, US-004)", () => {
       "gwrk",
       ["ship", "003-slack", "1"],
       expect.objectContaining({
-        cwd: SYNTHETIC_PROJECT_ALPHA.localRoot,
+        cwd: context.projectRoot,
         detached: true,
       }),
     );
@@ -305,7 +422,7 @@ describe("slack-commands (FR-015, US-004)", () => {
       "gwrk",
       ["define", "spec", "003-slack"],
       expect.objectContaining({
-        cwd: SYNTHETIC_PROJECT_ALPHA.localRoot,
+        cwd: context.projectRoot,
         detached: true,
       }),
     );
@@ -320,7 +437,7 @@ describe("slack-commands (FR-015, US-004)", () => {
       "gwrk",
       ["define", "plan", "003-slack"],
       expect.objectContaining({
-        cwd: SYNTHETIC_PROJECT_ALPHA.localRoot,
+        cwd: context.projectRoot,
         detached: true,
       }),
     );
@@ -348,14 +465,11 @@ describe("slack-commands (FR-015, US-004)", () => {
       vi.unstubAllEnvs();
       rmSync(root, { recursive: true, force: true });
     });
-    const alpha = {
-      ...SYNTHETIC_PROJECT_ALPHA,
-      localRoot: join(root, "alpha-pulse"),
-    };
-    const beta = {
-      ...SYNTHETIC_PROJECT_BETA,
-      localRoot: join(root, "beta-pulse"),
-    };
+    const alpha = initCheckout(
+      SYNTHETIC_PROJECT_ALPHA,
+      join(root, "alpha-pulse"),
+    );
+    const beta = initCheckout(SYNTHETIC_PROJECT_BETA, join(root, "beta-pulse"));
     for (const [project, features] of [
       [alpha, ["001-alpha", "002-alpha"]],
       [beta, ["001-beta", "002-beta", "003-beta"]],
@@ -370,7 +484,6 @@ describe("slack-commands (FR-015, US-004)", () => {
         stdio: "ignore" as const,
         timeout: 5_000,
       };
-      execFileSync("git", ["init", "--quiet"], gitOptions);
       execFileSync(
         "git",
         [
@@ -402,7 +515,7 @@ describe("slack-commands (FR-015, US-004)", () => {
       userId: SYNTHETIC_USER_VIEWER,
       projectRoot: beta.localRoot,
       routingService: createProjectRoutingService({
-        registry: createSyntheticRegistry({ projects: [alpha, beta] }),
+        registry: registryFor(alpha, beta),
       }),
     });
 

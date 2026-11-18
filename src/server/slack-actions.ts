@@ -5,10 +5,12 @@
 import { spawn } from "node:child_process";
 import type { App, BlockAction, ButtonAction } from "@slack/bolt";
 import type { ActionsBlock } from "@slack/types";
+import { verifyEnrolledCheckout } from "../adapters/git/project-id.js";
 import type { ProjectRoutingService } from "../application/project-routing/index.js";
 import { findOpenPr } from "../db/runs.js";
 import { normalizeGitRemoteSlug } from "../domain/project-id.js";
 import type {
+  EnrolledProject,
   MergeTarget,
   SlackActionReceipt,
 } from "../domain/project-registry.js";
@@ -50,6 +52,13 @@ interface ActionVerificationResult {
   mergeTarget?: MergeTarget;
 }
 
+function resolveProjectCheckout(project: EnrolledProject): string | undefined {
+  return (
+    verifyEnrolledCheckout(project, "localRoot") ??
+    verifyEnrolledCheckout(project, "mirrorPath")
+  );
+}
+
 async function verifyAndClaimClick(
   actionId: string,
   // biome-ignore lint/suspicious/noExplicitAny: Slack body structure
@@ -89,6 +98,8 @@ async function verifyAndClaimClick(
   const requiredAccess = requiredAccessForSlackAction(actionId);
   const usesStartupQueue =
     actionId === "retry_phase" || actionId === "request_changes";
+  const revisesCheckout =
+    actionId === "revise_spec" || actionId === "revise_plan";
 
   const input = {
     workspaceId,
@@ -120,6 +131,7 @@ async function verifyAndClaimClick(
     decision = context.routingService.authorizeAndClaimAction({
       ...input,
       nowIso,
+      resolveCheckout: revisesCheckout ? resolveProjectCheckout : undefined,
       requiredProjectId: usesStartupQueue
         ? (context.queueProjectId ?? null)
         : undefined,
@@ -140,7 +152,23 @@ async function verifyAndClaimClick(
     return { ok: false, projectRoot: context.projectRoot, projectId: "" };
   }
 
+  const needsCheckout = actionId === "view_logs" || revisesCheckout;
+  const checkoutRoot =
+    actionId === "view_logs"
+      ? resolveProjectCheckout(decision.project)
+      : decision.checkoutRoot;
+  if (needsCheckout && !checkoutRoot) {
+    await client.chat.postEphemeral({
+      channel: channelId,
+      user: actorUserId,
+      thread_ts: decision.recipient.threadTs,
+      text: ":warning: The project checkout is unavailable.",
+    });
+    return { ok: false, projectRoot: context.projectRoot, projectId: "" };
+  }
+
   const effectiveRoot =
+    checkoutRoot ??
     decision.project.localRoot ??
     decision.project.mirrorPath ??
     context.projectRoot;
