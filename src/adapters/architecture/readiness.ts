@@ -5,7 +5,15 @@
 import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
 import { readFile, readdir, realpath, stat } from "node:fs/promises";
-import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
+import {
+  dirname,
+  isAbsolute,
+  join,
+  posix,
+  relative,
+  resolve,
+  sep,
+} from "node:path";
 import { promisify } from "node:util";
 import { z } from "zod";
 import { validateAssessment } from "../../domain/architecture-assessment.js";
@@ -192,10 +200,11 @@ export async function readArchitectureReadiness(
   let assessmentEvidence = false;
   for (const [directory, fallbackTime] of directories) {
     const prefix = relative(root, directory).split(sep).join("/");
+    const reportPath = posix.join(prefix, "report.md");
     const [report, data, source] = await Promise.all([
-      read(root, `${prefix}/report.md`),
-      read(root, `${prefix}/assessment.json`),
-      read(root, `${prefix}/provenance.json`),
+      read(root, reportPath),
+      read(root, posix.join(prefix, "assessment.json")),
+      read(root, posix.join(prefix, "provenance.json")),
     ]);
     assessmentEvidence ||= [report, data, source].some(
       (file) => file.kind !== "missing",
@@ -229,7 +238,7 @@ export async function readArchitectureReadiness(
     candidates.push({
       time,
       report: {
-        reportPath: `${prefix}/report.md`,
+        reportPath,
         generatedAt: recorded?.generatedAt ?? null,
         revision:
           typeof recorded?.revision === "string" && recorded.revision.trim()

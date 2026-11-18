@@ -112,15 +112,15 @@ Delivers FR-003, scoped discovery. Reuse the selected design and managed target 
 
 | TR-### | Type | Target | Assertion |
 |---|---|---|---|
-| TR-004 | integration | `src/adapters/architecture/readiness.test.ts` | Independent states and deterministic selection across default and custom output |
-| TR-005 | integration | `src/engine/discover.test.ts` | Repository-only discovery with existing fields and no database or server |
-| TR-006 | integration | `src/commands/project.test.ts` | Text and JSON parity, scoped evidence and terminal stderr signal |
+| TR-004 | integration | `src/adapters/architecture/readiness.test.ts` | Independent states, deterministic selection across default and custom output, and a repository-relative `report.md` link for Git-staged evidence at the checkout root |
+| TR-005 | integration | `src/engine/discover.test.ts` | Repository-only discovery with existing fields and no database or server, plus exact adapter data in `architecture` or omission when the adapter returns `undefined` |
+| TR-006 | integration | `src/commands/project.test.ts`, `src/commands/project-discover.readiness.test.ts` | Scoped evidence and text hints for missing context and assessment, optional `architecture` in local, global and agent-mode JSON, and exit 0 with one terminal stderr signal per invocation |
 
 #### Done When
 
 ```bash
 pnpm run build
-pnpm exec vitest run src/adapters/architecture/readiness.test.ts src/engine/discover.test.ts src/commands/project.test.ts src/application/architecture/context.test.ts src/architecture.test.ts
+pnpm exec vitest run src/commands/project-discover.readiness.test.ts src/adapters/architecture/readiness.test.ts src/engine/discover.test.ts src/commands/project.test.ts src/application/architecture/context.test.ts src/architecture.test.ts
 ```
 
 ### Phase 3: Project policy versions
@@ -215,3 +215,5 @@ Both Python dispatch regressions failed before the profile detector repair. The 
 The Phase 1 gate includes the existing source and built review prompt parity checks. Both review workflows now carry the same host guidance and persona reporting rules. Captured Python, unknown and native profiles exercise both workflows. The phase gate passes 194 checks after the parity regressions failed.
 
 The four configured Python dry runs failed before the profile detector repair. All 198 phase gate checks pass after the repair. The CI suite passes 2245 tests with seven skips and six todo cases.
+
+The Phase 2 review regressions failed six checks before repair. The Phase 2 gate passed 62 checks after repair, with one existing skip.

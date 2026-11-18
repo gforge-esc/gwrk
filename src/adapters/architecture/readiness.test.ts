@@ -158,6 +158,29 @@ describe("repository architecture readiness", () => {
       "custom review/evidence/report.md",
     );
   });
+  it("links a Git-staged assessment at the checkout root", async () => {
+    const generatedAt = "2026-11-19T10:00:00Z";
+    execFileSync("git", ["init", "--quiet", root]);
+    await report(".", { generatedAt });
+    execFileSync("git", [
+      "-C",
+      root,
+      "add",
+      "--",
+      "report.md",
+      "assessment.json",
+      "provenance.json",
+    ]);
+    const result = await readArchitectureReadiness(root);
+    expect(result?.assessment.latest?.reportPath).toBe("report.md");
+    expect(result?.assessment.latest).toMatchObject({
+      generatedAt,
+      scope: {
+        inspected: assessment.inspected,
+        limitations: assessment.limitations,
+      },
+    });
+  });
   it("keeps the last readable report when a newer output is empty", async () => {
     await put(
       "docs/architecture/assessments/2026-11-17/report.md",

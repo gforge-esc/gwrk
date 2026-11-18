@@ -16,27 +16,14 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 let root: string;
 const cli = resolve("dist/cli.js");
+const project = { name: "readiness-fixture", type: "generic" };
+const jsonInvocations = [
+  { args: ["project", "discover", "--format", "json"] },
+  { args: ["--format", "json", "project", "discover"] },
+  { args: ["--agent", "project", "discover", "--format", "json"] },
+];
 beforeEach(() => {
   root = mkdtempSync(join(tmpdir(), "gwrk-discover-readiness-cli-"));
-  writeFileSync(
-    join(root, ".gwrkrc.json"),
-    JSON.stringify({
-      project: {
-        name: "readiness-fixture",
-        type: "generic",
-        design: {
-          architecture: "hexagonal-functional",
-          principles: ["functional-core"],
-          templateVersion: "1.0.0",
-        },
-      },
-    }),
-  );
-  mkdirSync(join(root, ".gwrk"));
-  writeFileSync(
-    join(root, ".gwrk/architecture.md"),
-    "# Target\nContext only. Code conformance remains unassessed.\n",
-  );
 });
 afterEach(() => rmSync(root, { recursive: true, force: true }));
 function run(args: string[]) {
@@ -54,19 +41,37 @@ function run(args: string[]) {
   });
   expect(result.error).toBeUndefined();
   expect(result.status, result.stderr).toBe(0);
-  expect(result.stderr.match(/\[exit:0 \| [\d.]+(?:ms|s)\]/g)).toHaveLength(1);
+  expect(result.stderr.match(/\[exit:\d+ \| [\d.]+(?:ms|s)\]/g)).toHaveLength(1);
+  expect(result.stderr.trimEnd()).toMatch(/\[exit:0 \| [\d.]+(?:ms|s)\]$/);
   expect(existsSync(env.GWRK_DB_PATH)).toBe(false);
   return result.stdout;
 }
-describe("architecture readiness discovery CLI", () => {
-  it.each([
-    { args: ["project", "discover", "--format", "json"] },
-    { args: ["--format", "json", "project", "discover"] },
-    { args: ["--agent", "project", "discover", "--format", "json"] },
-  ])("reports additive JSON evidence with %j", ({ args }) => {
+describe("project discovery with architecture evidence", () => {
+  beforeEach(() => {
+    writeFileSync(
+      join(root, ".gwrkrc.json"),
+      JSON.stringify({
+        project: {
+          ...project,
+          design: {
+            architecture: "hexagonal-functional",
+            principles: ["functional-core"],
+            templateVersion: "1.0.0",
+          },
+        },
+      }),
+    );
+    mkdirSync(join(root, ".gwrk"));
+    writeFileSync(
+      join(root, ".gwrk/architecture.md"),
+      "# Target\nContext only. Code conformance remains unassessed.\n",
+    );
+  });
+
+  it.each(jsonInvocations)("reports additive JSON evidence with %j", ({ args }) => {
     const result = JSON.parse(run(args));
-    expect(result.project.name).toBe("readiness-fixture");
-    expect(result.architectureReadiness).toMatchObject({
+    expect(result.project.name).toBe(project.name);
+    expect(result.architecture).toMatchObject({
       target: {
         selection: { architecture: "hexagonal-functional" },
         path: ".gwrk/architecture.md",
@@ -90,5 +95,23 @@ describe("architecture readiness discovery CLI", () => {
     expect(text).toContain(".gwrk/context-manifest.json: missing");
     expect(text).toContain("gwrk init");
     expect(text).toContain("gwrk assess");
+  });
+});
+
+describe("project discovery with only project config", () => {
+  beforeEach(() => {
+    writeFileSync(join(root, ".gwrkrc.json"), JSON.stringify({ project }));
+  });
+
+  it("shows guidance for missing context and assessment", () => {
+    const text = run(["project", "discover"]);
+    expect(text).toContain("gwrk init");
+    expect(text).toContain("gwrk assess");
+  });
+
+  it.each(jsonInvocations)("omits architecture from JSON with %j", ({ args }) => {
+    const result = JSON.parse(run(args));
+    expect(result.project.name).toBe(project.name);
+    expect(result).not.toHaveProperty("architecture");
   });
 });

@@ -33,7 +33,7 @@ export const createProjectDiscoverCommand = () =>
         );
         writeScopedStdout("\n");
 
-        const readiness = result.architectureReadiness;
+        const readiness = result.architecture;
         if (readiness) {
           writeScopedStdout(
             `Architecture target: ${readiness.target.selection?.architecture ?? "unspecified"}\n`,
@@ -48,28 +48,30 @@ export const createProjectDiscoverCommand = () =>
           );
           for (const issue of readiness.context.issues)
             writeScopedStdout(`  ${issue.path}: ${issue.kind}\n`);
-          if (readiness.context.status !== "ready")
-            writeScopedStdout("Repair managed context with gwrk init.\n");
-          const latest = readiness.assessment.latest;
-          if (latest) {
-            writeScopedStdout(`Latest assessment: ${latest.reportPath}\n`);
-            writeScopedStdout(
-              `Assessment date: ${latest.generatedAt ?? "unknown"}\n`,
-            );
-            writeScopedStdout(
-              `Assessment revision: ${latest.revision ?? "unknown"}\n`,
-            );
-            writeScopedStdout(`Assessment target: ${latest.targetMatch}\n`);
-            writeScopedStdout(
-              `Assessment inspected: ${latest.scope?.inspected.join(", ") ?? "unknown"}\n`,
-            );
-            writeScopedStdout(
-              `Assessment limitations: ${latest.scope?.limitations.join(", ") ?? "unknown"}\n`,
-            );
-          } else
-            writeScopedStdout("Assessment: no evidence. Run gwrk assess.\n");
-          writeScopedStdout("\n");
         }
+        if (readiness?.context.status !== "ready")
+          writeScopedStdout("Repair managed context with gwrk init.\n");
+
+        const latest = readiness?.assessment.latest;
+        if (latest) {
+          writeScopedStdout(`Latest assessment: ${latest.reportPath}\n`);
+          writeScopedStdout(
+            `Assessment date: ${latest.generatedAt ?? "unknown"}\n`,
+          );
+          writeScopedStdout(
+            `Assessment revision: ${latest.revision ?? "unknown"}\n`,
+          );
+          writeScopedStdout(`Assessment target: ${latest.targetMatch}\n`);
+          writeScopedStdout(
+            `Assessment inspected: ${latest.scope?.inspected.join(", ") ?? "unknown"}\n`,
+          );
+          writeScopedStdout(
+            `Assessment limitations: ${latest.scope?.limitations.join(", ") ?? "unknown"}\n`,
+          );
+        } else {
+          writeScopedStdout("Assessment: no evidence. Run gwrk assess.\n");
+        }
+        writeScopedStdout("\n");
 
         writeScopedStdout(`Specs (${result.specs.length}):\n`);
         for (const s of result.specs) {
