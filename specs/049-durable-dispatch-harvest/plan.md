@@ -161,6 +161,7 @@ pnpm exec vitest run src/adapters/git/harvest-git.test.ts src/adapters/github/gi
 
 #### Files
 
+- `src/application/delivery/outbox.test.ts` (NEW: Exercise real SQLite delivery claims, uncertain reconciliation, restart route retention and stale completion fencing)
 - `src/application/delivery/outbox.ts` (NEW: Coordinate durable outbox claims, uncertain-send reconciliation and recipient thread delivery)
 - `src/application/dispatch/index.ts` (NEW: Implement `DurableDispatchService` acceptance receipts and startup replay plus stale-lease recovery and fencing)
 - `src/application/harvest/index.ts` (NEW: Implement `DurableHarvestService` intake dedup and stage resume plus closed-PR and cleanup handling)

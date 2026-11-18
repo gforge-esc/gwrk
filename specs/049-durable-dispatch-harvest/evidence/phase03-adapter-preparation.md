@@ -19,3 +19,11 @@ The production composition test has two observed failures. It requires actual se
 The Git factory still needs composition into VcsPort. Notification sender and gateway wiring remain implementation work. Merge reviewed storage and Slack ports before final composition. Preserve their review history.
 
 Slack documents metadata retrieval and cursor pagination in [conversations.history](https://docs.slack.dev/reference/methods/conversations.history/) and [conversations.replies](https://docs.slack.dev/reference/methods/conversations.replies/). Both methods accept include_all_metadata. The prepared reader performs no live calls.
+
+## Delivery service preparation
+
+The application outbox coordinator now uses the approved store, registry and notification ports. It preserves the accepted metadata key and destination after restart. An uncertain send requires reconciliation before another send. Only confirmed absence permits that retry. Delivered receipts must match the accepted channel and thread. A stale sender cannot complete a newer claim.
+
+Eight SQLite-backed behavioral checks pass. They cover concurrent flushes and database reopen. They also cover independent project flushing and channel-only receipts. The channel-only receipt regression failed before its optional-thread repair. Boundary checks also pass. The passing log is `/tmp/gwrk-049-outbox-service-preparation-final-green.log`.
+
+This is preparation for phase 4. The phase still requires dispatch and harvest coordinators. Its gate now requires the delivery service test. Phase 3 production notification composition remains RED.
