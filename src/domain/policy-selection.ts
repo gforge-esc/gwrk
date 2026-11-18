@@ -5,6 +5,7 @@
 import {
   type ProjectDesign,
   designRules,
+  lookupFrameworkBinding,
   lookupFrameworkGuidance,
   lookupLanguageGuidance,
   normalizeArchitecture,
@@ -142,25 +143,40 @@ function frameworkMatches(
   );
 }
 
-export function evaluateEnforcementCandidate(
-  candidate: PolicyCandidate,
+function scopeMismatch(
+  manifest: EnforcementSkillSelectors,
   profile: ProjectProfile | undefined,
   scope: EnforcementScope,
-): CandidateEvaluation {
-  const manifest = candidate.manifest;
-
-  // 1. Scope check
+): CandidateEvaluation | undefined {
   const manifestScope = manifest.scope ?? "all";
   if (scope !== "all" && manifestScope !== "all" && manifestScope !== scope) {
     return { included: false, reason: "scope-mismatch" };
   }
 
-  // 2. Project scope check (verified gwrk repository identity)
   if (manifest.projectScope === "gwrk" && profile?._isGwrk !== true) {
     return { included: false, reason: "project-scope-mismatch" };
   }
+  return undefined;
+}
 
-  // 3. Language check
+export function evaluateEnforcementCandidate(
+  candidate: PolicyCandidate,
+  profile: ProjectProfile | undefined,
+  scope: EnforcementScope,
+): CandidateEvaluation {
+  return (
+    scopeMismatch(candidate.manifest, profile, scope) ??
+    evaluateEligibleCandidate(candidate, profile)
+  );
+}
+
+function evaluateEligibleCandidate(
+  candidate: PolicyCandidate,
+  profile: ProjectProfile | undefined,
+): CandidateEvaluation {
+  const manifest = candidate.manifest;
+
+  // Language check
   if (manifest.framework?.trim() && !manifest.language?.trim()) {
     return { included: false, reason: "language-mismatch" };
   }
@@ -174,7 +190,7 @@ export function evaluateEnforcementCandidate(
     }
   }
 
-  // 4. Framework check
+  // Framework check
   if (manifest.framework) {
     const candidateFw = manifest.framework
       .toLowerCase()
@@ -187,7 +203,7 @@ export function evaluateEnforcementCandidate(
     }
   }
 
-  // 5. Architecture check
+  // Architecture check
   if (manifest.architectures !== undefined) {
     if (!profile?.design?.architecture) {
       return { included: false, reason: "architecture-mismatch" };
@@ -199,7 +215,7 @@ export function evaluateEnforcementCandidate(
     }
   }
 
-  // 6. Principles check
+  // Principles check
   if (manifest.principles && manifest.principles.length > 0) {
     if (!profile?.design?.principles) {
       return { included: false, reason: "principle-mismatch" };
@@ -265,15 +281,16 @@ function resolveCandidates(input: ComposePolicyInput, scope: EnforcementScope) {
         continue;
       }
 
-      const evaluation = evaluateEnforcementCandidate(
-        candidate,
-        input.profile,
-        scope,
-      );
+      const mismatch = scopeMismatch(candidate.manifest, input.profile, scope);
+      if (!mismatch && candidate.manifest.disabled) {
+        suppressedByDisabled = true;
+        continue;
+      }
 
+      const evaluation =
+        mismatch ?? evaluateEligibleCandidate(candidate, input.profile);
       if (!evaluation.included) {
         if (
-          !candidate.manifest.disabled &&
           [
             "language-mismatch",
             "architecture-mismatch",
@@ -287,11 +304,6 @@ function resolveCandidates(input: ComposePolicyInput, scope: EnforcementScope) {
           source: candidate.source,
           reason: evaluation.reason,
         });
-        continue;
-      }
-
-      if (candidate.manifest.disabled) {
-        suppressedByDisabled = true;
         continue;
       }
 
@@ -352,7 +364,14 @@ export function composeEffectivePolicy(
 
   // Framework gap
   const framework = input.profile?.stack?.framework;
-  const frameworkGuidance = lookupFrameworkGuidance(framework);
+  const frameworkBinding = lookupFrameworkBinding(framework);
+  const frameworkGuidance =
+    frameworkBinding &&
+    languages.some((language) =>
+      frameworkBinding.languages.includes(language.toLowerCase()),
+    )
+      ? frameworkBinding.guidance
+      : undefined;
   if (
     framework &&
     framework.toLowerCase() !== "unspecified" &&
@@ -363,6 +382,7 @@ export function composeEffectivePolicy(
     );
     if (!covered) {
       if (
+        (frameworkBinding !== undefined && frameworkGuidance === undefined) ||
         incompatibleSkills.some((candidate) =>
           frameworkMatches(candidate, framework),
         )
