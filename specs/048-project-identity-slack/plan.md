@@ -124,20 +124,27 @@ pnpm exec vitest run src/db/scoping.test.ts src/db/db.test.ts src/db/plan.test.t
 #### Files
 
 - `src/ports/vcs-port.ts` (MODIFY: Add typed inspection for uncertain merge reconciliation within the authorized repository)
+- `src/domain/project-registry.ts` (MODIFY: Add the repository and pull request number to merge receipts)
+- `src/ports/store-port.ts` (MODIFY: Allow receipt updates to require an expected outcome)
+- `src/db/project-registry.ts` (MODIFY: Store merge targets and condition receipt updates on the current outcome)
+- `src/db/migrations/018-slack-merge-receipt-target.sql` (CREATE: Add nullable merge target columns)
 - `src/adapters/git/project-id.ts` (MODIFY: Read identity from the authorized checkout without inherited Git selectors)
 - `src/adapters/git/process-env.ts` (CREATE: Reuse the reviewed checkout environment isolation helper)
 - `src/adapters/filesystem/scoped-feature.ts` (CREATE: Validate feature paths and file containment before scoped reads)
+- `src/engine/pulse.ts` (MODIFY: Count contained specification and plan files for scoped Pulse reports)
 - `src/utils/agent-context.ts` (MODIFY: Exclude feature entries and files outside the authorized checkout)
 - `src/utils/agent-context.test.ts` (MODIFY: Cover canonical feature containment)
 - `src/server/slack-commands.test.ts` (MODIFY: Cover scoped status, logs and effort reads)
 
 - `src/application/project-routing/index.ts` (NEW: Coordinate project resolution and role checks plus action receipts and thread delivery)
-- `src/adapters/git/index.ts` (MODIFY: Implement identity discovery, pull request URL lookup and pull request merge on `VcsPort`)
+- `src/adapters/git/index.ts` (MODIFY: Add merge inspection to the repository-scoped GitHub adapter)
+- `src/adapters/git/index.test.ts` (MODIFY: Verify the repository, pull request number and inspection outcomes)
 - `src/server/slack-messages.ts` (MODIFY: Stamp `projectId`, project slug and `rootTs` into Slack blocks and action values)
 - `src/server/slack-commands.ts` (MODIFY: Parse `--project`, authorize via `ProjectRoutingService` and thread replies per project)
 - `src/server/slack-actions.ts` (MODIFY: Re-authorize clicks, enforce replay receipts and merge pull requests via `VcsPort`)
 - `src/server/slack-agent.ts` (MODIFY: Require authorized project resolution for mentions, direct messages and reactions)
 - `src/server/slack-home.ts` (MODIFY: Render only enrolled projects where the Slack viewer holds a role)
+- `src/server/slack-home.test.ts` (MODIFY: Cover first open, viewer redaction and scoped Pulse totals)
 - `src/server/slack.ts` (MODIFY: Remove single-project startup context and resolve workspace, channel and user per event)
 - `tests/helpers/synthetic-slack.ts` (NEW: Provide deterministic synthetic Slack fixtures with zero network calls)
 - `src/server/slack-actions.test.ts` (MODIFY: Test click-time re-authorization and thread mismatch plus click replay and `VcsPort` merge)
@@ -153,11 +160,13 @@ pnpm exec vitest run src/db/scoping.test.ts src/db/db.test.ts src/db/plan.test.t
 
 | ID | Type | Target | Assertion |
 |---|---|---|---|
-| TR-009 | integration | `src/server/slack-actions.test.ts` | No unauthorized claim, one merge across button and reaction retries after a timeout, and one fresh retry after confirmed preflight rejection |
+| TR-009 | integration | `src/server/slack-actions.test.ts` and `src/adapters/git/index.test.ts` | Receipt transitions for the stored pull request across all inspection outcomes |
 | TR-010 | unit | `src/server/slack-messages.test.ts` | Interactive payloads carry `projectId` and `rootTs` metadata |
 | TR-011 | unit | `src/server/slack-agent.test.ts` | Mentions, direct messages and reactions enforce project selection and roles |
 | TR-012 | unit | `src/server/slack-home.test.ts` | App Home project visibility and Pulse totals limited to authorized checkouts |
 | TR-012a | integration | `src/server/slack-commands.test.ts` and `src/utils/agent-context.test.ts` | Local files accepted and external links excluded from status, logs, effort, Pulse and mention context |
+
+For the merge receipt tests (TR-009), block unauthorized claims and retries from Bolt redelivery. Inspect the stored repository and pull request after a timeout, even if the card changes. Complete the original receipt on confirmed merge. Keep it uncertain when inspection fails or is unavailable. Allow one claim across concurrent retries after confirmed rejection or preflight failure.
 
 #### Done When
 

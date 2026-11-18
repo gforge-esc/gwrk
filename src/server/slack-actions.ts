@@ -3,10 +3,14 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { spawn } from "node:child_process";
-import type { App } from "@slack/bolt";
+import type { App, BlockAction, ButtonAction } from "@slack/bolt";
 import type { ActionsBlock } from "@slack/types";
 import type { ProjectRoutingService } from "../application/project-routing/index.js";
 import { findOpenPr } from "../db/runs.js";
+import type {
+  MergeTarget,
+  SlackActionReceipt,
+} from "../domain/project-registry.js";
 import { requiredAccessForSlackAction } from "../domain/slack-routing.js";
 import { PlanStore } from "../engine/plan-store.js";
 import { resolveProjectId } from "../utils/project-id.js";
@@ -40,6 +44,7 @@ interface ActionVerificationResult {
   projectId: string;
   threadTs?: string;
   receiptKey?: string;
+  mergeTarget?: MergeTarget;
 }
 
 async function verifyAndClaimClick(
@@ -96,17 +101,27 @@ async function verifyAndClaimClick(
     payloadRootTs: payloadObj?.rootTs,
     requiredAccess,
   };
-  const decision: ReturnType<ProjectRoutingService["authorizeAndClaimAction"]> =
-    requiredAccess === "read"
-      ? context.routingService.authorizeAction(input)
-      : context.routingService.authorizeAndClaimAction({
-          ...input,
-          nowIso: new Date().toISOString(),
-          retryFailed,
-          requiredProjectId: usesStartupQueue
-            ? (context.queueProjectId ?? null)
-            : undefined,
-        });
+  const nowIso = new Date().toISOString();
+  let decision: ReturnType<ProjectRoutingService["authorizeAndClaimAction"]>;
+  if (actionId === "merge_pr") {
+    decision = await context.routingService.authorizeAndClaimMerge({
+      ...input,
+      nowIso,
+      prNumber: payloadObj?.prNumber,
+      retryFailed,
+      vcs: context.vcs,
+    });
+  } else if (requiredAccess === "read") {
+    decision = context.routingService.authorizeAction(input);
+  } else {
+    decision = context.routingService.authorizeAndClaimAction({
+      ...input,
+      nowIso,
+      requiredProjectId: usesStartupQueue
+        ? (context.queueProjectId ?? null)
+        : undefined,
+    });
+  }
 
   if (!decision.ok) {
     logger?.error?.(
@@ -133,13 +148,14 @@ async function verifyAndClaimClick(
     projectId: decision.project.projectId,
     threadTs: decision.recipient.threadTs,
     receiptKey: decision.receiptKey,
+    mergeTarget: decision.mergeTarget,
   };
 }
 
 function completeReceipt(
   context: CommandContext,
   receiptKey?: string,
-  outcome: "executed" | "failed" = "executed",
+  outcome: Exclude<SlackActionReceipt["outcome"], "claimed"> = "executed",
 ) {
   if (receiptKey) {
     context.routingService?.completeActionReceipt(receiptKey, outcome);
@@ -172,54 +188,101 @@ function lookupPr(
   return prNumber;
 }
 
+type MergeActionBody = {
+  team?: { id: string } | null;
+  team_id?: string;
+  channel?: { id: string };
+  user: { id: string };
+  message?: { ts: string; thread_ts?: string };
+};
+
+async function handleMerge(
+  body: MergeActionBody,
+  payload: ReturnType<typeof parseActionPayload>,
+  context: CommandContext,
+  client: App["client"],
+  logger: { error(message: string): void },
+  retryFailed: boolean,
+) {
+  if (!payload?.featureId) return;
+  const auth = await verifyAndClaimClick(
+    "merge_pr",
+    body,
+    payload,
+    context,
+    client,
+    logger,
+    retryFailed,
+  );
+  if (!auth.ok || !auth.receiptKey || !auth.mergeTarget || !context.vcs) return;
+
+  const { featureId, phaseId } = payload;
+  const { prNumber, repository } = auth.mergeTarget;
+  const channel = body.channel?.id ?? context.channelId;
+  const user = body.user.id;
+
+  async function reportFailure(
+    error: unknown,
+    outcome: "failed" | "uncertain",
+  ) {
+    completeReceipt(context, auth.receiptKey, outcome);
+    const detail = error instanceof Error ? error.message : String(error);
+    logger.error(`Merge ${outcome}: ${detail}`);
+    await client.chat.postEphemeral({
+      channel,
+      user,
+      text:
+        outcome === "uncertain"
+          ? `:warning: Merge outcome unknown for PR #${prNumber}. ${detail}`
+          : `:warning: Failed to merge PR: ${detail}`,
+    });
+  }
+
+  try {
+    lookupPr(featureId, auth.projectId, phaseId, prNumber);
+  } catch (error) {
+    await reportFailure(error, "failed");
+    return;
+  }
+
+  try {
+    await context.vcs.mergePullRequest(auth.projectRoot, prNumber, repository);
+  } catch (error) {
+    await reportFailure(error, "uncertain");
+    return;
+  }
+
+  completeReceipt(context, auth.receiptKey, "executed");
+  try {
+    await client.chat.postMessage({
+      channel,
+      thread_ts: auth.threadTs,
+      text: `✅ PR #${prNumber} for *${featureId}* phase *${phaseId}* merged by <@${user}>`,
+    });
+  } catch (error) {
+    logger.error(`Could not post merge confirmation: ${error}`);
+  }
+}
+
 export async function registerSlackActions(app: App, context: CommandContext) {
   const defaultProjectId = resolveProjectId(context.projectRoot);
 
   // Handle button actions
-  app.action("merge_pr", async ({ ack, body, client, logger }) => {
-    await ack();
-    // biome-ignore lint/suspicious/noExplicitAny: Slack body structure is complex
-    const actionBody = body as any;
-    const payload = actionBody.actions?.[0]?.value;
-    if (!payload) return;
-    const payloadObj = parseActionPayload(payload);
-    if (!payloadObj?.featureId) return;
-
-    const { featureId, phaseId, prNumber } = payloadObj;
-    const auth = await verifyAndClaimClick(
-      "merge_pr",
-      actionBody,
-      payloadObj,
-      context,
-      client,
-      logger,
-    );
-    if (!auth.ok) return;
-
-    try {
-      if (!context.vcs)
-        throw new Error("VCS port is required to merge pull requests.");
-      const approvedPr = lookupPr(featureId, auth.projectId, phaseId, prNumber);
-      await context.vcs.mergePullRequest(auth.projectRoot, approvedPr);
-      completeReceipt(context, auth.receiptKey, "executed");
-
-      await client.chat.postMessage({
-        channel: actionBody.channel?.id || "",
-        thread_ts: auth.threadTs,
-        text: `✅ PR #${approvedPr} for *${featureId}* phase *${phaseId}* merged by <@${actionBody.user.id}>`,
-      });
-    } catch (error) {
-      completeReceipt(context, auth.receiptKey, "failed");
-      const errorMessage =
-        error instanceof Error ? error.message : String(error);
-      logger.error(`Merge failed: ${errorMessage}`);
-      await client.chat.postEphemeral({
-        channel: actionBody.channel?.id || "",
-        user: actionBody.user.id,
-        text: `:warning: Failed to merge PR: ${errorMessage}`,
-      });
-    }
-  });
+  app.action<BlockAction<ButtonAction>>(
+    "merge_pr",
+    async ({ ack, body, context: boltContext, client, logger }) => {
+      await ack();
+      const payload = parseActionPayload(body.actions?.[0]?.value);
+      await handleMerge(
+        body,
+        payload,
+        context,
+        client,
+        logger,
+        !boltContext?.retryNum,
+      );
+    },
+  );
 
   app.action("request_changes", async ({ ack, body, client, logger }) => {
     await ack();
@@ -578,7 +641,6 @@ export async function registerSlackActions(app: App, context: CommandContext) {
         return;
       }
 
-      let receiptKey: string | undefined;
       try {
         const { channel, ts } = event.item;
         const { message } = await client.reactions.get({
@@ -597,8 +659,6 @@ export async function registerSlackActions(app: App, context: CommandContext) {
         const payload = parseActionPayload(
           button?.type === "button" ? button.value : undefined,
         );
-        if (!payload?.featureId) return;
-
         const threadTs =
           "thread_ts" in message && typeof message.thread_ts === "string"
             ? message.thread_ts
@@ -609,8 +669,7 @@ export async function registerSlackActions(app: App, context: CommandContext) {
           user: { id: event.user },
           message: { ts, thread_ts: threadTs },
         };
-        const auth = await verifyAndClaimClick(
-          "merge_pr",
+        await handleMerge(
           actionBody,
           payload,
           context,
@@ -618,28 +677,7 @@ export async function registerSlackActions(app: App, context: CommandContext) {
           logger,
           !boltContext?.retryNum,
         );
-        if (!auth.ok) return;
-        receiptKey = auth.receiptKey;
-
-        const { featureId, phaseId, prNumber } = payload;
-        const approvedPr = lookupPr(
-          featureId,
-          auth.projectId,
-          phaseId,
-          prNumber,
-        );
-        await context.vcs.mergePullRequest(auth.projectRoot, approvedPr);
-        const mergedReceiptKey = receiptKey;
-        receiptKey = undefined;
-        completeReceipt(context, mergedReceiptKey, "executed");
-
-        await client.chat.postMessage({
-          channel,
-          thread_ts: auth.threadTs,
-          text: `✅ Reaction-approval detected! Merged PR #${approvedPr} for *${featureId}* phase *${phaseId}*.`,
-        });
       } catch (error) {
-        completeReceipt(context, receiptKey, "failed");
         const errorMessage =
           error instanceof Error ? error.message : String(error);
         logger.error(`Reaction approval failed: ${errorMessage}`);

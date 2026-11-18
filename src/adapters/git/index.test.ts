@@ -13,7 +13,11 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { mergePullRequest, resolvePullRequestUrl } from "./index.js";
+import {
+  inspectPullRequestMerge,
+  mergePullRequest,
+  resolvePullRequestUrl,
+} from "./index.js";
 
 let root: string;
 beforeEach(() => {
@@ -112,5 +116,51 @@ describe("project GitHub commands", () => {
       "--repo",
       "github.com/org/alpha",
     ]);
+  });
+
+  const target = { repository: "github.com/org/alpha", prNumber: 42 };
+
+  it.each([
+    ['{"number":42,"state":"MERGED"}', "merged"],
+    ['{"number":42,"state":"CLOSED"}', "rejected"],
+    ['{"number":42,"state":"OPEN"}', "unavailable"],
+    ['{"number":7,"state":"MERGED"}', "unavailable"],
+    ['{"state":"MERGED"}', "unavailable"],
+    ["malformed JSON", "unavailable"],
+  ])("maps PR inspection response %s to %s", (reply, outcome) => {
+    vi.stubEnv("GWRK_GH_REPLY_FIXTURE", reply);
+    expect(inspectPullRequestMerge(root, target)).toBe(outcome);
+    expect(
+      readFileSync(join(root, "arguments"), "utf8").trim().split("\n"),
+    ).toEqual([
+      "pr",
+      "view",
+      "42",
+      "--json",
+      "number,state",
+      "--repo",
+      target.repository,
+    ]);
+  });
+
+  it("reports unavailable when the inspection command fails", () => {
+    writeFileSync(join(root, "gh"), "#!/bin/sh\nexit 1\n");
+    expect(inspectPullRequestMerge(root, target)).toBe("unavailable");
+  });
+
+  it("blocks inspection and merge when the checkout's origin differs from the target", () => {
+    execFileSync("git", [
+      "-C",
+      root,
+      "remote",
+      "set-url",
+      "origin",
+      "https://github.com/org/beta.git",
+    ]);
+    expect(inspectPullRequestMerge(root, target)).toBe("unavailable");
+    expect(() =>
+      mergePullRequest(root, target.prNumber, target.repository),
+    ).toThrow();
+    expect(existsSync(join(root, "arguments"))).toBe(false);
   });
 });

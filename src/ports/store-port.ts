@@ -57,6 +57,7 @@ export interface ProjectRegistryPort {
   completeActionReceipt(
     receiptKey: string,
     outcome: Exclude<SlackActionReceipt["outcome"], "claimed">,
+    expectedOutcome?: SlackActionReceipt["outcome"],
   ): boolean;
   close(): void;
 }

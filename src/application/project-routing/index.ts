@@ -2,9 +2,11 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import { normalizeGitRemoteSlug } from "../../domain/project-id.js";
 import {
   type DeliveryRecipient,
   type EnrolledProject,
+  type MergeTarget,
   type ProjectRoleBinding,
   type SlackFeatureThread,
   buildActionReceiptKey,
@@ -22,6 +24,7 @@ import type {
   NotificationReceipt,
 } from "../../ports/notification-port.js";
 import type { ProjectRegistryPort } from "../../ports/store-port.js";
+import type { PullRequestMergeOutcome, VcsPort } from "../../ports/vcs-port.js";
 
 type ActionInput = Omit<
   SlackActionVerificationInput,
@@ -33,13 +36,51 @@ type ActionClaimInput = ActionInput & {
   requiredProjectId?: string | null;
 };
 type ActionClaimDecision =
-  | (Extract<RouteDecision, { ok: true }> & { receiptKey?: string })
+  | (Extract<RouteDecision, { ok: true }> & {
+      receiptKey?: string;
+      mergeTarget?: MergeTarget;
+    })
   | Extract<RouteDecision, { ok: false }>;
+
+type MergeClaimInput = Omit<ActionInput, "actionId" | "requiredAccess"> & {
+  nowIso: string;
+  prNumber?: number;
+  retryFailed: boolean;
+  vcs?: VcsPort;
+};
+
+function actionReplay(): ActionClaimDecision {
+  return {
+    ok: false,
+    code: "ACTION_REPLAYED",
+    message: "This action already has a receipt.",
+  };
+}
+
+function actionScope(projectId: string, input: ActionInput) {
+  return {
+    projectId,
+    actionId: input.actionId,
+    featureId: input.featureId,
+    phaseId: input.phaseId ?? null,
+    workspaceId: input.workspaceId,
+    channelId: input.channelId,
+    messageTs: input.messageTs ?? input.threadTs ?? "",
+  };
+}
+
+function attemptKey(scope: ReturnType<typeof actionScope>, attempt: number) {
+  return buildActionReceiptKey({
+    ...scope,
+    actionId: attempt ? `${scope.actionId}:retry:${attempt}` : scope.actionId,
+  });
+}
 
 export interface ProjectRoutingService {
   authorizeCommand(envelope: SlackInboundEnvelope): RouteDecision;
   authorizeAction(input: ActionInput): RouteDecision;
   authorizeAndClaimAction(input: ActionClaimInput): ActionClaimDecision;
+  authorizeAndClaimMerge(input: MergeClaimInput): Promise<ActionClaimDecision>;
   getFeatureThread: ProjectRegistryPort["getFeatureThread"];
   completeActionReceipt: ProjectRegistryPort["completeActionReceipt"];
   deliverProjectEvent(input: {
@@ -135,6 +176,28 @@ export function createProjectRoutingService(
     });
   }
 
+  function claimAction(
+    decision: Extract<RouteDecision, { ok: true }>,
+    input: ActionInput & { nowIso: string },
+    scope: ReturnType<typeof actionScope>,
+    receiptKey: string,
+    mergeTarget?: MergeTarget,
+  ): ActionClaimDecision {
+    const claimed = deps.registry.claimActionReceipt({
+      receiptKey,
+      projectId: scope.projectId,
+      actionId: scope.actionId,
+      featureId: scope.featureId,
+      phaseId: scope.phaseId,
+      messageTs: scope.messageTs,
+      actorUserId: input.actorUserId,
+      outcome: "claimed",
+      recordedAt: input.nowIso,
+      mergeTarget,
+    });
+    return claimed ? { ...decision, receiptKey, mergeTarget } : actionReplay();
+  }
+
   return {
     registry: deps.registry,
 
@@ -151,8 +214,8 @@ export function createProjectRoutingService(
     getFeatureThread: (projectId, featureId) =>
       deps.registry.getFeatureThread(projectId, featureId),
 
-    completeActionReceipt: (receiptKey, outcome) =>
-      deps.registry.completeActionReceipt(receiptKey, outcome),
+    completeActionReceipt: (receiptKey, outcome, expectedOutcome) =>
+      deps.registry.completeActionReceipt(receiptKey, outcome, expectedOutcome),
 
     authorizeAndClaimAction(input: ActionClaimInput): ActionClaimDecision {
       const decision = authorizeAction(input);
@@ -168,16 +231,8 @@ export function createProjectRoutingService(
         };
       }
 
-      const scope = {
-        projectId: decision.project.projectId,
-        actionId: input.actionId,
-        featureId: input.featureId,
-        phaseId: input.phaseId ?? null,
-        workspaceId: input.workspaceId,
-        channelId: input.channelId,
-        messageTs: input.messageTs ?? input.threadTs ?? "",
-      };
-      let receiptKey = buildActionReceiptKey(scope);
+      const scope = actionScope(decision.project.projectId, input);
+      let receiptKey = attemptKey(scope, 0);
 
       // Each failed attempt stays recorded. Concurrent retries contend for the same next key.
       let attempt = 0;
@@ -186,33 +241,109 @@ export function createProjectRoutingService(
         deps.registry.getActionReceipt(receiptKey)?.outcome === "failed"
       ) {
         attempt++;
-        receiptKey = buildActionReceiptKey({
-          ...scope,
-          actionId: `${scope.actionId}:retry:${attempt}`,
-        });
+        receiptKey = attemptKey(scope, attempt);
       }
 
-      const claimed = deps.registry.claimActionReceipt({
-        receiptKey,
-        projectId: scope.projectId,
-        actionId: scope.actionId,
-        featureId: scope.featureId,
-        phaseId: scope.phaseId,
-        messageTs: scope.messageTs,
-        actorUserId: input.actorUserId,
-        outcome: "claimed",
-        recordedAt: input.nowIso,
-      });
+      return claimAction(decision, input, scope, receiptKey);
+    },
 
-      if (!claimed) {
+    async authorizeAndClaimMerge(input): Promise<ActionClaimDecision> {
+      const action = {
+        ...input,
+        actionId: "merge_pr",
+        requiredAccess: "maintain" as const,
+      };
+      const decision = authorizeAction(action);
+      if (!decision.ok) return decision;
+
+      const { project } = decision;
+      const cwd = project.localRoot ?? project.mirrorPath;
+      const slug = project.repoSlug && normalizeGitRemoteSlug(project.repoSlug);
+      const repository =
+        slug?.split("/").length === 2 ? `github.com/${slug}` : slug;
+      if (!cwd || !repository || !input.vcs) {
         return {
           ok: false,
-          code: "ACTION_REPLAYED",
-          message: "This action already has a receipt.",
+          code: "REMOTE_AUTH_REQUIRED",
+          message: "Merging requires a verified checkout and VCS adapter.",
         };
       }
 
-      return { ...decision, receiptKey };
+      const scope = actionScope(project.projectId, action);
+      let attempt = 0;
+      let receiptKey = attemptKey(scope, attempt);
+      let receipt = deps.registry.getActionReceipt(receiptKey);
+      if (receipt && !input.retryFailed) return actionReplay();
+
+      let previousTarget: MergeTarget | undefined;
+      while (receipt?.outcome === "failed") {
+        previousTarget = receipt.mergeTarget ?? previousTarget;
+        receiptKey = attemptKey(scope, ++attempt);
+        receipt = deps.registry.getActionReceipt(receiptKey);
+      }
+
+      if (receipt?.outcome === "uncertain") {
+        const target = receipt.mergeTarget;
+        if (
+          target?.repository !== repository ||
+          !input.vcs.inspectPullRequestMerge
+        ) {
+          return actionReplay();
+        }
+        let outcome: PullRequestMergeOutcome;
+        try {
+          outcome = await input.vcs.inspectPullRequestMerge(cwd, target);
+        } catch {
+          return actionReplay();
+        }
+        if (outcome === "merged") {
+          deps.registry.completeActionReceipt(
+            receiptKey,
+            "executed",
+            "uncertain",
+          );
+          return decision;
+        }
+        if (
+          outcome !== "rejected" ||
+          !deps.registry.completeActionReceipt(
+            receiptKey,
+            "failed",
+            "uncertain",
+          )
+        ) {
+          return actionReplay();
+        }
+        // Reconciliation only grants a claim for the immediate next attempt.
+        previousTarget = target;
+        receiptKey = attemptKey(scope, ++attempt);
+      } else if (receipt) {
+        return actionReplay();
+      }
+
+      const { prNumber } = input;
+      if (
+        typeof prNumber !== "number" ||
+        !Number.isSafeInteger(prNumber) ||
+        prNumber <= 0
+      ) {
+        return {
+          ok: false,
+          code: "REMOTE_AUTH_REQUIRED",
+          message: "This review card must specify a valid pull request number.",
+        };
+      }
+      if (
+        previousTarget &&
+        (previousTarget.repository !== repository ||
+          previousTarget.prNumber !== prNumber)
+      ) {
+        return actionReplay();
+      }
+      return claimAction(decision, action, scope, receiptKey, {
+        repository,
+        prNumber,
+      });
     },
 
     async deliverProjectEvent(input: {

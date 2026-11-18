@@ -7,7 +7,8 @@ import {
   type ProjectIdentityFacts,
   normalizeGitRemoteSlug,
 } from "../../domain/project-id.js";
-import type { VcsPort } from "../../ports/vcs-port.js";
+import type { MergeTarget } from "../../domain/project-registry.js";
+import type { PullRequestMergeOutcome, VcsPort } from "../../ports/vcs-port.js";
 import {
   createBranch,
   getCurrentBranch,
@@ -23,7 +24,12 @@ export function discoverIdentityFacts(cwd: string): ProjectIdentityFacts {
   return discoverGitIdentityFacts(cwd);
 }
 
-function runGh(cwd: string, args: string[], timeout: number): string {
+function runGh(
+  cwd: string,
+  args: string[],
+  timeout: number,
+  expectedRepository?: string,
+): string {
   const remote = discoverGitIdentityFacts(cwd).remoteOriginUrl;
   const repository = remote ? normalizeGitRemoteSlug(remote) : null;
   if (
@@ -31,6 +37,11 @@ function runGh(cwd: string, args: string[], timeout: number): string {
     !/^[a-z0-9.-]+\/[a-z0-9_.-]+\/[a-z0-9_.-]+$/i.test(repository)
   ) {
     throw new Error("Cannot verify the checkout's GitHub repository.");
+  }
+  if (expectedRepository !== undefined && repository !== expectedRepository) {
+    throw new Error(
+      "The checkout's GitHub repository differs from the merge target.",
+    );
   }
   return execFileSync("gh", [...args, "--repo", repository], {
     cwd,
@@ -81,7 +92,34 @@ export function resolvePullRequestUrl(
   return null;
 }
 
-export function mergePullRequest(cwd: string, prNumber: number): string {
+export function inspectPullRequestMerge(
+  cwd: string,
+  target: MergeTarget,
+): PullRequestMergeOutcome {
+  if (!isPrNumber(target.prNumber)) return "unavailable";
+  try {
+    const pr = JSON.parse(
+      runGh(
+        cwd,
+        ["pr", "view", String(target.prNumber), "--json", "number,state"],
+        10_000,
+        target.repository,
+      ),
+    );
+    if (pr?.number !== target.prNumber) return "unavailable";
+    if (pr.state === "MERGED") return "merged";
+    if (pr.state === "CLOSED") return "rejected";
+  } catch {
+    return "unavailable";
+  }
+  return "unavailable";
+}
+
+export function mergePullRequest(
+  cwd: string,
+  prNumber: number,
+  expectedRepository?: string,
+): string {
   if (!isPrNumber(prNumber)) {
     throw new Error("Pull request number must be a positive integer.");
   }
@@ -89,6 +127,7 @@ export function mergePullRequest(cwd: string, prNumber: number): string {
     cwd,
     ["pr", "merge", String(prNumber), "--merge", "--delete-branch"],
     30_000,
+    expectedRepository,
   );
 }
 
@@ -100,6 +139,7 @@ export function createGitVcsAdapter(): VcsPort {
     syncBranch,
     discoverIdentityFacts,
     resolvePullRequestUrl,
+    inspectPullRequestMerge,
     mergePullRequest,
   };
 }

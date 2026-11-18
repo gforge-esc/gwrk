@@ -79,6 +79,11 @@ export interface SlackFeatureThread {
   updatedAt: string;
 }
 
+export interface MergeTarget {
+  repository: string;
+  prNumber: number;
+}
+
 export interface SlackActionReceipt {
   receiptKey: string;
   projectId: string;
@@ -89,6 +94,7 @@ export interface SlackActionReceipt {
   actorUserId: string;
   outcome: "claimed" | "executed" | "failed" | "uncertain";
   recordedAt: string;
+  mergeTarget?: MergeTarget;
 }
 
 export function buildActionReceiptKey(input: {

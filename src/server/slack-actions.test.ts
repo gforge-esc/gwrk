@@ -1196,11 +1196,27 @@ describe("slack-actions (FR-007, US-004, US-005)", () => {
       },
     );
 
+    const mergeTarget = { repository: "github.com/org/alpha", prNumber: 42 };
+
+    function mergeReceiptKey(projectId: string, attempt = 0) {
+      return buildActionReceiptKey({
+        ...actionValue,
+        projectId,
+        workspaceId: SYNTHETIC_WORKSPACE_ID,
+        channelId: SYNTHETIC_CHANNEL_ALPHA,
+        messageTs,
+        actionId: attempt ? `merge_pr:retry:${attempt}` : "merge_pr",
+      });
+    }
+
     it.each(["button", "reaction"])(
-      "does not repeat a merge after an ambiguous transport timeout from a %s",
+      "reconciles the original receipt after a %s merge times out after the remote effect",
       async (surface) => {
         const { registry, project } = createSqliteRegistry();
-        const vcs = createSyntheticVcsPort();
+        const inspect = vi.fn(async () => "merged" as const);
+        const vcs = createSyntheticVcsPort({
+          inspectPullRequestMerge: inspect,
+        });
         const merge = vi
           .spyOn(vcs, "mergePullRequest")
           .mockImplementationOnce((cwd, prNumber) => {
@@ -1217,35 +1233,176 @@ describe("slack-actions (FR-007, US-004, US-005)", () => {
         });
         const reaction = reactionArgs(project.projectId);
         const click = clickArgs("merge_pr", project.projectId);
-        const receiptKey = buildActionReceiptKey({
-          ...actionValue,
-          projectId: project.projectId,
-          workspaceId: SYNTHETIC_WORKSPACE_ID,
-          channelId: SYNTHETIC_CHANNEL_ALPHA,
-          messageTs,
-          actionId: "merge_pr",
-        });
+        const receiptKey = mergeReceiptKey(project.projectId);
         if (surface === "button") await actionHandlers.merge_pr(click);
         else await eventHandlers.reaction_added(reaction);
-        expect
-          .soft(registry.getActionReceipt(receiptKey)?.outcome)
-          .toBe("uncertain");
-        const retry = {
+
+        expect.soft(registry.getActionReceipt(receiptKey)).toMatchObject({
+          outcome: "uncertain",
+          mergeTarget,
+        });
+        await eventHandlers.reaction_added({
           ...reaction,
-          event: { ...reaction.event, event_ts: "1731320000.000500" },
-        };
-        await Promise.all([
-          eventHandlers.reaction_added(retry),
-          actionHandlers.merge_pr(click),
-        ]);
+          context: { retryNum: 1 },
+        });
+        expect.soft(inspect).not.toHaveBeenCalled();
+
+        const editedCard = reactionArgs(project.projectId, messageTs, {
+          ...actionValue,
+          projectId: project.projectId,
+          prNumber: 202,
+        });
+        editedCard.event.event_ts = "1731320000.000500";
+        await eventHandlers.reaction_added(editedCard);
+        await actionHandlers.merge_pr(click);
+
+        expect
+          .soft(inspect)
+          .toHaveBeenCalledExactlyOnceWith(project.localRoot, mergeTarget);
+        expect.soft(registry.getActionReceipt(receiptKey)).toMatchObject({
+          outcome: "executed",
+          mergeTarget,
+        });
         expect
           .soft(merge)
-          .toHaveBeenCalledExactlyOnceWith(project.localRoot, 42);
+          .toHaveBeenCalledExactlyOnceWith(
+            project.localRoot,
+            42,
+            mergeTarget.repository,
+          );
+        expect(
+          registry.getActionReceipt(mergeReceiptKey(project.projectId, 1)),
+        ).toBeNull();
         expect(vcs.mergedPrs).toEqual([
           { cwd: project.localRoot, prNumber: 42 },
         ]);
       },
     );
+
+    it.each(["missing", "unavailable", "throwing"])(
+      "keeps a timed-out merge uncertain when inspection is %s",
+      async (capability) => {
+        const { registry, project } = createSqliteRegistry();
+        const inspect = vi.fn(async () => {
+          if (capability === "throwing")
+            throw new Error("Inspection timed out");
+          return "unavailable" as const;
+        });
+        const vcs = createSyntheticVcsPort({
+          inspectPullRequestMerge:
+            capability === "missing" ? undefined : inspect,
+        });
+        const merge = vi
+          .spyOn(vcs, "mergePullRequest")
+          .mockRejectedValueOnce(new Error("Merge response timed out"));
+        await registerSlackActions(mockApp as App, {
+          ...mockContext,
+          routingService: createProjectRoutingService({ registry }),
+          vcs,
+        });
+
+        await actionHandlers.merge_pr(clickArgs("merge_pr", project.projectId));
+        const retry = reactionArgs(project.projectId);
+        await eventHandlers.reaction_added(retry);
+
+        expect
+          .soft(registry.getActionReceipt(mergeReceiptKey(project.projectId)))
+          .toMatchObject({
+            outcome: "uncertain",
+            mergeTarget,
+          });
+        if (capability !== "missing") {
+          expect
+            .soft(inspect)
+            .toHaveBeenCalledExactlyOnceWith(project.localRoot, mergeTarget);
+        }
+        expect(merge).toHaveBeenCalledTimes(1);
+      },
+    );
+
+    it("leaves a legacy uncertain receipt blocked when it lacks a merge target", async () => {
+      const { registry, project } = createSqliteRegistry();
+      const receiptKey = mergeReceiptKey(project.projectId);
+      registry.claimActionReceipt({
+        ...actionValue,
+        projectId: project.projectId,
+        receiptKey,
+        actionId: "merge_pr",
+        messageTs,
+        actorUserId: SYNTHETIC_USER_MAINTAINER,
+        outcome: "claimed",
+        recordedAt: "2026-11-18T10:00:00.000Z",
+      });
+      registry.completeActionReceipt(receiptKey, "uncertain");
+      const inspect = vi.fn(async () => "rejected" as const);
+      const vcs = createSyntheticVcsPort({ inspectPullRequestMerge: inspect });
+      const merge = vi.spyOn(vcs, "mergePullRequest");
+      await registerSlackActions(mockApp as App, {
+        ...mockContext,
+        routingService: createProjectRoutingService({ registry }),
+        vcs,
+      });
+
+      await eventHandlers.reaction_added(reactionArgs(project.projectId));
+      expect(inspect).not.toHaveBeenCalled();
+      expect(merge).not.toHaveBeenCalled();
+      expect(registry.getActionReceipt(receiptKey)?.outcome).toBe("uncertain");
+    });
+
+    it("claims one concurrent retry after inspection confirms rejection", async () => {
+      const { registry, project } = createSqliteRegistry();
+      let finishInspection!: (outcome: "rejected") => void;
+      const inspection = new Promise<"rejected">((resolve) => {
+        finishInspection = resolve;
+      });
+      const inspect = vi.fn(() => inspection);
+      const vcs = createSyntheticVcsPort({ inspectPullRequestMerge: inspect });
+      const merge = vi
+        .spyOn(vcs, "mergePullRequest")
+        .mockRejectedValueOnce(new Error("Merge response timed out"));
+      await registerSlackActions(mockApp as App, {
+        ...mockContext,
+        routingService: createProjectRoutingService({ registry }),
+        vcs,
+      });
+      const reaction = reactionArgs(project.projectId);
+      await eventHandlers.reaction_added(reaction);
+      const receiptKey = mergeReceiptKey(project.projectId);
+      expect
+        .soft(registry.getActionReceipt(receiptKey)?.outcome)
+        .toBe("uncertain");
+
+      const retry = reactionArgs(project.projectId);
+      retry.event.event_ts = "1731320000.000500";
+      const retries = Promise.all([
+        eventHandlers.reaction_added(retry),
+        actionHandlers.merge_pr(clickArgs("merge_pr", project.projectId)),
+      ]);
+
+      try {
+        await vi.waitFor(() => expect(inspect).toHaveBeenCalledTimes(2));
+      } finally {
+        finishInspection("rejected");
+        await retries;
+      }
+      expect.soft(inspect).toHaveBeenCalledWith(project.localRoot, mergeTarget);
+      expect
+        .soft(registry.getActionReceipt(receiptKey)?.outcome)
+        .toBe("failed");
+      expect(merge.mock.calls).toEqual([
+        [project.localRoot, 42, mergeTarget.repository],
+        [project.localRoot, 42, mergeTarget.repository],
+      ]);
+      expect(
+        registry.getActionReceipt(mergeReceiptKey(project.projectId, 1)),
+      ).toMatchObject({
+        outcome: "executed",
+        mergeTarget,
+      });
+      expect(
+        registry.getActionReceipt(mergeReceiptKey(project.projectId, 2)),
+      ).toBeNull();
+    });
 
     it("grants one retry when the earlier reaction was rejected before merging", async () => {
       const { registry, project } = createSqliteRegistry();
@@ -1289,7 +1446,11 @@ describe("slack-actions (FR-007, US-004, US-005)", () => {
       ]);
       await eventHandlers.reaction_added(retry);
 
-      expect(merge).toHaveBeenCalledExactlyOnceWith(project.localRoot, 42);
+      expect(merge).toHaveBeenCalledExactlyOnceWith(
+        project.localRoot,
+        42,
+        mergeTarget.repository,
+      );
       const retryKey = buildActionReceiptKey({
         ...actionValue,
         projectId: project.projectId,
