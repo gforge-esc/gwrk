@@ -265,6 +265,7 @@ describe("slack-commands (FR-015, US-004)", () => {
   });
 
   it("handles approve command — merges PR via VCS port", async () => {
+    const merge = vi.spyOn(context.vcs!, "mergePullRequest");
     const response = await handleSlashCommand(
       "approve 003-slack phase-01",
       context,
@@ -273,6 +274,11 @@ describe("slack-commands (FR-015, US-004)", () => {
     expect(response.blocks[0].text.text).toContain("PR #42");
     expect((context.vcs as any).mergedPrs).toHaveLength(1);
     expect((context.vcs as any).mergedPrs[0].prNumber).toBe(42);
+    expect(merge).toHaveBeenCalledWith(
+      SYNTHETIC_PROJECT_ALPHA.localRoot,
+      42,
+      "github.com/org/alpha",
+    );
   });
 
   it("handles ship command — spawns background process", async () => {

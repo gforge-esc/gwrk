@@ -20,7 +20,11 @@ export interface VcsPort {
   discoverIdentityFacts(cwd: string): ProjectIdentityFacts;
   resolvePullRequestUrl(
     cwd: string,
-    query: { prNumber?: number; headBranch?: string },
+    query: {
+      prNumber?: number;
+      headBranch?: string;
+      expectedRepository?: string;
+    },
   ): Promise<string | null> | string | null;
   inspectPullRequestMerge?(
     cwd: string,

@@ -7,6 +7,7 @@ import type { App, BlockAction, ButtonAction } from "@slack/bolt";
 import type { ActionsBlock } from "@slack/types";
 import type { ProjectRoutingService } from "../application/project-routing/index.js";
 import { findOpenPr } from "../db/runs.js";
+import { normalizeGitRemoteSlug } from "../domain/project-id.js";
 import type {
   MergeTarget,
   SlackActionReceipt,
@@ -42,6 +43,7 @@ interface ActionVerificationResult {
   ok: boolean;
   projectRoot: string;
   projectId: string;
+  projectRepository?: string;
   threadTs?: string;
   receiptKey?: string;
   mergeTarget?: MergeTarget;
@@ -146,6 +148,14 @@ async function verifyAndClaimClick(
     ok: true,
     projectRoot: effectiveRoot,
     projectId: decision.project.projectId,
+    projectRepository: decision.project.repoSlug
+      ? (() => {
+          const slug = normalizeGitRemoteSlug(decision.project.repoSlug);
+          return slug?.split("/").length === 2
+            ? `github.com/${slug}`
+            : (slug ?? undefined);
+        })()
+      : undefined,
     threadTs: decision.recipient.threadTs,
     receiptKey: decision.receiptKey,
     mergeTarget: decision.mergeTarget,
@@ -527,7 +537,7 @@ export async function registerSlackActions(app: App, context: CommandContext) {
     if (!auth.ok) return;
 
     let reviewUrl: string | null = null;
-    if (context.vcs) {
+    if (context.vcs && auth.projectRepository) {
       const prNumber =
         payloadPrNumber ??
         findOpenPr(featureId, auth.projectId, phaseId)?.pr_number;
@@ -535,6 +545,7 @@ export async function registerSlackActions(app: App, context: CommandContext) {
         reviewUrl = await context.vcs.resolvePullRequestUrl(auth.projectRoot, {
           prNumber,
           headBranch: `feat/${featureId}`,
+          expectedRepository: auth.projectRepository,
         });
       } catch (error) {
         logger.error(`Review lookup failed: ${String(error)}`);

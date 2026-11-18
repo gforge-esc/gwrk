@@ -204,9 +204,15 @@ export function createSyntheticRegistry(seed?: {
     completeActionReceipt(
       receiptKey: string,
       outcome: Exclude<SlackActionReceipt["outcome"], "claimed">,
+      expectedOutcome?: SlackActionReceipt["outcome"],
     ): boolean {
       const existing = receipts.get(receiptKey);
-      if (!existing) return false;
+      if (
+        !existing ||
+        !["claimed", "uncertain"].includes(existing.outcome) ||
+        (expectedOutcome !== undefined && existing.outcome !== expectedOutcome)
+      )
+        return false;
       existing.outcome = outcome;
       receipts.set(receiptKey, existing);
       return true;

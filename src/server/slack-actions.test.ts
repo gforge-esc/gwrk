@@ -1093,6 +1093,7 @@ describe("slack-actions (FR-007, US-004, US-005)", () => {
         {
           prNumber: 42,
           headBranch: "feat/003-slack",
+          expectedRepository: "github.com/org/alpha",
         },
       );
       expect(execSync).not.toHaveBeenCalled();
@@ -1208,6 +1209,72 @@ describe("slack-actions (FR-007, US-004, US-005)", () => {
         actionId: attempt ? `merge_pr:retry:${attempt}` : "merge_pr",
       });
     }
+
+    it.each(["button", "reaction"])(
+      "reconciles a crash-left claimed receipt for a remotely merged %s without a second merge",
+      async (surface) => {
+        const { registry, project } = createSqliteRegistry();
+        const key = mergeReceiptKey(project.projectId);
+        registry.claimActionReceipt({
+          ...actionValue,
+          projectId: project.projectId,
+          receiptKey: key,
+          workspaceId: SYNTHETIC_WORKSPACE_ID,
+          channelId: SYNTHETIC_CHANNEL_ALPHA,
+          messageTs,
+          actionId: "merge_pr",
+          actorUserId: SYNTHETIC_USER_MAINTAINER,
+          recordedAt: new Date().toISOString(),
+          outcome: "claimed",
+          mergeTarget,
+        });
+        const inspect = vi.fn(async () => "merged" as const);
+        const vcs = createSyntheticVcsPort({
+          inspectPullRequestMerge: inspect,
+        });
+        const merge = vi.spyOn(vcs, "mergePullRequest");
+        await registerSlackActions(mockApp as App, {
+          ...mockContext,
+          routingService: createProjectRoutingService({ registry }),
+          vcs,
+        });
+        if (surface === "button")
+          await actionHandlers.merge_pr(
+            clickArgs("merge_pr", project.projectId),
+          );
+        else
+          await eventHandlers.reaction_added(reactionArgs(project.projectId));
+        expect(registry.getActionReceipt(key)?.outcome).toBe("executed");
+        expect(inspect).toHaveBeenCalledWith(project.localRoot, mergeTarget);
+        expect(merge).not.toHaveBeenCalled();
+      },
+    );
+
+    it("matches durable receipt compare-and-set and terminal guards in the synthetic registry", () => {
+      const registry = createSyntheticRegistry();
+      const key = mergeReceiptKey(SYNTHETIC_PROJECT_ALPHA.projectId);
+      registry.claimActionReceipt({
+        ...actionValue,
+        receiptKey: key,
+        workspaceId: SYNTHETIC_WORKSPACE_ID,
+        channelId: SYNTHETIC_CHANNEL_ALPHA,
+        messageTs,
+        actionId: "merge_pr",
+        actorUserId: SYNTHETIC_USER_MAINTAINER,
+        recordedAt: new Date().toISOString(),
+        outcome: "claimed",
+        mergeTarget,
+      });
+      expect(registry.completeActionReceipt(key, "executed", "uncertain")).toBe(
+        false,
+      );
+      expect(registry.getActionReceipt(key)?.outcome).toBe("claimed");
+      expect(registry.completeActionReceipt(key, "executed", "claimed")).toBe(
+        true,
+      );
+      expect(registry.completeActionReceipt(key, "failed")).toBe(false);
+      expect(registry.getActionReceipt(key)?.outcome).toBe("executed");
+    });
 
     it.each(["button", "reaction"])(
       "reconciles the original receipt after a %s merge times out after the remote effect",

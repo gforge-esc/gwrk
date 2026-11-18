@@ -47,6 +47,26 @@ afterEach(() => {
 });
 
 describe("project GitHub commands", () => {
+  it.each([{ prNumber: 42 }, { headBranch: "feature" }])(
+    "does not query a drifted origin for enrolled scope %j",
+    (query) => {
+      execFileSync("git", [
+        "-C",
+        root,
+        "remote",
+        "set-url",
+        "origin",
+        "https://github.com/org/beta.git",
+      ]);
+      expect(
+        resolvePullRequestUrl(root, {
+          ...query,
+          expectedRepository: "github.com/org/alpha",
+        }),
+      ).toBeNull();
+      expect(existsSync(join(root, "arguments"))).toBe(false);
+    },
+  );
   it("passes branch names as one argument without shell evaluation", () => {
     const marker = join(root, "unexpected-shell-effect");
     const branch = `feature; touch '${marker}'; #`;

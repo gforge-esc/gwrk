@@ -12,6 +12,7 @@ import {
 } from "../adapters/filesystem/scoped-feature.js";
 import type { ProjectRoutingService } from "../application/project-routing/index.js";
 import { findOpenPr } from "../db/runs.js";
+import { normalizeGitRemoteSlug } from "../domain/project-id.js";
 import {
   parseProjectSelector,
   requiredAccessForSlackCommand,
@@ -44,6 +45,7 @@ export interface CommandContext {
   messageTs?: string;
   projectId?: string;
   projectSlug?: string;
+  projectRepository?: string;
   routingService?: ProjectRoutingService;
   vcs?: VcsPort;
 }
@@ -359,7 +361,13 @@ const handlers: Record<string, SlashCommandHandler> = {
         };
       }
 
-      await context.vcs.mergePullRequest(context.projectRoot, pr.pr_number);
+      if (!context.projectRepository)
+        throw new Error("The authorized project has no enrolled repository.");
+      await context.vcs.mergePullRequest(
+        context.projectRoot,
+        pr.pr_number,
+        context.projectRepository,
+      );
 
       return {
         response_type: "in_channel",
@@ -1220,6 +1228,14 @@ export async function handleSlashCommand(
     projectRoot: effectiveRoot,
     projectId: decision.project.projectId,
     projectSlug: decision.project.slug,
+    projectRepository: decision.project.repoSlug
+      ? (() => {
+          const slug = normalizeGitRemoteSlug(decision.project.repoSlug);
+          return slug?.split("/").length === 2
+            ? `github.com/${slug}`
+            : (slug ?? undefined);
+        })()
+      : undefined,
     threadTs,
   };
 

@@ -282,7 +282,7 @@ export function createProjectRoutingService(
         receipt = deps.registry.getActionReceipt(receiptKey);
       }
 
-      if (receipt?.outcome === "uncertain") {
+      if (receipt?.outcome === "uncertain" || receipt?.outcome === "claimed") {
         const target = receipt.mergeTarget;
         if (
           target?.repository !== repository ||
@@ -300,11 +300,12 @@ export function createProjectRoutingService(
           deps.registry.completeActionReceipt(
             receiptKey,
             "executed",
-            "uncertain",
+            receipt.outcome,
           );
           return decision;
         }
         if (
+          receipt.outcome === "claimed" ||
           outcome !== "rejected" ||
           !deps.registry.completeActionReceipt(
             receiptKey,

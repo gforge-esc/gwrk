@@ -58,7 +58,11 @@ function isPrNumber(value: number | undefined): value is number {
 
 export function resolvePullRequestUrl(
   cwd: string,
-  query: { prNumber?: number; headBranch?: string },
+  query: {
+    prNumber?: number;
+    headBranch?: string;
+    expectedRepository?: string;
+  },
 ): string | null {
   if (isPrNumber(query.prNumber)) {
     try {
@@ -67,6 +71,7 @@ export function resolvePullRequestUrl(
           cwd,
           ["pr", "view", String(query.prNumber), "--json", "url"],
           10_000,
+          query.expectedRepository,
         ),
       );
       if (typeof pr?.url === "string" && pr.url) return pr.url;
@@ -81,6 +86,7 @@ export function resolvePullRequestUrl(
           cwd,
           ["pr", "list", "--head", query.headBranch, "--json", "url"],
           10_000,
+          query.expectedRepository,
         ),
       );
       const url = Array.isArray(prs) ? prs[0]?.url : undefined;
