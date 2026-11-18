@@ -102,6 +102,22 @@ const input = {
 };
 
 describe("model qualification orchestration", () => {
+  it.each([true, false])(
+    "rejects secret fixture evidence before judge dispatch with gatePasses=%s",
+    async (gatePasses) => {
+      const { deps, runFixtureRepeat, judgeComparison } = setup({ gatePasses });
+      const original = runFixtureRepeat.getMockImplementation()!;
+      runFixtureRepeat.mockImplementation(async (request) => ({
+        ...(await original(request)),
+        sanitizedOutput: "Authorization: Bearer fixture-sensitive-value",
+      }));
+      await expect(evaluateModels(deps, input)).rejects.toThrow(
+        "Secret material",
+      );
+      expect(judgeComparison).not.toHaveBeenCalled();
+    },
+  );
+
   it("rejects a candidate-plan handoff when the source run has no generated artifacts", async () => {
     const { deps, judgeComparison } = setup();
     const winner = blindCandidate(input.blindingSecret, input.evaluationId);

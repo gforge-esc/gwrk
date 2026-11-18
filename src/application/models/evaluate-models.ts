@@ -313,6 +313,8 @@ export async function evaluateModels(
     }
   }
 
+  assertNoSecretMaterial({ candidateRepeats, incumbentRepeats });
+
   const candidateGatesPassed =
     candidateRepeats.length > 0 &&
     candidateRepeats.every(
@@ -441,6 +443,7 @@ export async function evaluateModels(
     roleScore: packetRoleScore,
   };
 
+  assertNoSecretMaterial(packet);
   const verdict1 = await deps.judge.judgeComparison(input.judges[0], packet);
   const verdict2 = await deps.judge.judgeComparison(input.judges[1], packet);
 
