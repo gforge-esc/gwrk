@@ -14,7 +14,7 @@ The transport uses argument arrays and an explicit checkout directory. Tests inj
 
 The initial adapter suite failed because the implementation was absent. After implementation, all six behavioral checks passed. Build and targeted Biome checks passed. The logs are /tmp/gwrk-049-github-adapter-red.log and /tmp/gwrk-049-github-adapter-green.log.
 
-The checks cover raw-body authentication, pagination, head repository identity, closed-unmerged records, terminal timestamp boundaries and lookup failures. They include rejection of foreign base metadata.
+The checks cover raw-body authentication and pagination. They also cover head repository identity and closed-unmerged records. Terminal timestamp boundaries and lookup failures have separate cases. They include rejection of foreign base metadata.
 
 ## References
 
