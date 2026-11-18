@@ -430,6 +430,52 @@ describe("project enforcement candidate discovery", () => {
     ]);
   });
 
+  it.each([
+    { disable: ["fixture-framework-policy"] },
+    { plugins: { "fixture-framework-policy": { enabled: false } } },
+  ])(
+    "preserves the installed identity when a shared-path alias is disabled by %j",
+    async (setting) => {
+      const installed = join(root, "entry/skills/renamed-policy");
+      await writePolicyPack(
+        installed,
+        { name: "renamed-policy", framework, version: "2.0.0" },
+        "Installed identity rules",
+      );
+      await writeFile(
+        join(root, ".gwrk/plugins.json"),
+        JSON.stringify({
+          inherits: false,
+          entries: ["entry"],
+          override: { [name]: installed },
+          ...setting,
+        }),
+      );
+      expect
+        .soft(await resolveEnforcementSkills(root))
+        .toContain("Installed identity rules");
+      expect.soft((await resolveEffectivePolicy(root)).gaps).toEqual([]);
+      const listed = (await listProjectPlugins(root)).filter((p) =>
+        [name, "renamed-policy"].includes(p.name),
+      );
+      expect(listed).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            name,
+            version: "2.0.0",
+            status: "disabled",
+          }),
+          expect.objectContaining({
+            name: "renamed-policy",
+            version: "2.0.0",
+            status: "active",
+          }),
+        ]),
+      );
+      expect(listed).toHaveLength(2);
+    },
+  );
+
   it.each(["relative", "absolute"] as const)(
     "resolves the %s project override when the caller is outside the project",
     async (pathKind) => {

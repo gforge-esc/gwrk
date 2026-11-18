@@ -201,3 +201,5 @@ python3 scripts/architecture-context-uat.py
 Record pack versions and compatibility results in the feature review. A pack that needs changes gets a companion gwrk-plugins change and a fixture tied to its reviewed revision.
 
 Phase 3 regression coverage rejects blank skill bodies before selection. The CLI reports disabled overrides when they suppress a compatible lower copy. RED reproduced four failures in `/tmp/gwrk-044-blank-policy-red.log`. The repaired phase gate passes 86 tests.
+
+Phase 3 shared-path alias regression keeps an installed policy active when a disabled override alias points to the same directory. Both project disable mechanisms failed before the effective-name deduplication repair. The phase gate now passes 95 checks.

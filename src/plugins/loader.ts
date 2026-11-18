@@ -244,14 +244,15 @@ export class PluginLoader {
       overrideName?: string,
     ) => {
       const resolvedPath = path.resolve(pluginPath);
-      if (visitedPaths.has(resolvedPath)) return;
-      visitedPaths.add(resolvedPath);
       const manifest = await this.loadManifest(resolvedPath).catch(
         () => undefined,
       );
       if (manifest?.type !== "skill" || manifest.tier !== "enforcement") return;
 
       const name = overrideName ?? manifest.name;
+      const identity = JSON.stringify([resolvedPath, name]);
+      if (visitedPaths.has(identity)) return;
+      visitedPaths.add(identity);
       const disabled = this.evaluateDisabledStatus(
         manifest,
         "skills",
