@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { execSync } from "node:child_process";
+import { execFileSync, execSync } from "node:child_process";
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
@@ -89,6 +89,19 @@ export class SandboxManager {
     );
   }
 
+  protected gitOptions(): { env?: NodeJS.ProcessEnv } {
+    return {};
+  }
+
+  private runWorktree(args: string[], cwd: string): void {
+    const options = { cwd, ...this.gitOptions(), stdio: "pipe" as const };
+    if (options.env) {
+      execFileSync("git", ["worktree", ...args], options);
+    } else {
+      execSync(`git worktree ${args.join(" ")}`, options);
+    }
+  }
+
   /**
    * The identity gwrk hands to `setup` and `teardown`.
    *
@@ -99,7 +112,7 @@ export class SandboxManager {
    */
   private hookEnv(id: string, workDir: string, featureId: string) {
     return {
-      ...process.env,
+      ...(this.gitOptions().env ?? process.env),
       GWRK_SANDBOX_ID: id,
       GWRK_SANDBOX_DIR: workDir,
       GWRK_FEATURE_ID: featureId,
@@ -247,6 +260,7 @@ export class SandboxManager {
     try {
       execSync(`git rev-parse --verify --quiet ${branchName}`, {
         cwd: projectRoot,
+        ...this.gitOptions(),
         stdio: "pipe",
       });
       branchExists = true;
@@ -260,6 +274,7 @@ export class SandboxManager {
         worktreeListOutput = String(
           execSync("git worktree list --porcelain", {
             cwd: projectRoot,
+            ...this.gitOptions(),
             encoding: "utf-8",
             stdio: "pipe",
           }) ?? "",
@@ -285,10 +300,7 @@ export class SandboxManager {
       }
 
       try {
-        execSync(`git worktree add ${workDir} ${branchName}`, {
-          cwd: projectRoot,
-          stdio: "pipe",
-        });
+        this.runWorktree(["add", workDir, branchName], projectRoot);
       } catch (e: unknown) {
         const err = e instanceof Error ? e : new Error(String(e));
         throw new Error(`Failed to create git worktree: ${err.message}`);
@@ -296,18 +308,18 @@ export class SandboxManager {
     } else {
       try {
         // Ensure the base branch exists; otherwise fall back to current HEAD.
-        execSync(`git branch --list ${baseBranch}`, { cwd: projectRoot });
-        execSync(`git worktree add -b ${branchName} ${workDir} ${baseBranch}`, {
+        execSync(`git branch --list ${baseBranch}`, {
           cwd: projectRoot,
-          stdio: "pipe",
+          ...this.gitOptions(),
         });
+        this.runWorktree(
+          ["add", "-b", branchName, workDir, baseBranch],
+          projectRoot,
+        );
       } catch {
         // Fallback to current branch if baseBranch doesn't exist (though it should in gwrk flow)
         try {
-          execSync(`git worktree add -b ${branchName} ${workDir}`, {
-            cwd: projectRoot,
-            stdio: "pipe",
-          });
+          this.runWorktree(["add", "-b", branchName, workDir], projectRoot);
         } catch (e2: unknown) {
           const err2 = e2 instanceof Error ? e2 : new Error(String(e2));
           throw new Error(`Failed to create git worktree: ${err2.message}`);
@@ -351,10 +363,23 @@ export class SandboxManager {
     featureId: string,
     options: DestroyOptions = {},
   ): Promise<void> {
-    if (!fs.existsSync(workDir)) return;
+    const projectRoot = path.dirname(path.dirname(this.runsDir));
+    if (!fs.existsSync(workDir)) {
+      const gitOptions = this.gitOptions();
+      if (!gitOptions.env) return;
+      const registrations = execFileSync(
+        "git",
+        ["worktree", "list", "--porcelain", "-z"],
+        { cwd: projectRoot, ...gitOptions, encoding: "utf-8" },
+      );
+      if (registrations.split("\0").includes(`worktree ${workDir}`)) {
+        this.runWorktree(["remove", "--force", workDir], projectRoot);
+      }
+      this.forgetSandbox(workDir);
+      return;
+    }
 
     const { autoCommitPush = true, teardown } = options;
-    const projectRoot = path.dirname(path.dirname(this.runsDir));
 
     // 0. Release what `setup` started, while the worktree still exists.
     //    Best-effort: a failing teardown must not strand the worktree forever,
@@ -379,6 +404,7 @@ export class SandboxManager {
       // 1. Check if there are changes
       const status = execSync("git status --porcelain", {
         cwd: workDir,
+        ...this.gitOptions(),
         encoding: "utf-8",
       }).trim();
 
@@ -386,15 +412,21 @@ export class SandboxManager {
         // 2. Commit changes (gwrk agents usually do this, but just in case)
         execSync('git add . && git commit -m "Task contribution" || true', {
           cwd: workDir,
+          ...this.gitOptions(),
           stdio: "pipe",
         });
 
         // 3. Push the branch
-        execSync("git push origin HEAD", { cwd: workDir, stdio: "pipe" });
+        execSync("git push origin HEAD", {
+          cwd: workDir,
+          ...this.gitOptions(),
+          stdio: "pipe",
+        });
 
         // 4. Create PR via gh CLI
         const branchName = execSync("git rev-parse --abbrev-ref HEAD", {
           cwd: workDir,
+          ...this.gitOptions(),
           encoding: "utf-8",
         }).trim();
 
@@ -405,6 +437,7 @@ export class SandboxManager {
             `gh pr create --base ${baseBranch} --head ${branchName} --title "Task contribution: ${branchName}" --body "Automated PR from gwrk sandbox"`,
             {
               cwd: workDir,
+              ...this.gitOptions(),
               stdio: "pipe",
             },
           );
@@ -415,12 +448,7 @@ export class SandboxManager {
       }
 
       // 5. Remove worktree
-      execSync(`git worktree remove --force ${workDir}`, {
-        cwd: projectRoot,
-        stdio: "pipe",
-      });
-      // 6. Forget it — the ordinary exit path; pruneOrphans covers the rest.
-      this.forgetSandbox(workDir);
+      this.runWorktree(["remove", "--force", workDir], projectRoot);
     } catch (e: unknown) {
       const err = e instanceof Error ? e : new Error(String(e));
       logCliError(
@@ -428,14 +456,19 @@ export class SandboxManager {
       );
       // Try to cleanup worktree anyway if it failed midway
       try {
-        execSync(`git worktree remove --force ${workDir}`, {
-          cwd: projectRoot,
-          stdio: "pipe",
-        });
-      } catch {
-        // ignore
+        this.runWorktree(["remove", "--force", workDir], projectRoot);
+      } catch (cause) {
+        if (this.gitOptions().env) {
+          const message =
+            cause instanceof Error ? cause.message : String(cause);
+          throw new Error(`Failed to remove worktree ${workDir}: ${message}`, {
+            cause,
+          });
+        }
+        return;
       }
     }
+    this.forgetSandbox(workDir);
   }
 
   async listSandboxes(): Promise<SandboxInfo[]> {

@@ -4,10 +4,17 @@
 
 import { logCliError, warnCli } from "../adapters/cli/output-scope.js";
 import { loadConfig } from "../utils/config.js";
+import { postSlackMessageWithSignal } from "./slack-channel.js";
 import type { SlackMessage } from "./slack-messages.js";
 import { type SlackEvent, presenceManager } from "./slack-presence.js";
 import { getSlackApp } from "./slack.js";
 import { loadTelegramConfig, notifyTelegram } from "./telegram-notify.js";
+
+function deliverySignal(signal?: AbortSignal, timeoutMs?: number) {
+  if (timeoutMs === undefined) return signal;
+  const timeout = AbortSignal.timeout(timeoutMs);
+  return signal ? AbortSignal.any([signal, timeout]) : timeout;
+}
 
 /**
  * Dispatches a Slack notification.
@@ -18,13 +25,29 @@ import { loadTelegramConfig, notifyTelegram } from "./telegram-notify.js";
 export async function notifySlack(
   message: SlackMessage,
   event?: SlackEvent,
-  options: { opsOnly?: boolean } = {},
+  options: {
+    opsOnly?: boolean;
+    projectRoot?: string;
+    signal?: AbortSignal;
+    transportTimeoutMs?: number;
+  } = {},
 ): Promise<void> {
+  const { projectRoot = process.cwd(), signal, transportTimeoutMs } = options;
+  if (signal?.aborted) return;
   const app = getSlackApp();
+  const forwardToTelegram = async () => {
+    if (!signal?.aborted && loadTelegramConfig(projectRoot)) {
+      await notifyTelegram(
+        message,
+        projectRoot,
+        deliverySignal(signal, transportTimeoutMs),
+      );
+    }
+  };
 
   if (options.opsOnly) {
     try {
-      const config = loadConfig(process.cwd());
+      const config = loadConfig(projectRoot);
       const opsChannelId = config.project.slack?.opsChannelId;
       if (opsChannelId) {
         message.channel = opsChannelId;
@@ -34,28 +57,41 @@ export async function notifySlack(
     }
   }
 
+  if (app && event) {
+    await presenceManager.handleNotification(
+      event,
+      message,
+      signal,
+      projectRoot,
+      forwardToTelegram,
+      transportTimeoutMs,
+    );
+    return;
+  }
   if (app) {
-    // Socket Mode path — full interactivity (buttons, actions)
-    if (event) {
-      await presenceManager.handleNotification(event, message);
-    } else {
-      await sendSlackMessage(message);
-    }
+    await sendSlackMessage(message, signal, projectRoot, transportTimeoutMs);
   } else {
-    // Webhook fallback — fire-and-forget, no interactive elements
-    await sendViaWebhook(message);
+    await sendViaWebhook(
+      message,
+      deliverySignal(signal, transportTimeoutMs),
+      projectRoot,
+    );
   }
 
-  // Forward to Telegram when configured (dual-channel control plane)
-  if (loadTelegramConfig()) {
-    await notifyTelegram(message);
-  }
+  await forwardToTelegram();
 }
 
 /**
  * Send a message via Socket Mode app (rich: blocks, buttons, actions).
  */
-export async function sendSlackMessage(message: SlackMessage): Promise<void> {
+export async function sendSlackMessage(
+  message: SlackMessage,
+  shutdownSignal?: AbortSignal,
+  projectRoot = process.cwd(),
+  transportTimeoutMs?: number,
+): Promise<void> {
+  const signal = deliverySignal(shutdownSignal, transportTimeoutMs);
+  if (signal?.aborted) return;
   const app = getSlackApp();
   if (!app) return;
 
@@ -63,7 +99,7 @@ export async function sendSlackMessage(message: SlackMessage): Promise<void> {
   let channelId = message.channel;
   if (!channelId) {
     try {
-      const config = loadConfig(process.cwd());
+      const config = loadConfig(projectRoot);
       channelId = config.project.slack?.channelId;
     } catch (e) {
       warnCli("Failed to load config for channel resolution:", e);
@@ -76,17 +112,21 @@ export async function sendSlackMessage(message: SlackMessage): Promise<void> {
   }
 
   try {
-    await app.client.chat.postMessage({
+    const payload = {
       channel: channelId,
       text: message.text,
       blocks: message.blocks,
-    });
+    };
+    if (signal)
+      await postSlackMessageWithSignal(app.client.token, payload, signal);
+    else await app.client.chat.postMessage(payload);
   } catch (error) {
+    if (signal?.aborted) return;
     const errorMessage = error instanceof Error ? error.message : String(error);
     logCliError(`Failed to post Slack notification: ${errorMessage}`);
 
     // Fallback to webhook on Socket Mode failure
-    await sendViaWebhook(message);
+    await sendViaWebhook(message, signal, projectRoot);
   }
 }
 
@@ -99,10 +139,15 @@ export async function sendSlackMessage(message: SlackMessage): Promise<void> {
  * - Shell scripts (work-until-done.sh)
  * - CI pipelines
  */
-async function sendViaWebhook(message: SlackMessage): Promise<void> {
+async function sendViaWebhook(
+  message: SlackMessage,
+  signal: AbortSignal | undefined,
+  projectRoot: string,
+): Promise<void> {
+  if (signal?.aborted) return;
   let webhookUrl: string | undefined;
   try {
-    const config = loadConfig(process.cwd());
+    const config = loadConfig(projectRoot);
     webhookUrl = config.project.slack?.webhookUrl;
   } catch {
     // Config not available
@@ -135,6 +180,7 @@ async function sendViaWebhook(message: SlackMessage): Promise<void> {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
+      signal,
     });
 
     if (!response.ok) {
@@ -143,6 +189,7 @@ async function sendViaWebhook(message: SlackMessage): Promise<void> {
       );
     }
   } catch (error) {
+    if (signal?.aborted) return;
     const errorMessage = error instanceof Error ? error.message : String(error);
     logCliError(`Webhook notification error: ${errorMessage}`);
   }

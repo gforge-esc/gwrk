@@ -225,17 +225,18 @@ describe("Phase 9: Enforcement Skills", () => {
         return mockChild;
       });
 
-      // Provide stdin with the marker to trigger replacement
+      const template = "Rules:\n<code_quality>{{enforcement}}</code_quality>";
       await dispatchToAgent({
         type: "implement",
-        prompt: "test",
         agent: "agy",
         workDir: tmpDir,
-        stdin: "Rules:\n{{enforcement}}",
+        stdin: template,
+        promptParts: { template, userInput: "" },
       });
 
       expect(mockStdinWrite).toHaveBeenCalled();
-      const finalStdin = mockStdinWrite.mock.calls[0][0];
+      const finalStdin = JSON.parse(mockStdinWrite.mock.calls[0][0]).message
+        .content;
       expect(finalStdin).toContain("MOCK ENFORCEMENT CONTENT");
       expect(finalStdin).not.toContain("{{enforcement}}");
     });

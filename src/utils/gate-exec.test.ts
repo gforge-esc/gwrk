@@ -5,7 +5,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import fs from "node:fs";
 import * as gateRunner from "./gate-runner.js";
-import { runTaskGate, runInlineGate } from "./gate-exec.js";
+import { GATE_TIMEOUT_MS, runTaskGate, runInlineGate } from "./gate-exec.js";
 import { parsePlanMarkdown } from "../engine/plan-to-tasks.js";
 
 // runGate is the file-exec adapter; mock it so file-based strategies don't hit
@@ -42,7 +42,7 @@ describe("runTaskGate — the shared gate execution port", () => {
     expect(r.passed).toBe(true);
     expect(gateRunner.runGate).toHaveBeenCalledWith(
       `${featureDir}/gates/T001-gate.sh`,
-      { cwd },
+      { cwd, timeoutMs: GATE_TIMEOUT_MS },
     );
   });
 
@@ -65,7 +65,7 @@ describe("runTaskGate — the shared gate execution port", () => {
     expect(r.passed).toBe(false);
     expect(gateRunner.runGate).toHaveBeenCalledWith(
       `${featureDir}/run-all-gates.sh`,
-      { cwd },
+      { cwd, timeoutMs: GATE_TIMEOUT_MS },
     );
   });
 

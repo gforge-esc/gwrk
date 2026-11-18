@@ -163,6 +163,31 @@ describe("ShipOrchestrator", () => {
     expect((orchestrator as any).state.iteration).toBe(2);
   });
 
+  it.each([true, false])("runs the authored phase gate file after the profile runs zero tests (gate passes=%s)", async (passed) => {
+    const taskState = state.loadTaskState(config.cwd);
+    const [phase] = taskState.phases;
+    const gatePath = `${config.cwd}/specs/${config.featureId}/gates/phase-01.sh`;
+    phase.tasks[0].description = "Tests: src/foo.test.ts";
+    phase.tasks[0].gateScript = "gates/phase-01.sh";
+    vi.mocked(state.loadTaskState).mockReturnValue(taskState);
+    vi.mocked(fs.existsSync).mockImplementation((path) => path === gatePath);
+    vi.mocked(execSync).mockReturnValue("No test files found, exiting");
+    vi.mocked(gateRunner.runGate).mockResolvedValue({
+      passed,
+      exitCode: passed ? 0 : 1,
+      output: "authored gate result",
+    });
+
+    const orchestrator = new ShipOrchestrator(config);
+    const result = await (orchestrator as any).stageTestGate();
+
+    expect(gateRunner.runGate).toHaveBeenCalledExactlyOnceWith(
+      gatePath,
+      expect.objectContaining({ cwd: config.cwd }),
+    );
+    expect(result.nextStage === ShipStage.CODE_REVIEW).toBe(passed);
+  });
+
   it("TEST_GATE passes when phase tests actually run and pass — liveness", async () => {
     vi.mocked(state.loadTaskState).mockReturnValue({
       featureId: "004-ship-loop",
@@ -318,6 +343,29 @@ describe("ShipOrchestrator", () => {
     expect(exitCode).toBe(1);
     expect((orchestrator as any).state.stage).toBe(ShipStage.BRANCH_SETUP);
     expect(git.createBranch).not.toHaveBeenCalled();
+  });
+
+  it("dispatches a repair when a reviewer reopened a task with a passing gate", async () => {
+    const taskState = vi.mocked(state.loadTaskState)("");
+    taskState.phases[0].tasks[0].description +=
+      "\n\nREVIEW/GATE DIVERGENCE (T001): Add a gate that reproduces the defect.";
+    vi.mocked(state.loadTaskState).mockReturnValue(taskState);
+    vi.mocked(gateRunner.runGate).mockResolvedValue({
+      passed: true, exitCode: 0, output: "Pass",
+    });
+    vi.mocked(agent.dispatchToAgent).mockResolvedValue({
+      exitCode: 0, stdout: "Repaired", stderr: "", durationS: 1,
+    });
+
+    const orchestrator = new ShipOrchestrator(config);
+    vi.spyOn(orchestrator as any, "runPostFlightGates").mockResolvedValue(null);
+    await (orchestrator as any).stageImplement();
+
+    expect(agent.dispatchToAgent).toHaveBeenCalledWith(expect.objectContaining({
+      workflow: "gwrk-implement",
+      stdin: expect.stringContaining("REVIEW/GATE DIVERGENCE"),
+    }));
+    expect(taskState.phases[0].tasks[0].status).toBe("open");
   });
 
   it("should skip implementation if pre-flight gate passes", async () => {

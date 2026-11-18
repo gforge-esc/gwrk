@@ -16,36 +16,54 @@ import { execCommand } from "../utils/exec.js";
 import { parseFeatureBranch } from "../utils/feature-branch.js";
 import { detectDefaultBranch, syncTrunkForHarvest } from "../utils/git.js";
 import { resolveProjectId } from "../utils/project-id.js";
+import type { DispatchLedgerScope } from "./dispatch.js";
+
+const GH_POLL_TIMEOUT_MS = 5_000;
 
 export class HarvestWatcher {
   private interval: NodeJS.Timeout | null = null;
+  private inFlight?: Promise<void>;
+  private stopping = false;
   private projectId: string;
 
   constructor(
     private config: GwrkConfig,
     private slackApp: App | null,
     private projectRoot: string = process.cwd(),
+    private ledger?: DispatchLedgerScope,
+    private gitEnv?: () => NodeJS.ProcessEnv,
   ) {
-    this.projectId = resolveProjectId(this.projectRoot);
+    this.projectId = ledger?.projectId ?? resolveProjectId(this.projectRoot);
   }
 
   start() {
+    this.stopping = false;
     // Poll every 5 minutes (300000ms)
     const intervalMs = 5 * 60 * 1000;
-    this.interval = setInterval(() => this.runCheck(), intervalMs);
-    // Run once on startup
-    this.runCheck().catch(console.error);
+    const check = () => {
+      this.inFlight ??= this.runCheck()
+        .catch(console.error)
+        .finally(() => {
+          this.inFlight = undefined;
+        });
+    };
+    this.interval = setInterval(check, intervalMs);
+    check();
   }
 
-  stop() {
+  stop(): void | Promise<void> {
+    this.stopping = true;
     if (this.interval) {
       clearInterval(this.interval);
       this.interval = null;
     }
+    return this.inFlight;
   }
 
   async runCheck() {
+    if (this.stopping) return;
     try {
+      const env = this.gitEnv?.();
       const baseBranch = detectDefaultBranch(this.projectRoot, "develop");
 
       // Execute GitHub CLI command to get merged and closed PRs
@@ -64,9 +82,10 @@ export class HarvestWatcher {
           "number,headRefName,mergedAt,mergeCommit,url,state,closedAt",
         ],
         undefined,
-        { cwd: this.projectRoot },
+        { cwd: this.projectRoot, env, timeoutMs: GH_POLL_TIMEOUT_MS },
       );
 
+      if (this.stopping) return;
       if (result.exitCode !== 0) {
         // Log at warn/debug level; don't throw to prevent daemon crash
         warnCli(
@@ -86,6 +105,7 @@ export class HarvestWatcher {
       }>;
 
       for (const pr of prs) {
+        if (this.stopping) break;
         if (pr.state === "OPEN") continue;
 
         const headRef = pr.headRefName;
@@ -101,6 +121,7 @@ export class HarvestWatcher {
             featureId,
             phaseId,
             this.projectId,
+            this.ledger?.db,
           );
           if (existing) {
             continue; // Already processed
@@ -131,8 +152,8 @@ export class HarvestWatcher {
         };
 
         try {
-          syncTrunkForHarvest(this.projectRoot, baseBranch);
-          await harvestFeature(this.projectRoot, record);
+          syncTrunkForHarvest(this.projectRoot, baseBranch, env);
+          await harvestFeature(this.projectRoot, record, this.ledger, env);
           logCliOutput(
             `HarvestWatcher: Completed harvest for ${featureId} (${phaseId || "all phases"})`,
           );

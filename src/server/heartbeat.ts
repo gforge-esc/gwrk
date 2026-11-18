@@ -9,37 +9,54 @@ import { DriftDetector, type DriftResult } from "../engine/drift-detector.js";
 import { PlanStore } from "../engine/plan-store.js";
 import type { GwrkConfig } from "../utils/config.js";
 import { resolveProjectId } from "../utils/project-id.js";
+import type { DispatchLedgerScope } from "./dispatch.js";
+import { postSlackMessageWithSignal } from "./slack-channel.js";
 
 export class PlanHeartbeat {
   private interval: NodeJS.Timeout | null = null;
+  private inFlight?: Promise<void>;
+  private controller?: AbortController;
   private store: PlanStore;
-  private projectId: string;
 
   constructor(
     private config: GwrkConfig,
     private slackApp: App | null,
     private projectRoot: string = process.cwd(),
+    ledger?: DispatchLedgerScope,
   ) {
-    this.projectId = resolveProjectId(this.projectRoot);
-    this.store = new PlanStore(this.projectId);
+    this.store = new PlanStore(
+      ledger?.projectId ?? resolveProjectId(this.projectRoot),
+      ledger?.db,
+    );
   }
 
   start() {
+    if (this.interval) return;
+    const controller = new AbortController();
+    this.controller = controller;
     const intervalMs = 4 * 60 * 60 * 1000; // 4 hours default
-    this.interval = setInterval(() => this.runCheck(), intervalMs);
-    // Also run once on start
-    this.runCheck().catch(console.error);
+    const check = () => {
+      this.inFlight ??= this.runCheck(controller.signal)
+        .catch(console.error)
+        .finally(() => {
+          this.inFlight = undefined;
+        });
+    };
+    this.interval = setInterval(check, intervalMs);
+    check();
   }
 
-  stop() {
+  stop(): void | Promise<void> {
     if (this.interval) {
       clearInterval(this.interval);
       this.interval = null;
     }
+    this.controller?.abort();
+    return this.inFlight;
   }
 
-  async runCheck() {
-    if (this.store.isEmpty()) return;
+  async runCheck(signal?: AbortSignal) {
+    if (signal?.aborted || this.store.isEmpty()) return;
 
     const status = this.store.getPlanStatus();
     const phases = status.features.flatMap((f) => f.phases);
@@ -65,6 +82,7 @@ export class PlanHeartbeat {
 
     // 3. Detect Blocked
     const solver = await this.store.getSolver();
+    if (signal?.aborted) return;
     const ready = solver.getReadyQueue();
     // (Simplified blocked detection: if no items are ready but project is not done)
     const isProjectDone = phases.every(
@@ -93,7 +111,7 @@ export class PlanHeartbeat {
       this.slackApp &&
       (stalePhases.length > 0 || drifted.length > 0 || isBlocked)
     ) {
-      await this.reportToSlack(stalePhases, drifted, isBlocked);
+      await this.reportToSlack(stalePhases, drifted, isBlocked, signal);
     }
   }
 
@@ -101,6 +119,7 @@ export class PlanHeartbeat {
     stale: PlanPhase[],
     drifted: DriftResult[],
     isBlocked: boolean,
+    shutdownSignal?: AbortSignal,
   ) {
     const channelId = this.config.project.slack?.channelId;
     if (!channelId) {
@@ -128,13 +147,19 @@ export class PlanHeartbeat {
         "\n*⚠️ Project Blocked:* No items are currently ready to work on, but the project is incomplete.\n";
     }
 
+    const deadline = AbortSignal.timeout(5_000);
+    const signal = shutdownSignal
+      ? AbortSignal.any([shutdownSignal, deadline])
+      : deadline;
     try {
-      await this.slackApp?.client.chat.postMessage({
-        channel: channelId,
-        text,
-      });
+      await postSlackMessageWithSignal(
+        this.slackApp?.client.token,
+        { channel: channelId, text },
+        signal,
+      );
     } catch (err) {
-      logCliError("Failed to post heartbeat to Slack:", err);
+      if (!signal.aborted)
+        logCliError("Failed to post heartbeat to Slack:", err);
     }
   }
 }

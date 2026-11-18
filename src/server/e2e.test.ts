@@ -2,58 +2,37 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import Fastify from "fastify";
 import type { FastifyInstance } from "fastify";
-/**
- * E2E tests for the gwrk build server (002-build-server).
- *
- * These tests start a real Fastify server instance and test all
- * API endpoints end-to-end, including dispatch lifecycle and error handling.
- *
- * NOTE: These tests run the server in-process (not as a daemon) and
- * do NOT require Docker to be running for the core API tests.
- */
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { DispatchQueue } from "../server/dispatch.js";
-import { LifecycleMonitor } from "../server/lifecycle.js";
-import { SystemMonitor } from "../server/monitor.js";
-import { NetworkMonitor } from "../server/network.js";
-import { dispatchRoutes } from "../server/routes/dispatch.js";
-import { healthRoutes } from "../server/routes/health.js";
-import { statusRoutes } from "../server/routes/status.js";
-import { SandboxManager } from "../server/sandbox.js";
-import { loadConfig } from "../utils/config.js";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
+import {
+  type ServerFixture,
+  createServerFixture,
+} from "../../tests/helpers/server-fixture.js";
+
+vi.mock("./slack.js", () => ({
+  isSlackConnected: vi.fn().mockResolvedValue(false),
+}));
+vi.mock("../db/index.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../db/index.js")>()),
+  getDb: () => {
+    throw new Error("Unexpected access to the default SQLite connection");
+  },
+}));
 
 describe("Build Server E2E", () => {
   let server: FastifyInstance;
-  let queue: DispatchQueue;
-  let monitor: SystemMonitor;
-  let sandbox: SandboxManager;
-  let lifecycle: LifecycleMonitor;
-  let network: NetworkMonitor;
-  const projectRoot = process.cwd();
+  let fixture: ServerFixture;
 
   beforeAll(async () => {
-    const config = loadConfig(projectRoot);
-
-    server = Fastify({ logger: false });
-    monitor = new SystemMonitor(config);
-    sandbox = new SandboxManager();
-    lifecycle = new LifecycleMonitor(config);
-    network = new NetworkMonitor(config);
-
-    queue = new DispatchQueue(config, monitor, sandbox, projectRoot);
-
-    // Register all routes — match exact signatures from index.ts
-    await dispatchRoutes(server, queue);
-    await statusRoutes(server, monitor, queue, sandbox, lifecycle, network);
-    await healthRoutes(server, lifecycle, network, sandbox);
-
-    await server.listen({ port: 0, host: "127.0.0.1" });
+    fixture = await createServerFixture("routes", {
+      routes: ["dispatch", "status", "health"],
+      pauseDispatch: true,
+    });
+    server = fixture.app;
   });
 
   afterAll(async () => {
-    await server.close();
+    await fixture?.close();
   });
 
   // ─── Health Endpoint ───────────────────────────────────────────
@@ -200,9 +179,15 @@ describe("Build Server E2E", () => {
       });
 
       const body = statusResponse.json();
-      // Note: status 500 or other is possible if /api/status itself has issues
-      // but the queue depth via dispatch route is the key test
-      expect(body.dispatch.queueDepth).toBeGreaterThanOrEqual(2);
+      expect(statusResponse.statusCode).toBe(200);
+      expect(body.dispatch.queueDepth).toBe(2);
+      expect(
+        fixture.journal().map(({ phaseId, status }) => [phaseId, status]),
+      ).toEqual([
+        ["phase-01", "queued"],
+        ["phase-02", "queued"],
+      ]);
+      expect(fixture.db.prepare("SELECT id FROM runs").all()).toEqual([]);
     });
   });
 

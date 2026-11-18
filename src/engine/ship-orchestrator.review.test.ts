@@ -161,6 +161,7 @@ const collectLogs = () => {
 describe("TR-004 (FR-004, US-003): TEST_GATE verifies a test-less phase by its Done-When gate", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.mocked(fs.existsSync).mockReturnValue(false);
     vi.mocked(detectProfile).mockResolvedValue({
       type: "gwrk-native",
       stack: { language: "javascript" },

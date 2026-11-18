@@ -20,6 +20,10 @@ describe("FR-014 / Phase 4: Routing & Intelligence", () => {
     vi.clearAllMocks();
     vi.restoreAllMocks();
     vi.mocked(getRoutingHistory).mockReturnValue([]);
+    vi.spyOn(registryLoader, "tryLoadRegistry").mockReturnValue({
+      ok: false,
+      error: { message: "No registry in this fixture." },
+    } as never);
   });
 
   describe("selectBackend() (FR-014 / FR-P4-001)", () => {

@@ -23,9 +23,13 @@ interface SlackUser {
  * Bolt's app.client sometimes misroutes tokens in Socket Mode,
  * causing spurious 'missing_scope' errors on valid scopes.
  */
-async function slackFetch(method: string, body: Record<string, unknown> = {}) {
-  const tokens = loadSlackConfig();
-  if (!tokens) {
+async function slackFetch(
+  method: string,
+  body: Record<string, unknown> = {},
+  token = loadSlackConfig()?.botToken,
+  signal?: AbortSignal,
+) {
+  if (!token) {
     throw new Error("Slack not configured. Run gwrk setup slack first.");
   }
 
@@ -33,11 +37,23 @@ async function slackFetch(method: string, body: Record<string, unknown> = {}) {
     method: "POST",
     headers: {
       "Content-Type": "application/json; charset=utf-8",
-      Authorization: `Bearer ${tokens.botToken}`,
+      Authorization: `Bearer ${token}`,
     },
     body: JSON.stringify(body),
+    signal,
   });
   return res.json();
+}
+
+export async function postSlackMessageWithSignal(
+  token: string | undefined,
+  message: { channel: string; text: string; blocks?: unknown[] },
+  signal: AbortSignal,
+): Promise<void> {
+  signal.throwIfAborted();
+  if (!token) throw new Error("Slack client has no bot token.");
+  const response = await slackFetch("chat.postMessage", message, token, signal);
+  if (!response.ok) throw new Error("Slack rejected the message.");
 }
 
 /**

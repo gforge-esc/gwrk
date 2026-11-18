@@ -66,6 +66,7 @@ interface ExecOptions {
   cwd?: string;
   env?: NodeJS.ProcessEnv;
   signal?: AbortSignal;
+  timeoutMs?: number;
 }
 
 function execCancellableCommand(
@@ -158,6 +159,9 @@ export function execCommand(
         encoding: "utf-8",
         cwd: opts?.cwd,
         env: opts?.env ?? process.env,
+        ...(opts?.timeoutMs === undefined
+          ? {}
+          : { timeout: opts.timeoutMs, killSignal: "SIGKILL" as const }),
       },
       (error, stdout, stderr) => {
         if (error) {

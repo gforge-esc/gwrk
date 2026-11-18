@@ -108,7 +108,9 @@ export async function notifyTelegram(
     | SlackMessage
     | { text: string; blocks?: KnownBlock[]; chatId?: string },
   projectRoot: string = process.cwd(),
+  signal?: AbortSignal,
 ): Promise<boolean> {
+  if (signal?.aborted) return false;
   const cfg = loadTelegramConfig(projectRoot);
   if (!cfg) return false;
 
@@ -120,6 +122,7 @@ export async function notifyTelegram(
   try {
     const res = await fetch(url, {
       method: "POST",
+      signal,
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         chat_id: chatId,
@@ -129,6 +132,7 @@ export async function notifyTelegram(
     });
     return res.ok;
   } catch (err) {
+    if (signal?.aborted) return false;
     const msg = err instanceof Error ? err.message : String(err);
     warnCli(`Failed to send Telegram notification: ${msg}`);
     return false;
