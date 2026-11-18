@@ -1751,6 +1751,27 @@ describe("durable operations review regressions", () => {
   it.each([
     { status: "pending", recipientProject: "alpha", boundProject: null },
     { status: "pending", recipientProject: "beta", boundProject: null },
+    { status: "pending", recipientProject: "alpha", boundProject: "beta" },
+    {
+      status: "pending",
+      recipientProject: "alpha",
+      boundProject: "alpha",
+      recipientThreadTs: "1700000000.000100",
+      boundThreadTs: "1700000000.000200",
+    },
+    {
+      status: "pending",
+      recipientProject: "alpha",
+      boundProject: "alpha",
+      recipientThreadTs: "1700000000.000100",
+      boundThreadTs: "1700000000.000100",
+    },
+    {
+      status: "pending",
+      recipientProject: "alpha",
+      boundProject: "alpha",
+      partialRoute: true,
+    },
     {
       status: "sending",
       recipientProject: "alpha",
@@ -1776,6 +1797,7 @@ describe("durable operations review regressions", () => {
       boundProject,
       recipientThreadTs,
       boundThreadTs = null,
+      partialRoute = false,
     }) => {
       const ownerOperationId = seedGateFailureOwner(recipientThreadTs);
       const notice = store.enqueueOutbox({
@@ -1815,7 +1837,7 @@ describe("durable operations review regressions", () => {
         }),
         status,
         boundProject === null ? null : `W-${boundProject}`,
-        boundProject === null ? null : `C-${boundProject}`,
+        boundProject === null || partialRoute ? null : `C-${boundProject}`,
         boundThreadTs,
         status === "pending" ? 0 : 1,
         notice.outboxId,
@@ -1838,6 +1860,7 @@ describe("durable operations review regressions", () => {
       if (
         recipientProject !== "alpha" ||
         boundProject === "beta" ||
+        partialRoute ||
         boundThreadTs !== (recipientThreadTs ?? null)
       ) {
         expect.soft(claimed).toBeNull();

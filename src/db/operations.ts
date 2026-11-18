@@ -308,6 +308,24 @@ function harvestGateFailureDedupeKey(
   return JSON.stringify(["harvest_gate_failed", ownerOperationId, phaseId]);
 }
 
+function matchesSavedHarvestDestination(
+  notice: Pick<OutboxItem, "status" | "workspaceId" | "channelId" | "threadTs">,
+  recipient: HarvestSlackRecipient | null,
+): boolean {
+  if (!recipient) return false;
+  const unboundPending =
+    notice.status === "pending" &&
+    notice.workspaceId === null &&
+    notice.channelId === null &&
+    notice.threadTs === null;
+  return (
+    unboundPending ||
+    (notice.workspaceId === recipient.workspaceId &&
+      notice.channelId === recipient.channelId &&
+      notice.threadTs === (recipient.threadTs ?? null))
+  );
+}
+
 function rowToOutboxItem(row: NotificationOutboxRow): OutboxItem {
   return {
     outboxId: row.outbox_id,
@@ -1418,25 +1436,13 @@ export function createOperationsStore(
               notice.phaseId === input.phaseKey;
 
             if (savedNotice) {
-              const { workspaceId, channelId, threadTs } = savedNotice;
-              const unboundPending =
-                savedNotice.status === "pending" &&
-                workspaceId === null &&
-                channelId === null &&
-                threadTs === null;
-              const matchesDestination =
-                recipient !== null &&
-                workspaceId === recipient.workspaceId &&
-                channelId === recipient.channelId &&
-                threadTs === (recipient.threadTs ?? null);
-
               if (
                 !matchesNotice(savedNotice) ||
                 savedNotice.status === "skipped_no_target" ||
                 (savedNotice.status === "delivered" &&
                   !savedNotice.messageTs?.trim()) ||
                 !savedNotice.clientMetadataKey.trim() ||
-                !(unboundPending || matchesDestination)
+                !matchesSavedHarvestDestination(savedNotice, recipient)
               ) {
                 return invalid;
               }
@@ -1743,6 +1749,10 @@ export function createOperationsStore(
               !isHarvestSlackRecipient(recipient) ||
               recipient.projectId !== row.projectId ||
               !owner.plannedSlackRecipient ||
+              !matchesSavedHarvestDestination(
+                row,
+                owner.plannedSlackRecipient,
+              ) ||
               !matchesHarvestNoticeRecipient(
                 owner.plannedSlackRecipient,
                 recipient,
@@ -1758,12 +1768,6 @@ export function createOperationsStore(
             };
             if (action === "send") {
               route = recipientRoute;
-            } else if (
-              route.workspaceId !== recipientRoute.workspaceId ||
-              route.channelId !== recipientRoute.channelId ||
-              route.threadTs !== recipientRoute.threadTs
-            ) {
-              return null;
             }
           } else if (action === "send") {
             const explicitWorkspaceId =
