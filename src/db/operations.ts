@@ -1468,6 +1468,13 @@ export function createOperationsStore(
             }
           }
 
+          const attemptCount =
+            receipt.attemptCount +
+            (input.status === "running" &&
+            (receipt.status !== "running" ||
+              receipt.leaseEpoch !== input.fence.leaseEpoch)
+              ? 1
+              : 0);
           const completedAt = [
             "pending",
             "running",
@@ -1480,6 +1487,7 @@ export function createOperationsStore(
             `UPDATE harvest_stage_receipts SET
           status = ?,
           lease_epoch = ?,
+          attempt_count = ?,
           evidence_json = ?,
           error = ?,
           updated_at = ?,
@@ -1488,6 +1496,7 @@ export function createOperationsStore(
           ).run(
             input.status,
             input.fence.leaseEpoch,
+            attemptCount,
             input.evidenceJson ?? null,
             input.error ?? null,
             input.nowIso,
@@ -1500,6 +1509,7 @@ export function createOperationsStore(
           Object.assign(receipt, {
             status: input.status,
             leaseEpoch: input.fence.leaseEpoch,
+            attemptCount,
             evidenceJson: input.evidenceJson ?? null,
             error: input.error ?? null,
             updatedAt: input.nowIso,

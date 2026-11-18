@@ -1788,7 +1788,8 @@ describe("TR-005: Durable operations migration backward compatibility", () => {
     cpSync(sourceMigrations, previousMigrations, {
       recursive: true,
       filter: (source) =>
-        basename(source) !== "018-durable-dispatch-and-harvest.sql",
+        !basename(source).endsWith(".sql") ||
+        basename(source) < "018-durable-dispatch-and-harvest.sql",
     });
 
     const previous = openDatabase({

@@ -8,6 +8,7 @@ import {
   existsSync,
   mkdirSync,
   mkdtempSync,
+  readFileSync,
   rmSync,
   writeFileSync,
 } from "node:fs";
@@ -54,12 +55,62 @@ describe("durable operations migration", () => {
     rmSync(root, { recursive: true, force: true });
   });
 
+  it("enforces outbox metadata uniqueness when upgrading the earlier durable schema", () => {
+    const previousMigrations = join(root, "pre-durable-unique-index");
+    cpSync(migrations, previousMigrations, {
+      recursive: true,
+      filter: (source) =>
+        basename(source) !== "019-outbox-metadata-uniqueness.sql",
+    });
+    const previousSql = readFileSync(
+      join(previousMigrations, durableMigration),
+      "utf8",
+    ).replace(",\n  UNIQUE (client_metadata_key)", "");
+    writeFileSync(join(previousMigrations, durableMigration), previousSql);
+    const previous = openDatabase({
+      dbPath,
+      migrationsDir: previousMigrations,
+    });
+    const insert = `INSERT INTO notification_outbox (outbox_id, project_id, dedupe_key, owner_kind, owner_operation_id, event_type, feature_id, recipient_json, payload_json, client_metadata_key, status, created_at, updated_at) VALUES (?, ?, ?, 'harvest', 'operation', 'completed', '001-fixture', '{}', '{}', 'shared-key', 'pending', ?, ?)`;
+    try {
+      registerProject(
+        { id: "alpha", name: "Alpha", path: "/fixture/alpha" },
+        previous,
+      );
+      registerProject(
+        { id: "beta", name: "Beta", path: "/fixture/beta" },
+        previous,
+      );
+      previous.prepare(insert).run("first", "alpha", "one", now, now);
+    } finally {
+      previous.close();
+    }
+    const upgraded = openDatabase({ dbPath });
+    try {
+      expect(
+        upgraded
+          .prepare(
+            "SELECT client_metadata_key FROM notification_outbox WHERE outbox_id = 'first'",
+          )
+          .pluck()
+          .get(),
+      ).toBe("shared-key");
+      expect(() =>
+        upgraded.prepare(insert).run("second", "beta", "two", now, now),
+      ).toThrow(/unique/i);
+    } finally {
+      upgraded.close();
+    }
+  });
+
   it("preserves the existing execution ledger when migration 018 runs", () => {
     const previousMigrations = join(root, "previous-migrations");
     mkdirSync(previousMigrations);
     cpSync(migrations, previousMigrations, {
       recursive: true,
-      filter: (source) => basename(source) !== durableMigration,
+      filter: (source) =>
+        !basename(source).endsWith(".sql") ||
+        basename(source) < durableMigration,
     });
 
     const previous = openDatabase({
@@ -113,6 +164,7 @@ describe("durable operations migration", () => {
         "016-plan-write-order.sql",
         "017-plan-parent-provenance.sql",
         durableMigration,
+        "019-outbox-metadata-uniqueness.sql",
       ]);
       const tables = upgraded
         .prepare("SELECT name FROM sqlite_master WHERE type = 'table'")
@@ -1037,6 +1089,79 @@ describe("durable operations review regressions", () => {
     return result.operations;
   }
 
+  it("counts stage executions across retry leases without counting repeated writes", () => {
+    const [operation] = accept(harvestIntake("stage-attempts", [phaseOne]));
+    const first = store.claimHarvestLease({
+      operationId: operation.operationId,
+      leaseOwner: "first",
+      nowIso: now,
+      leaseExpiresAt: "2026-11-11T12:00:10.000Z",
+    });
+    if (!first) throw new Error("Missing first lease");
+    const planned = planHarvestStages({
+      terminalEvent: operation.terminalEvent,
+      phaseIds: [phaseOne],
+      hasSlackTarget: false,
+      hasRemoteBranchTarget: true,
+    });
+    expect(
+      store.initializeHarvestStages({
+        fence: first.fence,
+        nowIso: now,
+        terminalEvent: operation.terminalEvent,
+        phaseIds: [phaseOne],
+        hasSlackTarget: false,
+        hasRemoteBranchTarget: true,
+        stages: planned,
+      }),
+    ).toEqual({ ok: true });
+    const stage = planned.find(({ stage }) => stage === "git_sync")!;
+    const firstInput = {
+      fence: first.fence,
+      nowIso: now,
+      phaseKey: stage.phaseKey,
+      stage: stage.stage,
+    };
+    expect(
+      store.transitionHarvestStage({ ...firstInput, status: "running" }),
+    ).toEqual({ ok: true });
+    expect(
+      store.transitionHarvestStage({ ...firstInput, status: "running" }),
+    ).toEqual({ ok: true });
+    expect(
+      store.transitionHarvestStage({
+        ...firstInput,
+        status: "retryable_failure",
+      }),
+    ).toEqual({ ok: true });
+    const second = store.claimHarvestLease({
+      operationId: operation.operationId,
+      leaseOwner: "second",
+      nowIso: "2026-11-11T12:00:11.000Z",
+      leaseExpiresAt: "2026-11-11T12:00:30.000Z",
+    });
+    if (!second) throw new Error("Missing retry lease");
+    const secondInput = {
+      ...firstInput,
+      fence: second.fence,
+      nowIso: "2026-11-11T12:00:11.000Z",
+    };
+    expect(
+      store.transitionHarvestStage({ ...secondInput, status: "running" }),
+    ).toEqual({ ok: true });
+    expect(
+      store.transitionHarvestStage({ ...secondInput, status: "succeeded" }),
+    ).toEqual({ ok: true });
+    expect(
+      db
+        .prepare(
+          "SELECT attempt_count FROM harvest_stage_receipts WHERE operation_id = ? AND stage = 'git_sync'",
+        )
+        .pluck()
+        .get(operation.operationId),
+    ).toBe(2);
+  });
+
   it.each([
     "operation ID",
     "primary work key",
@@ -1535,6 +1660,7 @@ describe("durable operations review regressions", () => {
       id: "historical",
       taskId: "T001",
     };
+    const { createdAt: _createdAt, ...phaseWideRecord } = withoutTasks;
     mkdirSync(directory);
     writeFileSync(
       join(directory, "dispatches.jsonl"),
@@ -1555,12 +1681,14 @@ describe("durable operations review regressions", () => {
           { ...withoutTasks, taskId: " " },
           historicalRecord,
           legacyRecord,
+          phaseWideRecord,
         ].map((value) => JSON.stringify(value)),
       ].join("\n"),
     );
     expect.soft(readLegacyDispatches(root)).toEqual([
       { ...historicalRecord, evidenceLevel: "legacy_unverified" },
       { ...legacyRecord, evidenceLevel: "legacy_unverified" },
+      { ...phaseWideRecord, evidenceLevel: "legacy_unverified" },
     ]);
     expect
       .soft(
@@ -1568,13 +1696,13 @@ describe("durable operations review regressions", () => {
           .legacyUnverifiedDispatches,
         "injected reader count",
       )
-      .toBe(2);
+      .toBe(3);
     expect
       .soft(
         storeWithoutReader.getOperationsStatus("alpha").historical
           .legacyUnverifiedDispatches,
         "fallback reader count",
       )
-      .toBe(2);
+      .toBe(3);
   });
 });

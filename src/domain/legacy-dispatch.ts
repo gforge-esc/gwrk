@@ -8,7 +8,6 @@ const requiredStrings = [
   "phaseId",
   "backend",
   "branchName",
-  "createdAt",
 ] as const;
 const statuses = [
   "queued",
@@ -22,7 +21,11 @@ export type LegacyDispatchPayload = Record<string, unknown> &
   Record<(typeof requiredStrings)[number], string> & {
     status: (typeof statuses)[number];
     attempts: unknown[];
-  } & ({ taskId: string } | { tasks: unknown[] });
+  } & (
+    | { createdAt: string; taskId: string }
+    | { createdAt: string; tasks: unknown[] }
+    | { createdAt?: never; taskId?: never; tasks?: never }
+  );
 
 function isNonblankString(value: unknown): value is string {
   return typeof value === "string" && value.trim().length > 0;
@@ -44,7 +47,11 @@ function isLegacyDispatchPayload(
     requiredStrings.every((key) => isNonblankString(record[key])) &&
     statuses.some((status) => status === record.status) &&
     Array.isArray(record.attempts) &&
-    (isNonblankString(record.taskId) || Array.isArray(record.tasks))
+    ((isNonblankString(record.createdAt) &&
+      (isNonblankString(record.taskId) || Array.isArray(record.tasks))) ||
+      (record.createdAt === undefined &&
+        record.taskId === undefined &&
+        record.tasks === undefined))
   );
 }
 
