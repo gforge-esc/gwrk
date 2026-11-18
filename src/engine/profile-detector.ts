@@ -232,7 +232,7 @@ function detectFilesystemProfile(projectRoot: string): FilesystemProfile {
 
   // 3. Resolve profile from collected signals
   if (
-    !signals.some(({ type }) => type === "python") &&
+    signals.length === 0 &&
     fs.existsSync(path.join(projectRoot, "docs", "architecture.md"))
   ) {
     profile.type = "gwrk-native";
