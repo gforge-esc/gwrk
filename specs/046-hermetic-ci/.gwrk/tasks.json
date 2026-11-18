@@ -139,9 +139,10 @@
           "id": "T009",
           "title": "Modify biome.json",
           "description": "MODIFY biome.json. Exclude the ignored machine-local config from project lint. Keep tracked lint coverage. FR-005.\nAcceptance dispatch was interrupted by provider credit exhaustion after code review GO. Resume acceptance and final CI using the recorded hosted negative lint proof and clean Node matrix. Reverify this task gate before marking it complete.\n\nREVIEW FAIL (uat): Root-only lint exclusion (FR-005).\n\nBiome 1.9.4 exited 0 with malformed JSON in the root config and in Git-tracked src/.gwrkrc.local.json. Removing the ignore rule in the fixture produced diagnostics for both files and exit 1.\n\nLimit the exclusion to the root .gwrkrc.local.json. Add a gate case that requires exit 0 for a malformed root config. Require exit 1 when a Git-tracked file with the same name is malformed.\n\nREVIEW/GATE DIVERGENCE (T009, gate: gates/phase-05.sh, REVIEW FAIL block appended, status left unchanged):\nThe review agent raised a finding on this task and its gate still passes, so the gate does not cover what review found. Add a test that fails on it, then fix, before completing.\n\nDIAGNOSIS (iteration 2):\nFIX: src/ci-lint-policy.test.ts — Extend the fixture already run by `specs/046-hermetic-ci/gates/phase-05.sh`. Keep the root `.gwrkrc.local.json` malformed. Stage valid `src/.gwrkrc.local.json` with `git add -f -- src/.gwrkrc.local.json` and require `pnpm run lint` to exit 0. Corrupt the nested file and require exit 1 with a parse diagnostic naming it. Confirm this assertion fails before changing lint. Restore valid nested JSON before the existing TypeScript failure case.\nFIX: biome.json — Remove `\".gwrkrc.local.json\"` from `files.ignore`. Set `package.json`’s `scripts.lint` to `node scripts/lint.mjs`. In that script, enumerate repository-root entries, omit `.git` and `.gwrkrc.local.json` by exact name, and pass the remaining `./`-prefixed paths to `biome check --files-ignore-unknown=true --`. Propagate Biome’s exit status. Copy `scripts/lint.mjs` into the fixture and rerun the phase gate.",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/phase-05.sh",
-          "sp": 1
+          "sp": 1,
+          "completedAt": "2026-11-18T18:55:45.096Z"
         }
       ],
       "sp_estimate": 2,
