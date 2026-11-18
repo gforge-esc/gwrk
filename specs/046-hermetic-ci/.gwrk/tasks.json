@@ -130,17 +130,19 @@
           "id": "T008",
           "title": "Modify ci.yml",
           "description": "MODIFY .github/workflows/ci.yml. Run blocking lint in both matrix jobs and remove stale quarantine comments. FR-005.. Tests: src/ci-lint-policy.test.ts",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/phase-05.sh",
-          "sp": 1
+          "sp": 1,
+          "completedAt": "2026-11-18T18:13:52.961Z"
         },
         {
           "id": "T009",
           "title": "Modify biome.json",
           "description": "MODIFY biome.json. Exclude the ignored machine-local config from project lint. Keep tracked lint coverage. FR-005.",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/phase-05.sh",
-          "sp": 1
+          "sp": 1,
+          "completedAt": "2026-11-18T18:14:18.302Z"
         }
       ],
       "sp_estimate": 2,
