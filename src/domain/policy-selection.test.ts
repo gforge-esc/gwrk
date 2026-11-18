@@ -26,6 +26,53 @@ const fastify = {
 };
 
 describe("Project policy composition", () => {
+  it.each([undefined, "", "   "])(
+    "rejects a framework policy without a nonblank language selector (%s)",
+    async (language) => {
+      const { composeEffectivePolicy, evaluateEnforcementCandidate } =
+        await import("./policy-selection.js");
+      const target = {
+        ...profile,
+        stack: { language: "TypeScript", framework: "Svelte" },
+      };
+      const invalid = {
+        name: "svelte-policy",
+        source: "global" as const,
+        manifest: {
+          ...fastify,
+          name: "svelte-policy",
+          framework: "Svelte",
+          language,
+        },
+      };
+      expect(
+        evaluateEnforcementCandidate(invalid, target, "implementation"),
+      ).toEqual({ included: false, reason: "language-mismatch" });
+      const result = composeEffectivePolicy({
+        profile: target,
+        scope: "implementation",
+        candidates: [invalid],
+      });
+      expect(result.selectedSkills).toEqual([]);
+      expect(result.gaps).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ kind: "incompatible-framework-policy" }),
+        ]),
+      );
+      const valid = {
+        ...invalid,
+        manifest: { ...invalid.manifest, language: "TypeScript" },
+      };
+      const control = composeEffectivePolicy({
+        profile: target,
+        scope: "implementation",
+        candidates: [valid],
+      });
+      expect(control.selectedSkills).toHaveLength(1);
+      expect(control.gaps).toEqual([]);
+    },
+  );
+
   it("selects the highest-precedence compatible copy of a framework policy", async () => {
     const { composeEffectivePolicy } = await import("./policy-selection.js");
     const result = composeEffectivePolicy({

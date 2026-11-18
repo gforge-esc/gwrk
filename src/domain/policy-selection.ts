@@ -161,6 +161,9 @@ export function evaluateEnforcementCandidate(
   }
 
   // 3. Language check
+  if (manifest.framework?.trim() && !manifest.language?.trim()) {
+    return { included: false, reason: "language-mismatch" };
+  }
   if (manifest.language) {
     const candidateLang = manifest.language.toLowerCase().trim();
     const profileLangs = profileLanguages(profile).map((language) =>
