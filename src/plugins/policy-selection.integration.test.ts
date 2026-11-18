@@ -2,9 +2,11 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import { spawnSync } from "node:child_process";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import os, { tmpdir } from "node:os";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { beforeEach, describe, expect, it, onTestFinished, vi } from "vitest";
 import { stringify } from "yaml";
 import { runWithOutputScope } from "../adapters/cli/output-scope.js";
@@ -157,6 +159,162 @@ describe("project enforcement candidate discovery", () => {
     await writeFile(
       join(root, ".gwrkrc.json"),
       JSON.stringify({ project: profile }),
+    );
+  });
+
+  describe("project settings for a configured policy override", () => {
+    const renamedPolicy = "renamed-policy";
+    const architecture = "hexagonal-functional";
+    const overrideBody = "Configured override policy";
+    const entryBody = "Compatible entry policy";
+    const disableSettings = [
+      { setting: "disable list", config: { disable: [name] } },
+      {
+        setting: "explicit disable",
+        config: { plugins: { [name]: { enabled: false } } },
+      },
+    ];
+    let home: string;
+
+    beforeEach(async ({ onTestFinished }) => {
+      home = join(root, "home");
+      await mkdir(home);
+      const homedir = vi.spyOn(os, "homedir").mockReturnValue(home);
+      onTestFinished(() => {
+        homedir.mockRestore();
+      });
+      await writeFile(
+        join(root, ".gwrkrc.json"),
+        JSON.stringify({
+          project: {
+            ...profile,
+            name: "policy-selection-fixture",
+            design: {
+              architecture,
+              principles: ["functional-core"],
+              templateVersion: "1.0.0",
+            },
+          },
+        }),
+      );
+    });
+
+    async function writeOverrideFixture(
+      manifestName: string,
+      overrideArchitecture: string,
+    ) {
+      const override = join(root, "overrides", name);
+      await writePolicyPack(
+        override,
+        {
+          name: manifestName,
+          framework,
+          version: "2.0.0",
+          architectures: [overrideArchitecture],
+        },
+        overrideBody,
+      );
+      await writePolicyPack(
+        join(root, "entry/skills", name),
+        { name, framework, version: "1.0.0", architectures: [architecture] },
+        entryBody,
+      );
+      return {
+        inherits: false,
+        entries: ["entry"],
+        override: { [name]: override },
+      };
+    }
+
+    it.each(disableSettings)(
+      "omits both policy bodies with a $setting under the configured name",
+      async ({ config }) => {
+        const fixture = await writeOverrideFixture(renamedPolicy, architecture);
+        await writeFile(
+          join(root, ".gwrk/plugins.json"),
+          JSON.stringify({ ...fixture, ...config }),
+        );
+
+        const rendered = await resolveEnforcementSkills(root);
+        expect.soft(rendered).not.toContain(overrideBody);
+        expect(rendered).not.toContain(entryBody);
+      },
+    );
+
+    it("selects the compatible renamed override without project disable settings", async () => {
+      const fixture = await writeOverrideFixture(renamedPolicy, architecture);
+      await writeFile(
+        join(root, ".gwrk/plugins.json"),
+        JSON.stringify(fixture),
+      );
+
+      const policy = await resolveEffectivePolicy(root);
+      expect(
+        policy.selectedSkills.filter((skill) => skill.name === name),
+      ).toEqual([
+        expect.objectContaining({
+          source: "project-local",
+          manifest: expect.objectContaining({
+            name: renamedPolicy,
+            version: "2.0.0",
+          }),
+        }),
+      ]);
+      const rendered = await resolveEnforcementSkills(root);
+      expect(rendered).toContain(overrideBody);
+      expect(rendered).not.toContain(entryBody);
+    });
+
+    it.each(
+      disableSettings.flatMap((setting) =>
+        [name, renamedPolicy].map((manifestName) => ({
+          ...setting,
+          manifestName,
+        })),
+      ),
+    )(
+      "lists the disabled incompatible override with a $setting and manifest $manifestName",
+      async ({ config, manifestName }) => {
+        const fixture = await writeOverrideFixture(manifestName, "layered");
+        await writeFile(
+          join(root, ".gwrk/plugins.json"),
+          JSON.stringify({ ...fixture, ...config }),
+        );
+
+        const cli = fileURLToPath(
+          new URL("../../dist/cli.js", import.meta.url),
+        );
+        const result = spawnSync(
+          process.execPath,
+          [cli, "plugin", "list", "--project", "--format", "json"],
+          {
+            cwd: root,
+            encoding: "utf8",
+            env: {
+              ...process.env,
+              HOME: home,
+              USERPROFILE: home,
+              GWRK_HOME: home,
+            },
+            stdio: ["ignore", "pipe", "pipe"],
+            timeout: 10_000,
+          },
+        );
+        expect(result.status, result.error?.message ?? result.stderr).toBe(0);
+        const listed: PluginSummary[] = JSON.parse(result.stdout);
+        expect
+          .soft(listed.filter((plugin) => plugin.name === name))
+          .toEqual([
+            expect.objectContaining({ status: "disabled", version: "2.0.0" }),
+          ]);
+        expect
+          .soft(listed.map((plugin) => plugin.name))
+          .not.toContain(renamedPolicy);
+
+        const rendered = await resolveEnforcementSkills(root);
+        expect.soft(rendered).not.toContain(overrideBody);
+        expect(rendered).not.toContain(entryBody);
+      },
     );
   });
 

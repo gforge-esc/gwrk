@@ -128,7 +128,11 @@ async function listProjectEnforcement(
       (copy) =>
         copy !== candidate &&
         copy.name === name &&
-        evaluateEnforcementCandidate(copy, profile, "all").included,
+        evaluateEnforcementCandidate(
+          { ...copy, manifest: { ...copy.manifest, disabled: false } },
+          profile,
+          "all",
+        ).included,
     );
     return evaluateEnforcementCandidate(enabled, profile, "all").included ||
       suppressesCompatibleCopy

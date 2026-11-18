@@ -143,15 +143,16 @@ export class PluginLoader {
       plugins?: Record<string, { enabled?: boolean }>;
     },
     isResolveContext = false,
+    projectName: string = manifest.name,
   ): boolean {
-    const fullName = `${typeFolder}/${manifest.name}`;
-    const altFullName = `${manifest.type}s/${manifest.name}`;
+    const projectFullName = `${typeFolder}/${projectName}`;
+    const projectAltFullName = `${manifest.type}s/${projectName}`;
 
     // 1. Explicit project-level plugins.<name>.enabled (AGY style)
     const projEntry =
-      localConfig.plugins?.[manifest.name] ??
-      localConfig.plugins?.[fullName] ??
-      localConfig.plugins?.[altFullName];
+      localConfig.plugins?.[projectName] ??
+      localConfig.plugins?.[projectFullName] ??
+      localConfig.plugins?.[projectAltFullName];
     if (typeof projEntry?.enabled === "boolean") {
       return !projEntry.enabled;
     }
@@ -159,9 +160,9 @@ export class PluginLoader {
     // 2. Project disable list
     const disabledSet = new Set(localConfig.disable || []);
     if (
-      disabledSet.has(fullName) ||
-      disabledSet.has(manifest.name) ||
-      disabledSet.has(altFullName)
+      disabledSet.has(projectFullName) ||
+      disabledSet.has(projectName) ||
+      disabledSet.has(projectAltFullName)
     ) {
       if (
         isResolveContext &&
@@ -174,6 +175,8 @@ export class PluginLoader {
     }
 
     // 3. Global ~/.gwrk/config.json plugins.<name>.enabled
+    const fullName = `${typeFolder}/${manifest.name}`;
+    const altFullName = `${manifest.type}s/${manifest.name}`;
     const globalEntry =
       globalConfig.plugins?.[manifest.name] ??
       globalConfig.plugins?.[fullName] ??
@@ -248,11 +251,14 @@ export class PluginLoader {
       );
       if (manifest?.type !== "skill" || manifest.tier !== "enforcement") return;
 
+      const name = overrideName ?? manifest.name;
       const disabled = this.evaluateDisabledStatus(
         manifest,
         "skills",
         config,
         globalConfig,
+        false,
+        name,
       );
       let content: string | undefined;
       if (!disabled) {
@@ -268,7 +274,7 @@ export class PluginLoader {
       }
 
       candidates.push({
-        name: overrideName ?? manifest.name,
+        name,
         source,
         path: resolvedPath,
         manifest: { ...manifest, disabled },

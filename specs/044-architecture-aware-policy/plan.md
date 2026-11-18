@@ -129,6 +129,8 @@ pnpm exec vitest run src/plugins/manifest.test.ts src/domain/policy-selection.te
 
 Project policy selection tests cover relative and absolute overrides from outside the project. An enabled override without `SKILL.md` lets a compatible lower copy supply the rules. If no compatible framework pack supplies a body, the runtime reports a gap. The project listing omits the incomplete pack. A disabled override stays listed as disabled and suppresses the lower copy even without `SKILL.md`.
 
+The loader tests apply both project disable settings to an override whose manifest uses a different name. Both settings suppress the override and the compatible entry. With neither setting, only the override supplies rules. The compiled CLI tests use an override for a different architecture and a compatible entry. They expect one disabled row with the configured name and override version. They check both disable settings with matching and renamed manifests.
+
 #### Done When
 
 ```bash
