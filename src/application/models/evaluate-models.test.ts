@@ -3,7 +3,10 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { describe, expect, it, vi } from "vitest";
-import type { ModelCandidate } from "../../domain/model-qualification.js";
+import {
+  type ModelCandidate,
+  blindCandidate,
+} from "../../domain/model-qualification.js";
 import type {
   FixtureRepeatRequest,
   JudgeVerdictPacket,
@@ -135,6 +138,163 @@ describe("model qualification orchestration", () => {
     expect(result.decision).toEqual({
       promote: false,
       reason: "invalid-citations",
+    });
+  });
+
+  it("executes three repeats per fixture and scores both define and implement handoff directions", async () => {
+    const expectedOption = blindCandidate(
+      "fixture-blinding-key",
+      "eval-handoff",
+    );
+    const { deps, runFixtureRepeat, judgeComparison } = setup({
+      gatePasses: true,
+    });
+
+    judgeComparison.mockImplementation(
+      async (judge: ModelCandidate): Promise<StructuredJudgeVerdict> => ({
+        judgeBackend: judge.backend,
+        judgeProvider: judge.provider,
+        judgeFamily: judge.family,
+        judgeModelId: judge.modelId,
+        observedJudgeModel: "unknown",
+        winner: expectedOption,
+        optionARegression: false,
+        optionBRegression: false,
+        scores: {
+          optionA: expectedOption === "A" ? 95 : 70,
+          optionB: expectedOption === "B" ? 95 : 70,
+        },
+        citations: [
+          {
+            inputRef: "define-long-context",
+            outputRef: "output",
+            gateRef: "behavior",
+            claim: "Plan coverage verified",
+          },
+        ],
+      }),
+    );
+
+    const handoffInput = {
+      evaluationId: "eval-handoff",
+      role: "define" as const,
+      candidate,
+      incumbent,
+      judges,
+      blindingSecret: "fixture-blinding-key",
+      fixtures: [{ id: "define-long-context" }],
+      handoffs: [
+        {
+          from: "define-long-context",
+          to: "implement-seeded-defect",
+          planSource: "candidate" as const,
+        },
+        {
+          from: "define-long-context",
+          to: "implement-seeded-defect",
+          planSource: "fixed" as const,
+        },
+      ],
+      handoffArtifactDir: "/tmp/fake-artifacts",
+    };
+
+    const result = await evaluateModels(deps, handoffInput);
+
+    // 1 base fixture + 2 handoff fixtures = 3 fixture runs * 3 repeats = 9 runs per route
+    const candidateCalls = runFixtureRepeat.mock.calls
+      .map(([req]) => req)
+      .filter((req) => req.route.modelId === candidate.modelId);
+    expect(candidateCalls.length).toBe(9);
+
+    const defineCalls = candidateCalls.filter(
+      (req) => req.fixtureId === "define-long-context",
+    );
+    expect(defineCalls.map((r) => r.repeatIndex).sort()).toEqual([0, 1, 2]);
+
+    const implementCalls = candidateCalls.filter(
+      (req) => req.fixtureId === "implement-seeded-defect",
+    );
+    expect(implementCalls.length).toBe(6);
+
+    expect(judgeComparison).toHaveBeenCalledTimes(2);
+    expect(result.decision).toEqual({ promote: true });
+    expect(result.candidateOption).toBe(expectedOption);
+  });
+
+  it("enforces distinct judge providers and families and rejects dependent configurations", async () => {
+    const { deps, judgeComparison } = setup();
+
+    const dependentProviderJudges = [
+      model("judge-a", "same-provider", "family-a"),
+      model("judge-b", "same-provider", "family-b"),
+    ] as const;
+
+    const providerResult = await evaluateModels(deps, {
+      ...input,
+      judges: dependentProviderJudges,
+    });
+
+    expect(providerResult.decision).toEqual({
+      promote: false,
+      reason: "judge-dependence",
+    });
+    expect(judgeComparison).not.toHaveBeenCalled();
+
+    const dependentFamilyJudges = [
+      model("judge-a", "provider-a", "same-family"),
+      model("judge-b", "provider-b", "same-family"),
+    ] as const;
+
+    const familyResult = await evaluateModels(deps, {
+      ...input,
+      judges: dependentFamilyJudges,
+    });
+
+    expect(familyResult.decision).toEqual({
+      promote: false,
+      reason: "judge-dependence",
+    });
+    expect(judgeComparison).not.toHaveBeenCalled();
+  });
+
+  it("retains incumbent on judge disagreement or candidate regression", async () => {
+    const expectedOption = blindCandidate("fixture-blinding-key", "eval-split");
+    const { deps, judgeComparison } = setup();
+
+    let callCount = 0;
+    judgeComparison.mockImplementation(
+      async (judge: ModelCandidate): Promise<StructuredJudgeVerdict> => {
+        callCount += 1;
+        return {
+          judgeBackend: judge.backend,
+          judgeProvider: judge.provider,
+          judgeFamily: judge.family,
+          judgeModelId: judge.modelId,
+          observedJudgeModel: "unknown",
+          winner: callCount === 1 ? expectedOption : "tie",
+          optionARegression: false,
+          optionBRegression: false,
+          scores: { optionA: 80, optionB: 80 },
+          citations: [
+            {
+              inputRef: "implement-seeded-defect",
+              outputRef: "output",
+              gateRef: "behavior",
+              claim: "Split verdict",
+            },
+          ],
+        };
+      },
+    );
+
+    const result = await evaluateModels(deps, {
+      ...input,
+      evaluationId: "eval-split",
+    });
+
+    expect(result.decision).toEqual({
+      promote: false,
+      reason: "judge-non-regression",
     });
   });
 });

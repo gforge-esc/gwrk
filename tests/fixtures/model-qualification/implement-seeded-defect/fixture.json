@@ -1,10 +1,7 @@
 {
   "schemaVersion": 1,
   "id": "implement-seeded-defect",
-  "roles": [
-    "implement",
-    "review"
-  ],
+  "roles": ["implement", "review"],
   "prompt": "Use the fixed plan and repair the seeded ticket routing behavior. For review, report the failing routing task and preserve the completed adapter task.",
   "files": {
     "AGENTS.md": "# Project rules\n\nRead both architecture decisions and the fixture research brief. Keep policy pure. Run the failing behavior test before implementing changes.\n",
@@ -21,21 +18,11 @@
     "tasks.md": "# Review tasks\n\nT001 Repair the queue selection policy.\n\nT002 Keep the adapter passing the caller clock to the policy. This task is complete.\n"
   },
   "gates": {
-    "command": [
-      "node",
-      "--test",
-      "src/domain/select-queue.test.mjs"
-    ],
+    "command": ["node", "--test", "src/domain/select-queue.test.mjs"],
     "baselineExitCode": 1,
     "candidateExitCode": 0,
-    "allowedChangedPaths": [
-      "src/domain/select-queue.mjs"
-    ],
-    "reviewRequiredReopenedTasks": [
-      "T001"
-    ],
-    "reviewForbiddenReopenedTasks": [
-      "T002"
-    ]
+    "allowedChangedPaths": ["src/domain/select-queue.mjs"],
+    "reviewRequiredReopenedTasks": ["T001"],
+    "reviewForbiddenReopenedTasks": ["T002"]
   }
 }

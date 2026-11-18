@@ -1,9 +1,7 @@
 {
   "schemaVersion": 1,
   "id": "define-long-context",
-  "roles": [
-    "define"
-  ],
+  "roles": ["define"],
   "prompt": "Write a spec and plan for the ticket routing repair. Use the repository, both Decided records, the queue contract, the research brief and the acceptance inputs. Include executable checks for boundary behavior and the effect-free domain. Leave implementation and governing records alone.",
   "files": {
     "AGENTS.md": "# Project rules\n\nRead both architecture decisions and the fixture research brief. Keep policy pure. Run the failing behavior test before implementing changes.\n",
@@ -18,10 +16,7 @@
     "src/adapters/ticket-input.mjs": "import { selectQueue } from \"../domain/select-queue.mjs\";\n\nexport function routeReceivedTicket(ticket, nowMs) {\n  return selectQueue({ ...ticket, nowMs });\n}\n"
   },
   "gates": {
-    "requiredOutputs": [
-      "spec.md",
-      "plan.md"
-    ],
+    "requiredOutputs": ["spec.md", "plan.md"],
     "requiredSpecReferences": [
       "ADR-001",
       "ADR-002",
@@ -34,9 +29,6 @@
       "src/domain/select-queue.test.mjs",
       "node --test"
     ],
-    "allowedChangedPaths": [
-      "spec.md",
-      "plan.md"
-    ]
+    "allowedChangedPaths": ["spec.md", "plan.md"]
   }
 }
