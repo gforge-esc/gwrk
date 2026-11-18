@@ -206,3 +206,5 @@ Phase 3 regressions reject candidate and incumbent review route identity failure
 Inherited Git selectors are removed from fixture commands and delegated agent environments. The agent environment contract permits undefined entries so the subprocess merge can remove inherited values. The behavioral fixture proves that a delegated Git command leaves another repository configuration unchanged.
 
 TR-023 now guards judge packets, raw dispatch results, transport error messages and assembled verdicts with the known dispatch credentials. Four cases failed before repair. They cover citation claims, reported runtime identity, failed stderr and thrown transport errors. The repaired phase gate passes 669 tests and lint.
+
+The staged-path and contradictory aggregate regressions remain in the phase 3 gate. Two observed failures preceded the repair. The gate now passes 685 checks and lint. Evidence is `evidence/phase03-handoff-checks-and-staged-paths.md`.

@@ -52,6 +52,14 @@ export function evaluateModelPromotion(
   return evaluatePromotion({ ...evidence, judges });
 }
 
+function passedDeterministicChecks(repeat: FixtureRepeatEvidence): boolean {
+  return (
+    repeat.deterministicGatesPassed &&
+    repeat.gateChecks.length > 0 &&
+    repeat.gateChecks.every(({ passed }) => passed)
+  );
+}
+
 export interface EvaluateModelsDeps {
   readonly runner: QualificationRunnerPort;
   readonly judge: PromotionJudgePort;
@@ -372,7 +380,7 @@ export async function evaluateModels(
           ) {
             continue;
           }
-          if (!definition.deterministicGatesPassed) {
+          if (!passedDeterministicChecks(definition)) {
             if (route === "incumbent") {
               skippedIncumbentRepeatIndices.push(repeatIndex);
             }
@@ -400,9 +408,8 @@ export async function evaluateModels(
     if (planSource === "candidate") {
       const rate = (route: RouteKey) =>
         repeatCount > 0
-          ? repeats[route].filter(
-              ({ deterministicGatesPassed }) => deterministicGatesPassed,
-            ).length / repeatCount
+          ? repeats[route].filter(passedDeterministicChecks).length /
+            repeatCount
           : 0;
       comparisons.push({
         fixtureId,
@@ -465,12 +472,7 @@ export async function evaluateModels(
       [
         ...repeats.candidate,
         ...(input.role === "implement" ? repeats.incumbent : []),
-      ].some(
-        ({ deterministicGatesPassed, gateChecks }) =>
-          !deterministicGatesPassed ||
-          gateChecks.length === 0 ||
-          gateChecks.some(({ passed }) => !passed),
-      ),
+      ].some((repeat) => !passedDeterministicChecks(repeat)),
     )
   ) {
     return reject("gate-failure");
@@ -625,7 +627,7 @@ export async function evaluateModels(
       repeats.candidate.map((repeat) => ({
         fixtureId: comparisonKeys[index],
         repeatIndex: repeat.repeatIndex,
-        gatesPassed: repeat.deterministicGatesPassed,
+        gatesPassed: passedDeterministicChecks(repeat),
       })),
     ),
     judges: [verdict1, verdict2],

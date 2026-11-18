@@ -235,6 +235,17 @@ async function changedFixturePaths(
     baselineSha,
     "--",
   ]);
+  const { stdout: stagedChanges } = await execFileAsync("git", [
+    "-C",
+    workspaceDir,
+    "diff",
+    "--cached",
+    "--no-renames",
+    "--name-only",
+    "-z",
+    baselineSha,
+    "--",
+  ]);
   const { stdout: untrackedChanges } = await execFileAsync("git", [
     "-C",
     workspaceDir,
@@ -244,7 +255,7 @@ async function changedFixturePaths(
     "-z",
   ]);
   return new Set(
-    `${trackedChanges}${untrackedChanges}`
+    `${trackedChanges}${stagedChanges}${untrackedChanges}`
       .split("\0")
       .filter((path) => path && !path.startsWith(".runs/")),
   );

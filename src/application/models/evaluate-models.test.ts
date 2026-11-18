@@ -1041,12 +1041,33 @@ describe("model qualification orchestration", () => {
   });
 
   it.each([
-    { route: "candidate", failedModel: candidate, failedIndices: [0, 1, 2] },
-    { route: "incumbent", failedModel: incumbent, failedIndices: [0, 1, 2] },
-    { route: "incumbent", failedModel: incumbent, failedIndices: [1] },
+    {
+      route: "candidate",
+      failedModel: candidate,
+      failedIndices: [0, 1, 2],
+      aggregatePasses: false,
+    },
+    {
+      route: "incumbent",
+      failedModel: incumbent,
+      failedIndices: [0, 1, 2],
+      aggregatePasses: false,
+    },
+    {
+      route: "incumbent",
+      failedModel: incumbent,
+      failedIndices: [1],
+      aggregatePasses: false,
+    },
+    {
+      route: "incumbent",
+      failedModel: incumbent,
+      failedIndices: [1],
+      aggregatePasses: true,
+    },
   ])(
-    "TR-026 scores definition coverage when $route fails reference checks at $failedIndices",
-    async ({ failedModel, failedIndices }) => {
+    "TR-026 scores definition coverage when $route fails reference checks at $failedIndices (aggregate passes: $aggregatePasses)",
+    async ({ failedModel, failedIndices, aggregatePasses }) => {
       const { deps, runFixtureRepeat, judgeComparison } = setup({
         handoffs: [candidateHandoff],
       });
@@ -1059,7 +1080,7 @@ describe("model qualification orchestration", () => {
           !failedIndices.includes(request.repeatIndex);
         return {
           ...evidence,
-          deterministicGatesPassed: referencePassed,
+          deterministicGatesPassed: referencePassed || aggregatePasses,
           gateChecks: [
             { checkId: "spec-ref-ADR-001", passed: true, detail: "ok" },
             {
