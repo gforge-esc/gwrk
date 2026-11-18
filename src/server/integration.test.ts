@@ -1171,9 +1171,9 @@ setInterval(() => {}, 1000);
           .toEqual([
             expect.objectContaining({ issue_number: 8, feature_id: featureId }),
           ]);
-        expect(listIssues(checkoutFeature, fixture.projectId, fixture.db)).toEqual(
-          [],
-        );
+        expect(
+          listIssues(checkoutFeature, fixture.projectId, fixture.db),
+        ).toEqual([]);
         expect(getDb).not.toHaveBeenCalled();
       } finally {
         await fixture.close();
@@ -1182,9 +1182,10 @@ setInterval(() => {}, 1000);
   );
 
   it("routes a signed opened issue to the fixture and drains delivery on close", async () => {
-    const { notifySlack: realNotifier } = await vi.importActual<
-      typeof import("./slack-notify.js")
-    >("./slack-notify.js");
+    const { notifySlack: realNotifier } =
+      await vi.importActual<typeof import("./slack-notify.js")>(
+        "./slack-notify.js",
+      );
     const fixture = await createServerFixture("listen");
     const webhookUrl = "https://fixture.invalid/github-issue";
     const localFetch = globalThis.fetch;
@@ -1234,7 +1235,9 @@ setInterval(() => {}, 1000);
       expect.soft(url).toBe(webhookUrl);
       expect.soft(request?.signal).toBeInstanceOf(AbortSignal);
       expect.soft(notifySlack).toHaveBeenCalledWith(
-        expect.objectContaining({ text: expect.stringContaining("Issue #9") }),
+        expect.objectContaining({
+          text: expect.stringContaining("Issue #9"),
+        }),
         undefined,
         expect.objectContaining({ transportTimeoutMs: 5_000 }),
       );
