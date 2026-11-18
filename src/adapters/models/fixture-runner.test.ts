@@ -9,7 +9,10 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import type { ModelCandidate } from "../../domain/model-qualification.js";
-import type { JudgeVerdictPacket } from "../../ports/model-qualification-port.js";
+import type {
+  FixtureRepeatEvidence,
+  JudgeVerdictPacket,
+} from "../../ports/model-qualification-port.js";
 import type { TaskDispatch, TaskResult } from "../../utils/agent.js";
 import { type TaskState, loadTaskState } from "../../utils/state.js";
 import { FixtureRunner, createFixtureRunner } from "./fixture-runner.js";
@@ -138,6 +141,10 @@ describe("fixture runner adapter", () => {
       "edit T002",
       (tasks: string) =>
         tasks.replace("This task is complete.", "Different scope."),
+    ],
+    [
+      "add a continuation under completed T002",
+      (tasks: string) => `${tasks}  Preserve a different adapter contract.\n`,
     ],
   ] as const)(
     "rejects a review that would %s in tasks.md",
@@ -490,10 +497,25 @@ describe("fixture runner adapter", () => {
     { variant: "failed dispatch", expectedCheck: "dispatch-gwrk-plan" },
     { variant: "failure status", expectedCheck: "dispatch-gwrk-plan" },
     { variant: "timed out dispatch", expectedCheck: "dispatch-gwrk-plan" },
+    {
+      variant: "wrong specification model",
+      expectedCheck: "fixture-route-identity",
+      mismatchedWorkflow: "gwrk-specify",
+    },
+    {
+      variant: "wrong planning model",
+      expectedCheck: "fixture-route-identity",
+      mismatchedWorkflow: "gwrk-plan",
+    },
+    {
+      variant: "rewritten acceptance rule",
+      expectedCheck: "plan-preserves-spec",
+    },
+    { variant: "removed spec", expectedCheck: "plan-preserves-spec" },
     { variant: "valid plan", expectedCheck: undefined },
   ])(
     "checks definition produced with $variant",
-    async ({ variant, expectedCheck }) => {
+    async ({ variant, expectedCheck, mismatchedWorkflow }) => {
       const calls: TaskDispatch[] = [];
       const specReferences =
         "ADR-001 ADR-002 docs/refs/queue-contract.md docs/research/routing-brief.md docs/refs/acceptance.md";
@@ -502,6 +524,10 @@ describe("fixture runner adapter", () => {
         variant === "reference lists"
           ? specReferences
           : `# Ticket routing spec\n\n## Requirements\n${specReferences}\n\n## Acceptance scenarios\nRoute unknown priorities to triage.\n\n## Testing requirements\nExercise the 30-minute cutoff.\n`;
+      const rewrittenSpec = spec.replace(
+        "Route unknown priorities to triage.",
+        "Route unknown priorities to the standard queue.",
+      );
       const command =
         variant === "echoed command" ? `echo "${gateCommand}"` : gateCommand;
       const planGate =
@@ -568,6 +594,12 @@ describe("fixture runner adapter", () => {
             existsSync(join(root, ".specify/templates/plan-template.md")),
           ).toBe(true);
           writeFileSync(join(featureDir, "plan.md"), plan);
+          if (variant === "rewritten acceptance rule") {
+            writeFileSync(join(featureDir, "spec.md"), rewrittenSpec);
+          }
+          if (variant === "removed spec") {
+            await rm(join(featureDir, "spec.md"));
+          }
         }
         if (task.workflow === "gwrk-plan" && variant === "failed dispatch") {
           return {
@@ -596,16 +628,43 @@ describe("fixture runner adapter", () => {
             durationS: 0,
           };
         }
-        return { exitCode: 0, stdout: "", stderr: "", durationS: 0 };
+        return {
+          exitCode: 0,
+          stdout: "",
+          stderr: "",
+          durationS: 0,
+          observedModel: mismatchedWorkflow
+            ? task.workflow === mismatchedWorkflow
+              ? "other-model"
+              : candidateRoute.modelId
+            : undefined,
+        };
       };
-      const result = await createFixtureRunner({ dispatcher }).runFixtureRepeat(
-        {
+      const artifactOutputDir =
+        variant === "valid plan"
+          ? await mkdtemp(join(tmpdir(), "gwrk-definition-artifacts-"))
+          : undefined;
+      let result: FixtureRepeatEvidence;
+      try {
+        result = await createFixtureRunner({ dispatcher }).runFixtureRepeat({
           fixtureId: "define-long-context",
           role: "define",
           repeatIndex: 0,
           route: candidateRoute,
-        },
-      );
+          artifactOutputDir,
+        });
+        if (artifactOutputDir) {
+          expect(readFileSync(join(artifactOutputDir, "spec.md"), "utf8")).toBe(
+            spec,
+          );
+          expect(readFileSync(join(artifactOutputDir, "plan.md"), "utf8")).toBe(
+            plan,
+          );
+        }
+      } finally {
+        if (artifactOutputDir)
+          await rm(artifactOutputDir, { recursive: true, force: true });
+      }
       expect(
         result.deterministicGatesPassed,
         JSON.stringify(result.gateChecks),
@@ -618,7 +677,24 @@ describe("fixture runner adapter", () => {
           ),
         ).toBe(true);
       }
-      expect(result.sanitizedOutput).toContain(spec);
+      expect(result.observedModel).toBe(
+        mismatchedWorkflow ? "other-model" : "unknown",
+      );
+      if (mismatchedWorkflow) {
+        const routeCheck = result.gateChecks.find(
+          ({ checkId }) => checkId === "fixture-route-identity",
+        );
+        expect(routeCheck?.detail).toContain(mismatchedWorkflow);
+        expect(routeCheck?.detail).toContain(candidateRoute.modelId);
+        expect(routeCheck?.detail).toContain("other-model");
+      }
+      if (variant === "removed spec") {
+        expect(result.sanitizedOutput).not.toContain(spec);
+      } else {
+        expect(result.sanitizedOutput).toContain(
+          variant === "rewritten acceptance rule" ? rewrittenSpec : spec,
+        );
+      }
       expect(result.sanitizedOutput).toContain(plan);
       expect(calls.map(({ workflow }) => workflow)).toEqual([
         "gwrk-specify",

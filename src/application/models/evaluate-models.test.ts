@@ -354,6 +354,32 @@ describe("model qualification orchestration", () => {
     ).toBe(false);
   });
 
+  it.each(["candidate", "incumbent"])(
+    "rejects a route mismatch on the %s generated-plan handoff before judging",
+    async (side) => {
+      const { deps, runFixtureRepeat, judgeComparison } = setup({
+        handoffs: [candidateHandoff],
+      });
+      const original = runFixtureRepeat.getMockImplementation()!;
+      runFixtureRepeat.mockImplementation(async (request) => ({
+        ...(await original(request)),
+        observedModel:
+          request.handoffArtifactDir?.includes(`/${side}/`) &&
+          request.repeatIndex === 0
+            ? "other-model"
+            : request.route.modelId,
+      }));
+
+      const result = await evaluateModels(deps, defineHandoffInput);
+
+      expect(result.decision).toEqual({
+        promote: false,
+        reason: "gate-failure",
+      });
+      expect(judgeComparison).not.toHaveBeenCalled();
+    },
+  );
+
   it("checks secrets in prerequisite define evidence before calling judges", async () => {
     const { deps, runFixtureRepeat, judgeComparison } = setup({
       handoffs: [candidateHandoff],

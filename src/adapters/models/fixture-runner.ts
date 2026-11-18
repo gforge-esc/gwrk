@@ -210,23 +210,29 @@ function taskStates(tasks: string | undefined) {
   if (tasks === undefined) return;
   const states = new Map<
     string,
-    { open: boolean; line: string; description: string }
+    { open: boolean; line: string; description: string; continuation: string[] }
   >();
+  let continuation: string[] | undefined;
   for (const line of tasks.split("\n")) {
     const task =
       /^\s*(?:[-*]\s+)?(?:\[([ xX])\]\s+)?(?:\*\*)?(T\d+)\b(?:\*\*)?[:\s-]*(.*)/.exec(
         line,
       );
-    if (!task) continue;
+    if (!task) {
+      continuation?.push(line);
+      continue;
+    }
     const [, checkbox, id, description] = task;
     if (states.has(id)) return;
     const content = description
       .replace(/^(?:REOPEN(?:ED)?|OPEN)\b[:\s-]*/i, "")
       .replace(/\s*(?:\[REOPENED\]|\(reopened\))\s*$/i, "");
+    continuation = [];
     states.set(id, {
       open: checkbox === " " || content !== description,
       line,
       description: content,
+      continuation,
     });
   }
   return states;
@@ -251,6 +257,8 @@ function reviewMarkdownPreserved(
     [...after].every(([id, task]) => {
       const original = before.get(id);
       if (!original) return false;
+      if (!isDeepStrictEqual(task.continuation, original.continuation))
+        return false;
       if (task.line === original.line) return true;
       return (
         !original.open &&
@@ -649,6 +657,9 @@ export class FixtureRunner
       }
 
       const runtime = this.workflowRuntime ?? new WorkflowRuntime();
+      const specPath = join(featureDir, "spec.md");
+      let specifiedSpec: string | undefined;
+      let observedModel = "unknown";
       let implementationStart: number | undefined;
       let implementationDuration: number | undefined;
       let taskResult: TaskResult = {
@@ -699,6 +710,22 @@ export class FixtureRunner
             status: "failure",
           };
         }
+        const reportedModel = taskResult.observedModel;
+        if (reportedModel && reportedModel !== "unknown") {
+          if (
+            observedModel === "unknown" ||
+            observedModel === request.route.modelId
+          ) {
+            observedModel = reportedModel;
+          }
+          if (reportedModel !== request.route.modelId) {
+            gateChecks.push({
+              checkId: "fixture-route-identity",
+              passed: false,
+              detail: `${workflow} requested ${request.route.modelId} and reported ${reportedModel}`,
+            });
+          }
+        }
         const dispatched =
           taskResult.exitCode === 0 &&
           taskResult.status !== "failure" &&
@@ -711,7 +738,7 @@ export class FixtureRunner
             : `Workflow exit ${taskResult.exitCode}, status ${taskResult.status ?? "unknown"}, timed out ${taskResult.timedOut === true}`,
         });
         if (workflow === "gwrk-specify") {
-          const spec = await readOptionalFile(join(featureDir, "spec.md"));
+          const spec = await readOptionalFile(specPath);
           const plan = await readOptionalFile(join(featureDir, "plan.md"));
           const passed = Boolean(spec?.trim()) && plan === undefined;
           gateChecks.push({
@@ -722,6 +749,19 @@ export class FixtureRunner
               : "Specification must produce a nonempty spec and leave the plan to the planning stage",
           });
           if (!dispatched || !passed) break;
+          specifiedSpec = spec;
+        }
+        if (workflow === "gwrk-plan") {
+          const plannedSpec = await readOptionalFile(specPath);
+          const passed =
+            specifiedSpec !== undefined && plannedSpec === specifiedSpec;
+          gateChecks.push({
+            checkId: "plan-preserves-spec",
+            passed,
+            detail: passed
+              ? "Planning preserved spec.md"
+              : "Planning changed or removed the specification from gwrk-specify",
+          });
         }
       }
 
@@ -1069,7 +1109,7 @@ export class FixtureRunner
         fixtureId: request.fixtureId,
         repeatIndex: request.repeatIndex,
         requestedModel: request.route.modelId,
-        observedModel: taskResult.observedModel ?? "unknown",
+        observedModel,
         deterministicGatesPassed,
         gateChecks,
         durationMs:

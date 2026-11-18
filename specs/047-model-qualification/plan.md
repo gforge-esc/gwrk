@@ -90,19 +90,27 @@ Create versioned synthetic fixtures for long-context definition and seeded-defec
 - `src/application/models/evaluate-models.ts` (NEW: Orchestrate repeat fixtures, handoff checks and blinded two-judge scoring)
 - `src/adapters/models/fixture-runner.ts` (NEW: Materialize synthetic workspaces and run report-only judge prompts via `WorkflowRuntime`)
 - `src/application/models/evaluate-models.test.ts` (NEW: Seam tests with injected runner and judge ports for gates and judge splits)
+- `src/adapters/models/fixture-runner.test.ts` (NEW: Exercise built-in workflows through the fixture runner with an injected dispatcher)
 
 #### Test Strategy
 
 | ID | Type | Target | Expected result |
 |---|---|---|---|
 | TR-008 | integration | `src/application/models/evaluate-models.test.ts` | Executes three repeats per fixture and scores both `define` and `implement` handoff directions |
-| TR-009 | unit | `src/application/models/evaluate-models.test.ts` | Rejects candidate on deterministic gate failure before calling `PromotionJudgePort` |
+| TR-009 | unit | `src/application/models/evaluate-models.test.ts` | Rejects gate failures before judging, including route mismatches on either generated-plan handoff |
 | TR-010 | unit | `src/application/models/evaluate-models.test.ts` | Enforces distinct judge providers and families, randomized blinding and citations to supplied artifacts |
+| TR-017 | integration | `src/adapters/models/fixture-runner.test.ts` | Rejects a model mismatch in either definition stage and retains the mismatch after a matching planning dispatch |
+| TR-018 | integration | `src/adapters/models/fixture-runner.test.ts` | Rejects a rewritten acceptance rule or deleted specification during planning |
+| TR-019 | integration | `src/adapters/models/fixture-runner.test.ts` | Rejects an added continuation under T002, the completed adapter task |
+
+The matching-model handoff case keeps behavior pass rates of 1 and 0. A passing definition repeat exports the original specification and generated plan. The review cases accept report-only and canonical reopenings of T001, the routing task.
+
+Six regression cases failed before the repair. After the repair, the shared gate exited 0 with 645 passing Phase 3 tests and a clean lint run.
 
 #### Done When
 
 ```bash
-pnpm exec vitest run src/application/models/evaluate-models.test.ts src/architecture.test.ts
+bash specs/047-model-qualification/gates/phase-03.sh
 ```
 
 ### Phase 4: Route lock store and CLI
