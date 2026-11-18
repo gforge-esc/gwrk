@@ -228,10 +228,10 @@ export class FixtureRunner
           throw new Error("handoffArtifactDir is only valid for implement");
         }
         const handoffPlan = join(request.handoffArtifactDir, "plan.md");
-        if (existsSync(handoffPlan)) {
-          const planContent = await readFile(handoffPlan, "utf8");
-          await writeFile(join(workspaceDir, "plan.md"), planContent, "utf8");
-        }
+        const planContent = await readFile(handoffPlan, "utf8");
+        if (!planContent.trim())
+          throw new Error("Candidate handoff plan is empty");
+        await writeFile(join(workspaceDir, "plan.md"), planContent, "utf8");
       }
 
       await execFileAsync("git", ["-C", workspaceDir, "add", "-A"]);
@@ -299,6 +299,7 @@ export class FixtureRunner
             dispatcher: (task) =>
               this.dispatcher({
                 ...task,
+                effort: request.route.effort,
                 routeMode: "pinned",
                 timeoutMs: this.timeoutMs,
                 logPath: join(workspaceDir, ".runs", "repeat.log"),
@@ -750,6 +751,7 @@ export class FixtureRunner
           dispatcher: async (task) => {
             const tr = await this.dispatcher({
               ...task,
+              effort: judge.effort,
               routeMode: "pinned",
               timeoutMs: this.timeoutMs,
               logPath: join(judgeDir, ".runs", "judge.log"),

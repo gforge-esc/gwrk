@@ -175,6 +175,25 @@ describe("fixture runner adapter", () => {
     });
   });
 
+  it("rejects missing candidate plans before implementation dispatch", async () => {
+    const handoff = await mkdtemp(join(tmpdir(), "gwrk-missing-plan-"));
+    const dispatcher = vi.fn();
+    try {
+      await expect(
+        createFixtureRunner({ dispatcher }).runFixtureRepeat({
+          fixtureId: "implement-seeded-defect",
+          role: "implement",
+          repeatIndex: 0,
+          route: candidateRoute,
+          handoffArtifactDir: handoff,
+        }),
+      ).rejects.toThrow(/plan/i);
+      expect(dispatcher).not.toHaveBeenCalled();
+    } finally {
+      await rm(handoff, { recursive: true, force: true });
+    }
+  });
+
   it("proves fixed-plan and candidate-plan handoffs", async () => {
     let observedFixedPlan = "";
     const fixedDispatcher = vi.fn(
@@ -296,6 +315,7 @@ describe("fixture runner adapter", () => {
         expect(task.workflow).toBe("gwrk-model-judge");
         expect(task.agent).toBe(judge.backend);
         expect(task.model).toBe(judge.modelId);
+        expect(task.effort).toBe(judge.effort);
         expect(task.stdin).toContain("Comparison ID: eval-blinded-42");
         expect(task.stdin).toContain("Option A:");
         expect(task.stdin).toContain("Option B:");
