@@ -6,4 +6,4 @@
 set -euo pipefail
 pnpm build
 pnpm lint
-pnpm exec vitest run src/adapters/git/index.test.ts src/server/slack-actions.test.ts src/server/slack-messages.test.ts src/server/slack-agent.test.ts src/server/slack-home.test.ts src/server/slack.test.ts src/architecture.test.ts
+pnpm exec vitest run src/adapters/git/index.test.ts src/server/slack-actions.test.ts src/server/slack-commands.test.ts src/server/slack-messages.test.ts src/server/slack-agent.test.ts src/server/slack-home.test.ts src/server/slack.test.ts src/architecture.test.ts

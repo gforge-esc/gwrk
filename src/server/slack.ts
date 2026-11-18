@@ -24,7 +24,6 @@ import { registerSlackActions } from "./slack-actions.js";
 import { handleDirectMessage, handleMention } from "./slack-agent.js";
 import { type CommandContext, handleSlashCommand } from "./slack-commands.js";
 import { registerSlackHomeHandler } from "./slack-home.js";
-import { registerMentionHandler } from "./slack-mentions.js";
 import { presenceManager } from "./slack-presence.js";
 
 let app: App | null = null;
@@ -68,27 +67,18 @@ export async function startSlackApp(deps: {
 }) {
   const slackApp = getSlackApp();
   if (slackApp) {
-    let registry = deps.registry;
-    if (!registry) {
-      try {
-        registry = createSqliteProjectRegistryAdapter();
-      } catch (err) {
-        warnCli(
-          `Failed to initialize project registry: ${err instanceof Error ? err.message : String(err)}`,
-        );
-      }
-    }
-
-    const routingService =
-      deps.routingService ??
-      (registry ? createProjectRoutingService({ registry }) : undefined);
-
-    if (!routingService) {
+    let registry: ProjectRegistryPort;
+    try {
+      registry = deps.registry ?? createSqliteProjectRegistryAdapter();
+    } catch (error) {
       warnCli(
-        "ProjectRoutingService is unavailable. Refusing to register Slack command, action, mention and message handlers.",
+        `Slack startup skipped. Project registry initialization failed: ${error instanceof Error ? error.message : String(error)}`,
       );
       return;
     }
+
+    const routingService =
+      deps.routingService ?? createProjectRoutingService({ registry });
 
     const vcs = deps.vcs ?? createGitVcsAdapter();
 
@@ -112,7 +102,11 @@ export async function startSlackApp(deps: {
         workspaceId: command.team_id,
       };
       const response = await handleSlashCommand(command.text, eventContext);
-      await respond(response);
+      await respond(
+        response.thread_ts
+          ? { ...response, replace_original: false }
+          : response,
+      );
     });
 
     // Register actions and events with per-event authorization capability
@@ -123,26 +117,25 @@ export async function startSlackApp(deps: {
     };
     await registerSlackActions(slackApp, actionContext);
 
-    // Register @gwrk mention handler (listens for app_mention events)
-    slackApp.event("app_mention", async ({ event, say }) => {
+    slackApp.event("app_mention", async ({ event, body, context, say }) => {
       await handleMention({
         event,
         say,
         projectRoot: deps.projectRoot,
         routingService,
+        workspaceId: body?.team_id ?? context?.teamId ?? event.team,
       });
     });
 
-    // Handle direct messages and threaded messages in channels
-    slackApp.event("message", async ({ event, say }) => {
-      // biome-ignore lint/suspicious/noExplicitAny: Slack message event
-      const msgEvent = event as any;
-      if (msgEvent.channel_type === "im" || msgEvent.channel?.startsWith("D")) {
+    slackApp.event("message", async ({ event, body, context, say }) => {
+      if (event.subtype || event.bot_id) return;
+      if (event.channel_type === "im" || event.channel.startsWith("D")) {
         await handleDirectMessage({
           event,
           say,
           projectRoot: deps.projectRoot,
           routingService,
+          workspaceId: body?.team_id ?? context?.teamId ?? event.team,
         });
       }
     });

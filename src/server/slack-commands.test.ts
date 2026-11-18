@@ -6,6 +6,7 @@ import { type Mocked, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   SYNTHETIC_CHANNEL_ALPHA,
   SYNTHETIC_PROJECT_ALPHA,
+  SYNTHETIC_THREAD_ALPHA,
   SYNTHETIC_USER_MAINTAINER,
   SYNTHETIC_WORKSPACE_ID,
   createSyntheticRegistry,
@@ -122,6 +123,26 @@ describe("slack-commands (FR-015, US-004)", () => {
     expect(response.blocks[1].text.text).toContain(
       "*Feature 003-slack:* running (phase-04)",
     );
+  });
+
+  it.each(["dispatch 003-slack 3", "approve 003-slack phase-01"])(
+    "threads %s in the bound Slack conversation",
+    async (command) => {
+      const response = await handleSlashCommand(command, context);
+      expect(response.thread_ts).toBe(SYNTHETIC_THREAD_ALPHA.rootTs);
+    },
+  );
+
+  it("keeps a feature command in its direct message instead of using the project channel thread", async () => {
+    const response = await handleSlashCommand(
+      "dispatch 003-slack 3 --project alpha",
+      {
+        ...context,
+        channelId: "D123",
+      },
+    );
+    expect(response.response_type).toBe("in_channel");
+    expect(response.thread_ts).toBeUndefined();
   });
 
   it("handles dispatch command with feature and phase", async () => {

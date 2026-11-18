@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import type { App, SlackEventMiddlewareArgs } from "@slack/bolt";
+import type { SlackEventMiddlewareArgs } from "@slack/bolt";
 import type { ProjectRoutingService } from "../application/project-routing/index.js";
 import { parseProjectSelector } from "../domain/slack-routing.js";
 import { buildProjectContext } from "../utils/agent-context.js";
@@ -15,12 +15,14 @@ export async function handleMention({
   say,
   projectRoot,
   routingService,
+  workspaceId,
 }: {
   event: SlackEventMiddlewareArgs<"app_mention">["event"];
   // biome-ignore lint/suspicious/noExplicitAny: Bolt SayFn callback
   say: any;
   projectRoot: string;
   routingService?: ProjectRoutingService;
+  workspaceId?: string;
 }): Promise<void> {
   const { requestedProject, cleanedText } = parseProjectSelector(event.text);
   const text = cleanedText.toLowerCase();
@@ -44,25 +46,22 @@ export async function handleMention({
   }
 
   const isDirectMessage = Boolean(event.channel?.startsWith("D"));
-  const requiredAccess =
-    text.includes("stress test") || text.includes("/skill")
-      ? "operate"
-      : "read";
-
-  // biome-ignore lint/suspicious/noExplicitAny: Slack team property
-  const workspaceId = (event as any).team || "";
+  const invokesSkill =
+    text.includes("/skill") ||
+    text.includes("stress test") ||
+    text.includes("plugin system");
   const channelId = event.channel || "";
   const actorUserId = event.user || "";
 
   const decision = routingService.authorizeCommand({
-    workspaceId,
+    workspaceId: workspaceId ?? event.team ?? "",
     channelId,
     isDirectMessage,
     actorUserId,
     threadTs: (event as { thread_ts?: string }).thread_ts,
     messageTs: event.ts,
     requestedProject,
-    requiredAccess,
+    requiredAccess: invokesSkill ? "operate" : "read",
   });
 
   if (!decision.ok) {
@@ -115,11 +114,7 @@ export async function handleMention({
   }
 
   // FR-017: Invoke skills with thinking mode
-  if (
-    text.includes("/skill") ||
-    text.includes("stress test") ||
-    text.includes("plugin system")
-  ) {
+  if (invokesSkill) {
     await say({
       thread_ts,
       text: "🧠 Invoking architecture-stress test skill... this might take a moment.",
@@ -156,6 +151,7 @@ export async function handleDirectMessage({
   say,
   projectRoot,
   routingService,
+  workspaceId,
 }: {
   // biome-ignore lint/suspicious/noExplicitAny: Slack message event
   event: any;
@@ -163,7 +159,10 @@ export async function handleDirectMessage({
   say: any;
   projectRoot: string;
   routingService?: ProjectRoutingService;
+  workspaceId?: string;
 }): Promise<void> {
+  if (event.bot_id || event.subtype) return;
+
   const { requestedProject } = parseProjectSelector(event.text || "");
   const thread_ts = event.thread_ts || event.ts;
 
@@ -176,7 +175,7 @@ export async function handleDirectMessage({
   }
 
   const decision = routingService.authorizeCommand({
-    workspaceId: event.team || "",
+    workspaceId: workspaceId ?? event.team ?? "",
     channelId: event.channel || "",
     isDirectMessage: true,
     actorUserId: event.user || "",

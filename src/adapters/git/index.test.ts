@@ -19,7 +19,7 @@ beforeEach(() => {
   root = mkdtempSync(join(tmpdir(), "gwrk-gh-arguments-"));
   writeFileSync(
     join(root, "gh"),
-    '#!/bin/sh\nprintf \'%s\\n\' "$@" > "$GWRK_GH_ARGS_FIXTURE"\nprintf \'%s\\n\' "$GWRK_GH_REPLY_FIXTURE"\n',
+    '#!/bin/sh\necho "$GH_PROMPT_DISABLED" > "$GWRK_GH_ARGS_FIXTURE.prompt"\nprintf \'%s\\n\' "$@" > "$GWRK_GH_ARGS_FIXTURE"\nprintf \'%s\\n\' "$GWRK_GH_REPLY_FIXTURE"\n',
     { mode: 0o755 },
   );
   vi.stubEnv("PATH", `${root}:${process.env.PATH}`);
@@ -39,21 +39,34 @@ describe("project GitHub commands", () => {
     expect(existsSync(marker)).toBe(false);
     expect(
       readFileSync(join(root, "arguments"), "utf8").trim().split("\n"),
-    ).toEqual([
-      "pr",
-      "list",
-      "--head",
-      branch,
-      "--json",
-      "url",
-      "-q",
-      ".[0].url",
-    ]);
+    ).toEqual(["pr", "list", "--head", branch, "--json", "url"]);
   });
   it("returns null for an empty GitHub result", () => {
-    vi.stubEnv("GWRK_GH_REPLY_FIXTURE", "null");
+    vi.stubEnv("GWRK_GH_REPLY_FIXTURE", "[]");
     expect(resolvePullRequestUrl(root, { headBranch: "feature" })).toBeNull();
   });
+  it.each([
+    [{ headBranch: "feature" }, '[{"url":"https://example.invalid/pull/42"}]'],
+    [{ prNumber: 42 }, '{"url":"https://example.invalid/pull/42"}'],
+  ])("reads the URL from GitHub JSON for %j", (query, reply) => {
+    vi.stubEnv("GWRK_GH_REPLY_FIXTURE", reply);
+    expect(resolvePullRequestUrl(root, query)).toBe(
+      "https://example.invalid/pull/42",
+    );
+    expect(readFileSync(join(root, "arguments.prompt"), "utf8").trim()).toBe(
+      "1",
+    );
+  });
+  it.each([0, -1, 1.5, Number.NaN])(
+    "rejects invalid PR number %s",
+    (prNumber) => {
+      expect(resolvePullRequestUrl(root, { prNumber })).toBeNull();
+      expect(() => mergePullRequest(root, prNumber)).toThrow(
+        /positive integer/,
+      );
+      expect(existsSync(join(root, "arguments"))).toBe(false);
+    },
+  );
   it("passes merge selectors without shell evaluation", () => {
     expect(mergePullRequest(root, 42)).toContain("pull/42");
     expect(

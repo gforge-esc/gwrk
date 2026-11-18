@@ -2,14 +2,18 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { execSync, spawn } from "node:child_process";
+import { spawn } from "node:child_process";
 import type { App } from "@slack/bolt";
+import type { ActionsBlock } from "@slack/types";
+import type { ProjectRoutingService } from "../application/project-routing/index.js";
 import { findOpenPr } from "../db/runs.js";
-import { buildActionReceiptKey } from "../domain/project-registry.js";
 import { requiredAccessForSlackAction } from "../domain/slack-routing.js";
 import { PlanStore } from "../engine/plan-store.js";
 import { resolveProjectId } from "../utils/project-id.js";
-import type { CommandContext } from "./slack-commands.js";
+import {
+  type CommandContext,
+  buildSlackLogResponse,
+} from "./slack-commands.js";
 
 function parseActionPayload(rawPayload?: string): {
   featureId?: string;
@@ -48,6 +52,7 @@ async function verifyAndClaimClick(
   client: any,
   // biome-ignore lint/suspicious/noExplicitAny: Logger
   logger: any,
+  retryFailed = false,
 ): Promise<ActionVerificationResult> {
   if (!context.routingService) {
     logger?.error?.(
@@ -75,38 +80,28 @@ async function verifyAndClaimClick(
   const threadTs = actionBody.message?.thread_ts;
   const requiredAccess = requiredAccessForSlackAction(actionId);
 
-  const isReadOnly = requiredAccess === "read";
-
-  const decision = isReadOnly
-    ? context.routingService.authorizeAction({
-        workspaceId,
-        channelId,
-        isDirectMessage,
-        actorUserId,
-        threadTs,
-        messageTs,
-        actionId,
-        payloadProjectId,
-        featureId: payloadObj?.featureId || "",
-        phaseId: payloadObj?.phaseId,
-        payloadRootTs: payloadObj?.rootTs,
-        requiredAccess,
-      })
-    : context.routingService.authorizeAndClaimAction({
-        workspaceId,
-        channelId,
-        isDirectMessage,
-        actorUserId,
-        threadTs,
-        messageTs,
-        actionId,
-        payloadProjectId,
-        featureId: payloadObj?.featureId || "",
-        phaseId: payloadObj?.phaseId,
-        payloadRootTs: payloadObj?.rootTs,
-        requiredAccess,
-        nowIso: new Date().toISOString(),
-      });
+  const input = {
+    workspaceId,
+    channelId,
+    isDirectMessage,
+    actorUserId,
+    threadTs,
+    messageTs,
+    actionId,
+    payloadProjectId,
+    featureId: payloadObj?.featureId || "",
+    phaseId: payloadObj?.phaseId,
+    payloadRootTs: payloadObj?.rootTs,
+    requiredAccess,
+  };
+  const decision: ReturnType<ProjectRoutingService["authorizeAndClaimAction"]> =
+    requiredAccess === "read"
+      ? context.routingService.authorizeAction(input)
+      : context.routingService.authorizeAndClaimAction({
+          ...input,
+          nowIso: new Date().toISOString(),
+          retryFailed,
+        });
 
   if (!decision.ok) {
     logger?.error?.(
@@ -127,24 +122,12 @@ async function verifyAndClaimClick(
     decision.project.mirrorPath ??
     context.projectRoot;
 
-  const receiptKey = isReadOnly
-    ? undefined
-    : buildActionReceiptKey({
-        projectId: decision.project.projectId,
-        actionId,
-        featureId: payloadObj?.featureId || "",
-        phaseId: payloadObj?.phaseId ?? null,
-        workspaceId,
-        channelId,
-        messageTs: messageTs ?? threadTs ?? "",
-      });
-
   return {
     ok: true,
     projectRoot: effectiveRoot,
     projectId: decision.project.projectId,
     threadTs: decision.recipient.threadTs,
-    receiptKey,
+    receiptKey: decision.receiptKey,
   };
 }
 
@@ -153,25 +136,9 @@ function completeReceipt(
   receiptKey?: string,
   outcome: "executed" | "failed" = "executed",
 ) {
-  if (receiptKey && context.routingService) {
-    // biome-ignore lint/suspicious/noExplicitAny: Registry completeActionReceipt
-    (context.routingService as any).registry?.completeActionReceipt(
-      receiptKey,
-      outcome,
-    );
+  if (receiptKey) {
+    context.routingService?.completeActionReceipt(receiptKey, outcome);
   }
-}
-
-/**
- * Merge a PR using the GitHub CLI.
- * Returns the merge output or throws on failure.
- */
-function mergeGitHubPr(prNumber: number, cwd: string): string {
-  return execSync(`gh pr merge ${prNumber} --merge --delete-branch`, {
-    cwd,
-    encoding: "utf-8",
-    timeout: 30_000,
-  }).trim();
 }
 
 /**
@@ -222,12 +189,10 @@ export async function registerSlackActions(app: App, context: CommandContext) {
     if (!auth.ok) return;
 
     try {
+      if (!context.vcs)
+        throw new Error("VCS port is required to merge pull requests.");
       const pr = lookupPr(featureId, phaseId ?? "", auth.projectId);
-      if (context.vcs) {
-        await context.vcs.mergePullRequest(auth.projectRoot, pr.pr_number);
-      } else {
-        mergeGitHubPr(pr.pr_number, auth.projectRoot);
-      }
+      await context.vcs.mergePullRequest(auth.projectRoot, pr.pr_number);
       completeReceipt(context, auth.receiptKey, "executed");
 
       await client.chat.postMessage({
@@ -490,49 +455,22 @@ export async function registerSlackActions(app: App, context: CommandContext) {
     );
     if (!auth.ok) return;
 
-    let reviewUrl = "";
-    const prNumber =
-      payloadPrNumber ||
-      findOpenPr(featureId, auth.projectId, phaseId)?.pr_number;
-
+    let reviewUrl: string | null = null;
     if (context.vcs) {
+      const prNumber =
+        payloadPrNumber ??
+        findOpenPr(featureId, auth.projectId, phaseId)?.pr_number;
       try {
-        const url = await context.vcs.resolvePullRequestUrl(auth.projectRoot, {
-          prNumber: prNumber ? Number(prNumber) : undefined,
+        reviewUrl = await context.vcs.resolvePullRequestUrl(auth.projectRoot, {
+          prNumber,
           headBranch: `feat/${featureId}`,
         });
-        if (url) reviewUrl = url;
-      } catch {
-        // Fallback below
-      }
-    }
-
-    if (!reviewUrl && prNumber) {
-      try {
-        reviewUrl = execSync(`gh pr view ${prNumber} --json url -q .url`, {
-          cwd: auth.projectRoot,
-          encoding: "utf-8",
-          timeout: 10_000,
-        }).trim();
-      } catch {
-        // PR might not exist anymore
+      } catch (error) {
+        logger.error(`Review lookup failed: ${String(error)}`);
       }
     }
 
     if (!reviewUrl) {
-      // Fallback: find any open PR for this feature branch
-      try {
-        reviewUrl = execSync(
-          `gh pr list --head feat/${featureId} --json url -q '.[0].url'`,
-          { cwd: auth.projectRoot, encoding: "utf-8", timeout: 10_000 },
-        ).trim();
-      } catch {
-        // No PR found
-      }
-    }
-
-    if (!reviewUrl) {
-      reviewUrl = `No PR found for ${featureId}`;
       await client.chat.postEphemeral({
         channel: actionBody.channel?.id || "",
         user: actionBody.user.id,
@@ -545,6 +483,37 @@ export async function registerSlackActions(app: App, context: CommandContext) {
       channel: actionBody.channel?.id || "",
       user: actionBody.user.id,
       text: `🔍 View full review here: <${reviewUrl}|${featureId} Review>`,
+    });
+  });
+
+  app.action("view_logs", async ({ ack, body, client, logger }) => {
+    await ack();
+    if (body.type !== "block_actions") return;
+    const button = body.actions[0];
+    const payload = parseActionPayload(
+      button?.type === "button" ? button.value : undefined,
+    );
+    if (!payload?.featureId) return;
+
+    const auth = await verifyAndClaimClick(
+      "view_logs",
+      body,
+      payload,
+      context,
+      client,
+      logger,
+    );
+    if (!auth.ok) return;
+
+    const args = [payload.featureId];
+    if (payload.phaseId) args.push(payload.phaseId);
+    const { blocks } = buildSlackLogResponse(args, auth.projectRoot);
+    await client.chat.postEphemeral({
+      channel: body.channel?.id ?? context.channelId,
+      user: body.user.id,
+      thread_ts: auth.threadTs,
+      text: `Run logs for ${payload.featureId}`,
+      blocks,
     });
   });
 
@@ -588,95 +557,80 @@ export async function registerSlackActions(app: App, context: CommandContext) {
     }
   });
 
-  // Handle reaction ✅
-  app.event("reaction_added", async ({ event, client, logger }) => {
-    if (
-      event.reaction === "white_check_mark" ||
-      event.reaction === "heavy_check_mark"
-    ) {
+  app.event(
+    "reaction_added",
+    async ({ event, body, context: boltContext, client, logger }) => {
+      if (
+        !context.routingService ||
+        !context.vcs ||
+        event.item.type !== "message" ||
+        (event.reaction !== "white_check_mark" &&
+          event.reaction !== "heavy_check_mark")
+      ) {
+        return;
+      }
+
+      let receiptKey: string | undefined;
       try {
-        const result = await client.conversations.history({
-          channel: event.item.channel,
-          latest: event.item.ts,
-          inclusive: true,
-          limit: 1,
+        const { channel, ts } = event.item;
+        const { message } = await client.reactions.get({
+          channel,
+          timestamp: ts,
         });
+        if (message?.ts !== ts) return;
 
-        const message = result.messages?.[0];
-        // Look for our structured markers in the text or blocks
-        if (
-          message?.text?.includes("Review Ready") ||
-          message?.blocks?.some((b) => {
-            // biome-ignore lint/suspicious/noExplicitAny: Slack block structure is complex
-            const block = b as any;
-            return (
-              block.text?.text?.includes("Review Ready") ||
-              block.header?.text?.includes("Review Ready")
-            );
-          })
-        ) {
-          // Find the feature/phase from the message blocks' action values
-          const actionBlock = message.blocks?.find((b) => {
-            // biome-ignore lint/suspicious/noExplicitAny: Slack block structure is complex
-            return (b as any).type === "actions";
-          });
+        const actionBlock = message.blocks?.find(
+          (block) => block.type === "actions",
+        ) as ActionsBlock | undefined;
+        const button = actionBlock?.elements.find(
+          (element) =>
+            element.type === "button" && element.action_id === "merge_pr",
+        );
+        const payload = parseActionPayload(
+          button?.type === "button" ? button.value : undefined,
+        );
+        if (!payload?.featureId) return;
 
-          if (actionBlock) {
-            // biome-ignore lint/suspicious/noExplicitAny: Slack block structure is complex
-            const actionValue = (actionBlock as any).elements?.[0]?.value;
+        const threadTs =
+          "thread_ts" in message && typeof message.thread_ts === "string"
+            ? message.thread_ts
+            : undefined;
+        const actionBody = {
+          team_id: body?.team_id ?? boltContext?.teamId ?? context.workspaceId,
+          channel: { id: channel },
+          user: { id: event.user },
+          message: { ts, thread_ts: threadTs },
+        };
+        const auth = await verifyAndClaimClick(
+          "merge_pr",
+          actionBody,
+          payload,
+          context,
+          client,
+          logger,
+          !boltContext?.retryNum,
+        );
+        if (!auth.ok) return;
+        receiptKey = auth.receiptKey;
 
-            if (actionValue) {
-              const payloadObj = parseActionPayload(actionValue);
-              if (!payloadObj?.featureId) return;
-              const { featureId, phaseId } = payloadObj;
+        const { featureId, phaseId } = payload;
+        const pr = lookupPr(featureId, phaseId ?? "", auth.projectId);
+        await context.vcs.mergePullRequest(auth.projectRoot, pr.pr_number);
+        const mergedReceiptKey = receiptKey;
+        receiptKey = undefined;
+        completeReceipt(context, mergedReceiptKey, "executed");
 
-              const actionBody = {
-                team: {
-                  id: (event as { team?: string }).team || context.workspaceId,
-                },
-                channel: { id: event.item.channel },
-                user: { id: event.user },
-                message: {
-                  ts: event.item.ts,
-                  thread_ts: (message as { thread_ts?: string })?.thread_ts,
-                },
-                actions: [{ action_id: "merge_pr", value: actionValue }],
-              };
-
-              const auth = await verifyAndClaimClick(
-                "merge_pr",
-                actionBody,
-                payloadObj,
-                context,
-                client,
-                logger,
-              );
-              if (!auth.ok) return;
-
-              const pr = lookupPr(featureId, phaseId ?? "", auth.projectId);
-              if (context.vcs) {
-                await context.vcs.mergePullRequest(
-                  auth.projectRoot,
-                  pr.pr_number,
-                );
-              } else {
-                mergeGitHubPr(pr.pr_number, auth.projectRoot);
-              }
-              completeReceipt(context, auth.receiptKey, "executed");
-
-              await client.chat.postMessage({
-                channel: event.item.channel,
-                thread_ts: auth.threadTs,
-                text: `✅ Reaction-approval detected! Merged PR #${pr.pr_number} for *${featureId}* phase *${phaseId}*.`,
-              });
-            }
-          }
-        }
+        await client.chat.postMessage({
+          channel,
+          thread_ts: auth.threadTs,
+          text: `✅ Reaction-approval detected! Merged PR #${pr.pr_number} for *${featureId}*${phaseId ? ` phase *${phaseId}*` : ""}.`,
+        });
       } catch (error) {
+        completeReceipt(context, receiptKey, "failed");
         const errorMessage =
           error instanceof Error ? error.message : String(error);
         logger.error(`Reaction approval failed: ${errorMessage}`);
       }
-    }
-  });
+    },
+  );
 }

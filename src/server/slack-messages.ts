@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import type { KnownBlock } from "@slack/types";
+import type { ContextBlock, KnownBlock } from "@slack/types";
 import type {
   CompressionReport,
   PulseReport,
@@ -14,6 +14,21 @@ export interface SlackMessage {
   channel?: string;
   blocks: KnownBlock[];
   text: string;
+}
+
+function projectContext(project?: {
+  projectId?: string;
+  projectSlug?: string;
+}): ContextBlock[] {
+  const label = project?.projectSlug || project?.projectId;
+  return label
+    ? [
+        {
+          type: "context",
+          elements: [{ type: "mrkdwn", text: `*Project:* \`${label}\`` }],
+        },
+      ]
+    : [];
 }
 
 export const MessageBuilder = {
@@ -111,17 +126,7 @@ export const MessageBuilder = {
       },
     ];
 
-    if (dispatch.projectSlug || dispatch.projectId) {
-      blocks.push({
-        type: "context",
-        elements: [
-          {
-            type: "mrkdwn",
-            text: `*Project:* \`${dispatch.projectSlug ?? dispatch.projectId}\``,
-          },
-        ],
-      });
-    }
+    blocks.push(...projectContext(dispatch));
 
     if (dispatch.prUrl) {
       blocks.push({
@@ -205,6 +210,7 @@ export const MessageBuilder = {
             text: `*Error:*\n\`\`\`${error || "Unknown error"}\`\`\``,
           },
         },
+        ...projectContext(dispatch),
         {
           type: "actions",
           elements: [
@@ -407,6 +413,7 @@ export const MessageBuilder = {
             text: `The specification for *${featureId}* is ready for your review at \`${specPath}\`.`,
           },
         },
+        ...projectContext(routing),
         {
           type: "actions",
           elements: [
@@ -459,6 +466,7 @@ export const MessageBuilder = {
           text: `The build plan for *${featureId}* is ready with *${phaseCount}* phases. Review it at \`${planPath}\`.`,
         },
       },
+      ...projectContext(routing),
       {
         type: "actions",
         elements: [

@@ -19,60 +19,65 @@ export function discoverIdentityFacts(cwd: string): ProjectIdentityFacts {
   return discoverGitIdentityFacts(cwd);
 }
 
+function runGh(cwd: string, args: string[], timeout: number): string {
+  return execFileSync("gh", args, {
+    cwd,
+    encoding: "utf-8",
+    env: { ...process.env, GH_PROMPT_DISABLED: "1" },
+    stdio: ["ignore", "pipe", "pipe"],
+    timeout,
+  }).trim();
+}
+
+function isPrNumber(value: number | undefined): value is number {
+  return value !== undefined && Number.isInteger(value) && value > 0;
+}
+
 export function resolvePullRequestUrl(
   cwd: string,
   query: { prNumber?: number; headBranch?: string },
 ): string | null {
-  if (query.prNumber) {
+  if (isPrNumber(query.prNumber)) {
     try {
-      const url = execFileSync(
-        "gh",
-        ["pr", "view", String(query.prNumber), "--json", "url", "-q", ".url"],
-        {
+      const pr = JSON.parse(
+        runGh(
           cwd,
-          encoding: "utf-8",
-          timeout: 10_000,
-        },
-      ).trim();
-      if (url && url !== "null") return url;
+          ["pr", "view", String(query.prNumber), "--json", "url"],
+          10_000,
+        ),
+      );
+      if (typeof pr?.url === "string" && pr.url) return pr.url;
     } catch {
-      // PR might not exist
+      // A missing PR can still be resolved by branch.
     }
   }
   if (query.headBranch) {
     try {
-      const url = execFileSync(
-        "gh",
-        [
-          "pr",
-          "list",
-          "--head",
-          query.headBranch,
-          "--json",
-          "url",
-          "-q",
-          ".[0].url",
-        ],
-        { cwd, encoding: "utf-8", timeout: 10_000 },
-      ).trim();
-      if (url && url !== "null") return url;
+      const prs = JSON.parse(
+        runGh(
+          cwd,
+          ["pr", "list", "--head", query.headBranch, "--json", "url"],
+          10_000,
+        ),
+      );
+      const url = Array.isArray(prs) ? prs[0]?.url : undefined;
+      return typeof url === "string" && url ? url : null;
     } catch {
-      // No PR found
+      return null;
     }
   }
   return null;
 }
 
 export function mergePullRequest(cwd: string, prNumber: number): string {
-  return execFileSync(
-    "gh",
+  if (!isPrNumber(prNumber)) {
+    throw new Error("Pull request number must be a positive integer.");
+  }
+  return runGh(
+    cwd,
     ["pr", "merge", String(prNumber), "--merge", "--delete-branch"],
-    {
-      cwd,
-      encoding: "utf-8",
-      timeout: 30_000,
-    },
-  ).trim();
+    30_000,
+  );
 }
 
 export function createGitVcsAdapter(): VcsPort {

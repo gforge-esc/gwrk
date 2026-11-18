@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import type { App } from "@slack/bolt";
 import type { HeaderBlock, SectionBlock } from "@slack/types";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
@@ -12,8 +13,11 @@ import {
   createSyntheticRegistry,
 } from "../../tests/helpers/synthetic-slack.js";
 import type { GwrkConfig } from "../utils/config.js";
-import { buildHomeTab } from "./slack-home.js";
+import { getStatusData } from "./routes/status.js";
+import { buildHomeTab, registerSlackHomeHandler } from "./slack-home.js";
 import type { SystemStatus } from "./types.js";
+
+vi.mock("./routes/status.js", () => ({ getStatusData: vi.fn() }));
 
 vi.mock("../engine/pulse.js", () => ({
   generatePulseReport: vi.fn(() => ({
@@ -187,6 +191,64 @@ describe("slack-home", () => {
   });
 
   describe("TR-012: Enrolled project visibility and role-gated startup project details", () => {
+    it.each(["body", "context"] as const)(
+      "uses the %s workspace on first App Home open",
+      async (source) => {
+        const event = vi.fn();
+        const publish = vi.fn();
+        vi.mocked(getStatusData).mockResolvedValue(mockStatus);
+        await registerSlackHomeHandler(
+          { event } as unknown as App,
+          {
+            config: mockConfig,
+            projectRoot: SYNTHETIC_PROJECT_ALPHA.localRoot!,
+            registry: createSyntheticRegistry(),
+          } as Parameters<typeof registerSlackHomeHandler>[1],
+        );
+        expect(event).toHaveBeenCalledWith(
+          "app_home_opened",
+          expect.any(Function),
+        );
+        await event.mock.calls[0][1]({
+          event: {
+            type: "app_home_opened",
+            tab: "home",
+            user: SYNTHETIC_USER_VIEWER,
+          },
+          body: source === "body" ? { team_id: SYNTHETIC_WORKSPACE_ID } : {},
+          context:
+            source === "context" ? { teamId: SYNTHETIC_WORKSPACE_ID } : {},
+          client: { views: { publish } },
+          logger: { error: vi.fn() },
+        });
+        expect(publish).toHaveBeenCalledOnce();
+        const { view } = publish.mock.calls[0][0];
+        expect(JSON.stringify(view.blocks)).toContain(
+          SYNTHETIC_PROJECT_ALPHA.name,
+        );
+        expect(JSON.stringify(view.blocks)).not.toContain(
+          SYNTHETIC_PROJECT_BETA.name,
+        );
+      },
+    );
+
+    it("hides sandbox details and queue counts from an unbound user", async () => {
+      const view = await buildHomeTab(
+        mockStatus,
+        mockConfig,
+        SYNTHETIC_PROJECT_ALPHA.localRoot!,
+        {
+          registry: createSyntheticRegistry(),
+          userId: "U_STRANGER",
+          workspaceId: SYNTHETIC_WORKSPACE_ID,
+        },
+      );
+      const blocks = JSON.stringify(view.blocks);
+      expect(blocks).toContain("No enrolled projects accessible");
+      expect(blocks).not.toContain("001-cli-core");
+      expect(blocks).not.toContain("Queue Depth");
+    });
+
     it("renders only projects where viewer holds a role and includes startup project sections when authorized", async () => {
       const registry = createSyntheticRegistry();
       const homeView = await buildHomeTab(
@@ -204,10 +266,16 @@ describe("slack-home", () => {
         .filter((b) => b.type === "section" && (b as SectionBlock).text?.text)
         .map((b) => (b as SectionBlock).text!.text);
 
-      expect(enrolledTexts.some((t) => t.includes(SYNTHETIC_PROJECT_ALPHA.name))).toBe(true);
-      expect(enrolledTexts.some((t) => t.includes(SYNTHETIC_PROJECT_BETA.name))).toBe(false);
+      expect(
+        enrolledTexts.some((t) => t.includes(SYNTHETIC_PROJECT_ALPHA.name)),
+      ).toBe(true);
+      expect(
+        enrolledTexts.some((t) => t.includes(SYNTHETIC_PROJECT_BETA.name)),
+      ).toBe(false);
 
-      expect(enrolledTexts.some((t) => t.includes("Plan DAG Status"))).toBe(true);
+      expect(enrolledTexts.some((t) => t.includes("Plan DAG Status"))).toBe(
+        true,
+      );
       expect(enrolledTexts.some((t) => t.includes("Pulse Summary"))).toBe(true);
     });
 
@@ -230,11 +298,17 @@ describe("slack-home", () => {
         .map((b) => (b as SectionBlock).text!.text);
 
       // Viewer still sees Alpha in enrolled projects
-      expect(sectionTexts.some((t) => t.includes(SYNTHETIC_PROJECT_ALPHA.name))).toBe(true);
-      expect(sectionTexts.some((t) => t.includes(SYNTHETIC_PROJECT_BETA.name))).toBe(false);
+      expect(
+        sectionTexts.some((t) => t.includes(SYNTHETIC_PROJECT_ALPHA.name)),
+      ).toBe(true);
+      expect(
+        sectionTexts.some((t) => t.includes(SYNTHETIC_PROJECT_BETA.name)),
+      ).toBe(false);
 
       // But does NOT see Plan DAG Status or Pulse Summary for the unauthorized startup project
-      expect(sectionTexts.some((t) => t.includes("Plan DAG Status"))).toBe(false);
+      expect(sectionTexts.some((t) => t.includes("Plan DAG Status"))).toBe(
+        false,
+      );
       expect(sectionTexts.some((t) => t.includes("Pulse Summary"))).toBe(false);
     });
 
@@ -259,8 +333,12 @@ describe("slack-home", () => {
           t.includes("_No enrolled projects accessible for your account._"),
         ),
       ).toBe(true);
-      expect(sectionTexts.some((t) => t.includes(SYNTHETIC_PROJECT_ALPHA.name))).toBe(false);
-      expect(sectionTexts.some((t) => t.includes("Plan DAG Status"))).toBe(false);
+      expect(
+        sectionTexts.some((t) => t.includes(SYNTHETIC_PROJECT_ALPHA.name)),
+      ).toBe(false);
+      expect(sectionTexts.some((t) => t.includes("Plan DAG Status"))).toBe(
+        false,
+      );
       expect(sectionTexts.some((t) => t.includes("Pulse Summary"))).toBe(false);
     });
   });

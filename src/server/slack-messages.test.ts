@@ -46,24 +46,60 @@ describe("MessageBuilder", () => {
     }
   });
 
-  it("stamps every review action with its project and feature thread", () => {
-    const routing = { projectId: "project-a", projectSlug: "alpha", rootTs: "3.1" };
-    const dispatch = { ...mockDispatch, ...routing };
-    const actions = MessageBuilder.reviewReady(dispatch).blocks.find(
-      (block): block is ActionsBlock => block.type === "actions",
-    );
-    expect(actions?.elements).toHaveLength(3);
-    for (const button of actions?.elements ?? []) {
-      if (button.type !== "button" || !button.value) {
-        throw new Error("Expected an interactive review button");
-      }
-      expect(JSON.parse(button.value)).toMatchObject({
-        ...routing,
-        featureId: dispatch.featureId,
-        phaseId: dispatch.phaseId,
+  const routing = {
+    projectId: "project-a",
+    projectSlug: "alpha",
+    rootTs: "3.1",
+  };
+  const dispatch = { ...mockDispatch, ...routing };
+  it.each([
+    [
+      "reviewReady",
+      MessageBuilder.reviewReady(dispatch),
+      3,
+      { phaseId: dispatch.phaseId },
+    ],
+    [
+      "phaseFail",
+      MessageBuilder.phaseFail(dispatch),
+      2,
+      { phaseId: dispatch.phaseId },
+    ],
+    [
+      "specReady",
+      MessageBuilder.specReady(dispatch.featureId, "spec.md", routing),
+      2,
+      { specPath: "spec.md" },
+    ],
+    [
+      "planReady",
+      MessageBuilder.planReady(dispatch.featureId, "plan.md", 1, routing),
+      2,
+      { planPath: "plan.md" },
+    ],
+  ] as const)(
+    "%s shows the project and stamps its buttons",
+    (_name, message, count, details) => {
+      expect(message.blocks).toContainEqual({
+        type: "context",
+        elements: [{ type: "mrkdwn", text: "*Project:* `alpha`" }],
       });
-    }
-  });
+      const actions = message.blocks.find(
+        (block): block is ActionsBlock => block.type === "actions",
+      );
+      expect(actions?.elements).toHaveLength(count);
+      for (const button of actions?.elements ?? []) {
+        if (button.type !== "button" || !button.value) {
+          throw new Error("Expected an interactive button");
+        }
+        expect(JSON.parse(button.value)).toMatchObject({
+          ...routing,
+          ...details,
+          featureId: dispatch.featureId,
+        });
+      }
+    },
+  );
 
   it("should build phaseFail message with error", () => {
     const msg = MessageBuilder.phaseFail(mockDispatch, "Build failed");

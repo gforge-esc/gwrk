@@ -47,79 +47,6 @@ export async function buildHomeTab(
     { type: "divider" },
   ];
 
-  // 1. Active Agents (Sandboxes)
-  blocks.push({
-    type: "section",
-    text: { type: "mrkdwn", text: "👷 *Active Agents*" },
-  });
-
-  if (status.sandboxes.length === 0) {
-    blocks.push({
-      type: "section",
-      text: { type: "mrkdwn", text: "_No active agents._" },
-    });
-  } else {
-    for (const sb of status.sandboxes.slice(0, 5)) {
-      blocks.push({
-        type: "section",
-        text: {
-          type: "mrkdwn",
-          text: `• *${sb.featureId}* (${sb.phaseId}) - \`${sb.backend}\` [${sb.status}]\n  Task: \`${sb.taskId}\``,
-        },
-      });
-    }
-    if (status.sandboxes.length > 5) {
-      blocks.push({
-        type: "section",
-        text: {
-          type: "mrkdwn",
-          text: `_...and ${status.sandboxes.length - 5} more agents active._`,
-        },
-      });
-    }
-  }
-
-  // 2. Dispatch Queue
-  blocks.push({
-    type: "section",
-    text: { type: "mrkdwn", text: "📥 *Dispatch Queue*" },
-  });
-  blocks.push({
-    type: "section",
-    fields: [
-      { type: "mrkdwn", text: `*Queue Depth:* ${status.dispatch.queueDepth}` },
-      { type: "mrkdwn", text: `*Active:* ${status.dispatch.activeCount}` },
-      {
-        type: "mrkdwn",
-        text: `*Completed:* ${status.dispatch.completedCount}`,
-      },
-      { type: "mrkdwn", text: `*Failed:* ${status.dispatch.failedCount}` },
-    ],
-  });
-
-  // 3. System Resources
-  blocks.push({
-    type: "section",
-    text: { type: "mrkdwn", text: "📊 *System Resources*" },
-  });
-  blocks.push({
-    type: "section",
-    fields: [
-      {
-        type: "mrkdwn",
-        text: `*CPU:* ${status.system.cpuPercent.toFixed(1)}%`,
-      },
-      {
-        type: "mrkdwn",
-        text: `*Memory:* ${status.system.memPercent.toFixed(1)}%`,
-      },
-      {
-        type: "mrkdwn",
-        text: `*Disk Free:* ${status.system.diskFreeGb.toFixed(1)} GB`,
-      },
-    ],
-  });
-
   const registry = options?.registry;
   const startupProject =
     registry?.findByLocalRoot(projectRoot) ??
@@ -145,6 +72,84 @@ export async function buildHomeTab(
   const showStartupProjectDetails = registry
     ? visibleProjects.some((p) => p.projectId === startupProjectId)
     : true;
+
+  if (showStartupProjectDetails) {
+    // 1. Active Agents (Sandboxes)
+    blocks.push({
+      type: "section",
+      text: { type: "mrkdwn", text: "👷 *Active Agents*" },
+    });
+
+    if (status.sandboxes.length === 0) {
+      blocks.push({
+        type: "section",
+        text: { type: "mrkdwn", text: "_No active agents._" },
+      });
+    } else {
+      for (const sb of status.sandboxes.slice(0, 5)) {
+        blocks.push({
+          type: "section",
+          text: {
+            type: "mrkdwn",
+            text: `• *${sb.featureId}* (${sb.phaseId}) - \`${sb.backend}\` [${sb.status}]\n  Task: \`${sb.taskId}\``,
+          },
+        });
+      }
+      if (status.sandboxes.length > 5) {
+        blocks.push({
+          type: "section",
+          text: {
+            type: "mrkdwn",
+            text: `_...and ${status.sandboxes.length - 5} more agents active._`,
+          },
+        });
+      }
+    }
+
+    // 2. Dispatch Queue
+    blocks.push({
+      type: "section",
+      text: { type: "mrkdwn", text: "📥 *Dispatch Queue*" },
+    });
+    blocks.push({
+      type: "section",
+      fields: [
+        {
+          type: "mrkdwn",
+          text: `*Queue Depth:* ${status.dispatch.queueDepth}`,
+        },
+        { type: "mrkdwn", text: `*Active:* ${status.dispatch.activeCount}` },
+        {
+          type: "mrkdwn",
+          text: `*Completed:* ${status.dispatch.completedCount}`,
+        },
+        { type: "mrkdwn", text: `*Failed:* ${status.dispatch.failedCount}` },
+      ],
+    });
+  }
+
+  // 3. System Resources
+  blocks.push({
+    type: "section",
+    text: { type: "mrkdwn", text: "📊 *System Resources*" },
+  });
+  blocks.push({
+    type: "section",
+    fields: [
+      {
+        type: "mrkdwn",
+        text: `*CPU:* ${status.system.cpuPercent.toFixed(1)}%`,
+      },
+      {
+        type: "mrkdwn",
+        text: `*Memory:* ${status.system.memPercent.toFixed(1)}%`,
+      },
+      {
+        type: "mrkdwn",
+        text: `*Disk Free:* ${status.system.diskFreeGb.toFixed(1)} GB`,
+      },
+    ],
+  });
 
   if (showStartupProjectDetails) {
     // 4. Build Plan (from Plan DAG)
@@ -326,34 +331,40 @@ export async function registerSlackHomeHandler(
     workspaceId?: string;
   },
 ) {
-  slackApp.event("app_home_opened", async ({ event, client, logger }) => {
-    try {
-      const status = await getStatusData(
-        deps.monitor,
-        deps.queue,
-        deps.sandbox,
-        deps.lifecycle,
-        deps.network,
-      );
+  slackApp.event(
+    "app_home_opened",
+    async ({ event, body, context, client, logger }) => {
+      try {
+        const status = await getStatusData(
+          deps.monitor,
+          deps.queue,
+          deps.sandbox,
+          deps.lifecycle,
+          deps.network,
+        );
 
-      const homeView = await buildHomeTab(
-        status,
-        deps.config,
-        deps.projectRoot,
-        {
-          userId: event.user,
-          // biome-ignore lint/suspicious/noExplicitAny: Slack view team_id
-          workspaceId: (event as any).view?.team_id ?? deps.workspaceId,
-          registry: deps.registry,
-        },
-      );
+        const homeView = await buildHomeTab(
+          status,
+          deps.config,
+          deps.projectRoot,
+          {
+            userId: event.user,
+            workspaceId:
+              body?.team_id ??
+              context?.teamId ??
+              (event.view as { team_id?: string } | undefined)?.team_id ??
+              deps.workspaceId,
+            registry: deps.registry,
+          },
+        );
 
-      await client.views.publish({
-        user_id: event.user,
-        view: homeView,
-      });
-    } catch (error) {
-      logger.error("Error publishing home tab: ", error);
-    }
-  });
+        await client.views.publish({
+          user_id: event.user,
+          view: homeView,
+        });
+      } catch (error) {
+        logger.error("Error publishing home tab: ", error);
+      }
+    },
+  );
 }

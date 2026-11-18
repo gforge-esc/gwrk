@@ -6,7 +6,6 @@ import {
   type DeliveryRecipient,
   type EnrolledProject,
   type ProjectRoleBinding,
-  type SlackActionReceipt,
   type SlackFeatureThread,
   buildActionReceiptKey,
 } from "../../domain/project-registry.js";
@@ -24,22 +23,21 @@ import type {
 } from "../../ports/notification-port.js";
 import type { ProjectRegistryPort } from "../../ports/store-port.js";
 
+type ActionInput = Omit<
+  SlackActionVerificationInput,
+  "storedThread" | "priorReceipt"
+>;
+type ActionClaimInput = ActionInput & { nowIso: string; retryFailed?: boolean };
+type ActionClaimDecision =
+  | (Extract<RouteDecision, { ok: true }> & { receiptKey?: string })
+  | Extract<RouteDecision, { ok: false }>;
+
 export interface ProjectRoutingService {
   authorizeCommand(envelope: SlackInboundEnvelope): RouteDecision;
-  authorizeAction(
-    input: Omit<
-      SlackActionVerificationInput,
-      "storedThread" | "priorReceipt"
-    >,
-  ): RouteDecision;
-  authorizeAndClaimAction(
-    input: Omit<
-      SlackActionVerificationInput,
-      "storedThread" | "priorReceipt"
-    > & {
-      nowIso: string;
-    },
-  ): RouteDecision;
+  authorizeAction(input: ActionInput): RouteDecision;
+  authorizeAndClaimAction(input: ActionClaimInput): ActionClaimDecision;
+  getFeatureThread: ProjectRegistryPort["getFeatureThread"];
+  completeActionReceipt: ProjectRegistryPort["completeActionReceipt"];
   deliverProjectEvent(input: {
     projectId: string;
     featureId?: string;
@@ -73,20 +71,64 @@ export function createProjectRoutingService(
     const current = new Promise<void>((resolve) => {
       resolveCurrent = resolve;
     });
-    threadLocks.set(
-      key,
-      prev.then(() => current),
-    );
+    const queued = prev.then(() => current);
+    threadLocks.set(key, queued);
 
     try {
       await prev;
       return await fn();
     } finally {
       resolveCurrent();
-      if (threadLocks.get(key) === current) {
+      if (threadLocks.get(key) === queued) {
         threadLocks.delete(key);
       }
     }
+  }
+
+  function findActionThread(
+    projects: EnrolledProject[],
+    input: ActionInput,
+  ): SlackFeatureThread | null {
+    const rootTs = input.threadTs ?? input.messageTs;
+    if (rootTs) {
+      const conversationCandidates = projects.filter(
+        (project) =>
+          project.slack?.workspaceId === input.workspaceId &&
+          (input.isDirectMessage ||
+            project.slack.channelId === input.channelId),
+      );
+
+      for (const project of conversationCandidates) {
+        const thread = deps.registry.getFeatureThread(
+          project.projectId,
+          input.featureId,
+        );
+        if (
+          thread &&
+          thread.workspaceId === input.workspaceId &&
+          thread.channelId === input.channelId &&
+          thread.rootTs === rootTs
+        ) {
+          return thread;
+        }
+      }
+    }
+
+    return input.payloadProjectId
+      ? deps.registry.getFeatureThread(input.payloadProjectId, input.featureId)
+      : null;
+  }
+
+  function authorizeAction(input: ActionInput): RouteDecision {
+    const projects = deps.registry.listProjects();
+    const roles = projects.flatMap((project) =>
+      deps.registry.listRoleBindings(project.projectId),
+    );
+    return evaluateSlackAction(projects, roles, {
+      ...input,
+      storedThread: findActionThread(projects, input),
+      priorReceipt: null,
+    });
   }
 
   return {
@@ -100,147 +142,19 @@ export function createProjectRoutingService(
       return evaluateSlackRoute(projects, roles, envelope);
     },
 
-    authorizeAction(
-      input: Omit<
-        SlackActionVerificationInput,
-        "storedThread" | "priorReceipt"
-      >,
-    ): RouteDecision {
-      const projects = deps.registry.listProjects();
-      const roles = projects.flatMap((p) =>
-        deps.registry.listRoleBindings(p.projectId),
-      );
+    authorizeAction,
 
-      const conversationCandidates = projects.filter(
-        (p) =>
-          p.slack?.workspaceId === input.workspaceId &&
-          (input.isDirectMessage || p.slack.channelId === input.channelId),
-      );
+    getFeatureThread: (projectId, featureId) =>
+      deps.registry.getFeatureThread(projectId, featureId),
 
-      let storedThread: SlackFeatureThread | null = null;
-      const rootTs = input.threadTs ?? input.messageTs;
+    completeActionReceipt: (receiptKey, outcome) =>
+      deps.registry.completeActionReceipt(receiptKey, outcome),
 
-      if (input.payloadProjectId) {
-        const thread = deps.registry.getFeatureThread(
-          input.payloadProjectId,
-          input.featureId,
-        );
-        if (thread) {
-          storedThread = thread;
-        }
-      }
+    authorizeAndClaimAction(input: ActionClaimInput): ActionClaimDecision {
+      const decision = authorizeAction(input);
+      if (!decision.ok || input.requiredAccess === "read") return decision;
 
-      if (!storedThread && rootTs) {
-        for (const cand of conversationCandidates) {
-          const thread = deps.registry.getFeatureThread(
-            cand.projectId,
-            input.featureId,
-          );
-          if (
-            thread &&
-            thread.workspaceId === input.workspaceId &&
-            thread.channelId === input.channelId &&
-            thread.rootTs === rootTs
-          ) {
-            storedThread = thread;
-            break;
-          }
-        }
-      }
-
-      return evaluateSlackAction(projects, roles, {
-        ...input,
-        storedThread,
-        priorReceipt: null,
-      });
-    },
-
-    authorizeAndClaimAction(
-      input: Omit<
-        SlackActionVerificationInput,
-        "storedThread" | "priorReceipt"
-      > & {
-        nowIso: string;
-      },
-    ): RouteDecision {
-      if (input.requiredAccess === "read") {
-        return this.authorizeAction(input);
-      }
-
-      const projects = deps.registry.listProjects();
-      const roles = projects.flatMap((p) =>
-        deps.registry.listRoleBindings(p.projectId),
-      );
-
-      const conversationCandidates = projects.filter(
-        (p) =>
-          p.slack?.workspaceId === input.workspaceId &&
-          (input.isDirectMessage || p.slack.channelId === input.channelId),
-      );
-
-      let storedThread: SlackFeatureThread | null = null;
-      const rootTs = input.threadTs ?? input.messageTs;
-
-      if (input.payloadProjectId) {
-        const thread = deps.registry.getFeatureThread(
-          input.payloadProjectId,
-          input.featureId,
-        );
-        if (thread) {
-          storedThread = thread;
-        }
-      }
-
-      if (!storedThread && rootTs) {
-        for (const cand of conversationCandidates) {
-          const thread = deps.registry.getFeatureThread(
-            cand.projectId,
-            input.featureId,
-          );
-          if (
-            thread &&
-            thread.workspaceId === input.workspaceId &&
-            thread.channelId === input.channelId &&
-            thread.rootTs === rootTs
-          ) {
-            storedThread = thread;
-            break;
-          }
-        }
-      }
-
-      const candidateProjectId =
-        input.payloadProjectId ??
-        storedThread?.projectId ??
-        (conversationCandidates.length === 1
-          ? conversationCandidates[0].projectId
-          : undefined);
-
-      let priorReceipt: SlackActionReceipt | null = null;
-      if (candidateProjectId) {
-        const receiptKey = buildActionReceiptKey({
-          projectId: candidateProjectId,
-          actionId: input.actionId,
-          featureId: input.featureId,
-          phaseId: input.phaseId ?? null,
-          workspaceId: input.workspaceId,
-          channelId: input.channelId,
-          messageTs: input.messageTs ?? input.threadTs ?? "",
-        });
-        priorReceipt = deps.registry.getActionReceipt(receiptKey);
-      }
-
-      const decision = evaluateSlackAction(projects, roles, {
-        ...input,
-        storedThread,
-        priorReceipt,
-      });
-
-      if (!decision.ok) {
-        return decision;
-      }
-
-      const finalReceiptKey = buildActionReceiptKey({
+      const scope = {
         projectId: decision.project.projectId,
         actionId: input.actionId,
         featureId: input.featureId,
@@ -248,15 +162,29 @@ export function createProjectRoutingService(
         workspaceId: input.workspaceId,
         channelId: input.channelId,
         messageTs: input.messageTs ?? input.threadTs ?? "",
-      });
+      };
+      let receiptKey = buildActionReceiptKey(scope);
+
+      // Each failed attempt stays recorded. Concurrent retries contend for the same next key.
+      let attempt = 0;
+      while (
+        input.retryFailed &&
+        deps.registry.getActionReceipt(receiptKey)?.outcome === "failed"
+      ) {
+        attempt++;
+        receiptKey = buildActionReceiptKey({
+          ...scope,
+          actionId: `${scope.actionId}:retry:${attempt}`,
+        });
+      }
 
       const claimed = deps.registry.claimActionReceipt({
-        receiptKey: finalReceiptKey,
-        projectId: decision.project.projectId,
-        actionId: input.actionId,
-        featureId: input.featureId,
-        phaseId: input.phaseId ?? null,
-        messageTs: input.messageTs ?? input.threadTs ?? "",
+        receiptKey,
+        projectId: scope.projectId,
+        actionId: scope.actionId,
+        featureId: scope.featureId,
+        phaseId: scope.phaseId,
+        messageTs: scope.messageTs,
         actorUserId: input.actorUserId,
         outcome: "claimed",
         recordedAt: input.nowIso,
@@ -270,7 +198,7 @@ export function createProjectRoutingService(
         };
       }
 
-      return decision;
+      return { ...decision, receiptKey };
     },
 
     async deliverProjectEvent(input: {
@@ -308,7 +236,7 @@ export function createProjectRoutingService(
         };
         if (!notifyPort) return { delivered: false };
         const result = await notifyPort.notify(payload);
-        return (result as NotificationReceipt) ?? { delivered: false };
+        return result ?? { delivered: false };
       }
 
       const channel = project.slack.channelId;
@@ -322,15 +250,15 @@ export function createProjectRoutingService(
         };
         if (!notifyPort) return { delivered: false };
         const result = await notifyPort.notify(payload);
-        return (result as NotificationReceipt) ?? { delivered: false };
+        return result ?? { delivered: false };
       }
 
       const featureId = input.featureId;
       const slackConfig = project.slack;
-      const lockKey = `${input.projectId}:${featureId}`;
+      const lockKey = `${project.projectId}:${featureId}`;
       return withThreadLock(lockKey, async () => {
         const thread = deps.registry.getFeatureThread(
-          input.projectId,
+          project.projectId,
           featureId,
         );
         const payload: NotificationPayload = {
@@ -352,12 +280,11 @@ export function createProjectRoutingService(
 
         if (!notifyPort) return { delivered: false };
         const result = await notifyPort.notify(payload);
-        const receipt: NotificationReceipt =
-          (result as NotificationReceipt) ?? { delivered: false };
+        const receipt: NotificationReceipt = result ?? { delivered: false };
 
         if (receipt.delivered && !thread && receipt.messageTs) {
           deps.registry.bindFeatureThread({
-            projectId: input.projectId,
+            projectId: project.projectId,
             featureId,
             workspaceId: slackConfig.workspaceId,
             channelId: receipt.channelId ?? channel,

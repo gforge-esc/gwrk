@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { execSync, spawn } from "node:child_process";
+import { spawn } from "node:child_process";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import type { KnownBlock } from "@slack/types";
@@ -515,131 +515,8 @@ const handlers: Record<string, SlashCommandHandler> = {
     }
   },
 
-  logs: async (args, context) => {
-    const [featureId, phaseId] = args;
-    if (!featureId) {
-      return {
-        response_type: "ephemeral",
-        blocks: [
-          {
-            type: "section",
-            text: {
-              type: "mrkdwn",
-              text: ":warning: Feature ID is required. Usage: `/gwrk logs <featureId> [phaseId]`",
-            },
-          },
-        ],
-      };
-    }
-
-    // Read ship run JSON files from specs/<feature>/.gwrk/runs/
-    const runsDir = path.join(
-      context.projectRoot,
-      "specs",
-      featureId,
-      ".gwrk",
-      "runs",
-    );
-    if (!fs.existsSync(runsDir)) {
-      return {
-        response_type: "ephemeral",
-        blocks: [
-          {
-            type: "section",
-            text: {
-              type: "mrkdwn",
-              text: `📋 No ship run logs found for *${featureId}* in \`specs/${featureId}/.gwrk/runs/\``,
-            },
-          },
-        ],
-      };
-    }
-
-    let files = fs
-      .readdirSync(runsDir)
-      .filter((f) => f.endsWith(".json"))
-      .sort()
-      .reverse();
-
-    // Filter by phase if provided
-    if (phaseId) {
-      const phaseNorm = phaseId.startsWith("phase-")
-        ? phaseId
-        : `phase-${phaseId}`;
-      files = files.filter(
-        (f) => f.includes(phaseNorm) || f.includes(`_${phaseId}_`),
-      );
-    }
-
-    if (files.length === 0) {
-      return {
-        response_type: "ephemeral",
-        blocks: [
-          {
-            type: "section",
-            text: {
-              type: "mrkdwn",
-              text: `📋 No logs found for *${featureId}*${phaseId ? ` phase *${phaseId}*` : ""}`,
-            },
-          },
-        ],
-      };
-    }
-
-    // Read the most recent log
-    const latestFile = files[0];
-    const blocks: KnownBlock[] = [];
-
-    try {
-      const content = fs.readFileSync(path.join(runsDir, latestFile), "utf-8");
-      const run = JSON.parse(content);
-
-      const status =
-        run.exit_code === 0
-          ? "✅ PASS"
-          : run.exit_code
-            ? "❌ FAIL"
-            : "🔄 IN PROGRESS";
-      let text = `📋 *Latest log: ${latestFile}*\n`;
-      text += `*Status:* ${status}\n`;
-      if (run.feature_id) text += `*Feature:* ${run.feature_id}\n`;
-      if (run.phase_id) text += `*Phase:* ${run.phase_id}\n`;
-      if (run.agent_backend) text += `*Agent:* ${run.agent_backend}\n`;
-      if (run.duration_s != null) text += `*Duration:* ${run.duration_s}s\n`;
-      if (run.gate_result) text += `*Gate:* ${run.gate_result}\n`;
-      if (run.review_verdict) text += `*Review:* ${run.review_verdict}\n`;
-
-      blocks.push({
-        type: "section",
-        text: { type: "mrkdwn", text },
-      });
-
-      if (files.length > 1) {
-        blocks.push({
-          type: "context",
-          elements: [
-            {
-              type: "mrkdwn",
-              text: `${files.length} total runs. Showing latest.`,
-            },
-          ],
-        });
-      }
-    } catch {
-      blocks.push({
-        type: "section",
-        text: {
-          type: "mrkdwn",
-          text: `📋 *${latestFile}*\n_Could not parse log file._`,
-        },
-      });
-    }
-
-    return {
-      response_type: "ephemeral",
-      blocks,
-    };
-  },
+  logs: async (args, context) =>
+    buildSlackLogResponse(args, context.projectRoot),
 
   ship: async (args, context) => {
     const featureArg = args[0];
@@ -983,6 +860,141 @@ const handlers: Record<string, SlashCommandHandler> = {
   },
 };
 
+export function buildSlackLogResponse(
+  args: string[],
+  projectRoot: string,
+): SlackBlockKit {
+  const [featureId, phaseId] = args;
+  if (!featureId) {
+    return {
+      response_type: "ephemeral",
+      blocks: [
+        {
+          type: "section",
+          text: {
+            type: "mrkdwn",
+            text: ":warning: Feature ID is required. Usage: `/gwrk logs <featureId> [phaseId]`",
+          },
+        },
+      ],
+    };
+  }
+
+  // Read ship run JSON files from specs/<feature>/.gwrk/runs/
+  const runsDir = path.join(projectRoot, "specs", featureId, ".gwrk", "runs");
+  if (!fs.existsSync(runsDir)) {
+    return {
+      response_type: "ephemeral",
+      blocks: [
+        {
+          type: "section",
+          text: {
+            type: "mrkdwn",
+            text: `📋 No ship run logs found for *${featureId}* in \`specs/${featureId}/.gwrk/runs/\``,
+          },
+        },
+      ],
+    };
+  }
+
+  let files = fs
+    .readdirSync(runsDir)
+    .filter((f) => f.endsWith(".json"))
+    .sort()
+    .reverse();
+
+  // Filter by phase if provided
+  if (phaseId) {
+    const phaseNorm = phaseId.startsWith("phase-")
+      ? phaseId
+      : `phase-${phaseId}`;
+    files = files.filter(
+      (f) => f.includes(phaseNorm) || f.includes(`_${phaseId}_`),
+    );
+  }
+
+  if (files.length === 0) {
+    return {
+      response_type: "ephemeral",
+      blocks: [
+        {
+          type: "section",
+          text: {
+            type: "mrkdwn",
+            text: `📋 No logs found for *${featureId}*${phaseId ? ` phase *${phaseId}*` : ""}`,
+          },
+        },
+      ],
+    };
+  }
+
+  // Read the most recent log
+  const latestFile = files[0];
+  const blocks: KnownBlock[] = [];
+
+  try {
+    const content = fs.readFileSync(path.join(runsDir, latestFile), "utf-8");
+    const run = JSON.parse(content);
+
+    const status =
+      run.exit_code === 0
+        ? "✅ PASS"
+        : run.exit_code
+          ? "❌ FAIL"
+          : "🔄 IN PROGRESS";
+    let text = `📋 *Latest log: ${latestFile}*\n`;
+    text += `*Status:* ${status}\n`;
+    if (run.feature_id) text += `*Feature:* ${run.feature_id}\n`;
+    if (run.phase_id) text += `*Phase:* ${run.phase_id}\n`;
+    if (run.agent_backend) text += `*Agent:* ${run.agent_backend}\n`;
+    if (run.duration_s != null) text += `*Duration:* ${run.duration_s}s\n`;
+    if (run.gate_result) text += `*Gate:* ${run.gate_result}\n`;
+    if (run.review_verdict) text += `*Review:* ${run.review_verdict}\n`;
+
+    blocks.push({
+      type: "section",
+      text: { type: "mrkdwn", text },
+    });
+
+    if (files.length > 1) {
+      blocks.push({
+        type: "context",
+        elements: [
+          {
+            type: "mrkdwn",
+            text: `${files.length} total runs. Showing latest.`,
+          },
+        ],
+      });
+    }
+  } catch {
+    blocks.push({
+      type: "section",
+      text: {
+        type: "mrkdwn",
+        text: `📋 *${latestFile}*\n_Could not parse log file._`,
+      },
+    });
+  }
+
+  return {
+    response_type: "ephemeral",
+    blocks,
+  };
+}
+
+const featureCommands = new Set([
+  "approve",
+  "define",
+  "dispatch",
+  "effort",
+  "logs",
+  "pause",
+  "reject",
+  "ship",
+  "status",
+]);
+
 export async function handleSlashCommand(
   commandText: string,
   context: CommandContext,
@@ -1054,7 +1066,11 @@ export async function handleSlashCommand(
   }
 
   if (!context.routingService) {
-    if (context.userId?.startsWith("tg:")) {
+    if (
+      !context.workspaceId &&
+      /^-?\d+$/.test(context.channelId) &&
+      context.userId === `tg:${context.channelId}`
+    ) {
       return handler(args, context);
     }
     return {
@@ -1108,17 +1124,39 @@ export async function handleSlashCommand(
     decision.project.localRoot ??
     decision.project.mirrorPath ??
     context.projectRoot;
+  let threadTs = decision.recipient.threadTs ?? context.threadTs;
+  if (!threadTs && args[0] && featureCommands.has(subcommand)) {
+    let featureId: string | undefined;
+    try {
+      featureId = resolveFeature(args[0], effectiveRoot);
+    } catch {
+      // The command handler owns its input errors.
+    }
+    if (featureId) {
+      const storedThread = context.routingService.getFeatureThread(
+        decision.project.projectId,
+        featureId,
+      );
+      if (
+        storedThread?.workspaceId === decision.recipient.workspaceId &&
+        storedThread?.channelId === decision.recipient.channelId
+      ) {
+        threadTs = storedThread?.rootTs;
+      }
+    }
+  }
+
   const projectContext: CommandContext = {
     ...context,
     projectRoot: effectiveRoot,
     projectId: decision.project.projectId,
     projectSlug: decision.project.slug,
-    threadTs: decision.recipient.threadTs ?? context.threadTs,
+    threadTs,
   };
 
   const result = await handler(args, projectContext);
-  if (decision.recipient.threadTs && !result.thread_ts) {
-    result.thread_ts = decision.recipient.threadTs;
+  if (threadTs && !result.thread_ts) {
+    result.thread_ts = threadTs;
   }
   return result;
 }
