@@ -10,9 +10,11 @@ import {
   type ModelRole,
   type PromotionDecision,
   type PromotionEvidence,
+  type RoleScore,
   assertNoSecretMaterial,
   blindCandidate,
   evaluatePromotion,
+  scoreRole,
 } from "../../domain/model-qualification.js";
 import type {
   FixtureRepeatEvidence,
@@ -67,7 +69,7 @@ export interface EvaluateModelsInput {
     readonly to: string;
     readonly planSource: "candidate" | "fixed";
   }[];
-  readonly handoffArtifactDir?: string;
+  readonly artifactRoot?: string;
   readonly repeats?: number;
 }
 
@@ -82,6 +84,7 @@ export interface EvaluationResult {
     readonly candidate: readonly FixtureRepeatEvidence[];
     readonly incumbent: readonly FixtureRepeatEvidence[];
   };
+  readonly roleScore?: RoleScore;
   readonly judges?: readonly StructuredJudgeVerdict[];
   readonly suiteHashes?: {
     readonly fixtureSuiteHash: string;
@@ -140,11 +143,40 @@ export async function evaluateModels(
     };
   }
 
+  if (
+    Array.isArray(input.handoffs) &&
+    input.handoffs.length > 0 &&
+    !input.artifactRoot
+  ) {
+    return {
+      evaluationId: input.evaluationId,
+      role: input.role,
+      candidate: input.candidate,
+      incumbent: input.incumbent,
+      candidateOption: "A",
+      decision: { promote: false, reason: "missing-handoff-artifacts" },
+      repeats: { candidate: [], incumbent: [] },
+    };
+  }
+
+  const suite = await deps.runner.loadSuite();
+  const roleMap = new Map<string, readonly ModelRole[]>(
+    suite.fixtures.map((f) => [f.id, f.roles]),
+  );
+  const narrowedFixtures = input.fixtures.filter((f) => {
+    const roles = roleMap.get(f.id);
+    return Array.isArray(roles) && roles.includes(input.role);
+  });
+
   const repeatCount = input.repeats ?? 3;
   const candidateRepeats: FixtureRepeatEvidence[] = [];
   const incumbentRepeats: FixtureRepeatEvidence[] = [];
+  const definedFixtures = new Set<string>();
 
-  for (const fixture of input.fixtures) {
+  for (const fixture of narrowedFixtures) {
+    if (input.role === "define") {
+      definedFixtures.add(fixture.id);
+    }
     for (let repeatIndex = 0; repeatIndex < repeatCount; repeatIndex += 1) {
       const candidateRepeat = await deps.runner.runFixtureRepeat({
         fixtureId: fixture.id,
@@ -155,7 +187,10 @@ export async function evaluateModels(
           modelId: input.candidate.modelId,
           effort: input.candidate.effort,
         },
-        handoffArtifactDir: input.handoffArtifactDir,
+        artifactOutputDir:
+          input.role === "define" && input.artifactRoot
+            ? `${input.artifactRoot}/candidate/${fixture.id}/repeat-${repeatIndex}`
+            : undefined,
       });
       candidateRepeats.push(candidateRepeat);
 
@@ -168,46 +203,112 @@ export async function evaluateModels(
           modelId: input.incumbent.modelId,
           effort: input.incumbent.effort,
         },
-        handoffArtifactDir: input.handoffArtifactDir,
+        artifactOutputDir:
+          input.role === "define" && input.artifactRoot
+            ? `${input.artifactRoot}/incumbent/${fixture.id}/repeat-${repeatIndex}`
+            : undefined,
       });
       incumbentRepeats.push(incumbentRepeat);
     }
   }
 
   if (Array.isArray(input.handoffs) && input.handoffs.length > 0) {
+    const definedOutputs = new Set<string>();
+    for (const fixtureId of definedFixtures) {
+      for (let i = 0; i < repeatCount; i += 1) {
+        definedOutputs.add(`${fixtureId}:${i}`);
+      }
+    }
+
     for (const handoff of input.handoffs) {
       for (let repeatIndex = 0; repeatIndex < repeatCount; repeatIndex += 1) {
-        const candidateHandoff = await deps.runner.runFixtureRepeat({
-          fixtureId: handoff.to,
-          role: "implement",
-          repeatIndex,
-          route: {
-            backend: input.candidate.backend,
-            modelId: input.candidate.modelId,
-            effort: input.candidate.effort,
-          },
-          handoffArtifactDir:
-            handoff.planSource === "candidate"
-              ? input.handoffArtifactDir
+        if (!definedOutputs.has(`${handoff.from}:${repeatIndex}`)) {
+          await deps.runner.runFixtureRepeat({
+            fixtureId: handoff.from,
+            role: "define",
+            repeatIndex,
+            route: {
+              backend: input.candidate.backend,
+              modelId: input.candidate.modelId,
+              effort: input.candidate.effort,
+            },
+            artifactOutputDir: input.artifactRoot
+              ? `${input.artifactRoot}/candidate/${handoff.from}/repeat-${repeatIndex}`
               : undefined,
-        });
-        candidateRepeats.push(candidateHandoff);
+          });
+          await deps.runner.runFixtureRepeat({
+            fixtureId: handoff.from,
+            role: "define",
+            repeatIndex,
+            route: {
+              backend: input.incumbent.backend,
+              modelId: input.incumbent.modelId,
+              effort: input.incumbent.effort,
+            },
+            artifactOutputDir: input.artifactRoot
+              ? `${input.artifactRoot}/incumbent/${handoff.from}/repeat-${repeatIndex}`
+              : undefined,
+          });
+          definedOutputs.add(`${handoff.from}:${repeatIndex}`);
+        }
 
-        const incumbentHandoff = await deps.runner.runFixtureRepeat({
-          fixtureId: handoff.to,
-          role: "implement",
-          repeatIndex,
-          route: {
-            backend: input.incumbent.backend,
-            modelId: input.incumbent.modelId,
-            effort: input.incumbent.effort,
-          },
-          handoffArtifactDir:
-            handoff.planSource === "candidate"
-              ? input.handoffArtifactDir
+        if (handoff.planSource === "candidate") {
+          const incumbentImplement = await deps.runner.runFixtureRepeat({
+            fixtureId: handoff.to,
+            role: "implement",
+            repeatIndex,
+            route: {
+              backend: input.incumbent.backend,
+              modelId: input.incumbent.modelId,
+              effort: input.incumbent.effort,
+            },
+            handoffArtifactDir: input.artifactRoot
+              ? `${input.artifactRoot}/candidate/${handoff.from}/repeat-${repeatIndex}`
               : undefined,
-        });
-        incumbentRepeats.push(incumbentHandoff);
+          });
+          candidateRepeats.push(incumbentImplement);
+
+          const candidateImplement = await deps.runner.runFixtureRepeat({
+            fixtureId: handoff.to,
+            role: "implement",
+            repeatIndex,
+            route: {
+              backend: input.candidate.backend,
+              modelId: input.candidate.modelId,
+              effort: input.candidate.effort,
+            },
+            handoffArtifactDir: input.artifactRoot
+              ? `${input.artifactRoot}/incumbent/${handoff.from}/repeat-${repeatIndex}`
+              : undefined,
+          });
+          incumbentRepeats.push(candidateImplement);
+        } else {
+          const candidateHandoff = await deps.runner.runFixtureRepeat({
+            fixtureId: handoff.to,
+            role: "implement",
+            repeatIndex,
+            route: {
+              backend: input.candidate.backend,
+              modelId: input.candidate.modelId,
+              effort: input.candidate.effort,
+            },
+            handoffArtifactDir: undefined,
+          });
+          candidateRepeats.push(candidateHandoff);
+
+          const incumbentHandoff = await deps.runner.runFixtureRepeat({
+            fixtureId: handoff.to,
+            role: "implement",
+            repeatIndex,
+            route: {
+              backend: input.incumbent.backend,
+              modelId: input.incumbent.modelId,
+              effort: input.incumbent.effort,
+            },
+            handoffArtifactDir: undefined,
+          });
+          incumbentRepeats.push(incumbentHandoff);
+        }
       }
     }
   }
@@ -218,6 +319,8 @@ export async function evaluateModels(
       (repeat) => repeat.deterministicGatesPassed === true,
     );
 
+  const roleScore = scoreRole(input.role, candidateRepeats, incumbentRepeats);
+
   if (!candidateGatesPassed) {
     return {
       evaluationId: input.evaluationId,
@@ -227,6 +330,7 @@ export async function evaluateModels(
       candidateOption: "A",
       decision: { promote: false, reason: "gate-failure" },
       repeats: { candidate: candidateRepeats, incumbent: incumbentRepeats },
+      roleScore,
     };
   }
 
@@ -252,11 +356,78 @@ export async function evaluateModels(
   const optionB = sanitizeIdentityText(rawOptionB, routesToRedact);
 
   const fixtureSummary = sanitizeIdentityText(
-    `Fixture evaluation for ${input.fixtures.map((fixture) => fixture.id).join(", ")} on role ${input.role}`,
+    `Fixture evaluation for ${narrowedFixtures.map((fixture) => fixture.id).join(", ")} on role ${input.role}`,
     routesToRedact,
   );
+
+  let rawGateEvidenceSummary = "";
+  let packetRoleScore: RoleScore;
+
+  if (roleScore.role === "define") {
+    const candidateScore = roleScore;
+    const incumbentScore = scoreRole(
+      "define",
+      incumbentRepeats,
+      candidateRepeats,
+    ) as Extract<RoleScore, { role: "define" }>;
+    const optACoverage =
+      candidateOption === "A"
+        ? candidateScore.coverage
+        : incumbentScore.coverage;
+    const optBCoverage =
+      candidateOption === "A"
+        ? incumbentScore.coverage
+        : candidateScore.coverage;
+    rawGateEvidenceSummary = `Option A coverage ${optACoverage}, Option B coverage ${optBCoverage}`;
+    packetRoleScore = candidateOption === "A" ? candidateScore : incumbentScore;
+  } else if (roleScore.role === "implement") {
+    const optAMs =
+      candidateOption === "A"
+        ? roleScore.candidateMedianMsToGreen
+        : roleScore.incumbentMedianMsToGreen;
+    const optBMs =
+      candidateOption === "A"
+        ? roleScore.incumbentMedianMsToGreen
+        : roleScore.candidateMedianMsToGreen;
+    rawGateEvidenceSummary = `Option A ${optAMs}ms to green, Option B ${optBMs}ms`;
+    if (candidateOption === "A") {
+      packetRoleScore = roleScore;
+    } else {
+      const speedup =
+        roleScore.incumbentMedianMsToGreen !== null &&
+        roleScore.candidateMedianMsToGreen !== null &&
+        roleScore.incumbentMedianMsToGreen > 0
+          ? roleScore.candidateMedianMsToGreen /
+            roleScore.incumbentMedianMsToGreen
+          : null;
+      packetRoleScore = {
+        role: "implement",
+        candidateMedianMsToGreen: roleScore.incumbentMedianMsToGreen,
+        incumbentMedianMsToGreen: roleScore.candidateMedianMsToGreen,
+        speedup,
+      };
+    }
+  } else {
+    const candidateScore = roleScore;
+    const incumbentScore = scoreRole(
+      "review",
+      incumbentRepeats,
+      candidateRepeats,
+    ) as Extract<RoleScore, { role: "review" }>;
+    const optACoverage =
+      candidateOption === "A"
+        ? candidateScore.coverage
+        : incumbentScore.coverage;
+    const optBCoverage =
+      candidateOption === "A"
+        ? incumbentScore.coverage
+        : candidateScore.coverage;
+    rawGateEvidenceSummary = `Option A coverage ${optACoverage}, Option B coverage ${optBCoverage}`;
+    packetRoleScore = candidateOption === "A" ? candidateScore : incumbentScore;
+  }
+
   const gateEvidenceSummary = sanitizeIdentityText(
-    `Repeat gates passed for option ${candidateOption}`,
+    rawGateEvidenceSummary,
     routesToRedact,
   );
 
@@ -267,28 +438,26 @@ export async function evaluateModels(
     optionA,
     optionB,
     gateEvidenceSummary,
+    roleScore: packetRoleScore,
   };
 
   const verdict1 = await deps.judge.judgeComparison(input.judges[0], packet);
   const verdict2 = await deps.judge.judgeComparison(input.judges[1], packet);
 
-  const inputRefs = new Set<string>([
-    "input",
-    "prompt",
-    "fixture",
-    input.evaluationId,
-  ]);
-  const outputRefs = new Set<string>(["output", "optionA", "optionB"]);
-  const gateRefs = new Set<string>([
-    "gate",
-    "behavior",
-    "baseline-gate",
-    "candidate-gate",
-  ]);
-
-  for (const fixture of input.fixtures) {
+  const inputRefs = new Set<string>();
+  for (const fixture of narrowedFixtures) {
     inputRefs.add(fixture.id);
   }
+  if (Array.isArray(input.handoffs)) {
+    for (const handoff of input.handoffs) {
+      inputRefs.add(handoff.from);
+      inputRefs.add(handoff.to);
+    }
+  }
+
+  const outputRefs = new Set<string>(["optionA", "optionB"]);
+
+  const gateRefs = new Set<string>();
   for (const repeat of [...candidateRepeats, ...incumbentRepeats]) {
     for (const check of repeat.gateChecks) {
       gateRefs.add(check.checkId);
@@ -297,7 +466,7 @@ export async function evaluateModels(
 
   const decision = evaluateModelPromotion({
     candidateOption,
-    requiredFixtures: input.fixtures.map((fixture) => fixture.id),
+    requiredFixtures: narrowedFixtures.map((fixture) => fixture.id),
     repeats: candidateRepeats.map((repeat) => ({
       fixtureId: repeat.fixtureId,
       repeatIndex: repeat.repeatIndex,
@@ -325,6 +494,7 @@ export async function evaluateModels(
     candidateOption,
     decision,
     repeats: { candidate: candidateRepeats, incumbent: incumbentRepeats },
+    roleScore,
     judges: [verdict1, verdict2],
     suiteHashes,
     judgeVerdictHashes,

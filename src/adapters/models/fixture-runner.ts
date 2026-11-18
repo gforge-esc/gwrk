@@ -9,7 +9,10 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { promisify } from "node:util";
-import type { ModelCandidate } from "../../domain/model-qualification.js";
+import type {
+  ModelCandidate,
+  ModelRole,
+} from "../../domain/model-qualification.js";
 import { PluginLoader } from "../../plugins/loader.js";
 import { WorkflowRuntime } from "../../plugins/workflow-runtime.js";
 import type {
@@ -27,6 +30,12 @@ import {
 } from "../../utils/agent.js";
 
 const execFileAsync = promisify(execFile);
+
+const ROLE_WORKFLOWS: Record<ModelRole, string> = {
+  define: "gwrk-plan",
+  implement: "gwrk-implement",
+  review: "gwrk-review-code",
+};
 
 export interface FixtureRunnerOptions {
   readonly fixturesDir?: string;
@@ -71,6 +80,33 @@ export class FixtureRunner
     this.timeoutMs = options.timeoutMs ?? 30_000;
   }
 
+  async loadSuite(): Promise<{
+    fixtures: readonly { id: string; roles: readonly ModelRole[] }[];
+  }> {
+    const suitePath = join(this.fixturesDir, "suite.json");
+    if (!existsSync(suitePath)) {
+      return { fixtures: [] };
+    }
+    const suiteRaw = await readFile(suitePath, "utf8");
+    const suite = JSON.parse(suiteRaw) as {
+      fixtures: readonly { id: string; manifest?: string }[];
+    };
+    const fixtures: { id: string; roles: readonly ModelRole[] }[] = [];
+    for (const item of suite.fixtures ?? []) {
+      const manifestRel = item.manifest ?? join(item.id, "fixture.json");
+      const manifestPath = join(this.fixturesDir, manifestRel);
+      if (existsSync(manifestPath)) {
+        const manifestRaw = await readFile(manifestPath, "utf8");
+        const manifest = JSON.parse(manifestRaw) as FixtureManifest;
+        fixtures.push({
+          id: item.id,
+          roles: (manifest.roles ?? []) as readonly ModelRole[],
+        });
+      }
+    }
+    return { fixtures };
+  }
+
   async computeSuiteHashes(): Promise<{
     fixtureSuiteHash: string;
     workflowPromptHashes: Record<string, string>;
@@ -80,29 +116,16 @@ export class FixtureRunner
       ? await readFile(suitePath, "utf8")
       : "";
 
-    const definePath = join(
-      this.fixturesDir,
-      "define-long-context",
-      "fixture.json",
-    );
-    const defineContent = existsSync(definePath)
-      ? await readFile(definePath, "utf8")
-      : "";
-
-    const implementPath = join(
-      this.fixturesDir,
-      "implement-seeded-defect",
-      "fixture.json",
-    );
-    const implementContent = existsSync(implementPath)
-      ? await readFile(implementPath, "utf8")
-      : "";
-
-    const fixtureSuiteHash = createHash("sha256")
-      .update(suiteContent)
-      .update(defineContent)
-      .update(implementContent)
-      .digest("hex");
+    const suiteHasher = createHash("sha256").update(suiteContent);
+    const suite = await this.loadSuite();
+    for (const fixture of suite.fixtures) {
+      const fixturePath = join(this.fixturesDir, fixture.id, "fixture.json");
+      if (existsSync(fixturePath)) {
+        const fixtureContent = await readFile(fixturePath, "utf8");
+        suiteHasher.update(fixtureContent);
+      }
+    }
+    const fixtureSuiteHash = suiteHasher.digest("hex");
 
     const workflowsDir = resolve(
       process.cwd(),
@@ -126,18 +149,12 @@ export class FixtureRunner
       return createHash("sha256").update(content).digest("hex");
     };
 
-    const defineHash = await hashPrompt("gwrk-plan");
-    const implementHash = await hashPrompt("gwrk-implement");
-    const reviewHash = await hashPrompt("gwrk-review-code");
-
-    const workflowPromptHashes: Record<string, string> = {
-      define: defineHash,
-      implement: implementHash,
-      review: reviewHash,
-      "gwrk-plan": defineHash,
-      "gwrk-implement": implementHash,
-      "gwrk-review-code": reviewHash,
-    };
+    const workflowPromptHashes: Record<string, string> = {};
+    for (const [role, workflowName] of Object.entries(ROLE_WORKFLOWS)) {
+      const hash = await hashPrompt(workflowName);
+      workflowPromptHashes[role] = hash;
+      workflowPromptHashes[workflowName] = hash;
+    }
 
     return { fixtureSuiteHash, workflowPromptHashes };
   }
@@ -186,6 +203,9 @@ export class FixtureRunner
       }
 
       if (request.handoffArtifactDir) {
+        if (request.role !== "implement") {
+          throw new Error("handoffArtifactDir is only valid for implement");
+        }
         const handoffPlan = join(request.handoffArtifactDir, "plan.md");
         if (existsSync(handoffPlan)) {
           const planContent = await readFile(handoffPlan, "utf8");
@@ -202,6 +222,13 @@ export class FixtureRunner
         "Initial fixture baseline",
         "--quiet",
       ]);
+      const { stdout: baselineShaOut } = await execFileAsync("git", [
+        "-C",
+        workspaceDir,
+        "rev-parse",
+        "HEAD",
+      ]);
+      const baselineSha = baselineShaOut.trim();
 
       const gateChecks: { checkId: string; passed: boolean; detail: string }[] =
         [];
@@ -238,11 +265,10 @@ export class FixtureRunner
       let taskResult: TaskResult;
       try {
         const execution = await runtime.executeWorkflow(
-          `gwrk-fixture-${request.role}`,
+          ROLE_WORKFLOWS[request.role],
           fixture.prompt,
           {
             nativeOnly: true,
-            allowMissingPrompt: true,
             projectRoot: workspaceDir,
             taskType: "model-fixture-repeat",
             agent: request.route.backend,
@@ -304,29 +330,56 @@ export class FixtureRunner
         }
       }
 
-      if (fixture.gates?.command) {
-        let candidateExitCode: number;
-        try {
-          const [cmd, ...args] = fixture.gates.command;
-          await execFileAsync(cmd, args, {
-            cwd: workspaceDir,
-            timeout: 10_000,
+      if (request.role === "implement") {
+        if (fixture.gates?.command) {
+          let candidateExitCode: number;
+          try {
+            const [cmd, ...args] = fixture.gates.command;
+            await execFileAsync(cmd, args, {
+              cwd: workspaceDir,
+              timeout: 10_000,
+            });
+            candidateExitCode = 0;
+          } catch (error: unknown) {
+            const err = error as { code?: number; status?: number };
+            candidateExitCode =
+              typeof err.code === "number" ? err.code : (err.status ?? 1);
+          }
+          const expectedCode = fixture.gates.candidateExitCode ?? 0;
+          const passed = candidateExitCode === expectedCode;
+          gateChecks.push({
+            checkId: "candidate-gate",
+            passed,
+            detail: passed
+              ? `Candidate command exited with expected code ${candidateExitCode}`
+              : `Candidate expected ${expectedCode}, observed ${candidateExitCode}`,
           });
-          candidateExitCode = 0;
-        } catch (error: unknown) {
-          const err = error as { code?: number; status?: number };
-          candidateExitCode =
-            typeof err.code === "number" ? err.code : (err.status ?? 1);
         }
-        const expectedCode = fixture.gates.candidateExitCode ?? 0;
-        const passed = candidateExitCode === expectedCode;
-        gateChecks.push({
-          checkId: "candidate-gate",
-          passed,
-          detail: passed
-            ? `Candidate command exited with expected code ${candidateExitCode}`
-            : `Candidate expected ${expectedCode}, observed ${candidateExitCode}`,
-        });
+      } else if (request.role === "review") {
+        if (fixture.gates?.command) {
+          let reviewExitCode: number;
+          try {
+            const [cmd, ...args] = fixture.gates.command;
+            await execFileAsync(cmd, args, {
+              cwd: workspaceDir,
+              timeout: 10_000,
+            });
+            reviewExitCode = 0;
+          } catch (error: unknown) {
+            const err = error as { code?: number; status?: number };
+            reviewExitCode =
+              typeof err.code === "number" ? err.code : (err.status ?? 1);
+          }
+          const expectedCode = fixture.gates.baselineExitCode ?? 1;
+          const passed = reviewExitCode === expectedCode;
+          gateChecks.push({
+            checkId: "review-baseline-preserved",
+            passed,
+            detail: passed
+              ? `Review command exit code matched baseline ${reviewExitCode}`
+              : `Review expected baseline ${expectedCode}, observed ${reviewExitCode}`,
+          });
+        }
       }
 
       if (Array.isArray(fixture.gates?.requiredOutputs)) {
@@ -389,17 +442,60 @@ export class FixtureRunner
         }
       }
 
+      const reopenedTasks = new Set<string>();
+      if (request.role === "review") {
+        const text = taskResult.unwrappedStdout ?? taskResult.stdout;
+        const jsonBlocks = [...text.matchAll(/\{[\s\S]*?\}(?=[^}]*$)/g)];
+        if (jsonBlocks.length > 0) {
+          try {
+            const last = JSON.parse(jsonBlocks[jsonBlocks.length - 1][0]);
+            if (Array.isArray(last?.reopenedTasks)) {
+              for (const t of last.reopenedTasks) {
+                if (typeof t === "string") reopenedTasks.add(t);
+              }
+            }
+          } catch {}
+        } else {
+          try {
+            const last = JSON.parse(text.trim());
+            if (Array.isArray(last?.reopenedTasks)) {
+              for (const t of last.reopenedTasks) {
+                if (typeof t === "string") reopenedTasks.add(t);
+              }
+            }
+          } catch {}
+        }
+
+        try {
+          const { stdout: diffOut } = await execFileAsync("git", [
+            "-C",
+            workspaceDir,
+            "diff",
+            baselineSha,
+            "--",
+            "tasks.md",
+          ]);
+          for (const line of diffOut.split("\n")) {
+            if (line.startsWith("+") && !line.startsWith("+++")) {
+              if (/\b(?:reopen|reopened|open)\b/i.test(line)) {
+                const matches = line.match(/\bT\d+\b/g);
+                if (matches) {
+                  for (const m of matches) {
+                    reopenedTasks.add(m);
+                  }
+                }
+              }
+            }
+          }
+        } catch {}
+      }
+
       if (
         request.role === "review" &&
         Array.isArray(fixture.gates?.reviewRequiredReopenedTasks)
       ) {
         for (const task of fixture.gates.reviewRequiredReopenedTasks) {
-          const reopened =
-            taskResult.stdout.includes(task) ||
-            (existsSync(join(workspaceDir, "tasks.md")) &&
-              (await readFile(join(workspaceDir, "tasks.md"), "utf8")).includes(
-                task,
-              ));
+          const reopened = reopenedTasks.has(task);
           gateChecks.push({
             checkId: `review-required-${task}`,
             passed: reopened,
@@ -415,9 +511,7 @@ export class FixtureRunner
         Array.isArray(fixture.gates?.reviewForbiddenReopenedTasks)
       ) {
         for (const task of fixture.gates.reviewForbiddenReopenedTasks) {
-          const forbidden =
-            taskResult.stdout.includes(`reopen ${task}`) ||
-            taskResult.stdout.includes(`reopened ${task}`);
+          const forbidden = reopenedTasks.has(task);
           gateChecks.push({
             checkId: `review-forbidden-${task}`,
             passed: !forbidden,
@@ -431,10 +525,10 @@ export class FixtureRunner
       const deterministicGatesPassed =
         gateChecks.length > 0 && gateChecks.every((check) => check.passed);
 
-      let sanitizedOutput = taskResult.unwrappedStdout ?? taskResult.stdout;
-      const specPath = join(workspaceDir, "spec.md");
-      const planPath = join(workspaceDir, "plan.md");
-      if (existsSync(specPath) || existsSync(planPath)) {
+      let sanitizedOutput = "";
+      if (request.role === "define") {
+        const specPath = join(workspaceDir, "spec.md");
+        const planPath = join(workspaceDir, "plan.md");
         const parts: string[] = [];
         if (existsSync(specPath)) {
           parts.push(await readFile(specPath, "utf8"));
@@ -443,6 +537,20 @@ export class FixtureRunner
           parts.push(await readFile(planPath, "utf8"));
         }
         sanitizedOutput = parts.join("\n\n");
+      } else {
+        await execFileAsync("git", ["-C", workspaceDir, "add", "-A"]);
+        const { stdout: diffOut } = await execFileAsync("git", [
+          "-C",
+          workspaceDir,
+          "diff",
+          "--cached",
+          baselineSha,
+          "--",
+          ".",
+          ":!.runs",
+        ]);
+        const agentReport = taskResult.unwrappedStdout ?? taskResult.stdout;
+        sanitizedOutput = `## Diff\n${diffOut}\n\n## Agent report\n${agentReport}`;
       }
 
       return {
@@ -457,6 +565,25 @@ export class FixtureRunner
         sanitizedOutput,
       };
     } finally {
+      if (request.artifactOutputDir && request.role === "define") {
+        await mkdir(request.artifactOutputDir, { recursive: true });
+        const specSrc = join(workspaceDir, "spec.md");
+        const planSrc = join(workspaceDir, "plan.md");
+        if (existsSync(specSrc)) {
+          await writeFile(
+            join(request.artifactOutputDir, "spec.md"),
+            await readFile(specSrc, "utf8"),
+            "utf8",
+          );
+        }
+        if (existsSync(planSrc)) {
+          await writeFile(
+            join(request.artifactOutputDir, "plan.md"),
+            await readFile(planSrc, "utf8"),
+            "utf8",
+          );
+        }
+      }
       await rm(workspaceDir, { recursive: true, force: true });
     }
   }

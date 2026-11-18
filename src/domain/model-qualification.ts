@@ -204,6 +204,123 @@ export interface PromotionEvidence {
   };
 }
 
+export interface ScoredRepeat {
+  readonly gateChecks: readonly {
+    readonly checkId: string;
+    readonly passed: boolean;
+  }[];
+  readonly durationMs: number;
+  readonly deterministicGatesPassed: boolean;
+}
+
+export type RoleScore =
+  | {
+      readonly role: "define";
+      readonly coverage: number;
+      readonly passedChecks: number;
+      readonly totalChecks: number;
+    }
+  | {
+      readonly role: "implement";
+      readonly candidateMedianMsToGreen: number | null;
+      readonly incumbentMedianMsToGreen: number | null;
+      readonly speedup: number | null;
+    }
+  | {
+      readonly role: "review";
+      readonly coverage: number;
+    };
+
+function computeMedian(numbers: readonly number[]): number | null {
+  if (numbers.length === 0) return null;
+  const sorted = [...numbers].sort((a, b) => a - b);
+  const mid = Math.floor(sorted.length / 2);
+  if (sorted.length % 2 === 1) {
+    return sorted[mid];
+  }
+  return (sorted[mid - 1] + sorted[mid]) / 2;
+}
+
+export function scoreRole(
+  role: ModelRole,
+  candidate: readonly ScoredRepeat[],
+  incumbent: readonly ScoredRepeat[],
+): RoleScore {
+  if (role === "define") {
+    let passedChecks = 0;
+    let totalChecks = 0;
+    for (const repeat of candidate) {
+      for (const check of repeat.gateChecks) {
+        if (
+          check.checkId.startsWith("required-output-") ||
+          check.checkId.startsWith("spec-ref-") ||
+          check.checkId.startsWith("plan-ref-")
+        ) {
+          totalChecks += 1;
+          if (check.passed) {
+            passedChecks += 1;
+          }
+        }
+      }
+    }
+    const coverage = totalChecks > 0 ? passedChecks / totalChecks : 0;
+    return {
+      role: "define",
+      coverage,
+      passedChecks,
+      totalChecks,
+    };
+  }
+
+  if (role === "implement") {
+    const candidateGreenDurations = candidate
+      .filter((r) => r.deterministicGatesPassed === true)
+      .map((r) => r.durationMs);
+    const incumbentGreenDurations = incumbent
+      .filter((r) => r.deterministicGatesPassed === true)
+      .map((r) => r.durationMs);
+
+    const candidateMedianMsToGreen = computeMedian(candidateGreenDurations);
+    const incumbentMedianMsToGreen = computeMedian(incumbentGreenDurations);
+
+    const speedup =
+      candidateMedianMsToGreen !== null &&
+      incumbentMedianMsToGreen !== null &&
+      candidateMedianMsToGreen > 0
+        ? incumbentMedianMsToGreen / candidateMedianMsToGreen
+        : null;
+
+    return {
+      role: "implement",
+      candidateMedianMsToGreen,
+      incumbentMedianMsToGreen,
+      speedup,
+    };
+  }
+
+  if (role === "review") {
+    let passedChecks = 0;
+    let totalChecks = 0;
+    for (const repeat of candidate) {
+      for (const check of repeat.gateChecks) {
+        if (check.checkId.startsWith("review-")) {
+          totalChecks += 1;
+          if (check.passed) {
+            passedChecks += 1;
+          }
+        }
+      }
+    }
+    const coverage = totalChecks > 0 ? passedChecks / totalChecks : 0;
+    return {
+      role: "review",
+      coverage,
+    };
+  }
+
+  throw new Error(`Unsupported model role: ${role}`);
+}
+
 export type PromotionDecision =
   | { promote: true }
   | {
@@ -213,7 +330,8 @@ export type PromotionDecision =
         | "insufficient-repeats"
         | "judge-dependence"
         | "invalid-citations"
-        | "judge-non-regression";
+        | "judge-non-regression"
+        | "missing-handoff-artifacts";
     };
 
 function isNonBlankString(value: unknown): value is string {

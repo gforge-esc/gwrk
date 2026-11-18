@@ -9,6 +9,7 @@ import type {
   DiscoverySnapshot,
   ModelCandidate,
   ModelRole,
+  RoleScore,
   RunnerScope,
 } from "../domain/model-qualification.js";
 
@@ -16,6 +17,7 @@ export type {
   AdapterDiscoveryReport,
   DiscoveredModel,
   DiscoverySnapshot,
+  RoleScore,
   RunnerScope,
 } from "../domain/model-qualification.js";
 
@@ -62,6 +64,7 @@ export interface FixtureRepeatRequest {
     effort?: string;
   };
   handoffArtifactDir?: string;
+  artifactOutputDir?: string;
 }
 
 export interface FixtureRepeatEvidence {
@@ -78,6 +81,9 @@ export interface FixtureRepeatEvidence {
 }
 
 export interface QualificationRunnerPort {
+  loadSuite(): Promise<{
+    fixtures: readonly { id: string; roles: readonly ModelRole[] }[];
+  }>;
   computeSuiteHashes(): Promise<{
     fixtureSuiteHash: string;
     workflowPromptHashes: Record<string, string>;
@@ -94,6 +100,7 @@ export interface JudgeVerdictPacket {
   optionA: string;
   optionB: string;
   gateEvidenceSummary: string;
+  roleScore: RoleScore;
 }
 
 export interface StructuredJudgeVerdict {

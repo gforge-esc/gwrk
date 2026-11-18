@@ -234,6 +234,12 @@ describe("fixture runner adapter", () => {
       optionA: "Clean pure domain queue selection function implementation",
       optionB: "Incomplete queue selection function without triage handling",
       gateEvidenceSummary: "Option A passed all deterministic gates",
+      roleScore: {
+        role: "implement",
+        candidateMedianMsToGreen: 100,
+        incumbentMedianMsToGreen: 120,
+        speedup: 1.2,
+      },
     };
 
     const judgeDispatcher = vi.fn(
@@ -312,5 +318,277 @@ describe("fixture runner adapter", () => {
     expect(workflowPromptHashes.define.length).toBe(64);
     expect(workflowPromptHashes.implement.length).toBe(64);
     expect(workflowPromptHashes.review.length).toBe(64);
+  });
+
+  it("yields distinct sanitizedOutput containing diff and report for different implementations", async () => {
+    const fixtureJson = JSON.parse(
+      readFileSync(
+        "tests/fixtures/model-qualification/implement-seeded-defect/fixture.json",
+        "utf8",
+      ),
+    );
+    const fixturePlan = fixtureJson.files["plan.md"];
+    const alphaDispatcher = vi.fn(
+      async (task: TaskDispatch): Promise<TaskResult> => {
+        writeFileSync(
+          join(task.workDir!, "src/domain/select-queue.mjs"),
+          "// IMPLEMENTATION ALPHA\n" + fixedPassingQueueImplementation,
+          "utf8",
+        );
+        return {
+          exitCode: 0,
+          stdout: "Agent report ALPHA",
+          stderr: "",
+          durationS: 0,
+          durationMs: 50,
+        };
+      },
+    );
+    const betaDispatcher = vi.fn(
+      async (task: TaskDispatch): Promise<TaskResult> => {
+        writeFileSync(
+          join(task.workDir!, "src/domain/select-queue.mjs"),
+          "// IMPLEMENTATION BETA\n" + fixedPassingQueueImplementation,
+          "utf8",
+        );
+        return {
+          exitCode: 0,
+          stdout: "Agent report BETA",
+          stderr: "",
+          durationS: 0,
+          durationMs: 50,
+        };
+      },
+    );
+
+    const runnerAlpha = createFixtureRunner({ dispatcher: alphaDispatcher });
+    const evidenceAlpha = await runnerAlpha.runFixtureRepeat({
+      fixtureId: "implement-seeded-defect",
+      role: "implement",
+      repeatIndex: 0,
+      route: candidateRoute,
+    });
+
+    const runnerBeta = createFixtureRunner({ dispatcher: betaDispatcher });
+    const evidenceBeta = await runnerBeta.runFixtureRepeat({
+      fixtureId: "implement-seeded-defect",
+      role: "implement",
+      repeatIndex: 0,
+      route: candidateRoute,
+    });
+
+    expect(evidenceAlpha.sanitizedOutput).not.toBe(evidenceBeta.sanitizedOutput);
+    expect(evidenceAlpha.sanitizedOutput).toContain("IMPLEMENTATION ALPHA");
+    expect(evidenceAlpha.sanitizedOutput).toContain("Agent report ALPHA");
+    expect(evidenceBeta.sanitizedOutput).toContain("IMPLEMENTATION BETA");
+    expect(evidenceBeta.sanitizedOutput).toContain("Agent report BETA");
+    expect(evidenceAlpha.sanitizedOutput).not.toBe(fixturePlan);
+    expect(evidenceBeta.sanitizedOutput).not.toBe(fixturePlan);
+  });
+
+  it("fails review repeat when a no-op reviewer does not reopen required tasks", async () => {
+    const dispatcher = vi.fn(
+      async (_task: TaskDispatch): Promise<TaskResult> => ({
+        exitCode: 0,
+        stdout: JSON.stringify({ reopenedTasks: [] }),
+        stderr: "",
+        durationS: 0,
+        durationMs: 50,
+      }),
+    );
+
+    const runner = createFixtureRunner({ dispatcher });
+    const evidence = await runner.runFixtureRepeat({
+      fixtureId: "implement-seeded-defect",
+      role: "review",
+      repeatIndex: 0,
+      route: candidateRoute,
+    });
+
+    expect(evidence.deterministicGatesPassed).toBe(false);
+    const requiredCheck = evidence.gateChecks.find(
+      (c) => c.checkId === "review-required-T001",
+    );
+    expect(requiredCheck?.passed).toBe(false);
+  });
+
+  it("passes review repeat for a report-only reviewer that reopens required tasks and preserves baseline", async () => {
+    const dispatcher = vi.fn(
+      async (_task: TaskDispatch): Promise<TaskResult> => ({
+        exitCode: 0,
+        stdout: JSON.stringify({
+          verdict: "NO-GO",
+          reopenedTasks: ["T001"],
+          intents: [],
+        }),
+        stderr: "",
+        durationS: 0,
+        durationMs: 50,
+      }),
+    );
+
+    const runner = createFixtureRunner({ dispatcher });
+    const evidence = await runner.runFixtureRepeat({
+      fixtureId: "implement-seeded-defect",
+      role: "review",
+      repeatIndex: 0,
+      route: candidateRoute,
+    });
+
+    expect(evidence.deterministicGatesPassed).toBe(true);
+    expect(
+      evidence.gateChecks.some((c) => c.checkId === "candidate-gate"),
+    ).toBe(false);
+    const baselineCheck = evidence.gateChecks.find(
+      (c) => c.checkId === "review-baseline-preserved",
+    );
+    expect(baselineCheck?.passed).toBe(true);
+    const requiredCheck = evidence.gateChecks.find(
+      (c) => c.checkId === "review-required-T001",
+    );
+    expect(requiredCheck?.passed).toBe(true);
+    const forbiddenCheck = evidence.gateChecks.find(
+      (c) => c.checkId === "review-forbidden-T002",
+    );
+    expect(forbiddenCheck?.passed).toBe(true);
+  });
+
+  it("dispatches mapped workflows and includes persona prompt headers for each role", async () => {
+    const roles: Array<{
+      role: "define" | "implement" | "review";
+      fixtureId: string;
+      workflow: string;
+      firstLine: string;
+    }> = [
+      {
+        role: "define",
+        fixtureId: "define-long-context",
+        workflow: "gwrk-plan",
+        firstLine: "# /gwrk-plan",
+      },
+      {
+        role: "implement",
+        fixtureId: "implement-seeded-defect",
+        workflow: "gwrk-implement",
+        firstLine: "# /gwrk-implement",
+      },
+      {
+        role: "review",
+        fixtureId: "implement-seeded-defect",
+        workflow: "gwrk-review-code",
+        firstLine: "# Code Review for CLI Projects",
+      },
+    ];
+
+    for (const { role, fixtureId, workflow, firstLine } of roles) {
+      let capturedTask: TaskDispatch | undefined;
+      const dispatcher = vi.fn(
+        async (task: TaskDispatch): Promise<TaskResult> => {
+          capturedTask = task;
+          if (role === "define") {
+            writeFileSync(join(task.workDir!, "spec.md"), "# Spec\n", "utf8");
+            writeFileSync(join(task.workDir!, "plan.md"), "# Plan\n", "utf8");
+          } else if (role === "implement") {
+            writeFileSync(
+              join(task.workDir!, "src/domain/select-queue.mjs"),
+              fixedPassingQueueImplementation,
+              "utf8",
+            );
+          }
+          return {
+            exitCode: 0,
+            stdout:
+              role === "review"
+                ? JSON.stringify({ reopenedTasks: ["T001"] })
+                : "ok",
+            stderr: "",
+            durationS: 0,
+            durationMs: 50,
+          };
+        },
+      );
+
+      const runner = createFixtureRunner({ dispatcher });
+      await runner.runFixtureRepeat({
+        fixtureId,
+        role,
+        repeatIndex: 0,
+        route: candidateRoute,
+      });
+
+      expect(capturedTask).toBeDefined();
+      expect(capturedTask?.workflow).toBe(workflow);
+      expect(capturedTask?.stdin).toContain(firstLine);
+    }
+  });
+
+  it("copies generated spec.md and plan.md to artifactOutputDir for define", async () => {
+    const outputDir = await mkdtemp(join(tmpdir(), "gwrk-define-out-"));
+    try {
+      const dispatcher = vi.fn(
+        async (task: TaskDispatch): Promise<TaskResult> => {
+          writeFileSync(
+            join(task.workDir!, "spec.md"),
+            "# Generated Spec Content\n",
+            "utf8",
+          );
+          writeFileSync(
+            join(task.workDir!, "plan.md"),
+            "# Generated Plan Content\n",
+            "utf8",
+          );
+          return {
+            exitCode: 0,
+            stdout: "Generated artifacts",
+            stderr: "",
+            durationS: 0,
+            durationMs: 50,
+          };
+        },
+      );
+
+      const runner = createFixtureRunner({ dispatcher });
+      await runner.runFixtureRepeat({
+        fixtureId: "define-long-context",
+        role: "define",
+        repeatIndex: 0,
+        route: candidateRoute,
+        artifactOutputDir: outputDir,
+      });
+
+      expect(existsSync(join(outputDir, "spec.md"))).toBe(true);
+      expect(existsSync(join(outputDir, "plan.md"))).toBe(true);
+      expect(readFileSync(join(outputDir, "spec.md"), "utf8")).toContain(
+        "Generated Spec Content",
+      );
+      expect(readFileSync(join(outputDir, "plan.md"), "utf8")).toContain(
+        "Generated Plan Content",
+      );
+    } finally {
+      await rm(outputDir, { recursive: true, force: true });
+    }
+  });
+
+  it("throws when handoffArtifactDir is provided to a define request and does not pre-seed plan.md", async () => {
+    const fakeHandoff = await mkdtemp(join(tmpdir(), "gwrk-fake-handoff-"));
+    try {
+      writeFileSync(
+        join(fakeHandoff, "plan.md"),
+        "# Preseeded Plan\n",
+        "utf8",
+      );
+      const runner = createFixtureRunner();
+      await expect(
+        runner.runFixtureRepeat({
+          fixtureId: "define-long-context",
+          role: "define",
+          repeatIndex: 0,
+          route: candidateRoute,
+          handoffArtifactDir: fakeHandoff,
+        }),
+      ).rejects.toThrow("handoffArtifactDir is only valid for implement");
+    } finally {
+      await rm(fakeHandoff, { recursive: true, force: true });
+    }
   });
 });
