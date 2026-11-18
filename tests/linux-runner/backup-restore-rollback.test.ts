@@ -228,6 +228,42 @@ const pathVariants = [
 ];
 
 describe("installed ledger commands outside a checkout", () => {
+  it
+    .skipIf(process.platform !== "linux")
+    .each(["gwrk.db", "repo-metadata.json"])(
+    "gives a recovery hint for an incomplete backup missing %s",
+    async (missingFile) => {
+      const state = join(root, "source-state");
+      await mkdir(state);
+      const ledger = join(state, "gwrk.db");
+      seedLedger(ledger).close();
+      const source = join(root, "backup");
+      const created = runInstalledBackup(ledger, source);
+      expect(created.status, created.stderr).toBe(0);
+      await rm(join(source, missingFile));
+      const target = join(root, "clean-target");
+      const result = runInstalledRestoreForPathValidation(
+        join(target, "gwrk.db"),
+        source,
+        target,
+        target,
+      );
+      expect(result.status, result.stderr).toBe(1);
+      expect(result.stdout).toBe("");
+      expect(result.stderr.match(/^\[exit:.*$/gm)).toHaveLength(1);
+      expect(result.stderr).toContain(missingFile);
+      expect(result.stderr).toMatch(
+        /recopy the complete backup|another verified backup/i,
+      );
+      await expect(stat(join(target, "gwrk.db"))).rejects.toMatchObject({
+        code: "ENOENT",
+      });
+      await expect(
+        stat(join(target, "restore-transaction.json")),
+      ).rejects.toMatchObject({ code: "ENOENT" });
+    },
+  );
+
   it.each(["empty", "missing"])(
     "reports how to find the ledger when the state directory is %s",
     async (scenario) => {

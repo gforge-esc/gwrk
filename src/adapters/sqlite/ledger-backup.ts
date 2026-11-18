@@ -340,7 +340,7 @@ async function readRegularBackupFile(path: string): Promise<Buffer> {
   }
 }
 
-async function readVerifiedLedgerBackup(directory: string) {
+async function readBackupContents(directory: string) {
   const manifestPath = join(directory, MANIFEST_FILE);
   const manifestBytes = await readRegularBackupFile(manifestPath).catch(
     (error: NodeJS.ErrnoException) => {
@@ -384,6 +384,18 @@ async function readVerifiedLedgerBackup(directory: string) {
     .update(manifestBytes)
     .digest("hex");
   return { manifest, metadata, manifestSha256 };
+}
+
+async function readVerifiedLedgerBackup(directory: string) {
+  try {
+    return await readBackupContents(directory);
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : String(error);
+    throw new Error(
+      `${detail} Recopy the complete backup directory or use another verified backup.`,
+      { cause: error },
+    );
+  }
 }
 
 export const verifyLedgerBackup: LedgerBackupPort["verifyBackup"] = async (
