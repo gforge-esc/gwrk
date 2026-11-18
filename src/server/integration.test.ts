@@ -31,6 +31,7 @@ import { ShipStage } from "../domain/ship-types.js";
 import { gatherDeliveryActuals } from "../engine/compression.js";
 import { ShipOrchestrator } from "../engine/ship-orchestrator.js";
 import { GwrkConfigSchema } from "../utils/config.js";
+import * as projectConfig from "../utils/config.js";
 import { execCommand } from "../utils/exec.js";
 import * as gateExec from "../utils/gate-exec.js";
 import { syncTrunkForHarvest } from "../utils/git.js";
@@ -675,7 +676,15 @@ setInterval(() => {}, 1000);
         const app = mode === "unscoped" ? fastify() : fixture.app;
         try {
           if (mode === "unscoped") await notifyRoutes(app);
-          process.chdir(checkout.projectRoot);
+          const originalLoadConfig = projectConfig.loadConfig;
+          const configStub = vi
+            .spyOn(projectConfig, "loadConfig")
+            .mockImplementation((root, ...args) =>
+              originalLoadConfig(
+                root === cwd ? checkout.projectRoot : root,
+                ...args,
+              ),
+            );
           vi.mocked(notifySlack).mockImplementationOnce(
             realNotifier.notifySlack,
           );
@@ -690,8 +699,10 @@ setInterval(() => {}, 1000);
           expect(provider.mock.calls.map(([url]) => url)).toEqual([
             mode === "unscoped" ? checkoutWebhook : fixtureWebhook,
           ]);
+          expect(process.cwd()).toBe(cwd);
+          configStub.mockRestore();
         } finally {
-          process.chdir(cwd);
+          vi.restoreAllMocks();
           if (mode === "unscoped") await app.close();
         }
       } finally {
