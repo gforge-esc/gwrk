@@ -275,7 +275,25 @@ export async function evaluateModels(
       route: { backend, modelId, effort },
     });
     assertNoSecretMaterial(evidence);
-    return evidence;
+    const identityMatches =
+      evidence.requestedModel === modelId &&
+      (evidence.observedModel === "unknown" ||
+        evidence.observedModel === modelId);
+    return identityMatches
+      ? evidence
+      : {
+          ...evidence,
+          deterministicGatesPassed: false,
+          gateChecks: [
+            ...evidence.gateChecks,
+            {
+              checkId: "fixture-route-identity",
+              passed: false,
+              detail:
+                "Repeat model identity does not match the dispatched route",
+            },
+          ],
+        };
   };
 
   for (const fixtureId of directFixtures) {
@@ -392,9 +410,10 @@ export async function evaluateModels(
   if (!(await inputsAreCurrent())) return reject("stale-evaluation-inputs");
   if (
     comparisons.some(({ repeats }) =>
-      repeats.candidate.some(
-        ({ deterministicGatesPassed }) => !deterministicGatesPassed,
-      ),
+      [
+        ...repeats.candidate,
+        ...(input.role === "implement" ? repeats.incumbent : []),
+      ].some(({ deterministicGatesPassed }) => !deterministicGatesPassed),
     )
   ) {
     return reject("gate-failure");

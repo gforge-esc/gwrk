@@ -38,6 +38,165 @@ const fixedPassingQueueImplementation = `export function selectQueue({ priority,
 `;
 
 describe("fixture runner adapter", () => {
+  it("rejects review deletion of protected task state with a valid report", async () => {
+    const runner = createFixtureRunner({
+      dispatcher: async (task) => {
+        await rm(join(task.workDir!, "tasks.md"), { force: true });
+        return {
+          exitCode: 0,
+          stdout: JSON.stringify({
+            summary: "Routing defect",
+            verdict: "NO-GO",
+            reopenedTasks: ["T001"],
+            intents: [],
+          }),
+          stderr: "",
+          durationS: 0,
+        };
+      },
+    });
+    const result = await runner.runFixtureRepeat({
+      fixtureId: "implement-seeded-defect",
+      role: "review",
+      repeatIndex: 0,
+      route: candidateRoute,
+    });
+    expect(result.deterministicGatesPassed).toBe(false);
+  });
+
+  it("provides canonical feature prerequisites to the review workflow", async () => {
+    const runner = createFixtureRunner({
+      dispatcher: async (task) => {
+        const featureDir = task.featureDir!;
+        expect(existsSync(join(featureDir, "spec.md"))).toBe(true);
+        const state = JSON.parse(
+          readFileSync(join(featureDir, ".gwrk/tasks.json"), "utf8"),
+        );
+        expect(
+          state.phases[0].tasks.map((entry: { id: string; status: string }) => [
+            entry.id,
+            entry.status,
+          ]),
+        ).toEqual([
+          ["T001", "completed"],
+          ["T002", "completed"],
+        ]);
+        return {
+          exitCode: 0,
+          stdout: JSON.stringify({
+            summary: "Routing defect",
+            verdict: "NO-GO",
+            reopenedTasks: ["T001"],
+            intents: [],
+          }),
+          stderr: "",
+          durationS: 0,
+        };
+      },
+    });
+    const result = await runner.runFixtureRepeat({
+      fixtureId: "implement-seeded-defect",
+      role: "review",
+      repeatIndex: 0,
+      route: candidateRoute,
+    });
+    expect(result.deterministicGatesPassed).toBe(true);
+  });
+
+  it("supplies both generated definition artifacts to implementation", async () => {
+    const handoff = await mkdtemp(join(tmpdir(), "gwrk-definition-pair-"));
+    try {
+      await writeFile(
+        join(handoff, "spec.md"),
+        "# Generated spec\nUnique definition requirements\n",
+      );
+      await writeFile(
+        join(handoff, "plan.md"),
+        "# Generated plan\nRepair routing against the generated spec\n",
+      );
+      const runner = createFixtureRunner({
+        dispatcher: async (task) => {
+          expect(
+            readFileSync(join(task.workDir!, "spec.md"), "utf8"),
+          ).toContain("Unique definition requirements");
+          expect(task.prompt).not.toContain("Use the fixed plan");
+          writeFileSync(
+            join(task.workDir!, "src/domain/select-queue.mjs"),
+            fixedPassingQueueImplementation,
+          );
+          return { exitCode: 0, stdout: "", stderr: "", durationS: 0 };
+        },
+      });
+      const result = await runner.runFixtureRepeat({
+        fixtureId: "implement-seeded-defect",
+        role: "implement",
+        repeatIndex: 0,
+        route: candidateRoute,
+        handoffArtifactDir: handoff,
+      });
+      expect(result.deterministicGatesPassed).toBe(true);
+    } finally {
+      await rm(handoff, { recursive: true, force: true });
+    }
+  });
+
+  describe.each(["define-long-context", "implement-seeded-defect"])(
+    "protected routing contract in %s",
+    (fixtureId) => {
+      it.each(["import clock", "call clock", "fresh unknown", "pure"])(
+        "rejects invalid domain behavior: %s",
+        async (variant) => {
+          const root = await mkdtemp(join(tmpdir(), "gwrk-protected-routing-"));
+          try {
+            const fixture = JSON.parse(
+              readFileSync(
+                join(
+                  "tests/fixtures/model-qualification",
+                  fixtureId,
+                  "fixture.json",
+                ),
+                "utf8",
+              ),
+            );
+            const target = join(root, "src/domain");
+            await mkdir(target, { recursive: true });
+            await writeFile(
+              join(target, "select-queue.test.mjs"),
+              fixture.files["src/domain/select-queue.test.mjs"],
+            );
+            let implementation = fixedPassingQueueImplementation;
+            if (variant === "import clock")
+              implementation = `const clock = Date.now();\n${implementation}`;
+            if (variant === "call clock")
+              implementation = implementation.replace(
+                "const normalized",
+                "Date.now(); const normalized",
+              );
+            if (variant === "fresh unknown")
+              implementation = implementation.replace(
+                'return { queue: "triage", rawPriority };',
+                'return { queue: nowMs - receivedAtMs >= 1800000 ? "triage" : "standard", rawPriority };',
+              );
+            await writeFile(join(target, "select-queue.mjs"), implementation);
+            let passed = true;
+            try {
+              execFileSync(
+                process.execPath,
+                ["--test", "src/domain/select-queue.test.mjs"],
+                { cwd: root, stdio: "pipe" },
+              );
+            } catch {
+              passed = false;
+            }
+            expect(passed).toBe(variant === "pure");
+          } finally {
+            await rm(root, { recursive: true, force: true });
+          }
+        },
+      );
+    },
+  );
+
   it.each(["seeded", "import clock", "call clock", "pure"])(
     "enforces behavior and clock purity for the %s implementation",
     async (variant) => {

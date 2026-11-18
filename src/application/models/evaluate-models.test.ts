@@ -145,6 +145,40 @@ const defineHandoffInput = {
 };
 
 describe("model qualification orchestration", () => {
+  it.each(["requested identity", "observed identity", "incumbent gate"])(
+    "rejects invalid repeat evidence before judging: %s",
+    async (defect) => {
+      const { deps, runFixtureRepeat, judgeComparison } = setup();
+      runFixtureRepeat.mockImplementation(async (request) => ({
+        fixtureId: request.fixtureId,
+        repeatIndex: request.repeatIndex,
+        requestedModel:
+          defect === "requested identity"
+            ? "other-model"
+            : request.route.modelId,
+        observedModel:
+          defect === "observed identity" ? "other-model" : "unknown",
+        deterministicGatesPassed: !(
+          defect === "incumbent gate" &&
+          request.route.modelId === incumbent.modelId
+        ),
+        gateChecks: [
+          {
+            checkId: "candidate-gate",
+            passed: true,
+            detail: "expected output",
+          },
+        ],
+        durationMs: 100,
+        retries: 0,
+        sanitizedOutput: "Routing evidence",
+      }));
+      const result = await evaluateModels(deps, input);
+      expect(result.decision.promote).toBe(false);
+      expect(judgeComparison).not.toHaveBeenCalled();
+    },
+  );
+
   it("requires the suite-declared handoff even when callers supply only fixtures", async () => {
     const { deps, runFixtureRepeat, judgeComparison } = setup({
       handoffs: [candidateHandoff],
@@ -235,18 +269,18 @@ describe("model qualification orchestration", () => {
     const original = runFixtureRepeat.getMockImplementation()!;
     runFixtureRepeat.mockImplementation(async (request) => ({
       ...(await original(request)),
-      observedModel: "resolved-exclusive-model",
-      sanitizedOutput: "Output from resolved-exclusive-model",
+      observedModel: request.route.modelId,
+      sanitizedOutput: `Output from ${request.route.modelId}`,
     }));
     await evaluateModels(deps, {
       ...input,
-      evaluationId: `comparison-${candidate.modelId}-resolved-exclusive-model`,
+      evaluationId: `comparison-${candidate.modelId}-${incumbent.modelId}`,
     });
     expect(judgeComparison).toHaveBeenCalledTimes(2);
     for (const [, packet] of judgeComparison.mock.calls) {
       const serialized = JSON.stringify(packet);
       expect(serialized).not.toContain(candidate.modelId);
-      expect(serialized).not.toContain("resolved-exclusive-model");
+      expect(serialized).not.toContain(incumbent.modelId);
     }
   });
 
@@ -521,11 +555,9 @@ describe("model qualification orchestration", () => {
           : request.route.modelId === candidate.modelId
             ? 100
             : 400,
-      observedModel: request.handoffArtifactDir
-        ? "resolved-fixed-model"
-        : "unknown",
+      observedModel: request.route.modelId,
       sanitizedOutput: request.handoffArtifactDir
-        ? `Generated plan run on ${fixedImplementer.modelId} / resolved-fixed-model`
+        ? `Generated plan run on ${fixedImplementer.modelId}`
         : "Direct evidence",
       deterministicGatesPassed:
         !request.handoffArtifactDir?.includes("/incumbent/"),
