@@ -20,11 +20,11 @@ import {
 } from "../adapters/cli/output-scope.js";
 import { getDb } from "../db/index.js";
 import {
-  ensureCheckoutProjectId,
   finishRun as dbFinishRun,
   recordHistory as dbRecordHistory,
-  resolveCheckoutProjectId,
   startRun as dbStartRun,
+  ensureCheckoutProjectId,
+  resolveCheckoutProjectId,
 } from "../db/runs.js";
 import {
   isPolyglotSourceFile,
@@ -91,7 +91,9 @@ function loadShipProject(cwd: string): {
     const accessFailure =
       typeof code === "string" &&
       (/^SQLITE_(?:CANTOPEN|READONLY|PERM)(?:_|$)/.test(code) ||
-        ["EACCES", "EPERM", "ENOENT", "ENOTDIR", "EISDIR", "EROFS"].includes(code));
+        ["EACCES", "EPERM", "ENOENT", "ENOTDIR", "EISDIR", "EROFS"].includes(
+          code,
+        ));
     if (!accessFailure) throw error;
     warnCli(`${YELLOW}⚠${RESET} Ship ledger unavailable: ${error}`);
     return { ledger: null, projectId: resolveProjectId(cwd) };

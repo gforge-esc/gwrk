@@ -21,7 +21,6 @@ WHERE f.updated_at = f.created_at
   AND EXISTS (
     SELECT 1 FROM plan_features saved
     WHERE saved.id = f.id AND saved.project_id <> f.project_id
-      AND saved.write_seq = 0
       AND saved.rowid < f.rowid
   )
 UNION ALL
@@ -44,8 +43,7 @@ WHERE ph.updated_at = ph.created_at
   AND EXISTS (
     SELECT 1 FROM plan_phases saved
     WHERE saved.id = ph.id AND saved.project_id <> ph.project_id
-      AND saved.write_seq = 0
-      AND saved.feature_id = ph.feature_id
+      AND (saved.write_seq > 0 OR saved.feature_id = ph.feature_id)
       AND saved.rowid < ph.rowid
   );
 UPDATE plan_features SET synthetic_parent = 1
