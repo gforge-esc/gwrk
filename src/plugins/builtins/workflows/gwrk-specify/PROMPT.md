@@ -83,7 +83,12 @@ When specifying features for gwrk, ensure the spec honors these principles:
 5. **Cross-reference existing specs** (MANDATORY but bounded):
 
    <cross_reference_rules>
+[type: gwrk-native]
    Read specs that share the **same build plan phase or dependency chain** as this spec (check `specs/000-build-plan.md` §Dependency Graph). Skip unrelated specs.
+[/type]
+[type: generic]
+   Read the host repository's dependency evidence and relevant specs. Follow the dependency chain for this feature. Skip unrelated specs.
+[/type]
    ```bash
    ls specs/*/spec.md 2>/dev/null
    ```

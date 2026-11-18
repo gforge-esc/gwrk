@@ -74,12 +74,42 @@ describe("workflow architecture guidance", () => {
       .toContain("Use the host repository's verification commands");
     expect.soft(prompt).not.toContain("docs/grounding/architecture.md");
     expect.soft(prompt).not.toMatch(/\bpnpm\b/);
-    expect.soft(prompt).toContain(
-      "#### Done When\n```bash\npython -m pytest tests/test_phase.py\n```",
+    expect
+      .soft(prompt)
+      .toContain(
+        "#### Done When\n```bash\npython -m pytest tests/test_phase.py\n```",
+      );
+    expect
+      .soft(prompt)
+      .toContain(
+        '```bash\n  python -m pytest tests/test_phase.py > out.log\n  grep -q "expected pattern" out.log\n  ```',
+      );
+  });
+
+  it("uses the host dependency evidence in a non-gwrk specification", () => {
+    const generic = conditionPrompt(workflow("gwrk-specify"), {
+      type: "python",
+      stack: { language: "Python" },
+    });
+    expect(generic).not.toContain("specs/000-build-plan.md");
+    expect(generic).toContain("host repository's dependency evidence");
+    const native = conditionPrompt(workflow("gwrk-specify"), {
+      type: "pnpm-monorepo",
+      _isGwrk: true,
+    });
+    expect(native).toContain("specs/000-build-plan.md");
+  });
+
+  it("preserves conditional checklist authority for both review stages", () => {
+    const persona = readFileSync(
+      new URL("./builtins/personas/principal-engineer.md", import.meta.url),
+      "utf8",
     );
-    expect.soft(prompt).toContain(
-      '```bash\n  python -m pytest tests/test_phase.py > out.log\n  grep -q "expected pattern" out.log\n  ```',
+    expect(persona).toContain(
+      "When the workflow requires a feature's `requirements.md`",
     );
+    expect(persona).toContain("before specification or implementation review");
+    expect(persona).toContain("Block incomplete required checklist items.");
   });
 
   it("uses the project's verification and validation standards", () => {
@@ -92,11 +122,15 @@ describe("workflow architecture guidance", () => {
       /project's verification commands and schema validation standards/i,
     );
     const output = persona.split("\n# Output\n")[1];
-    expect.soft(output).toMatch(
-      /\bstart every PR comment with `\*\*From: Principal Engineer\*\*`/i,
-    );
-    expect.soft(output).toMatch(
-      /\btag `@\[PROJECT_LEAD\]` when (?:the )?rules, guardrails or architecture are ambiguous/i,
-    );
+    expect
+      .soft(output)
+      .toMatch(
+        /\bstart every PR comment with `\*\*From: Principal Engineer\*\*`/i,
+      );
+    expect
+      .soft(output)
+      .toMatch(
+        /\btag `@\[PROJECT_LEAD\]` when (?:the )?rules, guardrails or architecture are ambiguous/i,
+      );
   });
 });
