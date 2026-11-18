@@ -120,107 +120,121 @@ export async function buildHomeTab(
     ],
   });
 
-  // 4. Build Plan (from Plan DAG)
-  blocks.push({ type: "divider" });
-  blocks.push({
-    type: "section",
-    text: { type: "mrkdwn", text: "📐 *Plan DAG Status*" },
-  });
+  const registry = options?.registry;
+  const startupProject =
+    registry?.findByLocalRoot(projectRoot) ??
+    registry?.getProject(resolveProjectId(projectRoot));
+  const startupProjectId =
+    startupProject?.projectId ?? resolveProjectId(projectRoot);
+  const visibleProjects =
+    registry && options.userId && options.workspaceId
+      ? registry.listProjects().filter((project) => {
+          if (project.slack?.workspaceId !== options.workspaceId) {
+            return false;
+          }
+          const roles = registry.listRoleBindings(project.projectId);
+          const targetPrincipal = `${options.workspaceId}:${options.userId}`;
+          return roles.some(
+            (r) =>
+              r.principalType === "slack_user" &&
+              r.principalId === targetPrincipal,
+          );
+        })
+      : [];
 
-  try {
-    const { PlanStore } = await import("../engine/plan-store.js");
-    const projectId = resolveProjectId(projectRoot);
-    const store = new PlanStore(projectId);
-    if (!store.isEmpty()) {
-      const planStatus = store.getPlanStatus();
+  const showStartupProjectDetails = registry
+    ? visibleProjects.some((p) => p.projectId === startupProjectId)
+    : true;
 
-      const statusEmoji: Record<string, string> = {
-        SHIPPED: "✅",
-        IN_PROGRESS: "🔄",
-        DEFINED: "📐",
-        READY: "🟢",
-        BLOCKED: "🔴",
-        PLANNED: "⬜",
-      };
+  if (showStartupProjectDetails) {
+    // 4. Build Plan (from Plan DAG)
+    blocks.push({ type: "divider" });
+    blocks.push({
+      type: "section",
+      text: { type: "mrkdwn", text: "📐 *Plan DAG Status*" },
+    });
 
-      for (const f of planStatus.features.slice(0, 10)) {
-        const emoji = statusEmoji[f.status] || "⬜";
-        const phaseCount = f.phases?.length || 0;
-        const shippedCount =
-          f.phases?.filter((p) => p.status === "SHIPPED").length || 0;
+    try {
+      const { PlanStore } = await import("../engine/plan-store.js");
+      const store = new PlanStore(startupProjectId);
+      if (!store.isEmpty()) {
+        const planStatus = store.getPlanStatus();
+
+        const statusEmoji: Record<string, string> = {
+          SHIPPED: "✅",
+          IN_PROGRESS: "🔄",
+          DEFINED: "📐",
+          READY: "🟢",
+          BLOCKED: "🔴",
+          PLANNED: "⬜",
+        };
+
+        for (const f of planStatus.features.slice(0, 10)) {
+          const emoji = statusEmoji[f.status] || "⬜";
+          const phaseCount = f.phases?.length || 0;
+          const shippedCount =
+            f.phases?.filter((p) => p.status === "SHIPPED").length || 0;
+          blocks.push({
+            type: "section",
+            text: {
+              type: "mrkdwn",
+              text: `${emoji} *${f.id}* — ${f.status} (${shippedCount}/${phaseCount} shipped)`,
+            },
+          });
+        }
+      } else {
         blocks.push({
           type: "section",
           text: {
             type: "mrkdwn",
-            text: `${emoji} *${f.id}* — ${f.status} (${shippedCount}/${phaseCount} shipped)`,
+            text: "_No active plans._",
           },
         });
       }
-    } else {
+    } catch {
       blocks.push({
         type: "section",
-        text: {
-          type: "mrkdwn",
-          text: "_No active plans._",
-        },
+        text: { type: "mrkdwn", text: "_Plan data unavailable._" },
       });
     }
-  } catch {
+
+    // 5. Pulse Summary
+    blocks.push({ type: "divider" });
     blocks.push({
       type: "section",
-      text: { type: "mrkdwn", text: "_Plan data unavailable._" },
+      text: { type: "mrkdwn", text: "📉 *Pulse Summary*" },
     });
-  }
 
-  // 5. Pulse Summary
-  blocks.push({ type: "divider" });
-  blocks.push({
-    type: "section",
-    text: { type: "mrkdwn", text: "📉 *Pulse Summary*" },
-  });
-
-  try {
-    const report = generatePulseReport(config);
-    for (const repo of report.repositories.slice(0, 3)) {
+    try {
+      const report = generatePulseReport(config);
+      for (const repo of report.repositories.slice(0, 3)) {
+        blocks.push({
+          type: "section",
+          text: {
+            type: "mrkdwn",
+            text: `*${repo.repoName}*: ${repo.mainLoc} LOC (+${repo.draftLoc} draft)`,
+          },
+        });
+      }
+      blocks.push({
+        type: "context",
+        elements: [
+          {
+            type: "mrkdwn",
+            text: `Spec Progress: ${report.specProgress.totalPlans}/${report.specProgress.totalSpecs} plans ready`,
+          },
+        ],
+      });
+    } catch (err) {
       blocks.push({
         type: "section",
-        text: {
-          type: "mrkdwn",
-          text: `*${repo.repoName}*: ${repo.mainLoc} LOC (+${repo.draftLoc} draft)`,
-        },
+        text: { type: "mrkdwn", text: "_Pulse data unavailable._" },
       });
     }
-    blocks.push({
-      type: "context",
-      elements: [
-        {
-          type: "mrkdwn",
-          text: `Spec Progress: ${report.specProgress.totalPlans}/${report.specProgress.totalSpecs} plans ready`,
-        },
-      ],
-    });
-  } catch (err) {
-    blocks.push({
-      type: "section",
-      text: { type: "mrkdwn", text: "_Pulse data unavailable._" },
-    });
   }
 
   // 6. Enrolled Projects visible to user
   if (options?.registry) {
-    const registry = options.registry;
-    const allProjects = registry.listProjects();
-    const visibleProjects = allProjects.filter((project) => {
-      if (!options.userId) return true;
-      const roles = registry.listRoleBindings(project.projectId);
-      return roles.some(
-        (r) =>
-          r.principalType === "slack_user" &&
-          (r.principalId === `${options.workspaceId}:${options.userId}` ||
-            r.principalId === options.userId),
-      );
-    });
-
     blocks.push({ type: "divider" });
     blocks.push({
       type: "section",

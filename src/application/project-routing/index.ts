@@ -26,6 +26,12 @@ import type { ProjectRegistryPort } from "../../ports/store-port.js";
 
 export interface ProjectRoutingService {
   authorizeCommand(envelope: SlackInboundEnvelope): RouteDecision;
+  authorizeAction(
+    input: Omit<
+      SlackActionVerificationInput,
+      "storedThread" | "priorReceipt"
+    >,
+  ): RouteDecision;
   authorizeAndClaimAction(
     input: Omit<
       SlackActionVerificationInput,
@@ -94,6 +100,61 @@ export function createProjectRoutingService(
       return evaluateSlackRoute(projects, roles, envelope);
     },
 
+    authorizeAction(
+      input: Omit<
+        SlackActionVerificationInput,
+        "storedThread" | "priorReceipt"
+      >,
+    ): RouteDecision {
+      const projects = deps.registry.listProjects();
+      const roles = projects.flatMap((p) =>
+        deps.registry.listRoleBindings(p.projectId),
+      );
+
+      const conversationCandidates = projects.filter(
+        (p) =>
+          p.slack?.workspaceId === input.workspaceId &&
+          (input.isDirectMessage || p.slack.channelId === input.channelId),
+      );
+
+      let storedThread: SlackFeatureThread | null = null;
+      const rootTs = input.threadTs ?? input.messageTs;
+
+      if (input.payloadProjectId) {
+        const thread = deps.registry.getFeatureThread(
+          input.payloadProjectId,
+          input.featureId,
+        );
+        if (thread) {
+          storedThread = thread;
+        }
+      }
+
+      if (!storedThread && rootTs) {
+        for (const cand of conversationCandidates) {
+          const thread = deps.registry.getFeatureThread(
+            cand.projectId,
+            input.featureId,
+          );
+          if (
+            thread &&
+            thread.workspaceId === input.workspaceId &&
+            thread.channelId === input.channelId &&
+            thread.rootTs === rootTs
+          ) {
+            storedThread = thread;
+            break;
+          }
+        }
+      }
+
+      return evaluateSlackAction(projects, roles, {
+        ...input,
+        storedThread,
+        priorReceipt: null,
+      });
+    },
+
     authorizeAndClaimAction(
       input: Omit<
         SlackActionVerificationInput,
@@ -102,6 +163,10 @@ export function createProjectRoutingService(
         nowIso: string;
       },
     ): RouteDecision {
+      if (input.requiredAccess === "read") {
+        return this.authorizeAction(input);
+      }
+
       const projects = deps.registry.listProjects();
       const roles = projects.flatMap((p) =>
         deps.registry.listRoleBindings(p.projectId),
@@ -243,13 +308,7 @@ export function createProjectRoutingService(
         };
         if (!notifyPort) return { delivered: false };
         const result = await notifyPort.notify(payload);
-        return (
-          (result as NotificationReceipt) ?? {
-            delivered: true,
-            channelId: channel,
-            messageTs: input.nowIso,
-          }
-        );
+        return (result as NotificationReceipt) ?? { delivered: false };
       }
 
       const channel = project.slack.channelId;
@@ -263,13 +322,7 @@ export function createProjectRoutingService(
         };
         if (!notifyPort) return { delivered: false };
         const result = await notifyPort.notify(payload);
-        return (
-          (result as NotificationReceipt) ?? {
-            delivered: true,
-            channelId: channel,
-            messageTs: input.nowIso,
-          }
-        );
+        return (result as NotificationReceipt) ?? { delivered: false };
       }
 
       const featureId = input.featureId;
@@ -300,12 +353,7 @@ export function createProjectRoutingService(
         if (!notifyPort) return { delivered: false };
         const result = await notifyPort.notify(payload);
         const receipt: NotificationReceipt =
-          (result as NotificationReceipt) ?? {
-            delivered: true,
-            channelId: payload.channel,
-            messageTs: input.nowIso,
-            threadTs: payload.threadTs,
-          };
+          (result as NotificationReceipt) ?? { delivered: false };
 
         if (receipt.delivered && !thread && receipt.messageTs) {
           deps.registry.bindFeatureThread({

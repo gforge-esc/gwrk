@@ -4,6 +4,8 @@
 
 import { App } from "@slack/bolt";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { createSyntheticRegistry } from "../../tests/helpers/synthetic-slack";
+import { createSqliteProjectRegistryAdapter } from "../adapters/sqlite/index";
 import type { GwrkConfig } from "../utils/config";
 import * as slackClient from "../utils/slack-client";
 import type { DispatchQueue } from "./dispatch";
@@ -18,6 +20,12 @@ import {
   startSlackApp,
   stopSlackApp,
 } from "./slack";
+import { registerSlackActions } from "./slack-actions";
+import { registerSlackHomeHandler } from "./slack-home";
+
+vi.mock("../adapters/sqlite/index", () => ({
+  createSqliteProjectRegistryAdapter: vi.fn(),
+}));
 
 vi.mock("@slack/bolt", () => {
   const mockApp = {
@@ -122,6 +130,7 @@ describe("Slack Server Integration", () => {
         server: { host: "localhost", port: 3000 },
         project: { slack: { channelId: "C_TEST" } },
       } as unknown as GwrkConfig,
+      registry: createSyntheticRegistry(),
     };
 
     await startSlackApp(mockDeps);
@@ -129,5 +138,51 @@ describe("Slack Server Integration", () => {
 
     await stopSlackApp();
     expect(console.log).toHaveBeenCalledWith("🛑 Slack Bolt app stopped.");
+  });
+
+  it("asserts no handler executes work when the registry throws", async () => {
+    vi.mocked(slackClient.loadSlackConfig).mockReturnValue({
+      botToken: "xoxb-test",
+      appToken: "xapp-test",
+    });
+
+    vi.mocked(createSqliteProjectRegistryAdapter).mockImplementation(() => {
+      throw new Error("Registry initialization failure");
+    });
+
+    const mockDeps = {
+      queue: { command: vi.fn() } as unknown as DispatchQueue,
+      monitor: {
+        startPolling: vi.fn(),
+        stopPolling: vi.fn(),
+      } as unknown as SystemMonitor,
+      sandbox: { checkDocker: vi.fn() } as unknown as SandboxManager,
+      lifecycle: {
+        start: vi.fn(),
+        stop: vi.fn(),
+        getStatus: vi.fn(() => "ready"),
+      } as unknown as LifecycleMonitor,
+      network: {
+        start: vi.fn(),
+        stop: vi.fn(),
+        getStatus: vi.fn(() => "online"),
+      } as unknown as NetworkMonitor,
+      git: { projectRoot: "/tmp" } as unknown as GitManager,
+      projectRoot: "/tmp",
+      config: {
+        server: { host: "localhost", port: 3000 },
+        project: { slack: { channelId: "C_TEST" } },
+      } as unknown as GwrkConfig,
+    };
+
+    await startSlackApp(mockDeps);
+
+    const boltApp = getSlackApp();
+    expect(boltApp).toBeDefined();
+    expect(boltApp?.command).not.toHaveBeenCalled();
+    expect(boltApp?.event).not.toHaveBeenCalled();
+    expect(registerSlackActions).not.toHaveBeenCalled();
+    expect(registerSlackHomeHandler).not.toHaveBeenCalled();
+    expect(boltApp?.start).not.toHaveBeenCalled();
   });
 });

@@ -4,6 +4,13 @@
 
 import type { HeaderBlock, SectionBlock } from "@slack/types";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  SYNTHETIC_PROJECT_ALPHA,
+  SYNTHETIC_PROJECT_BETA,
+  SYNTHETIC_USER_VIEWER,
+  SYNTHETIC_WORKSPACE_ID,
+  createSyntheticRegistry,
+} from "../../tests/helpers/synthetic-slack.js";
 import type { GwrkConfig } from "../utils/config.js";
 import { buildHomeTab } from "./slack-home.js";
 import type { SystemStatus } from "./types.js";
@@ -177,5 +184,84 @@ describe("slack-home", () => {
           (b as SectionBlock).text?.text === "_No active plans._",
       ),
     ).toBe(true);
+  });
+
+  describe("TR-012: Enrolled project visibility and role-gated startup project details", () => {
+    it("renders only projects where viewer holds a role and includes startup project sections when authorized", async () => {
+      const registry = createSyntheticRegistry();
+      const homeView = await buildHomeTab(
+        mockStatus,
+        mockConfig,
+        SYNTHETIC_PROJECT_ALPHA.localRoot!,
+        {
+          userId: SYNTHETIC_USER_VIEWER,
+          workspaceId: SYNTHETIC_WORKSPACE_ID,
+          registry,
+        },
+      );
+
+      const enrolledTexts = homeView.blocks
+        .filter((b) => b.type === "section" && (b as SectionBlock).text?.text)
+        .map((b) => (b as SectionBlock).text!.text);
+
+      expect(enrolledTexts.some((t) => t.includes(SYNTHETIC_PROJECT_ALPHA.name))).toBe(true);
+      expect(enrolledTexts.some((t) => t.includes(SYNTHETIC_PROJECT_BETA.name))).toBe(false);
+
+      expect(enrolledTexts.some((t) => t.includes("Plan DAG Status"))).toBe(true);
+      expect(enrolledTexts.some((t) => t.includes("Pulse Summary"))).toBe(true);
+    });
+
+    it("omits startup project sections when viewer holds no role in the startup project", async () => {
+      const registry = createSyntheticRegistry();
+      // Startup project is Beta, but viewer is only bound to Alpha
+      const homeView = await buildHomeTab(
+        mockStatus,
+        mockConfig,
+        SYNTHETIC_PROJECT_BETA.localRoot!,
+        {
+          userId: SYNTHETIC_USER_VIEWER,
+          workspaceId: SYNTHETIC_WORKSPACE_ID,
+          registry,
+        },
+      );
+
+      const sectionTexts = homeView.blocks
+        .filter((b) => b.type === "section" && (b as SectionBlock).text?.text)
+        .map((b) => (b as SectionBlock).text!.text);
+
+      // Viewer still sees Alpha in enrolled projects
+      expect(sectionTexts.some((t) => t.includes(SYNTHETIC_PROJECT_ALPHA.name))).toBe(true);
+      expect(sectionTexts.some((t) => t.includes(SYNTHETIC_PROJECT_BETA.name))).toBe(false);
+
+      // But does NOT see Plan DAG Status or Pulse Summary for the unauthorized startup project
+      expect(sectionTexts.some((t) => t.includes("Plan DAG Status"))).toBe(false);
+      expect(sectionTexts.some((t) => t.includes("Pulse Summary"))).toBe(false);
+    });
+
+    it("returns no projects and omits startup sections when userId or workspaceId is missing", async () => {
+      const registry = createSyntheticRegistry();
+      const homeView = await buildHomeTab(
+        mockStatus,
+        mockConfig,
+        SYNTHETIC_PROJECT_ALPHA.localRoot!,
+        {
+          workspaceId: SYNTHETIC_WORKSPACE_ID,
+          registry,
+        },
+      );
+
+      const sectionTexts = homeView.blocks
+        .filter((b) => b.type === "section" && (b as SectionBlock).text?.text)
+        .map((b) => (b as SectionBlock).text!.text);
+
+      expect(
+        sectionTexts.some((t) =>
+          t.includes("_No enrolled projects accessible for your account._"),
+        ),
+      ).toBe(true);
+      expect(sectionTexts.some((t) => t.includes(SYNTHETIC_PROJECT_ALPHA.name))).toBe(false);
+      expect(sectionTexts.some((t) => t.includes("Plan DAG Status"))).toBe(false);
+      expect(sectionTexts.some((t) => t.includes("Pulse Summary"))).toBe(false);
+    });
   });
 });

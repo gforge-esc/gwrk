@@ -141,7 +141,7 @@ describe("slack-actions (FR-007, US-004, US-005)", () => {
     }
   });
 
-  it("US-004: handles approve_spec action — triggers plan generation (TR-015)", async () => {
+  it("US-004: handles approve_spec action — denies click without routingService", async () => {
     await registerSlackActions(mockApp as App, mockContext);
     const ack = vi.fn();
     const body = {
@@ -156,7 +156,7 @@ describe("slack-actions (FR-007, US-004, US-005)", () => {
       channel: { id: "C123" },
       user: { id: "U123" },
     };
-    const client = { chat: { postMessage: vi.fn() } };
+    const client = { chat: { postMessage: vi.fn(), postEphemeral: vi.fn() } };
 
     await actionHandlers.approve_spec({
       ack,
@@ -166,14 +166,15 @@ describe("slack-actions (FR-007, US-004, US-005)", () => {
     } as any);
 
     expect(ack).toHaveBeenCalled();
-    expect(mockSpawn).toHaveBeenCalledWith(
-      "gwrk",
-      ["plan", "003-slack"],
-      expect.objectContaining({ cwd: "/tmp", detached: true }),
+    expect(mockSpawn).not.toHaveBeenCalled();
+    expect(client.chat.postEphemeral).toHaveBeenCalledWith(
+      expect.objectContaining({
+        text: expect.stringContaining("unauthorized"),
+      }),
     );
   });
 
-  it("US-004: handles approve_plan action — updates PlanStore to DEFINED (TR-015)", async () => {
+  it("US-004: handles approve_plan action — denies click without routingService", async () => {
     await registerSlackActions(mockApp as App, mockContext);
     const ack = vi.fn();
     const body = {
@@ -188,7 +189,7 @@ describe("slack-actions (FR-007, US-004, US-005)", () => {
       channel: { id: "C123" },
       user: { id: "U123" },
     };
-    const client = { chat: { postMessage: vi.fn() } };
+    const client = { chat: { postMessage: vi.fn(), postEphemeral: vi.fn() } };
 
     await actionHandlers.approve_plan({
       ack,
@@ -198,13 +199,15 @@ describe("slack-actions (FR-007, US-004, US-005)", () => {
     } as any);
 
     expect(ack).toHaveBeenCalled();
-    expect(mockHandleDefineComplete).toHaveBeenCalledWith({
-      featureId: "003-slack",
-      status: "DEFINED",
-    });
+    expect(mockHandleDefineComplete).not.toHaveBeenCalled();
+    expect(client.chat.postEphemeral).toHaveBeenCalledWith(
+      expect.objectContaining({
+        text: expect.stringContaining("unauthorized"),
+      }),
+    );
   });
 
-  it("FR-007: handles merge_pr action — calls gh pr merge", async () => {
+  it("FR-007: handles merge_pr action — denies click without routingService", async () => {
     const { execSync } = await import("node:child_process");
     const { findOpenPr } = await import("../db/runs.js");
 
@@ -222,7 +225,7 @@ describe("slack-actions (FR-007, US-004, US-005)", () => {
       channel: { id: "C123" },
       user: { id: "U123" },
     };
-    const client = { chat: { postMessage: vi.fn() } };
+    const client = { chat: { postMessage: vi.fn(), postEphemeral: vi.fn() } };
 
     await actionHandlers.merge_pr({
       ack,
@@ -232,18 +235,16 @@ describe("slack-actions (FR-007, US-004, US-005)", () => {
     } as any);
 
     expect(ack).toHaveBeenCalled();
-    expect(findOpenPr).toHaveBeenCalledWith(
-      "003-slack",
-      expect.any(String),
-      "phase-01",
-    );
-    expect(execSync).toHaveBeenCalledWith(
-      "gh pr merge 42 --merge --delete-branch",
-      expect.objectContaining({ cwd: "/tmp" }),
+    expect(findOpenPr).not.toHaveBeenCalled();
+    expect(execSync).not.toHaveBeenCalled();
+    expect(client.chat.postEphemeral).toHaveBeenCalledWith(
+      expect.objectContaining({
+        text: expect.stringContaining("unauthorized"),
+      }),
     );
   });
 
-  it("FR-007: handles retry_phase action — re-dispatches via queue", async () => {
+  it("FR-007: handles retry_phase action — denies click without routingService", async () => {
     await registerSlackActions(mockApp as App, mockContext);
     const ack = vi.fn();
     const body = {
@@ -258,7 +259,7 @@ describe("slack-actions (FR-007, US-004, US-005)", () => {
       channel: { id: "C123" },
       user: { id: "U123" },
     };
-    const client = { chat: { postMessage: vi.fn() } };
+    const client = { chat: { postMessage: vi.fn(), postEphemeral: vi.fn() } };
 
     await actionHandlers.retry_phase({
       ack,
@@ -268,13 +269,15 @@ describe("slack-actions (FR-007, US-004, US-005)", () => {
     } as any);
 
     expect(ack).toHaveBeenCalled();
-    expect(mockContext.queue.enqueue).toHaveBeenCalledWith({
-      featureId: "003-slack",
-      phaseId: "phase-01",
-    });
+    expect(mockContext.queue.enqueue).not.toHaveBeenCalled();
+    expect(client.chat.postEphemeral).toHaveBeenCalledWith(
+      expect.objectContaining({
+        text: expect.stringContaining("unauthorized"),
+      }),
+    );
   });
 
-  it("US-005: handles request_changes action — triggers re-dispatch (FR-005) [RED]", async () => {
+  it("US-005: handles request_changes action — denies click without routingService", async () => {
     await registerSlackActions(mockApp as App, mockContext);
     const ack = vi.fn();
     const body = {
@@ -289,7 +292,7 @@ describe("slack-actions (FR-007, US-004, US-005)", () => {
       channel: { id: "C123" },
       user: { id: "U123" },
     };
-    const client = { chat: { postMessage: vi.fn() } };
+    const client = { chat: { postMessage: vi.fn(), postEphemeral: vi.fn() } };
 
     await actionHandlers.request_changes({
       ack,
@@ -299,14 +302,15 @@ describe("slack-actions (FR-007, US-004, US-005)", () => {
     } as any);
 
     expect(ack).toHaveBeenCalled();
-    // EXPECTATION: request_changes should trigger a re-dispatch
-    expect(mockContext.queue.enqueue).toHaveBeenCalledWith({
-      featureId: "003-slack",
-      phaseId: "phase-01",
-    });
+    expect(mockContext.queue.enqueue).not.toHaveBeenCalled();
+    expect(client.chat.postEphemeral).toHaveBeenCalledWith(
+      expect.objectContaining({
+        text: expect.stringContaining("unauthorized"),
+      }),
+    );
   });
 
-  it("FR-015: handles revise_spec action — triggers define spec re-run [RED]", async () => {
+  it("FR-015: handles revise_spec action — denies click without routingService", async () => {
     await registerSlackActions(mockApp as App, mockContext);
     const ack = vi.fn();
     const body = {
@@ -320,7 +324,7 @@ describe("slack-actions (FR-007, US-004, US-005)", () => {
       channel: { id: "C123" },
       user: { id: "U123" },
     };
-    const client = { chat: { postMessage: vi.fn() } };
+    const client = { chat: { postMessage: vi.fn(), postEphemeral: vi.fn() } };
 
     await actionHandlers.revise_spec({
       ack,
@@ -330,14 +334,15 @@ describe("slack-actions (FR-007, US-004, US-005)", () => {
     } as any);
 
     expect(ack).toHaveBeenCalled();
-    expect(mockSpawn).toHaveBeenCalledWith(
-      "gwrk",
-      ["define", "spec", "003-slack"],
-      expect.objectContaining({ cwd: "/tmp", detached: true }),
+    expect(mockSpawn).not.toHaveBeenCalled();
+    expect(client.chat.postEphemeral).toHaveBeenCalledWith(
+      expect.objectContaining({
+        text: expect.stringContaining("unauthorized"),
+      }),
     );
   });
 
-  it("FR-015: handles revise_plan action — triggers define plan re-run [RED]", async () => {
+  it("FR-015: handles revise_plan action — denies click without routingService", async () => {
     await registerSlackActions(mockApp as App, mockContext);
     const ack = vi.fn();
     const body = {
@@ -351,7 +356,7 @@ describe("slack-actions (FR-007, US-004, US-005)", () => {
       channel: { id: "C123" },
       user: { id: "U123" },
     };
-    const client = { chat: { postMessage: vi.fn() } };
+    const client = { chat: { postMessage: vi.fn(), postEphemeral: vi.fn() } };
 
     await actionHandlers.revise_plan({
       ack,
@@ -361,10 +366,11 @@ describe("slack-actions (FR-007, US-004, US-005)", () => {
     } as any);
 
     expect(ack).toHaveBeenCalled();
-    expect(mockSpawn).toHaveBeenCalledWith(
-      "gwrk",
-      ["define", "plan", "003-slack"],
-      expect.objectContaining({ cwd: "/tmp", detached: true }),
+    expect(mockSpawn).not.toHaveBeenCalled();
+    expect(client.chat.postEphemeral).toHaveBeenCalledWith(
+      expect.objectContaining({
+        text: expect.stringContaining("unauthorized"),
+      }),
     );
   });
 
@@ -542,6 +548,145 @@ describe("slack-actions (FR-007, US-004, US-005)", () => {
           text: expect.stringContaining("already has a receipt"),
         }),
       );
+    });
+
+    it("two users click view_review on one message and both receive the link without replay rejection", async () => {
+      const registry = createSyntheticRegistry();
+      const routingService = createProjectRoutingService({ registry });
+      const mockVcs = createSyntheticVcsPort();
+      const contextWithRouting: CommandContext = {
+        ...mockContext,
+        routingService,
+        vcs: mockVcs,
+      };
+
+      await registerSlackActions(mockApp as App, contextWithRouting);
+      const chat = { postMessage: vi.fn(), postEphemeral: vi.fn() };
+
+      const baseClick = {
+        ack: vi.fn(),
+        body: {
+          team: { id: SYNTHETIC_WORKSPACE_ID },
+          channel: { id: SYNTHETIC_CHANNEL_ALPHA },
+          user: { id: SYNTHETIC_USER_VIEWER },
+          message: {
+            ts: "1731320000.000200",
+            thread_ts: SYNTHETIC_THREAD_ALPHA.rootTs,
+          },
+          actions: [
+            {
+              action_id: "view_review",
+              value: JSON.stringify({
+                projectId: SYNTHETIC_PROJECT_ALPHA.projectId,
+                projectSlug: SYNTHETIC_PROJECT_ALPHA.slug,
+                featureId: SYNTHETIC_THREAD_ALPHA.featureId,
+                phaseId: "phase-01",
+                prNumber: 42,
+                rootTs: SYNTHETIC_THREAD_ALPHA.rootTs,
+              }),
+            },
+          ],
+        },
+        client: { chat },
+        logger: { error: vi.fn() },
+      };
+
+      // User 1 (viewer) clicks view_review
+      await actionHandlers.view_review(baseClick);
+      expect(baseClick.ack).toHaveBeenCalledOnce();
+      expect(chat.postEphemeral).toHaveBeenCalledWith(
+        expect.objectContaining({
+          text: expect.stringContaining("View full review here"),
+        }),
+      );
+
+      // User 2 (maintainer) clicks view_review on the exact same message
+      const maintainerClick = {
+        ...baseClick,
+        ack: vi.fn(),
+        body: {
+          ...baseClick.body,
+          user: { id: SYNTHETIC_USER_MAINTAINER },
+        },
+      };
+      chat.postEphemeral.mockClear();
+
+      await actionHandlers.view_review(maintainerClick);
+      expect(maintainerClick.ack).toHaveBeenCalledOnce();
+      expect(chat.postEphemeral).toHaveBeenCalledWith(
+        expect.objectContaining({
+          text: expect.stringContaining("View full review here"),
+        }),
+      );
+    });
+
+    it("a click without routingService runs no side effect", async () => {
+      await registerSlackActions(mockApp as App, mockContext);
+      const ack = vi.fn();
+      const chat = { postMessage: vi.fn(), postEphemeral: vi.fn() };
+
+      await actionHandlers.merge_pr({
+        ack,
+        body: {
+          team: { id: SYNTHETIC_WORKSPACE_ID },
+          channel: { id: SYNTHETIC_CHANNEL_ALPHA },
+          user: { id: SYNTHETIC_USER_MAINTAINER },
+          message: {
+            ts: "1731320000.000200",
+            thread_ts: SYNTHETIC_THREAD_ALPHA.rootTs,
+          },
+          actions: [
+            {
+              action_id: "merge_pr",
+              value: JSON.stringify({
+                projectId: SYNTHETIC_PROJECT_ALPHA.projectId,
+                projectSlug: SYNTHETIC_PROJECT_ALPHA.slug,
+                featureId: SYNTHETIC_THREAD_ALPHA.featureId,
+                phaseId: "phase-01",
+                rootTs: SYNTHETIC_THREAD_ALPHA.rootTs,
+              }),
+            },
+          ],
+        },
+        client: { chat },
+        logger: { error: vi.fn() },
+      });
+
+      expect(ack).toHaveBeenCalledOnce();
+      expect(chat.postMessage).not.toHaveBeenCalled();
+      expect(chat.postEphemeral).toHaveBeenCalledWith(
+        expect.objectContaining({
+          text: expect.stringContaining("no routing service available"),
+        }),
+      );
+    });
+
+    it("T017: deliverProjectEvent with void-returning NotificationPort leaves getFeatureThread null", async () => {
+      const registry = createSyntheticRegistry();
+      const voidNotificationPort = {
+        notify: vi.fn().mockResolvedValue(undefined),
+      };
+      const routingService = createProjectRoutingService({
+        registry,
+        notificationPort: voidNotificationPort,
+      });
+
+      const receipt = await routingService.deliverProjectEvent({
+        projectId: SYNTHETIC_PROJECT_ALPHA.projectId,
+        featureId: "999-new-feature",
+        eventType: "spec_ready",
+        message: { text: "Spec ready for review" },
+        nowIso: "2026-11-18T10:00:00.000Z",
+      });
+
+      expect(receipt.delivered).toBe(false);
+      expect(receipt.messageTs).toBeUndefined();
+      expect(
+        registry.getFeatureThread(
+          SYNTHETIC_PROJECT_ALPHA.projectId,
+          "999-new-feature",
+        ),
+      ).toBeNull();
     });
   });
 });

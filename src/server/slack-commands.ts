@@ -320,15 +320,22 @@ const handlers: Record<string, SlashCommandHandler> = {
         };
       }
 
-      if (context.vcs) {
-        await context.vcs.mergePullRequest(context.projectRoot, pr.pr_number);
-      } else {
-        execSync(`gh pr merge ${pr.pr_number} --merge --delete-branch`, {
-          cwd: context.projectRoot,
-          encoding: "utf-8",
-          timeout: 30_000,
-        });
+      if (!context.vcs) {
+        return {
+          response_type: "ephemeral",
+          blocks: [
+            {
+              type: "section",
+              text: {
+                type: "mrkdwn",
+                text: ":warning: VCS port is required to merge pull requests.",
+              },
+            },
+          ],
+        };
       }
+
+      await context.vcs.mergePullRequest(context.projectRoot, pr.pr_number);
 
       return {
         response_type: "in_channel",
@@ -1046,58 +1053,72 @@ export async function handleSlashCommand(
     };
   }
 
-  if (context.routingService) {
-    const isDirectMessage = Boolean(context.channelId?.startsWith("D"));
-    const requiredAccess = requiredAccessForSlackCommand(subcommand, args[0]);
-    const envelope = {
-      workspaceId: context.workspaceId || "",
-      channelId: context.channelId || "",
-      isDirectMessage,
-      actorUserId: context.userId,
-      threadTs: context.threadTs,
-      messageTs: context.messageTs,
-      requestedProject,
-      requiredAccess,
-    };
-
-    const decision = context.routingService.authorizeCommand(envelope);
-    if (!decision.ok) {
-      let text = `:warning: ${decision.message}`;
-      if (decision.candidateSlugs && decision.candidateSlugs.length > 0) {
-        text += ` Candidate projects: ${decision.candidateSlugs.join(", ")}`;
-      }
-      return {
-        response_type: "ephemeral",
-        blocks: [
-          {
-            type: "section",
-            text: {
-              type: "mrkdwn",
-              text,
-            },
+  if (!context.routingService) {
+    if (context.userId?.startsWith("tg:")) {
+      return handler(args, context);
+    }
+    return {
+      response_type: "ephemeral",
+      blocks: [
+        {
+          type: "section",
+          text: {
+            type: "mrkdwn",
+            text: ":warning: Slack service is running without project routing configuration (REMOTE_AUTH_REQUIRED).",
           },
-        ],
-      };
-    }
-
-    const effectiveRoot =
-      decision.project.localRoot ??
-      decision.project.mirrorPath ??
-      context.projectRoot;
-    const projectContext: CommandContext = {
-      ...context,
-      projectRoot: effectiveRoot,
-      projectId: decision.project.projectId,
-      projectSlug: decision.project.slug,
-      threadTs: decision.recipient.threadTs ?? context.threadTs,
+        },
+      ],
     };
-
-    const result = await handler(args, projectContext);
-    if (decision.recipient.threadTs && !result.thread_ts) {
-      result.thread_ts = decision.recipient.threadTs;
-    }
-    return result;
   }
 
-  return handler(args, context);
+  const isDirectMessage = Boolean(context.channelId?.startsWith("D"));
+  const requiredAccess = requiredAccessForSlackCommand(subcommand, args[0]);
+  const envelope = {
+    workspaceId: context.workspaceId || "",
+    channelId: context.channelId || "",
+    isDirectMessage,
+    actorUserId: context.userId,
+    threadTs: context.threadTs,
+    messageTs: context.messageTs,
+    requestedProject,
+    requiredAccess,
+  };
+
+  const decision = context.routingService.authorizeCommand(envelope);
+  if (!decision.ok) {
+    let text = `:warning: ${decision.message}`;
+    if (decision.candidateSlugs && decision.candidateSlugs.length > 0) {
+      text += ` Candidate projects: ${decision.candidateSlugs.join(", ")}`;
+    }
+    return {
+      response_type: "ephemeral",
+      blocks: [
+        {
+          type: "section",
+          text: {
+            type: "mrkdwn",
+            text,
+          },
+        },
+      ],
+    };
+  }
+
+  const effectiveRoot =
+    decision.project.localRoot ??
+    decision.project.mirrorPath ??
+    context.projectRoot;
+  const projectContext: CommandContext = {
+    ...context,
+    projectRoot: effectiveRoot,
+    projectId: decision.project.projectId,
+    projectSlug: decision.project.slug,
+    threadTs: decision.recipient.threadTs ?? context.threadTs,
+  };
+
+  const result = await handler(args, projectContext);
+  if (decision.recipient.threadTs && !result.thread_ts) {
+    result.thread_ts = decision.recipient.threadTs;
+  }
+  return result;
 }

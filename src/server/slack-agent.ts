@@ -35,46 +35,50 @@ export async function handleMention({
       ? (event as { thread_ts?: string }).thread_ts || event.ts
       : event.ts;
 
-  let effectiveRoot = projectRoot;
-
-  if (routingService) {
-    const isDirectMessage = Boolean(event.channel?.startsWith("D"));
-    const requiredAccess =
-      text.includes("stress test") || text.includes("/skill")
-        ? "operate"
-        : "read";
-
-    // biome-ignore lint/suspicious/noExplicitAny: Slack team property
-    const workspaceId = (event as any).team || "";
-    const channelId = event.channel || "";
-    const actorUserId = event.user || "";
-
-    const decision = routingService.authorizeCommand({
-      workspaceId,
-      channelId,
-      isDirectMessage,
-      actorUserId,
-      threadTs: (event as { thread_ts?: string }).thread_ts,
-      messageTs: event.ts,
-      requestedProject,
-      requiredAccess,
+  if (!routingService) {
+    await say({
+      thread_ts,
+      text: ":warning: Slack service is running without project routing configuration.",
     });
-
-    if (!decision.ok) {
-      let message = `:warning: ${decision.message}`;
-      if (decision.candidateSlugs && decision.candidateSlugs.length > 0) {
-        message += ` Candidate projects: ${decision.candidateSlugs.join(", ")}`;
-      }
-      await say({
-        thread_ts,
-        text: message,
-      });
-      return;
-    }
-
-    effectiveRoot =
-      decision.project.localRoot ?? decision.project.mirrorPath ?? projectRoot;
+    return;
   }
+
+  const isDirectMessage = Boolean(event.channel?.startsWith("D"));
+  const requiredAccess =
+    text.includes("stress test") || text.includes("/skill")
+      ? "operate"
+      : "read";
+
+  // biome-ignore lint/suspicious/noExplicitAny: Slack team property
+  const workspaceId = (event as any).team || "";
+  const channelId = event.channel || "";
+  const actorUserId = event.user || "";
+
+  const decision = routingService.authorizeCommand({
+    workspaceId,
+    channelId,
+    isDirectMessage,
+    actorUserId,
+    threadTs: (event as { thread_ts?: string }).thread_ts,
+    messageTs: event.ts,
+    requestedProject,
+    requiredAccess,
+  });
+
+  if (!decision.ok) {
+    let message = `:warning: ${decision.code}: ${decision.message}`;
+    if (decision.candidateSlugs && decision.candidateSlugs.length > 0) {
+      message += ` Candidate projects: ${decision.candidateSlugs.join(", ")}`;
+    }
+    await say({
+      thread_ts,
+      text: message,
+    });
+    return;
+  }
+
+  const effectiveRoot =
+    decision.project.localRoot ?? decision.project.mirrorPath ?? projectRoot;
 
   // TR-016: Check for specific file mentions (e.g. workflows or specs)
   if (text.includes("workflows/")) {
@@ -163,78 +167,39 @@ export async function handleDirectMessage({
   const { requestedProject } = parseProjectSelector(event.text || "");
   const thread_ts = event.thread_ts || event.ts;
 
-  if (routingService) {
-    const decision = routingService.authorizeCommand({
-      workspaceId: event.team || "",
-      channelId: event.channel || "",
-      isDirectMessage: true,
-      actorUserId: event.user || "",
-      threadTs: event.thread_ts,
-      messageTs: event.ts,
-      requestedProject,
-      requiredAccess: "read",
-    });
-
-    if (!decision.ok) {
-      let message = `:warning: ${decision.message}`;
-      if (decision.candidateSlugs && decision.candidateSlugs.length > 0) {
-        message += ` Candidate projects: ${decision.candidateSlugs.join(", ")}`;
-      }
-      await say({
-        thread_ts,
-        text: message,
-      });
-      return;
-    }
-
+  if (!routingService) {
     await say({
       thread_ts,
-      text: `👋 Direct message received for *${decision.project.name}* (\`${decision.project.slug}\`). How can I help you?`,
+      text: ":warning: Slack service is running without project routing configuration.",
+    });
+    return;
+  }
+
+  const decision = routingService.authorizeCommand({
+    workspaceId: event.team || "",
+    channelId: event.channel || "",
+    isDirectMessage: true,
+    actorUserId: event.user || "",
+    threadTs: event.thread_ts,
+    messageTs: event.ts,
+    requestedProject,
+    requiredAccess: "read",
+  });
+
+  if (!decision.ok) {
+    let message = `:warning: ${decision.code}: ${decision.message}`;
+    if (decision.candidateSlugs && decision.candidateSlugs.length > 0) {
+      message += ` Candidate projects: ${decision.candidateSlugs.join(", ")}`;
+    }
+    await say({
+      thread_ts,
+      text: message,
     });
     return;
   }
 
   await say({
     thread_ts,
-    text: "👋 I'm here! How can I help you today?",
+    text: `👋 Direct message received for *${decision.project.name}* (\`${decision.project.slug}\`). How can I help you?`,
   });
-}
-
-/**
- * Validates reaction approval authorization.
- */
-export async function handleReaction({
-  event,
-  routingService,
-  say,
-}: {
-  // biome-ignore lint/suspicious/noExplicitAny: Slack reaction event
-  event: any;
-  routingService?: ProjectRoutingService;
-  // biome-ignore lint/suspicious/noExplicitAny: Bolt SayFn callback
-  say?: any;
-}): Promise<{ ok: boolean; reason?: string }> {
-  if (!routingService) {
-    return { ok: true };
-  }
-
-  const decision = routingService.authorizeCommand({
-    workspaceId: event.team || "",
-    channelId: event.item?.channel || "",
-    isDirectMessage: false,
-    actorUserId: event.user || "",
-    messageTs: event.item?.ts,
-    requiredAccess: "maintain",
-  });
-
-  if (!decision.ok) {
-    if (say) {
-      await say({
-        text: `:warning: Reaction approval denied: ${decision.message}`,
-      });
-    }
-    return { ok: false, reason: decision.message };
-  }
-
-  return { ok: true };
 }

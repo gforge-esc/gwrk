@@ -49,25 +49,23 @@ async function verifyAndClaimClick(
   // biome-ignore lint/suspicious/noExplicitAny: Logger
   logger: any,
 ): Promise<ActionVerificationResult> {
-  const payloadProjectId = payloadObj?.projectId;
-  const isProjectScoped = Boolean(payloadProjectId || context.routingService);
-
-  if (!isProjectScoped) {
-    return {
-      ok: true,
-      projectRoot: context.projectRoot,
-      projectId: resolveProjectId(context.projectRoot),
-      threadTs: actionBody.message?.thread_ts,
-    };
-  }
-
   if (!context.routingService) {
     logger?.error?.(
-      `Action ${actionId} failed: no routing service available to authorize project-scoped action`,
+      `Action ${actionId} failed: no routing service available to authorize action`,
     );
+    const channelId = actionBody.channel?.id ?? context.channelId ?? "";
+    const actorUserId = actionBody.user?.id ?? context.userId ?? "";
+    if (client?.chat?.postEphemeral && channelId && actorUserId) {
+      await client.chat.postEphemeral({
+        channel: channelId,
+        user: actorUserId,
+        text: ":warning: Action unauthorized: no routing service available",
+      });
+    }
     return { ok: false, projectRoot: context.projectRoot, projectId: "" };
   }
 
+  const payloadProjectId = payloadObj?.projectId;
   const workspaceId =
     actionBody.team?.id ?? actionBody.team_id ?? context.workspaceId ?? "";
   const channelId = actionBody.channel?.id ?? context.channelId ?? "";
@@ -75,22 +73,40 @@ async function verifyAndClaimClick(
   const actorUserId = actionBody.user?.id ?? context.userId ?? "";
   const messageTs = actionBody.message?.ts;
   const threadTs = actionBody.message?.thread_ts;
+  const requiredAccess = requiredAccessForSlackAction(actionId);
 
-  const decision = context.routingService.authorizeAndClaimAction({
-    workspaceId,
-    channelId,
-    isDirectMessage,
-    actorUserId,
-    threadTs,
-    messageTs,
-    actionId,
-    payloadProjectId,
-    featureId: payloadObj?.featureId || "",
-    phaseId: payloadObj?.phaseId,
-    payloadRootTs: payloadObj?.rootTs,
-    requiredAccess: requiredAccessForSlackAction(actionId),
-    nowIso: new Date().toISOString(),
-  });
+  const isReadOnly = requiredAccess === "read";
+
+  const decision = isReadOnly
+    ? context.routingService.authorizeAction({
+        workspaceId,
+        channelId,
+        isDirectMessage,
+        actorUserId,
+        threadTs,
+        messageTs,
+        actionId,
+        payloadProjectId,
+        featureId: payloadObj?.featureId || "",
+        phaseId: payloadObj?.phaseId,
+        payloadRootTs: payloadObj?.rootTs,
+        requiredAccess,
+      })
+    : context.routingService.authorizeAndClaimAction({
+        workspaceId,
+        channelId,
+        isDirectMessage,
+        actorUserId,
+        threadTs,
+        messageTs,
+        actionId,
+        payloadProjectId,
+        featureId: payloadObj?.featureId || "",
+        phaseId: payloadObj?.phaseId,
+        payloadRootTs: payloadObj?.rootTs,
+        requiredAccess,
+        nowIso: new Date().toISOString(),
+      });
 
   if (!decision.ok) {
     logger?.error?.(
@@ -111,15 +127,17 @@ async function verifyAndClaimClick(
     decision.project.mirrorPath ??
     context.projectRoot;
 
-  const receiptKey = buildActionReceiptKey({
-    projectId: decision.project.projectId,
-    actionId,
-    featureId: payloadObj?.featureId || "",
-    phaseId: payloadObj?.phaseId ?? null,
-    workspaceId,
-    channelId,
-    messageTs: messageTs ?? threadTs ?? "",
-  });
+  const receiptKey = isReadOnly
+    ? undefined
+    : buildActionReceiptKey({
+        projectId: decision.project.projectId,
+        actionId,
+        featureId: payloadObj?.featureId || "",
+        phaseId: payloadObj?.phaseId ?? null,
+        workspaceId,
+        channelId,
+        messageTs: messageTs ?? threadTs ?? "",
+      });
 
   return {
     ok: true,

@@ -72,14 +72,23 @@ export async function startSlackApp(deps: {
     if (!registry) {
       try {
         registry = createSqliteProjectRegistryAdapter();
-      } catch {
-        // DB not available in some test environments
+      } catch (err) {
+        warnCli(
+          `Failed to initialize project registry: ${err instanceof Error ? err.message : String(err)}`,
+        );
       }
     }
 
     const routingService =
       deps.routingService ??
       (registry ? createProjectRoutingService({ registry }) : undefined);
+
+    if (!routingService) {
+      warnCli(
+        "ProjectRoutingService is unavailable. Refusing to register Slack command, action, mention and message handlers.",
+      );
+      return;
+    }
 
     const vcs = deps.vcs ?? createGitVcsAdapter();
 
