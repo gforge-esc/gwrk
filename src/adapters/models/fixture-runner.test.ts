@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -118,6 +119,60 @@ describe("fixture runner adapter", () => {
     );
     expect(forbiddenCheck?.passed).toBe(false);
     expect(forbiddenCheck?.detail).toContain("AGENTS.md");
+  });
+
+  it("rejects forbidden mutations committed before the model returns", async () => {
+    const dispatcher = vi.fn(
+      async (task: TaskDispatch): Promise<TaskResult> => {
+        const cwd = task.workDir!;
+        writeFileSync(
+          join(cwd, "src/domain/select-queue.mjs"),
+          fixedPassingQueueImplementation,
+        );
+        writeFileSync(join(cwd, "AGENTS.md"), "Changed governance\n");
+        execFileSync(
+          "git",
+          ["add", "src/domain/select-queue.mjs", "AGENTS.md"],
+          { cwd },
+        );
+        execFileSync(
+          "git",
+          [
+            "-c",
+            "commit.gpgsign=false",
+            "commit",
+            "--quiet",
+            "-m",
+            "Commit changes",
+          ],
+          { cwd },
+        );
+        return {
+          exitCode: 0,
+          stdout: "Completed",
+          stderr: "",
+          durationS: 0,
+          observedModel: "test-model-v1",
+        };
+      },
+    );
+    const evidence = await createFixtureRunner({ dispatcher }).runFixtureRepeat(
+      {
+        fixtureId: "implement-seeded-defect",
+        role: "implement",
+        repeatIndex: 0,
+        route: candidateRoute,
+      },
+    );
+    expect(evidence.deterministicGatesPassed).toBe(false);
+    expect(
+      evidence.gateChecks.find(
+        ({ checkId }) => checkId === "forbidden-file-mutation",
+      ),
+    ).toMatchObject({
+      passed: false,
+      detail: expect.stringContaining("AGENTS.md"),
+    });
   });
 
   it("proves fixed-plan and candidate-plan handoffs", async () => {
@@ -398,7 +453,7 @@ describe("fixture runner adapter", () => {
       async (task: TaskDispatch): Promise<TaskResult> => {
         writeFileSync(
           join(task.workDir!, "src/domain/select-queue.mjs"),
-          "// IMPLEMENTATION ALPHA\n" + fixedPassingQueueImplementation,
+          `// IMPLEMENTATION ALPHA\n${fixedPassingQueueImplementation}`,
           "utf8",
         );
         return {
@@ -414,7 +469,7 @@ describe("fixture runner adapter", () => {
       async (task: TaskDispatch): Promise<TaskResult> => {
         writeFileSync(
           join(task.workDir!, "src/domain/select-queue.mjs"),
-          "// IMPLEMENTATION BETA\n" + fixedPassingQueueImplementation,
+          `// IMPLEMENTATION BETA\n${fixedPassingQueueImplementation}`,
           "utf8",
         );
         return {

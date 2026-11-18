@@ -9,6 +9,7 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { promisify } from "node:util";
+import { z } from "zod";
 import type {
   ModelCandidate,
   ModelRole,
@@ -30,6 +31,26 @@ import {
 } from "../../utils/agent.js";
 
 const execFileAsync = promisify(execFile);
+
+const JudgeOutput = z.object({
+  summary: z.string().min(1),
+  intents: z.array(z.never()).max(0),
+  winner: z.enum(["A", "B", "tie"]),
+  optionARegression: z.boolean(),
+  optionBRegression: z.boolean(),
+  scores: z.object({
+    optionA: z.number().finite(),
+    optionB: z.number().finite(),
+  }),
+  citations: z.array(
+    z.object({
+      inputRef: z.string().min(1),
+      outputRef: z.string().min(1),
+      gateRef: z.string().min(1),
+      claim: z.string().min(1),
+    }),
+  ),
+});
 
 const ROLE_WORKFLOWS: Record<ModelRole, string> = {
   define: "gwrk-plan",
@@ -299,18 +320,32 @@ export class FixtureRunner
         };
       }
 
-      const { stdout: statusOut } = await execFileAsync("git", [
+      const { stdout: trackedChanges } = await execFileAsync("git", [
         "-C",
         workspaceDir,
-        "status",
-        "--porcelain",
+        "diff",
+        "--no-renames",
+        "--name-only",
+        "-z",
+        baselineSha,
+        "--",
       ]);
-      const changedFiles = statusOut
-        .split("\n")
-        .map((line) => line.trim())
-        .filter(Boolean)
-        .map((line) => line.replace(/^[MADRCU?! ]+\s+/, ""))
-        .filter((path) => !path.startsWith(".runs/"));
+      const { stdout: untrackedChanges } = await execFileAsync("git", [
+        "-C",
+        workspaceDir,
+        "ls-files",
+        "--others",
+        "--exclude-standard",
+        "-z",
+      ]);
+      const changedFiles = [
+        ...new Set(
+          `${trackedChanges}${untrackedChanges}`
+            .split("\0")
+            .filter(Boolean)
+            .filter((path) => !path.startsWith(".runs/")),
+        ),
+      ];
 
       if (Array.isArray(fixture.gates?.allowedChangedPaths)) {
         const allowed = new Set(fixture.gates.allowedChangedPaths);
@@ -726,18 +761,7 @@ export class FixtureRunner
         },
       );
 
-      const parsed = (execution.output ?? {}) as {
-        winner?: "A" | "B" | "tie";
-        optionARegression?: boolean;
-        optionBRegression?: boolean;
-        scores?: { optionA?: number; optionB?: number };
-        citations?: {
-          inputRef: string;
-          outputRef: string;
-          gateRef: string;
-          claim: string;
-        }[];
-      };
+      const parsed = JudgeOutput.parse(execution.output);
 
       return {
         judgeBackend: judge.backend,
@@ -745,14 +769,11 @@ export class FixtureRunner
         judgeFamily: judge.family,
         judgeModelId: judge.modelId,
         observedJudgeModel,
-        winner: parsed.winner ?? "tie",
-        optionARegression: Boolean(parsed.optionARegression),
-        optionBRegression: Boolean(parsed.optionBRegression),
-        scores: {
-          optionA: Number(parsed.scores?.optionA ?? 0),
-          optionB: Number(parsed.scores?.optionB ?? 0),
-        },
-        citations: Array.isArray(parsed.citations) ? parsed.citations : [],
+        winner: parsed.winner,
+        optionARegression: parsed.optionARegression,
+        optionBRegression: parsed.optionBRegression,
+        scores: parsed.scores,
+        citations: parsed.citations,
       };
     } finally {
       await rm(judgeDir, { recursive: true, force: true });
