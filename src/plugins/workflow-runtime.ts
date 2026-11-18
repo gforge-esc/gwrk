@@ -382,7 +382,8 @@ export class WorkflowRuntime {
     const conditionedPrompt =
       name === "gwrk-specify" ||
       name === "gwrk-plan" ||
-      name === "review-code-cli"
+      name === "review-code-cli" ||
+      name === "review-code-webapp"
         ? conditionPrompt(basePrompt, profile, { renderUnknownGuards: true })
         : conditionPrompt(basePrompt, profile);
     const userInput = `<user_input>\n${input}\n</user_input>`;

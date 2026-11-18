@@ -131,56 +131,65 @@ describe("governance prompt delivery", () => {
     },
   );
 
-  it("delivers project verification and Principal Engineer reporting rules to a Python CLI review", async () => {
-    await writeFile(
-      join(root, "pyproject.toml"),
-      '[project]\nname = "host"\nversion = "0.1.0"\n',
-    );
-
-    const captured = await captureDispatch("review-code-cli");
-
-    expect.soft(captured).toContain('language="Python"');
-    expect
-      .soft(captured)
-      .toContain("<!-- enforcement-skill: python-standards -->");
-    for (const instruction of hostReviewGuidance) {
-      expect.soft(captured).toContain(instruction);
-    }
-    expect
-      .soft(captured)
-      .toMatch(
-        /start every PR comment with `\*\*From: Principal Engineer\*\*`/i,
+  it.each(["review-code-cli", "review-code-webapp"])(
+    "delivers project verification and reporting rules to Python %s",
+    async (workflow) => {
+      await writeFile(
+        join(root, "pyproject.toml"),
+        '[project]\nname = "host"\nversion = "0.1.0"\n',
       );
-    expect
-      .soft(captured)
-      .toMatch(
-        /tag `@\[PROJECT_LEAD\]` when (?:the )?rules, guardrails or architecture are ambiguous/i,
-      );
-    expect.soft(captured.match(nativeReviewCommandPattern) ?? []).toEqual([]);
-  });
 
-  it("delivers host review guidance when the CLI project profile is unknown", async () => {
-    const captured = await captureDispatch("review-code-cli");
+      const captured = await captureDispatch(workflow);
 
-    for (const instruction of hostReviewGuidance) {
-      expect.soft(captured).toContain(instruction);
-    }
-    expect.soft(captured.match(nativeReviewCommandPattern) ?? []).toEqual([]);
-    expect
-      .soft(captured)
-      .not.toMatch(/\[type:[^\]]*\]|\[\/type\]|<project_profile\b/);
-  });
+      expect.soft(captured).toContain('language="Python"');
+      expect
+        .soft(captured)
+        .toContain("<!-- enforcement-skill: python-standards -->");
+      for (const instruction of hostReviewGuidance) {
+        expect.soft(captured).toContain(instruction);
+      }
+      expect
+        .soft(captured)
+        .toMatch(
+          /start every PR comment with `\*\*From: Principal Engineer\*\*`/i,
+        );
+      expect
+        .soft(captured)
+        .toMatch(
+          /tag `@\[PROJECT_LEAD\]` when (?:the )?rules, guardrails or architecture are ambiguous/i,
+        );
+      expect.soft(captured.match(nativeReviewCommandPattern) ?? []).toEqual([]);
+    },
+  );
 
-  it("retains the native CLI review commands for @gwrk/cli", async () => {
-    await writeFile(join(root, "package.json"), '{"name":"@gwrk/cli"}');
+  it.each(["review-code-cli", "review-code-webapp"])(
+    "delivers host review guidance when %s has an unknown profile",
+    async (workflow) => {
+      const captured = await captureDispatch(workflow);
 
-    const captured = await captureDispatch("review-code-cli");
+      for (const instruction of hostReviewGuidance) {
+        expect.soft(captured).toContain(instruction);
+      }
+      expect.soft(captured.match(nativeReviewCommandPattern) ?? []).toEqual([]);
+      expect
+        .soft(captured)
+        .not.toMatch(/\[type:[^\]]*\]|\[\/type\]|<project_profile\b/);
+    },
+  );
 
-    expect.soft(captured).toContain('language="TypeScript"');
-    for (const command of nativeReviewCommands) {
-      expect.soft(captured).toContain(command);
-    }
-  });
+  it.each(["review-code-cli", "review-code-webapp"])(
+    "retains native commands in %s for @gwrk/cli",
+    async (workflow) => {
+      await writeFile(join(root, "package.json"), '{"name":"@gwrk/cli"}');
+
+      const captured = await captureDispatch(workflow);
+
+      expect.soft(captured).toContain('language="TypeScript"');
+      for (const command of nativeReviewCommands) {
+        expect.soft(captured).toContain(command);
+      }
+    },
+  );
 
   it("delivers project-local enforcement inside both definition prompts", async () => {
     const policyDir = join(root, ".gwrk/plugins/skills/phase-01-policy");

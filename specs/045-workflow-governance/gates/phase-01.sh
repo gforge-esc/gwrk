@@ -10,5 +10,6 @@ test -f src/utils/agent.grounding-decisions.test.ts
 test -f src/plugins/builtins/workflows/gwrk-plan/prompt-contract.test.ts
 test -f src/commands/define-plan.test.ts
 test -f src/architecture.test.ts
+test -f src/engine/review-prompts.test.ts
 pnpm run build
-pnpm exec vitest run src/plugins/workflow-governance.delivery.test.ts src/plugins/workflow-governance.test.ts src/utils/agent.grounding-decisions.test.ts src/plugins/builtins/workflows/gwrk-plan/prompt-contract.test.ts src/commands/define-plan.test.ts src/architecture.test.ts
+pnpm exec vitest run src/engine/review-prompts.test.ts src/plugins/workflow-governance.delivery.test.ts src/plugins/workflow-governance.test.ts src/utils/agent.grounding-decisions.test.ts src/plugins/builtins/workflows/gwrk-plan/prompt-contract.test.ts src/commands/define-plan.test.ts src/architecture.test.ts

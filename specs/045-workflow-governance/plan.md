@@ -49,6 +49,7 @@ Apply the single dispatch path decision (ADR-007) and the decision records contr
 - `src/plugins/builtins/workflows/gwrk-specify/PROMPT.md` — **amend** — Use selected architecture and the current project layout. FR-001.
 - `src/plugins/builtins/workflows/gwrk-plan/PROMPT.md` — **amend** — Use current hexagonal boundaries and preserve the parser contract. FR-001.
 - `src/plugins/builtins/personas/principal-engineer.md` — **amend** — Use the project's verification commands and schema standards. FR-001.
+- `src/plugins/builtins/reviews/review-code-webapp/PROMPT.md` (MODIFY: Preserve review prompt parity with host-specific verification and persona guidance)
 - `src/plugins/builtins/reviews/review-code-cli/PROMPT.md` (MODIFY: Load Principal Engineer guidance and limit GWRK commands to the native profile. FR-001.)
 - `src/plugins/workflow-runtime.ts` (MODIFY: Render host review guidance for unknown profiles. FR-001.)
 - `src/plugins/skill-runtime.ts` (MODIFY: Match builtin enforcement to known project languages during definition dispatch)
@@ -197,3 +198,5 @@ After the reviewed foundation merge and legacy fixture repair, the full CI test 
 Phase 1 captured prompts omit unrelated language packs for an unknown profile. Applicable unscoped project-local policy remains present. Shared decision authority requires both a readable target and readable index while the index remains independent. Four regressions failed before repair. The phase gate passes 67 checks. The full suite passes 2176 tests with seven existing skips and six todo cases.
 
 Both Python dispatch regressions failed before the profile detector repair. The phase gate now passes 69 checks, including the native examples and parser tests. The full CI suite passes 2178 tests with seven skips and six todo cases.
+
+The Phase 1 gate includes the existing source and built review prompt parity checks. Both review workflows now carry the same host guidance and persona reporting rules. Captured Python, unknown and native profiles exercise both workflows. The phase gate passes 194 checks after the parity regressions failed.
