@@ -174,7 +174,9 @@ For GitHub origin validation (TR-009), require a checkout-local origin before in
 
 For log and revision buttons (TR-009), replace Alpha's checkout with Beta. Return a checkout warning for logs and leave both revision receipts unclaimed. After restoring Alpha, show its logs and start one revision per button across concurrent clicks.
 
-Replace Alpha's checkout with Beta for Approve Spec and both redispatch buttons (TR-009). Deny those clicks before claiming a receipt or starting work. After restoring Alpha, accept one claim and one launch or enqueue per button across concurrent clicks.
+Replace Alpha's checkout with Beta for Approve Spec and both redispatch buttons (TR-009). Deny those clicks before claiming a receipt or starting work. After restoring Alpha, accept one claim and one launch or enqueue per button across concurrent clicks. Approve Spec runs `gwrk define plan <feature>` from the verified checkout and records one executed receipt.
+
+For the Slack feature path test (TR-009), link the feature directory outside the verified checkout. Deny Approve Spec and both revision buttons. Deny Retry Phase and Request Changes. Reply once in private to the clicker. Assert zero public replies and receipt claims. Assert zero process launches and queue entries.
 
 For mention summaries (TR-011), reply in the original thread when Beta replaces Alpha's checkout. Show Alpha's feature after restoration.
 

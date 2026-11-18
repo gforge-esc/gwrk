@@ -10,6 +10,7 @@ import {
   realpathSync,
   renameSync,
   rmSync,
+  symlinkSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
@@ -985,6 +986,9 @@ describe("slack-actions (FR-007, US-004, US-005)", () => {
       "denies %s on Beta’s thread before claiming or using Alpha’s queue",
       async (actionId) => {
         const { project: alpha } = createSqliteRegistry();
+        mkdirSync(join(alpha.localRoot, "specs", actionValue.featureId), {
+          recursive: true,
+        });
         const alphaThread = {
           ...SYNTHETIC_THREAD_ALPHA,
           projectId: alpha.projectId,
@@ -1086,7 +1090,7 @@ describe("slack-actions (FR-007, US-004, US-005)", () => {
     it.each([
       ["revise_spec", ["define", "spec", actionValue.featureId]],
       ["revise_plan", ["define", "plan", actionValue.featureId]],
-      ["approve_spec", ["plan", actionValue.featureId]],
+      ["approve_spec", ["define", "plan", actionValue.featureId]],
       ["retry_phase", null],
       ["request_changes", null],
     ] as const)(
@@ -1175,12 +1179,23 @@ describe("slack-actions (FR-007, US-004, US-005)", () => {
           ({ value }) => value === true,
         );
         expect.soft(successfulClaims).toHaveLength(1);
+        const receiptKey = buildActionReceiptKey({
+          ...actionValue,
+          projectId: project.projectId,
+          workspaceId: SYNTHETIC_WORKSPACE_ID,
+          channelId: SYNTHETIC_CHANNEL_ALPHA,
+          messageTs,
+          actionId,
+        });
+        expect
+          .soft(registry.getActionReceipt(receiptKey)?.outcome)
+          .toBe("executed");
         if (command) {
-          expect(mockSpawn).toHaveBeenCalledExactlyOnceWith(
-            "gwrk",
-            command,
-            expect.objectContaining({ cwd: realpathSync(alpha) }),
-          );
+          expect(mockSpawn).toHaveBeenCalledExactlyOnceWith("gwrk", command, {
+            cwd: realpathSync(alpha),
+            detached: true,
+            stdio: "ignore",
+          });
           expect(mockContext.queue.enqueue).not.toHaveBeenCalled();
         } else {
           expect(mockContext.queue.enqueue).toHaveBeenCalledExactlyOnceWith({
@@ -1189,6 +1204,51 @@ describe("slack-actions (FR-007, US-004, US-005)", () => {
           });
           expect(mockSpawn).not.toHaveBeenCalled();
         }
+      },
+    );
+
+    it.each([
+      "approve_spec",
+      "revise_spec",
+      "revise_plan",
+      "retry_phase",
+      "request_changes",
+    ])(
+      "denies %s before claiming when the feature links outside the enrolled checkout",
+      async (actionId) => {
+        const { project, registry } = createSqliteRegistry();
+        const outsideFeature = mkdtempSync(join(tmpdir(), "gwrk-feature-"));
+        onTestFinished(() =>
+          rmSync(outsideFeature, { recursive: true, force: true }),
+        );
+        const specs = join(project.localRoot, "specs");
+        mkdirSync(specs);
+        symlinkSync(outsideFeature, join(specs, actionValue.featureId), "dir");
+        const claim = vi.spyOn(registry, "claimActionReceipt");
+        await registerSlackActions(mockApp as App, {
+          ...mockContext,
+          projectRoot: project.localRoot,
+          queueProjectId: project.projectId,
+          routingService: createProjectRoutingService({ registry }),
+        });
+        const click = clickArgs(actionId, project.projectId);
+
+        await actionHandlers[actionId](click);
+
+        expect.soft(click.ack).toHaveBeenCalledOnce();
+        expect
+          .soft(click.client.chat.postEphemeral)
+          .toHaveBeenCalledExactlyOnceWith(
+            expect.objectContaining({
+              channel: SYNTHETIC_CHANNEL_ALPHA,
+              user: SYNTHETIC_USER_MAINTAINER,
+              text: expect.stringContaining("checkout is unavailable"),
+            }),
+          );
+        expect.soft(click.client.chat.postMessage).not.toHaveBeenCalled();
+        expect.soft(claim).not.toHaveBeenCalled();
+        expect.soft(mockSpawn).not.toHaveBeenCalled();
+        expect.soft(mockContext.queue.enqueue).not.toHaveBeenCalled();
       },
     );
 

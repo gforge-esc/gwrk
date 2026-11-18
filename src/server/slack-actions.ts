@@ -6,6 +6,7 @@ import { spawn } from "node:child_process";
 import { realpathSync } from "node:fs";
 import type { App, BlockAction, ButtonAction } from "@slack/bolt";
 import type { ActionsBlock } from "@slack/types";
+import { scopedFeatureDirectory } from "../adapters/filesystem/scoped-feature.js";
 import { verifyEnrolledCheckout } from "../adapters/git/project-id.js";
 import type { ProjectRoutingService } from "../application/project-routing/index.js";
 import { findOpenPr } from "../db/runs.js";
@@ -134,19 +135,25 @@ async function verifyAndClaimClick(
     decision = context.routingService.authorizeAndClaimAction({
       ...input,
       nowIso,
-      resolveCheckout: usesStartupQueue
-        ? (project: EnrolledProject) => {
-            const checkout = resolveProjectCheckout(project);
-            try {
-              return checkout === realpathSync(context.projectRoot)
-                ? checkout
-                : undefined;
-            } catch {
-              return undefined;
+      resolveCheckout:
+        usesStartupQueue || revisesCheckout
+          ? (project) => {
+              const checkout = resolveProjectCheckout(project);
+              if (
+                !checkout ||
+                !scopedFeatureDirectory(checkout, input.featureId)
+              ) {
+                return undefined;
+              }
+              if (!usesStartupQueue) return checkout;
+              try {
+                return checkout === realpathSync(context.projectRoot)
+                  ? checkout
+                  : undefined;
+              } catch {
+                return undefined;
+              }
             }
-          }
-        : revisesCheckout
-          ? resolveProjectCheckout
           : undefined,
       requiredProjectId: usesStartupQueue
         ? (context.queueProjectId ?? null)
@@ -420,7 +427,7 @@ export async function registerSlackActions(app: App, context: CommandContext) {
 
     try {
       // Approve spec triggers plan generation
-      const child = spawn("gwrk", ["plan", featureId], {
+      const child = spawn("gwrk", ["define", "plan", featureId], {
         cwd: auth.projectRoot,
         detached: true,
         stdio: "ignore",
