@@ -297,3 +297,5 @@ pnpm exec vitest run src/commands/harvest.test.ts src/commands/status.test.ts sr
 None. Full coverage of `specs/049-durable-dispatch-harvest/spec.md`.
 
 Phase 2 restart regression rejects a gate failure outbox row whose saved recipient names another project. The matching-project control still claims its saved route. The mismatch failed before the guard and passes without persisted changes after the repair. The original pending-send repair passed all 108 phase checks.
+
+Phase 2 heartbeat regressions preserve the saved expiry and renewal timestamps for earlier and equal-instant delayed heartbeats. Both dispatch and harvest tests reopen SQLite and verify takeover at the preserved expiry. The equal-expiry cases failed before repair. All 118 phase checks pass after the guard includes equality.

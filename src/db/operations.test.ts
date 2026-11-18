@@ -1775,9 +1775,13 @@ describe("durable operations review regressions", () => {
     },
   );
 
-  it.each(["dispatch", "harvest"] as const)(
-    "preserves a renewed %s lease when a stale heartbeat arrives",
-    (kind) => {
+  it.each(
+    (["dispatch", "harvest"] as const).flatMap((kind) =>
+      ["earlier", "equal"].map((expiry) => ({ kind, expiry })),
+    ),
+  )(
+    "preserves a renewed $kind lease when a delayed heartbeat has an $expiry expiry",
+    ({ kind, expiry }) => {
       const operationId =
         kind === "dispatch"
           ? store.acceptDispatch({
@@ -1823,7 +1827,10 @@ describe("durable operations review regressions", () => {
         renew({
           fence: first.fence,
           nowIso: "2026-11-11T12:00:20.000Z",
-          leaseExpiresAt: "2026-11-11T13:02:00.000+01:00",
+          leaseExpiresAt:
+            expiry === "equal"
+              ? "2026-11-11T13:04:00.000+01:00"
+              : "2026-11-11T13:02:00.000+01:00",
         }),
       ).toEqual({ ok: true });
 

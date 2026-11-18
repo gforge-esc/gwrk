@@ -713,7 +713,7 @@ export function createOperationsStore(
 
         if (
           op.leaseExpiresAt !== null &&
-          Date.parse(input.leaseExpiresAt) < Date.parse(op.leaseExpiresAt)
+          Date.parse(input.leaseExpiresAt) <= Date.parse(op.leaseExpiresAt)
         ) {
           return { ok: true };
         }
@@ -1136,7 +1136,7 @@ export function createOperationsStore(
 
         if (
           op.leaseExpiresAt !== null &&
-          Date.parse(input.leaseExpiresAt) < Date.parse(op.leaseExpiresAt)
+          Date.parse(input.leaseExpiresAt) <= Date.parse(op.leaseExpiresAt)
         ) {
           return { ok: true };
         }
