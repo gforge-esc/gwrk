@@ -140,6 +140,10 @@ pnpm exec vitest run src/db/scoping.test.ts src/db/db.test.ts src/db/plan.test.t
 - `src/adapters/git/index.ts` (MODIFY: Add merge inspection to the repository-scoped GitHub adapter)
 - `src/adapters/git/index.test.ts` (MODIFY: Verify the repository, pull request number and inspection outcomes)
 - `src/server/slack-messages.ts` (MODIFY: Stamp `projectId`, project slug and `rootTs` into Slack blocks and action values)
+- `src/adapters/filesystem/adr-checkout.ts` (NEW: Share canonical checkout containment and missing-destination validation)
+- `src/commands/adr.checkout.test.ts` (NEW: Prove carried authoring scope prevents escaped corpus and index writes)
+- `src/engine/adr-scaffold.ts` (MODIFY: Validate authoring paths at the write operation)
+- `src/engine/adr-check.ts` (MODIFY: Keep citation scan roots inside the authorized checkout)
 - `src/server/slack-commands.ts` (MODIFY: Parse `--project`, authorize via `ProjectRoutingService` and thread replies per project)
 - `src/server/slack-actions.ts` (MODIFY: Re-authorize clicks, enforce replay receipts and merge pull requests via `VcsPort`)
 - `src/server/slack-agent.ts` (MODIFY: Require authorized project resolution for mentions, direct messages and reactions)
@@ -180,7 +184,7 @@ For View Logs (TR-009), leave the bound feature directory missing or link it to 
 
 Replace Alpha's checkout with Beta for Approve Spec and both redispatch buttons (TR-009). Deny those clicks before claiming a receipt or starting work. After restoring Alpha, accept one claim and one launch or enqueue per button across concurrent clicks. Approve Spec runs `gwrk define plan <feature>` from the verified checkout and records one executed receipt.
 
-For the Slack feature path test (TR-009), link the feature directory outside the verified checkout. Deny Approve Spec and both revision buttons. Deny Retry Phase and Request Changes. Reply once in private to the clicker. Assert zero public replies and receipt claims. Assert zero process launches and queue entries.
+Link the bound feature directory outside the checkout or to a sibling feature (TR-009). Deny Approve Spec and both revision buttons. Deny Retry Phase and Request Changes. Reply once in private to the clicker. Assert zero public replies, receipt claims and completions. Assert zero process launches and queue entries.
 
 Exercise asynchronous spawn errors for Approve Spec and both revision buttons (TR-009). Keep the receipt claimed until launch resolves. On launch failure, record one failed outcome and warn the actor privately in the authorized thread.
 
@@ -195,6 +199,8 @@ Status, logs and effort read files inside the verified checkout (TR-012a). Apply
 Test external feature links for dispatch, define and ship (TR-012a). Deny all three commands. The ADR list command shows the local decision index. Omit the index content when the same path links to another checkout.
 
 Decide a local ADR and verify its status and generated index (TR-012a). Reject a configured or linked corpus outside the checkout. Reject an index file or directory linked outside the checkout and a dangling index link. Assert a private reply and zero ADR or index writes for each denial.
+
+Run `adr check` as a viewer against the generated local index (TR-012a). Omit foreign filenames and citations when a scan root links outside the checkout. Deny `adr record` privately when the decision corpus links outside the checkout. Assert zero process launches.
 
 Point Alpha's specs at Beta's specs and request a missing feature with `ship` and `approve` (TR-012a). Both commands return a private checkout-scoped error without listing features. Assert zero process launches, pull request lookups and merges. Give `ship` a prefix that matches a local feature and a linked foreign feature. Assert it resolves the local feature and replies in its thread.
 

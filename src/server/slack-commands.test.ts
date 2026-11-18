@@ -533,7 +533,7 @@ describe("slack-commands (FR-015, US-004)", () => {
     );
   });
 
-  it("decides a local ADR and creates its index inside the authorized checkout", async () => {
+  it("decides a local ADR and verifies its generated index inside the authorized checkout", async () => {
     const decisions = join(context.projectRoot, "docs", "decisions");
     const adrPath = join(decisions, "ADR-010-track-the-decision.md");
     writeFileSync(
@@ -553,6 +553,14 @@ describe("slack-commands (FR-015, US-004)", () => {
         "utf-8",
       ),
     ).toContain("| ADR-010 | Slack | Decided |");
+    const check = await handleSlashCommand("adr check", {
+      ...context,
+      userId: SYNTHETIC_USER_VIEWER,
+    });
+    expect(check.response_type).toBe("ephemeral");
+    expect(check.blocks[0].text.text).toContain(
+      "All ADR citations and decision index verified.",
+    );
   });
 
   it.each([
@@ -620,6 +628,63 @@ describe("slack-commands (FR-015, US-004)", () => {
       }
     },
   );
+
+  it("excludes foreign citation findings when checking ADRs", async () => {
+    const root = mkdtempSync(join(tmpdir(), "gwrk-slash-adr-check-"));
+    onTestFinished(() => rmSync(root, { recursive: true, force: true }));
+    const beta = initCheckout(SYNTHETIC_PROJECT_BETA, join(root, "beta"));
+    const foreignSrc = join(beta.localRoot, "src");
+    mkdirSync(foreignSrc);
+    const foreignAdrId = ["ADR", "777"].join("-");
+    writeFileSync(join(foreignSrc, "beta-only.ts"), `// See ${foreignAdrId}\n`);
+    const decisions = join(context.projectRoot, "docs", "decisions");
+    writeFileSync(
+      join(context.projectRoot, ".gwrkrc.json"),
+      JSON.stringify({ project: { name: "alpha" } }),
+    );
+    mkdirSync(decisions, { recursive: true });
+    writeFileSync(
+      join(decisions, "ADR-010-track-the-decision.md"),
+      proposedAdr,
+    );
+    const decide = await handleSlashCommand("adr decide ADR-010", context);
+    expect(decide.response_type).toBe("in_channel");
+    symlinkSync(foreignSrc, join(context.projectRoot, "src"), "dir");
+
+    const response = await handleSlashCommand("adr check", {
+      ...context,
+      userId: SYNTHETIC_USER_VIEWER,
+    });
+
+    expect.soft(response.response_type).toBe("ephemeral");
+    expect.soft(response.blocks[0].text.text).not.toContain("beta-only.ts");
+    expect(response.blocks[0].text.text).not.toContain(foreignAdrId);
+  });
+
+  it("denies ADR recording before launch when the corpus is outside the checkout", async () => {
+    const { spawn } = await import("node:child_process");
+    const root = mkdtempSync(join(tmpdir(), "gwrk-slash-adr-record-"));
+    onTestFinished(() => rmSync(root, { recursive: true, force: true }));
+    const beta = initCheckout(SYNTHETIC_PROJECT_BETA, join(root, "beta"));
+    const foreignDecisions = join(beta.localRoot, "docs", "decisions");
+    const docs = join(context.projectRoot, "docs");
+    writeFileSync(
+      join(context.projectRoot, ".gwrkrc.json"),
+      JSON.stringify({ project: { name: "alpha" } }),
+    );
+    mkdirSync(foreignDecisions, { recursive: true });
+    mkdirSync(docs);
+    symlinkSync(foreignDecisions, join(docs, "decisions"), "dir");
+
+    const response = await handleSlashCommand(
+      "adr record Track the decision",
+      context,
+    );
+
+    expect.soft(response.response_type).toBe("ephemeral");
+    expect.soft(response.blocks[0].text.text).toMatch(/checkout/i);
+    expect(spawn).not.toHaveBeenCalled();
+  });
 
   it("handles approve command — merges PR via VCS port", async () => {
     const merge = vi.spyOn(context.vcs!, "mergePullRequest");

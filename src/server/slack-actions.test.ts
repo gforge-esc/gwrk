@@ -1268,24 +1268,34 @@ describe("slack-actions (FR-007, US-004, US-005)", () => {
       },
     );
 
-    it.each([
-      "approve_spec",
-      "revise_spec",
-      "revise_plan",
-      "retry_phase",
-      "request_changes",
-    ])(
-      "denies %s before claiming when the feature links outside the enrolled checkout",
-      async (actionId) => {
+    it.each(
+      [
+        "approve_spec",
+        "revise_spec",
+        "revise_plan",
+        "retry_phase",
+        "request_changes",
+      ].flatMap((actionId) =>
+        ["outside the checkout", "to a sibling feature"].map((destination) => ({
+          actionId,
+          destination,
+        })),
+      ),
+    )(
+      "denies $actionId before claiming when the feature links $destination",
+      async ({ actionId, destination }) => {
         const { project, registry } = createSqliteRegistry();
-        const outsideFeature = mkdtempSync(join(tmpdir(), "gwrk-feature-"));
-        onTestFinished(() =>
-          rmSync(outsideFeature, { recursive: true, force: true }),
-        );
         const specs = join(project.localRoot, "specs");
         mkdirSync(specs);
-        symlinkSync(outsideFeature, join(specs, actionValue.featureId), "dir");
+        const target =
+          destination === "to a sibling feature"
+            ? join(specs, `${actionValue.featureId}-followup`)
+            : mkdtempSync(join(tmpdir(), "gwrk-feature-"));
+        mkdirSync(target, { recursive: true });
+        onTestFinished(() => rmSync(target, { recursive: true, force: true }));
+        symlinkSync(target, join(specs, actionValue.featureId), "dir");
         const claim = vi.spyOn(registry, "claimActionReceipt");
+        const complete = vi.spyOn(registry, "completeActionReceipt");
         await registerSlackActions(mockApp as App, {
           ...mockContext,
           projectRoot: project.localRoot,
@@ -1308,6 +1318,7 @@ describe("slack-actions (FR-007, US-004, US-005)", () => {
           );
         expect.soft(click.client.chat.postMessage).not.toHaveBeenCalled();
         expect.soft(claim).not.toHaveBeenCalled();
+        expect.soft(complete).not.toHaveBeenCalled();
         expect.soft(mockSpawn).not.toHaveBeenCalled();
         expect.soft(mockContext.queue.enqueue).not.toHaveBeenCalled();
       },

@@ -39,7 +39,7 @@ export function scopedFeatureDirectory(
     const feature = realpathSync(expected);
     return within(specs, feature) &&
       feature !== specs &&
-      (!options.exactId || feature === expected) &&
+      (options.exactId === false || feature === expected) &&
       statSync(feature).isDirectory()
       ? feature
       : undefined;

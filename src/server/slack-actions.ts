@@ -165,7 +165,9 @@ async function verifyAndClaimClick(
               const checkout = resolveProjectCheckout(project);
               if (
                 !checkout ||
-                !scopedFeatureDirectory(checkout, input.featureId)
+                !scopedFeatureDirectory(checkout, input.featureId, {
+                  exactId: true,
+                })
               ) {
                 return undefined;
               }

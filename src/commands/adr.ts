@@ -3,9 +3,13 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import fs from "node:fs/promises";
-import { basename, dirname, isAbsolute, join, relative, sep } from "node:path";
+import { join } from "node:path";
 import { Command } from "commander";
 import { logCliOutput } from "../adapters/cli/output-scope.js";
+import {
+  resolveAdrPathInCheckout,
+  resolveIndexDestination,
+} from "../adapters/filesystem/adr-checkout.js";
 import { amendAtSection, appendSection, decide } from "../engine/adr-amend.js";
 import { checkCitations } from "../engine/adr-check.js";
 import { checkIndex, writeIndex } from "../engine/adr-index.js";
@@ -14,6 +18,7 @@ import {
   allocateNumber,
   findProjectRoot,
   renderTemplate,
+  resolveAdrAuthoringScope,
   resolveDecisionsDir,
   scaffold,
   todayLocal,
@@ -77,7 +82,7 @@ export interface AdrArgs {
   body?: string;
   /** Where the project-root walk starts. Defaults to the working directory. */
   cwd?: string;
-  /** Restrict a decision to this canonical checkout. */
+  /** Restrict reads and writes to this canonical checkout. */
   verifiedCheckoutRoot?: string;
 }
 
@@ -90,9 +95,10 @@ const RECORD_WORKFLOW = "gwrk-adr-record";
 /** Shipped builtin workflow wired behind `--audit` (FR-027). */
 const AUDIT_WORKFLOW = "gwrk-constitution";
 
-async function reindexProject(cwd: string): Promise<string> {
+async function reindexProject(cwd: string, checkout?: string): Promise<string> {
   const projectRoot = await findProjectRoot(cwd);
   const decisionsDir = await resolveDecisionsDir(projectRoot);
+  if (checkout) await resolveAdrAuthoringScope(cwd, checkout);
   const records = await parseCorpus(decisionsDir);
   return writeIndex(projectRoot, records);
 }
@@ -102,44 +108,6 @@ function normalizeAdrId(raw: string): string {
   if (/^\d{3}$/.test(trimmed)) return `ADR-${trimmed}`;
   if (/^adr-\d{3}$/i.test(trimmed)) return trimmed.toUpperCase();
   return trimmed;
-}
-
-async function resolveIndexDestination(filePath: string): Promise<string> {
-  try {
-    await fs.lstat(filePath);
-  } catch (error) {
-    const parent = dirname(filePath);
-    if (
-      (error as NodeJS.ErrnoException).code !== "ENOENT" ||
-      parent === filePath
-    ) {
-      throw error;
-    }
-    return join(await resolveIndexDestination(parent), basename(filePath));
-  }
-  return fs.realpath(filePath);
-}
-
-async function resolveAdrPathInCheckout(
-  checkout: string,
-  filePath: string,
-  resolvePath: (path: string) => Promise<string> = fs.realpath,
-): Promise<string> {
-  const resolved = await resolvePath(filePath).catch(() => undefined);
-  if (resolved) {
-    const suffix = relative(checkout, resolved);
-    if (
-      suffix !== ".." &&
-      !suffix.startsWith(`..${sep}`) &&
-      !isAbsolute(suffix)
-    ) {
-      return resolved;
-    }
-  }
-  throw new CommandError(
-    "Could not verify ADR paths inside the verified checkout.",
-    1,
-  );
 }
 
 async function resolveTargetRecord(
@@ -173,8 +141,16 @@ async function resolveTargetRecord(
   return { projectRoot, decisionsDir, record };
 }
 
-export async function adrCommandHandler(args: AdrArgs): Promise<string> {
-  const cwd = args.cwd ?? process.cwd();
+export async function adrCommandHandler(input: AdrArgs): Promise<string> {
+  const cwd = input.cwd ?? process.cwd();
+  const carriedCheckout =
+    input.verifiedCheckoutRoot ?? process.env.GWRK_ADR_CHECKOUT_ROOT;
+  const scope = carriedCheckout
+    ? await resolveAdrAuthoringScope(cwd, carriedCheckout)
+    : undefined;
+  const args = scope
+    ? { ...input, verifiedCheckoutRoot: scope.verifiedCheckoutRoot }
+    : input;
 
   if (args.reindex && args.check) {
     const projectRoot = await findProjectRoot(cwd);
@@ -211,7 +187,7 @@ export async function adrCommandHandler(args: AdrArgs): Promise<string> {
   }
 
   if (args.reindex) {
-    return reindexProject(cwd);
+    return reindexProject(cwd, args.verifiedCheckoutRoot);
   }
 
   if (args.audit) {
@@ -222,7 +198,9 @@ export async function adrCommandHandler(args: AdrArgs): Promise<string> {
     const projectRoot = await findProjectRoot(cwd);
     const decisionsDir = await resolveDecisionsDir(projectRoot);
     const records = await parseCorpus(decisionsDir);
-    const findings = await checkCitations(projectRoot, records);
+    const findings = args.verifiedCheckoutRoot
+      ? await checkCitations(projectRoot, records, args.verifiedCheckoutRoot)
+      : await checkCitations(projectRoot, records);
     if (findings.length > 0) {
       if (args.format === "json") {
         throw new CommandError(JSON.stringify({ ok: false, findings }), 1);
@@ -259,7 +237,7 @@ export async function adrCommandHandler(args: AdrArgs): Promise<string> {
     if (verifiedCheckoutRoot) {
       await writeIndex(projectRoot, await parseCorpus(decisionsDir));
     } else {
-      await reindexProject(cwd);
+      await reindexProject(cwd, args.verifiedCheckoutRoot);
     }
     return filePath;
   }
@@ -271,7 +249,11 @@ export async function adrCommandHandler(args: AdrArgs): Promise<string> {
         1,
       );
     }
-    const { record } = await resolveTargetRecord(cwd, args.target);
+    const { record } = await resolveTargetRecord(
+      cwd,
+      args.target,
+      args.verifiedCheckoutRoot,
+    );
     let result: ReturnType<typeof amendAtSection>;
     try {
       if (args.appendSection) {
@@ -291,7 +273,7 @@ export async function adrCommandHandler(args: AdrArgs): Promise<string> {
       throw new CommandError(message, 1);
     }
     await fs.writeFile(result.filePath, result.content, "utf-8");
-    await reindexProject(cwd);
+    await reindexProject(cwd, args.verifiedCheckoutRoot);
     return result.filePath;
   }
 
@@ -312,8 +294,13 @@ export async function adrCommandHandler(args: AdrArgs): Promise<string> {
     });
   }
 
-  const result = await scaffold(args.target ?? "", { cwd });
-  await reindexProject(cwd);
+  const result = await scaffold(args.target ?? "", {
+    cwd,
+    ...(args.verifiedCheckoutRoot
+      ? { verifiedCheckoutRoot: args.verifiedCheckoutRoot }
+      : {}),
+  });
+  await reindexProject(cwd, args.verifiedCheckoutRoot);
 
   // Without `--run` the record stands as scaffolded and no runtime is
   // constructed (contract §3).
@@ -323,7 +310,7 @@ export async function adrCommandHandler(args: AdrArgs): Promise<string> {
 
   const title = (args.target ?? "").trim();
   const summary = await draftRecord(result, title, cwd);
-  await reindexProject(cwd);
+  await reindexProject(cwd, args.verifiedCheckoutRoot);
   return `${result.filePath}\n${summary}`;
 }
 

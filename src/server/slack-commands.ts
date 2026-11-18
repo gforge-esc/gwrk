@@ -833,6 +833,8 @@ const handlers: Record<string, SlashCommandHandler> = {
         const msg = await adrCommandHandler({
           check: true,
           cwd: context.projectRoot,
+          verifiedCheckoutRoot:
+            context.verifiedCheckoutRoot ?? context.projectRoot,
         });
         return {
           response_type: "ephemeral",
@@ -923,12 +925,38 @@ const handlers: Record<string, SlashCommandHandler> = {
           ],
         };
       }
-      const child = spawn("gwrk", ["define", "adr", title, "--run"], {
-        cwd: context.projectRoot,
-        detached: true,
-        stdio: "ignore",
-      });
-      child.unref();
+      try {
+        const { resolveAdrAuthoringScope } = await import(
+          "../engine/adr-scaffold.js"
+        );
+        const scope = await resolveAdrAuthoringScope(
+          context.projectRoot,
+          context.verifiedCheckoutRoot ?? context.projectRoot,
+        );
+        const child = spawn("gwrk", ["define", "adr", title, "--run"], {
+          cwd: scope.projectRoot,
+          detached: true,
+          stdio: "ignore",
+          env: {
+            ...process.env,
+            GWRK_ADR_CHECKOUT_ROOT: scope.verifiedCheckoutRoot,
+          },
+        });
+        child.unref();
+      } catch (error) {
+        return {
+          response_type: "ephemeral",
+          blocks: [
+            {
+              type: "section",
+              text: {
+                type: "mrkdwn",
+                text: `:warning: ${error instanceof Error ? error.message : String(error)}`,
+              },
+            },
+          ],
+        };
+      }
       return {
         response_type: "in_channel",
         blocks: [
