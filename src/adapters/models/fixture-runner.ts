@@ -221,6 +221,35 @@ async function seedFiles(
   }
 }
 
+async function changedFixturePaths(
+  workspaceDir: string,
+  baselineSha: string,
+): Promise<Set<string>> {
+  const { stdout: trackedChanges } = await execFileAsync("git", [
+    "-C",
+    workspaceDir,
+    "diff",
+    "--no-renames",
+    "--name-only",
+    "-z",
+    baselineSha,
+    "--",
+  ]);
+  const { stdout: untrackedChanges } = await execFileAsync("git", [
+    "-C",
+    workspaceDir,
+    "ls-files",
+    "--others",
+    "--exclude-standard",
+    "-z",
+  ]);
+  return new Set(
+    `${trackedChanges}${untrackedChanges}`
+      .split("\0")
+      .filter((path) => path && !path.startsWith(".runs/")),
+  );
+}
+
 function hasSection(markdown: string, section: string): boolean {
   const lines = markdown.split(/\r?\n/);
   let content = false;
@@ -868,54 +897,7 @@ export class FixtureRunner
         }
       }
 
-      const { stdout: trackedChanges } = await execFileAsync("git", [
-        "-C",
-        workspaceDir,
-        "diff",
-        "--no-renames",
-        "--name-only",
-        "-z",
-        baselineSha,
-        "--",
-      ]);
-      const { stdout: untrackedChanges } = await execFileAsync("git", [
-        "-C",
-        workspaceDir,
-        "ls-files",
-        "--others",
-        "--exclude-standard",
-        "-z",
-      ]);
-      const changedFiles = [
-        ...new Set(
-          `${trackedChanges}${untrackedChanges}`
-            .split("\0")
-            .filter(Boolean)
-            .filter((path) => !path.startsWith(".runs/")),
-        ),
-      ];
-
-      const allowedChangedPaths =
-        request.role === "review"
-          ? ["tasks.md", REVIEW_TASK_STATE]
-          : fixture.gates?.allowedChangedPaths;
-      if (allowedChangedPaths) {
-        const allowed = new Set(allowedChangedPaths);
-        const forbidden = changedFiles.filter((path) => !allowed.has(path));
-        if (forbidden.length > 0) {
-          gateChecks.push({
-            checkId: "forbidden-file-mutation",
-            passed: false,
-            detail: `Forbidden file mutations: ${forbidden.join(", ")}`,
-          });
-        } else {
-          gateChecks.push({
-            checkId: "forbidden-file-mutation",
-            passed: true,
-            detail: "All changed paths permitted",
-          });
-        }
-      }
+      const changedFiles = await changedFixturePaths(workspaceDir, baselineSha);
 
       if (request.role === "implement") {
         if (fixture.gates?.command) {
@@ -942,6 +924,12 @@ export class FixtureRunner
               ? `Candidate command exited with expected code ${candidateExitCode}`
               : `Candidate expected ${expectedCode}, observed ${candidateExitCode}`,
           });
+          for (const path of await changedFixturePaths(
+            workspaceDir,
+            baselineSha,
+          )) {
+            changedFiles.add(path);
+          }
         }
       } else if (request.role === "review") {
         if (fixture.gates?.command) {
@@ -966,6 +954,25 @@ export class FixtureRunner
               : `Review expected baseline ${expectedCode}, observed ${reviewExitCode}`,
           });
         }
+      }
+
+      const allowedChangedPaths =
+        request.role === "review"
+          ? ["tasks.md", REVIEW_TASK_STATE]
+          : fixture.gates?.allowedChangedPaths;
+      if (allowedChangedPaths) {
+        const allowed = new Set(allowedChangedPaths);
+        const forbidden = [...changedFiles].filter(
+          (path) => !allowed.has(path),
+        );
+        gateChecks.push({
+          checkId: "forbidden-file-mutation",
+          passed: forbidden.length === 0,
+          detail:
+            forbidden.length === 0
+              ? "All changed paths permitted"
+              : `Forbidden file mutations: ${forbidden.join(", ")}`,
+        });
       }
 
       if (Array.isArray(fixture.gates?.requiredOutputs)) {

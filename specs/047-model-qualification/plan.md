@@ -109,9 +109,10 @@ Create versioned synthetic fixtures for long-context definition and seeded-defec
 | TR-023 | integration | `src/adapters/models/fixture-runner.test.ts` | Blocks opaque environment credentials in definition artifacts, repeat stdout, judge packets, verdicts and nested transport errors |
 | TR-024 | unit | `src/application/models/evaluate-models.test.ts` | Rejects a failed implementation check on either route before judging when the repeat reports a passing aggregate |
 | TR-025 | integration | `src/adapters/models/fixture-runner.test.ts` | Recomputes the recorded judge workflow hash from the dispatched prompt file and output schema |
-| TR-026 | unit | `src/application/models/evaluate-models.test.ts` | Reports definition coverage on candidate gate failure and sends both coverage scores to judges when only the incumbent fails a reference check |
+| TR-026 | unit | `src/application/models/evaluate-models.test.ts` | Definition coverage on candidate rejection and both judges' blinded scores and handoff pass rates after one or three incumbent reference failures skip dispatch |
 | TR-027 | integration | `src/adapters/models/fixture-runner.test.ts` | Records 250 ms for a 200 ms specification dispatch and a 50 ms planning dispatch |
 | TR-028 | integration | `src/adapters/models/fixture-runner.test.ts` | Citable fixture inputs and gate results by blinded option and repeat, rejection of absent references, and recorded generated handoff inputs |
+| TR-029 | integration | `src/adapters/models/fixture-runner.test.ts` | A passing candidate command that modifies `AGENTS.md` fails the protected path check and aggregate gate |
 
 The matching-model handoff case keeps behavior pass rates of 1 and 0. A passing definition repeat exports the original specification and generated plan. The review cases accept report-only and canonical reopenings of T001, the routing task.
 

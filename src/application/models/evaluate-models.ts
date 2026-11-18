@@ -100,6 +100,7 @@ interface EvaluationComparison {
   readonly fixtureId: string;
   readonly handoff?: Handoff;
   readonly repeats: ComparisonRepeats;
+  readonly skippedIncumbentRepeatIndices?: readonly number[];
   readonly roleScore?: RoleScore;
   readonly gatePassRate?: Readonly<Record<RouteKey, number>>;
 }
@@ -132,17 +133,29 @@ function matchesJudgeRoute(
 function hasRepeatFloor(
   comparison: EvaluationComparison,
   floor: number,
+  scheduledCount: number,
 ): boolean {
+  if (scheduledCount < floor) return false;
   return routeKeys.every((route) => {
     const indices = comparison.repeats[route].map(
       ({ repeatIndex }) => repeatIndex,
     );
+    if (
+      route === "incumbent" &&
+      comparison.handoff?.planSource === "candidate"
+    ) {
+      indices.push(...(comparison.skippedIncumbentRepeatIndices ?? []));
+    }
     return (
       comparison.repeats[route].every(
         ({ fixtureId }) => fixtureId === comparison.fixtureId,
       ) &&
-      indices.every((index) => Number.isSafeInteger(index) && index >= 0) &&
-      new Set(indices).size >= floor
+      indices.length === scheduledCount &&
+      new Set(indices).size === scheduledCount &&
+      indices.every(
+        (index) =>
+          Number.isSafeInteger(index) && index >= 0 && index < scheduledCount,
+      )
     );
   });
 }
@@ -347,14 +360,24 @@ export async function evaluateModels(
       FixtureRepeatEvidence[]
     >;
     const prerequisite = definitions.get(from);
+    const skippedIncumbentRepeatIndices: number[] = [];
     for (let repeatIndex = 0; repeatIndex < repeatCount; repeatIndex += 1) {
       for (const route of routeKeys) {
         if (planSource === "candidate") {
+          const definition = prerequisite?.[route][repeatIndex];
           if (
             !fixedImplementer ||
-            !prerequisite?.[route][repeatIndex]?.deterministicGatesPassed
-          )
+            definition?.fixtureId !== from ||
+            definition.repeatIndex !== repeatIndex
+          ) {
             continue;
+          }
+          if (!definition.deterministicGatesPassed) {
+            if (route === "incumbent") {
+              skippedIncumbentRepeatIndices.push(repeatIndex);
+            }
+            continue;
+          }
           repeats[route].push(
             await runRepeat(fixedImplementer, {
               fixtureId,
@@ -385,6 +408,9 @@ export async function evaluateModels(
         fixtureId,
         handoff,
         repeats,
+        ...(skippedIncumbentRepeatIndices.length > 0
+          ? { skippedIncumbentRepeatIndices }
+          : {}),
         gatePassRate: {
           candidate: rate("candidate"),
           incumbent: rate("incumbent"),
@@ -450,7 +476,9 @@ export async function evaluateModels(
     return reject("gate-failure");
   }
   if (
-    !comparisons.every((comparison) => hasRepeatFloor(comparison, repeatFloor))
+    !comparisons.every((comparison) =>
+      hasRepeatFloor(comparison, repeatFloor, repeatCount),
+    )
   ) {
     return reject("insufficient-repeats");
   }
@@ -524,7 +552,10 @@ export async function evaluateModels(
       .join("\n\n");
   const outputs = { optionA: outputFor(left), optionB: outputFor(right) };
   const gateSummaries = comparisons.map(
-    ({ gatePassRate, roleScore, repeats }, index) => {
+    (
+      { gatePassRate, roleScore, repeats, skippedIncumbentRepeatIndices },
+      index,
+    ) => {
       const label = comparisonLabels[index];
       const elapsed = (route: RouteKey) => {
         const median = computeMedian(
@@ -534,7 +565,11 @@ export async function evaluateModels(
       };
       const elapsedRanking = `Option A ${elapsed(left)}, Option B ${elapsed(right)}. Coverage is primary. Elapsed duration is secondary.`;
       if (gatePassRate) {
-        return `${label}: Option A gate pass rate ${gatePassRate[left]}, Option B gate pass rate ${gatePassRate[right]}. ${elapsedRanking}`;
+        const incumbentOption = left === "incumbent" ? "A" : "B";
+        const skips = skippedIncumbentRepeatIndices?.length
+          ? ` Option ${incumbentOption} skipped repeat indices ${skippedIncumbentRepeatIndices.join(", ")} after definition gate failure.`
+          : "";
+        return `${label}: Option A gate pass rate ${gatePassRate[left]}, Option B gate pass rate ${gatePassRate[right]}. ${elapsedRanking}${skips}`;
       }
       if (roleScore?.role === "implement") {
         const times = {

@@ -921,6 +921,38 @@ describe("fixture runner adapter", () => {
     });
   });
 
+  it("TR-029 rejects a forbidden mutation made during a passing candidate gate", async () => {
+    const dispatcher = async (task: TaskDispatch): Promise<TaskResult> => {
+      writeFileSync(
+        join(task.workDir!, "src/domain/select-queue.mjs"),
+        `import { appendFileSync } from "node:fs";
+appendFileSync(new URL("../../AGENTS.md", import.meta.url), "\\nChanged during the candidate gate\\n");
+${fixedPassingQueueImplementation}`,
+      );
+      return { exitCode: 0, stdout: "", stderr: "", durationS: 0 };
+    };
+    const evidence = await createFixtureRunner({ dispatcher }).runFixtureRepeat(
+      {
+        fixtureId: "implement-seeded-defect",
+        role: "implement",
+        repeatIndex: 0,
+        route: candidateRoute,
+      },
+    );
+
+    expect(evidence.gateChecks).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ checkId: "candidate-gate", passed: true }),
+        expect.objectContaining({
+          checkId: "forbidden-file-mutation",
+          passed: false,
+          detail: expect.stringContaining("AGENTS.md"),
+        }),
+      ]),
+    );
+    expect(evidence.deterministicGatesPassed).toBe(false);
+  });
+
   it.each([
     ["plan", undefined],
     ["plan", " \n"],
