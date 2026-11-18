@@ -503,14 +503,20 @@ function resolvePrimaryCheckout(executionDir: string): string {
 
 const ENFORCEMENT_MARKER = "{{enforcement}}";
 
-function withoutGeneratedPolicyGaps(target: string): string {
-  const masked = maskPromptExamples(target);
-  const heading = /^##[ \t]+Policy gaps[ \t]*\r?$/m.exec(masked);
-  if (!heading) return target;
-  const contentStart = heading.index + heading[0].length;
-  const nextHeading = /^#{1,2}[ \t]+/m.exec(masked.slice(contentStart));
-  const end = nextHeading ? contentStart + nextHeading.index : target.length;
-  return target.slice(0, heading.index) + target.slice(end);
+function withoutGeneratedPolicySections(target: string): string {
+  const headings = Array.from(
+    maskPromptExamples(target).matchAll(/^#{1,2}[ \t]+[^\r\n]*/gm),
+  );
+  const generatedHeading =
+    /^##[ \t]+(?:Language guidance|Framework guidance|Policy gaps)[ \t]*$/;
+  let projected = "";
+  let start = 0;
+  for (const [index, heading] of headings.entries()) {
+    if (!generatedHeading.test(heading[0])) continue;
+    projected += target.slice(start, heading.index);
+    start = headings[index + 1]?.index ?? target.length;
+  }
+  return projected + target.slice(start);
 }
 
 function maskPromptExamples(template: string): string {
@@ -828,9 +834,12 @@ export async function dispatchToAgent(task: TaskDispatch): Promise<TaskResult> {
     );
     const enforcement = `<effective_policy>\n${resolvedPolicy}\n</effective_policy>`;
     if (architectureTarget !== undefined) {
+      const projectedTarget =
+        withoutGeneratedPolicySections(architectureTarget);
       grounding = grounding.replace(
         `<architecture_target>\n${architectureTarget}\n</architecture_target>`,
-        `<architecture_target>\n${withoutGeneratedPolicyGaps(architectureTarget)}\n</architecture_target>`,
+        () =>
+          `<architecture_target>\n${projectedTarget}\n</architecture_target>`,
       );
     }
 

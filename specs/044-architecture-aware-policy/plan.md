@@ -176,7 +176,8 @@ bash specs/044-architecture-aware-policy/gates/phase-03.sh
 | TR-004 | integration | `src/commands/init.test.ts` | Fresh and repeated init calls make zero agent dispatches and preserve existing source code and human `Decided` ADRs |
 | TR-012 | unit | `src/application/architecture/context.test.ts` | Deterministic context rendering preserves manifest hashes without gaps and records explicit gap notes when bindings are missing |
 | TR-012 | unit | `src/application/architecture/context.test.ts` | Two-argument rendering uses the projected policy for TypeScript and Django and preserves Python and FastAPI output bytes when there are no gaps |
-| TR-013 | integration | `src/utils/agent.policy-binding.test.ts` | Shared prompt transport includes compatible policy once across define, implement and review scopes |
+| TR-013 | integration | `src/utils/agent.policy-binding.test.ts` | Define, implement and review prompts include Python and FastAPI workspace policy once and omit guidance from the installed TypeScript and Fastify root target |
+| TR-013 | integration | `src/utils/agent.policy-binding.test.ts` | Policy expansion preserves every byte of a target without generated policy sections, including literal `$$` in a Make recipe rule and headings in a fenced example |
 | TR-013 | integration | `src/utils/agent.test.ts` | Built-in `gwrk-specify` delivers the definition skill once and preserves user input |
 | TR-013 | integration | `src/utils/agent.test.ts` | Built-in `gwrk-implement` delivers the target rule once and retains the selected skill and framework gap |
 | TR-014 | e2e | `scripts/architecture-context-uat.py` | Built CLI init and assessment preview complete with zero model invocations across fresh and existing and polyglot fixtures |

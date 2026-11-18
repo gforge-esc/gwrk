@@ -20,22 +20,52 @@ afterEach(() => rmSync(root, { recursive: true, force: true }));
 
 async function prompt(workflow: string, profile: ProjectProfile) {
   const template = "Trusted workflow\n<code_quality>\n{{enforcement}}\n</code_quality>";
-  const task = { workflow, profile, type: workflow.includes("review") ? "review" : "workflow", workDir: root, stdin: template, promptParts: { template, userInput: "<user_input>Keep task text</user_input>" }, dryRun: true, quiet: true };
-  return (await dispatchToAgent(task)).stdout;
+  const result = await dispatchToAgent({
+    agent: "agy",
+    workflow,
+    profile,
+    type: workflow.includes("review") ? "review" : "workflow",
+    workDir: root,
+    stdin: template,
+    promptParts: { template, userInput: "<user_input>Keep task text</user_input>" },
+    dryRun: true,
+    quiet: true,
+  });
+  return JSON.parse(result.stdout).message.content as string;
 }
 describe("shared effective policy dispatch", () => {
   it.each(["gwrk-spec", "gwrk-implement", "review-code-cli"])(
     "binds the selected workspace profile once in %s without launching an agent",
     async (workflow) => {
-      const rendered = await prompt(workflow, { type: "python", stack: { language: "Python", framework: "FastAPI" }, design: resolveDesign({ architecture: "hexagonal-functional" }) });
+      const design = resolveDesign({ architecture: "hexagonal-functional" });
+      await installArchitectureContext(root, {
+        projectName: "binding-fixture",
+        design,
+        language: "TypeScript",
+        framework: "Fastify",
+        decisionsDir: "docs/decisions",
+      });
+      const target = join(root, ".gwrk/architecture.md");
+      const original = readFileSync(target, "utf8");
+      expect(original).toContain("Use interfaces for ports");
+      expect(original).toContain("Fastify routes");
+
+      const rendered = await prompt(workflow, {
+        type: "python",
+        stack: { language: "Python", framework: "FastAPI" },
+        design,
+      });
       expect(rendered.match(/<effective_policy>/g)).toHaveLength(1);
       expect(rendered).toContain("Domain policy MUST depend inward");
       expect(rendered).toContain("typing.Protocol");
       expect(rendered).toContain("FastAPI routers");
-      expect(rendered).not.toContain("Fastify routes");
+      expect.soft(rendered).not.toContain("Use interfaces for ports");
+      expect.soft(rendered).not.toContain("Fastify routes");
       expect(rendered).not.toContain("TypeScript Standards");
       expect(rendered).toContain("Initialization does not assess code conformance");
       expect(rendered).toContain("<user_input>Keep task text</user_input>");
+      expect(rendered).toContain("## Project decisions");
+      expect(readFileSync(target, "utf8")).toBe(original);
     },
   );
   it("reports incompatible framework guidance without injecting its binding", async () => {
@@ -44,6 +74,36 @@ describe("shared effective policy dispatch", () => {
     expect(rendered).toContain("No compatible policy found for framework Django");
     expect(rendered).not.toContain("Keep Django ORM models");
   });
+});
+
+it("preserves every byte of a target without generated policy sections", async () => {
+  const target = [
+    "# Project architecture target",
+    "",
+    "## Rules",
+    "",
+    "- Preserve the literal `$$` in Make recipes.",
+    "",
+    "```markdown",
+    "## Language guidance",
+    "## Framework guidance",
+    "## Policy gaps",
+    "```",
+    "",
+  ].join("\n");
+  mkdirSync(join(root, ".gwrk"), { recursive: true });
+  writeFileSync(join(root, ".gwrk/architecture.md"), target);
+
+  const rendered = await prompt("gwrk-implement", {
+    type: "nodejs",
+    stack: { language: "TypeScript", framework: "Fastify" },
+    design: resolveDesign({ architecture: "hexagonal-functional" }),
+  });
+  expect(rendered).toContain("<effective_policy>");
+  const injected = rendered.match(
+    /<architecture_target>\n([\s\S]*?)\n<\/architecture_target>/,
+  );
+  expect(injected?.[1]).toBe(target);
 });
 
 it("refreshes dynamic framework gaps while preserving the target file and decision index", async () => {
