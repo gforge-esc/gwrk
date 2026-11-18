@@ -147,10 +147,18 @@ export interface SmokeProbePort {
   runSmokeProbe(request: SmokeProbeRequest): Promise<SmokeProbeEvidence>;
 }
 
+export interface QualificationSuite {
+  repeats: number;
+  fixtures: readonly { id: string; roles: readonly ("define" | "implement" | "review")[] }[];
+  handoffs: readonly {
+    from: string;
+    to: string;
+    planSource: "candidate" | "fixed";
+  }[];
+}
+
 export interface QualificationRunnerPort {
-  loadSuite(): Promise<{
-    fixtures: readonly { id: string; roles: readonly ("define" | "implement" | "review")[] }[];
-  }>;
+  loadSuite(): Promise<QualificationSuite>;
   computeSuiteHashes(): Promise<{
     fixtureSuiteHash: string;
     workflowPromptHashes: Record<string, string>;

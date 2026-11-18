@@ -125,7 +125,11 @@ it("exposes the documented smoke, repeat and judge contracts to consumers", asyn
   };
   const runner: QualificationRunnerPort = {
     async loadSuite() {
-      return { fixtures: [{ id: "fixture", roles: ["implement"] }] };
+      return {
+        repeats: 3,
+        fixtures: [{ id: "fixture", roles: ["implement"] }],
+        handoffs: [{ from: "definition", to: "fixture", planSource: "fixed" }],
+      };
     },
     async computeSuiteHashes() {
       return { fixtureSuiteHash: "suite", workflowPromptHashes: {} };

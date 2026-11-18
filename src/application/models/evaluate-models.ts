@@ -22,6 +22,7 @@ import type {
   JudgeVerdictPacket,
   PromotionJudgePort,
   QualificationRunnerPort,
+  QualificationSuite,
   StructuredJudgeVerdict,
 } from "../../ports/model-qualification-port.js";
 
@@ -65,11 +66,7 @@ export interface EvaluateModelsInput {
     | readonly ModelCandidate[];
   readonly blindingSecret: string;
   readonly fixtures: readonly { readonly id: string }[];
-  readonly handoffs?: readonly {
-    readonly from: string;
-    readonly to: string;
-    readonly planSource: "candidate" | "fixed";
-  }[];
+  readonly fixedImplementer?: ModelCandidate;
   readonly artifactRoot?: string;
   readonly repeats?: number;
 }
@@ -81,10 +78,8 @@ export interface EvaluationResult {
   readonly incumbent: ModelCandidate;
   readonly candidateOption: BlindedOption;
   readonly decision: PromotionDecision;
-  readonly repeats: {
-    readonly candidate: readonly FixtureRepeatEvidence[];
-    readonly incumbent: readonly FixtureRepeatEvidence[];
-  };
+  readonly repeats: Readonly<ComparisonRepeats>;
+  readonly comparisons?: readonly EvaluationComparison[];
   readonly roleScore?: RoleScore;
   readonly judges?: readonly StructuredJudgeVerdict[];
   readonly suiteHashes?: {
@@ -92,6 +87,49 @@ export interface EvaluationResult {
     readonly workflowPromptHashes: Record<string, string>;
   };
   readonly judgeVerdictHashes?: readonly [string, string];
+}
+
+type Handoff = QualificationSuite["handoffs"][number];
+type ComparisonRepeats = Record<RouteKey, readonly FixtureRepeatEvidence[]>;
+type SuiteHashes = Awaited<
+  ReturnType<QualificationRunnerPort["computeSuiteHashes"]>
+>;
+
+interface EvaluationComparison {
+  readonly fixtureId: string;
+  readonly handoff?: Handoff;
+  readonly repeats: ComparisonRepeats;
+  readonly roleScore?: RoleScore;
+  readonly gatePassRate?: Readonly<Record<RouteKey, number>>;
+}
+
+function sameSuiteHashes(initial: SuiteHashes, current: SuiteHashes): boolean {
+  return (
+    initial.fixtureSuiteHash === current.fixtureSuiteHash &&
+    Object.keys(initial.workflowPromptHashes).length ===
+      Object.keys(current.workflowPromptHashes).length &&
+    Object.entries(initial.workflowPromptHashes).every(
+      ([workflow, hash]) => current.workflowPromptHashes[workflow] === hash,
+    )
+  );
+}
+
+function hasRepeatFloor(
+  comparison: EvaluationComparison,
+  floor: number,
+): boolean {
+  return routeKeys.every((route) => {
+    const indices = comparison.repeats[route].map(
+      ({ repeatIndex }) => repeatIndex,
+    );
+    return (
+      comparison.repeats[route].every(
+        ({ fixtureId }) => fixtureId === comparison.fixtureId,
+      ) &&
+      indices.every((index) => Number.isSafeInteger(index) && index >= 0) &&
+      new Set(indices).size >= floor
+    );
+  });
 }
 
 function sanitizeIdentityText(
@@ -125,6 +163,33 @@ export async function evaluateModels(
   deps: EvaluateModelsDeps,
   input: EvaluateModelsInput,
 ): Promise<EvaluationResult> {
+  const metadata = {
+    evaluationId: input.evaluationId,
+    role: input.role,
+    candidate: input.candidate,
+    incumbent: input.incumbent,
+  };
+  const candidateOption = blindCandidate(
+    input.blindingSecret,
+    input.evaluationId,
+  );
+  const comparisons: EvaluationComparison[] = [];
+  const resultFor = (decision: PromotionDecision): EvaluationResult => ({
+    ...metadata,
+    candidateOption,
+    decision,
+    comparisons,
+    repeats: {
+      candidate: comparisons.flatMap(({ repeats }) => repeats.candidate),
+      incumbent: comparisons.flatMap(({ repeats }) => repeats.incumbent),
+    },
+  });
+  const routes = [input.candidate, input.incumbent];
+  const fixedImplementer =
+    input.role === "define" ? input.fixedImplementer : undefined;
+  if (fixedImplementer) routes.push(fixedImplementer);
+  assertNoSecretMaterial({ ...metadata, routes });
+
   if (
     !Array.isArray(input.judges) ||
     input.judges.length !== 2 ||
@@ -137,39 +202,34 @@ export async function evaluateModels(
     input.judges[0].family.trim().toLowerCase() ===
       input.judges[1].family.trim().toLowerCase()
   ) {
-    return {
-      evaluationId: input.evaluationId,
-      role: input.role,
-      candidate: input.candidate,
-      incumbent: input.incumbent,
-      candidateOption: "A",
-      decision: { promote: false, reason: "judge-dependence" },
-      repeats: { candidate: [], incumbent: [] },
-    };
+    return resultFor({ promote: false, reason: "judge-dependence" });
   }
 
-  const handoffs = input.role === "review" ? [] : (input.handoffs ?? []);
-  if (handoffs.length > 0 && !input.artifactRoot) {
-    return {
-      evaluationId: input.evaluationId,
-      role: input.role,
-      candidate: input.candidate,
-      incumbent: input.incumbent,
-      candidateOption: "A",
-      decision: { promote: false, reason: "missing-handoff-artifacts" },
-      repeats: { candidate: [], incumbent: [] },
-    };
-  }
-
+  const initialHashes = await deps.runner.computeSuiteHashes();
+  const suiteHashes: SuiteHashes = {
+    fixtureSuiteHash: initialHashes.fixtureSuiteHash,
+    workflowPromptHashes: { ...initialHashes.workflowPromptHashes },
+  };
+  const inputsAreCurrent = async () =>
+    sameSuiteHashes(suiteHashes, await deps.runner.computeSuiteHashes());
   const suite = await deps.runner.loadSuite();
   const roleMap = new Map<string, readonly ModelRole[]>(
     suite.fixtures.map((f) => [f.id, f.roles]),
   );
-  const narrowedFixtures = input.fixtures.filter((f) => {
-    const roles = roleMap.get(f.id);
-    return Array.isArray(roles) && roles.includes(input.role);
-  });
+  const directFixtures = new Set(
+    input.fixtures
+      .map(({ id }) => id)
+      .filter((id) => roleMap.get(id)?.includes(input.role)),
+  );
+  if (directFixtures.size === 0) {
+    return resultFor({ promote: false, reason: "insufficient-repeats" });
+  }
 
+  const handoffs = suite.handoffs.filter(({ planSource }) =>
+    input.role === "define"
+      ? planSource === "candidate"
+      : input.role === "implement" && planSource === "fixed",
+  );
   for (const { from, to } of handoffs) {
     if (
       !roleMap.get(from)?.includes("define") ||
@@ -179,17 +239,23 @@ export async function evaluateModels(
         `Handoff requires a define fixture and an implement fixture: ${from} to ${to}`,
       );
     }
+    if (input.role === "define") directFixtures.add(from);
+  }
+  if (input.role === "define" && handoffs.length > 0) {
+    if (!input.artifactRoot) {
+      return resultFor({ promote: false, reason: "missing-handoff-artifacts" });
+    }
+    if (!fixedImplementer) {
+      return resultFor({ promote: false, reason: "missing-fixed-implementer" });
+    }
   }
 
-  const repeatCount = input.repeats ?? 3;
-  const repeats: Record<RouteKey, FixtureRepeatEvidence[]> = {
-    candidate: [],
-    incumbent: [],
-  };
-  const defineRepeats = new Map<string, FixtureRepeatEvidence>();
-  const requiredFixtures = new Set(narrowedFixtures.map(({ id }) => id));
-  const inputRefs = new Set(requiredFixtures);
-
+  const repeatFloor = Math.max(3, suite.repeats);
+  const repeatCount = input.repeats ?? repeatFloor;
+  if (!Number.isSafeInteger(repeatCount) || repeatCount < 1) {
+    return resultFor({ promote: false, reason: "insufficient-repeats" });
+  }
+  const definitions = new Map<string, ComparisonRepeats>();
   const artifactDir = (
     route: RouteKey,
     fixtureId: string,
@@ -200,10 +266,10 @@ export async function evaluateModels(
       : undefined;
 
   const runRepeat = async (
-    routeKey: RouteKey,
+    route: ModelCandidate,
     request: Omit<FixtureRepeatRequest, "route">,
   ) => {
-    const { backend, modelId, effort } = input[routeKey];
+    const { backend, modelId, effort } = route;
     const evidence = await deps.runner.runFixtureRepeat({
       ...request,
       route: { backend, modelId, effort },
@@ -212,214 +278,226 @@ export async function evaluateModels(
     return evidence;
   };
 
-  const runDefine = async (
-    route: RouteKey,
-    fixtureId: string,
-    repeatIndex: number,
-  ) => {
-    const key = `${route}:${repeatIndex}:${fixtureId}`;
-    const cached = defineRepeats.get(key);
-    if (cached) return cached;
-    const evidence = await runRepeat(route, {
-      fixtureId,
-      role: "define",
-      repeatIndex,
-      artifactOutputDir: artifactDir(route, fixtureId, repeatIndex),
-    });
-    defineRepeats.set(key, evidence);
-    return evidence;
-  };
-
-  for (const { id: fixtureId } of narrowedFixtures) {
+  for (const fixtureId of directFixtures) {
+    const repeats = { candidate: [], incumbent: [] } as Record<
+      RouteKey,
+      FixtureRepeatEvidence[]
+    >;
     for (let repeatIndex = 0; repeatIndex < repeatCount; repeatIndex += 1) {
       for (const route of routeKeys) {
-        const evidence =
+        const artifactOutputDir =
           input.role === "define"
-            ? await runDefine(route, fixtureId, repeatIndex)
-            : await runRepeat(route, {
-                fixtureId,
-                role: input.role,
-                repeatIndex,
-              });
-        repeats[route].push(evidence);
+            ? artifactDir(route, fixtureId, repeatIndex)
+            : undefined;
+        repeats[route].push(
+          await runRepeat(input[route], {
+            fixtureId,
+            role: input.role,
+            repeatIndex,
+            ...(artifactOutputDir ? { artifactOutputDir } : {}),
+          }),
+        );
       }
     }
-  }
-
-  let candidatePrerequisitesPassed = true;
-  for (const { from, to, planSource } of handoffs) {
-    requiredFixtures.add(to);
-    inputRefs.add(from);
-    inputRefs.add(to);
-    for (let repeatIndex = 0; repeatIndex < repeatCount; repeatIndex += 1) {
-      const definitions = {
-        candidate: await runDefine("candidate", from, repeatIndex),
-        incumbent: await runDefine("incumbent", from, repeatIndex),
-      };
-
-      for (const implementer of routeKeys) {
-        const planAuthor =
-          implementer === "candidate" ? "incumbent" : "candidate";
-        const comparisonRoute =
-          input.role === "define" && planSource === "candidate"
-            ? planAuthor
-            : implementer;
-        let handoffArtifactDir: string | undefined;
-        if (planSource === "candidate") {
-          if (!definitions[planAuthor].deterministicGatesPassed) {
-            if (comparisonRoute === "candidate")
-              candidatePrerequisitesPassed = false;
-            continue;
-          }
-          handoffArtifactDir = artifactDir(planAuthor, from, repeatIndex);
-        }
-        const evidence = await runRepeat(implementer, {
-          fixtureId: to,
-          role: "implement",
-          repeatIndex,
-          handoffArtifactDir,
-        });
-        repeats[comparisonRoute].push(evidence);
-      }
-    }
-  }
-
-  const { candidate: candidateRepeats, incumbent: incumbentRepeats } = repeats;
-  assertNoSecretMaterial({
-    evaluationId: input.evaluationId,
-    candidate: input.candidate,
-    incumbent: input.incumbent,
-    repeats,
-  });
-  const roleScore = scoreRole(input.role, candidateRepeats, incumbentRepeats);
-  const candidateGatesPassed =
-    candidatePrerequisitesPassed &&
-    candidateRepeats.every(
-      (repeat) => repeat.deterministicGatesPassed === true,
-    );
-
-  if (!candidateGatesPassed || candidateRepeats.length === 0) {
-    return {
-      evaluationId: input.evaluationId,
-      role: input.role,
-      candidate: input.candidate,
-      incumbent: input.incumbent,
-      candidateOption: "A",
-      decision: {
-        promote: false,
-        reason: candidateGatesPassed ? "insufficient-repeats" : "gate-failure",
-      },
+    comparisons.push({
+      fixtureId,
       repeats,
-      roleScore,
-    };
+      roleScore: scoreRole(input.role, repeats.candidate, repeats.incumbent),
+    });
+    if (input.role === "define") definitions.set(fixtureId, repeats);
   }
 
-  const candidateOption = blindCandidate(
-    input.blindingSecret,
-    input.evaluationId,
+  for (const handoff of handoffs) {
+    const { from, to: fixtureId, planSource } = handoff;
+    const repeats = { candidate: [], incumbent: [] } as Record<
+      RouteKey,
+      FixtureRepeatEvidence[]
+    >;
+    const prerequisite = definitions.get(from);
+    for (let repeatIndex = 0; repeatIndex < repeatCount; repeatIndex += 1) {
+      for (const route of routeKeys) {
+        if (planSource === "candidate") {
+          if (
+            !fixedImplementer ||
+            !prerequisite?.[route][repeatIndex]?.deterministicGatesPassed
+          )
+            continue;
+          repeats[route].push(
+            await runRepeat(fixedImplementer, {
+              fixtureId,
+              role: "implement",
+              repeatIndex,
+              handoffArtifactDir: artifactDir(route, from, repeatIndex),
+            }),
+          );
+        } else {
+          repeats[route].push(
+            await runRepeat(input[route], {
+              fixtureId,
+              role: "implement",
+              repeatIndex,
+            }),
+          );
+        }
+      }
+    }
+    if (planSource === "candidate") {
+      const rate = (route: RouteKey) =>
+        repeatCount > 0
+          ? repeats[route].filter(
+              ({ deterministicGatesPassed }) => deterministicGatesPassed,
+            ).length / repeatCount
+          : 0;
+      comparisons.push({
+        fixtureId,
+        handoff,
+        repeats,
+        gatePassRate: {
+          candidate: rate("candidate"),
+          incumbent: rate("incumbent"),
+        },
+      });
+    } else {
+      comparisons.push({
+        fixtureId,
+        handoff,
+        repeats,
+        roleScore: scoreRole("implement", repeats.candidate, repeats.incumbent),
+      });
+    }
+  }
+
+  const direct = comparisons.filter(({ handoff }) => !handoff);
+  const fixed = comparisons.filter(
+    ({ handoff }) => handoff?.planSource === "fixed",
   );
+  const scoringComparisons = fixed.length > 0 ? fixed : direct;
+  const roleScore =
+    input.role === "implement"
+      ? scoringComparisons.length === 1
+        ? scoringComparisons[0].roleScore
+        : undefined
+      : scoreRole(
+          input.role,
+          direct.flatMap(({ repeats }) => repeats.candidate),
+          direct.flatMap(({ repeats }) => repeats.incumbent),
+        );
+  const reject = (
+    reason: Extract<PromotionDecision, { promote: false }>["reason"],
+  ): EvaluationResult => ({
+    ...resultFor({ promote: false, reason }),
+    roleScore,
+  });
 
-  const candidateOutputs = candidateRepeats
-    .map((repeat) => repeat.sanitizedOutput)
-    .join("\n\n");
-  const incumbentOutputs = incumbentRepeats
-    .map((repeat) => repeat.sanitizedOutput)
-    .join("\n\n");
+  if (!(await inputsAreCurrent())) return reject("stale-evaluation-inputs");
+  if (
+    comparisons.some(({ repeats }) =>
+      repeats.candidate.some(
+        ({ deterministicGatesPassed }) => !deterministicGatesPassed,
+      ),
+    )
+  ) {
+    return reject("gate-failure");
+  }
+  if (
+    !comparisons.every((comparison) => hasRepeatFloor(comparison, repeatFloor))
+  ) {
+    return reject("insufficient-repeats");
+  }
 
-  const rawOptionA =
-    candidateOption === "A" ? candidateOutputs : incumbentOutputs;
-  const rawOptionB =
-    candidateOption === "A" ? incumbentOutputs : candidateOutputs;
-
-  const observedModels = [
-    ...candidateRepeats,
-    ...incumbentRepeats,
-    ...defineRepeats.values(),
-  ].map(({ observedModel }) => observedModel);
+  const left = candidateOption === "A" ? "candidate" : "incumbent";
+  const right = candidateOption === "A" ? "incumbent" : "candidate";
+  const allRepeats = comparisons.flatMap(({ repeats }) => [
+    ...repeats.candidate,
+    ...repeats.incumbent,
+  ]);
+  const observedModels = allRepeats.map(({ observedModel }) => observedModel);
   const redact = (text: string) =>
-    sanitizeIdentityText(
-      text,
-      [input.candidate, input.incumbent],
-      observedModels,
-    );
-  const gateRefs = new Set(
-    [...candidateRepeats, ...incumbentRepeats].flatMap((repeat) =>
-      repeat.gateChecks.map(({ checkId }) => checkId),
+    sanitizeIdentityText(text, routes, observedModels);
+  const inputRefs = new Set(
+    comparisons.flatMap(({ fixtureId, handoff }) =>
+      handoff?.planSource === "candidate"
+        ? [handoff.from, fixtureId]
+        : [fixtureId],
     ),
   );
-  const fixtureSummary = redact(
-    `Fixture evaluation for ${[...inputRefs].join(", ")} on role ${input.role}`,
+  const gateRefs = new Set(
+    allRepeats.flatMap(({ gateChecks }) =>
+      gateChecks.map(({ checkId }) => checkId),
+    ),
   );
-
-  let rawGateEvidenceSummary = "";
-
-  if (roleScore.role === "define") {
-    const candidateScore = roleScore;
-    const incumbentScore = scoreRole(
-      "define",
-      incumbentRepeats,
-      candidateRepeats,
-    ) as Extract<RoleScore, { role: "define" }>;
-    const optACoverage =
-      candidateOption === "A"
-        ? candidateScore.coverage
-        : incumbentScore.coverage;
-    const optBCoverage =
-      candidateOption === "A"
-        ? incumbentScore.coverage
-        : candidateScore.coverage;
-    rawGateEvidenceSummary = `Option A coverage ${optACoverage}, Option B coverage ${optBCoverage}`;
-  } else if (roleScore.role === "implement") {
-    const optAMs =
-      candidateOption === "A"
-        ? roleScore.candidateMedianMsToGreen
-        : roleScore.incumbentMedianMsToGreen;
-    const optBMs =
-      candidateOption === "A"
-        ? roleScore.incumbentMedianMsToGreen
-        : roleScore.candidateMedianMsToGreen;
-    rawGateEvidenceSummary = `Option A ${optAMs}ms to green, Option B ${optBMs}ms`;
-  } else {
-    const candidateScore = roleScore;
-    const incumbentScore = scoreRole(
-      "review",
-      incumbentRepeats,
-      candidateRepeats,
-    ) as Extract<RoleScore, { role: "review" }>;
-    const optACoverage =
-      candidateOption === "A"
-        ? candidateScore.coverage
-        : incumbentScore.coverage;
-    const optBCoverage =
-      candidateOption === "A"
-        ? incumbentScore.coverage
-        : candidateScore.coverage;
-    rawGateEvidenceSummary = `Option A coverage ${optACoverage}, Option B coverage ${optBCoverage}`;
-  }
+  const comparisonLabel = ({ fixtureId, handoff }: EvaluationComparison) => {
+    if (handoff?.planSource === "candidate")
+      return `Generated plan ${handoff.from} to ${fixtureId}`;
+    if (handoff) return `Fixed plan ${fixtureId}`;
+    return fixtureId;
+  };
+  const outputFor = (route: RouteKey) =>
+    comparisons
+      .map((comparison) =>
+        [
+          comparisonLabel(comparison),
+          ...comparison.repeats[route].map(
+            ({ sanitizedOutput }) => sanitizedOutput,
+          ),
+        ].join("\n\n"),
+      )
+      .join("\n\n");
+  const gateSummaries = comparisons.map((comparison) => {
+    const { gatePassRate, roleScore, repeats } = comparison;
+    const label = comparisonLabel(comparison);
+    if (gatePassRate) {
+      return `${label}: Option A gate pass rate ${gatePassRate[left]}, Option B gate pass rate ${gatePassRate[right]}`;
+    }
+    if (roleScore?.role === "implement") {
+      const times = {
+        candidate: roleScore.candidateMedianMsToGreen,
+        incumbent: roleScore.incumbentMedianMsToGreen,
+      };
+      const time = (route: RouteKey) =>
+        times[route] === null
+          ? "no green repeats"
+          : `${times[route]}ms to green`;
+      return `${label}: Option A ${time(left)}, Option B ${time(right)}`;
+    }
+    const coverage = (route: RouteKey) => {
+      const score = scoreRole(input.role, repeats[route], []);
+      return "coverage" in score ? score.coverage : 0;
+    };
+    return `${label}: Option A coverage ${coverage(left)}, Option B coverage ${coverage(right)}`;
+  });
 
   const packet: JudgeVerdictPacket = {
     comparisonId: redact(input.evaluationId),
     role: input.role,
-    fixtureSummary,
-    optionA: redact(rawOptionA),
-    optionB: redact(rawOptionB),
+    fixtureSummary: redact(
+      `Fixture evaluation for ${[...inputRefs].join(", ")} on role ${input.role}`,
+    ),
+    optionA: redact(outputFor(left)),
+    optionB: redact(outputFor(right)),
     gateEvidenceSummary: redact(
-      `${rawGateEvidenceSummary}\nGate checks: ${[...gateRefs].join(", ")}`,
+      [...gateSummaries, `Gate checks: ${[...gateRefs].join(", ")}`].join("\n"),
     ),
   };
 
   assertNoSecretMaterial(packet);
   const verdict1 = await deps.judge.judgeComparison(input.judges[0], packet);
+  assertNoSecretMaterial(packet);
   const verdict2 = await deps.judge.judgeComparison(input.judges[1], packet);
+  assertNoSecretMaterial([verdict1, verdict2]);
+  if (!(await inputsAreCurrent())) return reject("stale-evaluation-inputs");
 
+  const comparisonKeys = comparisons.map((_, index) => String(index));
   const decision = evaluateModelPromotion({
     candidateOption,
-    requiredFixtures: [...requiredFixtures],
-    repeats: candidateRepeats.map((repeat) => ({
-      fixtureId: repeat.fixtureId,
-      repeatIndex: repeat.repeatIndex,
-      gatesPassed: repeat.deterministicGatesPassed,
-    })),
+    requiredFixtures: comparisonKeys,
+    repeats: comparisons.flatMap(({ repeats }, index) =>
+      repeats.candidate.map((repeat) => ({
+        fixtureId: comparisonKeys[index],
+        repeatIndex: repeat.repeatIndex,
+        gatesPassed: repeat.deterministicGatesPassed,
+      })),
+    ),
     judges: [verdict1, verdict2],
     refs: {
       input: [...inputRefs].map(redact),
@@ -428,20 +506,13 @@ export async function evaluateModels(
     },
   });
 
-  const suiteHashes = await deps.runner.computeSuiteHashes();
   const judgeVerdictHashes: [string, string] = [
     createHash("sha256").update(JSON.stringify(verdict1)).digest("hex"),
     createHash("sha256").update(JSON.stringify(verdict2)).digest("hex"),
   ];
 
   const result: EvaluationResult = {
-    evaluationId: input.evaluationId,
-    role: input.role,
-    candidate: input.candidate,
-    incumbent: input.incumbent,
-    candidateOption,
-    decision,
-    repeats: { candidate: candidateRepeats, incumbent: incumbentRepeats },
+    ...resultFor(decision),
     roleScore,
     judges: [verdict1, verdict2],
     suiteHashes,

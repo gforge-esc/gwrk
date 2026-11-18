@@ -79,10 +79,18 @@ export interface FixtureRepeatEvidence {
   sanitizedOutput: string;
 }
 
+export interface QualificationSuite {
+  repeats: number;
+  fixtures: readonly { id: string; roles: readonly ModelRole[] }[];
+  handoffs: readonly {
+    from: string;
+    to: string;
+    planSource: "candidate" | "fixed";
+  }[];
+}
+
 export interface QualificationRunnerPort {
-  loadSuite(): Promise<{
-    fixtures: readonly { id: string; roles: readonly ModelRole[] }[];
-  }>;
+  loadSuite(): Promise<QualificationSuite>;
   computeSuiteHashes(): Promise<{
     fixtureSuiteHash: string;
     workflowPromptHashes: Record<string, string>;

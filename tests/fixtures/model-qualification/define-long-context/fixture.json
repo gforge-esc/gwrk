@@ -4,6 +4,10 @@
   "roles": ["define"],
   "prompt": "Write a spec and plan for the ticket routing repair. Use the repository, both Decided records, the queue contract, the research brief and the acceptance inputs. Include executable checks for boundary behavior and the effect-free domain. Leave implementation and governing records alone.",
   "files": {
+    ".specify/scripts/bash/create-new-feature.sh": "#!/usr/bin/env bash\nset -euo pipefail\n[[ ${1:-} == --json ]]\nroot=$(git rev-parse --show-toplevel)\nfeature_dir=\"$root/specs/001-ticket-routing\"\nmkdir -p \"$feature_dir\"\nprintf '{\"BRANCH_NAME\":\"develop\",\"SPEC_FILE\":\"%s/spec.md\",\"FEATURE_NUM\":\"001\"}\\n' \"$feature_dir\"\n",
+    ".specify/scripts/bash/check-prerequisites.sh": "#!/usr/bin/env bash\nset -euo pipefail\n[[ ${1:-} == --json ]]\nroot=$(git rev-parse --show-toplevel)\nfeature_dir=\"$root/specs/001-ticket-routing\"\ntest -s \"$feature_dir/spec.md\"\nprintf '{\"FEATURE_DIR\":\"%s\",\"AVAILABLE_DOCS\":[\"spec.md\"]}\\n' \"$feature_dir\"\n",
+    ".specify/templates/spec-template.md": "# Feature specification\n\n## Requirements\n\n## Acceptance scenarios\n\n## Testing requirements\n",
+    ".specify/templates/plan-template.md": "# Implementation plan\n\n## Approach\n\n### Phase 1: Repair queue selection\n\n#### Done When\n\n```bash\nset -euo pipefail\nnode --test src/domain/select-queue.test.mjs\n```\n",
     "AGENTS.md": "# Project rules\n\nRead both architecture decisions and the fixture research brief. Keep policy pure. Run the failing behavior test before implementing changes.\n",
     "package.json": "{\"name\":\"fixture-ticket-router\",\"private\":true,\"type\":\"module\",\"scripts\":{\"test\":\"node --test\"}}\n",
     "docs/decisions/ADR-001-ticket-boundaries.md": "# Ticket routing boundaries\n\nStatus: Decided\n\nThe domain returns a routing decision from ticket data. It has no access to the clock or the network. The adapter owns transport and retries. Use the caller-supplied receipt time as an input.\n",
@@ -17,6 +21,15 @@
   },
   "gates": {
     "requiredOutputs": ["spec.md", "plan.md"],
+    "requiredSections": {
+      "spec.md": [
+        "Requirements",
+        "Acceptance scenarios",
+        "Testing requirements"
+      ],
+      "plan.md": ["Approach", "Done When"]
+    },
+    "requiredPlanGateCommand": "node --test src/domain/select-queue.test.mjs",
     "requiredSpecReferences": [
       "ADR-001",
       "ADR-002",
@@ -29,6 +42,9 @@
       "src/domain/select-queue.test.mjs",
       "node --test"
     ],
-    "allowedChangedPaths": ["spec.md", "plan.md"]
+    "allowedChangedPaths": [
+      "specs/001-ticket-routing/spec.md",
+      "specs/001-ticket-routing/plan.md"
+    ]
   }
 }

@@ -6,6 +6,7 @@ import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
 import { existsSync } from "node:fs";
 import {
+  chmod,
   mkdir,
   mkdtemp,
   readFile,
@@ -15,12 +16,14 @@ import {
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
+import { performance } from "node:perf_hooks";
 import { promisify } from "node:util";
 import { z } from "zod";
 import type {
   ModelCandidate,
   ModelRole,
 } from "../../domain/model-qualification.js";
+import { parsePlanMarkdown } from "../../engine/plan-to-tasks.js";
 import { PluginLoader } from "../../plugins/loader.js";
 import {
   WorkflowRuntime,
@@ -32,6 +35,7 @@ import type {
   JudgeVerdictPacket,
   PromotionJudgePort,
   QualificationRunnerPort,
+  QualificationSuite,
   StructuredJudgeVerdict,
 } from "../../ports/model-qualification-port.js";
 import {
@@ -62,11 +66,148 @@ const JudgeOutput = z.object({
   ),
 });
 
-const ROLE_WORKFLOWS: Record<ModelRole, string> = {
-  define: "gwrk-plan",
-  implement: "gwrk-implement",
-  review: "gwrk-review-code",
-};
+const ROLE_WORKFLOWS = {
+  define: ["gwrk-specify", "gwrk-plan"],
+  implement: ["gwrk-implement"],
+  review: ["gwrk-review-code"],
+} as const satisfies Record<ModelRole, readonly string[]>;
+
+const DEFINITION_FEATURE = "specs/001-ticket-routing";
+
+const SuiteManifest = z.object({
+  fixtures: z.array(
+    z.object({ id: z.string().min(1), manifest: z.string().min(1).optional() }),
+  ),
+  repeats: z.number().int().positive().safe().default(3),
+  handoffs: z
+    .array(
+      z.object({
+        from: z.string().min(1),
+        to: z.string().min(1),
+        planSource: z.enum(["candidate", "fixed"]),
+      }),
+    )
+    .default([]),
+});
+
+function stageInput(fixture: FixtureManifest, workflow: string): string {
+  const scope =
+    workflow === "gwrk-specify"
+      ? `The feature scaffold is ready. Write only ${DEFINITION_FEATURE}/spec.md. The planning stage will follow.`
+      : workflow === "gwrk-plan"
+        ? `Read ${DEFINITION_FEATURE}/spec.md from the specification stage. Write ${DEFINITION_FEATURE}/plan.md.`
+        : undefined;
+  return scope ? `${fixture.prompt}\n\n${scope}` : fixture.prompt;
+}
+
+async function seedFiles(
+  root: string,
+  files: FixtureManifest["files"],
+): Promise<void> {
+  for (const [relPath, content] of Object.entries(files)) {
+    const path = join(root, relPath);
+    await mkdir(dirname(path), { recursive: true });
+    await writeFile(path, content, "utf8");
+    if (
+      relPath.startsWith(".specify/scripts/bash/") &&
+      relPath.endsWith(".sh")
+    ) {
+      await chmod(path, 0o755);
+    }
+  }
+}
+
+function hasSection(markdown: string, section: string): boolean {
+  const lines = markdown.split(/\r?\n/);
+  let content = false;
+  let fenced = false;
+  for (const line of lines) {
+    if (/^ {0,3}(?:```|~~~)/.test(line)) {
+      fenced = !fenced;
+      continue;
+    }
+    if (!fenced && /^#{1,6}\s+/.test(line)) {
+      if (content) break;
+      content =
+        line
+          .replace(/^#{1,6}\s+/, "")
+          .trim()
+          .toLowerCase() === section.toLowerCase();
+      continue;
+    }
+    if (content && line.trim()) return true;
+  }
+  return false;
+}
+
+function runsProtectedCommand(script: string, command: string): boolean {
+  const lines = script
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => line && !line.startsWith("#"));
+  return (
+    lines.at(-1) === command &&
+    lines
+      .slice(0, -1)
+      .every((line) =>
+        /^set -[eu]+(?:o pipefail)?$|^set -o pipefail$/.test(line),
+      )
+  );
+}
+
+type ReviewReport = { verdict: string; reopenedTasks: string[] };
+
+function matchesReviewSchema(
+  value: unknown,
+  schema: Record<string, unknown>,
+): boolean {
+  if (Array.isArray(schema.enum) && !schema.enum.includes(value)) return false;
+  if (schema.type === "string") return typeof value === "string";
+  if (schema.type === "array") {
+    if (!Array.isArray(value)) return false;
+    const items = schema.items as Record<string, unknown>;
+    return value.every((item) => matchesReviewSchema(item, items));
+  }
+  if (
+    schema.type !== "object" ||
+    !value ||
+    typeof value !== "object" ||
+    Array.isArray(value)
+  ) {
+    return false;
+  }
+  const record = value as Record<string, unknown>;
+  const properties = schema.properties as Record<
+    string,
+    Record<string, unknown>
+  >;
+  const required = (schema.required ?? []) as string[];
+  return (
+    required.every((key) => Object.hasOwn(record, key)) &&
+    Object.entries(properties).every(
+      ([key, property]) =>
+        !Object.hasOwn(record, key) ||
+        matchesReviewSchema(record[key], property),
+    )
+  );
+}
+
+function taskStates(tasks: string): Map<string, boolean> {
+  const states = new Map<string, boolean>();
+  for (const line of tasks.split("\n")) {
+    const task =
+      /^\s*(?:[-*]\s+)?(?:\[([ xX])\]\s+)?(?:\*\*)?(T\d+)\b(?:\*\*)?[:\s-]*(.*)/.exec(
+        line,
+      );
+    if (!task) continue;
+    const [, checkbox, id, description] = task;
+    const reopened =
+      /^(?:REOPEN(?:ED)?|OPEN)\b/i.test(description) ||
+      /(?:\[REOPENED\]|\(reopened\))\s*$/i.test(description);
+    states.set(id, checkbox === " " || reopened);
+  }
+  return states;
+}
 
 async function readOptionalFile(path: string): Promise<string | undefined> {
   try {
@@ -95,6 +236,8 @@ interface FixtureManifest {
     readonly candidateExitCode?: number;
     readonly allowedChangedPaths?: readonly string[];
     readonly requiredOutputs?: readonly string[];
+    readonly requiredSections?: Readonly<Record<string, readonly string[]>>;
+    readonly requiredPlanGateCommand?: string;
     readonly requiredSpecReferences?: readonly string[];
     readonly requiredPlanReferences?: readonly string[];
     readonly reviewRequiredReopenedTasks?: readonly string[];
@@ -123,23 +266,23 @@ export class FixtureRunner
     const content = await readOptionalFile(
       join(this.fixturesDir, "suite.json"),
     );
-    const suite =
-      content === undefined
-        ? undefined
-        : (JSON.parse(content) as {
-            fixtures: readonly { id: string; manifest?: string }[];
-          });
-    const manifests = (suite?.fixtures ?? []).map(({ id, manifest }) => ({
+    const suite = SuiteManifest.parse(
+      content === undefined ? { fixtures: [] } : JSON.parse(content),
+    );
+    const manifests = suite.fixtures.map(({ id, manifest }) => ({
       id,
       path: join(this.fixturesDir, manifest ?? join(id, "fixture.json")),
     }));
-    return { content, manifests };
+    return {
+      content,
+      manifests,
+      repeats: suite.repeats,
+      handoffs: suite.handoffs,
+    };
   }
 
-  async loadSuite(): Promise<{
-    fixtures: readonly { id: string; roles: readonly ModelRole[] }[];
-  }> {
-    const { manifests } = await this.readSuite();
+  async loadSuite(): Promise<QualificationSuite> {
+    const { manifests, repeats, handoffs } = await this.readSuite();
     const fixtures = await Promise.all(
       manifests.map(async ({ id, path }) => {
         const manifest = JSON.parse(
@@ -148,7 +291,7 @@ export class FixtureRunner
         return { id, roles: manifest.roles };
       }),
     );
-    return { fixtures };
+    return { fixtures, repeats, handoffs };
   }
 
   async computeSuiteHashes(): Promise<{
@@ -157,8 +300,11 @@ export class FixtureRunner
   }> {
     const { content, manifests } = await this.readSuite();
     const suiteHasher = createHash("sha256").update(content ?? "");
+    const fixtures: FixtureManifest[] = [];
     for (const { path } of manifests) {
-      suiteHasher.update(await readFile(path, "utf8"));
+      const fixture = await readFile(path, "utf8");
+      suiteHasher.update(fixture);
+      fixtures.push(JSON.parse(fixture) as FixtureManifest);
     }
     const fixtureSuiteHash = suiteHasher.digest("hex");
 
@@ -191,29 +337,52 @@ export class FixtureRunner
         ]),
     );
 
-    const loader = new PluginLoader();
-    const hashPrompt = async (workflowName: string): Promise<string> => {
-      const { path, manifest } = await loader.resolvePlugin(workflowName);
-      if (manifest.type !== "workflow")
-        throw new Error(`Not a workflow: ${workflowName}`);
-      const promptFile = resolve(path, manifest.prompt || "PROMPT.md");
-      let prompt = await readFile(promptFile, "utf8");
-      const includes = /<!--\s*@include\s+([^\s]+)\s*-->/g;
-      for (const match of [...prompt.matchAll(includes)]) {
-        const target = resolve(dirname(promptFile), match[1]);
-        const included = await readFile(target, "utf8");
-        prompt = prompt.replace(match[0], () => included);
-      }
-      return createHash("sha256")
-        .update(JSON.stringify([prompt, governance]))
-        .digest("hex");
-    };
-
+    const runtime = this.workflowRuntime ?? new WorkflowRuntime();
     const workflowPromptHashes: Record<string, string> = {};
-    for (const [role, workflowName] of Object.entries(ROLE_WORKFLOWS)) {
-      const hash = await hashPrompt(workflowName);
-      workflowPromptHashes[role] = hash;
-      workflowPromptHashes[workflowName] = hash;
+    for (const role of Object.keys(ROLE_WORKFLOWS) as ModelRole[]) {
+      const roleFixtures = fixtures.filter(({ roles }) => roles.includes(role));
+      const stages = ROLE_WORKFLOWS[role];
+      const rendered = new Map(
+        stages.map((stage) => [stage, [] as string[]] as const),
+      );
+      for (const fixture of roleFixtures.length > 0
+        ? roleFixtures
+        : [undefined]) {
+        const projectRoot = await mkdtemp(join(tmpdir(), "gwrk-model-prompt-"));
+        try {
+          if (fixture) await seedFiles(projectRoot, fixture.files);
+          for (const stage of stages) {
+            await runtime.executeWorkflow(
+              stage,
+              fixture ? stageInput(fixture, stage) : "",
+              {
+                nativeOnly: true,
+                projectRoot,
+                quiet: true,
+                dispatcher: async ({ stdin }) => {
+                  rendered.get(stage)?.push(stdin ?? "");
+                  return { exitCode: 0, stdout: "", stderr: "", durationS: 0 };
+                },
+              },
+            );
+          }
+        } finally {
+          await rm(projectRoot, { recursive: true, force: true });
+        }
+      }
+      const roleHashes = stages.map((stage) => {
+        const hash = createHash("sha256")
+          .update(JSON.stringify([rendered.get(stage), governance]))
+          .digest("hex");
+        workflowPromptHashes[stage] = hash;
+        return hash;
+      });
+      workflowPromptHashes[role] =
+        roleHashes.length === 1
+          ? roleHashes[0]
+          : createHash("sha256")
+              .update(JSON.stringify(roleHashes))
+              .digest("hex");
     }
 
     return { fixtureSuiteHash, workflowPromptHashes };
@@ -249,9 +418,13 @@ export class FixtureRunner
     );
 
     try {
-      await execFileAsync("git", ["init", "--quiet", workspaceDir], {
-        timeout: 5000,
-      });
+      await execFileAsync(
+        "git",
+        ["init", "--quiet", "--initial-branch=develop", workspaceDir],
+        {
+          timeout: 5000,
+        },
+      );
       await execFileAsync("git", [
         "-C",
         workspaceDir,
@@ -267,11 +440,13 @@ export class FixtureRunner
         "runner@example.com",
       ]);
 
-      for (const [relPath, content] of Object.entries(fixture.files)) {
-        const absPath = join(workspaceDir, relPath);
-        await mkdir(dirname(absPath), { recursive: true });
-        await writeFile(absPath, content, "utf8");
-      }
+      await seedFiles(workspaceDir, fixture.files);
+      const featureDir =
+        request.role === "define"
+          ? join(workspaceDir, DEFINITION_FEATURE)
+          : workspaceDir;
+      if (request.role === "define")
+        await mkdir(featureDir, { recursive: true });
 
       if (request.handoffArtifactDir) {
         const planContent = await readOptionalFile(
@@ -350,42 +525,80 @@ export class FixtureRunner
       }
 
       const runtime = this.workflowRuntime ?? new WorkflowRuntime();
-      let taskResult: TaskResult;
-      try {
-        const execution = await runtime.executeWorkflow(
-          ROLE_WORKFLOWS[request.role],
-          fixture.prompt,
-          {
-            nativeOnly: true,
-            projectRoot: workspaceDir,
-            taskType: "model-fixture-repeat",
-            agent: request.route.backend,
-            model: request.route.modelId,
-            effort: request.route.effort,
-            quiet: true,
-            dispatcher: (task) =>
-              this.dispatcher({
-                ...task,
-                effort: request.route.effort,
-                routeMode: "pinned",
-                timeoutMs: this.timeoutMs,
-                logPath: join(workspaceDir, ".runs", "repeat.log"),
-                includeExternalContext: false,
-              }),
-          },
-        );
-        taskResult = execution.taskResult;
-      } catch (error: unknown) {
-        const err = error as { message?: string };
-        taskResult = {
-          exitCode: 1,
-          stdout: "",
-          stderr: err.message ?? "Workflow dispatch failed",
-          durationS: 0,
-          durationMs: 0,
-          status: "failure",
-          observedModel: "unknown",
-        };
+      let implementationStart: number | undefined;
+      let implementationDuration: number | undefined;
+      let taskResult: TaskResult = {
+        exitCode: 1,
+        stdout: "",
+        stderr: "",
+        durationS: 0,
+        status: "failure",
+      };
+      for (const workflow of ROLE_WORKFLOWS[request.role]) {
+        try {
+          const execution = await runtime.executeWorkflow(
+            workflow,
+            stageInput(fixture, workflow),
+            {
+              nativeOnly: true,
+              projectRoot: workspaceDir,
+              featureDir,
+              taskType: "model-fixture-repeat",
+              agent: request.route.backend,
+              model: request.route.modelId,
+              effort: request.route.effort,
+              quiet: true,
+              dispatcher: (task) => {
+                if (request.role === "implement")
+                  implementationStart = performance.now();
+                return this.dispatcher({
+                  ...task,
+                  effort: request.route.effort,
+                  routeMode: "pinned",
+                  timeoutMs: this.timeoutMs,
+                  logPath: join(workspaceDir, ".runs", "repeat.log"),
+                  includeExternalContext: false,
+                });
+              },
+            },
+          );
+          taskResult = execution.taskResult;
+        } catch (error) {
+          taskResult = {
+            exitCode: 1,
+            stdout: "",
+            stderr:
+              error instanceof Error
+                ? error.message
+                : "Workflow dispatch failed",
+            durationS: 0,
+            status: "failure",
+          };
+        }
+        const dispatched =
+          taskResult.exitCode === 0 &&
+          taskResult.status !== "failure" &&
+          !taskResult.timedOut;
+        gateChecks.push({
+          checkId: `dispatch-${workflow}`,
+          passed: dispatched,
+          detail: dispatched
+            ? "Workflow completed"
+            : `Workflow exit ${taskResult.exitCode}, status ${taskResult.status ?? "unknown"}, timed out ${taskResult.timedOut === true}`,
+        });
+        if (workflow === "gwrk-specify") {
+          const spec = await readOptionalFile(join(featureDir, "spec.md"));
+          const plan = await readOptionalFile(join(featureDir, "plan.md"));
+          const passed = Boolean(spec?.trim()) && plan === undefined;
+          gateChecks.push({
+            checkId: "specify-output",
+            passed,
+            detail: passed
+              ? "Specification produced before planning"
+              : "Specification must produce a nonempty spec and leave the plan to the planning stage",
+          });
+          if (!dispatched || !passed) break;
+        }
       }
 
       const { stdout: trackedChanges } = await execFileAsync("git", [
@@ -452,6 +665,9 @@ export class FixtureRunner
             candidateExitCode =
               typeof err.code === "number" ? err.code : (err.status ?? 1);
           }
+          if (implementationStart !== undefined) {
+            implementationDuration = performance.now() - implementationStart;
+          }
           const expectedCode = fixture.gates.candidateExitCode ?? 0;
           const passed = candidateExitCode === expectedCode;
           gateChecks.push({
@@ -491,7 +707,7 @@ export class FixtureRunner
 
       if (Array.isArray(fixture.gates?.requiredOutputs)) {
         for (const file of fixture.gates.requiredOutputs) {
-          const target = join(workspaceDir, file);
+          const target = join(featureDir, file);
           let existsAndNonEmpty = false;
           try {
             if (existsSync(target)) {
@@ -510,7 +726,7 @@ export class FixtureRunner
       }
 
       if (Array.isArray(fixture.gates?.requiredSpecReferences)) {
-        const specPath = join(workspaceDir, "spec.md");
+        const specPath = join(featureDir, "spec.md");
         let specText = "";
         try {
           if (existsSync(specPath)) {
@@ -530,7 +746,7 @@ export class FixtureRunner
       }
 
       if (Array.isArray(fixture.gates?.requiredPlanReferences)) {
-        const planPath = join(workspaceDir, "plan.md");
+        const planPath = join(featureDir, "plan.md");
         let planText = "";
         try {
           if (existsSync(planPath)) {
@@ -549,50 +765,95 @@ export class FixtureRunner
         }
       }
 
+      for (const [file, sections] of Object.entries(
+        fixture.gates?.requiredSections ?? {},
+      )) {
+        const markdown = (await readOptionalFile(join(featureDir, file))) ?? "";
+        for (const section of sections) {
+          const passed = hasSection(markdown, section);
+          gateChecks.push({
+            checkId: `required-section-${file}-${section.toLowerCase().replace(/\s+/g, "-")}`,
+            passed,
+            detail: passed
+              ? `${file} contains ${section}`
+              : `${file} requires a nonempty ${section} section`,
+          });
+        }
+      }
+
+      const requiredPlanGate = fixture.gates?.requiredPlanGateCommand;
+      if (requiredPlanGate) {
+        const plan =
+          (await readOptionalFile(join(featureDir, "plan.md"))) ?? "";
+        const phases = parsePlanMarkdown(plan);
+        const passed =
+          phases.length > 0 &&
+          phases.every(
+            ({ gateScript }) =>
+              gateScript !== undefined &&
+              runsProtectedCommand(gateScript, requiredPlanGate),
+          );
+        gateChecks.push({
+          checkId: "executable-plan-gate",
+          passed,
+          detail: passed
+            ? "Plan gates run the protected routing test"
+            : `Each phase needs a fenced Bash gate that runs ${requiredPlanGate}`,
+        });
+      }
+
       const reopenedTasks = new Set<string>();
       if (request.role === "review") {
+        let report: ReviewReport | undefined;
         try {
-          const parsed =
-            taskResult.structuredOutput ??
-            extractJsonFromOutput(
-              taskResult.unwrappedStdout ?? taskResult.stdout,
-            );
-          if (
-            parsed &&
-            typeof parsed === "object" &&
-            "reopenedTasks" in parsed &&
-            Array.isArray(parsed.reopenedTasks)
-          ) {
-            for (const task of parsed.reopenedTasks) {
-              if (typeof task === "string") reopenedTasks.add(task);
-            }
-          }
-        } catch {
-          // Missing structured evidence leaves the required-task gate failing.
-        }
-
-        try {
-          const { stdout: diffOut } = await execFileAsync("git", [
-            "-C",
+          const { outputSchema } = await runtime.resolveWorkflow(
+            "gwrk-review-code",
             workspaceDir,
-            "diff",
-            baselineSha,
-            "--",
-            "tasks.md",
-          ]);
-          for (const line of diffOut.split("\n")) {
-            if (line.startsWith("+") && !line.startsWith("+++")) {
-              if (/\b(?:reopen|reopened|open)\b/i.test(line)) {
-                const matches = line.match(/\bT\d+\b/g);
-                if (matches) {
-                  for (const m of matches) {
-                    reopenedTasks.add(m);
-                  }
-                }
-              }
-            }
-          }
-        } catch {}
+          );
+          const parsed =
+            taskResult.structuredOutput !== undefined
+              ? taskResult.structuredOutput
+              : extractJsonFromOutput(
+                  taskResult.unwrappedStdout ?? taskResult.stdout,
+                );
+          if (matchesReviewSchema(parsed, outputSchema))
+            report = parsed as ReviewReport;
+        } catch {
+          // Review output is required even when the workspace changed.
+        }
+        gateChecks.push({
+          checkId: "review-report",
+          passed: report !== undefined,
+          detail: report
+            ? "Review report matches the workflow schema"
+            : "Review report violates the workflow schema",
+        });
+        gateChecks.push({
+          checkId: "review-verdict",
+          passed: report?.verdict === "NO-GO",
+          detail: "The seeded routing defect requires a NO-GO verdict",
+        });
+        for (const task of report?.reopenedTasks ?? []) reopenedTasks.add(task);
+
+        const baselineTasks = taskStates(fixture.files["tasks.md"] ?? "");
+        const currentTasks = taskStates(
+          (await readOptionalFile(join(workspaceDir, "tasks.md"))) ?? "",
+        );
+        for (const [task, open] of currentTasks) {
+          if (open && baselineTasks.get(task) !== true) reopenedTasks.add(task);
+        }
+        const expected = new Set(fixture.gates?.reviewRequiredReopenedTasks);
+        const unexpected = [...reopenedTasks].filter(
+          (task) => !baselineTasks.has(task) || !expected.has(task),
+        );
+        gateChecks.push({
+          checkId: "review-reopened-task-ids",
+          passed: unexpected.length === 0,
+          detail:
+            unexpected.length === 0
+              ? "Reopenings are valid fixture tasks"
+              : `Unexpected task reopenings: ${unexpected.join(", ")}`,
+        });
       }
 
       if (
@@ -637,7 +898,7 @@ export class FixtureRunner
         }
         const parts: string[] = [];
         for (const file of ["spec.md", "plan.md"]) {
-          const content = await readOptionalFile(join(workspaceDir, file));
+          const content = await readOptionalFile(join(featureDir, file));
           if (content !== undefined) parts.push(content);
           if (request.artifactOutputDir) {
             const destination = join(request.artifactOutputDir, file);
@@ -672,7 +933,10 @@ export class FixtureRunner
         observedModel: taskResult.observedModel ?? "unknown",
         deterministicGatesPassed,
         gateChecks,
-        durationMs: taskResult.durationMs ?? taskResult.durationS * 1000,
+        durationMs:
+          implementationDuration ??
+          taskResult.durationMs ??
+          taskResult.durationS * 1000,
         retries: 0,
         sanitizedOutput,
       };

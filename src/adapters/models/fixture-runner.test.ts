@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { execFileSync } from "node:child_process";
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
@@ -38,6 +38,97 @@ const fixedPassingQueueImplementation = `export function selectQueue({ priority,
 `;
 
 describe("fixture runner adapter", () => {
+  it.each(["seeded", "import clock", "call clock", "pure"])(
+    "enforces behavior and clock purity for the %s implementation",
+    async (variant) => {
+      const dispatcher = async (task: TaskDispatch): Promise<TaskResult> => {
+        if (variant !== "seeded") {
+          const implementation =
+            variant === "import clock"
+              ? `const fallback = Date.now();\n${fixedPassingQueueImplementation.replace("nowMs = 0", "nowMs = fallback")}`
+              : variant === "call clock"
+                ? fixedPassingQueueImplementation.replace(
+                    "const ageMs =",
+                    "const fallback = Date.now();\n  nowMs ??= fallback;\n  const ageMs =",
+                  )
+                : fixedPassingQueueImplementation;
+          writeFileSync(
+            join(task.workDir!, "src/domain/select-queue.mjs"),
+            implementation,
+          );
+        }
+        return { exitCode: 0, stdout: "", stderr: "", durationS: 0 };
+      };
+      const result = await createFixtureRunner({ dispatcher }).runFixtureRepeat(
+        {
+          fixtureId: "implement-seeded-defect",
+          role: "implement",
+          repeatIndex: 0,
+          route: candidateRoute,
+        },
+      );
+      expect(result.gateChecks).toContainEqual(
+        expect.objectContaining({ checkId: "baseline-gate", passed: true }),
+      );
+      expect(result.gateChecks).toContainEqual(
+        expect.objectContaining({
+          checkId: "candidate-gate",
+          passed: variant === "pure",
+        }),
+      );
+    },
+  );
+
+  it("measures implementation through the candidate gate", async () => {
+    const dispatcher = async (task: TaskDispatch): Promise<TaskResult> => {
+      writeFileSync(
+        join(task.workDir!, "src/domain/select-queue.mjs"),
+        `await new Promise((resolve) => setTimeout(resolve, 125));\n${fixedPassingQueueImplementation}`,
+      );
+      return {
+        exitCode: 0,
+        stdout: "",
+        stderr: "",
+        durationS: 0,
+        durationMs: 1,
+      };
+    };
+    const result = await createFixtureRunner({ dispatcher }).runFixtureRepeat({
+      fixtureId: "implement-seeded-defect",
+      role: "implement",
+      repeatIndex: 0,
+      route: candidateRoute,
+    });
+    expect(result.deterministicGatesPassed).toBe(true);
+    expect(result.durationMs).toBeGreaterThanOrEqual(125);
+  });
+
+  it.each([
+    { verdict: "GO", reopenedTasks: ["T001"], intents: [] },
+    { verdict: "NO-GO", reopenedTasks: ["T001", "T999"], intents: [] },
+    { verdict: "NO-GO", reopenedTasks: ["T001", "T002"], intents: [] },
+    { verdict: "NO-GO", reopenedTasks: ["T001", 42], intents: [] },
+    {
+      verdict: "NO-GO",
+      reopenedTasks: ["T001"],
+      intents: [{ action: "INVALID" }],
+    },
+  ])("rejects an invalid review report %j", async (report) => {
+    const dispatcher = async (): Promise<TaskResult> => ({
+      exitCode: 0,
+      stdout: JSON.stringify({ summary: "Routing defect", ...report }),
+      stderr: "",
+      durationS: 0,
+    });
+    const result = await createFixtureRunner({ dispatcher }).runFixtureRepeat({
+      fixtureId: "implement-seeded-defect",
+      role: "review",
+      repeatIndex: 0,
+      route: candidateRoute,
+    });
+    expect(result.deterministicGatesPassed).toBe(false);
+  });
+
   it("proves baseline RED and candidate GREEN execution", async () => {
     const dispatcher = vi.fn(
       async (task: TaskDispatch): Promise<TaskResult> => {
@@ -83,6 +174,154 @@ describe("fixture runner adapter", () => {
       "Candidate command exited with expected code 0",
     );
   });
+
+  it.each([
+    { variant: "reference lists", expectedCheck: "required-section" },
+    { variant: "bare command", expectedCheck: "executable-plan-gate" },
+    { variant: "echoed command", expectedCheck: "executable-plan-gate" },
+    { variant: "failed dispatch", expectedCheck: "dispatch-gwrk-plan" },
+    { variant: "failure status", expectedCheck: "dispatch-gwrk-plan" },
+    { variant: "timed out dispatch", expectedCheck: "dispatch-gwrk-plan" },
+    { variant: "valid plan", expectedCheck: undefined },
+  ])(
+    "checks definition produced with $variant",
+    async ({ variant, expectedCheck }) => {
+      const calls: TaskDispatch[] = [];
+      const specReferences =
+        "ADR-001 ADR-002 docs/refs/queue-contract.md docs/research/routing-brief.md docs/refs/acceptance.md";
+      const gateCommand = "node --test src/domain/select-queue.test.mjs";
+      const spec =
+        variant === "reference lists"
+          ? specReferences
+          : `# Ticket routing spec\n\n## Requirements\n${specReferences}\n\n## Acceptance scenarios\nRoute unknown priorities to triage.\n\n## Testing requirements\nExercise the 30-minute cutoff.\n`;
+      const command =
+        variant === "echoed command" ? `echo "${gateCommand}"` : gateCommand;
+      const planGate =
+        variant === "bare command"
+          ? gateCommand
+          : ["```bash", "set -euo pipefail", command, "```"].join("\n");
+      const plan =
+        variant === "reference lists"
+          ? "src/domain/select-queue.mjs src/domain/select-queue.test.mjs node --test"
+          : [
+              "# Ticket routing plan",
+              "",
+              "## Approach",
+              "Repair src/domain/select-queue.mjs and run src/domain/select-queue.test.mjs.",
+              "",
+              "### Phase 1: Repair queue selection",
+              "#### Done When",
+              planGate,
+            ].join("\n");
+      const dispatcher = async (task: TaskDispatch): Promise<TaskResult> => {
+        const root = task.workDir!;
+        calls.push(task);
+        const featureDir = task.featureDir!;
+        if (task.workflow === "gwrk-specify") {
+          expect(
+            execFileSync("git", ["branch", "--show-current"], {
+              cwd: root,
+              encoding: "utf8",
+            }).trim(),
+          ).toBe("develop");
+          expect(
+            existsSync(join(root, ".specify/templates/spec-template.md")),
+          ).toBe(true);
+          const scaffold = JSON.parse(
+            execFileSync(
+              ".specify/scripts/bash/create-new-feature.sh",
+              [
+                "--json",
+                "Ticket routing",
+                "--number",
+                "1",
+                "--short-name",
+                "ticket-routing",
+              ],
+              { cwd: root, encoding: "utf8" },
+            ),
+          );
+          expect(scaffold.SPEC_FILE).toBe(
+            join(realpathSync(featureDir), "spec.md"),
+          );
+          expect(existsSync(scaffold.SPEC_FILE)).toBe(false);
+          writeFileSync(scaffold.SPEC_FILE, spec);
+        } else {
+          const prerequisites = JSON.parse(
+            execFileSync(
+              ".specify/scripts/bash/check-prerequisites.sh",
+              ["--json"],
+              { cwd: root, encoding: "utf8" },
+            ),
+          );
+          expect(prerequisites.FEATURE_DIR).toBe(realpathSync(featureDir));
+          expect(readFileSync(join(featureDir, "spec.md"), "utf8")).toBe(spec);
+          expect(
+            existsSync(join(root, ".specify/templates/plan-template.md")),
+          ).toBe(true);
+          writeFileSync(join(featureDir, "plan.md"), plan);
+        }
+        if (task.workflow === "gwrk-plan" && variant === "failed dispatch") {
+          return {
+            exitCode: 1,
+            status: "failure",
+            stdout: "Files written",
+            stderr: "",
+            durationS: 0,
+          };
+        }
+        if (task.workflow === "gwrk-plan" && variant === "failure status") {
+          return {
+            exitCode: 0,
+            status: "failure",
+            stdout: "Files written",
+            stderr: "",
+            durationS: 0,
+          };
+        }
+        if (task.workflow === "gwrk-plan" && variant === "timed out dispatch") {
+          return {
+            exitCode: 0,
+            timedOut: true,
+            stdout: "Files written",
+            stderr: "",
+            durationS: 0,
+          };
+        }
+        return { exitCode: 0, stdout: "", stderr: "", durationS: 0 };
+      };
+      const result = await createFixtureRunner({ dispatcher }).runFixtureRepeat(
+        {
+          fixtureId: "define-long-context",
+          role: "define",
+          repeatIndex: 0,
+          route: candidateRoute,
+        },
+      );
+      expect(
+        result.deterministicGatesPassed,
+        JSON.stringify(result.gateChecks),
+      ).toBe(expectedCheck === undefined);
+      if (expectedCheck) {
+        expect(
+          result.gateChecks.some(
+            ({ checkId, passed }) =>
+              checkId.startsWith(expectedCheck) && !passed,
+          ),
+        ).toBe(true);
+      }
+      expect(result.sanitizedOutput).toContain(spec);
+      expect(result.sanitizedOutput).toContain(plan);
+      expect(calls.map(({ workflow }) => workflow)).toEqual([
+        "gwrk-specify",
+        "gwrk-plan",
+      ]);
+      expect(calls[0].featureDir).toBeDefined();
+      expect(calls[1].featureDir).toBe(calls[0].featureDir);
+      expect(calls[0].stdin).toContain("# /gwrk-specify");
+      expect(calls[1].stdin).toContain("# /gwrk-plan");
+    },
+  );
 
   it("rejects candidate when forbidden files are mutated", async () => {
     const dispatcher = vi.fn(
@@ -509,6 +748,8 @@ describe("fixture runner adapter", () => {
 
       expect(await runner.loadSuite()).toEqual({
         fixtures: [{ id: "alias", roles: ["define"] }],
+        repeats: 3,
+        handoffs: [],
       });
       await runner.runFixtureRepeat({
         fixtureId: "alias",
@@ -555,6 +796,95 @@ describe("fixture runner adapter", () => {
       await rm(projectRoot, { recursive: true, force: true });
     }
   });
+
+  it.each(["gwrk-specify", "gwrk-plan"])(
+    "hashes the expanded %s prompt from the fixture workflow resolution",
+    async (changedWorkflow) => {
+      const fixturesDir = await mkdtemp(
+        join(tmpdir(), "gwrk-definition-prompt-"),
+      );
+      try {
+        await writeFile(
+          join(fixturesDir, "suite.json"),
+          JSON.stringify({
+            repeats: 4,
+            fixtures: [{ id: "custom-define", manifest: "alternative.json" }],
+            handoffs: [],
+          }),
+        );
+        const files = Object.fromEntries(
+          ["gwrk-specify", "gwrk-plan"].flatMap((workflow) => {
+            const path = `.gwrk/plugins/workflows/${workflow}`;
+            const manifest = [
+              "type: workflow",
+              `name: ${workflow}`,
+              "version: 1.0.0",
+              "description: Test definition prompt",
+              "prompt: PROMPT.md",
+              "outputSchema:",
+              "  type: object",
+            ].join("\n");
+            return [
+              [`${path}/manifest.yaml`, manifest],
+              [`${path}/PROMPT.md`, "<!-- @include guidance.md -->"],
+              [`${path}/guidance.md`, `Included guidance for ${workflow}`],
+            ];
+          }),
+        );
+        const manifestPath = join(fixturesDir, "alternative.json");
+        const manifest = {
+          id: "custom-define",
+          roles: ["define"],
+          prompt: "Define the fixture",
+          files,
+        };
+        await writeFile(manifestPath, JSON.stringify(manifest));
+        const calls: TaskDispatch[] = [];
+        const runner = createFixtureRunner({
+          fixturesDir,
+          dispatcher: async (task) => {
+            calls.push(task);
+            if (task.workflow === "gwrk-specify") {
+              writeFileSync(join(task.featureDir!, "spec.md"), "# Spec");
+            }
+            return { exitCode: 0, stdout: "", stderr: "", durationS: 0 };
+          },
+        });
+        const before = await runner.computeSuiteHashes();
+        expect(calls).toHaveLength(0);
+        await runner.runFixtureRepeat({
+          fixtureId: "custom-define",
+          role: "define",
+          repeatIndex: 0,
+          route: candidateRoute,
+        });
+        const include = `.gwrk/plugins/workflows/${changedWorkflow}/guidance.md`;
+        files[include] += "\nChanged included guidance";
+        await writeFile(manifestPath, JSON.stringify(manifest));
+        const after = await runner.computeSuiteHashes();
+        expect(after.workflowPromptHashes.define).not.toBe(
+          before.workflowPromptHashes.define,
+        );
+        expect(after.workflowPromptHashes[changedWorkflow]).not.toBe(
+          before.workflowPromptHashes[changedWorkflow],
+        );
+        const other =
+          changedWorkflow === "gwrk-plan" ? "gwrk-specify" : "gwrk-plan";
+        expect(after.workflowPromptHashes[other]).toBe(
+          before.workflowPromptHashes[other],
+        );
+        expect(calls.map(({ workflow }) => workflow)).toEqual([
+          "gwrk-specify",
+          "gwrk-plan",
+        ]);
+        for (const { stdin, workflow } of calls) {
+          expect(stdin).toContain(`Included guidance for ${workflow}`);
+        }
+      } finally {
+        await rm(fixturesDir, { recursive: true, force: true });
+      }
+    },
+  );
 
   it("computes reproducible suite and workflow prompt hashes", async () => {
     const runner = createFixtureRunner();
@@ -676,6 +1006,7 @@ describe("fixture runner adapter", () => {
       return {
         exitCode: 0,
         stdout: JSON.stringify({
+          summary: "Review found the seeded routing defect",
           verdict: "NO-GO",
           reopenedTasks: ["T001"],
           intents: [],
@@ -702,11 +1033,55 @@ describe("fixture runner adapter", () => {
     );
   });
 
+  it.each([
+    ["T001", true],
+    ["T999", false],
+  ] as const)(
+    "validates the task state change reopening %s",
+    async (taskId, allowed) => {
+      const dispatcher = async (task: TaskDispatch): Promise<TaskResult> => {
+        const file = join(task.workDir!, "tasks.md");
+        const baseline = readFileSync(file, "utf8");
+        if (allowed) {
+          writeFileSync(
+            file,
+            baseline.replace("T001 Repair", "- [ ] T001 Repair"),
+          );
+        } else {
+          writeFileSync(file, `${baseline}\n- [ ] T999 Invented task\n`);
+        }
+        const stdout = JSON.stringify({
+          summary: "Review updated task state",
+          verdict: "NO-GO",
+          reopenedTasks: allowed ? [] : ["T001"],
+          intents: [],
+        });
+        return { exitCode: 0, stdout, stderr: "", durationS: 0 };
+      };
+      const result = await createFixtureRunner({ dispatcher }).runFixtureRepeat(
+        {
+          fixtureId: "implement-seeded-defect",
+          role: "review",
+          repeatIndex: 0,
+          route: candidateRoute,
+        },
+      );
+      expect(result.deterministicGatesPassed).toBe(allowed);
+      expect(result.gateChecks).toContainEqual(
+        expect.objectContaining({
+          checkId: "review-reopened-task-ids",
+          passed: allowed,
+        }),
+      );
+    },
+  );
+
   it("passes review repeat for a report-only reviewer that reopens required tasks and preserves baseline", async () => {
     const dispatcher = vi.fn(
       async (_task: TaskDispatch): Promise<TaskResult> => ({
         exitCode: 0,
         stdout: JSON.stringify({
+          summary: "Review found the seeded routing defect",
           verdict: "NO-GO",
           reopenedTasks: ["T001"],
           intents: [],
@@ -726,6 +1101,9 @@ describe("fixture runner adapter", () => {
     });
 
     expect(evidence.deterministicGatesPassed).toBe(true);
+    expect(evidence.sanitizedOutput).toContain(
+      "Review found the seeded routing defect",
+    );
     expect(
       evidence.gateChecks.some((c) => c.checkId === "candidate-gate"),
     ).toBe(false);
@@ -747,6 +1125,7 @@ describe("fixture runner adapter", () => {
     "reads a %s review verdict without confusing prose braces",
     async (mode) => {
       const verdict = {
+        summary: "Review found the seeded routing defect",
         verdict: "NO-GO",
         reopenedTasks: ["T001"],
         intents: [],
@@ -810,8 +1189,13 @@ describe("fixture runner adapter", () => {
         async (task: TaskDispatch): Promise<TaskResult> => {
           capturedTask = task;
           if (role === "define") {
-            writeFileSync(join(task.workDir!, "spec.md"), "# Spec\n", "utf8");
-            writeFileSync(join(task.workDir!, "plan.md"), "# Plan\n", "utf8");
+            const file =
+              task.workflow === "gwrk-specify" ? "spec.md" : "plan.md";
+            writeFileSync(
+              join(task.featureDir!, file),
+              "# Definition\n",
+              "utf8",
+            );
           } else if (role === "implement") {
             writeFileSync(
               join(task.workDir!, "src/domain/select-queue.mjs"),
@@ -851,16 +1235,12 @@ describe("fixture runner adapter", () => {
     try {
       const dispatcher = vi.fn(
         async (task: TaskDispatch): Promise<TaskResult> => {
-          writeFileSync(
-            join(task.workDir!, "spec.md"),
-            "# Generated Spec Content\n",
-            "utf8",
-          );
-          writeFileSync(
-            join(task.workDir!, "plan.md"),
-            "# Generated Plan Content\n",
-            "utf8",
-          );
+          const specification = task.workflow === "gwrk-specify";
+          const file = specification ? "spec.md" : "plan.md";
+          const content = specification
+            ? "# Generated Spec Content\n"
+            : "# Generated Plan Content\n";
+          writeFileSync(join(task.featureDir!, file), content, "utf8");
           return {
             exitCode: 0,
             stdout: "Generated artifacts",

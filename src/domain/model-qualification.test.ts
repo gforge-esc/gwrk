@@ -2502,7 +2502,7 @@ describe("model qualification policy", () => {
 });
 
 describe("scoreRole", () => {
-  it("scores define coverage counting only output and reference checks", () => {
+  it("scores define coverage across outputs, references, sections and executable plan gates", () => {
     const candidateRepeats: ScoredRepeat[] = [
       {
         deterministicGatesPassed: true,
@@ -2512,6 +2512,8 @@ describe("scoreRole", () => {
           { checkId: "required-output-plan.md", passed: true },
           { checkId: "spec-ref-ADR-001", passed: true },
           { checkId: "plan-ref-node-test", passed: false },
+          { checkId: "required-section-spec-Requirements", passed: true },
+          { checkId: "executable-plan-gate", passed: false },
           { checkId: "candidate-gate", passed: true }, // should be ignored
           { checkId: "forbidden-file-mutation", passed: true }, // should be ignored
         ],
@@ -2531,9 +2533,9 @@ describe("scoreRole", () => {
     const score = scoreRole("define", candidateRepeats, []);
     expect(score).toEqual({
       role: "define",
-      coverage: 4 / 8,
-      passedChecks: 4,
-      totalChecks: 8,
+      coverage: 5 / 10,
+      passedChecks: 5,
+      totalChecks: 10,
     });
   });
 

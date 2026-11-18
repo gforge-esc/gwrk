@@ -253,6 +253,8 @@ export function scoreRole(
       for (const check of repeat.gateChecks) {
         if (
           check.checkId.startsWith("required-output-") ||
+          check.checkId.startsWith("required-section-") ||
+          check.checkId === "executable-plan-gate" ||
           check.checkId.startsWith("spec-ref-") ||
           check.checkId.startsWith("plan-ref-")
         ) {
@@ -331,7 +333,9 @@ export type PromotionDecision =
         | "judge-dependence"
         | "invalid-citations"
         | "judge-non-regression"
-        | "missing-handoff-artifacts";
+        | "missing-handoff-artifacts"
+        | "missing-fixed-implementer"
+        | "stale-evaluation-inputs";
     };
 
 function isNonBlankString(value: unknown): value is string {
