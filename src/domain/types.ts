@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { z } from "zod";
+import type { ProjectDesign } from "./architecture-context.js";
 
 export interface ProjectProfile {
   type: string;
@@ -35,7 +36,19 @@ export interface ProjectProfile {
     testExtension?: string;
     sourceExtension?: string;
   };
+  design?: ProjectDesign;
   _isGwrk?: boolean;
+}
+
+export interface WorkspaceProfileConfig {
+  type?: string;
+  stack?: Pick<
+    NonNullable<ProjectProfile["stack"]>,
+    "language" | "framework" | "buildSystem"
+  >;
+  layout?: string;
+  toolchain?: ProjectProfile["toolchain"];
+  design?: ProjectDesign;
 }
 
 export enum TaskClassification {

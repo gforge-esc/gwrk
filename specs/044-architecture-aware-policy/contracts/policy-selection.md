@@ -1,6 +1,6 @@
 # Policy selection contracts
 
-Domain policy carries `ProjectDesign` across workspace profiles and composes compatible rules without silent substitution. Initialization stays model-free while checks remain inactive until activation or assessment. Blocked: implementation depends on `043-unified-routing-prompt-delivery`.
+Domain policy carries `ProjectDesign` across workspace profiles and composes compatible rules without silent substitution. Initialization stays model-free while checks remain inactive until activation or assessment. Blocked: Phase 4 prompt delivery depends on unified routing (043).
 
 ## Profile design and workspace inheritance
 
@@ -145,6 +145,7 @@ export interface PolicyCandidate {
     name: string;
     description: string;
     version: string;
+    disabled?: boolean;
   };
   content?: string;
 }
@@ -167,6 +168,7 @@ export interface CandidateEvaluation {
     | "selected"
     | "project-local-override"
     | "legacy-global-unscoped"
+    | "disabled"
     | "shadowed-by-override"
     | "scope-mismatch"
     | "project-scope-mismatch"
@@ -216,7 +218,7 @@ export function composeEffectivePolicy(
 
 | Source layer | Precedence rank | Render position | Selection rule |
 |---|---|---|---|
-| `project-local` | 1 | 4 | Applies declared selectors. Legacy entries without selectors keep project-local scope. |
+| `project-local` | 1 | 4 | Declared selectors or project-local scope for legacy entries |
 | `project-entry` | 2 | 3 | Filtered by manifest selectors |
 | `global` | 3 | 2 | Unscoped legacy skills load globally while selector skills filter |
 | `builtin` | 4 | 1 | Filtered by language and framework and `projectScope` |

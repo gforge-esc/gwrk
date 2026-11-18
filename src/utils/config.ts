@@ -253,6 +253,7 @@ export const GwrkConfigSchema = z.object({
           .optional(),
         layout: z.string().optional(),
         toolchain: ToolchainConfigSchema,
+        design: DesignSchema.optional(),
       }),
     )
     .optional(),
