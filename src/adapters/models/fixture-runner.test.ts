@@ -433,6 +433,39 @@ describe("fixture runner adapter", () => {
     ).rejects.toThrow();
   });
 
+  it("hashes a fixture at its declared manifest path", async () => {
+    const fixturesDir = await mkdtemp(join(tmpdir(), "gwrk-manifest-hash-"));
+    try {
+      await writeFile(
+        join(fixturesDir, "suite.json"),
+        JSON.stringify({
+          fixtures: [{ id: "alias", manifest: "alternative.json" }],
+        }),
+      );
+      const manifest = {
+        id: "alias",
+        roles: ["implement"],
+        prompt: "Original governance",
+        files: { "AGENTS.md": "Original rules" },
+      };
+      const manifestPath = join(fixturesDir, "alternative.json");
+      await writeFile(manifestPath, JSON.stringify(manifest));
+      const runner = createFixtureRunner({ fixturesDir });
+      const before = await runner.computeSuiteHashes();
+      await writeFile(
+        manifestPath,
+        JSON.stringify({
+          ...manifest,
+          files: { "AGENTS.md": "Changed rules" },
+        }),
+      );
+      const after = await runner.computeSuiteHashes();
+      expect(after.fixtureSuiteHash).not.toBe(before.fixtureSuiteHash);
+    } finally {
+      await rm(fixturesDir, { recursive: true, force: true });
+    }
+  });
+
   it("computes reproducible suite and workflow prompt hashes", async () => {
     const runner = createFixtureRunner();
     const { fixtureSuiteHash, workflowPromptHashes } =
