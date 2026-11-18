@@ -154,6 +154,84 @@ describe("slack-commands (FR-015, US-004)", () => {
     );
   });
 
+  it.each(["local", "feature", "file"])(
+    "scopes status and effort to the authorized checkout for %s paths",
+    async (boundary) => {
+      const root = mkdtempSync(join(tmpdir(), "gwrk-slash-feature-scope-"));
+      vi.stubEnv("GWRK_HOME", join(root, "home"));
+      onTestFinished(() => {
+        vi.unstubAllEnvs();
+        rmSync(root, { recursive: true, force: true });
+      });
+      const alpha = {
+        ...SYNTHETIC_PROJECT_ALPHA,
+        localRoot: join(root, "alpha"),
+      };
+      const beta = { ...SYNTHETIC_PROJECT_BETA, localRoot: join(root, "beta") };
+      const featureId = "001-scoped";
+      const run = ".gwrk/runs/phase-01.json";
+      const alphaFeature = join(alpha.localRoot, "specs", featureId);
+      const betaFeature = join(beta.localRoot, "specs", featureId);
+      mkdirSync(join(betaFeature, ".gwrk/runs"), { recursive: true });
+      writeFileSync(join(betaFeature, run), "{}");
+      writeFileSync(
+        join(betaFeature, "spec.md"),
+        "### US-001 Foreign story [19 SP]\n",
+      );
+      mkdirSync(join(alpha.localRoot, "specs"), { recursive: true });
+      writeFileSync(
+        join(alpha.localRoot, ".gwrkrc.json"),
+        JSON.stringify({ project: { name: alpha.name } }),
+      );
+      if (boundary === "feature") {
+        symlinkSync(betaFeature, alphaFeature, "dir");
+      } else {
+        mkdirSync(join(alphaFeature, ".gwrk/runs"), { recursive: true });
+        if (boundary === "file") {
+          symlinkSync(join(betaFeature, run), join(alphaFeature, run));
+          symlinkSync(
+            join(betaFeature, "spec.md"),
+            join(alphaFeature, "spec.md"),
+          );
+        } else {
+          writeFileSync(join(alphaFeature, run), "{}");
+          writeFileSync(
+            join(alphaFeature, "spec.md"),
+            "### US-001 Local story [5 SP]\n",
+          );
+        }
+      }
+      const scopedContext = {
+        ...context,
+        userId: SYNTHETIC_USER_VIEWER,
+        projectRoot: beta.localRoot,
+        routingService: createProjectRoutingService({
+          registry: createSyntheticRegistry({ projects: [alpha, beta] }),
+        }),
+      };
+      const status = await handleSlashCommand(
+        `status ${featureId}`,
+        scopedContext,
+      );
+      const effort = await handleSlashCommand(
+        `effort ${featureId}`,
+        scopedContext,
+      );
+      const statusBlocks = JSON.stringify(status.blocks);
+      const effortBlocks = JSON.stringify(effort.blocks);
+      if (boundary === "local") {
+        expect(statusBlocks).toContain(
+          "Ship runs on disk:* 1 (latest: `phase-01.json`)",
+        );
+        expect(effortBlocks).toContain("Total Story Points: 5");
+      } else {
+        expect(statusBlocks).toContain("No dispatch runs found");
+        expect(statusBlocks).not.toContain("phase-01.json");
+        expect(effortBlocks).toContain("Feature specification is unavailable");
+      }
+    },
+  );
+
   it.each(["dispatch 003-slack 3", "approve 003-slack phase-01"])(
     "threads %s in the bound Slack conversation",
     async (command) => {
@@ -298,6 +376,11 @@ describe("slack-commands (FR-015, US-004)", () => {
       );
     }
     writeFileSync(join(alpha.localRoot, "specs/001-alpha/plan.md"), "# Plan\n");
+    mkdirSync(join(alpha.localRoot, "specs/004-foreign"));
+    symlinkSync(
+      join(beta.localRoot, "specs/001-beta/spec.md"),
+      join(alpha.localRoot, "specs/004-foreign/spec.md"),
+    );
     const alphaAlias = join(root, "alpha-alias");
     symlinkSync(alpha.localRoot, alphaAlias, "dir");
     writeFileSync(

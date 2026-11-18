@@ -153,16 +153,16 @@ pnpm exec vitest run src/db/scoping.test.ts src/db/db.test.ts src/db/plan.test.t
 
 | ID | Type | Target | Assertion |
 |---|---|---|---|
-| TR-009 | integration | `src/server/slack-actions.test.ts` | Unauthorized clicks leave no claim. Concurrent replay invokes the merge port once |
+| TR-009 | integration | `src/server/slack-actions.test.ts` | No unauthorized claim, one merge across button and reaction retries after a timeout, and one fresh retry after confirmed preflight rejection |
 | TR-010 | unit | `src/server/slack-messages.test.ts` | Interactive payloads carry `projectId` and `rootTs` metadata |
 | TR-011 | unit | `src/server/slack-agent.test.ts` | Mentions, direct messages and reactions enforce project selection and roles |
-| TR-012 | unit | `src/server/slack-home.test.ts` | App Home lists only projects visible to the requesting Slack user |
+| TR-012 | unit | `src/server/slack-home.test.ts` | App Home project visibility and Pulse totals limited to authorized checkouts |
+| TR-012a | integration | `src/server/slack-commands.test.ts` and `src/utils/agent-context.test.ts` | Local files accepted and external links excluded from status, logs, effort, Pulse and mention context |
 
 #### Done When
 
 ```bash
-pnpm build
-pnpm exec vitest run src/server/slack-actions.test.ts src/server/slack-messages.test.ts src/server/slack-agent.test.ts src/server/slack-home.test.ts src/server/slack.test.ts src/architecture.test.ts
+bash specs/048-project-identity-slack/gates/phase-03.sh
 ```
 
 ### Phase 4: Presence and pilot guards

@@ -1196,17 +1196,61 @@ describe("slack-actions (FR-007, US-004, US-005)", () => {
       },
     );
 
-    it("does not repeat a merge after an ambiguous transport timeout", async () => {
+    it.each(["button", "reaction"])(
+      "does not repeat a merge after an ambiguous transport timeout from a %s",
+      async (surface) => {
+        const { registry, project } = createSqliteRegistry();
+        const vcs = createSyntheticVcsPort();
+        const merge = vi
+          .spyOn(vcs, "mergePullRequest")
+          .mockImplementationOnce((cwd, prNumber) => {
+            vcs.mergedPrs.push({ cwd, prNumber });
+            throw Object.assign(
+              new Error("Merge response timed out after remote effect"),
+              { code: "ETIMEDOUT" },
+            );
+          });
+        await registerSlackActions(mockApp as App, {
+          ...mockContext,
+          routingService: createProjectRoutingService({ registry }),
+          vcs,
+        });
+        const reaction = reactionArgs(project.projectId);
+        const click = clickArgs("merge_pr", project.projectId);
+        const receiptKey = buildActionReceiptKey({
+          ...actionValue,
+          projectId: project.projectId,
+          workspaceId: SYNTHETIC_WORKSPACE_ID,
+          channelId: SYNTHETIC_CHANNEL_ALPHA,
+          messageTs,
+          actionId: "merge_pr",
+        });
+        if (surface === "button") await actionHandlers.merge_pr(click);
+        else await eventHandlers.reaction_added(reaction);
+        expect
+          .soft(registry.getActionReceipt(receiptKey)?.outcome)
+          .toBe("uncertain");
+        const retry = {
+          ...reaction,
+          event: { ...reaction.event, event_ts: "1731320000.000500" },
+        };
+        await Promise.all([
+          eventHandlers.reaction_added(retry),
+          actionHandlers.merge_pr(click),
+        ]);
+        expect
+          .soft(merge)
+          .toHaveBeenCalledExactlyOnceWith(project.localRoot, 42);
+        expect(vcs.mergedPrs).toEqual([
+          { cwd: project.localRoot, prNumber: 42 },
+        ]);
+      },
+    );
+
+    it("grants one retry when the earlier reaction was rejected before merging", async () => {
       const { registry, project } = createSqliteRegistry();
       const vcs = createSyntheticVcsPort();
-      const merge = vi
-        .spyOn(vcs, "mergePullRequest")
-        .mockRejectedValueOnce(
-          Object.assign(
-            new Error("Merge response timed out after remote effect"),
-            { code: "ETIMEDOUT" },
-          ),
-        );
+      const merge = vi.spyOn(vcs, "mergePullRequest");
       await registerSlackActions(mockApp as App, {
         ...mockContext,
         routingService: createProjectRoutingService({ registry }),
@@ -1221,41 +1265,11 @@ describe("slack-actions (FR-007, US-004, US-005)", () => {
         messageTs,
         actionId: "merge_pr",
       });
-      await eventHandlers.reaction_added(reaction);
-      expect
-        .soft(registry.getActionReceipt(receiptKey)?.outcome)
-        .toBe("uncertain");
-      await eventHandlers.reaction_added({
-        ...reaction,
-        event: { ...reaction.event, event_ts: "1731320000.000500" },
-      });
-      expect(merge).toHaveBeenCalledOnce();
-    });
 
-    it("marks a failed reaction merge and grants one claim when retried", async () => {
-      const { registry, project } = createSqliteRegistry();
-      const vcs = createSyntheticVcsPort();
-      const merge = vi
-        .spyOn(vcs, "mergePullRequest")
-        .mockRejectedValueOnce(new Error("merge failed"));
-      await registerSlackActions(mockApp as App, {
-        ...mockContext,
-        routingService: createProjectRoutingService({ registry }),
-        vcs,
-      });
-      const reaction = reactionArgs(project.projectId);
-      const receiptKey = buildActionReceiptKey({
-        ...actionValue,
-        projectId: project.projectId,
-        workspaceId: SYNTHETIC_WORKSPACE_ID,
-        channelId: SYNTHETIC_CHANNEL_ALPHA,
-        messageTs,
-        actionId: "merge_pr",
-      });
-
+      vi.mocked(findOpenPr).mockReturnValueOnce(null);
       await eventHandlers.reaction_added(reaction);
 
-      expect(merge).toHaveBeenCalledOnce();
+      expect(merge).not.toHaveBeenCalled();
       expect(registry.getActionReceipt(receiptKey)?.outcome).toBe("failed");
       expect(reaction.client.chat.postMessage).not.toHaveBeenCalled();
 
@@ -1263,7 +1277,7 @@ describe("slack-actions (FR-007, US-004, US-005)", () => {
         ...reaction,
         context: { retryNum: 1 },
       });
-      expect(merge).toHaveBeenCalledOnce();
+      expect(merge).not.toHaveBeenCalled();
 
       const retry = {
         ...reaction,
@@ -1275,8 +1289,7 @@ describe("slack-actions (FR-007, US-004, US-005)", () => {
       ]);
       await eventHandlers.reaction_added(retry);
 
-      expect(merge).toHaveBeenCalledTimes(2);
-      expect(merge).toHaveBeenLastCalledWith(project.localRoot, 42);
+      expect(merge).toHaveBeenCalledExactlyOnceWith(project.localRoot, 42);
       const retryKey = buildActionReceiptKey({
         ...actionValue,
         projectId: project.projectId,

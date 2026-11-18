@@ -318,6 +318,11 @@ describe("slack-home", () => {
           gitOptions,
         );
       }
+      mkdirSync(join(alpha.localRoot, "specs/004-foreign"));
+      symlinkSync(
+        join(beta.localRoot, "specs/001-beta/plan.md"),
+        join(alpha.localRoot, "specs/004-foreign/plan.md"),
+      );
       const alphaAlias = join(root, "alpha-alias");
       symlinkSync(alpha.localRoot, alphaAlias, "dir");
       const view = await buildHomeTab(
