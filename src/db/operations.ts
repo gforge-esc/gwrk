@@ -1640,7 +1640,7 @@ export function createOperationsStore(
         .prepare<string[], NotificationOutboxRow>(
           `SELECT * FROM notification_outbox
            WHERE project_id = ? AND (status IN ('pending', 'uncertain') OR status = 'sending')
-           ORDER BY created_at ASC, outbox_id ASC`,
+           ORDER BY julianday(created_at) ASC, outbox_id ASC`,
         )
         .all(input.projectId)
         .map(rowToOutboxItem);

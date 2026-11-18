@@ -1493,6 +1493,37 @@ describe("durable operations review regressions", () => {
     });
   }
 
+  it("recovers outbox items by timestamp instant and stable ID inside one project", () => {
+    const notice = enqueueNotice();
+    for (const [outboxId, createdAt] of [
+      ["offset", "2026-11-11T13:00:00+02:00"],
+      ["a-first", "2026-11-11T11:00:00Z"],
+    ]) {
+      store.enqueueOutbox({
+        ...notice,
+        outboxId,
+        dedupeKey: outboxId,
+        clientMetadataKey: outboxId,
+        nowIso: createdAt,
+      });
+    }
+    registerProject({ id: "beta", name: "Beta", path: "/fixture/beta" }, db);
+    store.enqueueOutbox({
+      ...notice,
+      outboxId: "foreign",
+      projectId: "beta",
+      dedupeKey: "foreign",
+      clientMetadataKey: "foreign",
+      recipient: { surface: "slack", projectId: "beta" },
+      nowIso: "2026-11-11T10:00:00Z",
+    });
+    expect(
+      store
+        .listRecoverableOutboxItems({ projectId: "alpha", nowIso: now })
+        .map(({ outboxId }) => outboxId),
+    ).toEqual(["a-first", "offset", "notice"]);
+  });
+
   const destination = { workspaceId: "W1", channelId: "C1", threadTs: null };
 
   it.each([
