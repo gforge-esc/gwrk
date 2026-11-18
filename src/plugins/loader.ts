@@ -261,6 +261,7 @@ export class PluginLoader {
             path.join(resolvedPath, "SKILL.md"),
             "utf-8",
           );
+          if (!content.trim()) return;
         } catch {
           return;
         }

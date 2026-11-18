@@ -197,3 +197,5 @@ python3 scripts/architecture-context-uat.py
 ## Plugin follow-up
 
 Record pack versions and compatibility results in the feature review. A pack that needs changes gets a companion gwrk-plugins change and a fixture tied to its reviewed revision.
+
+Phase 3 regression coverage rejects blank skill bodies before selection. The CLI reports disabled overrides when they suppress a compatible lower copy. RED reproduced four failures in `/tmp/gwrk-044-blank-policy-red.log`. The repaired phase gate passes 86 tests.

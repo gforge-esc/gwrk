@@ -88,7 +88,9 @@ it("resolves a compatible lower layer when the local policy selects another arch
 async function writePolicyPack(
   directory: string,
   manifest: Pick<EnforcementSkillManifest, "name" | "version"> &
-    Partial<Pick<EnforcementSkillManifest, "framework" | "disabled">>,
+    Partial<
+      Pick<EnforcementSkillManifest, "framework" | "disabled" | "architectures">
+    >,
   body?: string,
 ) {
   await mkdir(directory, { recursive: true });
@@ -156,6 +158,118 @@ describe("project enforcement candidate discovery", () => {
       join(root, ".gwrkrc.json"),
       JSON.stringify({ project: profile }),
     );
+  });
+
+  it.each(["", "   \n\t"])(
+    "reports a framework gap for blank body %j",
+    async (body) => {
+      await writePolicyPack(
+        join(root, ".gwrk/plugins/skills", name),
+        { name, framework, version: "2.0.0" },
+        body,
+      );
+      await writeFile(
+        join(root, ".gwrk/plugins.json"),
+        JSON.stringify({ inherits: false }),
+      );
+      expect((await resolveEffectivePolicy(root)).gaps).toContainEqual(
+        expect.objectContaining({
+          kind: "missing-framework-binding",
+          subject: framework,
+        }),
+      );
+      expect(await resolveEnforcementSkills(root)).toContain("## Policy gaps");
+      expect((await listProjectPlugins(root)).map((p) => p.name)).not.toContain(
+        name,
+      );
+    },
+  );
+
+  it.each([false, true])(
+    "preserves lower-layer selection or disabled suppression for architecture-mismatched override (disabled=%s)",
+    async (disabled) => {
+      await writeFile(
+        join(root, ".gwrkrc.json"),
+        JSON.stringify({
+          project: {
+            ...profile,
+            design: {
+              architecture: "hexagonal-functional",
+              principles: ["functional-core"],
+              templateVersion: "1.0.0",
+            },
+          },
+        }),
+      );
+      const override = join(root, "overrides", name);
+      await writePolicyPack(
+        override,
+        {
+          name,
+          framework,
+          version: "2.0.0",
+          architectures: ["layered"],
+          disabled,
+        },
+        " ",
+      );
+      await writePolicyPack(
+        join(root, "entry/skills", name),
+        {
+          name,
+          framework,
+          version: "1.0.0",
+          architectures: ["hexagonal-functional"],
+        },
+        "Compatible entry policy",
+      );
+      await writeFile(
+        join(root, ".gwrk/plugins.json"),
+        JSON.stringify({
+          inherits: false,
+          entries: ["entry"],
+          override: { [name]: override },
+        }),
+      );
+      expect(
+        (await listProjectPlugins(root)).filter((p) => p.name === name),
+      ).toEqual([
+        expect.objectContaining({
+          status: disabled ? "disabled" : "active",
+          version: disabled ? "2.0.0" : "1.0.0",
+        }),
+      ]);
+    },
+  );
+
+  it("falls back from a blank compatible override to a usable entry", async () => {
+    const override = join(root, "overrides", name);
+    await writePolicyPack(
+      override,
+      { name, framework, version: "2.0.0" },
+      " \n",
+    );
+    await writePolicyPack(
+      join(root, "entry/skills", name),
+      { name, framework, version: "1.0.0" },
+      "Compatible entry policy",
+    );
+    await writeFile(
+      join(root, ".gwrk/plugins.json"),
+      JSON.stringify({
+        inherits: false,
+        entries: ["entry"],
+        override: { [name]: override },
+      }),
+    );
+    expect(await resolveEnforcementSkills(root)).toContain(
+      "Compatible entry policy",
+    );
+    expect(
+      (await listProjectPlugins(root)).filter((p) => p.name === name),
+    ).toEqual([
+      expect.objectContaining({ status: "active", version: "1.0.0" }),
+    ]);
   });
 
   it.each(["relative", "absolute"] as const)(

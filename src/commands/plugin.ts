@@ -124,7 +124,14 @@ async function listProjectEnforcement(
       ...candidate,
       manifest: { ...candidate.manifest, disabled: false },
     };
-    return evaluateEnforcementCandidate(enabled, profile, "all").included
+    const suppressesCompatibleCopy = candidates.some(
+      (copy) =>
+        copy !== candidate &&
+        copy.name === name &&
+        evaluateEnforcementCandidate(copy, profile, "all").included,
+    );
+    return evaluateEnforcementCandidate(enabled, profile, "all").included ||
+      suppressesCompatibleCopy
       ? [summarize(candidate, "disabled")]
       : [];
   });
