@@ -12,9 +12,7 @@ import type { SlackMessage } from "../../server/slack-messages.js";
 export function createSlackNotificationAdapter(): NotificationPort {
   return {
     async notify(payload: NotificationPayload) {
-      const { notifySlack, sendSlackMessage } = await import(
-        "../../server/slack-notify.js"
-      );
+      const notifications = await import("../../server/slack-notify.js");
       const message: SlackMessage = {
         text: payload.text,
         channel: payload.channel ?? payload.recipient?.channelId,
@@ -23,9 +21,13 @@ export function createSlackNotificationAdapter(): NotificationPort {
       };
       if (payload.projectId || payload.recipient) {
         if (!message.channel) return undefined;
-        return sendSlackMessage(message, { webhookFallback: false });
+        return notifications.sendSlackMessage(message, {
+          webhookFallback: false,
+        });
       }
-      return notifySlack(message, undefined, { opsOnly: payload.opsOnly });
+      return notifications.notifySlack(message, undefined, {
+        opsOnly: payload.opsOnly,
+      });
     },
   };
 }
