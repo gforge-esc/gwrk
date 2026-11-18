@@ -131,6 +131,8 @@ pnpm exec vitest run src/db/operations.test.ts src/db/db.test.ts src/architectur
 - `src/adapters/git/process-env.ts` (NEW: Reuse reviewed repository-selector isolation)
 - `src/adapters/git/harvest-git.test.ts` (NEW: Test isolated merge-SHA checkouts, trunk ancestry checks and moved-tip delete blocking)
 - `src/adapters/github/github-adapter.test.ts` (NEW: Test raw-body signature verification, cursor catch-up and per-repo PR isolation)
+- `src/adapters/notifications/outbox-reconcile.ts` (NEW: Reconcile scoped Slack metadata through a bounded workspace-bound reader)
+- `src/adapters/notifications/outbox-adapter.integration.test.ts` (NEW: Keep the phase RED until production sender metadata, actual receipts and reconciliation are composed)
 - `src/adapters/notifications/outbox-reconcile.test.ts` (NEW: Test uncertain Slack send reconciliation by metadata key and pilot Telegram suppression)
 
 #### Governance and skills
