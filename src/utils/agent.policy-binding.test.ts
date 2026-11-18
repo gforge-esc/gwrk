@@ -106,30 +106,84 @@ it("preserves every byte of a target without generated policy sections", async (
   expect(injected?.[1]).toBe(target);
 });
 
-it("refreshes dynamic framework gaps while preserving the target file and decision index", async () => {
+it.each([
+  {
+    initialPack: "no pack",
+    gap: "No bundled framework binding or policy for FixtureFramework.",
+  },
+  {
+    initialPack: "a Python-only pack",
+    gap: "No compatible policy found for framework FixtureFramework.",
+  },
+])("refreshes a saved framework gap from $initialPack after installing compatible rules", async ({ initialPack, gap }) => {
   const design = resolveDesign({ architecture: "hexagonal-functional" });
-  const profile: ProjectProfile = { type: "nodejs", stack: { language: "TypeScript", framework: "FixtureFramework" }, design };
-  await installArchitectureContext(root, { projectName: "binding-fixture", design, language: "TypeScript", framework: "FixtureFramework", decisionsDir: "docs/decisions" });
+  const stack = { language: "TypeScript", framework: "FixtureFramework" };
+  const profile: ProjectProfile = { type: "nodejs", stack, design };
+  const pack = join(root, ".gwrk/plugins/skills/fixture-framework");
+  const installPack = (language: string, rules: string) => {
+    mkdirSync(pack, { recursive: true });
+    writeFileSync(join(pack, "manifest.yaml"), `type: skill\nname: fixture-framework\nversion: 1.0.0\ndescription: Fixture framework policy\ntier: enforcement\nscope: all\nlanguage: ${language}\nframework: FixtureFramework\n`);
+    writeFileSync(join(pack, "SKILL.md"), rules);
+  };
+  if (initialPack === "a Python-only pack") {
+    installPack("Python", "Python-only fixture framework rules.");
+  }
+  await installArchitectureContext(root, {
+    projectName: "binding-fixture",
+    design,
+    ...stack,
+    decisionsDir: "docs/decisions",
+  });
+  const decisions = join(root, ".gwrk/decisions/index.md");
+  const decisionIndex = "Human decision index remains intact.";
   mkdirSync(join(root, ".gwrk/decisions"), { recursive: true });
-  writeFileSync(join(root, ".gwrk/decisions/index.md"), "Human decision index remains intact.");
+  writeFileSync(decisions, decisionIndex);
   const target = join(root, ".gwrk/architecture.md");
   const original = readFileSync(target, "utf8");
-  const gap = "No bundled framework binding or policy for FixtureFramework.";
+  expect(original).toContain(`- ${gap}\n`);
   const before = await prompt("gwrk-implement", profile);
   expect.soft(before.split(gap).length - 1).toBe(1);
-  const pack = join(root, ".gwrk/plugins/skills/fixture-framework");
-  mkdirSync(pack, { recursive: true });
-  writeFileSync(join(pack, "manifest.yaml"), "type: skill\nname: fixture-framework\nversion: 1.0.0\ndescription: Fixture framework policy\ntier: enforcement\nscope: all\nlanguage: TypeScript\nframework: FixtureFramework\n");
-  writeFileSync(join(pack, "SKILL.md"), "Compatible fixture framework rules.");
+  expect(before.match(/<effective_policy>\n([\s\S]*?)\n<\/effective_policy>/)?.[1]).toContain(gap);
+  expect(before).not.toContain("Python-only fixture framework rules.");
+
+  installPack("TypeScript", "Compatible fixture framework rules.");
   const after = await prompt("gwrk-implement", profile);
   expect.soft(after).toContain("Compatible fixture framework rules.");
   expect.soft(after).not.toContain(gap);
   expect(after.split("Domain policy MUST depend inward").length - 1).toBe(1);
-  expect(after).toContain("Human decision index remains intact.");
+  expect(after).toContain(decisionIndex);
   expect(readFileSync(target, "utf8")).toBe(original);
+  expect(readFileSync(decisions, "utf8")).toBe(decisionIndex);
   const template = "Read the target without a policy expansion.";
   const unexpanded = await dispatchToAgent({ workflow: "gwrk-implement", profile, workDir: root, stdin: template, promptParts: { template, userInput: "" }, dryRun: true, quiet: true });
   expect(unexpanded.stdout).toContain(gap);
+});
+
+it("omits the incompatible Django root gap and fallback from a FastAPI workspace prompt", async () => {
+  const design = resolveDesign({ architecture: "hexagonal-functional" });
+  await installArchitectureContext(root, {
+    projectName: "binding-fixture",
+    design,
+    language: "TypeScript",
+    framework: "Django",
+    decisionsDir: "docs/decisions",
+  });
+  const target = join(root, ".gwrk/architecture.md");
+  const original = readFileSync(target, "utf8");
+  const gap = "No compatible policy found for framework Django.";
+  const fallback = "No bundled framework binding. Framework compatibility remains unassessed.";
+  expect(original).toContain(gap);
+  expect(original).toContain(fallback);
+
+  const rendered = await prompt("gwrk-implement", {
+    type: "python",
+    stack: { language: "Python", framework: "FastAPI" },
+    design,
+  });
+  expect(rendered).toContain("FastAPI routers");
+  expect(rendered).not.toContain(gap);
+  expect(rendered).not.toContain(fallback);
+  expect(readFileSync(target, "utf8")).toBe(original);
 });
 
 it("preserves maintainer additions while replacing generated root stack guidance", async () => {
@@ -142,6 +196,38 @@ it("preserves maintainer additions while replacing generated root stack guidance
   expect.soft(rendered).toContain("Use SPDX license headers on new workspace modules.");
   expect.soft(rendered).not.toContain("Use interfaces for ports");
   expect.soft(rendered).toContain("typing.Protocol");
+  expect(readFileSync(path, "utf8")).toBe(target);
+});
+
+it.each([
+  { separator: " ", edit: "on the same line" },
+  { separator: "\n", edit: "on a continuation line" },
+])("preserves the full language paragraph edited $edit and a continued gap item", async ({ separator }) => {
+  const design = resolveDesign({ architecture: "hexagonal-functional" });
+  await installArchitectureContext(root, {
+    projectName: "binding-fixture",
+    design,
+    language: "TypeScript",
+    framework: "Django",
+    decisionsDir: "docs/decisions",
+  });
+  const path = join(root, ".gwrk/architecture.md");
+  const guidance = "Use interfaces for ports. Inject effectful services. Keep framework types outside domain signatures.";
+  const editedGuidance = `${guidance}${separator}Use SPDX license headers on new workspace modules.`;
+  const gap = "- No compatible policy found for framework Django.";
+  const editedGap = `${gap}\n  Keep this note for migrations.`;
+  const target = readFileSync(path, "utf8").replace(guidance, editedGuidance).replace(gap, editedGap);
+  writeFileSync(path, target);
+
+  const rendered = await prompt("gwrk-implement", {
+    type: "python",
+    stack: { language: "Python", framework: "FastAPI" },
+    design,
+  });
+  const injected = rendered.match(/<architecture_target>\n([\s\S]*?)\n<\/architecture_target>/)?.[1];
+  expect.soft(injected?.match(/## Language guidance\n\n([\s\S]*?)\n\n/)?.[1]).toBe(editedGuidance);
+  expect.soft(injected).toContain(`## Policy gaps\n\n${editedGap}\n\n`);
+  expect(rendered).toContain("typing.Protocol");
   expect(readFileSync(path, "utf8")).toBe(target);
 });
 

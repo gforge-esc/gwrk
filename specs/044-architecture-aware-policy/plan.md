@@ -178,6 +178,10 @@ bash specs/044-architecture-aware-policy/gates/phase-03.sh
 | TR-012 | unit | `src/application/architecture/context.test.ts` | Two-argument rendering uses the projected policy for TypeScript and Django and preserves Python and FastAPI output bytes when there are no gaps |
 | TR-013 | integration | `src/utils/agent.policy-binding.test.ts` | Define, implement and review prompts include Python and FastAPI workspace policy once and omit guidance from the installed TypeScript and Fastify root target |
 | TR-013 | integration | `src/utils/agent.policy-binding.test.ts` | Policy expansion preserves every byte of a target without generated policy sections, including literal `$$` in a Make recipe rule and headings in a fenced example |
+| TR-013 | integration | `src/utils/agent.policy-binding.test.ts` | One current gap per missing or incompatible framework pack before repair and zero after compatible rules load |
+| TR-013 | integration | `src/utils/agent.policy-binding.test.ts` | Byte equality for the saved target and decision index after pack repair |
+| TR-013 | integration | `src/utils/agent.policy-binding.test.ts` | FastAPI router guidance without the TypeScript root target's Django gap and fallback |
+| TR-013 | integration | `src/utils/agent.policy-binding.test.ts` | Byte equality for maintainer-edited guidance paragraphs and gap items with continuation lines |
 | TR-013 | integration | `src/utils/agent.test.ts` | Built-in `gwrk-specify` delivers the definition skill once and preserves user input |
 | TR-013 | integration | `src/utils/agent.test.ts` | Built-in `gwrk-implement` delivers the target rule once and retains the selected skill and framework gap |
 | TR-014 | e2e | `scripts/architecture-context-uat.py` | Built CLI init and assessment preview complete with zero model invocations across fresh and existing and polyglot fixtures |

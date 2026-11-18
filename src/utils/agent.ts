@@ -15,6 +15,7 @@ import { recordRoutingDecision } from "../db/plugins.js";
 import {
   lookupFrameworkGuidance,
   lookupLanguageGuidance,
+  normalizeFramework,
 } from "../domain/architecture-context.js";
 import { composeEffectivePolicy } from "../domain/policy-selection.js";
 import type { ProjectProfile } from "../domain/types.js";
@@ -515,11 +516,12 @@ function withoutGeneratedPolicySections(target: string): string {
     new RegExp(`^- ${name}: (.+)$`, "m").exec(masked)?.[1]?.trim();
   const language = selection("Language");
   const framework = selection("Framework");
+  const hasFramework = normalizeFramework(framework) !== undefined;
   const architecture = selection("Architecture");
   const policy = composeEffectivePolicy({
     profile: {
       type: "app",
-      stack: { language, framework },
+      stack: { language },
       ...(architecture
         ? {
             design: {
@@ -542,41 +544,64 @@ function withoutGeneratedPolicySections(target: string): string {
     ],
     [
       "Framework guidance",
+      hasFramework
+        ? [
+            "No bundled framework binding. Framework compatibility remains unassessed.",
+            lookupFrameworkGuidance(framework),
+          ].filter((guidance) => guidance !== undefined)
+        : ["No framework selected."],
+    ],
+    [
+      "Policy gaps",
       [
-        lookupFrameworkGuidance(framework) ??
-          (framework && framework !== "unspecified"
-            ? "No bundled framework binding. Framework compatibility remains unassessed."
-            : "No framework selected."),
+        ...policy.gaps.map(({ message }) => `- ${message}`),
+        ...(hasFramework
+          ? [
+              `- No compatible policy found for framework ${framework}.`,
+              `- No bundled framework binding or policy for ${framework}.`,
+            ]
+          : []),
       ],
     ],
-    ["Policy gaps", policy.gaps.map(({ message }) => `- ${message}`)],
   ]);
   const headings = Array.from(masked.matchAll(/^#{1,2}[ \t]+([^\r\n]*)/gm));
   let projected = "";
   let start = 0;
   for (const [index, heading] of headings.entries()) {
-    const content = generated.get(heading[1].trim());
+    const section = heading[1].trim();
+    const content = generated.get(section);
     if (!content || !heading[0].startsWith("## ")) continue;
     const bodyStart = heading.index + heading[0].length;
     const end = headings[index + 1]?.index ?? target.length;
-    let body = target.slice(bodyStart, end);
-    for (const text of content) {
-      const visible = maskPromptExamples(body);
-      const positions: number[] = [];
-      for (
-        let offset = body.indexOf(text);
-        offset >= 0;
-        offset = body.indexOf(text, offset + text.length)
-      ) {
-        const lineStart = body.lastIndexOf("\n", offset - 1) + 1;
-        if (visible[offset] !== "\0" && !body.slice(lineStart, offset).trim())
-          positions.push(offset);
+    const original = target.slice(bodyStart, end);
+    const visible = masked.slice(bodyStart, end);
+    const lines = Array.from(visible.matchAll(/^([^\r\n]*)(?:\r?\n|$)/gm));
+    let body = "";
+    let keptFrom = 0;
+    for (const [lineIndex, line] of lines.entries()) {
+      if (!content.includes(line[1])) continue;
+      const next = line.index + line[0].length;
+      const nextLine = lines[lineIndex + 1]?.[1];
+      if (section === "Policy gaps") {
+        const following = original.slice(next);
+        // A list item can continue after a blank line when the text is indented.
+        if (/^(?:[ \t]*\r?\n)*(?: {2}| *\t)[ \t]*[^ \t\r\n]/.test(following))
+          continue;
+        if (
+          nextLine?.trim() &&
+          !/^ {0,1}(?:[-+*]|\d{1,9}[.)])(?:[ \t]|$)/.test(nextLine)
+        )
+          continue;
+      } else if (lines[lineIndex - 1]?.[1].trim() || nextLine?.trim()) {
+        continue;
       }
-      for (const offset of positions.reverse())
-        body = body.slice(0, offset) + body.slice(offset + text.length);
+      body += original.slice(keptFrom, line.index);
+      keptFrom = next;
     }
+    body += original.slice(keptFrom);
     projected += target.slice(start, heading.index);
-    if (body.trim()) projected += heading[0] + body;
+    if (keptFrom === 0 || body.trim())
+      projected += target.slice(heading.index, bodyStart) + body;
     start = end;
   }
   return projected + target.slice(start);
