@@ -17,7 +17,7 @@ import {
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { performance } from "node:perf_hooks";
-import { promisify } from "node:util";
+import { isDeepStrictEqual, promisify } from "node:util";
 import { z } from "zod";
 import type {
   ModelCandidate,
@@ -43,6 +43,7 @@ import {
   type TaskResult,
   dispatchToAgent,
 } from "../../utils/agent.js";
+import { type TaskState, TaskStateSchema } from "../../utils/state.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -73,6 +74,7 @@ const ROLE_WORKFLOWS = {
 } as const satisfies Record<ModelRole, readonly string[]>;
 
 const DEFINITION_FEATURE = "specs/001-ticket-routing";
+const REVIEW_TASK_STATE = `${DEFINITION_FEATURE}/.gwrk/tasks.json`;
 
 const SuiteManifest = z.object({
   fixtures: z.array(
@@ -90,7 +92,19 @@ const SuiteManifest = z.object({
     .default([]),
 });
 
-function stageInput(fixture: FixtureManifest, workflow: string): string {
+function stageInput(
+  fixture: FixtureManifest,
+  workflow: string,
+  candidateHandoff = false,
+): string {
+  if (workflow === "gwrk-implement" && candidateHandoff) {
+    const instructions =
+      fixture.candidateHandoffPrompt ?? "Complete the implementation.";
+    return `Use the generated spec.md and plan.md in the workspace root. ${instructions}`;
+  }
+  if (workflow === "gwrk-review-code") {
+    return `${fixture.reviewPrompt ?? fixture.prompt}\n\nfeature_dir: ${DEFINITION_FEATURE}\nphase_number: 1\nSelect phase-01 in tasks.json.`;
+  }
   const scope =
     workflow === "gwrk-specify"
       ? `The feature scaffold is ready. Write only ${DEFINITION_FEATURE}/spec.md. The planning stage will follow.`
@@ -192,8 +206,12 @@ function matchesReviewSchema(
   );
 }
 
-function taskStates(tasks: string): Map<string, boolean> {
-  const states = new Map<string, boolean>();
+function taskStates(tasks: string | undefined) {
+  if (tasks === undefined) return;
+  const states = new Map<
+    string,
+    { open: boolean; line: string; description: string }
+  >();
   for (const line of tasks.split("\n")) {
     const task =
       /^\s*(?:[-*]\s+)?(?:\[([ xX])\]\s+)?(?:\*\*)?(T\d+)\b(?:\*\*)?[:\s-]*(.*)/.exec(
@@ -201,12 +219,93 @@ function taskStates(tasks: string): Map<string, boolean> {
       );
     if (!task) continue;
     const [, checkbox, id, description] = task;
-    const reopened =
-      /^(?:REOPEN(?:ED)?|OPEN)\b/i.test(description) ||
-      /(?:\[REOPENED\]|\(reopened\))\s*$/i.test(description);
-    states.set(id, checkbox === " " || reopened);
+    if (states.has(id)) return;
+    const content = description
+      .replace(/^(?:REOPEN(?:ED)?|OPEN)\b[:\s-]*/i, "")
+      .replace(/\s*(?:\[REOPENED\]|\(reopened\))\s*$/i, "");
+    states.set(id, {
+      open: checkbox === " " || content !== description,
+      line,
+      description: content,
+    });
   }
   return states;
+}
+
+function reviewMarkdownPreserved(
+  baseline: string | undefined,
+  current: string | undefined,
+  expected: ReadonlySet<string>,
+  reopenedTasks: Set<string>,
+): boolean {
+  const before = taskStates(baseline);
+  const after = taskStates(current);
+  if (!before || !after) return false;
+
+  for (const [id, task] of after) {
+    if (task.open && before.get(id)?.open !== true) reopenedTasks.add(id);
+  }
+
+  return (
+    before.size === after.size &&
+    [...after].every(([id, task]) => {
+      const original = before.get(id);
+      if (!original) return false;
+      if (task.line === original.line) return true;
+      return (
+        !original.open &&
+        task.open &&
+        expected.has(id) &&
+        task.description === original.description
+      );
+    })
+  );
+}
+
+function parseCanonicalTasks(
+  content: string | undefined,
+): TaskState | undefined {
+  if (content === undefined) return;
+  try {
+    const raw = JSON.parse(content);
+    if (TaskStateSchema.safeParse(raw).success) return raw as TaskState;
+  } catch {
+    return undefined;
+  }
+}
+
+function reviewCanonicalPreserved(
+  baseline: string | undefined,
+  current: string | undefined,
+  expected: ReadonlySet<string>,
+  reopenedTasks: Set<string>,
+): boolean {
+  const before = parseCanonicalTasks(baseline);
+  const after = parseCanonicalTasks(current);
+  if (!before || !after) return false;
+
+  const originals = new Map(
+    before.phases.flatMap(({ tasks }) => tasks.map((task) => [task.id, task])),
+  );
+  for (const task of after.phases.flatMap(({ tasks }) => tasks)) {
+    const original = originals.get(task.id);
+    if (original?.status !== "completed" || task.status !== "open") continue;
+    reopenedTasks.add(task.id);
+    if (!expected.has(task.id)) continue;
+
+    task.status = original.status;
+    if (task.completedAt == null && original.completedAt !== undefined) {
+      task.completedAt = original.completedAt;
+    }
+    if (
+      task.description.startsWith(
+        `${original.description}\n\nREVIEW FAIL (code):`,
+      )
+    ) {
+      task.description = original.description;
+    }
+  }
+  return isDeepStrictEqual(before, after);
 }
 
 async function readOptionalFile(path: string): Promise<string | undefined> {
@@ -229,7 +328,10 @@ interface FixtureManifest {
   readonly id: string;
   readonly roles: readonly ModelRole[];
   readonly prompt: string;
+  readonly candidateHandoffPrompt?: string;
+  readonly reviewPrompt?: string;
   readonly files: Record<string, string>;
+  readonly reviewFiles?: Record<string, string>;
   readonly gates?: {
     readonly command?: readonly string[];
     readonly baselineExitCode?: number;
@@ -243,6 +345,12 @@ interface FixtureManifest {
     readonly reviewRequiredReopenedTasks?: readonly string[];
     readonly reviewForbiddenReopenedTasks?: readonly string[];
   };
+}
+
+function filesForRole(fixture: FixtureManifest, role: ModelRole) {
+  return role === "review"
+    ? { ...fixture.files, ...fixture.reviewFiles }
+    : fixture.files;
 }
 
 export class FixtureRunner
@@ -298,7 +406,7 @@ export class FixtureRunner
     fixtureSuiteHash: string;
     workflowPromptHashes: Record<string, string>;
   }> {
-    const { content, manifests } = await this.readSuite();
+    const { content, manifests, handoffs } = await this.readSuite();
     const suiteHasher = createHash("sha256").update(content ?? "");
     const fixtures: FixtureManifest[] = [];
     for (const { path } of manifests) {
@@ -350,12 +458,22 @@ export class FixtureRunner
         : [undefined]) {
         const projectRoot = await mkdtemp(join(tmpdir(), "gwrk-model-prompt-"));
         try {
-          if (fixture) await seedFiles(projectRoot, fixture.files);
+          if (fixture)
+            await seedFiles(projectRoot, filesForRole(fixture, role));
           for (const stage of stages) {
-            await runtime.executeWorkflow(
-              stage,
-              fixture ? stageInput(fixture, stage) : "",
-              {
+            const inputs = [fixture ? stageInput(fixture, stage) : ""];
+            if (
+              fixture &&
+              stage === "gwrk-implement" &&
+              handoffs.some(
+                ({ to, planSource }) =>
+                  to === fixture.id && planSource === "candidate",
+              )
+            ) {
+              inputs.push(stageInput(fixture, stage, true));
+            }
+            for (const input of inputs) {
+              await runtime.executeWorkflow(stage, input, {
                 nativeOnly: true,
                 projectRoot,
                 quiet: true,
@@ -363,8 +481,8 @@ export class FixtureRunner
                   rendered.get(stage)?.push(stdin ?? "");
                   return { exitCode: 0, stdout: "", stderr: "", durationS: 0 };
                 },
-              },
-            );
+              });
+            }
           }
         } finally {
           await rm(projectRoot, { recursive: true, force: true });
@@ -440,21 +558,21 @@ export class FixtureRunner
         "runner@example.com",
       ]);
 
-      await seedFiles(workspaceDir, fixture.files);
+      const files = filesForRole(fixture, request.role);
+      await seedFiles(workspaceDir, files);
       const featureDir =
-        request.role === "define"
+        request.role === "define" || request.role === "review"
           ? join(workspaceDir, DEFINITION_FEATURE)
           : workspaceDir;
       if (request.role === "define")
         await mkdir(featureDir, { recursive: true });
 
       if (request.handoffArtifactDir) {
-        const planContent = await readOptionalFile(
-          join(request.handoffArtifactDir, "plan.md"),
-        );
-        const workspacePlan = join(workspaceDir, "plan.md");
-        if (!planContent?.trim()) {
-          await rm(workspacePlan, { force: true });
+        const [spec, plan] = await Promise.all([
+          readOptionalFile(join(request.handoffArtifactDir, "spec.md")),
+          readOptionalFile(join(request.handoffArtifactDir, "plan.md")),
+        ]);
+        if (!spec?.trim() || !plan?.trim()) {
           return {
             fixtureId: request.fixtureId,
             repeatIndex: request.repeatIndex,
@@ -462,18 +580,24 @@ export class FixtureRunner
             observedModel: "unknown",
             deterministicGatesPassed: false,
             gateChecks: [
-              {
-                checkId: "handoff-plan",
+              ["spec", spec],
+              ["plan", plan],
+            ]
+              .filter(([, content]) => !content?.trim())
+              .map(([artifact]) => ({
+                checkId: `handoff-${artifact}`,
                 passed: false,
-                detail: "Candidate handoff plan is missing or blank",
-              },
-            ],
+                detail: `Candidate handoff ${artifact}.md is missing or blank`,
+              })),
             durationMs: 0,
             retries: 0,
             sanitizedOutput: "",
           };
         }
-        await writeFile(workspacePlan, planContent, "utf8");
+        await Promise.all([
+          writeFile(join(workspaceDir, "spec.md"), spec, "utf8"),
+          writeFile(join(workspaceDir, "plan.md"), plan, "utf8"),
+        ]);
       }
 
       await execFileAsync("git", ["-C", workspaceDir, "add", "-A"]);
@@ -538,7 +662,7 @@ export class FixtureRunner
         try {
           const execution = await runtime.executeWorkflow(
             workflow,
-            stageInput(fixture, workflow),
+            stageInput(fixture, workflow, Boolean(request.handoffArtifactDir)),
             {
               nativeOnly: true,
               projectRoot: workspaceDir,
@@ -630,7 +754,7 @@ export class FixtureRunner
 
       const allowedChangedPaths =
         request.role === "review"
-          ? ["tasks.md"]
+          ? ["tasks.md", REVIEW_TASK_STATE]
           : fixture.gates?.allowedChangedPaths;
       if (allowedChangedPaths) {
         const allowed = new Set(allowedChangedPaths);
@@ -835,16 +959,31 @@ export class FixtureRunner
         });
         for (const task of report?.reopenedTasks ?? []) reopenedTasks.add(task);
 
-        const baselineTasks = taskStates(fixture.files["tasks.md"] ?? "");
-        const currentTasks = taskStates(
-          (await readOptionalFile(join(workspaceDir, "tasks.md"))) ?? "",
-        );
-        for (const [task, open] of currentTasks) {
-          if (open && baselineTasks.get(task) !== true) reopenedTasks.add(task);
-        }
         const expected = new Set(fixture.gates?.reviewRequiredReopenedTasks);
+        const [currentMarkdown, currentCanonical] = await Promise.all([
+          readOptionalFile(join(workspaceDir, "tasks.md")),
+          readOptionalFile(join(workspaceDir, REVIEW_TASK_STATE)),
+        ]);
+        const markdownPreserved = reviewMarkdownPreserved(
+          files["tasks.md"],
+          currentMarkdown,
+          expected,
+          reopenedTasks,
+        );
+        const canonicalPreserved = reviewCanonicalPreserved(
+          files[REVIEW_TASK_STATE],
+          currentCanonical,
+          expected,
+          reopenedTasks,
+        );
+        gateChecks.push({
+          checkId: "review-task-state",
+          passed: markdownPreserved && canonicalPreserved,
+          detail: `Task preservation in tasks.md: ${markdownPreserved}, canonical tasks.json: ${canonicalPreserved}`,
+        });
+        const baselineTasks = taskStates(files["tasks.md"]);
         const unexpected = [...reopenedTasks].filter(
-          (task) => !baselineTasks.has(task) || !expected.has(task),
+          (task) => !baselineTasks?.has(task) || !expected.has(task),
         );
         gateChecks.push({
           checkId: "review-reopened-task-ids",

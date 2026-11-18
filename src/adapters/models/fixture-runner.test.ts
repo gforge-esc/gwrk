@@ -11,6 +11,7 @@ import { describe, expect, it, vi } from "vitest";
 import type { ModelCandidate } from "../../domain/model-qualification.js";
 import type { JudgeVerdictPacket } from "../../ports/model-qualification-port.js";
 import type { TaskDispatch, TaskResult } from "../../utils/agent.js";
+import { type TaskState, loadTaskState } from "../../utils/state.js";
 import { FixtureRunner, createFixtureRunner } from "./fixture-runner.js";
 
 const candidateRoute = {
@@ -38,49 +39,73 @@ const fixedPassingQueueImplementation = `export function selectQueue({ priority,
 `;
 
 describe("fixture runner adapter", () => {
-  it("rejects review deletion of protected task state with a valid report", async () => {
-    const runner = createFixtureRunner({
-      dispatcher: async (task) => {
-        await rm(join(task.workDir!, "tasks.md"), { force: true });
-        return {
-          exitCode: 0,
-          stdout: JSON.stringify({
-            summary: "Routing defect",
-            verdict: "NO-GO",
-            reopenedTasks: ["T001"],
-            intents: [],
-          }),
-          stderr: "",
-          durationS: 0,
-        };
-      },
-    });
-    const result = await runner.runFixtureRepeat({
-      fixtureId: "implement-seeded-defect",
-      role: "review",
-      repeatIndex: 0,
-      route: candidateRoute,
-    });
-    expect(result.deterministicGatesPassed).toBe(false);
-  });
+  it.each(["markdown", "canonical"])(
+    "rejects review deletion of %s task state with a valid report",
+    async (format) => {
+      const runner = createFixtureRunner({
+        dispatcher: async (task) => {
+          const path =
+            format === "markdown"
+              ? join(task.workDir!, "tasks.md")
+              : join(task.featureDir!, ".gwrk/tasks.json");
+          await rm(path);
+          return {
+            exitCode: 0,
+            stdout: JSON.stringify({
+              summary: "Routing defect",
+              verdict: "NO-GO",
+              reopenedTasks: ["T001"],
+              intents: [],
+            }),
+            stderr: "",
+            durationS: 0,
+          };
+        },
+      });
+      const result = await runner.runFixtureRepeat({
+        fixtureId: "implement-seeded-defect",
+        role: "review",
+        repeatIndex: 0,
+        route: candidateRoute,
+      });
+      expect(result.deterministicGatesPassed).toBe(false);
+      expect(result.gateChecks).toContainEqual(
+        expect.objectContaining({
+          checkId: "review-task-state",
+          passed: false,
+        }),
+      );
+    },
+  );
 
   it("provides canonical feature prerequisites to the review workflow", async () => {
     const runner = createFixtureRunner({
       dispatcher: async (task) => {
         const featureDir = task.featureDir!;
-        expect(existsSync(join(featureDir, "spec.md"))).toBe(true);
-        const state = JSON.parse(
-          readFileSync(join(featureDir, ".gwrk/tasks.json"), "utf8"),
+        expect(task.workflow).toBe("gwrk-review-code");
+        expect(task.stdin).toContain("# Code Review for CLI Projects");
+        expect(task.stdin).toContain("## Prerequisites");
+        expect(task.stdin).toContain(
+          "feature_dir: specs/001-ticket-routing\nphase_number: 1\n",
         );
-        expect(
-          state.phases[0].tasks.map((entry: { id: string; status: string }) => [
-            entry.id,
-            entry.status,
-          ]),
-        ).toEqual([
+        expect(existsSync(join(featureDir, "spec.md"))).toBe(true);
+        expect(readFileSync(join(featureDir, "plan.md"), "utf8")).toContain(
+          "### Phase 1: Queue selection",
+        );
+        const phase = loadTaskState(featureDir).phases.find(
+          ({ id }) => id === "phase-01",
+        );
+        expect(phase?.tasks.map(({ id, status }) => [id, status])).toEqual([
           ["T001", "completed"],
           ["T002", "completed"],
         ]);
+        expect(() =>
+          execFileSync("bash", [join(featureDir, "gates/run-all-gates.sh")], {
+            cwd: task.workDir,
+            stdio: "pipe",
+            timeout: 5000,
+          }),
+        ).toThrow(expect.objectContaining({ status: 1 }));
         return {
           exitCode: 0,
           stdout: JSON.stringify({
@@ -103,6 +128,126 @@ describe("fixture runner adapter", () => {
     expect(result.deterministicGatesPassed).toBe(true);
   });
 
+  it.each([
+    ["remove T002", (tasks: string) => tasks.replace(/^.*T002.*\n/m, "")],
+    [
+      "add a completed task",
+      (tasks: string) => `${tasks}- [x] T003 New task\n`,
+    ],
+    [
+      "edit T002",
+      (tasks: string) =>
+        tasks.replace("This task is complete.", "Different scope."),
+    ],
+  ] as const)(
+    "rejects a review that would %s in tasks.md",
+    async (_, mutate) => {
+      const dispatcher = async (task: TaskDispatch): Promise<TaskResult> => {
+        const path = join(task.workDir!, "tasks.md");
+        writeFileSync(path, mutate(readFileSync(path, "utf8")));
+        return {
+          exitCode: 0,
+          stdout: JSON.stringify({
+            summary: "Routing defect",
+            verdict: "NO-GO",
+            reopenedTasks: ["T001"],
+            intents: [],
+          }),
+          stderr: "",
+          durationS: 0,
+        };
+      };
+      const result = await createFixtureRunner({ dispatcher }).runFixtureRepeat(
+        {
+          fixtureId: "implement-seeded-defect",
+          role: "review",
+          repeatIndex: 0,
+          route: candidateRoute,
+        },
+      );
+      expect(result.deterministicGatesPassed).toBe(false);
+      expect(result.gateChecks).toContainEqual(
+        expect.objectContaining({
+          checkId: "review-task-state",
+          passed: false,
+        }),
+      );
+    },
+  );
+
+  it.each([
+    [
+      "reopen T001",
+      true,
+      ([routing]: TaskState["phases"][number]["tasks"]) => {
+        routing.status = "open";
+        routing.completedAt = undefined;
+        routing.description +=
+          "\n\nREVIEW FAIL (code): The routing test fails on unknown priority.";
+      },
+    ],
+    ["remove T002", false, (tasks) => tasks.pop()],
+    [
+      "add a completed task",
+      false,
+      (tasks) => tasks.push({ ...tasks[1], id: "T003" }),
+    ],
+    [
+      "edit T002",
+      false,
+      ([, adapter]) => {
+        adapter.description = "Different scope";
+      },
+    ],
+    [
+      "reopen T002",
+      false,
+      ([, adapter]) => {
+        adapter.status = "open";
+      },
+    ],
+  ] satisfies [
+    string,
+    boolean,
+    (tasks: TaskState["phases"][number]["tasks"]) => void,
+  ][])(
+    "allows a canonical task change only to reopen T001 (%s)",
+    async (_, allowed, mutate) => {
+      const dispatcher = async (task: TaskDispatch): Promise<TaskResult> => {
+        const path = join(task.featureDir!, ".gwrk/tasks.json");
+        const state: TaskState = JSON.parse(readFileSync(path, "utf8"));
+        mutate(state.phases[0].tasks);
+        writeFileSync(path, JSON.stringify(state));
+        return {
+          exitCode: 0,
+          stdout: JSON.stringify({
+            summary: "Routing defect",
+            verdict: "NO-GO",
+            reopenedTasks: allowed ? [] : ["T001"],
+            intents: [],
+          }),
+          stderr: "",
+          durationS: 0,
+        };
+      };
+      const result = await createFixtureRunner({ dispatcher }).runFixtureRepeat(
+        {
+          fixtureId: "implement-seeded-defect",
+          role: "review",
+          repeatIndex: 0,
+          route: candidateRoute,
+        },
+      );
+      expect(result.deterministicGatesPassed).toBe(allowed);
+      expect(result.gateChecks).toContainEqual(
+        expect.objectContaining({
+          checkId: "review-task-state",
+          passed: allowed,
+        }),
+      );
+    },
+  );
+
   it("supplies both generated definition artifacts to implementation", async () => {
     const handoff = await mkdtemp(join(tmpdir(), "gwrk-definition-pair-"));
     try {
@@ -119,7 +264,11 @@ describe("fixture runner adapter", () => {
           expect(
             readFileSync(join(task.workDir!, "spec.md"), "utf8"),
           ).toContain("Unique definition requirements");
-          expect(task.prompt).not.toContain("Use the fixed plan");
+          expect(
+            readFileSync(join(task.workDir!, "plan.md"), "utf8"),
+          ).toContain("Repair routing against the generated spec");
+          expect(task.stdin).toContain("Use the generated spec.md and plan.md");
+          expect(task.stdin).not.toContain("Use the fixed plan");
           writeFileSync(
             join(task.workDir!, "src/domain/select-queue.mjs"),
             fixedPassingQueueImplementation,
@@ -573,13 +722,21 @@ describe("fixture runner adapter", () => {
     });
   });
 
-  it.each([undefined, " \n"])(
-    "fails the handoff gate before dispatch for plan %s",
-    async (plan) => {
-      const handoff = await mkdtemp(join(tmpdir(), "gwrk-missing-plan-"));
+  it.each([
+    ["plan", undefined],
+    ["plan", " \n"],
+    ["spec", undefined],
+    ["spec", " \n"],
+  ] as const)(
+    "fails the handoff gate before dispatch for %s content %s",
+    async (artifact, content) => {
+      const handoff = await mkdtemp(join(tmpdir(), "gwrk-missing-artifact-"));
       const dispatcher = vi.fn();
       try {
-        if (plan !== undefined) await writeFile(join(handoff, "plan.md"), plan);
+        const other = artifact === "plan" ? "spec" : "plan";
+        await writeFile(join(handoff, `${other}.md`), `# Generated ${other}\n`);
+        if (content !== undefined)
+          await writeFile(join(handoff, `${artifact}.md`), content);
         const evidence = await createFixtureRunner({
           dispatcher,
         }).runFixtureRepeat({
@@ -592,7 +749,7 @@ describe("fixture runner adapter", () => {
         expect(evidence.deterministicGatesPassed).toBe(false);
         expect(evidence.gateChecks).toContainEqual(
           expect.objectContaining({
-            checkId: "handoff-plan",
+            checkId: `handoff-${artifact}`,
             passed: false,
           }),
         );
@@ -609,6 +766,11 @@ describe("fixture runner adapter", () => {
       async (task: TaskDispatch): Promise<TaskResult> => {
         const planFile = join(task.workDir!, "plan.md");
         observedFixedPlan = readFileSync(planFile, "utf8");
+        expect(task.stdin).toContain("Use the fixed plan");
+        expect(existsSync(join(task.workDir!, "spec.md"))).toBe(false);
+        expect(
+          existsSync(join(task.workDir!, "specs/001-ticket-routing")),
+        ).toBe(false);
         return {
           exitCode: 0,
           stdout: "Executed with fixed plan",
@@ -634,6 +796,10 @@ describe("fixture runner adapter", () => {
 
     const handoffDir = await mkdtemp(join(tmpdir(), "gwrk-candidate-handoff-"));
     try {
+      await writeFile(
+        join(handoffDir, "spec.md"),
+        "# Candidate Generated Specification\n",
+      );
       await writeFile(
         join(handoffDir, "plan.md"),
         "# Candidate Generated Plan\n\nRepair selectQueue function directly.\n",
@@ -1204,7 +1370,7 @@ describe("fixture runner adapter", () => {
         if (allowed) {
           writeFileSync(
             file,
-            baseline.replace("T001 Repair", "- [ ] T001 Repair"),
+            baseline.replace("[x] T001 Repair", "[ ] T001 Repair"),
           );
         } else {
           writeFileSync(file, `${baseline}\n- [ ] T999 Invented task\n`);

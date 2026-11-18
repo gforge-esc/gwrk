@@ -3,6 +3,8 @@
   "id": "implement-seeded-defect",
   "roles": ["implement", "review"],
   "prompt": "Use the fixed plan and repair the seeded ticket routing behavior. For review, report the failing routing task and preserve the completed adapter task.",
+  "candidateHandoffPrompt": "Repair the seeded ticket routing behavior using the generated requirements and implementation steps.",
+  "reviewPrompt": "Review the seeded ticket routing behavior against the feature documents and run the routing test from the repository root. Report the failing routing task and preserve the completed adapter task. A structured report is sufficient to record a reopening.",
   "files": {
     "AGENTS.md": "# Project rules\n\nRead both architecture decisions and the fixture research brief. Keep policy pure. Run the failing behavior test before implementing changes.\n",
     "package.json": "{\"name\":\"fixture-ticket-router\",\"private\":true,\"type\":\"module\",\"scripts\":{\"test\":\"node --test\"}}\n",
@@ -16,6 +18,14 @@
     "src/adapters/ticket-input.mjs": "import { selectQueue } from \"../domain/select-queue.mjs\";\n\nexport function routeReceivedTicket(ticket, nowMs) {\n  return selectQueue({ ...ticket, nowMs });\n}\n",
     "plan.md": "# Ticket routing repair\n\nImplement the acceptance rules in the existing pure domain function. Keep the adapter unchanged. Run `node --test src/domain/select-queue.test.mjs` and record RED and GREEN.\n",
     "tasks.md": "# Review tasks\n\nT001 Repair the queue selection policy.\n\nT002 Keep the adapter passing the caller clock to the policy. This task is complete.\n"
+  },
+  "reviewFiles": {
+    "package.json": "{\"name\":\"fixture-ticket-router\",\"private\":true,\"type\":\"module\",\"scripts\":{\"build\":\"node --check src/domain/select-queue.mjs && node --check src/adapters/ticket-input.mjs\",\"test\":\"node --test\"}}\n",
+    "tasks.md": "# Review tasks\n\n- [x] T001 Repair the queue selection policy.\n\n- [x] T002 Keep the adapter passing the caller clock to the policy. This task is complete.\n",
+    "specs/001-ticket-routing/spec.md": "# Ticket routing\n\n## Requirements\n\nStrip surrounding whitespace from recognized priorities for routing and retain the raw value. Route high priority to urgent. Route normal priority to standard before 30 minutes and urgent at 30 minutes. Treat a future receipt as age zero. Route unknown priorities to triage at any age. Keep the policy pure. The adapter supplies the caller clock.\n",
+    "specs/001-ticket-routing/plan.md": "# Ticket routing repair\n\n### Phase 1: Queue selection\n\nT001 implements the pure routing rules in `src/domain/select-queue.mjs`. T002 keeps `src/adapters/ticket-input.mjs` passing the caller clock to the policy. The routing gate runs `node --test src/domain/select-queue.test.mjs` from the repository root.\n",
+    "specs/001-ticket-routing/.gwrk/tasks.json": "{\n  \"featureId\": \"001-ticket-routing\",\n  \"createdAt\": \"2026-01-01T00:00:00.000Z\",\n  \"phases\": [\n    {\n      \"id\": \"phase-01\",\n      \"title\": \"Queue selection\",\n      \"tasks\": [\n        {\n          \"id\": \"T001\",\n          \"title\": \"Repair the queue selection policy\",\n          \"description\": \"Implement the pure routing rules in src/domain/select-queue.mjs.\",\n          \"status\": \"completed\",\n          \"completedAt\": \"2026-01-01T00:00:00.000Z\",\n          \"gateScript\": \"gates/run-all-gates.sh\"\n        },\n        {\n          \"id\": \"T002\",\n          \"title\": \"Pass the caller clock\",\n          \"description\": \"Keep the adapter passing the caller clock to the policy.\",\n          \"status\": \"completed\",\n          \"completedAt\": \"2026-01-01T00:00:00.000Z\",\n          \"gateScript\": \"\"\n        }\n      ]\n    }\n  ]\n}\n",
+    "specs/001-ticket-routing/gates/run-all-gates.sh": "#!/usr/bin/env bash\n# AUTHORED\nset -euo pipefail\nnode --test src/domain/select-queue.test.mjs\n"
   },
   "gates": {
     "command": ["node", "--test", "src/domain/select-queue.test.mjs"],
