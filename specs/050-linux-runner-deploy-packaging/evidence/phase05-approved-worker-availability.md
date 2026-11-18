@@ -6,4 +6,4 @@ The preflight resolves the adapter through the dispatch registry. It checks the 
 
 Seven phase checks pass. Missing plugin and missing adapter cases remain covered. The regression log is `/tmp/gwrk-050-unavailable-backend-preflight-red.log`. The passing log is `/tmp/gwrk-050-unavailable-backend-preflight-green.log`.
 
-The installed native Linux proof remains recorded separately. No live host or project was enrolled by this repair.
+The installed native Linux proof remains recorded separately. This repair does not enroll a live host or project.
