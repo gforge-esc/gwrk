@@ -20,7 +20,7 @@ export interface AgentTaskRequest {
   routeMode?: "pinned" | "provider-default";
   workDir?: string;
   timeoutMs?: number;
-  env?: Record<string, string>;
+  env?: Record<string, string | undefined>;
   outputSchema?: Record<string, unknown>;
   logPath?: string;
   quiet?: boolean;
@@ -31,7 +31,7 @@ export interface AgentDispatchSpec {
   command: string;
   args: string[];
   stdin?: string;
-  env?: Record<string, string>;
+  env?: Record<string, string | undefined>;
   outputFormat?: "text" | "json" | "stream-json";
 }
 

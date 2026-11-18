@@ -76,7 +76,7 @@ interface DispatchOptions {
   featureDir?: string;
   prompt?: string;
   model?: string;
-  env?: Record<string, string>;
+  env?: Record<string, string | undefined>;
   approvalMode?: "yolo" | "auto" | "plan";
   contextPath?: string;
   workDir?: string;

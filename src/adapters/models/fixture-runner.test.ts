@@ -42,6 +42,52 @@ const fixedPassingQueueImplementation = `export function selectQueue({ priority,
 `;
 
 describe("fixture runner adapter", () => {
+  it("keeps inherited Git selectors from modifying another repository", async () => {
+    const outside = await mkdtemp(
+      join(tmpdir(), "gwrk-outside-qualification-"),
+    );
+    const cleanEnv = { ...process.env };
+    for (const key of Object.keys(cleanEnv))
+      if (key.startsWith("GIT_")) delete cleanEnv[key];
+    execFileSync("git", ["init", "--quiet", outside], { env: cleanEnv });
+    execFileSync(
+      "git",
+      ["-C", outside, "config", "user.name", "Outside owner"],
+      { env: cleanEnv },
+    );
+    const config = readFileSync(join(outside, ".git/config"), "utf8");
+    try {
+      vi.stubEnv("GIT_DIR", join(outside, ".git"));
+      const result = await createFixtureRunner({
+        dispatcher: async (task) => {
+          execFileSync(
+            "git",
+            ["-C", task.workDir!, "config", "qualification.fixture", "true"],
+            { env: { ...process.env, ...task.env } },
+          );
+          writeFileSync(
+            join(task.workDir!, "src/domain/select-queue.mjs"),
+            fixedPassingQueueImplementation,
+          );
+          return { exitCode: 0, stdout: "", stderr: "", durationS: 0 };
+        },
+      })
+        .runFixtureRepeat({
+          fixtureId: "implement-seeded-defect",
+          role: "implement",
+          repeatIndex: 0,
+          route: candidateRoute,
+        })
+        .catch(() => undefined);
+      expect(readFileSync(join(outside, ".git/config"), "utf8")).toBe(config);
+      expect(existsSync(join(outside, ".git/index"))).toBe(false);
+      expect(result?.deterministicGatesPassed).toBe(true);
+    } finally {
+      vi.unstubAllEnvs();
+      await rm(outside, { recursive: true, force: true });
+    }
+  });
+
   it.each(["missing executable", "signal"])(
     "does not accept %s as seeded RED evidence",
     async (mode) => {

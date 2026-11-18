@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { execFile } from "node:child_process";
+import { type ExecFileOptions, execFile } from "node:child_process";
 import { createHash } from "node:crypto";
 import { existsSync } from "node:fs";
 import {
@@ -44,8 +44,28 @@ import {
   dispatchToAgent,
 } from "../../utils/agent.js";
 import { type TaskState, TaskStateSchema } from "../../utils/state.js";
+import { repositoryGitEnv } from "../git/process-env.js";
 
-const execFileAsync = promisify(execFile);
+const executeFile = promisify(execFile);
+const execFileAsync = (
+  file: string,
+  args: readonly string[],
+  options: ExecFileOptions = {},
+) =>
+  executeFile(file, args, {
+    timeout: 5000,
+    ...options,
+    encoding: "utf8",
+    env: repositoryGitEnv(process.cwd()),
+  });
+
+function isolatedDispatchEnv(root: string): NodeJS.ProcessEnv {
+  const env = repositoryGitEnv(root);
+  for (const key of Object.keys(process.env)) {
+    if (!(key in env)) env[key] = undefined;
+  }
+  return env;
+}
 
 function normalFailureExitCode(error: unknown): number | null {
   if (!error || typeof error !== "object") return null;
@@ -697,6 +717,7 @@ export class FixtureRunner
                   implementationStart = performance.now();
                 return this.dispatcher({
                   ...task,
+                  env: isolatedDispatchEnv(workspaceDir),
                   effort: request.route.effort,
                   routeMode: "pinned",
                   timeoutMs: this.timeoutMs,
@@ -1260,6 +1281,7 @@ export class FixtureRunner
           dispatcher: async (task) => {
             const tr = await this.dispatcher({
               ...task,
+              env: isolatedDispatchEnv(judgeDir),
               effort: judge.effort,
               routeMode: "pinned",
               timeoutMs: this.timeoutMs,

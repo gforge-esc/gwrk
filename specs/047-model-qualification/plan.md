@@ -185,3 +185,5 @@ pnpm exec vitest run src/application/models/resolve-route.test.ts src/utils/mani
 
 - Live production cutover in Phase 5 waits on `03-unified-agent-dispatch-and-stream-contracts` unifying `src/server/backend-selector.ts` and `src/engine/router.ts` with `src/utils/resolve-agent.ts`.
 - Live qualification runs for the local macOS workstation and hosted Linux runner execute outside hermetic CI under `docs/operations/model-qualification-live.md`.
+
+Phase 3 regressions reject candidate and incumbent review route identity failures before judging. Missing executables and signaled commands cannot supply seeded RED evidence. Four observed failures preceded the repair. An inherited Git selector regression also proved that fixture setup and delegated Git commands could modify another temporary repository. Both paths now remove inherited repository selectors. Dispatch environments support explicit removal through undefined values. The phase gate passes 650 tests after the isolation repair.
