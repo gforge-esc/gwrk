@@ -4,6 +4,17 @@
 
 import type { App } from "@slack/bolt";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  SYNTHETIC_CHANNEL_ALPHA,
+  SYNTHETIC_PROJECT_ALPHA,
+  SYNTHETIC_THREAD_ALPHA,
+  SYNTHETIC_USER_MAINTAINER,
+  SYNTHETIC_USER_VIEWER,
+  SYNTHETIC_WORKSPACE_ID,
+  createSyntheticRegistry,
+  createSyntheticVcsPort,
+} from "../../tests/helpers/synthetic-slack.js";
+import { createProjectRoutingService } from "../application/project-routing/index.js";
 import type { DispatchQueue } from "./dispatch.js";
 import type { GitManager } from "./git-manager.js";
 import type { SystemMonitor } from "./monitor.js";
@@ -89,15 +100,17 @@ describe("slack-actions (FR-007, US-004, US-005)", () => {
           channel: { id: "C123" },
           user: { id: "U123" },
           message: { ts: "3.2", thread_ts: "3.1" },
-          actions: [{
-            value: JSON.stringify({
-              projectId: "enrolled-project",
-              projectSlug: "fixture",
-              featureId: "003-slack",
-              phaseId: "phase-01",
-              rootTs: "3.1",
-            }),
-          }],
+          actions: [
+            {
+              value: JSON.stringify({
+                projectId: "enrolled-project",
+                projectSlug: "fixture",
+                featureId: "003-slack",
+                phaseId: "phase-01",
+                rootTs: "3.1",
+              }),
+            },
+          ],
         },
         client: { chat },
         logger: { error: vi.fn() },
@@ -353,5 +366,182 @@ describe("slack-actions (FR-007, US-004, US-005)", () => {
       ["define", "plan", "003-slack"],
       expect.objectContaining({ cwd: "/tmp", detached: true }),
     );
+  });
+
+  describe("TR-009: click-time re-authorization, thread matching, and replay guards", () => {
+    it("unauthorized clicks leave no claim and invoke no side effects", async () => {
+      const registry = createSyntheticRegistry();
+      const routingService = createProjectRoutingService({ registry });
+      const mockVcs = createSyntheticVcsPort();
+      const contextWithRouting: CommandContext = {
+        ...mockContext,
+        routingService,
+        vcs: mockVcs,
+      };
+
+      await registerSlackActions(mockApp as App, contextWithRouting);
+      const ack = vi.fn();
+      const chat = { postMessage: vi.fn(), postEphemeral: vi.fn() };
+
+      // Viewer user tries to merge (needs maintainer)
+      await actionHandlers.merge_pr({
+        ack,
+        body: {
+          team: { id: SYNTHETIC_WORKSPACE_ID },
+          channel: { id: SYNTHETIC_CHANNEL_ALPHA },
+          user: { id: SYNTHETIC_USER_VIEWER },
+          message: {
+            ts: "1731320000.000200",
+            thread_ts: SYNTHETIC_THREAD_ALPHA.rootTs,
+          },
+          actions: [
+            {
+              action_id: "merge_pr",
+              value: JSON.stringify({
+                projectId: SYNTHETIC_PROJECT_ALPHA.projectId,
+                projectSlug: SYNTHETIC_PROJECT_ALPHA.slug,
+                featureId: SYNTHETIC_THREAD_ALPHA.featureId,
+                phaseId: "phase-01",
+                rootTs: SYNTHETIC_THREAD_ALPHA.rootTs,
+              }),
+            },
+          ],
+        },
+        client: { chat },
+        logger: { error: vi.fn() },
+      });
+
+      expect(ack).toHaveBeenCalledOnce();
+      expect(mockVcs.mergedPrs).toHaveLength(0);
+      expect(chat.postMessage).not.toHaveBeenCalled();
+      expect(chat.postEphemeral).toHaveBeenCalledWith(
+        expect.objectContaining({
+          text: expect.stringContaining("A higher project role is required"),
+        }),
+      );
+
+      // Verify no claim was left in the registry!
+      const receiptKey = JSON.stringify([
+        SYNTHETIC_PROJECT_ALPHA.projectId,
+        SYNTHETIC_WORKSPACE_ID,
+        SYNTHETIC_CHANNEL_ALPHA,
+        "1731320000.000200",
+        "merge_pr",
+        SYNTHETIC_THREAD_ALPHA.featureId,
+        "phase-01",
+      ]);
+      expect(registry.getActionReceipt(receiptKey)).toBeNull();
+    });
+
+    it("thread mismatch denies click and leaves no claim", async () => {
+      const registry = createSyntheticRegistry();
+      const routingService = createProjectRoutingService({ registry });
+      const mockVcs = createSyntheticVcsPort();
+      const contextWithRouting: CommandContext = {
+        ...mockContext,
+        routingService,
+        vcs: mockVcs,
+      };
+
+      await registerSlackActions(mockApp as App, contextWithRouting);
+      const ack = vi.fn();
+      const chat = { postMessage: vi.fn(), postEphemeral: vi.fn() };
+
+      // Root timestamp does not match stored thread
+      await actionHandlers.merge_pr({
+        ack,
+        body: {
+          team: { id: SYNTHETIC_WORKSPACE_ID },
+          channel: { id: SYNTHETIC_CHANNEL_ALPHA },
+          user: { id: SYNTHETIC_USER_MAINTAINER },
+          message: { ts: "1731320000.000200", thread_ts: "wrong-root-ts" },
+          actions: [
+            {
+              action_id: "merge_pr",
+              value: JSON.stringify({
+                projectId: SYNTHETIC_PROJECT_ALPHA.projectId,
+                featureId: SYNTHETIC_THREAD_ALPHA.featureId,
+                phaseId: "phase-01",
+                rootTs: "wrong-root-ts",
+              }),
+            },
+          ],
+        },
+        client: { chat },
+        logger: { error: vi.fn() },
+      });
+
+      expect(mockVcs.mergedPrs).toHaveLength(0);
+      expect(chat.postMessage).not.toHaveBeenCalled();
+      expect(chat.postEphemeral).toHaveBeenCalledWith(
+        expect.objectContaining({
+          text: expect.stringContaining(
+            "does not match the project or feature thread",
+          ),
+        }),
+      );
+    });
+
+    it("authorized click merges PR via VcsPort, records receipt, and concurrent replay merges only once", async () => {
+      const registry = createSyntheticRegistry();
+      const routingService = createProjectRoutingService({ registry });
+      const mockVcs = createSyntheticVcsPort();
+      const contextWithRouting: CommandContext = {
+        ...mockContext,
+        routingService,
+        vcs: mockVcs,
+      };
+
+      await registerSlackActions(mockApp as App, contextWithRouting);
+      const chat = { postMessage: vi.fn(), postEphemeral: vi.fn() };
+
+      const clickArgs = {
+        ack: vi.fn(),
+        body: {
+          team: { id: SYNTHETIC_WORKSPACE_ID },
+          channel: { id: SYNTHETIC_CHANNEL_ALPHA },
+          user: { id: SYNTHETIC_USER_MAINTAINER },
+          message: {
+            ts: "1731320000.000200",
+            thread_ts: SYNTHETIC_THREAD_ALPHA.rootTs,
+          },
+          actions: [
+            {
+              action_id: "merge_pr",
+              value: JSON.stringify({
+                projectId: SYNTHETIC_PROJECT_ALPHA.projectId,
+                projectSlug: SYNTHETIC_PROJECT_ALPHA.slug,
+                featureId: SYNTHETIC_THREAD_ALPHA.featureId,
+                phaseId: "phase-01",
+                rootTs: SYNTHETIC_THREAD_ALPHA.rootTs,
+              }),
+            },
+          ],
+        },
+        client: { chat },
+        logger: { error: vi.fn() },
+      };
+
+      // First click: succeeds and merges
+      await actionHandlers.merge_pr(clickArgs);
+
+      expect(mockVcs.mergedPrs).toHaveLength(1);
+      expect(mockVcs.mergedPrs[0].prNumber).toBe(42);
+      expect(chat.postMessage).toHaveBeenCalledOnce();
+
+      // Second click (replay): rejected by replay receipt, does not merge again!
+      clickArgs.ack.mockClear();
+      chat.postMessage.mockClear();
+
+      await actionHandlers.merge_pr(clickArgs);
+
+      expect(mockVcs.mergedPrs).toHaveLength(1); // Still 1!
+      expect(chat.postMessage).not.toHaveBeenCalled();
+      expect(chat.postEphemeral).toHaveBeenCalledWith(
+        expect.objectContaining({
+          text: expect.stringContaining("already has a receipt"),
+        }),
+      );
+    });
   });
 });

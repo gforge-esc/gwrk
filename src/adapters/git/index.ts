@@ -2,6 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import { execSync } from "node:child_process";
+import type { ProjectIdentityFacts } from "../../domain/project-id.js";
 import type { VcsPort } from "../../ports/vcs-port.js";
 import {
   createBranch,
@@ -9,17 +11,60 @@ import {
   isDirty,
   syncBranch,
 } from "../../utils/git.js";
+import { discoverGitIdentityFacts } from "./project-id.js";
 
 export { discoverGitIdentityFacts, resolveProjectId } from "./project-id.js";
 
-export function createGitVcsAdapter(): Pick<
-  VcsPort,
-  "getCurrentBranch" | "isDirty" | "createBranch" | "syncBranch"
-> {
+export function discoverIdentityFacts(cwd: string): ProjectIdentityFacts {
+  return discoverGitIdentityFacts(cwd);
+}
+
+export function resolvePullRequestUrl(
+  cwd: string,
+  query: { prNumber?: number; headBranch?: string },
+): string | null {
+  if (query.prNumber) {
+    try {
+      const url = execSync(`gh pr view ${query.prNumber} --json url -q .url`, {
+        cwd,
+        encoding: "utf-8",
+        timeout: 10_000,
+      }).trim();
+      if (url) return url;
+    } catch {
+      // PR might not exist
+    }
+  }
+  if (query.headBranch) {
+    try {
+      const url = execSync(
+        `gh pr list --head ${query.headBranch} --json url -q '.[0].url'`,
+        { cwd, encoding: "utf-8", timeout: 10_000 },
+      ).trim();
+      if (url) return url;
+    } catch {
+      // No PR found
+    }
+  }
+  return null;
+}
+
+export function mergePullRequest(cwd: string, prNumber: number): string {
+  return execSync(`gh pr merge ${prNumber} --merge --delete-branch`, {
+    cwd,
+    encoding: "utf-8",
+    timeout: 30_000,
+  }).trim();
+}
+
+export function createGitVcsAdapter(): VcsPort {
   return {
     getCurrentBranch,
     isDirty,
     createBranch,
     syncBranch,
+    discoverIdentityFacts,
+    resolvePullRequestUrl,
+    mergePullRequest,
   };
 }

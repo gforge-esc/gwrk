@@ -75,9 +75,21 @@ export const MessageBuilder = {
     };
   },
 
-  reviewReady(dispatch: DispatchRecord): SlackMessage {
+  reviewReady(
+    dispatch: DispatchRecord & {
+      projectId?: string;
+      projectSlug?: string;
+      rootTs?: string;
+    },
+  ): SlackMessage {
     const text = `🔍 Review ready for ${dispatch.featureId} (${dispatch.phaseId})`;
+    const routing = {
+      ...(dispatch.projectId ? { projectId: dispatch.projectId } : {}),
+      ...(dispatch.projectSlug ? { projectSlug: dispatch.projectSlug } : {}),
+      ...(dispatch.rootTs ? { rootTs: dispatch.rootTs } : {}),
+    };
     const value = JSON.stringify({
+      ...routing,
       featureId: dispatch.featureId,
       phaseId: dispatch.phaseId,
     });
@@ -98,6 +110,18 @@ export const MessageBuilder = {
         },
       },
     ];
+
+    if (dispatch.projectSlug || dispatch.projectId) {
+      blocks.push({
+        type: "context",
+        elements: [
+          {
+            type: "mrkdwn",
+            text: `*Project:* \`${dispatch.projectSlug ?? dispatch.projectId}\``,
+          },
+        ],
+      });
+    }
 
     if (dispatch.prUrl) {
       blocks.push({
@@ -137,9 +161,22 @@ export const MessageBuilder = {
     return { text, blocks };
   },
 
-  phaseFail(dispatch: DispatchRecord, error?: string): SlackMessage {
+  phaseFail(
+    dispatch: DispatchRecord & {
+      projectId?: string;
+      projectSlug?: string;
+      rootTs?: string;
+    },
+    error?: string,
+  ): SlackMessage {
     const text = `❌ Phase ${dispatch.phaseId} failed for ${dispatch.featureId}`;
+    const routing = {
+      ...(dispatch.projectId ? { projectId: dispatch.projectId } : {}),
+      ...(dispatch.projectSlug ? { projectSlug: dispatch.projectSlug } : {}),
+      ...(dispatch.rootTs ? { rootTs: dispatch.rootTs } : {}),
+    };
     const value = JSON.stringify({
+      ...routing,
       featureId: dispatch.featureId,
       phaseId: dispatch.phaseId,
     });
@@ -339,9 +376,19 @@ export const MessageBuilder = {
     };
   },
 
-  specReady(featureId: string, specPath: string): SlackMessage {
+  specReady(
+    featureId: string,
+    specPath: string,
+    routing?: { projectId?: string; projectSlug?: string; rootTs?: string },
+  ): SlackMessage {
     const text = `📄 Spec Ready for ${featureId}`;
-    const value = JSON.stringify({ featureId, specPath });
+    const value = JSON.stringify({
+      ...(routing?.projectId ? { projectId: routing.projectId } : {}),
+      ...(routing?.projectSlug ? { projectSlug: routing.projectSlug } : {}),
+      featureId,
+      specPath,
+      ...(routing?.rootTs ? { rootTs: routing.rootTs } : {}),
+    });
 
     return {
       text,
@@ -386,9 +433,16 @@ export const MessageBuilder = {
     featureId: string,
     planPath: string,
     phaseCount: number,
+    routing?: { projectId?: string; projectSlug?: string; rootTs?: string },
   ): SlackMessage {
     const text = `🗺️ Plan Ready for ${featureId} (${phaseCount} phases)`;
-    const value = JSON.stringify({ featureId, planPath });
+    const value = JSON.stringify({
+      ...(routing?.projectId ? { projectId: routing.projectId } : {}),
+      ...(routing?.projectSlug ? { projectSlug: routing.projectSlug } : {}),
+      featureId,
+      planPath,
+      ...(routing?.rootTs ? { rootTs: routing.rootTs } : {}),
+    });
 
     const blocks: KnownBlock[] = [
       {

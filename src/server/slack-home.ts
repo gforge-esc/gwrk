@@ -7,6 +7,7 @@ import * as path from "node:path";
 import type { App } from "@slack/bolt";
 import type { HomeView, KnownBlock } from "@slack/types";
 import { generatePulseReport } from "../engine/pulse.js";
+import type { ProjectRegistryPort } from "../ports/store-port.js";
 import type { GwrkConfig } from "../utils/config.js";
 import { resolveProjectId } from "../utils/project-id.js";
 import type { DispatchQueue } from "./dispatch.js";
@@ -21,6 +22,11 @@ export async function buildHomeTab(
   status: SystemStatus,
   config: GwrkConfig,
   projectRoot: string,
+  options?: {
+    userId?: string;
+    workspaceId?: string;
+    registry?: ProjectRegistryPort;
+  },
 ): Promise<HomeView> {
   const blocks: KnownBlock[] = [
     {
@@ -200,6 +206,48 @@ export async function buildHomeTab(
     });
   }
 
+  // 6. Enrolled Projects visible to user
+  if (options?.registry) {
+    const registry = options.registry;
+    const allProjects = registry.listProjects();
+    const visibleProjects = allProjects.filter((project) => {
+      if (!options.userId) return true;
+      const roles = registry.listRoleBindings(project.projectId);
+      return roles.some(
+        (r) =>
+          r.principalType === "slack_user" &&
+          (r.principalId === `${options.workspaceId}:${options.userId}` ||
+            r.principalId === options.userId),
+      );
+    });
+
+    blocks.push({ type: "divider" });
+    blocks.push({
+      type: "section",
+      text: { type: "mrkdwn", text: "📁 *Enrolled Projects*" },
+    });
+
+    if (visibleProjects.length === 0) {
+      blocks.push({
+        type: "section",
+        text: {
+          type: "mrkdwn",
+          text: "_No enrolled projects accessible for your account._",
+        },
+      });
+    } else {
+      for (const p of visibleProjects) {
+        blocks.push({
+          type: "section",
+          text: {
+            type: "mrkdwn",
+            text: `*${p.name}* (\`${p.slug}\`)\nTrunk: \`${p.trunkBranch}\` · Channel: <#${p.slack?.channelId || "unbound"}>`,
+          },
+        });
+      }
+    }
+  }
+
   blocks.push({
     type: "context",
     elements: [
@@ -260,6 +308,8 @@ export async function registerSlackHomeHandler(
     network: NetworkMonitor;
     config: GwrkConfig;
     projectRoot: string;
+    registry?: ProjectRegistryPort;
+    workspaceId?: string;
   },
 ) {
   slackApp.event("app_home_opened", async ({ event, client, logger }) => {
@@ -276,6 +326,12 @@ export async function registerSlackHomeHandler(
         status,
         deps.config,
         deps.projectRoot,
+        {
+          userId: event.user,
+          // biome-ignore lint/suspicious/noExplicitAny: Slack view team_id
+          workspaceId: (event as any).view?.team_id ?? deps.workspaceId,
+          registry: deps.registry,
+        },
       );
 
       await client.views.publish({

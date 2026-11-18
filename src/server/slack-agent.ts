@@ -3,6 +3,8 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import type { App, SlackEventMiddlewareArgs } from "@slack/bolt";
+import type { ProjectRoutingService } from "../application/project-routing/index.js";
+import { parseProjectSelector } from "../domain/slack-routing.js";
 import { buildProjectContext } from "../utils/agent-context.js";
 
 /**
@@ -12,13 +14,16 @@ export async function handleMention({
   event,
   say,
   projectRoot,
+  routingService,
 }: {
   event: SlackEventMiddlewareArgs<"app_mention">["event"];
   // biome-ignore lint/suspicious/noExplicitAny: Bolt SayFn callback
   say: any;
   projectRoot: string;
+  routingService?: ProjectRoutingService;
 }): Promise<void> {
-  const text = event.text.toLowerCase();
+  const { requestedProject, cleanedText } = parseProjectSelector(event.text);
+  const text = cleanedText.toLowerCase();
 
   // US-015: Maintain thread context.
   // TR-017: If it's a continuation message, use the existing thread_ts.
@@ -29,6 +34,47 @@ export async function handleMention({
     text.includes("stress test")
       ? (event as { thread_ts?: string }).thread_ts || event.ts
       : event.ts;
+
+  let effectiveRoot = projectRoot;
+
+  if (routingService) {
+    const isDirectMessage = Boolean(event.channel?.startsWith("D"));
+    const requiredAccess =
+      text.includes("stress test") || text.includes("/skill")
+        ? "operate"
+        : "read";
+
+    // biome-ignore lint/suspicious/noExplicitAny: Slack team property
+    const workspaceId = (event as any).team || "";
+    const channelId = event.channel || "";
+    const actorUserId = event.user || "";
+
+    const decision = routingService.authorizeCommand({
+      workspaceId,
+      channelId,
+      isDirectMessage,
+      actorUserId,
+      threadTs: (event as { thread_ts?: string }).thread_ts,
+      messageTs: event.ts,
+      requestedProject,
+      requiredAccess,
+    });
+
+    if (!decision.ok) {
+      let message = `:warning: ${decision.message}`;
+      if (decision.candidateSlugs && decision.candidateSlugs.length > 0) {
+        message += ` Candidate projects: ${decision.candidateSlugs.join(", ")}`;
+      }
+      await say({
+        thread_ts,
+        text: message,
+      });
+      return;
+    }
+
+    effectiveRoot =
+      decision.project.localRoot ?? decision.project.mirrorPath ?? projectRoot;
+  }
 
   // TR-016: Check for specific file mentions (e.g. workflows or specs)
   if (text.includes("workflows/")) {
@@ -45,7 +91,7 @@ export async function handleMention({
 
   // TR-016: Check for project status queries
   if (text.includes("status of the project")) {
-    const context = await buildProjectContext(projectRoot);
+    const context = await buildProjectContext(effectiveRoot);
     await say({
       thread_ts,
       text: `📊 *Project Status Update*\n\n${context}\n\nDoes this help you understand where we are?`,
@@ -96,4 +142,99 @@ export async function handleMention({
     thread_ts,
     text: "👋 I'm here! How can I help you with the project today? Maybe you want to check the status of a feature?",
   });
+}
+
+/**
+ * Handles direct messages with required project resolution.
+ */
+export async function handleDirectMessage({
+  event,
+  say,
+  projectRoot,
+  routingService,
+}: {
+  // biome-ignore lint/suspicious/noExplicitAny: Slack message event
+  event: any;
+  // biome-ignore lint/suspicious/noExplicitAny: Bolt SayFn callback
+  say: any;
+  projectRoot: string;
+  routingService?: ProjectRoutingService;
+}): Promise<void> {
+  const { requestedProject } = parseProjectSelector(event.text || "");
+  const thread_ts = event.thread_ts || event.ts;
+
+  if (routingService) {
+    const decision = routingService.authorizeCommand({
+      workspaceId: event.team || "",
+      channelId: event.channel || "",
+      isDirectMessage: true,
+      actorUserId: event.user || "",
+      threadTs: event.thread_ts,
+      messageTs: event.ts,
+      requestedProject,
+      requiredAccess: "read",
+    });
+
+    if (!decision.ok) {
+      let message = `:warning: ${decision.message}`;
+      if (decision.candidateSlugs && decision.candidateSlugs.length > 0) {
+        message += ` Candidate projects: ${decision.candidateSlugs.join(", ")}`;
+      }
+      await say({
+        thread_ts,
+        text: message,
+      });
+      return;
+    }
+
+    await say({
+      thread_ts,
+      text: `👋 Direct message received for *${decision.project.name}* (\`${decision.project.slug}\`). How can I help you?`,
+    });
+    return;
+  }
+
+  await say({
+    thread_ts,
+    text: "👋 I'm here! How can I help you today?",
+  });
+}
+
+/**
+ * Validates reaction approval authorization.
+ */
+export async function handleReaction({
+  event,
+  routingService,
+  say,
+}: {
+  // biome-ignore lint/suspicious/noExplicitAny: Slack reaction event
+  event: any;
+  routingService?: ProjectRoutingService;
+  // biome-ignore lint/suspicious/noExplicitAny: Bolt SayFn callback
+  say?: any;
+}): Promise<{ ok: boolean; reason?: string }> {
+  if (!routingService) {
+    return { ok: true };
+  }
+
+  const decision = routingService.authorizeCommand({
+    workspaceId: event.team || "",
+    channelId: event.item?.channel || "",
+    isDirectMessage: false,
+    actorUserId: event.user || "",
+    messageTs: event.item?.ts,
+    requiredAccess: "maintain",
+  });
+
+  if (!decision.ok) {
+    if (say) {
+      await say({
+        text: `:warning: Reaction approval denied: ${decision.message}`,
+      });
+    }
+    return { ok: false, reason: decision.message };
+  }
+
+  return { ok: true };
 }

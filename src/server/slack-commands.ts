@@ -6,7 +6,13 @@ import { execSync, spawn } from "node:child_process";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import type { KnownBlock } from "@slack/types";
+import type { ProjectRoutingService } from "../application/project-routing/index.js";
 import { findOpenPr } from "../db/runs.js";
+import {
+  parseProjectSelector,
+  requiredAccessForSlackCommand,
+} from "../domain/slack-routing.js";
+import type { VcsPort } from "../ports/vcs-port.js";
 import { resolveProjectId } from "../utils/project-id.js";
 import { resolveFeature } from "../utils/resolve-feature.js";
 import type { DispatchQueue } from "./dispatch.js";
@@ -17,6 +23,7 @@ import type { DispatchRecord } from "./types.js";
 interface SlackBlockKit {
   blocks: KnownBlock[];
   response_type: "ephemeral" | "in_channel";
+  thread_ts?: string;
 }
 
 export interface CommandContext {
@@ -27,6 +34,13 @@ export interface CommandContext {
   queue: DispatchQueue;
   monitor: SystemMonitor;
   git: GitManager;
+  workspaceId?: string;
+  threadTs?: string;
+  messageTs?: string;
+  projectId?: string;
+  projectSlug?: string;
+  routingService?: ProjectRoutingService;
+  vcs?: VcsPort;
 }
 
 export type SlashCommandHandler = (
@@ -40,7 +54,8 @@ const handlers: Record<string, SlashCommandHandler> = {
     const featureId = args[0];
     const resources = context.monitor.getResources();
     const queueInfo = context.queue.getQueue();
-    const projectId = resolveProjectId(context.projectRoot);
+    const projectId =
+      context.projectId ?? resolveProjectId(context.projectRoot);
 
     const blocks: KnownBlock[] = [
       {
@@ -286,7 +301,8 @@ const handlers: Record<string, SlashCommandHandler> = {
           ? phaseArg
           : `phase-${phaseArg.padStart(2, "0")}`
         : undefined;
-      const projectId = resolveProjectId(context.projectRoot);
+      const projectId =
+        context.projectId ?? resolveProjectId(context.projectRoot);
 
       const pr = findOpenPr(resolved, projectId, phaseId);
       if (!pr) {
@@ -304,11 +320,15 @@ const handlers: Record<string, SlashCommandHandler> = {
         };
       }
 
-      execSync(`gh pr merge ${pr.pr_number} --merge --delete-branch`, {
-        cwd: context.projectRoot,
-        encoding: "utf-8",
-        timeout: 30_000,
-      });
+      if (context.vcs) {
+        await context.vcs.mergePullRequest(context.projectRoot, pr.pr_number);
+      } else {
+        execSync(`gh pr merge ${pr.pr_number} --merge --delete-branch`, {
+          cwd: context.projectRoot,
+          encoding: "utf-8",
+          timeout: 30_000,
+        });
+      }
 
       return {
         response_type: "in_channel",
@@ -960,7 +980,8 @@ export async function handleSlashCommand(
   commandText: string,
   context: CommandContext,
 ): Promise<SlackBlockKit> {
-  const [subcommand, ...args] = commandText.trim().split(/\s+/);
+  const { requestedProject, cleanedText } = parseProjectSelector(commandText);
+  const [subcommand, ...args] = cleanedText.trim().split(/\s+/);
 
   // "help" returns the same rich help as no subcommand
   if (!subcommand || subcommand === "help") {
@@ -1023,6 +1044,59 @@ export async function handleSlashCommand(
         },
       ],
     };
+  }
+
+  if (context.routingService) {
+    const isDirectMessage = Boolean(context.channelId?.startsWith("D"));
+    const requiredAccess = requiredAccessForSlackCommand(subcommand, args[0]);
+    const envelope = {
+      workspaceId: context.workspaceId || "",
+      channelId: context.channelId || "",
+      isDirectMessage,
+      actorUserId: context.userId,
+      threadTs: context.threadTs,
+      messageTs: context.messageTs,
+      requestedProject,
+      requiredAccess,
+    };
+
+    const decision = context.routingService.authorizeCommand(envelope);
+    if (!decision.ok) {
+      let text = `:warning: ${decision.message}`;
+      if (decision.candidateSlugs && decision.candidateSlugs.length > 0) {
+        text += ` Candidate projects: ${decision.candidateSlugs.join(", ")}`;
+      }
+      return {
+        response_type: "ephemeral",
+        blocks: [
+          {
+            type: "section",
+            text: {
+              type: "mrkdwn",
+              text,
+            },
+          },
+        ],
+      };
+    }
+
+    const effectiveRoot =
+      decision.project.localRoot ??
+      decision.project.mirrorPath ??
+      context.projectRoot;
+    const projectContext: CommandContext = {
+      ...context,
+      projectRoot: effectiveRoot,
+      projectId: decision.project.projectId,
+      projectSlug: decision.project.slug,
+      threadTs: decision.recipient.threadTs ?? context.threadTs,
+    };
+
+    const result = await handler(args, projectContext);
+    if (decision.recipient.threadTs && !result.thread_ts) {
+      result.thread_ts = decision.recipient.threadTs;
+    }
+    return result;
   }
 
   return handler(args, context);
