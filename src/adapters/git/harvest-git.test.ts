@@ -8,6 +8,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createGitHarvestAdapter } from "./harvest-git.js";
+import { createGitVcsAdapter } from "./index.js";
 
 let root: string;
 let checkout: string;
@@ -49,9 +50,12 @@ afterEach(() => {
   rmSync(root, { recursive: true, force: true });
 });
 
-describe("harvest Git adapter", () => {
+describe.each([
+  ["standalone", createGitHarvestAdapter],
+  ["production composition", createGitVcsAdapter],
+] as const)("harvest Git adapter through %s", (_name, createAdapter) => {
   it("checks the verified commit in a detached worktree without changing developer work", async () => {
-    const adapter = createGitHarvestAdapter();
+    const adapter = createAdapter();
     writeFileSync(join(checkout, "file.txt"), "developer edits\n");
     const before = git(checkout, "status", "--porcelain");
     const handle = await adapter.createDetachedCheckout(checkout, initial);
@@ -73,7 +77,7 @@ describe("harvest Git adapter", () => {
     );
   });
   it("fetches trunk and checks ancestry with inherited repository selectors removed", async () => {
-    const adapter = createGitHarvestAdapter();
+    const adapter = createAdapter();
     vi.stubEnv("GIT_DIR", remote);
     vi.stubEnv("GIT_WORK_TREE", root);
     await adapter.fetchBranch(checkout, "develop");
@@ -96,7 +100,7 @@ describe("harvest Git adapter", () => {
     expect(git(remote, "config", "--get", "core.bare")).toBe("true");
   });
   it("blocks a moved tip and deletes only the expected remote branch tip", async () => {
-    const adapter = createGitHarvestAdapter();
+    const adapter = createAdapter();
     writeFileSync(join(checkout, "file.txt"), "later\n");
     git(checkout, "add", ".");
     git(checkout, "-c", "commit.gpgsign=false", "commit", "-qm", "Later");
@@ -118,7 +122,7 @@ describe("harvest Git adapter", () => {
     );
   });
   it("preserves a branch that moves between remote inspection and delete", async () => {
-    const adapter = createGitHarvestAdapter();
+    const adapter = createAdapter();
     writeFileSync(join(checkout, "file.txt"), "new trunk\n");
     git(checkout, "add", ".");
     git(checkout, "-c", "commit.gpgsign=false", "commit", "-qm", "New trunk");
@@ -145,7 +149,7 @@ describe("harvest Git adapter", () => {
   });
 
   it("rejects invalid branch selectors and checkout cleanup outside its ownership", async () => {
-    const adapter = createGitHarvestAdapter();
+    const adapter = createAdapter();
     await expect(adapter.fetchBranch(checkout, "-bad")).rejects.toThrow();
     await expect(
       adapter.deleteRemoteBranchAtTip(checkout, "feature:develop", initial),

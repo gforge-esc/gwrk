@@ -27,3 +27,11 @@ The application outbox coordinator now uses the approved store, registry and not
 Eight SQLite-backed behavioral checks pass. They cover concurrent flushes and database reopen. They also cover independent project flushing and channel-only receipts. The channel-only receipt regression failed before its optional-thread repair. Boundary checks also pass. The passing log is `/tmp/gwrk-049-outbox-service-preparation-final-green.log`.
 
 This is preparation for phase 4. The phase still requires dispatch and harvest coordinators. Its gate now requires the delivery service test. Phase 3 production notification composition remains RED.
+
+## Production Git composition
+
+The production VCS factory now composes the approved harvest extension. The same five real-repository cases run through both standalone and production factories. All five production cases failed before composition. All ten Git cases now pass.
+
+The merged storage foundation has cleared both reviews. The adapter and delivery preparations pass 41 checks against that foundation. Boundary verification adds 19 passing checks. Notification production composition still has two RED tests. Preserve the reviewed Slack VCS methods when merging its final phase 3 revision.
+
+The failing evidence is `/tmp/gwrk-049-production-git-composition-red.log`. The passing evidence is `/tmp/gwrk-049-production-git-composition-green.log`.
