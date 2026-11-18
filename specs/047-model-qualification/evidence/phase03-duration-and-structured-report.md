@@ -6,4 +6,4 @@ The fixture runner includes the validated review report in sanitized output. A s
 
 RED evidence is `/tmp/gwrk-047-duration-structured-review-red.log`. Three cases failed and 142 passed. GREEN evidence is `/tmp/gwrk-047-duration-structured-review-green.log`. Build and repository lint pass in that gate.
 
-Prior review and diagnosis remain in `.gwrk/review-history/phase-03-through-2026-11-18T2305Z.json`. No candidate was promoted by this repair.
+Prior review and diagnosis remain in `.gwrk/review-history/phase-03-through-2026-11-18T2305Z.json`. The repair promotes no candidate.
