@@ -106,7 +106,10 @@ Create versioned synthetic fixtures for long-context definition and seeded-defec
 | TR-020 | unit | `src/application/models/evaluate-models.test.ts` | Rejects substituted routes and identity mismatches while accepting an unknown observed model |
 | TR-021 | unit | `src/application/models/evaluate-models.test.ts` | Requires a lower finite candidate median on fixed-plan runs even when direct runs favor the candidate |
 | TR-022 | integration | `src/adapters/models/fixture-runner.test.ts` | Rejects a timed-out judge dispatch with a zero exit code and a valid verdict |
-| TR-023 | integration | `src/adapters/models/fixture-runner.test.ts` | Blocks an opaque environment credential in a definition artifact, repeat stdout or a judge packet before it leaves the runner |
+| TR-023 | integration | `src/adapters/models/fixture-runner.test.ts` | Blocks opaque environment credentials in definition artifacts, repeat stdout, judge packets, verdicts and nested transport errors |
+| TR-024 | unit | `src/application/models/evaluate-models.test.ts` | Rejects a failed implementation check on either route before judging when the repeat reports a passing aggregate |
+| TR-025 | integration | `src/adapters/models/fixture-runner.test.ts` | Recomputes the recorded judge workflow hash from the dispatched prompt file and output schema |
+| TR-026 | unit | `src/application/models/evaluate-models.test.ts` | Reports definition coverage on candidate gate failure and sends both coverage scores to judges when only the incumbent fails a reference check |
 
 The matching-model handoff case keeps behavior pass rates of 1 and 0. A passing definition repeat exports the original specification and generated plan. The review cases accept report-only and canonical reopenings of T001, the routing task.
 

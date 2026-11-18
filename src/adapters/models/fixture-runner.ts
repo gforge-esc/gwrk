@@ -109,6 +109,53 @@ const JudgeOutput = z.object({
   ),
 });
 
+const JUDGE_WORKFLOW = "gwrk-model-judge";
+const JUDGE_PROMPT = [
+  "# Model Judge Prompt",
+  "",
+  "Evaluate the blinded options. Cite a fixture ID from the fixture summary, `optionA` or `optionB`, and a gate check ID from the gate evidence summary.",
+].join("\n");
+const JUDGE_OUTPUT_SCHEMA = {
+  type: "object",
+  properties: {
+    summary: { type: "string" },
+    intents: { type: "array", maxItems: 0 },
+    winner: { type: "string", enum: ["A", "B", "tie"] },
+    optionARegression: { type: "boolean" },
+    optionBRegression: { type: "boolean" },
+    scores: {
+      type: "object",
+      properties: {
+        optionA: { type: "number" },
+        optionB: { type: "number" },
+      },
+      required: ["optionA", "optionB"],
+    },
+    citations: {
+      type: "array",
+      items: {
+        type: "object",
+        properties: {
+          inputRef: { type: "string" },
+          outputRef: { type: "string" },
+          gateRef: { type: "string" },
+          claim: { type: "string" },
+        },
+        required: ["inputRef", "outputRef", "gateRef", "claim"],
+      },
+    },
+  },
+  required: [
+    "summary",
+    "intents",
+    "winner",
+    "optionARegression",
+    "optionBRegression",
+    "scores",
+    "citations",
+  ],
+};
+
 const ROLE_WORKFLOWS = {
   define: ["gwrk-specify", "gwrk-plan"],
   implement: ["gwrk-implement"],
@@ -496,7 +543,11 @@ export class FixtureRunner
     );
 
     const runtime = this.workflowRuntime ?? new WorkflowRuntime();
-    const workflowPromptHashes: Record<string, string> = {};
+    const workflowPromptHashes: Record<string, string> = {
+      [JUDGE_WORKFLOW]: createHash("sha256")
+        .update(JSON.stringify([JUDGE_PROMPT, JUDGE_OUTPUT_SCHEMA]))
+        .digest("hex"),
+    };
     for (const role of Object.keys(ROLE_WORKFLOWS) as ModelRole[]) {
       const roleFixtures = fixtures.filter(({ roles }) => roles.includes(role));
       const stages = ROLE_WORKFLOWS[role];
@@ -1183,7 +1234,7 @@ export class FixtureRunner
       ".gwrk",
       "plugins",
       "workflows",
-      "gwrk-model-judge",
+      JUDGE_WORKFLOW,
     );
 
     try {
@@ -1221,61 +1272,16 @@ export class FixtureRunner
 
       const manifestYaml = [
         "type: workflow",
-        "name: gwrk-model-judge",
+        `name: ${JUDGE_WORKFLOW}`,
         "version: 0.1.0",
         "description: Blinded two-judge evaluation",
         "enforceOutputSchema: true",
         "prompt: PROMPT.md",
-        "outputSchema:",
-        "  type: object",
-        "  properties:",
-        "    summary:",
-        "      type: string",
-        "    intents:",
-        "      type: array",
-        "      maxItems: 0",
-        "    winner:",
-        "      type: string",
-        '      enum: ["A", "B", "tie"]',
-        "    optionARegression:",
-        "      type: boolean",
-        "    optionBRegression:",
-        "      type: boolean",
-        "    scores:",
-        "      type: object",
-        "      properties:",
-        "        optionA:",
-        "          type: number",
-        "        optionB:",
-        "          type: number",
-        "      required: [optionA, optionB]",
-        "    citations:",
-        "      type: array",
-        "      items:",
-        "        type: object",
-        "        properties:",
-        "          inputRef:",
-        "            type: string",
-        "          outputRef:",
-        "            type: string",
-        "          gateRef:",
-        "            type: string",
-        "          claim:",
-        "            type: string",
-        "        required: [inputRef, outputRef, gateRef, claim]",
-        "  required: [summary, intents, winner, optionARegression, optionBRegression, scores, citations]",
+        `outputSchema: ${JSON.stringify(JUDGE_OUTPUT_SCHEMA)}`,
       ].join("\n");
 
       await writeFile(join(workflowDir, "manifest.yaml"), manifestYaml, "utf8");
-      await writeFile(
-        join(workflowDir, "PROMPT.md"),
-        [
-          "# Model Judge Prompt",
-          "",
-          "Evaluate the blinded options. Cite a fixture ID from the fixture summary, `optionA` or `optionB`, and a gate check ID from the gate evidence summary.",
-        ].join("\n"),
-        "utf8",
-      );
+      await writeFile(join(workflowDir, "PROMPT.md"), JUDGE_PROMPT, "utf8");
 
       const judgePromptInput = [
         `Comparison ID: ${packet.comparisonId}`,
@@ -1295,7 +1301,7 @@ export class FixtureRunner
 
       let observedJudgeModel = "unknown";
       const execution = await runtime.executeWorkflow(
-        "gwrk-model-judge",
+        JUDGE_WORKFLOW,
         judgePromptInput,
         {
           projectRoot: judgeDir,
@@ -1317,12 +1323,19 @@ export class FixtureRunner
                 includeExternalContext: false,
               });
             } catch (error) {
-              assertNoSecretMaterial(
-                error instanceof Error
-                  ? { message: error.message, stack: error.stack }
-                  : error,
-                knownSecrets,
-              );
+              const visited = new Set<Error>();
+              let cause: unknown = error;
+              while (cause instanceof Error && !visited.has(cause)) {
+                visited.add(cause);
+                assertNoSecretMaterial(
+                  { message: cause.message, stack: cause.stack },
+                  knownSecrets,
+                );
+                cause = cause.cause;
+              }
+              if (!(cause instanceof Error)) {
+                assertNoSecretMaterial(cause, knownSecrets);
+              }
               throw error;
             }
             assertNoSecretMaterial(tr, knownSecrets);

@@ -438,7 +438,10 @@ export async function evaluateModels(
       [
         ...repeats.candidate,
         ...(input.role === "implement" ? repeats.incumbent : []),
-      ].some(({ deterministicGatesPassed }) => !deterministicGatesPassed),
+      ].some(
+        ({ deterministicGatesPassed, gateChecks }) =>
+          !deterministicGatesPassed || gateChecks.some(({ passed }) => !passed),
+      ),
     )
   ) {
     return reject("gate-failure");

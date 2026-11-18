@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { execFileSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import { existsSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -1071,6 +1072,15 @@ describe("fixture runner adapter", () => {
       label: "TR-023 blocks a credential in a judge transport error",
       secretError: true,
     },
+    {
+      label: "TR-023 rejects a judge error cause with a credential",
+      secretCause: true,
+    },
+    {
+      label:
+        "TR-023 preserves a clean judge transport error with a cause cycle",
+      cleanError: true,
+    },
   ])(
     "$label",
     async ({
@@ -1080,6 +1090,8 @@ describe("fixture runner adapter", () => {
       secretObserved,
       secretStderr,
       secretError,
+      secretCause,
+      cleanError,
     }) => {
       const judge: ModelCandidate = {
         backend: "frontier-judge-cli",
@@ -1111,6 +1123,13 @@ describe("fixture runner adapter", () => {
           expect(task.stdin).toContain("Option B:");
 
           if (secretError) throw new Error(opaqueFixtureCredential);
+          if (secretCause) {
+            throw new Error("Judge transport failed", {
+              cause: new Error("Connection closed", {
+                cause: new Error(opaqueFixtureCredential),
+              }),
+            });
+          }
           const judgeOutput = {
             summary: "Blinded comparison verdict",
             intents: [],
@@ -1145,17 +1164,27 @@ describe("fixture runner adapter", () => {
       );
 
       const runner = createFixtureRunner({ dispatcher: judgeDispatcher });
+      if (cleanError) {
+        const cause = new Error("Connection closed", { cause: undefined });
+        const error = new Error("Judge transport failed", { cause });
+        cause.cause = error;
+        judgeDispatcher.mockRejectedValueOnce(error);
+        await expect(runner.judgeComparison(judge, packet)).rejects.toBe(error);
+        expect(judgeDispatcher).toHaveBeenCalledTimes(1);
+        return;
+      }
       if (
         secret ||
         secretVerdict ||
         secretObserved ||
         secretStderr ||
-        secretError
+        secretError ||
+        secretCause
       ) {
         vi.stubEnv("OPENAI_API_KEY", opaqueFixtureCredential);
         try {
           await expect(runner.judgeComparison(judge, packet)).rejects.toThrow(
-            /secret material/i,
+            /^Secret material found in model qualification evidence\.$/,
           );
           expect(judgeDispatcher).toHaveBeenCalledTimes(secret ? 0 : 1);
         } finally {
@@ -1458,11 +1487,48 @@ describe("fixture runner adapter", () => {
     },
   );
 
-  it("computes reproducible suite and workflow prompt hashes", async () => {
-    const runner = createFixtureRunner();
+  it("TR-025 computes reproducible suite and workflow prompt hashes", async () => {
+    let dispatchedHash: string | undefined;
+    const runner = createFixtureRunner({
+      dispatcher: async ({ workDir, outputSchema }) => {
+        const prompt = readFileSync(
+          join(workDir!, ".gwrk/plugins/workflows/gwrk-model-judge/PROMPT.md"),
+          "utf8",
+        );
+        expect(outputSchema).toBeDefined();
+        dispatchedHash = createHash("sha256")
+          .update(JSON.stringify([prompt, outputSchema]))
+          .digest("hex");
+        return {
+          exitCode: 0,
+          stdout: JSON.stringify({
+            summary: "Blinded comparison verdict",
+            intents: [],
+            winner: "tie",
+            optionARegression: false,
+            optionBRegression: false,
+            scores: { optionA: 90, optionB: 90 },
+            citations: [],
+          }),
+          stderr: "",
+          durationS: 0,
+        };
+      },
+    });
     const { fixtureSuiteHash, workflowPromptHashes } =
       await runner.computeSuiteHashes();
 
+    await runner.judgeComparison(
+      { ...candidateRoute, provider: "fixture", family: "judge" },
+      {
+        comparisonId: "blinded",
+        role: "implement",
+        fixtureSummary: "Fixture",
+        optionA: "A",
+        optionB: "B",
+        gateEvidenceSummary: "Both passed",
+      },
+    );
     expect(typeof fixtureSuiteHash).toBe("string");
     expect(fixtureSuiteHash.length).toBe(64);
 
@@ -1472,6 +1538,12 @@ describe("fixture runner adapter", () => {
     expect(workflowPromptHashes.define.length).toBe(64);
     expect(workflowPromptHashes.implement.length).toBe(64);
     expect(workflowPromptHashes.review.length).toBe(64);
+    expect(dispatchedHash).toMatch(/^[a-f0-9]{64}$/);
+    expect(workflowPromptHashes["gwrk-model-judge"]).toBe(dispatchedHash);
+    expect(await runner.computeSuiteHashes()).toEqual({
+      fixtureSuiteHash,
+      workflowPromptHashes,
+    });
   });
 
   it("yields distinct sanitizedOutput containing diff and report for different implementations", async () => {

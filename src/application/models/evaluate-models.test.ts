@@ -234,6 +234,40 @@ describe("model qualification orchestration", () => {
     },
   );
 
+  it.each(["candidate", "incumbent"] as const)(
+    "TR-024 rejects a failed implementation check despite a passing %s aggregate",
+    async (side) => {
+      const { deps, runFixtureRepeat, judgeComparison } = setup();
+      const original = runFixtureRepeat.getMockImplementation()!;
+      const failedModel = side === "candidate" ? candidate : incumbent;
+      runFixtureRepeat.mockImplementation(async (request) => {
+        const evidence = await original(request);
+        const failed =
+          request.route.modelId === failedModel.modelId &&
+          request.repeatIndex === 1;
+        return {
+          ...evidence,
+          durationMs: request.route.modelId === candidate.modelId ? 100 : 400,
+          gateChecks: evidence.gateChecks.map((check) => ({
+            ...check,
+            passed: !failed,
+          })),
+        };
+      });
+      judgeComparison.mockImplementation(async (judge) =>
+        winningImplementationVerdict(judge),
+      );
+
+      const result = await evaluateModels(deps, input);
+
+      expect(result.decision).toEqual({
+        promote: false,
+        reason: "gate-failure",
+      });
+      expect(judgeComparison).not.toHaveBeenCalled();
+    },
+  );
+
   it("requires the suite-declared handoff even when callers supply only fixtures", async () => {
     const { deps, runFixtureRepeat, judgeComparison } = setup({
       handoffs: [candidateHandoff],
@@ -970,65 +1004,59 @@ describe("model qualification orchestration", () => {
     });
   });
 
-  it("computes roleScore for define coverage and includes it in gateEvidenceSummary", async () => {
-    const { deps, runFixtureRepeat, judgeComparison } = setup();
-    runFixtureRepeat.mockImplementation(async (request) => ({
-      fixtureId: request.fixtureId,
-      repeatIndex: request.repeatIndex,
-      requestedModel: request.route.modelId,
-      observedModel: "unknown",
-      deterministicGatesPassed: true,
-      gateChecks: [
-        { checkId: "spec-ref-ADR-001", passed: true, detail: "ok" },
-        {
-          checkId: "spec-ref-ADR-002",
-          passed: request.route.modelId === incumbent.modelId,
-          detail: "coverage",
-        },
-        { checkId: "plan-ref-queue", passed: true, detail: "ok" },
-        { checkId: "plan-ref-test", passed: true, detail: "ok" },
-      ],
-      durationMs: 100,
-      retries: 0,
-      sanitizedOutput: "define output",
-    }));
+  it.each([
+    { route: "candidate", failedModel: candidate, passedChecks: 9 },
+    { route: "incumbent", failedModel: incumbent, passedChecks: 12 },
+  ])(
+    "TR-026 scores definition coverage with a failed $route reference check",
+    async ({ failedModel, passedChecks }) => {
+      const { deps, runFixtureRepeat, judgeComparison } = setup();
+      const original = runFixtureRepeat.getMockImplementation()!;
+      runFixtureRepeat.mockImplementation(async (request) => ({
+        ...(await original(request)),
+        gateChecks: [
+          { checkId: "spec-ref-ADR-001", passed: true, detail: "ok" },
+          {
+            checkId: "spec-ref-ADR-002",
+            passed: request.route.modelId !== failedModel.modelId,
+            detail: "coverage",
+          },
+          { checkId: "plan-ref-queue", passed: true, detail: "ok" },
+          { checkId: "plan-ref-test", passed: true, detail: "ok" },
+        ],
+      }));
 
-    let capturedPacket: JudgeVerdictPacket | undefined;
-    judgeComparison.mockImplementation(async (judge, packet) => {
-      capturedPacket = packet;
-      return {
-        judgeBackend: judge.backend,
-        judgeProvider: judge.provider,
-        judgeFamily: judge.family,
-        judgeModelId: judge.modelId,
-        observedJudgeModel: "unknown",
-        winner: "tie",
-        optionARegression: false,
-        optionBRegression: false,
-        scores: { optionA: 80, optionB: 80 },
-        citations: [],
-      };
-    });
+      const result = await evaluateModels(deps, {
+        ...input,
+        role: "define",
+        fixtures: [{ id: "define-long-context" }],
+      });
 
-    const result = await evaluateModels(deps, {
-      ...input,
-      role: "define",
-      fixtures: [{ id: "define-long-context" }],
-    });
+      expect(result.roleScore).toEqual({
+        role: "define",
+        coverage: passedChecks / 12,
+        passedChecks,
+        totalChecks: 12,
+      });
+      if (failedModel === candidate) {
+        expect(result.decision).toEqual({
+          promote: false,
+          reason: "gate-failure",
+        });
+        expect(judgeComparison).not.toHaveBeenCalled();
+        return;
+      }
 
-    expect(result.roleScore).toBeDefined();
-    expect(result.roleScore?.role).toBe("define");
-    if (result.roleScore?.role === "define") {
-      expect(result.roleScore.coverage).toBe(0.75);
-      expect(result.roleScore.passedChecks).toBe(9);
-      expect(result.roleScore.totalChecks).toBe(12);
-    }
-    expect(capturedPacket?.gateEvidenceSummary).toContain(
-      result.candidateOption === "A"
-        ? "Option A coverage 0.75, Option B coverage 1"
-        : "Option A coverage 1, Option B coverage 0.75",
-    );
-  });
+      expect(judgeComparison).toHaveBeenCalledTimes(2);
+      for (const [, packet] of judgeComparison.mock.calls) {
+        expect(packet.gateEvidenceSummary).toContain(
+          result.candidateOption === "A"
+            ? "Option A coverage 1, Option B coverage 0.75"
+            : "Option A coverage 0.75, Option B coverage 1",
+        );
+      }
+    },
+  );
 
   it("computes roleScore for implement time-to-green and speedup", async () => {
     const { deps, runFixtureRepeat } = setup();
