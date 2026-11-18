@@ -437,10 +437,9 @@ describe("reviewed policy coverage regressions", () => {
               ...fastify,
               ...override,
               framework,
-              architectures:
-                "architectures" in override
-                  ? [...override.architectures]
-                  : fastify.architectures,
+              architectures: override.architectures
+                ? [...override.architectures]
+                : fastify.architectures,
             },
           },
         ],
