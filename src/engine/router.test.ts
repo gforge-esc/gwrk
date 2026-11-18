@@ -8,10 +8,12 @@ import * as quotaModule from "./quota.js";
 import { AgentBackendRegistry } from "../plugins/agent-registry.js";
 import * as configModule from "../utils/config.js";
 import { getRoutingHistory } from "../db/plugins.js";
+import { tryLoadRegistry } from "../adapters/agents/registry-loader.js";
 
 vi.mock("../plugins/agent-registry.js");
 vi.mock("../utils/config.js");
 vi.mock("../db/plugins.js");
+vi.mock("../adapters/agents/registry-loader.js");
 // Removed vi.mock("./quota.js") to allow testing actual quotaProbe
 
 describe("FR-014 / Phase 4: Routing & Intelligence", () => {
@@ -19,6 +21,10 @@ describe("FR-014 / Phase 4: Routing & Intelligence", () => {
     vi.clearAllMocks();
     vi.restoreAllMocks();
     vi.mocked(getRoutingHistory).mockReturnValue([]);
+    vi.mocked(tryLoadRegistry).mockReturnValue({
+      ok: false,
+      error: { message: "No registry in this fixture." },
+    } as never);
   });
 
   describe("selectBackend() (FR-014 / FR-P4-001)", () => {
@@ -155,7 +161,7 @@ describe("FR-014 / Phase 4: Routing & Intelligence", () => {
         expect(backend.name).toBe('agy');
     });
 
-    it("uses the configured fallback when no task-specific backend is set", async () => {
+    it("defaults to agy for implement tasks even if not in fallbackOrder", async () => {
         vi.spyOn(configModule, 'loadConfig').mockReturnValue({
             agents: {
               fallbackOrder: ['gemini', 'claude']
@@ -176,7 +182,7 @@ describe("FR-014 / Phase 4: Routing & Intelligence", () => {
 
         const task = { type: 'implement' };
         const backend = await selectBackend(task, process.cwd(), registry);
-        expect(backend.name).toBe('gemini');
+        expect(backend.name).toBe('agy');
     });
   });
 
