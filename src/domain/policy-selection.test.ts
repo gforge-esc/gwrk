@@ -26,6 +26,113 @@ const fastify = {
 };
 
 describe("Project policy composition", () => {
+  it("preserves punctuation in bundled framework lookups", async () => {
+    const { contextMarkdown, lookupFrameworkGuidance } = await import(
+      "./architecture-context.js"
+    );
+    expect(lookupFrameworkGuidance("React+")).toBeUndefined();
+    expect(
+      contextMarkdown(
+        {
+          projectName: "example",
+          design: profile.design,
+          language: "TypeScript",
+          framework: "React+",
+          decisionsDir: "docs/decisions",
+        },
+        [],
+      ),
+    ).toContain("No bundled framework binding.");
+  });
+
+  it("keeps framework selectors with different punctuation distinct", async () => {
+    const { composeEffectivePolicy } = await import("./policy-selection.js");
+    const result = composeEffectivePolicy({
+      profile: {
+        ...profile,
+        stack: { language: "TypeScript", framework: "Framework#" },
+      },
+      candidates: [
+        {
+          name: "framework-policy",
+          source: "global",
+          manifest: {
+            ...fastify,
+            name: "framework-policy",
+            framework: "Framework+",
+          },
+        },
+      ],
+    });
+    expect(result.selectedSkills).toEqual([]);
+    expect(result.excludedSkills).toEqual([
+      {
+        name: "framework-policy",
+        source: "global",
+        reason: "framework-mismatch",
+      },
+    ]);
+    expect(result.gaps).toMatchObject([
+      { kind: "missing-framework-binding", subject: "Framework#" },
+    ]);
+  });
+
+  it("matches the Next.js alias in policies and bundled guidance", async () => {
+    const { composeEffectivePolicy } = await import("./policy-selection.js");
+    const candidate = {
+      name: "nextjs-policy",
+      source: "global" as const,
+      manifest: { ...fastify, name: "nextjs-policy", framework: "nextjs" },
+    };
+    const result = composeEffectivePolicy({
+      profile: {
+        ...profile,
+        stack: { language: "TypeScript", framework: " Next.js " },
+      },
+      candidates: [candidate],
+    });
+    expect(result.selectedSkills).toEqual([candidate]);
+    expect(result.frameworkGuidance).toContain("Next.js routes");
+    expect(result.gaps).toEqual([]);
+  });
+
+  it("excludes a disabled review policy in evaluation and composition", async () => {
+    const { composeEffectivePolicy, evaluateEnforcementCandidate } =
+      await import("./policy-selection.js");
+    const reviewProfile = {
+      ...profile,
+      stack: { language: "TypeScript", framework: "Svelte" },
+    };
+    const manifest = {
+      ...fastify,
+      name: "svelte-review",
+      scope: "review" as const,
+      framework: "Svelte",
+    };
+    const override = {
+      name: manifest.name,
+      source: "project-local" as const,
+      manifest: { ...manifest, disabled: true },
+    };
+
+    expect(
+      evaluateEnforcementCandidate(override, reviewProfile, "review"),
+    ).toEqual({ included: false, reason: "disabled" });
+    const result = composeEffectivePolicy({
+      profile: reviewProfile,
+      scope: "review",
+      candidates: [
+        override,
+        { name: manifest.name, source: "global", manifest },
+      ],
+    });
+    expect(result.selectedSkills).toEqual([]);
+    expect(result.excludedSkills).toEqual([
+      { name: manifest.name, source: "project-local", reason: "disabled" },
+      { name: manifest.name, source: "global", reason: "shadowed-by-override" },
+    ]);
+  });
+
   it.each([
     undefined,
     "",

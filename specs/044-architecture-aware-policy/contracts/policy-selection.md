@@ -145,6 +145,7 @@ export interface PolicyCandidate {
     name: string;
     description: string;
     version: string;
+    disabled?: boolean;
   };
   content?: string;
 }
@@ -167,6 +168,7 @@ export interface CandidateEvaluation {
     | "selected"
     | "project-local-override"
     | "legacy-global-unscoped"
+    | "disabled"
     | "shadowed-by-override"
     | "scope-mismatch"
     | "project-scope-mismatch"

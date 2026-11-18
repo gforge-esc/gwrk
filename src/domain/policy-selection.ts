@@ -62,6 +62,7 @@ export interface CandidateEvaluation {
     | "selected"
     | "project-local-override"
     | "legacy-global-unscoped"
+    | "disabled"
     | "shadowed-by-override"
     | "scope-mismatch"
     | "project-scope-mismatch"
@@ -175,6 +176,10 @@ function evaluateEligibleCandidate(
 ): CandidateEvaluation {
   const manifest = candidate.manifest;
 
+  if (manifest.disabled) {
+    return { included: false, reason: "disabled" };
+  }
+
   // Language check
   if (manifest.framework?.trim() && !manifest.language?.trim()) {
     return { included: false, reason: "language-mismatch" };
@@ -276,15 +281,15 @@ function resolveCandidates(input: ComposePolicyInput, scope: EnforcementScope) {
         continue;
       }
 
-      const mismatch = scopeMismatch(candidate.manifest, input.profile, scope);
-      if (!mismatch && candidate.manifest.disabled) {
-        suppressedByDisabled = true;
-        continue;
-      }
-
-      const evaluation =
-        mismatch ?? evaluateEligibleCandidate(candidate, input.profile);
+      const evaluation = evaluateEnforcementCandidate(
+        candidate,
+        input.profile,
+        scope,
+      );
       if (!evaluation.included) {
+        if (evaluation.reason === "disabled") {
+          suppressedByDisabled = true;
+        }
         if (
           [
             "language-mismatch",
