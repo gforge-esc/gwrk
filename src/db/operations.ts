@@ -817,7 +817,7 @@ export function createOperationsStore(
         sql += " AND project_id = ?";
         params.push(input.projectId);
       }
-      sql += " ORDER BY created_at ASC, operation_id ASC";
+      sql += " ORDER BY julianday(created_at) ASC, operation_id ASC";
       const nowMs = Date.parse(input.nowIso);
       return db
         .prepare<string[], DispatchOperationRow>(sql)
@@ -2039,10 +2039,13 @@ export function createOperationsStore(
       ).c;
 
       const oldestQueuedRow = db
-        .prepare(
-          "SELECT MIN(created_at) as oldest FROM dispatch_operations WHERE project_id = ? AND status = 'accepted'",
+        .prepare<[string], { oldest: string }>(
+          `SELECT created_at AS oldest FROM dispatch_operations
+           WHERE project_id = ? AND status = 'accepted'
+           ORDER BY julianday(created_at) ASC, operation_id ASC
+           LIMIT 1`,
         )
-        .get(projectId) as { oldest: string | null } | undefined;
+        .get(projectId);
 
       const staleLeasesReconciled = (
         db

@@ -87,12 +87,13 @@ pnpm exec vitest run src/domain/durable-dispatch.test.ts src/domain/durable-harv
 #### Files
 
 - `src/db/migrations/018-durable-dispatch-and-harvest.sql` (NEW: Create dispatch and attempt tables plus delivery, cursor and outbox stage tables)
+- `src/db/migrations/019-outbox-metadata-uniqueness.sql` (NEW: Add the outbox metadata key constraint to ledgers that already ran migration `018`)
 - `src/db/operations.ts` (NEW: Implement transactional acceptance and fenced leases plus stage receipts, cursors and outbox reads)
 - `src/adapters/sqlite/operations.ts` (NEW: Implement `createSqliteOperationsStoreAdapter` over injected database connections)
 - `src/adapters/sqlite/index.ts` (MODIFY: Export `createSqliteOperationsStoreAdapter` from the SQLite adapter barrel)
 - `src/server/persistence.ts` (MODIFY: Read legacy `.gwrk/dispatches.jsonl` entries as `legacy_unverified` without mutating the repo tree)
 - `src/db/operations.test.ts` (NEW: Test atomic acceptance and lease fencing plus transport dedup, stage receipts and legacy preservation)
-- `src/db/db.test.ts` (MODIFY: Verify migration `017` foreign keys and backward compatibility on existing databases)
+- `src/db/db.test.ts` (MODIFY: Verify migration `018` foreign keys and backward compatibility on existing databases)
 
 #### Governance and skills
 
@@ -105,15 +106,18 @@ pnpm exec vitest run src/domain/durable-dispatch.test.ts src/domain/durable-harv
 
 | ID | Type | Target | Assertion |
 |---|---|---|---|
-| TR-001 | integration | `src/db/operations.test.ts` | Accepted dispatches survive reopen and list in FIFO order with expired leases flagged |
-| TR-002 | integration | `src/db/operations.test.ts` | Separate transport deliveries across two repos with matching PR numbers stay isolated |
-| TR-003 | integration | `src/db/operations.test.ts` | Stale `leaseEpoch` writes fail with `LEASE_FENCED` without mutating successor attempts |
-| TR-005 | unit | `src/db/db.test.ts` | Migration `017` preserves legacy rows and marks unverified records |
+| TR-001 | integration | `src/db/operations.test.ts` | After reopening, recovery and oldest queue time use creation instants across offsets, with operation IDs breaking ties |
+| TR-001 | integration | `src/db/operations.test.ts` | Expired leases become recoverable |
+| TR-002 | integration | `src/db/operations.test.ts` | Two repositories with the same feature, pull request number and merge SHA retain separate operations and delivery replays |
+| TR-003 | integration | `src/db/operations.test.ts` | Stale `leaseEpoch` writes return `LEASE_FENCED` and preserve successor attempts |
+| TR-003 | integration | `src/db/operations.test.ts` | Retry leases preserve stage execution counts |
+| TR-005 | integration | `src/db/db.test.ts` | Migration `018` preserves legacy rows and marks unverified records |
 
 #### Done When
 
 ```bash
 pnpm build
+pnpm lint
 pnpm exec vitest run src/db/operations.test.ts src/db/db.test.ts src/architecture.test.ts
 ```
 

@@ -617,7 +617,7 @@ describe("durable operations migration", () => {
     }
   });
 
-  it("TR-002: keeps separate transport deliveries across two repos with matching PR numbers isolated", async () => {
+  it("TR-002: isolates deliveries with the same feature, PR number and merge SHA across repos", async () => {
     const { createSqliteOperationsStoreAdapter } = await import(
       "../adapters/sqlite/operations.js"
     );
@@ -720,12 +720,12 @@ describe("durable operations migration", () => {
           repoSlug: "example/beta",
           headRepoSlug: "example/beta",
           baseBranch: "main",
-          headBranch: "feat/002-feat-phase-01",
+          headBranch: "feat/001-feat-phase-01",
           expectedHeadSha: "3".repeat(40),
           prNumber: 42,
           prUrl: "https://github.com/example/beta/pull/42",
           terminalEvent: "merged" as const,
-          mergeCommitSha: "4".repeat(40),
+          mergeCommitSha: "2".repeat(40),
           terminalAt: now,
         },
         payloadDigest: "digest-beta-42",
@@ -755,21 +755,21 @@ describe("durable operations migration", () => {
                 baseBranch: "main",
                 prNumber: 42,
                 terminalEvent: "merged",
-                mergeCommitSha: "4".repeat(40),
-                featureId: "002-feat",
+                mergeCommitSha: "2".repeat(40),
+                featureId: "001-feat",
                 phaseId: "phase-01",
               }),
               repoSlug: "example/beta",
               headRepoSlug: "example/beta",
               trunkBranch: "main",
-              featureId: "002-feat",
+              featureId: "001-feat",
               phaseId: "phase-01",
               prNumber: 42,
               prUrl: "https://github.com/example/beta/pull/42",
-              headBranch: "feat/002-feat-phase-01",
+              headBranch: "feat/001-feat-phase-01",
               expectedHeadSha: "3".repeat(40),
               terminalEvent: "merged" as const,
-              mergeCommitSha: "4".repeat(40),
+              mergeCommitSha: "2".repeat(40),
               terminalAt: now,
               recipient: null,
               plannedSlackRecipient: null,
@@ -791,18 +791,26 @@ describe("durable operations migration", () => {
       expect(resAlpha).toMatchObject({
         ok: true,
         deduplicatedTransport: false,
+        deduplicatedWork: false,
       });
 
       const resBeta = store.recordHarvestIntake(betaDelivery);
       expect(resBeta).toMatchObject({
         ok: true,
         deduplicatedTransport: false,
+        deduplicatedWork: false,
       });
 
       // Transport deduplication check
       const resAlphaDup = store.recordHarvestIntake(alphaDelivery);
       expect(resAlphaDup).toMatchObject({
         ok: true,
+        operations: [{ operationId: "alpha-op-42" }],
+        deduplicatedTransport: true,
+      });
+      expect(store.recordHarvestIntake(betaDelivery)).toMatchObject({
+        ok: true,
+        operations: [{ operationId: "beta-op-42" }],
         deduplicatedTransport: true,
       });
     } finally {
@@ -1108,7 +1116,6 @@ describe("durable operations review regressions", () => {
       store.initializeHarvestStages({
         fence: first.fence,
         nowIso: now,
-        terminalEvent: operation.terminalEvent,
         phaseIds: [phaseOne],
         hasSlackTarget: false,
         hasRemoteBranchTarget: true,
@@ -1334,6 +1341,53 @@ describe("durable operations review regressions", () => {
     }
   });
 
+  it("orders accepted dispatches and reports queue age by instant after reopen", () => {
+    expect(
+      store.getOperationsStatus(project.projectId).queue.oldestQueuedAt,
+    ).toBeNull();
+
+    const oldest = "2026-11-11T13:00:00+02:00";
+    for (const { operationId, phaseId, createdAt } of [
+      { operationId: "later", phaseId: phaseTwo, createdAt: now },
+      {
+        operationId: "z-tie",
+        phaseId: "phase-03",
+        createdAt: "2026-11-11T11:00:00Z",
+      },
+      { operationId: "earlier", phaseId: phaseOne, createdAt: oldest },
+    ]) {
+      store.acceptDispatch({
+        projectId: project.projectId,
+        featureId,
+        phaseId,
+        trunkBranch: project.trunkBranch,
+        backend: "codex",
+        newOperationId: operationId,
+        nowIso: createdAt,
+      });
+    }
+
+    db.close();
+    db = openDatabase({ dbPath });
+    store = createSqliteOperationsStoreAdapter({ db });
+
+    expect
+      .soft(
+        store
+          .listRecoverableDispatches({
+            nowIso: now,
+            projectId: project.projectId,
+          })
+          .map(({ operationId }) => operationId),
+        "recovery order",
+      )
+      .toEqual(["earlier", "z-tie", "later"]);
+    const { oldestQueuedAt } = store.getOperationsStatus(
+      project.projectId,
+    ).queue;
+    expect.soft(oldestQueuedAt, "oldest queue timestamp").toBe(oldest);
+  });
+
   it("recovers harvest leases by instant with offset timestamps", () => {
     const [first, second] = accept(
       harvestIntake("offset", [phaseOne, phaseTwo]),
@@ -1397,7 +1451,9 @@ describe("durable operations review regressions", () => {
         store.initializeHarvestStages({
           fence: claim.fence,
           nowIso: now,
-          ...stages,
+          phaseIds: stages.phaseIds,
+          hasSlackTarget: stages.hasSlackTarget,
+          hasRemoteBranchTarget: stages.hasRemoteBranchTarget,
           stages: planHarvestStages(stages),
         }),
       ).toEqual({ ok: true });
