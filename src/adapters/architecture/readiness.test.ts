@@ -108,6 +108,21 @@ describe("repository architecture readiness", () => {
       );
     },
   );
+  it("reports an incomplete context when the manifest omits its decision map", async () => {
+    await context();
+    await put(
+      ".gwrk/context-manifest.json",
+      JSON.stringify({
+        version: 1,
+        files: { ".gwrk/architecture.md": digest },
+      }),
+    );
+
+    expect((await readArchitectureReadiness(root, design))?.context).toEqual({
+      status: "incomplete",
+      issues: [{ path: ".gwrk/context-manifest.json", kind: "invalid" }],
+    });
+  });
   it("links a dated Markdown-only report without inventing provenance or scope", async () => {
     await put(
       "docs/architecture/assessments/2026-11-18/report.md",

@@ -96,6 +96,40 @@ describe("project discovery with architecture evidence", () => {
     expect(text).toContain("gwrk init");
     expect(text).toContain("gwrk assess");
   });
+
+  it("reports assessment scope alongside incomplete context in text and JSON", () => {
+    const archive = "docs/architecture/assessments/2026-11-18";
+    const reportPath = `${archive}/report.md`;
+    const scope = {
+      inspected: ["src/domain"],
+      limitations: ["Adapters unreviewed"],
+    };
+    mkdirSync(join(root, archive), { recursive: true });
+    writeFileSync(join(root, reportPath), "# Scoped assessment\n");
+    writeFileSync(
+      join(root, archive, "assessment.json"),
+      JSON.stringify({
+        overview: "Scoped assessment",
+        ...scope,
+        findings: [],
+        features: [],
+        reconciliation: [],
+      }),
+    );
+
+    const text = run(["project", "discover"]);
+    expect(text).toContain("Architecture context: incomplete");
+    expect(text).toContain(`Latest assessment: ${reportPath}`);
+    expect(text).toContain("Assessment inspected: src/domain");
+    expect(text).toContain("Assessment limitations: Adapters unreviewed");
+    expect(text).not.toContain("Run gwrk assess");
+
+    const result = JSON.parse(run(["project", "discover", "--format", "json"]));
+    expect(result.architecture).toMatchObject({
+      context: { status: "incomplete" },
+      assessment: { latest: { reportPath, scope } },
+    });
+  });
 });
 
 describe("project discovery with only project config", () => {
