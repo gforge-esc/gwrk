@@ -440,6 +440,39 @@ describe("slack-commands (FR-015, US-004)", () => {
     },
   );
 
+  it.each(["ship", "approve"])(
+    "denies %s for an exact foreign feature even when a local feature shares its prefix",
+    async (command) => {
+      const { spawn } = await import("node:child_process");
+      const merge = vi.spyOn(context.vcs!, "mergePullRequest");
+      const root = mkdtempSync(join(tmpdir(), "gwrk-slash-exact-feature-"));
+      onTestFinished(() => rmSync(root, { recursive: true, force: true }));
+      const beta = initCheckout(SYNTHETIC_PROJECT_BETA, join(root, "beta"));
+      const featureId = SYNTHETIC_THREAD_ALPHA.featureId;
+      const foreignFeature = join(beta.localRoot, "specs", featureId);
+      const localSpecs = join(context.projectRoot, "specs");
+      renameSync(
+        join(localSpecs, featureId),
+        join(localSpecs, `${featureId}-followup`),
+      );
+      mkdirSync(foreignFeature, { recursive: true });
+      symlinkSync(foreignFeature, join(localSpecs, featureId), "dir");
+
+      const response = await handleSlashCommand(
+        `${command} ${featureId} 1`,
+        context,
+      );
+
+      expect.soft(response.response_type).toBe("ephemeral");
+      expect
+        .soft(JSON.stringify(response.blocks))
+        .toContain("Feature is unavailable inside this project's checkout.");
+      expect.soft(spawn).not.toHaveBeenCalled();
+      expect.soft(findOpenPr).not.toHaveBeenCalled();
+      expect(merge).not.toHaveBeenCalled();
+    },
+  );
+
   it("resolves a ship prefix using only feature directories inside the checkout", async () => {
     const { spawn } = await import("node:child_process");
     const root = mkdtempSync(join(tmpdir(), "gwrk-slash-prefix-scope-"));

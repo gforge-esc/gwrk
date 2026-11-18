@@ -176,6 +176,8 @@ Send private merge warnings to the authorized actor in the bound feature thread 
 
 For log and revision buttons (TR-009), replace Alpha's checkout with Beta. Return a checkout warning for logs and leave both revision receipts unclaimed. After restoring Alpha, show its logs and start one revision per button across concurrent clicks.
 
+For View Logs (TR-009), keep a review card bound to a missing feature. Save a run log under a longer feature ID with the same prefix. Send a private reply in the bound thread that reports missing logs. Assert the reply excludes the other feature's gate result and leaves receipts untouched.
+
 Replace Alpha's checkout with Beta for Approve Spec and both redispatch buttons (TR-009). Deny those clicks before claiming a receipt or starting work. After restoring Alpha, accept one claim and one launch or enqueue per button across concurrent clicks. Approve Spec runs `gwrk define plan <feature>` from the verified checkout and records one executed receipt.
 
 For the Slack feature path test (TR-009), link the feature directory outside the verified checkout. Deny Approve Spec and both revision buttons. Deny Retry Phase and Request Changes. Reply once in private to the clicker. Assert zero public replies and receipt claims. Assert zero process launches and queue entries.
@@ -193,6 +195,8 @@ Status, logs and effort read files inside the verified checkout (TR-012a). Apply
 Test external feature links for dispatch, define and ship (TR-012a). Deny all three commands. The ADR list command shows the local decision index. Omit the index content when the same path links to another checkout.
 
 Point Alpha's specs at Beta's specs and request a missing feature with `ship` and `approve` (TR-012a). Both commands return a private checkout-scoped error without listing features. Assert zero process launches, pull request lookups and merges. Give `ship` a prefix that matches a local feature and a linked foreign feature. Assert it resolves the local feature and replies in its thread.
+
+For `ship` and `approve` (TR-012a), link the requested feature outside the checkout. Add a longer local feature ID with the same prefix. Deny the request privately. Assert zero process launches, pull request lookups and merges.
 
 For slash command delivery (TR-012b), send status via `chat.postEphemeral` to the caller in the authorized channel at the stored thread root. Send public dispatch and unthreaded help via `respond`. Set `replace_original: false` for public threaded replies.
 

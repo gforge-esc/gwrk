@@ -1092,6 +1092,48 @@ describe("slack-actions (FR-007, US-004, US-005)", () => {
       expect(claim).not.toHaveBeenCalled();
     });
 
+    it("keeps View Logs on the feature bound to the review card", async () => {
+      const { project, registry } = createSqliteRegistry();
+      const runs = join(
+        project.localRoot,
+        "specs",
+        `${actionValue.featureId}-followup`,
+        ".gwrk",
+        "runs",
+      );
+      mkdirSync(runs, { recursive: true });
+      writeFileSync(
+        join(runs, `${actionValue.phaseId}.json`),
+        JSON.stringify({ gate_result: "follow-up feature gate" }),
+      );
+      const claim = vi.spyOn(registry, "claimActionReceipt");
+      await registerSlackActions(mockApp as App, {
+        ...mockContext,
+        routingService: createProjectRoutingService({ registry }),
+      });
+      const click = clickArgs(
+        "view_logs",
+        project.projectId,
+        SYNTHETIC_USER_VIEWER,
+      );
+
+      await actionHandlers.view_logs(click);
+
+      expect
+        .soft(click.client.chat.postEphemeral)
+        .toHaveBeenCalledExactlyOnceWith(
+          expect.objectContaining({
+            channel: SYNTHETIC_CHANNEL_ALPHA,
+            user: SYNTHETIC_USER_VIEWER,
+            thread_ts: SYNTHETIC_THREAD_ALPHA.rootTs,
+          }),
+        );
+      const reply = JSON.stringify(click.client.chat.postEphemeral.mock.calls);
+      expect.soft(reply).toContain("No ship run logs found");
+      expect.soft(reply).not.toContain("follow-up feature gate");
+      expect(claim).not.toHaveBeenCalled();
+    });
+
     it.each([
       ["revise_spec", ["define", "spec", actionValue.featureId]],
       ["revise_plan", ["define", "plan", actionValue.featureId]],

@@ -71,6 +71,12 @@ function resolveScopedSlackFeature(
 
   const exact = scopedFeatureDirectory(projectRoot, featureInput);
   if (exact) return { featureId: featureInput, directory: exact };
+  try {
+    fs.lstatSync(path.join(specs, featureInput));
+    return undefined;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT") return undefined;
+  }
 
   const prefix = /^\d+$/.test(featureInput) ? featureInput : `${featureInput}-`;
   try {
@@ -954,6 +960,7 @@ const handlers: Record<string, SlashCommandHandler> = {
 export function buildSlackLogResponse(
   args: string[],
   projectRoot: string,
+  options: { exactFeature?: boolean } = {},
 ): SlackBlockKit {
   const [featureId, phaseId] = args;
   if (!featureId) {
@@ -972,10 +979,9 @@ export function buildSlackLogResponse(
   }
 
   // Read ship run JSON files from specs/<feature>/.gwrk/runs/
-  const featureDir = resolveScopedSlackFeature(
-    projectRoot,
-    featureId,
-  )?.directory;
+  const featureDir = options.exactFeature
+    ? scopedFeatureDirectory(projectRoot, featureId)
+    : resolveScopedSlackFeature(projectRoot, featureId)?.directory;
   const runsDir = featureDir
     ? scopedFeaturePath(featureDir, ".gwrk", "runs")
     : undefined;

@@ -694,7 +694,9 @@ export async function registerSlackActions(app: App, context: CommandContext) {
 
     const args = [payload.featureId];
     if (payload.phaseId) args.push(payload.phaseId);
-    const { blocks } = buildSlackLogResponse(args, auth.projectRoot);
+    const { blocks } = buildSlackLogResponse(args, auth.projectRoot, {
+      exactFeature: true,
+    });
     await client.chat.postEphemeral({
       channel: body.channel?.id ?? context.channelId,
       user: body.user.id,
