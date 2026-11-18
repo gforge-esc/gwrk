@@ -186,7 +186,7 @@ Replace Alpha's checkout with Beta for Approve Spec and both redispatch buttons 
 
 Start the dispatch queue in Alpha's verified mirror while its local checkout is also valid (TR-009). Deny both buttons before claiming a receipt when the mirror has only a longer feature ID with the same prefix. Add the exact feature to the mirror. For each button, accept one claim and one enqueue across concurrent clicks. Complete one executed receipt.
 
-Link the bound feature directory outside the checkout or to a sibling feature (TR-009). Deny Approve Spec and both revision buttons. Deny Retry Phase and Request Changes. Reply once in private to the clicker. Assert zero public replies, receipt claims and completions. Assert zero process launches and queue entries.
+Link the bound feature directory outside the checkout or to a sibling feature (TR-009). Deny Approve Spec and both revision buttons. Deny Retry Phase and Request Changes. Reply once in private to the clicker at the stored feature thread root. Assert zero public replies, receipt claims and completions. Assert zero process launches and queue entries.
 
 Exercise asynchronous spawn errors for Approve Spec and both revision buttons (TR-009). Keep the receipt claimed until launch resolves. On launch failure, record one failed outcome and warn the actor privately in the authorized thread.
 
@@ -213,6 +213,8 @@ For `ship` and `approve` (TR-012a), link the requested feature outside the check
 For slash command delivery (TR-012b), send status via `chat.postEphemeral` to the caller in the authorized channel at the stored thread root. Send public dispatch and unthreaded help via `respond`. Set `replace_original: false` for public threaded replies.
 
 For slash command status (TR-012b), read Beta's ledger while the daemon serves Alpha. Scope feature history and summary statistics to Beta and leave the startup queue untouched. Deny dispatch and pause for Beta.
+
+Enroll Alpha's mirror through a symbolic link and start the daemon at the mirror's canonical path (TR-012b). Bind the startup queue to Alpha for review actions. Enqueue the authorized slash dispatch once and confirm it in Alpha's stored feature thread.
 
 #### Done When
 

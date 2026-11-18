@@ -1388,6 +1388,7 @@ describe("slack-actions (FR-007, US-004, US-005)", () => {
             expect.objectContaining({
               channel: SYNTHETIC_CHANNEL_ALPHA,
               user: SYNTHETIC_USER_MAINTAINER,
+              thread_ts: SYNTHETIC_THREAD_ALPHA.rootTs,
               text: expect.stringContaining("checkout is unavailable"),
             }),
           );

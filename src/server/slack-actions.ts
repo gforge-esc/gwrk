@@ -158,6 +158,9 @@ async function verifyAndClaimClick(
       await client.chat.postEphemeral({
         channel: channelId,
         user: actorUserId,
+        ...(decision.recipient?.threadTs
+          ? { thread_ts: decision.recipient.threadTs }
+          : {}),
         text: `:warning: Action unauthorized: ${decision.message}`,
       });
     }
