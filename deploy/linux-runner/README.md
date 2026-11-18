@@ -52,7 +52,15 @@ Keep `/etc/gwrk/secrets` owned by `root:gwrk` with mode `0750`. Write one value 
 | `slack-bot-token` | Slack Socket Mode when `GWRK_SLACK_ENABLED=1` |
 | `slack-app-token` | Slack Socket Mode when `GWRK_SLACK_ENABLED=1` |
 
-Use a token scoped to the pilot repository. Grant Contents: read and write to push worker branches. Grant Pull requests: read and write to create and update pull requests. Grant Issues: read and write when project issue tracking is enabled. Install the approved provider CLI and its operator-owned wrapper on the host. The wrapper reads the credential file without printing it. Set `GWRK_AGENT_PROBE` to a root-owned executable that takes the approved plugin ID and runs a headless request with tools disabled. Use the same credential path and provider configuration for the probe and the installed agent wrapper. Preflight bounds the Git ref read, authenticated GitHub API request and headless probe. It rejects Telegram configuration in the service environment.
+Use a token scoped to the pilot repository.
+
+| Permission | Access | Use |
+|---|---|---|
+| Contents | read and write | Push worker branches |
+| Pull requests | read and write | Create and update pull requests |
+| Issues | read and write when enabled | Project issue tracking |
+
+Install the approved provider CLI and its operator-owned wrapper on the host. The wrapper reads the credential file without printing it. Set `GWRK_AGENT_PROBE` to a root-owned executable that takes the approved plugin ID and runs a headless request with tools disabled. Use the same credential path and provider configuration for the probe and the installed agent wrapper. Preflight bounds the Git ref read, authenticated GitHub API request and headless probe. It rejects Telegram configuration in the service environment.
 
 Revoke a GitHub token or agent credential at its provider. Replace the credential file and restart the service to run preflight again. Revoke Slack credentials in the Slack app settings.
 
