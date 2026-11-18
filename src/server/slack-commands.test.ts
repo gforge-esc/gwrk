@@ -37,6 +37,7 @@ import {
 } from "../../tests/helpers/synthetic-slack.js";
 import { resolveProjectId } from "../adapters/git/project-id.js";
 import { createProjectRoutingService } from "../application/project-routing/index.js";
+import { findOpenPr } from "../db/runs.js";
 import type { DispatchQueue } from "./dispatch.js";
 import type { GitManager } from "./git-manager.js";
 import type { SystemMonitor } from "./monitor.js";
@@ -406,6 +407,62 @@ describe("slack-commands (FR-015, US-004)", () => {
       expect(spawn).not.toHaveBeenCalled();
     },
   );
+
+  it.each(["ship", "approve"])(
+    "keeps foreign feature names out of %s replies when specs links to another checkout",
+    async (command) => {
+      const { spawn } = await import("node:child_process");
+      const merge = vi.spyOn(context.vcs!, "mergePullRequest");
+      const root = mkdtempSync(join(tmpdir(), "gwrk-slash-linked-specs-"));
+      onTestFinished(() => rmSync(root, { recursive: true, force: true }));
+      const beta = initCheckout(SYNTHETIC_PROJECT_BETA, join(root, "beta"));
+      const foreignSpecs = join(beta.localRoot, "specs");
+      const localSpecs = join(context.projectRoot, "specs");
+      mkdirSync(join(foreignSpecs, "004-beta-private"), { recursive: true });
+      renameSync(localSpecs, join(root, "saved-alpha-specs"));
+      symlinkSync(foreignSpecs, localSpecs, "dir");
+
+      const response = await handleSlashCommand(
+        `${command} 003-slack 1`,
+        context,
+      );
+      const reply = JSON.stringify(response.blocks);
+
+      expect.soft(response.response_type).toBe("ephemeral");
+      expect
+        .soft(reply)
+        .toContain("Feature is unavailable inside this project's checkout.");
+      expect.soft(reply).not.toContain("004-beta-private");
+      expect.soft(reply).not.toContain("Available features");
+      expect.soft(spawn).not.toHaveBeenCalled();
+      expect.soft(findOpenPr).not.toHaveBeenCalled();
+      expect(merge).not.toHaveBeenCalled();
+    },
+  );
+
+  it("resolves a ship prefix using only feature directories inside the checkout", async () => {
+    const { spawn } = await import("node:child_process");
+    const root = mkdtempSync(join(tmpdir(), "gwrk-slash-prefix-scope-"));
+    onTestFinished(() => rmSync(root, { recursive: true, force: true }));
+    const beta = initCheckout(SYNTHETIC_PROJECT_BETA, join(root, "beta"));
+    const foreignFeature = join(beta.localRoot, "specs", "003-beta-private");
+    mkdirSync(foreignFeature, { recursive: true });
+    symlinkSync(
+      foreignFeature,
+      join(context.projectRoot, "specs", "003-beta-private"),
+      "dir",
+    );
+
+    const response = await handleSlashCommand("ship 003 1", context);
+
+    expect.soft(response.response_type).toBe("in_channel");
+    expect.soft(response.thread_ts).toBe(SYNTHETIC_THREAD_ALPHA.rootTs);
+    expect(spawn).toHaveBeenCalledExactlyOnceWith(
+      "gwrk",
+      ["ship", "003-slack", "1"],
+      expect.objectContaining({ cwd: context.projectRoot }),
+    );
+  });
 
   it("only reads a decision index inside the authorized checkout", async () => {
     const root = mkdtempSync(join(tmpdir(), "gwrk-slash-linked-decisions-"));

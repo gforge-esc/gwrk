@@ -1300,6 +1300,95 @@ describe("slack-actions (FR-007, US-004, US-005)", () => {
       },
     );
 
+    it.each([
+      ["request_changes", null],
+      ["approve_spec", ["define", "plan", actionValue.featureId]],
+      ["approve_plan", null],
+      ["revise_spec", ["define", "spec", actionValue.featureId]],
+      ["revise_plan", ["define", "plan", actionValue.featureId]],
+      ["retry_phase", null],
+    ] as const)(
+      "keeps %s executed when Slack rejects its confirmation",
+      async (actionId, command) => {
+        const { project, registry } = createSqliteRegistry();
+        mkdirSync(join(project.localRoot, "specs", actionValue.featureId), {
+          recursive: true,
+        });
+        const complete = vi.spyOn(registry, "completeActionReceipt");
+        const enqueue = vi.mocked(mockContext.queue.enqueue);
+        await registerSlackActions(mockApp as App, {
+          ...mockContext,
+          projectRoot: project.localRoot,
+          queueProjectId: project.projectId,
+          routingService: createProjectRoutingService({ registry }),
+        });
+        const receiptKey = buildActionReceiptKey({
+          ...actionValue,
+          projectId: project.projectId,
+          workspaceId: SYNTHETIC_WORKSPACE_ID,
+          channelId: SYNTHETIC_CHANNEL_ALPHA,
+          messageTs,
+          actionId,
+        });
+        const click = clickArgs(actionId, project.projectId);
+        click.client.chat.postMessage.mockImplementation(async () => {
+          expect
+            .soft(registry.getActionReceipt(receiptKey)?.outcome)
+            .toBe("executed");
+          throw new Error("Slack confirmation rejected");
+        });
+
+        await actionHandlers[actionId](click);
+
+        if (command) {
+          expect
+            .soft(mockSpawn)
+            .toHaveBeenCalledExactlyOnceWith("gwrk", command, {
+              cwd: realpathSync(project.localRoot),
+              detached: true,
+              stdio: "ignore",
+            });
+        } else if (actionId === "approve_plan") {
+          expect
+            .soft(mockHandleDefineComplete)
+            .toHaveBeenCalledExactlyOnceWith({
+              featureId: actionValue.featureId,
+              status: "DEFINED",
+            });
+        } else {
+          expect.soft(enqueue).toHaveBeenCalledExactlyOnceWith({
+            featureId: actionValue.featureId,
+            phaseId: actionValue.phaseId,
+          });
+        }
+        expect
+          .soft(
+            mockSpawn.mock.calls.length +
+              mockHandleDefineComplete.mock.calls.length +
+              enqueue.mock.calls.length,
+          )
+          .toBe(1);
+        expect
+          .soft(complete.mock.calls.map(([key, outcome]) => [key, outcome]))
+          .toEqual([[receiptKey, "executed"]]);
+        expect
+          .soft(registry.getActionReceipt(receiptKey)?.outcome)
+          .toBe("executed");
+        expect
+          .soft(click.client.chat.postMessage)
+          .toHaveBeenCalledExactlyOnceWith(
+            expect.objectContaining({
+              channel: SYNTHETIC_CHANNEL_ALPHA,
+              thread_ts: SYNTHETIC_THREAD_ALPHA.rootTs,
+            }),
+          );
+        expect.soft(click.client.chat.postEphemeral).not.toHaveBeenCalled();
+        expect(click.logger.error).toHaveBeenCalledExactlyOnceWith(
+          expect.stringContaining("Slack confirmation rejected"),
+        );
+      },
+    );
+
     it("reports no open PR when the VCS port returns no URL", async () => {
       const { execSync } = await import("node:child_process");
       const vcs = createSyntheticVcsPort();
@@ -1472,6 +1561,16 @@ describe("slack-actions (FR-007, US-004, US-005)", () => {
 
       setOrigin("https://github.com/org/beta.git");
       await actionHandlers.merge_pr(click);
+      expect
+        .soft(click.client.chat.postEphemeral)
+        .toHaveBeenCalledExactlyOnceWith(
+          expect.objectContaining({
+            channel: SYNTHETIC_CHANNEL_ALPHA,
+            user: SYNTHETIC_USER_MAINTAINER,
+            thread_ts: SYNTHETIC_THREAD_ALPHA.rootTs,
+            text: expect.stringContaining("Failed to merge PR"),
+          }),
+        );
       expect.soft(readFileSync(calls, "utf8")).toBe("");
       expect.soft(registry.getActionReceipt(receiptKey)).toMatchObject({
         outcome: "failed",
@@ -1590,6 +1689,15 @@ describe("slack-actions (FR-007, US-004, US-005)", () => {
         if (surface === "button") await actionHandlers.merge_pr(click);
         else await eventHandlers.reaction_added(reaction);
 
+        const client = surface === "button" ? click.client : reaction.client;
+        expect.soft(client.chat.postEphemeral).toHaveBeenCalledExactlyOnceWith(
+          expect.objectContaining({
+            channel: SYNTHETIC_CHANNEL_ALPHA,
+            user: SYNTHETIC_USER_MAINTAINER,
+            thread_ts: SYNTHETIC_THREAD_ALPHA.rootTs,
+            text: expect.stringContaining("Merge outcome unknown"),
+          }),
+        );
         expect.soft(registry.getActionReceipt(receiptKey)).toMatchObject({
           outcome: "uncertain",
           mergeTarget,

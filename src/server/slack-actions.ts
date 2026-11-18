@@ -248,6 +248,19 @@ function completeReceipt(
   }
 }
 
+async function postActionConfirmation(
+  client: App["client"],
+  logger: { error(message: string): void },
+  actionId: string,
+  message: Parameters<App["client"]["chat"]["postMessage"]>[0],
+) {
+  try {
+    await client.chat.postMessage(message);
+  } catch (error) {
+    logger.error(`Could not post ${actionId} confirmation: ${error}`);
+  }
+}
+
 function lookupPr(
   featureId: string,
   projectId: string,
@@ -317,6 +330,7 @@ async function handleMerge(
     await client.chat.postEphemeral({
       channel,
       user,
+      thread_ts: auth.threadTs,
       text:
         outcome === "uncertain"
           ? `:warning: Merge outcome unknown for PR #${prNumber}. ${detail}`
@@ -410,13 +424,6 @@ export async function registerSlackActions(app: App, context: CommandContext) {
 
     try {
       context.queue.enqueue({ featureId, phaseId: phaseId ?? "" });
-      completeReceipt(context, auth.receiptKey, "executed");
-
-      await client.chat.postMessage({
-        channel: actionBody.channel?.id || "",
-        thread_ts: auth.threadTs,
-        text: `🔄 Changes requested for *${featureId}*${phaseId ? ` phase *${phaseId}*` : ""} by <@${actionBody.user.id}>. Agent notified and re-dispatching.`,
-      });
     } catch (error) {
       completeReceipt(context, auth.receiptKey, "failed");
       const errorMessage =
@@ -424,9 +431,18 @@ export async function registerSlackActions(app: App, context: CommandContext) {
       await client.chat.postEphemeral({
         channel: actionBody.channel?.id || "",
         user: actionBody.user.id,
+        thread_ts: auth.threadTs,
         text: `:warning: Failed to re-dispatch: ${errorMessage}`,
       });
+      return;
     }
+
+    completeReceipt(context, auth.receiptKey, "executed");
+    await postActionConfirmation(client, logger, "request_changes", {
+      channel: actionBody.channel?.id || "",
+      thread_ts: auth.threadTs,
+      text: `🔄 Changes requested for *${featureId}*${phaseId ? ` phase *${phaseId}*` : ""} by <@${actionBody.user.id}>. Agent notified and re-dispatching.`,
+    });
   });
 
   app.action("approve_spec", async ({ ack, body, client, logger }) => {
@@ -452,13 +468,6 @@ export async function registerSlackActions(app: App, context: CommandContext) {
     try {
       // Approve spec triggers plan generation
       await launchDetachedGwrk(["define", "plan", featureId], auth.projectRoot);
-      completeReceipt(context, auth.receiptKey, "executed");
-
-      await client.chat.postMessage({
-        channel: actionBody.channel?.id || "",
-        thread_ts: auth.threadTs,
-        text: `✅ Approved spec for *${featureId}* (${specPath}). Generating build plan...`,
-      });
     } catch (error) {
       completeReceipt(context, auth.receiptKey, "failed");
       const errorMessage =
@@ -469,7 +478,15 @@ export async function registerSlackActions(app: App, context: CommandContext) {
         thread_ts: auth.threadTs,
         text: `:warning: Failed to trigger planning: ${errorMessage}`,
       });
+      return;
     }
+
+    completeReceipt(context, auth.receiptKey, "executed");
+    await postActionConfirmation(client, logger, "approve_spec", {
+      channel: actionBody.channel?.id || "",
+      thread_ts: auth.threadTs,
+      text: `✅ Approved spec for *${featureId}* (${specPath}). Generating build plan...`,
+    });
   });
 
   app.action("approve_plan", async ({ ack, body, client, logger }) => {
@@ -495,13 +512,6 @@ export async function registerSlackActions(app: App, context: CommandContext) {
     try {
       const store = new PlanStore(auth.projectId || defaultProjectId);
       store.handleDefineComplete({ featureId, status: "DEFINED" });
-      completeReceipt(context, auth.receiptKey, "executed");
-
-      await client.chat.postMessage({
-        channel: actionBody.channel?.id || "",
-        thread_ts: auth.threadTs,
-        text: `✅ Approved plan for *${featureId}* (${planPath}). Feature status updated to *DEFINED*. Ready for implementation.`,
-      });
     } catch (error) {
       completeReceipt(context, auth.receiptKey, "failed");
       const errorMessage =
@@ -509,9 +519,18 @@ export async function registerSlackActions(app: App, context: CommandContext) {
       await client.chat.postEphemeral({
         channel: actionBody.channel?.id || "",
         user: actionBody.user.id,
+        thread_ts: auth.threadTs,
         text: `:warning: Failed to update plan status: ${errorMessage}`,
       });
+      return;
     }
+
+    completeReceipt(context, auth.receiptKey, "executed");
+    await postActionConfirmation(client, logger, "approve_plan", {
+      channel: actionBody.channel?.id || "",
+      thread_ts: auth.threadTs,
+      text: `✅ Approved plan for *${featureId}* (${planPath}). Feature status updated to *DEFINED*. Ready for implementation.`,
+    });
   });
 
   app.action("revise_spec", async ({ ack, body, client, logger }) => {
@@ -536,13 +555,6 @@ export async function registerSlackActions(app: App, context: CommandContext) {
 
     try {
       await launchDetachedGwrk(["define", "spec", featureId], auth.projectRoot);
-      completeReceipt(context, auth.receiptKey, "executed");
-
-      await client.chat.postMessage({
-        channel: actionBody.channel?.id || "",
-        thread_ts: auth.threadTs,
-        text: `🔄 Revision requested for *${featureId}* spec. Agent notified and re-generating spec...`,
-      });
     } catch (error) {
       completeReceipt(context, auth.receiptKey, "failed");
       const errorMessage =
@@ -553,7 +565,15 @@ export async function registerSlackActions(app: App, context: CommandContext) {
         thread_ts: auth.threadTs,
         text: `:warning: Failed to trigger spec revision: ${errorMessage}`,
       });
+      return;
     }
+
+    completeReceipt(context, auth.receiptKey, "executed");
+    await postActionConfirmation(client, logger, "revise_spec", {
+      channel: actionBody.channel?.id || "",
+      thread_ts: auth.threadTs,
+      text: `🔄 Revision requested for *${featureId}* spec. Agent notified and re-generating spec...`,
+    });
   });
 
   app.action("revise_plan", async ({ ack, body, client, logger }) => {
@@ -578,13 +598,6 @@ export async function registerSlackActions(app: App, context: CommandContext) {
 
     try {
       await launchDetachedGwrk(["define", "plan", featureId], auth.projectRoot);
-      completeReceipt(context, auth.receiptKey, "executed");
-
-      await client.chat.postMessage({
-        channel: actionBody.channel?.id || "",
-        thread_ts: auth.threadTs,
-        text: `🔄 Revision requested for *${featureId}* plan. Agent notified and re-generating plan...`,
-      });
     } catch (error) {
       completeReceipt(context, auth.receiptKey, "failed");
       const errorMessage =
@@ -595,7 +608,15 @@ export async function registerSlackActions(app: App, context: CommandContext) {
         thread_ts: auth.threadTs,
         text: `:warning: Failed to trigger plan revision: ${errorMessage}`,
       });
+      return;
     }
+
+    completeReceipt(context, auth.receiptKey, "executed");
+    await postActionConfirmation(client, logger, "revise_plan", {
+      channel: actionBody.channel?.id || "",
+      thread_ts: auth.threadTs,
+      text: `🔄 Revision requested for *${featureId}* plan. Agent notified and re-generating plan...`,
+    });
   });
 
   app.action("view_review", async ({ ack, body, client, logger }) => {
@@ -705,12 +726,6 @@ export async function registerSlackActions(app: App, context: CommandContext) {
 
     try {
       context.queue.enqueue({ featureId, phaseId: phaseId ?? "" });
-      completeReceipt(context, auth.receiptKey, "executed");
-      await client.chat.postMessage({
-        channel: actionBody.channel?.id || "",
-        thread_ts: auth.threadTs,
-        text: `🔄 Retrying *${featureId}*${phaseId ? ` phase *${phaseId}*` : ""} as requested by <@${actionBody.user.id}>`,
-      });
     } catch (error) {
       completeReceipt(context, auth.receiptKey, "failed");
       const errorMessage =
@@ -718,9 +733,18 @@ export async function registerSlackActions(app: App, context: CommandContext) {
       await client.chat.postEphemeral({
         channel: actionBody.channel?.id || "",
         user: actionBody.user.id,
+        thread_ts: auth.threadTs,
         text: `:warning: Failed to retry phase: ${errorMessage}`,
       });
+      return;
     }
+
+    completeReceipt(context, auth.receiptKey, "executed");
+    await postActionConfirmation(client, logger, "retry_phase", {
+      channel: actionBody.channel?.id || "",
+      thread_ts: auth.threadTs,
+      text: `🔄 Retrying *${featureId}*${phaseId ? ` phase *${phaseId}*` : ""} as requested by <@${actionBody.user.id}>`,
+    });
   });
 
   app.event(
