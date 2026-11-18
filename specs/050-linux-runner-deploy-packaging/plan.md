@@ -156,9 +156,12 @@ Governance follows `ADR-006`, `ADR-008` and `.gwrk/rules/workspace.md`. Validate
 | ID | Type | Target | Expected result |
 |---|---|---|---|
 | TR-002 | integration | `tests/linux-runner/container-harness.mjs` | Clean Linux container installs and runs release artifact without source checkout |
-| TR-003 | integration | `tests/linux-runner/container-harness.mjs` | A Linux process restart resumes one server and one worker |
-| TR-004 | unit | `tests/linux-runner/bundle-and-live-record.test.ts` | Preflight rejects laptop paths, public binds, missing secrets and revoked credentials |
+| TR-003 | integration | `tests/linux-runner/container-proof.sh` via `container-harness.mjs` | One live worker completes a fresh dispatch after `SIGKILL` with both run IDs preserved in backup manifests |
+| TR-004 | integration | `tests/linux-runner/bundle-and-live-record.test.ts` and `tests/linux-runner/container-proof.sh` | Preflight distinguishes accepted and revoked Git credentials when anonymous ref reads succeed |
+| TR-005 | integration | `tests/linux-runner/bundle-and-live-record.test.ts` | Runbook commands initialize the pilot checkout and recover the service ledger with `gwrk` absent from `PATH` |
 | TR-007 | unit | `tests/linux-runner/bundle-and-live-record.test.ts` | Live pilot record keeps host and worker checks separate from synthetic fixtures |
+
+The runbook regression checks for the probe and credential files at service enablement.
 
 #### Done When
 

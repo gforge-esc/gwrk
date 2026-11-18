@@ -87,6 +87,10 @@ cd -- "$GWRK_PILOT_REPO"
 origin=$(git config --get remote.origin.url) || fail "Set the pilot checkout origin."
 [[ "$origin" == "$GWRK_PILOT_REPO_URL" ]] || fail "Pilot checkout origin does not match the approved repository."
 timeout --kill-after=2s 20s git ls-remote --exit-code "$GWRK_PILOT_REPO_URL" HEAD >/dev/null 2>&1 ||
+  fail "Could not read HEAD from the pilot Git repository."
+slug=${GWRK_PILOT_REPO_URL#https://github.com/}
+slug=${slug%.git}
+timeout --kill-after=2s 20s gh api --hostname github.com --method GET --silent "repos/$slug/commits?per_page=1" >/dev/null 2>&1 ||
   fail "Pilot Git authentication failed. Refresh the scoped credential."
 timeout --kill-after=2s 30s "$probe" "$GWRK_APPROVED_AGENT" >/dev/null 2>&1 ||
   fail "The approved agent failed its bounded headless credential probe."
