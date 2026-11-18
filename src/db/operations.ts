@@ -1829,6 +1829,17 @@ export function createOperationsStore(
           ) {
             return null;
           }
+          if (
+            action === "reconcile" &&
+            row.eventType !== "harvest_gate_failed" &&
+            !matchesAcceptedSlackDestination(row.recipient, row.projectId, {
+              workspaceId,
+              channelId,
+              threadTs,
+            })
+          ) {
+            return null;
+          }
 
           const nextAttempt = row.attemptCount + 1;
           const result = db

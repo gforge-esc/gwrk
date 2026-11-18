@@ -1868,6 +1868,107 @@ describe("durable operations review regressions", () => {
   const destination = { workspaceId: "W1", channelId: "C1", threadTs: null };
 
   it.each([
+    {
+      status: "uncertain",
+      scenario: "recipient project conflict",
+      recipientOverride: { projectId: "beta" },
+    },
+    {
+      status: "sending",
+      scenario: "recipient workspace conflict",
+      recipientOverride: { workspaceId: "W2" },
+    },
+    {
+      status: "uncertain",
+      scenario: "recipient channel conflict",
+      recipientOverride: { channelId: "C2" },
+    },
+    {
+      status: "sending",
+      scenario: "recipient thread conflict",
+      recipientOverride: { threadTs: "1700000000.000200" },
+    },
+    {
+      status: "uncertain",
+      scenario: "matching recipient and conflicting proposed destination",
+      proposedDestination: {
+        workspaceId: "W-other",
+        channelId: "C-other",
+        threadTs: null,
+      },
+    },
+    {
+      status: "sending",
+      scenario: "matching recipient and no proposed destination",
+      proposedDestination: null,
+    },
+  ])(
+    "reconciles $status dispatch completion notices after restart ($scenario)",
+    ({ status, recipientOverride, proposedDestination = null }) => {
+      const notice = enqueueNotice();
+      const route = { ...destination, threadTs: "1700000000.000100" };
+      const clientMetadataKey = "dispatch-notice-metadata";
+      const recipient = { ...notice.recipient, ...route, ...recipientOverride };
+      db.prepare(
+        `UPDATE notification_outbox
+         SET recipient_json = ?, status = ?, workspace_id = ?, channel_id = ?, thread_ts = ?, client_metadata_key = ?, attempt_count = 1
+         WHERE outbox_id = ?`,
+      ).run(
+        JSON.stringify(recipient),
+        status,
+        route.workspaceId,
+        route.channelId,
+        route.threadTs,
+        clientMetadataKey,
+        notice.outboxId,
+      );
+      db.close();
+      db = openDatabase({ dbPath });
+      store = createSqliteOperationsStoreAdapter({ db });
+
+      const savedRow = db.prepare(
+        "SELECT * FROM notification_outbox WHERE outbox_id = ?",
+      );
+      const before = savedRow.get(notice.outboxId);
+      const recoverableNotice = store.getOutboxItem(notice.outboxId);
+      const nowIso = "2026-11-11T12:01:00.000Z";
+      const claimed = store.claimOutboxItem({
+        outboxId: notice.outboxId,
+        nowIso,
+        destination: proposedDestination,
+      });
+
+      if (recipientOverride) {
+        expect.soft(claimed).toBeNull();
+        expect.soft(savedRow.get(notice.outboxId)).toEqual(before);
+        expect(
+          store.listRecoverableOutboxItems({
+            projectId: notice.projectId,
+            nowIso,
+          }),
+        ).toEqual([recoverableNotice]);
+      } else {
+        const claimedItem = {
+          ...route,
+          clientMetadataKey,
+          status: "sending",
+          attemptCount: 2,
+        };
+        expect(claimed).toMatchObject({
+          action: "reconcile",
+          claim: {
+            outboxId: notice.outboxId,
+            attemptNumber: 2,
+            clientMetadataKey,
+          },
+          item: claimedItem,
+        });
+        expect(store.getOutboxItem(notice.outboxId)).toMatchObject(claimedItem);
+      }
+    },
+  );
+
+  it.each([
     { route: "send", destination, status: "delivered", attemptCount: 0 },
     { route: "send", destination, status: "pending", attemptCount: 2 },
     { route: "skip", destination: null, status: "delivered", attemptCount: 0 },
