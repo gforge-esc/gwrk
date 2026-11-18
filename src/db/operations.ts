@@ -711,6 +711,13 @@ export function createOperationsStore(
         const validation = validateLeaseFence(op, input.fence, input.nowIso);
         if (!validation.ok) return validation;
 
+        if (
+          op.leaseExpiresAt !== null &&
+          Date.parse(input.leaseExpiresAt) < Date.parse(op.leaseExpiresAt)
+        ) {
+          return { ok: true };
+        }
+
         db.prepare(
           `UPDATE dispatch_operations SET
           lease_expires_at = ?,
@@ -1126,6 +1133,13 @@ export function createOperationsStore(
         const op = rowToHarvestOperation(row);
         const validation = validateLeaseFence(op, input.fence, input.nowIso);
         if (!validation.ok) return validation;
+
+        if (
+          op.leaseExpiresAt !== null &&
+          Date.parse(input.leaseExpiresAt) < Date.parse(op.leaseExpiresAt)
+        ) {
+          return { ok: true };
+        }
 
         db.prepare(
           `UPDATE harvest_operations SET
@@ -1699,103 +1713,112 @@ export function createOperationsStore(
             threadTs: row.threadTs,
           };
 
-          if (action === "send") {
-            if (row.eventType === "harvest_gate_failed") {
+          if (row.eventType === "harvest_gate_failed") {
+            const { recipient } = row;
+            if (
+              !isHarvestSlackRecipient(recipient) ||
+              recipient.projectId !== row.projectId
+            ) {
+              return null;
+            }
+
+            const recipientRoute = {
+              workspaceId: recipient.workspaceId,
+              channelId: recipient.channelId,
+              threadTs: recipient.threadTs ?? null,
+            };
+            if (action === "send") {
+              route = recipientRoute;
+            } else if (
+              route.workspaceId !== recipientRoute.workspaceId ||
+              route.channelId !== recipientRoute.channelId ||
+              route.threadTs !== recipientRoute.threadTs
+            ) {
+              return null;
+            }
+          } else if (action === "send") {
+            const explicitWorkspaceId =
+              row.workspaceId?.trim() ||
+              (row.recipient.surface === "slack"
+                ? row.recipient.workspaceId?.trim()
+                : undefined);
+            const explicitChannelId =
+              row.channelId?.trim() ||
+              (row.recipient.surface === "slack"
+                ? row.recipient.channelId?.trim()
+                : undefined);
+            const explicitThreadTs =
+              row.threadTs !== null
+                ? row.threadTs
+                : row.recipient.surface === "slack" &&
+                    row.recipient.threadTs !== undefined
+                  ? row.recipient.threadTs
+                  : undefined;
+
+            if (input.destination === null) {
               if (
-                !isHarvestSlackRecipient(row.recipient) ||
-                row.recipient.projectId !== row.projectId
-              )
+                (explicitWorkspaceId && explicitChannelId) ||
+                isHarvestSlackRecipient(row.recipient)
+              ) {
                 return null;
-              route = {
-                workspaceId: row.recipient.workspaceId,
-                channelId: row.recipient.channelId,
-                threadTs: row.recipient.threadTs ?? null,
-              };
-            } else {
-              const explicitWorkspaceId =
-                row.workspaceId?.trim() ||
-                (row.recipient.surface === "slack"
-                  ? row.recipient.workspaceId?.trim()
-                  : undefined);
-              const explicitChannelId =
-                row.channelId?.trim() ||
-                (row.recipient.surface === "slack"
-                  ? row.recipient.channelId?.trim()
-                  : undefined);
-              const explicitThreadTs =
-                row.threadTs !== null
-                  ? row.threadTs
-                  : row.recipient.surface === "slack" &&
-                      row.recipient.threadTs !== undefined
-                    ? row.recipient.threadTs
-                    : undefined;
-
-              if (input.destination === null) {
-                if (
-                  (explicitWorkspaceId && explicitChannelId) ||
-                  isHarvestSlackRecipient(row.recipient)
-                ) {
-                  return null;
-                }
-                const result = db
-                  .prepare(
-                    `UPDATE notification_outbox SET status = 'skipped_no_target', updated_at = ?
-                 WHERE outbox_id = ? AND status = ? AND attempt_count = ?`,
-                  )
-                  .run(
-                    input.nowIso,
-                    input.outboxId,
-                    row.status,
-                    row.attemptCount,
-                  );
-                if (result.changes === 0) return null;
-                row.status = "skipped_no_target";
-                row.updatedAt = input.nowIso;
-                return {
-                  action: "skipped_no_target" as const,
-                  item: { ...row },
-                };
               }
-
-              if (
-                !matchesAcceptedSlackDestination(
-                  row.recipient,
-                  row.projectId,
-                  input.destination,
+              const result = db
+                .prepare(
+                  `UPDATE notification_outbox SET status = 'skipped_no_target', updated_at = ?
+               WHERE outbox_id = ? AND status = ? AND attempt_count = ?`,
                 )
-              ) {
-                return null;
-              }
-
-              if (
-                explicitWorkspaceId &&
-                input.destination.workspaceId !== explicitWorkspaceId
-              ) {
-                return null;
-              }
-              if (
-                explicitChannelId &&
-                input.destination.channelId !== explicitChannelId
-              ) {
-                return null;
-              }
-              if (
-                explicitThreadTs !== undefined &&
-                input.destination.threadTs !== explicitThreadTs
-              ) {
-                return null;
-              }
-
-              route = {
-                workspaceId:
-                  explicitWorkspaceId ?? input.destination.workspaceId,
-                channelId: explicitChannelId ?? input.destination.channelId,
-                threadTs:
-                  explicitThreadTs !== undefined
-                    ? explicitThreadTs
-                    : input.destination.threadTs,
+                .run(
+                  input.nowIso,
+                  input.outboxId,
+                  row.status,
+                  row.attemptCount,
+                );
+              if (result.changes === 0) return null;
+              row.status = "skipped_no_target";
+              row.updatedAt = input.nowIso;
+              return {
+                action: "skipped_no_target" as const,
+                item: { ...row },
               };
             }
+
+            if (
+              !matchesAcceptedSlackDestination(
+                row.recipient,
+                row.projectId,
+                input.destination,
+              )
+            ) {
+              return null;
+            }
+
+            if (
+              explicitWorkspaceId &&
+              input.destination.workspaceId !== explicitWorkspaceId
+            ) {
+              return null;
+            }
+            if (
+              explicitChannelId &&
+              input.destination.channelId !== explicitChannelId
+            ) {
+              return null;
+            }
+            if (
+              explicitThreadTs !== undefined &&
+              input.destination.threadTs !== explicitThreadTs
+            ) {
+              return null;
+            }
+
+            route = {
+              workspaceId: explicitWorkspaceId ?? input.destination.workspaceId,
+              channelId: explicitChannelId ?? input.destination.channelId,
+              threadTs:
+                explicitThreadTs !== undefined
+                  ? explicitThreadTs
+                  : input.destination.threadTs,
+            };
           }
 
           const { workspaceId, channelId, threadTs } = route;

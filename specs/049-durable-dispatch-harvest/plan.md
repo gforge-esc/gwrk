@@ -110,7 +110,9 @@ pnpm exec vitest run src/domain/durable-dispatch.test.ts src/domain/durable-harv
 | TR-001 | integration | `src/db/operations.test.ts` | Expired leases become recoverable |
 | TR-002 | integration | `src/db/operations.test.ts` | Two repositories with the same feature, pull request number and merge SHA retain separate operations and delivery replays |
 | TR-003 | integration | `src/db/operations.test.ts` | Stale `leaseEpoch` writes return `LEASE_FENCED` and preserve successor attempts |
+| TR-003 | integration | `src/db/operations.test.ts` | Dispatch and harvest lease expiry and renewal timestamps preserved after a delayed heartbeat and restart |
 | TR-003 | integration | `src/db/operations.test.ts` | Retry leases preserve stage execution counts |
+| TR-003 | integration | `src/db/operations.test.ts` | Gate failure claim rejection without writes after restart for cross-project recipients and mismatched bound routes |
 | TR-005 | integration | `src/db/db.test.ts` | Migration `018` preserves legacy rows and marks unverified records |
 
 #### Done When
@@ -294,4 +296,4 @@ pnpm exec vitest run src/commands/harvest.test.ts src/commands/status.test.ts sr
 
 None. Full coverage of `specs/049-durable-dispatch-harvest/spec.md`.
 
-Phase 2 restart regression rejects a gate failure outbox row whose saved recipient names another project. The matching-project control still claims its saved route. The mismatch failed before the guard and passes without persisted changes after the repair. All 108 phase checks pass.
+Phase 2 restart regression rejects a gate failure outbox row whose saved recipient names another project. The matching-project control still claims its saved route. The mismatch failed before the guard and passes without persisted changes after the repair. The original pending-send repair passed all 108 phase checks.

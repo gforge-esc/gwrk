@@ -1665,9 +1665,35 @@ describe("durable operations review regressions", () => {
     ).toEqual(["a-first", "offset", "notice"]);
   });
 
-  it.each(["alpha", "beta"])(
-    "keeps gate failure notice recipient %s project-scoped after restart",
-    (recipientProject) => {
+  it.each([
+    { status: "pending", recipientProject: "alpha", boundProject: null },
+    { status: "pending", recipientProject: "beta", boundProject: null },
+    {
+      status: "sending",
+      recipientProject: "alpha",
+      boundProject: "alpha",
+      recipientThreadTs: "1700000000.000100",
+      boundThreadTs: "1700000000.000100",
+    },
+    { status: "sending", recipientProject: "beta", boundProject: "beta" },
+    { status: "uncertain", recipientProject: "alpha", boundProject: "alpha" },
+    { status: "uncertain", recipientProject: "beta", boundProject: "beta" },
+    { status: "uncertain", recipientProject: "alpha", boundProject: "beta" },
+    {
+      status: "uncertain",
+      recipientProject: "alpha",
+      boundProject: "alpha",
+      boundThreadTs: "1700000000.000100",
+    },
+  ])(
+    "scopes $status gate failure notices to the saved recipient after restart ($recipientProject, $boundProject, $boundThreadTs)",
+    ({
+      status,
+      recipientProject,
+      boundProject,
+      recipientThreadTs,
+      boundThreadTs = null,
+    }) => {
       const notice = store.enqueueOutbox({
         outboxId: "gate-failure",
         projectId: "alpha",
@@ -1688,37 +1714,147 @@ describe("durable operations review regressions", () => {
         nowIso: now,
       });
       db.prepare(
-        "UPDATE notification_outbox SET recipient_json = ? WHERE outbox_id = ?",
+        `UPDATE notification_outbox
+         SET recipient_json = ?, status = ?, workspace_id = ?, channel_id = ?, thread_ts = ?, attempt_count = ?
+         WHERE outbox_id = ?`,
       ).run(
         JSON.stringify({
           surface: "slack",
           projectId: recipientProject,
           workspaceId: `W-${recipientProject}`,
           channelId: `C-${recipientProject}`,
+          threadTs: recipientThreadTs,
         }),
+        status,
+        boundProject === null ? null : `W-${boundProject}`,
+        boundProject === null ? null : `C-${boundProject}`,
+        boundThreadTs,
+        status === "pending" ? 0 : 1,
         notice.outboxId,
       );
       db.close();
       db = openDatabase({ dbPath });
       store = createSqliteOperationsStoreAdapter({ db });
-      const before = store.getOutboxItem(notice.outboxId);
+      const row = db.prepare(
+        "SELECT * FROM notification_outbox WHERE outbox_id = ?",
+      );
+      const before = row.get(notice.outboxId);
       const claimed = store.claimOutboxItem({
         outboxId: notice.outboxId,
-        nowIso: now,
-        destination: null,
+        nowIso: "2026-11-11T12:01:00.000Z",
+        destination:
+          status === "pending"
+            ? null
+            : { workspaceId: "W-other", channelId: "C-other", threadTs: null },
       });
-      if (recipientProject === "beta") {
+      if (
+        recipientProject !== "alpha" ||
+        boundProject === "beta" ||
+        boundThreadTs !== (recipientThreadTs ?? null)
+      ) {
         expect.soft(claimed).toBeNull();
-        expect(store.getOutboxItem(notice.outboxId)).toEqual(before);
+        expect(row.get(notice.outboxId)).toEqual(before);
       } else {
-        expect(claimed).toMatchObject({ action: "send" });
-        expect(store.getOutboxItem(notice.outboxId)).toMatchObject({
-          status: "sending",
+        const claimedItem = {
           workspaceId: "W-alpha",
           channelId: "C-alpha",
-          attemptCount: 1,
+          threadTs: boundThreadTs,
+          clientMetadataKey: notice.clientMetadataKey,
+          attemptCount: status === "pending" ? 1 : 2,
+        };
+        expect(claimed).toMatchObject({
+          action: status === "pending" ? "send" : "reconcile",
+          claim: { clientMetadataKey: notice.clientMetadataKey },
+          item: claimedItem,
+        });
+        expect(store.getOutboxItem(notice.outboxId)).toMatchObject({
+          ...claimedItem,
+          status: "sending",
         });
       }
+    },
+  );
+
+  it.each(["dispatch", "harvest"] as const)(
+    "preserves a renewed %s lease when a stale heartbeat arrives",
+    (kind) => {
+      const operationId =
+        kind === "dispatch"
+          ? store.acceptDispatch({
+              projectId: "alpha",
+              featureId,
+              phaseId: phaseOne,
+              trunkBranch: "main",
+              backend: "codex",
+              newOperationId: "dispatch-heartbeat",
+              nowIso: now,
+            }).operationId
+          : accept(harvestIntake("harvest-heartbeat", [phaseOne]))[0]
+              .operationId;
+      const claim = (
+        request: Parameters<OperationsStorePort["claimDispatchLease"]>[0],
+      ) =>
+        kind === "dispatch"
+          ? store.claimDispatchLease(request)
+          : store.claimHarvestLease(request);
+      const renew = (
+        request: Parameters<OperationsStorePort["heartbeatDispatchLease"]>[0],
+      ) =>
+        kind === "dispatch"
+          ? store.heartbeatDispatchLease(request)
+          : store.heartbeatHarvestLease(request);
+      const first = claim({
+        operationId,
+        leaseOwner: "worker",
+        nowIso: now,
+        leaseExpiresAt: "2026-11-11T12:01:00.000Z",
+      });
+      if (!first) throw new Error("Missing worker lease");
+      const renewedExpiry = "2026-11-11T12:04:00.000Z";
+      const renewedAt = "2026-11-11T12:00:30.000Z";
+      expect(
+        renew({
+          fence: first.fence,
+          nowIso: renewedAt,
+          leaseExpiresAt: renewedExpiry,
+        }),
+      ).toEqual({ ok: true });
+      expect(
+        renew({
+          fence: first.fence,
+          nowIso: "2026-11-11T12:00:20.000Z",
+          leaseExpiresAt: "2026-11-11T13:02:00.000+01:00",
+        }),
+      ).toEqual({ ok: true });
+
+      db.close();
+      db = openDatabase({ dbPath });
+      store = createSqliteOperationsStoreAdapter({ db });
+      const savedLease = db
+        .prepare(
+          kind === "dispatch"
+            ? "SELECT lease_expires_at, updated_at, heartbeat_at FROM dispatch_operations WHERE operation_id = ?"
+            : "SELECT lease_expires_at, updated_at FROM harvest_operations WHERE operation_id = ?",
+        )
+        .get(operationId);
+      expect.soft(savedLease).toEqual({
+        lease_expires_at: renewedExpiry,
+        updated_at: renewedAt,
+        ...(kind === "dispatch" ? { heartbeat_at: renewedAt } : {}),
+      });
+      const replacement = {
+        operationId,
+        leaseOwner: "replacement",
+        leaseExpiresAt: "2026-11-11T12:06:00.000Z",
+      };
+      expect(
+        claim({ ...replacement, nowIso: "2026-11-11T12:02:00.000Z" }),
+      ).toBeNull();
+      expect(claim({ ...replacement, nowIso: renewedExpiry })?.fence).toEqual({
+        operationId,
+        leaseOwner: replacement.leaseOwner,
+        leaseEpoch: first.fence.leaseEpoch + 1,
+      });
     },
   );
 
