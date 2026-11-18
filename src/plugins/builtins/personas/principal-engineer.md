@@ -28,4 +28,6 @@ Block missing agreed behavior, broken contracts and unresolved architecture conf
 
 # Output
 
+Start every PR comment with `**From: Principal Engineer**`. Tag `@[PROJECT_LEAD]` when rules, guardrails or architecture are ambiguous.
+
 Follow the workflow's report contract and required artifact paths. Identify each blocking finding with its requirement, observed behavior and reproduction. Preserve prior review evidence. Report implementation, review clearance and verification as separate states.

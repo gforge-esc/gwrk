@@ -14,20 +14,26 @@ import { WorkflowRuntime } from "./workflow-runtime.js";
 const dispatch = agents.dispatchToAgent;
 afterEach(() => vi.restoreAllMocks());
 
+const decisionIndex = [
+  "# Decisions",
+  "",
+  "Proposed: move repository reads into the domain.",
+  "Decided: keep repository reads in the filesystem adapter.",
+  "Superseded: let use cases read files directly.",
+  "",
+].join("\n");
+
 describe("governance prompt delivery", () => {
-  it.each(["gwrk-specify", "gwrk-plan", "gwrk-review-code"])(
+  it.each(["gwrk-specify", "gwrk-plan", "review-code-cli"])(
     "delivers project guidance and decision authority through %s",
     async (workflow) => {
       const root = await mkdtemp(join(tmpdir(), "gwrk-governance-delivery-"));
       try {
         await mkdir(join(root, ".gwrk/decisions"), { recursive: true });
-        await writeFile(
-          join(root, ".gwrk/decisions/index.md"),
-          "# Decisions\n\nProposed: hexagonal target.\nDecided: preserve current adapter contract.\nSuperseded: earlier layout.\n",
-        );
+        await writeFile(join(root, ".gwrk/decisions/index.md"), decisionIndex);
         await writeFile(
           join(root, ".gwrk/architecture.md"),
-          "Target context. Existing code conformance remains unassessed.",
+          "Proposed target: move repository reads into the domain. Existing code conformance remains unassessed.",
         );
         const profile: ProjectProfile = {
           type: "python",
@@ -64,7 +70,10 @@ describe("governance prompt delivery", () => {
           { projectRoot: root, quiet: true },
         );
         expect(transport).toHaveBeenCalledOnce();
-        expect(captured).toContain("<decision_authority>");
+        expect(captured).toContain(
+          `<architecture_decisions>\n${decisionIndex}\n</architecture_decisions>`,
+        );
+        expect(captured.match(/<decision_authority>/g)).toHaveLength(1);
         expect(captured).toContain(
           "Proposed targets require human ratification.",
         );
@@ -78,10 +87,16 @@ describe("governance prompt delivery", () => {
           "Existing code conformance remains unassessed.",
         );
         expect(captured).toContain("Use the project decisions.");
-        if (workflow !== "gwrk-review-code") {
+        if (workflow !== "review-code-cli") {
           expect(captured).toContain('language="Python"');
           expect(captured).not.toContain("src/application/");
         }
+        const authority = captured.match(
+          /<decision_authority>([\s\S]*?)<\/decision_authority>/,
+        )?.[1];
+        expect(authority).toMatch(
+          /\b(?:record|document|note)\b[^.!?]*\b(?:conflicts?|it)\b[^.!?]*\b(?:in|under)\s+(?:the\s+)?plan(?:\.md)?\b/i,
+        );
       } finally {
         await rm(root, { recursive: true, force: true });
       }

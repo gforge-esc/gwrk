@@ -51,21 +51,23 @@ Apply the single dispatch path decision (ADR-007) and the decision records contr
 - `src/plugins/builtins/personas/principal-engineer.md` — **amend** — Use the project's verification commands and schema standards. FR-001.
 - `src/utils/agent.ts` — **amend** — Add shared conflict guidance beside the intact decision index. FR-002.
 - `src/utils/agent.grounding-decisions.test.ts` — **amend** — Assert status visibility and conflict guidance across dispatch stages. FR-002.
-- `src/plugins/workflow-governance.test.ts` — **create** — Capture final spec and plan dispatch payloads for gwrk and another stack. FR-001 and FR-002.
+- `src/plugins/workflow-governance.test.ts` — **create** — Check conditioned specification and planning guidance for gwrk and Python. Verify that the persona preserves review reporting requirements. FR-001.
+- `src/plugins/workflow-governance.delivery.test.ts` — **create** — Capture specification, planning and CLI review prompts through shared dry-run dispatch. FR-001 and FR-002.
 
 #### Test Strategy
 
 | TR-### | Type | Target | Assertion |
 |---|---|---|---|
-| TR-001 | integration | `src/plugins/workflow-governance.test.ts` | Captured selected layout and verification standards with no foreign stack mandates |
+| TR-001 | integration | `src/plugins/workflow-governance.test.ts` | Profile-specific architecture guidance and gate examples with persona reporting triggers |
 | TR-002 | integration | `src/utils/agent.grounding-decisions.test.ts` | Verbatim Proposed and Decided rows plus conflict guidance across stages |
 | TR-003 | integration | `src/plugins/builtins/workflows/gwrk-plan/prompt-contract.test.ts` | Canonical gates and exit-based assertions |
+| TR-012 | integration | `src/plugins/workflow-governance.delivery.test.ts` | Verbatim decision index and one authority block requiring conflict records in the plan |
 
 #### Done When
 
 ```bash
 pnpm run build
-pnpm exec vitest run src/plugins/workflow-governance.test.ts src/utils/agent.grounding-decisions.test.ts src/plugins/builtins/workflows/gwrk-plan/prompt-contract.test.ts src/commands/define-plan.test.ts src/architecture.test.ts
+pnpm exec vitest run src/plugins/workflow-governance.delivery.test.ts src/plugins/workflow-governance.test.ts src/utils/agent.grounding-decisions.test.ts src/plugins/builtins/workflows/gwrk-plan/prompt-contract.test.ts src/commands/define-plan.test.ts src/architecture.test.ts
 ```
 
 ### Phase 2: Architecture context and assessment discovery
@@ -161,8 +163,8 @@ The proposed [feature spec](spec.md) uses unnumbered bullets and numbered accept
 
 | Requirement | Spec item | Checks | Phase |
 |---|---|---|---|
-| FR-001 Architecture guidance | Required changes 1 and 2, acceptance 1 | TR-001 and TR-003 | 1 |
-| FR-002 Decision authority | Required change 3, acceptance 1 | TR-002 | 1 |
+| FR-001 Architecture guidance | Required changes 1 and 2, acceptance 1 | TR-001, TR-003 and TR-012 | 1 |
+| FR-002 Decision authority | Required change 3, acceptance 1 | TR-002 and TR-012 | 1 |
 | FR-003 Scoped discovery | Required change 4, acceptance 2 | TR-004, TR-005 and TR-006 | 2 |
 | FR-004 Reproducible policy versions | Required change 5, acceptance 3 | TR-007, TR-008 and TR-009 | 3 |
 | FR-005 Actionable seed failures | Required change 5, acceptance 4 | TR-010 and TR-011 | 4 |

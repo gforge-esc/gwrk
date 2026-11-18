@@ -46,12 +46,57 @@ describe("workflow architecture guidance", () => {
     },
   );
 
+  it("uses gwrk documentation and gate commands for a native plan", () => {
+    const prompt = conditionPrompt(workflow("gwrk-plan"), {
+      type: "pnpm-monorepo",
+      _isGwrk: true,
+      stack: { language: "TypeScript" },
+    });
+    expect(prompt).toContain("`docs/grounding/architecture.md`");
+    expect(prompt).toContain(
+      "#### Done When\n```bash\npnpm run build\npnpm vitest run path/to/phase.test.ts\n```",
+    );
+    expect(prompt).toContain(
+      '```bash\n  pnpm vitest run path/to/phase.test.ts > out.log\n  grep -q "expected pattern" out.log\n  ```',
+    );
+    expect(prompt).not.toContain("pytest");
+  });
+
+  it("uses host documentation and gate commands for a Python plan", () => {
+    const prompt = conditionPrompt(workflow("gwrk-plan"), {
+      type: "python",
+      stack: { language: "Python", framework: "FastAPI" },
+      layout: "src-layout",
+    });
+    expect.soft(prompt).toMatch(/Read the host repository's architecture/);
+    expect
+      .soft(prompt)
+      .toContain("Use the host repository's verification commands");
+    expect.soft(prompt).not.toContain("docs/grounding/architecture.md");
+    expect.soft(prompt).not.toMatch(/\bpnpm\b/);
+    expect.soft(prompt).toContain(
+      "#### Done When\n```bash\npython -m pytest tests/test_phase.py\n```",
+    );
+    expect.soft(prompt).toContain(
+      '```bash\n  python -m pytest tests/test_phase.py > out.log\n  grep -q "expected pattern" out.log\n  ```',
+    );
+  });
+
   it("uses the project's verification and validation standards", () => {
     const persona = readFileSync(
       new URL("./builtins/personas/principal-engineer.md", import.meta.url),
       "utf8",
     );
     expect(persona).not.toMatch(/run `make up`|Zod everywhere/i);
-    expect(persona).toMatch(/project.{0,30}(?:verification|test) command/i);
+    expect(persona).toMatch(
+      /project's verification commands and schema validation standards/i,
+    );
+    const output = persona.split("\n# Output\n")[1];
+    expect.soft(output).toMatch(
+      /\bstart every PR comment with `\*\*From: Principal Engineer\*\*`/i,
+    );
+    expect.soft(output).toMatch(
+      /\btag `@\[PROJECT_LEAD\]` when (?:the )?rules, guardrails or architecture are ambiguous/i,
+    );
   });
 });
