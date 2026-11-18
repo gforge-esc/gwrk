@@ -90,7 +90,7 @@ describe("Linux runner service bundle", () => {
     }
   });
 
-  it("requires an accepted pilot credential even when Git returns HEAD anonymously", () => {
+  it("requires accepted credentials and an installed approved backend", () => {
     runnerFixture((fixture, bin) => {
       const state = join(fixture, "state");
       const runtime = join(fixture, "runtime");
@@ -98,12 +98,37 @@ describe("Linux runner service bundle", () => {
       const release = join(releaseRoot, "releases/candidate");
       const secrets = join(fixture, "secrets");
       const repo = join(state, "repos/pilot");
+      const plugin = join(state, "plugins/agents/fixture");
       const trace = join(fixture, "calls");
-      for (const dir of [runtime, release, secrets, repo]) {
+      for (const dir of [runtime, release, secrets, repo, plugin]) {
         mkdirSync(dir, { recursive: true });
       }
       symlinkSync(release, join(releaseRoot, "current"));
       symlinkSync(join(process.cwd(), "dist"), join(release, "dist"));
+      writeFileSync(
+        join(plugin, "manifest.yaml"),
+        `type: agent
+name: fixture
+version: 1.0.0
+description: Synthetic Linux runner backend
+adapter: adapter.js
+dispatchMode: local-cli
+contextFileName: AGENTS.md
+capabilities: [stdin]
+models: {}
+exitCodeMap: {}
+`,
+      );
+      writeFileSync(
+        join(plugin, "adapter.js"),
+        `export default {
+  name: "fixture",
+  async isAvailable() { return true; },
+  async dispatch() { return { command: "agent-probe", args: ["fixture"] }; },
+  parseResult(stdout, stderr, exitCode) { return { stdout, stderr, exitCode }; },
+};
+`,
+      );
       writeFileSync(
         join(repo, ".gwrkrc.json"),
         JSON.stringify({
@@ -178,14 +203,8 @@ fi`,
       );
       writeFileSync(join(secrets, "agent-credential"), "agent-token\n");
 
-      for (const [token, suffix, status] of [
-        ["revoked", ".git", 1],
-        ["accepted", ".git", 0],
-        ["accepted", "", 0],
-      ] as const) {
-        writeFileSync(trace, "");
-        writeFileSync(join(secrets, "pilot-git-credential"), `${token}\n`);
-        const result = spawnSync("bash", [`${root}/preflight.sh`], {
+      const preflight = (suffix: string) =>
+        spawnSync("bash", [`${root}/preflight.sh`], {
           env: {
             PATH: `${bin}:${process.env.PATH}`,
             HOME: state,
@@ -207,6 +226,14 @@ fi`,
           encoding: "utf8",
           timeout: 5000,
         });
+      for (const [token, suffix, status] of [
+        ["revoked", ".git", 1],
+        ["accepted", ".git", 0],
+        ["accepted", "", 0],
+      ] as const) {
+        writeFileSync(trace, "");
+        writeFileSync(join(secrets, "pilot-git-credential"), `${token}\n`);
+        const result = preflight(suffix);
         expect(result.status, result.stderr).toBe(status);
         expect(readFileSync(trace, "utf8"), result.stderr).toBe("ref\napi\n");
         expect(result.stdout + result.stderr).not.toContain(token);
@@ -214,6 +241,11 @@ fi`,
           status === 1 ? "Pilot Git authentication failed" : "preflight passed",
         );
       }
+
+      rmSync(plugin, { recursive: true });
+      const missingBackend = preflight(".git");
+      expect(missingBackend.status, missingBackend.stdout).toBe(1);
+      expect(missingBackend.stderr).toMatch(/backend.*fixture/i);
     });
   });
 

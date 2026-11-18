@@ -217,8 +217,8 @@
         {
           "id": "T019",
           "title": "Create preflight.sh",
-          "description": "NEW deploy/linux-runner/preflight.sh. Verify Linux service user and secret modes plus unattended Git and headless agent probes\nFull review history: .gwrk/review-history/phase-05-through-2026-11-18T2152Z.json. Preserve authenticated Git preflight, installed CLI and state paths, synthetic post-restart worker proof and pending live records. The runbook now provisions Git identity before enablement and documents repository-scoped write permissions. Two observed failures now pass through the seven-check phase gate. Independent clearance remains required.",
-          "status": "completed",
+          "description": "NEW deploy/linux-runner/preflight.sh. Verify Linux service user and secret modes plus unattended Git and headless agent probes\nFull review history: .gwrk/review-history/phase-05-through-2026-11-18T2152Z.json. Preserve authenticated Git preflight, installed CLI and state paths, synthetic post-restart worker proof and pending live records. The runbook now provisions Git identity before enablement and documents repository-scoped write permissions. Two observed failures now pass through the seven-check phase gate. Independent clearance remains required.\n\nREVIEW FAIL (code): Preflight accepts an uninstalled approved agent — TR-004, unattended headless agent authentication.\n  WHERE: deploy/linux-runner/preflight.sh:72-79,95-97 and tests/linux-runner/bundle-and-live-record.test.ts:245-248\n  EXPECTED: Preflight exits 1 when GWRK_APPROVED_AGENT does not resolve to an installed dispatch adapter, even if the provider probe succeeds.\n  ACTUAL: Removing the fixture plugin leaves the config entry and provider probe intact. Preflight prints \"Linux runner preflight passed.\" and exits 0. The production registry raises BackendNotFoundError for fixture.\n  FIX: Resolve the approved backend with the same installed plugin loader and registry as dispatch before reporting preflight success. Keep the bounded provider probe and pass the missing-adapter regression.",
+          "status": "open",
           "gateScript": "gates/phase-05.sh",
           "sp": 2,
           "completedAt": "2026-11-18T21:39:51.776Z"
@@ -227,9 +227,10 @@
           "id": "T020",
           "title": "Create README.md",
           "description": "NEW deploy/linux-runner/README.md. Document gateway boundary and secret supply plus credential revocation and rollback\nFull review history: .gwrk/review-history/phase-05-through-2026-11-18T2152Z.json. Preserve authenticated Git preflight, installed CLI and state paths, synthetic post-restart worker proof and pending live records. The runbook now provisions Git identity before enablement and documents repository-scoped write permissions. Two observed failures now pass through the seven-check phase gate. Independent clearance remains required.",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/phase-05.sh",
-          "sp": 2
+          "sp": 2,
+          "completedAt": "2026-11-18T22:02:10.247Z"
         },
         {
           "id": "T021",
