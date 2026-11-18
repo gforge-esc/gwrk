@@ -2,10 +2,6 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-/* This Source Code Form is subject to the terms of the Mozilla Public
- * License, v. 2.0. If a copy of the MPL was not distributed with this
- * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
-
 import fs from "node:fs";
 import path from "node:path";
 import { DesignSchema } from "../domain/architecture-context.js";
@@ -607,27 +603,129 @@ function ancestorDirectories(workspace: string, root?: string): string[] {
   return directories;
 }
 
-export function findProjectInfoConfigDirectory(
-  cwd: string,
-): string | undefined {
+function rawWorkspaceKeys(config: WorkspaceRootConfig | undefined): string[] {
+  const workspaces = config?.workspaces;
+  if (
+    !workspaces ||
+    typeof workspaces !== "object" ||
+    Array.isArray(workspaces)
+  ) {
+    return [];
+  }
+  return Object.keys(workspaces);
+}
+
+function hasRawProperty(value: unknown, key: string): boolean {
+  return (
+    value !== null &&
+    typeof value === "object" &&
+    !Array.isArray(value) &&
+    key in value &&
+    (value as Record<string, unknown>)[key] !== undefined
+  );
+}
+
+export function resolveWorkingDirectory(cwd: string, pwd?: string): string {
+  if (!pwd || pwd === cwd || !path.isAbsolute(pwd)) return cwd;
+  try {
+    const resolvedPwd = fs.realpathSync(pwd);
+    const resolvedCwd = fs.realpathSync(cwd);
+    return typeof resolvedPwd === "string" &&
+      resolvedPwd.length > 0 &&
+      resolvedPwd === resolvedCwd
+      ? pwd
+      : cwd;
+  } catch {
+    return cwd;
+  }
+}
+
+export function resolveProjectInfoConfigDirectories(cwd: string): string[] {
   const requestedWorkspace = path.resolve(cwd);
   const workspace = physicalPath(requestedWorkspace);
-  if (fs.existsSync(path.join(workspace, ".gwrkrc.json"))) return workspace;
+  const hasLocalConfig = fs.existsSync(path.join(workspace, ".gwrkrc.json"));
+  const localConfig = hasLocalConfig
+    ? readWorkspaceRootConfig(workspace)
+    : undefined;
 
-  const workspaceKeys = new Map<string, string[]>();
+  interface AncestorEntry {
+    directory: string;
+    config: WorkspaceRootConfig;
+    matched: boolean;
+    matchedEntryHasDesign: boolean;
+    hasProjectDesign: boolean;
+    hasProjectPolicy: boolean;
+  }
+  const entries = new Map<string, AncestorEntry | undefined>();
+
   for (const { directory, relativePath } of workspaceAncestorPaths(
     workspace,
     requestedWorkspace,
   )) {
-    let keys = workspaceKeys.get(directory);
-    if (!keys) {
-      keys = Object.keys(readWorkspaceRootConfig(directory)?.workspaces ?? {});
-      workspaceKeys.set(directory, keys);
+    let entry = entries.get(directory);
+    if (!entries.has(directory)) {
+      const config = readWorkspaceRootConfig(directory);
+      if (config !== undefined) {
+        const hasProjectDesign = hasRawProperty(config?.project, "design");
+        entry = {
+          directory,
+          config,
+          matched: false,
+          matchedEntryHasDesign: false,
+          hasProjectDesign,
+          hasProjectPolicy:
+            hasProjectDesign ||
+            hasRawProperty(config?.project, "toolchain") ||
+            hasRawProperty(config?.project, "stack"),
+        };
+      }
+      entries.set(directory, entry);
     }
+    if (!entry) continue;
     // Match before validation so loadConfig can report errors in the registration.
-    if (matchWorkspacePath(relativePath, keys)) return directory;
+    const matchedPath = matchWorkspacePath(
+      relativePath,
+      rawWorkspaceKeys(entry.config),
+    );
+    if (matchedPath) {
+      entry.matched = true;
+      if (
+        hasRawProperty(
+          (entry.config?.workspaces as Record<string, unknown>)[matchedPath],
+          "design",
+        )
+      ) {
+        entry.matchedEntryHasDesign = true;
+      }
+    }
   }
-  return undefined;
+
+  const ancestorList = [...entries.values()].filter(
+    (entry): entry is AncestorEntry => entry !== undefined,
+  );
+  const designActive =
+    hasRawProperty(localConfig?.project, "design") ||
+    ancestorList.some(
+      (entry) => entry.hasProjectDesign || entry.matchedEntryHasDesign,
+    );
+
+  const directories = hasLocalConfig ? [workspace] : [];
+  for (const entry of ancestorList) {
+    if (
+      entry.matched ||
+      entry.hasProjectDesign ||
+      (designActive && entry.hasProjectPolicy)
+    ) {
+      directories.push(entry.directory);
+    }
+  }
+  return directories;
+}
+
+export function findProjectInfoConfigDirectory(
+  cwd: string,
+): string | undefined {
+  return resolveProjectInfoConfigDirectories(cwd)[0];
 }
 
 function ancestorWorkspaceConfigs(
@@ -664,6 +762,7 @@ function ancestorWorkspaceConfigs(
       );
       if (scoped.matchedPath) {
         scopes.set(directory, scoped);
+        if (directory === root) suppliedRoot = scoped;
         registrations.push(scoped);
       }
       return;
@@ -755,7 +854,8 @@ function relativeWorkspacePath(root: string, workspace: string): string {
 function physicalPath(directory: string): string {
   const absolute = path.resolve(directory);
   try {
-    return fs.realpathSync(absolute);
+    const resolved = fs.realpathSync(absolute);
+    return typeof resolved === "string" && resolved ? resolved : absolute;
   } catch (error) {
     const parent = path.dirname(absolute);
     if (

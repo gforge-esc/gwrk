@@ -5,7 +5,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   getLintCommand,
   getTestCommand,
@@ -1463,7 +1463,7 @@ describe("FR-001: architecture-aware workspace profiles (044 phase p01)", () => 
     }
   });
 
-  it("keeps an unregistered alias out of the legacy configured lookup", () => {
+  it("keeps an unregistered alias out of the legacy configured lookup", async () => {
     const alias = path.join(root, "api-alias");
     const workspaces = { "services/api": { stack: { framework: "Django" } } };
     write(".gwrkrc.json", JSON.stringify({ workspaces }));
@@ -1472,6 +1472,22 @@ describe("FR-001: architecture-aware workspace profiles (044 phase p01)", () => 
     expect(resolveWorkspaceProfile(alias, root, { workspaces })).toBeUndefined();
     expect(resolveWorkspaceProfile(path.join(root, "services/api"), root, { workspaces }))
       .toMatchObject({ stack: { framework: "Django" } });
+    expect(await resolveWorkspaceProfile(root, "api-alias")).toMatchObject({
+      stack: { language: "Python", framework: "Django" },
+    });
+  });
+
+  it("falls back to the resolved path when realpathSync returns undefined", async () => {
+    const spy = vi.spyOn(fs, "realpathSync").mockReturnValue(undefined as never);
+    try {
+      const profile = await detectProfile(path.join(root, "services/api"));
+      expect(profile).toMatchObject({
+        type: "python",
+        stack: { language: "Python", framework: "FastAPI" },
+      });
+    } finally {
+      spy.mockRestore();
+    }
   });
 
   it("uses the physical worktree when a workspace path follows a symlink", async () => {

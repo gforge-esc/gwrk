@@ -114,12 +114,89 @@ it("resolves registered workspaces through the built CLI with only root config",
   }
 });
 
+it("resolves unregistered workspaces under a root design and shell alias paths through the built CLI", () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "gwrk-project-info-"));
+  const cli = fileURLToPath(new URL("../../dist/cli.js", import.meta.url));
+  const design = {
+    architecture: "hexagonal-functional",
+    principles: ["functional-core", "clean-code"],
+    templateVersion: "1.0.0",
+  };
+  const aliasDesign = {
+    architecture: "layered",
+    principles: ["clean-code"],
+    templateVersion: "1.0.0",
+  };
+  try {
+    fs.mkdirSync(path.join(root, ".git"));
+    fs.mkdirSync(path.join(root, "services/api"), { recursive: true });
+    fs.writeFileSync(
+      path.join(root, "services/api/pyproject.toml"),
+      '[project]\ndependencies = ["fastapi"]\n',
+    );
+    fs.symlinkSync("services/api", path.join(root, "api-alias"), "dir");
+    fs.writeFileSync(
+      path.join(root, ".gwrkrc.json"),
+      JSON.stringify({
+        project: { name: "fixture", design },
+        workspaces: {
+          "api-alias": {
+            design: aliasDesign,
+            stack: { language: "Python", framework: "Django" },
+          },
+        },
+      }),
+    );
+
+    const unregistered = spawnSync(
+      process.execPath,
+      [cli, "project", "info", "--format", "json"],
+      {
+        cwd: path.join(root, "services/api"),
+        encoding: "utf8",
+        env: { ...process.env, GWRK_HOME: path.join(root, "home") },
+        timeout: 10_000,
+      },
+    );
+    expect.soft(unregistered.status, unregistered.stderr).toBe(0);
+    if (unregistered.status === 0) {
+      expect.soft(JSON.parse(unregistered.stdout)).toMatchObject({
+        design,
+        stack: { language: "Python", framework: "FastAPI" },
+      });
+    }
+
+    const aliasDir = path.join(root, "api-alias");
+    const aliased = spawnSync(
+      process.execPath,
+      [cli, "project", "info", "--format", "json"],
+      {
+        cwd: aliasDir,
+        encoding: "utf8",
+        env: { ...process.env, PWD: aliasDir, GWRK_HOME: path.join(root, "home") },
+        timeout: 10_000,
+      },
+    );
+    expect.soft(aliased.status, aliased.stderr).toBe(0);
+    if (aliased.status === 0) {
+      expect.soft(JSON.parse(aliased.stdout)).toMatchObject({
+        design: aliasDesign,
+        stack: { language: "Python", framework: "Django" },
+      });
+    }
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
 it.each([
   { scenario: "unmanaged directory", configDirectory: undefined },
+  { scenario: "unregistered directory without design", configDirectory: ".", registeredWorkspace: "web" },
   { scenario: "invalid local config", configDirectory: "api" },
   { scenario: "invalid ancestor config", configDirectory: "." },
+  { scenario: "invalid ancestor config with name-only local config", configDirectory: ".", localNameOnly: true },
   { scenario: "registration outside the worktree", configDirectory: ".", nestedWorktree: true },
-])("rejects $scenario through the built CLI", ({ configDirectory, nestedWorktree }) => {
+])("rejects $scenario through the built CLI", ({ configDirectory, nestedWorktree, registeredWorkspace, localNameOnly }) => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "gwrk-project-info-"));
   const cli = fileURLToPath(new URL("../../dist/cli.js", import.meta.url));
   const cwd = path.join(root, "api");
@@ -127,12 +204,26 @@ it.each([
     fs.mkdirSync(path.join(root, ".git"));
     fs.mkdirSync(cwd);
     if (nestedWorktree) fs.writeFileSync(path.join(cwd, ".git"), "gitdir: ../.git\n");
+    if (localNameOnly) {
+      fs.writeFileSync(
+        path.join(cwd, ".gwrkrc.json"),
+        JSON.stringify({ project: { name: "api" } }),
+      );
+    }
     if (configDirectory !== undefined) {
+      const workspaceKey = registeredWorkspace ?? "api";
       fs.writeFileSync(
         path.join(root, configDirectory, ".gwrkrc.json"),
         JSON.stringify({
           project: { name: "fixture" },
-          workspaces: { api: { stack: { language: nestedWorktree ? "Python" : 42 } } },
+          workspaces: {
+            [workspaceKey]: {
+              stack: {
+                language:
+                  nestedWorktree || registeredWorkspace ? "Python" : 42,
+              },
+            },
+          },
         }),
       );
     }
@@ -144,7 +235,7 @@ it.each([
     });
     expect.soft(result.status, result.stderr).toBe(1);
     expect.soft(result.stdout).toBe("");
-    if (configDirectory === undefined || nestedWorktree) {
+    if (configDirectory === undefined || nestedWorktree || registeredWorkspace) {
       expect(result.stderr).toContain("Configuration file .gwrkrc.json not found");
     } else {
       expect(result.stderr).toContain("Configuration error in .gwrkrc.json");

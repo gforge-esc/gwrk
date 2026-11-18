@@ -4,7 +4,10 @@
 
 import { Command } from "commander";
 import { writeScopedStdout } from "../adapters/cli/output-scope.js";
-import { detectProfile } from "../engine/profile-detector.js";
+import {
+  detectProfile,
+  resolveWorkingDirectory,
+} from "../engine/profile-detector.js";
 
 /**
  * FR-035, US-029: Display resolved project profile and conditioning mode.
@@ -14,7 +17,10 @@ export const createProjectInfoCommand = () =>
     .description("Display resolved project profile")
     .option("--format <type>", "Output format (text, json)", "text")
     .action(async (options) => {
-      const profile = await detectProfile(process.cwd());
+      const cwd =
+        resolveWorkingDirectory?.(process.cwd(), process.env.PWD) ??
+        process.cwd();
+      const profile = await detectProfile(cwd);
 
       if (options.format === "json") {
         writeScopedStdout(`${JSON.stringify(profile, null, 2)}\n`);
