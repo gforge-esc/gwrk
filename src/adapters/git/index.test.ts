@@ -8,11 +8,13 @@ import {
   mkdtempSync,
   readFileSync,
   rmSync,
+  symlinkSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { MergePreflightError } from "../../ports/vcs-port.js";
 import {
   inspectPullRequestMerge,
   mergePullRequest,
@@ -47,6 +49,32 @@ afterEach(() => {
 });
 
 describe("project GitHub commands", () => {
+  it.each(["missing", "not executable"])(
+    "classifies %s gh launch as preflight without remote uncertainty",
+    (mode) => {
+      const realGit = execFileSync("which", ["git"], {
+        encoding: "utf8",
+      }).trim();
+      symlinkSync(realGit, join(root, "git"));
+      rmSync(join(root, "gh"));
+      if (mode === "not executable")
+        writeFileSync(join(root, "gh"), "#!/bin/sh\nexit 0\n", { mode: 0o600 });
+      vi.stubEnv("PATH", root);
+      let failure: unknown;
+      try {
+        mergePullRequest(root, 42, "github.com/org/alpha");
+      } catch (error) {
+        failure = error;
+      }
+      expect(failure).toBeInstanceOf(MergePreflightError);
+      expect(failure).toHaveProperty(
+        "cause.code",
+        mode === "missing" ? "ENOENT" : "EACCES",
+      );
+      expect(existsSync(join(root, "arguments"))).toBe(false);
+    },
+  );
+
   it.each([{ prNumber: 42 }, { headBranch: "feature" }])(
     "does not query a drifted origin for enrolled scope %j",
     (query) => {

@@ -618,6 +618,9 @@ describe("slack-actions (FR-007, US-004, US-005)", () => {
       expect(baseClick.ack).toHaveBeenCalledOnce();
       expect(chat.postEphemeral).toHaveBeenCalledWith(
         expect.objectContaining({
+          channel: SYNTHETIC_CHANNEL_ALPHA,
+          user: expect.any(String),
+          thread_ts: SYNTHETIC_THREAD_ALPHA.rootTs,
           text: expect.stringContaining("View full review here"),
         }),
       );
@@ -637,6 +640,9 @@ describe("slack-actions (FR-007, US-004, US-005)", () => {
       expect(maintainerClick.ack).toHaveBeenCalledOnce();
       expect(chat.postEphemeral).toHaveBeenCalledWith(
         expect.objectContaining({
+          channel: SYNTHETIC_CHANNEL_ALPHA,
+          user: expect.any(String),
+          thread_ts: SYNTHETIC_THREAD_ALPHA.rootTs,
           text: expect.stringContaining("View full review here"),
         }),
       );

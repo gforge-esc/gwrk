@@ -575,6 +575,7 @@ export async function registerSlackActions(app: App, context: CommandContext) {
       await client.chat.postEphemeral({
         channel: actionBody.channel?.id || "",
         user: actionBody.user.id,
+        thread_ts: auth.threadTs,
         text: `:warning: No open PR found for *${featureId}*. Has a ship run created one?`,
       });
       return;
@@ -583,6 +584,7 @@ export async function registerSlackActions(app: App, context: CommandContext) {
     await client.chat.postEphemeral({
       channel: actionBody.channel?.id || "",
       user: actionBody.user.id,
+      thread_ts: auth.threadTs,
       text: `🔍 View full review here: <${reviewUrl}|${featureId} Review>`,
     });
   });

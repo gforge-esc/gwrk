@@ -52,13 +52,30 @@ function runGh(
       "The checkout's GitHub repository differs from the merge target.",
     );
   }
-  return execFileSync("gh", [...args, "--repo", repository], {
-    cwd,
-    encoding: "utf-8",
-    env: { ...repositoryGitEnv(cwd), GH_PROMPT_DISABLED: "1" },
-    stdio: ["ignore", "pipe", "pipe"],
-    timeout,
-  }).trim();
+  try {
+    return execFileSync("gh", [...args, "--repo", repository], {
+      cwd,
+      encoding: "utf-8",
+      env: { ...repositoryGitEnv(cwd), GH_PROMPT_DISABLED: "1" },
+      stdio: ["ignore", "pipe", "pipe"],
+      timeout,
+    }).trim();
+  } catch (error) {
+    if (
+      error &&
+      typeof error === "object" &&
+      "code" in error &&
+      ["ENOENT", "EACCES"].includes(String(error.code)) &&
+      "pid" in error &&
+      error.pid === 0
+    ) {
+      throw new MergePreflightError(
+        "The GitHub CLI could not start. Repair its installation and retry.",
+        { cause: error },
+      );
+    }
+    throw error;
+  }
 }
 
 function isPrNumber(value: number | undefined): value is number {
