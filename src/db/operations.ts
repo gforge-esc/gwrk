@@ -58,10 +58,204 @@ import type {
   OutboxItem,
   OutboxMessage,
 } from "../ports/operations-port.js";
+import { projectScope } from "./project-registry.js";
 
 type FencedWrite = { ok: true } | { ok: false; code: LeaseRejectionCode };
 
-function rowToDispatchOperation(row: any): DurableDispatchOperation {
+interface DispatchOperationRow {
+  operation_id: string;
+  project_id: string;
+  work_key: string;
+  feature_id: string;
+  phase_id: string;
+  task_ids_json: string;
+  backend: string;
+  branch_name: string;
+  trunk_branch: string;
+  recipient_json: string | null;
+  status: DispatchOperationStatus;
+  attempt_count: number;
+  lease_owner: string | null;
+  lease_epoch: number;
+  lease_expires_at: string | null;
+  heartbeat_at: string | null;
+  pr_number: number | null;
+  pr_url: string | null;
+  last_run_id: number | null;
+  last_error: string | null;
+  created_at: string;
+  updated_at: string;
+  completed_at: string | null;
+}
+
+interface HarvestOperationRow {
+  operation_id: string;
+  project_id: string;
+  work_key: string;
+  repo_slug: string | null;
+  head_repo_slug: string | null;
+  trunk_branch: string;
+  feature_id: string;
+  phase_id: string | null;
+  pr_number: number | null;
+  pr_url: string | null;
+  head_branch: string | null;
+  expected_head_sha: string | null;
+  terminal_event: HarvestTerminalEvent;
+  merge_commit_sha: string | null;
+  terminal_at: string;
+  recipient_json: string | null;
+  planned_slack_recipient_json: string | null;
+  status: HarvestOperationStatus;
+  lease_owner: string | null;
+  lease_epoch: number;
+  lease_expires_at: string | null;
+  linked_run_id: number | null;
+  last_error: string | null;
+  created_at: string;
+  updated_at: string;
+  completed_at: string | null;
+}
+
+interface HarvestStageReceiptRow {
+  operation_id: string;
+  phase_key: string;
+  stage: HarvestStageName;
+  status: HarvestStageStatus;
+  lease_epoch: number;
+  attempt_count: number;
+  evidence_json: string | null;
+  error: string | null;
+  updated_at: string;
+  completed_at: string | null;
+}
+
+interface NotificationOutboxRow {
+  outbox_id: string;
+  project_id: string;
+  dedupe_key: string;
+  owner_kind: OutboxMessage["ownerKind"];
+  owner_operation_id: string;
+  event_type: string;
+  feature_id: string;
+  phase_id: string | null;
+  recipient_json: string;
+  payload_json: string;
+  client_metadata_key: string;
+  status: OutboxStatus;
+  workspace_id: string | null;
+  channel_id: string | null;
+  thread_ts: string | null;
+  message_ts: string | null;
+  attempt_count: number;
+  last_error: string | null;
+  created_at: string;
+  updated_at: string;
+  delivered_at: string | null;
+}
+
+interface HarvestCursorRow {
+  project_id: string;
+  last_polled_at: string;
+  last_terminal_at: string | null;
+  last_pr_number: number | null;
+  last_error: string | null;
+}
+
+interface HarvestDeliveryRow {
+  project_id: string | null;
+  repo_slug: string | null;
+  checkout_repo_slug: string | null;
+  payload_digest: string;
+}
+
+interface ProjectSlackRow {
+  slack_workspace_id: string | null;
+  slack_channel: string | null;
+  slack_channel_name: string | null;
+  slack_ops_channel_id: string | null;
+  shared_channel: number;
+}
+
+interface SlackFeatureThreadRow {
+  project_id: string;
+  feature_id: string;
+  workspace_id: string;
+  channel_id: string;
+  root_ts: string;
+  updated_at: string;
+}
+
+interface PendingStageRow {
+  operation_id: string;
+  feature_id: string;
+  phase_key: string;
+  stage: HarvestStageName;
+  status: HarvestStageStatus;
+}
+
+type HarvestIntakeRejection =
+  | "DELIVERY_ID_CONFLICT"
+  | "HARVEST_IDENTITY_MISMATCH";
+
+class HarvestIntakeRollbackError extends Error {
+  constructor(readonly code: HarvestIntakeRejection) {
+    super(code);
+  }
+}
+
+const activeDispatchStatuses: readonly DispatchOperationStatus[] = [
+  "leased",
+  "running",
+  "reconciling",
+];
+
+function leaseIsRecoverable(
+  leaseExpiresAt: string | null,
+  nowMs: number,
+): boolean {
+  return leaseExpiresAt === null || Date.parse(leaseExpiresAt) <= nowMs;
+}
+
+function isLegacyDispatchLine(line: string): boolean {
+  try {
+    const value: unknown = JSON.parse(line);
+    if (
+      typeof value !== "object" ||
+      value === null ||
+      Array.isArray(value) ||
+      Object.getPrototypeOf(value) !== Object.prototype
+    ) {
+      return false;
+    }
+    const record = value as Record<string, unknown>;
+    const requiredStrings = [
+      "id",
+      "featureId",
+      "phaseId",
+      "backend",
+      "branchName",
+      "createdAt",
+    ];
+    const statuses = ["queued", "running", "completed", "failed", "retrying"];
+    return (
+      requiredStrings.every((key) => {
+        const field = record[key];
+        return typeof field === "string" && field.trim().length > 0;
+      }) &&
+      typeof record.status === "string" &&
+      statuses.includes(record.status) &&
+      Array.isArray(record.attempts) &&
+      Array.isArray(record.tasks)
+    );
+  } catch {
+    return false;
+  }
+}
+
+function rowToDispatchOperation(
+  row: DispatchOperationRow,
+): DurableDispatchOperation {
   return {
     operationId: row.operation_id,
     projectId: row.project_id,
@@ -73,7 +267,7 @@ function rowToDispatchOperation(row: any): DurableDispatchOperation {
     branchName: row.branch_name,
     trunkBranch: row.trunk_branch,
     recipient: row.recipient_json ? JSON.parse(row.recipient_json) : null,
-    status: row.status as DispatchOperationStatus,
+    status: row.status,
     attemptCount: row.attempt_count,
     leaseOwner: row.lease_owner,
     leaseEpoch: row.lease_epoch,
@@ -90,7 +284,9 @@ function rowToDispatchOperation(row: any): DurableDispatchOperation {
   };
 }
 
-function rowToHarvestOperation(row: any): DurableHarvestOperation {
+function rowToHarvestOperation(
+  row: HarvestOperationRow,
+): DurableHarvestOperation {
   return {
     operationId: row.operation_id,
     projectId: row.project_id,
@@ -104,14 +300,14 @@ function rowToHarvestOperation(row: any): DurableHarvestOperation {
     prUrl: row.pr_url,
     headBranch: row.head_branch,
     expectedHeadSha: row.expected_head_sha,
-    terminalEvent: row.terminal_event as HarvestTerminalEvent,
+    terminalEvent: row.terminal_event,
     mergeCommitSha: row.merge_commit_sha,
     terminalAt: row.terminal_at,
     recipient: row.recipient_json ? JSON.parse(row.recipient_json) : null,
     plannedSlackRecipient: row.planned_slack_recipient_json
       ? JSON.parse(row.planned_slack_recipient_json)
       : null,
-    status: row.status as HarvestOperationStatus,
+    status: row.status,
     leaseOwner: row.lease_owner,
     leaseEpoch: row.lease_epoch,
     leaseExpiresAt: row.lease_expires_at,
@@ -123,12 +319,14 @@ function rowToHarvestOperation(row: any): DurableHarvestOperation {
   };
 }
 
-function rowToHarvestStageReceipt(row: any): HarvestStageReceipt {
+function rowToHarvestStageReceipt(
+  row: HarvestStageReceiptRow,
+): HarvestStageReceipt {
   return {
     operationId: row.operation_id,
     phaseKey: row.phase_key,
-    stage: row.stage as HarvestStageName,
-    status: row.status as HarvestStageStatus,
+    stage: row.stage,
+    status: row.status,
     leaseEpoch: row.lease_epoch,
     attemptCount: row.attempt_count,
     evidenceJson: row.evidence_json,
@@ -138,12 +336,12 @@ function rowToHarvestStageReceipt(row: any): HarvestStageReceipt {
   };
 }
 
-function rowToOutboxItem(row: any): OutboxItem {
+function rowToOutboxItem(row: NotificationOutboxRow): OutboxItem {
   return {
     outboxId: row.outbox_id,
     projectId: row.project_id,
     dedupeKey: row.dedupe_key,
-    ownerKind: row.owner_kind as "dispatch" | "harvest",
+    ownerKind: row.owner_kind,
     ownerOperationId: row.owner_operation_id,
     eventType: row.event_type,
     featureId: row.feature_id,
@@ -151,7 +349,7 @@ function rowToOutboxItem(row: any): OutboxItem {
     recipient: JSON.parse(row.recipient_json),
     payload: JSON.parse(row.payload_json),
     clientMetadataKey: row.client_metadata_key,
-    status: row.status as OutboxStatus,
+    status: row.status,
     workspaceId: row.workspace_id,
     channelId: row.channel_id,
     threadTs: row.thread_ts,
@@ -164,7 +362,7 @@ function rowToOutboxItem(row: any): OutboxItem {
   };
 }
 
-function rowToHarvestCursor(row: any): HarvestCursor {
+function rowToHarvestCursor(row: HarvestCursorRow): HarvestCursor {
   return {
     projectId: row.project_id,
     lastPolledAt: row.last_polled_at,
@@ -179,48 +377,50 @@ function matchHarvestScope(
   incoming: DurableHarvestOperation,
   receivedAt: string,
 ): DurableHarvestOperation | null {
-  if (incoming.terminalEvent === "closed_unmerged") {
-    const merges = db
-      .prepare(
-        `SELECT * FROM harvest_operations
-         WHERE project_id = ? AND terminal_event = 'merged'
-         ORDER BY created_at ASC, operation_id ASC`,
-      )
-      .all(incoming.projectId)
-      .map(rowToHarvestOperation);
-    const staleMerge = merges.find((m) => isStaleHarvestClose(m, incoming));
-    if (staleMerge) return staleMerge;
-  }
-
   const aliasRow = db
-    .prepare(
-      `SELECT operation_id FROM harvest_work_key_aliases WHERE project_id = ? AND work_key = ?`,
+    .prepare<[string, string], { operation_id: string }>(
+      "SELECT operation_id FROM harvest_work_key_aliases WHERE project_id = ? AND work_key = ?",
     )
-    .get(incoming.projectId, incoming.workKey) as
-    | { operation_id: string }
-    | undefined;
+    .get(incoming.projectId, incoming.workKey);
 
   const projectOps = db
-    .prepare(
-      `SELECT * FROM harvest_operations WHERE project_id = ? ORDER BY created_at ASC, operation_id ASC`,
+    .prepare<[string], HarvestOperationRow>(
+      "SELECT * FROM harvest_operations WHERE project_id = ? ORDER BY created_at ASC, operation_id ASC",
     )
     .all(incoming.projectId)
     .map(rowToHarvestOperation);
 
+  const keyOwners = projectOps.filter(
+    (row) =>
+      row.workKey === incoming.workKey ||
+      row.operationId === aliasRow?.operation_id,
+  );
   const existing =
-    projectOps.find(
+    keyOwners.find(
       (row) =>
         sharesHarvestRepositoryScope(row, incoming) &&
-        (row.workKey === incoming.workKey ||
-          row.operationId === aliasRow?.operation_id),
+        row.featureId === incoming.featureId &&
+        row.phaseId === incoming.phaseId &&
+        row.terminalEvent === incoming.terminalEvent &&
+        row.mergeCommitSha === incoming.mergeCommitSha &&
+        (row.prNumber === incoming.prNumber ||
+          canCorrelateHarvestIntake(row, incoming)),
     ) ?? projectOps.find((row) => canCorrelateHarvestIntake(row, incoming));
 
-  if (!existing) {
-    const idConflict = db
-      .prepare(`SELECT 1 FROM harvest_operations WHERE operation_id = ?`)
-      .get(incoming.operationId);
-    if (idConflict) return null;
+  if (keyOwners.some((row) => row.operationId !== existing?.operationId))
+    return null;
 
+  const staleMerge = projectOps.find((row) =>
+    isStaleHarvestClose(row, incoming),
+  );
+  const matched = staleMerge ?? existing;
+  const idConflict = db
+    .prepare("SELECT 1 FROM harvest_operations WHERE operation_id = ?")
+    .get(incoming.operationId);
+  if (idConflict && incoming.operationId !== matched?.operationId) return null;
+  if (staleMerge) return staleMerge;
+
+  if (!existing) {
     db.prepare(
       `INSERT INTO harvest_operations (
         operation_id, project_id, work_key, repo_slug, head_repo_slug,
@@ -269,7 +469,7 @@ function matchHarvestScope(
 
   if (!aliasRow && existing.workKey !== incoming.workKey) {
     db.prepare(
-      `INSERT OR IGNORE INTO harvest_work_key_aliases (project_id, work_key, operation_id)
+      `INSERT INTO harvest_work_key_aliases (project_id, work_key, operation_id)
        VALUES (?, ?, ?)`,
     ).run(incoming.projectId, incoming.workKey, existing.operationId);
   }
@@ -277,7 +477,9 @@ function matchHarvestScope(
   if (result.kind === "unchanged") return existing;
 
   const stageRows = db
-    .prepare(`SELECT * FROM harvest_stage_receipts WHERE operation_id = ?`)
+    .prepare<string[], HarvestStageReceiptRow>(
+      "SELECT * FROM harvest_stage_receipts WHERE operation_id = ?",
+    )
     .all(existing.operationId)
     .map(rowToHarvestStageReceipt);
 
@@ -339,6 +541,7 @@ function matchHarvestScope(
       merge_commit_sha = ?,
       pr_number = ?,
       pr_url = ?,
+      terminal_at = ?,
       status = ?,
       updated_at = ?,
       completed_at = ?
@@ -351,6 +554,7 @@ function matchHarvestScope(
     existing.mergeCommitSha,
     existing.prNumber,
     existing.prUrl,
+    existing.terminalAt,
     existing.status,
     receivedAt,
     existing.completedAt,
@@ -362,7 +566,7 @@ function matchHarvestScope(
 
 export interface CreateOperationsStoreOptions {
   close?: () => void;
-  readLegacyDispatches?: (root: string) => any[];
+  readLegacyDispatches?: (root: string) => readonly unknown[];
 }
 
 export function createOperationsStore(
@@ -372,13 +576,13 @@ export function createOperationsStore(
   const store: OperationsStorePort = {
     acceptDispatch(input: DispatchAcceptanceRequest): DispatchReceipt {
       const workKey = computeDispatchWorkKey(input);
-      return db.transaction((): DispatchReceipt => {
+      const transaction = db.transaction((): DispatchReceipt => {
         const existingRow = db
-          .prepare(
+          .prepare<string[], DispatchOperationRow>(
             `SELECT * FROM dispatch_operations
-             WHERE project_id = ? AND work_key = ? AND status IN ('accepted', 'leased', 'running', 'reconciling')
-             ORDER BY created_at DESC, operation_id DESC
-             LIMIT 1`,
+           WHERE project_id = ? AND work_key = ? AND status IN ('accepted', 'leased', 'running', 'reconciling')
+           ORDER BY created_at DESC, operation_id DESC
+           LIMIT 1`,
           )
           .get(input.projectId, workKey);
 
@@ -394,12 +598,12 @@ export function createOperationsStore(
           const op = decision.operation;
           db.prepare(
             `INSERT INTO dispatch_operations (
-              operation_id, project_id, work_key, feature_id, phase_id,
-              task_ids_json, backend, branch_name, trunk_branch, recipient_json,
-              status, attempt_count, lease_owner, lease_epoch, lease_expires_at,
-              heartbeat_at, pr_number, pr_url, last_run_id, last_error,
-              created_at, updated_at, completed_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            operation_id, project_id, work_key, feature_id, phase_id,
+            task_ids_json, backend, branch_name, trunk_branch, recipient_json,
+            status, attempt_count, lease_owner, lease_epoch, lease_expires_at,
+            heartbeat_at, pr_number, pr_url, last_run_id, last_error,
+            created_at, updated_at, completed_at
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
           ).run(
             op.operationId,
             op.projectId,
@@ -428,7 +632,8 @@ export function createOperationsStore(
         }
 
         return decision.receipt;
-      })();
+      });
+      return transaction.immediate();
     },
 
     claimDispatchLease(input: {
@@ -437,28 +642,23 @@ export function createOperationsStore(
       nowIso: string;
       leaseExpiresAt: string;
     }): { fence: LeaseFence; operation: DurableDispatchOperation } | null {
-      return db.transaction(
+      const transaction = db.transaction(
         (): {
           fence: LeaseFence;
           operation: DurableDispatchOperation;
         } | null => {
           const row = db
-            .prepare(`SELECT * FROM dispatch_operations WHERE operation_id = ?`)
+            .prepare<string[], DispatchOperationRow>(
+              "SELECT * FROM dispatch_operations WHERE operation_id = ?",
+            )
             .get(input.operationId);
           if (!row) return null;
           const op = rowToDispatchOperation(row);
 
-          const claimableStatuses: DispatchOperationStatus[] = [
-            "accepted",
-            "leased",
-            "running",
-          ];
-          if (!claimableStatuses.includes(op.status)) {
-            return null;
-          }
           if (
-            op.leaseExpiresAt !== null &&
-            Date.parse(input.nowIso) < Date.parse(op.leaseExpiresAt)
+            (op.status !== "accepted" &&
+              !activeDispatchStatuses.includes(op.status)) ||
+            !leaseIsRecoverable(op.leaseExpiresAt, Date.parse(input.nowIso))
           ) {
             return null;
           }
@@ -469,14 +669,14 @@ export function createOperationsStore(
           const res = db
             .prepare(
               `UPDATE dispatch_operations SET
-              lease_owner = ?,
-              lease_epoch = ?,
-              lease_expires_at = ?,
-              heartbeat_at = ?,
-              status = 'leased',
-              attempt_count = ?,
-              updated_at = ?
-            WHERE operation_id = ? AND lease_epoch = ?`,
+            lease_owner = ?,
+            lease_epoch = ?,
+            lease_expires_at = ?,
+            heartbeat_at = ?,
+            status = 'leased',
+            attempt_count = ?,
+            updated_at = ?
+          WHERE operation_id = ? AND lease_epoch = ?`,
             )
             .run(
               input.leaseOwner,
@@ -493,9 +693,9 @@ export function createOperationsStore(
 
           db.prepare(
             `INSERT INTO dispatch_attempts (
-            operation_id, attempt_number, lease_epoch, lease_owner, backend,
-            status, run_id, worktree_dir, exit_code, error, started_at, finished_at
-          ) VALUES (?, ?, ?, ?, ?, 'running', NULL, NULL, NULL, NULL, ?, NULL)`,
+          operation_id, attempt_number, lease_epoch, lease_owner, backend,
+          status, run_id, worktree_dir, exit_code, error, started_at, finished_at
+        ) VALUES (?, ?, ?, ?, ?, 'running', NULL, NULL, NULL, NULL, ?, NULL)`,
           ).run(
             input.operationId,
             nextAttempt,
@@ -506,8 +706,12 @@ export function createOperationsStore(
           );
 
           const updatedRow = db
-            .prepare(`SELECT * FROM dispatch_operations WHERE operation_id = ?`)
+            .prepare<string[], DispatchOperationRow>(
+              "SELECT * FROM dispatch_operations WHERE operation_id = ?",
+            )
             .get(input.operationId);
+          if (!updatedRow)
+            throw new Error("Claimed dispatch operation is missing");
           const updatedOp = rowToDispatchOperation(updatedRow);
 
           return {
@@ -519,7 +723,8 @@ export function createOperationsStore(
             operation: updatedOp,
           };
         },
-      )();
+      );
+      return transaction.immediate();
     },
 
     heartbeatDispatchLease(input: {
@@ -527,36 +732,37 @@ export function createOperationsStore(
       nowIso: string;
       leaseExpiresAt: string;
     }): FencedWrite {
-      return db
-        .transaction((): FencedWrite => {
-          const row = db
-            .prepare(`SELECT * FROM dispatch_operations WHERE operation_id = ?`)
-            .get(input.fence.operationId);
-          if (!row) return { ok: false, code: "LEASE_FENCED" };
-          const op = rowToDispatchOperation(row);
-          const validation = validateLeaseFence(op, input.fence, input.nowIso);
-          if (!["leased", "running", "reconciling"].includes(op.status)) {
-            return { ok: false, code: "LEASE_FENCED" };
-          }
-          if (!validation.ok) return validation;
+      const transaction = db.transaction((): FencedWrite => {
+        const row = db
+          .prepare<string[], DispatchOperationRow>(
+            "SELECT * FROM dispatch_operations WHERE operation_id = ?",
+          )
+          .get(input.fence.operationId);
+        if (!row) return { ok: false, code: "LEASE_FENCED" };
+        const op = rowToDispatchOperation(row);
+        if (!activeDispatchStatuses.includes(op.status)) {
+          return { ok: false, code: "LEASE_FENCED" };
+        }
+        const validation = validateLeaseFence(op, input.fence, input.nowIso);
+        if (!validation.ok) return validation;
 
-          db.prepare(
-            `UPDATE dispatch_operations SET
-            lease_expires_at = ?,
-            heartbeat_at = ?,
-            updated_at = ?
-          WHERE operation_id = ? AND lease_epoch = ?`,
-          ).run(
-            input.leaseExpiresAt,
-            input.nowIso,
-            input.nowIso,
-            input.fence.operationId,
-            input.fence.leaseEpoch,
-          );
+        db.prepare(
+          `UPDATE dispatch_operations SET
+          lease_expires_at = ?,
+          heartbeat_at = ?,
+          updated_at = ?
+        WHERE operation_id = ? AND lease_epoch = ?`,
+        ).run(
+          input.leaseExpiresAt,
+          input.nowIso,
+          input.nowIso,
+          input.fence.operationId,
+          input.fence.leaseEpoch,
+        );
 
-          return { ok: true };
-        })
-        .immediate();
+        return { ok: true };
+      });
+      return transaction.immediate();
     },
 
     completeDispatchAttempt(input: {
@@ -571,98 +777,68 @@ export function createOperationsStore(
       prUrl?: string;
       error?: string;
     }): FencedWrite {
-      return db
-        .transaction((): FencedWrite => {
-          const row = db
-            .prepare(`SELECT * FROM dispatch_operations WHERE operation_id = ?`)
-            .get(input.fence.operationId);
-          if (!row) return { ok: false, code: "LEASE_FENCED" };
-          const op = rowToDispatchOperation(row);
+      const transaction = db.transaction((): FencedWrite => {
+        const row = db
+          .prepare<string[], DispatchOperationRow>(
+            "SELECT * FROM dispatch_operations WHERE operation_id = ?",
+          )
+          .get(input.fence.operationId);
+        if (!row) return { ok: false, code: "LEASE_FENCED" };
+        const op = rowToDispatchOperation(row);
 
-          if (!["leased", "running", "reconciling"].includes(op.status)) {
-            return { ok: false, code: "LEASE_FENCED" };
-          }
-          const validation = validateLeaseFence(op, input.fence, input.nowIso);
-          if (!validation.ok) return validation;
-          db.prepare(
-            `UPDATE dispatch_attempts SET
+        if (!activeDispatchStatuses.includes(op.status)) {
+          return { ok: false, code: "LEASE_FENCED" };
+        }
+        const validation = validateLeaseFence(op, input.fence, input.nowIso);
+        if (!validation.ok) return validation;
+        db.prepare(
+          `UPDATE dispatch_attempts SET
+          status = ?,
+          run_id = COALESCE(?, run_id),
+          worktree_dir = COALESCE(?, worktree_dir),
+          exit_code = COALESCE(?, exit_code),
+          error = COALESCE(?, error),
+          finished_at = ?
+        WHERE operation_id = ? AND lease_epoch = ?`,
+        ).run(
+          input.attemptStatus,
+          input.runId ?? null,
+          input.worktreeDir ?? null,
+          input.exitCode ?? null,
+          input.error ?? null,
+          input.nowIso,
+          input.fence.operationId,
+          input.fence.leaseEpoch,
+        );
+
+        db.prepare(
+          `UPDATE dispatch_operations SET
             status = ?,
-            run_id = COALESCE(?, run_id),
-            worktree_dir = COALESCE(?, worktree_dir),
-            exit_code = COALESCE(?, exit_code),
-            error = COALESCE(?, error),
-            finished_at = ?
+            lease_owner = NULL,
+            lease_expires_at = NULL,
+            heartbeat_at = NULL,
+            last_run_id = COALESCE(?, last_run_id),
+            last_error = COALESCE(?, last_error),
+            pr_number = COALESCE(?, pr_number),
+            pr_url = COALESCE(?, pr_url),
+            updated_at = ?,
+            completed_at = ?
           WHERE operation_id = ? AND lease_epoch = ?`,
-          ).run(
-            input.attemptStatus,
-            input.runId ?? null,
-            input.worktreeDir ?? null,
-            input.exitCode ?? null,
-            input.error ?? null,
-            input.nowIso,
-            input.fence.operationId,
-            input.fence.leaseEpoch,
-          );
+        ).run(
+          input.operationStatus,
+          input.runId ?? null,
+          input.error ?? null,
+          input.prNumber ?? null,
+          input.prUrl ?? null,
+          input.nowIso,
+          input.operationStatus === "accepted" ? null : input.nowIso,
+          input.fence.operationId,
+          input.fence.leaseEpoch,
+        );
 
-          const isTerminal = ["completed", "failed", "superseded"].includes(
-            input.operationStatus,
-          );
-          const completedAt = isTerminal ? input.nowIso : null;
-
-          if (input.operationStatus === "accepted") {
-            db.prepare(
-              `UPDATE dispatch_operations SET
-              status = ?,
-              lease_owner = NULL,
-              lease_expires_at = NULL,
-              heartbeat_at = NULL,
-              last_run_id = COALESCE(?, last_run_id),
-              last_error = COALESCE(?, last_error),
-              pr_number = COALESCE(?, pr_number),
-              pr_url = COALESCE(?, pr_url),
-              updated_at = ?,
-              completed_at = NULL
-            WHERE operation_id = ? AND lease_epoch = ?`,
-            ).run(
-              input.operationStatus,
-              input.runId ?? null,
-              input.error ?? null,
-              input.prNumber ?? null,
-              input.prUrl ?? null,
-              input.nowIso,
-              input.fence.operationId,
-              input.fence.leaseEpoch,
-            );
-          } else {
-            db.prepare(
-              `UPDATE dispatch_operations SET
-              status = ?,
-              lease_owner = NULL,
-              lease_expires_at = NULL,
-              heartbeat_at = NULL,
-              last_run_id = COALESCE(?, last_run_id),
-              last_error = COALESCE(?, last_error),
-              pr_number = COALESCE(?, pr_number),
-              pr_url = COALESCE(?, pr_url),
-              updated_at = ?,
-              completed_at = ?
-            WHERE operation_id = ? AND lease_epoch = ?`,
-            ).run(
-              input.operationStatus,
-              input.runId ?? null,
-              input.error ?? null,
-              input.prNumber ?? null,
-              input.prUrl ?? null,
-              input.nowIso,
-              completedAt,
-              input.fence.operationId,
-              input.fence.leaseEpoch,
-            );
-          }
-
-          return { ok: true };
-        })
-        .immediate();
+        return { ok: true };
+      });
+      return transaction.immediate();
     },
 
     listRecoverableDispatches(input: {
@@ -670,15 +846,19 @@ export function createOperationsStore(
       projectId?: string;
     }): DurableDispatchOperation[] {
       let sql = `SELECT * FROM dispatch_operations
-        WHERE (status = 'accepted' OR (status IN ('leased', 'running') AND lease_expires_at IS NOT NULL AND lease_expires_at <= ?))`;
-      const params: any[] = [input.nowIso];
+        WHERE status IN ('accepted', 'leased', 'running', 'reconciling')`;
+      const params: string[] = [];
       if (input.projectId !== undefined) {
-        sql += ` AND project_id = ?`;
+        sql += " AND project_id = ?";
         params.push(input.projectId);
       }
-      sql += ` ORDER BY created_at ASC, operation_id ASC`;
-      const rows = db.prepare(sql).all(...params);
-      return rows.map(rowToDispatchOperation);
+      sql += " ORDER BY created_at ASC, operation_id ASC";
+      const nowMs = Date.parse(input.nowIso);
+      return db
+        .prepare<string[], DispatchOperationRow>(sql)
+        .all(...params)
+        .filter((row) => leaseIsRecoverable(row.lease_expires_at, nowMs))
+        .map(rowToDispatchOperation);
     },
 
     getDispatchOperation(input: {
@@ -687,7 +867,7 @@ export function createOperationsStore(
       phaseId: string;
     }): DurableDispatchOperation | null {
       const row = db
-        .prepare(
+        .prepare<string[], DispatchOperationRow>(
           `SELECT * FROM dispatch_operations
            WHERE project_id = ? AND feature_id = ? AND phase_id = ?
            ORDER BY created_at DESC, operation_id DESC
@@ -721,158 +901,154 @@ export function createOperationsStore(
         }
       | {
           ok: false;
-          code: "DELIVERY_ID_CONFLICT" | "HARVEST_IDENTITY_MISMATCH";
+          code: HarvestIntakeRejection;
         } {
-      return db.transaction(
-        ():
-          | {
-              ok: true;
-              operations: DurableHarvestOperation[];
-              deduplicatedTransport: boolean;
-              deduplicatedWork: boolean;
-            }
-          | {
-              ok: false;
-              code: "DELIVERY_ID_CONFLICT" | "HARVEST_IDENTITY_MISMATCH";
-            } => {
-          const repoSlug = input.candidate.repoSlug?.toLowerCase() ?? null;
-          const checkoutRepoSlug =
-            input.candidate.source === "manual_cli" &&
-            input.candidate.prNumber === null
-              ? (input.candidate.checkoutRepoSlug?.toLowerCase() ?? null)
-              : null;
-          const targetProjectId = input.target.accepted
-            ? input.target.project.projectId
-            : input.target.projectId;
+      const transaction = db.transaction(() => {
+        const repoSlug = input.candidate.repoSlug?.toLowerCase() ?? null;
+        const checkoutRepoSlug =
+          input.candidate.source === "manual_cli" &&
+          input.candidate.prNumber === null
+            ? (input.candidate.checkoutRepoSlug?.toLowerCase() ?? null)
+            : null;
+        const targetProjectId = input.target.accepted
+          ? input.target.project.projectId
+          : input.target.projectId;
 
-          const existingDelivery = db
-            .prepare(
-              `SELECT * FROM harvest_deliveries WHERE source = ? AND delivery_id = ?`,
-            )
-            .get(input.candidate.source, input.candidate.deliveryId) as any;
+        const existingDelivery = db
+          .prepare<[string, string], HarvestDeliveryRow>(
+            "SELECT * FROM harvest_deliveries WHERE source = ? AND delivery_id = ?",
+          )
+          .get(input.candidate.source, input.candidate.deliveryId);
 
-          if (existingDelivery) {
-            const deliveryProj = existingDelivery.project_id ?? null;
-            const targetProj = targetProjectId ?? null;
-            const deliveryRepo = existingDelivery.repo_slug
-              ? existingDelivery.repo_slug.toLowerCase()
-              : null;
-            const deliveryCheckoutRepo = existingDelivery.checkout_repo_slug
-              ? existingDelivery.checkout_repo_slug.toLowerCase()
-              : null;
+        if (existingDelivery) {
+          const deliveryProj = existingDelivery.project_id ?? null;
+          const targetProj = targetProjectId ?? null;
+          const deliveryRepo = existingDelivery.repo_slug
+            ? existingDelivery.repo_slug.toLowerCase()
+            : null;
+          const deliveryCheckoutRepo = existingDelivery.checkout_repo_slug
+            ? existingDelivery.checkout_repo_slug.toLowerCase()
+            : null;
 
-            if (
-              deliveryProj !== targetProj ||
-              existingDelivery.payload_digest !== input.payloadDigest ||
-              deliveryRepo !== repoSlug ||
-              deliveryCheckoutRepo !== checkoutRepoSlug
-            ) {
-              return { ok: false, code: "DELIVERY_ID_CONFLICT" };
-            }
+          if (
+            deliveryProj !== targetProj ||
+            existingDelivery.payload_digest !== input.payloadDigest ||
+            deliveryRepo !== repoSlug ||
+            deliveryCheckoutRepo !== checkoutRepoSlug
+          ) {
+            throw new HarvestIntakeRollbackError("DELIVERY_ID_CONFLICT");
+          }
 
-            const linkedRows = db
-              .prepare(
-                `SELECT h.* FROM harvest_delivery_operations d
+          const linkedRows = db
+            .prepare<[string, string], HarvestOperationRow>(
+              `SELECT h.* FROM harvest_delivery_operations d
                JOIN harvest_operations h ON h.project_id = d.project_id AND h.operation_id = d.operation_id
                WHERE d.source = ? AND d.delivery_id = ?
                ORDER BY d.position ASC`,
-              )
-              .all(input.candidate.source, input.candidate.deliveryId);
+            )
+            .all(input.candidate.source, input.candidate.deliveryId);
 
-            const operations = linkedRows.map(rowToHarvestOperation);
-            return {
-              ok: true,
-              operations,
-              deduplicatedTransport: true,
-              deduplicatedWork: operations.length > 0,
-            };
-          }
+          const operations = linkedRows.map(rowToHarvestOperation);
+          return {
+            ok: true as const,
+            operations,
+            deduplicatedTransport: true,
+            deduplicatedWork: operations.length > 0,
+          };
+        }
 
-          if (
-            input.target.accepted &&
-            (!verifyHarvestIntakeOperations(
-              input.target.project,
-              input.candidate,
-              input.target.checkoutPhaseIds,
-              input.target.operations,
-            ) ||
-              input.target.operations.some(
-                (row) =>
-                  row.status !== "accepted" ||
-                  row.leaseEpoch !== 0 ||
-                  row.leaseOwner !== null ||
-                  row.leaseExpiresAt !== null ||
-                  row.completedAt !== null ||
-                  row.linkedRunId !== null ||
-                  row.lastError !== null ||
-                  row.plannedSlackRecipient !== null,
-              ))
-          ) {
-            return { ok: false, code: "HARVEST_IDENTITY_MISMATCH" };
-          }
+        if (
+          input.target.accepted &&
+          (!verifyHarvestIntakeOperations(
+            input.target.project,
+            input.candidate,
+            input.target.checkoutPhaseIds,
+            input.target.operations,
+          ) ||
+            input.target.operations.some(
+              (row) =>
+                row.status !== "accepted" ||
+                row.leaseEpoch !== 0 ||
+                row.leaseOwner !== null ||
+                row.leaseExpiresAt !== null ||
+                row.completedAt !== null ||
+                row.linkedRunId !== null ||
+                row.lastError !== null ||
+                row.plannedSlackRecipient !== null,
+            ))
+        ) {
+          throw new HarvestIntakeRollbackError("HARVEST_IDENTITY_MISMATCH");
+        }
 
-          const incoming: DurableHarvestOperation[] = input.target.accepted
-            ? input.target.operations.map((operation) => ({
-                ...operation,
-                recipient:
-                  operation.prNumber === null
-                    ? null
-                    : (input.candidate.recipient ?? null),
-              }))
-            : [];
+        const incoming: DurableHarvestOperation[] = input.target.accepted
+          ? input.target.operations.map((operation) => ({
+              ...operation,
+              recipient:
+                operation.prNumber === null
+                  ? null
+                  : (input.candidate.recipient ?? null),
+            }))
+          : [];
 
-          const operations: DurableHarvestOperation[] = [];
-          for (const operation of incoming) {
-            const matched = matchHarvestScope(db, operation, input.receivedAt);
-            if (!matched)
-              return { ok: false, code: "HARVEST_IDENTITY_MISMATCH" };
-            operations.push(matched);
-          }
+        const operations: DurableHarvestOperation[] = [];
+        for (const operation of incoming) {
+          const matched = matchHarvestScope(db, operation, input.receivedAt);
+          if (!matched)
+            throw new HarvestIntakeRollbackError("HARVEST_IDENTITY_MISMATCH");
+          operations.push(matched);
+        }
 
-          db.prepare(
-            `INSERT INTO harvest_deliveries (
+        db.prepare(
+          `INSERT INTO harvest_deliveries (
             source, delivery_id, project_id, repo_slug, checkout_repo_slug,
             payload_digest, event_type, outcome, reason, received_at
           ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-          ).run(
+        ).run(
+          input.candidate.source,
+          input.candidate.deliveryId,
+          targetProjectId,
+          repoSlug,
+          checkoutRepoSlug,
+          input.payloadDigest,
+          input.candidate.terminalEvent,
+          input.target.accepted ? "accepted" : "rejected",
+          input.target.accepted ? null : input.target.reason,
+          input.receivedAt,
+        );
+
+        const insertDeliveryOp = db.prepare(
+          `INSERT INTO harvest_delivery_operations (
+            source, delivery_id, project_id, position, operation_id
+          ) VALUES (?, ?, ?, ?, ?)`,
+        );
+
+        for (let i = 0; i < operations.length; i++) {
+          insertDeliveryOp.run(
             input.candidate.source,
             input.candidate.deliveryId,
             targetProjectId,
-            repoSlug,
-            checkoutRepoSlug,
-            input.payloadDigest,
-            input.candidate.terminalEvent,
-            input.target.accepted ? "accepted" : "rejected",
-            input.target.accepted ? null : input.target.reason,
-            input.receivedAt,
+            i,
+            operations[i].operationId,
           );
+        }
 
-          const insertDeliveryOp = db.prepare(
-            `INSERT INTO harvest_delivery_operations (
-            source, delivery_id, project_id, position, operation_id
-          ) VALUES (?, ?, ?, ?, ?)`,
-          );
-
-          for (let i = 0; i < operations.length; i++) {
-            insertDeliveryOp.run(
-              input.candidate.source,
-              input.candidate.deliveryId,
-              targetProjectId,
-              i,
-              operations[i].operationId,
-            );
-          }
-
-          return {
-            ok: true,
-            operations,
-            deduplicatedTransport: false,
-            deduplicatedWork:
-              operations.length > 0 &&
-              operations.every((row, index) => row !== incoming[index]),
-          };
-        },
-      )();
+        return {
+          ok: true as const,
+          operations,
+          deduplicatedTransport: false,
+          deduplicatedWork:
+            operations.length > 0 &&
+            operations.every((row, index) => row !== incoming[index]),
+        };
+      });
+      try {
+        return transaction.immediate();
+      } catch (error) {
+        if (error instanceof HarvestIntakeRollbackError) {
+          return { ok: false, code: error.code };
+        }
+        throw error;
+      }
     },
 
     listRecoverableHarvests(input: {
@@ -880,16 +1056,19 @@ export function createOperationsStore(
       projectId?: string;
     }): DurableHarvestOperation[] {
       let sql = `SELECT * FROM harvest_operations
-        WHERE status IN ('accepted', 'running', 'delivery_pending')
-          AND (lease_expires_at IS NULL OR lease_expires_at <= ?)`;
-      const params: any[] = [input.nowIso];
+        WHERE status IN ('accepted', 'running', 'delivery_pending')`;
+      const params: string[] = [];
       if (input.projectId !== undefined) {
-        sql += ` AND project_id = ?`;
+        sql += " AND project_id = ?";
         params.push(input.projectId);
       }
-      sql += ` ORDER BY created_at ASC, operation_id ASC`;
-      const rows = db.prepare(sql).all(...params);
-      return rows.map(rowToHarvestOperation);
+      sql += " ORDER BY created_at ASC, operation_id ASC";
+      const nowMs = Date.parse(input.nowIso);
+      return db
+        .prepare<string[], HarvestOperationRow>(sql)
+        .all(...params)
+        .filter((row) => leaseIsRecoverable(row.lease_expires_at, nowMs))
+        .map(rowToHarvestOperation);
     },
 
     claimHarvestLease(input: {
@@ -902,7 +1081,7 @@ export function createOperationsStore(
       operation: DurableHarvestOperation;
       stages: HarvestStageReceipt[];
     } | null {
-      return db.transaction(
+      const transaction = db.transaction(
         (): {
           fence: LeaseFence;
           operation: DurableHarvestOperation;
@@ -920,11 +1099,11 @@ export function createOperationsStore(
           const res = db
             .prepare(
               `UPDATE harvest_operations SET
-              lease_owner = ?,
-              lease_epoch = ?,
-              lease_expires_at = ?,
-              updated_at = ?
-            WHERE operation_id = ? AND lease_epoch = ?`,
+            lease_owner = ?,
+            lease_epoch = ?,
+            lease_expires_at = ?,
+            updated_at = ?
+          WHERE operation_id = ? AND lease_epoch = ?`,
             )
             .run(
               input.leaseOwner,
@@ -938,13 +1117,17 @@ export function createOperationsStore(
           if (res.changes === 0) return null;
 
           const updatedRow = db
-            .prepare(`SELECT * FROM harvest_operations WHERE operation_id = ?`)
+            .prepare<string[], HarvestOperationRow>(
+              "SELECT * FROM harvest_operations WHERE operation_id = ?",
+            )
             .get(input.operationId);
+          if (!updatedRow)
+            throw new Error("Claimed harvest operation is missing");
           const updatedOp = rowToHarvestOperation(updatedRow);
 
           const stages = db
-            .prepare(
-              `SELECT * FROM harvest_stage_receipts WHERE operation_id = ?`,
+            .prepare<string[], HarvestStageReceiptRow>(
+              "SELECT * FROM harvest_stage_receipts WHERE operation_id = ?",
             )
             .all(input.operationId)
             .map(rowToHarvestStageReceipt);
@@ -959,7 +1142,8 @@ export function createOperationsStore(
             stages,
           };
         },
-      )();
+      );
+      return transaction.immediate();
     },
 
     heartbeatHarvestLease(input: {
@@ -967,9 +1151,11 @@ export function createOperationsStore(
       nowIso: string;
       leaseExpiresAt: string;
     }): FencedWrite {
-      return db.transaction((): FencedWrite => {
+      const transaction = db.transaction((): FencedWrite => {
         const row = db
-          .prepare(`SELECT * FROM harvest_operations WHERE operation_id = ?`)
+          .prepare<string[], HarvestOperationRow>(
+            "SELECT * FROM harvest_operations WHERE operation_id = ?",
+          )
           .get(input.fence.operationId);
         if (!row) return { ok: false, code: "LEASE_FENCED" };
         const op = rowToHarvestOperation(row);
@@ -978,9 +1164,9 @@ export function createOperationsStore(
 
         db.prepare(
           `UPDATE harvest_operations SET
-            lease_expires_at = ?,
-            updated_at = ?
-          WHERE operation_id = ? AND lease_epoch = ?`,
+          lease_expires_at = ?,
+          updated_at = ?
+        WHERE operation_id = ? AND lease_epoch = ?`,
         ).run(
           input.leaseExpiresAt,
           input.nowIso,
@@ -989,7 +1175,8 @@ export function createOperationsStore(
         );
 
         return { ok: true };
-      })();
+      });
+      return transaction.immediate();
     },
 
     initializeHarvestStages(input: {
@@ -1000,10 +1187,12 @@ export function createOperationsStore(
       hasRemoteBranchTarget: boolean;
       stages: readonly HarvestStagePlanEntry[];
     }): FencedWrite | { ok: false; code: "HARVEST_PLAN_CONFLICT" } {
-      return db.transaction(
+      const transaction = db.transaction(
         (): FencedWrite | { ok: false; code: "HARVEST_PLAN_CONFLICT" } => {
           const row = db
-            .prepare(`SELECT * FROM harvest_operations WHERE operation_id = ?`)
+            .prepare<string[], HarvestOperationRow>(
+              "SELECT * FROM harvest_operations WHERE operation_id = ?",
+            )
             .get(input.fence.operationId);
           if (!row) return { ok: false, code: "LEASE_FENCED" };
           const op = rowToHarvestOperation(row);
@@ -1011,8 +1200,8 @@ export function createOperationsStore(
           if (!lease.ok) return lease;
 
           const saved = db
-            .prepare(
-              `SELECT * FROM harvest_stage_receipts WHERE operation_id = ?`,
+            .prepare<string[], HarvestStageReceiptRow>(
+              "SELECT * FROM harvest_stage_receipts WHERE operation_id = ?",
             )
             .all(input.fence.operationId)
             .map(rowToHarvestStageReceipt);
@@ -1022,8 +1211,10 @@ export function createOperationsStore(
             recipient = op.plannedSlackRecipient;
           } else {
             const projectRow = db
-              .prepare(`SELECT * FROM projects WHERE id = ?`)
-              .get(op.projectId) as any;
+              .prepare<[string], ProjectSlackRow>(
+                "SELECT * FROM projects WHERE id = ? AND updated_at IS NOT NULL",
+              )
+              .get(op.projectId);
             const binding: ProjectSlackBinding | null =
               projectRow?.slack_workspace_id && projectRow?.slack_channel
                 ? {
@@ -1039,11 +1230,22 @@ export function createOperationsStore(
                   }
                 : null;
 
-            const threadRow = db
-              .prepare(
-                `SELECT * FROM slack_feature_threads WHERE project_id = ? AND feature_id = ?`,
-              )
-              .get(op.projectId, op.featureId) as any;
+            const threadRow = binding
+              ? db
+                  .prepare<
+                    [string, string, string, string],
+                    SlackFeatureThreadRow
+                  >(
+                    `SELECT * FROM slack_feature_threads
+                   WHERE project_id = ? AND feature_id = ? AND workspace_id = ? AND channel_id = ?`,
+                  )
+                  .get(
+                    op.projectId,
+                    op.featureId,
+                    binding.workspaceId,
+                    binding.channelId,
+                  )
+              : undefined;
             const thread: SlackFeatureThread | undefined = threadRow
               ? {
                   projectId: threadRow.project_id,
@@ -1096,9 +1298,9 @@ export function createOperationsStore(
           if (!saved.length) {
             db.prepare(
               `UPDATE harvest_operations SET
-              planned_slack_recipient_json = ?,
-              updated_at = ?
-            WHERE operation_id = ? AND lease_epoch = ?`,
+            planned_slack_recipient_json = ?,
+            updated_at = ?
+          WHERE operation_id = ? AND lease_epoch = ?`,
             ).run(
               recipient ? JSON.stringify(recipient) : null,
               input.nowIso,
@@ -1108,9 +1310,9 @@ export function createOperationsStore(
 
             const insertStage = db.prepare(
               `INSERT INTO harvest_stage_receipts (
-              operation_id, phase_key, stage, status, lease_epoch, attempt_count,
-              evidence_json, error, updated_at, completed_at
-            ) VALUES (?, ?, ?, ?, ?, 0, NULL, NULL, ?, NULL)`,
+            operation_id, phase_key, stage, status, lease_epoch, attempt_count,
+            evidence_json, error, updated_at, completed_at
+          ) VALUES (?, ?, ?, ?, ?, 0, NULL, NULL, ?, NULL)`,
             );
             for (const entry of input.stages) {
               insertStage.run(
@@ -1126,7 +1328,8 @@ export function createOperationsStore(
 
           return { ok: true };
         },
-      )();
+      );
+      return transaction.immediate();
     },
 
     transitionHarvestStage(
@@ -1151,7 +1354,7 @@ export function createOperationsStore(
           ok: false;
           code: "HARVEST_STAGE_UNPLANNED" | "HARVEST_STAGE_TRANSITION_INVALID";
         } {
-      return db.transaction(
+      const transaction = db.transaction(
         ():
           | FencedWrite
           | {
@@ -1161,7 +1364,9 @@ export function createOperationsStore(
                 | "HARVEST_STAGE_TRANSITION_INVALID";
             } => {
           const row = db
-            .prepare(`SELECT * FROM harvest_operations WHERE operation_id = ?`)
+            .prepare<string[], HarvestOperationRow>(
+              "SELECT * FROM harvest_operations WHERE operation_id = ?",
+            )
             .get(input.fence.operationId);
           if (!row) return { ok: false, code: "LEASE_FENCED" };
           const op = rowToHarvestOperation(row);
@@ -1169,8 +1374,8 @@ export function createOperationsStore(
           if (!lease.ok) return lease;
 
           const planned = db
-            .prepare(
-              `SELECT * FROM harvest_stage_receipts WHERE operation_id = ?`,
+            .prepare<string[], HarvestStageReceiptRow>(
+              "SELECT * FROM harvest_stage_receipts WHERE operation_id = ?",
             )
             .all(input.fence.operationId)
             .map(rowToHarvestStageReceipt);
@@ -1208,8 +1413,8 @@ export function createOperationsStore(
               input.phaseKey,
             ]);
             const savedNoticeRow = db
-              .prepare(
-                `SELECT * FROM notification_outbox WHERE project_id = ? AND dedupe_key = ?`,
+              .prepare<string[], NotificationOutboxRow>(
+                "SELECT * FROM notification_outbox WHERE project_id = ? AND dedupe_key = ?",
               )
               .get(op.projectId, dedupeKey);
             const savedNotice = savedNoticeRow
@@ -1252,7 +1457,8 @@ export function createOperationsStore(
               }
             }
 
-            const failureNotice = (input as any).failureNotice;
+            const failureNotice =
+              input.status === "gate_failed" ? input.failureNotice : undefined;
             if ((recipient !== null) !== (failureNotice != null))
               return invalid;
             if (failureNotice && !matchesNotice(failureNotice)) return invalid;
@@ -1265,7 +1471,7 @@ export function createOperationsStore(
               }
               const existingOutbox = db
                 .prepare(
-                  `SELECT 1 FROM notification_outbox WHERE outbox_id = ? OR client_metadata_key = ?`,
+                  "SELECT 1 FROM notification_outbox WHERE outbox_id = ? OR client_metadata_key = ?",
                 )
                 .get(failureNotice.outboxId, failureNotice.clientMetadataKey);
               if (existingOutbox) {
@@ -1274,11 +1480,11 @@ export function createOperationsStore(
 
               db.prepare(
                 `INSERT INTO notification_outbox (
-                outbox_id, project_id, dedupe_key, owner_kind, owner_operation_id,
-                event_type, feature_id, phase_id, recipient_json, payload_json,
-                client_metadata_key, status, workspace_id, channel_id, thread_ts,
-                message_ts, attempt_count, last_error, created_at, updated_at, delivered_at
-              ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', NULL, NULL, NULL, NULL, 0, NULL, ?, ?, NULL)`,
+              outbox_id, project_id, dedupe_key, owner_kind, owner_operation_id,
+              event_type, feature_id, phase_id, recipient_json, payload_json,
+              client_metadata_key, status, workspace_id, channel_id, thread_ts,
+              message_ts, attempt_count, last_error, created_at, updated_at, delivered_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', NULL, NULL, NULL, NULL, 0, NULL, ?, ?, NULL)`,
               ).run(
                 failureNotice.outboxId,
                 op.projectId,
@@ -1307,13 +1513,13 @@ export function createOperationsStore(
 
           db.prepare(
             `UPDATE harvest_stage_receipts SET
-            status = ?,
-            lease_epoch = ?,
-            evidence_json = ?,
-            error = ?,
-            updated_at = ?,
-            completed_at = ?
-          WHERE operation_id = ? AND phase_key = ? AND stage = ?`,
+          status = ?,
+          lease_epoch = ?,
+          evidence_json = ?,
+          error = ?,
+          updated_at = ?,
+          completed_at = ?
+        WHERE operation_id = ? AND phase_key = ? AND stage = ?`,
           ).run(
             input.status,
             input.fence.leaseEpoch,
@@ -1355,11 +1561,11 @@ export function createOperationsStore(
 
           db.prepare(
             `UPDATE harvest_operations SET
-            status = ?,
-            linked_run_id = COALESCE(?, linked_run_id),
-            updated_at = ?,
-            completed_at = ?
-          WHERE operation_id = ? AND lease_epoch = ?`,
+          status = ?,
+          linked_run_id = COALESCE(?, linked_run_id),
+          updated_at = ?,
+          completed_at = ?
+        WHERE operation_id = ? AND lease_epoch = ?`,
           ).run(
             newStatus,
             op.linkedRunId,
@@ -1371,14 +1577,15 @@ export function createOperationsStore(
 
           return { ok: true };
         },
-      )();
+      );
+      return transaction.immediate();
     },
 
     enqueueOutbox(input: OutboxMessage & { nowIso: string }): OutboxItem {
-      return db.transaction((): OutboxItem => {
+      const transaction = db.transaction((): OutboxItem => {
         const existing = db
-          .prepare(
-            `SELECT * FROM notification_outbox WHERE project_id = ? AND dedupe_key = ?`,
+          .prepare<string[], NotificationOutboxRow>(
+            "SELECT * FROM notification_outbox WHERE project_id = ? AND dedupe_key = ?",
           )
           .get(input.projectId, input.dedupeKey);
         if (existing) {
@@ -1391,7 +1598,7 @@ export function createOperationsStore(
 
         const keyConflict = db
           .prepare(
-            `SELECT 1 FROM notification_outbox WHERE client_metadata_key = ?`,
+            "SELECT 1 FROM notification_outbox WHERE client_metadata_key = ?",
           )
           .get(input.clientMetadataKey);
         if (keyConflict) {
@@ -1401,7 +1608,7 @@ export function createOperationsStore(
         }
 
         const idConflict = db
-          .prepare(`SELECT 1 FROM notification_outbox WHERE outbox_id = ?`)
+          .prepare("SELECT 1 FROM notification_outbox WHERE outbox_id = ?")
           .get(input.outboxId);
         if (idConflict) {
           throw new Error(`outboxId "${input.outboxId}" already exists`);
@@ -1409,11 +1616,11 @@ export function createOperationsStore(
 
         db.prepare(
           `INSERT INTO notification_outbox (
-            outbox_id, project_id, dedupe_key, owner_kind, owner_operation_id,
-            event_type, feature_id, phase_id, recipient_json, payload_json,
-            client_metadata_key, status, workspace_id, channel_id, thread_ts,
-            message_ts, attempt_count, last_error, created_at, updated_at, delivered_at
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', NULL, NULL, NULL, NULL, 0, NULL, ?, ?, NULL)`,
+          outbox_id, project_id, dedupe_key, owner_kind, owner_operation_id,
+          event_type, feature_id, phase_id, recipient_json, payload_json,
+          client_metadata_key, status, workspace_id, channel_id, thread_ts,
+          message_ts, attempt_count, last_error, created_at, updated_at, delivered_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', NULL, NULL, NULL, NULL, 0, NULL, ?, ?, NULL)`,
         ).run(
           input.outboxId,
           input.projectId,
@@ -1431,15 +1638,21 @@ export function createOperationsStore(
         );
 
         const row = db
-          .prepare(`SELECT * FROM notification_outbox WHERE outbox_id = ?`)
+          .prepare<string[], NotificationOutboxRow>(
+            "SELECT * FROM notification_outbox WHERE outbox_id = ?",
+          )
           .get(input.outboxId);
+        if (!row) throw new Error("Enqueued outbox item is missing");
         return rowToOutboxItem(row);
-      })();
+      });
+      return transaction.immediate();
     },
 
     getOutboxItem(outboxId: string): OutboxItem | null {
       const row = db
-        .prepare(`SELECT * FROM notification_outbox WHERE outbox_id = ?`)
+        .prepare<string[], NotificationOutboxRow>(
+          "SELECT * FROM notification_outbox WHERE outbox_id = ?",
+        )
         .get(outboxId);
       return row ? rowToOutboxItem(row) : null;
     },
@@ -1449,7 +1662,7 @@ export function createOperationsStore(
       projectId: string;
     }): OutboxItem[] {
       const rows = db
-        .prepare(
+        .prepare<string[], NotificationOutboxRow>(
           `SELECT * FROM notification_outbox
            WHERE project_id = ? AND (status IN ('pending', 'uncertain') OR status = 'sending')
            ORDER BY created_at ASC, outbox_id ASC`,
@@ -1479,7 +1692,7 @@ export function createOperationsStore(
         }
       | { action: "skipped_no_target"; item: OutboxItem }
       | null {
-      return db.transaction(
+      const transaction = db.transaction(
         ():
           | {
               claim: OutboxClaim;
@@ -1489,7 +1702,9 @@ export function createOperationsStore(
           | { action: "skipped_no_target"; item: OutboxItem }
           | null => {
           const candidateRow = db
-            .prepare(`SELECT * FROM notification_outbox WHERE outbox_id = ?`)
+            .prepare<string[], NotificationOutboxRow>(
+              "SELECT * FROM notification_outbox WHERE outbox_id = ?",
+            )
             .get(input.outboxId);
           if (!candidateRow) return null;
           const candidate = rowToOutboxItem(candidateRow);
@@ -1543,9 +1758,18 @@ export function createOperationsStore(
                 ) {
                   return null;
                 }
-                db.prepare(
-                  `UPDATE notification_outbox SET status = 'skipped_no_target', updated_at = ? WHERE outbox_id = ?`,
-                ).run(input.nowIso, input.outboxId);
+                const result = db
+                  .prepare(
+                    `UPDATE notification_outbox SET status = 'skipped_no_target', updated_at = ?
+                 WHERE outbox_id = ? AND status = ? AND attempt_count = ?`,
+                  )
+                  .run(
+                    input.nowIso,
+                    input.outboxId,
+                    row.status,
+                    row.attemptCount,
+                  );
+                if (result.changes === 0) return null;
                 row.status = "skipped_no_target";
                 row.updatedAt = input.nowIso;
                 return {
@@ -1605,23 +1829,28 @@ export function createOperationsStore(
           }
 
           const nextAttempt = row.attemptCount + 1;
-          db.prepare(
-            `UPDATE notification_outbox SET
-            workspace_id = ?,
-            channel_id = ?,
-            thread_ts = ?,
-            status = 'sending',
-            updated_at = ?,
-            attempt_count = ?
-          WHERE outbox_id = ?`,
-          ).run(
-            workspaceId,
-            channelId,
-            threadTs,
-            input.nowIso,
-            nextAttempt,
-            input.outboxId,
-          );
+          const result = db
+            .prepare(
+              `UPDATE notification_outbox SET
+          workspace_id = ?,
+          channel_id = ?,
+          thread_ts = ?,
+          status = 'sending',
+          updated_at = ?,
+          attempt_count = ?
+        WHERE outbox_id = ? AND status = ? AND attempt_count = ?`,
+            )
+            .run(
+              workspaceId,
+              channelId,
+              threadTs,
+              input.nowIso,
+              nextAttempt,
+              input.outboxId,
+              row.status,
+              row.attemptCount,
+            );
+          if (result.changes === 0) return null;
 
           Object.assign(row, {
             workspaceId,
@@ -1647,7 +1876,8 @@ export function createOperationsStore(
             action,
           };
         },
-      )();
+      );
+      return transaction.immediate();
     },
 
     markOutboxUncertain(input: {
@@ -1655,9 +1885,11 @@ export function createOperationsStore(
       nowIso: string;
       error: string;
     }): FencedWrite {
-      return db.transaction((): FencedWrite => {
+      const transaction = db.transaction((): FencedWrite => {
         const row = db
-          .prepare(`SELECT * FROM notification_outbox WHERE outbox_id = ?`)
+          .prepare<string[], NotificationOutboxRow>(
+            "SELECT * FROM notification_outbox WHERE outbox_id = ?",
+          )
           .get(input.claim.outboxId);
         if (!row) return { ok: false, code: "LEASE_FENCED" };
         const item = rowToOutboxItem(row);
@@ -1672,10 +1904,10 @@ export function createOperationsStore(
 
         db.prepare(
           `UPDATE notification_outbox SET
-            status = 'uncertain',
-            last_error = ?,
-            updated_at = ?
-          WHERE outbox_id = ? AND attempt_count = ?`,
+          status = 'uncertain',
+          last_error = ?,
+          updated_at = ?
+        WHERE outbox_id = ? AND attempt_count = ?`,
         ).run(
           input.error,
           input.nowIso,
@@ -1684,7 +1916,8 @@ export function createOperationsStore(
         );
 
         return { ok: true };
-      })();
+      });
+      return transaction.immediate();
     },
 
     completeOutboxItem(input: {
@@ -1699,10 +1932,12 @@ export function createOperationsStore(
           }
         | { status: "failed"; error: string };
     }): FencedWrite | { ok: false; code: "OUTBOX_TRANSITION_INVALID" } {
-      return db.transaction(
+      const transaction = db.transaction(
         (): FencedWrite | { ok: false; code: "OUTBOX_TRANSITION_INVALID" } => {
           const row = db
-            .prepare(`SELECT * FROM notification_outbox WHERE outbox_id = ?`)
+            .prepare<string[], NotificationOutboxRow>(
+              "SELECT * FROM notification_outbox WHERE outbox_id = ?",
+            )
             .get(input.claim.outboxId);
           if (!row) return { ok: false, code: "LEASE_FENCED" };
           const item = rowToOutboxItem(row);
@@ -1732,12 +1967,12 @@ export function createOperationsStore(
             }
             db.prepare(
               `UPDATE notification_outbox SET
-              status = 'delivered',
-              message_ts = ?,
-              delivered_at = ?,
-              updated_at = ?,
-              last_error = NULL
-            WHERE outbox_id = ? AND attempt_count = ?`,
+            status = 'delivered',
+            message_ts = ?,
+            delivered_at = ?,
+            updated_at = ?,
+            last_error = NULL
+          WHERE outbox_id = ? AND attempt_count = ?`,
             ).run(
               input.outcome.messageTs,
               input.nowIso,
@@ -1748,10 +1983,10 @@ export function createOperationsStore(
           } else {
             db.prepare(
               `UPDATE notification_outbox SET
-              status = 'failed',
-              last_error = ?,
-              updated_at = ?
-            WHERE outbox_id = ? AND attempt_count = ?`,
+            status = 'failed',
+            last_error = ?,
+            updated_at = ?
+          WHERE outbox_id = ? AND attempt_count = ?`,
             ).run(
               input.outcome.error,
               input.nowIso,
@@ -1762,39 +1997,45 @@ export function createOperationsStore(
 
           return { ok: true };
         },
-      )();
+      );
+      return transaction.immediate();
     },
 
     getHarvestCursor(projectId: string): HarvestCursor | null {
       const row = db
-        .prepare(`SELECT * FROM harvest_cursors WHERE project_id = ?`)
+        .prepare<string[], HarvestCursorRow>(
+          "SELECT * FROM harvest_cursors WHERE project_id = ?",
+        )
         .get(projectId);
       return row ? rowToHarvestCursor(row) : null;
     },
 
     saveHarvestCursor(cursor: HarvestCursor): void {
-      db.prepare(
-        `INSERT INTO harvest_cursors (project_id, last_polled_at, last_terminal_at, last_pr_number, last_error)
+      db.transaction(() => {
+        db.prepare(
+          `INSERT INTO harvest_cursors (project_id, last_polled_at, last_terminal_at, last_pr_number, last_error)
          VALUES (?, ?, ?, ?, ?)
          ON CONFLICT(project_id) DO UPDATE SET
            last_polled_at = excluded.last_polled_at,
            last_terminal_at = excluded.last_terminal_at,
            last_pr_number = excluded.last_pr_number,
            last_error = excluded.last_error`,
-      ).run(
-        cursor.projectId,
-        cursor.lastPolledAt,
-        cursor.lastTerminalAt,
-        cursor.lastPrNumber,
-        cursor.lastError,
-      );
+        ).run(
+          cursor.projectId,
+          cursor.lastPolledAt,
+          cursor.lastTerminalAt,
+          cursor.lastPrNumber,
+          cursor.lastError,
+        );
+      }).immediate();
     },
 
     getOperationsStatus(projectId: string): DurableOperationsStatus {
+      const scope = projectScope(db, projectId);
       const queuedCount = (
         db
           .prepare(
-            `SELECT COUNT(*) as c FROM dispatch_operations WHERE project_id = ? AND status = 'accepted'`,
+            "SELECT COUNT(*) as c FROM dispatch_operations WHERE project_id = ? AND status = 'accepted'",
           )
           .get(projectId) as { c: number }
       ).c;
@@ -1802,14 +2043,14 @@ export function createOperationsStore(
       const activeCount = (
         db
           .prepare(
-            `SELECT COUNT(*) as c FROM dispatch_operations WHERE project_id = ? AND status IN ('leased', 'running', 'reconciling')`,
+            "SELECT COUNT(*) as c FROM dispatch_operations WHERE project_id = ? AND status IN ('leased', 'running', 'reconciling')",
           )
           .get(projectId) as { c: number }
       ).c;
 
       const oldestQueuedRow = db
         .prepare(
-          `SELECT MIN(created_at) as oldest FROM dispatch_operations WHERE project_id = ? AND status = 'accepted'`,
+          "SELECT MIN(created_at) as oldest FROM dispatch_operations WHERE project_id = ? AND status = 'accepted'",
         )
         .get(projectId) as { oldest: string | null } | undefined;
 
@@ -1843,27 +2084,28 @@ export function createOperationsStore(
       ).c;
 
       const pendingStageRows = db
-        .prepare(
-          `SELECT s.operation_id, h.feature_id, h.phase_id, s.stage, s.status
+        .prepare<[string], PendingStageRow>(
+          `SELECT s.operation_id, h.feature_id, s.phase_key, s.stage, s.status
            FROM harvest_stage_receipts s
            JOIN harvest_operations h ON h.operation_id = s.operation_id
-           WHERE h.project_id = ? AND s.status IN ('pending', 'running', 'uncertain', 'retryable_failure')
+           WHERE h.project_id = ? AND h.status IN ('accepted', 'running', 'delivery_pending')
+             AND s.status IN ('pending', 'running', 'uncertain', 'retryable_failure')
            ORDER BY s.updated_at ASC, s.operation_id ASC`,
         )
-        .all(projectId) as any[];
+        .all(projectId);
 
       const pendingStages = pendingStageRows.map((r) => ({
         operationId: r.operation_id,
         featureId: r.feature_id,
-        phaseId: r.phase_id,
-        stage: r.stage as HarvestStageName,
-        status: r.status as HarvestStageStatus,
+        phaseId: r.phase_key === "feature" ? null : r.phase_key,
+        stage: r.stage,
+        status: r.status,
       }));
 
       const unresolvedGateFailures = (
         db
           .prepare(
-            `SELECT COUNT(*) as c FROM harvest_operations WHERE project_id = ? AND status = 'gate_failed'`,
+            "SELECT COUNT(*) as c FROM harvest_operations WHERE project_id = ? AND status = 'gate_failed'",
           )
           .get(projectId) as { c: number }
       ).c;
@@ -1871,7 +2113,7 @@ export function createOperationsStore(
       const closedUnmergedCount = (
         db
           .prepare(
-            `SELECT COUNT(*) as c FROM harvest_operations WHERE project_id = ? AND status = 'closed_unmerged'`,
+            "SELECT COUNT(*) as c FROM harvest_operations WHERE project_id = ? AND status = 'closed_unmerged'",
           )
           .get(projectId) as { c: number }
       ).c;
@@ -1879,7 +2121,7 @@ export function createOperationsStore(
       const blockedCleanups = (
         db
           .prepare(
-            `SELECT COUNT(*) as c FROM harvest_operations WHERE project_id = ? AND status = 'cleanup_blocked'`,
+            "SELECT COUNT(*) as c FROM harvest_operations WHERE project_id = ? AND status = 'cleanup_blocked'",
           )
           .get(projectId) as { c: number }
       ).c;
@@ -1887,7 +2129,7 @@ export function createOperationsStore(
       const pendingCount = (
         db
           .prepare(
-            `SELECT COUNT(*) as c FROM notification_outbox WHERE project_id = ? AND status = 'pending'`,
+            "SELECT COUNT(*) as c FROM notification_outbox WHERE project_id = ? AND status IN ('pending', 'sending')",
           )
           .get(projectId) as { c: number }
       ).c;
@@ -1895,7 +2137,7 @@ export function createOperationsStore(
       const uncertainCount = (
         db
           .prepare(
-            `SELECT COUNT(*) as c FROM notification_outbox WHERE project_id = ? AND status = 'uncertain'`,
+            "SELECT COUNT(*) as c FROM notification_outbox WHERE project_id = ? AND status = 'uncertain'",
           )
           .get(projectId) as { c: number }
       ).c;
@@ -1903,7 +2145,7 @@ export function createOperationsStore(
       const failedCount = (
         db
           .prepare(
-            `SELECT COUNT(*) as c FROM notification_outbox WHERE project_id = ? AND status = 'failed'`,
+            "SELECT COUNT(*) as c FROM notification_outbox WHERE project_id = ? AND status = 'failed'",
           )
           .get(projectId) as { c: number }
       ).c;
@@ -1912,21 +2154,28 @@ export function createOperationsStore(
         db
           .prepare(
             `SELECT COUNT(*) as c FROM runs r
-             WHERE r.project_id = ?
-               AND r.id NOT IN (SELECT last_run_id FROM dispatch_operations WHERE project_id = ? AND last_run_id IS NOT NULL)
-               AND r.id NOT IN (SELECT a.run_id FROM dispatch_attempts a JOIN dispatch_operations d ON d.operation_id = a.operation_id WHERE d.project_id = ? AND a.run_id IS NOT NULL)
-               AND r.id NOT IN (SELECT linked_run_id FROM harvest_operations WHERE project_id = ? AND linked_run_id IS NOT NULL)`,
+             WHERE r.project_id IN (${scope.placeholders})
+               AND r.id NOT IN (SELECT last_run_id FROM dispatch_operations WHERE project_id IN (${scope.placeholders}) AND last_run_id IS NOT NULL)
+               AND r.id NOT IN (SELECT a.run_id FROM dispatch_attempts a JOIN dispatch_operations d ON d.operation_id = a.operation_id WHERE d.project_id IN (${scope.placeholders}) AND a.run_id IS NOT NULL)
+               AND r.id NOT IN (SELECT linked_run_id FROM harvest_operations WHERE project_id IN (${scope.placeholders}) AND linked_run_id IS NOT NULL)`,
           )
-          .get(projectId, projectId, projectId, projectId) as { c: number }
+          .get(...scope.ids, ...scope.ids, ...scope.ids, ...scope.ids) as {
+          c: number;
+        }
       ).c;
 
       let legacyUnverifiedDispatches = 0;
       const projectRow = db
-        .prepare(`SELECT local_root, path FROM projects WHERE id = ?`)
-        .get(projectId) as
-        | { local_root: string | null; path: string | null }
-        | undefined;
-      const root = projectRow?.local_root || projectRow?.path;
+        .prepare<
+          [string],
+          { local_root: string | null; path: string; updated_at: string | null }
+        >("SELECT local_root, path, updated_at FROM projects WHERE id = ?")
+        .get(scope.canonical);
+      const root =
+        projectRow &&
+        (projectRow.updated_at !== null
+          ? projectRow.local_root
+          : projectRow.local_root || projectRow.path);
       if (root) {
         if (typeof options === "object" && options?.readLegacyDispatches) {
           legacyUnverifiedDispatches =
@@ -1938,7 +2187,7 @@ export function createOperationsStore(
               const lines = fs
                 .readFileSync(file, "utf8")
                 .split("\n")
-                .filter((l) => l.trim().length > 0);
+                .filter(isLegacyDispatchLine);
               legacyUnverifiedDispatches = lines.length;
             } catch {
               legacyUnverifiedDispatches = 0;

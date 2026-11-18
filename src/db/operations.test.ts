@@ -5,17 +5,35 @@
 import {
   appendFileSync,
   cpSync,
+  existsSync,
   mkdirSync,
   mkdtempSync,
   rmSync,
+  writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import Database from "better-sqlite3";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { computeHarvestWorkKey } from "../domain/durable-harvest.js";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { createSqliteOperationsStoreAdapter } from "../adapters/sqlite/operations.js";
+import {
+  type HarvestCandidateInput,
+  computeHarvestWorkKey,
+  planHarvestStages,
+  verifyHarvestTarget,
+} from "../domain/durable-harvest.js";
+import type { EnrolledProject } from "../domain/project-registry.js";
+import type {
+  DurableHarvestOperation,
+  OperationsStorePort,
+} from "../ports/operations-port.js";
+import {
+  persistDispatch,
+  readLegacyDispatches,
+} from "../server/persistence.js";
 import { openDatabase } from "./index.js";
+import { createOperationsStore } from "./operations.js";
 import { registerProject, startRun } from "./runs.js";
 
 const now = "2026-11-11T12:00:00.000Z";
@@ -638,7 +656,7 @@ describe("durable operations migration", () => {
               updatedAt: now,
               completedAt: null,
             },
-          ] as [any, ...any[]],
+          ] as [DurableHarvestOperation],
         },
       };
 
@@ -712,7 +730,7 @@ describe("durable operations migration", () => {
               updatedAt: now,
               completedAt: null,
             },
-          ] as [any, ...any[]],
+          ] as [DurableHarvestOperation],
         },
       };
 
@@ -778,7 +796,7 @@ describe("durable operations migration", () => {
         id: "legacy-d1",
         featureId: "001-legacy",
         phaseId: "phase-01",
-        backend: "codex" as any,
+        backend: "codex",
         status: "completed",
         branchName: "feat/001-legacy",
         attempts: [],
@@ -818,7 +836,7 @@ describe("durable operations migration", () => {
           surface: "slack",
           projectId: "alpha",
           channelId: "C123",
-        } as any,
+        },
         payload: { text: "Hello Slack" },
         clientMetadataKey: "meta-key-1",
         nowIso: now,
@@ -860,5 +878,569 @@ describe("durable operations migration", () => {
     } finally {
       db.close();
     }
+  });
+});
+
+const project: EnrolledProject = {
+  projectId: "alpha",
+  slug: "alpha",
+  name: "Alpha",
+  repoSlug: "example/alpha",
+  trunkBranch: "main",
+  localRoot: "/fixture/alpha",
+  mirrorPath: null,
+  runnerPolicy: { allowedKinds: ["local"] },
+  slack: null,
+  legacyProjectIds: [],
+  createdAt: now,
+  updatedAt: now,
+};
+const phaseOne = "phase-01";
+const phaseTwo = "phase-02";
+const featureId = "001-fixture";
+const legacyRecord = {
+  id: "legacy",
+  featureId,
+  phaseId: phaseOne,
+  backend: "codex",
+  status: "completed",
+  branchName: "feat/001-fixture",
+  createdAt: now,
+  attempts: [],
+  tasks: [],
+} satisfies DispatchRecord;
+const expiryWithOffset = "2026-11-11T13:00:00+01:00";
+const futureWithOffset = "2026-11-11T11:00:01-01:00";
+
+function harvestIntake(
+  deliveryId: string,
+  phases: [string, ...string[]],
+  overrides: Partial<HarvestCandidateInput> = {},
+): Parameters<OperationsStorePort["recordHarvestIntake"]>[0] & {
+  target: {
+    accepted: true;
+    operations: [DurableHarvestOperation, ...DurableHarvestOperation[]];
+  };
+} {
+  const candidate: HarvestCandidateInput = {
+    source: "github_webhook",
+    deliveryId,
+    repoSlug: project.repoSlug,
+    headRepoSlug: project.repoSlug,
+    baseBranch: project.trunkBranch,
+    headBranch:
+      phases.length === 1
+        ? `feat/${featureId}-${phases[0]}`
+        : `feat/${featureId}`,
+    expectedHeadSha: "1".repeat(40),
+    prNumber: 42,
+    prUrl: "https://github.com/example/alpha/pull/42",
+    terminalEvent: "merged",
+    mergeCommitSha: "2".repeat(40),
+    terminalAt: now,
+    ...overrides,
+  };
+  function operation(phaseId: string): DurableHarvestOperation {
+    const verified = verifyHarvestTarget(project, candidate);
+    if (!verified.ok) throw new Error(verified.reason);
+    const workKey =
+      verified.kind === "local_commit"
+        ? verified.workKey
+        : computeHarvestWorkKey({
+            ...verified.pullRequestIdentity,
+            featureId,
+            phaseId,
+          });
+    return {
+      operationId: `${deliveryId}-${phaseId}`,
+      projectId: project.projectId,
+      workKey,
+      repoSlug: verified.repoSlug,
+      headRepoSlug: candidate.headRepoSlug,
+      trunkBranch: project.trunkBranch,
+      featureId,
+      phaseId,
+      prNumber: candidate.prNumber,
+      prUrl: candidate.prUrl,
+      headBranch: candidate.headBranch,
+      expectedHeadSha: candidate.expectedHeadSha,
+      terminalEvent: candidate.terminalEvent,
+      mergeCommitSha: candidate.mergeCommitSha,
+      terminalAt: candidate.terminalAt,
+      recipient: null,
+      plannedSlackRecipient: null,
+      status: "accepted",
+      leaseOwner: null,
+      leaseEpoch: 0,
+      leaseExpiresAt: null,
+      linkedRunId: null,
+      lastError: null,
+      createdAt: now,
+      updatedAt: now,
+      completedAt: null,
+    };
+  }
+  return {
+    candidate,
+    payloadDigest: deliveryId,
+    receivedAt: now,
+    target: {
+      accepted: true,
+      project,
+      checkoutPhaseIds: phases,
+      operations: [operation(phases[0]), ...phases.slice(1).map(operation)],
+    },
+  };
+}
+
+function localIntake() {
+  return harvestIntake("local", [phaseOne], {
+    source: "manual_cli",
+    repoSlug: null,
+    checkoutRepoSlug: project.repoSlug,
+    headRepoSlug: null,
+    headBranch: null,
+    expectedHeadSha: null,
+    prNumber: null,
+    prUrl: null,
+    explicitFeatureId: featureId,
+    explicitPhaseId: phaseOne,
+    terminalAt: "2026-11-11T11:00:00.000Z",
+  });
+}
+
+describe("durable operations review regressions", () => {
+  let root: string;
+  let dbPath: string;
+  let db: Database.Database;
+  let store: OperationsStorePort;
+
+  beforeEach(() => {
+    root = mkdtempSync(join(tmpdir(), "gwrk-operations-review-"));
+    dbPath = join(root, "ledger.sqlite");
+    db = openDatabase({ dbPath });
+    registerProject({ id: "alpha", name: "Alpha", path: root }, db);
+    store = createSqliteOperationsStoreAdapter({ db });
+  });
+
+  afterEach(() => {
+    if (db.open) db.close();
+    rmSync(root, { recursive: true, force: true });
+  });
+
+  function accept(
+    input: Parameters<OperationsStorePort["recordHarvestIntake"]>[0],
+  ) {
+    const result = store.recordHarvestIntake(input);
+    if (!result.ok) throw new Error(result.code);
+    return result.operations;
+  }
+
+  it.each([
+    "operation ID",
+    "primary work key",
+    "alias work key",
+    "verified head facts",
+  ])("rolls back the whole intake on conflict with %s", (conflict) => {
+    const incoming = harvestIntake("incoming", [phaseOne, phaseTwo]);
+    const second = incoming.target.operations[1];
+    if (conflict === "verified head facts") {
+      accept(localIntake());
+      accept(
+        harvestIntake("existing", [phaseTwo], {
+          headBranch: incoming.candidate.headBranch,
+          explicitPhaseId: phaseTwo,
+          source: "manual_cli",
+          expectedHeadSha: "3".repeat(40),
+        }),
+      );
+    } else {
+      const [existing] = accept(
+        harvestIntake("existing", [phaseTwo], {
+          prNumber: 43,
+          prUrl: null,
+        }),
+      );
+      if (conflict === "operation ID") {
+        second.operationId = existing.operationId;
+      } else if (conflict === "primary work key") {
+        db.prepare(
+          "UPDATE harvest_operations SET work_key = ?, repo_slug = 'other/repo' WHERE operation_id = ?",
+        ).run(second.workKey, existing.operationId);
+      } else {
+        db.prepare(
+          "INSERT INTO harvest_work_key_aliases (project_id, work_key, operation_id) VALUES (?, ?, ?)",
+        ).run("alpha", second.workKey, existing.operationId);
+        db.prepare(
+          "UPDATE harvest_operations SET repo_slug = 'other/repo' WHERE operation_id = ?",
+        ).run(existing.operationId);
+      }
+    }
+    const snapshot = () => [
+      db
+        .prepare("SELECT * FROM harvest_operations ORDER BY operation_id")
+        .all(),
+      db
+        .prepare("SELECT * FROM harvest_work_key_aliases ORDER BY work_key")
+        .all(),
+      db.prepare("SELECT * FROM harvest_deliveries ORDER BY delivery_id").all(),
+      db
+        .prepare(
+          "SELECT * FROM harvest_delivery_operations ORDER BY delivery_id, position",
+        )
+        .all(),
+    ];
+    const before = snapshot();
+    expect(store.recordHarvestIntake(incoming)).toEqual({
+      ok: false,
+      code: "HARVEST_IDENTITY_MISMATCH",
+    });
+    expect(snapshot()).toEqual(before);
+  });
+
+  it("persists the verified pull request terminal time across reopen", () => {
+    const [local] = accept(localIntake());
+    const [enriched] = accept(harvestIntake("enrich", [phaseOne]));
+    expect(enriched).toMatchObject({
+      operationId: local.operationId,
+      terminalAt: now,
+      prNumber: 42,
+    });
+    db.close();
+    db = openDatabase({ dbPath });
+    store = createSqliteOperationsStoreAdapter({ db });
+    expect(store.listRecoverableHarvests({ nowIso: now })).toEqual([enriched]);
+    expect(
+      store.recordHarvestIntake(harvestIntake("alias-replay", [phaseOne])),
+    ).toEqual({
+      ok: true,
+      operations: [enriched],
+      deduplicatedTransport: false,
+      deduplicatedWork: true,
+    });
+  });
+
+  it("recovers expired reconciling and null-expiry dispatches by instant", () => {
+    for (const [index, operationId] of [
+      "a-reconciling",
+      "b-no-expiry",
+      "c-expired",
+      "d-future",
+    ].entries()) {
+      store.acceptDispatch({
+        projectId: "alpha",
+        featureId,
+        phaseId: `phase-0${index + 1}`,
+        trunkBranch: "main",
+        backend: "codex",
+        newOperationId: operationId,
+        nowIso: now,
+      });
+    }
+    const update = db.prepare(
+      "UPDATE dispatch_operations SET status = ?, lease_expires_at = ? WHERE operation_id = ?",
+    );
+    update.run("reconciling", expiryWithOffset, "a-reconciling");
+    update.run("leased", null, "b-no-expiry");
+    update.run("running", expiryWithOffset, "c-expired");
+    update.run("leased", futureWithOffset, "d-future");
+    expect(
+      store
+        .listRecoverableDispatches({ nowIso: now, projectId: "alpha" })
+        .map((op) => op.operationId),
+    ).toEqual(["a-reconciling", "b-no-expiry", "c-expired"]);
+    for (const operationId of [
+      "a-reconciling",
+      "b-no-expiry",
+      "c-expired",
+      "d-future",
+    ]) {
+      const claimed = store.claimDispatchLease({
+        operationId,
+        nowIso: now,
+        leaseOwner: "replacement",
+        leaseExpiresAt: futureWithOffset,
+      });
+      if (operationId === "d-future") expect(claimed).toBeNull();
+      else
+        expect(claimed?.operation).toMatchObject({
+          operationId,
+          status: "leased",
+        });
+    }
+  });
+
+  it("recovers harvest leases by instant with offset timestamps", () => {
+    const [first, second] = accept(
+      harvestIntake("offset", [phaseOne, phaseTwo]),
+    );
+    const update = db.prepare(
+      "UPDATE harvest_operations SET status = 'running', lease_expires_at = ? WHERE operation_id = ?",
+    );
+    update.run(expiryWithOffset, first.operationId);
+    update.run(futureWithOffset, second.operationId);
+    expect(
+      store
+        .listRecoverableHarvests({ nowIso: now })
+        .map((op) => op.operationId),
+    ).toEqual([first.operationId]);
+    const lease = {
+      nowIso: now,
+      leaseOwner: "worker",
+      leaseExpiresAt: futureWithOffset,
+    };
+    expect(
+      store.claimHarvestLease({ ...lease, operationId: first.operationId })
+        ?.operation.operationId,
+    ).toBe(first.operationId);
+    expect(
+      store.claimHarvestLease({ ...lease, operationId: second.operationId }),
+    ).toBeNull();
+  });
+
+  it.each(["retired", "different workspace", "different channel", "matching"])(
+    "resolves harvest Slack targets with a %s binding or thread",
+    (scenario) => {
+      db.prepare(
+        "UPDATE projects SET slack_workspace_id = 'W1', slack_channel = 'C1', updated_at = ? WHERE id = 'alpha'",
+      ).run(scenario === "retired" ? null : now);
+      db.prepare(
+        "INSERT INTO slack_feature_threads (project_id, feature_id, workspace_id, channel_id, root_ts) VALUES ('alpha', ?, ?, ?, '1700000000.000100')",
+      ).run(
+        featureId,
+        scenario === "different workspace" ? "W2" : "W1",
+        scenario === "different channel" ? "C2" : "C1",
+      );
+      const [op] = accept(
+        harvestIntake("slack", [phaseOne], {
+          recipient: { projectId: "alpha", surface: "slack" },
+        }),
+      );
+      const claim = store.claimHarvestLease({
+        operationId: op.operationId,
+        leaseOwner: "worker",
+        nowIso: now,
+        leaseExpiresAt: futureWithOffset,
+      });
+      if (!claim) throw new Error("Missing harvest lease");
+      const stages = {
+        terminalEvent: op.terminalEvent,
+        phaseIds: [phaseOne],
+        hasSlackTarget: scenario !== "retired",
+        hasRemoteBranchTarget: true,
+      };
+      expect(
+        store.initializeHarvestStages({
+          fence: claim.fence,
+          nowIso: now,
+          ...stages,
+          stages: planHarvestStages(stages),
+        }),
+      ).toEqual({ ok: true });
+      const [planned] = store.listRecoverableHarvests({
+        nowIso: futureWithOffset,
+      });
+      expect(planned.plannedSlackRecipient).toEqual(
+        scenario === "retired"
+          ? null
+          : {
+              projectId: "alpha",
+              surface: "slack",
+              workspaceId: "W1",
+              channelId: "C1",
+              ...(scenario === "matching"
+                ? { threadTs: "1700000000.000100" }
+                : {}),
+            },
+      );
+    },
+  );
+
+  function enqueueNotice() {
+    return store.enqueueOutbox({
+      outboxId: "notice",
+      projectId: "alpha",
+      dedupeKey: "notice",
+      ownerKind: "dispatch",
+      ownerOperationId: "op",
+      eventType: "dispatch_completed",
+      featureId,
+      phaseId: phaseOne,
+      recipient: { surface: "slack", projectId: "alpha" },
+      payload: { text: "Notice" },
+      clientMetadataKey: "notice",
+      nowIso: now,
+    });
+  }
+
+  const destination = { workspaceId: "W1", channelId: "C1", threadTs: null };
+
+  it.each([
+    { route: "send", destination, status: "delivered", attemptCount: 0 },
+    { route: "send", destination, status: "pending", attemptCount: 2 },
+    { route: "skip", destination: null, status: "delivered", attemptCount: 0 },
+    { route: "skip", destination: null, status: "pending", attemptCount: 2 },
+  ])(
+    "rejects a stale $route claim when the row is $status at attempt $attemptCount",
+    ({ destination, status, attemptCount }) => {
+      const stale = enqueueNotice();
+      db.prepare(
+        "UPDATE notification_outbox SET status = ?, attempt_count = ? WHERE outbox_id = ?",
+      ).run(status, attemptCount, stale.outboxId);
+      const recoverable = vi
+        .spyOn(store, "listRecoverableOutboxItems")
+        .mockReturnValue([stale]);
+      try {
+        expect(
+          store.claimOutboxItem({
+            outboxId: stale.outboxId,
+            nowIso: now,
+            destination,
+          }),
+        ).toBeNull();
+        expect(store.getOutboxItem(stale.outboxId)).toMatchObject({
+          status,
+          attemptCount,
+        });
+      } finally {
+        recoverable.mockRestore();
+      }
+    },
+  );
+
+  it("reports pending stages by receipt phase and counts sending deliveries", () => {
+    const [first, second] = accept(
+      harvestIntake("status", [phaseOne, phaseTwo]),
+    );
+    db.prepare(
+      "UPDATE harvest_operations SET phase_id = NULL WHERE operation_id = ?",
+    ).run(first.operationId);
+    db.prepare(
+      "UPDATE harvest_operations SET status = 'gate_failed' WHERE operation_id = ?",
+    ).run(second.operationId);
+    const stage = db.prepare(
+      "INSERT INTO harvest_stage_receipts (operation_id, phase_key, stage, status, updated_at) VALUES (?, ?, ?, 'pending', ?)",
+    );
+    stage.run(first.operationId, phaseOne, "gate_verify", now);
+    stage.run(first.operationId, "feature", "learning_record", now);
+    stage.run(second.operationId, phaseTwo, "branch_cleanup", now);
+    const item = enqueueNotice();
+    expect(
+      store.claimOutboxItem({
+        outboxId: item.outboxId,
+        nowIso: now,
+        destination,
+      })?.action,
+    ).toBe("send");
+    const status = store.getOperationsStatus("alpha");
+    expect(status.harvest.pendingStages).toHaveLength(2);
+    expect(status.harvest.pendingStages).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          operationId: first.operationId,
+          phaseId: phaseOne,
+          stage: "gate_verify",
+        }),
+        expect.objectContaining({
+          operationId: first.operationId,
+          phaseId: null,
+          stage: "learning_record",
+        }),
+      ]),
+    );
+    expect(status.delivery.pendingCount).toBe(1);
+  });
+
+  it("counts historical runs across aliases and uses the canonical local root", () => {
+    const checkout = join(root, "checkout");
+    const aliasDir = join(root, "alias");
+    registerProject({ id: "old-alpha", name: "Old Alpha", path: aliasDir }, db);
+    const run = (projectId: string) =>
+      startRun(
+        {
+          project_id: projectId,
+          feature_id: featureId,
+          phase_id: phaseOne,
+          command: "ship",
+          agent_backend: "codex",
+          workflow: "ship-done",
+        },
+        db,
+      );
+    run("alpha");
+    run("old-alpha");
+    run("old-alpha");
+    const linked = run("old-alpha");
+    db.prepare(
+      "INSERT INTO project_aliases (alias_id, project_id) VALUES ('old-alpha', 'alpha')",
+    ).run();
+    db.prepare(
+      "UPDATE projects SET local_root = ?, updated_at = ? WHERE id = 'alpha'",
+    ).run(checkout, now);
+    const [op] = accept(harvestIntake("linked", [phaseOne]));
+    db.prepare(
+      "UPDATE harvest_operations SET linked_run_id = ? WHERE operation_id = ?",
+    ).run(linked, op.operationId);
+    persistDispatch(legacyRecord, checkout);
+    persistDispatch(legacyRecord, root);
+    persistDispatch(legacyRecord, root);
+    for (const id of ["old-alpha", "alpha"]) {
+      expect(store.getOperationsStatus(id).historical).toEqual({
+        legacyUnverifiedRuns: 3,
+        legacyUnverifiedDispatches: 1,
+      });
+    }
+    db.prepare(
+      "UPDATE projects SET local_root = NULL, mirror_path = ? WHERE id = 'alpha'",
+    ).run(checkout);
+    expect(
+      store.getOperationsStatus("old-alpha").historical
+        .legacyUnverifiedDispatches,
+    ).toBe(0);
+    expect(existsSync(join(aliasDir, ".gwrk"))).toBe(false);
+  });
+
+  it("skips malformed JSONL and leaves missing .gwrk directories untouched", () => {
+    const storeWithoutReader = createOperationsStore(db);
+    const directory = join(root, ".gwrk");
+    expect(readLegacyDispatches(root)).toEqual([]);
+    expect(
+      storeWithoutReader.getOperationsStatus("alpha").historical
+        .legacyUnverifiedDispatches,
+    ).toBe(0);
+    expect(existsSync(directory)).toBe(false);
+    const { attempts: _attempts, ...withoutAttempts } = legacyRecord;
+    const { tasks: _tasks, ...withoutTasks } = legacyRecord;
+    mkdirSync(directory);
+    writeFileSync(
+      join(directory, "dispatches.jsonl"),
+      [
+        "{bad json",
+        "",
+        ...[
+          null,
+          42,
+          true,
+          "text",
+          [legacyRecord],
+          {},
+          { ...legacyRecord, status: "unknown" },
+          { ...legacyRecord, backend: " " },
+          withoutAttempts,
+          withoutTasks,
+          legacyRecord,
+        ].map((value) => JSON.stringify(value)),
+      ].join("\n"),
+    );
+    expect(readLegacyDispatches(root)).toEqual([
+      { ...legacyRecord, evidenceLevel: "legacy_unverified" },
+    ]);
+    expect(
+      store.getOperationsStatus("alpha").historical.legacyUnverifiedDispatches,
+    ).toBe(1);
+    expect(
+      storeWithoutReader.getOperationsStatus("alpha").historical
+        .legacyUnverifiedDispatches,
+    ).toBe(1);
   });
 });

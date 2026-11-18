@@ -29,6 +29,37 @@ export interface LegacyDispatchRecord extends DispatchRecord {
   evidenceLevel: "legacy_unverified";
 }
 
+function isDispatchRecord(value: unknown): value is DispatchRecord {
+  if (
+    typeof value !== "object" ||
+    value === null ||
+    Array.isArray(value) ||
+    Object.getPrototypeOf(value) !== Object.prototype
+  ) {
+    return false;
+  }
+  const record = value as Record<string, unknown>;
+  const requiredStrings = [
+    "id",
+    "featureId",
+    "phaseId",
+    "backend",
+    "branchName",
+    "createdAt",
+  ];
+  const statuses = ["queued", "running", "completed", "failed", "retrying"];
+  return (
+    requiredStrings.every((key) => {
+      const field = record[key];
+      return typeof field === "string" && field.trim().length > 0;
+    }) &&
+    typeof record.status === "string" &&
+    statuses.includes(record.status) &&
+    Array.isArray(record.attempts) &&
+    Array.isArray(record.tasks)
+  );
+}
+
 /**
  * Reads legacy .gwrk/dispatches.jsonl entries tagged with evidenceLevel: "legacy_unverified".
  * Does NOT mutate the filesystem or create directories if they do not exist.
@@ -50,7 +81,8 @@ export function readLegacyDispatches(
       const trimmed = line.trim();
       if (!trimmed) continue;
       try {
-        const parsed = JSON.parse(trimmed) as DispatchRecord;
+        const parsed: unknown = JSON.parse(trimmed);
+        if (!isDispatchRecord(parsed)) continue;
         records.push({
           ...parsed,
           evidenceLevel: "legacy_unverified",
