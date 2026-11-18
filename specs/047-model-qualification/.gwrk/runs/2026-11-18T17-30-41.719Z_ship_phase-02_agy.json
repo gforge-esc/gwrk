@@ -1,0 +1,26 @@
+{
+  "runId": "2026-11-18T17:30:41.719Z_ship_p02",
+  "feature": "047-model-qualification",
+  "phase": "phase-02",
+  "command": "ship",
+  "agent": "agy",
+  "model": "unknown",
+  "usage": {
+    "inputTokens": 239455,
+    "outputTokens": 19254,
+    "totalTokens": 258709
+  },
+  "startedAt": "2026-11-18T17:30:41.719Z",
+  "finishedAt": "2026-11-18T17:38:36.341Z",
+  "durationS": 475,
+  "exitCode": 0,
+  "attempt": 1,
+  "gateResult": "PASS",
+  "reviewVerdict": "GO",
+  "filesChanged": 2,
+  "linesAdded": 50,
+  "linesDeleted": 16,
+  "gitCommit": "c77006b28b8766e669722d4fbf2bbd0546c4b834",
+  "gitBranch": "feat/047-model-qualification",
+  "digest": []
+}

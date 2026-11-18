@@ -56,65 +56,73 @@
           "id": "T004",
           "title": "Modify agent-port.ts",
           "description": "MODIFY src/ports/agent-port.ts. Add typed `effort`, `routeMode` and `observedModel` fields",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/phase-02.sh",
-          "sp": 1
+          "sp": 1,
+          "completedAt": "2026-11-18T17:31:17.981Z"
         },
         {
           "id": "T005",
           "title": "Modify agent-backend.ts",
           "description": "MODIFY src/plugins/agent-backend.ts. Add optional `discoverModels` method separate from `dispatch`",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/phase-02.sh",
-          "sp": 1
+          "sp": 1,
+          "completedAt": "2026-11-18T17:31:25.046Z"
         },
         {
           "id": "T006",
           "title": "Modify adapter.ts",
           "description": "MODIFY src/plugins/builtins/agents/agy/adapter.ts. Parse `agy models`, separate Antigravity Claude routes and read `init.model`. Tests: src/adapters/models/catalog-discovery.test.ts",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/phase-02.sh",
-          "sp": 1
+          "sp": 1,
+          "completedAt": "2026-11-18T17:31:32.801Z"
         },
         {
           "id": "T007",
           "title": "Modify adapter.ts",
           "description": "MODIFY src/plugins/builtins/agents/claude/adapter.ts. Query active auth models, forward typed `effort` and extract `observedModel`. Tests: src/adapters/models/catalog-discovery.test.ts",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/phase-02.sh",
-          "sp": 1
+          "sp": 1,
+          "completedAt": "2026-11-18T17:31:39.476Z"
         },
         {
           "id": "T008",
           "title": "Modify adapter.ts",
           "description": "MODIFY src/plugins/builtins/agents/codex/adapter.ts. Paginate `model/list`, filter hidden models and forward `effort`. Tests: src/adapters/models/catalog-discovery.test.ts",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/phase-02.sh",
-          "sp": 1
+          "sp": 1,
+          "completedAt": "2026-11-18T17:31:47.644Z"
         },
         {
           "id": "T009",
           "title": "Create catalog-discovery.ts",
           "description": "NEW src/adapters/models/catalog-discovery.ts. Collect built-in, external plugin and explicit candidate catalogs with versions. Tests: src/adapters/models/catalog-discovery.test.ts",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/phase-02.sh",
-          "sp": 2
+          "sp": 2,
+          "completedAt": "2026-11-18T17:31:52.818Z"
         },
         {
           "id": "T010",
           "title": "Create smoke-probe.ts",
           "description": "NEW src/adapters/models/smoke-probe.ts. Run bounded exact-model and effort smoke probes in clean temporary directories. Tests: src/adapters/models/smoke-probe.test.ts",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/phase-02.sh",
-          "sp": 2
+          "sp": 2,
+          "completedAt": "2026-11-18T17:31:57.729Z"
         },
         {
           "id": "T011",
           "title": "Modify agent.ts",
           "description": "MODIFY src/utils/agent.ts. Enforce explicit dispatch deadlines and allow synthetic fixtures to exclude external context. Tests: src/utils/agent.test.ts",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/phase-02.sh",
-          "sp": 1
+          "sp": 1,
+          "completedAt": "2026-11-18T17:32:02.932Z"
         }
       ],
       "sp_estimate": 10,
