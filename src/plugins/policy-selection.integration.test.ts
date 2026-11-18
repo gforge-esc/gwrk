@@ -480,6 +480,11 @@ describe("project enforcement candidate discovery", () => {
         { name: "renamed-policy", framework, version: "2.0.0" },
         "Installed identity rules",
       );
+      await writePolicyPack(
+        join(root, "entry/skills/zzz-other-policy"),
+        { name: "zzz-other-policy", framework, version: "1.0.0" },
+        "Other project entry rules",
+      );
       let override = installed;
       if (pathKind === "symbolic link") {
         override = join(root, "linked-policy");
@@ -496,6 +501,15 @@ describe("project enforcement candidate discovery", () => {
       );
       const rendered = await resolveEnforcementSkills(root);
       expect.soft(rendered.match(/Installed identity rules/g)).toHaveLength(1);
+      if (aliasStatus === "active") {
+        expect
+          .soft(rendered.indexOf("Other project entry rules"))
+          .toBeLessThan(rendered.indexOf("Installed identity rules"));
+      } else {
+        expect
+          .soft(rendered.indexOf("Installed identity rules"))
+          .toBeLessThan(rendered.indexOf("Other project entry rules"));
+      }
       expect.soft((await resolveEffectivePolicy(root)).gaps).toEqual([]);
       const listed = (await listProjectPlugins(root)).filter((p) =>
         [name, "renamed-policy"].includes(p.name),
