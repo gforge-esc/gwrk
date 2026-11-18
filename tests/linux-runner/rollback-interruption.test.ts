@@ -18,7 +18,7 @@ import {
   writeFile,
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { delimiter, join } from "node:path";
+import { delimiter, isAbsolute, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import Database from "better-sqlite3";
 import { expect, it, vi } from "vitest";
@@ -79,6 +79,7 @@ it.each([
   { signal: null, status: 1, stage: "backup with an inactive unit" },
   { signal: null, status: 1, stage: "target CLI version mismatch" },
   { signal: null, status: 1, stage: "unit Node fails target startup" },
+  { signal: null, status: 1, stage: "unit relative PATH" },
   { signal: null, status: 1, stage: "target launcher uses current alias" },
   { signal: null, status: 1, stage: "target manifest version mismatch" },
   { signal: null, status: 1, stage: "service ledger mismatch" },
@@ -422,6 +423,7 @@ case "$FIXTURE_STAGE" in
 esac
 unit_path="$PATH"
 if [[ "$FIXTURE_STAGE" == "unit Node fails target startup" ]]; then unit_path="$FIXTURE_ROOT/unit-bin:$PATH"; fi
+if [[ "$FIXTURE_STAGE" == "unit relative PATH" ]]; then unit_path="$PATH:relative-bin"; fi
 printf '%s\\0' "GWRK_HOME=$state" "GWRK_DB_PATH=$database" "GWRK_RUNTIME_DIR=$runtime" "GWRK_RELEASE_ROOT=$release_root" "PATH=$unit_path"`,
         cat: `
 if [[ "$1" == -- && "$2" == "/proc/$FIXTURE_PID/cmdline" ]]; then
@@ -490,7 +492,11 @@ esac`,
         detached: true,
         env: {
           ...process.env,
-          PATH: [bin, process.env.PATH].join(delimiter),
+          // Model the absolute service PATH rather than pnpm's launcher paths.
+          PATH: [
+            bin,
+            ...(process.env.PATH ?? "").split(delimiter).filter(isAbsolute),
+          ].join(delimiter),
           GWRK_RUNTIME_DIR: runtime,
           FIXTURE_ROOT: root,
           FIXTURE_REAL_CLI: join(repo, "dist/cli.js"),
@@ -546,6 +552,11 @@ esac`,
               expect(existsSync(join(state, "backups"))).toBe(false);
             } else if (stage === "unit Node fails target startup") {
               expect(output).toContain("Rollback target CLI could not start");
+            } else if (stage === "unit relative PATH") {
+              expect(output).toContain(
+                "The unit PATH must contain absolute directories",
+              );
+              expect(existsSync(join(state, "backups"))).toBe(false);
             } else if (pathMismatch) {
               expect(output).toContain(
                 stage.endsWith("release root mismatch")
