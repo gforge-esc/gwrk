@@ -7,6 +7,7 @@ import { Command } from "commander";
 import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
+import { getDb, getTestDb } from "../db/index.js";
 import { createAgentPortAdapter } from "../adapters/agents/index.js";
 import { ShipOrchestrator } from "../engine/ship-orchestrator.js";
 import type { AgentPort } from "../ports/agent-port.js";
@@ -56,10 +57,16 @@ vi.mock("../utils/resolve-feature.js", () => ({
   resolveFeature: vi.fn().mockImplementation((f: string) => f),
 }));
 
-vi.mock("../db/runs.js", () => ({
+vi.mock("../db/runs.js", async (importOriginal) => ({
+  ...await importOriginal<typeof import("../db/runs.js")>(),
   startRun: vi.fn(() => 999),
   finishRun: vi.fn(),
   recordHistory: vi.fn(),
+}));
+
+vi.mock("../db/index.js", async (importOriginal) => ({
+  ...await importOriginal<typeof import("../db/index.js")>(),
+  getDb: vi.fn(),
 }));
 
 vi.mock("../utils/setup-state.js", () => ({
@@ -84,9 +91,12 @@ const selectRoute = vi.fn<AgentPort["selectRoute"]>(async () => ({
 describe("gwrk ship: Pre-flight Setup Check (Phase 10)", () => {
   let tempDir: string;
   let program: Command;
+  let ledger: ReturnType<typeof getTestDb>;
 
   beforeEach(() => {
     vi.clearAllMocks();
+    ledger = getTestDb();
+    vi.mocked(getDb).mockReturnValue(ledger);
     vi.mocked(createAgentPortAdapter).mockReturnValue({
       execute: vi.fn(),
       selectRoute,
@@ -136,6 +146,7 @@ describe("gwrk ship: Pre-flight Setup Check (Phase 10)", () => {
   });
 
   afterEach(() => {
+    ledger.close();
     fs.rmSync(tempDir, { recursive: true, force: true });
     vi.restoreAllMocks();
     process.exitCode = 0;

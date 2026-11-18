@@ -2,22 +2,45 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import { execFileSync } from "node:child_process";
 import fs from "node:fs";
+import { tmpdir } from "node:os";
 import path from "node:path";
 import { Command } from "commander";
-import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createAgentPortAdapter } from "../adapters/agents/index.js";
 import * as runsModule from "../db/runs.js";
 import { ShipOrchestrator } from "../engine/ship-orchestrator.js";
 import type { AgentPort } from "../ports/agent-port.js";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { discoverGitIdentityFacts } from "../adapters/git/project-id.js";
+import { getDb, getTestDb } from "../db/index.js";
+import { normalizeRegistryRepo } from "../db/project-registry.js";
+import { PlanStore } from "../engine/plan-store.js";
+import {
+  listRoutingDecisions,
+  recordDecision,
+} from "../adapters/sqlite/routing-decisions.js";
 import * as execModule from "../utils/exec.js";
 import * as uiModule from "../utils/format.js";
+import { resolveProjectId } from "../utils/project-id.js";
 import * as stateModule from "../utils/state.js";
 import {
   loadSetupState,
   isSetupComplete,
 } from "../utils/setup-state.js";
 import { shipCommand } from "./ship.js";
+
+vi.mock("../db/index.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../db/index.js")>();
+  return { ...actual, getDb: vi.fn() };
+});
+
+let routingDb: ReturnType<typeof getTestDb>;
+beforeEach(() => {
+  routingDb = getTestDb();
+  vi.mocked(getDb).mockReturnValue(routingDb);
+});
+afterEach(() => routingDb.close());
 
 // Mock dependencies
 vi.mock("../utils/exec.js", () => ({
@@ -70,11 +93,17 @@ vi.mock("../utils/config.js", async (importOriginal) => {
   };
 });
 
-vi.mock("../db/runs.js", () => ({
-  startRun: vi.fn().mockReturnValue(999),
-  finishRun: vi.fn(),
-  recordHistory: vi.fn(),
-}));
+vi.mock("../db/runs.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../db/runs.js")>();
+  return {
+    ...actual,
+    ensureCheckoutProjectId: vi.fn(actual.ensureCheckoutProjectId),
+    resolveCheckoutProjectId: vi.fn((checkout, conn) => actual.resolveCheckoutProjectId(checkout, conn ?? routingDb)),
+    startRun: vi.fn().mockReturnValue(999),
+    finishRun: vi.fn(),
+    recordHistory: vi.fn(),
+  };
+});
 
 vi.mock("../utils/format.js", () => ({
   fail: vi.fn(),
@@ -907,4 +936,151 @@ describe("Push upstream tracking for new branches", () => {
     expect(pushArgs).toContain("origin");
     expect(pushArgs).toContain("feat/014-plugin-system");
   });
+  it("uses the verified checkout owner for routing and the run ledger", async () => {
+    const { startRun } =
+      await vi.importActual<typeof runsModule>("../db/runs.js");
+    const checkout = fs.realpathSync(
+      fs.mkdtempSync(path.join(tmpdir(), "gwrk-ship-origin-")),
+    );
+    const cwd = vi.spyOn(process, "cwd").mockReturnValue(checkout);
+    const feature = "001-cli-core";
+    try {
+      execFileSync("git", ["init", "--quiet", checkout]);
+      const spec = path.join(checkout, "specs", feature);
+      fs.mkdirSync(spec, { recursive: true });
+      fs.writeFileSync(path.join(spec, "spec.md"), "# Ship fixture\n");
+      const localId = resolveProjectId(checkout);
+      const priorRun = startRun(
+        { feature_id: feature, command: "local" },
+        routingDb,
+      );
+      execFileSync("git", [
+        "-C",
+        checkout,
+        "remote",
+        "add",
+        "origin",
+        "https://github.com/org/alpha.git",
+      ]);
+      const remoteId = resolveProjectId(checkout);
+      expect(remoteId).not.toBe(localId);
+
+      const selectBackend = selectRoute;
+      const select = selectBackend.getMockImplementation()!;
+      selectBackend.mockImplementationOnce(async (context) => {
+        const selection = await select(context);
+        recordDecision(
+          {
+            ...context,
+            selectedBackend: selection.backend,
+            reason: selection.reason,
+            probeStatus: "fresh",
+          },
+          routingDb,
+        );
+        return selection;
+      });
+      vi.mocked(runsModule.startRun).mockImplementationOnce(startRun);
+
+      await program.parseAsync(["node", "test", "ship", feature, "1", "--legacy"]);
+
+      const [selection] = selectBackend.mock.calls[0];
+      const runs = runsModule.listRuns(feature, localId, routingDb);
+      expect(runs).toMatchObject([
+        { command: "ship", project_id: localId },
+        { id: priorRun, command: "local", project_id: localId },
+      ]);
+      expect(listRoutingDecisions(localId, selection.runId, routingDb))
+        .toMatchObject([{ projectId: localId, feature }]);
+      expect(listRoutingDecisions(remoteId, selection.runId, routingDb))
+        .toEqual([]);
+    } finally {
+      cwd.mockRestore();
+      fs.rmSync(checkout, { recursive: true, force: true });
+    }
+  });
+
+  it.each([
+    ["SQLITE_CANTOPEN", "open"],
+    ["SQLITE_CANTOPEN_ISDIR", "open"],
+    ["SQLITE_READONLY", "open"],
+    ["ENOTDIR", "open"],
+    ["SQLITE_READONLY_DBMOVED", "register"],
+  ])(
+    "ships with the default backend when the ledger reports %s during %s",
+    async (code, operation) => {
+      const unavailable = () => {
+        throw Object.assign(new Error("ledger cannot be written"), { code });
+      };
+      if (operation === "open") {
+        vi.mocked(getDb).mockImplementation(unavailable);
+      } else {
+        vi.mocked(runsModule.ensureCheckoutProjectId).mockImplementationOnce(unavailable);
+      }
+      process.exitCode = 0;
+
+      await program.parseAsync(["node", "test", "ship", "001-cli-core", "7"]);
+
+      expect(process.exitCode).toBe(0);
+      expect(selectRoute).toHaveBeenCalledWith(
+        expect.objectContaining({
+          projectId: resolveProjectId(process.cwd()),
+          ledgerAvailable: false,
+        }),
+      );
+      expect(
+        vi.mocked(ShipOrchestrator).mock.results[0]?.value.run,
+      ).toHaveBeenCalledOnce();
+      expect(getDb).toHaveBeenCalledOnce();
+      expect(runsModule.startRun).not.toHaveBeenCalled();
+      expect(runsModule.finishRun).not.toHaveBeenCalled();
+      expect(runsModule.recordHistory).not.toHaveBeenCalled();
+      expect(PlanStore).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each([
+    { backend: "default", agentArgs: [] },
+    { backend: "explicit", agentArgs: ["--agent", "forced-agent"] },
+  ])(
+    "rejects conflicting checkout ownership with the $backend backend",
+    async ({ agentArgs }) => {
+      const id = resolveProjectId(process.cwd());
+      routingDb
+        .prepare(
+          "INSERT INTO projects (id, name, path, github_repo) VALUES (?, ?, '', ?)",
+        )
+        .run(id, "Different repository", "other.example/conflicting/repo");
+      process.exitCode = 0;
+
+      await program.parseAsync([
+        "node", "test", "ship", "001-cli-core", "7", ...agentArgs,
+      ]);
+
+      expect(process.exitCode).toBe(1);
+      expect(selectRoute).not.toHaveBeenCalled();
+      expect(ShipOrchestrator).not.toHaveBeenCalled();
+      expect(runsModule.startRun).not.toHaveBeenCalled();
+    },
+  );
+
+  it("forwards the canonical checkout ID in a dry run", async () => {
+    const { remoteOriginUrl } = discoverGitIdentityFacts(process.cwd());
+    routingDb
+      .prepare("INSERT INTO projects (id, name, path, github_repo) VALUES (?, ?, ?, ?)")
+      .run("canonical", "Checkout", process.cwd(), normalizeRegistryRepo(remoteOriginUrl ?? null));
+    routingDb
+      .prepare("INSERT INTO project_aliases (alias_id, project_id) VALUES (?, ?)")
+      .run(resolveProjectId(process.cwd()), "canonical");
+
+    await program.parseAsync([
+      "node", "test", "ship", "001-cli-core", "1", "--dry-run",
+    ]);
+
+    expect(selectRoute).toHaveBeenCalledWith(
+      expect.objectContaining({ projectId: "canonical" }),
+    );
+  });
+
+
 });

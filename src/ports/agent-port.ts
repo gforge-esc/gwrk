@@ -66,6 +66,8 @@ export interface AgentTaskResult {
 
 export interface RoutingContext {
   type: string;
+  projectId?: string;
+  ledgerAvailable?: boolean;
   preview?: boolean;
   requireRegistry?: boolean;
   historyMode?: RoutingFacts["historyMode"];

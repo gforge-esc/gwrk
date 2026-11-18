@@ -21,11 +21,6 @@ vi.mock("../engine/ship-orchestrator.js", () => ({
 }));
 vi.mock("../server/ship-bridge.js", () => ({ ShipBridge: vi.fn() }));
 vi.mock("../engine/plan-store.js", () => ({ PlanStore: vi.fn() }));
-vi.mock("../db/runs.js", () => ({
-  startRun: vi.fn().mockReturnValue(1),
-  finishRun: vi.fn(),
-  recordHistory: vi.fn(),
-}));
 vi.mock("../utils/setup-state.js", () => ({
   loadSetupState: vi.fn(),
   isSetupComplete: () => true,
@@ -249,6 +244,34 @@ describe("ship with the real AgentPort router", () => {
     ]);
   });
 
+  it("isolates canonical project history in the unified quota tiebreak", async () => {
+    configureAgents("codex");
+    seedQuota(80, 90);
+    const { getDb } = await import("../db/index.js");
+    const { ensureCheckoutProjectId } = await import("../db/runs.js");
+    const db = getDb();
+    const owner = ensureCheckoutProjectId(root, db);
+    db.prepare("INSERT INTO projects (id, name, path) VALUES (?, ?, '')").run("legacy-owner", "Legacy owner");
+    db.prepare("INSERT INTO project_aliases (alias_id, project_id) VALUES (?, ?)").run("legacy-owner", owner);
+    db.prepare("INSERT INTO projects (id, name, path) VALUES (?, ?, '')").run("foreign-project", "Foreign project");
+    const insert = db.prepare("INSERT INTO runs (project_id, feature_id, command, agent_backend, exit_code) VALUES (?, ?, 'ship', ?, ?)");
+    insert.run(owner, feature, "codex", 1);
+    insert.run("legacy-owner", feature, "claude", 0);
+    for (let i = 0; i < 5; i++) {
+      insert.run("foreign-project", feature, "codex", 0);
+      insert.run("foreign-project", feature, "claude", 1);
+    }
+
+    await ship();
+
+    expect(ShipOrchestrator).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({ backend: "claude" }), undefined,
+    );
+    expect(await decisions()).toMatchObject([
+      { project_id: owner, selected_backend: "claude" },
+    ]);
+  });
+
   it.each([
     { codexPercent: 10, implement: "codex", backend: "claude", quota: 90 },
     { codexPercent: 80, implement: "claude", backend: "codex", quota: 80 },
@@ -258,11 +281,13 @@ describe("ship with the real AgentPort router", () => {
       configureAgents(implement);
       seedQuota(codexPercent);
       const { getDb } = await import("../db/index.js");
+      const { ensureCheckoutProjectId } = await import("../db/runs.js");
+      const projectId = ensureCheckoutProjectId(root, getDb());
       const insert = getDb().prepare(
-        "INSERT INTO runs (feature_id, command, agent_backend, exit_code) VALUES (?, 'ship', ?, ?)",
+        "INSERT INTO runs (project_id, feature_id, command, agent_backend, exit_code) VALUES (?, ?, 'ship', ?, ?)",
       );
-      insert.run(feature, "codex", 0);
-      insert.run(feature, "claude", 1);
+      insert.run(projectId, feature, "codex", 0);
+      insert.run(projectId, feature, "claude", 1);
 
       await ship();
 
@@ -514,7 +539,9 @@ describe("ship with the real AgentPort router", () => {
         ).toHaveBeenCalledExactlyOnceWith("codex");
         expect(codex.checkQuota).not.toHaveBeenCalled();
         expect(ShipOrchestrator).not.toHaveBeenCalled();
-        expect(fs.existsSync(dbPath)).toBe(false);
+        const { getDb } = await import("../db/index.js");
+        expect(getDb().prepare("SELECT COUNT(*) AS count FROM runs").get()).toEqual({ count: 0 });
+        expect(await decisions()).toEqual([]);
       } finally {
         vi.useRealTimers();
         release(false);

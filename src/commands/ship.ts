@@ -20,10 +20,13 @@ import {
   writeScopedStderr,
   writeScopedStdout,
 } from "../adapters/cli/output-scope.js";
+import { getDb } from "../db/index.js";
 import {
   finishRun as dbFinishRun,
   recordHistory as dbRecordHistory,
   startRun as dbStartRun,
+  ensureCheckoutProjectId,
+  resolveCheckoutProjectId,
 } from "../db/runs.js";
 import {
   isPolyglotSourceFile,
@@ -79,6 +82,27 @@ import { CommandError, withSignal } from "../utils/signal.js";
 
 const { GREEN, DIM, RESET, YELLOW, RED } = color;
 
+function loadShipProject(cwd: string): {
+  ledger: ReturnType<typeof getDb> | null;
+  projectId: string;
+} {
+  try {
+    const ledger = getDb();
+    return { ledger, projectId: ensureCheckoutProjectId(cwd, ledger) };
+  } catch (error) {
+    const code = error instanceof Error && "code" in error ? error.code : null;
+    const accessFailure =
+      typeof code === "string" &&
+      (/^SQLITE_(?:CANTOPEN|READONLY|PERM)(?:_|$)/.test(code) ||
+        ["EACCES", "EPERM", "ENOENT", "ENOTDIR", "EISDIR", "EROFS"].includes(
+          code,
+        ));
+    if (!accessFailure) throw error;
+    warnCli(`${YELLOW}⚠${RESET} Ship ledger unavailable: ${error}`);
+    return { ledger: null, projectId: resolveProjectId(cwd) };
+  }
+}
+
 // Best-effort ledger writes. The runs ledger is write-through metrics, NOT the
 // ship→harvest handoff — harvest correlates via the GitHub PR/branch and
 // backfills its own run row. So a ledger failure (e.g. a worktree/remote runner
@@ -92,6 +116,7 @@ function startRun(...args: Parameters<typeof dbStartRun>): number {
   }
 }
 function finishRun(...args: Parameters<typeof dbFinishRun>): void {
+  if (args[0] === -1) return;
   try {
     dbFinishRun(...args);
   } catch (e) {
@@ -128,14 +153,16 @@ async function shipPhase(
   backend: AgentBackendId,
   opts: Record<string, string | boolean | undefined>,
   cwd: string,
-  selectedModel?: string,
   overrides: {
     stateRoot?: string;
     branchName?: string;
+    projectId: string;
+    ledger: ReturnType<typeof getDb> | null;
     selectedEffort?: string;
     reviewModel?: string;
     reviewEffort?: string;
-  } = {},
+  },
+  selectedModel?: string,
 ): Promise<number> {
   // Resolve prefix: "003" → "003-slack"
   const feature = resolveFeature(featureInput, cwd);
@@ -230,16 +257,19 @@ async function shipPhase(
   const startCommit = getCurrentCommit(cwd);
   const runDevice = loadDevice();
 
-  const runId = startRun({
-    feature_id: feature,
-    phase_id: phaseId,
-    command: "ship",
-    agent_backend: backend,
-    model: selectedModel,
-    workflow: "work-until-done",
-    device_id: runDevice?.id,
-    hostname: runDevice?.hostname,
-  });
+  const runId = overrides.ledger
+    ? startRun({
+        project_id: overrides.projectId,
+        feature_id: feature,
+        phase_id: phaseId,
+        command: "ship",
+        agent_backend: backend,
+        model: selectedModel,
+        workflow: "work-until-done",
+        device_id: runDevice?.id,
+        hostname: runDevice?.hostname,
+      })
+    : -1;
 
   banner("ship", {
     Feature: feature,
@@ -318,10 +348,12 @@ async function shipPhase(
       // Wire events to bridge for Slack notifications
       new ShipBridge(orchestrator, cwd);
 
-      const planStore = new PlanStore(resolveProjectId(cwd));
-      orchestrator.on("plan:ship:complete", (event) => {
-        planStore.handleShipComplete(event);
-      });
+      if (overrides.ledger) {
+        const planStore = new PlanStore(overrides.projectId, overrides.ledger);
+        orchestrator.on("plan:ship:complete", (event) => {
+          planStore.handleShipComplete(event);
+        });
+      }
 
       exitCode = await orchestrator.run();
       if (exitCode !== 0) {
@@ -444,13 +476,16 @@ async function shipPhase(
       ),
     });
 
-    recordHistory({
-      feature_id: feature,
-      run_id: runId,
-      from_status: "open",
-      to_status: exitCode === 0 ? "completed" : "open",
-      metadata: JSON.stringify({ command: "ship", manifestId }),
-    });
+    if (overrides.ledger) {
+      recordHistory({
+        project_id: overrides.projectId,
+        feature_id: feature,
+        run_id: runId,
+        from_status: "open",
+        to_status: exitCode === 0 ? "completed" : "open",
+        metadata: JSON.stringify({ command: "ship", manifestId }),
+      });
+    }
 
     // Post-manifest commit: ensure working tree is clean before returning.
     try {
@@ -755,56 +790,6 @@ Examples:
               return;
             }
 
-            // tasks.json and the plan graph are two records of the same fact and
-            // can disagree — regenerating tasks.json wipes completion flags, so
-            // shipped phases read as open and get rebuilt for nothing. Neither is
-            // authoritative enough to overrule the other (the graph's SHIPPED is
-            // promoted from ship-run existence, not a passing gate), so surface
-            // the conflict instead of silently believing one side.
-            if (!opts.force && !opts.dryRun) {
-              try {
-                const graphStatuses = new Map<string, string>(
-                  new PlanStore(resolveProjectId(cwd))
-                    .getPlanStatus()
-                    .features.flatMap((f) =>
-                      f.phases.map((p) => [p.id, p.status] as [string, string]),
-                    ),
-                );
-                const drift = findShippedDrift(feature, phases, graphStatuses);
-                if (drift.length > 0) {
-                  logCliError(
-                    `${YELLOW}⚠${RESET} tasks.json and the build plan disagree about ${drift.length} phase(s):`,
-                  );
-                  for (const id of drift) {
-                    logCliError(
-                      `    ${id}: graph=${graphStatuses.get(id)}, tasks.json=open`,
-                    );
-                  }
-                  logCliError(
-                    "  Shipping would re-implement work the plan already records as shipped.",
-                  );
-                  logCliError("  Resolve, then re-run:");
-                  logCliError(
-                    `    gwrk ship ${feature} <phase>   # ship one phase explicitly, bypassing selection`,
-                  );
-                  logCliError(
-                    "    …or mark the tasks completed in tasks.json if the graph is right",
-                  );
-                  logCliError(
-                    `    …or gwrk ship ${feature} --force   # if tasks.json is right and the graph is stale`,
-                  );
-                  throw new CommandError(
-                    `Refusing to re-ship ${drift.length} phase(s) the build plan records as shipped`,
-                    1,
-                  );
-                }
-              } catch (driftErr) {
-                // A missing/empty graph must not block shipping — only a real
-                // conflict does.
-                if (driftErr instanceof CommandError) throw driftErr;
-              }
-            }
-
             logCliOutput(
               `${GREEN}▶${RESET} Shipping feature ${feature}: ${phases.length} phases${DIM} (${phases.map((p) => `P${p}`).join(", ")})${RESET}`,
             );
@@ -839,6 +824,7 @@ Examples:
             try {
               const implementation = await agentPort.selectRoute({
                 ...implementationRoute,
+                projectId: resolveCheckoutProjectId(cwd),
                 preview: true,
               });
               const { adapterModel } = implementation;
@@ -879,6 +865,58 @@ Examples:
               dryRunFmt(`${scriptPath} ${feature} ${p}`);
             }
             return;
+          }
+
+          const { ledger, projectId } = loadShipProject(cwd);
+
+          // tasks.json and the plan graph are two records of the same fact and
+          // can disagree — regenerating tasks.json wipes completion flags, so
+          // shipped phases read as open and get rebuilt for nothing. Neither is
+          // authoritative enough to overrule the other (the graph's SHIPPED is
+          // promoted from ship-run existence, not a passing gate), so surface
+          // the conflict instead of silently believing one side.
+          if (!phase && !opts.force && ledger) {
+            try {
+              const graphStatuses = new Map<string, string>(
+                new PlanStore(projectId, ledger)
+                  .getPlanStatus()
+                  .features.flatMap((f) =>
+                    f.phases.map((p) => [p.id, p.status] as [string, string]),
+                  ),
+              );
+              const drift = findShippedDrift(feature, phases, graphStatuses);
+              if (drift.length > 0) {
+                logCliError(
+                  `${YELLOW}⚠${RESET} tasks.json and the build plan disagree about ${drift.length} phase(s):`,
+                );
+                for (const id of drift) {
+                  logCliError(
+                    `    ${id}: graph=${graphStatuses.get(id)}, tasks.json=open`,
+                  );
+                }
+                logCliError(
+                  "  Shipping would re-implement work the plan already records as shipped.",
+                );
+                logCliError("  Resolve, then re-run:");
+                logCliError(
+                  `    gwrk ship ${feature} <phase>   # ship one phase explicitly, bypassing selection`,
+                );
+                logCliError(
+                  "    …or mark the tasks completed in tasks.json if the graph is right",
+                );
+                logCliError(
+                  `    …or gwrk ship ${feature} --force   # if tasks.json is right and the graph is stale`,
+                );
+                throw new CommandError(
+                  `Refusing to re-ship ${drift.length} phase(s) the build plan records as shipped`,
+                  1,
+                );
+              }
+            } catch (driftErr) {
+              // A missing/empty graph must not block shipping — only a real
+              // conflict does.
+              if (driftErr instanceof CommandError) throw driftErr;
+            }
           }
 
           // Ship each phase sequentially — stop on first failure.
@@ -924,6 +962,8 @@ Examples:
             for (const p of phases) {
               const phaseContext = {
                 ...routeContext,
+                projectId,
+                ledgerAvailable: ledger !== null,
                 runId: `ship-${feature}-${Date.now()}`,
                 phase: `phase-${p.padStart(2, "0")}`,
               };
@@ -945,9 +985,10 @@ Examples:
                 implementation.backend,
                 opts,
                 shipCwd,
-                selectedModel,
                 {
                   ...overrides,
+                  projectId,
+                  ledger,
                   selectedEffort: implementation.effort,
                   reviewModel:
                     implementation.reviewModel ??
@@ -956,6 +997,7 @@ Examples:
                       : undefined),
                   reviewEffort: implementation.reviewEffort,
                 },
+                selectedModel,
               );
               if (exitCode !== 0) {
                 finalExitCode = exitCode;

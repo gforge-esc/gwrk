@@ -39,3 +39,11 @@ export function computeProjectId(facts: ProjectIdentityFacts): string {
     .update(computeProjectKey(facts))
     .digest("hex");
 }
+
+export function computeLegacyProjectIds(facts: ProjectIdentityFacts): string[] {
+  const keys = [`path:${facts.projectRoot}`, facts.projectRoot];
+  if (facts.gitCommonDir) {
+    keys.push(computeProjectKey({ ...facts, remoteOriginUrl: null }));
+  }
+  return keys.map((key) => crypto.createHash("md5").update(key).digest("hex"));
+}

@@ -8,9 +8,23 @@ import { homedir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import Database from "better-sqlite3";
+import {
+  computeLegacyProjectIds,
+  computeProjectId,
+} from "../domain/project-id.js";
+import {
+  canonicalProjectId,
+  discoverVerifiedCheckout,
+  normalizeRegistryRepo,
+  prepareProjectLedgerLookup,
+} from "./project-registry.js";
 
 import { resolveGwrkPaths } from "../domain/gwrk-paths.js";
 const MIGRATIONS_DIR = fileURLToPath(new URL("./migrations", import.meta.url));
+
+const PROJECT_REGISTRY_MIGRATION =
+  "014-project-registry-and-composite-keys.sql";
+const PLAN_WRITE_ORDER_MIGRATION = "016-plan-write-order.sql";
 
 let _db: Database.Database | undefined;
 
@@ -69,7 +83,7 @@ export function closeDb(): void {
  * Tracks applied migrations in a _migrations table.
  */
 function runMigrations(db: Database.Database, migrationsDir: string): void {
-  db.transaction(applyMigrations).immediate(db, migrationsDir);
+  applyMigrations(db, migrationsDir);
 }
 
 function applyMigrations(db: Database.Database, migrationsDir: string): void {
@@ -100,13 +114,27 @@ function applyMigrations(db: Database.Database, migrationsDir: string): void {
   for (const file of files) {
     if (applied.has(file)) continue;
 
-    const sql = fs.readFileSync(path.join(migrationsDir, file));
+    const sql = fs.readFileSync(path.join(migrationsDir, file), "utf-8");
     const digest = createHash("sha256").update(sql).digest("hex");
-    db.exec(sql.toString("utf8"));
-    db.prepare("INSERT INTO _migrations (name, sha256) VALUES (?, ?)").run(
-      file,
-      digest,
-    );
+    if (file === PROJECT_REGISTRY_MIGRATION) {
+      migrateProjectRegistry(db, sql, digest);
+    } else {
+      db.transaction(() => {
+        if (db.prepare("SELECT 1 FROM _migrations WHERE name = ?").get(file))
+          return;
+        if (file === PLAN_WRITE_ORDER_MIGRATION) {
+          for (const table of ["plan_phases", "plan_proposals"]) {
+            safeAddColumn(db, table, "write_seq", "INTEGER NOT NULL DEFAULT 0");
+          }
+        } else {
+          db.exec(sql);
+        }
+        db.prepare("INSERT INTO _migrations (name, sha256) VALUES (?, ?)").run(
+          file,
+          digest,
+        );
+      }).immediate();
+    }
   }
 
   // Post-migration idempotent column additions.
@@ -134,6 +162,172 @@ function applyMigrations(db: Database.Database, migrationsDir: string): void {
   ];
   for (const table of scopedTables) {
     safeAddColumn(db, table, "project_id", "TEXT");
+  }
+}
+
+function migrateProjectRegistry(
+  db: Database.Database,
+  sql: string,
+  digest: string,
+): void {
+  // Use the same rebuild as standalone SQL and commit the checkout backfill with it.
+  const begin = "BEGIN IMMEDIATE;";
+  const start = sql.indexOf(begin);
+  const end = sql.lastIndexOf("COMMIT;");
+  if (start < 0 || end <= start)
+    throw new Error("Missing migration 014 transaction boundaries");
+  const rebuild = sql.slice(start + begin.length, end);
+
+  db.pragma("foreign_keys = OFF");
+  try {
+    db.transaction(() => {
+      const migration = db.prepare("SELECT 1 FROM _migrations WHERE name = ?");
+      if (migration.get(PROJECT_REGISTRY_MIGRATION)) return;
+      safeAddColumn(db, "issues", "html_url", "TEXT");
+      db.exec(rebuild);
+      backfillCheckoutRoots(db);
+      hydratePlanPlaceholders(db);
+      if (db.pragma("foreign_key_check", { simple: true }) !== undefined) {
+        throw new Error("Migration 014 left a foreign key violation");
+      }
+      db.prepare("INSERT INTO _migrations (name, sha256) VALUES (?, ?)").run(
+        PROJECT_REGISTRY_MIGRATION,
+        digest,
+      );
+    }).immediate();
+  } finally {
+    db.pragma("foreign_keys = ON");
+  }
+}
+
+function backfillCheckoutRoots(db: Database.Database): void {
+  const projects = db
+    .prepare("SELECT id, path, github_repo FROM projects WHERE path <> ''")
+    .all() as { id: string; path: string; github_repo: string | null }[];
+  const setRoot = db.prepare("UPDATE projects SET local_root = ? WHERE id = ?");
+  const hasProject = db.prepare("SELECT 1 FROM projects WHERE id = ?");
+  const addAlias = db.prepare(`
+    INSERT INTO project_aliases (alias_id, project_id) VALUES (@alias, @id)
+    ON CONFLICT(alias_id) DO NOTHING
+  `);
+  const hasRecords = prepareProjectLedgerLookup(db);
+  const verified = [];
+  for (const { id, path: checkout, github_repo } of projects) {
+    const suffix = `#${id}`;
+    const facts =
+      discoverVerifiedCheckout(checkout) ??
+      (checkout.endsWith(suffix)
+        ? discoverVerifiedCheckout(checkout.slice(0, -suffix.length))
+        : null);
+    if (!facts) continue;
+    const storedRepo = normalizeRegistryRepo(github_repo);
+    const origin = normalizeRegistryRepo(facts.remoteOriginUrl ?? null);
+    if (storedRepo !== null && storedRepo !== origin) continue;
+
+    const canonical = computeProjectId(facts);
+    const aliases = computeLegacyProjectIds(facts);
+    const matchesPreOriginId =
+      github_repo === null &&
+      origin !== null &&
+      facts.gitCommonDir &&
+      id === computeProjectId({ ...facts, remoteOriginUrl: null });
+    if (
+      id !== canonical &&
+      !matchesPreOriginId &&
+      (!aliases.includes(id) || storedRepo !== origin)
+    ) {
+      continue;
+    }
+
+    setRoot.run(facts.projectRoot, id);
+    verified.push({ id, canonical, origin, storedRepo, aliases });
+  }
+
+  const remoteOwners = new Set(
+    verified
+      .filter(
+        ({ id, canonical, origin }) => id === canonical && origin !== null,
+      )
+      .map(({ id }) => id),
+  );
+  const storedProjects = new Map(projects.map((row) => [row.id, row]));
+  for (const { id, canonical, origin, storedRepo, aliases } of verified) {
+    const canonicalRow = storedProjects.get(canonical);
+    const canonicalPath = canonicalRow?.path;
+    const canonicalSuffix = `#${canonical}`;
+    const missingCanonicalCheckout =
+      canonicalPath !== undefined &&
+      !fs.existsSync(canonicalPath) &&
+      (!canonicalPath.endsWith(canonicalSuffix) ||
+        !fs.existsSync(canonicalPath.slice(0, -canonicalSuffix.length)));
+    const hasCanonicalOwner =
+      remoteOwners.has(canonical) ||
+      (origin !== null &&
+        missingCanonicalCheckout &&
+        normalizeRegistryRepo(canonicalRow?.github_repo ?? null) === origin);
+    if (
+      id !== canonical &&
+      hasCanonicalOwner &&
+      origin === storedRepo &&
+      aliases.includes(id) &&
+      canonicalProjectId(db, canonical) === canonical
+    ) {
+      addAlias.run({ alias: id, id: canonical });
+    }
+  }
+  for (const { id, aliases } of verified) {
+    const owner = canonicalProjectId(db, id);
+    for (const alias of aliases) {
+      // A path hash alone cannot establish ownership of an existing ledger.
+      if (!hasProject.get(alias) && !hasRecords.get({ id: alias })) {
+        addAlias.run({ alias, id: owner });
+      }
+    }
+  }
+}
+
+function hydratePlanPlaceholders(db: Database.Database): void {
+  for (const [table, placeholders, columns] of [
+    [
+      "plan_features",
+      "migration_014_feature_placeholders",
+      ["name", "status", "sp_total", "created_at", "updated_at"],
+    ],
+    [
+      "plan_phases",
+      "migration_014_phase_placeholders",
+      [
+        "name",
+        "status",
+        "health",
+        "sp_estimate",
+        "sp_actual",
+        "duration_ms",
+        "completed_at",
+        "evidence",
+        "seq",
+        "created_at",
+        "updated_at",
+      ],
+    ],
+  ] as const) {
+    db.exec(`
+      UPDATE ${table} AS target
+      SET ${columns.map((column) => `${column} = original.${column}`).join(", ")}
+      FROM ${placeholders} AS placeholder
+      JOIN ${table} AS original
+        ON original.id = placeholder.id AND original.project_id <> placeholder.project_id
+      LEFT JOIN project_aliases AS target_alias ON target_alias.alias_id = placeholder.project_id
+      LEFT JOIN project_aliases AS original_alias ON original_alias.alias_id = original.project_id
+      WHERE target.id = placeholder.id AND target.project_id = placeholder.project_id
+        AND COALESCE(target_alias.project_id, placeholder.project_id) =
+            COALESCE(original_alias.project_id, original.project_id)
+        AND NOT EXISTS (
+          SELECT 1 FROM ${placeholders} AS synthetic
+          WHERE synthetic.id = original.id AND synthetic.project_id = original.project_id
+        );
+      DROP TABLE ${placeholders};
+    `);
   }
 }
 

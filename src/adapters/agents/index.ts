@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { getBackendSuccessRate, getRoutingHistory } from "../../db/plugins.js";
+import { resolveCheckoutProjectId } from "../../db/runs.js";
 import {
   type BackendQuotaSnapshot,
   type HistoricalBackendStat,
@@ -16,7 +17,6 @@ import { AgentBackendRegistry } from "../../plugins/agent-registry.js";
 import { PluginLoader } from "../../plugins/loader.js";
 import type { AgentPort, RoutingContext } from "../../ports/agent-port.js";
 import { loadConfig } from "../../utils/config.js";
-import { resolveProjectId } from "../../utils/project-id.js";
 import { recordDecision } from "../sqlite/routing-decisions.js";
 import { QuotaProber, type QuotaReading } from "./quota-prober.js";
 import {
@@ -55,7 +55,11 @@ function routingHistory(
   projectRoot: string,
 ): HistoricalBackendStat[] {
   try {
-    const rows = getRoutingHistory(taskType, resolveProjectId(projectRoot), 50);
+    const rows = getRoutingHistory(
+      taskType,
+      resolveCheckoutProjectId(projectRoot),
+      50,
+    );
     const grouped = new Map<string, { runs: number; successes: number }>();
     for (const row of rows) {
       const stat = grouped.get(row.selected_backend) ?? {
@@ -93,15 +97,19 @@ async function selectAvailableRoute(
   const quotaFirst = context.historyMode === "quota-tiebreak";
   const installedOnly = context.backendEligibility === "installed";
   const scriptOwned = context.backendEligibility === "script-owned";
-  const history = context.explicitBackend
-    ? []
-    : quotaFirst
-      ? Object.keys(agentRegistry?.backends ?? {}).map((backend) => ({
-          backend,
-          runs: 0,
-          successRate: getBackendSuccessRate(backend),
-        }))
-      : routingHistory(context.type, projectRoot);
+  const history =
+    context.explicitBackend || context.ledgerAvailable === false
+      ? []
+      : quotaFirst
+        ? Object.keys(agentRegistry?.backends ?? {}).map((backend) => ({
+            backend,
+            runs: 0,
+            successRate: getBackendSuccessRate(
+              backend,
+              context.projectId ?? resolveCheckoutProjectId(projectRoot),
+            ),
+          }))
+        : routingHistory(context.type, projectRoot);
   const configured = quotaFirst
     ? undefined
     : (config.agents as Record<string, unknown>)?.[context.type];
@@ -315,13 +323,21 @@ async function selectAvailableRoute(
         }),
       };
       const { type, runId, feature, phase, taskSP } = context;
-      if (type === "implement" && runId && feature && phase) {
+      if (
+        context.ledgerAvailable !== false &&
+        type === "implement" &&
+        runId &&
+        feature &&
+        phase
+      ) {
         const dispatchModel = adapterModel === null ? "default" : adapterModel;
         const adapterDefault =
           useAdapterModelDefaults && typeof adapterModel === "string";
         try {
           recordDecision({
             runId,
+            projectId:
+              context.projectId ?? resolveCheckoutProjectId(projectRoot),
             feature,
             phase,
             selectedBackend: selected.backend,

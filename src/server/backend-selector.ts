@@ -6,7 +6,7 @@ import type {
   QuotaProber,
   QuotaReading,
 } from "../adapters/agents/quota-prober.js";
-import { exitCli, logCliError } from "../adapters/cli/output-scope.js";
+import { exitCli, logCliError, warnCli } from "../adapters/cli/output-scope.js";
 import { recordDecision } from "../adapters/sqlite/routing-decisions.js";
 import { getBackendSuccessRate } from "../db/plugins.js";
 import type { AgentRegistry } from "../domain/agent-config.js";
@@ -18,6 +18,8 @@ import { classifyTask } from "../domain/types.js";
 
 export interface TaskContext {
   runId: string;
+  projectId?: string;
+  ledgerAvailable?: boolean;
   feature: string;
   phase: string;
   taskType: string;
@@ -57,7 +59,10 @@ export class BackendSelector {
     const history = backends.map(({ name }) => ({
       backend: name,
       runs: 0,
-      successRate: getBackendSuccessRate(name),
+      successRate:
+        context.ledgerAvailable === false
+          ? 0
+          : getBackendSuccessRate(name, context.projectId ?? "legacy-local"),
     }));
     for (const backend of backends) {
       const { name } = backend;
@@ -120,20 +125,27 @@ export class BackendSelector {
       quotaPercent: reading.percent,
       probeStatus: reading.status,
     };
-    recordDecision({
-      runId: context.runId,
-      feature: context.feature,
-      phase: context.phase,
-      selectedBackend: selection.backend,
-      selectedModel: selection.model,
-      taskClassification: selection.taskClassification,
-      reason: selection.reason,
-      quotaPercent: selection.quotaPercent,
-      probeStatus: selection.probeStatus,
-      taskSp: context.taskSP,
-      fallbackUsed: selection.fallbackUsed,
-      modelFailoverUsed: selection.modelFailoverUsed,
-    });
+    if (context.ledgerAvailable !== false) {
+      try {
+        recordDecision({
+          runId: context.runId,
+          projectId: context.projectId,
+          feature: context.feature,
+          phase: context.phase,
+          selectedBackend: selection.backend,
+          selectedModel: selection.model,
+          taskClassification: selection.taskClassification,
+          reason: selection.reason,
+          quotaPercent: selection.quotaPercent,
+          probeStatus: selection.probeStatus,
+          taskSp: context.taskSP,
+          fallbackUsed: selection.fallbackUsed,
+          modelFailoverUsed: selection.modelFailoverUsed,
+        });
+      } catch (error) {
+        warnCli(`Routing decision recording skipped: ${error}`);
+      }
+    }
     return selection;
   }
 }

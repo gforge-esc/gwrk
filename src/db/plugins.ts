@@ -4,16 +4,25 @@
 
 import type Database from "better-sqlite3";
 import { getDb } from "./index.js";
+import { projectScope } from "./project-registry.js";
 
-export function getBackendSuccessRate(backendName: string): number {
+export function getBackendSuccessRate(
+  backendName: string,
+  projectId?: string,
+): number {
   try {
-    const result = getDb()
+    const db = getDb();
+    const scope = projectId ? projectScope(db, projectId) : undefined;
+    const result = db
       .prepare(
         `SELECT COUNT(*) AS total,
                 SUM(CASE WHEN exit_code = 0 THEN 1 ELSE 0 END) AS successes
-         FROM runs WHERE agent_backend = ?`,
+         FROM runs WHERE agent_backend = ?${scope ? ` AND project_id IN (${scope.placeholders})` : ""}`,
       )
-      .get(backendName) as { total: number; successes: number };
+      .get(backendName, ...(scope?.ids ?? [])) as {
+      total: number;
+      successes: number;
+    };
     return result.total === 0 ? 0 : result.successes / result.total;
   } catch {
     return 0;
@@ -104,9 +113,10 @@ export function getRoutingHistory(
   db?: Database.Database,
 ): RoutingDecision[] {
   const conn = db ?? getDb();
+  const { ids, placeholders } = projectScope(conn, projectId);
   return conn
     .prepare(
-      "SELECT * FROM routing_history WHERE task_type = ? AND project_id = ? ORDER BY created_at DESC LIMIT ?",
+      `SELECT * FROM routing_history WHERE task_type = ? AND project_id IN (${placeholders}) ORDER BY created_at DESC LIMIT ?`,
     )
-    .all(taskType, projectId, limit) as RoutingDecision[];
+    .all(taskType, ...ids, limit) as RoutingDecision[];
 }
