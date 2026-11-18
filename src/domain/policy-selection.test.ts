@@ -206,6 +206,17 @@ describe("Project policy composition", () => {
       reason: "legacy-global-unscoped",
     });
 
+    // Bundled framework guidance suppresses missing-framework-binding gap
+    const fastifyResult = composeEffectivePolicy({
+      profile: {
+        type: "webapp",
+        stack: { language: "TypeScript", framework: "Fastify" },
+      },
+      candidates: [],
+    });
+    expect(fastifyResult.frameworkGuidance).toBeDefined();
+    expect(fastifyResult.gaps).toEqual([]);
+
     // Missing framework binding gap when profile specifies framework but no candidates exist
     const noFrameworkResult = composeEffectivePolicy({
       profile: {

@@ -82,22 +82,24 @@
           "id": "T007",
           "title": "Modify manifest.ts",
           "description": "MODIFY src/plugins/manifest.ts. Add optional `architectures` and `principles` and `projectScope` selectors plus `\"define\"` scope. Tests: src/plugins/manifest.test.ts",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/phase-02.sh",
-          "sp": 1
+          "sp": 1,
+          "completedAt": "2026-11-18T17:55:00.000Z"
         },
         {
           "id": "T008",
           "title": "Modify architecture-context.ts",
           "description": "MODIFY src/domain/architecture-context.ts. Export pure `lookupLanguageGuidance` and `lookupFrameworkGuidance` helpers",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/phase-02.sh",
-          "sp": 1
+          "sp": 1,
+          "completedAt": "2026-11-18T17:55:00.000Z"
         },
         {
           "id": "T009",
           "title": "Create policy-selection.ts",
-          "description": "NEW src/domain/policy-selection.ts. Implement pure `evaluateEnforcementCandidate` and `composeEffectivePolicy` with override precedence and gap records. Tests: src/domain/policy-selection.test.ts",
+          "description": "NEW src/domain/policy-selection.ts. Implement pure `evaluateEnforcementCandidate` and `composeEffectivePolicy` with override precedence and gap records. Tests: src/domain/policy-selection.test.ts\n\nREVIEW FAIL (code): Framework gap contradicts bundled guidance — FR-002.\n  WHERE: src/domain/policy-selection.ts:284-318\n  EXPECTED: composeEffectivePolicy({ profile: { type: \"webapp\", stack: { language: \"TypeScript\", framework: \"Fastify\" }, design }, candidates: [] }) returns frameworkGuidance defined and gaps without \"missing-framework-binding\". Record \"missing-framework-binding\" only when lookupFrameworkGuidance(framework) is undefined and no framework candidate exists. This matches the language gap rule at lines 271-282.\n  ACTUAL: The same result carries frameworkGuidance (the bundled Fastify text) and gaps: [{ kind: \"missing-framework-binding\", subject: \"Fastify\", message: \"No bundled framework binding or policy for Fastify.\" }]. Django, FastAPI, Express, React, Next.js, Gin, Chi, Axum and Clap behave the same. Phase 4 contextMarkdown would render a false gap beside the bundled guidance and change manifest hashes for every project without an installed pack.\n  FIX: In the framework gap block, push \"missing-framework-binding\" only when !hasSelectedFrameworkSkill && !hadFrameworkCandidate && lookupFrameworkGuidance(framework) === undefined. Keep \"incompatible-framework-policy\" when framework candidates exist and none is compatible. Add a src/domain/policy-selection.test.ts case for Fastify with candidates: [] asserting frameworkGuidance is defined and gaps toEqual([]). Keep the Svelte case asserting \"missing-framework-binding\". Run gates/phase-02.sh before the fix to observe RED.\n\nREVIEW/GATE DIVERGENCE (T009, gate: gates/phase-02.sh, REVIEW FAIL block appended, status left unchanged):\nThe review agent raised a finding on this task and its gate still passes, so the gate does not cover what review found. Add a test that fails on it, then fix, before completing.",
           "status": "open",
           "gateScript": "gates/phase-02.sh",
           "sp": 2
@@ -106,9 +108,10 @@
           "id": "T010",
           "title": "Modify index.ts",
           "description": "MODIFY src/domain/index.ts. Export policy selection contracts and pure helpers",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/phase-02.sh",
-          "sp": 1
+          "sp": 1,
+          "completedAt": "2026-11-18T17:55:00.000Z"
         }
       ],
       "sp_estimate": 5,

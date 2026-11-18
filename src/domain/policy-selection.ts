@@ -307,7 +307,7 @@ export function composeEffectivePolicy(
           subject: framework,
           message: `No compatible policy found for framework ${framework}.`,
         });
-      } else {
+      } else if (lookupFrameworkGuidance(framework) === undefined) {
         gaps.push({
           kind: "missing-framework-binding",
           subject: framework,
