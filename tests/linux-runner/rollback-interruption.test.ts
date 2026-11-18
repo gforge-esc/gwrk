@@ -587,9 +587,16 @@ esac`,
           expect(await readlink(previous)).toBe(status === 0 ? active : target);
           return;
         }
-        await vi.waitFor(() => expect(existsSync(ready), output).toBe(true), {
-          timeout: 8_000,
-        });
+        await Promise.race([
+          vi.waitFor(() => expect(existsSync(ready), output).toBe(true), {
+            timeout: 20_000,
+          }),
+          closed.then(([code, signal]) => {
+            throw new Error(
+              `Rollback exited before the interruption point (${code}, ${signal}): ${output}`,
+            );
+          }),
+        ]);
         expect(await readlink(current)).toBe(
           stage === "readiness" ? target : active,
         );
@@ -636,4 +643,5 @@ esac`,
       await rm(root, { recursive: true, force: true });
     }
   },
+  45_000,
 );

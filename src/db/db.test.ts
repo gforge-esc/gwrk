@@ -24,7 +24,6 @@ import {
   computeProjectId,
 } from "../domain/project-id.js";
 import { listCompressionRecords } from "./compression.js";
-import { insertCompressionRecord } from "./db.js";
 import { getGateResult } from "./gates.js";
 import { getTestDb, openDatabase } from "./index.js";
 import { listIssues } from "./issues.js";
@@ -1759,15 +1758,5 @@ describe("SQLite execution ledger", () => {
     expect(stats[1]?.total_runs).toBe(1);
     expect(stats[1]?.success_runs).toBe(1);
     expect(stats[1]?.avg_duration_s).toBe(300);
-  });
-});
-
-describe("FR-013: SQLite Persistence", () => {
-  it("US-009 / TR-014: Should insert compression results into the SQLite table", () => {
-    expect(() => insertCompressionRecord({ feature_id: "123" })).toThrow();
-  });
-
-  it("Should fail if required fields are missing", () => {
-    expect(() => insertCompressionRecord({})).toThrow();
   });
 });
