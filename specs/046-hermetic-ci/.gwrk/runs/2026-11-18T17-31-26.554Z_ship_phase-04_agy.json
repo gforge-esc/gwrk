@@ -1,0 +1,26 @@
+{
+  "runId": "2026-11-18T17:31:26.554Z_ship_p04",
+  "feature": "046-hermetic-ci",
+  "phase": "phase-04",
+  "command": "ship",
+  "agent": "agy",
+  "model": "unknown",
+  "usage": {
+    "inputTokens": 382018,
+    "outputTokens": 48619,
+    "totalTokens": 430637
+  },
+  "startedAt": "2026-11-18T17:31:26.554Z",
+  "finishedAt": "2026-11-18T18:06:09.437Z",
+  "durationS": 2083,
+  "exitCode": 1,
+  "attempt": 1,
+  "gateResult": "PASS",
+  "reviewVerdict": "GO",
+  "filesChanged": 2,
+  "linesAdded": 32,
+  "linesDeleted": 4,
+  "gitCommit": "23995377bd110409bdbd1eb485b5c2ba8f35967e",
+  "gitBranch": "feat/046-hermetic-ci",
+  "digest": []
+}
