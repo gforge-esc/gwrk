@@ -44,4 +44,4 @@ The combined candidate previously passed 3,163 tests. Native Linux previously pa
 
 Private cleanup archives tracked deltas and untracked source before removing an owned ship worktree. It also preserves ignored review evidence. A disposable worktree verified all three preservation cases. Existing tracked manifests and review history remain intact.
 
-Hosted pilot 051 and project rollout 052 remain subsequent stages. Live deployment, DNS, Google authentication configuration and project enrollment are external prerequisites. Live notifications remain unverified.
+Hosted pilot 051 and project rollout 052 remain subsequent stages. Live deployment and DNS are external prerequisites. Google authentication configuration and project enrollment are external prerequisites. Live notifications remain unverified.
