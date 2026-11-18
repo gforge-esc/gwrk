@@ -79,7 +79,11 @@ The TR-012 host dispatch fixture uses `docs/architecture.md` and sets `project.t
 
 Each dry run checks for Python enforcement and host guidance. It excludes GWRK paths and verification commands. It also excludes TypeScript enforcement and GWRK repository conventions.
 
-TR-012 also checks both definition and code review workflows in Python hosts configured with `project.type` set to `gwrk-native` or `gwrk-cli`. Only verified GWRK checkouts receive GWRK-specific paths and commands.
+The Python host dispatch tests (TR-012) cover both `gwrk-native` and `gwrk-cli` type labels. The prompts retain the detected layout and exclude GWRK paths and commands. Specification includes host dependency guidance. Planning includes host verification guidance and the fenced pytest Done When example.
+
+Both reviews include host verification and schema guidance. The tests check Principal Engineer attribution and project lead escalation.
+
+The native guard tests in `src/engine/prompt-conditioner.test.ts` (TR-031.2 and TR-031.3) require verified GWRK identity for both guard labels. The prompt assembly test in `src/engine/profile-detector.test.ts` (TR-034) uses a detected `@gwrk/cli` package.
 
 #### Done When
 

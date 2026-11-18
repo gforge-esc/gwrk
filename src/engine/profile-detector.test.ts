@@ -91,10 +91,11 @@ describe("profile-detector", () => {
     expect(profile.type).toBe("rust");
   });
 
-  it("TR-034: gwrk-native prompt assembly regression snapshot", async () => {
-    const profile = { type: "gwrk-native" };
+  it("TR-034: detected @gwrk/cli package renders the native prompt section", async () => {
+    fs.writeFileSync(path.join(tmpDir, "package.json"), '{"name":"@gwrk/cli"}');
+    const profile = await detectProfile(tmpDir);
     const prompt = "Gated: [type: gwrk-native]ADR-004[/type]";
-    
+
     const result = conditionPrompt(prompt, profile);
     expect(result).toContain("ADR-004");
     expect(result).not.toContain("[type: gwrk-native]");

@@ -18,9 +18,20 @@ export function conditionPrompt(
   if (!isUnknown || options.renderUnknownGuards) {
     const includedTypes = new Set(["generic"]);
     if (!isUnknown) {
-      includedTypes.add(profile.type);
-      if (profile.type === "gwrk-cli" || profile._isGwrk) {
+      const isGwrk = profile._isGwrk === true;
+      const hasNativeType =
+        profile.type === "gwrk-native" || profile.type === "gwrk-cli";
+      if (isGwrk) {
         includedTypes.add("gwrk-native");
+        includedTypes.add("gwrk-cli");
+      }
+      if (!hasNativeType) {
+        includedTypes.add(profile.type);
+      } else if (
+        !isGwrk &&
+        profile.stack?.language?.toLowerCase() === "python"
+      ) {
+        includedTypes.add("python");
       }
     }
 

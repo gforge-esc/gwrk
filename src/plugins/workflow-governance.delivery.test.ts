@@ -98,6 +98,10 @@ const hostReviewGuidance = [
   "Use the repository's test command for the current phase's files.",
   "project's verification commands and schema validation standards",
 ];
+const reviewReportingRules = [
+  /start every PR comment with `\*\*From: Principal Engineer\*\*`/i,
+  /tag `@\[PROJECT_LEAD\]` when (?:the )?rules, guardrails or architecture are ambiguous/i,
+];
 
 describe("governance prompt delivery", () => {
   it.each(["gwrk-specify", "gwrk-plan", "review-code-cli"])(
@@ -159,16 +163,9 @@ describe("governance prompt delivery", () => {
       for (const instruction of hostReviewGuidance) {
         expect.soft(captured).toContain(instruction);
       }
-      expect
-        .soft(captured)
-        .toMatch(
-          /start every PR comment with `\*\*From: Principal Engineer\*\*`/i,
-        );
-      expect
-        .soft(captured)
-        .toMatch(
-          /tag `@\[PROJECT_LEAD\]` when (?:the )?rules, guardrails or architecture are ambiguous/i,
-        );
+      for (const rule of reviewReportingRules) {
+        expect.soft(captured).toMatch(rule);
+      }
       expect.soft(captured.match(nativeReviewCommandPattern) ?? []).toEqual([]);
     },
   );
@@ -313,6 +310,7 @@ describe("governance prompt delivery", () => {
   it.each(["gwrk-native", "gwrk-cli"])(
     "TR-012: keeps GWRK guidance out of Python host prompts with project.type %s",
     async (type) => {
+      await mkdir(join(root, "src"));
       await writeFile(
         join(root, "pyproject.toml"),
         '[project]\nname = "host"\nversion = "0.1.0"\n',
@@ -329,7 +327,36 @@ describe("governance prompt delivery", () => {
         "review-code-webapp",
       ]) {
         const captured = await captureDispatch(workflow);
+        expect
+          .soft(captured, workflow)
+          .toContain(`<project_profile type="${type}">`);
         expect.soft(captured, workflow).toContain('language="Python"');
+        expect
+          .soft(captured, workflow)
+          .toContain('<layout type="src-nested" />');
+        if (workflow === "gwrk-specify") {
+          expect
+            .soft(captured, workflow)
+            .toContain("host repository's dependency evidence");
+        } else if (workflow === "gwrk-plan") {
+          expect
+            .soft(captured, workflow)
+            .toContain(
+              "Use the host repository's verification commands in each gate.",
+            );
+          expect
+            .soft(captured, workflow)
+            .toContain(
+              "#### Done When\n```bash\npython -m pytest tests/test_phase.py\n```",
+            );
+        } else {
+          for (const instruction of hostReviewGuidance) {
+            expect.soft(captured, workflow).toContain(instruction);
+          }
+          for (const rule of reviewReportingRules) {
+            expect.soft(captured, workflow).toMatch(rule);
+          }
+        }
         expect
           .soft(
             captured.match(
