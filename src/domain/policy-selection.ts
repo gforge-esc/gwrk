@@ -7,6 +7,7 @@ import {
   designRules,
   lookupFrameworkGuidance,
   lookupLanguageGuidance,
+  normalizeArchitecture,
 } from "./architecture-context.js";
 import type { ProjectProfile } from "./types.js";
 
@@ -107,6 +108,40 @@ const RENDER_POSITION: Record<PolicySourceLayer, number> = {
   "project-local": 4,
 };
 
+function profileLanguages(profile?: ProjectProfile): string[] {
+  const values = [
+    profile?.stack?.language,
+    ...(profile?.stack?.languages ?? []),
+  ];
+  const seen = new Set<string>();
+  return values.flatMap((value) => {
+    const language = value?.trim();
+    const key = language?.toLowerCase();
+    if (
+      !language ||
+      !key ||
+      key === "none" ||
+      key === "unspecified" ||
+      seen.has(key)
+    )
+      return [];
+    seen.add(key);
+    return [language];
+  });
+}
+
+function frameworkMatches(
+  candidate: PolicyCandidate,
+  framework: string,
+): boolean {
+  const normalize = (value: string) =>
+    value.toLowerCase().replace(/[^a-z0-9]/g, "");
+  return Boolean(
+    candidate.manifest.framework &&
+      normalize(candidate.manifest.framework) === normalize(framework),
+  );
+}
+
 export function evaluateEnforcementCandidate(
   candidate: PolicyCandidate,
   profile: ProjectProfile | undefined,
@@ -128,13 +163,9 @@ export function evaluateEnforcementCandidate(
   // 3. Language check
   if (manifest.language) {
     const candidateLang = manifest.language.toLowerCase().trim();
-    if (!profile?.stack?.language) {
-      return { included: false, reason: "language-mismatch" };
-    }
-    const profileLangs =
-      profile.stack.languages && profile.stack.languages.length > 0
-        ? profile.stack.languages.map((l) => l.toLowerCase().trim())
-        : [profile.stack.language.toLowerCase().trim()];
+    const profileLangs = profileLanguages(profile).map((language) =>
+      language.toLowerCase(),
+    );
     if (!profileLangs.includes(candidateLang)) {
       return { included: false, reason: "language-mismatch" };
     }
@@ -158,10 +189,8 @@ export function evaluateEnforcementCandidate(
     if (!profile?.design?.architecture) {
       return { included: false, reason: "architecture-mismatch" };
     }
-    const profileArch = profile.design.architecture.toLowerCase().trim();
-    const candidateArchs = manifest.architectures.map((a) =>
-      a.toLowerCase().trim(),
-    );
+    const profileArch = normalizeArchitecture(profile.design.architecture);
+    const candidateArchs = manifest.architectures.map(normalizeArchitecture);
     if (!candidateArchs.includes(profileArch)) {
       return { included: false, reason: "architecture-mismatch" };
     }
@@ -200,13 +229,11 @@ export function evaluateEnforcementCandidate(
   return { included: true, reason: "selected" };
 }
 
-export function composeEffectivePolicy(
-  input: ComposePolicyInput,
-): EffectivePolicy {
-  const scope: EnforcementScope = input.scope ?? "all";
+function resolveCandidates(input: ComposePolicyInput, scope: EnforcementScope) {
   const selectedSkills: PolicyCandidate[] = [];
   const excludedSkills: EffectivePolicy["excludedSkills"] = [];
 
+  const incompatibleSkills: PolicyCandidate[] = [];
   const seenNames = new Set<string>();
   const uniqueNames: string[] = [];
   for (const c of input.candidates) {
@@ -222,6 +249,7 @@ export function composeEffectivePolicy(
       (a, b) => LAYER_PRECEDENCE[a.source] - LAYER_PRECEDENCE[b.source],
     );
 
+    const incompatibleGroup: PolicyCandidate[] = [];
     let selectedForSkill: PolicyCandidate | undefined;
     let suppressedByDisabled = false;
 
@@ -242,6 +270,16 @@ export function composeEffectivePolicy(
       );
 
       if (!evaluation.included) {
+        if (
+          !candidate.manifest.disabled &&
+          [
+            "language-mismatch",
+            "architecture-mismatch",
+            "principle-mismatch",
+          ].includes(evaluation.reason)
+        ) {
+          incompatibleGroup.push(candidate);
+        }
         excludedSkills.push({
           name: candidate.name,
           source: candidate.source,
@@ -252,12 +290,14 @@ export function composeEffectivePolicy(
 
       if (candidate.manifest.disabled) {
         suppressedByDisabled = true;
+        incompatibleGroup.length = 0;
         continue;
       }
 
       selectedForSkill = candidate;
       selectedSkills.push(candidate);
     }
+    incompatibleSkills.push(...incompatibleGroup);
   }
 
   selectedSkills.sort((a, b) => {
@@ -266,17 +306,36 @@ export function composeEffectivePolicy(
     return input.candidates.indexOf(a) - input.candidates.indexOf(b);
   });
 
+  return { selectedSkills, excludedSkills, incompatibleSkills };
+}
+
+export function composeEffectivePolicy(
+  input: ComposePolicyInput,
+): EffectivePolicy {
+  const scope: EnforcementScope = input.scope ?? "all";
+  const resolved = resolveCandidates(input, scope);
+  const { selectedSkills, excludedSkills } = resolved;
+  const coverage = scope === "all" ? resolved : resolveCandidates(input, "all");
+  const languages = profileLanguages(input.profile);
+  const design = input.profile?.design
+    ? {
+        ...input.profile.design,
+        architecture: normalizeArchitecture(input.profile.design.architecture),
+      }
+    : undefined;
   const gaps: PolicyGap[] = [];
 
-  // Language gap
-  const language = input.profile?.stack?.language;
-  if (language && language.toLowerCase() !== "unspecified") {
-    const guidance = lookupLanguageGuidance(language);
-    if (!guidance) {
+  for (const language of languages) {
+    const covered = coverage.selectedSkills.some(
+      (candidate) =>
+        candidate.manifest.language?.trim().toLowerCase() ===
+        language.toLowerCase(),
+    );
+    if (!lookupLanguageGuidance(language) && !covered) {
       gaps.push({
         kind: "missing-language-binding",
         subject: language,
-        message: `No bundled language binding for ${language}. Assess language-specific boundaries explicitly.`,
+        message: `No bundled language binding or selected policy for ${language}. Assess language-specific boundaries explicitly.`,
       });
     }
   }
@@ -288,26 +347,21 @@ export function composeEffectivePolicy(
     framework.toLowerCase() !== "unspecified" &&
     framework.toLowerCase() !== "none"
   ) {
-    const normFw = framework.toLowerCase().replace(/[^a-z0-9]/g, "");
-    const hasSelectedFrameworkSkill = selectedSkills.some(
-      (s) =>
-        s.manifest.framework &&
-        s.manifest.framework.toLowerCase().replace(/[^a-z0-9]/g, "") === normFw,
+    const covered = coverage.selectedSkills.some((candidate) =>
+      frameworkMatches(candidate, framework),
     );
-    if (!hasSelectedFrameworkSkill) {
-      const hadFrameworkCandidate = input.candidates.some(
-        (c) =>
-          c.manifest.framework &&
-          c.manifest.framework.toLowerCase().replace(/[^a-z0-9]/g, "") ===
-            normFw,
-      );
-      if (hadFrameworkCandidate) {
+    if (!covered) {
+      if (
+        coverage.incompatibleSkills.some((candidate) =>
+          frameworkMatches(candidate, framework),
+        )
+      ) {
         gaps.push({
           kind: "incompatible-framework-policy",
           subject: framework,
           message: `No compatible policy found for framework ${framework}.`,
         });
-      } else if (lookupFrameworkGuidance(framework) === undefined) {
+      } else if (!lookupFrameworkGuidance(framework)) {
         gaps.push({
           kind: "missing-framework-binding",
           subject: framework,
@@ -318,7 +372,7 @@ export function composeEffectivePolicy(
   }
 
   // Architecture gap
-  const architecture = input.profile?.design?.architecture;
+  const architecture = design?.architecture;
   if (architecture) {
     const normArch = architecture.toLowerCase().trim();
     const bundled = ["hexagonal-functional", "layered", "clean"];
@@ -333,12 +387,10 @@ export function composeEffectivePolicy(
 
   return {
     scope,
-    design: input.profile?.design,
+    design,
     checksStatus: input.checksConfigured ? "configured" : "inactive",
-    architectureRules: input.profile?.design
-      ? designRules(input.profile.design)
-      : [],
-    languageGuidance: lookupLanguageGuidance(input.profile?.stack?.language),
+    architectureRules: design ? designRules(design) : [],
+    languageGuidance: lookupLanguageGuidance(languages[0]),
     frameworkGuidance: lookupFrameworkGuidance(input.profile?.stack?.framework),
     selectedSkills,
     excludedSkills,

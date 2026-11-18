@@ -384,3 +384,180 @@ describe("Project policy composition", () => {
     ).toEqual({ included: true, reason: "project-local-override" });
   });
 });
+
+describe("reviewed policy coverage regressions", () => {
+  it.each([
+    {
+      title: "disabled",
+      override: { disabled: true },
+      scope: "define",
+      framework: "Fastify",
+      gap: undefined,
+    },
+    {
+      title: "other workflow",
+      override: { scope: "implementation" },
+      scope: "define",
+      framework: "Fastify",
+      gap: undefined,
+    },
+    {
+      title: "foreign repository",
+      override: { projectScope: "gwrk" },
+      scope: "define",
+      framework: "Fastify",
+      gap: undefined,
+    },
+    {
+      title: "foreign repository without a bundled framework",
+      override: { projectScope: "gwrk" },
+      scope: "define",
+      framework: "Svelte",
+      gap: "missing-framework-binding",
+    },
+    {
+      title: "incompatible architecture in another workflow",
+      override: { scope: "implementation", architectures: ["layered"] },
+      scope: "define",
+      framework: "Fastify",
+      gap: "incompatible-framework-policy",
+    },
+  ] as const)(
+    "classifies $title framework coverage",
+    async ({ override, scope, framework, gap }) => {
+      const { composeEffectivePolicy } = await import("./policy-selection.js");
+      const result = composeEffectivePolicy({
+        profile: { ...profile, stack: { language: "TypeScript", framework } },
+        scope,
+        candidates: [
+          {
+            name: fastify.name,
+            source: "project-local",
+            manifest: {
+              ...fastify,
+              ...override,
+              framework,
+              architectures:
+                "architectures" in override
+                  ? [...override.architectures]
+                  : fastify.architectures,
+            },
+          },
+        ],
+      });
+      expect(result.gaps.map(({ kind }) => kind)).toEqual(gap ? [gap] : []);
+    },
+  );
+
+  it.each([
+    {
+      stack: { languages: ["Rust", "Go"] },
+      wanted: ["Rust", "Go"],
+      guidance: "traits",
+    },
+    {
+      stack: { language: "TypeScript", languages: ["JavaScript", "Python"] },
+      wanted: ["TypeScript", "JavaScript", "Python"],
+      guidance: "interfaces",
+    },
+  ])(
+    "matches every configured language in $stack",
+    async ({ stack, wanted, guidance }) => {
+      const { composeEffectivePolicy } = await import("./policy-selection.js");
+      const result = composeEffectivePolicy({
+        profile: { ...profile, stack },
+        candidates: wanted.map((language) => ({
+          name: language,
+          source: "project-entry",
+          manifest: {
+            name: language,
+            version: "1.0.0",
+            description: language,
+            language,
+          },
+        })),
+      });
+      expect(result.selectedSkills.map(({ name }) => name)).toEqual(wanted);
+      expect(result.languageGuidance).toContain(guidance);
+      expect(result.gaps).toEqual([]);
+    },
+  );
+
+  it.each(["all", "implementation"] as const)(
+    "accepts custom language coverage in scope %s",
+    async (scope) => {
+      const { composeEffectivePolicy } = await import("./policy-selection.js");
+      const result = composeEffectivePolicy({
+        profile: { ...profile, stack: { languages: ["Rust", "Kotlin"] } },
+        scope: "define",
+        candidates: [
+          {
+            name: "kotlin",
+            source: "project-entry",
+            manifest: {
+              name: "kotlin",
+              version: "1.0.0",
+              description: "Kotlin ports",
+              language: "Kotlin",
+              scope,
+            },
+          },
+        ],
+      });
+      expect(result.gaps).toEqual([]);
+      expect(result.languageGuidance).toContain("traits");
+    },
+  );
+
+  it("reports each uncovered language while ignoring language placeholders", async () => {
+    const { composeEffectivePolicy } = await import("./policy-selection.js");
+    const result = composeEffectivePolicy({
+      profile: {
+        ...profile,
+        stack: {
+          language: "none",
+          languages: ["unspecified", "Kotlin", "Elixir", "kotlin"],
+        },
+      },
+      candidates: [],
+    });
+    expect(result.gaps.map(({ subject }) => subject)).toEqual([
+      "Kotlin",
+      "Elixir",
+    ]);
+  });
+
+  it.each([
+    "hexagonal",
+    "Hexagonal-Functional",
+    "hexagonal-with-functional-core",
+    "Hexagonal with functional core",
+  ])(
+    "normalizes the profile and manifest architecture %s",
+    async (architecture) => {
+      const { composeEffectivePolicy } = await import("./policy-selection.js");
+      const inputProfile = {
+        ...profile,
+        design: { ...profile.design, architecture },
+      };
+      const original = JSON.stringify(inputProfile);
+      const result = composeEffectivePolicy({
+        profile: inputProfile,
+        candidates: [
+          {
+            name: fastify.name,
+            source: "project-entry",
+            manifest: { ...fastify, architectures: ["hexagonal"] },
+          },
+        ],
+      });
+      expect(result.selectedSkills).toHaveLength(1);
+      expect(result.design?.architecture).toBe("hexagonal-functional");
+      expect(result.architectureRules).toContain(
+        "Domain policy MUST depend inward. Ports declare boundaries. Adapters implement effects. Composition wires dependencies.",
+      );
+      expect(result.gaps).toEqual([]);
+      expect(JSON.stringify(inputProfile)).toBe(original);
+    },
+  );
+});

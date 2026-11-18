@@ -20,16 +20,18 @@ export interface ContextInput {
   decisionsDir: string;
 }
 
+export function normalizeArchitecture(value: string): string {
+  let architecture = value.trim().toLowerCase().replace(/\s+/g, "-");
+  if (["hexagonal", "hexagonal-with-functional-core"].includes(architecture))
+    architecture = "hexagonal-functional";
+  return architecture;
+}
+
 export function resolveDesign(input: {
   architecture: string;
   principles?: string[];
 }): ProjectDesign {
-  let architecture = input.architecture
-    .trim()
-    .toLowerCase()
-    .replace(/\s+/g, "-");
-  if (["hexagonal", "hexagonal-with-functional-core"].includes(architecture))
-    architecture = "hexagonal-functional";
+  const architecture = normalizeArchitecture(input.architecture);
   const principles = [...new Set(input.principles ?? ["clean-code", "tdd"])];
   if (
     architecture === "hexagonal-functional" &&
