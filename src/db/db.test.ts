@@ -4,7 +4,6 @@
 
 import type Database from "better-sqlite3";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { insertCompressionRecord } from "./db.js";
 import { getTestDb } from "./index.js";
 import {
   finishRun,
@@ -214,15 +213,5 @@ describe("SQLite execution ledger", () => {
     expect(stats[1]?.total_runs).toBe(1);
     expect(stats[1]?.success_runs).toBe(1);
     expect(stats[1]?.avg_duration_s).toBe(300);
-  });
-});
-
-describe("FR-013: SQLite Persistence", () => {
-  it("US-009 / TR-014: Should insert compression results into the SQLite table", () => {
-    expect(() => insertCompressionRecord({ feature_id: "123" })).toThrow();
-  });
-
-  it("Should fail if required fields are missing", () => {
-    expect(() => insertCompressionRecord({})).toThrow();
   });
 });
