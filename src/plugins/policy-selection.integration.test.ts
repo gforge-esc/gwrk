@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { spawnSync } from "node:child_process";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
 import os, { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -438,27 +438,38 @@ describe("project enforcement candidate discovery", () => {
   );
 
   it.each([
-    { setting: {}, aliasStatus: "active" },
-    { setting: { disable: [name] }, aliasStatus: "disabled" },
+    { setting: {}, aliasStatus: "active", pathKind: "direct path" },
+    { setting: {}, aliasStatus: "active", pathKind: "symbolic link" },
+    {
+      setting: { disable: [name] },
+      aliasStatus: "disabled",
+      pathKind: "direct path",
+    },
     {
       setting: { plugins: { [name]: { enabled: false } } },
       aliasStatus: "disabled",
+      pathKind: "direct path",
     },
   ])(
-    "renders a shared pack once when its alias is $aliasStatus with $setting",
-    async ({ setting, aliasStatus }) => {
+    "renders a shared pack once with alias status $aliasStatus through a $pathKind under $setting",
+    async ({ setting, aliasStatus, pathKind }) => {
       const installed = join(root, "entry/skills/renamed-policy");
       await writePolicyPack(
         installed,
         { name: "renamed-policy", framework, version: "2.0.0" },
         "Installed identity rules",
       );
+      let override = installed;
+      if (pathKind === "symbolic link") {
+        override = join(root, "linked-policy");
+        await symlink(installed, override, "dir");
+      }
       await writeFile(
         join(root, ".gwrk/plugins.json"),
         JSON.stringify({
           inherits: false,
           entries: ["entry"],
-          override: { [name]: installed },
+          override: { [name]: override },
           ...setting,
         }),
       );

@@ -134,7 +134,7 @@ Without a usable entry, the runtime reports `missing-framework-binding` and the 
 
 The loader tests apply both project disable settings to an override whose manifest uses a different name. Both settings suppress the override and the compatible entry. With neither setting, only the override supplies rules. The compiled CLI tests use an override for a different architecture and a compatible entry. They expect one disabled row with the configured name and override version. They check both disable settings with matching and renamed manifests.
 
-When an override alias and an installed name point to the same directory, the runtime renders the rules once. The listing keeps both names and their statuses. Both project disable settings preserve the installed policy when they disable only the alias.
+The runtime renders the rules once when an override refers to the installed pack directly or through a symbolic link. The listing keeps both names and their statuses. Both project disable settings preserve the installed policy when they disable only the alias.
 
 #### Done When
 
