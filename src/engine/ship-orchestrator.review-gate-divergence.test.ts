@@ -24,6 +24,7 @@
 
 import { describe, expect, it, vi, beforeEach } from "vitest";
 import { ShipOrchestrator } from "./ship-orchestrator.js";
+import { dispatchToAgent } from "../utils/agent.js";
 import * as reviewPlugin from "../plugins/review-plugin.js";
 import * as stateUtils from "../utils/state.js";
 import * as gateExec from "../utils/gate-exec.js";
@@ -134,6 +135,25 @@ describe("review/gate divergence", () => {
     vi.mocked(gateExec.runTaskGate).mockResolvedValue({
       passed: true, exitCode: 0, output: "ok", gatePath: "gates/T001-gate.sh",
     } as never);
+  });
+
+  it("dispatches code review with the selected review model and effort", async () => {
+    loadTaskStateReturns("completed", "completed");
+    const orchestrator = new ShipOrchestrator({
+      ...mockConfig,
+      selectedModel: "fixture-fast",
+      reviewModel: "fixture-frontier",
+      reviewEffort: "high",
+    } as never);
+
+    // @ts-ignore private
+    await orchestrator.executeReviewWorkflow("review-code-webapp", "scope");
+
+    expect(dispatchToAgent).toHaveBeenCalledWith(expect.objectContaining({
+      type: "review",
+      model: "fixture-frontier",
+      env: expect.objectContaining({ GWRK_EFFORT: "high" }),
+    }));
   });
 
   it("does not report GO when a passing gate covers a task review re-opened", async () => {

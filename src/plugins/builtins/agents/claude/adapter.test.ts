@@ -127,6 +127,21 @@ describe("ClaudeAdapter", () => {
       });
     });
 
+    it("rejects an explicit terminal failure on process exit zero", () => {
+      const output = '{"type":"result","is_error":true,"result":"GO"}';
+      expect(adapter.parseResult(output, "", 0)).toMatchObject({
+        status: "failure",
+        exitCode: 1,
+        unwrappedStdout: "GO",
+      });
+      const limited = '{"type":"result","subtype":"error_max_turns"}';
+      expect(adapter.parseResult(limited, "", 0)).toMatchObject({
+        status: "failure",
+        exitCode: 1,
+        errorType: "turn_limit",
+      });
+    });
+
     it("registers a valid agent manifest in PluginLoader with matching capabilities to agy", async () => {
       const loader = new PluginLoader({ projectDir: process.cwd() });
       const claudePlugin = await loader.resolvePlugin("claude");

@@ -4,10 +4,9 @@
 
 import fs from "node:fs/promises";
 import path from "node:path";
+import { createAgentPortAdapter } from "../adapters/agents/index.js";
 import type { ProjectProfile } from "../engine/profile-detector.js";
-import { selectBackend } from "../engine/router.js";
 import { processForAgent } from "../utils/agent-layer.js";
-import { dispatchToAgent } from "../utils/agent.js";
 import { CommandError } from "../utils/signal.js";
 import { AgentBackendRegistry } from "./agent-registry.js";
 import { PluginLoader } from "./loader.js";
@@ -158,23 +157,21 @@ export async function executeSkill(
   // Safely extract runtime preferences if they exist (Atomic/Compound tiers)
   const runtime = "runtime" in manifest ? manifest.runtime : undefined;
 
-  const backend = await selectBackend(
-    {
-      type: "skill",
-      skillName: name,
-      preferredAgent: runtime?.preferredAgent,
-    },
-    projectRoot,
-    registry,
-  );
+  const agents = createAgentPortAdapter({ projectRoot, registry });
+  const route = await agents.selectRoute({
+    type: "skill",
+    skillName: name,
+    preferredAgent: runtime?.preferredAgent,
+    explicitModel: runtime?.preferredModel,
+  });
 
-  const taskResult = await dispatchToAgent({
+  const taskResult = await agents.execute({
     type: `skill/${name}`,
-    prompt,
-    agent: backend.name,
-    model: runtime?.preferredModel,
+    agent: route.backend,
+    model: route.model,
+    env: route.effort ? { GWRK_EFFORT: route.effort } : undefined,
     stdin: prompt,
-    workflow: `skill/${name}`, // Symbolic path for logging
+    workflow: `skill/${name}`,
     workDir: projectRoot,
   });
 

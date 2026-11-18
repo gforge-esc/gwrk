@@ -31,9 +31,12 @@ export class AgyAdapter implements AgentBackend {
   readonly emitsStreamJson = true;
   readonly nativeWriter = true;
 
-  async isAvailable(): Promise<boolean> {
+  async isAvailable(signal?: AbortSignal): Promise<boolean> {
     try {
-      const { exitCode } = await execCommand("which", ["agy"]);
+      const args = ["agy"];
+      const { exitCode } = signal
+        ? await execCommand("which", args, undefined, { signal })
+        : await execCommand("which", args);
       return exitCode === 0;
     } catch {
       return false;
@@ -50,33 +53,38 @@ export class AgyAdapter implements AgentBackend {
   async probe(): Promise<ProbeResult> {
     const start = Date.now();
     try {
-      const { exitCode, stderr } = await execCommand("agy", [
-        "chat",
-        "-m",
-        "respond with 1",
-        "--mode",
-        "agent",
-      ]);
+      const { exitCode, stdout, stderr } = await execCommand(
+        "agy",
+        [
+          "-p",
+          "Reply with only 1. Do not use tools.",
+          "--mode",
+          "plan",
+          "--output-format",
+          "stream-json",
+          "--print-timeout",
+          "15s",
+        ],
+        undefined,
+        { signal: AbortSignal.timeout(20_000) },
+      );
       const latencyMs = Date.now() - start;
-
-      if (exitCode === 0) {
+      const result = this.parseResult(stdout, stderr, exitCode);
+      if (
+        result.exitCode === 0 &&
+        result.terminalStatus === "success" &&
+        result.unwrappedStdout?.trim() === "1"
+      ) {
         return { status: "available", latencyMs };
       }
-
-      if (stderr.includes("429") || stderr.includes("Quota exceeded")) {
-        return { status: "rate_limited", latencyMs, error: stderr.trim() };
+      const error = result.error ?? stderr.trim();
+      if (result.errorType === "rate_limit") {
+        return { status: "rate_limited", latencyMs, error };
       }
-
-      if (
-        stderr.includes("401") ||
-        stderr.includes("403") ||
-        stderr.includes("auth") ||
-        stderr.includes("Sign in")
-      ) {
-        return { status: "auth_error", latencyMs, error: stderr.trim() };
+      if (result.errorType === "auth_failure") {
+        return { status: "auth_error", latencyMs, error };
       }
-
-      return { status: "unavailable", latencyMs, error: stderr.trim() };
+      return { status: "unavailable", latencyMs, error };
     } catch (err: unknown) {
       const error = err instanceof Error ? err.message : String(err);
       return {
@@ -85,6 +93,15 @@ export class AgyAdapter implements AgentBackend {
         error,
       };
     }
+  }
+
+  resolveModel(task: Pick<TaskDispatch, "model" | "env">): string | undefined {
+    const model = task.model || task.env?.AGY_MODEL;
+    if (!model || model === "default") return undefined;
+    if (!task.env?.AGY_MODEL && LEGACY_GEMINI_MODEL_PATTERN.test(model)) {
+      return undefined;
+    }
+    return model;
   }
 
   async dispatch(task: TaskDispatch): Promise<AgentDispatch> {
@@ -120,8 +137,9 @@ export class AgyAdapter implements AgentBackend {
     }
 
     const args: string[] = [
-      "-p",
-      inlinePrompt,
+      ...(isExpandedPrompt
+        ? ["--input-format", "stream-json"]
+        : ["-p", inlinePrompt]),
       "--output-format",
       "stream-json",
       "--dangerously-skip-permissions",
@@ -131,15 +149,8 @@ export class AgyAdapter implements AgentBackend {
       args.push("--json-schema", JSON.stringify(task.outputSchema));
     }
 
-    const rawModel = task.model || task.env?.AGY_MODEL;
-    const explicitEnvModel = Boolean(task.env?.AGY_MODEL);
-    if (
-      rawModel &&
-      rawModel !== "default" &&
-      (explicitEnvModel || !LEGACY_GEMINI_MODEL_PATTERN.test(rawModel))
-    ) {
-      args.push("--model", rawModel);
-    }
+    const model = this.resolveModel(task);
+    if (model) args.push("--model", model);
 
     const effort = task.env?.AGY_EFFORT || task.env?.GWRK_EFFORT;
     if (effort) {
@@ -149,7 +160,13 @@ export class AgyAdapter implements AgentBackend {
     return {
       command: "agy",
       args,
-      stdin: stdinPayload ?? "",
+      stdin: isExpandedPrompt
+        ? `${JSON.stringify({
+            event: "user",
+            message: { content: stdinPayload ?? "" },
+          })}\n`
+        : "",
+      inputFormat: isExpandedPrompt ? "stream-json" : "text",
       env: {
         ...task.env,
         APPROVAL_MODE: "yolo",
@@ -191,25 +208,22 @@ export class AgyAdapter implements AgentBackend {
   }
 
   parseResult(stdout: string, stderr: string, rawExitCode: number): TaskResult {
-    let terminalFailure = false;
-    let terminalSeen = false;
+    let terminalError: string | undefined;
     const normalized = stdout
       .split("\n")
       .map((line) => {
         try {
           const event = JSON.parse(line);
-          if (
-            event.event !== "result" ||
-            !event.result ||
-            typeof event.result.response !== "string"
-          )
-            return line;
-          terminalSeen = true;
-          terminalFailure = event.result.status !== "SUCCESS";
+          if (event?.event !== "result" || !event.result) return line;
+          const failed = event.result.status !== "SUCCESS";
+          if (failed && typeof event.result.error === "string") {
+            terminalError ??= event.result.error;
+          }
           return JSON.stringify({
             type: "result",
             result: event.result.response,
             usage: event.result.usage,
+            is_error: failed,
           });
         } catch {
           return line;
@@ -218,7 +232,8 @@ export class AgyAdapter implements AgentBackend {
       .join("\n");
     const unwrapped = unwrapStreamJson(normalized);
     let errorType: TaskResult["errorType"];
-    let exitCode = terminalFailure && rawExitCode === 0 ? 1 : rawExitCode;
+    let exitCode =
+      unwrapped.terminalStatus === "failure" ? rawExitCode || 1 : rawExitCode;
 
     if (exitCode !== 0) {
       if (rawExitCode === 127 || stderr.includes("command not found")) {
@@ -234,7 +249,13 @@ export class AgyAdapter implements AgentBackend {
       ) {
         errorType = "turn_limit";
         exitCode = 1;
-      } else if (stderr.includes("429") || stderr.includes("Quota exceeded")) {
+      } else if (
+        stderr.includes("429") ||
+        stderr.includes("Quota exceeded") ||
+        /credits balance is too low|quota exceeded|resource_exhausted/i.test(
+          terminalError ?? "",
+        )
+      ) {
         errorType = "rate_limit";
         exitCode = 1;
       } else if (
@@ -254,12 +275,9 @@ export class AgyAdapter implements AgentBackend {
     return {
       exitCode,
       rawExitCode,
-      ...(terminalSeen
-        ? {
-            status: terminalFailure
-              ? ("failure" as const)
-              : ("success" as const),
-          }
+      status: exitCode === 0 ? "success" : "failure",
+      ...(unwrapped.terminalStatus
+        ? { terminalStatus: unwrapped.terminalStatus }
         : {}),
       stdout,
       unwrappedStdout: unwrapped.text,
@@ -268,6 +286,7 @@ export class AgyAdapter implements AgentBackend {
         : {}),
       ...(unwrapped.usage ? { usage: unwrapped.usage } : {}),
       stderr,
+      ...(terminalError ? { error: terminalError } : {}),
       errorType,
       durationS: 0,
     };

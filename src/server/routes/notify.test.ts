@@ -13,6 +13,12 @@ import * as slackNotify from "../slack-notify.js";
 // Mock dependencies
 vi.mock("dockerode");
 vi.mock("../slack-notify.js");
+vi.mock("../harvest-watcher.js", () => ({
+  HarvestWatcher: class {
+    start() {}
+    stop() {}
+  },
+}));
 vi.mock("../../utils/slack-client.js", () => ({
   loadSlackConfig: vi.fn().mockReturnValue(null),
 }));

@@ -7,6 +7,7 @@ export * from "./effort.js";
 export * from "./project-id.js";
 export * from "./prompt-conditioner.js";
 export * from "./agent-config.js";
+export * from "./agent-routing.js";
 export * from "./test-rules.js";
 export * from "./verdict.js";
 export * from "./profile-policy.js";
