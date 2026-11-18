@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { execFileSync } from "node:child_process";
+import { EventEmitter } from "node:events";
 import {
   mkdirSync,
   mkdtempSync,
@@ -10,6 +11,7 @@ import {
   realpathSync,
   renameSync,
   rmSync,
+  symlinkSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
@@ -80,7 +82,11 @@ describe("slack-actions (FR-007, US-004, US-005)", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    mockSpawn.mockReturnValue({ unref: vi.fn() });
+    mockSpawn.mockImplementation(() => {
+      const child = Object.assign(new EventEmitter(), { unref: vi.fn() });
+      queueMicrotask(() => child.emit("spawn"));
+      return child;
+    });
     actionHandlers = {};
     eventHandlers = {};
     mockApp = {
@@ -985,6 +991,9 @@ describe("slack-actions (FR-007, US-004, US-005)", () => {
       "denies %s on Beta’s thread before claiming or using Alpha’s queue",
       async (actionId) => {
         const { project: alpha } = createSqliteRegistry();
+        mkdirSync(join(alpha.localRoot, "specs", actionValue.featureId), {
+          recursive: true,
+        });
         const alphaThread = {
           ...SYNTHETIC_THREAD_ALPHA,
           projectId: alpha.projectId,
@@ -1083,10 +1092,66 @@ describe("slack-actions (FR-007, US-004, US-005)", () => {
       expect(claim).not.toHaveBeenCalled();
     });
 
+    it.each(["missing", "linked"])(
+      "keeps View Logs on the bound feature when its directory is %s",
+      async (directory) => {
+        const { project, registry } = createSqliteRegistry();
+        const followup = join(
+          project.localRoot,
+          "specs",
+          `${actionValue.featureId}-followup`,
+        );
+        const runs = join(followup, ".gwrk", "runs");
+        mkdirSync(runs, { recursive: true });
+        writeFileSync(
+          join(runs, `${actionValue.phaseId}.json`),
+          JSON.stringify({ gate_result: "follow-up feature gate" }),
+        );
+        if (directory === "linked") {
+          symlinkSync(
+            followup,
+            join(project.localRoot, "specs", actionValue.featureId),
+            "dir",
+          );
+        }
+        const claim = vi.spyOn(registry, "claimActionReceipt");
+        const complete = vi.spyOn(registry, "completeActionReceipt");
+        await registerSlackActions(mockApp as App, {
+          ...mockContext,
+          routingService: createProjectRoutingService({ registry }),
+        });
+        const click = clickArgs(
+          "view_logs",
+          project.projectId,
+          SYNTHETIC_USER_VIEWER,
+        );
+
+        await actionHandlers.view_logs(click);
+
+        expect
+          .soft(click.client.chat.postEphemeral)
+          .toHaveBeenCalledExactlyOnceWith(
+            expect.objectContaining({
+              channel: SYNTHETIC_CHANNEL_ALPHA,
+              user: SYNTHETIC_USER_VIEWER,
+              thread_ts: SYNTHETIC_THREAD_ALPHA.rootTs,
+            }),
+          );
+        const reply = JSON.stringify(
+          click.client.chat.postEphemeral.mock.calls,
+        );
+        expect.soft(reply).toContain("No ship run logs found");
+        expect.soft(reply).not.toContain("follow-up feature gate");
+        expect.soft(click.client.chat.postMessage).not.toHaveBeenCalled();
+        expect.soft(claim).not.toHaveBeenCalled();
+        expect(complete).not.toHaveBeenCalled();
+      },
+    );
+
     it.each([
       ["revise_spec", ["define", "spec", actionValue.featureId]],
       ["revise_plan", ["define", "plan", actionValue.featureId]],
-      ["approve_spec", ["plan", actionValue.featureId]],
+      ["approve_spec", ["define", "plan", actionValue.featureId]],
       ["retry_phase", null],
       ["request_changes", null],
     ] as const)(
@@ -1175,12 +1240,23 @@ describe("slack-actions (FR-007, US-004, US-005)", () => {
           ({ value }) => value === true,
         );
         expect.soft(successfulClaims).toHaveLength(1);
+        const receiptKey = buildActionReceiptKey({
+          ...actionValue,
+          projectId: project.projectId,
+          workspaceId: SYNTHETIC_WORKSPACE_ID,
+          channelId: SYNTHETIC_CHANNEL_ALPHA,
+          messageTs,
+          actionId,
+        });
+        expect
+          .soft(registry.getActionReceipt(receiptKey)?.outcome)
+          .toBe("executed");
         if (command) {
-          expect(mockSpawn).toHaveBeenCalledExactlyOnceWith(
-            "gwrk",
-            command,
-            expect.objectContaining({ cwd: realpathSync(alpha) }),
-          );
+          expect(mockSpawn).toHaveBeenCalledExactlyOnceWith("gwrk", command, {
+            cwd: realpathSync(alpha),
+            detached: true,
+            stdio: "ignore",
+          });
           expect(mockContext.queue.enqueue).not.toHaveBeenCalled();
         } else {
           expect(mockContext.queue.enqueue).toHaveBeenCalledExactlyOnceWith({
@@ -1189,6 +1265,270 @@ describe("slack-actions (FR-007, US-004, US-005)", () => {
           });
           expect(mockSpawn).not.toHaveBeenCalled();
         }
+      },
+    );
+
+    it.each(["retry_phase", "request_changes"])(
+      "uses the verified startup mirror for %s when the local checkout is also valid",
+      async (actionId) => {
+        const { project, registry } = createSqliteRegistry();
+        const mirrorPath = mkdtempSync(join(tmpdir(), "gwrk-action-mirror-"));
+        onTestFinished(() =>
+          rmSync(mirrorPath, { recursive: true, force: true }),
+        );
+        const gitOptions = {
+          cwd: mirrorPath,
+          stdio: "ignore" as const,
+          timeout: 5_000,
+        };
+        execFileSync("git", ["init", "--quiet"], gitOptions);
+        execFileSync(
+          "git",
+          ["remote", "add", "origin", "https://github.com/org/alpha.git"],
+          gitOptions,
+        );
+        mkdirSync(join(project.localRoot, "specs", actionValue.featureId), {
+          recursive: true,
+        });
+        mkdirSync(
+          join(mirrorPath, "specs", `${actionValue.featureId}-follow-up`),
+          { recursive: true },
+        );
+        registry.enrollProject({ ...project, mirrorPath });
+        expect(registry.findByLocalRoot(mirrorPath)?.projectId).toBe(
+          project.projectId,
+        );
+        const claim = vi.spyOn(registry, "claimActionReceipt");
+        const complete = vi.spyOn(registry, "completeActionReceipt");
+        await registerSlackActions(mockApp as App, {
+          ...mockContext,
+          projectRoot: mirrorPath,
+          queueProjectId: project.projectId,
+          routingService: createProjectRoutingService({ registry }),
+        });
+
+        const denied = clickArgs(actionId, project.projectId);
+        await actionHandlers[actionId](denied);
+        expect.soft(denied.client.chat.postEphemeral).toHaveBeenCalledOnce();
+        expect.soft(denied.client.chat.postMessage).not.toHaveBeenCalled();
+        expect.soft(claim).not.toHaveBeenCalled();
+        expect.soft(complete).not.toHaveBeenCalled();
+        expect.soft(mockContext.queue.enqueue).not.toHaveBeenCalled();
+
+        mkdirSync(join(mirrorPath, "specs", actionValue.featureId));
+        await Promise.all([
+          actionHandlers[actionId](clickArgs(actionId, project.projectId)),
+          actionHandlers[actionId](clickArgs(actionId, project.projectId)),
+        ]);
+
+        expect.soft(mockContext.queue.enqueue).toHaveBeenCalledExactlyOnceWith({
+          featureId: actionValue.featureId,
+          phaseId: actionValue.phaseId,
+        });
+        expect
+          .soft(claim.mock.results.filter(({ value }) => value === true))
+          .toHaveLength(1);
+        const receiptKey = buildActionReceiptKey({
+          ...actionValue,
+          projectId: project.projectId,
+          workspaceId: SYNTHETIC_WORKSPACE_ID,
+          channelId: SYNTHETIC_CHANNEL_ALPHA,
+          messageTs,
+          actionId,
+        });
+        expect
+          .soft(complete.mock.calls.map(([key, outcome]) => [key, outcome]))
+          .toEqual([[receiptKey, "executed"]]);
+        expect(registry.getActionReceipt(receiptKey)?.outcome).toBe("executed");
+      },
+    );
+
+    it.each(
+      [
+        "approve_spec",
+        "revise_spec",
+        "revise_plan",
+        "retry_phase",
+        "request_changes",
+      ].flatMap((actionId) =>
+        ["outside the checkout", "to a sibling feature"].map((destination) => ({
+          actionId,
+          destination,
+        })),
+      ),
+    )(
+      "denies $actionId before claiming when the feature links $destination",
+      async ({ actionId, destination }) => {
+        const { project, registry } = createSqliteRegistry();
+        const specs = join(project.localRoot, "specs");
+        mkdirSync(specs);
+        const target =
+          destination === "to a sibling feature"
+            ? join(specs, `${actionValue.featureId}-followup`)
+            : mkdtempSync(join(tmpdir(), "gwrk-feature-"));
+        mkdirSync(target, { recursive: true });
+        onTestFinished(() => rmSync(target, { recursive: true, force: true }));
+        symlinkSync(target, join(specs, actionValue.featureId), "dir");
+        const claim = vi.spyOn(registry, "claimActionReceipt");
+        const complete = vi.spyOn(registry, "completeActionReceipt");
+        await registerSlackActions(mockApp as App, {
+          ...mockContext,
+          projectRoot: project.localRoot,
+          queueProjectId: project.projectId,
+          routingService: createProjectRoutingService({ registry }),
+        });
+        const click = clickArgs(actionId, project.projectId);
+
+        await actionHandlers[actionId](click);
+
+        expect.soft(click.ack).toHaveBeenCalledOnce();
+        expect
+          .soft(click.client.chat.postEphemeral)
+          .toHaveBeenCalledExactlyOnceWith(
+            expect.objectContaining({
+              channel: SYNTHETIC_CHANNEL_ALPHA,
+              user: SYNTHETIC_USER_MAINTAINER,
+              thread_ts: SYNTHETIC_THREAD_ALPHA.rootTs,
+              text: expect.stringContaining("checkout is unavailable"),
+            }),
+          );
+        expect.soft(click.client.chat.postMessage).not.toHaveBeenCalled();
+        expect.soft(claim).not.toHaveBeenCalled();
+        expect.soft(complete).not.toHaveBeenCalled();
+        expect.soft(mockSpawn).not.toHaveBeenCalled();
+        expect.soft(mockContext.queue.enqueue).not.toHaveBeenCalled();
+      },
+    );
+
+    it.each(["approve_spec", "revise_spec", "revise_plan"])(
+      "keeps %s claimed until spawn and records asynchronous launch failure privately",
+      async (actionId) => {
+        const { project, registry } = createSqliteRegistry();
+        mkdirSync(join(project.localRoot, "specs", actionValue.featureId), {
+          recursive: true,
+        });
+        const complete = vi.spyOn(registry, "completeActionReceipt");
+        const child = Object.assign(new EventEmitter(), { unref: vi.fn() });
+        mockSpawn.mockReturnValueOnce(child);
+        await registerSlackActions(mockApp as App, {
+          ...mockContext,
+          projectRoot: project.localRoot,
+          queueProjectId: project.projectId,
+          routingService: createProjectRoutingService({ registry }),
+        });
+        const click = clickArgs(actionId, project.projectId);
+        const pending = actionHandlers[actionId](click);
+        await vi.waitFor(() => expect(mockSpawn).toHaveBeenCalledTimes(1));
+        expect.soft(complete).not.toHaveBeenCalled();
+        expect.soft(click.client.chat.postMessage).not.toHaveBeenCalled();
+        expect.soft(child.listenerCount("error")).toBeGreaterThan(0);
+        if (child.listenerCount("error") === 0) {
+          await pending;
+          return;
+        }
+        child.emit("error", new Error("worker executable missing"));
+        await pending;
+        expect(complete.mock.calls.map(([, outcome]) => outcome)).toEqual([
+          "failed",
+        ]);
+        expect(click.client.chat.postMessage).not.toHaveBeenCalled();
+        expect(click.client.chat.postEphemeral).toHaveBeenCalledExactlyOnceWith(
+          expect.objectContaining({
+            user: SYNTHETIC_USER_MAINTAINER,
+            channel: SYNTHETIC_CHANNEL_ALPHA,
+            thread_ts: SYNTHETIC_THREAD_ALPHA.rootTs,
+            text: expect.stringContaining("worker executable missing"),
+          }),
+        );
+      },
+    );
+
+    it.each([
+      ["request_changes", null],
+      ["approve_spec", ["define", "plan", actionValue.featureId]],
+      ["approve_plan", null],
+      ["revise_spec", ["define", "spec", actionValue.featureId]],
+      ["revise_plan", ["define", "plan", actionValue.featureId]],
+      ["retry_phase", null],
+    ] as const)(
+      "keeps %s executed when Slack rejects its confirmation",
+      async (actionId, command) => {
+        const { project, registry } = createSqliteRegistry();
+        mkdirSync(join(project.localRoot, "specs", actionValue.featureId), {
+          recursive: true,
+        });
+        const complete = vi.spyOn(registry, "completeActionReceipt");
+        const enqueue = vi.mocked(mockContext.queue.enqueue);
+        await registerSlackActions(mockApp as App, {
+          ...mockContext,
+          projectRoot: project.localRoot,
+          queueProjectId: project.projectId,
+          routingService: createProjectRoutingService({ registry }),
+        });
+        const receiptKey = buildActionReceiptKey({
+          ...actionValue,
+          projectId: project.projectId,
+          workspaceId: SYNTHETIC_WORKSPACE_ID,
+          channelId: SYNTHETIC_CHANNEL_ALPHA,
+          messageTs,
+          actionId,
+        });
+        const click = clickArgs(actionId, project.projectId);
+        click.client.chat.postMessage.mockImplementation(async () => {
+          expect
+            .soft(registry.getActionReceipt(receiptKey)?.outcome)
+            .toBe("executed");
+          throw new Error("Slack confirmation rejected");
+        });
+
+        await actionHandlers[actionId](click);
+
+        if (command) {
+          expect
+            .soft(mockSpawn)
+            .toHaveBeenCalledExactlyOnceWith("gwrk", command, {
+              cwd: realpathSync(project.localRoot),
+              detached: true,
+              stdio: "ignore",
+            });
+        } else if (actionId === "approve_plan") {
+          expect
+            .soft(mockHandleDefineComplete)
+            .toHaveBeenCalledExactlyOnceWith({
+              featureId: actionValue.featureId,
+              status: "DEFINED",
+            });
+        } else {
+          expect.soft(enqueue).toHaveBeenCalledExactlyOnceWith({
+            featureId: actionValue.featureId,
+            phaseId: actionValue.phaseId,
+          });
+        }
+        expect
+          .soft(
+            mockSpawn.mock.calls.length +
+              mockHandleDefineComplete.mock.calls.length +
+              enqueue.mock.calls.length,
+          )
+          .toBe(1);
+        expect
+          .soft(complete.mock.calls.map(([key, outcome]) => [key, outcome]))
+          .toEqual([[receiptKey, "executed"]]);
+        expect
+          .soft(registry.getActionReceipt(receiptKey)?.outcome)
+          .toBe("executed");
+        expect
+          .soft(click.client.chat.postMessage)
+          .toHaveBeenCalledExactlyOnceWith(
+            expect.objectContaining({
+              channel: SYNTHETIC_CHANNEL_ALPHA,
+              thread_ts: SYNTHETIC_THREAD_ALPHA.rootTs,
+            }),
+          );
+        expect.soft(click.client.chat.postEphemeral).not.toHaveBeenCalled();
+        expect(click.logger.error).toHaveBeenCalledExactlyOnceWith(
+          expect.stringContaining("Slack confirmation rejected"),
+        );
       },
     );
 
@@ -1364,6 +1704,16 @@ describe("slack-actions (FR-007, US-004, US-005)", () => {
 
       setOrigin("https://github.com/org/beta.git");
       await actionHandlers.merge_pr(click);
+      expect
+        .soft(click.client.chat.postEphemeral)
+        .toHaveBeenCalledExactlyOnceWith(
+          expect.objectContaining({
+            channel: SYNTHETIC_CHANNEL_ALPHA,
+            user: SYNTHETIC_USER_MAINTAINER,
+            thread_ts: SYNTHETIC_THREAD_ALPHA.rootTs,
+            text: expect.stringContaining("Failed to merge PR"),
+          }),
+        );
       expect.soft(readFileSync(calls, "utf8")).toBe("");
       expect.soft(registry.getActionReceipt(receiptKey)).toMatchObject({
         outcome: "failed",
@@ -1482,6 +1832,15 @@ describe("slack-actions (FR-007, US-004, US-005)", () => {
         if (surface === "button") await actionHandlers.merge_pr(click);
         else await eventHandlers.reaction_added(reaction);
 
+        const client = surface === "button" ? click.client : reaction.client;
+        expect.soft(client.chat.postEphemeral).toHaveBeenCalledExactlyOnceWith(
+          expect.objectContaining({
+            channel: SYNTHETIC_CHANNEL_ALPHA,
+            user: SYNTHETIC_USER_MAINTAINER,
+            thread_ts: SYNTHETIC_THREAD_ALPHA.rootTs,
+            text: expect.stringContaining("Merge outcome unknown"),
+          }),
+        );
         expect.soft(registry.getActionReceipt(receiptKey)).toMatchObject({
           outcome: "uncertain",
           mergeTarget,

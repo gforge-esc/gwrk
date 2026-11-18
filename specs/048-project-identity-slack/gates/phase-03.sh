@@ -4,6 +4,7 @@
 # file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 set -euo pipefail
+test -f src/commands/adr.checkout.test.ts
 pnpm build
 pnpm lint
 pnpm exec vitest run \
@@ -17,4 +18,8 @@ pnpm exec vitest run \
   src/server/slack-messages.test.ts \
   src/server/slack-notify.test.ts \
   src/server/slack.test.ts \
+  src/commands/adr.checkout.test.ts \
+  src/commands/adr.test.ts \
+  src/engine/adr-scaffold.test.ts \
+  src/engine/adr-check.test.ts \
   src/architecture.test.ts

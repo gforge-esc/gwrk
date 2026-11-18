@@ -2,10 +2,12 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { execFileSync } from "node:child_process";
+import { ChildProcess, execFileSync } from "node:child_process";
 import {
+  existsSync,
   mkdirSync,
   mkdtempSync,
+  readFileSync,
   realpathSync,
   renameSync,
   rmSync,
@@ -13,7 +15,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, relative } from "node:path";
 import {
   type Mocked,
   beforeEach,
@@ -30,6 +32,7 @@ import {
   SYNTHETIC_ROLES,
   SYNTHETIC_THREAD_ALPHA,
   SYNTHETIC_USER_MAINTAINER,
+  SYNTHETIC_USER_OPERATOR,
   SYNTHETIC_USER_VIEWER,
   SYNTHETIC_WORKSPACE_ID,
   createSyntheticRegistry,
@@ -37,6 +40,7 @@ import {
 } from "../../tests/helpers/synthetic-slack.js";
 import { resolveProjectId } from "../adapters/git/project-id.js";
 import { createProjectRoutingService } from "../application/project-routing/index.js";
+import { findOpenPr } from "../db/runs.js";
 import type { DispatchQueue } from "./dispatch.js";
 import type { GitManager } from "./git-manager.js";
 import type { SystemMonitor } from "./monitor.js";
@@ -102,6 +106,14 @@ function registryFor(
     threads: [{ ...SYNTHETIC_THREAD_ALPHA, projectId: alpha.projectId }],
   });
 }
+
+const proposedAdr = `# ADR-010: Track the decision
+
+> **Status:** Proposed
+> **Date:** 2026-01-01
+> **Decision:** Track the decision in the index.
+> **Decision Scope:** Slack
+`;
 
 describe("slack-commands (FR-015, US-004)", () => {
   let mockQueue: Mocked<DispatchQueue>;
@@ -407,6 +419,95 @@ describe("slack-commands (FR-015, US-004)", () => {
     },
   );
 
+  it.each(["ship", "approve"])(
+    "keeps foreign feature names out of %s replies when specs links to another checkout",
+    async (command) => {
+      const { spawn } = await import("node:child_process");
+      const merge = vi.spyOn(context.vcs!, "mergePullRequest");
+      const root = mkdtempSync(join(tmpdir(), "gwrk-slash-linked-specs-"));
+      onTestFinished(() => rmSync(root, { recursive: true, force: true }));
+      const beta = initCheckout(SYNTHETIC_PROJECT_BETA, join(root, "beta"));
+      const foreignSpecs = join(beta.localRoot, "specs");
+      const localSpecs = join(context.projectRoot, "specs");
+      mkdirSync(join(foreignSpecs, "004-beta-private"), { recursive: true });
+      renameSync(localSpecs, join(root, "saved-alpha-specs"));
+      symlinkSync(foreignSpecs, localSpecs, "dir");
+
+      const response = await handleSlashCommand(
+        `${command} 003-slack 1`,
+        context,
+      );
+      const reply = JSON.stringify(response.blocks);
+
+      expect.soft(response.response_type).toBe("ephemeral");
+      expect
+        .soft(reply)
+        .toContain("Feature is unavailable inside this project's checkout.");
+      expect.soft(reply).not.toContain("004-beta-private");
+      expect.soft(reply).not.toContain("Available features");
+      expect.soft(spawn).not.toHaveBeenCalled();
+      expect.soft(findOpenPr).not.toHaveBeenCalled();
+      expect(merge).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each(["ship", "approve"])(
+    "denies %s for an exact foreign feature even when a local feature shares its prefix",
+    async (command) => {
+      const { spawn } = await import("node:child_process");
+      const merge = vi.spyOn(context.vcs!, "mergePullRequest");
+      const root = mkdtempSync(join(tmpdir(), "gwrk-slash-exact-feature-"));
+      onTestFinished(() => rmSync(root, { recursive: true, force: true }));
+      const beta = initCheckout(SYNTHETIC_PROJECT_BETA, join(root, "beta"));
+      const featureId = SYNTHETIC_THREAD_ALPHA.featureId;
+      const foreignFeature = join(beta.localRoot, "specs", featureId);
+      const localSpecs = join(context.projectRoot, "specs");
+      renameSync(
+        join(localSpecs, featureId),
+        join(localSpecs, `${featureId}-followup`),
+      );
+      mkdirSync(foreignFeature, { recursive: true });
+      symlinkSync(foreignFeature, join(localSpecs, featureId), "dir");
+
+      const response = await handleSlashCommand(
+        `${command} ${featureId} 1`,
+        context,
+      );
+
+      expect.soft(response.response_type).toBe("ephemeral");
+      expect
+        .soft(JSON.stringify(response.blocks))
+        .toContain("Feature is unavailable inside this project's checkout.");
+      expect.soft(spawn).not.toHaveBeenCalled();
+      expect.soft(findOpenPr).not.toHaveBeenCalled();
+      expect(merge).not.toHaveBeenCalled();
+    },
+  );
+
+  it("resolves a ship prefix using only feature directories inside the checkout", async () => {
+    const { spawn } = await import("node:child_process");
+    const root = mkdtempSync(join(tmpdir(), "gwrk-slash-prefix-scope-"));
+    onTestFinished(() => rmSync(root, { recursive: true, force: true }));
+    const beta = initCheckout(SYNTHETIC_PROJECT_BETA, join(root, "beta"));
+    const foreignFeature = join(beta.localRoot, "specs", "003-beta-private");
+    mkdirSync(foreignFeature, { recursive: true });
+    symlinkSync(
+      foreignFeature,
+      join(context.projectRoot, "specs", "003-beta-private"),
+      "dir",
+    );
+
+    const response = await handleSlashCommand("ship 003 1", context);
+
+    expect.soft(response.response_type).toBe("in_channel");
+    expect.soft(response.thread_ts).toBe(SYNTHETIC_THREAD_ALPHA.rootTs);
+    expect(spawn).toHaveBeenCalledExactlyOnceWith(
+      "gwrk",
+      ["ship", "003-slack", "1"],
+      expect.objectContaining({ cwd: context.projectRoot }),
+    );
+  });
+
   it("only reads a decision index inside the authorized checkout", async () => {
     const root = mkdtempSync(join(tmpdir(), "gwrk-slash-linked-decisions-"));
     onTestFinished(() => rmSync(root, { recursive: true, force: true }));
@@ -432,6 +533,214 @@ describe("slack-commands (FR-015, US-004)", () => {
       "Beta private decision index",
     );
   });
+
+  it("decides a local ADR and verifies its generated index inside the authorized checkout", async () => {
+    const decisions = join(context.projectRoot, "docs", "decisions");
+    const adrPath = join(decisions, "ADR-010-track-the-decision.md");
+    writeFileSync(
+      join(context.projectRoot, ".gwrkrc.json"),
+      JSON.stringify({ project: { name: "alpha" } }),
+    );
+    mkdirSync(decisions, { recursive: true });
+    writeFileSync(adrPath, proposedAdr);
+
+    const response = await handleSlashCommand("adr decide ADR-010", context);
+
+    expect(response.response_type).toBe("in_channel");
+    expect(readFileSync(adrPath, "utf-8")).toContain("**Status:** Decided");
+    expect(
+      readFileSync(
+        join(context.projectRoot, ".gwrk/decisions/index.md"),
+        "utf-8",
+      ),
+    ).toContain("| ADR-010 | Slack | Decided |");
+    const check = await handleSlashCommand("adr check", {
+      ...context,
+      userId: SYNTHETIC_USER_VIEWER,
+    });
+    expect(check.response_type).toBe("ephemeral");
+    expect(check.blocks[0].text.text).toContain(
+      "All ADR citations and decision index verified.",
+    );
+  });
+
+  it.each([
+    "linked corpus",
+    "configured foreign corpus",
+    "linked index",
+    "linked index directory",
+    "dangling index",
+  ])(
+    "rejects an ADR decision with a %s before either write",
+    async (boundary) => {
+      const root = mkdtempSync(join(tmpdir(), "gwrk-slash-adr-boundary-"));
+      onTestFinished(() => rmSync(root, { recursive: true, force: true }));
+      const beta = initCheckout(SYNTHETIC_PROJECT_BETA, join(root, "beta"));
+      const alpha = context.projectRoot;
+      const localDecisions = join(alpha, "docs", "decisions");
+      const foreignDecisions = join(beta.localRoot, "docs", "decisions");
+      const localIndexDir = join(alpha, ".gwrk", "decisions");
+      const foreignIndexDir = join(beta.localRoot, ".gwrk", "decisions");
+      const localIndex = join(localIndexDir, "index.md");
+      const foreignIndex = join(foreignIndexDir, "index.md");
+      const adrName = "ADR-010-track-the-decision.md";
+      const foreignAdr = join(foreignDecisions, adrName);
+      const localAdr = join(localDecisions, adrName);
+
+      mkdirSync(foreignDecisions, { recursive: true });
+      mkdirSync(foreignIndexDir, { recursive: true });
+      writeFileSync(foreignAdr, proposedAdr);
+      const project = {
+        name: "alpha",
+        architecture:
+          boundary === "configured foreign corpus"
+            ? { decisions: relative(alpha, foreignDecisions) }
+            : undefined,
+      };
+      writeFileSync(join(alpha, ".gwrkrc.json"), JSON.stringify({ project }));
+      if (boundary === "linked corpus") {
+        mkdirSync(join(alpha, "docs"));
+        symlinkSync(foreignDecisions, localDecisions, "dir");
+      } else {
+        mkdirSync(localDecisions, { recursive: true });
+        writeFileSync(localAdr, proposedAdr);
+      }
+      if (boundary === "linked index directory") {
+        mkdirSync(join(alpha, ".gwrk"));
+        symlinkSync(foreignIndexDir, localIndexDir, "dir");
+      } else if (boundary === "linked index" || boundary === "dangling index") {
+        mkdirSync(localIndexDir, { recursive: true });
+        if (boundary === "linked index")
+          writeFileSync(foreignIndex, "Beta index");
+        symlinkSync(foreignIndex, localIndex);
+      }
+
+      const response = await handleSlashCommand("adr decide ADR-010", context);
+
+      expect.soft(response.response_type).toBe("ephemeral");
+      expect.soft(response.blocks[0].text.text).toContain("verified checkout");
+      expect.soft(readFileSync(localAdr, "utf-8")).toBe(proposedAdr);
+      expect.soft(readFileSync(foreignAdr, "utf-8")).toBe(proposedAdr);
+      if (boundary === "linked index") {
+        expect(readFileSync(foreignIndex, "utf-8")).toBe("Beta index");
+      } else {
+        expect.soft(existsSync(localIndex)).toBe(false);
+        expect(existsSync(foreignIndex)).toBe(false);
+      }
+    },
+  );
+
+  it("excludes foreign citation findings when checking ADRs", async () => {
+    const root = mkdtempSync(join(tmpdir(), "gwrk-slash-adr-check-"));
+    onTestFinished(() => rmSync(root, { recursive: true, force: true }));
+    const beta = initCheckout(SYNTHETIC_PROJECT_BETA, join(root, "beta"));
+    const foreignSrc = join(beta.localRoot, "src");
+    mkdirSync(foreignSrc);
+    const foreignAdrId = ["ADR", "777"].join("-");
+    writeFileSync(join(foreignSrc, "beta-only.ts"), `// See ${foreignAdrId}\n`);
+    const decisions = join(context.projectRoot, "docs", "decisions");
+    writeFileSync(
+      join(context.projectRoot, ".gwrkrc.json"),
+      JSON.stringify({ project: { name: "alpha" } }),
+    );
+    mkdirSync(decisions, { recursive: true });
+    writeFileSync(
+      join(decisions, "ADR-010-track-the-decision.md"),
+      proposedAdr,
+    );
+    const decide = await handleSlashCommand("adr decide ADR-010", context);
+    expect(decide.response_type).toBe("in_channel");
+    symlinkSync(foreignSrc, join(context.projectRoot, "src"), "dir");
+
+    const response = await handleSlashCommand("adr check", {
+      ...context,
+      userId: SYNTHETIC_USER_VIEWER,
+    });
+
+    expect.soft(response.response_type).toBe("ephemeral");
+    expect.soft(response.blocks[0].text.text).not.toContain("beta-only.ts");
+    expect(response.blocks[0].text.text).not.toContain(foreignAdrId);
+  });
+
+  it("denies ADR recording before launch when the corpus is outside the checkout", async () => {
+    const { spawn } = await import("node:child_process");
+    const root = mkdtempSync(join(tmpdir(), "gwrk-slash-adr-record-"));
+    onTestFinished(() => rmSync(root, { recursive: true, force: true }));
+    const beta = initCheckout(SYNTHETIC_PROJECT_BETA, join(root, "beta"));
+    const foreignDecisions = join(beta.localRoot, "docs", "decisions");
+    const docs = join(context.projectRoot, "docs");
+    writeFileSync(
+      join(context.projectRoot, ".gwrkrc.json"),
+      JSON.stringify({ project: { name: "alpha" } }),
+    );
+    mkdirSync(foreignDecisions, { recursive: true });
+    mkdirSync(docs);
+    symlinkSync(foreignDecisions, join(docs, "decisions"), "dir");
+
+    const response = await handleSlashCommand(
+      "adr record Track the decision",
+      context,
+    );
+
+    expect.soft(response.response_type).toBe("ephemeral");
+    expect.soft(response.blocks[0].text.text).toMatch(/checkout/i);
+    expect(spawn).not.toHaveBeenCalled();
+  });
+
+  it.each(["spawn", "error"] as const)(
+    "reports ADR authoring launch outcome after the child emits %s",
+    async (event) => {
+      const { spawn } = await import("node:child_process");
+      writeFileSync(
+        join(context.projectRoot, ".gwrkrc.json"),
+        JSON.stringify({ project: { name: "alpha" } }),
+      );
+      const child = new ChildProcess();
+      child.on("error", vi.fn());
+      const unref = vi.spyOn(child, "unref");
+      const error = new Error("Could not start the ADR authoring process");
+      vi.mocked(spawn).mockReturnValueOnce(child);
+
+      const settled = vi.fn();
+      const pending = handleSlashCommand("adr record Track the decision", {
+        ...context,
+        userId: SYNTHETIC_USER_OPERATOR,
+      }).then((response) => {
+        settled();
+        return response;
+      });
+      await vi.waitFor(() => expect(spawn).toHaveBeenCalledOnce());
+      expect.soft(settled).not.toHaveBeenCalled();
+      expect.soft(unref).not.toHaveBeenCalled();
+
+      if (event === "error") child.emit("error", error);
+      else child.emit("spawn");
+      const response = await pending;
+
+      expect(spawn).toHaveBeenCalledExactlyOnceWith(
+        "gwrk",
+        ["define", "adr", "Track the decision", "--run"],
+        expect.objectContaining({
+          cwd: context.projectRoot,
+          env: expect.objectContaining({
+            GWRK_ADR_CHECKOUT_ROOT: context.projectRoot,
+            PATH: process.env.PATH,
+          }),
+        }),
+      );
+      if (event === "error") {
+        expect.soft(response.response_type).toBe("ephemeral");
+        expect.soft(response.blocks[0].text.text).toContain(error.message);
+        expect(unref).not.toHaveBeenCalled();
+      } else {
+        expect.soft(response.response_type).toBe("in_channel");
+        expect
+          .soft(response.blocks[0].text.text)
+          .toContain("Track the decision");
+        expect(unref).toHaveBeenCalledOnce();
+      }
+    },
+  );
 
   it("handles approve command — merges PR via VCS port", async () => {
     const merge = vi.spyOn(context.vcs!, "mergePullRequest");

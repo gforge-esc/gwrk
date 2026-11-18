@@ -140,6 +140,10 @@ pnpm exec vitest run src/db/scoping.test.ts src/db/db.test.ts src/db/plan.test.t
 - `src/adapters/git/index.ts` (MODIFY: Add merge inspection to the repository-scoped GitHub adapter)
 - `src/adapters/git/index.test.ts` (MODIFY: Verify the repository, pull request number and inspection outcomes)
 - `src/server/slack-messages.ts` (MODIFY: Stamp `projectId`, project slug and `rootTs` into Slack blocks and action values)
+- `src/adapters/filesystem/adr-checkout.ts` (NEW: Share canonical checkout containment and missing-destination validation)
+- `src/commands/adr.checkout.test.ts` (NEW: Prove carried authoring scope prevents escaped corpus and index writes)
+- `src/engine/adr-scaffold.ts` (MODIFY: Validate authoring paths at the write operation)
+- `src/engine/adr-check.ts` (MODIFY: Keep citation scan roots inside the authorized checkout)
 - `src/server/slack-commands.ts` (MODIFY: Parse `--project`, authorize via `ProjectRoutingService` and thread replies per project)
 - `src/server/slack-actions.ts` (MODIFY: Re-authorize clicks, enforce replay receipts and merge pull requests via `VcsPort`)
 - `src/server/slack-agent.ts` (MODIFY: Require authorized project resolution for mentions, direct messages and reactions)
@@ -172,9 +176,21 @@ For the merge receipt tests (TR-009), block unauthorized claims and retries from
 
 For GitHub origin validation (TR-009), require a checkout-local origin before inspection or merge. Require it for pull request lookups by number or branch too. An origin mismatch records a failed receipt with zero `gh` calls. After the origin is restored, concurrent clicks by the same caller execute one retry without inspection.
 
+Send private merge warnings to the authorized actor in the bound feature thread (TR-009). Cover origin mismatch and merge timeouts from both buttons and reactions. Keep failed and uncertain receipts subject to their existing retry rules.
+
 For log and revision buttons (TR-009), replace Alpha's checkout with Beta. Return a checkout warning for logs and leave both revision receipts unclaimed. After restoring Alpha, show its logs and start one revision per button across concurrent clicks.
 
-Replace Alpha's checkout with Beta for Approve Spec and both redispatch buttons (TR-009). Deny those clicks before claiming a receipt or starting work. After restoring Alpha, accept one claim and one launch or enqueue per button across concurrent clicks.
+For View Logs (TR-009), leave the bound feature directory missing or link it to a sibling feature. Put a run log in that sibling with a longer ID that shares the prefix. Assert one private no-logs reply in the bound thread. Assert zero sibling gate results, receipt claims and receipt completions.
+
+Replace Alpha's checkout with Beta for Approve Spec and both redispatch buttons (TR-009). Deny those clicks before claiming a receipt or starting work. After restoring Alpha, accept one claim and one launch or enqueue per button across concurrent clicks. Approve Spec runs `gwrk define plan <feature>` from the verified checkout and records one executed receipt.
+
+Start the dispatch queue in Alpha's verified mirror while its local checkout is also valid (TR-009). Deny both buttons before claiming a receipt when the mirror has only a longer feature ID with the same prefix. Add the exact feature to the mirror. For each button, accept one claim and one enqueue across concurrent clicks. Complete one executed receipt.
+
+Link the bound feature directory outside the checkout or to a sibling feature (TR-009). Deny Approve Spec and both revision buttons. Deny Retry Phase and Request Changes. Reply once in private to the clicker at the stored feature thread root. Assert zero public replies, receipt claims and completions. Assert zero process launches and queue entries.
+
+Exercise asynchronous spawn errors for Approve Spec and both revision buttons (TR-009). Keep the receipt claimed until launch resolves. On launch failure, record one failed outcome and warn the actor privately in the authorized thread.
+
+Reject Slack confirmations for both approval and revision buttons (TR-009). Cover Request Changes and Retry Phase too. Assert one effect and one executed receipt completion before confirmation delivery. Verify the stored receipt stays executed. Log the delivery failure and assert zero execution-failure replies.
 
 For mention summaries (TR-011), reply in the original thread when Beta replaces Alpha's checkout. Show Alpha's feature after restoration.
 
@@ -184,9 +200,21 @@ Status, logs and effort read files inside the verified checkout (TR-012a). Apply
 
 Test external feature links for dispatch, define and ship (TR-012a). Deny all three commands. The ADR list command shows the local decision index. Omit the index content when the same path links to another checkout.
 
+Decide a local ADR and verify its status and generated index (TR-012a). Reject a configured or linked corpus outside the checkout. Reject an index file or directory linked outside the checkout and a dangling index link. Assert a private reply and zero ADR or index writes for each denial.
+
+Run `adr check` as a viewer against the generated local index (TR-012a). Omit foreign filenames and citations when a scan root links outside the checkout. Deny `adr record` privately when the decision corpus links outside the checkout. Assert zero process launches.
+
+For a valid local `adr record` request (TR-012a), pass the verified checkout to the child process. Keep the reply pending during launch. Confirm dispatch in channel after the child emits `spawn`. Return a private warning if the child emits `error` during launch.
+
+Point Alpha's specs at Beta's specs and request a missing feature with `ship` and `approve` (TR-012a). Both commands return a private checkout-scoped error without listing features. Assert zero process launches, pull request lookups and merges. Give `ship` a prefix that matches a local feature and a linked foreign feature. Assert it resolves the local feature and replies in its thread.
+
+For `ship` and `approve` (TR-012a), link the requested feature outside the checkout. Add a longer local feature ID with the same prefix. Deny the request privately. Assert zero process launches, pull request lookups and merges.
+
 For slash command delivery (TR-012b), send status via `chat.postEphemeral` to the caller in the authorized channel at the stored thread root. Send public dispatch and unthreaded help via `respond`. Set `replace_original: false` for public threaded replies.
 
 For slash command status (TR-012b), read Beta's ledger while the daemon serves Alpha. Scope feature history and summary statistics to Beta and leave the startup queue untouched. Deny dispatch and pause for Beta.
+
+Enroll Alpha's mirror through a symbolic link and start the daemon at the mirror's canonical path (TR-012b). Bind the startup queue to Alpha for review actions. Enqueue the authorized slash dispatch once and confirm it in Alpha's stored feature thread.
 
 #### Done When
 

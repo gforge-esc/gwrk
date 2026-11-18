@@ -42,7 +42,7 @@ type ActionClaimDecision =
       checkoutRoot?: string;
       mergeTarget?: MergeTarget;
     })
-  | Extract<RouteDecision, { ok: false }>;
+  | (Extract<RouteDecision, { ok: false }> & { recipient?: DeliveryRecipient });
 
 type MergeClaimInput = Omit<ActionInput, "actionId" | "requiredAccess"> & {
   nowIso: string;
@@ -239,6 +239,7 @@ export function createProjectRoutingService(
           ok: false,
           code: "REMOTE_AUTH_REQUIRED",
           message: "The project checkout is unavailable.",
+          recipient: decision.recipient,
         };
       }
 

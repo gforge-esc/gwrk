@@ -2,16 +2,13 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { spawn } from "node:child_process";
-import { realpathSync } from "node:fs";
 import type { App, BlockAction, ButtonAction } from "@slack/bolt";
 import type { ActionsBlock } from "@slack/types";
-import { verifyEnrolledCheckout } from "../adapters/git/project-id.js";
+import { scopedFeatureDirectory } from "../adapters/filesystem/scoped-feature.js";
 import type { ProjectRoutingService } from "../application/project-routing/index.js";
 import { findOpenPr } from "../db/runs.js";
 import { normalizeGitRemoteSlug } from "../domain/project-id.js";
 import type {
-  EnrolledProject,
   MergeTarget,
   SlackActionReceipt,
 } from "../domain/project-registry.js";
@@ -22,7 +19,9 @@ import { resolveProjectId } from "../utils/project-id.js";
 import {
   type CommandContext,
   buildSlackLogResponse,
+  resolveSlackCheckout,
 } from "./slack-commands.js";
+import { launchDetachedGwrk } from "./slack-launch.js";
 
 function parseActionPayload(rawPayload?: string): {
   featureId?: string;
@@ -51,13 +50,6 @@ interface ActionVerificationResult {
   threadTs?: string;
   receiptKey?: string;
   mergeTarget?: MergeTarget;
-}
-
-function resolveProjectCheckout(project: EnrolledProject): string | undefined {
-  return (
-    verifyEnrolledCheckout(project, "localRoot") ??
-    verifyEnrolledCheckout(project, "mirrorPath")
-  );
 }
 
 async function verifyAndClaimClick(
@@ -134,19 +126,23 @@ async function verifyAndClaimClick(
     decision = context.routingService.authorizeAndClaimAction({
       ...input,
       nowIso,
-      resolveCheckout: usesStartupQueue
-        ? (project: EnrolledProject) => {
-            const checkout = resolveProjectCheckout(project);
-            try {
-              return checkout === realpathSync(context.projectRoot)
-                ? checkout
-                : undefined;
-            } catch {
-              return undefined;
+      resolveCheckout:
+        usesStartupQueue || revisesCheckout
+          ? (project) => {
+              const checkout = resolveSlackCheckout(
+                project,
+                usesStartupQueue ? context.projectRoot : undefined,
+              );
+              if (
+                !checkout ||
+                !scopedFeatureDirectory(checkout, input.featureId, {
+                  exactId: true,
+                })
+              ) {
+                return undefined;
+              }
+              return checkout;
             }
-          }
-        : revisesCheckout
-          ? resolveProjectCheckout
           : undefined,
       requiredProjectId: usesStartupQueue
         ? (context.queueProjectId ?? null)
@@ -162,6 +158,9 @@ async function verifyAndClaimClick(
       await client.chat.postEphemeral({
         channel: channelId,
         user: actorUserId,
+        ...(decision.recipient?.threadTs
+          ? { thread_ts: decision.recipient.threadTs }
+          : {}),
         text: `:warning: Action unauthorized: ${decision.message}`,
       });
     }
@@ -171,7 +170,7 @@ async function verifyAndClaimClick(
   const needsCheckout = actionId === "view_logs" || revisesCheckout;
   const checkoutRoot =
     actionId === "view_logs"
-      ? resolveProjectCheckout(decision.project)
+      ? resolveSlackCheckout(decision.project)
       : decision.checkoutRoot;
   if (needsCheckout && !checkoutRoot) {
     await client.chat.postEphemeral({
@@ -214,6 +213,19 @@ function completeReceipt(
 ) {
   if (receiptKey) {
     context.routingService?.completeActionReceipt(receiptKey, outcome);
+  }
+}
+
+async function postActionConfirmation(
+  client: App["client"],
+  logger: { error(message: string): void },
+  actionId: string,
+  message: Parameters<App["client"]["chat"]["postMessage"]>[0],
+) {
+  try {
+    await client.chat.postMessage(message);
+  } catch (error) {
+    logger.error(`Could not post ${actionId} confirmation: ${error}`);
   }
 }
 
@@ -286,6 +298,7 @@ async function handleMerge(
     await client.chat.postEphemeral({
       channel,
       user,
+      thread_ts: auth.threadTs,
       text:
         outcome === "uncertain"
           ? `:warning: Merge outcome unknown for PR #${prNumber}. ${detail}`
@@ -379,13 +392,6 @@ export async function registerSlackActions(app: App, context: CommandContext) {
 
     try {
       context.queue.enqueue({ featureId, phaseId: phaseId ?? "" });
-      completeReceipt(context, auth.receiptKey, "executed");
-
-      await client.chat.postMessage({
-        channel: actionBody.channel?.id || "",
-        thread_ts: auth.threadTs,
-        text: `🔄 Changes requested for *${featureId}*${phaseId ? ` phase *${phaseId}*` : ""} by <@${actionBody.user.id}>. Agent notified and re-dispatching.`,
-      });
     } catch (error) {
       completeReceipt(context, auth.receiptKey, "failed");
       const errorMessage =
@@ -393,9 +399,18 @@ export async function registerSlackActions(app: App, context: CommandContext) {
       await client.chat.postEphemeral({
         channel: actionBody.channel?.id || "",
         user: actionBody.user.id,
+        thread_ts: auth.threadTs,
         text: `:warning: Failed to re-dispatch: ${errorMessage}`,
       });
+      return;
     }
+
+    completeReceipt(context, auth.receiptKey, "executed");
+    await postActionConfirmation(client, logger, "request_changes", {
+      channel: actionBody.channel?.id || "",
+      thread_ts: auth.threadTs,
+      text: `🔄 Changes requested for *${featureId}*${phaseId ? ` phase *${phaseId}*` : ""} by <@${actionBody.user.id}>. Agent notified and re-dispatching.`,
+    });
   });
 
   app.action("approve_spec", async ({ ack, body, client, logger }) => {
@@ -420,19 +435,7 @@ export async function registerSlackActions(app: App, context: CommandContext) {
 
     try {
       // Approve spec triggers plan generation
-      const child = spawn("gwrk", ["plan", featureId], {
-        cwd: auth.projectRoot,
-        detached: true,
-        stdio: "ignore",
-      });
-      child.unref();
-      completeReceipt(context, auth.receiptKey, "executed");
-
-      await client.chat.postMessage({
-        channel: actionBody.channel?.id || "",
-        thread_ts: auth.threadTs,
-        text: `✅ Approved spec for *${featureId}* (${specPath}). Generating build plan...`,
-      });
+      await launchDetachedGwrk(["define", "plan", featureId], auth.projectRoot);
     } catch (error) {
       completeReceipt(context, auth.receiptKey, "failed");
       const errorMessage =
@@ -440,9 +443,18 @@ export async function registerSlackActions(app: App, context: CommandContext) {
       await client.chat.postEphemeral({
         channel: actionBody.channel?.id || "",
         user: actionBody.user.id,
+        thread_ts: auth.threadTs,
         text: `:warning: Failed to trigger planning: ${errorMessage}`,
       });
+      return;
     }
+
+    completeReceipt(context, auth.receiptKey, "executed");
+    await postActionConfirmation(client, logger, "approve_spec", {
+      channel: actionBody.channel?.id || "",
+      thread_ts: auth.threadTs,
+      text: `✅ Approved spec for *${featureId}* (${specPath}). Generating build plan...`,
+    });
   });
 
   app.action("approve_plan", async ({ ack, body, client, logger }) => {
@@ -468,13 +480,6 @@ export async function registerSlackActions(app: App, context: CommandContext) {
     try {
       const store = new PlanStore(auth.projectId || defaultProjectId);
       store.handleDefineComplete({ featureId, status: "DEFINED" });
-      completeReceipt(context, auth.receiptKey, "executed");
-
-      await client.chat.postMessage({
-        channel: actionBody.channel?.id || "",
-        thread_ts: auth.threadTs,
-        text: `✅ Approved plan for *${featureId}* (${planPath}). Feature status updated to *DEFINED*. Ready for implementation.`,
-      });
     } catch (error) {
       completeReceipt(context, auth.receiptKey, "failed");
       const errorMessage =
@@ -482,9 +487,18 @@ export async function registerSlackActions(app: App, context: CommandContext) {
       await client.chat.postEphemeral({
         channel: actionBody.channel?.id || "",
         user: actionBody.user.id,
+        thread_ts: auth.threadTs,
         text: `:warning: Failed to update plan status: ${errorMessage}`,
       });
+      return;
     }
+
+    completeReceipt(context, auth.receiptKey, "executed");
+    await postActionConfirmation(client, logger, "approve_plan", {
+      channel: actionBody.channel?.id || "",
+      thread_ts: auth.threadTs,
+      text: `✅ Approved plan for *${featureId}* (${planPath}). Feature status updated to *DEFINED*. Ready for implementation.`,
+    });
   });
 
   app.action("revise_spec", async ({ ack, body, client, logger }) => {
@@ -508,19 +522,7 @@ export async function registerSlackActions(app: App, context: CommandContext) {
     if (!auth.ok) return;
 
     try {
-      const child = spawn("gwrk", ["define", "spec", featureId], {
-        cwd: auth.projectRoot,
-        detached: true,
-        stdio: "ignore",
-      });
-      child.unref();
-      completeReceipt(context, auth.receiptKey, "executed");
-
-      await client.chat.postMessage({
-        channel: actionBody.channel?.id || "",
-        thread_ts: auth.threadTs,
-        text: `🔄 Revision requested for *${featureId}* spec. Agent notified and re-generating spec...`,
-      });
+      await launchDetachedGwrk(["define", "spec", featureId], auth.projectRoot);
     } catch (error) {
       completeReceipt(context, auth.receiptKey, "failed");
       const errorMessage =
@@ -528,9 +530,18 @@ export async function registerSlackActions(app: App, context: CommandContext) {
       await client.chat.postEphemeral({
         channel: actionBody.channel?.id || "",
         user: actionBody.user.id,
+        thread_ts: auth.threadTs,
         text: `:warning: Failed to trigger spec revision: ${errorMessage}`,
       });
+      return;
     }
+
+    completeReceipt(context, auth.receiptKey, "executed");
+    await postActionConfirmation(client, logger, "revise_spec", {
+      channel: actionBody.channel?.id || "",
+      thread_ts: auth.threadTs,
+      text: `🔄 Revision requested for *${featureId}* spec. Agent notified and re-generating spec...`,
+    });
   });
 
   app.action("revise_plan", async ({ ack, body, client, logger }) => {
@@ -554,19 +565,7 @@ export async function registerSlackActions(app: App, context: CommandContext) {
     if (!auth.ok) return;
 
     try {
-      const child = spawn("gwrk", ["define", "plan", featureId], {
-        cwd: auth.projectRoot,
-        detached: true,
-        stdio: "ignore",
-      });
-      child.unref();
-      completeReceipt(context, auth.receiptKey, "executed");
-
-      await client.chat.postMessage({
-        channel: actionBody.channel?.id || "",
-        thread_ts: auth.threadTs,
-        text: `🔄 Revision requested for *${featureId}* plan. Agent notified and re-generating plan...`,
-      });
+      await launchDetachedGwrk(["define", "plan", featureId], auth.projectRoot);
     } catch (error) {
       completeReceipt(context, auth.receiptKey, "failed");
       const errorMessage =
@@ -574,9 +573,18 @@ export async function registerSlackActions(app: App, context: CommandContext) {
       await client.chat.postEphemeral({
         channel: actionBody.channel?.id || "",
         user: actionBody.user.id,
+        thread_ts: auth.threadTs,
         text: `:warning: Failed to trigger plan revision: ${errorMessage}`,
       });
+      return;
     }
+
+    completeReceipt(context, auth.receiptKey, "executed");
+    await postActionConfirmation(client, logger, "revise_plan", {
+      channel: actionBody.channel?.id || "",
+      thread_ts: auth.threadTs,
+      text: `🔄 Revision requested for *${featureId}* plan. Agent notified and re-generating plan...`,
+    });
   });
 
   app.action("view_review", async ({ ack, body, client, logger }) => {
@@ -654,7 +662,9 @@ export async function registerSlackActions(app: App, context: CommandContext) {
 
     const args = [payload.featureId];
     if (payload.phaseId) args.push(payload.phaseId);
-    const { blocks } = buildSlackLogResponse(args, auth.projectRoot);
+    const { blocks } = buildSlackLogResponse(args, auth.projectRoot, {
+      exactFeature: true,
+    });
     await client.chat.postEphemeral({
       channel: body.channel?.id ?? context.channelId,
       user: body.user.id,
@@ -686,12 +696,6 @@ export async function registerSlackActions(app: App, context: CommandContext) {
 
     try {
       context.queue.enqueue({ featureId, phaseId: phaseId ?? "" });
-      completeReceipt(context, auth.receiptKey, "executed");
-      await client.chat.postMessage({
-        channel: actionBody.channel?.id || "",
-        thread_ts: auth.threadTs,
-        text: `🔄 Retrying *${featureId}*${phaseId ? ` phase *${phaseId}*` : ""} as requested by <@${actionBody.user.id}>`,
-      });
     } catch (error) {
       completeReceipt(context, auth.receiptKey, "failed");
       const errorMessage =
@@ -699,9 +703,18 @@ export async function registerSlackActions(app: App, context: CommandContext) {
       await client.chat.postEphemeral({
         channel: actionBody.channel?.id || "",
         user: actionBody.user.id,
+        thread_ts: auth.threadTs,
         text: `:warning: Failed to retry phase: ${errorMessage}`,
       });
+      return;
     }
+
+    completeReceipt(context, auth.receiptKey, "executed");
+    await postActionConfirmation(client, logger, "retry_phase", {
+      channel: actionBody.channel?.id || "",
+      thread_ts: auth.threadTs,
+      text: `🔄 Retrying *${featureId}*${phaseId ? ` phase *${phaseId}*` : ""} as requested by <@${actionBody.user.id}>`,
+    });
   });
 
   app.event(

@@ -22,10 +22,10 @@ import {
 } from "../domain/slack-routing.js";
 import type { VcsPort } from "../ports/vcs-port.js";
 import { resolveProjectId } from "../utils/project-id.js";
-import { resolveFeature } from "../utils/resolve-feature.js";
 import type { DispatchQueue } from "./dispatch.js";
 import type { GitManager } from "./git-manager.js";
 import type { SystemMonitor } from "./monitor.js";
+import { launchDetachedGwrk } from "./slack-launch.js";
 import type { DispatchRecord } from "./types.js";
 
 interface SlackBlockKit {
@@ -59,20 +59,37 @@ export type SlashCommandHandler = (
   context: CommandContext,
 ) => Promise<SlackBlockKit>;
 
+const scopedFeatureUnavailable =
+  "Feature is unavailable inside this project's checkout.";
+
 function resolveScopedSlackFeature(
   projectRoot: string,
   featureInput: string,
 ): { featureId: string; directory: string } | undefined {
-  if (
-    !/^[a-zA-Z0-9][a-zA-Z0-9_-]*$/.test(featureInput) ||
-    !scopedSpecsDirectory(projectRoot)
-  ) {
-    return undefined;
-  }
+  if (!/^[a-zA-Z0-9][a-zA-Z0-9_-]*$/.test(featureInput)) return undefined;
+  const specs = scopedSpecsDirectory(projectRoot);
+  if (!specs) return undefined;
+
+  const exact = scopedFeatureDirectory(projectRoot, featureInput);
+  if (exact) return { featureId: featureInput, directory: exact };
   try {
-    const featureId = resolveFeature(featureInput, projectRoot);
-    const directory = scopedFeatureDirectory(projectRoot, featureId);
-    return directory ? { featureId, directory } : undefined;
+    fs.lstatSync(path.join(specs, featureInput));
+    return undefined;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT") return undefined;
+  }
+
+  const prefix = /^\d+$/.test(featureInput) ? featureInput : `${featureInput}-`;
+  try {
+    let match: { featureId: string; directory: string } | undefined;
+    for (const featureId of fs.readdirSync(specs)) {
+      if (!featureId.startsWith(prefix)) continue;
+      const directory = scopedFeatureDirectory(projectRoot, featureId);
+      if (!directory) continue;
+      if (match) return undefined;
+      match = { featureId, directory };
+    }
+    return match;
   } catch {
     return undefined;
   }
@@ -341,7 +358,11 @@ const handlers: Record<string, SlashCommandHandler> = {
     }
 
     try {
-      const resolved = resolveFeature(featureArg, context.projectRoot);
+      const resolved = resolveScopedSlackFeature(
+        context.projectRoot,
+        featureArg,
+      )?.featureId;
+      if (!resolved) throw new Error(scopedFeatureUnavailable);
       const phaseId = phaseArg
         ? phaseArg.startsWith("phase-")
           ? phaseArg
@@ -606,7 +627,11 @@ const handlers: Record<string, SlashCommandHandler> = {
     }
 
     try {
-      const resolved = resolveFeature(featureArg, context.projectRoot);
+      const resolved = resolveScopedSlackFeature(
+        context.projectRoot,
+        featureArg,
+      )?.featureId;
+      if (!resolved) throw new Error(scopedFeatureUnavailable);
 
       // Spawn gwrk ship as background process
       const child = spawn("gwrk", ["ship", resolved, phaseArg], {
@@ -686,10 +711,7 @@ const handlers: Record<string, SlashCommandHandler> = {
         context.projectRoot,
         featureId,
       )?.featureId;
-      if (!resolved)
-        throw new Error(
-          "Feature is unavailable inside this project's checkout.",
-        );
+      if (!resolved) throw new Error(scopedFeatureUnavailable);
 
       // Spawn gwrk define <sub> <feature> as background process
       const child = spawn("gwrk", ["define", subcommand, resolved], {
@@ -812,6 +834,8 @@ const handlers: Record<string, SlashCommandHandler> = {
         const msg = await adrCommandHandler({
           check: true,
           cwd: context.projectRoot,
+          verifiedCheckoutRoot:
+            context.verifiedCheckoutRoot ?? context.projectRoot,
         });
         return {
           response_type: "ephemeral",
@@ -858,6 +882,7 @@ const handlers: Record<string, SlashCommandHandler> = {
           target: adrId,
           decide: true,
           cwd: context.projectRoot,
+          verifiedCheckoutRoot: context.verifiedCheckoutRoot,
         });
         return {
           response_type: "in_channel",
@@ -901,12 +926,36 @@ const handlers: Record<string, SlashCommandHandler> = {
           ],
         };
       }
-      const child = spawn("gwrk", ["define", "adr", title, "--run"], {
-        cwd: context.projectRoot,
-        detached: true,
-        stdio: "ignore",
-      });
-      child.unref();
+      try {
+        const { resolveAdrAuthoringScope } = await import(
+          "../engine/adr-scaffold.js"
+        );
+        const scope = await resolveAdrAuthoringScope(
+          context.projectRoot,
+          context.verifiedCheckoutRoot ?? context.projectRoot,
+        );
+        await launchDetachedGwrk(
+          ["define", "adr", title, "--run"],
+          scope.projectRoot,
+          {
+            ...process.env,
+            GWRK_ADR_CHECKOUT_ROOT: scope.verifiedCheckoutRoot,
+          },
+        );
+      } catch (error) {
+        return {
+          response_type: "ephemeral",
+          blocks: [
+            {
+              type: "section",
+              text: {
+                type: "mrkdwn",
+                text: `:warning: ${error instanceof Error ? error.message : String(error)}`,
+              },
+            },
+          ],
+        };
+      }
       return {
         response_type: "in_channel",
         blocks: [
@@ -939,6 +988,7 @@ const handlers: Record<string, SlashCommandHandler> = {
 export function buildSlackLogResponse(
   args: string[],
   projectRoot: string,
+  options: { exactFeature?: boolean } = {},
 ): SlackBlockKit {
   const [featureId, phaseId] = args;
   if (!featureId) {
@@ -957,10 +1007,9 @@ export function buildSlackLogResponse(
   }
 
   // Read ship run JSON files from specs/<feature>/.gwrk/runs/
-  const featureDir = resolveScopedSlackFeature(
-    projectRoot,
-    featureId,
-  )?.directory;
+  const featureDir = options.exactFeature
+    ? scopedFeatureDirectory(projectRoot, featureId, { exactId: true })
+    : resolveScopedSlackFeature(projectRoot, featureId)?.directory;
   const runsDir = featureDir
     ? scopedFeaturePath(featureDir, ".gwrk", "runs")
     : undefined;
@@ -1096,7 +1145,7 @@ const checkoutCommands = new Set([
   "ship",
 ]);
 
-function resolveSlashCheckout(
+export function resolveSlackCheckout(
   project: EnrolledProject,
   queueRoot?: string,
 ): string | undefined {
@@ -1267,7 +1316,7 @@ export async function handleSlashCommand(
     !threadTs && args[0] && featureCommands.has(subcommand);
   const checkout =
     needsCheckout || needsFeatureThread || (subcommand === "status" && args[0])
-      ? resolveSlashCheckout(
+      ? resolveSlackCheckout(
           decision.project,
           subcommand === "dispatch" ? context.projectRoot : undefined,
         )
@@ -1286,31 +1335,6 @@ export async function handleSlashCommand(
         },
       ],
     };
-  }
-
-  if (checkout && ["define", "ship"].includes(subcommand) && args[0]) {
-    const featureInput =
-      subcommand === "define" ? (args[1] ?? args[0]) : args[0];
-    try {
-      const featureId = resolveFeature(featureInput, checkout);
-      if (!scopedFeatureDirectory(checkout, featureId)) {
-        return {
-          response_type: "ephemeral",
-          thread_ts: threadTs,
-          blocks: [
-            {
-              type: "section",
-              text: {
-                type: "mrkdwn",
-                text: ":warning: Feature is unavailable inside this project's checkout.",
-              },
-            },
-          ],
-        };
-      }
-    } catch {
-      // New feature definitions have no existing directory.
-    }
   }
 
   if (checkout && needsFeatureThread) {
