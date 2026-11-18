@@ -5,6 +5,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { dispatchToAgent, SAFE_AGENT_ENV, COMMAND_SAFETY_BLOCK } from './agent.js';
 import * as skillRuntime from '../plugins/skill-runtime.js';
+import * as profileDetector from '../engine/profile-detector.js';
 import * as extensionRuntime from '../plugins/extension-runtime.js';
 import { WorkflowRuntime } from '../plugins/workflow-runtime.js';
 import { execFileSync, spawn } from 'node:child_process';
@@ -40,7 +41,7 @@ vi.mock('./config.js', () => ({
   })
 }));
 
-function mockAgentStdin(onSpawn?: () => void) {
+function mockAgentStdin(onSpawn?: () => void, stdout = '') {
   let capturedStdin = '';
   vi.mocked(spawn).mockImplementation(() => {
     onSpawn?.();
@@ -51,6 +52,9 @@ function mockAgentStdin(onSpawn?: () => void) {
     });
     child.stdin.on('data', (chunk) => { capturedStdin += chunk.toString(); });
     setImmediate(() => {
+      if (stdout) {
+        child.stdout.write(`${stdout}\n`);
+      }
       child.stdout.end();
       child.stderr.end();
       child.emit('close', 0);
@@ -846,6 +850,136 @@ it('uses the primary checkout throttle for a dispatch in a linked worktree', asy
   }
 });
 
+async function withHermeticProjectRoot<T>(
+  fn: (projectRoot: string) => Promise<T>,
+): Promise<T> {
+  const projectRoot = fs.mkdtempSync(path.join(os.tmpdir(), "gwrk-hermetic-"));
+  const actualSkillRuntime = await vi.importActual<
+    typeof import("../plugins/skill-runtime.js")
+  >("../plugins/skill-runtime.js");
+  const actualProfileDetector = await vi.importActual<
+    typeof import("../engine/profile-detector.js")
+  >("../engine/profile-detector.js");
+
+  try {
+    fs.writeFileSync(
+      path.join(projectRoot, "package.json"),
+      JSON.stringify({
+        name: "fixture",
+        devDependencies: { typescript: "^5.0.0" },
+      }),
+    );
+    fs.mkdirSync(path.join(projectRoot, ".gwrk", "decisions"), {
+      recursive: true,
+    });
+    fs.writeFileSync(
+      path.join(projectRoot, ".gwrk", "plugins.json"),
+      JSON.stringify({ inherits: false }),
+    );
+    fs.writeFileSync(
+      path.join(projectRoot, ".gwrk", "architecture.md"),
+      "# Architecture Target\nHexagonal functional target.",
+    );
+    fs.writeFileSync(
+      path.join(projectRoot, ".gwrk", "decisions", "index.md"),
+      "# Architecture Decision Index\n\n| ADR | Scope | Status | Constraint |\n|---|---|---|---|\n| ADR-008 | Agent execution | Decided | Run non-interactively. |\n",
+    );
+
+    vi.mocked(skillRuntime.resolveEnforcementSkills).mockImplementation(
+      actualSkillRuntime.resolveEnforcementSkills,
+    );
+    vi.mocked(profileDetector.detectProfile).mockImplementation(
+      actualProfileDetector.detectProfile,
+    );
+
+    return await fn(projectRoot);
+  } finally {
+    vi.mocked(skillRuntime.resolveEnforcementSkills).mockReset();
+    vi.mocked(profileDetector.detectProfile).mockReset();
+    vi.mocked(profileDetector.detectProfile).mockResolvedValue({
+      type: "nodejs",
+      stack: { language: "TypeScript" },
+      layout: "flat",
+    });
+    fs.rmSync(projectRoot, { recursive: true, force: true });
+  }
+}
+
+describe("TR-012: Captured Planning and Implementation Workflow Seam Tests", () => {
+  it("captures spawned stdin for gwrk-plan with expanded enforcement, grounding, and single policy", async () => {
+    const input = "Plan the requested phase.";
+    const capturedStdin = mockAgentStdin(undefined, '{"summary":"ok","intents":[]}');
+
+    await withHermeticProjectRoot(async (projectRoot) => {
+      await new WorkflowRuntime().executeWorkflow("gwrk-plan", input, {
+        agent: "codex",
+        featureDir: "specs/043-unified-routing-prompt-delivery",
+        projectRoot,
+        quiet: true,
+      });
+
+      const stdin = capturedStdin();
+      const inputBoundary = stdin.indexOf("<user_input>");
+      expect(inputBoundary).toBeGreaterThan(-1);
+      const templatePrefix = stdin.slice(0, inputBoundary);
+
+      expect(templatePrefix).toContain("<code_quality>");
+      expect(templatePrefix).toContain(
+        "<!-- enforcement-skill: typescript-standards -->",
+      );
+      expect(templatePrefix).not.toContain("{{enforcement}}");
+      expect(templatePrefix).not.toContain("undefined");
+
+      expect(stdin).toContain("<architecture_target>");
+      expect(stdin).toContain("<architecture_decisions>");
+
+      expect(stdin.split(COMMAND_SAFETY_BLOCK).length - 1).toBe(1);
+      expect(stdin.match(/<command_safety>/g)).toHaveLength(1);
+
+      expect(stdin.match(/# \/gwrk-plan/g)).toHaveLength(1);
+      expect(stdin.match(/<user_input>/g)).toHaveLength(1);
+      expect(stdin).toContain(`<user_input>\n${input}\n</user_input>`);
+    });
+  });
+
+  it("captures spawned stdin for native gwrk-implement with expanded enforcement, grounding, and single policy", async () => {
+    const input = "Implement the requested phase.";
+    const capturedStdin = mockAgentStdin(undefined, '{"summary":"ok","intents":[]}');
+
+    await withHermeticProjectRoot(async (projectRoot) => {
+      await new WorkflowRuntime().executeWorkflow("gwrk-implement", input, {
+        agent: "codex",
+        featureDir: "specs/043-unified-routing-prompt-delivery",
+        nativeOnly: true,
+        projectRoot,
+        quiet: true,
+      });
+
+      const stdin = capturedStdin();
+      const inputBoundary = stdin.indexOf("<user_input>");
+      expect(inputBoundary).toBeGreaterThan(-1);
+      const templatePrefix = stdin.slice(0, inputBoundary);
+
+      expect(templatePrefix).toContain("<code_quality>");
+      expect(templatePrefix).toContain(
+        "<!-- enforcement-skill: typescript-standards -->",
+      );
+      expect(templatePrefix).not.toContain("{{enforcement}}");
+      expect(templatePrefix).not.toContain("undefined");
+
+      expect(stdin).toContain("<architecture_target>");
+      expect(stdin).toContain("<architecture_decisions>");
+
+      expect(stdin.split(COMMAND_SAFETY_BLOCK).length - 1).toBe(1);
+      expect(stdin.match(/<command_safety>/g)).toHaveLength(1);
+
+      expect(stdin.match(/# \/gwrk-implement/g)).toHaveLength(1);
+      expect(stdin.match(/<user_input>/g)).toHaveLength(1);
+      expect(stdin).toContain(`<user_input>\n${input}\n</user_input>`);
+    });
+  });
+});
+
 describe("TR-018: Context Injection in Dispatch (Phase 21)", () => {
   it("includes feature and task context in the native implementation agent stdin", async () => {
     const input = "Verify the idempotency guarantee.";
@@ -857,16 +991,19 @@ describe("TR-018: Context Injection in Dispatch (Phase 21)", () => {
           : [],
     );
 
-    await new WorkflowRuntime().executeWorkflow("gwrk-implement", input, {
-      agent: "codex",
-      featureDir: "specs/043-unified-routing-prompt-delivery",
-      nativeOnly: true,
-      projectRoot: "/fake/root",
-    });
+    await withHermeticProjectRoot(async (projectRoot) => {
+      await new WorkflowRuntime().executeWorkflow("gwrk-implement", input, {
+        agent: "codex",
+        featureDir: "specs/043-unified-routing-prompt-delivery",
+        nativeOnly: true,
+        projectRoot,
+      });
 
-    expect(capturedStdin()).toContain("# /gwrk-implement");
-    expect(capturedStdin()).toContain(`<user_input>\n${input}\n</user_input>`);
-    expect(capturedStdin()).toContain("<project_rules>\nUse the durable operation key.\n</project_rules>");
+      expect(capturedStdin()).toContain("# /gwrk-implement");
+      expect(capturedStdin()).toContain(`<user_input>\n${input}\n</user_input>`);
+      expect(capturedStdin()).toContain("<project_rules>\nUse the durable operation key.\n</project_rules>");
+      expect(capturedStdin()).not.toContain("<code_quality>\nundefined\n</code_quality>");
+    });
   });
 
   it("FR-L3-006: injects output of resolveExtensionContext into prompt", async () => {
