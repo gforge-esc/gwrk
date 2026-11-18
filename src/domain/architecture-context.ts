@@ -73,7 +73,9 @@ const FRAMEWORK_GUIDANCE: Record<string, string> = {
 export function lookupLanguageGuidance(language?: string): string | undefined {
   if (!language) return undefined;
   const key = language.toLowerCase().trim();
-  return LANGUAGE_GUIDANCE[key];
+  return Object.hasOwn(LANGUAGE_GUIDANCE, key)
+    ? LANGUAGE_GUIDANCE[key]
+    : undefined;
 }
 
 export function lookupFrameworkGuidance(
@@ -81,7 +83,9 @@ export function lookupFrameworkGuidance(
 ): string | undefined {
   if (!framework) return undefined;
   const key = framework.toLowerCase().replace(/[^a-z0-9]/g, "");
-  return FRAMEWORK_GUIDANCE[key];
+  return Object.hasOwn(FRAMEWORK_GUIDANCE, key)
+    ? FRAMEWORK_GUIDANCE[key]
+    : undefined;
 }
 export function designRules(design: ProjectDesign): string[] {
   const rules: string[] = [];

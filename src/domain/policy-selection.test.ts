@@ -384,6 +384,38 @@ describe("Project policy composition", () => {
 });
 
 describe("reviewed policy coverage regressions", () => {
+  it("returns no language guidance for inherited table keys", async () => {
+    const { lookupLanguageGuidance } = await import(
+      "./architecture-context.js"
+    );
+    expect(lookupLanguageGuidance("constructor")).toBeUndefined();
+  });
+
+  it("returns no framework guidance for inherited table keys", async () => {
+    const { lookupFrameworkGuidance } = await import(
+      "./architecture-context.js"
+    );
+    expect(lookupFrameworkGuidance("con-structor")).toBeUndefined();
+  });
+
+  it("reports both binding gaps for unknown language and framework identifiers", async () => {
+    const { composeEffectivePolicy } = await import("./policy-selection.js");
+    const result = composeEffectivePolicy({
+      profile: {
+        ...profile,
+        stack: { language: "constructor", framework: "con-structor" },
+      },
+      candidates: [],
+    });
+
+    expect(result.gaps.map(({ kind, subject }) => ({ kind, subject }))).toEqual(
+      [
+        { kind: "missing-language-binding", subject: "constructor" },
+        { kind: "missing-framework-binding", subject: "con-structor" },
+      ],
+    );
+  });
+
   it.each([
     {
       title: "disabled",
@@ -478,6 +510,98 @@ describe("reviewed policy coverage regressions", () => {
         subject: "Fastify",
       }),
     );
+  });
+
+  it.each(["review", "define"] as const)(
+    "counts the review policy's language and framework bindings in %s",
+    async (scope) => {
+      const { composeEffectivePolicy } = await import("./policy-selection.js");
+      const stack = { language: "Kotlin", framework: "Svelte" };
+      const manifest = { ...fastify, ...stack, name: "svelte-policy" };
+      const result = composeEffectivePolicy({
+        profile: { ...profile, stack },
+        scope,
+        candidates: [
+          {
+            name: manifest.name,
+            source: "project-local",
+            manifest: { ...manifest, scope: "implementation", disabled: true },
+          },
+          {
+            name: manifest.name,
+            source: "builtin",
+            manifest: { ...manifest, scope: "review" },
+          },
+        ],
+      });
+
+      expect(result.selectedSkills).toEqual(
+        scope === "review"
+          ? [expect.objectContaining({ source: "builtin" })]
+          : [],
+      );
+      expect(result.gaps).toEqual([]);
+    },
+  );
+
+  it("reports an incompatible review policy despite a disabled implementation copy", async () => {
+    const { composeEffectivePolicy } = await import("./policy-selection.js");
+    const result = composeEffectivePolicy({
+      profile,
+      scope: "define",
+      candidates: [
+        {
+          name: fastify.name,
+          source: "project-local",
+          manifest: { ...fastify, scope: "implementation", disabled: true },
+        },
+        {
+          name: fastify.name,
+          source: "builtin",
+          manifest: { ...fastify, scope: "review", architectures: ["layered"] },
+        },
+      ],
+    });
+
+    expect(result.gaps).toContainEqual(
+      expect.objectContaining({
+        kind: "incompatible-framework-policy",
+        subject: "Fastify",
+      }),
+    );
+  });
+
+  it("rejects an empty architecture selector and accepts an omitted selector", async () => {
+    const { evaluateEnforcementCandidate } = await import(
+      "./policy-selection.js"
+    );
+    const cleanProfile = {
+      ...profile,
+      design: { ...profile.design, architecture: "Clean" },
+    };
+    const candidate = {
+      name: "architecture-policy",
+      source: "builtin",
+      manifest: {
+        name: "architecture-policy",
+        version: "1.0.0",
+        description: "Architecture policy",
+      },
+    } as const;
+
+    expect(
+      evaluateEnforcementCandidate(
+        {
+          ...candidate,
+          manifest: { ...candidate.manifest, architectures: [] },
+        },
+        cleanProfile,
+        "define",
+      ),
+    ).toEqual({ included: false, reason: "architecture-mismatch" });
+    expect(
+      evaluateEnforcementCandidate(candidate, cleanProfile, "define"),
+    ).toEqual({ included: true, reason: "selected" });
   });
 
   it.each([

@@ -185,7 +185,7 @@ export function evaluateEnforcementCandidate(
   }
 
   // 5. Architecture check
-  if (manifest.architectures && manifest.architectures.length > 0) {
+  if (manifest.architectures !== undefined) {
     if (!profile?.design?.architecture) {
       return { included: false, reason: "architecture-mismatch" };
     }
@@ -218,7 +218,7 @@ export function evaluateEnforcementCandidate(
     const hasSelectors =
       Boolean(manifest.language) ||
       Boolean(manifest.framework) ||
-      Boolean(manifest.architectures && manifest.architectures.length > 0) ||
+      manifest.architectures !== undefined ||
       Boolean(manifest.principles && manifest.principles.length > 0) ||
       Boolean(manifest.projectScope);
     if (!hasSelectors) {
@@ -312,7 +312,17 @@ export function composeEffectivePolicy(
   const scope: EnforcementScope = input.scope ?? "all";
   const resolved = resolveCandidates(input, scope);
   const { selectedSkills, excludedSkills } = resolved;
-  const coverage = scope === "all" ? resolved : resolveCandidates(input, "all");
+  const workflows = ["define", "implementation", "review"] as const;
+  const workflowResolutions = workflows.map((workflow) =>
+    workflow === scope ? resolved : resolveCandidates(input, workflow),
+  );
+  const coveringSkills = [
+    ...(scope === "all" ? selectedSkills : []),
+    ...workflowResolutions.flatMap((result) => result.selectedSkills),
+  ];
+  const incompatibleSkills = workflowResolutions.flatMap(
+    (result) => result.incompatibleSkills,
+  );
   const languages = profileLanguages(input.profile);
   const design = input.profile?.design
     ? {
@@ -323,7 +333,7 @@ export function composeEffectivePolicy(
   const gaps: PolicyGap[] = [];
 
   for (const language of languages) {
-    const covered = coverage.selectedSkills.some(
+    const covered = coveringSkills.some(
       (candidate) =>
         candidate.manifest.language?.trim().toLowerCase() ===
         language.toLowerCase(),
@@ -345,12 +355,12 @@ export function composeEffectivePolicy(
     framework.toLowerCase() !== "unspecified" &&
     framework.toLowerCase() !== "none"
   ) {
-    const covered = coverage.selectedSkills.some((candidate) =>
+    const covered = coveringSkills.some((candidate) =>
       frameworkMatches(candidate, framework),
     );
     if (!covered) {
       if (
-        coverage.incompatibleSkills.some((candidate) =>
+        incompatibleSkills.some((candidate) =>
           frameworkMatches(candidate, framework),
         )
       ) {
