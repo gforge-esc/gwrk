@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { createSlackNotificationAdapter } from "./index.js";
 const { notifySlack, sendSlackMessage } = vi.hoisted(() => ({
   notifySlack: vi.fn(),
   sendSlackMessage: vi.fn(),

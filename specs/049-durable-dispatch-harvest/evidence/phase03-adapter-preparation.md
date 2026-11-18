@@ -35,3 +35,5 @@ The production VCS factory now composes the approved harvest extension. The same
 The merged storage foundation has cleared both reviews. The adapter and delivery preparations pass 41 checks against that foundation. Boundary verification adds 19 passing checks. Notification production composition still has two RED tests. Preserve the reviewed Slack VCS methods when merging its final phase 3 revision.
 
 The failing evidence is `/tmp/gwrk-049-production-git-composition-red.log`. The passing evidence is `/tmp/gwrk-049-production-git-composition-green.log`.
+
+The production notification test now imports the adapter factory. Its earlier missing import was a test setup failure. The corrected test reaches production behavior and fails both receipt and reconciliation assertions. Evidence is `/tmp/gwrk-049-notification-production-composition-red.log`.
