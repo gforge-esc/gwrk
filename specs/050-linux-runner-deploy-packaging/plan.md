@@ -193,3 +193,5 @@ node tests/linux-runner/container-harness.mjs
 Verify restore against persisted ledger entries and repository state in this feature. A restart with accepted jobs still queued requires the durable dispatch work in feature 049. The integrated pilot exercises that recovery path.
 
 Live cloud host provisioning and public DNS allocation belong to prerequisite `041-hosted-google-signin-proof` and operator rollout. Multi-project authorization and live Slack workspace enrollment belong to the downstream integrated pilot in [R013](../../docs/research/R013-hosted-gwrk-server/brief.md).
+
+Phase 5 runbook regression executes a fresh-host setup without inherited Git identity. Service enablement requires author and committer identity in the pilot checkout. The permission check requires scoped repository contents and pull request write access. Both failed before the runbook repair. The repaired phase gate passes seven checks. Live host configuration remains outside this implementation.

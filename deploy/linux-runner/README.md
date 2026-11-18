@@ -12,6 +12,10 @@ Use a root shell for service setup. The commands use the paths in `.env.example`
 4. Create the pilot checkout as `gwrk` under `/var/lib/gwrk/repos`. Match its credential-free GitHub origin to `GWRK_PILOT_REPO_URL`. Initialize from the checkout.
 
    ```bash
+   : "${RUNNER_GIT_NAME:?Set the runner Git author name}"
+   : "${RUNNER_GIT_EMAIL:?Set the runner Git author email}"
+   runuser -u gwrk -- git -C /var/lib/gwrk/repos/pilot config user.name "$RUNNER_GIT_NAME"
+   runuser -u gwrk -- git -C /var/lib/gwrk/repos/pilot config user.email "$RUNNER_GIT_EMAIL"
    cd /var/lib/gwrk/repos/pilot
    runuser -u gwrk -- env GWRK_HOME=/var/lib/gwrk GWRK_RUNTIME_DIR=/run/gwrk \
      node /opt/gwrk/current/dist/cli.js init --non-interactive --server
@@ -48,7 +52,7 @@ Keep `/etc/gwrk/secrets` owned by `root:gwrk` with mode `0750`. Write one value 
 | `slack-bot-token` | Slack Socket Mode when `GWRK_SLACK_ENABLED=1` |
 | `slack-app-token` | Slack Socket Mode when `GWRK_SLACK_ENABLED=1` |
 
-Use a token scoped to the pilot repository with read access to its contents. Install the approved provider CLI and its operator-owned wrapper on the host. The wrapper reads the credential file without printing it. Set `GWRK_AGENT_PROBE` to a root-owned executable that takes the approved plugin ID and runs a headless request with tools disabled. Use the same credential path and provider configuration for the probe and the installed agent wrapper. Preflight bounds the Git ref read, authenticated GitHub API request and headless probe. It rejects Telegram configuration in the service environment.
+Use a token scoped to the pilot repository. Grant Contents: read and write to push worker branches. Grant Pull requests: read and write to create and update pull requests. Grant Issues: read and write when project issue tracking is enabled. Install the approved provider CLI and its operator-owned wrapper on the host. The wrapper reads the credential file without printing it. Set `GWRK_AGENT_PROBE` to a root-owned executable that takes the approved plugin ID and runs a headless request with tools disabled. Use the same credential path and provider configuration for the probe and the installed agent wrapper. Preflight bounds the Git ref read, authenticated GitHub API request and headless probe. It rejects Telegram configuration in the service environment.
 
 Revoke a GitHub token or agent credential at its provider. Replace the credential file and restart the service to run preflight again. Revoke Slack credentials in the Slack app settings.
 

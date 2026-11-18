@@ -247,7 +247,14 @@ fi`,
         bin,
         "runuser",
         `
-[[ "$1" == -u && "$2" == gwrk && "$3" == -- && "$4" == env ]]
+[[ "$1" == -u && "$2" == gwrk && "$3" == -- ]]
+if [[ "$4" == git ]]; then
+  [[ "$5" == -C && "$6" == "$HOME/repos/pilot" && "$7" == config ]]
+  [[ "$8" == user.name || "$8" == user.email ]]
+  shift 3
+  exec "$@"
+fi
+[[ "$4" == env ]]
 [[ "$5" == "GWRK_HOME=$HOME" && "$6" == "GWRK_RUNTIME_DIR=$RUNTIME" ]]
 [[ "$7" == node && "$8" == "$CLI" ]]
 if [[ "$9" == init ]]; then [[ "$PWD" == "$HOME/repos/pilot" ]]; fi
@@ -275,6 +282,8 @@ case "$*" in
   'daemon-reload'|'stop gwrk-runner.service') ;;
   'enable --now gwrk-runner.service')
     [[ -x "$FIXTURE/usr/local/libexec/gwrk-agent-probe" ]]
+    git -C "$HOME/repos/pilot" -c user.useConfigOnly=true var GIT_AUTHOR_IDENT >/dev/null
+    git -C "$HOME/repos/pilot" -c user.useConfigOnly=true var GIT_COMMITTER_IDENT >/dev/null
     cmp "$PILOT_GIT_CREDENTIAL_SOURCE" "$FIXTURE/etc/gwrk/secrets/pilot-git-credential"
     cmp "$AGENT_CREDENTIAL_SOURCE" "$FIXTURE/etc/gwrk/secrets/agent-credential"
     touch "$FIXTURE/enabled"
@@ -297,6 +306,10 @@ esac`,
             env: {
               PATH: path,
               HOME: state,
+              GIT_CONFIG_NOSYSTEM: "1",
+              GIT_CONFIG_GLOBAL: join(fixture, "empty-gitconfig"),
+              RUNNER_GIT_NAME: "Synthetic runner",
+              RUNNER_GIT_EMAIL: "runner@example.invalid",
               GIT_EDITOR: "true",
               EDITOR: "true",
               AGENT_PROBE_SOURCE: join(fixture, "probe"),
@@ -373,6 +386,12 @@ esac`,
       }
     });
   }, 20_000);
+
+  it("documents repository-scoped write permissions for worker branches and pull requests", () => {
+    const runbook = read("README.md");
+    expect(runbook).toMatch(/Contents[^.\n]*read and write/i);
+    expect(runbook).toMatch(/Pull requests[^.\n]*read and write/i);
+  });
 
   it("keeps live systemd, credentials and worker evidence pending", () => {
     const record = read("live-pilot-record.example.md");
