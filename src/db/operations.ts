@@ -344,7 +344,7 @@ function matchHarvestScope(
 ): DurableHarvestOperation | null {
   const projectOps = db
     .prepare<[string], HarvestOperationRow>(
-      "SELECT * FROM harvest_operations WHERE project_id = ? ORDER BY created_at ASC, operation_id ASC",
+      "SELECT * FROM harvest_operations WHERE project_id = ? ORDER BY julianday(created_at) ASC, operation_id ASC",
     )
     .all(incoming.projectId)
     .map(rowToHarvestOperation);
@@ -835,7 +835,7 @@ export function createOperationsStore(
         .prepare<string[], DispatchOperationRow>(
           `SELECT * FROM dispatch_operations
            WHERE project_id = ? AND feature_id = ? AND phase_id = ?
-           ORDER BY created_at DESC, operation_id DESC
+           ORDER BY julianday(created_at) DESC, operation_id DESC
            LIMIT 1`,
         )
         .get(input.projectId, input.featureId, input.phaseId);
@@ -1027,7 +1027,7 @@ export function createOperationsStore(
         sql += " AND project_id = ?";
         params.push(input.projectId);
       }
-      sql += " ORDER BY created_at ASC, operation_id ASC";
+      sql += " ORDER BY julianday(created_at) ASC, operation_id ASC";
       const nowMs = Date.parse(input.nowIso);
       return db
         .prepare<string[], HarvestOperationRow>(sql)
@@ -2061,7 +2061,7 @@ export function createOperationsStore(
         .prepare(
           `SELECT completed_at, merge_commit_sha FROM harvest_operations
            WHERE project_id = ? AND status = 'completed'
-           ORDER BY completed_at DESC, operation_id DESC LIMIT 1`,
+           ORDER BY julianday(completed_at) DESC, operation_id DESC LIMIT 1`,
         )
         .get(projectId) as
         | { completed_at: string | null; merge_commit_sha: string | null }

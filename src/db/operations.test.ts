@@ -1388,6 +1388,147 @@ describe("durable operations review regressions", () => {
     expect.soft(oldestQueuedAt, "oldest queue timestamp").toBe(oldest);
   });
 
+  it("finds the newest phase dispatch by instant across task scopes and statuses", () => {
+    const scope = {
+      projectId: project.projectId,
+      featureId,
+      phaseId: phaseOne,
+    };
+    const outsideScope = "2026-11-11T14:00:00+01:00";
+    registerProject({ id: "beta", name: "Beta", path: join(root, "beta") }, db);
+    const rename = db.prepare(
+      "UPDATE dispatch_operations SET operation_id = ? WHERE operation_id = ?",
+    );
+    for (const { operationId, createdAt, ...request } of [
+      {
+        operationId: "older",
+        createdAt: "2026-11-11T13:00:00+02:00",
+        taskIds: ["T001"],
+      },
+      { operationId: "a-newer", createdAt: now, taskIds: ["T002"] },
+      { operationId: "z-newer", createdAt: "2026-11-11T11:00:00-01:00" },
+      {
+        operationId: "other-project",
+        createdAt: outsideScope,
+        projectId: "beta",
+      },
+      {
+        operationId: "other-feature",
+        createdAt: outsideScope,
+        featureId: "002-fixture",
+      },
+      {
+        operationId: "other-phase",
+        createdAt: outsideScope,
+        phaseId: phaseTwo,
+      },
+    ]) {
+      const receipt = store.acceptDispatch({
+        ...scope,
+        ...request,
+        trunkBranch: project.trunkBranch,
+        backend: "codex",
+        newOperationId: operationId,
+        nowIso: createdAt,
+      });
+      rename.run(operationId, receipt.operationId);
+    }
+    const claim = store.claimDispatchLease({
+      operationId: "z-newer",
+      leaseOwner: "worker",
+      nowIso: now,
+      leaseExpiresAt: futureWithOffset,
+    });
+    if (!claim) throw new Error("Missing dispatch lease");
+    expect(
+      store.completeDispatchAttempt({
+        fence: claim.fence,
+        nowIso: now,
+        operationStatus: "completed",
+        attemptStatus: "completed",
+      }),
+    ).toEqual({ ok: true });
+
+    expect(store.getDispatchOperation(scope)).toMatchObject({
+      operationId: "z-newer",
+      status: "completed",
+      taskIds: [],
+    });
+  });
+
+  it("recovers harvests by creation instant and keeps the local intake link on replay", () => {
+    for (const [deliveryId, prNumber, createdAt] of [
+      ["z-equal", 44, "2026-11-11T11:00:00Z"],
+      ["later", 43, now],
+      ["a-earliest", 42, "2026-11-11T13:00:00+02:00"],
+    ] as const) {
+      const input = harvestIntake(deliveryId, [phaseOne], {
+        prNumber,
+        prUrl: null,
+      });
+      input.target.operations[0].createdAt = createdAt;
+      accept(input);
+    }
+
+    expect
+      .soft(
+        store
+          .listRecoverableHarvests({
+            nowIso: now,
+            projectId: project.projectId,
+          })
+          .map(({ operationId }) => operationId),
+        "harvest recovery order",
+      )
+      .toEqual(["a-earliest-phase-01", "z-equal-phase-01", "later-phase-01"]);
+
+    const input = localIntake();
+    const linked = { operationId: "a-earliest-phase-01", prNumber: 42 };
+    expect
+      .soft(store.recordHarvestIntake(input), "local intake link")
+      .toMatchObject({
+        ok: true,
+        operations: [linked],
+        deduplicatedTransport: false,
+        deduplicatedWork: true,
+      });
+
+    db.prepare(
+      "UPDATE harvest_operations SET created_at = ? WHERE operation_id = ?",
+    ).run("2026-11-11T10:00:00Z", "later-phase-01");
+    expect
+      .soft(store.recordHarvestIntake(input), "persisted delivery link")
+      .toMatchObject({
+        ok: true,
+        operations: [linked],
+        deduplicatedTransport: true,
+        deduplicatedWork: true,
+      });
+  });
+
+  it("reports the completion timestamp and merge SHA from the latest harvest instant", () => {
+    const latest = "2026-11-11T11:30:00-01:00";
+    const latestSha = "c".repeat(40);
+    const complete = db.prepare(
+      "UPDATE harvest_operations SET status = 'completed', completed_at = ? WHERE operation_id = ?",
+    );
+    for (const [deliveryId, completedAt, mergeCommitSha] of [
+      ["older", now, "a".repeat(40)],
+      ["a-newer", "2026-11-11T11:45:00-00:45", "b".repeat(40)],
+      ["z-newer", latest, latestSha],
+    ]) {
+      const [operation] = accept(
+        harvestIntake(deliveryId, [phaseTwo], { mergeCommitSha }),
+      );
+      complete.run(completedAt, operation.operationId);
+    }
+
+    expect(store.getOperationsStatus(project.projectId).harvest).toMatchObject({
+      lastCompletedAt: latest,
+      lastMergeCommitSha: latestSha,
+    });
+  });
+
   it("recovers harvest leases by instant with offset timestamps", () => {
     const [first, second] = accept(
       harvestIntake("offset", [phaseOne, phaseTwo]),
