@@ -136,7 +136,7 @@ The loader tests apply both project disable settings to an override whose manife
 
 For an enabled renamed override, the prompt places `<!-- enforcement-skill: renamed-policy -->` directly above `Configured override policy`. The JSON project listing shows one active `fixture-framework-policy` row at version `2.0.0`.
 
-The runtime renders the rules once when an override refers to the installed pack directly or through a symbolic link. The listing keeps both names and their statuses. Both project disable settings preserve the installed policy when they disable only the alias.
+The runtime renders a shared pack once at its highest selected layer for direct paths and symbolic links. Within that layer, the first alias sets the pack's position. The listing keeps both names and their statuses. Either project disable setting leaves the installed pack at its original position when it disables only the alias.
 
 #### Done When
 

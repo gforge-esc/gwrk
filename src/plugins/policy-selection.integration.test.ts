@@ -501,15 +501,15 @@ describe("project enforcement candidate discovery", () => {
       );
       const rendered = await resolveEnforcementSkills(root);
       expect.soft(rendered.match(/Installed identity rules/g)).toHaveLength(1);
-      if (aliasStatus === "active") {
-        expect
-          .soft(rendered.indexOf("Other project entry rules"))
-          .toBeLessThan(rendered.indexOf("Installed identity rules"));
-      } else {
-        expect
-          .soft(rendered.indexOf("Installed identity rules"))
-          .toBeLessThan(rendered.indexOf("Other project entry rules"));
-      }
+      const installedSection =
+        "<!-- enforcement-skill: renamed-policy -->\nInstalled identity rules";
+      const entrySection =
+        "<!-- enforcement-skill: zzz-other-policy -->\nOther project entry rules";
+      const expectedSections =
+        aliasStatus === "active"
+          ? [entrySection, installedSection]
+          : [installedSection, entrySection];
+      expect.soft(rendered).toContain(expectedSections.join("\n\n---\n\n"));
       expect.soft((await resolveEffectivePolicy(root)).gaps).toEqual([]);
       const listed = (await listProjectPlugins(root)).filter((p) =>
         [name, "renamed-policy"].includes(p.name),
@@ -531,6 +531,43 @@ describe("project enforcement candidate discovery", () => {
       expect(listed).toHaveLength(2);
     },
   );
+
+  it("preserves project-local order when two aliases share an override pack", async () => {
+    const shared = join(root, "overrides/shared");
+    const peer = join(root, "overrides/peer");
+    await writePolicyPack(
+      shared,
+      { name: "shared-policy", framework, version: "2.0.0" },
+      "Shared project-local rules",
+    );
+    await writePolicyPack(
+      peer,
+      { name: "peer-policy", framework, version: "1.0.0" },
+      "Peer project-local rules",
+    );
+    await writeFile(
+      join(root, ".gwrk/plugins.json"),
+      JSON.stringify({
+        inherits: false,
+        override: {
+          "first-alias": shared,
+          "peer-policy": peer,
+          "second-alias": shared,
+        },
+      }),
+    );
+
+    const rendered = await resolveEnforcementSkills(root);
+    const sections = rendered
+      .split("\n\n---\n\n")
+      .filter((section) =>
+        /^<!-- enforcement-skill: (shared|peer)-policy -->/.test(section),
+      );
+    expect(sections).toEqual([
+      "<!-- enforcement-skill: shared-policy -->\nShared project-local rules",
+      "<!-- enforcement-skill: peer-policy -->\nPeer project-local rules",
+    ]);
+  });
 
   it.each(["relative", "absolute"] as const)(
     "resolves the %s project override when the caller is outside the project",
