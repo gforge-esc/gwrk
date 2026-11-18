@@ -187,15 +187,15 @@
           "title": "Modify architecture-context.ts",
           "description": "MODIFY src/domain/architecture-context.ts. Render explicit policy gap notes in `contextMarkdown` while preserving manifest hashes when gaps are empty",
           "status": "open",
-          "gateScript": "pnpm build\npnpm exec vitest run src/application/architecture/context.test.ts src/commands/init.test.ts src/utils/agent.policy-binding.test.ts src/utils/agent.grounding-decisions.test.ts src/plugins/workflow-runtime.test.ts src/architecture.test.ts\npython3 scripts/architecture-context-uat.py",
+          "gateScript": "gates/phase-04.sh",
           "sp": 1
         },
         {
           "id": "T017",
           "title": "Modify install-context.ts",
-          "description": "MODIFY src/application/architecture/install-context.ts. Compose `EffectivePolicy` deterministically during context installation without certifying existing code",
+          "description": "MODIFY src/application/architecture/install-context.ts. Compose `EffectivePolicy` deterministically during context installation without certifying existing code\nObserve the prepared RED in src/application/architecture/context.test.ts. A TypeScript project selecting Django must report a policy gap and omit Python ORM guidance. Keep installation deterministic with zero inference calls.",
           "status": "open",
-          "gateScript": "pnpm build\npnpm exec vitest run src/application/architecture/context.test.ts src/commands/init.test.ts src/utils/agent.policy-binding.test.ts src/utils/agent.grounding-decisions.test.ts src/plugins/workflow-runtime.test.ts src/architecture.test.ts\npython3 scripts/architecture-context-uat.py",
+          "gateScript": "gates/phase-04.sh",
           "sp": 1
         },
         {
@@ -203,7 +203,7 @@
           "title": "Modify init.ts",
           "description": "MODIFY src/commands/init.ts. Preserve `workspaces` and `project.design` across fresh and existing and `--workspace` runs with zero agent calls. Tests: src/commands/init.test.ts",
           "status": "open",
-          "gateScript": "pnpm build\npnpm exec vitest run src/application/architecture/context.test.ts src/commands/init.test.ts src/utils/agent.policy-binding.test.ts src/utils/agent.grounding-decisions.test.ts src/plugins/workflow-runtime.test.ts src/architecture.test.ts\npython3 scripts/architecture-context-uat.py",
+          "gateScript": "gates/phase-04.sh",
           "sp": 1
         },
         {
@@ -211,7 +211,7 @@
           "title": "Modify agent.ts",
           "description": "MODIFY src/utils/agent.ts. Resolve `EffectivePolicy` by workflow scope on the shared transport path and inject `<effective_policy>` with `<code_quality>`. Tests: src/utils/agent.policy-binding.test.ts",
           "status": "open",
-          "gateScript": "pnpm build\npnpm exec vitest run src/application/architecture/context.test.ts src/commands/init.test.ts src/utils/agent.policy-binding.test.ts src/utils/agent.grounding-decisions.test.ts src/plugins/workflow-runtime.test.ts src/architecture.test.ts\npython3 scripts/architecture-context-uat.py",
+          "gateScript": "gates/phase-04.sh",
           "sp": 1
         },
         {
@@ -219,7 +219,7 @@
           "title": "Modify workflow-runtime.ts",
           "description": "MODIFY src/plugins/workflow-runtime.ts. Forward workspace or root `ProjectProfile` with `design` into prompt conditioning and dispatch",
           "status": "open",
-          "gateScript": "pnpm build\npnpm exec vitest run src/application/architecture/context.test.ts src/commands/init.test.ts src/utils/agent.policy-binding.test.ts src/utils/agent.grounding-decisions.test.ts src/plugins/workflow-runtime.test.ts src/architecture.test.ts\npython3 scripts/architecture-context-uat.py",
+          "gateScript": "gates/phase-04.sh",
           "sp": 1
         },
         {
@@ -227,7 +227,7 @@
           "title": "Modify architecture-context-uat.py",
           "description": "MODIFY scripts/architecture-context-uat.py. Exercise compiled CLI init across polyglot and missing-framework fixtures with zero model dispatches",
           "status": "open",
-          "gateScript": "pnpm build\npnpm exec vitest run src/application/architecture/context.test.ts src/commands/init.test.ts src/utils/agent.policy-binding.test.ts src/utils/agent.grounding-decisions.test.ts src/plugins/workflow-runtime.test.ts src/architecture.test.ts\npython3 scripts/architecture-context-uat.py",
+          "gateScript": "gates/phase-04.sh",
           "sp": 1
         }
       ],

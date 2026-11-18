@@ -203,3 +203,5 @@ Record pack versions and compatibility results in the feature review. A pack tha
 Phase 3 regression coverage rejects blank skill bodies before selection. The CLI reports disabled overrides when they suppress a compatible lower copy. RED reproduced four failures in `/tmp/gwrk-044-blank-policy-red.log`. The repaired phase gate passes 86 tests.
 
 Phase 3 shared-path alias regression keeps an installed policy active when a disabled override alias points to the same directory. Both project disable mechanisms failed before the effective-name deduplication repair. The phase gate now passes 95 checks.
+
+Phase 4 preparation adds an observed incompatible-framework initialization regression. TypeScript with Django must expose a policy gap and omit the Python ORM binding. The phase gate requires every named test file before execution, so a missing policy-dispatch test cannot produce a passing phase. Preserve the existing completed phases.

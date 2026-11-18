@@ -30,6 +30,26 @@ describe("architecture context", () => {
     expect(design.principles).toContain("functional-core");
   });
 
+  it("reports an incompatible framework choice without rendering another language's binding", async () => {
+    const root = await fixture();
+    const result = await installArchitectureContext(root, {
+      projectName: "mixed-choice",
+      design: resolveDesign({ architecture: "hexagonal-functional" }),
+      language: "TypeScript",
+      framework: "Django",
+      decisionsDir: "docs/decisions",
+    });
+    const context = await fs.readFile(
+      path.join(root, ".gwrk/architecture.md"),
+      "utf8",
+    );
+    expect(result.conformance).toBe("unassessed");
+    expect(context).toContain("## Policy gaps");
+    expect(context).toContain("TypeScript");
+    expect(context).toContain("Django");
+    expect(context).not.toContain("Keep Django ORM models and transactions");
+  });
+
   it("installs portable context deterministically and preserves user instructions", async () => {
     const root = await fixture();
     await fs.writeFile(path.join(root, "AGENTS.md"), "Keep my instructions.\n");
