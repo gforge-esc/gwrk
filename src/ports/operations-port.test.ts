@@ -801,8 +801,31 @@ function restoreRecoveryStore(persisted: {
             threadTs: row.recipient.threadTs ?? null,
           };
         } else {
+          const explicitWorkspaceId =
+            row.workspaceId?.trim() ||
+            (row.recipient.surface === "slack"
+              ? row.recipient.workspaceId?.trim()
+              : undefined);
+          const explicitChannelId =
+            row.channelId?.trim() ||
+            (row.recipient.surface === "slack"
+              ? row.recipient.channelId?.trim()
+              : undefined);
+          const explicitThreadTs =
+            row.threadTs !== null
+              ? row.threadTs
+              : row.recipient.surface === "slack" &&
+                  row.recipient.threadTs !== undefined
+                ? row.recipient.threadTs
+                : undefined;
+
           if (destination === null) {
-            if (isHarvestSlackRecipient(row.recipient)) return null;
+            if (
+              (explicitWorkspaceId && explicitChannelId) ||
+              isHarvestSlackRecipient(row.recipient)
+            ) {
+              return null;
+            }
             row.status = "skipped_no_target";
             row.updatedAt = nowIso;
             return { action: "skipped_no_target", item: { ...row } };
@@ -816,7 +839,32 @@ function restoreRecoveryStore(persisted: {
           ) {
             return null;
           }
-          route = destination;
+          if (
+            explicitWorkspaceId &&
+            destination.workspaceId !== explicitWorkspaceId
+          ) {
+            return null;
+          }
+          if (
+            explicitChannelId &&
+            destination.channelId !== explicitChannelId
+          ) {
+            return null;
+          }
+          if (
+            explicitThreadTs !== undefined &&
+            destination.threadTs !== explicitThreadTs
+          ) {
+            return null;
+          }
+          route = {
+            workspaceId: explicitWorkspaceId ?? destination.workspaceId,
+            channelId: explicitChannelId ?? destination.channelId,
+            threadTs:
+              explicitThreadTs !== undefined
+                ? explicitThreadTs
+                : destination.threadTs,
+          };
         }
       }
       const { workspaceId, channelId, threadTs } = route;
@@ -1523,6 +1571,56 @@ describe("durable recovery store contract", () => {
       });
     },
   );
+
+  it("rejects a conflicting route for a pending harvest completion notice with a persisted Slack route and reconciles only there after takeover", () => {
+    const savedRoute = {
+      workspaceId: "W1",
+      channelId: "C2",
+      threadTs: "2.1",
+    };
+    const conflictingRoute = {
+      workspaceId: "W9",
+      channelId: "C9",
+      threadTs: "9.1",
+    };
+    const pending = outbox("harvest-completed-persisted", "pending", {
+      ...savedRoute,
+      recipient: {
+        projectId,
+        surface: "slack",
+      },
+    });
+    const store = restoreRecoveryStore({
+      harvests: [],
+      stages: [],
+      outboxItems: [pending],
+    });
+    const claim = { outboxId: pending.outboxId, nowIso };
+
+    expect(
+      store.claimOutboxItem({ ...claim, destination: conflictingRoute }),
+    ).toBeNull();
+    expect(store.getOutboxItem(pending.outboxId)).toEqual(pending);
+
+    expect(
+      store.claimOutboxItem({ ...claim, destination: savedRoute }),
+    ).toMatchObject({
+      action: "send",
+      item: { ...savedRoute, attemptCount: 1 },
+    });
+
+    const restarted = restoreRecoveryStore(store.snapshot());
+    expect(
+      restarted.claimOutboxItem({
+        ...claim,
+        nowIso: leaseExpiresAt,
+        destination: conflictingRoute,
+      }),
+    ).toMatchObject({
+      action: "reconcile",
+      item: { ...savedRoute, attemptCount: 2 },
+    });
+  });
 
   it("persists a no-target claim across restart without retrying delivery", () => {
     const pending = outbox("no-target", "pending");
