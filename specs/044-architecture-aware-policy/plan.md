@@ -134,6 +134,8 @@ Without a usable entry, the runtime reports `missing-framework-binding` and the 
 
 The loader tests apply both project disable settings to an override whose manifest uses a different name. Both settings suppress the override and the compatible entry. With neither setting, only the override supplies rules. The compiled CLI tests use an override for a different architecture and a compatible entry. They expect one disabled row with the configured name and override version. They check both disable settings with matching and renamed manifests.
 
+For an enabled renamed override, the prompt places `<!-- enforcement-skill: renamed-policy -->` directly above `Configured override policy`. The JSON project listing shows one active `fixture-framework-policy` row at version `2.0.0`.
+
 The runtime renders the rules once when an override refers to the installed pack directly or through a symbolic link. The listing keeps both names and their statuses. Both project disable settings preserve the installed policy when they disable only the alias.
 
 #### Done When

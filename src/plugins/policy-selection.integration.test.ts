@@ -262,8 +262,19 @@ describe("project enforcement candidate discovery", () => {
         }),
       ]);
       const rendered = await resolveEnforcementSkills(root);
-      expect(rendered).toContain(overrideBody);
+      expect
+        .soft(rendered)
+        .toContain(
+          `<!-- enforcement-skill: ${renamedPolicy} -->\n${overrideBody}`,
+        );
       expect(rendered).not.toContain(entryBody);
+
+      const listed = await listProjectPlugins(root);
+      expect(
+        listed.filter((plugin) => [name, renamedPolicy].includes(plugin.name)),
+      ).toEqual([
+        expect.objectContaining({ name, version: "2.0.0", status: "active" }),
+      ]);
     });
 
     it.each(
