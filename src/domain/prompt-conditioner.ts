@@ -9,36 +9,37 @@ export type { ProjectProfile };
 export function conditionPrompt(
   prompt: string,
   profile: ProjectProfile,
+  options: { renderUnknownGuards?: boolean } = {},
 ): string {
-  if (!profile || profile.type === "unknown") {
-    if (profile?.design) {
-      return `${generateProjectContext(profile.design)}\n\n${prompt}`;
-    }
-    return prompt;
-  }
+  if (!profile) return prompt;
 
-  const alwaysInclude = new Set(["generic"]);
-  if (profile.type === "gwrk-cli" || profile._isGwrk) {
-    alwaysInclude.add("gwrk-native");
-  }
+  const isUnknown = profile.type === "unknown";
+  let conditioned = prompt;
+  if (!isUnknown || options.renderUnknownGuards) {
+    const includedTypes = new Set(["generic"]);
+    if (!isUnknown) {
+      includedTypes.add(profile.type);
+      if (profile.type === "gwrk-cli" || profile._isGwrk) {
+        includedTypes.add("gwrk-native");
+      }
+    }
 
-  const guardRegex = /\[type:\s*([^\]]+)\]([\s\S]*?)\[\/type\]/g;
-  const conditioned = prompt.replace(guardRegex, (_match, type, content) => {
-    const types = type.split(",").map((t: string) => t.trim());
-    if (types.some((t: string) => alwaysInclude.has(t))) {
-      return content;
-    }
-    if (types.includes(profile.type)) {
-      return content;
-    }
-    return "";
-  });
+    const guardRegex = /\[type:\s*([^\]]+)\]([\s\S]*?)\[\/type\]/g;
+    conditioned = prompt
+      .replace(guardRegex, (_match, guard: string, content) => {
+        const types = guard.split(",").map((type) => type.trim());
+        return types.some((type) => includedTypes.has(type)) ? content : "";
+      })
+      .trim();
+  }
 
   if (profile.design) {
-    const xml = generateProfileXml(profile, escapeXml);
-    return `${generateProjectContext(profile.design, xml)}\n\n${conditioned.trim()}`;
+    const xml = isUnknown ? undefined : generateProfileXml(profile, escapeXml);
+    return `${generateProjectContext(profile.design, xml)}\n\n${conditioned}`;
   }
-  return `${generateProfileXml(profile)}\n\n${conditioned.trim()}`;
+  return isUnknown
+    ? conditioned
+    : `${generateProfileXml(profile)}\n\n${conditioned}`;
 }
 
 function escapeXml(value: string): string {

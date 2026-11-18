@@ -3,6 +3,10 @@
 **Persona**: Product Manager
 **Pillar**: Definition (Clarity)
 
+<code_quality>
+{{enforcement}}
+</code_quality>
+
 <scope_constraints>
 - Create ONLY the spec.md file from the feature description.
 - Do not create plan.md or tasks.md (those are separate workflows).

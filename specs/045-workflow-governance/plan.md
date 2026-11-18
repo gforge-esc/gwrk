@@ -61,7 +61,7 @@ Apply the single dispatch path decision (ADR-007) and the decision records contr
 | TR-001 | integration | `src/plugins/workflow-governance.test.ts` | Profile-specific architecture guidance and gate examples with persona reporting triggers |
 | TR-002 | integration | `src/utils/agent.grounding-decisions.test.ts` | Verbatim Proposed and Decided rows plus conflict guidance across stages |
 | TR-003 | integration | `src/plugins/builtins/workflows/gwrk-plan/prompt-contract.test.ts` | Canonical gates and exit-based assertions |
-| TR-012 | integration | `src/plugins/workflow-governance.delivery.test.ts` | Verbatim decision index and one authority block requiring conflict records in the plan |
+| TR-012 | integration | `src/plugins/workflow-governance.delivery.test.ts` | Verbatim decision index, one authority block requiring conflict records in the plan, project-local enforcement, and host guidance for unknown profiles |
 
 #### Done When
 

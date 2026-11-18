@@ -379,7 +379,10 @@ export class WorkflowRuntime {
     }
 
     const profile = await detectProfile(projectRoot);
-    const conditionedPrompt = conditionPrompt(basePrompt, profile);
+    const conditionedPrompt =
+      name === "gwrk-specify" || name === "gwrk-plan"
+        ? conditionPrompt(basePrompt, profile, { renderUnknownGuards: true })
+        : conditionPrompt(basePrompt, profile);
     const userInput = `<user_input>\n${input}\n</user_input>`;
     const outputSchema = manifest?.outputSchema;
     const template = options.nativeOnly

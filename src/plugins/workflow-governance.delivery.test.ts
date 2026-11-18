@@ -5,14 +5,61 @@
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ProjectProfile } from "../domain/types.js";
 import * as detector from "../engine/profile-detector.js";
 import * as agents from "../utils/agent.js";
 import { WorkflowRuntime } from "./workflow-runtime.js";
 
 const dispatch = agents.dispatchToAgent;
-afterEach(() => vi.restoreAllMocks());
+
+let root: string;
+
+beforeEach(async () => {
+  root = await mkdtemp(join(tmpdir(), "gwrk-governance-delivery-"));
+  await mkdir(join(root, ".gwrk"));
+  await writeFile(join(root, ".gwrk/plugins.json"), '{"inherits": false}');
+});
+
+afterEach(async () => {
+  vi.restoreAllMocks();
+  await rm(root, { recursive: true, force: true });
+});
+
+async function captureDispatch(workflow: string, profile: ProjectProfile) {
+  vi.spyOn(detector, "detectProfile").mockResolvedValue(profile);
+  let captured = "";
+  const transport = vi
+    .spyOn(agents, "dispatchToAgent")
+    .mockImplementation(async (task) => {
+      const result = await dispatch({
+        ...task,
+        agent: "codex",
+        dryRun: true,
+        quiet: true,
+      });
+      captured = result.stdout;
+      return {
+        exitCode: 0,
+        stdout: JSON.stringify({
+          summary: "Captured delivery",
+          verdict: "GO",
+          reopenedTasks: [],
+          intents: [],
+        }),
+        stderr: "",
+        durationS: 0,
+      };
+    });
+  await new WorkflowRuntime().executeWorkflow(
+    workflow,
+    "Use the project decisions.",
+    { projectRoot: root, quiet: true },
+  );
+  expect(transport).toHaveBeenCalledOnce();
+  transport.mockRestore();
+  return captured;
+}
 
 const decisionIndex = [
   "# Decisions",
@@ -27,79 +74,90 @@ describe("governance prompt delivery", () => {
   it.each(["gwrk-specify", "gwrk-plan", "review-code-cli"])(
     "delivers project guidance and decision authority through %s",
     async (workflow) => {
-      const root = await mkdtemp(join(tmpdir(), "gwrk-governance-delivery-"));
-      try {
-        await mkdir(join(root, ".gwrk/decisions"), { recursive: true });
-        await writeFile(join(root, ".gwrk/decisions/index.md"), decisionIndex);
-        await writeFile(
-          join(root, ".gwrk/architecture.md"),
-          "Proposed target: move repository reads into the domain. Existing code conformance remains unassessed.",
-        );
-        const profile: ProjectProfile = {
-          type: "python",
-          stack: { language: "Python", framework: "FastAPI" },
-          layout: "src-layout",
-        };
-        vi.spyOn(detector, "detectProfile").mockResolvedValue(profile);
-        let captured = "";
-        const transport = vi
-          .spyOn(agents, "dispatchToAgent")
-          .mockImplementation(async (task) => {
-            const result = await dispatch({
-              ...task,
-              agent: "codex",
-              dryRun: true,
-              quiet: true,
-            });
-            captured = result.stdout;
-            return {
-              exitCode: 0,
-              stdout: JSON.stringify({
-                summary: "Captured delivery",
-                verdict: "GO",
-                reopenedTasks: [],
-                intents: [],
-              }),
-              stderr: "",
-              durationS: 0,
-            };
-          });
-        await new WorkflowRuntime().executeWorkflow(
-          workflow,
-          "Use the project decisions.",
-          { projectRoot: root, quiet: true },
-        );
-        expect(transport).toHaveBeenCalledOnce();
-        expect(captured).toContain(
-          `<architecture_decisions>\n${decisionIndex}\n</architecture_decisions>`,
-        );
-        expect(captured.match(/<decision_authority>/g)).toHaveLength(1);
-        expect(captured).toContain(
-          "Proposed targets require human ratification.",
-        );
-        expect(captured).toContain(
-          "They do not supersede Decided constraints.",
-        );
-        expect(captured).toContain(
-          "Superseded records preserve history and lineage.",
-        );
-        expect(captured).toContain(
-          "Existing code conformance remains unassessed.",
-        );
-        expect(captured).toContain("Use the project decisions.");
-        if (workflow !== "review-code-cli") {
-          expect(captured).toContain('language="Python"');
-          expect(captured).not.toContain("src/application/");
-        }
-        const authority = captured.match(
-          /<decision_authority>([\s\S]*?)<\/decision_authority>/,
-        )?.[1];
-        expect(authority).toMatch(
-          /\b(?:record|document|note)\b[^.!?]*\b(?:conflicts?|it)\b[^.!?]*\b(?:in|under)\s+(?:the\s+)?plan(?:\.md)?\b/i,
-        );
-      } finally {
-        await rm(root, { recursive: true, force: true });
+      await mkdir(join(root, ".gwrk/decisions"), { recursive: true });
+      await writeFile(join(root, ".gwrk/decisions/index.md"), decisionIndex);
+      await writeFile(
+        join(root, ".gwrk/architecture.md"),
+        "Proposed target: move repository reads into the domain. Existing code conformance remains unassessed.",
+      );
+      const captured = await captureDispatch(workflow, {
+        type: "python",
+        stack: { language: "Python", framework: "FastAPI" },
+        layout: "src-layout",
+      });
+      expect(captured).toContain(
+        `<architecture_decisions>\n${decisionIndex}\n</architecture_decisions>`,
+      );
+      expect(captured.match(/<decision_authority>/g)).toHaveLength(1);
+      expect(captured).toContain(
+        "Proposed targets require human ratification.",
+      );
+      expect(captured).toContain("They do not supersede Decided constraints.");
+      expect(captured).toContain(
+        "Superseded records preserve history and lineage.",
+      );
+      expect(captured).toContain(
+        "Existing code conformance remains unassessed.",
+      );
+      expect(captured).toContain("Use the project decisions.");
+      if (workflow !== "review-code-cli") {
+        expect(captured).toContain('language="Python"');
+        expect(captured).not.toContain("src/application/");
       }
+      const authority = captured.match(
+        /<decision_authority>([\s\S]*?)<\/decision_authority>/,
+      )?.[1];
+      expect(authority).toMatch(
+        /\b(?:record|document|note)\b[^.!?]*\b(?:conflicts?|it)\b[^.!?]*\b(?:in|under)\s+(?:the\s+)?plan(?:\.md)?\b/i,
+      );
+    },
+  );
+
+  it("delivers project-local enforcement inside both definition prompts", async () => {
+    const policyDir = join(root, ".gwrk/plugins/skills/phase-01-policy");
+    await mkdir(policyDir, { recursive: true });
+    await writeFile(
+      join(policyDir, "manifest.yaml"),
+      "type: skill\nname: phase-01-policy\nversion: 1.0.0\ndescription: Phase 1 test policy\ntier: enforcement\nscope: implementation\n",
+    );
+    const rule = "Record dependency provenance in the release checklist.";
+    await writeFile(join(policyDir, "SKILL.md"), `${rule}\n`);
+
+    for (const workflow of ["gwrk-specify", "gwrk-plan"]) {
+      const captured = await captureDispatch(workflow, { type: "unknown" });
+      const codeQuality =
+        captured.match(/<code_quality>([\s\S]*?)<\/code_quality>/)?.[1] ?? "";
+      expect.soft(codeQuality, workflow).toContain(rule);
+    }
+  });
+
+  it.each([
+    {
+      workflow: "gwrk-specify",
+      guidance: [
+        "host repository's dependency evidence",
+        "existing directory structure",
+      ],
+    },
+    {
+      workflow: "gwrk-plan",
+      guidance: [
+        "Read the host repository's architecture and planning documents",
+        "Use the host repository's verification commands in each gate.",
+        "**Done When** uses a fenced `bash` code block.",
+      ],
+    },
+  ])(
+    "uses host guidance in $workflow when the profile is unknown",
+    async ({ workflow, guidance }) => {
+      const captured = await captureDispatch(workflow, { type: "unknown" });
+      for (const instruction of guidance) {
+        expect(captured).toContain(instruction);
+      }
+      const excluded = captured.match(
+        /docs\/grounding\/architecture\.md|specs\/000-build-plan\.md|pnpm run build|python -m pytest|\[type:[^\]]*\]|\[\/type\]|<project_profile\b/g,
+      );
+      expect(excluded ?? []).toEqual([]);
     },
   );
 });
