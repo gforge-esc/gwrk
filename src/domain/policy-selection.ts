@@ -180,14 +180,17 @@ function evaluateEligibleCandidate(
     return { included: false, reason: "disabled" };
   }
 
+  const language = manifest.language?.trim();
+  const framework = manifest.framework?.trim();
+
   // Language check
-  if (manifest.framework?.trim() && !manifest.language?.trim()) {
+  if (framework && !language) {
     return { included: false, reason: "language-mismatch" };
   }
-  if (manifest.language) {
-    const candidateLang = manifest.language.toLowerCase().trim();
-    const profileLangs = profileLanguages(profile).map((language) =>
-      language.toLowerCase(),
+  if (language) {
+    const candidateLang = language.toLowerCase();
+    const profileLangs = profileLanguages(profile).map((profileLanguage) =>
+      profileLanguage.toLowerCase(),
     );
     if (!profileLangs.includes(candidateLang)) {
       return { included: false, reason: "language-mismatch" };
@@ -195,8 +198,8 @@ function evaluateEligibleCandidate(
   }
 
   // Framework check
-  if (manifest.framework) {
-    const candidateFw = normalizeFramework(manifest.framework);
+  if (framework) {
+    const candidateFw = normalizeFramework(framework);
     const profileFw = normalizeFramework(profile?.stack?.framework);
     if (!profileFw || profileFw !== candidateFw) {
       return { included: false, reason: "framework-mismatch" };
@@ -235,8 +238,8 @@ function evaluateEligibleCandidate(
 
   if (candidate.source === "global") {
     const hasSelectors =
-      Boolean(manifest.language) ||
-      Boolean(manifest.framework) ||
+      Boolean(language) ||
+      Boolean(framework) ||
       manifest.architectures !== undefined ||
       Boolean(manifest.principles && manifest.principles.length > 0) ||
       Boolean(manifest.projectScope);

@@ -202,6 +202,62 @@ describe("Project policy composition", () => {
     }
   });
 
+  it.each([
+    {
+      blankSelector: "framework",
+      selectors: { language: "TypeScript", framework: "   " },
+      reason: "selected",
+    },
+    {
+      blankSelector: "language",
+      selectors: { language: "   " },
+      reason: "legacy-global-unscoped",
+    },
+  ])(
+    "applies a legacy review policy with a blank $blankSelector selector",
+    async ({ selectors, reason }) => {
+      const { SkillManifestSchema } = await import("../plugins/manifest.js");
+      const { composeEffectivePolicy, evaluateEnforcementCandidate } =
+        await import("./policy-selection.js");
+      const manifest = {
+        name: "legacy-review",
+        description: "Legacy review rules",
+        version: "1.0.0",
+        type: "skill",
+        tier: "enforcement",
+        scope: "review" as const,
+        ...selectors,
+      };
+
+      for (const candidateManifest of [
+        manifest,
+        SkillManifestSchema.parse(manifest),
+      ]) {
+        const candidate = {
+          name: manifest.name,
+          source: "global" as const,
+          manifest: candidateManifest,
+        };
+        expect
+          .soft(evaluateEnforcementCandidate(candidate, profile, "review"))
+          .toEqual({ included: true, reason });
+
+        const input = { profile, candidates: [candidate] };
+        expect
+          .soft(composeEffectivePolicy({ ...input, scope: "review" }))
+          .toMatchObject({ selectedSkills: [candidate], excludedSkills: [] });
+        expect(
+          composeEffectivePolicy({ ...input, scope: "implementation" }),
+        ).toMatchObject({
+          selectedSkills: [],
+          excludedSkills: [
+            { name: manifest.name, source: "global", reason: "scope-mismatch" },
+          ],
+        });
+      }
+    },
+  );
+
   it.each([undefined, "", "   "])(
     "rejects a framework policy without a nonblank language selector (%s)",
     async (language) => {
