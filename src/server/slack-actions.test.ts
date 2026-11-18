@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { execFileSync } from "node:child_process";
+import { EventEmitter } from "node:events";
 import {
   mkdirSync,
   mkdtempSync,
@@ -81,7 +82,11 @@ describe("slack-actions (FR-007, US-004, US-005)", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    mockSpawn.mockReturnValue({ unref: vi.fn() });
+    mockSpawn.mockImplementation(() => {
+      const child = Object.assign(new EventEmitter(), { unref: vi.fn() });
+      queueMicrotask(() => child.emit("spawn"));
+      return child;
+    });
     actionHandlers = {};
     eventHandlers = {};
     mockApp = {
@@ -1249,6 +1254,49 @@ describe("slack-actions (FR-007, US-004, US-005)", () => {
         expect.soft(claim).not.toHaveBeenCalled();
         expect.soft(mockSpawn).not.toHaveBeenCalled();
         expect.soft(mockContext.queue.enqueue).not.toHaveBeenCalled();
+      },
+    );
+
+    it.each(["approve_spec", "revise_spec", "revise_plan"])(
+      "keeps %s claimed until spawn and records asynchronous launch failure privately",
+      async (actionId) => {
+        const { project, registry } = createSqliteRegistry();
+        mkdirSync(join(project.localRoot, "specs", actionValue.featureId), {
+          recursive: true,
+        });
+        const complete = vi.spyOn(registry, "completeActionReceipt");
+        const child = Object.assign(new EventEmitter(), { unref: vi.fn() });
+        mockSpawn.mockReturnValueOnce(child);
+        await registerSlackActions(mockApp as App, {
+          ...mockContext,
+          projectRoot: project.localRoot,
+          queueProjectId: project.projectId,
+          routingService: createProjectRoutingService({ registry }),
+        });
+        const click = clickArgs(actionId, project.projectId);
+        const pending = actionHandlers[actionId](click);
+        await vi.waitFor(() => expect(mockSpawn).toHaveBeenCalledTimes(1));
+        expect.soft(complete).not.toHaveBeenCalled();
+        expect.soft(click.client.chat.postMessage).not.toHaveBeenCalled();
+        expect.soft(child.listenerCount("error")).toBeGreaterThan(0);
+        if (child.listenerCount("error") === 0) {
+          await pending;
+          return;
+        }
+        child.emit("error", new Error("worker executable missing"));
+        await pending;
+        expect(complete.mock.calls.map(([, outcome]) => outcome)).toEqual([
+          "failed",
+        ]);
+        expect(click.client.chat.postMessage).not.toHaveBeenCalled();
+        expect(click.client.chat.postEphemeral).toHaveBeenCalledExactlyOnceWith(
+          expect.objectContaining({
+            user: SYNTHETIC_USER_MAINTAINER,
+            channel: SYNTHETIC_CHANNEL_ALPHA,
+            thread_ts: SYNTHETIC_THREAD_ALPHA.rootTs,
+            text: expect.stringContaining("worker executable missing"),
+          }),
+        );
       },
     );
 

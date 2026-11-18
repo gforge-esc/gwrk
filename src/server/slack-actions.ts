@@ -25,6 +25,30 @@ import {
   buildSlackLogResponse,
 } from "./slack-commands.js";
 
+async function launchDetachedGwrk(
+  args: string[],
+  projectRoot: string,
+): Promise<void> {
+  const child = spawn("gwrk", args, {
+    cwd: projectRoot,
+    detached: true,
+    stdio: "ignore",
+  });
+  await new Promise<void>((resolve, reject) => {
+    const failed = (error: Error) => {
+      child.removeListener("spawn", launched);
+      reject(error);
+    };
+    const launched = () => {
+      child.removeListener("error", failed);
+      resolve();
+    };
+    child.once("error", failed);
+    child.once("spawn", launched);
+  });
+  child.unref();
+}
+
 function parseActionPayload(rawPayload?: string): {
   featureId?: string;
   phaseId?: string;
@@ -427,12 +451,7 @@ export async function registerSlackActions(app: App, context: CommandContext) {
 
     try {
       // Approve spec triggers plan generation
-      const child = spawn("gwrk", ["define", "plan", featureId], {
-        cwd: auth.projectRoot,
-        detached: true,
-        stdio: "ignore",
-      });
-      child.unref();
+      await launchDetachedGwrk(["define", "plan", featureId], auth.projectRoot);
       completeReceipt(context, auth.receiptKey, "executed");
 
       await client.chat.postMessage({
@@ -447,6 +466,7 @@ export async function registerSlackActions(app: App, context: CommandContext) {
       await client.chat.postEphemeral({
         channel: actionBody.channel?.id || "",
         user: actionBody.user.id,
+        thread_ts: auth.threadTs,
         text: `:warning: Failed to trigger planning: ${errorMessage}`,
       });
     }
@@ -515,12 +535,7 @@ export async function registerSlackActions(app: App, context: CommandContext) {
     if (!auth.ok) return;
 
     try {
-      const child = spawn("gwrk", ["define", "spec", featureId], {
-        cwd: auth.projectRoot,
-        detached: true,
-        stdio: "ignore",
-      });
-      child.unref();
+      await launchDetachedGwrk(["define", "spec", featureId], auth.projectRoot);
       completeReceipt(context, auth.receiptKey, "executed");
 
       await client.chat.postMessage({
@@ -535,6 +550,7 @@ export async function registerSlackActions(app: App, context: CommandContext) {
       await client.chat.postEphemeral({
         channel: actionBody.channel?.id || "",
         user: actionBody.user.id,
+        thread_ts: auth.threadTs,
         text: `:warning: Failed to trigger spec revision: ${errorMessage}`,
       });
     }
@@ -561,12 +577,7 @@ export async function registerSlackActions(app: App, context: CommandContext) {
     if (!auth.ok) return;
 
     try {
-      const child = spawn("gwrk", ["define", "plan", featureId], {
-        cwd: auth.projectRoot,
-        detached: true,
-        stdio: "ignore",
-      });
-      child.unref();
+      await launchDetachedGwrk(["define", "plan", featureId], auth.projectRoot);
       completeReceipt(context, auth.receiptKey, "executed");
 
       await client.chat.postMessage({
@@ -581,6 +592,7 @@ export async function registerSlackActions(app: App, context: CommandContext) {
       await client.chat.postEphemeral({
         channel: actionBody.channel?.id || "",
         user: actionBody.user.id,
+        thread_ts: auth.threadTs,
         text: `:warning: Failed to trigger plan revision: ${errorMessage}`,
       });
     }
