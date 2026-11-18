@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { execSync } from "node:child_process";
+import { execFileSync } from "node:child_process";
 import type { ProjectIdentityFacts } from "../../domain/project-id.js";
 import type { VcsPort } from "../../ports/vcs-port.js";
 import {
@@ -25,23 +25,37 @@ export function resolvePullRequestUrl(
 ): string | null {
   if (query.prNumber) {
     try {
-      const url = execSync(`gh pr view ${query.prNumber} --json url -q .url`, {
-        cwd,
-        encoding: "utf-8",
-        timeout: 10_000,
-      }).trim();
-      if (url) return url;
+      const url = execFileSync(
+        "gh",
+        ["pr", "view", String(query.prNumber), "--json", "url", "-q", ".url"],
+        {
+          cwd,
+          encoding: "utf-8",
+          timeout: 10_000,
+        },
+      ).trim();
+      if (url && url !== "null") return url;
     } catch {
       // PR might not exist
     }
   }
   if (query.headBranch) {
     try {
-      const url = execSync(
-        `gh pr list --head ${query.headBranch} --json url -q '.[0].url'`,
+      const url = execFileSync(
+        "gh",
+        [
+          "pr",
+          "list",
+          "--head",
+          query.headBranch,
+          "--json",
+          "url",
+          "-q",
+          ".[0].url",
+        ],
         { cwd, encoding: "utf-8", timeout: 10_000 },
       ).trim();
-      if (url) return url;
+      if (url && url !== "null") return url;
     } catch {
       // No PR found
     }
@@ -50,11 +64,15 @@ export function resolvePullRequestUrl(
 }
 
 export function mergePullRequest(cwd: string, prNumber: number): string {
-  return execSync(`gh pr merge ${prNumber} --merge --delete-branch`, {
-    cwd,
-    encoding: "utf-8",
-    timeout: 30_000,
-  }).trim();
+  return execFileSync(
+    "gh",
+    ["pr", "merge", String(prNumber), "--merge", "--delete-branch"],
+    {
+      cwd,
+      encoding: "utf-8",
+      timeout: 30_000,
+    },
+  ).trim();
 }
 
 export function createGitVcsAdapter(): VcsPort {
