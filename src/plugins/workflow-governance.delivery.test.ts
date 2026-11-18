@@ -113,6 +113,36 @@ describe("governance prompt delivery", () => {
     },
   );
 
+  it("delivers project verification and Principal Engineer reporting rules to a Python CLI review", async () => {
+    await writeFile(
+      join(root, "pyproject.toml"),
+      '[project]\nname = "host"\nversion = "0.1.0"\n',
+    );
+
+    const captured = await captureDispatch("review-code-cli");
+
+    expect.soft(captured).toContain('language="Python"');
+    expect
+      .soft(captured)
+      .toContain("<!-- enforcement-skill: python-standards -->");
+    expect
+      .soft(captured)
+      .toContain(
+        "project's verification commands and schema validation standards",
+      );
+    expect
+      .soft(captured)
+      .toMatch(
+        /start every PR comment with `\*\*From: Principal Engineer\*\*`/i,
+      );
+    expect
+      .soft(captured)
+      .toMatch(
+        /tag `@\[PROJECT_LEAD\]` when (?:the )?rules, guardrails or architecture are ambiguous/i,
+      );
+    expect.soft(captured).not.toMatch(/^pnpm (?:build|lint|vitest)\b/m);
+  });
+
   it("delivers project-local enforcement inside both definition prompts", async () => {
     const policyDir = join(root, ".gwrk/plugins/skills/phase-01-policy");
     await mkdir(policyDir, { recursive: true });

@@ -63,9 +63,11 @@ Apply the single dispatch path decision (ADR-007) and the decision records contr
 | TR-001 | integration | `src/plugins/workflow-governance.test.ts` | Profile-specific architecture guidance and gate examples with persona reporting triggers |
 | TR-002 | integration | `src/utils/agent.grounding-decisions.test.ts` | Verbatim Proposed and Decided rows plus conflict guidance across stages |
 | TR-003 | integration | `src/plugins/builtins/workflows/gwrk-plan/prompt-contract.test.ts` | Canonical gates and exit-based assertions |
-| TR-012 | integration | `src/plugins/workflow-governance.delivery.test.ts` | Verbatim decision index, one authority block requiring conflict records in the plan, enforcement scope and host guidance across detected and unknown profiles |
+| TR-012 | integration | `src/plugins/workflow-governance.delivery.test.ts` | Decision index integrity, one conflict instruction, host guidance and enforcement, CLI review standards and reporting |
 
-The host dispatch cases in TR-012 pair `docs/architecture.md` with `pyproject.toml`, `Cargo.toml` or `go.mod`. Both prompts use the detected language's enforcement and omit GWRK paths and TypeScript enforcement. The Python cases also exclude the built-in GWRK repository conventions. `gwrk-specify` gives host dependency guidance. `gwrk-plan` gives host verification guidance. Its Python Done When example runs `python -m pytest tests/test_phase.py` in a fenced `bash` block.
+The host dispatch cases in TR-012 pair `docs/architecture.md` with `pyproject.toml`, `Cargo.toml` or `go.mod`. Both prompts use the detected language's enforcement and omit GWRK paths and TypeScript enforcement. The Python cases also exclude the built-in GWRK repository conventions. `gwrk-specify` gives host dependency guidance. `gwrk-plan` gives host verification guidance. Its Python Done When example runs `python -m pytest tests/test_phase.py` in a fenced `bash` block. Unknown profiles receive host guidance and applicable project-local enforcement. The shared authority block requires agents to record conflicts in the plan.
+
+The Python CLI review case in TR-012 checks that dispatch uses the project's verification and schema standards. It also checks the Principal Engineer's PR attribution and project lead escalation.
 
 #### Done When
 
