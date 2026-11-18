@@ -102,6 +102,26 @@ const input = {
 };
 
 describe("model qualification orchestration", () => {
+  it("blinds route identities in comparison IDs and observed model output", async () => {
+    const { deps, runFixtureRepeat, judgeComparison } = setup();
+    const original = runFixtureRepeat.getMockImplementation()!;
+    runFixtureRepeat.mockImplementation(async (request) => ({
+      ...(await original(request)),
+      observedModel: "resolved-exclusive-model",
+      sanitizedOutput: "Output from resolved-exclusive-model",
+    }));
+    await evaluateModels(deps, {
+      ...input,
+      evaluationId: `comparison-${candidate.modelId}`,
+    });
+    expect(judgeComparison).toHaveBeenCalledTimes(2);
+    for (const [, packet] of judgeComparison.mock.calls) {
+      const serialized = JSON.stringify(packet);
+      expect(serialized).not.toContain(candidate.modelId);
+      expect(serialized).not.toContain("resolved-exclusive-model");
+    }
+  });
+
   it("keeps candidate and incumbent role scores outside blinded judge packets", async () => {
     const { deps, judgeComparison } = setup();
     const result = await evaluateModels(deps, input);

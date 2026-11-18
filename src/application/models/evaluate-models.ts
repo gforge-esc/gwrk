@@ -353,7 +353,20 @@ export async function evaluateModels(
   const rawOptionB =
     candidateOption === "A" ? incumbentOutputs : candidateOutputs;
 
-  const routesToRedact = [input.candidate, input.incumbent];
+  const routesToRedact: ModelCandidate[] = [
+    input.candidate,
+    input.incumbent,
+    ...[...candidateRepeats, ...incumbentRepeats]
+      .filter(
+        ({ observedModel }) => observedModel && observedModel !== "unknown",
+      )
+      .map(({ observedModel }) => ({
+        backend: "",
+        provider: "",
+        family: "",
+        modelId: observedModel,
+      })),
+  ];
   const optionA = sanitizeIdentityText(rawOptionA, routesToRedact);
   const optionB = sanitizeIdentityText(rawOptionB, routesToRedact);
 
@@ -414,7 +427,7 @@ export async function evaluateModels(
   );
 
   const packet: JudgeVerdictPacket = {
-    comparisonId: input.evaluationId,
+    comparisonId: sanitizeIdentityText(input.evaluationId, routesToRedact),
     role: input.role,
     fixtureSummary,
     optionA,
