@@ -126,7 +126,10 @@ const EnforcementSkillManifestSchema = PluginBaseSchema.extend({
   /** Language this enforcement skill applies to (e.g. "TypeScript", "Python"). Omit to load for all projects. */
   language: z.string().trim().optional(),
   /** Framework this enforcement skill applies to (e.g. "React", "Express"). Omit to load for all projects. */
-  framework: z.string().trim().min(1).optional(),
+  framework: z.preprocess(
+    (value) => (value === "" ? undefined : value),
+    z.string().trim().min(1).optional(),
+  ),
   architectures: z.array(z.string()).optional(),
   principles: z
     .array(z.enum(["functional-core", "clean-code", "tdd"]))

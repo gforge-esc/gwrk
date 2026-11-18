@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { describe, expect, it } from "vitest";
+import { evaluateEnforcementCandidate } from "../domain/policy-selection.js";
 import { AnyManifestSchema, SkillManifestSchema } from "./manifest.js";
 
 describe("FR-013 / US-016: SkillManifestSchema Enforcement Tier", () => {
@@ -125,10 +126,6 @@ describe.each([
       selector: "language",
     },
     {
-      selectors: { framework: "", language: "TypeScript" },
-      selector: "framework",
-    },
-    {
       selectors: { framework: "   ", language: "TypeScript" },
       selector: "framework",
     },
@@ -154,6 +151,31 @@ describe.each([
       success: true,
       data: { framework: "Svelte", language: "TypeScript" },
     });
+  });
+
+  it("keeps legacy review scope with an empty framework", () => {
+    const parsed = schema.parse({
+      ...manifest,
+      scope: "review",
+      language: "TypeScript",
+      framework: "",
+    });
+    expect(parsed).toMatchObject({
+      tier: "enforcement",
+      scope: "review",
+      language: "TypeScript",
+      framework: undefined,
+    });
+    if (parsed.type !== "skill" || parsed.tier !== "enforcement") {
+      throw new Error("Expected an enforcement skill");
+    }
+    expect(
+      evaluateEnforcementCandidate(
+        { name: parsed.name, source: "global", manifest: parsed },
+        { type: "cli", stack: { language: "TypeScript" } },
+        "review",
+      ),
+    ).toEqual({ included: true, reason: "selected" });
   });
 
   it("defaults an unscoped legacy manifest to all workflows", () => {

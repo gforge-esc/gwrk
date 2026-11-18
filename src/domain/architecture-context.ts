@@ -129,7 +129,7 @@ export function lookupFrameworkBinding(
 export function normalizeFramework(framework?: string): string | undefined {
   const value = framework?.trim().toLowerCase();
   if (!value || value === "none" || value === "unspecified") return undefined;
-  return value.replace(/[^a-z0-9]/g, "") || value;
+  return value === "next.js" ? "nextjs" : value;
 }
 
 export function lookupFrameworkGuidance(
@@ -175,8 +175,7 @@ export function contextMarkdown(
   decisions: string[],
 ): string {
   const language = input.language?.toLowerCase() ?? "";
-  const framework =
-    input.framework?.toLowerCase().replace(/[^a-z0-9]/g, "") ?? "";
+  const framework = normalizeFramework(input.framework);
   return `# Project architecture target\n\nTarget context guides future work. Code conformance remains unassessed by initialization. Blocked: none.\n\n## Selection\n\n- Project: ${input.projectName}\n- Architecture: ${input.design.architecture}\n- Language: ${input.language ?? "unspecified"}\n- Framework: ${input.framework ?? "unspecified"}\n- Template version: ${input.design.templateVersion}\n- Architecture checks: activation unchanged by initialization\n\n## Rules\n\n${designRules(
     input.design,
   )
