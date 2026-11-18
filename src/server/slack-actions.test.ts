@@ -984,6 +984,11 @@ describe("slack-actions (FR-007, US-004, US-005)", () => {
     it.each(["retry_phase", "request_changes"])(
       "denies %s on Beta’s thread before claiming or using Alpha’s queue",
       async (actionId) => {
+        const { project: alpha } = createSqliteRegistry();
+        const alphaThread = {
+          ...SYNTHETIC_THREAD_ALPHA,
+          projectId: alpha.projectId,
+        };
         const betaThread = {
           ...SYNTHETIC_THREAD_ALPHA,
           projectId: SYNTHETIC_PROJECT_BETA.projectId,
@@ -991,12 +996,19 @@ describe("slack-actions (FR-007, US-004, US-005)", () => {
           rootTs: "1731320010.000100",
         };
         const registry = createSyntheticRegistry({
-          threads: [SYNTHETIC_THREAD_ALPHA, betaThread],
+          projects: [alpha, SYNTHETIC_PROJECT_BETA],
+          roles: SYNTHETIC_ROLES.map((role) =>
+            role.projectId === SYNTHETIC_PROJECT_ALPHA.projectId
+              ? { ...role, projectId: alpha.projectId }
+              : role,
+          ),
+          threads: [alphaThread, betaThread],
         });
         const claim = vi.spyOn(registry, "claimActionReceipt");
         const queueContext = {
           ...mockContext,
-          queueProjectId: SYNTHETIC_PROJECT_ALPHA.projectId,
+          projectRoot: alpha.localRoot,
+          queueProjectId: alpha.projectId,
           routingService: createProjectRoutingService({ registry }),
         };
         await registerSlackActions(mockApp as App, queueContext);
@@ -1019,7 +1031,7 @@ describe("slack-actions (FR-007, US-004, US-005)", () => {
         expect(mockContext.queue.enqueue).not.toHaveBeenCalled();
         expect(click.client.chat.postMessage).not.toHaveBeenCalled();
 
-        await actionHandlers[actionId](clickArgs(actionId));
+        await actionHandlers[actionId](clickArgs(actionId, alpha.projectId));
         expect(claim).toHaveBeenCalledOnce();
         expect(mockContext.queue.enqueue).toHaveBeenCalledOnce();
       },
@@ -1071,9 +1083,15 @@ describe("slack-actions (FR-007, US-004, US-005)", () => {
       expect(claim).not.toHaveBeenCalled();
     });
 
-    it.each(["revise_spec", "revise_plan"])(
-      "protects logs and %s from a replaced checkout and allows one revision after restoration",
-      async (actionId) => {
+    it.each([
+      ["revise_spec", ["define", "spec", actionValue.featureId]],
+      ["revise_plan", ["define", "plan", actionValue.featureId]],
+      ["approve_spec", ["plan", actionValue.featureId]],
+      ["retry_phase", null],
+      ["request_changes", null],
+    ] as const)(
+      "blocks logs and %s in a replaced checkout and allows one action after restoration",
+      async (actionId, command) => {
         const { project, registry } = createSqliteRegistry();
         const alpha = project.localRoot;
         const root = mkdtempSync(join(tmpdir(), "gwrk-action-replacement-"));
@@ -1111,6 +1129,8 @@ describe("slack-actions (FR-007, US-004, US-005)", () => {
         const claim = vi.spyOn(registry, "claimActionReceipt");
         await registerSlackActions(mockApp as App, {
           ...mockContext,
+          projectRoot: alpha,
+          queueProjectId: project.projectId,
           routingService: createProjectRoutingService({ registry }),
         });
 
@@ -1136,6 +1156,7 @@ describe("slack-actions (FR-007, US-004, US-005)", () => {
         );
         expect.soft(claim).not.toHaveBeenCalled();
         expect.soft(mockSpawn).not.toHaveBeenCalled();
+        expect.soft(mockContext.queue.enqueue).not.toHaveBeenCalled();
 
         renameSync(alpha, beta);
         renameSync(savedAlpha, alpha);
@@ -1154,15 +1175,20 @@ describe("slack-actions (FR-007, US-004, US-005)", () => {
           ({ value }) => value === true,
         );
         expect.soft(successfulClaims).toHaveLength(1);
-        expect(mockSpawn).toHaveBeenCalledExactlyOnceWith(
-          "gwrk",
-          [
-            "define",
-            actionId === "revise_spec" ? "spec" : "plan",
-            actionValue.featureId,
-          ],
-          expect.objectContaining({ cwd: realpathSync(alpha) }),
-        );
+        if (command) {
+          expect(mockSpawn).toHaveBeenCalledExactlyOnceWith(
+            "gwrk",
+            command,
+            expect.objectContaining({ cwd: realpathSync(alpha) }),
+          );
+          expect(mockContext.queue.enqueue).not.toHaveBeenCalled();
+        } else {
+          expect(mockContext.queue.enqueue).toHaveBeenCalledExactlyOnceWith({
+            featureId: actionValue.featureId,
+            phaseId: actionValue.phaseId,
+          });
+          expect(mockSpawn).not.toHaveBeenCalled();
+        }
       },
     );
 

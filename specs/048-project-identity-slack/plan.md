@@ -174,11 +174,15 @@ For GitHub origin validation (TR-009), require a checkout-local origin before in
 
 For log and revision buttons (TR-009), replace Alpha's checkout with Beta. Return a checkout warning for logs and leave both revision receipts unclaimed. After restoring Alpha, show its logs and start one revision per button across concurrent clicks.
 
+Replace Alpha's checkout with Beta for Approve Spec and both redispatch buttons (TR-009). Deny those clicks before claiming a receipt or starting work. After restoring Alpha, accept one claim and one launch or enqueue per button across concurrent clicks.
+
 For mention summaries (TR-011), reply in the original thread when Beta replaces Alpha's checkout. Show Alpha's feature after restoration.
 
 For App Home Pulse (TR-012), exclude the replacement repository and its specs while keeping Alpha's enrollment visible. Count Alpha's specs and plans from a verified mirror when the local checkout fails verification.
 
 Status, logs and effort read files inside the verified checkout (TR-012a). Apply the same file boundary to Pulse and mention context. Skip filesystem-based thread lookup and disk history when the checkout fails verification. Use a verified mirror for logs and verify the queue's own checkout before dispatch.
+
+Test external feature links for dispatch, define and ship (TR-012a). Deny all three commands. The ADR list command shows the local decision index. Omit the index content when the same path links to another checkout.
 
 For slash command delivery (TR-012b), send status via `chat.postEphemeral` to the caller in the authorized channel at the stored thread root. Send public dispatch and unthreaded help via `respond`. Set `replace_original: false` for public threaded replies.
 

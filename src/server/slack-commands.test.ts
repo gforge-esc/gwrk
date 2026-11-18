@@ -381,6 +381,58 @@ describe("slack-commands (FR-015, US-004)", () => {
     });
   });
 
+  it.each(["dispatch", "define", "ship"])(
+    "refuses %s for a feature linked to another checkout",
+    async (command) => {
+      const { spawn } = await import("node:child_process");
+      const root = mkdtempSync(join(tmpdir(), "gwrk-slash-linked-feature-"));
+      onTestFinished(() => rmSync(root, { recursive: true, force: true }));
+      const beta = initCheckout(SYNTHETIC_PROJECT_BETA, join(root, "beta"));
+      const featureId = SYNTHETIC_THREAD_ALPHA.featureId;
+      const foreignFeature = join(beta.localRoot, "specs", featureId);
+      const localFeature = join(context.projectRoot, "specs", featureId);
+      mkdirSync(foreignFeature, { recursive: true });
+      renameSync(localFeature, join(root, "saved-alpha-feature"));
+      symlinkSync(foreignFeature, localFeature, "dir");
+
+      const args = command === "define" ? "spec" : "1";
+      const response = await handleSlashCommand(
+        `${command} ${featureId} ${args}`,
+        context,
+      );
+
+      expect.soft(response.response_type).toBe("ephemeral");
+      expect.soft(mockQueue.enqueue).not.toHaveBeenCalled();
+      expect(spawn).not.toHaveBeenCalled();
+    },
+  );
+
+  it("only reads a decision index inside the authorized checkout", async () => {
+    const root = mkdtempSync(join(tmpdir(), "gwrk-slash-linked-decisions-"));
+    onTestFinished(() => rmSync(root, { recursive: true, force: true }));
+    const beta = initCheckout(SYNTHETIC_PROJECT_BETA, join(root, "beta"));
+    const relativeIndex = ".gwrk/decisions/index.md";
+    const localIndex = join(context.projectRoot, relativeIndex);
+    const foreignIndex = join(beta.localRoot, relativeIndex);
+    for (const checkout of [context.projectRoot, beta.localRoot]) {
+      mkdirSync(join(checkout, ".gwrk/decisions"), { recursive: true });
+    }
+    writeFileSync(localIndex, "Alpha decision index");
+    writeFileSync(foreignIndex, "Beta private decision index");
+    const viewerContext = { ...context, userId: SYNTHETIC_USER_VIEWER };
+    const local = await handleSlashCommand("adr list", viewerContext);
+    expect(JSON.stringify(local.blocks)).toContain("Alpha decision index");
+
+    rmSync(localIndex);
+    symlinkSync(foreignIndex, localIndex);
+    const linked = await handleSlashCommand("adr list", viewerContext);
+
+    expect(linked.response_type).toBe("ephemeral");
+    expect(JSON.stringify(linked.blocks)).not.toContain(
+      "Beta private decision index",
+    );
+  });
+
   it("handles approve command — merges PR via VCS port", async () => {
     const merge = vi.spyOn(context.vcs!, "mergePullRequest");
     const response = await handleSlashCommand(
