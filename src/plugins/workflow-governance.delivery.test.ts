@@ -70,6 +70,24 @@ const decisionIndex = [
   "",
 ].join("\n");
 
+const nativeReviewCommands = [
+  "pnpm build",
+  "pnpm lint",
+  "pnpm exec biome lint --write .",
+  "TEST_FILES=$(",
+  "pnpm vitest run $TEST_FILES",
+];
+const nativeReviewCommandPattern =
+  /\bpnpm (?:exec |run )?(?:build|lint|test|vitest)\b|\bbiome lint --write\b|TEST_FILES=\$\(/g;
+
+const hostReviewGuidance = [
+  "Read the host repository's verification instructions",
+  "Run the repository's documented build check",
+  "Run the repository's documented lint check",
+  "Use the repository's test command for the current phase's files.",
+  "project's verification commands and schema validation standards",
+];
+
 describe("governance prompt delivery", () => {
   it.each(["gwrk-specify", "gwrk-plan", "review-code-cli"])(
     "delivers project guidance and decision authority through %s",
@@ -125,11 +143,9 @@ describe("governance prompt delivery", () => {
     expect
       .soft(captured)
       .toContain("<!-- enforcement-skill: python-standards -->");
-    expect
-      .soft(captured)
-      .toContain(
-        "project's verification commands and schema validation standards",
-      );
+    for (const instruction of hostReviewGuidance) {
+      expect.soft(captured).toContain(instruction);
+    }
     expect
       .soft(captured)
       .toMatch(
@@ -140,7 +156,30 @@ describe("governance prompt delivery", () => {
       .toMatch(
         /tag `@\[PROJECT_LEAD\]` when (?:the )?rules, guardrails or architecture are ambiguous/i,
       );
-    expect.soft(captured).not.toMatch(/^pnpm (?:build|lint|vitest)\b/m);
+    expect.soft(captured.match(nativeReviewCommandPattern) ?? []).toEqual([]);
+  });
+
+  it("delivers host review guidance when the CLI project profile is unknown", async () => {
+    const captured = await captureDispatch("review-code-cli");
+
+    for (const instruction of hostReviewGuidance) {
+      expect.soft(captured).toContain(instruction);
+    }
+    expect.soft(captured.match(nativeReviewCommandPattern) ?? []).toEqual([]);
+    expect
+      .soft(captured)
+      .not.toMatch(/\[type:[^\]]*\]|\[\/type\]|<project_profile\b/);
+  });
+
+  it("retains the native CLI review commands for @gwrk/cli", async () => {
+    await writeFile(join(root, "package.json"), '{"name":"@gwrk/cli"}');
+
+    const captured = await captureDispatch("review-code-cli");
+
+    expect.soft(captured).toContain('language="TypeScript"');
+    for (const command of nativeReviewCommands) {
+      expect.soft(captured).toContain(command);
+    }
   });
 
   it("delivers project-local enforcement inside both definition prompts", async () => {

@@ -49,6 +49,8 @@ Apply the single dispatch path decision (ADR-007) and the decision records contr
 - `src/plugins/builtins/workflows/gwrk-specify/PROMPT.md` — **amend** — Use selected architecture and the current project layout. FR-001.
 - `src/plugins/builtins/workflows/gwrk-plan/PROMPT.md` — **amend** — Use current hexagonal boundaries and preserve the parser contract. FR-001.
 - `src/plugins/builtins/personas/principal-engineer.md` — **amend** — Use the project's verification commands and schema standards. FR-001.
+- `src/plugins/builtins/reviews/review-code-cli/PROMPT.md` (MODIFY: Load Principal Engineer guidance and limit GWRK commands to the native profile. FR-001.)
+- `src/plugins/workflow-runtime.ts` (MODIFY: Render host review guidance for unknown profiles. FR-001.)
 - `src/plugins/skill-runtime.ts` (MODIFY: Match builtin enforcement to known project languages during definition dispatch)
 - `src/engine/profile-detector.ts` — **amend** — Identify Python hosts that have `docs/architecture.md` and preserve GWRK self-detection. FR-001.
 - `src/utils/agent.ts` — **amend** — Add shared conflict guidance beside the intact decision index. FR-002.
@@ -67,7 +69,7 @@ Apply the single dispatch path decision (ADR-007) and the decision records contr
 
 The host dispatch cases in TR-012 pair `docs/architecture.md` with `pyproject.toml`, `Cargo.toml` or `go.mod`. Both prompts use the detected language's enforcement and omit GWRK paths and TypeScript enforcement. The Python cases also exclude the built-in GWRK repository conventions. `gwrk-specify` gives host dependency guidance. `gwrk-plan` gives host verification guidance. Its Python Done When example runs `python -m pytest tests/test_phase.py` in a fenced `bash` block. Unknown profiles receive host guidance and applicable project-local enforcement. The shared authority block requires agents to record conflicts in the plan.
 
-The Python CLI review case in TR-012 checks that dispatch uses the project's verification and schema standards. It also checks the Principal Engineer's PR attribution and project lead escalation.
+The CLI review cases in TR-012 check that Python and unknown profiles receive host verification and schema guidance. Both exclude native build and lint commands. They also exclude native autofix and test commands. The Python case checks Python enforcement. It verifies Principal Engineer attribution and project lead escalation in pull requests. The `@gwrk/cli` fixture checks that native reviews retain their verification commands.
 
 #### Done When
 
