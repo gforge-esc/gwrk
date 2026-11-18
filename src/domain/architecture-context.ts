@@ -21,7 +21,11 @@ export interface ContextInput {
   decisionsDir: string;
   effectivePolicy?: Pick<
     EffectivePolicy,
-    "checksStatus" | "architectureRules" | "languageGuidance" | "frameworkGuidance" | "gaps"
+    | "checksStatus"
+    | "architectureRules"
+    | "languageGuidance"
+    | "frameworkGuidance"
+    | "gaps"
   >;
 }
 

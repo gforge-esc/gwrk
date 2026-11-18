@@ -14,6 +14,7 @@ import {
 import type { ProjectProfile } from "../engine/profile-detector.js";
 import { detectProfile } from "../engine/profile-detector.js";
 import { processForAgent } from "../utils/agent-layer.js";
+import { maskPromptExamples } from "../utils/markdown-examples.js";
 import { CommandError } from "../utils/signal.js";
 import { AgentBackendRegistry } from "./agent-registry.js";
 import { PluginLoader } from "./loader.js";
@@ -234,8 +235,8 @@ export function formatEffectivePolicyPrompt(
     sections.push(
       "Initialization does not assess code conformance. Architecture checks remain unchanged by initialization.",
     );
-    const targetRulesSection = architectureTarget
-      ?.split(/^#{1,2}[ \t]+/m)
+    const targetRulesSection = maskPromptExamples(architectureTarget ?? "")
+      .split(/^#{1,2}[ \t]+/m)
       .slice(1)
       .find((section) => section.split("\n", 1)[0].trim() === "Rules");
     const targetRules = new Set(

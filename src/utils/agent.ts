@@ -12,6 +12,11 @@ import path from "node:path";
 import readline from "node:readline";
 import { writeScopedStdout } from "../adapters/cli/output-scope.js";
 import { recordRoutingDecision } from "../db/plugins.js";
+import {
+  lookupFrameworkGuidance,
+  lookupLanguageGuidance,
+} from "../domain/architecture-context.js";
+import { composeEffectivePolicy } from "../domain/policy-selection.js";
 import type { ProjectProfile } from "../domain/types.js";
 import type { AgentBackend } from "../plugins/agent-backend.js";
 import { AgentBackendRegistry } from "../plugins/agent-registry.js";
@@ -21,6 +26,7 @@ import { resolveEnforcementSkills } from "../plugins/skill-runtime.js";
 import type { AgentTaskRequest, AgentTaskResult } from "../ports/agent-port.js";
 import { formatResultError, renderStreamStdoutLine } from "./agent-log.js";
 import { type AgentBackendId, loadConfig } from "./config.js";
+import { maskPromptExamples } from "./markdown-examples.js";
 import { startProgress } from "./progress.js";
 import { resolveProjectId } from "./project-id.js";
 
@@ -504,88 +510,76 @@ function resolvePrimaryCheckout(executionDir: string): string {
 const ENFORCEMENT_MARKER = "{{enforcement}}";
 
 function withoutGeneratedPolicySections(target: string): string {
-  const headings = Array.from(
-    maskPromptExamples(target).matchAll(/^#{1,2}[ \t]+[^\r\n]*/gm),
-  );
-  const generatedHeading =
-    /^##[ \t]+(?:Language guidance|Framework guidance|Policy gaps)[ \t]*$/;
+  const masked = maskPromptExamples(target);
+  const selection = (name: string) =>
+    new RegExp(`^- ${name}: (.+)$`, "m").exec(masked)?.[1]?.trim();
+  const language = selection("Language");
+  const framework = selection("Framework");
+  const architecture = selection("Architecture");
+  const policy = composeEffectivePolicy({
+    profile: {
+      type: "app",
+      stack: { language, framework },
+      ...(architecture
+        ? {
+            design: {
+              architecture,
+              principles: [],
+              templateVersion: "1.0.0" as const,
+            },
+          }
+        : {}),
+    },
+    candidates: [],
+  });
+  const generated = new Map<string, string[]>([
+    [
+      "Language guidance",
+      [
+        lookupLanguageGuidance(language) ??
+          "No bundled language binding. Assess language-specific boundaries explicitly.",
+      ],
+    ],
+    [
+      "Framework guidance",
+      [
+        lookupFrameworkGuidance(framework) ??
+          (framework && framework !== "unspecified"
+            ? "No bundled framework binding. Framework compatibility remains unassessed."
+            : "No framework selected."),
+      ],
+    ],
+    ["Policy gaps", policy.gaps.map(({ message }) => `- ${message}`)],
+  ]);
+  const headings = Array.from(masked.matchAll(/^#{1,2}[ \t]+([^\r\n]*)/gm));
   let projected = "";
   let start = 0;
   for (const [index, heading] of headings.entries()) {
-    if (!generatedHeading.test(heading[0])) continue;
+    const content = generated.get(heading[1].trim());
+    if (!content || !heading[0].startsWith("## ")) continue;
+    const bodyStart = heading.index + heading[0].length;
+    const end = headings[index + 1]?.index ?? target.length;
+    let body = target.slice(bodyStart, end);
+    for (const text of content) {
+      const visible = maskPromptExamples(body);
+      const positions: number[] = [];
+      for (
+        let offset = body.indexOf(text);
+        offset >= 0;
+        offset = body.indexOf(text, offset + text.length)
+      ) {
+        const lineStart = body.lastIndexOf("\n", offset - 1) + 1;
+        if (visible[offset] !== "\0" && !body.slice(lineStart, offset).trim())
+          positions.push(offset);
+      }
+      for (const offset of positions.reverse())
+        body = body.slice(0, offset) + body.slice(offset + text.length);
+    }
     projected += target.slice(start, heading.index);
-    start = headings[index + 1]?.index ?? target.length;
+    if (body.trim()) projected += heading[0] + body;
+    start = end;
   }
   return projected + target.slice(start);
-}
-
-function maskPromptExamples(template: string): string {
-  // Keep offsets and line endings without turning quoted content into whitespace.
-  const mask = (code: string) => code.replace(/[^\r\n]/g, "\0");
-  const maskSpans = (text: string) =>
-    text
-      .replace(/^ {0,3}>[^\r\n]*/gm, mask)
-      .replace(
-        /^(?: {4}| {0,3}\t)[^\r\n]*(?:\r?\n(?:[ \t]*\r?\n)*(?: {4}| {0,3}\t)[^\r\n]*)*/gm,
-        (block, offset: number, text: string) =>
-          block.trim() === ENFORCEMENT_MARKER ||
-          (block.trimEnd().endsWith(ENFORCEMENT_MARKER) &&
-            /^\r?\n<\/code_quality>/.test(text.slice(offset + block.length)))
-            ? block
-            : mask(block),
-      )
-      .split(/(\r?\n[ \t]*\r?\n)/)
-      .map((paragraph) =>
-        paragraph.replace(/(?<!`)(`+)(?!`)[\s\S]*?(?<!`)\1(?!`)/g, mask),
-      )
-      .join("");
-
-  let masked = "";
-  let textStart = 0;
-  let fence: { delimiter: string; start: number } | undefined;
-  const blocks = /^ {0,3}(`{3,}|~{3,})([^\r\n]*)|<!--/gm;
-  for (
-    let block = blocks.exec(template);
-    block;
-    block = blocks.exec(template)
-  ) {
-    const [line, delimiter, rest] = block;
-    const { index } = block;
-    if (line === "<!--") {
-      if (fence) continue;
-      const closer = template.indexOf("-->", index + line.length);
-      if (closer === -1) continue;
-      const lineEnd = template.indexOf("\n", closer);
-      const visible = maskSpans(
-        template.slice(textStart, lineEnd === -1 ? template.length : lineEnd),
-      );
-      if (!visible.startsWith(line, index - textStart)) continue;
-
-      const end = closer + "-->".length;
-      masked += maskSpans(template.slice(textStart, index));
-      masked += mask(template.slice(index, end));
-      textStart = end;
-      blocks.lastIndex = end;
-    } else if (!fence) {
-      if (delimiter[0] === "`" && rest.includes("`")) continue;
-      masked += maskSpans(template.slice(textStart, index));
-      fence = { delimiter, start: index };
-    } else if (
-      delimiter[0] === fence.delimiter[0] &&
-      delimiter.length >= fence.delimiter.length &&
-      !rest.trim()
-    ) {
-      textStart = index + line.length;
-      masked += mask(template.slice(fence.start, textStart));
-      fence = undefined;
-    }
-  }
-  return (
-    masked +
-    (fence
-      ? mask(template.slice(fence.start))
-      : maskSpans(template.slice(textStart)))
-  );
 }
 
 function findEnforcementSlot(

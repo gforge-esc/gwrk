@@ -131,3 +131,28 @@ it("refreshes dynamic framework gaps while preserving the target file and decisi
   const unexpanded = await dispatchToAgent({ workflow: "gwrk-implement", profile, workDir: root, stdin: template, promptParts: { template, userInput: "" }, dryRun: true, quiet: true });
   expect(unexpanded.stdout).toContain(gap);
 });
+
+it("preserves maintainer additions while replacing generated root stack guidance", async () => {
+  const design = resolveDesign({ architecture: "hexagonal-functional" });
+  await installArchitectureContext(root, { projectName: "binding-fixture", design, language: "TypeScript", framework: "Fastify", decisionsDir: "docs/decisions" });
+  const path = join(root, ".gwrk/architecture.md");
+  const target = readFileSync(path, "utf8").replace("## Framework guidance", "Use SPDX license headers on new workspace modules.\n\n## Framework guidance");
+  writeFileSync(path, target);
+  const rendered = await prompt("gwrk-implement", { type: "python", stack: { language: "Python", framework: "FastAPI" }, design });
+  expect.soft(rendered).toContain("Use SPDX license headers on new workspace modules.");
+  expect.soft(rendered).not.toContain("Use interfaces for ports");
+  expect.soft(rendered).toContain("typing.Protocol");
+  expect(readFileSync(path, "utf8")).toBe(target);
+});
+
+it.each(["fence", "comment"])("retains active policy when the target only quotes the rule in a %s", async (kind) => {
+  const rule = "Domain policy MUST depend inward. Ports declare boundaries. Adapters implement effects. Composition wires dependencies.";
+  const example = `## Rules\n\n- ${rule}`;
+  const target = kind === "fence" ? `# Target\n\n\`\`\`markdown\n${example}\n\`\`\`\n` : `# Target\n\n<!--\n${example}\n-->\n`;
+  mkdirSync(join(root, ".gwrk"), { recursive: true });
+  writeFileSync(join(root, ".gwrk/architecture.md"), target);
+  const rendered = await prompt("gwrk-implement", { type: "nodejs", stack: { language: "TypeScript" }, design: resolveDesign({ architecture: "hexagonal-functional" }) });
+  const policy = rendered.match(/<effective_policy>\n([\s\S]*?)\n<\/effective_policy>/)?.[1];
+  expect(policy).toContain(`- ${rule}`);
+  expect(readFileSync(join(root, ".gwrk/architecture.md"), "utf8")).toBe(target);
+});
