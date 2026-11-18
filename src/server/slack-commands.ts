@@ -25,6 +25,7 @@ import { resolveProjectId } from "../utils/project-id.js";
 import type { DispatchQueue } from "./dispatch.js";
 import type { GitManager } from "./git-manager.js";
 import type { SystemMonitor } from "./monitor.js";
+import { launchDetachedGwrk } from "./slack-launch.js";
 import type { DispatchRecord } from "./types.js";
 
 interface SlackBlockKit {
@@ -933,16 +934,14 @@ const handlers: Record<string, SlashCommandHandler> = {
           context.projectRoot,
           context.verifiedCheckoutRoot ?? context.projectRoot,
         );
-        const child = spawn("gwrk", ["define", "adr", title, "--run"], {
-          cwd: scope.projectRoot,
-          detached: true,
-          stdio: "ignore",
-          env: {
+        await launchDetachedGwrk(
+          ["define", "adr", title, "--run"],
+          scope.projectRoot,
+          {
             ...process.env,
             GWRK_ADR_CHECKOUT_ROOT: scope.verifiedCheckoutRoot,
           },
-        });
-        child.unref();
+        );
       } catch (error) {
         return {
           response_type: "ephemeral",
@@ -1146,7 +1145,7 @@ const checkoutCommands = new Set([
   "ship",
 ]);
 
-function resolveSlashCheckout(
+export function resolveSlackCheckout(
   project: EnrolledProject,
   queueRoot?: string,
 ): string | undefined {
@@ -1317,7 +1316,7 @@ export async function handleSlashCommand(
     !threadTs && args[0] && featureCommands.has(subcommand);
   const checkout =
     needsCheckout || needsFeatureThread || (subcommand === "status" && args[0])
-      ? resolveSlashCheckout(
+      ? resolveSlackCheckout(
           decision.project,
           subcommand === "dispatch" ? context.projectRoot : undefined,
         )

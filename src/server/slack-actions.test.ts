@@ -1268,6 +1268,81 @@ describe("slack-actions (FR-007, US-004, US-005)", () => {
       },
     );
 
+    it.each(["retry_phase", "request_changes"])(
+      "uses the verified startup mirror for %s when the local checkout is also valid",
+      async (actionId) => {
+        const { project, registry } = createSqliteRegistry();
+        const mirrorPath = mkdtempSync(join(tmpdir(), "gwrk-action-mirror-"));
+        onTestFinished(() =>
+          rmSync(mirrorPath, { recursive: true, force: true }),
+        );
+        const gitOptions = {
+          cwd: mirrorPath,
+          stdio: "ignore" as const,
+          timeout: 5_000,
+        };
+        execFileSync("git", ["init", "--quiet"], gitOptions);
+        execFileSync(
+          "git",
+          ["remote", "add", "origin", "https://github.com/org/alpha.git"],
+          gitOptions,
+        );
+        mkdirSync(join(project.localRoot, "specs", actionValue.featureId), {
+          recursive: true,
+        });
+        mkdirSync(
+          join(mirrorPath, "specs", `${actionValue.featureId}-follow-up`),
+          { recursive: true },
+        );
+        registry.enrollProject({ ...project, mirrorPath });
+        expect(registry.findByLocalRoot(mirrorPath)?.projectId).toBe(
+          project.projectId,
+        );
+        const claim = vi.spyOn(registry, "claimActionReceipt");
+        const complete = vi.spyOn(registry, "completeActionReceipt");
+        await registerSlackActions(mockApp as App, {
+          ...mockContext,
+          projectRoot: mirrorPath,
+          queueProjectId: project.projectId,
+          routingService: createProjectRoutingService({ registry }),
+        });
+
+        const denied = clickArgs(actionId, project.projectId);
+        await actionHandlers[actionId](denied);
+        expect.soft(denied.client.chat.postEphemeral).toHaveBeenCalledOnce();
+        expect.soft(denied.client.chat.postMessage).not.toHaveBeenCalled();
+        expect.soft(claim).not.toHaveBeenCalled();
+        expect.soft(complete).not.toHaveBeenCalled();
+        expect.soft(mockContext.queue.enqueue).not.toHaveBeenCalled();
+
+        mkdirSync(join(mirrorPath, "specs", actionValue.featureId));
+        await Promise.all([
+          actionHandlers[actionId](clickArgs(actionId, project.projectId)),
+          actionHandlers[actionId](clickArgs(actionId, project.projectId)),
+        ]);
+
+        expect.soft(mockContext.queue.enqueue).toHaveBeenCalledExactlyOnceWith({
+          featureId: actionValue.featureId,
+          phaseId: actionValue.phaseId,
+        });
+        expect
+          .soft(claim.mock.results.filter(({ value }) => value === true))
+          .toHaveLength(1);
+        const receiptKey = buildActionReceiptKey({
+          ...actionValue,
+          projectId: project.projectId,
+          workspaceId: SYNTHETIC_WORKSPACE_ID,
+          channelId: SYNTHETIC_CHANNEL_ALPHA,
+          messageTs,
+          actionId,
+        });
+        expect
+          .soft(complete.mock.calls.map(([key, outcome]) => [key, outcome]))
+          .toEqual([[receiptKey, "executed"]]);
+        expect(registry.getActionReceipt(receiptKey)?.outcome).toBe("executed");
+      },
+    );
+
     it.each(
       [
         "approve_spec",

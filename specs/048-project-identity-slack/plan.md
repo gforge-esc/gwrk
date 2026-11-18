@@ -184,6 +184,8 @@ For View Logs (TR-009), leave the bound feature directory missing or link it to 
 
 Replace Alpha's checkout with Beta for Approve Spec and both redispatch buttons (TR-009). Deny those clicks before claiming a receipt or starting work. After restoring Alpha, accept one claim and one launch or enqueue per button across concurrent clicks. Approve Spec runs `gwrk define plan <feature>` from the verified checkout and records one executed receipt.
 
+Start the dispatch queue in Alpha's verified mirror while its local checkout is also valid (TR-009). Deny both buttons before claiming a receipt when the mirror has only a longer feature ID with the same prefix. Add the exact feature to the mirror. For each button, accept one claim and one enqueue across concurrent clicks. Complete one executed receipt.
+
 Link the bound feature directory outside the checkout or to a sibling feature (TR-009). Deny Approve Spec and both revision buttons. Deny Retry Phase and Request Changes. Reply once in private to the clicker. Assert zero public replies, receipt claims and completions. Assert zero process launches and queue entries.
 
 Exercise asynchronous spawn errors for Approve Spec and both revision buttons (TR-009). Keep the receipt claimed until launch resolves. On launch failure, record one failed outcome and warn the actor privately in the authorized thread.
@@ -201,6 +203,8 @@ Test external feature links for dispatch, define and ship (TR-012a). Deny all th
 Decide a local ADR and verify its status and generated index (TR-012a). Reject a configured or linked corpus outside the checkout. Reject an index file or directory linked outside the checkout and a dangling index link. Assert a private reply and zero ADR or index writes for each denial.
 
 Run `adr check` as a viewer against the generated local index (TR-012a). Omit foreign filenames and citations when a scan root links outside the checkout. Deny `adr record` privately when the decision corpus links outside the checkout. Assert zero process launches.
+
+For a valid local `adr record` request (TR-012a), pass the verified checkout to the child process. Keep the reply pending during launch. Confirm dispatch in channel after the child emits `spawn`. Return a private warning if the child emits `error` during launch.
 
 Point Alpha's specs at Beta's specs and request a missing feature with `ship` and `approve` (TR-012a). Both commands return a private checkout-scoped error without listing features. Assert zero process launches, pull request lookups and merges. Give `ship` a prefix that matches a local feature and a linked foreign feature. Assert it resolves the local feature and replies in its thread.
 
