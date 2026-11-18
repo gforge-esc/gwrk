@@ -12,6 +12,7 @@ import path from "node:path";
 import readline from "node:readline";
 import { writeScopedStdout } from "../adapters/cli/output-scope.js";
 import { recordRoutingDecision } from "../db/plugins.js";
+import type { ProjectProfile } from "../domain/types.js";
 import type { AgentBackend } from "../plugins/agent-backend.js";
 import { AgentBackendRegistry } from "../plugins/agent-registry.js";
 import { resolveExtensionContext } from "../plugins/extension-runtime.js";
@@ -418,6 +419,7 @@ async function dispatchAgent(opts: DispatchOptions): Promise<{
  */
 export interface TaskDispatch extends AgentTaskRequest {
   promptParts?: { template: string; userInput: string };
+  profile?: ProjectProfile;
   /** Project that selected the backend when execution uses a separate worktree. */
   backendProjectRoot?: string;
   commandOverride?: string;
@@ -752,17 +754,22 @@ export async function dispatchToAgent(task: TaskDispatch): Promise<TaskResult> {
     const scope =
       task.workflow?.includes("review") || task.type?.includes("review")
         ? "review"
-        : "implementation";
+        : /^(?:gwrk-(?:spec(?:ify)?|plan|research|brief|tasks|adr)|define)/.test(
+              task.workflow ?? task.type ?? "",
+            )
+          ? "define"
+          : "implementation";
 
     // R007: Detect project profile for language-aware enforcement routing
     const { detectProfile } = await import("../engine/profile-detector.js");
-    const profile = await detectProfile(projectRoot);
+    const profile = task.profile ?? (await detectProfile(projectRoot));
 
-    const enforcement = await resolveEnforcementSkills(
+    const resolvedPolicy = await resolveEnforcementSkills(
       projectRoot,
       scope,
       profile,
     );
+    const enforcement = `<effective_policy>\n${resolvedPolicy}\n</effective_policy>`;
 
     const start = enforcementSlot.index;
     const [maskedSlot] = enforcementSlot;

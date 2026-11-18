@@ -7,6 +7,10 @@ import {
   contextMarkdown,
   decisionMarkdown,
 } from "../../domain/architecture-context.js";
+import {
+  type EffectivePolicy,
+  composeEffectivePolicy,
+} from "../../domain/policy-selection.js";
 import type { ContextFilesPort } from "../../ports/context-files-port.js";
 
 interface ContextManifest {
@@ -26,7 +30,18 @@ const END = "<!-- gwrk:architecture:end -->";
 export async function installContext(
   files: ContextFilesPort,
   input: ContextInput,
+  effectivePolicy?: EffectivePolicy,
 ): Promise<ContextInstallation> {
+  const policy =
+    effectivePolicy ??
+    composeEffectivePolicy({
+      profile: {
+        type: "app",
+        stack: { language: input.language, framework: input.framework },
+        design: input.design,
+      },
+      candidates: [],
+    });
   const manifestPath = ".gwrk/context-manifest.json";
   const prior = await files.read(manifestPath);
   const manifest: ContextManifest = prior
@@ -87,7 +102,10 @@ export async function installContext(
     await files.write(file, next);
     manifest.files[file] = files.hash(content);
   }
-  await managed(".gwrk/architecture.md", contextMarkdown(input, decisions));
+  await managed(
+    ".gwrk/architecture.md",
+    contextMarkdown(input, decisions, policy),
+  );
   const instruction = `${BEGIN}\nRead .gwrk/architecture.md and .gwrk/decisions/index.md before design or implementation.\nThe selected architecture is a target. Initialization does not assess code conformance.\nUse the gwrk-assess skill for explicit assessment or run gwrk assess.\n${END}`;
   for (const file of ["AGENTS.md", "CLAUDE.md", "GEMINI.md"])
     await managed(file, instruction, true);

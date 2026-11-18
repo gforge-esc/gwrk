@@ -222,6 +222,18 @@ export async function resolveEffectivePolicy(
 
 export function formatEffectivePolicyPrompt(policy: EffectivePolicy): string {
   const sections: string[] = [];
+  if (policy.design) {
+    sections.push(
+      "Initialization does not assess code conformance. Architecture checks remain unchanged by initialization.",
+    );
+    sections.push(
+      `## Architecture rules\n\n${policy.architectureRules.map((rule) => `- ${rule}`).join("\n")}`,
+    );
+  }
+  if (policy.languageGuidance)
+    sections.push(`## Language guidance\n\n${policy.languageGuidance}`);
+  if (policy.frameworkGuidance)
+    sections.push(`## Framework guidance\n\n${policy.frameworkGuidance}`);
   const lastSelectedPath = new Map<string, number>();
   policy.selectedSkills.forEach(({ path, content }, index) => {
     if (path !== undefined && content) lastSelectedPath.set(path, index);

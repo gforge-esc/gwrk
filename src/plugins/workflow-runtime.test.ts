@@ -68,6 +68,46 @@ describe("WorkflowRuntime Phase 13: Project Awareness", () => {
     expect(agentUtils.dispatchToAgent).not.toHaveBeenCalled();
   });
 
+  it("forwards an explicit workspace profile to conditioning and shared dispatch", async () => {
+    const profile = {
+      type: "python",
+      stack: { language: "Python", framework: "FastAPI" },
+      design: {
+        architecture: "clean",
+        principles: ["tdd"] as const,
+        templateVersion: "1.0.0" as const,
+      },
+    };
+    const mutableProfile = {
+      ...profile,
+      design: { ...profile.design, principles: [...profile.design.principles] },
+    };
+    vi.mocked(PluginLoader.prototype.resolvePlugin).mockResolvedValue({
+      manifest: { name: "native", type: "workflow" } as any,
+      path: "/mock/plugin",
+    });
+    vi.mocked(fs.readFile).mockResolvedValue("Native policy");
+    vi.mocked(conditioner.conditionPrompt).mockImplementation(
+      (prompt) => prompt,
+    );
+    const dispatcher = vi
+      .fn()
+      .mockResolvedValue({ exitCode: 0, stdout: "", stderr: "", durationS: 0 });
+    await new WorkflowRuntime().executeWorkflow("native", "Task", {
+      nativeOnly: true,
+      profile: mutableProfile,
+      dispatcher,
+    });
+    expect(conditioner.conditionPrompt).toHaveBeenCalledWith(
+      "Native policy",
+      mutableProfile,
+    );
+    expect(dispatcher).toHaveBeenCalledWith(
+      expect.objectContaining({ profile: mutableProfile }),
+    );
+    expect(detector.detectProfile).not.toHaveBeenCalled();
+  });
+
   it("conditions the native template and preserves literal profile guards in the task", async () => {
     const { conditionPrompt } = await vi.importActual<typeof conditioner>(
       "../engine/prompt-conditioner.js",

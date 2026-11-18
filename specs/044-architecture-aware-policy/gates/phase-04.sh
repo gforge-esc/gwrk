@@ -7,6 +7,7 @@ set -euo pipefail
 tests=(
   src/application/architecture/context.test.ts
   src/commands/init.test.ts
+  src/utils/agent.test.ts
   src/utils/agent.policy-binding.test.ts
   src/utils/agent.grounding-decisions.test.ts
   src/plugins/workflow-runtime.test.ts

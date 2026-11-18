@@ -63,6 +63,23 @@ with tempfile.TemporaryDirectory(prefix="gwrk-context-uat-") as temporary:
     assert json.loads(result.stdout)["context"]["status"] == "incomplete"
     assert "Human exception." in (existing / ".gwrk/architecture.md").read_text()
     checks.append("Edited generated context survives re-init with an explicit conflict")
+    monorepo = base / "monorepo"
+    monorepo.mkdir()
+    root_config = {
+        "project": {"name": "mono", "type": "monorepo", "stack": {"language": "TypeScript"}, "design": {"architecture": "hexagonal-functional", "principles": ["functional-core", "clean-code", "tdd"], "templateVersion": "1.0.0"}},
+        "workspaces": {"api": {"type": "python", "stack": {"language": "Python", "framework": "FastAPI"}, "design": {"architecture": "clean", "principles": ["tdd"], "templateVersion": "1.0.0"}, "toolchain": {"test": "pytest"}}},
+    }
+    (monorepo / ".gwrkrc.json").write_text(json.dumps(root_config))
+    api = monorepo / "api"
+    api.mkdir()
+    run(api, "init", "--workspace", "api", "--non-interactive", "--context-only")
+    repaired = json.loads((monorepo / ".gwrkrc.json").read_text())
+    assert repaired["project"] == root_config["project"]
+    assert repaired["workspaces"]["api"]["design"] == root_config["workspaces"]["api"]["design"]
+    assert repaired["workspaces"]["api"]["toolchain"]["test"] == "pytest"
+    assert repaired["workspaces"]["api"]["stack"] == root_config["workspaces"]["api"]["stack"]
+    assert not marker.exists(), "An agent executable ran during workspace repair"
+    checks.append("Workspace repair preserves project and workspace design, stack and toolchain without inference")
     package = fresh / ".gwrk/plugins/gwrk"
     marketplace = json.loads((fresh / ".gwrk/.claude-plugin/marketplace.json").read_text())
     assert marketplace["plugins"][0]["source"] == "./plugins/gwrk"

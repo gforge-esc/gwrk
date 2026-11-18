@@ -241,10 +241,34 @@ export const initAction = async (options: any): Promise<void> => {
 
     const wsProfile = await detectProfile(cwd);
 
+    const previous = config.workspaces[relativePath] ?? {};
     config.workspaces[relativePath] = {
-      type: wsProfile.type,
-      stack: wsProfile.stack,
-      layout: wsProfile.layout,
+      ...previous,
+      type: previous.type ?? wsProfile.type,
+      stack: {
+        ...wsProfile.stack,
+        ...previous.stack,
+        ...(options.language ? { language: options.language } : {}),
+        ...(options.framework ? { framework: options.framework } : {}),
+      },
+      layout: previous.layout ?? wsProfile.layout,
+      ...(options.architecture || options.principles
+        ? {
+            design: resolveDesign({
+              architecture:
+                options.architecture ??
+                previous.design?.architecture ??
+                config.project?.design?.architecture ??
+                "hexagonal-functional",
+              principles: options.principles
+                ? options.principles
+                    .split(",")
+                    .map((value: string) => value.trim())
+                : (previous.design?.principles ??
+                  config.project?.design?.principles),
+            }),
+          }
+        : {}),
     };
 
     fs.writeFileSync(configPath, JSON.stringify(config, null, 2));

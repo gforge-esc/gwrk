@@ -96,6 +96,36 @@ describe("architecture context", () => {
     }
   });
 
+  it("updates policy gaps after installing a pack without creating another target decision", async () => {
+    const root = await fixture();
+    const input = {
+      projectName: "portable",
+      design: resolveDesign({ architecture: "hexagonal-functional" }),
+      language: "Clojure",
+      decisionsDir: "docs/decisions",
+    };
+    const first = await installArchitectureContext(root, input);
+    const architecture = path.join(root, ".gwrk/architecture.md");
+    expect(await fs.readFile(architecture, "utf8")).toContain("## Policy gaps");
+    const pack = path.join(root, ".gwrk/plugins/skills/clojure-policy");
+    await fs.mkdir(pack, { recursive: true });
+    await fs.writeFile(
+      path.join(pack, "manifest.yaml"),
+      "type: skill\nname: clojure-policy\nversion: 1.0.0\ndescription: Clojure project policy\ntier: enforcement\nscope: all\nlanguage: Clojure\n",
+    );
+    await fs.writeFile(
+      path.join(pack, "SKILL.md"),
+      "Keep effects behind explicit ports.",
+    );
+    const second = await installArchitectureContext(root, input);
+    expect(second.decisions).toEqual(first.decisions);
+    expect(second.conflicts).toEqual([]);
+    expect(await fs.readFile(architecture, "utf8")).not.toContain(
+      "## Policy gaps",
+    );
+    expect(await fs.readdir(path.join(root, "docs/decisions"))).toHaveLength(1);
+  });
+
   it("preserves edited generated files and reports incomplete context", async () => {
     const root = await fixture();
     const input = {

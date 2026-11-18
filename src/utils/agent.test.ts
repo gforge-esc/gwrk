@@ -130,7 +130,7 @@ describe('US-016: Enforcement Skills Dispatch Injection', () => {
       'implementation',
       expect.objectContaining({ stack: { language: 'TypeScript' } }),
     );
-    expect(capturedStdin()).toContain('<code_quality>\n# Strict Typing Rule\n</code_quality>');
+    expect(capturedStdin()).toContain('<code_quality>\n<effective_policy>\n# Strict Typing Rule\n</effective_policy>\n</code_quality>');
   });
 
   it("preserves bare enforcement markers in the template outside the code quality section", async () => {
@@ -390,7 +390,7 @@ describe('US-016: Enforcement Skills Dispatch Injection', () => {
       quiet: true,
     });
 
-    expect(capturedStdin()).toBe(`${COMMAND_SAFETY_BLOCK}\n\n${prefix}# Strict Typing Rule${suffix}`);
+    expect(capturedStdin()).toBe(`${COMMAND_SAFETY_BLOCK}\n\n${prefix}<effective_policy>\n# Strict Typing Rule\n</effective_policy>${suffix}`);
   });
 
   it.each([
@@ -521,7 +521,7 @@ describe('US-016: Enforcement Skills Dispatch Injection', () => {
       });
 
       const expectedTemplate = hasEnforcement
-        ? template.replace("{{enforcement}}", "# Strict Typing Rule")
+        ? template.replace("{{enforcement}}", "<effective_policy>\n# Strict Typing Rule\n</effective_policy>")
         : template;
       expect(capturedStdin()).toBe(
         `${COMMAND_SAFETY_BLOCK}\n\n${expectedTemplate}\r\n\r\n${input}`,
@@ -613,7 +613,7 @@ describe('US-016: Enforcement Skills Dispatch Injection', () => {
       quiet: true,
     });
 
-    const expandedTemplate = template.replace("{{enforcement}}", "# Strict Typing Rule");
+    const expandedTemplate = template.replace("{{enforcement}}", "<effective_policy>\n# Strict Typing Rule\n</effective_policy>");
     expect(capturedStdin()).toBe(`${COMMAND_SAFETY_BLOCK}\n\n${expandedTemplate}\n\n${userInput}`);
   });
 
@@ -632,7 +632,7 @@ describe('US-016: Enforcement Skills Dispatch Injection', () => {
       promptParts,
     });
 
-    expect(capturedStdin()).toContain('<code_quality>\n# Strict Typing Rule\n</code_quality>');
+    expect(capturedStdin()).toContain('<code_quality>\n<effective_policy>\n# Strict Typing Rule\n</effective_policy>\n</code_quality>');
     expect(capturedStdin().endsWith(`\n\n${input}`)).toBe(true);
     expect(capturedStdin()).toContain('Quote `<user_input>` and keep {{enforcement}} here.');
   });

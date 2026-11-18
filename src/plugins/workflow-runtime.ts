@@ -7,6 +7,7 @@ import * as fs from "node:fs";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { warnCli } from "../adapters/cli/output-scope.js";
+import type { ProjectProfile } from "../domain/types.js";
 import { IntentEngine, type IntentSummary } from "../engine/intent-engine.js";
 import { detectProfile } from "../engine/profile-detector.js";
 import { conditionPrompt } from "../engine/prompt-conditioner.js";
@@ -170,6 +171,7 @@ export function wouldShrinkExistingFile(
 }
 
 interface WorkflowOptions {
+  profile?: ProjectProfile;
   /** Assessment requires structured output without mutation intents. */
   reportOnly?: boolean;
   recordedResult?: TaskResult;
@@ -378,7 +380,7 @@ export class WorkflowRuntime {
       throw new Error(`Workflow '${name}' has no prompt directory.`);
     }
 
-    const profile = await detectProfile(projectRoot);
+    const profile = options.profile ?? (await detectProfile(projectRoot));
     const conditionedPrompt = conditionPrompt(basePrompt, profile);
     const userInput = `<user_input>\n${input}\n</user_input>`;
     const outputSchema = manifest?.outputSchema;
@@ -390,6 +392,7 @@ export class WorkflowRuntime {
       type: options.taskType ?? "workflow",
       stdin: [template, userInput].filter(Boolean).join("\n\n"),
       promptParts: { template, userInput },
+      profile,
       agent: options.agent,
       model: options.model,
       env: options.effort ? { GWRK_EFFORT: options.effort } : undefined,

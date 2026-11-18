@@ -149,12 +149,14 @@ bash specs/044-architecture-aware-policy/gates/phase-03.sh
 #### Files
 
 - `src/domain/architecture-context.ts` (MODIFY: Render explicit policy gap notes in `contextMarkdown` while preserving manifest hashes when gaps are empty)
+- `src/adapters/architecture/context-files.ts` (MODIFY: Resolve installed policy candidates before passing their deterministic composition into context installation)
 - `src/application/architecture/install-context.ts` (MODIFY: Compose `EffectivePolicy` deterministically during context installation without certifying existing code)
 - `src/commands/init.ts` (MODIFY: Preserve `workspaces` and `project.design` across fresh and existing and `--workspace` runs with zero agent calls)
 - `src/utils/agent.ts` (MODIFY: Resolve `EffectivePolicy` by workflow scope on the shared transport path and inject `<effective_policy>` with `<code_quality>`)
 - `src/plugins/workflow-runtime.ts` (MODIFY: Forward workspace or root `ProjectProfile` with `design` into prompt conditioning and dispatch)
 - `src/application/architecture/context.test.ts` (MODIFY: Verify context rendering reflects composed rules and explicit gap notes while keeping checks inactive)
 - `src/commands/init.test.ts` (MODIFY: Verify zero agent dispatches and preserved source files and human `Decided` ADRs across fresh and repeat runs)
+- `src/utils/agent.test.ts` (MODIFY: Preserve trusted template and user input boundaries while accepting the effective policy wrapper)
 - `src/utils/agent.policy-binding.test.ts` (NEW: Capture define and implement and review dispatches and verify effective policy bindings and gap notes)
 - `scripts/architecture-context-uat.py` (MODIFY: Exercise compiled CLI init across polyglot and missing-framework fixtures with zero model dispatches)
 
@@ -213,3 +215,5 @@ Phase 3 shared-path alias regression keeps an installed policy active when a dis
 
 Phase 4 preparation adds an observed incompatible-framework initialization regression. TypeScript with Django must expose a policy gap and omit the Python ORM binding. The phase gate requires every named test file before execution, so a missing policy-dispatch test cannot produce a passing phase. Preserve the existing completed phases.
 Phase 3 canonical pack identity regression observes duplicate prompt rules when an override uses a symbolic link. Candidate discovery now resolves physical directories before prompt deduplication while preserving each effective policy name. The symbolic-link case failed before repair. Both disable mechanisms are also covered through links. All 101 phase checks pass.
+
+Phase 4 preparation now passes 176 checks and the compiled CLI acceptance script. The incompatible framework context regression, workspace design-loss regression and four shared-dispatch regressions failed before repair. The decision identity remains based on the selected context input. Installing a missing policy pack updates gaps without creating another target decision. Independent phase review remains required.
