@@ -49,6 +49,8 @@ Apply the single dispatch path decision (ADR-007) and the decision records contr
 - `src/plugins/builtins/workflows/gwrk-specify/PROMPT.md` — **amend** — Use selected architecture and the current project layout. FR-001.
 - `src/plugins/builtins/workflows/gwrk-plan/PROMPT.md` — **amend** — Use current hexagonal boundaries and preserve the parser contract. FR-001.
 - `src/plugins/builtins/personas/principal-engineer.md` — **amend** — Use the project's verification commands and schema standards. FR-001.
+- `src/plugins/builtins/reviews/review-cli/manifest.yaml` (MODIFY: Keep required type verification scoped to host commands)
+- `src/plugins/builtins/reviews/review-webapp/manifest.yaml` (MODIFY: Keep required type verification scoped to host commands)
 - `src/plugins/builtins/reviews/review-code-webapp/PROMPT.md` (MODIFY: Preserve review prompt parity with host-specific verification and persona guidance)
 - `src/plugins/builtins/reviews/review-code-cli/PROMPT.md` (MODIFY: Load Principal Engineer guidance and limit GWRK commands to the native profile. FR-001.)
 - `src/plugins/workflow-runtime.ts` (MODIFY: Render host review guidance for unknown profiles. FR-001.)

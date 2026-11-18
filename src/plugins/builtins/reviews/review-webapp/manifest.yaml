@@ -1,6 +1,6 @@
 type: review
 name: review-webapp
-version: 1.0.0
+version: 1.1.0
 description: Default WebApp Review Strategy
 projectType: webapp
 codeReviewWorkflow: review-code-webapp
@@ -13,7 +13,7 @@ steps:
       required: true
     - id: types
       title: Type Check
-      description: Verify TypeScript types
+      description: Verify the host project's type checks and schema validation using its documented verification commands
       required: true
     - id: tests
       title: Unit Tests

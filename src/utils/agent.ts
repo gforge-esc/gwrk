@@ -752,7 +752,11 @@ export async function dispatchToAgent(task: TaskDispatch): Promise<TaskResult> {
     const scope =
       task.workflow?.includes("review") || task.type?.includes("review")
         ? "review"
-        : "implementation";
+        : /^(?:gwrk-(?:spec(?:ify)?|plan|research|brief|tasks|adr)|define)/.test(
+              task.workflow ?? task.type ?? "",
+            )
+          ? "define"
+          : "implementation";
 
     // R007: Detect project profile for language-aware enforcement routing
     const { detectProfile } = await import("../engine/profile-detector.js");

@@ -8,7 +8,9 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ProjectProfile } from "../domain/types.js";
 import * as detector from "../engine/profile-detector.js";
+import { ShipOrchestrator } from "../engine/ship-orchestrator.js";
 import * as agents from "../utils/agent.js";
+import { saveTaskState } from "../utils/state.js";
 import { WorkflowRuntime } from "./workflow-runtime.js";
 
 const dispatch = agents.dispatchToAgent;
@@ -28,6 +30,19 @@ afterEach(async () => {
 
 async function captureDispatch(workflow: string, profile?: ProjectProfile) {
   if (profile) vi.spyOn(detector, "detectProfile").mockResolvedValue(profile);
+  return captureDelivery(() =>
+    new WorkflowRuntime().executeWorkflow(
+      workflow,
+      "Use the project decisions.",
+      {
+        projectRoot: root,
+        quiet: true,
+      },
+    ),
+  );
+}
+
+async function captureDelivery(run: () => Promise<unknown>) {
   let captured = "";
   const transport = vi
     .spyOn(agents, "dispatchToAgent")
@@ -51,11 +66,7 @@ async function captureDispatch(workflow: string, profile?: ProjectProfile) {
         durationS: 0,
       };
     });
-  await new WorkflowRuntime().executeWorkflow(
-    workflow,
-    "Use the project decisions.",
-    { projectRoot: root, quiet: true },
-  );
+  await run();
   expect(transport).toHaveBeenCalledOnce();
   transport.mockRestore();
   return captured;
@@ -191,6 +202,66 @@ describe("governance prompt delivery", () => {
     },
   );
 
+  it.each(["cli", "webapp"] as const)(
+    "TR-012: delivers Python verification guidance in the %s ship review",
+    async (strategy) => {
+      await writeFile(
+        join(root, ".gwrkrc.json"),
+        JSON.stringify({
+          project: { name: "host", type: "python" },
+          review: { strategy },
+        }),
+      );
+      const featureId = "001-host-review";
+      const phaseId = "phase-01";
+      saveTaskState(join(root, "specs", featureId), {
+        featureId,
+        createdAt: new Date(0).toISOString(),
+        phases: [
+          {
+            id: phaseId,
+            title: "Host review",
+            sp_estimate: 0,
+            tasks: [
+              {
+                id: "T001",
+                title: "Review the Python changes",
+                description: "",
+                status: "completed",
+                gateScript: "",
+                sp: 0,
+              },
+            ],
+          },
+        ],
+      });
+      const orchestrator = new ShipOrchestrator({
+        cwd: root,
+        featureId,
+        phaseId,
+        backend: "codex",
+        maxIterations: 1,
+        ciTimeout: 1,
+      });
+
+      const stage = orchestrator as unknown as {
+        stageCodeReview(): Promise<unknown>;
+      };
+      const captured = await captureDelivery(async () => {
+        expect(await stage.stageCodeReview()).toMatchObject({
+          success: true,
+        });
+      });
+
+      expect.soft(captured).toContain('language="Python"');
+      for (const instruction of hostReviewGuidance) {
+        expect.soft(captured).toContain(instruction);
+      }
+      expect.soft(captured).not.toContain("Verify TypeScript types");
+      expect.soft(captured.match(nativeReviewCommandPattern) ?? []).toEqual([]);
+    },
+  );
+
   it.each([
     {
       workflow: "gwrk-specify",
@@ -209,7 +280,10 @@ describe("governance prompt delivery", () => {
     "TR-012: uses the configured Python profile in $workflow with docs/architecture.md and no language manifest",
     async ({ workflow, guidance }) => {
       await mkdir(join(root, "docs"));
-      await writeFile(join(root, "docs/architecture.md"), "# Host architecture\n");
+      await writeFile(
+        join(root, "docs/architecture.md"),
+        "# Host architecture\n",
+      );
       await writeFile(
         join(root, ".gwrkrc.json"),
         JSON.stringify({ project: { name: "host", type: "python" } }),
@@ -237,20 +311,30 @@ describe("governance prompt delivery", () => {
   );
 
   it("delivers project-local enforcement inside both definition prompts", async () => {
-    const policyDir = join(root, ".gwrk/plugins/skills/phase-01-policy");
-    await mkdir(policyDir, { recursive: true });
-    await writeFile(
-      join(policyDir, "manifest.yaml"),
-      "type: skill\nname: phase-01-policy\nversion: 1.0.0\ndescription: Phase 1 test policy\ntier: enforcement\nscope: all\n",
-    );
-    const rule = "Record dependency provenance in the release checklist.";
-    await writeFile(join(policyDir, "SKILL.md"), `${rule}\n`);
+    const policies = {
+      all: "Record dependency provenance in the release checklist.",
+      define: "Describe the selected dependency in the plan.",
+      implementation:
+        "Run the dependency checks before submitting source changes.",
+    };
+    for (const [scope, rule] of Object.entries(policies)) {
+      const name = `phase-01-policy-${scope}`;
+      const policyDir = join(root, ".gwrk/plugins/skills", name);
+      await mkdir(policyDir, { recursive: true });
+      await writeFile(
+        join(policyDir, "manifest.yaml"),
+        `type: skill\nname: ${name}\nversion: 1.0.0\ndescription: Phase 1 test policy\ntier: enforcement\nscope: ${scope}\n`,
+      );
+      await writeFile(join(policyDir, "SKILL.md"), `${rule}\n`);
+    }
 
     for (const workflow of ["gwrk-specify", "gwrk-plan"]) {
       const captured = await captureDispatch(workflow, { type: "unknown" });
       const codeQuality =
         captured.match(/<code_quality>([\s\S]*?)<\/code_quality>/)?.[1] ?? "";
-      expect.soft(codeQuality, workflow).toContain(rule);
+      expect.soft(codeQuality, workflow).toContain(policies.all);
+      expect.soft(codeQuality, workflow).toContain(policies.define);
+      expect.soft(codeQuality, workflow).not.toContain(policies.implementation);
     }
   });
 
