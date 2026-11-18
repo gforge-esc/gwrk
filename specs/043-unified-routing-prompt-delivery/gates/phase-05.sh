@@ -5,4 +5,4 @@
 
 set -euo pipefail
 pnpm build
-pnpm exec vitest run src/plugins/builtins/agents/agy/adapter.test.ts src/plugins/builtins/agents/claude/adapter.test.ts src/plugins/builtins/agents/codex/adapter.test.ts src/plugins/workflow-runtime.test.ts src/commands/assess.test.ts src/architecture.test.ts
+pnpm exec vitest run src/plugins/builtins/agents/agy/adapter.test.ts src/plugins/builtins/agents/claude/adapter.test.ts src/plugins/builtins/agents/codex/adapter.test.ts src/plugins/workflow-runtime.test.ts src/commands/assess.test.ts src/utils/agent.test.ts src/engine/ship-orchestrator.review.test.ts src/engine/ship-orchestrator.review-finding-liveness.test.ts src/architecture.test.ts

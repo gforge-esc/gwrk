@@ -651,7 +651,7 @@ export class ShipOrchestrator extends EventEmitter {
       //    tighten the result it arrived at.
       const verdict = this.ratchetOnReturnedVerdict(
         await this.readVerdict(reviewFindings),
-        result.stdout,
+        result.unwrappedStdout ?? result.stdout,
       );
       this.state.reviewVerdict = verdict;
       logCliOutput(
@@ -2704,11 +2704,14 @@ ${marker}`;
         agent: this.config.backend,
         prompt: diagnosisPrompt,
         featureDir: `specs/${this.config.featureId}`,
+        workDir: this.config.cwd,
+        backendProjectRoot: this.config.stateRoot ?? this.config.cwd,
         quiet: true,
       });
 
-      if (result.exitCode === 0 && result.stdout) {
-        const fixLines = extractFixLines(result.stdout);
+      const diagnosis = result.unwrappedStdout ?? result.stdout;
+      if (result.exitCode === 0 && diagnosis) {
+        const fixLines = extractFixLines(diagnosis);
 
         if (fixLines.length > 0) {
           const fixBlock = `\n\nDIAGNOSIS (iteration ${this.state.iteration}):\n${fixLines.join("\n")}`;
@@ -2788,9 +2791,15 @@ ${marker}`;
     // verdict is answered once; an agent the host suspended or the network cut
     // off never answered at all, and failing the phase on that discards work
     // every earlier stage already proved good.
-    const workDir = task.workDir ?? this.config.cwd;
+    const dispatch = {
+      ...task,
+      model,
+      env,
+      workDir: task.workDir ?? this.config.cwd,
+      backendProjectRoot: this.config.stateRoot ?? this.config.cwd,
+    };
 
-    let result = await dispatchToAgent({ ...task, model, env, workDir });
+    let result = await dispatchToAgent(dispatch);
 
     for (
       let attempt = 0;
@@ -2804,7 +2813,7 @@ ${marker}`;
         `    ⚠ agent dispatch interrupted by the environment — retrying in ${wait / 1000}s (${attempt + 1}/${AGENT_RETRY_DELAYS_MS.length})`,
       );
       await this.sleep(wait);
-      result = await dispatchToAgent({ ...task, model, env, workDir });
+      result = await dispatchToAgent(dispatch);
     }
 
     if (result.usage) {

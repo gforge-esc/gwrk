@@ -6,7 +6,10 @@
  * Canonical AgentPort interface and stream-json unwrapping utilities (ADR-006, ADR-011).
  */
 
-import type { RouteSelectionDecision } from "../domain/agent-routing.js";
+import type {
+  RouteSelectionDecision,
+  RoutingFacts,
+} from "../domain/agent-routing.js";
 
 export interface AgentTaskRequest {
   type?: string;
@@ -33,6 +36,7 @@ export interface AgentDispatchSpec {
   stdin?: string;
   env?: Record<string, string | undefined>;
   outputFormat?: "text" | "json" | "stream-json";
+  inputFormat?: "text" | "stream-json";
 }
 
 export interface AgentTaskResult {
@@ -65,6 +69,15 @@ export interface AgentTaskResult {
 
 export interface RoutingContext {
   type: string;
+  preview?: boolean;
+  requireRegistry?: boolean;
+  historyMode?: RoutingFacts["historyMode"];
+  backendEligibility?: "quota" | "installed" | "script-owned";
+  includeReviewModel?: boolean;
+  resolveDispatchModel?: boolean;
+  /** Allow an explicit backend outside the registry to resolve ambient model defaults. */
+  useAmbientModelDefaults?: boolean;
+  legacyModelDefault?: string;
   runId?: string;
   skillName?: string;
   feature?: string;
@@ -76,7 +89,14 @@ export interface RoutingContext {
   taskSP?: number;
 }
 
-export type SelectedAgentRoute = RouteSelectionDecision;
+export interface SelectedAgentRoute extends RouteSelectionDecision {
+  useAdapterModelDefaults?: boolean;
+  effectiveModel?: string;
+  /** Null means the adapter omits the model flag. */
+  adapterModel?: string | null;
+  reviewModel?: string;
+  reviewEffort?: string;
+}
 
 export interface AgentPort {
   execute(task: AgentTaskRequest): Promise<AgentTaskResult>;

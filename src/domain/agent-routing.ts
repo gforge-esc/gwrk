@@ -27,6 +27,7 @@ export interface RoutingFacts {
   readonly history?: readonly HistoricalBackendStat[];
   readonly historyMode?: "priority" | "quota-tiebreak";
   readonly maxBackendAttempts?: number;
+  readonly probedUnavailableBackends?: ReadonlySet<string>;
   readonly cooledDownModels?: Readonly<Record<string, readonly string[]>>;
   readonly defaultBackend?: string;
 }
@@ -120,6 +121,7 @@ export function selectAgentRoute(
     const backend = facts.registry?.backends[name];
     if (!facts.availableBackends && facts.registry && !backend) continue;
     if (++attempts > (facts.maxBackendAttempts ?? candidates.length)) break;
+    if (facts.probedUnavailableBackends?.has(name)) continue;
     const cooldown = new Set(facts.cooledDownModels?.[name] ?? []);
     const modelId = (label: string) =>
       (label === "review-model-override" ? backend?.reviewModel : undefined) ??

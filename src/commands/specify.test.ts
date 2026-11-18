@@ -31,6 +31,11 @@ vi.mock("../utils/config.js", () => ({
   loadConfig: mockLoadConfig,
 }));
 
+vi.mock("../db/runs.js", () => ({
+  startRun: vi.fn().mockReturnValue(1),
+  finishRun: vi.fn(),
+}));
+
 vi.mock("../utils/manifest.js", () => ({
   writeManifest: mockWriteManifest,
   generateRunId: vi.fn().mockReturnValue("mock-run-id"),

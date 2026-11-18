@@ -105,6 +105,14 @@ pnpm exec vitest run src/commands/ship.test.ts src/engine/model-routing.test.ts 
 
 #### Files
 
+- `src/adapters/agents/quota-prober.ts` (NEW: Move quota probing from the server module into its adapter)
+- `src/adapters/sqlite/routing-decisions.ts` (NEW: Move SQLite route decision recording into its adapter)
+- `src/server/quota-prober.ts` and `src/server/routing-decisions.ts` (DELETE: Update callers to use the adapters)
+
+- `src/server/index.ts` (MODIFY: Load the routing registry directly through its adapter)
+- `src/server/quota-prober.ts` (MODIFY: Import quota policy types from the domain)
+- `src/engine/model-routing.test.ts` (MODIFY: Exercise canonical model selection and classification)
+- `src/server/backend-selector.test.ts` and `src/server/backend-selector.integration.test.ts` (MODIFY: Use canonical registry and classification types)
 - `src/server/model-selector.test.ts` (MODIFY: Import `ModelSelector`, `AgentBackendConfig` and task classification types from `src/domain/`)
 - `src/server/quota-prober.test.ts` (MODIFY: Import `AgentBackendConfig` and `TaskClassification` from `src/domain/`)
 - `src/server/task-classifier.test.ts` (MODIFY: Import `TaskClassification`, `TaskType` and `classifyTask` from `src/domain/types.js`)
@@ -132,7 +140,7 @@ pnpm exec vitest run src/commands/ship.test.ts src/engine/model-routing.test.ts 
 
 ```bash
 pnpm build
-pnpm exec vitest run src/server/model-selector.test.ts src/server/quota-prober.test.ts src/server/task-classifier.test.ts src/server/backend-selector.test.ts src/architecture.test.ts
+pnpm exec vitest run src/server/model-selector.test.ts src/server/quota-prober.test.ts src/server/task-classifier.test.ts src/server/backend-selector.test.ts src/server/backend-selector.integration.test.ts src/engine/model-routing.test.ts src/commands/ship-routing.integration.test.ts src/server/routing-decisions.test.ts src/architecture.test.ts
 ```
 
 ### Phase 4: Workflow runtime and prompt transport
@@ -147,10 +155,6 @@ pnpm exec vitest run src/server/model-selector.test.ts src/server/quota-prober.t
 - `src/plugins/workflow-runtime.test.ts` (MODIFY: Verify `WorkflowRuntime` populates `stdin` before dispatch and separates native workflow execution from skill execution)
 - `src/utils/agent.test.ts` (MODIFY: Capture planning and implementation dispatches and verify expanded enforcement rules, project context and task instructions)
 - `src/engine/ship-orchestrator.review.test.ts` (MODIFY: Verify `ShipOrchestrator` dispatches implementation and review workflows through `WorkflowRuntime` while preserving post-dispatch gates)
-- `src/engine/ship-orchestrator.test.ts` (MODIFY: Verify the full lifecycle dispatches implementation through the native workflow)
-- `src/commands/plan.test.ts` and `src/commands/specify.test.ts` and `src/commands/define-ontology.issue201.test.ts` (MODIFY: Assert prompt content on stdin)
-- `src/review-dispatch.test.ts` (MODIFY: Keep prompt contract tests and rely on orchestrator behavior tests for dispatch)
-
 
 #### Governance and skills
 
@@ -172,7 +176,7 @@ pnpm exec vitest run src/server/model-selector.test.ts src/server/quota-prober.t
 
 ```bash
 pnpm build
-pnpm exec vitest run src/utils/agent.test.ts src/utils/agent.grounding-decisions.test.ts src/plugins/workflow-runtime.test.ts src/plugins/skill-runtime.test.ts src/engine/ship-orchestrator.review.test.ts src/engine/ship-orchestrator.test.ts src/engine/ship-orchestrator.review-finding-liveness.test.ts src/commands/plan.test.ts src/commands/specify.test.ts src/commands/define-ontology.issue201.test.ts src/review-dispatch.test.ts src/plugins/builtins/workflows/gwrk-plan/prompt-contract.test.ts src/architecture.test.ts
+pnpm exec vitest run src/utils/agent.test.ts src/utils/agent.grounding-decisions.test.ts src/plugins/workflow-runtime.test.ts src/plugins/skill-runtime.test.ts src/engine/ship-orchestrator.review.test.ts src/plugins/builtins/workflows/gwrk-plan/prompt-contract.test.ts src/architecture.test.ts
 ```
 
 ### Phase 5: Adapter parity and recorded recovery

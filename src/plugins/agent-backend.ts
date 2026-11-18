@@ -37,6 +37,7 @@ export interface AgentDispatch {
   stdin: string;
   env?: Record<string, string | undefined>;
   outputFormat?: "text" | "json" | "stream-json";
+  inputFormat?: "text" | "stream-json";
 }
 
 /**
@@ -78,15 +79,20 @@ export interface AgentBackend {
    */
   dispatch(task: TaskDispatch): Promise<AgentDispatch>;
 
+  resolveModel?(
+    task: Pick<TaskDispatch, "model" | "env">,
+    ambientEnv?: Readonly<NodeJS.ProcessEnv>,
+  ): string | undefined;
+
   /**
    * Returns true if the backend's required CLI or integration is available.
    */
-  isAvailable(): Promise<boolean>;
+  isAvailable(signal?: AbortSignal): Promise<boolean>;
 
   discoverModels?(context?: { projectRoot: string }): Promise<
     readonly DiscoveredModel[]
   >;
-  checkQuota?(): Promise<QuotaStatus>;
+  checkQuota?(signal?: AbortSignal): Promise<QuotaStatus>;
   probe?(): Promise<ProbeResult>;
 
   /**

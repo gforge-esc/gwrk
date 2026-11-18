@@ -30,9 +30,12 @@ export class CodexAdapter implements AgentBackend {
   readonly nativeWriter = true;
   readonly supportsModelForwarding = true;
 
-  async isAvailable(): Promise<boolean> {
+  async isAvailable(signal?: AbortSignal): Promise<boolean> {
     try {
-      const { exitCode } = await execCommand("which", ["codex"]);
+      const args = ["codex"];
+      const { exitCode } = signal
+        ? await execCommand("which", args, undefined, { signal })
+        : await execCommand("which", args);
       return exitCode === 0;
     } catch {
       return false;
@@ -86,6 +89,15 @@ export class CodexAdapter implements AgentBackend {
     }
   }
 
+  resolveModel(
+    task: Pick<TaskDispatch, "model" | "env">,
+    ambientEnv?: Readonly<NodeJS.ProcessEnv>,
+  ): string | undefined {
+    const model =
+      task.model || (task.env?.CODEX_MODEL ?? ambientEnv?.CODEX_MODEL);
+    return model && model !== "default" ? model : undefined;
+  }
+
   async dispatch(task: TaskDispatch): Promise<AgentDispatch> {
     const args = [
       "--ask-for-approval",
@@ -95,10 +107,8 @@ export class CodexAdapter implements AgentBackend {
       "workspace-write",
     ];
 
-    const rawModel = task.model || task.env?.CODEX_MODEL;
-    if (rawModel && rawModel !== "default") {
-      args.push("--model", rawModel);
-    }
+    const model = this.resolveModel(task);
+    if (model) args.push("--model", model);
 
     const effort = task.effort || task.env?.GWRK_EFFORT;
     if (effort)
