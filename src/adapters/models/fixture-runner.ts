@@ -113,7 +113,8 @@ const JUDGE_WORKFLOW = "gwrk-model-judge";
 const JUDGE_PROMPT = [
   "# Model Judge Prompt",
   "",
-  "Evaluate the blinded options. Cite a fixture ID from the fixture summary, `optionA` or `optionB`, and a gate check ID from the gate evidence summary.",
+  "Evaluate the blinded options. For each citation, copy the `ref` from a fixture input artifact and a gate result artifact. Use `optionA` or `optionB` for the output reference.",
+  "Artifact references identify the comparison number, blinded option, repeat index, and artifact number in that order.",
 ].join("\n");
 const JUDGE_OUTPUT_SCHEMA = {
   type: "object",
@@ -660,6 +661,7 @@ export class FixtureRunner
       ]);
 
       const files = filesForRole(fixture, request.role);
+      let fixtureInputs = files;
       await seedFiles(workspaceDir, files);
       const featureDir =
         request.role === "define" || request.role === "review"
@@ -680,6 +682,7 @@ export class FixtureRunner
             requestedModel: request.route.modelId,
             observedModel: "unknown",
             deterministicGatesPassed: false,
+            fixtureInputs: {},
             gateChecks: [
               ["spec", spec],
               ["plan", plan],
@@ -695,6 +698,7 @@ export class FixtureRunner
             sanitizedOutput: "",
           };
         }
+        fixtureInputs = { ...files, "spec.md": spec, "plan.md": plan };
         await Promise.all([
           writeFile(join(workspaceDir, "spec.md"), spec, "utf8"),
           writeFile(join(workspaceDir, "plan.md"), plan, "utf8"),
@@ -753,6 +757,7 @@ export class FixtureRunner
       const specPath = join(featureDir, "spec.md");
       let specifiedSpec: string | undefined;
       let observedModel = "unknown";
+      let definitionDurationMs = 0;
       let implementationStart: number | undefined;
       let implementationDuration: number | undefined;
       let taskResult: TaskResult = {
@@ -803,6 +808,10 @@ export class FixtureRunner
             durationS: 0,
             status: "failure",
           };
+        }
+        if (request.role === "define") {
+          definitionDurationMs +=
+            taskResult.durationMs ?? taskResult.durationS * 1000;
         }
         const reportedModel = taskResult.observedModel;
         if (reportedModel && reportedModel !== "unknown") {
@@ -1197,11 +1206,14 @@ export class FixtureRunner
         requestedModel: request.route.modelId,
         observedModel,
         deterministicGatesPassed,
+        fixtureInputs,
         gateChecks,
         durationMs:
-          implementationDuration ??
-          taskResult.durationMs ??
-          taskResult.durationS * 1000,
+          request.role === "define"
+            ? definitionDurationMs
+            : (implementationDuration ??
+              taskResult.durationMs ??
+              taskResult.durationS * 1000),
         retries: 0,
         sanitizedOutput,
       };

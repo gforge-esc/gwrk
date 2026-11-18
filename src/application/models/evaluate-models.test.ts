@@ -54,6 +54,7 @@ function setup({
     requestedModel: request.route.modelId,
     observedModel: "unknown",
     deterministicGatesPassed: gatePasses,
+    fixtureInputs: { "spec.md": "Fixture requirements" },
     gateChecks: [
       {
         checkId: "candidate-gate",
@@ -159,9 +160,9 @@ function winningImplementationVerdict(
     scores: { optionA: 80, optionB: 80 },
     citations: [
       {
-        inputRef: "implement-seeded-defect",
+        inputRef: "input:1:A:0:1",
         outputRef: "optionA",
-        gateRef: "candidate-gate",
+        gateRef: "gate:1:A:0:1",
         claim: "Fixture behavior verified",
       },
     ],
@@ -186,6 +187,7 @@ describe("model qualification orchestration", () => {
           defect === "incumbent gate" &&
           request.route.modelId === incumbent.modelId
         ),
+        fixtureInputs: { "spec.md": "Fixture requirements" },
         gateChecks: [
           {
             checkId: "candidate-gate",
@@ -826,12 +828,9 @@ describe("model qualification orchestration", () => {
       citations: [
         {
           inputRef:
-            packet.role === "define"
-              ? candidateHandoff.from
-              : candidateHandoff.to,
+            packet.role === "define" ? "input:2:A:0:1" : "input:1:A:0:1",
           outputRef: "optionA",
-          gateRef:
-            packet.role === "define" ? "generated-plan-gate" : "candidate-gate",
+          gateRef: packet.role === "define" ? "gate:2:A:0:1" : "gate:1:A:0:1",
           claim: "Fixture behavior verified",
         },
       ],
@@ -1076,6 +1075,7 @@ describe("model qualification orchestration", () => {
         requestedModel: request.route.modelId,
         observedModel: "unknown",
         deterministicGatesPassed: true,
+        fixtureInputs: { "spec.md": "Fixture requirements" },
         gateChecks: [{ checkId: "candidate-gate", passed: true, detail: "ok" }],
         durationMs: durations[request.repeatIndex],
         retries: 0,
@@ -1149,9 +1149,9 @@ describe("model qualification orchestration", () => {
           scores: { optionA: 80, optionB: 80 },
           citations: [
             {
-              inputRef: "implement-seeded-defect",
+              inputRef: "input:1:A:0:1",
               outputRef: "optionA",
-              gateRef: "candidate-gate",
+              gateRef: "gate:1:A:0:1",
               claim: "Split verdict",
             },
           ],

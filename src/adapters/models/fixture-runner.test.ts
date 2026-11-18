@@ -9,7 +9,11 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
-import type { ModelCandidate } from "../../domain/model-qualification.js";
+import { evaluateModels } from "../../application/models/evaluate-models.js";
+import {
+  type ModelCandidate,
+  blindCandidate,
+} from "../../domain/model-qualification.js";
 import type {
   FixtureRepeatEvidence,
   JudgeVerdictPacket,
@@ -364,7 +368,7 @@ describe("fixture runner adapter", () => {
     },
   );
 
-  it("supplies both generated definition artifacts to implementation", async () => {
+  it("TR-028 records the artifacts supplied to generated-plan implementation", async () => {
     const handoff = await mkdtemp(join(tmpdir(), "gwrk-definition-pair-"));
     try {
       await writeFile(
@@ -400,6 +404,13 @@ describe("fixture runner adapter", () => {
         handoffArtifactDir: handoff,
       });
       expect(result.deterministicGatesPassed).toBe(true);
+      expect(result).toMatchObject({
+        fixtureInputs: {
+          "spec.md": "# Generated spec\nUnique definition requirements\n",
+          "plan.md":
+            "# Generated plan\nRepair routing against the generated spec\n",
+        },
+      });
     } finally {
       await rm(handoff, { recursive: true, force: true });
     }
@@ -621,7 +632,7 @@ describe("fixture runner adapter", () => {
       expectedCheck: "plan-preserves-spec",
     },
     { variant: "removed spec", expectedCheck: "plan-preserves-spec" },
-    { variant: "valid plan", expectedCheck: undefined },
+    { variant: "TR-027 valid plan", expectedCheck: undefined },
   ])(
     "checks definition produced with $variant",
     async ({ variant, expectedCheck, mismatchedWorkflow }) => {
@@ -741,7 +752,9 @@ describe("fixture runner adapter", () => {
           exitCode: 0,
           stdout: "",
           stderr: "",
-          durationS: 0,
+          ...(task.workflow === "gwrk-specify"
+            ? { durationS: 0.2 }
+            : { durationS: 0, durationMs: 50 }),
           observedModel: mismatchedWorkflow
             ? task.workflow === mismatchedWorkflow
               ? "other-model"
@@ -750,7 +763,7 @@ describe("fixture runner adapter", () => {
         };
       };
       const artifactOutputDir =
-        variant === "valid plan"
+        variant === "TR-027 valid plan"
           ? await mkdtemp(join(tmpdir(), "gwrk-definition-artifacts-"))
           : undefined;
       let result: FixtureRepeatEvidence;
@@ -778,6 +791,7 @@ describe("fixture runner adapter", () => {
         result.deterministicGatesPassed,
         JSON.stringify(result.gateChecks),
       ).toBe(expectedCheck === undefined);
+      if (artifactOutputDir) expect(result.durationMs).toBe(250);
       if (expectedCheck) {
         expect(
           result.gateChecks.some(
@@ -1051,6 +1065,133 @@ describe("fixture runner adapter", () => {
 
     expect(capturedTimeout).toBe(1500);
   });
+
+  it.each([false, true])(
+    "TR-028 resolves citations in both dispatched judge prompts (absent ref: %s)",
+    async (absentRef) => {
+      const fixtureId = "implement-seeded-defect";
+      const inputPath = "src/domain/select-queue.mjs";
+      const checkId = "review-required-T001";
+      const fixture = JSON.parse(
+        readFileSync(
+          `tests/fixtures/model-qualification/${fixtureId}/fixture.json`,
+          "utf8",
+        ),
+      );
+      const model = (name: string): ModelCandidate => ({
+        backend: `${name}-cli`,
+        provider: `${name}-provider`,
+        family: `${name}-family`,
+        modelId: `${name}-model`,
+      });
+      const input = {
+        evaluationId: "review-fixture-evaluation",
+        role: "review" as const,
+        candidate: model("cedar"),
+        incumbent: model("quartz"),
+        judges: [model("maple"), model("lapis")],
+        blindingSecret: "fixture-blinding-key",
+        fixtures: [{ id: fixtureId }],
+      };
+      const winner = blindCandidate(input.blindingSecret, input.evaluationId);
+      const other = winner === "A" ? "B" : "A";
+      const judgePrompts: string[] = [];
+      const artifacts = (prompt: string) =>
+        prompt
+          .split("\n")
+          .filter((line) => line.startsWith('{"ref":'))
+          .map((line) => JSON.parse(line) as Record<string, string | boolean>);
+      let incumbentRuns = 0;
+      const runner = createFixtureRunner({
+        dispatcher: async (task) => {
+          const { stdin = "" } = task;
+          if (task.workflow === "gwrk-model-judge") {
+            judgePrompts.push(stdin);
+            const records = artifacts(stdin);
+            const citations = [winner, other].map((option) => ({
+              inputRef:
+                records.find(
+                  ({ ref, path }) =>
+                    String(ref).startsWith(`input:1:${option}:2:`) &&
+                    path === inputPath,
+                )?.ref ?? fixtureId,
+              outputRef: `option${option}`,
+              gateRef: absentRef
+                ? checkId
+                : (records.find(
+                    ({ ref, checkId: artifactCheck }) =>
+                      String(ref).startsWith(`gate:1:${option}:2:`) &&
+                      artifactCheck === checkId,
+                  )?.ref ?? checkId),
+              claim: "The reviewer assessed the seeded routing defect",
+            }));
+            return {
+              exitCode: 0,
+              stdout: JSON.stringify({
+                summary: "Blinded review comparison",
+                intents: [],
+                winner,
+                optionARegression: false,
+                optionBRegression: false,
+                scores: { optionA: 90, optionB: 90 },
+                citations,
+              }),
+              stderr: "",
+              durationS: 0,
+            };
+          }
+          const reopened =
+            task.model !== input.incumbent.modelId || ++incumbentRuns < 3;
+          return {
+            exitCode: 0,
+            stdout: JSON.stringify({
+              summary: `Routing review by ${task.model}`,
+              verdict: "NO-GO",
+              reopenedTasks: reopened ? ["T001"] : [],
+              intents: [],
+            }),
+            stderr: "",
+            durationS: 0,
+          };
+        },
+      });
+
+      const result = await evaluateModels({ runner, judge: runner }, input);
+
+      expect(judgePrompts).toHaveLength(2);
+      expect(result.decision).toEqual(
+        absentRef
+          ? { promote: false, reason: "invalid-citations" }
+          : { promote: true },
+      );
+      for (const prompt of judgePrompts) {
+        expect(prompt).not.toMatch(/cedar|quartz/);
+        const records = artifacts(prompt);
+        for (const [option, route] of [
+          [winner, "candidate"],
+          [other, "incumbent"],
+        ] as const) {
+          for (const repeat of result.repeats[route]) {
+            const scope = `1:${option}:${repeat.repeatIndex}:`;
+            expect(
+              records.find(
+                ({ ref, path }) =>
+                  String(ref).startsWith(`input:${scope}`) &&
+                  path === inputPath,
+              )?.content,
+            ).toBe(fixture.files[inputPath]);
+            expect(
+              records.filter(({ ref }) =>
+                String(ref).startsWith(`gate:${scope}`),
+              ),
+            ).toEqual(
+              repeat.gateChecks.map((check) => expect.objectContaining(check)),
+            );
+          }
+        }
+      }
+    },
+  );
 
   it.each([
     { label: "accepts a report-only verdict", timedOut: false },

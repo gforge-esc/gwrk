@@ -463,70 +463,104 @@ export async function evaluateModels(
   const observedModels = allRepeats.map(({ observedModel }) => observedModel);
   const redact = (text: string) =>
     sanitizeIdentityText(text, routes, observedModels);
-  const inputRefs = new Set(
-    comparisons.flatMap(({ fixtureId, handoff }) =>
+  const inputArtifacts: { ref: string; path: string; content: string }[] = [];
+  const gateArtifacts: {
+    ref: string;
+    checkId: string;
+    passed: boolean;
+    detail: string;
+  }[] = [];
+  for (const [index, { repeats }] of comparisons.entries()) {
+    for (const [option, route] of [
+      ["A", left],
+      ["B", right],
+    ] as const) {
+      for (const { repeatIndex, fixtureInputs, gateChecks } of repeats[route]) {
+        const scope = `${index + 1}:${option}:${repeatIndex}`;
+        for (const [ordinal, [path, content]] of Object.entries(
+          fixtureInputs,
+        ).entries()) {
+          inputArtifacts.push({
+            ref: `input:${scope}:${ordinal + 1}`,
+            path: redact(path),
+            content: redact(content),
+          });
+        }
+        for (const [
+          ordinal,
+          { checkId, passed, detail },
+        ] of gateChecks.entries()) {
+          gateArtifacts.push({
+            ref: `gate:${scope}:${ordinal + 1}`,
+            checkId: redact(checkId),
+            passed,
+            detail: redact(detail),
+          });
+        }
+      }
+    }
+  }
+  const comparisonLabels = comparisons.map(({ fixtureId, handoff }, index) => {
+    const description =
       handoff?.planSource === "candidate"
-        ? [handoff.from, fixtureId]
-        : [fixtureId],
-    ),
-  );
-  const gateRefs = new Set(
-    allRepeats.flatMap(({ gateChecks }) =>
-      gateChecks.map(({ checkId }) => checkId),
-    ),
-  );
-  const comparisonLabel = ({ fixtureId, handoff }: EvaluationComparison) => {
-    if (handoff?.planSource === "candidate")
-      return `Generated plan ${handoff.from} to ${fixtureId}`;
-    if (handoff) return `Fixed plan ${fixtureId}`;
-    return fixtureId;
-  };
+        ? `Generated plan ${handoff.from} to ${fixtureId}`
+        : handoff
+          ? `Fixed plan ${fixtureId}`
+          : fixtureId;
+    return `Comparison ${index + 1}: ${redact(description)}`;
+  });
   const outputFor = (route: RouteKey) =>
     comparisons
-      .map((comparison) =>
+      .map((comparison, index) =>
         [
-          comparisonLabel(comparison),
+          comparisonLabels[index],
           ...comparison.repeats[route].map(
-            ({ sanitizedOutput }) => sanitizedOutput,
+            ({ repeatIndex, sanitizedOutput }) =>
+              `Repeat ${repeatIndex}\n${redact(sanitizedOutput)}`,
           ),
         ].join("\n\n"),
       )
       .join("\n\n");
-  const gateSummaries = comparisons.map((comparison) => {
-    const { gatePassRate, roleScore, repeats } = comparison;
-    const label = comparisonLabel(comparison);
-    if (gatePassRate) {
-      return `${label}: Option A gate pass rate ${gatePassRate[left]}, Option B gate pass rate ${gatePassRate[right]}`;
-    }
-    if (roleScore?.role === "implement") {
-      const times = {
-        candidate: roleScore.candidateMedianMsToGreen,
-        incumbent: roleScore.incumbentMedianMsToGreen,
+  const outputs = { optionA: outputFor(left), optionB: outputFor(right) };
+  const gateSummaries = comparisons.map(
+    ({ gatePassRate, roleScore, repeats }, index) => {
+      const label = comparisonLabels[index];
+      if (gatePassRate) {
+        return `${label}: Option A gate pass rate ${gatePassRate[left]}, Option B gate pass rate ${gatePassRate[right]}`;
+      }
+      if (roleScore?.role === "implement") {
+        const times = {
+          candidate: roleScore.candidateMedianMsToGreen,
+          incumbent: roleScore.incumbentMedianMsToGreen,
+        };
+        const time = (route: RouteKey) =>
+          times[route] === null
+            ? "no green repeats"
+            : `${times[route]}ms to green`;
+        return `${label}: Option A ${time(left)}, Option B ${time(right)}`;
+      }
+      const coverage = (route: RouteKey) => {
+        const score = scoreRole(input.role, repeats[route], []);
+        return "coverage" in score ? score.coverage : 0;
       };
-      const time = (route: RouteKey) =>
-        times[route] === null
-          ? "no green repeats"
-          : `${times[route]}ms to green`;
-      return `${label}: Option A ${time(left)}, Option B ${time(right)}`;
-    }
-    const coverage = (route: RouteKey) => {
-      const score = scoreRole(input.role, repeats[route], []);
-      return "coverage" in score ? score.coverage : 0;
-    };
-    return `${label}: Option A coverage ${coverage(left)}, Option B coverage ${coverage(right)}`;
-  });
+      return `${label}: Option A coverage ${coverage(left)}, Option B coverage ${coverage(right)}`;
+    },
+  );
 
   const packet: JudgeVerdictPacket = {
     comparisonId: redact(input.evaluationId),
     role: input.role,
-    fixtureSummary: redact(
-      `Fixture evaluation for ${[...inputRefs].join(", ")} on role ${input.role}`,
-    ),
-    optionA: redact(outputFor(left)),
-    optionB: redact(outputFor(right)),
-    gateEvidenceSummary: redact(
-      [...gateSummaries, `Gate checks: ${[...gateRefs].join(", ")}`].join("\n"),
-    ),
+    fixtureSummary: [
+      ...comparisonLabels,
+      "Fixture input artifacts:",
+      ...inputArtifacts.map((artifact) => JSON.stringify(artifact)),
+    ].join("\n"),
+    ...outputs,
+    gateEvidenceSummary: [
+      ...gateSummaries,
+      "Gate result artifacts:",
+      ...gateArtifacts.map((artifact) => JSON.stringify(artifact)),
+    ].join("\n"),
   };
 
   assertNoSecretMaterial(packet);
@@ -553,9 +587,9 @@ export async function evaluateModels(
     ),
     judges: [verdict1, verdict2],
     refs: {
-      input: [...inputRefs].map(redact),
-      output: ["optionA", "optionB"],
-      gate: [...gateRefs].map(redact),
+      input: inputArtifacts.map(({ ref }) => ref),
+      output: Object.keys(outputs),
+      gate: gateArtifacts.map(({ ref }) => ref),
     },
   });
 

@@ -72,6 +72,7 @@ export interface FixtureRepeatEvidence {
   requestedModel: string;
   observedModel: string;
   deterministicGatesPassed: boolean;
+  fixtureInputs: Readonly<Record<string, string>>;
   gateChecks: { checkId: string; passed: boolean; detail: string }[];
   durationMs: number;
   retries: number;
