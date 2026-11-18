@@ -42,6 +42,6 @@ PR 222 is present on `origin/develop` at `d3120324`. The integration checkout is
 
 The combined candidate previously passed 3,163 tests. Native Linux previously passed 230 checks. Those receipts precede remaining feature changes. Final combined verification and native Linux verification remain required.
 
-Private cleanup now archives tracked deltas, untracked source and ignored review evidence before removing an owned ship worktree. A disposable worktree verified all three preservation cases. Existing tracked manifests and review history remain intact.
+Private cleanup archives tracked deltas and untracked source before removing an owned ship worktree. It also preserves ignored review evidence. A disposable worktree verified all three preservation cases. Existing tracked manifests and review history remain intact.
 
 Hosted pilot 051 and project rollout 052 remain subsequent stages. Live deployment, DNS, Google authentication configuration and project enrollment are external prerequisites. Live notifications remain unverified.
