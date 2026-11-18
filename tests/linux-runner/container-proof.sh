@@ -167,6 +167,18 @@ runuser -u gwrk -- node "$release/dist/cli.js" db backup --out /var/lib/gwrk/bac
 runuser -u gwrk -- node "$release/dist/cli.js" db restore --from /var/lib/gwrk/backup --state-dir /var/lib/gwrk/restored
 cmp /var/lib/gwrk/backup/gwrk.db /var/lib/gwrk/restored/gwrk.db
 node -e 'const assert=require("node:assert/strict"); assert.deepEqual(require("/var/lib/gwrk/backup/backup-manifest.json").summary.completedRunIds,[42]);'
+runuser -u gwrk -g gwrk -- node --input-type=module <<'NODE'
+import assert from "node:assert/strict";
+import Database from "/opt/gwrk/current/node_modules/better-sqlite3/lib/index.js";
+const db = new Database("/var/lib/gwrk/restored/gwrk.db", { readonly: true, fileMustExist: true });
+assert.equal(db.prepare("SELECT path FROM projects WHERE id = ?").pluck().get("pilot"), process.env.GWRK_PILOT_REPO);
+assert.deepEqual(db.prepare("SELECT project_id, finished_at FROM runs WHERE id = ?").get(42), {
+  project_id: "pilot",
+  finished_at: "2026-11-11T12:00:00Z",
+});
+db.close();
+console.log("Clean restore preserved project pilot and completed run 42.");
+NODE
 
 prior=/opt/gwrk/releases/1.0.0-fixture
 active=$(realpath /opt/gwrk/current)
@@ -353,12 +365,15 @@ mv /tmp/prior-shared-node-modules "$prior/node_modules"
 
 printf 'SELECT 1;\n' > "$prior/dist/db/migrations/999-fixture.sql"
 write_prior_manifest
+: > /tmp/supervisor.calls
 expect_rejection '999-fixture.sql' bash "$rollback" /opt/gwrk /var/lib/gwrk
 if grep -Eq '^(stop|start)$' /tmp/supervisor.calls; then
   printf 'Incompatible rollback changed the service state.\n' >&2
   exit 1
 fi
-test "$(realpath /opt/gwrk/current)" = "$active"
+test "$(readlink /opt/gwrk/current)" = "$current_before"
+test "$(readlink /opt/gwrk/previous)" = "$previous_before"
+printf 'Rejected migration 999-fixture.sql before changing either release pointer.\n'
 rm "$prior/dist/db/migrations/999-fixture.sql"
 write_prior_manifest
 mkdir -m 0700 /var/lib/gwrk/backups
@@ -385,6 +400,7 @@ db.close();
 const reopened = new Database(path, { readonly: true, fileMustExist: true });
 assert.equal(reopened.prepare("SELECT exit_code FROM runs WHERE id = 42").pluck().get(), 17);
 reopened.close();
+console.log("Service user gwrk committed and read back exit code 17 for run 42 after rollback.");
 NODE
 first_backups=(/var/lib/gwrk/backups/rollback-*)
 test "${#first_backups[@]}" -eq 1

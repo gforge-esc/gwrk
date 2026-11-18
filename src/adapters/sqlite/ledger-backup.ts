@@ -37,6 +37,7 @@ import type { AppliedMigration } from "../../domain/release-packaging.js";
 import {
   type LedgerBackupPort,
   type LedgerBackupRequest,
+  MissingLedgerError,
   PendingLedgerRestoreError,
   type VerifiedLedgerBackup,
 } from "../../ports/release-ops-port.js";
@@ -168,16 +169,30 @@ function summarizeLedger(
   };
 }
 
+async function resolveLedgerPath(path: string, configuredDbPath: string) {
+  try {
+    return await realpath(path);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+      throw new MissingLedgerError(configuredDbPath);
+    }
+    throw error;
+  }
+}
+
 export const createLedgerBackup: LedgerBackupPort["createBackup"] = async (
   input,
 ) => {
   const absolute = resolve(input.dbPath);
-  const state = await realpath(dirname(absolute));
+  const state = await resolveLedgerPath(dirname(absolute), absolute);
   return withMaintenanceLock(state, async () => {
     const pending = join(state, PENDING_LEDGER_RESTORE);
     if (await exists(pending)) throw new PendingLedgerRestoreError(pending);
 
-    const dbPath = await realpath(join(state, basename(absolute)));
+    const dbPath = await resolveLedgerPath(
+      join(state, basename(absolute)),
+      absolute,
+    );
     if (dirname(dbPath) !== state) {
       throw new Error(
         `Ledger path must resolve within its state directory: ${absolute}`,
@@ -325,7 +340,7 @@ async function readRegularBackupFile(path: string): Promise<Buffer> {
   }
 }
 
-async function readVerifiedLedgerBackup(directory: string) {
+async function readBackupContents(directory: string) {
   const manifestPath = join(directory, MANIFEST_FILE);
   const manifestBytes = await readRegularBackupFile(manifestPath).catch(
     (error: NodeJS.ErrnoException) => {
@@ -369,6 +384,18 @@ async function readVerifiedLedgerBackup(directory: string) {
     .update(manifestBytes)
     .digest("hex");
   return { manifest, metadata, manifestSha256 };
+}
+
+async function readVerifiedLedgerBackup(directory: string) {
+  try {
+    return await readBackupContents(directory);
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : String(error);
+    throw new Error(
+      `${detail} Recopy the complete backup directory or use another verified backup.`,
+      { cause: error },
+    );
+  }
 }
 
 export const verifyLedgerBackup: LedgerBackupPort["verifyBackup"] = async (

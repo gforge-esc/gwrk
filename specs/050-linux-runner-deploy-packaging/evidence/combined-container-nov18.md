@@ -21,3 +21,11 @@ Commands:
 - `node tests/linux-runner/container-harness.mjs`
 
 The container uses synthetic credentials and an agent fixture. It does not exercise a real Google authentication gateway or authorize a production cutover. The earlier Phase 4 acceptance dispatch stopped when Antigravity exhausted its credits. This evidence supplements that failed ship record.
+
+## Native Linux test suite
+
+Revision `13d8eb41` passed all 230 native Linux tests across six files. The run used the pinned Linux image from the installed-release harness and pnpm 9.15.9. It included every Linux-only file and restore case.
+
+The first native run failed 20 rollback checks before their intended assertions. The fixture inherited relative search paths from pnpm. Production rollback rejected those paths. The corrected fixture supplies an absolute service path. An added case confirms that production still rejects a relative unit path before backup or supervisor effects.
+
+The corrected source also keeps the readiness handshake deadline and reports early child exit. Those fixture checks preserve the rollback assertions under a busy full test run.
