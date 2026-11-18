@@ -35,6 +35,7 @@ export interface EnforcementSkillSelectors {
 export interface PolicyCandidate {
   name: string;
   source: PolicySourceLayer;
+  path?: string;
   manifest: EnforcementSkillSelectors & {
     name: string;
     description: string;
