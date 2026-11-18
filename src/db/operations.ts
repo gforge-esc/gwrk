@@ -1701,7 +1701,11 @@ export function createOperationsStore(
 
           if (action === "send") {
             if (row.eventType === "harvest_gate_failed") {
-              if (!isHarvestSlackRecipient(row.recipient)) return null;
+              if (
+                !isHarvestSlackRecipient(row.recipient) ||
+                row.recipient.projectId !== row.projectId
+              )
+                return null;
               route = {
                 workspaceId: row.recipient.workspaceId,
                 channelId: row.recipient.channelId,

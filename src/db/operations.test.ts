@@ -1665,6 +1665,63 @@ describe("durable operations review regressions", () => {
     ).toEqual(["a-first", "offset", "notice"]);
   });
 
+  it.each(["alpha", "beta"])(
+    "keeps gate failure notice recipient %s project-scoped after restart",
+    (recipientProject) => {
+      const notice = store.enqueueOutbox({
+        outboxId: "gate-failure",
+        projectId: "alpha",
+        dedupeKey: "gate-failure",
+        ownerKind: "harvest",
+        ownerOperationId: "op",
+        eventType: "harvest_gate_failed",
+        featureId,
+        phaseId: phaseOne,
+        recipient: {
+          surface: "slack",
+          projectId: "alpha",
+          workspaceId: "W-alpha",
+          channelId: "C-alpha",
+        },
+        payload: { text: "Gate failed" },
+        clientMetadataKey: "gate-failure",
+        nowIso: now,
+      });
+      db.prepare(
+        "UPDATE notification_outbox SET recipient_json = ? WHERE outbox_id = ?",
+      ).run(
+        JSON.stringify({
+          surface: "slack",
+          projectId: recipientProject,
+          workspaceId: `W-${recipientProject}`,
+          channelId: `C-${recipientProject}`,
+        }),
+        notice.outboxId,
+      );
+      db.close();
+      db = openDatabase({ dbPath });
+      store = createSqliteOperationsStoreAdapter({ db });
+      const before = store.getOutboxItem(notice.outboxId);
+      const claimed = store.claimOutboxItem({
+        outboxId: notice.outboxId,
+        nowIso: now,
+        destination: null,
+      });
+      if (recipientProject === "beta") {
+        expect.soft(claimed).toBeNull();
+        expect(store.getOutboxItem(notice.outboxId)).toEqual(before);
+      } else {
+        expect(claimed).toMatchObject({ action: "send" });
+        expect(store.getOutboxItem(notice.outboxId)).toMatchObject({
+          status: "sending",
+          workspaceId: "W-alpha",
+          channelId: "C-alpha",
+          attemptCount: 1,
+        });
+      }
+    },
+  );
+
   const destination = { workspaceId: "W1", channelId: "C1", threadTs: null };
 
   it.each([
