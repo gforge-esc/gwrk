@@ -1324,17 +1324,22 @@ export class FixtureRunner
               });
             } catch (error) {
               const visited = new Set<Error>();
-              let cause: unknown = error;
-              while (cause instanceof Error && !visited.has(cause)) {
-                visited.add(cause);
-                assertNoSecretMaterial(
-                  { message: cause.message, stack: cause.stack },
-                  knownSecrets,
-                );
-                cause = cause.cause;
-              }
-              if (!(cause instanceof Error)) {
-                assertNoSecretMaterial(cause, knownSecrets);
+              const pending: unknown[] = [error];
+              while (pending.length > 0) {
+                const diagnostic = pending.pop();
+                if (diagnostic instanceof Error) {
+                  if (visited.has(diagnostic)) continue;
+                  visited.add(diagnostic);
+                  assertNoSecretMaterial(
+                    { message: diagnostic.message, stack: diagnostic.stack },
+                    knownSecrets,
+                  );
+                  pending.push(diagnostic.cause);
+                  if (diagnostic instanceof AggregateError)
+                    pending.push(...diagnostic.errors);
+                } else {
+                  assertNoSecretMaterial(diagnostic, knownSecrets);
+                }
               }
               throw error;
             }

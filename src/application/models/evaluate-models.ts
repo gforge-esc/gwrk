@@ -440,7 +440,9 @@ export async function evaluateModels(
         ...(input.role === "implement" ? repeats.incumbent : []),
       ].some(
         ({ deterministicGatesPassed, gateChecks }) =>
-          !deterministicGatesPassed || gateChecks.some(({ passed }) => !passed),
+          !deterministicGatesPassed ||
+          gateChecks.length === 0 ||
+          gateChecks.some(({ passed }) => !passed),
       ),
     )
   ) {

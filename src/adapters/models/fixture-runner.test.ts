@@ -1077,6 +1077,10 @@ describe("fixture runner adapter", () => {
       secretCause: true,
     },
     {
+      label: "TR-023 rejects a credential in an aggregate judge error",
+      secretAggregate: true,
+    },
+    {
       label:
         "TR-023 preserves a clean judge transport error with a cause cycle",
       cleanError: true,
@@ -1091,6 +1095,7 @@ describe("fixture runner adapter", () => {
       secretStderr,
       secretError,
       secretCause,
+      secretAggregate,
       cleanError,
     }) => {
       const judge: ModelCandidate = {
@@ -1123,6 +1128,11 @@ describe("fixture runner adapter", () => {
           expect(task.stdin).toContain("Option B:");
 
           if (secretError) throw new Error(opaqueFixtureCredential);
+          if (secretAggregate)
+            throw new AggregateError(
+              [new Error("safe failure"), new Error(opaqueFixtureCredential)],
+              "Judge transports failed",
+            );
           if (secretCause) {
             throw new Error("Judge transport failed", {
               cause: new Error("Connection closed", {
@@ -1179,7 +1189,8 @@ describe("fixture runner adapter", () => {
         secretObserved ||
         secretStderr ||
         secretError ||
-        secretCause
+        secretCause ||
+        secretAggregate
       ) {
         vi.stubEnv("OPENAI_API_KEY", opaqueFixtureCredential);
         try {

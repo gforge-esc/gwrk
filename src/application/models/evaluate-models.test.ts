@@ -234,9 +234,13 @@ describe("model qualification orchestration", () => {
     },
   );
 
-  it.each(["candidate", "incumbent"] as const)(
-    "TR-024 rejects a failed implementation check despite a passing %s aggregate",
-    async (side) => {
+  it.each(
+    (["candidate", "incumbent"] as const).flatMap((side) =>
+      ["failed", "empty"].map((kind) => ({ side, kind })),
+    ),
+  )(
+    "TR-024 rejects $kind implementation checks despite a passing $side aggregate",
+    async ({ side, kind }) => {
       const { deps, runFixtureRepeat, judgeComparison } = setup();
       const original = runFixtureRepeat.getMockImplementation()!;
       const failedModel = side === "candidate" ? candidate : incumbent;
@@ -248,10 +252,13 @@ describe("model qualification orchestration", () => {
         return {
           ...evidence,
           durationMs: request.route.modelId === candidate.modelId ? 100 : 400,
-          gateChecks: evidence.gateChecks.map((check) => ({
-            ...check,
-            passed: !failed,
-          })),
+          gateChecks:
+            failed && kind === "empty"
+              ? []
+              : evidence.gateChecks.map((check) => ({
+                  ...check,
+                  passed: !failed,
+                })),
         };
       });
       judgeComparison.mockImplementation(async (judge) =>
