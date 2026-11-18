@@ -5,4 +5,5 @@
 
 set -euo pipefail
 pnpm build
+pnpm lint
 pnpm exec vitest run src/db/operations.test.ts src/db/db.test.ts src/architecture.test.ts
