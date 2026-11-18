@@ -242,6 +242,20 @@ fi`,
         );
       }
 
+      const adapterPath = join(plugin, "adapter.js");
+      const availableAdapter = readFileSync(adapterPath, "utf8");
+      writeFileSync(
+        adapterPath,
+        availableAdapter.replace(
+          "async isAvailable() { return true; }",
+          "async isAvailable() { return false; }",
+        ),
+      );
+      const unavailableWorker = preflight(".git");
+      expect(unavailableWorker.status, unavailableWorker.stdout).toBe(1);
+      expect(unavailableWorker.stderr).toMatch(/fixture.*unavailable/i);
+      writeFileSync(adapterPath, availableAdapter);
+
       rmSync(join(plugin, "adapter.js"));
       const missingAdapter = preflight(".git");
       expect(missingAdapter.status, missingAdapter.stdout).toBe(1);

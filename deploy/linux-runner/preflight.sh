@@ -27,7 +27,7 @@ for command in node git gh flock timeout; do
 done
 load_runner_credentials
 
-node --input-type=module - <<'NODE'
+timeout --kill-after=2s 20s node --input-type=module - <<'NODE'
 import { realpathSync } from "node:fs";
 import { join, relative, isAbsolute } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -79,7 +79,8 @@ try {
       config.parallelism.local.maxClones !== 1) {
     throw new Error("Configure one approved local agent backend and one worker.");
   }
-  await new AgentBackendRegistry(new PluginLoader()).getAgentBackend(approved);
+  const backend = await new AgentBackendRegistry(new PluginLoader()).getAgentBackend(approved);
+  if (!(await backend.isAvailable())) throw new Error(`Approved agent backend '${approved}' is unavailable. Install its worker executable before starting the runner.`);
 } catch (error) {
   console.error(error.message);
   process.exitCode = 1;
