@@ -153,7 +153,7 @@
         {
           "id": "T014",
           "title": "Modify skill-runtime.ts",
-          "description": "MODIFY src/plugins/skill-runtime.ts. Implement `resolveEffectivePolicy` and `formatEffectivePolicyPrompt` and delegate `resolveEnforcementSkills`. Tests: src/plugins/skill-runtime.test.ts",
+          "description": "MODIFY src/plugins/skill-runtime.ts. Implement `resolveEffectivePolicy` and `formatEffectivePolicyPrompt` and delegate `resolveEnforcementSkills`. Tests: src/plugins/skill-runtime.test.ts\nRequired real-loader integration: src/plugins/policy-selection.integration.test.ts observes RED when an incompatible local copy hides a compatible project-entry copy. Supply every candidate layer to composeEffectivePolicy before precedence selection. The current listPlugins and resolvePlugin APIs deduplicate names too early. Extend the loader boundary if needed. Preserve disabled override semantics and report gaps rather than loading incompatible local rules. Do not satisfy this test by bypassing the pure domain selector. Run this test in the Phase 3 gate.",
           "status": "open",
           "gateScript": "gates/phase-03.sh",
           "sp": 1
@@ -161,7 +161,7 @@
         {
           "id": "T015",
           "title": "Modify plugin.ts",
-          "description": "MODIFY src/commands/plugin.ts. Route `gwrk plugin list --project` enforcement filtering through `evaluateEnforcementCandidate`. Tests: src/plugins/skill-runtime.test.ts",
+          "description": "MODIFY src/commands/plugin.ts. Route `gwrk plugin list --project` enforcement filtering through `evaluateEnforcementCandidate`. Tests: src/plugins/skill-runtime.test.ts\nRequired real-loader integration: src/plugins/policy-selection.integration.test.ts observes RED when an incompatible local copy hides a compatible project-entry copy. Supply every candidate layer to composeEffectivePolicy before precedence selection. The current listPlugins and resolvePlugin APIs deduplicate names too early. Extend the loader boundary if needed. Preserve disabled override semantics and report gaps rather than loading incompatible local rules. Do not satisfy this test by bypassing the pure domain selector. Run this test in the Phase 3 gate.",
           "status": "open",
           "gateScript": "gates/phase-03.sh",
           "sp": 1

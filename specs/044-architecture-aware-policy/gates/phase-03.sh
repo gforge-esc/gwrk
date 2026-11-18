@@ -5,6 +5,7 @@
 
 set -euo pipefail
 tests=(
+  src/plugins/policy-selection.integration.test.ts
   src/plugins/skill-runtime.test.ts
   src/plugins/skill-runtime.p15.red.test.ts
   src/plugins/enforcement.test.ts
