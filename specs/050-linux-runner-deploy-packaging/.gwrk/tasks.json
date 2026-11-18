@@ -181,9 +181,10 @@
           "id": "T016",
           "title": "Create rollback-release.sh",
           "description": "NEW deploy/linux-runner/rollback-release.sh. Check persistent `_migrations` against target `release-manifest.json` before switching `current`\n\nReview history: .gwrk/review-history/phase-04-through-2026-11-18T2017Z.json. Preserve earlier findings and diagnoses in the archive and findings.jsonl.\nCurrent verification: The incomplete-backup hint failed two built CLI cases on native Linux before the fix. Both passed after the source-validation repair. Source validation gives a recovery step before target mutation. Full phase 4 gate passes 230 checks with six native-only cases skipped on macOS. Native task gate T015 passed. Read evidence/incomplete-backup-repair.md. Independent code and acceptance review remain pending for this repair.\nReopened acceptance after the source-validation repair. Preserve the implemented rollback behavior. Re-run review against the repaired candidate, including native Linux evidence. This does not restart implementation.",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/phase-04.sh",
-          "sp": 2
+          "sp": 2,
+          "completedAt": "2026-11-18T20:46:38.031Z"
         }
       ],
       "sp_estimate": 7,
