@@ -242,6 +242,13 @@ fi`,
         );
       }
 
+      rmSync(join(plugin, "adapter.js"));
+      const missingAdapter = preflight(".git");
+      expect(missingAdapter.status, missingAdapter.stdout).toBe(1);
+      expect(missingAdapter.stderr).toContain(
+        "Agent backend 'fixture' not found.",
+      );
+
       rmSync(plugin, { recursive: true });
       const missingBackend = preflight(".git");
       expect(missingBackend.status, missingBackend.stdout).toBe(1);

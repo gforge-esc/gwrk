@@ -54,6 +54,8 @@ try {
   }
   const fromRelease = (path) => pathToFileURL(join(active, "dist", path)).href;
   const { validateRunnerLayout } = await import(fromRelease("domain/release-packaging.js"));
+  const { AgentBackendRegistry } = await import(fromRelease("plugins/agent-registry.js"));
+  const { PluginLoader } = await import(fromRelease("plugins/loader.js"));
   const { loadConfig } = await import(fromRelease("utils/config.js"));
   const config = loadConfig(repo);
   const names = ["pilot-git-credential", "agent-credential"];
@@ -77,6 +79,7 @@ try {
       config.parallelism.local.maxClones !== 1) {
     throw new Error("Configure one approved local agent backend and one worker.");
   }
+  await new AgentBackendRegistry(new PluginLoader()).getAgentBackend(approved);
 } catch (error) {
   console.error(error.message);
   process.exitCode = 1;
