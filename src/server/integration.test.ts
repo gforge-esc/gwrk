@@ -125,22 +125,28 @@ function stubListener() {
   vi.spyOn(app, "listen").mockResolvedValue("http://127.0.0.1:0");
 }
 
+function githubHeaders(event: string, body: string) {
+  const signature = createHmac("sha256", "fixture-secret")
+    .update(body)
+    .digest("hex");
+  return {
+    "content-type": "application/json",
+    "x-github-event": event,
+    "x-hub-signature-256": `sha256=${signature}`,
+  };
+}
+
 function injectGitHub(
   fixture: ServerFixture,
   event: string,
   payload: Record<string, unknown>,
 ) {
-  const signature = createHmac("sha256", "fixture-secret")
-    .update(JSON.stringify(payload))
-    .digest("hex");
+  const body = JSON.stringify(payload);
   return fixture.app.inject({
     method: "POST",
     url: "/webhook/github",
-    headers: {
-      "x-github-event": event,
-      "x-hub-signature-256": `sha256=${signature}`,
-    },
-    payload,
+    headers: githubHeaders(event, body),
+    payload: body,
   });
 }
 
@@ -1126,6 +1132,139 @@ setInterval(() => {}, 1000);
       expect(getDb).not.toHaveBeenCalled();
     } finally {
       await fixture.close();
+    }
+  });
+
+  it.each(["[046]", "046"])(
+    "resolves a signed labeled issue titled %s in the server project",
+    async (title) => {
+      stubListener();
+      const fixture = await createServerFixture("listen");
+      const checkoutFeature = "046-hermetic-ci";
+      const featureId = "046-phase-one-review-fixture";
+      try {
+        expect(existsSync(join(process.cwd(), "specs", checkoutFeature))).toBe(
+          true,
+        );
+        mkdirSync(join(fixture.projectRoot, "specs", featureId), {
+          recursive: true,
+        });
+        const response = await injectGitHub(fixture, "issues", {
+          action: "labeled",
+          issue: {
+            number: 8,
+            title,
+            labels: [{ name: "triage" }],
+            state: "open",
+            created_at: "2026-01-01T00:00:00Z",
+          },
+        });
+
+        expect(response.statusCode).toBe(200);
+        expect.soft(response.json()).toEqual({
+          status: "accepted",
+          featureId,
+          issueNumber: 8,
+        });
+        expect
+          .soft(listIssues(featureId, fixture.projectId, fixture.db))
+          .toEqual([
+            expect.objectContaining({ issue_number: 8, feature_id: featureId }),
+          ]);
+        expect(
+          listIssues(checkoutFeature, fixture.projectId, fixture.db),
+        ).toEqual([]);
+        expect(getDb).not.toHaveBeenCalled();
+      } finally {
+        await fixture.close();
+      }
+    },
+  );
+
+  it("routes a signed opened issue to the fixture and drains delivery on close", async () => {
+    const { notifySlack: realNotifier } =
+      await vi.importActual<typeof import("./slack-notify.js")>(
+        "./slack-notify.js",
+      );
+    const fixture = await createServerFixture("listen");
+    const webhookUrl = "https://fixture.invalid/github-issue";
+    const localFetch = globalThis.fetch;
+    let release!: (response: Response) => void;
+    const delivery = new Promise<Response>((resolve) => {
+      release = resolve;
+    });
+    const provider = vi.fn<typeof fetch>().mockReturnValue(delivery);
+    vi.stubGlobal("fetch", provider);
+    vi.stubEnv("GWRK_HOME", join(fixture.projectRoot, ".gwrk"));
+    vi.stubEnv("SLACK_WEBHOOK_URL", "https://checkout.invalid/github-issue");
+    vi.stubEnv("TELEGRAM_BOT_TOKEN", undefined);
+    vi.stubEnv("TELEGRAM_CHAT_ID", undefined);
+    vi.mocked(notifySlack).mockImplementationOnce(realNotifier);
+    try {
+      writeFileSync(
+        join(fixture.projectRoot, ".gwrkrc.json"),
+        JSON.stringify({ project: { name: fixture.projectId } }),
+      );
+      writeFileSync(
+        join(fixture.projectRoot, ".gwrkrc.local.json"),
+        JSON.stringify({
+          project: { slack: { channelId: "C_FIXTURE", webhookUrl } },
+        }),
+      );
+      const featureId = "webhook-issue";
+      const body = JSON.stringify({
+        action: "opened",
+        issue: {
+          number: 9,
+          title: "Fixture issue",
+          labels: [{ name: `gwrk:${featureId}` }],
+          state: "open",
+          created_at: "2026-01-01T00:00:00Z",
+        },
+      });
+      const response = localFetch(
+        `http://127.0.0.1:${portOf(fixture)}/webhook/github`,
+        {
+          method: "POST",
+          headers: { ...githubHeaders("issues", body), connection: "close" },
+          body,
+        },
+      );
+      await vi.waitFor(() => expect(provider).toHaveBeenCalledOnce());
+      const [url, request] = provider.mock.calls[0];
+      expect.soft(url).toBe(webhookUrl);
+      expect.soft(request?.signal).toBeInstanceOf(AbortSignal);
+      expect.soft(notifySlack).toHaveBeenCalledWith(
+        expect.objectContaining({
+          text: expect.stringContaining("Issue #9"),
+        }),
+        undefined,
+        expect.objectContaining({ transportTimeoutMs: 5_000 }),
+      );
+
+      const closeListener = vi.spyOn(fixture.app.server, "close");
+      const closed = vi.fn();
+      const closing = fixture.app.close().then(closed);
+      await vi.waitFor(() => expect(request?.signal?.aborted).toBe(true));
+      expect(closeListener).not.toHaveBeenCalled();
+      expect(closed).not.toHaveBeenCalled();
+      expect(existsSync(fixture.pidPath)).toBe(true);
+
+      release(new Response(null, { status: 200 }));
+      const result = await response;
+      expect(result.status).toBe(200);
+      expect(await result.json()).toEqual({
+        status: "accepted",
+        featureId,
+        issueNumber: 9,
+      });
+      await closing;
+      expect(existsSync(fixture.pidPath)).toBe(false);
+      expect(provider).toHaveBeenCalledOnce();
+    } finally {
+      release(new Response(null, { status: 200 }));
+      await fixture.close();
+      vi.unstubAllGlobals();
     }
   });
 

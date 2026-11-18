@@ -4,6 +4,7 @@
 
 import crypto from "node:crypto";
 import type { FastifyInstance } from "fastify";
+import { createSlackNotificationAdapter } from "../adapters/notifications/index.js";
 import { type IssueRecord, updateIssue, upsertIssue } from "../db/issues.js";
 import { harvestFeature } from "../engine/harvest.js";
 import {
@@ -27,7 +28,18 @@ export async function githubWebhookPlugin(
   },
 ) {
   const { config, projectRoot, ledger, gitEnv } = options;
+  const shutdown = new AbortController();
+  const issueNotifier = createSlackNotificationAdapter({
+    projectRoot,
+    signal: shutdown.signal,
+    transportTimeoutMs: 5_000,
+  });
+  const issueDeliveries = new Set<Promise<void>>();
   const inFlight = new Set<Promise<void>>();
+  fastify.addHook("preClose", async () => {
+    shutdown.abort();
+    await Promise.allSettled(issueDeliveries);
+  });
   fastify.addHook("onClose", async () => {
     await Promise.all(inFlight);
   });
@@ -73,10 +85,13 @@ export async function githubWebhookPlugin(
 
       if (action === "opened" || action === "labeled" || action === "closed") {
         // FR-H13: Issue-to-feature association
-        const featureId = associateIssueWithFeature({
-          title: issue.title,
-          labels: issue.labels?.map((l: { name: string }) => l.name) || [],
-        });
+        const featureId = associateIssueWithFeature(
+          {
+            title: issue.title,
+            labels: issue.labels?.map((l: { name: string }) => l.name) || [],
+          },
+          projectRoot,
+        );
 
         if (!featureId) {
           return reply
@@ -103,7 +118,13 @@ export async function githubWebhookPlugin(
           upsertIssue(record, projectId, ledger?.db);
           // FR-H15: Slack notification
           if (action === "opened") {
-            await notifyIssueOpened(record);
+            const delivery = notifyIssueOpened(record, issueNotifier);
+            issueDeliveries.add(delivery);
+            try {
+              await delivery;
+            } finally {
+              issueDeliveries.delete(delivery);
+            }
           }
         } else if (action === "closed") {
           updateIssue(
