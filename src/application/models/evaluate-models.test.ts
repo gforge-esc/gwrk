@@ -144,6 +144,30 @@ const defineHandoffInput = {
   fixedImplementer,
 };
 
+function winningImplementationVerdict(
+  judge: ModelCandidate,
+): StructuredJudgeVerdict {
+  return {
+    judgeBackend: judge.backend,
+    judgeProvider: judge.provider,
+    judgeFamily: judge.family,
+    judgeModelId: judge.modelId,
+    observedJudgeModel: "unknown",
+    winner: blindCandidate(input.blindingSecret, input.evaluationId),
+    optionARegression: false,
+    optionBRegression: false,
+    scores: { optionA: 80, optionB: 80 },
+    citations: [
+      {
+        inputRef: "implement-seeded-defect",
+        outputRef: "optionA",
+        gateRef: "candidate-gate",
+        claim: "Fixture behavior verified",
+      },
+    ],
+  };
+}
+
 describe("model qualification orchestration", () => {
   it.each(["requested identity", "observed identity", "incumbent gate"])(
     "rejects invalid repeat evidence before judging: %s",
@@ -597,6 +621,128 @@ describe("model qualification orchestration", () => {
       reason: "invalid-citations",
     });
   });
+
+  it.each([
+    {
+      field: "substituted route",
+      override: winningImplementationVerdict(
+        model("judge-c", "provider-c-alt", "judge-family-c"),
+      ),
+    },
+    { field: "backend", override: { judgeBackend: "judge-c" } },
+    { field: "provider", override: { judgeProvider: "provider-c-alt" } },
+    { field: "family", override: { judgeFamily: "judge-family-c" } },
+    { field: "model", override: { judgeModelId: "judge-family-c-v1" } },
+    {
+      field: "observed model",
+      override: { observedJudgeModel: "judge-family-c-v1" },
+    },
+    {
+      field: "unknown observation",
+      override: { observedJudgeModel: "unknown" },
+      acceptsVerdict: true,
+    },
+  ])(
+    "TR-020 validates the second judge's $field",
+    async ({ override, acceptsVerdict }) => {
+      const { deps, runFixtureRepeat, judgeComparison } = setup();
+      const original = runFixtureRepeat.getMockImplementation()!;
+      runFixtureRepeat.mockImplementation(async (request) => ({
+        ...(await original(request)),
+        durationMs: request.route.modelId === candidate.modelId ? 100 : 400,
+      }));
+      judgeComparison.mockImplementation(async (judge) => ({
+        ...winningImplementationVerdict(judge),
+        ...(judge === judges[1] ? override : {}),
+      }));
+
+      const result = await evaluateModels(deps, input);
+
+      expect(judgeComparison.mock.calls.map(([judge]) => judge)).toEqual(
+        judges,
+      );
+      if (acceptsVerdict) {
+        expect(result.decision).toEqual({ promote: true });
+        expect(result.judges?.[1].observedJudgeModel).toBe("unknown");
+        return;
+      }
+      expect(result.decision).toEqual({
+        promote: false,
+        reason: "judge-dependence",
+      });
+      expect(result.judges).toBeUndefined();
+      expect(result.judgeVerdictHashes).toBeUndefined();
+    },
+  );
+
+  it.each([
+    { label: "slower", candidateMs: 400, incumbentMs: 100, promote: false },
+    { label: "tied", candidateMs: 100, incumbentMs: 100, promote: false },
+    {
+      label: "missing finite incumbent timing",
+      candidateMs: 100,
+      incumbentMs: Number.POSITIVE_INFINITY,
+      promote: false,
+    },
+    { label: "faster", candidateMs: 100, incumbentMs: 400, promote: true },
+  ])(
+    "TR-021 uses fixed-plan timings when the candidate is $label",
+    async ({ candidateMs, incumbentMs, promote }) => {
+      const { deps, runFixtureRepeat, judgeComparison } = setup({
+        handoffs: [fixedHandoff],
+      });
+      const original = runFixtureRepeat.getMockImplementation()!;
+      let calls = 0;
+      runFixtureRepeat.mockImplementation(async (request) => {
+        const times =
+          calls++ < 6
+            ? { candidate: 25, incumbent: 50 }
+            : { candidate: candidateMs, incumbent: incumbentMs };
+        const route =
+          request.route.modelId === candidate.modelId
+            ? "candidate"
+            : "incumbent";
+        return {
+          ...(await original(request)),
+          durationMs: times[route],
+        };
+      });
+      judgeComparison.mockImplementation(async (judge) => ({
+        ...winningImplementationVerdict(judge),
+        observedJudgeModel: judge === judges[0] ? judge.modelId : "unknown",
+      }));
+
+      const result = await evaluateModels(deps, input);
+
+      expect(result.comparisons?.[0]?.roleScore).toMatchObject({
+        candidateMedianMsToGreen: 25,
+        incumbentMedianMsToGreen: 50,
+      });
+      expect(result.roleScore).toMatchObject({
+        candidateMedianMsToGreen: candidateMs,
+        incumbentMedianMsToGreen: incumbentMs,
+      });
+      expect(
+        result.repeats.candidate.every(
+          (repeat) => repeat.deterministicGatesPassed,
+        ),
+      ).toBe(true);
+      expect(
+        result.repeats.incumbent.every(
+          (repeat) => repeat.deterministicGatesPassed,
+        ),
+      ).toBe(true);
+      expect(judgeComparison).toHaveBeenCalledTimes(2);
+      expect(
+        result.judges?.map(({ observedJudgeModel }) => observedJudgeModel),
+      ).toEqual([judges[0].modelId, "unknown"]);
+      expect(result.decision).toEqual(
+        promote
+          ? { promote: true }
+          : { promote: false, reason: "implementation-not-faster" },
+      );
+    },
+  );
 
   it("runs both plan authors on one fixed implementer and scores fixed-plan routes separately", async () => {
     const { deps, runFixtureRepeat, judgeComparison } = setup({

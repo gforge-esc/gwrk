@@ -333,6 +333,7 @@ export type PromotionDecision =
         | "judge-dependence"
         | "invalid-citations"
         | "judge-non-regression"
+        | "implementation-not-faster"
         | "missing-handoff-artifacts"
         | "missing-fixed-implementer"
         | "stale-evaluation-inputs";

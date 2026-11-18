@@ -23,6 +23,8 @@ const candidateRoute = {
   effort: "low",
 };
 
+const opaqueFixtureCredential = "synthetic-fixture-quartz-cedar-724";
+
 const fixedPassingQueueImplementation = `export function selectQueue({ priority, receivedAtMs = 0, nowMs = 0 }) {
   const normalized = typeof priority === "string" ? priority.trim() : "";
   const rawPriority = priority;
@@ -1049,7 +1051,11 @@ describe("fixture runner adapter", () => {
     expect(capturedTimeout).toBe(1500);
   });
 
-  it("runs report-only judge comparisons with sanitized packets without live provider calls", async () => {
+  it.each([
+    { label: "accepts a report-only verdict", timedOut: false },
+    { label: "TR-022 rejects a timed-out verdict", timedOut: true },
+    { label: "TR-023 blocks a credential in the judge packet", secret: true },
+  ])("$label", async ({ timedOut, secret }) => {
     const judge: ModelCandidate = {
       backend: "frontier-judge-cli",
       provider: "frontier-provider",
@@ -1062,7 +1068,9 @@ describe("fixture runner adapter", () => {
       comparisonId: "eval-blinded-42",
       role: "implement",
       fixtureSummary: "Synthetic evaluation for ticket routing repair",
-      optionA: "Clean pure domain queue selection function implementation",
+      optionA: secret
+        ? opaqueFixtureCredential
+        : "Clean pure domain queue selection function implementation",
       optionB: "Incomplete queue selection function without triage handling",
       gateEvidenceSummary: "Option A passed all deterministic gates",
     };
@@ -1096,6 +1104,7 @@ describe("fixture runner adapter", () => {
 
         return {
           exitCode: 0,
+          timedOut,
           stdout: JSON.stringify(judgeOutput),
           stderr: "",
           durationS: 0,
@@ -1106,6 +1115,25 @@ describe("fixture runner adapter", () => {
     );
 
     const runner = createFixtureRunner({ dispatcher: judgeDispatcher });
+    if (secret) {
+      vi.stubEnv("OPENAI_API_KEY", opaqueFixtureCredential);
+      try {
+        await expect(runner.judgeComparison(judge, packet)).rejects.toThrow(
+          /secret material/i,
+        );
+        expect(judgeDispatcher).not.toHaveBeenCalled();
+      } finally {
+        vi.unstubAllEnvs();
+      }
+      return;
+    }
+    if (timedOut) {
+      await expect(runner.judgeComparison(judge, packet)).rejects.toThrow(
+        /timed out/i,
+      );
+      expect(judgeDispatcher).toHaveBeenCalledTimes(1);
+      return;
+    }
     const verdict = await runner.judgeComparison(judge, packet);
 
     expect(judgeDispatcher).toHaveBeenCalledTimes(1);
@@ -1734,6 +1762,68 @@ describe("fixture runner adapter", () => {
       expect(capturedTask).toBeDefined();
       expect(capturedTask?.workflow).toBe(workflow);
       expect(capturedTask?.stdin).toContain(firstLine);
+    }
+  });
+
+  it("TR-023 rejects a credential in plan.md before exporting either definition artifact", async () => {
+    const outputDir = await mkdtemp(join(tmpdir(), "gwrk-define-out-"));
+    vi.stubEnv("OPENAI_API_KEY", opaqueFixtureCredential);
+    try {
+      const runner = createFixtureRunner({
+        dispatcher: async (task) => {
+          const isSpecification = task.workflow === "gwrk-specify";
+          const file = isSpecification ? "spec.md" : "plan.md";
+          const content = isSpecification
+            ? "# Generated specification\n"
+            : `# Generated plan\n\n${opaqueFixtureCredential}\n`;
+          await writeFile(join(task.featureDir!, file), content, "utf8");
+          return { exitCode: 0, stdout: "", stderr: "", durationS: 0 };
+        },
+      });
+      await expect(
+        runner.runFixtureRepeat({
+          fixtureId: "define-long-context",
+          role: "define",
+          repeatIndex: 0,
+          route: candidateRoute,
+          artifactOutputDir: outputDir,
+        }),
+      ).rejects.toThrow(/secret material/i);
+      expect(existsSync(join(outputDir, "spec.md"))).toBe(false);
+      expect(existsSync(join(outputDir, "plan.md"))).toBe(false);
+    } finally {
+      vi.unstubAllEnvs();
+      await rm(outputDir, { recursive: true, force: true });
+    }
+  });
+
+  it("TR-023 rejects a credential in repeat stdout before returning evidence", async () => {
+    vi.stubEnv("OPENAI_API_KEY", opaqueFixtureCredential);
+    try {
+      const runner = createFixtureRunner({
+        dispatcher: async (task) => {
+          await writeFile(
+            join(task.workDir!, "src/domain/select-queue.mjs"),
+            fixedPassingQueueImplementation,
+          );
+          return {
+            exitCode: 0,
+            stdout: opaqueFixtureCredential,
+            stderr: "",
+            durationS: 0,
+          };
+        },
+      });
+      await expect(
+        runner.runFixtureRepeat({
+          fixtureId: "implement-seeded-defect",
+          role: "implement",
+          repeatIndex: 0,
+          route: candidateRoute,
+        }),
+      ).rejects.toThrow(/secret material/i);
+    } finally {
+      vi.unstubAllEnvs();
     }
   });
 

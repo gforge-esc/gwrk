@@ -19,9 +19,10 @@ import { dirname, join, resolve } from "node:path";
 import { performance } from "node:perf_hooks";
 import { isDeepStrictEqual, promisify } from "node:util";
 import { z } from "zod";
-import type {
-  ModelCandidate,
-  ModelRole,
+import {
+  type ModelCandidate,
+  type ModelRole,
+  assertNoSecretMaterial,
 } from "../../domain/model-qualification.js";
 import { parsePlanMarkdown } from "../../engine/plan-to-tasks.js";
 import { PluginLoader } from "../../plugins/loader.js";
@@ -65,6 +66,16 @@ function isolatedDispatchEnv(root: string): NodeJS.ProcessEnv {
     if (!(key in env)) env[key] = undefined;
   }
   return env;
+}
+
+function dispatchCredentials(env: NodeJS.ProcessEnv): string[] {
+  const credentialName =
+    /(?:^|_)(?:API_?KEY|ACCESS_KEY(?:_ID)?|PRIVATE_KEY|TOKEN|SECRET|PASSWORD|PASSWD|CREDENTIALS?)$/i;
+  const values: string[] = [];
+  for (const [name, value] of Object.entries(env)) {
+    if (value && credentialName.test(name)) values.push(value);
+  }
+  return values;
 }
 
 function normalFailureExitCode(error: unknown): number | null {
@@ -686,6 +697,8 @@ export class FixtureRunner
       }
 
       const runtime = this.workflowRuntime ?? new WorkflowRuntime();
+      const dispatchEnv = isolatedDispatchEnv(workspaceDir);
+      const knownSecrets = dispatchCredentials(dispatchEnv);
       const specPath = join(featureDir, "spec.md");
       let specifiedSpec: string | undefined;
       let observedModel = "unknown";
@@ -717,7 +730,7 @@ export class FixtureRunner
                   implementationStart = performance.now();
                 return this.dispatcher({
                   ...task,
-                  env: isolatedDispatchEnv(workspaceDir),
+                  env: dispatchEnv,
                   effort: request.route.effort,
                   routeMode: "pinned",
                   timeoutMs: this.timeoutMs,
@@ -1096,25 +1109,21 @@ export class FixtureRunner
       const deterministicGatesPassed =
         gateChecks.length > 0 && gateChecks.every((check) => check.passed);
 
-      let sanitizedOutput = "";
+      const definitionArtifacts =
+        request.role === "define"
+          ? await Promise.all(
+              ["spec.md", "plan.md"].map(async (file) => ({
+                file,
+                content: await readOptionalFile(join(featureDir, file)),
+              })),
+            )
+          : [];
+      let sanitizedOutput: string;
       if (request.role === "define") {
-        if (request.artifactOutputDir) {
-          await mkdir(request.artifactOutputDir, { recursive: true });
-        }
-        const parts: string[] = [];
-        for (const file of ["spec.md", "plan.md"]) {
-          const content = await readOptionalFile(join(featureDir, file));
-          if (content !== undefined) parts.push(content);
-          if (request.artifactOutputDir) {
-            const destination = join(request.artifactOutputDir, file);
-            if (content === undefined) {
-              await rm(destination, { force: true });
-            } else {
-              await writeFile(destination, content, "utf8");
-            }
-          }
-        }
-        sanitizedOutput = parts.join("\n\n");
+        sanitizedOutput = definitionArtifacts
+          .map(({ content }) => content)
+          .filter((content) => content !== undefined)
+          .join("\n\n");
       } else {
         await execFileAsync("git", ["-C", workspaceDir, "add", "-A"]);
         const { stdout: diffOut } = await execFileAsync("git", [
@@ -1131,7 +1140,7 @@ export class FixtureRunner
         sanitizedOutput = `## Diff\n${diffOut}\n\n## Agent report\n${agentReport}`;
       }
 
-      return {
+      const evidence: FixtureRepeatEvidence = {
         fixtureId: request.fixtureId,
         repeatIndex: request.repeatIndex,
         requestedModel: request.route.modelId,
@@ -1145,6 +1154,20 @@ export class FixtureRunner
         retries: 0,
         sanitizedOutput,
       };
+      assertNoSecretMaterial(evidence, knownSecrets);
+
+      if (request.role === "define" && request.artifactOutputDir) {
+        await mkdir(request.artifactOutputDir, { recursive: true });
+        for (const { file, content } of definitionArtifacts) {
+          const destination = join(request.artifactOutputDir, file);
+          if (content === undefined) {
+            await rm(destination, { force: true });
+          } else {
+            await writeFile(destination, content, "utf8");
+          }
+        }
+      }
+      return evidence;
     } finally {
       await rm(workspaceDir, { recursive: true, force: true });
     }
@@ -1164,6 +1187,8 @@ export class FixtureRunner
     );
 
     try {
+      const dispatchEnv = isolatedDispatchEnv(judgeDir);
+      assertNoSecretMaterial(packet, dispatchCredentials(dispatchEnv));
       await execFileAsync("git", ["init", "--quiet", judgeDir], {
         timeout: 5000,
       });
@@ -1281,13 +1306,15 @@ export class FixtureRunner
           dispatcher: async (task) => {
             const tr = await this.dispatcher({
               ...task,
-              env: isolatedDispatchEnv(judgeDir),
+              env: dispatchEnv,
               effort: judge.effort,
               routeMode: "pinned",
               timeoutMs: this.timeoutMs,
               logPath: join(judgeDir, ".runs", "judge.log"),
               includeExternalContext: false,
             });
+            if (tr.timedOut === true)
+              throw new Error("Judge dispatch timed out");
             observedJudgeModel = tr.observedModel ?? "unknown";
             return tr;
           },

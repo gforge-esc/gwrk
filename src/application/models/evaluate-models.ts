@@ -114,6 +114,20 @@ function sameSuiteHashes(initial: SuiteHashes, current: SuiteHashes): boolean {
   );
 }
 
+function matchesJudgeRoute(
+  verdict: StructuredJudgeVerdict,
+  route: ModelCandidate,
+): boolean {
+  return (
+    verdict?.judgeBackend === route.backend &&
+    verdict.judgeProvider === route.provider &&
+    verdict.judgeFamily === route.family &&
+    verdict.judgeModelId === route.modelId &&
+    (verdict.observedJudgeModel === route.modelId ||
+      verdict.observedJudgeModel === "unknown")
+  );
+}
+
 function hasRepeatFloor(
   comparison: EvaluationComparison,
   floor: number,
@@ -512,13 +526,17 @@ export async function evaluateModels(
 
   assertNoSecretMaterial(packet);
   const verdict1 = await deps.judge.judgeComparison(input.judges[0], packet);
+  if (!matchesJudgeRoute(verdict1, input.judges[0]))
+    return reject("judge-dependence");
   assertNoSecretMaterial(packet);
   const verdict2 = await deps.judge.judgeComparison(input.judges[1], packet);
+  if (!matchesJudgeRoute(verdict2, input.judges[1]))
+    return reject("judge-dependence");
   assertNoSecretMaterial([verdict1, verdict2]);
   if (!(await inputsAreCurrent())) return reject("stale-evaluation-inputs");
 
   const comparisonKeys = comparisons.map((_, index) => String(index));
-  const decision = evaluateModelPromotion({
+  let decision = evaluateModelPromotion({
     candidateOption,
     requiredFixtures: comparisonKeys,
     repeats: comparisons.flatMap(({ repeats }, index) =>
@@ -535,6 +553,24 @@ export async function evaluateModels(
       gate: [...gateRefs].map(redact),
     },
   });
+
+  if (
+    decision.promote &&
+    input.role === "implement" &&
+    !scoringComparisons.every(({ roleScore }) => {
+      if (roleScore?.role !== "implement") return false;
+      const { candidateMedianMsToGreen, incumbentMedianMsToGreen } = roleScore;
+      return (
+        candidateMedianMsToGreen !== null &&
+        incumbentMedianMsToGreen !== null &&
+        Number.isFinite(candidateMedianMsToGreen) &&
+        Number.isFinite(incumbentMedianMsToGreen) &&
+        candidateMedianMsToGreen < incumbentMedianMsToGreen
+      );
+    })
+  ) {
+    decision = { promote: false, reason: "implementation-not-faster" };
+  }
 
   const judgeVerdictHashes: [string, string] = [
     createHash("sha256").update(JSON.stringify(verdict1)).digest("hex"),

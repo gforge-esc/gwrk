@@ -91,6 +91,7 @@ Create versioned synthetic fixtures for long-context definition and seeded-defec
 - `src/adapters/models/fixture-runner.ts` (NEW: Materialize synthetic workspaces and run report-only judge prompts via `WorkflowRuntime`)
 - `src/application/models/evaluate-models.test.ts` (NEW: Seam tests with injected runner and judge ports for gates and judge splits)
 - `src/adapters/models/fixture-runner.test.ts` (NEW: Exercise built-in workflows through the fixture runner with an injected dispatcher)
+- `src/domain/model-qualification.ts` (UPDATE: Add the promotion rejection reason for implementation timing)
 
 #### Test Strategy
 
@@ -102,10 +103,16 @@ Create versioned synthetic fixtures for long-context definition and seeded-defec
 | TR-017 | integration | `src/adapters/models/fixture-runner.test.ts` | Rejects a model mismatch in either definition stage and retains the mismatch after a matching planning dispatch |
 | TR-018 | integration | `src/adapters/models/fixture-runner.test.ts` | Rejects a rewritten acceptance rule or deleted specification during planning |
 | TR-019 | integration | `src/adapters/models/fixture-runner.test.ts` | Rejects an added continuation under T002, the completed adapter task |
+| TR-020 | unit | `src/application/models/evaluate-models.test.ts` | Rejects substituted routes and identity mismatches while accepting an unknown observed model |
+| TR-021 | unit | `src/application/models/evaluate-models.test.ts` | Requires a lower finite candidate median on fixed-plan runs even when direct runs favor the candidate |
+| TR-022 | integration | `src/adapters/models/fixture-runner.test.ts` | Rejects a timed-out judge dispatch with a zero exit code and a valid verdict |
+| TR-023 | integration | `src/adapters/models/fixture-runner.test.ts` | Blocks an opaque environment credential in a definition artifact, repeat stdout or a judge packet before it leaves the runner |
 
 The matching-model handoff case keeps behavior pass rates of 1 and 0. A passing definition repeat exports the original specification and generated plan. The review cases accept report-only and canonical reopenings of T001, the routing task.
 
 Six regression cases failed before the repair. After the repair, the shared gate exited 0 with 645 passing Phase 3 tests and a clean lint run.
+
+The four retry regressions produced 13 failing cases before the repair. The repaired Phase 3 gate passed 665 tests and lint. The prerequisite gate passed 543 tests.
 
 #### Done When
 
