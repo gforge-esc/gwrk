@@ -25,259 +25,263 @@ The candidate and the pull request merge checkout shared Git tree `96e617ee88662
 
 The gate rejected the `4484b570` receipt. It also rejected receipts with either matrix job missing or a skipped `Lint` step.
 
-Output from `gh run view 44379835252 --json headSha,url,jobs`, formatted as JSON.
+The earlier receipt remains in receipts/2026-11-18-phase05-f6f7942b.json.
+
+The current receipt covers 36c124d7 after the scoped notification repairs. [Run 44389814416](https://github.com/gforge-esc/gwrk/actions/runs/44389814416) passed both Node jobs and both lint steps.
+
+Output from `gh run view 44389814416 --json headSha,url,jobs`, formatted as JSON.
 
 ```json
 {
-  "headSha": "f6f7942b3734968e52c59ee69f3284c95ab8c2b8",
+  "headSha": "36c124d79f1beac3ba6df8c0221c7ff924ba0a49",
   "jobs": [
     {
-      "completedAt": "2026-11-18T19:24:25Z",
+      "completedAt": "2026-11-18T20:21:48Z",
       "conclusion": "success",
-      "databaseId": 135068727104,
-      "name": "ci (22)",
-      "startedAt": "2026-11-18T19:22:31Z",
-      "status": "completed",
-      "steps": [
-        {
-          "completedAt": "2026-11-18T19:22:33Z",
-          "conclusion": "success",
-          "name": "Set up job",
-          "number": 1,
-          "startedAt": "2026-11-18T19:22:32Z",
-          "status": "completed"
-        },
-        {
-          "completedAt": "2026-11-18T19:22:34Z",
-          "conclusion": "success",
-          "name": "Checkout",
-          "number": 2,
-          "startedAt": "2026-11-18T19:22:33Z",
-          "status": "completed"
-        },
-        {
-          "completedAt": "2026-11-18T19:22:38Z",
-          "conclusion": "success",
-          "name": "Setup Node.js 22",
-          "number": 3,
-          "startedAt": "2026-11-18T19:22:34Z",
-          "status": "completed"
-        },
-        {
-          "completedAt": "2026-11-18T19:22:40Z",
-          "conclusion": "success",
-          "name": "Setup pnpm",
-          "number": 4,
-          "startedAt": "2026-11-18T19:22:38Z",
-          "status": "completed"
-        },
-        {
-          "completedAt": "2026-11-18T19:23:07Z",
-          "conclusion": "success",
-          "name": "Install dependencies",
-          "number": 5,
-          "startedAt": "2026-11-18T19:22:40Z",
-          "status": "completed"
-        },
-        {
-          "completedAt": "2026-11-18T19:23:14Z",
-          "conclusion": "success",
-          "name": "Build",
-          "number": 6,
-          "startedAt": "2026-11-18T19:23:07Z",
-          "status": "completed"
-        },
-        {
-          "completedAt": "2026-11-18T19:23:15Z",
-          "conclusion": "success",
-          "name": "Check ADR citations and index",
-          "number": 7,
-          "startedAt": "2026-11-18T19:23:14Z",
-          "status": "completed"
-        },
-        {
-          "completedAt": "2026-11-18T19:23:15Z",
-          "conclusion": "success",
-          "name": "Configure Git for tests",
-          "number": 8,
-          "startedAt": "2026-11-18T19:23:15Z",
-          "status": "completed"
-        },
-        {
-          "completedAt": "2026-11-18T19:24:20Z",
-          "conclusion": "success",
-          "name": "Test",
-          "number": 9,
-          "startedAt": "2026-11-18T19:23:15Z",
-          "status": "completed"
-        },
-        {
-          "completedAt": "2026-11-18T19:24:21Z",
-          "conclusion": "success",
-          "name": "Lint",
-          "number": 10,
-          "startedAt": "2026-11-18T19:24:20Z",
-          "status": "completed"
-        },
-        {
-          "completedAt": "2026-11-18T19:24:21Z",
-          "conclusion": "success",
-          "name": "Post Setup pnpm",
-          "number": 18,
-          "startedAt": "2026-11-18T19:24:21Z",
-          "status": "completed"
-        },
-        {
-          "completedAt": "2026-11-18T19:24:21Z",
-          "conclusion": "success",
-          "name": "Post Setup Node.js 22",
-          "number": 19,
-          "startedAt": "2026-11-18T19:24:21Z",
-          "status": "completed"
-        },
-        {
-          "completedAt": "2026-11-18T19:24:21Z",
-          "conclusion": "success",
-          "name": "Post Checkout",
-          "number": 20,
-          "startedAt": "2026-11-18T19:24:21Z",
-          "status": "completed"
-        },
-        {
-          "completedAt": "2026-11-18T19:24:21Z",
-          "conclusion": "success",
-          "name": "Complete job",
-          "number": 21,
-          "startedAt": "2026-11-18T19:24:21Z",
-          "status": "completed"
-        }
-      ],
-      "url": "https://github.com/gforge-esc/gwrk/actions/runs/44379835252/job/135068727104"
-    },
-    {
-      "completedAt": "2026-11-18T19:24:50Z",
-      "conclusion": "success",
-      "databaseId": 135068727665,
+      "databaseId": 135104091158,
       "name": "ci (20)",
-      "startedAt": "2026-11-18T19:22:30Z",
+      "startedAt": "2026-11-18T20:19:32Z",
       "status": "completed",
       "steps": [
         {
-          "completedAt": "2026-11-18T19:22:33Z",
+          "completedAt": "2026-11-18T20:19:34Z",
           "conclusion": "success",
           "name": "Set up job",
           "number": 1,
-          "startedAt": "2026-11-18T19:22:31Z",
+          "startedAt": "2026-11-18T20:19:33Z",
           "status": "completed"
         },
         {
-          "completedAt": "2026-11-18T19:22:37Z",
+          "completedAt": "2026-11-18T20:19:36Z",
           "conclusion": "success",
           "name": "Checkout",
           "number": 2,
-          "startedAt": "2026-11-18T19:22:33Z",
+          "startedAt": "2026-11-18T20:19:34Z",
           "status": "completed"
         },
         {
-          "completedAt": "2026-11-18T19:22:43Z",
+          "completedAt": "2026-11-18T20:19:40Z",
           "conclusion": "success",
           "name": "Setup Node.js 20",
           "number": 3,
-          "startedAt": "2026-11-18T19:22:37Z",
+          "startedAt": "2026-11-18T20:19:36Z",
           "status": "completed"
         },
         {
-          "completedAt": "2026-11-18T19:22:45Z",
+          "completedAt": "2026-11-18T20:19:41Z",
           "conclusion": "success",
           "name": "Setup pnpm",
           "number": 4,
-          "startedAt": "2026-11-18T19:22:43Z",
+          "startedAt": "2026-11-18T20:19:40Z",
           "status": "completed"
         },
         {
-          "completedAt": "2026-11-18T19:23:50Z",
+          "completedAt": "2026-11-18T20:20:43Z",
           "conclusion": "success",
           "name": "Install dependencies",
           "number": 5,
-          "startedAt": "2026-11-18T19:22:45Z",
+          "startedAt": "2026-11-18T20:19:41Z",
           "status": "completed"
         },
         {
-          "completedAt": "2026-11-18T19:23:57Z",
+          "completedAt": "2026-11-18T20:20:50Z",
           "conclusion": "success",
           "name": "Build",
           "number": 6,
-          "startedAt": "2026-11-18T19:23:50Z",
+          "startedAt": "2026-11-18T20:20:43Z",
           "status": "completed"
         },
         {
-          "completedAt": "2026-11-18T19:23:57Z",
+          "completedAt": "2026-11-18T20:20:50Z",
           "conclusion": "success",
           "name": "Check ADR citations and index",
           "number": 7,
-          "startedAt": "2026-11-18T19:23:57Z",
+          "startedAt": "2026-11-18T20:20:50Z",
           "status": "completed"
         },
         {
-          "completedAt": "2026-11-18T19:23:57Z",
+          "completedAt": "2026-11-18T20:20:51Z",
           "conclusion": "success",
           "name": "Configure Git for tests",
           "number": 8,
-          "startedAt": "2026-11-18T19:23:57Z",
+          "startedAt": "2026-11-18T20:20:50Z",
           "status": "completed"
         },
         {
-          "completedAt": "2026-11-18T19:24:46Z",
+          "completedAt": "2026-11-18T20:21:43Z",
           "conclusion": "success",
           "name": "Test",
           "number": 9,
-          "startedAt": "2026-11-18T19:23:57Z",
+          "startedAt": "2026-11-18T20:20:51Z",
           "status": "completed"
         },
         {
-          "completedAt": "2026-11-18T19:24:47Z",
+          "completedAt": "2026-11-18T20:21:44Z",
           "conclusion": "success",
           "name": "Lint",
           "number": 10,
-          "startedAt": "2026-11-18T19:24:46Z",
+          "startedAt": "2026-11-18T20:21:43Z",
           "status": "completed"
         },
         {
-          "completedAt": "2026-11-18T19:24:47Z",
+          "completedAt": "2026-11-18T20:21:45Z",
           "conclusion": "success",
           "name": "Post Setup pnpm",
           "number": 18,
-          "startedAt": "2026-11-18T19:24:47Z",
+          "startedAt": "2026-11-18T20:21:44Z",
           "status": "completed"
         },
         {
-          "completedAt": "2026-11-18T19:24:48Z",
+          "completedAt": "2026-11-18T20:21:45Z",
           "conclusion": "success",
           "name": "Post Setup Node.js 20",
           "number": 19,
-          "startedAt": "2026-11-18T19:24:47Z",
+          "startedAt": "2026-11-18T20:21:45Z",
           "status": "completed"
         },
         {
-          "completedAt": "2026-11-18T19:24:48Z",
+          "completedAt": "2026-11-18T20:21:45Z",
           "conclusion": "success",
           "name": "Post Checkout",
           "number": 20,
-          "startedAt": "2026-11-18T19:24:48Z",
+          "startedAt": "2026-11-18T20:21:45Z",
           "status": "completed"
         },
         {
-          "completedAt": "2026-11-18T19:24:48Z",
+          "completedAt": "2026-11-18T20:21:45Z",
           "conclusion": "success",
           "name": "Complete job",
           "number": 21,
-          "startedAt": "2026-11-18T19:24:48Z",
+          "startedAt": "2026-11-18T20:21:45Z",
           "status": "completed"
         }
       ],
-      "url": "https://github.com/gforge-esc/gwrk/actions/runs/44379835252/job/135068727665"
+      "url": "https://github.com/gforge-esc/gwrk/actions/runs/44389814416/job/135104091158"
+    },
+    {
+      "completedAt": "2026-11-18T20:20:57Z",
+      "conclusion": "success",
+      "databaseId": 135104091450,
+      "name": "ci (22)",
+      "startedAt": "2026-11-18T20:19:32Z",
+      "status": "completed",
+      "steps": [
+        {
+          "completedAt": "2026-11-18T20:19:34Z",
+          "conclusion": "success",
+          "name": "Set up job",
+          "number": 1,
+          "startedAt": "2026-11-18T20:19:33Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-18T20:19:36Z",
+          "conclusion": "success",
+          "name": "Checkout",
+          "number": 2,
+          "startedAt": "2026-11-18T20:19:34Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-18T20:19:39Z",
+          "conclusion": "success",
+          "name": "Setup Node.js 22",
+          "number": 3,
+          "startedAt": "2026-11-18T20:19:36Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-18T20:19:40Z",
+          "conclusion": "success",
+          "name": "Setup pnpm",
+          "number": 4,
+          "startedAt": "2026-11-18T20:19:39Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-18T20:19:58Z",
+          "conclusion": "success",
+          "name": "Install dependencies",
+          "number": 5,
+          "startedAt": "2026-11-18T20:19:40Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-18T20:20:03Z",
+          "conclusion": "success",
+          "name": "Build",
+          "number": 6,
+          "startedAt": "2026-11-18T20:19:58Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-18T20:20:04Z",
+          "conclusion": "success",
+          "name": "Check ADR citations and index",
+          "number": 7,
+          "startedAt": "2026-11-18T20:20:03Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-18T20:20:04Z",
+          "conclusion": "success",
+          "name": "Configure Git for tests",
+          "number": 8,
+          "startedAt": "2026-11-18T20:20:04Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-18T20:20:53Z",
+          "conclusion": "success",
+          "name": "Test",
+          "number": 9,
+          "startedAt": "2026-11-18T20:20:04Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-18T20:20:54Z",
+          "conclusion": "success",
+          "name": "Lint",
+          "number": 10,
+          "startedAt": "2026-11-18T20:20:53Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-18T20:20:54Z",
+          "conclusion": "success",
+          "name": "Post Setup pnpm",
+          "number": 18,
+          "startedAt": "2026-11-18T20:20:54Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-18T20:20:54Z",
+          "conclusion": "success",
+          "name": "Post Setup Node.js 22",
+          "number": 19,
+          "startedAt": "2026-11-18T20:20:54Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-18T20:20:54Z",
+          "conclusion": "success",
+          "name": "Post Checkout",
+          "number": 20,
+          "startedAt": "2026-11-18T20:20:54Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-18T20:20:54Z",
+          "conclusion": "success",
+          "name": "Complete job",
+          "number": 21,
+          "startedAt": "2026-11-18T20:20:54Z",
+          "status": "completed"
+        }
+      ],
+      "url": "https://github.com/gforge-esc/gwrk/actions/runs/44389814416/job/135104091450"
     }
   ],
-  "url": "https://github.com/gforge-esc/gwrk/actions/runs/44379835252"
+  "url": "https://github.com/gforge-esc/gwrk/actions/runs/44389814416"
 }
 ```
