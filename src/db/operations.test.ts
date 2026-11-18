@@ -1695,7 +1695,11 @@ describe("durable operations review regressions", () => {
       const item = store.enqueueOutbox({
         outboxId: "invalid-gate",
         projectId: "alpha",
-        dedupeKey: "invalid-gate",
+        dedupeKey: JSON.stringify([
+          "harvest_gate_failed",
+          ownerOperationId,
+          phaseOne,
+        ]),
         ownerKind: "harvest",
         ownerOperationId,
         eventType: "harvest_gate_failed",
@@ -1777,7 +1781,11 @@ describe("durable operations review regressions", () => {
       const notice = store.enqueueOutbox({
         outboxId: "gate-failure",
         projectId: "alpha",
-        dedupeKey: "gate-failure",
+        dedupeKey: JSON.stringify([
+          "harvest_gate_failed",
+          ownerOperationId,
+          phaseOne,
+        ]),
         ownerKind: "harvest",
         ownerOperationId,
         eventType: "harvest_gate_failed",
@@ -1852,6 +1860,136 @@ describe("durable operations review regressions", () => {
           status: "sending",
         });
       }
+    },
+  );
+
+  it.each(["pending", "uncertain", "sending"])(
+    "rejects duplicate gate failure notices with status %s after restart",
+    (status) => {
+      const route = {
+        workspaceId: "W-alpha",
+        channelId: "C-alpha",
+        threadTs: "1700000000.000100",
+      };
+      db.prepare(
+        "UPDATE projects SET slack_workspace_id = ?, slack_channel = ?, updated_at = ? WHERE id = 'alpha'",
+      ).run(route.workspaceId, route.channelId, now);
+      db.prepare(
+        "INSERT INTO slack_feature_threads (project_id, feature_id, workspace_id, channel_id, root_ts) VALUES ('alpha', ?, ?, ?, ?)",
+      ).run(featureId, route.workspaceId, route.channelId, route.threadTs);
+
+      const [owner] = accept(
+        harvestIntake("gate-dedupe", [phaseOne], {
+          recipient: { projectId: "alpha", surface: "slack" },
+        }),
+      );
+      const lease = store.claimHarvestLease({
+        operationId: owner.operationId,
+        leaseOwner: "worker",
+        nowIso: now,
+        leaseExpiresAt: futureWithOffset,
+      });
+      if (!lease) throw new Error("Missing harvest lease");
+      const plan = {
+        terminalEvent: owner.terminalEvent,
+        phaseIds: [phaseOne],
+        hasSlackTarget: true,
+        hasRemoteBranchTarget: true,
+      };
+      expect(
+        store.initializeHarvestStages({
+          ...plan,
+          fence: lease.fence,
+          nowIso: now,
+          stages: planHarvestStages(plan),
+        }),
+      ).toEqual({ ok: true });
+      const notice = {
+        outboxId: "committed-gate-notice",
+        projectId: owner.projectId,
+        dedupeKey: JSON.stringify([
+          "harvest_gate_failed",
+          owner.operationId,
+          phaseOne,
+        ]),
+        ownerKind: "harvest",
+        ownerOperationId: owner.operationId,
+        eventType: "harvest_gate_failed",
+        featureId,
+        phaseId: phaseOne,
+        recipient: { ...route, surface: "slack", projectId: owner.projectId },
+        payload: { text: "Gate failed" },
+        clientMetadataKey: "committed-gate-metadata",
+      } as const;
+      expect(
+        store.transitionHarvestStage({
+          fence: lease.fence,
+          nowIso: now,
+          phaseKey: phaseOne,
+          stage: "gate_verify",
+          status: "gate_failed",
+          failureNotice: notice,
+        }),
+      ).toEqual({ ok: true });
+      const duplicate = store.enqueueOutbox({
+        ...notice,
+        outboxId: "duplicate-gate-notice",
+        dedupeKey: "duplicate-gate-key",
+        clientMetadataKey: "duplicate-gate-metadata",
+        nowIso: now,
+      });
+      if (status !== "pending") {
+        db.prepare(
+          `UPDATE notification_outbox
+           SET status = ?, workspace_id = ?, channel_id = ?, thread_ts = ?, attempt_count = 1
+           WHERE outbox_id = ?`,
+        ).run(
+          status,
+          route.workspaceId,
+          route.channelId,
+          route.threadTs,
+          duplicate.outboxId,
+        );
+      }
+
+      db.close();
+      db = openDatabase({ dbPath });
+      store = createSqliteOperationsStoreAdapter({ db });
+      const canonicalClaim = { outboxId: notice.outboxId, destination: null };
+      const savedIdentity = {
+        claim: { clientMetadataKey: notice.clientMetadataKey },
+        item: {
+          ...route,
+          dedupeKey: notice.dedupeKey,
+          clientMetadataKey: notice.clientMetadataKey,
+        },
+      };
+      expect(
+        store.claimOutboxItem({ ...canonicalClaim, nowIso: now }),
+      ).toMatchObject({
+        ...savedIdentity,
+        action: "send",
+      });
+
+      const reconcileAt = "2026-11-11T12:01:00.000Z";
+      const row = db.prepare(
+        "SELECT * FROM notification_outbox WHERE outbox_id = ?",
+      );
+      const before = row.get(duplicate.outboxId);
+      expect(before).toMatchObject({ status });
+      expect
+        .soft(
+          store.claimOutboxItem({
+            outboxId: duplicate.outboxId,
+            nowIso: reconcileAt,
+            destination: null,
+          }),
+        )
+        .toBeNull();
+      expect.soft(row.get(duplicate.outboxId)).toEqual(before);
+      expect(
+        store.claimOutboxItem({ ...canonicalClaim, nowIso: reconcileAt }),
+      ).toMatchObject({ ...savedIdentity, action: "reconcile" });
     },
   );
 

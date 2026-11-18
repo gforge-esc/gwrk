@@ -301,6 +301,13 @@ function rowToHarvestStageReceipt(
   };
 }
 
+function harvestGateFailureDedupeKey(
+  ownerOperationId: string,
+  phaseId: string,
+): string {
+  return JSON.stringify(["harvest_gate_failed", ownerOperationId, phaseId]);
+}
+
 function rowToOutboxItem(row: NotificationOutboxRow): OutboxItem {
   return {
     outboxId: row.outbox_id,
@@ -1386,11 +1393,10 @@ export function createOperationsStore(
           }
 
           if (gateFailure) {
-            const dedupeKey = JSON.stringify([
-              "harvest_gate_failed",
+            const dedupeKey = harvestGateFailureDedupeKey(
               op.operationId,
               input.phaseKey,
-            ]);
+            );
             const savedNoticeRow = db
               .prepare<string[], NotificationOutboxRow>(
                 "SELECT * FROM notification_outbox WHERE project_id = ? AND dedupe_key = ?",
@@ -1729,8 +1735,11 @@ export function createOperationsStore(
             if (
               row.ownerKind !== "harvest" ||
               !owner ||
+              row.phaseId === null ||
               (owner.phaseId !== null && owner.phaseId !== row.phaseId) ||
               !failedGate ||
+              row.dedupeKey !==
+                harvestGateFailureDedupeKey(owner.operationId, row.phaseId) ||
               !isHarvestSlackRecipient(recipient) ||
               recipient.projectId !== row.projectId ||
               !owner.plannedSlackRecipient ||
