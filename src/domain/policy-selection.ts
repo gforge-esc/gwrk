@@ -5,9 +5,11 @@
 import {
   type ProjectDesign,
   designRules,
+  lookupFrameworkBinding,
   lookupFrameworkGuidance,
   lookupLanguageGuidance,
   normalizeArchitecture,
+  normalizeFramework,
 } from "./architecture-context.js";
 import type { ProjectProfile } from "./types.js";
 
@@ -60,6 +62,7 @@ export interface CandidateEvaluation {
     | "selected"
     | "project-local-override"
     | "legacy-global-unscoped"
+    | "disabled"
     | "shadowed-by-override"
     | "scope-mismatch"
     | "project-scope-mismatch"
@@ -134,12 +137,26 @@ function frameworkMatches(
   candidate: PolicyCandidate,
   framework: string,
 ): boolean {
-  const normalize = (value: string) =>
-    value.toLowerCase().replace(/[^a-z0-9]/g, "");
+  const candidateFramework = normalizeFramework(candidate.manifest.framework);
   return Boolean(
-    candidate.manifest.framework &&
-      normalize(candidate.manifest.framework) === normalize(framework),
+    candidateFramework && candidateFramework === normalizeFramework(framework),
   );
+}
+
+function scopeMismatch(
+  manifest: EnforcementSkillSelectors,
+  profile: ProjectProfile | undefined,
+  scope: EnforcementScope,
+): CandidateEvaluation | undefined {
+  const manifestScope = manifest.scope ?? "all";
+  if (scope !== "all" && manifestScope !== "all" && manifestScope !== scope) {
+    return { included: false, reason: "scope-mismatch" };
+  }
+
+  if (manifest.projectScope === "gwrk" && profile?._isGwrk !== true) {
+    return { included: false, reason: "project-scope-mismatch" };
+  }
+  return undefined;
 }
 
 export function evaluateEnforcementCandidate(
@@ -147,47 +164,49 @@ export function evaluateEnforcementCandidate(
   profile: ProjectProfile | undefined,
   scope: EnforcementScope,
 ): CandidateEvaluation {
+  return (
+    scopeMismatch(candidate.manifest, profile, scope) ??
+    evaluateEligibleCandidate(candidate, profile)
+  );
+}
+
+function evaluateEligibleCandidate(
+  candidate: PolicyCandidate,
+  profile: ProjectProfile | undefined,
+): CandidateEvaluation {
   const manifest = candidate.manifest;
 
-  // 1. Scope check
-  const manifestScope = manifest.scope ?? "all";
-  if (scope !== "all" && manifestScope !== "all" && manifestScope !== scope) {
-    return { included: false, reason: "scope-mismatch" };
+  if (manifest.disabled) {
+    return { included: false, reason: "disabled" };
   }
 
-  // 2. Project scope check (verified gwrk repository identity)
-  if (manifest.projectScope === "gwrk" && profile?._isGwrk !== true) {
-    return { included: false, reason: "project-scope-mismatch" };
-  }
+  const language = manifest.language?.trim();
+  const framework = manifest.framework?.trim();
 
-  // 3. Language check
-  if (manifest.framework?.trim() && !manifest.language?.trim()) {
+  // Language check
+  if (framework && !language) {
     return { included: false, reason: "language-mismatch" };
   }
-  if (manifest.language) {
-    const candidateLang = manifest.language.toLowerCase().trim();
-    const profileLangs = profileLanguages(profile).map((language) =>
-      language.toLowerCase(),
+  if (language) {
+    const candidateLang = language.toLowerCase();
+    const profileLangs = profileLanguages(profile).map((profileLanguage) =>
+      profileLanguage.toLowerCase(),
     );
     if (!profileLangs.includes(candidateLang)) {
       return { included: false, reason: "language-mismatch" };
     }
   }
 
-  // 4. Framework check
-  if (manifest.framework) {
-    const candidateFw = manifest.framework
-      .toLowerCase()
-      .replace(/[^a-z0-9]/g, "");
-    const profileFw = profile?.stack?.framework
-      ?.toLowerCase()
-      .replace(/[^a-z0-9]/g, "");
+  // Framework check
+  if (framework) {
+    const candidateFw = normalizeFramework(framework);
+    const profileFw = normalizeFramework(profile?.stack?.framework);
     if (!profileFw || profileFw !== candidateFw) {
       return { included: false, reason: "framework-mismatch" };
     }
   }
 
-  // 5. Architecture check
+  // Architecture check
   if (manifest.architectures !== undefined) {
     if (!profile?.design?.architecture) {
       return { included: false, reason: "architecture-mismatch" };
@@ -199,7 +218,7 @@ export function evaluateEnforcementCandidate(
     }
   }
 
-  // 6. Principles check
+  // Principles check
   if (manifest.principles && manifest.principles.length > 0) {
     if (!profile?.design?.principles) {
       return { included: false, reason: "principle-mismatch" };
@@ -219,8 +238,8 @@ export function evaluateEnforcementCandidate(
 
   if (candidate.source === "global") {
     const hasSelectors =
-      Boolean(manifest.language) ||
-      Boolean(manifest.framework) ||
+      Boolean(language) ||
+      Boolean(framework) ||
       manifest.architectures !== undefined ||
       Boolean(manifest.principles && manifest.principles.length > 0) ||
       Boolean(manifest.projectScope);
@@ -270,10 +289,11 @@ function resolveCandidates(input: ComposePolicyInput, scope: EnforcementScope) {
         input.profile,
         scope,
       );
-
       if (!evaluation.included) {
+        if (evaluation.reason === "disabled") {
+          suppressedByDisabled = true;
+        }
         if (
-          !candidate.manifest.disabled &&
           [
             "language-mismatch",
             "architecture-mismatch",
@@ -287,11 +307,6 @@ function resolveCandidates(input: ComposePolicyInput, scope: EnforcementScope) {
           source: candidate.source,
           reason: evaluation.reason,
         });
-        continue;
-      }
-
-      if (candidate.manifest.disabled) {
-        suppressedByDisabled = true;
         continue;
       }
 
@@ -351,18 +366,24 @@ export function composeEffectivePolicy(
   }
 
   // Framework gap
-  const framework = input.profile?.stack?.framework;
-  const frameworkGuidance = lookupFrameworkGuidance(framework);
-  if (
-    framework &&
-    framework.toLowerCase() !== "unspecified" &&
-    framework.toLowerCase() !== "none"
-  ) {
+  const framework = normalizeFramework(input.profile?.stack?.framework)
+    ? input.profile?.stack?.framework?.trim()
+    : undefined;
+  const frameworkBinding = lookupFrameworkBinding(framework);
+  const frameworkGuidance =
+    frameworkBinding &&
+    languages.some((language) =>
+      frameworkBinding.languages.includes(language.toLowerCase()),
+    )
+      ? frameworkBinding.guidance
+      : undefined;
+  if (framework) {
     const covered = coveringSkills.some((candidate) =>
       frameworkMatches(candidate, framework),
     );
     if (!covered) {
       if (
+        (frameworkBinding !== undefined && frameworkGuidance === undefined) ||
         incompatibleSkills.some((candidate) =>
           frameworkMatches(candidate, framework),
         )

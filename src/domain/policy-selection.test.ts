@@ -26,6 +26,238 @@ const fastify = {
 };
 
 describe("Project policy composition", () => {
+  it("preserves punctuation in bundled framework lookups", async () => {
+    const { contextMarkdown, lookupFrameworkGuidance } = await import(
+      "./architecture-context.js"
+    );
+    expect(lookupFrameworkGuidance("React+")).toBeUndefined();
+    expect(
+      contextMarkdown(
+        {
+          projectName: "example",
+          design: profile.design,
+          language: "TypeScript",
+          framework: "React+",
+          decisionsDir: "docs/decisions",
+        },
+        [],
+      ),
+    ).toContain("No bundled framework binding.");
+  });
+
+  it("keeps framework selectors with different punctuation distinct", async () => {
+    const { composeEffectivePolicy } = await import("./policy-selection.js");
+    const result = composeEffectivePolicy({
+      profile: {
+        ...profile,
+        stack: { language: "TypeScript", framework: "Framework#" },
+      },
+      candidates: [
+        {
+          name: "framework-policy",
+          source: "global",
+          manifest: {
+            ...fastify,
+            name: "framework-policy",
+            framework: "Framework+",
+          },
+        },
+      ],
+    });
+    expect(result.selectedSkills).toEqual([]);
+    expect(result.excludedSkills).toEqual([
+      {
+        name: "framework-policy",
+        source: "global",
+        reason: "framework-mismatch",
+      },
+    ]);
+    expect(result.gaps).toMatchObject([
+      { kind: "missing-framework-binding", subject: "Framework#" },
+    ]);
+  });
+
+  it("matches the Next.js alias in policies and bundled guidance", async () => {
+    const { composeEffectivePolicy } = await import("./policy-selection.js");
+    const candidate = {
+      name: "nextjs-policy",
+      source: "global" as const,
+      manifest: { ...fastify, name: "nextjs-policy", framework: "nextjs" },
+    };
+    const result = composeEffectivePolicy({
+      profile: {
+        ...profile,
+        stack: { language: "TypeScript", framework: " Next.js " },
+      },
+      candidates: [candidate],
+    });
+    expect(result.selectedSkills).toEqual([candidate]);
+    expect(result.frameworkGuidance).toContain("Next.js routes");
+    expect(result.gaps).toEqual([]);
+  });
+
+  it("excludes a disabled review policy in evaluation and composition", async () => {
+    const { composeEffectivePolicy, evaluateEnforcementCandidate } =
+      await import("./policy-selection.js");
+    const reviewProfile = {
+      ...profile,
+      stack: { language: "TypeScript", framework: "Svelte" },
+    };
+    const manifest = {
+      ...fastify,
+      name: "svelte-review",
+      scope: "review" as const,
+      framework: "Svelte",
+    };
+    const override = {
+      name: manifest.name,
+      source: "project-local" as const,
+      manifest: { ...manifest, disabled: true },
+    };
+
+    expect(
+      evaluateEnforcementCandidate(override, reviewProfile, "review"),
+    ).toEqual({ included: false, reason: "disabled" });
+    const result = composeEffectivePolicy({
+      profile: reviewProfile,
+      scope: "review",
+      candidates: [
+        override,
+        { name: manifest.name, source: "global", manifest },
+      ],
+    });
+    expect(result.selectedSkills).toEqual([]);
+    expect(result.excludedSkills).toEqual([
+      { name: manifest.name, source: "project-local", reason: "disabled" },
+      { name: manifest.name, source: "global", reason: "shadowed-by-override" },
+    ]);
+  });
+
+  it.each([
+    undefined,
+    "",
+    "   ",
+    "none",
+    "NONE",
+    " None ",
+    "unspecified",
+    " Unspecified ",
+  ])("treats framework placeholder %s as absent", async (framework) => {
+    const { composeEffectivePolicy } = await import("./policy-selection.js");
+    const result = composeEffectivePolicy({
+      profile: { ...profile, stack: { language: "TypeScript", framework } },
+      candidates: [
+        {
+          name: "placeholder-policy",
+          source: "global",
+          manifest: {
+            ...fastify,
+            name: "placeholder-policy",
+            framework: "None",
+          },
+        },
+      ],
+    });
+    expect(result.selectedSkills).toEqual([]);
+    expect(result.gaps).toEqual([]);
+  });
+
+  it("keeps framework composition stable after a caller mutates a returned binding", async () => {
+    const { lookupFrameworkBinding } = await import(
+      "./architecture-context.js"
+    );
+    const { composeEffectivePolicy } = await import("./policy-selection.js");
+    const input = {
+      profile: {
+        ...profile,
+        stack: { language: "TypeScript", framework: "Django" },
+      },
+      candidates: [],
+    };
+    const before = composeEffectivePolicy(input);
+    const binding = lookupFrameworkBinding("Django") as {
+      guidance: string;
+      languages: string[];
+    };
+    const original = {
+      guidance: binding.guidance,
+      languages: [...binding.languages],
+    };
+    try {
+      try {
+        binding.languages.push("typescript");
+        binding.guidance = "Changed guidance";
+      } catch {}
+      expect(composeEffectivePolicy(input)).toEqual(before);
+      expect(lookupFrameworkBinding("Django")).toEqual(original);
+    } finally {
+      try {
+        binding.languages.splice(
+          0,
+          binding.languages.length,
+          ...original.languages,
+        );
+        binding.guidance = original.guidance;
+      } catch {}
+    }
+  });
+
+  it.each([
+    {
+      blankSelector: "framework",
+      selectors: { language: "TypeScript", framework: "   " },
+      reason: "selected",
+    },
+    {
+      blankSelector: "language",
+      selectors: { language: "   " },
+      reason: "legacy-global-unscoped",
+    },
+  ])(
+    "applies a legacy review policy with a blank $blankSelector selector",
+    async ({ selectors, reason }) => {
+      const { SkillManifestSchema } = await import("../plugins/manifest.js");
+      const { composeEffectivePolicy, evaluateEnforcementCandidate } =
+        await import("./policy-selection.js");
+      const manifest = {
+        name: "legacy-review",
+        description: "Legacy review rules",
+        version: "1.0.0",
+        type: "skill",
+        tier: "enforcement",
+        scope: "review" as const,
+        ...selectors,
+      };
+
+      for (const candidateManifest of [
+        manifest,
+        SkillManifestSchema.parse(manifest),
+      ]) {
+        const candidate = {
+          name: manifest.name,
+          source: "global" as const,
+          manifest: candidateManifest,
+        };
+        expect
+          .soft(evaluateEnforcementCandidate(candidate, profile, "review"))
+          .toEqual({ included: true, reason });
+
+        const input = { profile, candidates: [candidate] };
+        expect
+          .soft(composeEffectivePolicy({ ...input, scope: "review" }))
+          .toMatchObject({ selectedSkills: [candidate], excludedSkills: [] });
+        expect(
+          composeEffectivePolicy({ ...input, scope: "implementation" }),
+        ).toMatchObject({
+          selectedSkills: [],
+          excludedSkills: [
+            { name: manifest.name, source: "global", reason: "scope-mismatch" },
+          ],
+        });
+      }
+    },
+  );
+
   it.each([undefined, "", "   "])(
     "rejects a framework policy without a nonblank language selector (%s)",
     async (language) => {
@@ -431,6 +663,94 @@ describe("Project policy composition", () => {
 });
 
 describe("reviewed policy coverage regressions", () => {
+  it("reports incompatible bundled framework guidance for TypeScript and Django", async () => {
+    const { composeEffectivePolicy } = await import("./policy-selection.js");
+    const result = composeEffectivePolicy({
+      profile: {
+        ...profile,
+        stack: { language: "TypeScript", framework: "Django" },
+      },
+      candidates: [],
+    });
+
+    expect(result.frameworkGuidance).toBeUndefined();
+    expect(result.gaps).toEqual([
+      expect.objectContaining({
+        kind: "incompatible-framework-policy",
+        subject: "Django",
+      }),
+    ]);
+  });
+
+  it("returns bundled ORM guidance for Python and Django", async () => {
+    const { composeEffectivePolicy } = await import("./policy-selection.js");
+    const result = composeEffectivePolicy({
+      profile: {
+        ...profile,
+        stack: { language: "Python", framework: "Django" },
+      },
+      candidates: [],
+    });
+
+    expect(result.frameworkGuidance).toContain("Django ORM");
+    expect(result.gaps).toEqual([]);
+  });
+
+  it.each([
+    { scope: "implementation", projectScope: "any", suppressed: true },
+    { scope: "review", projectScope: "any", suppressed: false },
+    { scope: "implementation", projectScope: "gwrk", suppressed: false },
+  ] as const)(
+    "applies a stale disable in $scope with project scope $projectScope",
+    async ({ scope, projectScope, suppressed }) => {
+      const { composeEffectivePolicy } = await import("./policy-selection.js");
+      const manifest = {
+        ...fastify,
+        name: "svelte-policy",
+        framework: "Svelte",
+        architectures: ["clean"],
+      };
+      const global = {
+        name: manifest.name,
+        source: "global" as const,
+        manifest,
+      };
+      const result = composeEffectivePolicy({
+        profile: {
+          ...profile,
+          stack: { language: "TypeScript", framework: "Svelte" },
+          design: { ...profile.design, architecture: "Clean" },
+          _isGwrk: false,
+        },
+        scope,
+        candidates: [
+          global,
+          {
+            name: manifest.name,
+            source: "project-local",
+            manifest: {
+              ...manifest,
+              scope: "implementation",
+              projectScope,
+              disabled: true,
+              architectures: ["layered"],
+            },
+          },
+        ],
+      });
+
+      expect(result.selectedSkills).toEqual(suppressed ? [] : [global]);
+      if (suppressed) {
+        expect(result.excludedSkills).toContainEqual({
+          name: manifest.name,
+          source: "global",
+          reason: "shadowed-by-override",
+        });
+      }
+      expect(result.gaps).toEqual([]);
+    },
+  );
+
   it("returns no language guidance for inherited table keys", async () => {
     const { lookupLanguageGuidance } = await import(
       "./architecture-context.js"
