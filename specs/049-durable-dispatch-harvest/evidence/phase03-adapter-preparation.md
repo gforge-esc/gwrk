@@ -37,3 +37,9 @@ The merged storage foundation has cleared both reviews. The adapter and delivery
 The failing evidence is `/tmp/gwrk-049-production-git-composition-red.log`. The passing evidence is `/tmp/gwrk-049-production-git-composition-green.log`.
 
 The production notification test now imports the adapter factory. Its earlier missing import was a test setup failure. The corrected test reaches production behavior and fails both receipt and reconciliation assertions. Evidence is `/tmp/gwrk-049-notification-production-composition-red.log`.
+
+The authenticated receipt reader passes nine behavioral checks. Eight failed before implementation. It verifies the token workspace before history lookup. Requests preserve accepted channel, thread and metadata flags. An overall deadline aborts stalled authentication and history requests. HTTP denial remains indeterminate. Credentials stay in the authorization header and redirects are disabled.
+
+The combined preparation suite passes 69 checks. Build passes. RED evidence is `/tmp/gwrk-049-workspace-receipt-reader-red.log`. GREEN evidence is `/tmp/gwrk-049-workspace-receipt-reader-green.log`. Production notification composition remains RED until the port exposes this reader and the sender stamps metadata.
+
+The transport follows Slack's [authentication method](https://docs.slack.dev/reference/methods/auth.test/), [channel history method](https://docs.slack.dev/reference/methods/conversations.history/) and [thread reply method](https://docs.slack.dev/reference/methods/conversations.replies/). Live credentials and permission checks remain external prerequisites.
