@@ -164,7 +164,8 @@ CREATE TABLE IF NOT EXISTS notification_outbox (
   created_at          TEXT NOT NULL,
   updated_at          TEXT NOT NULL,
   delivered_at        TEXT,
-  UNIQUE (project_id, dedupe_key)
+  UNIQUE (project_id, dedupe_key),
+  UNIQUE (client_metadata_key)
 );
 
 CREATE INDEX IF NOT EXISTS idx_notification_outbox_pending

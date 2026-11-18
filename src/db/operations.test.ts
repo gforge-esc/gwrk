@@ -16,6 +16,7 @@ import Database from "better-sqlite3";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { openDatabase } from "./index.js";
 import { registerProject, startRun } from "./runs.js";
+import { computeHarvestWorkKey } from "../domain/durable-harvest.js";
 
 const now = "2026-11-11T12:00:00.000Z";
 const migrations = fileURLToPath(new URL("./migrations/", import.meta.url));
@@ -456,6 +457,327 @@ describe("durable operations migration", () => {
       ).toEqual(["alpha-new", "beta-active"]);
     } finally {
       reopened.close();
+    }
+  });
+
+  it("TR-002: keeps separate transport deliveries across two repos with matching PR numbers isolated", async () => {
+    const { createSqliteOperationsStoreAdapter } = await import(
+      "../adapters/sqlite/operations.js"
+    );
+    const db = openDatabase({ dbPath });
+    try {
+      registerProject(
+        { id: "alpha", name: "Alpha", path: "/fixture/alpha" },
+        db,
+      );
+      registerProject(
+        { id: "beta", name: "Beta", path: "/fixture/beta" },
+        db,
+      );
+      db.prepare("UPDATE projects SET repo_slug = ? WHERE id = ?").run(
+        "example/alpha",
+        "alpha",
+      );
+      db.prepare("UPDATE projects SET repo_slug = ? WHERE id = ?").run(
+        "example/beta",
+        "beta",
+      );
+
+      const store = createSqliteOperationsStoreAdapter({ db });
+
+      const alphaDelivery = {
+        candidate: {
+          source: "github_webhook" as const,
+          deliveryId: "del-alpha-42",
+          repoSlug: "example/alpha",
+          headRepoSlug: "example/alpha",
+          baseBranch: "main",
+          headBranch: "feat/001-feat-phase-01",
+          expectedHeadSha: "1".repeat(40),
+          prNumber: 42,
+          prUrl: "https://github.com/example/alpha/pull/42",
+          terminalEvent: "merged" as const,
+          mergeCommitSha: "2".repeat(40),
+          terminalAt: now,
+        },
+        payloadDigest: "digest-alpha-42",
+        receivedAt: now,
+        target: {
+          accepted: true as const,
+          project: {
+            projectId: "alpha",
+            slug: "alpha",
+            name: "Alpha",
+            repoSlug: "example/alpha",
+            trunkBranch: "main",
+            localRoot: "/fixture/alpha",
+            mirrorPath: null,
+            runnerPolicy: { allowedKinds: ["local" as const] },
+            slack: null,
+            legacyProjectIds: [],
+            createdAt: now,
+            updatedAt: now,
+          },
+          operations: [
+            {
+              operationId: "alpha-op-42",
+              projectId: "alpha",
+              workKey: computeHarvestWorkKey({
+                repoSlug: "example/alpha",
+                baseBranch: "main",
+                prNumber: 42,
+                terminalEvent: "merged",
+                mergeCommitSha: "2".repeat(40),
+                featureId: "001-feat",
+                phaseId: "phase-01",
+              }),
+              repoSlug: "example/alpha",
+              headRepoSlug: "example/alpha",
+              trunkBranch: "main",
+              featureId: "001-feat",
+              phaseId: "phase-01",
+              prNumber: 42,
+              prUrl: "https://github.com/example/alpha/pull/42",
+              headBranch: "feat/001-feat-phase-01",
+              expectedHeadSha: "1".repeat(40),
+              terminalEvent: "merged" as const,
+              mergeCommitSha: "2".repeat(40),
+              terminalAt: now,
+              recipient: null,
+              plannedSlackRecipient: null,
+              status: "accepted" as const,
+              leaseOwner: null,
+              leaseEpoch: 0,
+              leaseExpiresAt: null,
+              linkedRunId: null,
+              lastError: null,
+              createdAt: now,
+              updatedAt: now,
+              completedAt: null,
+            },
+          ] as [any, ...any[]],
+        },
+      };
+
+      const betaDelivery = {
+        candidate: {
+          source: "github_webhook" as const,
+          deliveryId: "del-beta-42",
+          repoSlug: "example/beta",
+          headRepoSlug: "example/beta",
+          baseBranch: "main",
+          headBranch: "feat/002-feat-phase-01",
+          expectedHeadSha: "3".repeat(40),
+          prNumber: 42,
+          prUrl: "https://github.com/example/beta/pull/42",
+          terminalEvent: "merged" as const,
+          mergeCommitSha: "4".repeat(40),
+          terminalAt: now,
+        },
+        payloadDigest: "digest-beta-42",
+        receivedAt: now,
+        target: {
+          accepted: true as const,
+          project: {
+            projectId: "beta",
+            slug: "beta",
+            name: "Beta",
+            repoSlug: "example/beta",
+            trunkBranch: "main",
+            localRoot: "/fixture/beta",
+            mirrorPath: null,
+            runnerPolicy: { allowedKinds: ["local" as const] },
+            slack: null,
+            legacyProjectIds: [],
+            createdAt: now,
+            updatedAt: now,
+          },
+          operations: [
+            {
+              operationId: "beta-op-42",
+              projectId: "beta",
+              workKey: computeHarvestWorkKey({
+                repoSlug: "example/beta",
+                baseBranch: "main",
+                prNumber: 42,
+                terminalEvent: "merged",
+                mergeCommitSha: "4".repeat(40),
+                featureId: "002-feat",
+                phaseId: "phase-01",
+              }),
+              repoSlug: "example/beta",
+              headRepoSlug: "example/beta",
+              trunkBranch: "main",
+              featureId: "002-feat",
+              phaseId: "phase-01",
+              prNumber: 42,
+              prUrl: "https://github.com/example/beta/pull/42",
+              headBranch: "feat/002-feat-phase-01",
+              expectedHeadSha: "3".repeat(40),
+              terminalEvent: "merged" as const,
+              mergeCommitSha: "4".repeat(40),
+              terminalAt: now,
+              recipient: null,
+              plannedSlackRecipient: null,
+              status: "accepted" as const,
+              leaseOwner: null,
+              leaseEpoch: 0,
+              leaseExpiresAt: null,
+              linkedRunId: null,
+              lastError: null,
+              createdAt: now,
+              updatedAt: now,
+              completedAt: null,
+            },
+          ] as [any, ...any[]],
+        },
+      };
+
+      const resAlpha = store.recordHarvestIntake(alphaDelivery);
+      expect(resAlpha).toMatchObject({
+        ok: true,
+        deduplicatedTransport: false,
+      });
+
+      const resBeta = store.recordHarvestIntake(betaDelivery);
+      expect(resBeta).toMatchObject({
+        ok: true,
+        deduplicatedTransport: false,
+      });
+
+      // Transport deduplication check
+      const resAlphaDup = store.recordHarvestIntake(alphaDelivery);
+      expect(resAlphaDup).toMatchObject({
+        ok: true,
+        deduplicatedTransport: true,
+      });
+    } finally {
+      db.close();
+    }
+
+    const reopened = openDatabase({ dbPath });
+    try {
+      const store = createSqliteOperationsStoreAdapter({ db: reopened });
+      const alphaHarvests = store.listRecoverableHarvests({
+        nowIso: now,
+        projectId: "alpha",
+      });
+      const betaHarvests = store.listRecoverableHarvests({
+        nowIso: now,
+        projectId: "beta",
+      });
+
+      expect(alphaHarvests).toHaveLength(1);
+      expect(alphaHarvests[0].operationId).toBe("alpha-op-42");
+      expect(alphaHarvests[0].repoSlug).toBe("example/alpha");
+
+      expect(betaHarvests).toHaveLength(1);
+      expect(betaHarvests[0].operationId).toBe("beta-op-42");
+      expect(betaHarvests[0].repoSlug).toBe("example/beta");
+      expect(reopened.pragma("foreign_key_check")).toEqual([]);
+    } finally {
+      reopened.close();
+    }
+  });
+
+  it("handles outbox lifecycle, stage receipts, and legacy dispatches preservation", async () => {
+    const { createSqliteOperationsStoreAdapter } = await import(
+      "../adapters/sqlite/operations.js"
+    );
+    const { persistDispatch, readLegacyDispatches } = await import(
+      "../server/persistence.js"
+    );
+    const projectRoot = join(root, "project-alpha");
+    mkdirSync(projectRoot);
+
+    persistDispatch(
+      {
+        id: "legacy-d1",
+        featureId: "001-legacy",
+        phaseId: "phase-01",
+        backend: "codex" as any,
+        status: "completed",
+        branchName: "feat/001-legacy",
+        attempts: [],
+        tasks: [],
+        createdAt: now,
+      },
+      projectRoot,
+    );
+
+    const legacyEntries = readLegacyDispatches(projectRoot);
+    expect(legacyEntries).toHaveLength(1);
+    expect(legacyEntries[0]).toMatchObject({
+      id: "legacy-d1",
+      evidenceLevel: "legacy_unverified",
+    });
+
+    const db = openDatabase({ dbPath });
+    try {
+      registerProject(
+        { id: "alpha", name: "Alpha", path: projectRoot },
+        db,
+      );
+      db.prepare("UPDATE projects SET local_root = ? WHERE id = ?").run(
+        projectRoot,
+        "alpha",
+      );
+
+      const store = createSqliteOperationsStoreAdapter({ db });
+
+      const outboxItem = store.enqueueOutbox({
+        outboxId: "outbox-1",
+        projectId: "alpha",
+        dedupeKey: "key-1",
+        ownerKind: "dispatch",
+        ownerOperationId: "op-1",
+        eventType: "dispatch_completed",
+        featureId: "001-feat",
+        phaseId: "phase-01",
+        recipient: {
+          surface: "slack",
+          projectId: "alpha",
+          channelId: "C123",
+        } as any,
+        payload: { text: "Hello Slack" },
+        clientMetadataKey: "meta-key-1",
+        nowIso: now,
+      });
+
+      expect(outboxItem.status).toBe("pending");
+      expect(store.getOutboxItem("outbox-1")).toMatchObject({
+        outboxId: "outbox-1",
+        status: "pending",
+      });
+
+      const claim = store.claimOutboxItem({
+        outboxId: "outbox-1",
+        nowIso: now,
+        destination: { workspaceId: "W1", channelId: "C123", threadTs: null },
+      });
+      expect(claim).toMatchObject({
+        action: "send",
+        claim: { outboxId: "outbox-1", attemptNumber: 1 },
+      });
+
+      if (!claim || claim.action !== "send") throw new Error("Expected outbox claim");
+
+      const completeResult = store.completeOutboxItem({
+        claim: claim.claim,
+        nowIso: now,
+        outcome: {
+          status: "delivered",
+          channelId: "C123",
+          messageTs: "1700000000.000100",
+        },
+      });
+      expect(completeResult).toEqual({ ok: true });
+
+      const status = store.getOperationsStatus("alpha");
+      expect(status.historical.legacyUnverifiedDispatches).toBe(1);
+      expect(status.delivery.pendingCount).toBe(0);
+    } finally {
+      db.close();
     }
   });
 });
