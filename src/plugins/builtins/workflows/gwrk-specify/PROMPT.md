@@ -3,6 +3,10 @@
 **Persona**: Product Manager
 **Pillar**: Definition (Clarity)
 
+<code_quality>
+{{enforcement}}
+</code_quality>
+
 <scope_constraints>
 - Create ONLY the spec.md file from the feature description.
 - Do not create plan.md or tasks.md (those are separate workflows).
@@ -31,7 +35,7 @@ Before specifying, check if these files exist and load them for context:
 [/type]
 
 [type: generic]
-Reference the project's own architecture documentation and existing directory structure for technical constraints.
+Read the selected architecture target and the project decision index when present. Use the project's language, framework, verification commands and existing directory structure. Target context does not establish existing code conformance.
 [/type]
 
 ## gwrk Design Imperatives
@@ -83,14 +87,19 @@ When specifying features for gwrk, ensure the spec honors these principles:
 5. **Cross-reference existing specs** (MANDATORY but bounded):
 
    <cross_reference_rules>
+[type: gwrk-native]
    Read specs that share the **same build plan phase or dependency chain** as this spec (check `specs/000-build-plan.md` §Dependency Graph). Skip unrelated specs.
+[/type]
+[type: generic]
+   Read the host repository's dependency evidence and relevant specs. Follow the dependency chain for this feature. Skip unrelated specs.
+[/type]
    ```bash
    ls specs/*/spec.md 2>/dev/null
    ```
    For each relevant spec that shares:
 [type: gwrk-native]
    - Build plan dependencies or successors
-   - Source directories (`src/commands/`, `src/engine/`, `src/server/`, `src/utils/`, `src/db/`)
+   - Domain policy (`src/domain/`), boundary contracts (`src/ports/`), use cases (`src/application/`) and effects (`src/adapters/`)
    - Zod schemas or shared types
    - ADR contracts (especially ADR-004 output protocol)
 [/type]

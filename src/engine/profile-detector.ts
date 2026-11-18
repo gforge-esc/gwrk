@@ -64,11 +64,7 @@ function detectProfileInDirectory(
     workspaceRoot,
   );
   if (scoped) return scoped;
-  if (
-    localProject?.design &&
-    !detected.profile._isGwrk &&
-    detected.profile.type !== "gwrk-native"
-  ) {
+  if (localProject?.design && !detected.profile._isGwrk) {
     return resolveWorkspacePolicyProfile("", detected.profile, undefined, {
       localProject,
       detectedStacks: detected.signals,
@@ -105,20 +101,6 @@ function detectFilesystemProfile(projectRoot: string): FilesystemProfile {
     /* no package.json */
   }
 
-  // gwrk-native detection via docs/architecture.md
-  if (
-    !isGwrk &&
-    fs.existsSync(path.join(projectRoot, "docs", "architecture.md"))
-  ) {
-    profile.type = "gwrk-native";
-    profile.stack.language = "TypeScript";
-    profile.layout = "src-nested";
-    return { profile, signals: [] };
-  }
-
-  // 2. Scan ALL language markers (not first-match-wins)
-  const signals: LanguageSignal[] = [];
-
   if (isGwrk) {
     profile.type = "pnpm-monorepo";
     profile.stack.language = "TypeScript";
@@ -130,8 +112,11 @@ function detectFilesystemProfile(projectRoot: string): FilesystemProfile {
       formatter: "biome",
       test: "vitest",
     };
-    return { profile, signals };
+    return { profile, signals: [] };
   }
+
+  // 2. Scan ALL language markers (not first-match-wins)
+  const signals: LanguageSignal[] = [];
 
   // pnpm workspace / lockfile or package.json detection
   if (
@@ -444,9 +429,15 @@ function readLocalProject(
     const rc = JSON.parse(fs.readFileSync(rcPath, "utf-8"));
     if (!rc.project) return undefined;
     const projectSchema = GwrkConfigSchema.shape.project.shape;
+    const type =
+      projectSchema.type.safeParse(rc.project.type).data || undefined;
+    const stack = projectSchema.stack.safeParse(rc.project.stack).data;
     return {
-      type: projectSchema.type.safeParse(rc.project.type).data || undefined,
-      stack: projectSchema.stack.safeParse(rc.project.stack).data,
+      type,
+      stack:
+        type === "python" && stack?.language === undefined
+          ? { ...stack, language: "Python" }
+          : stack,
       toolchain: ToolchainConfigSchema.safeParse(rc.project.toolchain).data,
       design: DesignSchema.safeParse(rc.project.design).data,
     };
@@ -459,7 +450,7 @@ function mergeLocalProject(
   detected: ProjectProfile,
   localProject: WorkspaceProfileConfig,
 ): ProjectProfile {
-  if (detected._isGwrk || detected.type === "gwrk-native") {
+  if (detected._isGwrk) {
     return mergeProfileOverrides({
       detected,
       projectDesign: localProject.design,

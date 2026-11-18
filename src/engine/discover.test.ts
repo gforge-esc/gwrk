@@ -7,7 +7,9 @@ import { discoverProject } from "./discover.js";
 import fs from "node:fs";
 import path from "node:path";
 import * as execUtils from "../utils/exec.js";
+import {readArchitectureReadiness} from "../adapters/architecture/readiness.js";
 
+vi.mock("../adapters/architecture/readiness.js");
 vi.mock("node:fs");
 vi.mock("../utils/exec.js");
 
@@ -16,6 +18,7 @@ describe("discoverProject", () => {
 
   beforeEach(() => {
     vi.resetAllMocks();
+    vi.mocked(readArchitectureReadiness).mockResolvedValue(undefined);
   });
 
   it("should assemble project state from repository", async () => {
@@ -62,5 +65,10 @@ describe("discoverProject", () => {
     expect(result.specs.length).toBe(1);
     expect(result.specs[0].id).toBe("001");
     expect(result.config.agents).toContain("agy");
+    expect(readArchitectureReadiness).toHaveBeenCalledWith(mockCwd, undefined);
+    expect(result).not.toHaveProperty("architectureReadiness");
+    const readiness = {target: {selection: null, path: ".gwrk/architecture.md"}, context: {status: "incomplete" as const, issues: [{path: ".gwrk/context-manifest.json", kind: "missing" as const}]}, assessment: {latest: null}};
+    vi.mocked(readArchitectureReadiness).mockResolvedValue(readiness);
+    expect((await discoverProject(mockCwd))).toMatchObject({architectureReadiness: readiness});
   });
 });
