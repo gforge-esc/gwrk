@@ -100,7 +100,7 @@ async function assembledPrompt(
     quiet: true,
   });
   expect(result.exitCode).toBe(0);
-  return result.stdout;
+  return JSON.parse(result.stdout).message.content as string;
 }
 
 beforeEach(() => {

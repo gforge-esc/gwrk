@@ -1,0 +1,19 @@
+{
+  "runId": "2026-11-18T18:46:21.747Z_tasks-done_T009",
+  "feature": "044-architecture-aware-policy",
+  "phase": "phase-02",
+  "command": "tasks-done",
+  "agent": "manual",
+  "model": "none",
+  "startedAt": "2026-11-18T18:46:21.747Z",
+  "finishedAt": "2026-11-18T18:46:25.458Z",
+  "durationS": 4,
+  "exitCode": 0,
+  "attempt": 1,
+  "filesChanged": 1,
+  "linesAdded": 3,
+  "linesDeleted": 2,
+  "gitCommit": "cc846b99b42937e36c420e41072a03c1da963f60",
+  "gitBranch": "codex/onboarding-policy-review-repair",
+  "digest": []
+}

@@ -123,6 +123,20 @@ describe("FR-001: architecture metadata in prompts (044 phase p01)", () => {
     expect(result).toContain("Inspect ports.");
   });
 
+  it.each([
+    ["React & Vite", "React &amp; Vite"],
+    ['React & "Vite"', "React &amp; &quot;Vite&quot;"],
+  ])("escapes framework %s inside project context", (framework, escaped) => {
+    const result = conditionPrompt("Inspect ports.", {
+      type: "nodejs",
+      design: { architecture: "layered", principles: [], templateVersion: "1.0.0" },
+      stack: { framework },
+    });
+    const context = result.match(/<project_context>([\s\S]*?)<\/project_context>/)?.[1];
+    expect(context).toContain(`framework="${escaped}"`);
+    expect(context).toContain("<architecture>layered</architecture>");
+  });
+
   it("TR-006: does not leak selected design into a later unconfigured prompt", () => {
     const selected = { type: "nodejs", design: { architecture: "layered", principles: [], templateVersion: "1.0.0" } };
     const withDesign = conditionPrompt("Selected", selected);
@@ -130,5 +144,21 @@ describe("FR-001: architecture metadata in prompts (044 phase p01)", () => {
     expect(withoutDesign).toBe('<project_profile type="nodejs">\n</project_profile>\n\nLegacy');
     expect(withoutDesign).not.toMatch(/<design\b/);
     expect(withDesign.match(/<design\b[^>]*>[\s\S]*?<\/design>/)?.[0]).toContain("layered");
+  });
+
+  it("renders escaped design metadata when the project type is unknown", () => {
+    const profile = {
+      type: "unknown",
+      design: {
+        architecture: "Ports & <adapters>",
+        principles: [],
+        templateVersion: "1.0.0" as const,
+      },
+    };
+    const prompt = "[type: generic]Inspect ports.[/type]";
+    const result = conditionPrompt(prompt, profile);
+    expect(result).toContain("<architecture>Ports &amp; &lt;adapters&gt;</architecture>");
+    expect(result).toContain("</design>\n</project_context>");
+    expect(result.endsWith(prompt)).toBe(true);
   });
 });

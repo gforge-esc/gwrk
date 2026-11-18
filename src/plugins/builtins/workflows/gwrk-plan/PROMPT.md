@@ -3,6 +3,10 @@
 **Persona**: Senior Architect
 **Pillar**: Definition (Clarity)
 
+<code_quality>
+{{enforcement}}
+</code_quality>
+
 <scope_constraints>
 - Create plan.md (new) or amend an existing plan.md (when the input starts with "AMEND"). If the feature introduces new data models, ALSO create data-model.md. If the feature defines API contracts, ALSO create contracts/.
 [type: gwrk-native]

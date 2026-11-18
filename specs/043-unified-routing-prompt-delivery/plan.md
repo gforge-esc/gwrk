@@ -105,6 +105,14 @@ pnpm exec vitest run src/commands/ship.test.ts src/engine/model-routing.test.ts 
 
 #### Files
 
+- `src/adapters/agents/quota-prober.ts` (NEW: Move quota probing from the server module into its adapter)
+- `src/adapters/sqlite/routing-decisions.ts` (NEW: Move SQLite route decision recording into its adapter)
+- `src/server/quota-prober.ts` and `src/server/routing-decisions.ts` (DELETE: Update callers to use the adapters)
+
+- `src/server/index.ts` (MODIFY: Load the routing registry directly through its adapter)
+- `src/server/quota-prober.ts` (MODIFY: Import quota policy types from the domain)
+- `src/engine/model-routing.test.ts` (MODIFY: Exercise canonical model selection and classification)
+- `src/server/backend-selector.test.ts` and `src/server/backend-selector.integration.test.ts` (MODIFY: Use canonical registry and classification types)
 - `src/server/model-selector.test.ts` (MODIFY: Import `ModelSelector`, `AgentBackendConfig` and task classification types from `src/domain/`)
 - `src/server/quota-prober.test.ts` (MODIFY: Import `AgentBackendConfig` and `TaskClassification` from `src/domain/`)
 - `src/server/task-classifier.test.ts` (MODIFY: Import `TaskClassification`, `TaskType` and `classifyTask` from `src/domain/types.js`)
@@ -132,7 +140,7 @@ pnpm exec vitest run src/commands/ship.test.ts src/engine/model-routing.test.ts 
 
 ```bash
 pnpm build
-pnpm exec vitest run src/server/model-selector.test.ts src/server/quota-prober.test.ts src/server/task-classifier.test.ts src/server/backend-selector.test.ts src/architecture.test.ts
+pnpm exec vitest run src/server/model-selector.test.ts src/server/quota-prober.test.ts src/server/task-classifier.test.ts src/server/backend-selector.test.ts src/server/backend-selector.integration.test.ts src/engine/model-routing.test.ts src/commands/ship-routing.integration.test.ts src/server/routing-decisions.test.ts src/architecture.test.ts
 ```
 
 ### Phase 4: Workflow runtime and prompt transport
@@ -146,7 +154,7 @@ pnpm exec vitest run src/server/model-selector.test.ts src/server/quota-prober.t
 - `src/plugins/builtins/workflows/gwrk-implement/PROMPT.md` (MODIFY: Add `<code_quality>` enforcement placeholder for implementation dispatches)
 - `src/plugins/workflow-runtime.test.ts` (MODIFY: Verify `WorkflowRuntime` populates `stdin` before dispatch and separates native workflow execution from skill execution)
 - `src/utils/agent.test.ts` (MODIFY: Capture planning and implementation dispatches and verify expanded enforcement rules, project context and task instructions)
-- `src/engine/ship-orchestrator.workflow-seam.test.ts` (NEW: Verify `ShipOrchestrator` dispatches implementation and review workflows through `WorkflowRuntime` while preserving post-dispatch gates)
+- `src/engine/ship-orchestrator.review.test.ts` (MODIFY: Verify `ShipOrchestrator` dispatches implementation and review workflows through `WorkflowRuntime` while preserving post-dispatch gates)
 
 #### Governance and skills
 
@@ -161,14 +169,14 @@ pnpm exec vitest run src/server/model-selector.test.ts src/server/quota-prober.t
 |---|---|---|---|
 | TR-012 | integration | `src/utils/agent.test.ts` | Captured planning and implementation dispatches contain expanded enforcement rules, grounding context and complete task instructions without duplication |
 | TR-013 | unit | `src/plugins/workflow-runtime.test.ts` | `WorkflowRuntime` populates `task.stdin` before dispatch and supports `nativeOnly` execution |
-| TR-014 | integration | `src/engine/ship-orchestrator.workflow-seam.test.ts` | `ShipOrchestrator` routes implementation and review stages through `WorkflowRuntime` while preserving scope validation and gate checks |
+| TR-014 | integration | `src/engine/ship-orchestrator.review.test.ts` | `ShipOrchestrator` routes implementation and review stages through `WorkflowRuntime` while preserving scope validation and gate checks |
 | TR-015 | unit | `src/plugins/builtins/workflows/gwrk-plan/prompt-contract.test.ts` | `gwrk-plan` prompt retains exit-based `Done When` and canonical format rules alongside `<code_quality>` |
 
 #### Done When
 
 ```bash
 pnpm build
-pnpm exec vitest run src/utils/agent.test.ts src/utils/agent.grounding-decisions.test.ts src/plugins/workflow-runtime.test.ts src/plugins/skill-runtime.test.ts src/engine/ship-orchestrator.workflow-seam.test.ts src/plugins/builtins/workflows/gwrk-plan/prompt-contract.test.ts src/architecture.test.ts
+pnpm exec vitest run src/utils/agent.test.ts src/utils/agent.grounding-decisions.test.ts src/plugins/workflow-runtime.test.ts src/plugins/skill-runtime.test.ts src/engine/ship-orchestrator.review.test.ts src/plugins/builtins/workflows/gwrk-plan/prompt-contract.test.ts src/architecture.test.ts
 ```
 
 ### Phase 5: Adapter parity and recorded recovery
@@ -179,6 +187,7 @@ pnpm exec vitest run src/utils/agent.test.ts src/utils/agent.grounding-decisions
 - `src/plugins/builtins/agents/agy/adapter.ts` (MODIFY: Retain Antigravity envelope parsing and reject an error terminal even when its response contains a GO verdict)
 - `src/plugins/builtins/agents/claude/adapter.ts` (MODIFY: Populate `status` and force non-zero `exitCode` when stream-json terminal events report failure on raw exit `0`)
 - `src/plugins/builtins/agents/codex/adapter.ts` (MODIFY: Populate `status`, `unwrappedStdout` and `structuredOutput` across JSON and plain-text responses)
+- `src/plugins/builtins/agents/codex/manifest.yaml` (MODIFY: Match the supported non-interactive workspace-write invocation)
 - `src/plugins/workflow-runtime.ts` (MODIFY: Reject `result.status === "failure"` before output extraction even when `exitCode` is `0`)
 - `src/plugins/builtins/agents/agy/adapter.test.ts` (MODIFY: Verify success and failed terminals on raw exit `0`, including the recorded error after a GO verdict)
 - `src/plugins/builtins/agents/claude/adapter.test.ts` (MODIFY: Verify Claude stream-json unwrapping, `status` parity and terminal `is_error` rejection on raw exit `0`)
