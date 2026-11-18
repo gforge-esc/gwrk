@@ -125,10 +125,6 @@ describe.each([
       selectors: { framework: "Svelte", language: "   " },
       selector: "language",
     },
-    {
-      selectors: { framework: "   ", language: "TypeScript" },
-      selector: "framework",
-    },
   ])("rejects invalid selectors $selectors", ({ selectors, selector }) => {
     expect(schema.safeParse({ ...manifest, ...selectors })).toMatchObject({
       success: false,
@@ -153,30 +149,33 @@ describe.each([
     });
   });
 
-  it("keeps legacy review scope with an empty framework", () => {
-    const parsed = schema.parse({
-      ...manifest,
-      scope: "review",
-      language: "TypeScript",
-      framework: "",
-    });
-    expect(parsed).toMatchObject({
-      tier: "enforcement",
-      scope: "review",
-      language: "TypeScript",
-      framework: undefined,
-    });
-    if (parsed.type !== "skill" || parsed.tier !== "enforcement") {
-      throw new Error("Expected an enforcement skill");
-    }
-    expect(
-      evaluateEnforcementCandidate(
-        { name: parsed.name, source: "global", manifest: parsed },
-        { type: "cli", stack: { language: "TypeScript" } },
-        "review",
-      ),
-    ).toEqual({ included: true, reason: "selected" });
-  });
+  it.each(["", "   ", "\t\n"])(
+    "keeps legacy review scope with a blank framework (%s)",
+    (framework) => {
+      const parsed = schema.parse({
+        ...manifest,
+        scope: "review",
+        language: "TypeScript",
+        framework,
+      });
+      expect(parsed).toMatchObject({
+        tier: "enforcement",
+        scope: "review",
+        language: "TypeScript",
+        framework: undefined,
+      });
+      if (parsed.type !== "skill" || parsed.tier !== "enforcement") {
+        throw new Error("Expected an enforcement skill");
+      }
+      expect(
+        evaluateEnforcementCandidate(
+          { name: parsed.name, source: "global", manifest: parsed },
+          { type: "cli", stack: { language: "TypeScript" } },
+          "review",
+        ),
+      ).toEqual({ included: true, reason: "selected" });
+    },
+  );
 
   it("defaults an unscoped legacy manifest to all workflows", () => {
     expect(schema.safeParse(manifest)).toMatchObject({

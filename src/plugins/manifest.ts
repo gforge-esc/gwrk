@@ -127,7 +127,8 @@ const EnforcementSkillManifestSchema = PluginBaseSchema.extend({
   language: z.string().trim().optional(),
   /** Framework this enforcement skill applies to (e.g. "React", "Express"). Omit to load for all projects. */
   framework: z.preprocess(
-    (value) => (value === "" ? undefined : value),
+    (value) =>
+      typeof value === "string" && value.trim() === "" ? undefined : value,
     z.string().trim().min(1).optional(),
   ),
   architectures: z.array(z.string()).optional(),
