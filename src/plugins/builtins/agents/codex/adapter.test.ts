@@ -23,8 +23,11 @@ describe("CodexAdapter", () => {
 
     expect(result.command).toBe("codex");
     expect(result.args).toEqual([
+      "--ask-for-approval",
+      "never",
       "exec",
-      "--full-auto",
+      "--sandbox",
+      "workspace-write",
       "--model",
       "gpt-5-codex",
       "-",
@@ -38,8 +41,11 @@ describe("CodexAdapter", () => {
     try {
       const task = { agent: "codex" as const, prompt: "Fixture" };
       expect((await adapter.dispatch(task)).args).toEqual([
+        "--ask-for-approval",
+        "never",
         "exec",
-        "--full-auto",
+        "--sandbox",
+        "workspace-write",
         "Fixture",
       ]);
       expect(
@@ -64,5 +70,24 @@ describe("CodexAdapter", () => {
       exitCode: 0,
       unwrappedStdout: "done",
     });
+  });
+  it("normalizes JSON results and failed JSONL turns", () => {
+    const report = { summary: "GO", intents: [] };
+    expect(
+      adapter.parseResult(JSON.stringify(report, null, 2), "", 0),
+    ).toMatchObject({ status: "success", structuredOutput: report });
+
+    const message = JSON.stringify({
+      type: "item.completed",
+      item: { type: "agent_message", text: JSON.stringify(report) },
+    });
+    const terminal = JSON.stringify({ type: "turn.failed" });
+    expect(adapter.parseResult(`${message}\n${terminal}`, "", 0)).toMatchObject(
+      {
+        status: "failure",
+        exitCode: 1,
+        unwrappedStdout: JSON.stringify(report),
+      },
+    );
   });
 });

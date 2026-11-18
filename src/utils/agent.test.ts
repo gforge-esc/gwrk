@@ -57,7 +57,10 @@ function mockAgentStdin(onSpawn?: () => void) {
     });
     return child as ReturnType<typeof spawn>;
   });
-  return () => capturedStdin;
+  return () => {
+    if (!capturedStdin.startsWith('{"event":"user"')) return capturedStdin;
+    return JSON.parse(capturedStdin).message.content as string;
+  };
 }
 
 const legacyInput = "<user_input>\r\n  Keep {{enforcement}} and <code_quality></code_quality>.  \r\n</user_input>\r\n";
@@ -66,6 +69,26 @@ describe('US-016: Enforcement Skills Dispatch Injection', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.mocked(skillRuntime.resolveEnforcementSkills).mockReset();
+  });
+
+  it("preserves the Antigravity input event through composed dispatch", async () => {
+    const template = "Read the quoted \"spec\".\r\n";
+    const userInput = "<user_input>\r\nKeep \\ paths and {{enforcement}}.\r\n</user_input>\r\n";
+    const result = await dispatchToAgent({
+      workflow: "gwrk-plan",
+      workDir: "/fake/root",
+      agent: "agy",
+      stdin: template + "\n\n" + userInput,
+      promptParts: { template, userInput },
+      dryRun: true,
+      quiet: true,
+    });
+
+    expect(JSON.parse(result.stdout)).toEqual({
+      event: "user",
+      message: { content: [COMMAND_SAFETY_BLOCK, template, userInput].join("\n\n") },
+    });
+    expect(result.stdout.split("\n").filter(Boolean)).toHaveLength(1);
   });
 
   it("sends identical legacy prompt and stdin once", async () => {

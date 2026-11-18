@@ -878,6 +878,7 @@ export async function dispatchToAgent(task: TaskDispatch): Promise<TaskResult> {
     stdin: stdinPayload || undefined,
   });
   if (
+    dispatch.inputFormat !== "stream-json" &&
     stdinPayload &&
     dispatch.stdin &&
     !dispatch.stdin.includes(stdinPayload)

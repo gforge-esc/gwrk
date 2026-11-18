@@ -651,7 +651,7 @@ export class ShipOrchestrator extends EventEmitter {
       //    tighten the result it arrived at.
       const verdict = this.ratchetOnReturnedVerdict(
         await this.readVerdict(reviewFindings),
-        result.stdout,
+        result.unwrappedStdout ?? result.stdout,
       );
       this.state.reviewVerdict = verdict;
       logCliOutput(
