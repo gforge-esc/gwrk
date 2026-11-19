@@ -4,7 +4,7 @@
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { ProjectProfile } from "../domain/types.js";
-import { detectProfile } from "../engine/profile-detector.js";
+import { detectProfile, resolveWorkspacePolicyRoots } from "../engine/profile-detector.js";
 import { type LoadedEnforcementCandidate, PluginLoader } from "../plugins/loader.js";
 import { listPlugins } from "./plugin.js";
 
@@ -35,6 +35,9 @@ function candidate(
 describe("plugin list --project", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.mocked(resolveWorkspacePolicyRoots).mockImplementation(async (directory) => ({
+      workspaceDir: directory, ownerDir: directory, policyDirs: [directory],
+    }));
     vi.mocked(PluginLoader.prototype.listPlugins).mockResolvedValue([]);
   });
 
