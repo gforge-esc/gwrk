@@ -241,12 +241,15 @@ export function formatEffectivePolicyPrompt(
       .filter((section) => section.split("\n", 1)[0].trim() === "Rules");
     const targetRules = new Set(
       targetRulesSections.flatMap((section) =>
-        section.split("\n").map((line) => line.trim()),
+        Array.from(
+          section.matchAll(/^ {0,3}[-+*][ \t]+([^\r\n]+)$/gm),
+          ([, rule]) => rule.trim(),
+        ),
       ),
     );
     const rules = policy.architectureRules
-      .map((rule) => `- ${rule}`)
-      .filter((rule) => !targetRules.has(rule));
+      .filter((rule) => !targetRules.has(rule))
+      .map((rule) => `- ${rule}`);
     if (rules.length > 0)
       sections.push(`## Architecture rules\n\n${rules.join("\n")}`);
   }

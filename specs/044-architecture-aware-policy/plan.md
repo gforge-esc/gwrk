@@ -189,7 +189,11 @@ bash specs/044-architecture-aware-policy/gates/phase-03.sh
 | TR-013 | integration | `src/utils/agent.policy-binding.test.ts` | Byte equality for saved polyglot targets and preservation of edited and quoted Python guidance |
 | TR-013 | integration | `src/utils/agent.policy-binding.test.ts` | Definition skill only in `<effective_policy>` for a custom workflow with task type `define` |
 | TR-013 | integration | `src/utils/agent.policy-binding.test.ts` | Byte equality for maintainer-edited guidance paragraphs and gap items with continuation lines |
-| TR-013 | integration | `src/utils/agent.policy-binding.test.ts` | Workspace execution with FastAPI guidance and the owning worktree’s policy pack, architecture target and decision index |
+| TR-013 | integration | `src/utils/agent.policy-binding.test.ts` | Owning-worktree FastAPI policy and decision grounding for inherited Hexagonal Functional and explicit Clean |
+| TR-013 | integration | `src/utils/agent.policy-binding.test.ts` | Clean without root-only generated rules, with maintainer rules and one TDD rule |
+| TR-013 | integration | `src/utils/agent.policy-binding.test.ts` | Byte equality for the saved target and decision index under either design |
+| TR-013 | integration | `src/utils/agent.policy-binding.test.ts` | One active architecture rule with `-`, `*` or `+` as its list marker |
+| TR-013 | integration | `src/utils/agent.policy-binding.test.ts` | Active effective policy when the target quotes the rule in a fence or comment |
 | TR-013 | integration | `src/utils/agent.policy-binding.test.ts` | Selection fields govern generated guidance while preserving the Go and Gin maintainer note and saved target bytes |
 | TR-013 | integration | `src/utils/agent.test.ts` | Built-in `gwrk-specify` delivers the definition skill once and preserves user input |
 | TR-013 | integration | `src/utils/agent.test.ts` | Built-in `gwrk-implement` delivers the target rule once and retains the selected skill and framework gap |

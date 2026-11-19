@@ -40,7 +40,13 @@ async function prompt(
   return JSON.parse(result.stdout).message.content as string;
 }
 describe("shared effective policy dispatch", () => {
-  it("uses the owning worktree policy and grounding for a registered workspace", async () => {
+  it.each([
+    { selection: "inherited Hexagonal Functional", workspaceDesign: undefined },
+    {
+      selection: "explicit Clean",
+      workspaceDesign: resolveDesign({ architecture: "clean", principles: ["tdd"] }),
+    },
+  ])("uses $selection policy and owning worktree grounding", async ({ workspaceDesign }) => {
     const worktree = join(root, "worktree");
     const workspace = join(worktree, "services/api");
     const git = (...args: string[]) =>
@@ -67,7 +73,9 @@ describe("shared effective policy dispatch", () => {
       join(worktree, ".gwrkrc.json"),
       JSON.stringify({
         project: { name: "binding-fixture", type: "nodejs", stack: projectStack, design },
-        workspaces: { "services/api": { type: "python", stack: workspaceStack } },
+        workspaces: {
+          "services/api": { type: "python", stack: workspaceStack, design: workspaceDesign },
+        },
       }),
     );
     mkdirSync(workspace, { recursive: true });
@@ -78,9 +86,17 @@ describe("shared effective policy dispatch", () => {
       ...projectStack,
       decisionsDir: "docs/decisions",
     });
-    const index = "# Architecture Decision Index\n\nWorktree decisions for the fixture API.\n";
+    const targetPath = join(worktree, ".gwrk/architecture.md");
+    const maintainerRule = "- Keep API error responses stable across releases.";
+    writeFileSync(
+      targetPath,
+      readFileSync(targetPath, "utf8").replace("## Rules\n\n", `## Rules\n\n${maintainerRule}\n`),
+    );
+    const savedTarget = readFileSync(targetPath);
+    const index = Buffer.from("# Architecture Decision Index\n\nWorktree decisions for the fixture API.\n");
+    const indexPath = join(worktree, ".gwrk/decisions/index.md");
     mkdirSync(join(worktree, ".gwrk/decisions"), { recursive: true });
-    writeFileSync(join(worktree, ".gwrk/decisions/index.md"), index);
+    writeFileSync(indexPath, index);
     const pack = join(worktree, ".gwrk/plugins/skills/fixture-fastapi");
     mkdirSync(pack, { recursive: true });
     writeFileSync(
@@ -110,7 +126,7 @@ describe("shared effective policy dispatch", () => {
         dispatcher: (task) => {
           expect(task.workDir).toBe(workspace);
           expect(task.profile?.stack).toMatchObject(workspaceStack);
-          expect(task.profile?.design).toEqual(design);
+          expect(task.profile?.design).toEqual(workspaceDesign ?? design);
           return dispatchToAgent({ ...task, dryRun: true });
         },
       },
@@ -121,8 +137,35 @@ describe("shared effective policy dispatch", () => {
     expect(policy).toContain("FastAPI routers");
     expect.soft(policy).toContain(packRules);
     const target = rendered.match(/<architecture_target>\n([\s\S]*?)\n<\/architecture_target>/)?.[1];
-    expect.soft(target ?? "").toContain("Domain policy MUST depend inward");
+    const cleanRule = "Business rules MUST remain independent of frameworks";
+    const rootOnlyRules = [
+      "Domain policy MUST depend inward",
+      "Domain code MUST NOT access external state",
+      "Core operations MUST return explicit results",
+      "Functions MUST separate policy from effects",
+    ];
+    expect.soft(target).toContain(maintainerRule);
+    expect.soft(target).toContain("## Project decisions");
+    if (workspaceDesign) {
+      expect.soft(policy).toContain(cleanRule);
+      expect.soft(rendered.split(cleanRule)).toHaveLength(2);
+      for (const rule of rootOnlyRules) {
+        expect(savedTarget.toString()).toContain(rule);
+        expect.soft(rendered.includes(rule), rule).toBe(false);
+      }
+    } else {
+      for (const rule of rootOnlyRules) {
+        expect.soft(target).toContain(rule);
+        expect.soft(rendered.split(rule)).toHaveLength(2);
+      }
+      expect.soft(rendered).not.toContain(cleanRule);
+    }
+    const tddRule = "Implementation MUST follow observed RED tests with GREEN execution evidence";
+    expect.soft(target).toContain(tddRule);
+    expect.soft(rendered.split(tddRule)).toHaveLength(2);
     expect.soft(rendered).toContain(`<architecture_decisions>\n${index}\n</architecture_decisions>`);
+    expect(readFileSync(targetPath)).toEqual(savedTarget);
+    expect(readFileSync(indexPath)).toEqual(index);
   });
 
   it.each(["gwrk-spec", "gwrk-implement", "review-code-cli"])(
@@ -496,6 +539,18 @@ it.each([
   expect.soft(injected).toContain(`## Policy gaps\n\n${editedGap}\n\n`);
   expect(rendered).toContain("typing.Protocol");
   expect(readFileSync(path, "utf8")).toBe(target);
+});
+
+it.each(["-", "*", "+"])("emits an active target rule once with the %s marker", async (marker) => {
+  const rule = "Domain policy MUST depend inward. Ports declare boundaries. Adapters implement effects. Composition wires dependencies.";
+  const target = Buffer.from(`# Target\n\n## Rules\n\n${marker} ${rule}\n`);
+  const targetPath = join(root, ".gwrk/architecture.md");
+  mkdirSync(join(root, ".gwrk"), { recursive: true });
+  writeFileSync(targetPath, target);
+  const rendered = await prompt("gwrk-implement", { type: "nodejs", stack: { language: "TypeScript" }, design: resolveDesign({ architecture: "hexagonal-functional" }) });
+  expect.soft(rendered).toContain(`<architecture_target>\n${target}\n</architecture_target>`);
+  expect.soft(rendered.split(rule)).toHaveLength(2);
+  expect(readFileSync(targetPath)).toEqual(target);
 });
 
 it.each(["fence", "comment"])("retains active policy when the target only quotes the rule in a %s", async (kind) => {

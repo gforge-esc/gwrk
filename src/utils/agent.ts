@@ -13,9 +13,13 @@ import readline from "node:readline";
 import { writeScopedStdout } from "../adapters/cli/output-scope.js";
 import { recordRoutingDecision } from "../db/plugins.js";
 import {
+  designRules,
+  DesignSchema,
   lookupFrameworkGuidance,
   lookupLanguageGuidance,
+  normalizeArchitecture,
   normalizeFramework,
+  type ProjectDesign,
 } from "../domain/architecture-context.js";
 import {
   composeEffectivePolicy,
@@ -517,7 +521,24 @@ function resolvePrimaryCheckout(executionDir: string): string {
 
 const ENFORCEMENT_MARKER = "{{enforcement}}";
 
-function withoutGeneratedPolicySections(target: string): string {
+function readConfiguredPrinciples(
+  policyRoot: string,
+): ProjectDesign["principles"] {
+  try {
+    const config = JSON.parse(
+      fs.readFileSync(path.join(policyRoot, ".gwrkrc.json"), "utf-8"),
+    );
+    return DesignSchema.safeParse(config?.project?.design).data?.principles ?? [];
+  } catch {
+    return [];
+  }
+}
+
+function withoutGeneratedPolicySections(
+  target: string,
+  policyRoot: string,
+  selectedDesign?: ProjectDesign,
+): string {
   const masked = maskPromptExamples(target);
   const headings = Array.from(masked.matchAll(/^#{1,2}[ \t]+([^\r\n]*)/gm));
   const selectionIndex = headings.findIndex(
@@ -555,7 +576,9 @@ function withoutGeneratedPolicySections(target: string): string {
         ? {
             design: {
               architecture,
-              principles: [],
+              principles: selectedDesign
+                ? readConfiguredPrinciples(policyRoot)
+                : [],
               templateVersion: "1.0.0" as const,
             },
           }
@@ -563,7 +586,19 @@ function withoutGeneratedPolicySections(target: string): string {
     },
     candidates: [],
   });
+  const selectedRules = selectedDesign
+    ? designRules({
+        ...selectedDesign,
+        architecture: normalizeArchitecture(selectedDesign.architecture),
+      })
+    : [];
   const generated = new Map<string, string[]>([
+    [
+      "Rules",
+      selectedDesign
+        ? policy.architectureRules.filter((rule) => !selectedRules.includes(rule))
+        : [],
+    ],
     ["Language guidance", generatedLanguageGuidance],
     [
       "Framework guidance",
@@ -592,7 +627,7 @@ function withoutGeneratedPolicySections(target: string): string {
   for (const [index, heading] of headings.entries()) {
     const section = heading[1].trim();
     const content = generated.get(section);
-    if (!content || !heading[0].startsWith("## ")) continue;
+    if (!content || !heading[0].startsWith("##")) continue;
     const bodyStart = heading.index + heading[0].length;
     const end = headings[index + 1]?.index ?? target.length;
     const original = target.slice(bodyStart, end);
@@ -601,15 +636,19 @@ function withoutGeneratedPolicySections(target: string): string {
     let body = "";
     let keptFrom = 0;
     for (const [lineIndex, line] of lines.entries()) {
+      const itemText =
+        section === "Rules"
+          ? (/^ {0,3}[-+*][ \t]+(.+)$/.exec(line[1])?.[1].trim() ?? "")
+          : line[1];
       const generatedLanguageGap =
         section === "Policy gaps" &&
         /^- No bundled language binding or selected policy for .+\. Assess language-specific boundaries explicitly\.$/.test(
           line[1],
         );
-      if (!content.includes(line[1]) && !generatedLanguageGap) continue;
+      if (!content.includes(itemText) && !generatedLanguageGap) continue;
       const next = line.index + line[0].length;
       const nextLine = lines[lineIndex + 1]?.[1];
-      if (section === "Policy gaps") {
+      if (section === "Rules" || section === "Policy gaps") {
         const following = original.slice(next);
         // A list item can continue after a blank line when the text is indented.
         if (/^(?:[ \t]*\r?\n)*(?: {2}| *\t)[ \t]*[^ \t\r\n]/.test(following))
@@ -865,16 +904,22 @@ export async function dispatchToAgent(task: TaskDispatch): Promise<TaskResult> {
     // R007: Detect project profile for language-aware enforcement routing
     const profile = task.profile ?? (await detectProfile(workDir));
 
+    const projectedTarget =
+      architectureTarget === undefined
+        ? undefined
+        : withoutGeneratedPolicySections(
+            architectureTarget,
+            policyRoot,
+            profile.design,
+          );
     const resolvedPolicy = await resolveEnforcementSkills(
       policyRoot,
       scope,
       profile,
-      { architectureTarget },
+      { architectureTarget: projectedTarget },
     );
     const enforcement = `<effective_policy>\n${resolvedPolicy}\n</effective_policy>`;
-    if (architectureTarget !== undefined) {
-      const projectedTarget =
-        withoutGeneratedPolicySections(architectureTarget);
+    if (architectureTarget !== undefined && projectedTarget !== undefined) {
       grounding = grounding.replace(
         `<architecture_target>\n${architectureTarget}\n</architecture_target>`,
         () =>
