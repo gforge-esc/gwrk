@@ -89,12 +89,11 @@ export function createSlackDeliveryReconciler(
         for (const raw of page.messages) {
           const message = record(raw);
           const metadata = record(message?.metadata);
-          const payload = record(metadata?.event_payload);
-          if (
-            metadata?.event_type !== "gwrk_notification" ||
-            payload?.clientMetadataKey !== query.clientMetadataKey
-          )
-            continue;
+          if (metadata?.event_type !== "gwrk_notification") continue;
+          const payload = record(metadata.event_payload);
+          if (!payload || !nonblank(payload.clientMetadataKey))
+            return uncertain("lookup_incomplete");
+          if (payload.clientMetadataKey !== query.clientMetadataKey) continue;
           if (
             payload.projectId !== query.projectId ||
             !timestamp(message?.ts) ||

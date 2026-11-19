@@ -121,6 +121,30 @@ describe.each([
       false,
     );
   });
+  it.each([
+    ["a different push repository", "remote.origin.pushurl", ["other.git"]],
+    [
+      "multiple push URLs",
+      "remote.origin.pushurl",
+      ["remote.git", "other.git"],
+    ],
+    ["multiple fetch URLs", "remote.origin.url", ["other.git"]],
+  ] as const)(
+    "rejects %s and preserves both branch tips",
+    async (_name, key, urls) => {
+      const other = join(root, "other.git");
+      git(root, "init", "--quiet", "--bare", other);
+      git(checkout, "push", "--quiet", other, "HEAD:refs/heads/feature");
+      for (const url of urls)
+        git(checkout, "config", "--add", key, join(root, url));
+
+      await expect(
+        createAdapter().deleteRemoteBranchAtTip(checkout, "feature", initial),
+      ).rejects.toThrow();
+      expect(git(remote, "rev-parse", "refs/heads/feature")).toBe(initial);
+      expect(git(other, "rev-parse", "refs/heads/feature")).toBe(initial);
+    },
+  );
   it("preserves a branch that moves between remote inspection and delete", async () => {
     const adapter = createAdapter();
     writeFileSync(join(checkout, "file.txt"), "new trunk\n");

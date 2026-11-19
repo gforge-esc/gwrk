@@ -84,6 +84,45 @@ it("paginates the accepted thread and returns the saved receipt", async () => {
   expect(url.searchParams.get("cursor")).toBe("next");
 });
 it.each([
+  { description: "missing payload", payload: undefined },
+  { description: "missing key", payload: { projectId: "alpha" } },
+  { description: "numeric key", payload: { clientMetadataKey: 123 } },
+  { description: "blank key", payload: { clientMetadataKey: "  " } },
+  { description: "unrelated key", payload: { clientMetadataKey: "other-key" } },
+])(
+  "handles $description on the final thread page",
+  async ({ description, payload }) => {
+    const { fetchImpl, reconcile } = setup();
+    const threadTs = "1700000000.000000";
+    fetchImpl
+      .mockResolvedValueOnce(response({ ok: true, team_id: "W1" }))
+      .mockResolvedValueOnce(response(page([], "next")))
+      .mockResolvedValueOnce(
+        response(
+          page([
+            {
+              ts: "1700000000.000001",
+              thread_ts: threadTs,
+              metadata: {
+                event_type: "gwrk_notification",
+                event_payload: payload,
+              },
+            },
+          ]),
+        ),
+      );
+    expect(await reconcile({ ...query, threadTs })).toEqual(
+      description === "unrelated key"
+        ? { status: "confirmed_absent" }
+        : { status: "indeterminate", reason: "lookup_incomplete" },
+    );
+    expect(fetchImpl).toHaveBeenCalledTimes(3);
+    const url = new URL(String(fetchImpl.mock.calls[2][0]));
+    expect(url.pathname).toBe("/api/conversations.replies");
+    expect(url.searchParams.get("cursor")).toBe("next");
+  },
+);
+it.each([
   { ok: true, team_id: "W2" },
   { ok: false, error: "invalid_auth" },
   { ok: true },

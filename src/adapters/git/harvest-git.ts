@@ -19,14 +19,37 @@ const failureStatus = (error: unknown) =>
 
 export function createGitHarvestAdapter(): VcsHarvestExtensions {
   const checkouts = new Map<string, { repository: string; parent: string }>();
-  const git = async (cwd: string, args: string[]) => {
+  const gitOutput = async (cwd: string, args: string[]) => {
     const result = await execute("git", ["-C", cwd, ...args], {
       env: repositoryGitEnv(cwd),
       encoding: "utf8",
       timeout: 30_000,
       maxBuffer: 4 * 1024 * 1024,
     });
-    return result.stdout.trim();
+    return result.stdout;
+  };
+  const git = async (cwd: string, args: string[]) =>
+    (await gitOutput(cwd, args)).trim();
+  const verifyOriginDestination = async (cwd: string) => {
+    const fetch = await gitOutput(cwd, [
+      "remote",
+      "get-url",
+      "--all",
+      "origin",
+    ]);
+    const push = await gitOutput(cwd, [
+      "remote",
+      "get-url",
+      "--push",
+      "--all",
+      "origin",
+    ]);
+    const isSingleUrl = (output: string) =>
+      /^[^\n]+\n$/.test(output) && output.trim().length > 0;
+    if (!isSingleUrl(fetch) || !isSingleUrl(push))
+      throw new Error("Origin must have one fetch URL and one push URL");
+    if (fetch !== push)
+      throw new Error("Origin fetch and push URLs must match");
   };
   const validateBranch = async (cwd: string, branch: string) => {
     if (!branch || branch.startsWith("-"))
@@ -156,6 +179,7 @@ export function createGitHarvestAdapter(): VcsHarvestExtensions {
     getRemoteBranchSha,
     async deleteRemoteBranchAtTip(cwd, branch, expectedSha) {
       requireSha(expectedSha);
+      await verifyOriginDestination(cwd);
       const current = await getRemoteBranchSha(cwd, branch);
       if (current === null) return { deleted: false, reason: "missing" };
       if (current !== expectedSha)

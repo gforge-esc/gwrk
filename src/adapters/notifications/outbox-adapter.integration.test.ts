@@ -2,7 +2,9 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import { readFileSync } from "node:fs";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { parse } from "yaml";
 import { createSlackNotificationAdapter } from "./index.js";
 const { notifySlack, sendSlackMessage } = vi.hoisted(() => ({
   notifySlack: vi.fn(),
@@ -57,6 +59,15 @@ describe("durable notification adapter composition", () => {
     expect(createSlackNotificationAdapter().reconcileDelivery).toBeTypeOf(
       "function",
     );
+  });
+  it("requests public channel history access for the reconciliation bot", () => {
+    const manifest = parse(
+      readFileSync(
+        new URL("../../slack-manifest.yml", import.meta.url),
+        "utf8",
+      ),
+    );
+    expect(manifest.oauth_config.scopes.bot).toContain("channels:history");
   });
 });
 
