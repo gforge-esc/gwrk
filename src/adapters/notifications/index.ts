@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import { validateSlackDeliveryContext } from "../../domain/slack-delivery.js";
 import type { CompressionReport } from "../../domain/types.js";
 import type {
   NotificationPayload,
@@ -63,102 +64,50 @@ export function createSlackNotificationAdapter(): NotificationPort {
       };
     },
     async notify(payload: NotificationPayload) {
-      if (payload.recipient) {
-        if (
-          payload.recipient.surface &&
-          payload.recipient.surface !== "slack"
-        ) {
-          return undefined;
-        }
-        if (
-          payload.projectId &&
-          payload.recipient.projectId &&
-          payload.projectId !== payload.recipient.projectId
-        ) {
-          return undefined;
-        }
-        if (
-          payload.channel &&
-          payload.recipient.channelId &&
-          payload.channel !== payload.recipient.channelId
-        ) {
-          return undefined;
-        }
-        if (
-          payload.threadTs &&
-          payload.recipient.threadTs &&
-          payload.threadTs !== payload.recipient.threadTs
-        ) {
-          return undefined;
-        }
-        if (payload.recipient.workspaceId) {
-          const { getSlackApp } = await import("../../server/slack.js");
-          const client = getSlackApp()?.client;
-          if (!client || typeof client.auth?.test !== "function") {
-            return undefined;
-          }
-          const auth = await client.auth
-            .test()
-            .catch(() => ({ ok: false as const }));
-          if (
-            !auth ||
-            !auth.ok ||
-            auth.team_id !== payload.recipient.workspaceId
-          ) {
-            return undefined;
-          }
-        }
+      const ctxResult = validateSlackDeliveryContext({
+        projectId: payload.projectId,
+        recipient: payload.recipient,
+        channelId: payload.channel,
+        threadTs: payload.threadTs,
+        opsOnly: payload.opsOnly,
+      });
+      if (!ctxResult.ok) {
+        return undefined;
       }
 
-      if (payload.ephemeralUserId) {
-        const { getSlackApp } = await import("../../server/slack.js");
-        const client = getSlackApp()?.client;
-        if (!client?.chat?.postEphemeral) {
-          return undefined;
-        }
-        const channel = payload.channel ?? payload.recipient?.channelId;
-        if (!channel) return undefined;
-        const thread_ts = payload.threadTs ?? payload.recipient?.threadTs;
-        try {
-          const res = await client.chat.postEphemeral({
-            channel,
-            user: payload.ephemeralUserId,
-            thread_ts,
-            text: payload.text,
-            // biome-ignore lint/suspicious/noExplicitAny: blocks array passed to slack API
-            blocks: payload.blocks as any,
-          });
-          if (res?.ok) {
-            return {
-              delivered: true,
-              channelId: channel,
-              messageTs: res.message_ts,
-              threadTs: thread_ts,
-            };
-          }
-          return { delivered: false };
-        } catch {
-          return { delivered: false };
-        }
-      }
-
+      const ctx = ctxResult.context;
       const notifications = await import("../../server/slack-notify.js");
       const message: SlackMessage = {
         text: payload.text,
-        channel: payload.channel ?? payload.recipient?.channelId,
-        thread_ts: payload.threadTs ?? payload.recipient?.threadTs,
+        channel: ctx.channelId,
+        thread_ts: ctx.threadTs,
         blocks: payload.blocks as SlackMessage["blocks"],
       };
+
+      if (payload.ephemeralUserId) {
+        if (!message.channel) return undefined;
+        return notifications.sendSlackEphemeralMessage(
+          message,
+          payload.ephemeralUserId,
+          {
+            projectId: ctx.projectId,
+            recipient: ctx.recipient,
+            opsOnly: ctx.opsOnly || undefined,
+          },
+        );
+      }
+
       if (payload.projectId || payload.recipient) {
         if (!message.channel) return undefined;
         return notifications.sendSlackMessage(message, {
           webhookFallback: false,
-          projectId: payload.projectId,
-          recipient: payload.recipient,
+          projectId: ctx.projectId,
+          recipient: ctx.recipient,
+          opsOnly: ctx.opsOnly || undefined,
         });
       }
       return notifications.notifySlack(message, undefined, {
-        opsOnly: payload.opsOnly,
+        opsOnly: ctx.opsOnly || undefined,
       });
     },
   };

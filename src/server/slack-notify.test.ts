@@ -12,7 +12,7 @@ import {
 } from "../../tests/helpers/synthetic-slack.js";
 import { createSlackNotificationAdapter } from "../adapters/notifications/index.js";
 import { createProjectRoutingService } from "../application/project-routing/index.js";
-import { notifySlack } from "./slack-notify.js";
+import { notifySlack, sendSlackMessage } from "./slack-notify.js";
 import { getSlackApp } from "./slack.js";
 
 vi.mock("./slack.js", () => ({
@@ -612,6 +612,77 @@ describe("US-003: Slack Event Bridge", () => {
     expect(conflictingEventProject).toBeUndefined();
 
     expect(postMessage).not.toHaveBeenCalled();
+  });
+
+  it("TR-013: enforces canonical routing and single captured client in direct sendSlackMessage calls", async () => {
+    const firstPostMessage = vi.fn().mockResolvedValue({
+      ok: true,
+      channel: "C_OPS",
+      ts: "1731320000.000900",
+    });
+    const secondPostMessage = vi.fn();
+    const authTest = vi
+      .fn()
+      .mockResolvedValue({ ok: true, team_id: SYNTHETIC_WORKSPACE_ID });
+    vi.mocked(getSlackApp)
+      .mockReturnValueOnce({
+        client: {
+          chat: { postMessage: firstPostMessage },
+          auth: { test: authTest },
+        },
+      } as unknown as ReturnType<typeof getSlackApp>)
+      .mockReturnValueOnce({
+        client: {
+          chat: { postMessage: secondPostMessage },
+          auth: { test: authTest },
+        },
+      } as unknown as ReturnType<typeof getSlackApp>);
+
+    const registry = createSyntheticRegistry();
+    const receipt = await sendSlackMessage(
+      { text: "Direct ops send", blocks: [] },
+      {
+        projectId: SYNTHETIC_PROJECT_ALPHA.projectId,
+        recipient: {
+          projectId: SYNTHETIC_PROJECT_ALPHA.projectId,
+          surface: "slack",
+          workspaceId: SYNTHETIC_WORKSPACE_ID,
+          threadTs: "1731320000.000100",
+          opsOnly: true,
+        },
+        registry,
+      },
+    );
+
+    expect(receipt).toMatchObject({
+      delivered: true,
+      channelId: "C_OPS",
+      threadTs: undefined,
+    });
+    expect(authTest).toHaveBeenCalledOnce();
+    expect(firstPostMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        channel: "C_OPS",
+        thread_ts: undefined,
+      }),
+    );
+    expect(secondPostMessage).not.toHaveBeenCalled();
+
+    const rejected = await sendSlackMessage(
+      { text: "Non-slack direct send", blocks: [] },
+      {
+        projectId: SYNTHETIC_PROJECT_ALPHA.projectId,
+        recipient: {
+          projectId: SYNTHETIC_PROJECT_ALPHA.projectId,
+          surface: "http",
+          workspaceId: SYNTHETIC_WORKSPACE_ID,
+          channelId: SYNTHETIC_CHANNEL_ALPHA,
+        },
+        registry,
+      },
+    );
+    expect(rejected).toBeUndefined();
+    expect(secondPostMessage).not.toHaveBeenCalled();
   });
 
   it("FR-005: Converts ship:complete event to Block Kit message", async () => {

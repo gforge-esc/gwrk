@@ -180,3 +180,55 @@ it("keeps opsOnly notifications unthreaded even when recipient carries a feature
   expect(postMessage.mock.calls[0][0].channel).toBe("C-ops");
   expect(postMessage.mock.calls[0][0].thread_ts).toBeUndefined();
 });
+it("omits thread_ts for opsOnly ephemeral notifications and verifies+posts on the same captured client", async () => {
+  const firstPostEphemeral = vi.fn().mockResolvedValue({
+    ok: true,
+    message_ts: "1700000000.000400",
+  });
+  const secondPostEphemeral = vi.fn();
+  getSlackApp
+    .mockReturnValueOnce({
+      client: {
+        chat: { postMessage, postEphemeral: firstPostEphemeral },
+        auth: { test: authTest },
+      },
+    })
+    .mockReturnValueOnce({
+      client: {
+        chat: { postMessage, postEphemeral: secondPostEphemeral },
+        auth: { test: authTest },
+      },
+    });
+  const adapter = createSlackNotificationAdapter();
+  const result = await adapter.notify({
+    projectId: "alpha",
+    opsOnly: true,
+    channel: "C-ops",
+    ephemeralUserId: "U-actor",
+    recipient: {
+      projectId: "alpha",
+      surface: "slack",
+      workspaceId: "W1",
+      channelId: "C-ops",
+      threadTs: "1700000000.000100",
+      opsOnly: true,
+    },
+    text: "Private ops warning",
+  });
+  expect(result).toMatchObject({
+    delivered: true,
+    channelId: "C-ops",
+    messageTs: "1700000000.000400",
+    threadTs: undefined,
+  });
+  expect(authTest).toHaveBeenCalledOnce();
+  expect(firstPostEphemeral).toHaveBeenCalledWith(
+    expect.objectContaining({
+      channel: "C-ops",
+      user: "U-actor",
+      thread_ts: undefined,
+      text: "Private ops warning",
+    }),
+  );
+  expect(secondPostEphemeral).not.toHaveBeenCalled();
+});
