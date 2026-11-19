@@ -27,7 +27,8 @@ vi.mock("../plugins/skill-runtime.js", () => ({
 vi.mock("../plugins/extension-runtime.js", () => ({
   resolveExtensionContext: vi.fn().mockResolvedValue([]),
 }));
-vi.mock("../engine/profile-detector.js", () => ({
+vi.mock("../engine/profile-detector.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../engine/profile-detector.js")>()),
   detectProfile: vi.fn().mockResolvedValue({
     type: "nodejs",
     stack: { language: "TypeScript" },
@@ -100,7 +101,7 @@ async function assembledPrompt(
     quiet: true,
   });
   expect(result.exitCode).toBe(0);
-  return result.stdout;
+  return JSON.parse(result.stdout).message.content as string;
 }
 
 beforeEach(() => {

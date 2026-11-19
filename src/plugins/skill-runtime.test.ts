@@ -5,220 +5,196 @@
 import * as fs from "node:fs";
 import * as fsp from "node:fs/promises";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { PluginLoader } from "./loader.js";
-import { resolveEnforcementSkills } from "./skill-runtime.js";
+import type { ProjectProfile } from "../domain/types.js";
+import { detectProfile } from "../engine/profile-detector.js";
+import { type LoadedEnforcementCandidate, PluginLoader } from "./loader.js";
+import {
+  formatEffectivePolicyPrompt,
+  resolveEffectivePolicy,
+  resolveEnforcementSkills,
+} from "./skill-runtime.js";
 
 vi.mock("node:fs");
 vi.mock("node:fs/promises");
 vi.mock("./loader.js");
-vi.mock("../engine/router.js");
-vi.mock("../utils/agent.js");
+vi.mock("../engine/profile-detector.js");
+vi.mock("../adapters/agents/index.js");
+
+function candidate(
+  name: string,
+  source: LoadedEnforcementCandidate["source"],
+  selectors: Partial<LoadedEnforcementCandidate["manifest"]> = {},
+): LoadedEnforcementCandidate {
+  return {
+    name,
+    source,
+    path: `/fake/${source}/${name}`,
+    content: selectors.disabled
+      ? undefined
+      : `/fake/${source}/${name}/SKILL.md`,
+    manifest: {
+      type: "skill",
+      tier: "enforcement",
+      name,
+      version: "1.0.0",
+      description: name,
+      scope: "all",
+      ...selectors,
+    },
+  };
+}
+
+const profile: ProjectProfile = {
+  type: "nodejs",
+  stack: { language: "TypeScript", framework: "Express" },
+  design: {
+    architecture: "hexagonal-functional",
+    principles: ["functional-core", "tdd"],
+    templateVersion: "1.0.0",
+  },
+};
 
 describe("FR-014: resolveEnforcementSkills", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.mocked(detectProfile).mockResolvedValue(profile);
   });
 
-  it("TR-P9-001: returns builtin enforcement skill content", async () => {
-    // Setup: mock PluginLoader to return an enforcement skill
-    vi.mocked(PluginLoader.prototype.listPlugins).mockResolvedValue([
-      {
-        name: "gwrk-conventions",
-        type: "skill",
-        tier: "enforcement",
-        version: "1.0.0",
-        description: "desc",
-        status: "active",
-      },
-    ]);
-    vi.mocked(PluginLoader.prototype.resolvePlugin).mockResolvedValue({
-      manifest: {
-        name: "gwrk-conventions",
-        type: "skill",
-        tier: "enforcement",
-        version: "1.0.0",
-        description: "desc",
-      },
-      path: "/fake/path/gwrk-conventions",
-      status: "active",
-    });
-
-    const builtinContent = "# GWRK Conventions\n- No .agents/ directory";
-    vi.mocked(fsp.readFile).mockResolvedValue(builtinContent);
-
-    const skills = await resolveEnforcementSkills("/fake/root");
-    expect(skills).toContain("GWRK Conventions");
-  });
-
-  it("TR-P9-002 / ADR-007: project-local skill overrides builtin", async () => {
-    // Setup: mock PluginLoader to return an enforcement skill
-    vi.mocked(PluginLoader.prototype.listPlugins).mockResolvedValue([
-      {
-        name: "typescript-standards",
-        type: "skill",
-        tier: "enforcement",
-        version: "1.0.0",
-        description: "desc",
-        status: "active",
-      },
-    ]);
-
-    // resolvePlugin should return the local one if available (PluginLoader handles this, so we just mock its return)
-    vi.mocked(PluginLoader.prototype.resolvePlugin).mockResolvedValue({
-      manifest: {
-        name: "typescript-standards",
-        type: "skill",
-        tier: "enforcement",
-        version: "1.0.0",
-        description: "desc",
-      },
-      path: "/project/local/path/typescript-standards",
-      status: "active",
-    });
-
-    const localContent = "# Local Standards\n- Use Biome";
-    vi.mocked(fsp.readFile).mockResolvedValue(localContent);
-
-    const skills = await resolveEnforcementSkills("/fake/root");
-    expect(skills).toContain("Local Standards");
-  });
-
-  it("R007: skips enforcement skill when language does not match profile", async () => {
-    vi.mocked(PluginLoader.prototype.listPlugins).mockResolvedValue([
-      {
-        name: "typescript-standards",
-        type: "skill",
-        tier: "enforcement",
-        version: "1.0.0",
-        description: "desc",
-        status: "active",
-      },
-    ]);
-    vi.mocked(PluginLoader.prototype.resolvePlugin).mockResolvedValue({
-      manifest: {
-        name: "typescript-standards",
-        type: "skill",
-        tier: "enforcement",
-        version: "1.0.0",
-        description: "desc",
+  it("detects the profile and composes compatible architecture, language and framework rules", async () => {
+    vi.mocked(
+      PluginLoader.prototype.listEnforcementCandidates,
+    ).mockResolvedValue([
+      candidate("typescript-standards", "builtin", { language: "TypeScript" }),
+      candidate("express-standards", "global", {
         language: "TypeScript",
-      },
-      path: "/fake/builtins/skills/typescript-standards",
-      status: "active",
-    });
-    vi.mocked(fsp.readFile).mockResolvedValue("# TypeScript Standards");
-
-    const skills = await resolveEnforcementSkills("/fake/root", "all", {
-      type: "python",
-      stack: { language: "Python" },
-    });
-
-    expect(skills).not.toContain("TypeScript Standards");
-    expect(skills).toBe("");
-  });
-
-  it("R007: loads enforcement skill when language matches profile", async () => {
-    vi.mocked(PluginLoader.prototype.listPlugins).mockResolvedValue([
-      {
-        name: "typescript-standards",
-        type: "skill",
-        tier: "enforcement",
-        version: "1.0.0",
-        description: "desc",
-        status: "active",
-      },
-    ]);
-    vi.mocked(PluginLoader.prototype.resolvePlugin).mockResolvedValue({
-      manifest: {
-        name: "typescript-standards",
-        type: "skill",
-        tier: "enforcement",
-        version: "1.0.0",
-        description: "desc",
+        framework: "Express",
+        architectures: ["hexagonal-functional"],
+        principles: ["functional-core"],
+      }),
+      candidate("fastify-standards", "global", {
         language: "TypeScript",
-      },
-      path: "/fake/builtins/skills/typescript-standards",
-      status: "active",
-    });
-    vi.mocked(fsp.readFile).mockResolvedValue("# TypeScript Standards");
+        framework: "Fastify",
+      }),
+      candidate("python-standards", "builtin", { language: "Python" }),
+    ]);
 
-    const skills = await resolveEnforcementSkills("/fake/root", "all", {
-      type: "nodejs",
-      stack: { language: "TypeScript" },
+    const policy = await resolveEffectivePolicy("/fake/root", {
+      scope: "implementation",
     });
 
-    expect(skills).toContain("TypeScript Standards");
+    expect(detectProfile).toHaveBeenCalledWith("/fake/root");
+    expect(policy.design).toEqual(profile.design);
+    expect(policy.architectureRules).not.toHaveLength(0);
+    expect(policy.languageGuidance).toContain("interfaces");
+    expect(policy.frameworkGuidance).toBeDefined();
+    expect(policy.checksStatus).toBe("inactive");
+    expect(policy.gaps).toEqual([]);
+    expect(policy.selectedSkills.map(({ name }) => name)).toEqual([
+      "typescript-standards",
+      "express-standards",
+    ]);
+    expect(fsp.readFile).not.toHaveBeenCalled();
   });
 
-  it("R007: loads enforcement skill with no language field for all profiles", async () => {
-    vi.mocked(PluginLoader.prototype.listPlugins).mockResolvedValue([
-      {
-        name: "gwrk-conventions",
-        type: "skill",
-        tier: "enforcement",
-        version: "1.0.0",
-        description: "desc",
-        status: "active",
-      },
+  it("uses the highest compatible override and keeps the legacy prompt headers", async () => {
+    const local = candidate("typescript-standards", "project-local", {
+      language: "TypeScript",
+    });
+    vi.mocked(
+      PluginLoader.prototype.listEnforcementCandidates,
+    ).mockResolvedValue([
+      local,
+      candidate("typescript-standards", "global", { language: "TypeScript" }),
+      candidate("typescript-standards", "builtin", { language: "TypeScript" }),
     ]);
-    vi.mocked(PluginLoader.prototype.resolvePlugin).mockResolvedValue({
-      manifest: {
-        name: "gwrk-conventions",
-        type: "skill",
-        tier: "enforcement",
-        version: "1.0.0",
-        description: "desc",
-      },
-      path: "/fake/path/gwrk-conventions",
-      status: "active",
-    });
-    vi.mocked(fsp.readFile).mockResolvedValue("# GWRK Conventions");
 
-    const skills = await resolveEnforcementSkills("/fake/root", "all", {
-      type: "python",
-      stack: { language: "Python" },
-    });
-
-    expect(skills).toContain("GWRK Conventions");
+    const rendered = await resolveEnforcementSkills("/fake/root");
+    expect(rendered).toContain(
+      "<!-- enforcement-skill: typescript-standards -->",
+    );
+    expect(rendered).toContain(local.path);
+    expect(rendered).not.toContain("/fake/global/typescript-standards");
+    expect(rendered).not.toContain("/fake/builtin/typescript-standards");
+    expect(fsp.readFile).not.toHaveBeenCalled();
   });
 
-  it("ADR-012: filters global enforcement skill by framework when framework does not match profile", async () => {
-    vi.mocked(PluginLoader.prototype.listPlugins).mockResolvedValue([
+  it("suppresses lower copies when the local override is disabled", async () => {
+    vi.mocked(
+      PluginLoader.prototype.listEnforcementCandidates,
+    ).mockResolvedValue([
+      candidate("typescript-standards", "project-local", { disabled: true }),
+      candidate("typescript-standards", "builtin", { language: "TypeScript" }),
+    ]);
+
+    const policy = await resolveEffectivePolicy("/fake/root");
+    expect(policy.selectedSkills).toEqual([]);
+    expect(policy.excludedSkills).toEqual([
       {
-        name: "fastapi-standards",
-        type: "skill",
-        tier: "enforcement",
-        version: "1.0.0",
-        description: "desc",
-        status: "active",
+        name: "typescript-standards",
+        source: "project-local",
+        reason: "disabled",
+      },
+      {
+        name: "typescript-standards",
+        source: "builtin",
+        reason: "shadowed-by-override",
       },
     ]);
-    vi.mocked(PluginLoader.prototype.resolvePlugin).mockResolvedValue({
-      manifest: {
-        name: "fastapi-standards",
-        type: "skill",
-        tier: "enforcement",
-        version: "1.0.0",
-        description: "desc",
-        language: "Python",
-        framework: "FastAPI",
-      },
-      path: "/Users/test/.gwrk/plugins/skills/fastapi-standards",
-      status: "active",
-    });
-    vi.mocked(fsp.readFile).mockResolvedValue("# FastAPI Standards");
+    expect(fsp.readFile).not.toHaveBeenCalled();
+  });
 
-    const djangoSkills = await resolveEnforcementSkills("/fake/root", "all", {
-      type: "python",
-      stack: { language: "Python", framework: "Django" },
-    });
-    expect(djangoSkills).not.toContain("FastAPI Standards");
+  it("loads global standards without selectors and limits gwrk rules to verified projects", async () => {
+    vi.mocked(
+      PluginLoader.prototype.listEnforcementCandidates,
+    ).mockResolvedValue([
+      candidate("custom-standards", "global"),
+      candidate("gwrk-conventions", "builtin", { projectScope: "gwrk" }),
+    ]);
 
-    const fastapiSkills = await resolveEnforcementSkills("/fake/root", "all", {
-      type: "python",
-      stack: { language: "Python", framework: "FastAPI" },
+    const external = await resolveEffectivePolicy("/fake/root", { profile });
+    expect(external.selectedSkills.map(({ name }) => name)).toEqual([
+      "custom-standards",
+    ]);
+    expect(external.excludedSkills).toContainEqual({
+      name: "gwrk-conventions",
+      source: "builtin",
+      reason: "project-scope-mismatch",
     });
-    expect(fastapiSkills).toContain("FastAPI Standards");
+
+    const self = await resolveEffectivePolicy("/fake/root", {
+      profile: { ...profile, _isGwrk: true },
+      checksConfigured: true,
+    });
+    expect(self.selectedSkills.map(({ name }) => name)).toContain(
+      "gwrk-conventions",
+    );
+    expect(self.checksStatus).toBe("configured");
+  });
+
+  it("reports a gap when the installed framework policy requires a different architecture", async () => {
+    vi.mocked(
+      PluginLoader.prototype.listEnforcementCandidates,
+    ).mockResolvedValue([
+      candidate("custom-framework-standards", "project-local", {
+        language: "TypeScript",
+        framework: "Custom",
+        architectures: ["layered"],
+      }),
+    ]);
+    const policy = await resolveEffectivePolicy("/fake/root", {
+      profile: { ...profile, stack: { ...profile.stack, framework: "Custom" } },
+    });
+    expect(policy.selectedSkills).toEqual([]);
+    expect(policy.gaps).toContainEqual(
+      expect.objectContaining({
+        kind: "incompatible-framework-policy",
+        subject: "Custom",
+      }),
+    );
+    expect(formatEffectivePolicyPrompt(policy)).toContain(
+      "No compatible policy found for framework Custom.",
+    );
+    expect(fsp.readFile).not.toHaveBeenCalled();
   });
 
   it("TR-P10-003: contains no legacy .agents/ path references", async () => {
@@ -230,8 +206,9 @@ describe("FR-014: resolveEnforcementSkills", () => {
 
   it("FR-006: executeSkill passes preferredAgent and preferredModel to router and agent", async () => {
     const { executeSkill } = await import("./skill-runtime.js");
-    const { selectBackend } = await import("../engine/router.js");
-    const { dispatchToAgent } = await import("../utils/agent.js");
+    const { createAgentPortAdapter } = await import(
+      "../adapters/agents/index.js"
+    );
 
     vi.mocked(PluginLoader.prototype.resolvePlugin).mockResolvedValue({
       manifest: {
@@ -250,24 +227,35 @@ describe("FR-014: resolveEnforcementSkills", () => {
       status: "active",
     });
 
-    vi.mocked(selectBackend).mockResolvedValue({ name: "claude" } as any);
-    vi.mocked(dispatchToAgent).mockResolvedValue({
+    const selectRoute = vi.fn().mockResolvedValue({
+      backend: "claude",
+      model: "claude-3-opus",
+      effort: "high",
+    });
+    const execute = vi.fn().mockResolvedValue({
       stdout: "done",
       stderr: "",
       exitCode: 0,
       durationS: 1,
-    } as any);
+    });
+    vi.mocked(createAgentPortAdapter).mockReturnValue({ selectRoute, execute });
 
     await executeSkill("test-skill");
 
-    expect(selectBackend).toHaveBeenCalledWith(
-      expect.objectContaining({ preferredAgent: "claude" }),
-      expect.any(String),
-      expect.any(Object),
+    expect(selectRoute).toHaveBeenCalledWith(
+      expect.objectContaining({
+        preferredAgent: "claude",
+        explicitModel: "claude-3-opus",
+      }),
     );
-
-    expect(dispatchToAgent).toHaveBeenCalledWith(
-      expect.objectContaining({ agent: "claude", model: "claude-3-opus" }),
+    expect(execute).toHaveBeenCalledWith(
+      expect.objectContaining({
+        agent: "claude",
+        model: "claude-3-opus",
+        env: { GWRK_EFFORT: "high" },
+        stdin: expect.stringContaining("test prompt"),
+      }),
     );
+    expect(execute.mock.calls[0][0]).not.toHaveProperty("prompt");
   });
 });

@@ -1,0 +1,261 @@
+# Architecture-aware policy selection plan
+
+Preserve `ProjectDesign` across workspace profile detection and compose compatible architecture, language and framework rules. Keep `gwrk init` deterministic and model-free while checks remain inactive until explicit configuration. Blocked: Phase 4 prompt delivery depends on unified routing (043).
+
+## Target policy architecture
+
+```mermaid
+flowchart LR
+  Config["Project Config"] -->|supplies design| Profile["Profile Policy"]
+  Detector["Profile Detector"] -->|resolves workspaces| Profile
+  Manifests["Skill Manifests"] -->|declares selectors| Composer["Policy Composer"]
+  Profile -->|passes profile| Composer
+  Composer -->|produces policy| Context["Context Renderer"]
+  Composer -->|produces policy| Runtime["Skill Runtime"]
+  Init["Init Command"] -->|writes context| Context
+  Runtime -->|formats blocks| Transport["Prompt Transport"]
+```
+
+## Contract mapping
+
+| Contract group | Symbols | Phase | Contract file |
+|---|---|---|---|
+| Profile design inheritance | `ProjectProfile` and `mergeProfileOverrides` and `resolveWorkspacePolicyProfile` | Phase 1 | `contracts/policy-selection.md` |
+| Pure policy composition | `EnforcementSkillSelectors` and `evaluateEnforcementCandidate` and `composeEffectivePolicy` | Phase 2 | `contracts/policy-selection.md` |
+| Runtime baselines and packs | `resolveEffectivePolicy` and `resolveEnforcementSkills` and `formatEffectivePolicyPrompt` | Phase 3 | `contracts/policy-selection.md` |
+| Model-free init and transport | `ContextInput` and `contextMarkdown` | Phase 4 | `contracts/policy-selection.md` |
+
+### Phase 1: Profile design and workspace inheritance
+
+#### Files
+
+- `src/domain/types.ts` (MODIFY: Add optional `design` metadata to `ProjectProfile` and export `WorkspaceProfileConfig`)
+- `src/domain/profile-policy.ts` (NEW: Implement pure `mergeProfileOverrides` and `resolveWorkspacePolicyProfile`)
+- `src/domain/profile-policy.test.ts` (NEW: Test design inheritance and workspace stack overrides and unchanged fallback without design)
+- `src/domain/prompt-conditioner.ts` (MODIFY: Emit `<design>` inside `<project_context>` only when `profile.design` is set)
+- `src/domain/index.ts` (MODIFY: Export pure profile policy contracts and helpers)
+- `src/utils/config.ts` (MODIFY: Allow optional `design` overrides inside `GwrkConfigSchema.workspaces`)
+- `src/engine/profile-detector.ts` (MODIFY: Read ancestor `.gwrkrc.json` in worktrees and delegate merging to `src/domain/profile-policy.js`)
+- `src/engine/profile-detector.test.ts` (MODIFY: Verify polyglot fixtures preserve shared `design` while resolving stack and toolchain per workspace)
+- `src/engine/prompt-conditioner.test.ts` (MODIFY: Verify `<design>` renders when present and stays absent for unconfigured profiles)
+
+#### Governance and skills
+
+- Architecture rules: `.gwrk/architecture.md` and `docs/decisions/ADR-013-desired-architecture.md`
+- Decisions: `docs/decisions/ADR-010-decision-records.md` and `docs/decisions/ADR-011-hexagonal-and-agent-port.md`
+- Skills: `compile-gate`
+- Delivers: `FR-001` and `TR-001` for `F08`
+
+#### Test Strategy
+
+| ID | Type | Target | Assertion |
+|---|---|---|---|
+| TR-001 | integration | `src/engine/profile-detector.test.ts` | Polyglot fixture preserves shared design metadata while resolving language and framework per workspace |
+| TR-005 | unit | `src/domain/profile-policy.test.ts` | Pure profile policy preserves existing behavior when `project.design` is absent and merges workspace overrides |
+| TR-006 | unit | `src/engine/prompt-conditioner.test.ts` | Prompt conditioning emits `<design>` only when `profile.design` exists |
+
+#### Done When
+
+```bash
+pnpm build
+pnpm exec vitest run src/domain/profile-policy.test.ts src/engine/profile-detector.test.ts src/engine/prompt-conditioner.test.ts src/utils/config.test.ts src/architecture.test.ts
+```
+
+### Phase 2: Policy composition and manifest selectors
+
+#### Files
+
+- `src/plugins/manifest.ts` (MODIFY: Add optional `architectures` and `principles` and `projectScope` selectors plus `"define"` scope)
+- `src/plugins/manifest.test.ts` (MODIFY: Verify new selector parsing and legacy enforcement manifest compatibility)
+- `src/domain/architecture-context.ts` (MODIFY: Export pure `lookupLanguageGuidance` and `lookupFrameworkGuidance` helpers)
+- `src/domain/policy-selection.ts` (NEW: Implement pure `evaluateEnforcementCandidate` and `composeEffectivePolicy` with override precedence and gap records)
+- `src/domain/policy-selection.test.ts` (NEW: Test selector filtering and override precedence and explicit gaps and inactive check status)
+- `src/domain/index.ts` (MODIFY: Export policy selection contracts and pure helpers)
+
+#### Governance and skills
+
+- Architecture rules: `.gwrk/architecture.md` and `docs/decisions/ADR-013-desired-architecture.md`
+- Decisions: `docs/decisions/ADR-011-hexagonal-and-agent-port.md` and `docs/decisions/ADR-012-plugin-registry-and-framework-packs.md`
+- Skills: `compile-gate`
+- Delivers: `FR-002` and `FR-005` with `TR-003` for `F08`
+
+#### Test Strategy
+
+| ID | Type | Target | Assertion |
+|---|---|---|---|
+| TR-003 | unit | `src/domain/policy-selection.test.ts` | Framework without compatible policy returns an explicit gap and legacy manifests keep their previous scope |
+| TR-007 | unit | `src/plugins/manifest.test.ts` | Enforcement manifests validate optional `architectures` and `principles` and `projectScope` selectors |
+| TR-008 | unit | `src/domain/policy-selection.test.ts` | Source override order ranks `project-local` above `project-entry` and `global` and `builtin` while keeping `checksStatus` inactive |
+
+#### Done When
+
+```bash
+pnpm build
+pnpm exec vitest run src/plugins/manifest.test.ts src/domain/policy-selection.test.ts src/application/architecture/context.test.ts src/architecture.test.ts
+```
+
+### Phase 3: Language baselines and pack compatibility
+
+#### Files
+
+- `src/plugins/builtins/skills/javascript-standards/manifest.yaml` (NEW: Declare `javascript-standards` enforcement skill for `JavaScript` across `scope: all`)
+- `src/plugins/builtins/skills/javascript-standards/SKILL.md` (NEW: Define ESM module boundaries and object port contracts and runtime validation rules)
+- `src/plugins/builtins/skills/gwrk-conventions/manifest.yaml` (MODIFY: Set `projectScope: gwrk` so repository rules stay scoped to `gwrk`)
+- `src/plugins/loader.ts` (MODIFY: Resolve project overrides and require Markdown instructions in enabled packs before policy selection)
+- `src/domain/policy-selection.ts` (MODIFY: Carry the optional pack path through policy selection)
+- `src/plugins/skill-runtime.ts` (MODIFY: Implement `resolveEffectivePolicy` and `formatEffectivePolicyPrompt` and delegate `resolveEnforcementSkills`. Render each selected pack directory once.)
+- `src/commands/plugin.ts` (MODIFY: Build active `gwrk plugin list --project` rows from shared policy selection and use `evaluateEnforcementCandidate` for disabled rows)
+- `src/plugins/skill-runtime.test.ts` (MODIFY: Verify policy composition, override precedence and `gwrk-conventions` scoping with loader-provided bodies)
+- `src/plugins/skill-runtime.p15.red.test.ts` (AMEND: Adapt the legacy loader mock to supply skill bodies. Verify consistent selectors across built-in, global and project-local sources.)
+- `src/plugins/enforcement.test.ts` (MODIFY: Verify `javascript-standards` loading and confirm external projects exclude `gwrk-conventions` even when their display name matches)
+- `src/plugins/framework-pack-compatibility.test.ts` (NEW: Verify all five language baselines and all ten external framework pack contracts plus gap cases)
+- `src/commands/plugin.p15.red.test.ts` (MODIFY: Verify `--project` listing honors architecture and framework and `projectScope` selectors)
+- `src/plugins/policy-selection.integration.test.ts` (MODIFY: Exercise real loader precedence and project listing with incomplete packs)
+
+#### Governance and skills
+
+- Architecture rules: `.gwrk/architecture.md` and `docs/decisions/ADR-013-desired-architecture.md`
+- Decisions: `docs/decisions/ADR-009-domain-ontology-information-hierarchy-ux.md` and `docs/decisions/ADR-012-plugin-registry-and-framework-packs.md`
+- Skills: `compile-gate`
+- Delivers: `FR-002` and `FR-003` and `FR-005` with `TR-002` and `TR-003` for `F08`
+
+#### Test Strategy
+
+| ID | Type | Target | Assertion |
+|---|---|---|---|
+| TR-002 | integration | `src/plugins/skill-runtime.test.ts` | New and existing projects compose chosen architecture with compatible language and framework guidance while excluding unrelated and `gwrk` rules |
+| TR-009 | integration | `src/plugins/enforcement.test.ts` | Built-in `javascript-standards` loads for JavaScript projects and `gwrk-conventions` loads only when `_isGwrk` is true |
+| TR-010 | integration | `src/plugins/framework-pack-compatibility.test.ts` | All five baselines and pinned manifests for ten published packs resolve compatible stacks or report a gap |
+| TR-011 | integration | `src/commands/plugin.p15.red.test.ts` and `src/plugins/policy-selection.integration.test.ts` | Matching runtime and CLI policy selection across legacy and architecture-scoped skills |
+
+Project policy selection tests cover relative and absolute overrides from outside the project. The runtime uses the compatible version `1.0.0` entry when the version `2.0.0` override has a missing, blank or frontmatter-only `SKILL.md`. The JSON project listing shows one active row at version `1.0.0`.
+
+Without a usable entry, the runtime reports `missing-framework-binding` and the listing omits the pack. A disabled override stays listed as disabled and suppresses the lower copy even without `SKILL.md`.
+
+The loader tests apply both project disable settings to an override whose manifest uses a different name. Both settings suppress the override and the compatible entry. With neither setting, only the override supplies rules. The compiled CLI tests use an override for a different architecture and a compatible entry. They expect one disabled row with the configured name and override version. They check both disable settings with matching and renamed manifests.
+
+For an enabled renamed override, the prompt places `<!-- enforcement-skill: renamed-policy -->` directly above `Configured override policy`. The JSON project listing shows one active `fixture-framework-policy` row at version `2.0.0`.
+
+The runtime renders a shared pack once at its highest selected layer for direct paths and symbolic links. Within that layer, the first alias sets the pack's position. The listing keeps both names and their statuses. Either project disable setting leaves the installed pack at its original position when it disables only the alias.
+
+#### Done When
+
+```bash
+bash specs/044-architecture-aware-policy/gates/phase-03.sh
+```
+
+### Phase 4: Model-free init and prompt delivery
+
+#### Files
+
+- `src/domain/architecture-context.ts` (MODIFY: Render explicit policy gap notes in `contextMarkdown` while preserving manifest hashes when gaps are empty)
+- `src/adapters/architecture/context-files.ts` (MODIFY: Resolve installed policy candidates before passing their deterministic composition into context installation)
+- `src/application/architecture/install-context.ts` (MODIFY: Compose `EffectivePolicy` deterministically during context installation without certifying existing code)
+- `src/commands/init.ts` (MODIFY: Preserve `workspaces` and `project.design` across fresh and existing and `--workspace` runs with zero agent calls)
+- `src/domain/policy-selection.ts` (MODIFY: Resolve explicit task scope and built-in workflow scope as pure policy)
+- `src/utils/agent.ts` (MODIFY: Bind `EffectivePolicy` by workflow scope. Load grounding from the workspace owner. Read the active Selection section to identify generated guidance.)
+- `src/engine/profile-detector.ts` (MODIFY: Start policy lookup at the execution directory and retain the registered workspace and configured ancestors within the worktree)
+- `src/commands/plugin.ts` (MODIFY: Use the dispatch policy roots for project enforcement listing)
+- `src/plugins/skill-runtime.ts` (MODIFY: Omit generated rules already present in the architecture target)
+- `src/plugins/builtins/workflows/gwrk-specify/PROMPT.md` (MODIFY: Add the trusted enforcement slot)
+- `src/plugins/workflow-runtime.ts` (MODIFY: Forward workspace or root `ProjectProfile` with `design` into prompt conditioning and dispatch)
+- `src/application/architecture/context.test.ts` (MODIFY: Verify context rendering reflects composed rules and explicit gap notes while keeping checks inactive)
+- `src/commands/init.test.ts` (MODIFY: Verify zero agent dispatches and preserved source files and human `Decided` ADRs across fresh and repeat runs)
+- `src/utils/agent.test.ts` (MODIFY: Preserve trusted template and user input boundaries while accepting the effective policy wrapper. Use the real workspace policy root lookup.)
+- `src/utils/agent.grounding-decisions.test.ts` (MODIFY: Use the real workspace policy root lookup while testing decision grounding)
+- `src/utils/agent.policy-binding.test.ts` (NEW: Capture define and implement and review dispatches and verify effective policy bindings and gap notes)
+- `scripts/architecture-context-uat.py` (MODIFY: Exercise compiled CLI init across polyglot and missing-framework fixtures with zero model dispatches)
+
+#### Governance and skills
+
+- Architecture rules: `.gwrk/architecture.md` and `docs/decisions/ADR-004-agent-native-output.md`
+- Decisions: `docs/decisions/ADR-007-single-dispatch-path.md` and `docs/decisions/ADR-011-hexagonal-and-agent-port.md` and `docs/decisions/ADR-013-desired-architecture.md`
+- Skills: `compile-gate`
+- Delivers: `FR-004` and `FR-005` with `TR-002` and `TR-003` and `TR-004` for `F08`
+
+#### Test Strategy
+
+| ID | Type | Target | Assertion |
+|---|---|---|---|
+| TR-004 | integration | `src/commands/init.test.ts` | Fresh and repeated init calls make zero agent dispatches and preserve existing source code and human `Decided` ADRs |
+| TR-012 | unit | `src/application/architecture/context.test.ts` | Deterministic context rendering preserves manifest hashes without gaps and records explicit gap notes when bindings are missing |
+| TR-012 | unit | `src/application/architecture/context.test.ts` | Two-argument rendering uses the projected policy for TypeScript and Django and preserves Python and FastAPI output bytes when there are no gaps |
+| TR-013 | integration | `src/utils/agent.policy-binding.test.ts` | Define, implement and review prompts include Python and FastAPI workspace policy once and omit guidance from the installed TypeScript and Fastify root target |
+| TR-013 | integration | `src/utils/agent.policy-binding.test.ts` | Policy expansion preserves every byte of a target without generated policy sections, including literal `$$` in a Make recipe rule and headings in a fenced example |
+| TR-013 | integration | `src/utils/agent.policy-binding.test.ts` | One current gap per missing or incompatible framework pack before repair and zero after compatible rules load |
+| TR-013 | integration | `src/utils/agent.policy-binding.test.ts` | One current secondary-language gap before its pack loads and zero afterward, including older saved targets |
+| TR-013 | integration | `src/utils/agent.policy-binding.test.ts` | Byte equality for the saved target and decision index after pack repair |
+| TR-013 | integration | `src/utils/agent.policy-binding.test.ts` | FastAPI router guidance without the TypeScript root target's Django gap and fallback |
+| TR-013 | integration | `src/utils/agent.policy-binding.test.ts` | Go guidance in place of generated Python guidance for absent, `none` and `unspecified` primary languages |
+| TR-013 | integration | `src/utils/agent.policy-binding.test.ts` | Byte equality for saved polyglot targets and preservation of edited and quoted Python guidance |
+| TR-013 | integration | `src/utils/agent.policy-binding.test.ts` | Definition skill only in `<effective_policy>` for a custom workflow with task type `define` |
+| TR-013 | integration | `src/utils/agent.policy-binding.test.ts` | Byte equality for maintainer-edited guidance paragraphs and gap items with continuation lines |
+| TR-013 | integration | `src/utils/agent.policy-binding.test.ts` | Owning-worktree FastAPI policy and decision grounding for inherited Hexagonal Functional and explicit Clean |
+| TR-013 | integration | `src/utils/agent.policy-binding.test.ts` | One FastAPI rule from the registered workspace's relative override and no shadowed owner rule |
+| TR-013 | integration | `src/utils/agent.policy-binding.test.ts` | Workspace decision index with inherited architecture rules and execution in the workspace directory |
+| TR-013 | integration | `src/utils/agent.policy-binding.test.ts` | Inherited Python and FastAPI profile with execution in `services/api/src` |
+| TR-013 | integration | `src/utils/agent.policy-binding.test.ts` | One rule from the execution directory's relative rate-limit override and its decision index with both worktree defaults absent |
+| TR-013 | integration | `src/utils/agent.policy-binding.test.ts` | One active `fixture-fastapi` row at version `1.0.0` in project enforcement JSON from `services/api` when dispatch uses the owning worktree pack |
+| TR-013 | integration | `src/utils/agent.policy-binding.test.ts` | Byte equality for the inherited target and both decision indexes after dispatch |
+| TR-013 | integration | `src/utils/agent.policy-binding.test.ts` | Clean without root-only generated rules, with maintainer rules and one TDD rule |
+| TR-013 | integration | `src/utils/agent.policy-binding.test.ts` | Byte equality for the saved target and decision index under either design |
+| TR-013 | integration | `src/utils/agent.policy-binding.test.ts` | One active architecture rule with `-`, `*` or `+` as its list marker |
+| TR-013 | integration | `src/utils/agent.policy-binding.test.ts` | Active effective policy when the target quotes the rule in a fence or comment |
+| TR-013 | integration | `src/utils/agent.policy-binding.test.ts` | Selection fields govern generated guidance while preserving the Go and Gin maintainer note and saved target bytes |
+| TR-013 | integration | `src/utils/agent.test.ts` | Built-in `gwrk-specify` delivers the definition skill once and preserves user input |
+| TR-013 | integration | `src/utils/agent.test.ts` | Built-in `gwrk-implement` delivers the target rule once and retains the selected skill and framework gap |
+| TR-014 | e2e | `scripts/architecture-context-uat.py` | Built CLI init and assessment preview complete with zero model invocations across fresh and existing and polyglot fixtures |
+| TR-014 | e2e | `scripts/architecture-context-uat.py` | Context-only init combines detected Python and configured FastAPI without policy gaps or agent calls |
+| TR-014 | e2e | `scripts/architecture-context-uat.py` | Detecting Python on repeat init preserves the installed decision |
+
+#### Done When
+
+```bash
+pnpm build
+pnpm exec vitest run src/application/architecture/context.test.ts src/commands/init.test.ts src/utils/agent.test.ts src/utils/agent.policy-binding.test.ts src/utils/agent.grounding-decisions.test.ts src/plugins/workflow-runtime.test.ts src/architecture.test.ts
+python3 scripts/architecture-context-uat.py
+```
+
+Both dispatch regressions failed before repair and passed afterward. The phase gate passed 254 tests and eight compiled CLI checks. The CI suite passed 2,229 tests.
+
+## Coverage matrix
+
+| Item | Description | Phase | Verification |
+|---|---|---|---|
+| F08 | Architecture-aware profile inheritance and enforcement skill routing | Phase 1 through Phase 4 | `TR-001` through `TR-014` |
+| FR-001 | Preserve architecture and principles across profiles and workspaces | Phase 1 | `TR-001` and `TR-005` and `TR-006` |
+| FR-002 | Compose architecture and language and framework policy and report gaps | Phase 2 through Phase 4 | `TR-002` and `TR-003` and `TR-010` and `TR-012` |
+| FR-003 | Add JavaScript baseline and scope `gwrk-conventions` and verify packs | Phase 3 | `TR-002` and `TR-009` and `TR-010` and `TR-011` |
+| FR-004 | Keep `gwrk init` deterministic and model-free and preserve user ADRs | Phase 4 | `TR-004` and `TR-012` and `TR-014` |
+| FR-005 | Enforce override precedence and shared prompt bindings with inactive checks | Phase 2 through Phase 4 | `TR-008` and `TR-011` and `TR-012` and `TR-013` |
+| TR-001 | Polyglot fixture preserves shared design metadata per workspace | Phase 1 | `TR-001` |
+| TR-002 | Projects compose compatible policy and exclude unrelated or repo rules | Phase 3 and Phase 4 | `TR-002` and `TR-009` and `TR-013` |
+| TR-003 | Missing compatible policy returns a clear gap and legacy manifests load | Phase 2 and Phase 3 | `TR-003` and `TR-007` and `TR-010` |
+| TR-004 | Init makes zero agent calls and preserves code and ADRs and bindings | Phase 4 | `TR-004` and `TR-012` and `TR-013` and `TR-014` |
+
+## Sister spec dependencies
+
+- Upstream prerequisites: `040-pure-domain-boundary-gates` supplies `tests/helpers/architecture-boundary.ts` and pure domain modules. `042-port-adapter-separation` supplies port-purity gates and scoped CLI output. `043-unified-routing-prompt-delivery` supplies unified `WorkflowRuntime` prompt transport and `<code_quality>` expansion. Phases 1 through 3 can run on the reviewed port separation base. Phase 4 and final merge review require unified routing and prompt delivery to land.
+- Downstream consumers: Proposal 05 updates hexagonal folder layout guidance in `src/plugins/builtins/workflows/gwrk-plan/PROMPT.md` and exposes readiness in `gwrk project discover`. Proposal 06 exercises effective policy bindings inside hermetic integration gates.
+- Preserved contracts: `specs/039-architecture-context/contracts/context.md` and `specs/043-unified-routing-prompt-delivery/contracts/routing-and-dispatch.md` remain unchanged.
+
+## Plugin follow-up
+
+Record pack versions and compatibility results in the feature review. A pack that needs changes gets a companion gwrk-plugins change and a fixture tied to its reviewed revision.
+
+Phase 3 regression coverage rejects blank skill bodies before selection. The CLI reports disabled overrides when they suppress a compatible lower copy. RED reproduced four failures in `/tmp/gwrk-044-blank-policy-red.log`. The repaired phase gate passes 86 tests.
+
+Phase 3 shared-path alias regression keeps an installed policy active when a disabled override alias points to the same directory. Both project disable mechanisms failed before the effective-name deduplication repair. The phase gate now passes 95 checks.
+
+Phase 4 preparation adds an observed incompatible-framework initialization regression. TypeScript with Django must expose a policy gap and omit the Python ORM binding. The phase gate requires every named test file before execution, so a missing policy-dispatch test cannot produce a passing phase. Preserve the existing completed phases.
+Phase 3 canonical pack identity regression observes duplicate prompt rules when an override uses a symbolic link. Candidate discovery now resolves physical directories before prompt deduplication while preserving each effective policy name. The symbolic-link case failed before repair. Both disable mechanisms are also covered through links. All 101 phase checks pass.
+
+Phase 4 preparation now passes 176 checks and the compiled CLI acceptance script. The incompatible framework context regression, workspace design-loss regression and four shared-dispatch regressions failed before repair. The decision identity remains based on the selected context input. Installing a missing policy pack updates gaps without creating another target decision. Independent phase review remains required.
+
+TR-013 also dispatches an unregistered Python and FastAPI workspace. Verify inherited design and owning-worktree packs. Verify architecture target and decision grounding. Keep workspace execution and byte-identical saved context.
+
+TR-013 covers nearer registrations with inherited design and relative policy overrides. Grounding and enforcement retain configured ancestors within the worktree. Repeated initialization also deselects clean-code while preserving an edited target. Dispatch omits its generated rule and preserves maintainer text and saved bytes.
+
+The Phase 4 gate reproduced both review findings. Dispatch used the worktree policy and decision index, and project enforcement listed no `fixture-fastapi` row. After sharing the ordered policy lookup, the gate passed 264 tests and eight compiled CLI checks. Independent phase review remains required.
+
+The Phase 3 gate and `pnpm test:ci` fail three listing tests in `src/commands/plugin.p15.red.test.ts`. The module-wide profile detector mock returns `undefined` for the shared policy root lookup.

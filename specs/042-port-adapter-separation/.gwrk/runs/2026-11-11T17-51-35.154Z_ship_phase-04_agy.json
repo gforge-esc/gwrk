@@ -1,0 +1,26 @@
+{
+  "runId": "2026-11-11T17:51:35.154Z_ship_p04",
+  "feature": "042-port-adapter-separation",
+  "phase": "phase-04",
+  "command": "ship",
+  "agent": "agy",
+  "model": "gemini-3.8-flash-high",
+  "usage": {
+    "inputTokens": 560493,
+    "outputTokens": 27091,
+    "totalTokens": 587584
+  },
+  "startedAt": "2026-11-11T17:51:35.154Z",
+  "finishedAt": "2026-11-11T18:04:54.992Z",
+  "durationS": 800,
+  "exitCode": 0,
+  "attempt": 1,
+  "gateResult": "PASS",
+  "reviewVerdict": "GO",
+  "filesChanged": 1,
+  "linesAdded": 26,
+  "linesDeleted": 0,
+  "gitCommit": "effaad76a88821f91fb542633220a83647dd4ac3",
+  "gitBranch": "feat/042-port-adapter-separation",
+  "digest": []
+}

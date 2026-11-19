@@ -6,10 +6,16 @@ import { execSync } from "node:child_process";
 import * as fs from "node:fs";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
+import { warnCli } from "../adapters/cli/output-scope.js";
+import type { ProjectProfile } from "../domain/types.js";
 import { IntentEngine, type IntentSummary } from "../engine/intent-engine.js";
 import { detectProfile } from "../engine/profile-detector.js";
 import { conditionPrompt } from "../engine/prompt-conditioner.js";
-import { type TaskDispatch, dispatchToAgent } from "../utils/agent.js";
+import {
+  type TaskDispatch,
+  type TaskResult,
+  dispatchToAgent,
+} from "../utils/agent.js";
 import { PluginLoader, PluginNotFoundError } from "./loader.js";
 import type { JsonIntent, WorkflowManifest } from "./manifest.js";
 
@@ -165,12 +171,19 @@ export function wouldShrinkExistingFile(
 }
 
 interface WorkflowOptions {
+  profile?: ProjectProfile;
   /** Assessment requires structured output without mutation intents. */
   reportOnly?: boolean;
-  recordedResult?: Awaited<ReturnType<typeof dispatchToAgent>>;
+  recordedResult?: TaskResult;
+  nativeOnly?: boolean;
+  allowMissingPrompt?: boolean;
+  dispatcher?: (task: TaskDispatch) => Promise<TaskResult>;
+  featureDir?: string;
+  taskType?: string;
   projectRoot?: string;
   agent?: string;
   model?: string;
+  effort?: string;
   quiet?: boolean;
   tolerant?: boolean;
   /**
@@ -194,6 +207,7 @@ interface WorkflowResult {
   intents: JsonIntent[];
   summaries: IntentSummary[];
   logPath?: string;
+  taskResult?: TaskResult;
 }
 
 /**
@@ -302,65 +316,106 @@ export class WorkflowRuntime {
   async executeWorkflow(
     name: string,
     input: string,
+    options: WorkflowOptions & { nativeOnly: true },
+  ): Promise<WorkflowResult & { taskResult: TaskResult }>;
+  async executeWorkflow(
+    name: string,
+    input: string,
+    options?: WorkflowOptions,
+  ): Promise<WorkflowResult>;
+  async executeWorkflow(
+    name: string,
+    input: string,
     options: WorkflowOptions = {},
   ): Promise<WorkflowResult> {
     const projectRoot = options.projectRoot || process.cwd();
 
-    // Resolve manifest and path
+    if (options.nativeOnly && options.reportOnly) {
+      throw new Error(
+        "Native execution and report-only execution are mutually exclusive.",
+      );
+    }
+    if (options.recordedResult && !options.reportOnly) {
+      throw new Error("Recorded output requires report-only execution.");
+    }
+    const dispatcher = options.dispatcher ?? dispatchToAgent;
     const loader = options.projectRoot
       ? new PluginLoader({ projectDir: options.projectRoot })
       : this.loader;
-    const plugin = await loader.resolvePlugin(name);
-    const manifest = plugin.manifest as WorkflowManifest;
-    const pluginPath = plugin.path;
+    const permitMissingPrompt =
+      options.nativeOnly && options.allowMissingPrompt;
+    const plugin = await loader.resolvePlugin(name).catch((error) => {
+      if (permitMissingPrompt && error instanceof PluginNotFoundError)
+        return undefined;
+      throw error;
+    });
+    const manifest = plugin?.manifest as WorkflowManifest | undefined;
 
-    // Load the workflow prompt from manifest.prompt or PROMPT.md in the plugin directory
-    const promptPath = path.resolve(pluginPath, manifest.prompt || "PROMPT.md");
     let basePrompt = "";
-    try {
-      basePrompt = await readFile(promptPath, "utf-8");
-    } catch {
-      // If PROMPT.md is missing, we use a default or fail
-      // For core workflows, PROMPT.md is expected.
-      throw new Error(
-        `Workflow '${name}' is missing PROMPT.md in ${pluginPath}`,
+    if (plugin?.path) {
+      const promptPath = path.resolve(
+        plugin.path,
+        manifest?.prompt || "PROMPT.md",
       );
+      try {
+        basePrompt = await readFile(promptPath, "utf8");
+      } catch (error) {
+        if (
+          !permitMissingPrompt ||
+          (error as NodeJS.ErrnoException).code !== "ENOENT"
+        ) {
+          throw new Error(
+            `Workflow '${name}' is missing PROMPT.md in ${plugin.path}`,
+            { cause: error },
+          );
+        }
+      }
+      const includes = /<!--\s*@include\s+([^\s]+)\s*-->/g;
+      for (const match of [...basePrompt.matchAll(includes)]) {
+        const includeTarget = path.resolve(path.dirname(promptPath), match[1]);
+        const included = await readFile(includeTarget, "utf8");
+        basePrompt = basePrompt.replace(match[0], () => included);
+      }
+    } else if (!permitMissingPrompt) {
+      throw new Error(`Workflow '${name}' has no prompt directory.`);
     }
 
-    // Resolve <!-- @include <relative-path> --> directives so workflows can share
-    // a single canonical methodology prompt without duplicating prose.
-    const includeRegex = /<!--\s*@include\s+([^\s]+)\s*-->/g;
-    for (const match of [...basePrompt.matchAll(includeRegex)]) {
-      const includeTarget = path.resolve(path.dirname(promptPath), match[1]);
-      const includedContent = await readFile(includeTarget, "utf-8");
-      basePrompt = basePrompt.replace(match[0], includedContent);
-    }
-
-    // Phase 13: Project-aware prompt conditioning
-    const profile = await detectProfile(projectRoot);
+    const profile = options.profile ?? (await detectProfile(projectRoot));
     const conditionedPrompt = conditionPrompt(basePrompt, profile);
-
-    // Inject the outputSchema and input into the final prompt
-    // Input is wrapped in XML tags to prevent prompt injection from user content
-    const fullPrompt = `${conditionedPrompt}\n\n<output_contract>\nYour output MUST be a single JSON object matching this schema:\n${JSON.stringify(manifest.outputSchema, null, 2)}\n</output_contract>\n\n<user_input>\n${input}\n</user_input>`;
+    const userInput = `<user_input>\n${input}\n</user_input>`;
+    const outputSchema = manifest?.outputSchema;
+    const template = options.nativeOnly
+      ? conditionedPrompt
+      : `${conditionedPrompt}\n\n<output_contract>\nYour output MUST be a single JSON object matching this schema:\n${JSON.stringify(outputSchema, null, 2)}\n</output_contract>`;
 
     const task: TaskDispatch = {
-      type: "workflow",
-      prompt: fullPrompt,
+      type: options.taskType ?? "workflow",
+      stdin: [template, userInput].filter(Boolean).join("\n\n"),
+      promptParts: { template, userInput },
+      profile,
       agent: options.agent,
       model: options.model,
+      env: options.effort ? { GWRK_EFFORT: options.effort } : undefined,
+      featureDir: options.featureDir,
       workDir: projectRoot,
       workflow: name,
       quiet: options.quiet,
-      // Enforce the contract at the model level ONLY when the workflow opts in
-      // (e.g. Claude's --json-schema). Content-heavy workflows write files
-      // natively and only report a manifest — forcing large structured output
-      // there exhausts the model's retries and fails an otherwise-good run.
-      // See WorkflowManifestSchema.enforceOutputSchema.
-      outputSchema: manifest.enforceOutputSchema
-        ? manifest.outputSchema
-        : undefined,
+      outputSchema:
+        !options.nativeOnly && manifest?.enforceOutputSchema
+          ? outputSchema
+          : undefined,
     };
+
+    if (options.nativeOnly) {
+      const taskResult = await dispatcher(task);
+      return {
+        summary: taskResult.unwrappedStdout ?? taskResult.stdout,
+        intents: [],
+        summaries: [],
+        logPath: taskResult.logPath,
+        taskResult,
+      };
+    }
 
     // Baseline HEAD captured BEFORE dispatch so hasArtifacts() can detect
     // native work the agent committed during the run (which leaves a clean
@@ -375,11 +430,7 @@ export class WorkflowRuntime {
       }
     })();
 
-    if (options.recordedResult && !options.reportOnly) {
-      throw new Error("Recorded output requires report-only execution.");
-    }
-    const result = options.recordedResult ?? (await dispatchToAgent(task));
-
+    const result = options.recordedResult ?? (await dispatcher(task));
     // Detect native artifacts (files the agent wrote directly). Used by both
     // the structured-output safety net and the FR-029 tolerant path below.
     // Counts BOTH uncommitted changes (dirty tree) AND commits the agent made
@@ -404,7 +455,7 @@ export class WorkflowRuntime {
       }
     };
 
-    if (result.exitCode !== 0) {
+    if (result.exitCode !== 0 || result.status === "failure") {
       // Safety net: Claude under --json-schema can exhaust its structured-output
       // retries (subtype "error_max_structured_output_retries", exit 1) AFTER
       // writing the deliverable files natively — the work is done, only the
@@ -413,8 +464,13 @@ export class WorkflowRuntime {
       const exhaustedStructuredOutput = result.stdout.includes(
         "error_max_structured_output_retries",
       );
-      if (!options.reportOnly && exhaustedStructuredOutput && hasArtifacts()) {
-        console.warn(
+      if (
+        !options.reportOnly &&
+        result.exitCode !== 0 &&
+        exhaustedStructuredOutput &&
+        hasArtifacts()
+      ) {
+        warnCli(
           "[workflow-runtime] Agent exhausted structured-output retries but wrote artifacts natively — recovering as native success.",
         );
         return {
@@ -425,7 +481,7 @@ export class WorkflowRuntime {
         };
       }
       throw new Error(
-        `Workflow execution failed with exit code ${result.exitCode}: ${result.stderr}`,
+        `Workflow execution failed with exit code ${result.exitCode || 1}: ${result.error ?? result.stderr}`,
       );
     }
 
@@ -445,7 +501,7 @@ export class WorkflowRuntime {
         (result.nativeWriter || options.tolerant || hasArtifacts())
       ) {
         const preview = result.stdout.substring(0, 200).replace(/\n/g, " ");
-        console.warn(
+        warnCli(
           `[workflow-runtime] Agent returned prose instead of JSON (tolerant mode). Preview: ${preview}…`,
         );
         return {
@@ -462,8 +518,10 @@ export class WorkflowRuntime {
       );
     }
 
-    // FR-L25-001: Validate output against manifest.outputSchema
-    validateAgainstSchema(parsedOutput, manifest.outputSchema, name);
+    // FR-L25-001: Validate output against outputSchema
+    if (!outputSchema)
+      throw new Error(`Workflow '${name}' has no output schema.`);
+    validateAgainstSchema(parsedOutput, outputSchema, name);
 
     // Type-narrow after schema validation
     const output = parsedOutput as WorkflowOutput;
@@ -490,7 +548,7 @@ export class WorkflowRuntime {
           intent.command.includes("tee") ||
           intent.command.includes(">>")
         ) {
-          console.warn(
+          warnCli(
             "  ⚠ Filtered RUN_COMMAND intent with shell redirect — agent already applied changes natively.",
           );
           return false;
@@ -504,7 +562,7 @@ export class WorkflowRuntime {
         intent.action === "WRITE_FILE" &&
         intent.filePath?.endsWith("tasks.json")
       ) {
-        console.warn(
+        warnCli(
           "  ⚠ Filtered WRITE_FILE intent targeting tasks.json — agent already applied changes natively.",
         );
         return false;
@@ -525,7 +583,7 @@ export class WorkflowRuntime {
           : null;
         const incoming = intent.content ?? "";
         if (wouldShrinkExistingFile(existing, incoming)) {
-          console.warn(
+          warnCli(
             `  ⚠ Kept the on-disk ${intent.filePath} — the agent wrote it directly and the WRITE_FILE intent had less content (${incoming.length} vs ${existing?.length} chars).`,
           );
           return false;
@@ -554,7 +612,7 @@ export class WorkflowRuntime {
             (allowed) => fp.endsWith(allowed) || fp.includes(allowed),
           );
           if (!inScope) {
-            console.warn(
+            warnCli(
               `  ⚠ Filtered WRITE_FILE intent outside allowed scope: ${fp}`,
             );
             return false;

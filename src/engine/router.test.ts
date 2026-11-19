@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { describe, expect, it, vi, beforeEach } from "vitest";
+import * as registryLoader from "../adapters/agents/registry-loader.js";
 import { selectBackend } from "./router.js";
 import * as quotaModule from "./quota.js";
 import { AgentBackendRegistry } from "../plugins/agent-registry.js";
@@ -156,6 +157,10 @@ describe("FR-014 / Phase 4: Routing & Intelligence", () => {
     });
 
     it("defaults to agy for implement tasks even if not in fallbackOrder", async () => {
+        vi.spyOn(registryLoader, "tryLoadRegistry").mockReturnValueOnce({
+          ok: false,
+          error: { code: "MISSING_CONFIG_FILE", message: "No fixture registry" },
+        });
         vi.spyOn(configModule, 'loadConfig').mockReturnValue({
             agents: {
               fallbackOrder: ['gemini', 'claude']

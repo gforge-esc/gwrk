@@ -10,6 +10,10 @@
 - Ask clarifying questions until all acceptance criteria have executable assertions. Prefer multiple-choice or ≤5-word answers.
 </scope_constraints>
 
+<code_quality>
+{{enforcement}}
+</code_quality>
+
 ## Branch Discipline
 
 > [!IMPORTANT]
