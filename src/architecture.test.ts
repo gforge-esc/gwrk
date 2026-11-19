@@ -6,6 +6,10 @@ import fs from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import {
+  architectureViolations,
+  inspectArchitectureSource,
+} from "../tests/helpers/architecture-boundary.js";
+import {
   buildDiagnosisPrompt,
   evaluateReviewVerdict,
   evaluateScopedTestOutcome,
@@ -27,127 +31,214 @@ function walkTsFiles(dir: string): string[] {
   return results;
 }
 
-function getStaticImports(
-  filePath: string,
-): { spec: string; targetPkg: string; targetRel: string }[] {
-  const content = fs.readFileSync(filePath, "utf-8");
-  const re =
-    /^\s*(?:import|export)\s+(?:type\s+)?(?:[^"']*?\s+from\s+)?["'](\.[^"']+)["']/gm;
-  const out: { spec: string; targetPkg: string; targetRel: string }[] = [];
-  for (const match of content.matchAll(re)) {
-    const spec = match[1];
-    const resolved = path.resolve(
-      path.dirname(filePath),
-      spec.replace(/\.js$/, ".ts"),
-    );
-    const rel = path
-      .relative(path.resolve("src"), resolved)
-      .replace(/\\/g, "/");
-    const targetPkg = rel.includes("/") ? rel.split("/")[0] : "(root)";
-    out.push({ spec, targetPkg, targetRel: rel });
-  }
-  return out;
+function fixture(name: string): string {
+  return fs.readFileSync(
+    path.resolve("tests/fixtures/architecture-boundary", name),
+    "utf-8",
+  );
 }
 
-describe("034-hexagonal-architecture: 4-Layer Boundary Gate (ADR-011)", () => {
-  it("src/domain/** has zero outward imports to any other layer", () => {
-    const domainFiles = walkTsFiles(path.resolve("src/domain"));
-    expect(domainFiles.length).toBeGreaterThan(0);
-
-    const violations: string[] = [];
-    for (const file of domainFiles) {
-      const relFile = path.relative(path.resolve("src"), file);
-      for (const imp of getStaticImports(file)) {
-        if (imp.targetPkg !== "domain") {
-          violations.push(`${relFile} -> ${imp.targetRel}`);
-        }
-      }
-    }
-    expect(violations).toEqual([]);
+describe("Architecture import detection", () => {
+  it("detects static, package and dynamic dependencies", () => {
+    const { imports } = inspectArchitectureSource(
+      "domain/fixture.ts",
+      fixture("imports.txt"),
+    );
+    expect(imports.map((entry) => entry.specifier)).toEqual([
+      "node:fs",
+      "fastify",
+      "better-sqlite3",
+      "node:fs/promises",
+      "node:net",
+      "node:child_process",
+      null,
+    ]);
+    expect(
+      architectureViolations("domain/fixture.ts", fixture("imports.txt")),
+    ).toEqual([
+      "domain/fixture.ts -> package:node:fs",
+      "domain/fixture.ts -> package:fastify",
+      "domain/fixture.ts -> package:better-sqlite3",
+      "domain/fixture.ts -> package:node:fs/promises",
+      "domain/fixture.ts -> dynamic:node:net",
+      "domain/fixture.ts -> require:node:child_process",
+      "domain/fixture.ts -> dynamic:<non-literal>",
+    ]);
   });
 
-  it("src/ports/** imports only from src/domain/** and src/ports/**", () => {
-    const portFiles = walkTsFiles(path.resolve("src/ports"));
-    expect(portFiles.length).toBeGreaterThan(0);
-
-    const violations: string[] = [];
-    for (const file of portFiles) {
-      const relFile = path.relative(path.resolve("src"), file);
-      for (const imp of getStaticImports(file)) {
-        if (imp.targetPkg !== "domain" && imp.targetPkg !== "ports") {
-          violations.push(`${relFile} -> ${imp.targetRel}`);
-        }
-      }
-    }
-    expect(violations).toEqual([]);
+  it("ignores import syntax inside prompt text", () => {
+    expect(
+      architectureViolations("application/prompt.ts", fixture("prompt.txt")),
+    ).toEqual([]);
   });
 
-  it("src/application/** imports only from src/domain/**, src/ports/**, and src/application/**", () => {
-    const appFiles = walkTsFiles(path.resolve("src/application"));
-    expect(appFiles.length).toBeGreaterThan(0);
-
-    const violations: string[] = [];
-    for (const file of appFiles) {
-      const relFile = path.relative(path.resolve("src"), file);
-      for (const imp of getStaticImports(file)) {
-        if (
-          imp.targetPkg !== "domain" &&
-          imp.targetPkg !== "ports" &&
-          imp.targetPkg !== "application"
-        ) {
-          violations.push(`${relFile} -> ${imp.targetRel}`);
-        }
-      }
-    }
-    expect(violations).toEqual([]);
+  it("detects direct ambient process and clock reads", () => {
+    expect(
+      architectureViolations("domain/fixture.ts", fixture("ambient.txt")),
+    ).toEqual([
+      "domain/fixture.ts -> ambient:process.cwd",
+      "domain/fixture.ts -> ambient:process.env",
+      "domain/fixture.ts -> ambient:Date.now",
+      "domain/fixture.ts -> ambient:new Date()",
+    ]);
   });
 
-  it("src/db/** has zero imports from engine, utils, plugins, server, or commands", () => {
-    const dbFiles = walkTsFiles(path.resolve("src/db"));
-    expect(dbFiles.length).toBeGreaterThan(0);
+  it("allows domain types and rejects domain values in port imports", () => {
+    const source = [
+      'import type { A } from "../domain/types.js";',
+      'import { type B } from "../domain/types.js";',
+      'export { type C } from "../domain/types.js";',
+      'import { type D, value } from "../domain/types.js";',
+      'export { otherValue } from "../domain/types.js";',
+    ].join("\n");
 
-    const violations: string[] = [];
-    for (const file of dbFiles) {
-      const relFile = path.relative(path.resolve("src"), file);
-      for (const imp of getStaticImports(file)) {
-        if (
-          imp.targetPkg !== "db" &&
-          imp.targetPkg !== "domain" &&
-          imp.targetPkg !== "ports"
-        ) {
-          violations.push(`${relFile} -> ${imp.targetRel}`);
-        }
-      }
-    }
-    expect(violations).toEqual([]);
+    expect(architectureViolations("ports/fixture.ts", source)).toEqual([
+      "ports/fixture.ts -> runtime-domain-dependency:domain/types.js",
+      "ports/fixture.ts -> runtime-domain-dependency:domain/types.js",
+    ]);
   });
 
-  it("src/utils/** has zero static imports from src/server/**", () => {
-    const utilFiles = walkTsFiles(path.resolve("src/utils"));
-    const violations: string[] = [];
-    for (const file of utilFiles) {
-      const relFile = path.relative(path.resolve("src"), file);
-      for (const imp of getStaticImports(file)) {
-        if (imp.targetPkg === "server") {
-          violations.push(`${relFile} -> ${imp.targetRel}`);
-        }
-      }
-    }
-    expect(violations).toEqual([]);
+  it("rejects direct legacy re-exports from adapter entry points", () => {
+    expect(
+      architectureViolations(
+        "adapters/notifications/index.ts",
+        'export { notifySlack } from "../../server/slack-notify.js";',
+      ),
+    ).toEqual([
+      "adapters/notifications/index.ts -> legacy-adapter-re-export:server/slack-notify.js",
+    ]);
   });
 
-  it("src/engine/** has zero static imports from src/server/**", () => {
-    const engineFiles = walkTsFiles(path.resolve("src/engine"));
-    const violations: string[] = [];
-    for (const file of engineFiles) {
-      const relFile = path.relative(path.resolve("src"), file);
-      for (const imp of getStaticImports(file)) {
-        if (imp.targetPkg === "server") {
-          violations.push(`${relFile} -> ${imp.targetRel}`);
-        }
-      }
+  it("detects cross-layer dynamic imports", () => {
+    expect(
+      architectureViolations(
+        "application/fixture.ts",
+        'await import("../adapters/git/index.js");',
+      ),
+    ).toEqual([
+      "application/fixture.ts -> dynamic-dependency:adapters/git/index.js",
+    ]);
+  });
+});
+
+const layers = [
+  "domain",
+  "ports",
+  "application",
+  "db",
+  "utils",
+  "engine",
+  "adapters",
+];
+
+describe("Hexagonal boundary gates (ADR-011)", () => {
+  it("keeps routing definitions and registry loading out of server shims", () => {
+    const removedShims = [
+      "agent-registry",
+      "model-selector",
+      "task-classifier",
+    ];
+    const retained = removedShims.filter((name) =>
+      fs.existsSync(path.resolve("src/server", `${name}.ts`)),
+    );
+    expect(retained).toEqual([]);
+  });
+
+  it.each(layers)("rejects new boundary violations in %s", (layer) => {
+    const srcRoot = path.resolve("src");
+    const files = walkTsFiles(path.join(srcRoot, layer));
+    expect(files.length).toBeGreaterThan(0);
+
+    const violations = files.flatMap((file) =>
+      architectureViolations(
+        path.relative(srcRoot, file).split(path.sep).join("/"),
+        fs.readFileSync(file, "utf-8"),
+      ),
+    );
+
+    expect(violations.sort()).toEqual([]);
+  });
+});
+
+function inspectFileImports(file: string) {
+  const source = fs.readFileSync(file, "utf-8");
+  return inspectArchitectureSource(file, source).imports;
+}
+
+function importsFromServerShims(
+  file: string,
+  imports: ReturnType<typeof inspectFileImports>,
+  shims: readonly string[],
+) {
+  return imports.filter(({ specifier }) => {
+    if (!specifier?.startsWith(".")) return false;
+    const target = path.posix.join(path.posix.dirname(file), specifier);
+    return shims.includes(target.replace(/\.js$/, ""));
+  });
+}
+
+describe("Unified agent routing dependencies", () => {
+  const registryShim = "src/server/agent-registry";
+
+  it.each([
+    "src/engine/model-routing.test.ts",
+    "src/server/backend-selector.test.ts",
+    "src/server/backend-selector.integration.test.ts",
+  ])("%s does not depend on server routing shims", (file) => {
+    expect(
+      importsFromServerShims(file, inspectFileImports(file), [
+        registryShim,
+        "src/server/model-selector",
+        "src/server/task-classifier",
+      ]),
+    ).toEqual([]);
+  });
+
+  it("keeps routing effects in adapters", () => {
+    const file = "src/adapters/agents/index.ts";
+    expect(
+      importsFromServerShims(file, inspectFileImports(file), [
+        "src/server/quota-prober",
+        "src/server/routing-decisions",
+      ]),
+    ).toEqual([]);
+  });
+
+  it("uses domain types in the quota prober", () => {
+    const file = "src/adapters/agents/quota-prober.ts";
+    const imports = inspectFileImports(file);
+    expect
+      .soft(importsFromServerShims(file, imports, [registryShim]))
+      .toEqual([]);
+    expect(imports).toContainEqual({
+      kind: "static",
+      specifier: "../../domain/agent-config.js",
+      typeOnly: true,
+    });
+  });
+
+  it.each([
+    "src/server/index.ts",
+    "src/server/agent-registry.test.ts",
+    "src/server/agent-registry.integration.test.ts",
+  ])("%s uses the adapter registry loader", (file) => {
+    const imports = inspectFileImports(file);
+    const specifier = "../adapters/agents/registry-loader.js";
+    expect
+      .soft(importsFromServerShims(file, imports, [registryShim]))
+      .toEqual([]);
+    expect.soft(imports).toContainEqual({
+      kind: "static",
+      specifier,
+      typeOnly: false,
+    });
+    if (file === "src/server/index.ts") {
+      expect(imports).toContainEqual({
+        kind: "re-export",
+        specifier,
+        typeOnly: false,
+      });
     }
-    expect(violations).toEqual([]);
   });
 });
 

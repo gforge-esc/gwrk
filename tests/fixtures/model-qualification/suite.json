@@ -1,0 +1,27 @@
+{
+  "schemaVersion": 1,
+  "id": "ticket-routing-v1",
+  "repeats": 3,
+  "fixtures": [
+    {
+      "id": "define-long-context",
+      "manifest": "define-long-context/fixture.json"
+    },
+    {
+      "id": "implement-seeded-defect",
+      "manifest": "implement-seeded-defect/fixture.json"
+    }
+  ],
+  "handoffs": [
+    {
+      "from": "define-long-context",
+      "to": "implement-seeded-defect",
+      "planSource": "candidate"
+    },
+    {
+      "from": "define-long-context",
+      "to": "implement-seeded-defect",
+      "planSource": "fixed"
+    }
+  ]
+}

@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import { logCliError } from "../adapters/cli/output-scope.js";
 import { loadSlackConfig } from "../utils/slack-client.js";
 
 interface SlackChannel {
@@ -62,7 +63,7 @@ async function inviteOwnerToChannel(channelId: string): Promise<void> {
 
     // already_in_channel is fine — idempotent
     if (!inviteRes.ok && inviteRes.error !== "already_in_channel") {
-      console.error(
+      logCliError(
         `Warning: could not invite user to channel: ${inviteRes.error}`,
       );
     }

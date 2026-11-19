@@ -5,6 +5,7 @@
 import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
+import { logCliError, warnCli } from "../adapters/cli/output-scope.js";
 
 /**
  * Auto-detects the default branch of a repository.
@@ -457,7 +458,7 @@ export function commitPaths(
       return;
     }
     // Non-fatal — warn but don't fail the define command
-    console.warn(`Warning: post-define commit failed: ${combined.trim()}`);
+    warnCli(`Warning: post-define commit failed: ${combined.trim()}`);
   }
 }
 
@@ -491,7 +492,7 @@ export function deleteRemoteBranch(
     const msg = e instanceof Error ? e.message : String(e);
     // Suppress the massive stack trace and buffer output from execFileSync
     const cleanMsg = msg.split("\n")[0];
-    console.error(
+    logCliError(
       `Failed to delete remote branch ${branch} (non-fatal): ${cleanMsg}`,
     );
   }

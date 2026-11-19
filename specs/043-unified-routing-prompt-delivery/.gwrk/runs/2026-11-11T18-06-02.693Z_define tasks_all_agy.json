@@ -1,0 +1,19 @@
+{
+  "runId": "2026-11-11T18:06:02.693Z_define_all",
+  "feature": "043-unified-routing-prompt-delivery",
+  "phase": "all",
+  "command": "define tasks",
+  "agent": "agy",
+  "model": "unknown",
+  "startedAt": "2026-11-11T18:06:02.693Z",
+  "finishedAt": "2026-11-11T18:06:02.956Z",
+  "durationS": 0,
+  "exitCode": 0,
+  "attempt": 1,
+  "filesChanged": 1,
+  "linesAdded": 276,
+  "linesDeleted": 0,
+  "gitCommit": "a181bb4a1130efa8de5eb8afe0810ceb744b41e1",
+  "gitBranch": "codex/unified-routing-prompt-delivery-red",
+  "digest": []
+}

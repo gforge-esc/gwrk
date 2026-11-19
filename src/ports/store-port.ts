@@ -16,6 +16,7 @@ export interface PlanStorePort {
     specsDir: string,
   ): Promise<{ added: number; skipped: number; phases: number }>;
   renderToMarkdown(outputPath: string): Promise<void>;
+  close(): void;
 }
 
 export interface RunEntry {
@@ -28,4 +29,5 @@ export interface RunEntry {
 
 export interface RunStorePort {
   recordCompression(report: CompressionReport, projectId: string): void;
+  close(): void;
 }
