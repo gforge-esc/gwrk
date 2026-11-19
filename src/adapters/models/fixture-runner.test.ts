@@ -618,6 +618,41 @@ describe("fixture runner adapter", () => {
 
   it.each([
     { variant: "reference lists", expectedCheck: "required-section" },
+    {
+      variant: "TR-032 comment-only acceptance scenarios",
+      expectedCheck: "required-section-spec.md-acceptance-scenarios",
+      acceptanceBody:
+        "<!-- Route unknown priorities to triage. -->\n<!--\nRoute unknown priorities to triage.\n-->",
+    },
+    {
+      variant: "TR-032 acceptance scenarios organized under a subheading",
+      expectedCheck: undefined,
+      expectedPassingCheck: "required-section-spec.md-acceptance-scenarios",
+      acceptanceBody:
+        "### Unknown priority\nRoute unknown priorities to triage.",
+    },
+    {
+      variant: "TR-032 a different ADR with the same prefix",
+      expectedCheck: "spec-ref-ADR-001",
+      firstAdr: "ADR-0010",
+    },
+    {
+      variant: "TR-032 an ADR cited by filename",
+      expectedCheck: undefined,
+      expectedPassingCheck: "spec-ref-ADR-001",
+      firstAdr: "docs/decisions/ADR-001-ticket-boundaries.md",
+    },
+    {
+      variant: "TR-033 an ADR cited only in a comment",
+      expectedCheck: "spec-ref-ADR-001",
+      firstAdr: "<!-- ADR-001 -->",
+    },
+    {
+      variant: "TR-033 a plan path cited only in a comment",
+      expectedCheck: "plan-ref-src/domain/select-queue.mjs",
+      planApproach:
+        "Repair queue selection. Run src/domain/select-queue.test.mjs.\n\n<!--\nsrc/domain/select-queue.mjs\n-->",
+    },
     { variant: "bare command", expectedCheck: "executable-plan-gate" },
     { variant: "echoed command", expectedCheck: "executable-plan-gate" },
     { variant: "failed dispatch", expectedCheck: "dispatch-gwrk-plan" },
@@ -641,15 +676,22 @@ describe("fixture runner adapter", () => {
     { variant: "TR-027 valid plan", expectedCheck: undefined },
   ])(
     "checks definition produced with $variant",
-    async ({ variant, expectedCheck, mismatchedWorkflow }) => {
+    async ({
+      variant,
+      expectedCheck,
+      expectedPassingCheck,
+      mismatchedWorkflow,
+      acceptanceBody = "Route unknown priorities to triage.",
+      firstAdr = "ADR-001",
+      planApproach = "Repair src/domain/select-queue.mjs and run src/domain/select-queue.test.mjs.",
+    }) => {
       const calls: TaskDispatch[] = [];
-      const specReferences =
-        "ADR-001 ADR-002 docs/refs/queue-contract.md docs/research/routing-brief.md docs/refs/acceptance.md";
+      const specReferences = `${firstAdr} ADR-002 docs/refs/queue-contract.md docs/research/routing-brief.md docs/refs/acceptance.md`;
       const gateCommand = "node --test src/domain/select-queue.test.mjs";
       const spec =
         variant === "reference lists"
           ? specReferences
-          : `# Ticket routing spec\n\n## Requirements\n${specReferences}\n\n## Acceptance scenarios\nRoute unknown priorities to triage.\n\n## Testing requirements\nExercise the 30-minute cutoff.\n`;
+          : `# Ticket routing spec\n\n## Requirements\n${specReferences}\n\n## Acceptance scenarios\n${acceptanceBody}\n\n## Testing requirements\nExercise the 30-minute cutoff.\n`;
       const rewrittenSpec = spec.replace(
         "Route unknown priorities to triage.",
         "Route unknown priorities to the standard queue.",
@@ -667,7 +709,7 @@ describe("fixture runner adapter", () => {
               "# Ticket routing plan",
               "",
               "## Approach",
-              "Repair src/domain/select-queue.mjs and run src/domain/select-queue.test.mjs.",
+              planApproach,
               "",
               "### Phase 1: Repair queue selection",
               "#### Done When",
@@ -822,6 +864,14 @@ describe("fixture runner adapter", () => {
               checkId.startsWith(expectedCheck) && !passed,
           ),
         ).toBe(true);
+      }
+      if (expectedPassingCheck) {
+        expect(result.gateChecks).toContainEqual(
+          expect.objectContaining({
+            checkId: expectedPassingCheck,
+            passed: true,
+          }),
+        );
       }
       expect(result.observedModel).toBe(
         mismatchedWorkflow ? "other-model" : "unknown",
