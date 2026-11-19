@@ -21,4 +21,4 @@ The merged reconciliation options retain the injected project and database. Isol
 | Durable adapter phase gate | 112 checks passed | `/tmp/gwrk-integration-durable3-full-phase-gate-green.log` |
 | Lint | 432 files passed | `/tmp/gwrk-integration-durable3-merge-lint.log` |
 
-Durable Phase 3 cleared code review and acceptance review at `679c6825`. Both required CI jobs passed in run 44447926701. No live Slack message was sent by these checks.
+Durable Phase 3 cleared code review and acceptance review at `679c6825`. Both required CI jobs passed in run 44447926701. These checks sent no live Slack messages.
