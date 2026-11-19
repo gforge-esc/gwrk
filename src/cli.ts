@@ -23,6 +23,7 @@ import { createGateCommand } from "./commands/gate.js";
 import { createHarvestCommand } from "./commands/harvest.js";
 import { createInitCommand } from "./commands/init.js";
 import { createMeasureCommand } from "./commands/measure.js";
+import { createModelsCommand } from "./commands/models.js";
 import { createPlanCommand } from "./commands/plan.js";
 import { createPluginCommand } from "./commands/plugin.js";
 import { createProjectCommand } from "./commands/project.js";
@@ -103,6 +104,7 @@ export function createCliProgram(): Command {
             "status",
             "project",
             "plugin",
+            "models",
           ];
 
           out += `  ${CYAN}Foxtrot Charlie${RESET}\n`;
@@ -166,12 +168,17 @@ export function createCliProgram(): Command {
   program.addCommand(createDeviceCommand());
   program.addCommand(createSkillCommand());
   program.addCommand(createPluginCommand());
+  program.addCommand(createModelsCommand());
 
   /**
    * Recursively apply exitOverride to a command and all its subcommands.
    */
   function applyExitOverride(cmd: Command) {
     cmd.exitOverride();
+    cmd.configureOutput({
+      writeOut: writeScopedStdout,
+      writeErr: writeScopedStderr,
+    });
     for (const sub of cmd.commands) {
       applyExitOverride(sub);
     }
