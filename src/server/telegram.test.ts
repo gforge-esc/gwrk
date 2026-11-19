@@ -12,7 +12,14 @@ import {
   loadTelegramConfig,
   notifyTelegram,
 } from "./telegram-notify.js";
-import { handleTelegramCommand, normalizeTelegramCommand } from "./telegram.js";
+import {
+  getTelegramStatus,
+  handleTelegramCommand,
+  normalizeTelegramCommand,
+  notifyTelegramPilotGuarded,
+  startTelegramBot,
+  stopTelegramBot,
+} from "./telegram.js";
 
 describe("Telegram Control Plane & Notifications", () => {
   const oldToken = process.env.TELEGRAM_BOT_TOKEN;
@@ -131,5 +138,51 @@ describe("Telegram Control Plane & Notifications", () => {
         body: expect.stringContaining("Phase 1 complete"),
       }),
     );
+  });
+
+  it("TR-015: disables Telegram transport in hosted pilot mode with zero outbound calls even when credentials exist", async () => {
+    const mockFetch = vi.fn();
+    global.fetch = mockFetch as any;
+
+    process.env.GWRK_PILOT_MODE = "true";
+    try {
+      const status = getTelegramStatus();
+      expect(status).toEqual({
+        enabled: false,
+        reason: "disabled_in_pilot",
+      });
+
+      const deps = {
+        queue: context.queue,
+        monitor: context.monitor,
+        git: context.git,
+        projectRoot: context.projectRoot,
+        config: {
+          server: { host: "localhost", port: 3000 },
+        } as any,
+        pilotMode: true,
+      };
+
+      await startTelegramBot(deps);
+      expect(mockFetch).not.toHaveBeenCalled();
+    } finally {
+      // biome-ignore lint/performance/noDelete: env cleanup in test
+      delete process.env.GWRK_PILOT_MODE;
+      await stopTelegramBot();
+    }
+  });
+
+  it("TR-015: suppresses outbound telegram notifications when pilot guard is active", async () => {
+    const mockFetch = vi.fn();
+    global.fetch = mockFetch as any;
+
+    const sent = await notifyTelegramPilotGuarded(
+      { text: "Pilot event" },
+      undefined,
+      { pilotMode: true },
+    );
+
+    expect(sent).toBe(false);
+    expect(mockFetch).not.toHaveBeenCalled();
   });
 });

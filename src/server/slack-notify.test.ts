@@ -159,6 +159,107 @@ describe("US-003: Slack Event Bridge", () => {
     expect(fetch).not.toHaveBeenCalled();
   });
 
+  it("TR-013: threads lifecycle events under stored (projectId, featureId) thread without process.cwd() fallback", async () => {
+    const postMessage = vi.fn().mockResolvedValue({
+      ok: true,
+      channel: SYNTHETIC_CHANNEL_ALPHA,
+      ts: "1731320000.000999",
+      message: { thread_ts: "1731320000.000100" },
+    });
+    vi.mocked(getSlackApp).mockReturnValue({
+      client: { chat: { postMessage } },
+    } as unknown as ReturnType<typeof getSlackApp>);
+
+    const registry = createSyntheticRegistry();
+    const receipt = await notifySlack(
+      { text: "Feature event", blocks: [] },
+      undefined,
+      {
+        projectId: SYNTHETIC_PROJECT_ALPHA.projectId,
+        featureId: "003-slack",
+        registry,
+      },
+    );
+
+    expect(postMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        channel: SYNTHETIC_CHANNEL_ALPHA,
+        thread_ts: "1731320000.000100",
+      }),
+    );
+    expect(receipt).toMatchObject({
+      delivered: true,
+      channelId: SYNTHETIC_CHANNEL_ALPHA,
+      threadTs: "1731320000.000100",
+    });
+  });
+
+  it("TR-013: delivers opsOnly events explicitly to project opsChannelId without feature thread binding", async () => {
+    const postMessage = vi.fn().mockResolvedValue({
+      ok: true,
+      channel: "C_OPS",
+      ts: "1731320000.000555",
+    });
+    vi.mocked(getSlackApp).mockReturnValue({
+      client: { chat: { postMessage } },
+    } as unknown as ReturnType<typeof getSlackApp>);
+
+    const registry = createSyntheticRegistry();
+    const receipt = await notifySlack(
+      { text: "Ops notification", blocks: [] },
+      undefined,
+      {
+        projectId: SYNTHETIC_PROJECT_ALPHA.projectId,
+        featureId: "003-slack",
+        opsOnly: true,
+        registry,
+      },
+    );
+
+    expect(postMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        channel: "C_OPS",
+        thread_ts: undefined,
+      }),
+    );
+    expect(receipt).toMatchObject({
+      delivered: true,
+      channelId: "C_OPS",
+    });
+  });
+
+  it("TR-013: ignores process.cwd() config when projectId is set and project has no Slack channel", async () => {
+    const postMessage = vi.fn();
+    vi.mocked(getSlackApp).mockReturnValue({
+      client: { chat: { postMessage } },
+    } as unknown as ReturnType<typeof getSlackApp>);
+    const fetch = vi.fn().mockResolvedValue({ ok: true });
+    vi.stubGlobal("fetch", fetch);
+
+    const registry = createSyntheticRegistry({
+      projects: [
+        {
+          ...SYNTHETIC_PROJECT_ALPHA,
+          projectId: "proj-unbound",
+          slack: null,
+        },
+      ],
+    });
+
+    const receipt = await notifySlack(
+      { text: "Unbound project event", blocks: [] },
+      undefined,
+      {
+        projectId: "proj-unbound",
+        registry,
+      },
+    );
+
+    expect(postMessage).not.toHaveBeenCalled();
+    expect(fetch).not.toHaveBeenCalled();
+    expect(receipt).toBeUndefined();
+  });
+
   it("FR-005: Converts ship:complete event to Block Kit message", async () => {
     // Test implementation here...
     expect(true).toBe(true);

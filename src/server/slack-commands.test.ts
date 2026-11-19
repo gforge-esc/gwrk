@@ -898,6 +898,154 @@ describe("slack-commands (FR-015, US-004)", () => {
     expect(helpText).toContain("define");
   });
 
+  describe("TR-016: synthetic slash commands project enforcement and rejection", () => {
+    it("rejects wrong workspace", async () => {
+      const response = await handleSlashCommand("status", {
+        ...context,
+        workspaceId: "W-wrong",
+      });
+      expect(response.response_type).toBe("ephemeral");
+      expect(response.blocks[0].text.text).toContain(
+        "Slack workspace is not enrolled.",
+      );
+    });
+
+    it("rejects wrong channel", async () => {
+      const response = await handleSlashCommand("status", {
+        ...context,
+        channelId: "C-wrong",
+      });
+      expect(response.response_type).toBe("ephemeral");
+      expect(response.blocks[0].text.text).toContain(
+        "Slack channel is not bound to a project.",
+      );
+    });
+
+    it("rejects unauthorized user", async () => {
+      const response = await handleSlashCommand("status", {
+        ...context,
+        userId: "U-stranger",
+      });
+      expect(response.response_type).toBe("ephemeral");
+      expect(response.blocks[0].text.text).toContain(
+        "No project role is assigned.",
+      );
+    });
+
+    it("enforces --project on shared channels and succeeds when specified", async () => {
+      const sharedChannel = "C-shared";
+      const sharedAlpha = {
+        ...SYNTHETIC_PROJECT_ALPHA,
+        slack: {
+          workspaceId: SYNTHETIC_WORKSPACE_ID,
+          channelId: sharedChannel,
+          sharedChannel: true,
+        },
+      };
+      const sharedBeta = {
+        ...SYNTHETIC_PROJECT_BETA,
+        slack: {
+          workspaceId: SYNTHETIC_WORKSPACE_ID,
+          channelId: sharedChannel,
+          sharedChannel: true,
+        },
+      };
+      const sharedRegistry = createSyntheticRegistry({
+        projects: [sharedAlpha, sharedBeta],
+        roles: [
+          {
+            projectId: sharedAlpha.projectId,
+            principalType: "slack_user",
+            principalId: `${SYNTHETIC_WORKSPACE_ID}:${SYNTHETIC_USER_MAINTAINER}`,
+            role: "maintainer",
+          },
+          {
+            projectId: sharedBeta.projectId,
+            principalType: "slack_user",
+            principalId: `${SYNTHETIC_WORKSPACE_ID}:${SYNTHETIC_USER_MAINTAINER}`,
+            role: "maintainer",
+          },
+        ],
+      });
+      const sharedRouting = createProjectRoutingService({
+        registry: sharedRegistry,
+      });
+      const sharedContext: CommandContext = {
+        ...context,
+        channelId: sharedChannel,
+        routingService: sharedRouting,
+      };
+
+      const ambiguousResponse = await handleSlashCommand(
+        "status",
+        sharedContext,
+      );
+      expect(ambiguousResponse.response_type).toBe("ephemeral");
+      expect(ambiguousResponse.blocks[0].text.text).toContain(
+        "Select one project explicitly. Candidate projects: alpha, beta",
+      );
+
+      const resolvedResponse = await handleSlashCommand(
+        "status --project alpha",
+        sharedContext,
+      );
+      expect(resolvedResponse.response_type).toBe("ephemeral");
+      expect(resolvedResponse.blocks[0].text.text).not.toContain(
+        "Select one project explicitly",
+      );
+    });
+
+    it("enforces --project on direct messages and succeeds when specified", async () => {
+      const dmChannel = "D123456";
+      const dmAlpha = {
+        ...SYNTHETIC_PROJECT_ALPHA,
+      };
+      const dmBeta = {
+        ...SYNTHETIC_PROJECT_BETA,
+      };
+      const dmRegistry = createSyntheticRegistry({
+        projects: [dmAlpha, dmBeta],
+        roles: [
+          {
+            projectId: dmAlpha.projectId,
+            principalType: "slack_user",
+            principalId: `${SYNTHETIC_WORKSPACE_ID}:${SYNTHETIC_USER_MAINTAINER}`,
+            role: "maintainer",
+          },
+          {
+            projectId: dmBeta.projectId,
+            principalType: "slack_user",
+            principalId: `${SYNTHETIC_WORKSPACE_ID}:${SYNTHETIC_USER_MAINTAINER}`,
+            role: "maintainer",
+          },
+        ],
+      });
+      const dmRouting = createProjectRoutingService({
+        registry: dmRegistry,
+      });
+      const dmContext: CommandContext = {
+        ...context,
+        channelId: dmChannel,
+        routingService: dmRouting,
+      };
+
+      const ambiguousResponse = await handleSlashCommand("status", dmContext);
+      expect(ambiguousResponse.response_type).toBe("ephemeral");
+      expect(ambiguousResponse.blocks[0].text.text).toContain(
+        "Select one project explicitly. Candidate projects: alpha, beta",
+      );
+
+      const resolvedResponse = await handleSlashCommand(
+        "status --project beta",
+        dmContext,
+      );
+      expect(resolvedResponse.response_type).toBe("ephemeral");
+      expect(resolvedResponse.blocks[0].text.text).not.toContain(
+        "Select one project explicitly",
+      );
+    });
+  });
+
   it("returns error for unknown command", async () => {
     const response = await handleSlashCommand("unknown", context);
     expect(response.blocks[0].text.text).toContain(

@@ -2,17 +2,62 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import type { KnownBlock } from "@slack/types";
 import { logCliOutput } from "../adapters/cli/output-scope.js";
 import type { GwrkConfig } from "../utils/config.js";
 import type { DispatchQueue } from "./dispatch.js";
 import type { GitManager } from "./git-manager.js";
 import type { SystemMonitor } from "./monitor.js";
 import { type CommandContext, handleSlashCommand } from "./slack-commands.js";
+import type { SlackMessage } from "./slack-messages.js";
 import {
   formatBlocksForTelegram,
   loadTelegramConfig,
   notifyTelegram,
 } from "./telegram-notify.js";
+
+export interface TelegramTransportStatus {
+  enabled: boolean;
+  reason?: "disabled_in_pilot";
+}
+
+export function isTelegramPilotDisabled(options?: {
+  pilotMode?: boolean;
+}): boolean {
+  if (options?.pilotMode !== undefined) {
+    return options.pilotMode;
+  }
+  if (
+    process.env.GWRK_PILOT_MODE === "true" ||
+    process.env.GWRK_HOSTED_PILOT === "true" ||
+    process.env.GWRK_PILOT === "true"
+  ) {
+    return true;
+  }
+  return false;
+}
+
+export function getTelegramStatus(options?: {
+  pilotMode?: boolean;
+}): TelegramTransportStatus {
+  if (isTelegramPilotDisabled(options)) {
+    return { enabled: false, reason: "disabled_in_pilot" };
+  }
+  return { enabled: true };
+}
+
+export async function notifyTelegramPilotGuarded(
+  message:
+    | SlackMessage
+    | { text: string; blocks?: KnownBlock[]; chatId?: string },
+  projectRoot?: string,
+  options?: { pilotMode?: boolean },
+): Promise<boolean> {
+  if (isTelegramPilotDisabled(options)) {
+    return false;
+  }
+  return notifyTelegram(message, projectRoot);
+}
 
 interface TelegramUpdate {
   update_id: number;
@@ -91,7 +136,13 @@ export async function startTelegramBot(deps: {
   git: GitManager;
   projectRoot: string;
   config: GwrkConfig;
-}): Promise<void> {
+  pilotMode?: boolean;
+}): Promise<TelegramTransportStatus | undefined> {
+  if (isTelegramPilotDisabled(deps)) {
+    logCliOutput("✈️ Telegram transport disabled in hosted pilot mode.");
+    return { enabled: false, reason: "disabled_in_pilot" };
+  }
+
   const tgConfig = loadTelegramConfig(deps.projectRoot);
   if (!tgConfig || pollingActive) {
     return;

@@ -86,7 +86,7 @@ it.each([
   const result = await adapter
     .notify({ recipient, text: "Private work", ...change })
     .catch(() => undefined);
-  expect(Boolean(result && result.delivered)).toBe(false);
+  expect(Boolean(result?.delivered)).toBe(false);
   expect(postMessage).not.toHaveBeenCalled();
 });
 it("checks the requested recipient presence without selecting a workspace user", async () => {
