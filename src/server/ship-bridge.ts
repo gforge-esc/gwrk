@@ -63,8 +63,11 @@ export class ShipBridge {
     });
 
     orchestrator.on("ship:complete", (event) => {
+      const result = orchestrator.getResult?.();
       this.record.status = "completed";
       this.record.completedAt = new Date().toISOString();
+      this.record.prNumber = result?.prNumber;
+      this.record.prUrl = result?.prUrl;
 
       // Notify that it's ready for review (with blessing actions)
       // The phase_complete message is redundant if review_ready is sent

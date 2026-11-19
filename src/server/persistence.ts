@@ -4,6 +4,10 @@
 
 import * as fs from "node:fs";
 import * as path from "node:path";
+import {
+  type LegacyDispatchPayload,
+  decodeLegacyDispatchLine,
+} from "../domain/legacy-dispatch.js";
 import type { DispatchRecord } from "./types.js";
 
 /**
@@ -23,4 +27,41 @@ export function persistDispatch(
 
   const line = `${JSON.stringify(record)}\n`;
   fs.appendFileSync(dispatchesFile, line, "utf-8");
+}
+
+export type LegacyDispatchRecord = LegacyDispatchPayload & {
+  evidenceLevel: "legacy_unverified";
+};
+
+/**
+ * Reads legacy .gwrk/dispatches.jsonl entries tagged with evidenceLevel: "legacy_unverified".
+ * Does NOT mutate the filesystem or create directories if they do not exist.
+ */
+export function readLegacyDispatches(
+  projectRoot: string = process.cwd(),
+): LegacyDispatchRecord[] {
+  const dispatchesFile = path.join(projectRoot, ".gwrk", "dispatches.jsonl");
+  if (!fs.existsSync(dispatchesFile)) {
+    return [];
+  }
+
+  try {
+    const content = fs.readFileSync(dispatchesFile, "utf-8");
+    const lines = content.split("\n");
+    const records: LegacyDispatchRecord[] = [];
+
+    for (const line of lines) {
+      const parsed = decodeLegacyDispatchLine(line);
+      if (parsed) {
+        records.push({
+          ...parsed,
+          evidenceLevel: "legacy_unverified",
+        });
+      }
+    }
+
+    return records;
+  } catch {
+    return [];
+  }
 }

@@ -6,6 +6,7 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { App } from "@slack/bolt";
+import { exitCli, logCliError } from "../adapters/cli/output-scope.js";
 import { type SlackConfig, SlackConfigSchema } from "./config.js";
 
 interface SlackSetupResult {
@@ -51,8 +52,8 @@ export function loadSlackConfig(): SlackConfig | null {
 
   const result = SlackConfigSchema.safeParse(envVars);
   if (!result.success) {
-    console.error(`Slack configuration error: ${result.error.message}`);
-    process.exit(1);
+    logCliError(`Slack configuration error: ${result.error.message}`);
+    exitCli(1);
   }
 
   return result.data;

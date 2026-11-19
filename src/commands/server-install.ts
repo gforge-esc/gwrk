@@ -6,6 +6,7 @@ import { execSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { logCliOutput } from "../adapters/cli/output-scope.js";
 
 const PLIST_NAME = "com.gwrk.server.plist";
 const PLIST_PATH = path.join(os.homedir(), "Library/LaunchAgents", PLIST_NAME);
@@ -113,7 +114,7 @@ export const getLogs = async (
   options: { follow?: boolean } = {},
 ): Promise<void> => {
   if (!fs.existsSync(LOG_PATH)) {
-    console.log("No log file found.");
+    logCliOutput("No log file found.");
     return;
   }
 

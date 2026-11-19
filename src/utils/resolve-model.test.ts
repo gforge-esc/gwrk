@@ -2,15 +2,15 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { describe, expect, it, vi, beforeEach } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { resolveModelForTask } from "./resolve-model.js";
 
-// Mock loadRegistry to return a controlled backend config
-vi.mock("../domain/agent-config.js", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("../domain/agent-config.js")>();
-  return {
-    ...actual,
-    loadRegistry: vi.fn(() => ({
+import { tryLoadRegistry } from "../adapters/agents/registry-loader.js";
+
+vi.mock("../adapters/agents/registry-loader.js", () => ({
+  tryLoadRegistry: vi.fn(() => ({
+    ok: true,
+    value: {
       backends: {
         gemini: {
           name: "gemini",
@@ -26,9 +26,9 @@ vi.mock("../domain/agent-config.js", async (importOriginal) => {
         },
       },
       fallbackOrder: ["gemini"],
-    })),
-  };
-});
+    },
+  })),
+}));
 
 describe("resolveModelForTask", () => {
   it("selects a thinking-tier model for define tasks", () => {
@@ -49,6 +49,14 @@ describe("resolveModelForTask", () => {
   it("selects a fast-tier model for remediation tasks", () => {
     const model = resolveModelForTask("remediation", "gemini", "/fake/project");
     expect(model).toBe("gemini-3-flash-preview");
+  });
+
+  it("falls back when registry validation fails", () => {
+    vi.mocked(tryLoadRegistry).mockReturnValueOnce({
+      ok: false,
+      error: { code: "INVALID_CONFIG_JSON", message: "invalid config" },
+    });
+    expect(resolveModelForTask("define", "gemini", "/fake/project")).toBeUndefined();
   });
 
   it("returns undefined for unknown backend", () => {

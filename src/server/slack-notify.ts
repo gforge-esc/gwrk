@@ -2,31 +2,15 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import type {
-  NotificationPayload,
-  NotificationPort,
-} from "../ports/notification-port.js";
+import { webApi } from "@slack/bolt";
+import { logCliError, warnCli } from "../adapters/cli/output-scope.js";
+import type { NotificationReceipt } from "../ports/notification-port.js";
 import { loadConfig } from "../utils/config.js";
+import { loadSlackConfig } from "../utils/slack-client.js";
 import type { SlackMessage } from "./slack-messages.js";
 import { type SlackEvent, presenceManager } from "./slack-presence.js";
 import { getSlackApp } from "./slack.js";
 import { loadTelegramConfig, notifyTelegram } from "./telegram-notify.js";
-
-export function createSlackNotificationAdapter(): NotificationPort {
-  return {
-    async notify(payload: NotificationPayload): Promise<void> {
-      await notifySlack(
-        {
-          text: payload.text,
-          channel: payload.channel,
-          blocks: payload.blocks as SlackMessage["blocks"],
-        },
-        undefined,
-        { opsOnly: payload.opsOnly },
-      );
-    },
-  };
-}
 
 /**
  * Dispatches a Slack notification.
@@ -38,8 +22,9 @@ export async function notifySlack(
   message: SlackMessage,
   event?: SlackEvent,
   options: { opsOnly?: boolean } = {},
-): Promise<void> {
+): Promise<NotificationReceipt | undefined> {
   const app = getSlackApp();
+  let receipt: NotificationReceipt | undefined;
 
   if (options.opsOnly) {
     try {
@@ -58,7 +43,7 @@ export async function notifySlack(
     if (event) {
       await presenceManager.handleNotification(event, message);
     } else {
-      await sendSlackMessage(message);
+      receipt = await sendSlackMessage(message);
     }
   } else {
     // Webhook fallback — fire-and-forget, no interactive elements
@@ -69,14 +54,19 @@ export async function notifySlack(
   if (loadTelegramConfig()) {
     await notifyTelegram(message);
   }
+  return receipt;
 }
 
 /**
- * Send a message via Socket Mode app (rich: blocks, buttons, actions).
+ * Send a message via the Slack Web API.
  */
-export async function sendSlackMessage(message: SlackMessage): Promise<void> {
-  const app = getSlackApp();
-  if (!app) return;
+export async function sendSlackMessage(
+  message: SlackMessage,
+  options: { webhookFallback?: boolean; workspaceId?: string } = {},
+): Promise<NotificationReceipt | undefined> {
+  const workspaceId = options.workspaceId;
+  let client = workspaceId === undefined ? getSlackApp()?.client : undefined;
+  if (workspaceId === undefined && !client) return;
 
   // Resolve channel
   let channelId = message.channel;
@@ -85,28 +75,52 @@ export async function sendSlackMessage(message: SlackMessage): Promise<void> {
       const config = loadConfig(process.cwd());
       channelId = config.project.slack?.channelId;
     } catch (e) {
-      console.warn("Failed to load config for channel resolution:", e);
+      warnCli("Failed to load config for channel resolution:", e);
     }
   }
 
   if (!channelId) {
-    console.warn("No Slack channel configured — skipping notification");
+    warnCli("No Slack channel configured — skipping notification");
     return;
   }
 
   try {
-    await app.client.chat.postMessage({
+    if (workspaceId !== undefined) {
+      const config = loadSlackConfig();
+      if (!config) return;
+      client = new webApi.WebClient(config.botToken, {
+        retryConfig: { retries: 0 },
+        rejectRateLimitedCalls: true,
+        timeout: 10_000,
+      });
+      const auth = await client.auth.test();
+      if (auth.ok !== true || auth.team_id !== workspaceId) return;
+    }
+    if (!client) return;
+    const response = await client.chat.postMessage({
       channel: channelId,
       text: message.text,
       blocks: message.blocks,
+      thread_ts: message.thread_ts,
+      ...(message.metadata ? { metadata: message.metadata } : {}),
     });
+    if (response.ok) {
+      return {
+        delivered: true,
+        channelId: response.channel,
+        messageTs: response.ts,
+        threadTs: response.message?.thread_ts ?? message.thread_ts,
+      };
+    }
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
-    console.error(`Failed to post Slack notification: ${errorMessage}`);
+    logCliError(`Failed to post Slack notification: ${errorMessage}`);
 
-    // Fallback to webhook on Socket Mode failure
-    await sendViaWebhook(message);
+    if (workspaceId === undefined && options.webhookFallback !== false) {
+      await sendViaWebhook(message);
+    }
   }
+  return undefined;
 }
 
 /**
@@ -157,12 +171,12 @@ async function sendViaWebhook(message: SlackMessage): Promise<void> {
     });
 
     if (!response.ok) {
-      console.error(
+      logCliError(
         `Webhook notification failed: ${response.status} ${response.statusText}`,
       );
     }
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
-    console.error(`Webhook notification error: ${errorMessage}`);
+    logCliError(`Webhook notification error: ${errorMessage}`);
   }
 }
