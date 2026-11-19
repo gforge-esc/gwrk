@@ -5,4 +5,6 @@
 
 set -euo pipefail
 pnpm build
-pnpm exec vitest run tests/linux-runner/bundle-and-live-record.test.ts
+env -u GWRK_SKIP_INTEGRATION pnpm exec vitest run \
+  tests/linux-runner/bundle-and-live-record.test.ts \
+  src/server/routes/dispatch.test.ts

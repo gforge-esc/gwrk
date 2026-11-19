@@ -4,6 +4,7 @@
 # file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 set -Eeuo pipefail
+export GIT_EDITOR=true EDITOR=true
 trap 'printf "Container proof stopped at line %s.\n" "$LINENO" >&2' ERR
 npm install -g pnpm@9.15.9 --no-fund --no-audit
 cd /artifacts
@@ -32,37 +33,130 @@ chmod 0640 /etc/gwrk/secrets/*
 
 cat > /fixture-bin/git <<'SCRIPT'
 #!/usr/bin/env bash
-if [[ "$1" == ls-remote ]]; then
-  [[ "$GH_TOKEN" == fixture-git-token && "$GIT_TERMINAL_PROMPT" == 0 ]]
-  exit
+if [[ "$*" == "ls-remote --exit-code $GWRK_PILOT_REPO_URL HEAD" ]]; then
+  [[ "$GIT_TERMINAL_PROMPT" == 0 ]] || exit 1
+  printf '0000000000000000000000000000000000000001\tHEAD\n'
+  exit 0
 fi
 exec /usr/bin/git "$@"
 SCRIPT
 cat > /fixture-bin/gh <<'SCRIPT'
 #!/usr/bin/env bash
-printf '[]\n'
+set -eu
+case "$*" in
+  'api --hostname github.com --method GET --silent repos/fixture/pilot/commits?per_page=1')
+    [[ "$GH_TOKEN" == fixture-git-token && "$GH_PROMPT_DISABLED" == 1 ]]
+    ;;
+  'api --hostname github.com --method GET --silent '*) exit 1 ;;
+  'pr list --head feat/001-pilot-restart-phase-01 --base develop '*) printf 'null\n' ;;
+  'pr create '*|'pr view 1 --json url '*) printf 'https://github.com/fixture/pilot/pull/1\n' ;;
+  'pr checks 1 --watch --required --interval 30') printf 'fixture check\tpass\n' ;;
+  *) printf '[]\n' ;;
+esac
 SCRIPT
 cat > /fixture-bin/agent-probe <<'SCRIPT'
 #!/usr/bin/env bash
 [[ "$1" == fixture && "$(< "$GWRK_AGENT_CREDENTIAL_FILE")" == fixture-agent-token ]]
 SCRIPT
+cat > /fixture-bin/agent-worker <<'SCRIPT'
+#!/usr/bin/env bash
+set -euo pipefail
+cat >/dev/null
+[[ "$(< "$GWRK_AGENT_CREDENTIAL_FILE")" == fixture-agent-token ]]
+[[ "$2" == specs/001-pilot-restart ]]
+if [[ "$1" == review ]]; then exit 0; fi
+[[ "$1" == implement ]]
+worker="$GWRK_RUNTIME_DIR/fixture-worker"
+printf '%s\n' "$$" >> "$worker/started"
+for attempt in {1..200}; do
+  if [[ -f "$worker/release" ]]; then
+    printf 'worker completed\n' > pilot-result.txt
+    node /opt/gwrk/current/dist/cli.js tasks done 001-pilot-restart T001
+    printf '%s\n' "$$" >> "$worker/completed"
+    exit 0
+  fi
+  sleep 0.1
+done
+printf 'Timed out waiting for the dispatch proof to release the worker.\n' >&2
+exit 1
+SCRIPT
 chmod 0755 /fixture-bin/*
 export PATH="/fixture-bin:$PATH"
 
+plugin=/var/lib/gwrk/plugins/agents/fixture
+mkdir -p "$plugin"
+cat > "$plugin/manifest.yaml" <<'YAML'
+type: agent
+name: fixture
+version: 1.0.0
+description: Synthetic Linux runner worker
+adapter: adapter.js
+dispatchMode: local-cli
+contextFileName: AGENTS.md
+capabilities: [stdin]
+models: {}
+exitCodeMap: {}
+YAML
+cat > "$plugin/adapter.js" <<'JS'
+export default {
+  name: "fixture",
+  async isAvailable() { return true; },
+  async syncGovernance() { return ""; },
+  async dispatch(task) {
+    return {
+      command: "/fixture-bin/agent-worker",
+      args: [task.workflow === "gwrk-implement" ? "implement" : "review", task.featureDir],
+      stdin: task.stdin ?? "",
+    };
+  },
+  parseResult(stdout, stderr, exitCode) { return { stdout, stderr, exitCode, durationS: 0 }; },
+};
+JS
+
 cd -- "$GWRK_PILOT_REPO"
-runuser -u gwrk -- git init --quiet
+runuser -u gwrk -- mkdir /run/gwrk/fixture-worker
+runuser -u gwrk -- git init --quiet --initial-branch=develop
 runuser -u gwrk -- git remote add origin "$GWRK_PILOT_REPO_URL"
+runuser -u gwrk -- git config user.name 'Runner fixture'
+runuser -u gwrk -- git config user.email 'runner-fixture@example.invalid'
+runuser -u gwrk -- git init --quiet --bare /var/lib/gwrk/repos/pilot-origin.git
+runuser -u gwrk -- git config 'url.file:///var/lib/gwrk/repos/pilot-origin.git.insteadOf' "$GWRK_PILOT_REPO_URL"
 cat > .gwrkrc.json <<'JSON'
 {
   "project": {"name":"pilot"},
   "server": {"host":"127.0.0.1","port":18790},
-  "parallelism": {"local":{"maxCpu":80,"maxMem":80,"minDiskGb":1,"maxClones":1}},
+  "parallelism": {"local":{"maxCpu":100,"maxMem":100,"minDiskGb":1,"maxClones":1}},
   "agents": {
     "define":"fixture", "implement":"fixture", "fallbackOrder":["fixture"],
-    "registry":{"fixture":{"name":"fixture","type":"local-cli","command":"agent-probe","quotaProbe":{"method":"optimistic","cacheTTLMinutes":0},"maxConcurrent":1,"models":[]}}
+    "registry":{"fixture":{"name":"fixture","type":"local-cli","command":"agent-worker","quotaProbe":{"method":"optimistic","cacheTTLMinutes":0},"maxConcurrent":1,"models":[]}}
   }
 }
 JSON
+feature=specs/001-pilot-restart
+mkdir -p "$feature/.gwrk"
+printf '.runs/\n' > .gitignore
+printf '# Pilot restart\n\nRun one worker after restarting the installed server.\n' > "$feature/spec.md"
+printf '# Pilot restart\n\n### Phase 1: Produce the worker result\n' > "$feature/plan.md"
+cat > "$feature/.gwrk/tasks.json" <<'JSON'
+{
+  "featureId": "001-pilot-restart",
+  "createdAt": "2026-11-11T12:00:00Z",
+  "phases": [{
+    "id": "phase-01",
+    "title": "Produce the worker result",
+    "tasks": [{
+      "id": "T001",
+      "title": "Write the worker result",
+      "description": "Write the result after the release signal.",
+      "status": "open",
+      "gateScript": "grep -Fx 'worker completed' pilot-result.txt"
+    }]
+  }]
+}
+JSON
+runuser -u gwrk -- git add .gwrkrc.json .gitignore "$feature"
+runuser -u gwrk -- git commit --quiet --no-edit --author='Runner fixture <runner-fixture@example.invalid>' -m 'Add pilot restart feature'
+runuser -u gwrk -- git push --quiet --set-upstream origin develop
 runuser -u gwrk -- node --input-type=module <<'NODE'
 import { closeDb, getDb } from "/opt/gwrk/current/dist/db/index.js";
 const db = getDb();
@@ -88,9 +182,18 @@ expect_rejection 'Telegram variables' runuser -u gwrk -- env TELEGRAM_BOT_TOKEN=
 chmod 0644 /etc/gwrk/secrets/agent-credential
 expect_rejection 'mode 0640' runuser -u gwrk -- bash "$preflight"
 chmod 0640 /etc/gwrk/secrets/agent-credential
+runuser -u gwrk -- env -u GH_TOKEN GIT_TERMINAL_PROMPT=0 \
+  git ls-remote --exit-code "$GWRK_PILOT_REPO_URL" HEAD | grep -F $'\tHEAD'
 printf '%s\n' revoked > /etc/gwrk/secrets/pilot-git-credential
-expect_rejection 'Pilot Git authentication failed' runuser -u gwrk -- bash "$preflight"
+if runuser -u gwrk -- bash "$preflight" >/tmp/revoked-git.log 2>&1; then
+  printf 'Preflight accepted a revoked Git credential.\n' >&2
+  exit 1
+else
+  test "$?" -eq 1
+fi
+grep -F 'Pilot Git authentication failed' /tmp/revoked-git.log
 printf '%s\n' fixture-git-token > /etc/gwrk/secrets/pilot-git-credential
+runuser -u gwrk -- bash "$preflight"
 printf '%s\n' revoked > /etc/gwrk/secrets/agent-credential
 expect_rejection 'bounded headless credential probe' runuser -u gwrk -- bash "$preflight"
 printf '%s\n' fixture-agent-token > /etc/gwrk/secrets/agent-credential
@@ -158,6 +261,81 @@ kill -KILL "$server_pid"
 wait "$launcher" || true
 server_pid=""
 launch
+printf 'Dispatching the committed pilot feature after SIGKILL restart.\n'
+dispatch_run_id=$(node --input-type=module <<'NODE'
+import assert from "node:assert/strict";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { setTimeout as delay } from "node:timers/promises";
+
+const base = "http://127.0.0.1:18790/api/dispatch";
+const featureId = "001-pilot-restart";
+const phaseId = "phase-01";
+const worker = `${process.env.GWRK_RUNTIME_DIR}/fixture-worker`;
+const statusUrl = `${base}/${featureId}/${phaseId}`;
+const request = (url, options) => fetch(url, { ...options, signal: AbortSignal.timeout(3000) });
+async function read(url) {
+  const response = await request(url);
+  assert.equal(response.status, 200);
+  return response.json();
+}
+
+const dispatch = (backend) => request(base, {
+  method: "POST",
+  headers: { "content-type": "application/json" },
+  body: JSON.stringify({ featureId, phaseId, backend }),
+});
+let response = await dispatch("unapproved-fixture");
+if (response.status >= 400 && response.status < 500) {
+  const { active, queued } = await read(`${base}/queue`);
+  assert.deepEqual(active, []);
+  assert.deepEqual(queued, []);
+  response = await dispatch();
+}
+assert.equal(response.status, 201);
+const { id, backend } = await response.json();
+assert(id);
+assert.equal(backend, "fixture", "The hosted runner must select its approved backend.");
+
+const startDeadline = Date.now() + 10_000;
+while (!existsSync(`${worker}/started`)) {
+  const record = await read(statusUrl);
+  assert.equal(record.status, "running", JSON.stringify(record));
+  assert(Date.now() < startDeadline, "The restarted runner did not launch the fixture worker.");
+  await delay(50);
+}
+const { active, queued } = await read(`${base}/queue`);
+assert.deepEqual(active.map((record) => record.id), [id]);
+assert.equal(active[0].status, "running");
+assert.equal(active[0].backend, "fixture");
+assert.equal(active[0].attempts[0].backend, "fixture");
+assert.deepEqual(queued, []);
+const started = readFileSync(`${worker}/started`, "utf8");
+assert.match(started, /^\d+\n$/);
+const pid = Number(started.trim());
+process.kill(pid, 0);
+assert(readFileSync(`/proc/${pid}/cmdline`, "utf8").split("\0").includes("/fixture-bin/agent-worker"));
+assert(!existsSync(`${worker}/completed`));
+const runId = active[0].attempts[0].runId;
+assert(Number.isInteger(runId) && runId > 42);
+writeFileSync(`${worker}/release`, "");
+
+const finishDeadline = Date.now() + 20_000;
+let record = await read(statusUrl);
+while (record.status === "running") {
+  assert(Date.now() < finishDeadline, "The fixture dispatch did not finish after release.");
+  await delay(50);
+  record = await read(statusUrl);
+}
+assert.equal(record.id, id);
+assert.equal(record.status, "completed", JSON.stringify(record));
+assert.deepEqual(record.attempts.map(({ runId, exitCode }) => ({ runId, exitCode })), [{ runId, exitCode: 0 }]);
+assert.deepEqual((await read(`${base}/queue`)).active, []);
+assert.equal(readFileSync(`${worker}/started`, "utf8"), started);
+assert.equal(readFileSync(`${worker}/completed`, "utf8"), started);
+console.log(runId);
+NODE
+) || { cat /tmp/server.log >&2; exit 1; }
+printf 'One worker completed dispatch run %s.\n' "$dispatch_run_id"
 kill -TERM "$server_pid"
 wait "$launcher" || { cat /tmp/server.log >&2; exit 1; }
 server_pid=""
@@ -166,8 +344,20 @@ test ! -e /run/gwrk/server.pid
 runuser -u gwrk -- node "$release/dist/cli.js" db backup --out /var/lib/gwrk/backup
 runuser -u gwrk -- node "$release/dist/cli.js" db restore --from /var/lib/gwrk/backup --state-dir /var/lib/gwrk/restored
 cmp /var/lib/gwrk/backup/gwrk.db /var/lib/gwrk/restored/gwrk.db
-node -e 'const assert=require("node:assert/strict"); assert.deepEqual(require("/var/lib/gwrk/backup/backup-manifest.json").summary.completedRunIds,[42]);'
-runuser -u gwrk -g gwrk -- node --input-type=module <<'NODE'
+assert_backup_runs() {
+  node --input-type=module - "$dispatch_run_id" "$@" <<'NODE'
+import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+const [runId, ...backups] = process.argv.slice(2);
+for (const backup of backups) {
+  const manifest = JSON.parse(readFileSync(join(backup, "backup-manifest.json"), "utf8"));
+  assert.deepEqual(manifest.summary.completedRunIds, [42, Number(runId)], backup);
+}
+NODE
+}
+assert_backup_runs /var/lib/gwrk/backup
+runuser -u gwrk -g gwrk -- node --input-type=module - "$dispatch_run_id" <<'NODE'
 import assert from "node:assert/strict";
 import Database from "/opt/gwrk/current/node_modules/better-sqlite3/lib/index.js";
 const db = new Database("/var/lib/gwrk/restored/gwrk.db", { readonly: true, fileMustExist: true });
@@ -176,8 +366,13 @@ assert.deepEqual(db.prepare("SELECT project_id, finished_at FROM runs WHERE id =
   project_id: "pilot",
   finished_at: "2026-11-11T12:00:00Z",
 });
+assert.deepEqual(db.prepare("SELECT feature_id, phase_id, exit_code FROM runs WHERE id = ?").get(Number(process.argv[2])), {
+  feature_id: "001-pilot-restart",
+  phase_id: "phase-01",
+  exit_code: 0,
+});
 db.close();
-console.log("Clean restore preserved project pilot and completed run 42.");
+console.log("Clean restore preserved project pilot and both completed runs.");
 NODE
 
 prior=/opt/gwrk/releases/1.0.0-fixture
@@ -404,11 +599,13 @@ console.log("Service user gwrk committed and read back exit code 17 for run 42 a
 NODE
 first_backups=(/var/lib/gwrk/backups/rollback-*)
 test "${#first_backups[@]}" -eq 1
-node -e 'const assert=require("node:assert/strict"); const fs=require("node:fs"); const root="/var/lib/gwrk/backups/"; const [dir]=fs.readdirSync(root); assert.deepEqual(require(root+dir+"/backup-manifest.json").summary.completedRunIds,[42]);'
+assert_backup_runs "${first_backups[@]}"
 expect_rejection 'does not match the pre-rollback backup' env GWRK_FIXTURE_DROP_RUN=1 bash "$rollback" /opt/gwrk /var/lib/gwrk
 test "$(realpath /opt/gwrk/current)" = "$prior"
 test ! -e "$GWRK_RUNTIME_DIR/server.pid"
-node -e 'const assert=require("node:assert/strict"); const fs=require("node:fs"); const root="/var/lib/gwrk/backups/"; const dirs=fs.readdirSync(root); assert.equal(dirs.length,2); for(const dir of dirs) assert.deepEqual(require(root+dir+"/backup-manifest.json").summary.completedRunIds,[42]);'
+rollback_backups=(/var/lib/gwrk/backups/rollback-*)
+test "${#rollback_backups[@]}" -eq 2
+assert_backup_runs "${rollback_backups[@]}"
 for backup in /var/lib/gwrk/backups/rollback-*; do
   if [[ "$backup" != "${first_backups[0]}" ]]; then
     recovery_backup="$backup"

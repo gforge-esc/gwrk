@@ -27,7 +27,7 @@ for command in node git gh flock timeout; do
 done
 load_runner_credentials
 
-node --input-type=module - <<'NODE'
+timeout --kill-after=2s 20s node --input-type=module - <<'NODE'
 import { realpathSync } from "node:fs";
 import { join, relative, isAbsolute } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -54,6 +54,8 @@ try {
   }
   const fromRelease = (path) => pathToFileURL(join(active, "dist", path)).href;
   const { validateRunnerLayout } = await import(fromRelease("domain/release-packaging.js"));
+  const { AgentBackendRegistry } = await import(fromRelease("plugins/agent-registry.js"));
+  const { PluginLoader } = await import(fromRelease("plugins/loader.js"));
   const { loadConfig } = await import(fromRelease("utils/config.js"));
   const config = loadConfig(repo);
   const names = ["pilot-git-credential", "agent-credential"];
@@ -77,6 +79,8 @@ try {
       config.parallelism.local.maxClones !== 1) {
     throw new Error("Configure one approved local agent backend and one worker.");
   }
+  const backend = await new AgentBackendRegistry(new PluginLoader()).getAgentBackend(approved);
+  if (!(await backend.isAvailable())) throw new Error(`Approved agent backend '${approved}' is unavailable. Install its worker executable before starting the runner.`);
 } catch (error) {
   console.error(error.message);
   process.exitCode = 1;
@@ -87,6 +91,10 @@ cd -- "$GWRK_PILOT_REPO"
 origin=$(git config --get remote.origin.url) || fail "Set the pilot checkout origin."
 [[ "$origin" == "$GWRK_PILOT_REPO_URL" ]] || fail "Pilot checkout origin does not match the approved repository."
 timeout --kill-after=2s 20s git ls-remote --exit-code "$GWRK_PILOT_REPO_URL" HEAD >/dev/null 2>&1 ||
+  fail "Could not read HEAD from the pilot Git repository."
+slug=${GWRK_PILOT_REPO_URL#https://github.com/}
+slug=${slug%.git}
+timeout --kill-after=2s 20s gh api --hostname github.com --method GET --silent "repos/$slug/commits?per_page=1" >/dev/null 2>&1 ||
   fail "Pilot Git authentication failed. Refresh the scoped credential."
 timeout --kill-after=2s 30s "$probe" "$GWRK_APPROVED_AGENT" >/dev/null 2>&1 ||
   fail "The approved agent failed its bounded headless credential probe."

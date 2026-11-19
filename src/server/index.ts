@@ -22,7 +22,7 @@ import { closeDb, getDbPath } from "../db/index.js";
 import { PENDING_LEDGER_RESTORE } from "../domain/ledger-backup.js";
 import { isPrivateRunnerBind } from "../domain/release-packaging.js";
 import type { InstanceLockHandle } from "../ports/release-ops-port.js";
-import type { GwrkConfig } from "../utils/config.js";
+import type { AgentBackendId, GwrkConfig } from "../utils/config.js";
 import { type DispatchLedgerScope, DispatchQueue } from "./dispatch.js";
 import { GitManager } from "./git-manager.js";
 import { githubWebhookPlugin } from "./github.js";
@@ -127,16 +127,22 @@ export async function startServer(
     : undefined;
   let ledgerLock: InstanceLockHandle | undefined;
   try {
-    if (instanceLock) ledgerLock = acquireLedgerLock(getDbPath(), process.pid);
-    if (
-      instanceLock &&
-      existsSync(join(dirname(getDbPath()), PENDING_LEDGER_RESTORE))
-    ) {
-      throw new Error(
-        "An unfinished ledger restore blocks startup. Retry 'gwrk db restore' with the original backup.",
-      );
+    if (instanceLock) {
+      const ledgerPath = options.ledger?.db.name ?? getDbPath();
+      ledgerLock = acquireLedgerLock(ledgerPath, process.pid);
+      if (existsSync(join(dirname(ledgerPath), PENDING_LEDGER_RESTORE))) {
+        throw new Error(
+          "An unfinished ledger restore blocks startup. Retry 'gwrk db restore' with the original backup.",
+        );
+      }
     }
-    return await startLockedServer(config, options, instanceLock, ledgerLock);
+    return await startLockedServer(
+      config,
+      options,
+      instanceLock,
+      ledgerLock,
+      hosted ? process.env.GWRK_APPROVED_AGENT : undefined,
+    );
   } catch (error) {
     ledgerLock?.release();
     instanceLock?.release();
@@ -149,6 +155,7 @@ async function startLockedServer(
   options: ServerStartOptions,
   instanceLock: InstanceLockHandle | undefined,
   ledgerLock: InstanceLockHandle | undefined,
+  approvedBackend: AgentBackendId | undefined,
 ) {
   const projectRoot = resolve(options.projectRoot ?? process.cwd());
   const gitEnv =
@@ -183,6 +190,7 @@ async function startLockedServer(
     projectRoot,
     options.ledger,
     gitEnv,
+    approvedBackend,
   );
 
   const lifecycle = new LifecycleMonitor(config);

@@ -2,14 +2,18 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   type ServerFixture,
   createServerFixture,
   fixtureGit,
 } from "../../../tests/helpers/server-fixture.js";
+import * as gwrkPaths from "../../adapters/config/paths.js";
+import * as instanceLocks from "../../adapters/server/instance-lock.js";
 import { listRuns } from "../../db/runs.js";
 import { ShipOrchestrator } from "../../engine/ship-orchestrator.js";
+import { HarvestWatcher } from "../harvest-watcher.js";
 import { SystemMonitor } from "../monitor.js";
 
 vi.mock("../slack-notify.js", () => ({
@@ -45,6 +49,7 @@ describe("dispatch routes", () => {
       await fixture?.close();
     } finally {
       vi.restoreAllMocks();
+      vi.unstubAllEnvs();
     }
   });
 
@@ -80,6 +85,67 @@ describe("dispatch routes", () => {
     expect(json.active).toBeDefined();
     expect(json.queued).toBeDefined();
   });
+
+  it.each([
+    {
+      hosted: true,
+      request: { backend: "unapproved-fixture", taskIds: ["T1", "T2"] },
+      taskIds: ["T1", "T2"],
+      backend: "fixture",
+    },
+    {
+      hosted: true,
+      request: { taskId: "T1" },
+      taskIds: ["T1"],
+      backend: "fixture",
+    },
+    {
+      hosted: false,
+      request: { backend: "explicit-fixture", taskId: "T1" },
+      taskIds: ["T1"],
+      backend: "explicit-fixture",
+    },
+  ])(
+    "keeps hosted=$hosted backend selection scoped through server startup",
+    async ({ hosted, request, taskIds, backend }) => {
+      const priorFixture = fixture;
+      vi.stubEnv("GWRK_APPROVED_AGENT", "fixture");
+      vi.stubEnv("GWRK_RUNTIME_DIR", join(priorFixture.projectRoot, "runtime"));
+      vi.spyOn(gwrkPaths, "usesHostedRuntime").mockReturnValue(hosted);
+      vi.spyOn(HarvestWatcher.prototype, "runCheck").mockResolvedValue(
+        undefined,
+      );
+      vi.spyOn(SystemMonitor.prototype, "isThrottled").mockReturnValue(true);
+      const lock = { pid: process.pid, lockPath: "fixture", release: vi.fn() };
+      vi.spyOn(instanceLocks, "acquireInstanceLock").mockReturnValue(lock);
+      vi.spyOn(instanceLocks, "acquireLedgerLock").mockReturnValue(lock);
+      try {
+        fixture = await createServerFixture("listen");
+        const response = await fixture.app.inject({
+          method: "POST",
+          url: "/api/dispatch",
+          payload: { featureId: "feat-1", phaseId: "phase-1", ...request },
+        });
+        expect(response.statusCode).toBe(201);
+        if (hosted) {
+          expect(instanceLocks.acquireLedgerLock).toHaveBeenCalledWith(
+            fixture.db.name,
+            process.pid,
+          );
+        }
+        const record = response.json();
+        expect(record.backend).toBe(backend);
+        expect(record.tasks).toMatchObject(
+          taskIds.map((id) => ({ id, backend })),
+        );
+        const queue = await fixture.app.inject("/api/dispatch/queue");
+        expect(queue.statusCode).toBe(200);
+        expect(queue.json()).toMatchObject({ active: [], queued: [record] });
+      } finally {
+        await priorFixture.close();
+      }
+    },
+  );
 
   it("should return a specific dispatch via GET /api/dispatch/:feature/:phase", async () => {
     const server = fixture.app;

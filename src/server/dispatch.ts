@@ -61,6 +61,7 @@ export class DispatchQueue {
     private projectRoot: string,
     private ledger?: DispatchLedgerScope,
     private gitEnv?: () => NodeJS.ProcessEnv,
+    private readonly approvedBackend?: AgentBackendId,
   ) {}
 
   pause() {
@@ -102,6 +103,9 @@ export class DispatchQueue {
       return existing;
     }
 
+    const backend =
+      this.approvedBackend ??
+      pillarBackend(this.config, "implement", request.backend);
     const tasks: TaskRecord[] = [];
     if (request.taskIds) {
       for (const id of request.taskIds) {
@@ -109,7 +113,7 @@ export class DispatchQueue {
           id,
           status: "pending",
           sandboxDir: "",
-          backend: pillarBackend(this.config, "implement", request.backend),
+          backend,
         });
       }
     } else if (request.taskId) {
@@ -117,7 +121,7 @@ export class DispatchQueue {
         id: request.taskId,
         status: "pending",
         sandboxDir: "",
-        backend: pillarBackend(this.config, "implement", request.backend),
+        backend,
       });
     }
 
@@ -125,7 +129,7 @@ export class DispatchQueue {
       id: crypto.randomUUID(),
       featureId: request.featureId,
       phaseId: request.phaseId,
-      backend: pillarBackend(this.config, "implement", request.backend),
+      backend,
       status: "queued",
       branchName: this.shipBranch(request.featureId, request.phaseId),
       attempts: [],
