@@ -1315,8 +1315,14 @@ export async function handleSlashCommand(
         )
       : undefined;
 
-  if (checkout && needsFeatureThread) {
-    const featureId = resolveScopedSlackFeature(checkout, args[0])?.featureId;
+  const threadCheckout = needsFeatureThread
+    ? (checkout ?? resolveSlackCheckout(decision.project))
+    : undefined;
+  if (threadCheckout && needsFeatureThread) {
+    const featureId = resolveScopedSlackFeature(
+      threadCheckout,
+      args[0],
+    )?.featureId;
     if (featureId) {
       const storedThread = context.routingService.getFeatureThread(
         decision.project.projectId,

@@ -180,6 +180,8 @@ Send private merge warnings to the authorized actor in the bound feature thread 
 
 Send the merge replay warning privately in the stored feature thread after click authorization (TR-009). Cover an existing receipt and a lost receipt claim race. Assert each replay leaves the merge count at one. Omit the stored thread from role and thread mismatch warnings.
 
+Send invalid pull request and missing checkout warnings to the authorized clicker in the stored feature thread (TR-009). Assert zero receipt writes and pull request lookups. Assert zero merges and public replies.
+
 For log and revision buttons (TR-009), replace Alpha's checkout with Beta. Return a checkout warning for logs and leave both revision receipts unclaimed. After restoring Alpha, show its logs and start one revision per button across concurrent clicks.
 
 For View Logs (TR-009), leave the bound feature directory missing or link it to a sibling feature. Put a run log in that sibling with a longer ID that shares the prefix. Assert one private no-logs reply in the bound thread. Assert zero sibling gate results, receipt claims and receipt completions.
@@ -201,6 +203,8 @@ For mention summaries (TR-011), reply in the original thread when Beta replaces 
 For App Home Pulse (TR-012), exclude the replacement repository and its specs while keeping Alpha's enrollment visible. Count Alpha's specs and plans from a verified mirror when the local checkout fails verification.
 
 Status, logs and effort read files inside the verified checkout (TR-012a). Apply the same file boundary to Pulse and mention context. Skip filesystem-based thread lookup and disk history when the checkout fails verification. Use a verified mirror for logs and verify the queue's own checkout before dispatch.
+
+Reject dispatch when the queue checkout fails verification (TR-012a). Resolve the feature in the verified mirror and send the warning privately in its stored thread. Assert zero enqueues.
 
 Test external feature links for dispatch, define and ship (TR-012a). Deny all three commands. The ADR list command shows the local decision index. Omit the index content when the same path links to another checkout.
 

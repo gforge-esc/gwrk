@@ -1680,6 +1680,62 @@ describe("slack-actions (FR-007, US-004, US-005)", () => {
 
     const mergeTarget = { repository: "github.com/org/alpha", prNumber: 42 };
 
+    it.each([
+      {
+        failure: "an invalid pull request number",
+        project: SYNTHETIC_PROJECT_ALPHA,
+        prNumber: 0,
+        warning: "must specify a valid pull request number",
+      },
+      {
+        failure: "no enrolled checkout",
+        project: {
+          ...SYNTHETIC_PROJECT_ALPHA,
+          localRoot: null,
+          mirrorPath: null,
+        },
+        prNumber: 42,
+        warning: "requires a verified checkout",
+      },
+    ])(
+      "warns privately in the authorized merge thread for $failure",
+      async ({ project, prNumber, warning }) => {
+        const registry = createSyntheticRegistry({ projects: [project] });
+        const claim = vi.spyOn(registry, "claimActionReceipt");
+        const complete = vi.spyOn(registry, "completeActionReceipt");
+        const vcs = createSyntheticVcsPort();
+        const merge = vi.spyOn(vcs, "mergePullRequest");
+        await registerSlackActions(mockApp as App, {
+          ...mockContext,
+          routingService: createProjectRoutingService({ registry }),
+          vcs,
+        });
+        const click = clickArgs("merge_pr", project.projectId);
+        click.body.actions[0].value = JSON.stringify({
+          ...actionValue,
+          projectId: project.projectId,
+          prNumber,
+        });
+
+        await actionHandlers.merge_pr(click);
+
+        expect.soft(click.ack).toHaveBeenCalledOnce();
+        expect
+          .soft(click.client.chat.postEphemeral)
+          .toHaveBeenCalledExactlyOnceWith({
+            channel: SYNTHETIC_CHANNEL_ALPHA,
+            user: SYNTHETIC_USER_MAINTAINER,
+            thread_ts: SYNTHETIC_THREAD_ALPHA.rootTs,
+            text: expect.stringContaining(warning),
+          });
+        expect.soft(click.client.chat.postMessage).not.toHaveBeenCalled();
+        expect.soft(claim).not.toHaveBeenCalled();
+        expect.soft(complete).not.toHaveBeenCalled();
+        expect.soft(findOpenPr).not.toHaveBeenCalled();
+        expect(merge).not.toHaveBeenCalled();
+      },
+    );
+
     function mergeReceiptKey(projectId: string, attempt = 0) {
       return buildActionReceiptKey({
         ...actionValue,

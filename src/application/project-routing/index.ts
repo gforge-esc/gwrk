@@ -283,6 +283,7 @@ export function createProjectRoutingService(
           ok: false,
           code: "REMOTE_AUTH_REQUIRED",
           message: "Merging requires a verified checkout and VCS adapter.",
+          recipient: decision.recipient,
         };
       }
 
@@ -351,6 +352,7 @@ export function createProjectRoutingService(
           ok: false,
           code: "REMOTE_AUTH_REQUIRED",
           message: "This review card must specify a valid pull request number.",
+          recipient: decision.recipient,
         };
       }
       if (
