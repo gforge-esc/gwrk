@@ -170,6 +170,58 @@ function parseCandidateSpec(
   };
 }
 
+function normalizeJudgeAxis(value: string | undefined): string {
+  return typeof value === "string" ? value.trim().toLowerCase() : "";
+}
+
+function formatCandidateRoute(candidate: ModelCandidate): string {
+  return candidate.effort
+    ? `${candidate.backend}:${candidate.modelId}:${candidate.effort}`
+    : `${candidate.backend}:${candidate.modelId}`;
+}
+
+function validateJudgePair(
+  snapshot: DiscoverySnapshot,
+  scope: RunnerScope,
+  judges: readonly [ModelCandidate, ModelCandidate],
+): void {
+  for (const judge of judges) {
+    const judgeCheck = checkCandidate(snapshot, scope, judge);
+    if (!judgeCheck.ok) {
+      throw new CommandError(
+        `Judge check failed for ${formatCandidateRoute(judge)}: ${judgeCheck.reason}`,
+        1,
+      );
+    }
+  }
+
+  const [first, second] = judges;
+  const firstProvider = normalizeJudgeAxis(first.provider);
+  const secondProvider = normalizeJudgeAxis(second.provider);
+  const firstFamily = normalizeJudgeAxis(first.family);
+  const secondFamily = normalizeJudgeAxis(second.family);
+
+  if (
+    !firstProvider ||
+    !secondProvider ||
+    !firstFamily ||
+    !secondFamily ||
+    firstProvider === "unknown" ||
+    secondProvider === "unknown" ||
+    firstFamily === "unknown" ||
+    secondFamily === "unknown" ||
+    firstProvider === secondProvider ||
+    firstFamily === secondFamily ||
+    (first.modelId === second.modelId &&
+      (first.backend === second.backend || /^[^/]+\/[^/]/.test(first.modelId)))
+  ) {
+    throw new CommandError(
+      "Judge independence check failed: judge-dependence (configure two judges from distinct providers and distinct families)",
+      1,
+    );
+  }
+}
+
 export function createModelsDiscoverCommand(
   deps: ModelsCommandDeps = {},
 ): Command {
@@ -253,10 +305,10 @@ export function createModelsEvaluateCommand(
 Examples:
 
   Evaluate candidate model for the define role:
-    gwrk models evaluate --role define --candidate codex:gpt-6.1-sol --fixed-implementer codex:gpt-6.1-sol
+    gwrk models evaluate --role define --candidate codex:gpt-6.1-sol --fixed-implementer codex:gpt-6.1-sol --judges <backend:modelId> <backend:modelId>
 
   Evaluate candidate with explicit incumbent and JSON format:
-    gwrk models evaluate --role implement --candidate codex:gpt-6.1-sol --incumbent codex:gpt-5.2-codex --format json
+    gwrk models evaluate --role implement --candidate codex:gpt-6.1-sol --incumbent codex:gpt-5.2-codex --judges <backend:modelId> <backend:modelId> --format json
 `,
     )
     .requiredOption("--role <role>", "Model role (define, implement, review)")
@@ -469,21 +521,13 @@ Examples:
             },
           ];
         } else {
-          judges = [
-            {
-              backend: "claude",
-              provider: "anthropic",
-              family: "claude-3-7",
-              modelId: "claude-3-7-sonnet",
-            },
-            {
-              backend: "codex",
-              provider: "openai",
-              family: "gpt-4o",
-              modelId: "gpt-4o",
-            },
-          ];
+          throw new CommandError(
+            "Judge policy is not configured: pass two independent judges with --judges <backend:modelId> <backend:modelId> or pin a judge pair in the active route lock",
+            1,
+          );
         }
+
+        validateJudgePair(snapshot, scope, judges);
 
         const evaluationId =
           opts.evaluationId ||

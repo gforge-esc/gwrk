@@ -1576,6 +1576,253 @@ describe("gwrk models CLI (TR-012, TR-013)", () => {
       expect(judgeComparison).not.toHaveBeenCalled();
     });
 
+    it("surfaces a configuration hint when judge policy is absent and uses active pinned judges when valid", async () => {
+      const { deps, store, runFixtureRepeat, judgeComparison } =
+        createSyntheticDeps(root);
+      const loadSuiteSpy = vi.spyOn(deps.runner, "loadSuite");
+      await runInjectedModels(["discover"], deps);
+
+      const missingPolicy = await runInjectedModels(
+        [
+          "evaluate",
+          "--role",
+          "implement",
+          "--candidate",
+          "codex:gpt-6.1-sol",
+          "--incumbent",
+          "claude:claude-3-7-sonnet",
+          "--eval-id",
+          "eval-missing-judge-policy",
+        ],
+        deps,
+      );
+      expect(missingPolicy.exitCode).toBe(1);
+      expect(missingPolicy.stderr).toMatch(/--judges/);
+      expect(missingPolicy.stderr).toMatch(/route lock/i);
+      expect(loadSuiteSpy).not.toHaveBeenCalled();
+      expect(runFixtureRepeat).not.toHaveBeenCalled();
+      expect(judgeComparison).not.toHaveBeenCalled();
+
+      const makeJudgePin = (judge: ModelCandidate) => ({
+        role: "judge" as const,
+        routeMode: "pinned" as const,
+        backend: judge.backend,
+        provider: judge.provider,
+        family: judge.family,
+        modelId: judge.modelId,
+        fallbackRoutes: [],
+        toolVersions: { cliVersion: "1.0.0", adapterVersion: "1.0.0" },
+        evidence: {
+          evaluationId: "eval-judge-pin",
+          snapshotHash: "1".repeat(64),
+          evaluationBundleHash: "2".repeat(64),
+          fixtureSuiteHash: "3".repeat(64),
+          workflowPromptHashes: { "gwrk-specify": "4".repeat(64) },
+          judgeVerdictHashes: ["5".repeat(64), "6".repeat(64)] as [
+            string,
+            string,
+          ],
+        },
+      });
+
+      const lockDigest = await store.writeRouteLockAtomic(scope, {
+        document: {
+          schemaVersion: 1,
+          workspaceId: scope.workspaceId,
+          runnerProfile: scope.runnerProfile,
+          updatedAt: "2026-11-18T12:00:00.000Z",
+          routes: {},
+          judges: [
+            makeJudgePin({
+              backend: "claude",
+              provider: "anthropic",
+              family: "claude-3-7",
+              modelId: "claude-3-7-sonnet",
+            }),
+            makeJudgePin({
+              backend: "agy",
+              provider: "google",
+              family: "gemini",
+              modelId: "gemini-2.5-pro",
+            }),
+          ],
+        },
+        expectedIncumbentDigest: null,
+      });
+
+      const pinnedRun = await runInjectedModels(
+        [
+          "evaluate",
+          "--role",
+          "implement",
+          "--candidate",
+          "codex:gpt-6.1-sol",
+          "--incumbent",
+          "claude:claude-3-7-sonnet",
+          "--eval-id",
+          "eval-pinned-judges",
+        ],
+        deps,
+      );
+      expect(pinnedRun.exitCode).toBe(0);
+      expect(judgeComparison).toHaveBeenCalledTimes(2);
+      expect(
+        judgeComparison.mock.calls.map(([judge]) => `${judge.backend}:${judge.modelId}`),
+      ).toEqual(["claude:claude-3-7-sonnet", "agy:gemini-2.5-pro"]);
+
+      runFixtureRepeat.mockClear();
+      judgeComparison.mockClear();
+      loadSuiteSpy.mockClear();
+
+      await store.writeRouteLockAtomic(scope, {
+        document: {
+          schemaVersion: 1,
+          workspaceId: scope.workspaceId,
+          runnerProfile: scope.runnerProfile,
+          updatedAt: "2026-11-18T12:05:00.000Z",
+          routes: {},
+          judges: [
+            makeJudgePin({
+              backend: "claude",
+              provider: "anthropic",
+              family: "claude-3-7",
+              modelId: "claude-3-7-sonnet",
+            }),
+            makeJudgePin({
+              backend: "codex",
+              provider: "openai",
+              family: "gpt-4o",
+              modelId: "gpt-4o",
+            }),
+          ],
+        },
+        expectedIncumbentDigest: lockDigest,
+      });
+
+      const unavailablePinned = await runInjectedModels(
+        [
+          "evaluate",
+          "--role",
+          "implement",
+          "--candidate",
+          "codex:gpt-6.1-sol",
+          "--incumbent",
+          "claude:claude-3-7-sonnet",
+          "--eval-id",
+          "eval-pinned-judge-unavailable",
+        ],
+        deps,
+      );
+      expect(unavailablePinned.exitCode).toBe(1);
+      expect(unavailablePinned.stderr).toMatch(/model-unavailable/);
+      expect(loadSuiteSpy).not.toHaveBeenCalled();
+      expect(runFixtureRepeat).not.toHaveBeenCalled();
+      expect(judgeComparison).not.toHaveBeenCalled();
+    });
+
+    it("rejects dependent, alias, or unsupported-effort explicit judges before loading fixtures", async () => {
+      const { deps, store, runFixtureRepeat, judgeComparison } =
+        createSyntheticDeps(root);
+      const loadSuiteSpy = vi.spyOn(deps.runner, "loadSuite");
+      await runInjectedModels(["discover"], deps);
+
+      const snapshot = await store.readDiscoverySnapshot(scope);
+      expect(snapshot).not.toBeNull();
+      if (snapshot) {
+        await store.writeDiscoverySnapshot(scope, {
+          ...snapshot,
+          adapters: snapshot.adapters.map((adapter) =>
+            adapter.backend === "claude"
+              ? {
+                  ...adapter,
+                  models: [
+                    ...adapter.models,
+                    {
+                      backend: "claude",
+                      provider: "anthropic",
+                      family: "claude-4",
+                      modelId: "claude-4-opus-2026",
+                      supportedEfforts: [],
+                      isDefault: false,
+                      hidden: false,
+                    },
+                  ],
+                }
+              : adapter,
+          ),
+        });
+      }
+
+      const sameProvider = await runInjectedModels(
+        [
+          "evaluate",
+          "--role",
+          "implement",
+          "--candidate",
+          "codex:gpt-6.1-sol",
+          "--incumbent",
+          "claude:claude-3-7-sonnet",
+          "--judges",
+          "claude:claude-3-7-sonnet",
+          "claude:claude-4-opus-2026",
+          "--eval-id",
+          "eval-dependent-judges",
+        ],
+        deps,
+      );
+      expect(sameProvider.exitCode).toBe(1);
+      expect(sameProvider.stderr).toMatch(/judge-dependence/);
+      expect(loadSuiteSpy).not.toHaveBeenCalled();
+      expect(runFixtureRepeat).not.toHaveBeenCalled();
+      expect(judgeComparison).not.toHaveBeenCalled();
+
+      const aliasJudge = await runInjectedModels(
+        [
+          "evaluate",
+          "--role",
+          "implement",
+          "--candidate",
+          "codex:gpt-6.1-sol",
+          "--incumbent",
+          "claude:claude-3-7-sonnet",
+          "--judges",
+          "claude:claude-3-7-sonnet",
+          "agy:auto",
+          "--eval-id",
+          "eval-alias-judge",
+        ],
+        deps,
+      );
+      expect(aliasJudge.exitCode).toBe(1);
+      expect(aliasJudge.stderr).toMatch(/model-alias/);
+      expect(loadSuiteSpy).not.toHaveBeenCalled();
+      expect(runFixtureRepeat).not.toHaveBeenCalled();
+      expect(judgeComparison).not.toHaveBeenCalled();
+
+      const unsupportedEffort = await runInjectedModels(
+        [
+          "evaluate",
+          "--role",
+          "implement",
+          "--candidate",
+          "codex:gpt-6.1-sol",
+          "--incumbent",
+          "claude:claude-3-7-sonnet",
+          "--judges",
+          "claude:claude-3-7-sonnet:high",
+          "agy:gemini-2.5-pro",
+          "--eval-id",
+          "eval-effort-judge",
+        ],
+        deps,
+      );
+      expect(unsupportedEffort.exitCode).toBe(1);
+      expect(unsupportedEffort.stderr).toMatch(/effort-unavailable/);
+      expect(loadSuiteSpy).not.toHaveBeenCalled();
+      expect(runFixtureRepeat).not.toHaveBeenCalled();
+      expect(judgeComparison).not.toHaveBeenCalled();
+    });
+
     it("rejects invalid --judges input instead of silently substituting hardcoded default judges", async () => {
       const { deps, judgeComparison } = createSyntheticDeps(root);
       await runInjectedModels(["discover"], deps);
