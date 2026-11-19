@@ -12,10 +12,16 @@ import {
   saveTaskState,
 } from "../utils/state.js";
 
-interface ReconcileResult {
+export interface ReconcileResult {
   passed: number;
   failed: number;
   total: number;
+  failedTaskIds: string[];
+}
+
+export interface ReconcileGateOptions {
+  projectId?: string;
+  updateLocalTaskState?: boolean;
 }
 
 /**
@@ -29,16 +35,17 @@ export async function reconcileGates(
   projectPath: string,
   featureId: string,
   phaseId?: string,
+  options: ReconcileGateOptions = {},
 ): Promise<ReconcileResult> {
   const featureDir = path.join(projectPath, "specs", featureId);
-  const projectId = resolveProjectId(projectPath);
+  const projectId = options.projectId ?? resolveProjectId(projectPath);
 
   let taskState: TaskState;
   try {
     taskState = loadTaskState(featureDir);
   } catch {
     // No tasks.json — nothing to reconcile
-    return { passed: 0, failed: 0, total: 0 };
+    return { passed: 0, failed: 0, total: 0, failedTaskIds: [] };
   }
 
   const targetPhases = phaseId
@@ -48,6 +55,7 @@ export async function reconcileGates(
   let passed = 0;
   let failed = 0;
   let total = 0;
+  const failedTaskIds: string[] = [];
 
   // 026: a fenced Done-When compiles the SAME gateScript onto every task in a
   // phase. Run each distinct gate once so a Docker integration gate (e.g.
@@ -92,12 +100,16 @@ export async function reconcileGates(
 
       if (gateResult.passed) {
         passed++;
-        if (task.status !== "completed") {
+        if (
+          options.updateLocalTaskState !== false &&
+          task.status !== "completed"
+        ) {
           task.status = "completed";
           task.completedAt = new Date().toISOString();
         }
       } else {
         failed++;
+        failedTaskIds.push(task.id);
         // Don't reopen completed tasks — gate may have regressed
         // but we don't want to lose "done" state from a flaky gate
       }
@@ -105,7 +117,8 @@ export async function reconcileGates(
   }
 
   // Save updated task state
-  saveTaskState(featureDir, taskState);
+  if (options.updateLocalTaskState !== false)
+    saveTaskState(featureDir, taskState);
 
-  return { passed, failed, total };
+  return { passed, failed, total, failedTaskIds };
 }

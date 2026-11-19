@@ -4,7 +4,7 @@
 # file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 set -euo pipefail
-required_tests=(src/application/delivery/outbox.test.ts src/application/dispatch/dispatch-service.test.ts src/application/harvest/harvest-service.test.ts src/engine/harvest.test.ts src/architecture.test.ts)
+required_tests=(src/application/delivery/outbox.test.ts src/application/dispatch/dispatch-service.test.ts src/application/harvest/harvest-service.test.ts src/engine/reconcile-gates.checkout.test.ts src/engine/harvest.test.ts src/architecture.test.ts)
 for test_file in "${required_tests[@]}"; do
   if [[ ! -f "$test_file" ]]; then
     echo "Missing required test: $test_file" >&2
@@ -12,4 +12,4 @@ for test_file in "${required_tests[@]}"; do
   fi
 done
 pnpm build
-pnpm exec vitest run src/application/delivery/outbox.test.ts src/application/dispatch/dispatch-service.test.ts src/application/harvest/harvest-service.test.ts src/engine/harvest.test.ts src/architecture.test.ts
+pnpm exec vitest run src/application/delivery/outbox.test.ts src/application/dispatch/dispatch-service.test.ts src/application/harvest/harvest-service.test.ts src/engine/reconcile-gates.checkout.test.ts src/engine/harvest.test.ts src/architecture.test.ts
