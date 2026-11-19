@@ -49,7 +49,15 @@ export const createProjectDiscoverCommand = () =>
           for (const issue of readiness.context.issues)
             writeScopedStdout(`  ${issue.path}: ${issue.kind}\n`);
         }
-        if (readiness?.context.status !== "ready")
+        const contextIssues = readiness?.context.issues ?? [];
+        if (
+          (!readiness ||
+            contextIssues.some(({ kind }) => kind === "missing")) &&
+          !contextIssues.some(
+            ({ path, kind }) =>
+              path === ".gwrk/context-manifest.json" && kind === "invalid",
+          )
+        )
           writeScopedStdout("Repair managed context with gwrk init.\n");
 
         const latest = readiness?.assessment.latest;

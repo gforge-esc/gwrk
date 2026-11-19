@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { spawnSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import {
   existsSync,
   mkdirSync,
@@ -17,6 +18,8 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 let root: string;
 const cli = resolve("dist/cli.js");
 const project = { name: "readiness-fixture", type: "generic" };
+const targetPath = ".gwrk/architecture.md";
+const target = "# Target\nContext only. Code conformance remains unassessed.\n";
 const jsonInvocations = [
   { args: ["project", "discover", "--format", "json"] },
   { args: ["--format", "json", "project", "discover"] },
@@ -62,10 +65,7 @@ describe("project discovery with architecture evidence", () => {
       }),
     );
     mkdirSync(join(root, ".gwrk"));
-    writeFileSync(
-      join(root, ".gwrk/architecture.md"),
-      "# Target\nContext only. Code conformance remains unassessed.\n",
-    );
+    writeFileSync(join(root, targetPath), target);
   });
 
   it.each(jsonInvocations)("reports additive JSON evidence with %j", ({ args }) => {
@@ -95,6 +95,21 @@ describe("project discovery with architecture evidence", () => {
     expect(text).toContain(".gwrk/context-manifest.json: missing");
     expect(text).toContain("gwrk init");
     expect(text).toContain("gwrk assess");
+  });
+
+  it("suppresses the init hint when the manifest is invalid and the decision index is missing", () => {
+    writeFileSync(
+      join(root, ".gwrk/context-manifest.json"),
+      JSON.stringify({
+        version: 1,
+        files: { [targetPath]: createHash("sha256").update(target).digest("hex") },
+      }),
+    );
+
+    const text = run(["project", "discover"]);
+    expect(text).toContain(".gwrk/context-manifest.json: invalid");
+    expect(text).toContain(".gwrk/decisions/index.md: missing");
+    expect(text).not.toContain("gwrk init");
   });
 
   it("reports assessment scope alongside incomplete context in text and JSON", () => {
