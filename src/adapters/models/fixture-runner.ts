@@ -272,6 +272,10 @@ async function changedFixturePaths(
   );
 }
 
+function withoutHtmlComments(markdown: string): string {
+  return markdown.replace(/<!--[\s\S]*?(?:-->|$)/g, "");
+}
+
 function hasSection(markdown: string, section: string): boolean {
   const sectionName = section.toLowerCase();
   let sectionLevel: number | undefined;
@@ -1055,7 +1059,7 @@ export class FixtureRunner
         let specText = "";
         try {
           if (existsSync(specPath)) {
-            specText = await readFile(specPath, "utf8");
+            specText = withoutHtmlComments(await readFile(specPath, "utf8"));
           }
         } catch {}
         const adrReferences = new Set(specText.match(/\bADR-\d+\b/g));
@@ -1078,7 +1082,7 @@ export class FixtureRunner
         let planText = "";
         try {
           if (existsSync(planPath)) {
-            planText = await readFile(planPath, "utf8");
+            planText = withoutHtmlComments(await readFile(planPath, "utf8"));
           }
         } catch {}
         for (const ref of fixture.gates.requiredPlanReferences) {

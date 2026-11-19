@@ -642,6 +642,17 @@ describe("fixture runner adapter", () => {
       expectedPassingCheck: "spec-ref-ADR-001",
       firstAdr: "docs/decisions/ADR-001-ticket-boundaries.md",
     },
+    {
+      variant: "TR-033 an ADR cited only in a comment",
+      expectedCheck: "spec-ref-ADR-001",
+      firstAdr: "<!-- ADR-001 -->",
+    },
+    {
+      variant: "TR-033 a plan path cited only in a comment",
+      expectedCheck: "plan-ref-src/domain/select-queue.mjs",
+      planApproach:
+        "Repair queue selection. Run src/domain/select-queue.test.mjs.\n\n<!--\nsrc/domain/select-queue.mjs\n-->",
+    },
     { variant: "bare command", expectedCheck: "executable-plan-gate" },
     { variant: "echoed command", expectedCheck: "executable-plan-gate" },
     { variant: "failed dispatch", expectedCheck: "dispatch-gwrk-plan" },
@@ -672,6 +683,7 @@ describe("fixture runner adapter", () => {
       mismatchedWorkflow,
       acceptanceBody = "Route unknown priorities to triage.",
       firstAdr = "ADR-001",
+      planApproach = "Repair src/domain/select-queue.mjs and run src/domain/select-queue.test.mjs.",
     }) => {
       const calls: TaskDispatch[] = [];
       const specReferences = `${firstAdr} ADR-002 docs/refs/queue-contract.md docs/research/routing-brief.md docs/refs/acceptance.md`;
@@ -697,7 +709,7 @@ describe("fixture runner adapter", () => {
               "# Ticket routing plan",
               "",
               "## Approach",
-              "Repair src/domain/select-queue.mjs and run src/domain/select-queue.test.mjs.",
+              planApproach,
               "",
               "### Phase 1: Repair queue selection",
               "#### Done When",

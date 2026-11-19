@@ -115,6 +115,7 @@ Create versioned synthetic fixtures for long-context definition and seeded-defec
 | TR-029 | integration | `src/adapters/models/fixture-runner.test.ts` | A passing candidate command that modifies `AGENTS.md` fails the protected path check and aggregate gate |
 | TR-030 | integration | `src/adapters/models/fixture-runner.test.ts` | Rejects staged and committed edits to `AGENTS.md` with the working tree restored to baseline in both cases and the index restored in the committed case |
 | TR-032 | integration | `src/adapters/models/fixture-runner.test.ts` | Rejection of comment-only acceptance sections and `ADR-0010` substitutions, acceptance of scenario text under a subheading and `docs/decisions/ADR-001-ticket-boundaries.md` as the sole `ADR-001` citation |
+| TR-033 | integration | `src/adapters/models/fixture-runner.test.ts` | Fails the definition repeat when a required spec citation or plan path appears only in an HTML comment |
 
 The matching-model handoff case keeps behavior pass rates of 1 and 0. A passing definition repeat exports the original specification and generated plan. The review cases accept report-only and canonical reopenings of T001, the routing task.
 
