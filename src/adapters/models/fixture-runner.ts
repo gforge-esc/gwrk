@@ -273,24 +273,47 @@ async function changedFixturePaths(
 }
 
 function hasSection(markdown: string, section: string): boolean {
-  const lines = markdown.split(/\r?\n/);
-  let content = false;
-  let fenced = false;
-  for (const line of lines) {
-    if (/^ {0,3}(?:```|~~~)/.test(line)) {
-      fenced = !fenced;
-      continue;
+  const sectionName = section.toLowerCase();
+  let sectionLevel: number | undefined;
+  let fence: string | undefined;
+  let inComment = false;
+  for (let line of markdown.split(/\r?\n/)) {
+    const fenceMarker = !inComment && /^ {0,3}(`{3,}|~{3,})(.*)$/.exec(line);
+    if (fenceMarker) {
+      if (!fence) {
+        fence = fenceMarker[1];
+        continue;
+      }
+      if (fenceMarker[1].startsWith(fence) && !fenceMarker[2].trim()) {
+        fence = undefined;
+        continue;
+      }
     }
-    if (!fenced && /^#{1,6}\s+/.test(line)) {
-      if (content) break;
-      content =
-        line
-          .replace(/^#{1,6}\s+/, "")
-          .trim()
-          .toLowerCase() === section.toLowerCase();
-      continue;
+    if (!fence) {
+      if (inComment) {
+        const commentEnd = line.indexOf("-->");
+        if (commentEnd === -1) continue;
+        line = line.slice(commentEnd + 3);
+        inComment = false;
+      }
+      line = line.replace(/<!--(?:.*?-->|.*$)/gs, (comment) => {
+        inComment = !comment.endsWith("-->");
+        return "";
+      });
+      const heading = /^ {0,3}(#{1,6})(?:[ \t]+(.*))?$/.exec(line);
+      if (heading) {
+        const level = heading[1].length;
+        if (sectionLevel !== undefined && level <= sectionLevel) break;
+        if (
+          sectionLevel === undefined &&
+          heading[2]?.trim().toLowerCase() === sectionName
+        ) {
+          sectionLevel = level;
+        }
+        continue;
+      }
     }
-    if (content && line.trim()) return true;
+    if (sectionLevel !== undefined && line.trim()) return true;
   }
   return false;
 }
@@ -1035,8 +1058,11 @@ export class FixtureRunner
             specText = await readFile(specPath, "utf8");
           }
         } catch {}
+        const adrReferences = new Set(specText.match(/\bADR-\d+\b/g));
         for (const ref of fixture.gates.requiredSpecReferences) {
-          const present = specText.includes(ref);
+          const present = /^ADR-\d+$/.test(ref)
+            ? adrReferences.has(ref)
+            : specText.includes(ref);
           gateChecks.push({
             checkId: `spec-ref-${ref}`,
             passed: present,
