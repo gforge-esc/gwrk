@@ -167,7 +167,11 @@ export async function startSlackApp(deps: {
     });
 
     // Register App Home handler
-    await registerSlackHomeHandler(slackApp, { ...deps, registry });
+    await registerSlackHomeHandler(slackApp, {
+      ...deps,
+      registry,
+      queueProjectId: baseContext.queueProjectId,
+    });
 
     // Initialize presence poller
     await presenceManager.init(deps.config);

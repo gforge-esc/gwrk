@@ -370,3 +370,5 @@ None. Full coverage of `specs/048-project-identity-slack/spec.md`.
 Phase 3 review regressions cover enrolled repository propagation in URL lookup and slash approval, crash-left claimed merge reconciliation and synthetic receipt compare-and-set guards. Seven failures preceded the repair. The repaired phase gate passes 162 tests.
 
 Phase 3 final regression repairs classify missing and nonexecutable GitHub CLI launch as typed preflight failures with the original cause. A started process still has an uncertain outcome. Both authorized actors receive private review links at the stored root thread. Three tests failed before repair. The full phase gate passes 168 tests. Slack supports threaded private replies through chat.postEphemeral. Source: https://docs.slack.dev/reference/methods/chat.postEphemeral/.
+
+TR-012 binds App Home status to the startup project before event handling. After checkout replacement, require both immutable ownership and current checkout verification. Unknown provenance hides project-specific activity. Cover the event boundary and direct rendering for a Beta-only viewer.

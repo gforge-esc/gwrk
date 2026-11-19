@@ -178,6 +178,7 @@ describe("slack-home", () => {
         userId: SYNTHETIC_USER_VIEWER,
         workspaceId: SYNTHETIC_WORKSPACE_ID,
         registry: homeRegistry(alpha, beta),
+        queueProjectId: alpha.projectId,
       },
     );
 
@@ -251,6 +252,7 @@ describe("slack-home", () => {
         userId: SYNTHETIC_USER_VIEWER,
         workspaceId: SYNTHETIC_WORKSPACE_ID,
         registry: homeRegistry(alpha, beta),
+        queueProjectId: alpha.projectId,
       },
     );
     expect(
@@ -390,6 +392,7 @@ describe("slack-home", () => {
         alpha.localRoot,
         {
           registry: homeRegistry(alpha, beta),
+          queueProjectId: alpha.projectId,
           userId: SYNTHETIC_USER_VIEWER,
           workspaceId: SYNTHETIC_WORKSPACE_ID,
         },
@@ -474,6 +477,98 @@ describe("slack-home", () => {
       },
     );
 
+    it.each([false, true])(
+      "does not reassign cached Alpha status to a Beta-only viewer after checkout replacement with provenance %s",
+      async (withProvenance) => {
+        const { alpha, beta } = createHomeCheckouts();
+        const queueProjectId = withProvenance ? alpha.projectId : undefined;
+        const saved = `${alpha.localRoot}-saved`;
+        renameSync(alpha.localRoot, saved);
+        renameSync(beta.localRoot, alpha.localRoot);
+        const registry = homeRegistry(
+          alpha,
+          { ...beta, localRoot: alpha.localRoot },
+          [
+            {
+              projectId: beta.projectId,
+              principalType: "slack_user",
+              principalId: `${SYNTHETIC_WORKSPACE_ID}:U_BETA`,
+              role: "viewer",
+            },
+          ],
+        );
+        const view = await buildHomeTab(
+          {
+            ...mockStatus,
+            dispatch: { ...mockStatus.dispatch, queueDepth: 17 },
+            sandboxes: [
+              { ...mockStatus.sandboxes[0], featureId: "001-alpha-private" },
+            ],
+          },
+          mockConfig,
+          alpha.localRoot,
+          {
+            registry,
+            userId: "U_BETA",
+            workspaceId: SYNTHETIC_WORKSPACE_ID,
+            queueProjectId,
+          },
+        );
+        const blocks = JSON.stringify(view.blocks);
+        expect.soft(blocks).not.toContain("001-alpha-private");
+        expect.soft(blocks).not.toContain("Active Agents");
+        expect.soft(blocks).not.toContain("*Queue Depth:* 17");
+        expect.soft(blocks).not.toContain("Plan DAG Status");
+      },
+    );
+
+    it("retains startup status ownership across the App Home event boundary", async () => {
+      const { alpha, beta } = createHomeCheckouts();
+      const event = vi.fn();
+      const publish = vi.fn();
+      let projects = [alpha, beta];
+      const registry = {
+        ...homeRegistry(alpha, beta, [
+          {
+            projectId: beta.projectId,
+            principalType: "slack_user",
+            principalId: `${SYNTHETIC_WORKSPACE_ID}:U_BETA`,
+            role: "viewer",
+          },
+        ]),
+        listProjects: () => projects,
+      };
+      vi.mocked(getStatusData).mockResolvedValue({
+        ...mockStatus,
+        dispatch: { ...mockStatus.dispatch, queueDepth: 17 },
+        sandboxes: [
+          { ...mockStatus.sandboxes[0], featureId: "001-alpha-private" },
+        ],
+      });
+      await registerSlackHomeHandler(
+        { event } as unknown as App,
+        {
+          config: mockConfig,
+          projectRoot: alpha.localRoot,
+          registry,
+        } as Parameters<typeof registerSlackHomeHandler>[1],
+      );
+      renameSync(alpha.localRoot, `${alpha.localRoot}-saved`);
+      renameSync(beta.localRoot, alpha.localRoot);
+      projects = [alpha, { ...beta, localRoot: alpha.localRoot }];
+      await event.mock.calls[0][1]({
+        event: { type: "app_home_opened", tab: "home", user: "U_BETA" },
+        body: { team_id: SYNTHETIC_WORKSPACE_ID },
+        context: {},
+        client: { views: { publish } },
+        logger: { error: vi.fn() },
+      });
+      expect(publish).toHaveBeenCalledOnce();
+      const blocks = JSON.stringify(publish.mock.calls[0][0].view.blocks);
+      expect.soft(blocks).not.toContain("001-alpha-private");
+      expect.soft(blocks).not.toContain("*Queue Depth:* 17");
+    });
+
     it("hides sandbox details and queue counts from an unbound user", async () => {
       const view = await buildHomeTab(
         mockStatus,
@@ -501,6 +596,7 @@ describe("slack-home", () => {
           userId: SYNTHETIC_USER_VIEWER,
           workspaceId: SYNTHETIC_WORKSPACE_ID,
           registry: homeRegistry(alpha, beta),
+          queueProjectId: alpha.projectId,
         },
       );
 
@@ -538,6 +634,7 @@ describe("slack-home", () => {
           userId: SYNTHETIC_USER_VIEWER,
           workspaceId: SYNTHETIC_WORKSPACE_ID,
           registry: homeRegistry(alpha, beta),
+          queueProjectId: alpha.projectId,
         },
       );
 

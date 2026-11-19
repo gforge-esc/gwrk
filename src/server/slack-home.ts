@@ -63,6 +63,7 @@ export async function buildHomeTab(
     userId?: string;
     workspaceId?: string;
     registry?: ProjectRegistryPort;
+    queueProjectId?: string | null;
   },
 ): Promise<HomeView> {
   const blocks: KnownBlock[] = [
@@ -109,7 +110,9 @@ export async function buildHomeTab(
         )
       : [];
   const startupProject =
-    startupProjects.length === 1 && visibleProjects.includes(startupProjects[0])
+    startupProjects.length === 1 &&
+    startupProjects[0].projectId === options?.queueProjectId &&
+    visibleProjects.includes(startupProjects[0])
       ? startupProjects[0]
       : undefined;
 
@@ -370,9 +373,23 @@ export async function registerSlackHomeHandler(
     config: GwrkConfig;
     projectRoot: string;
     registry?: ProjectRegistryPort;
+    queueProjectId?: string | null;
     workspaceId?: string;
   },
 ) {
+  const startupProjects =
+    deps.registry
+      ?.listProjects()
+      .filter(
+        (project) =>
+          resolveSlackCheckout(project, deps.projectRoot) !== undefined,
+      ) ?? [];
+  const queueProjectId =
+    startupProjects.length === 1 &&
+    (deps.queueProjectId === undefined ||
+      deps.queueProjectId === startupProjects[0].projectId)
+      ? startupProjects[0].projectId
+      : undefined;
   slackApp.event(
     "app_home_opened",
     async ({ event, body, context, client, logger }) => {
@@ -397,6 +414,7 @@ export async function registerSlackHomeHandler(
               (event.view as { team_id?: string } | undefined)?.team_id ??
               deps.workspaceId,
             registry: deps.registry,
+            queueProjectId,
           },
         );
 
