@@ -35,3 +35,21 @@ it("resolves relative taxonomy input from the invocation directory in a valid dr
   expect(result.stderr.match(/\[exit:0 \|/g)).toHaveLength(1);
   expect(existsSync(join(root, ".gwrk/plugins/skills"))).toBe(false);
 });
+it("validates the default installation-relative taxonomy in a dry run", () => {
+  const result = run("--dry-run");
+  expect(result.error).toBeUndefined();
+  expect(result.status).toBe(0);
+  expect(result.stdout).toContain("[DRY RUN]");
+  expect(result.stdout).toContain("devils-advocate");
+  expect(result.stderr.match(/\[exit:0 \|/g)).toHaveLength(1);
+  expect(existsSync(join(root, ".gwrk/plugins/skills"))).toBe(false);
+});
+it("rejects an empty --taxonomy argument without falling back to the default path", () => {
+  const result = run("--taxonomy", "", "--dry-run");
+  expect(result.error).toBeUndefined();
+  expect(result.status).toBe(1);
+  expect(result.stderr).toContain("--taxonomy");
+  expect(result.stderr).not.toContain("reasoning-modes.md");
+  expect(result.stderr.match(/\[exit:1 \|/g)).toHaveLength(1);
+  expect(existsSync(join(root, ".gwrk/plugins/skills"))).toBe(false);
+});

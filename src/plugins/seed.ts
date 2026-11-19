@@ -38,9 +38,24 @@ export async function seedSkills(options: SeedOptions = {}): Promise<void> {
     "..",
     "..",
   );
-  const taxonomyFile = options.taxonomyPath
-    ? path.resolve(options.taxonomyPath)
-    : path.join(cliRoot, "docs", "archive", "reference", "reasoning-modes.md");
+  if (
+    options.taxonomyPath !== undefined &&
+    options.taxonomyPath.trim() === ""
+  ) {
+    throw new CommandError(
+      "Supply a valid Markdown taxonomy with gwrk plugin seed --taxonomy <path>.",
+    );
+  }
+  const taxonomyFile =
+    options.taxonomyPath !== undefined
+      ? path.resolve(options.taxonomyPath)
+      : path.join(
+          cliRoot,
+          "docs",
+          "archive",
+          "reference",
+          "reasoning-modes.md",
+        );
   let skills: SeedSkill[];
   try {
     skills = parseSeedTaxonomy(await fs.readFile(taxonomyFile, "utf8"));
