@@ -154,7 +154,8 @@ bash specs/044-architecture-aware-policy/gates/phase-03.sh
 - `src/commands/init.ts` (MODIFY: Preserve `workspaces` and `project.design` across fresh and existing and `--workspace` runs with zero agent calls)
 - `src/domain/policy-selection.ts` (MODIFY: Resolve explicit task scope and built-in workflow scope as pure policy)
 - `src/utils/agent.ts` (MODIFY: Bind `EffectivePolicy` by workflow scope. Load grounding from the workspace owner. Read the active Selection section to identify generated guidance.)
-- `src/engine/profile-detector.ts` (MODIFY: Find the nearest registered workspace owner within the current worktree)
+- `src/engine/profile-detector.ts` (MODIFY: Start policy lookup at the execution directory and retain the registered workspace and configured ancestors within the worktree)
+- `src/commands/plugin.ts` (MODIFY: Use the dispatch policy roots for project enforcement listing)
 - `src/plugins/skill-runtime.ts` (MODIFY: Omit generated rules already present in the architecture target)
 - `src/plugins/builtins/workflows/gwrk-specify/PROMPT.md` (MODIFY: Add the trusted enforcement slot)
 - `src/plugins/workflow-runtime.ts` (MODIFY: Forward workspace or root `ProjectProfile` with `design` into prompt conditioning and dispatch)
@@ -192,6 +193,9 @@ bash specs/044-architecture-aware-policy/gates/phase-03.sh
 | TR-013 | integration | `src/utils/agent.policy-binding.test.ts` | Owning-worktree FastAPI policy and decision grounding for inherited Hexagonal Functional and explicit Clean |
 | TR-013 | integration | `src/utils/agent.policy-binding.test.ts` | One FastAPI rule from the registered workspace's relative override and no shadowed owner rule |
 | TR-013 | integration | `src/utils/agent.policy-binding.test.ts` | Workspace decision index with inherited architecture rules and execution in the workspace directory |
+| TR-013 | integration | `src/utils/agent.policy-binding.test.ts` | Inherited Python and FastAPI profile with execution in `services/api/src` |
+| TR-013 | integration | `src/utils/agent.policy-binding.test.ts` | One rule from the execution directory's relative rate-limit override and its decision index with both worktree defaults absent |
+| TR-013 | integration | `src/utils/agent.policy-binding.test.ts` | One active `fixture-fastapi` row at version `1.0.0` in project enforcement JSON from `services/api` when dispatch uses the owning worktree pack |
 | TR-013 | integration | `src/utils/agent.policy-binding.test.ts` | Byte equality for the inherited target and both decision indexes after dispatch |
 | TR-013 | integration | `src/utils/agent.policy-binding.test.ts` | Clean without root-only generated rules, with maintainer rules and one TDD rule |
 | TR-013 | integration | `src/utils/agent.policy-binding.test.ts` | Byte equality for the saved target and decision index under either design |
@@ -251,3 +255,7 @@ Phase 4 preparation now passes 176 checks and the compiled CLI acceptance script
 TR-013 also dispatches an unregistered Python and FastAPI workspace. Verify inherited design and owning-worktree packs. Verify architecture target and decision grounding. Keep workspace execution and byte-identical saved context.
 
 TR-013 covers nearer registrations with inherited design and relative policy overrides. Grounding and enforcement retain configured ancestors within the worktree. Repeated initialization also deselects clean-code while preserving an edited target. Dispatch omits its generated rule and preserves maintainer text and saved bytes.
+
+The Phase 4 gate reproduced both review findings. Dispatch used the worktree policy and decision index, and project enforcement listed no `fixture-fastapi` row. After sharing the ordered policy lookup, the gate passed 264 tests and eight compiled CLI checks. Independent phase review remains required.
+
+The Phase 3 gate and `pnpm test:ci` fail three listing tests in `src/commands/plugin.p15.red.test.ts`. The module-wide profile detector mock returns `undefined` for the shared policy root lookup.

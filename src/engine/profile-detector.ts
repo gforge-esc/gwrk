@@ -69,7 +69,11 @@ export function resolveWorkspacePolicyRoots(workDir: string): {
     findNearestAncestorDesign(ancestors)?.directory ??
     workspace;
   const policyDirs = [
-    ...new Set([workspaceDir, ...ancestors.map(({ directory }) => directory)]),
+    ...new Set([
+      workspace,
+      workspaceDir,
+      ...ancestors.map(({ directory }) => directory),
+    ]),
   ];
   return { workspaceDir, ownerDir, policyDirs };
 }

@@ -2,14 +2,16 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { installArchitectureContext } from "../adapters/architecture/context-files.js";
 import { resolveDesign } from "../domain/architecture-context.js";
 import type { ProjectProfile } from "../domain/types.js";
+import type { PluginSummary } from "../plugins/loader.js";
 import { WorkflowRuntime } from "../plugins/workflow-runtime.js";
 import { dispatchToAgent, SAFE_AGENT_ENV } from "./agent.js";
 
@@ -41,7 +43,12 @@ async function prompt(
 }
 describe("shared effective policy dispatch", () => {
   it.each([
-    { selection: "inherited Hexagonal Functional and owning worktree grounding", workspaceDesign: undefined, registered: true },
+    {
+      selection: "inherited Hexagonal Functional and owning worktree grounding",
+      workspaceDesign: undefined,
+      registered: true,
+      listInheritedPack: true,
+    },
     { selection: "unregistered inherited Hexagonal Functional and owning worktree grounding", workspaceDesign: undefined, registered: false },
     { selection: "nearer registration with inherited design", workspaceDesign: undefined, registered: false, nearerRegistration: true },
     { selection: "nearer registration with relative overrides", workspaceDesign: undefined, registered: false, nearerRegistration: true, workspaceOverride: true },
@@ -52,13 +59,21 @@ describe("shared effective policy dispatch", () => {
       workspaceOverride: true,
     },
     {
+      selection: "inherited Python and FastAPI with execution directory overrides and grounding",
+      workspaceDesign: undefined,
+      registered: true,
+      workspaceOverride: true,
+      executionSubdir: true,
+    },
+    {
       selection: "explicit Clean and owning worktree grounding",
       registered: true,
       workspaceDesign: resolveDesign({ architecture: "clean", principles: ["tdd"] }),
     },
-  ])("uses $selection", async ({ workspaceDesign, registered, workspaceOverride, nearerRegistration }) => {
+  ])("uses $selection", async ({ workspaceDesign, registered, workspaceOverride, nearerRegistration, executionSubdir, listInheritedPack }) => {
     const worktree = join(root, "worktree");
     const workspace = join(worktree, "services/api");
+    const workDir = executionSubdir ? join(workspace, "src") : workspace;
     const git = (...args: string[]) =>
       execFileSync("git", args, {
         cwd: root,
@@ -88,7 +103,13 @@ describe("shared effective policy dispatch", () => {
         } } : {}),
       }),
     );
-    mkdirSync(workspace, { recursive: true });
+    mkdirSync(workDir, { recursive: true });
+    if (listInheritedPack) {
+      writeFileSync(
+        join(workspace, ".gwrkrc.json"),
+        JSON.stringify({ project: { name: "fixture-api" } }),
+      );
+    }
     if (nearerRegistration) writeFileSync(join(worktree, "services/.gwrkrc.json"), JSON.stringify({ project: { name: "nearer-owner" }, workspaces: { api: { type: "python", stack: workspaceStack } } }));
     writeFileSync(join(workspace, "requirements.txt"), "fastapi\n");
     await installArchitectureContext(worktree, {
@@ -126,8 +147,10 @@ describe("shared effective policy dispatch", () => {
     const packRules = "Fixture FastAPI pack requires typed response models.";
     writeFileSync(join(pack, "SKILL.md"), packRules);
     const workspaceRules = "Workspace FastAPI policy requires documented rate limits.";
-    const workspaceIndex = Buffer.from("# Architecture Decision Index\n\nWorkspace decisions for the fixture API.\n");
-    const overrideOwner = nearerRegistration ? join(worktree, "services") : workspace;
+    const workspaceIndex = Buffer.from(executionSubdir
+      ? "# Architecture Decision Index\n\nExecution directory decisions for the fixture API.\n"
+      : "# Architecture Decision Index\n\nWorkspace decisions for the fixture API.\n");
+    const overrideOwner = nearerRegistration ? join(worktree, "services") : workDir;
     const workspaceIndexPath = join(overrideOwner, ".gwrk/decisions/index.md");
     if (workspaceOverride) {
       const override = JSON.stringify({ override: { "fixture-fastapi": "./policy/fixture-fastapi" } });
@@ -145,12 +168,12 @@ describe("shared effective policy dispatch", () => {
       "gwrk-implement",
       "Keep workspace task text.",
       {
-        projectRoot: workspace,
+        projectRoot: workDir,
         agent: "agy",
         nativeOnly: true,
         quiet: true,
         dispatcher: (task) => {
-          expect(task.workDir).toBe(workspace);
+          expect(task.workDir).toBe(workDir);
           expect(task.profile?.stack).toMatchObject(workspaceStack);
           expect(task.profile?.design).toEqual(workspaceDesign ?? design);
           return dispatchToAgent({ ...task, dryRun: true });
@@ -203,6 +226,33 @@ describe("shared effective policy dispatch", () => {
     }
     expect(readFileSync(targetPath)).toEqual(savedTarget);
     expect(readFileSync(indexPath)).toEqual(index);
+
+    if (listInheritedPack) {
+      const cli = fileURLToPath(new URL("../../dist/cli.js", import.meta.url));
+      const fixtureHome = join(root, "home");
+      const result = spawnSync(
+        process.execPath,
+        [cli, "plugin", "list", "--project", "--tier", "enforcement", "--format", "json"],
+        {
+          cwd: workspace,
+          encoding: "utf8",
+          env: {
+            ...process.env,
+            ...SAFE_AGENT_ENV,
+            HOME: fixtureHome,
+            USERPROFILE: fixtureHome,
+            GWRK_HOME: fixtureHome,
+          },
+          stdio: ["ignore", "pipe", "pipe"],
+          timeout: 10_000,
+        },
+      );
+      expect(result.status, result.error?.message ?? result.stderr).toBe(0);
+      const listed: PluginSummary[] = JSON.parse(result.stdout);
+      expect(listed.filter(({ name }) => name === "fixture-fastapi")).toEqual([
+        expect.objectContaining({ version: "1.0.0", status: "active" }),
+      ]);
+    }
   });
 
   it.each(["gwrk-spec", "gwrk-implement", "review-code-cli"])(
