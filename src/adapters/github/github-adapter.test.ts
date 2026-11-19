@@ -63,6 +63,42 @@ describe("GitHub durable harvest adapter", () => {
       expect(cwd).toBe("/fixture/project");
   });
 
+  it("keeps a terminal pull request when an updated item moves across pages", async () => {
+    const earlier = "2026-11-18T12:00:00Z";
+    const later = "2026-11-18T12:00:01Z";
+    const requests = Array.from({ length: 102 }, (_, index) => ({
+      ...syntheticPullRequest(index + 1, {
+        merged_at: index === 101 ? later : earlier,
+      }),
+      updated_at: index === 101 ? later : earlier,
+    }));
+    const executeGh = vi.fn(async (args: readonly string[]) => {
+      const path = new URL(args[args.length - 1], "https://api.github.com/");
+      const page = Number(path.searchParams.get("page") ?? 1);
+      const size = Number(path.searchParams.get("per_page") ?? 100);
+      const start = (page - 1) * size;
+      const results = requests.slice(start, start + size);
+      if (executeGh.mock.calls.length === 1) {
+        const [updated] = requests.splice(0, 1);
+        requests.push({ ...updated, updated_at: "2026-11-18T12:00:02Z" });
+      }
+      return JSON.stringify(results);
+    });
+    const adapter = createGitHubHarvestAdapter({ executeGh });
+
+    const facts = await adapter.listTerminalPullRequests({
+      cwd: "/fixture/project",
+      repoSlug: "example/project",
+      baseBranch: "develop",
+      sinceIso: earlier,
+    });
+
+    const numbers = facts.map(({ prNumber }) => prNumber);
+    expect(numbers).toContain(102);
+    expect(numbers).toContain(101);
+    expect(new Set(numbers).size).toBe(102);
+  });
+
   it("preserves closed-unmerged facts and unknown head repositories", async () => {
     const executeGh = vi.fn().mockResolvedValue(
       JSON.stringify(

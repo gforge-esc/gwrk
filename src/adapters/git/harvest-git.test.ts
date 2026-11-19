@@ -3,7 +3,13 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -237,6 +243,46 @@ describe.each([
         "refs/heads/feature",
       ),
     ).toBe("");
+  });
+  it("preserves the second repository when a local origin alias changes before push", async () => {
+    const other = join(root, "other.git");
+    const origin = join(root, "origin.git");
+    git(root, "init", "--quiet", "--bare", other);
+    git(checkout, "push", "--quiet", other, "HEAD:refs/heads/feature");
+    symlinkSync(remote, origin);
+    git(checkout, "remote", "set-url", "origin", origin);
+
+    const realGit = execFileSync("which", ["git"], {
+      encoding: "utf8",
+      env: cleanEnv,
+    }).trim();
+    writeFileSync(
+      join(root, "git"),
+      [
+        "#!/bin/sh",
+        'if [ "$3" = "push" ]; then',
+        '  rm "$GWRK_TEST_ORIGIN" && ln -s "$GWRK_TEST_OTHER_REMOTE" "$GWRK_TEST_ORIGIN" || exit "$?"',
+        "fi",
+        'exec "$GWRK_TEST_REAL_GIT" "$@"',
+        "",
+      ].join("\n"),
+      { mode: 0o755 },
+    );
+    vi.stubEnv("PATH", `${root}:${process.env.PATH}`);
+    vi.stubEnv("GWRK_TEST_REAL_GIT", realGit);
+    vi.stubEnv("GWRK_TEST_ORIGIN", origin);
+    vi.stubEnv("GWRK_TEST_OTHER_REMOTE", other);
+
+    const [result] = await Promise.allSettled([
+      createAdapter().deleteRemoteBranchAtTip(checkout, "feature", initial),
+    ]);
+    const tip = (repo: string) =>
+      git(repo, "for-each-ref", "--format=%(objectname)", "refs/heads/feature");
+
+    expect.soft(tip(other)).toBe(initial);
+    expect(tip(remote)).toBe(
+      result.status === "fulfilled" && result.value.deleted ? "" : initial,
+    );
   });
   it("deletes a remote branch with a full SHA-256 lease", async () => {
     const local = join(root, "sha256-checkout");

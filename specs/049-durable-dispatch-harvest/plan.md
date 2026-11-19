@@ -160,8 +160,10 @@ pnpm exec vitest run src/db/operations.test.ts src/db/db.test.ts src/architectur
 | ID | Type | Target | Assertion |
 |---|---|---|---|
 | TR-002 | unit | `src/adapters/github/github-adapter.test.ts` | Signed raw bytes, fork identity on page two, inclusive cursor and foreign repository rejection |
+| TR-002 | unit | `src/adapters/github/github-adapter.test.ts` | Polling retains a terminal pull request when an updated item moves across page boundaries |
 | TR-003 | unit | `src/adapters/notifications/outbox-reconcile.test.ts` | Adapter finds the prior receipt by metadata key and suppresses resend after a partial or unauthorized lookup |
 | TR-003 | unit | `src/adapters/notifications/slack-receipt-reader.test.ts` | Indeterminate delivery for unreadable notification keys on the last thread page |
+| TR-003 | unit | `src/adapters/notifications/slack-receipt-reader.test.ts` | Indeterminate delivery for an unreadable message on the last thread page |
 | TR-003 | unit | `src/adapters/notifications/slack-receipt-reader.test.ts` | Confirmed absence for a valid unrelated notification key on the last thread page |
 | TR-003 | integration | `src/adapters/notifications/outbox-adapter.integration.test.ts` | The production manifest requests public channel history for the bot |
 | TR-003 | integration | `src/server/slack-durable-notify.test.ts` | After a lost response, the durable sender returns `undefined` after one Web API post attempt and zero webhook calls |
@@ -169,6 +171,7 @@ pnpm exec vitest run src/db/operations.test.ts src/db/db.test.ts src/architectur
 | TR-004 | integration | `src/adapters/git/harvest-git.test.ts` | Both Git adapter factories reject mismatched or multiple remote URLs and preserve both repository tips |
 | TR-004 | integration | `src/adapters/git/harvest-git.test.ts` | Both Git adapter factories preserve the second repository when the push URL changes after verification |
 | TR-004 | integration | `src/adapters/git/harvest-git.test.ts` | Both Git adapter factories delete the verified branch and preserve the second repository's branch when a rewrite conflicts with an explicit origin push URL |
+| TR-004 | integration | `src/adapters/git/harvest-git.test.ts` | Both Git adapter factories preserve the second repository's branch when a local origin alias changes before push |
 | TR-004 | integration | `src/adapters/git/harvest-git.test.ts` | Both Git adapter factories support leased deletion with SHA-256 refs |
 
 #### Done When

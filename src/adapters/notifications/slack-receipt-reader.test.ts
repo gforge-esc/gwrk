@@ -83,6 +83,18 @@ it("paginates the accepted thread and returns the saved receipt", async () => {
   expect(url.searchParams.get("ts")).toBe(threadTs);
   expect(url.searchParams.get("cursor")).toBe("next");
 });
+it("keeps an unreadable message on the final page indeterminate", async () => {
+  const { fetchImpl, reconcile } = setup();
+  fetchImpl
+    .mockResolvedValueOnce(response({ ok: true, team_id: "W1" }))
+    .mockResolvedValueOnce(response(page([], "next")))
+    .mockResolvedValueOnce(response(page([null])));
+
+  expect(
+    await reconcile({ ...query, threadTs: "1700000000.000000" }),
+  ).toEqual({ status: "indeterminate", reason: "lookup_incomplete" });
+  expect(fetchImpl).toHaveBeenCalledTimes(3);
+});
 it.each([
   { description: "missing payload", payload: undefined },
   { description: "missing key", payload: { projectId: "alpha" } },
