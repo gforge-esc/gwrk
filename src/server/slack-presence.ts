@@ -9,6 +9,13 @@ import {
   warnCli,
 } from "../adapters/cli/output-scope.js";
 import type { DeliveryRecipient } from "../domain/project-registry.js";
+import {
+  type QueuedAwayItem,
+  partitionAwayBatch,
+  resolveAwayQueueTarget,
+  validateSlackDeliveryContext,
+} from "../domain/slack-delivery.js";
+import type { ProjectRegistryPort } from "../ports/store-port.js";
 import type { GwrkConfig } from "../utils/config.js";
 import { MessageBuilder, type SlackMessage } from "./slack-messages.js";
 import { getSlackApp } from "./slack.js";
@@ -36,18 +43,14 @@ export interface SlackEvent {
   recipientUserId?: string;
 }
 
-interface BatchedNotification {
-  projectId: string;
-  events: SlackEvent[];
-  batchedSince: string;
-}
-
 interface ScopedAwayQueue {
   projectId: string;
   recipientUserId: string;
   recipient?: DeliveryRecipient;
+  registry?: ProjectRegistryPort;
   events: SlackEvent[];
   messages: SlackMessage[];
+  items: QueuedAwayItem<SlackEvent, SlackMessage>[];
 }
 
 class PresenceManager {
@@ -101,7 +104,7 @@ class PresenceManager {
       usersToCheck.add(uid);
     }
     for (const queue of this.scopedQueues.values()) {
-      if (queue.recipientUserId) {
+      if (queue.recipientUserId && queue.recipientUserId !== "unknown") {
         usersToCheck.add(queue.recipientUserId);
       }
     }
@@ -139,40 +142,90 @@ class PresenceManager {
       projectId?: string;
       recipientUserId?: string;
       recipient?: DeliveryRecipient;
+      opsOnly?: boolean;
+      registry?: ProjectRegistryPort;
     },
   ): Promise<void> {
-    const recipient = event.recipient ?? options?.recipient;
-    const projectId =
-      event.projectId ??
-      options?.projectId ??
-      recipient?.projectId ??
-      "default";
-    const recipientUserId =
-      event.recipientUserId ??
-      options?.recipientUserId ??
-      recipient?.actorUserId ??
-      this.userId;
+    const validated = validateSlackDeliveryContext({
+      projectId: options?.projectId,
+      eventProjectId: event.projectId,
+      recipient: options?.recipient,
+      eventRecipient: event.recipient,
+      channelId: message.channel,
+      threadTs: message.thread_ts,
+      opsOnly: options?.opsOnly,
+      eventOpsOnly: event.opsOnly,
+    });
+    if (!validated.ok) {
+      return;
+    }
+
+    const ctx = validated.context;
+    const isOpsOnly = ctx.opsOnly;
+    const effectiveChannel = ctx.channelId;
+    const effectiveThreadTs = ctx.threadTs;
+    const recipient = ctx.recipient;
+
+    const clonedMessage: SlackMessage = {
+      ...message,
+      channel: effectiveChannel,
+      thread_ts: effectiveThreadTs,
+    };
+
+    const target = resolveAwayQueueTarget({
+      projectId: options?.projectId,
+      eventProjectId: event.projectId,
+      recipient,
+      recipientUserId: options?.recipientUserId,
+      eventRecipientUserId: event.recipientUserId,
+      legacyUserId: this.userId,
+    });
 
     let presence: "active" | "away" = "active";
-    if (recipientUserId) {
-      const knownPresence = this.userPresence.get(recipientUserId);
+    if (target.isScoped) {
+      if (target.recipientUserId) {
+        const knownPresence = this.userPresence.get(target.recipientUserId);
+        if (knownPresence) {
+          presence = knownPresence;
+        } else {
+          const app = getSlackApp();
+          if (app?.client?.users?.getPresence) {
+            try {
+              const res = await app.client.users.getPresence({
+                user: target.recipientUserId,
+              });
+              if (
+                res.ok &&
+                (res.presence === "active" || res.presence === "away")
+              ) {
+                presence = res.presence;
+                this.userPresence.set(target.recipientUserId, presence);
+              }
+            } catch {
+              presence = "active";
+            }
+          }
+        }
+      }
+    } else if (target.recipientUserId) {
+      const knownPresence = this.userPresence.get(target.recipientUserId);
       if (knownPresence) {
         presence = knownPresence;
-      } else if (recipientUserId === this.userId) {
+      } else if (target.recipientUserId === this.userId) {
         presence = this.currentPresence;
       } else {
         const app = getSlackApp();
         if (app?.client?.users?.getPresence) {
           try {
             const res = await app.client.users.getPresence({
-              user: recipientUserId,
+              user: target.recipientUserId,
             });
             if (
               res.ok &&
               (res.presence === "active" || res.presence === "away")
             ) {
               presence = res.presence;
-              this.userPresence.set(recipientUserId, presence);
+              this.userPresence.set(target.recipientUserId, presence);
             }
           } catch {
             presence = this.currentPresence;
@@ -186,35 +239,50 @@ class PresenceManager {
     }
 
     if (presence === "active") {
-      await this.sendImmediately(message, recipient, projectId);
-    } else {
-      logCliOutput(
-        `User away. Queuing event: ${event.type} for ${event.feature}`,
+      await this.sendImmediately(
+        clonedMessage,
+        recipient,
+        target.projectId,
+        isOpsOnly,
+        options?.registry,
       );
+      return;
+    }
 
-      const targetUserId = recipientUserId ?? "unknown";
-      const key = `${projectId}:${targetUserId}`;
-      let queue = this.scopedQueues.get(key);
-      if (!queue) {
-        queue = {
-          projectId,
-          recipientUserId: targetUserId,
-          recipient,
-          events: [],
-          messages: [],
-        };
-        this.scopedQueues.set(key, queue);
-      }
-      queue.events.push(event);
-      queue.messages.push(message);
+    logCliOutput(
+      `User away. Queuing event: ${event.type} for ${event.feature}`,
+    );
 
-      if (
-        !recipient &&
-        projectId === "default" &&
-        (!this.userId || targetUserId === this.userId)
-      ) {
-        this.queuedEvents.push(event);
-      }
+    const targetUserId = target.recipientUserId ?? "unknown";
+    const key = `${target.projectId}:${targetUserId}`;
+    let queue = this.scopedQueues.get(key);
+    if (!queue) {
+      queue = {
+        projectId: target.projectId,
+        recipientUserId: targetUserId,
+        recipient,
+        registry: options?.registry,
+        events: [],
+        messages: [],
+        items: [],
+      };
+      this.scopedQueues.set(key, queue);
+    } else if (!queue.registry && options?.registry) {
+      queue.registry = options.registry;
+    }
+    queue.events.push(event);
+    queue.messages.push(clonedMessage);
+    queue.items.push({
+      event,
+      message: clonedMessage,
+      recipient,
+      channelId: effectiveChannel,
+      threadTs: effectiveThreadTs,
+      opsOnly: isOpsOnly,
+    });
+
+    if (!target.isScoped && (!this.userId || targetUserId === this.userId)) {
+      this.queuedEvents.push(event);
     }
   }
 
@@ -222,12 +290,16 @@ class PresenceManager {
     message: SlackMessage,
     recipient?: DeliveryRecipient,
     projectId?: string,
+    opsOnly?: boolean,
+    registry?: ProjectRegistryPort,
   ): Promise<void> {
     // Avoid circular dependency by dynamically importing notifySlack
     const { notifySlack } = await import("./slack-notify.js");
     await notifySlack(message, undefined, {
       projectId: projectId !== "default" ? projectId : undefined,
       recipient,
+      opsOnly: opsOnly || undefined,
+      registry,
     });
   }
 
@@ -254,45 +326,39 @@ class PresenceManager {
       `User returned. Flushing ${queue.events.length} events for ${queue.projectId}:${queue.recipientUserId}.`,
     );
 
-    const batchedEvents = queue.events.map((e) => ({
-      type: e.type,
-      feature: e.feature,
-    }));
-
-    const summaryMessage = MessageBuilder.batchedSummary(batchedEvents);
-
-    if (queue.recipient?.channelId) {
-      summaryMessage.channel = queue.recipient.channelId;
-    }
-    const threadIds = new Set(
-      queue.events.map((e) => e.recipient?.threadTs).filter(Boolean),
-    );
-    if (
-      threadIds.size === 1 &&
-      queue.events.every((e) => e.recipient?.threadTs)
-    ) {
-      summaryMessage.thread_ts = queue.events[0].recipient?.threadTs;
-    } else {
-      summaryMessage.thread_ts = undefined;
+    const partitions = partitionAwayBatch(queue.items);
+    this.scopedQueues.delete(key);
+    if (queue.projectId === "default") {
+      this.queuedEvents = this.queuedEvents.filter(
+        (e) =>
+          !(
+            (e.projectId ?? e.recipient?.projectId ?? "default") ===
+              queue.projectId &&
+            (e.recipientUserId ?? e.recipient?.actorUserId ?? this.userId) ===
+              queue.recipientUserId
+          ),
+      );
     }
 
     const { sendSlackMessage } = await import("./slack-notify.js");
-    await sendSlackMessage(summaryMessage, {
-      projectId: queue.projectId !== "default" ? queue.projectId : undefined,
-      recipient: queue.recipient,
-      webhookFallback: false,
-    });
 
-    this.scopedQueues.delete(key);
-    this.queuedEvents = this.queuedEvents.filter(
-      (e) =>
-        !(
-          (e.projectId ?? e.recipient?.projectId ?? "default") ===
-            queue.projectId &&
-          (e.recipientUserId ?? e.recipient?.actorUserId ?? this.userId) ===
-            queue.recipientUserId
-        ),
-    );
+    for (const partition of partitions) {
+      const batchedEvents = partition.items.map((item) => ({
+        type: item.event.type,
+        feature: item.event.feature,
+      }));
+      const summaryMessage = MessageBuilder.batchedSummary(batchedEvents);
+      summaryMessage.channel = partition.channelId;
+      summaryMessage.thread_ts = partition.threadTs;
+
+      await sendSlackMessage(summaryMessage, {
+        projectId: queue.projectId !== "default" ? queue.projectId : undefined,
+        recipient: partition.recipient,
+        opsOnly: partition.opsOnly || undefined,
+        registry: queue.registry,
+        webhookFallback: false,
+      });
+    }
   }
 
   private async flushQueue(): Promise<void> {

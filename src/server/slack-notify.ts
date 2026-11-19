@@ -2,8 +2,18 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import type { App } from "@slack/bolt";
 import { logCliError, warnCli } from "../adapters/cli/output-scope.js";
-import type { DeliveryRecipient } from "../domain/project-registry.js";
+import type {
+  DeliveryRecipient,
+  EnrolledProject,
+  SlackFeatureThread,
+} from "../domain/project-registry.js";
+import {
+  type ResolvedSlackRoute,
+  resolveSlackDeliveryRoute,
+  validateSlackDeliveryContext,
+} from "../domain/slack-delivery.js";
 import type { NotificationReceipt } from "../ports/notification-port.js";
 import type { ProjectRegistryPort } from "../ports/store-port.js";
 import { loadConfig } from "../utils/config.js";
@@ -21,6 +31,68 @@ export interface NotifySlackOptions {
   registry?: ProjectRegistryPort;
 }
 
+export interface SendSlackMessageOptions {
+  webhookFallback?: boolean;
+  projectId?: string;
+  recipient?: DeliveryRecipient;
+  registry?: ProjectRegistryPort;
+  opsOnly?: boolean;
+}
+
+export async function verifySlackClientWorkspace(
+  client: App["client"] | undefined,
+  expectedWorkspaceId: string,
+): Promise<boolean> {
+  if (!client || typeof client.auth?.test !== "function") {
+    return false;
+  }
+  const auth = await client.auth.test().catch(() => undefined);
+  return Boolean(auth?.ok && auth.team_id === expectedWorkspaceId);
+}
+
+async function postViaSlackClient(
+  client: App["client"],
+  message: SlackMessage,
+  route: ResolvedSlackRoute,
+  options: { webhookFallback?: boolean } = {},
+): Promise<NotificationReceipt | undefined> {
+  if (!route.channelId) {
+    warnCli("No Slack channel configured — skipping notification");
+    return undefined;
+  }
+
+  try {
+    const response = await client.chat.postMessage({
+      channel: route.channelId,
+      text: message.text,
+      blocks: message.blocks,
+      thread_ts: route.threadTs,
+    });
+    if (response.ok) {
+      return {
+        delivered: true,
+        channelId: response.channel,
+        messageTs: response.ts,
+        threadTs: route.opsOnly
+          ? undefined
+          : (response.message?.thread_ts ?? route.threadTs),
+      };
+    }
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    logCliError(`Failed to post Slack notification: ${errorMessage}`);
+
+    if (options.webhookFallback !== false && !route.projectId) {
+      await sendViaWebhook({
+        ...message,
+        channel: route.channelId,
+        thread_ts: route.threadTs,
+      });
+    }
+  }
+  return undefined;
+}
+
 /**
  * Dispatches a Slack notification.
  * Priority: Socket Mode app → Webhook URL fallback.
@@ -32,55 +104,31 @@ export async function notifySlack(
   event?: SlackEvent,
   options: NotifySlackOptions = {},
 ): Promise<NotificationReceipt | undefined> {
+  const ctxResult = validateSlackDeliveryContext({
+    projectId: options.projectId,
+    eventProjectId: event?.projectId,
+    recipient: options.recipient,
+    eventRecipient: event?.recipient,
+    channelId: message.channel,
+    threadTs: message.thread_ts,
+    opsOnly: options.opsOnly,
+    eventOpsOnly: event?.opsOnly,
+  });
+  if (!ctxResult.ok) {
+    return undefined;
+  }
+
+  const ctx = ctxResult.context;
   const app = getSlackApp();
-  let receipt: NotificationReceipt | undefined;
+  const client = app?.client;
 
-  if (
-    options.projectId &&
-    options.recipient?.projectId &&
-    options.projectId !== options.recipient.projectId
-  ) {
-    return undefined;
-  }
-  if (
-    event?.projectId &&
-    event.recipient?.projectId &&
-    event.projectId !== event.recipient.projectId
-  ) {
-    return undefined;
-  }
-  if (
-    options.projectId &&
-    event?.recipient?.projectId &&
-    options.projectId !== event.recipient.projectId
-  ) {
-    return undefined;
-  }
-  if (
-    event?.projectId &&
-    options.recipient?.projectId &&
-    event.projectId !== options.recipient.projectId
-  ) {
-    return undefined;
-  }
-
-  const routedMessage: SlackMessage = { ...message };
-
-  const effectiveProjectId =
-    options.projectId ??
-    event?.projectId ??
-    options.recipient?.projectId ??
-    event?.recipient?.projectId;
-
-  let projectChannelId: string | undefined;
-  let projectOpsChannelId: string | undefined;
-  let projectWorkspaceId: string | undefined;
-
+  let project: EnrolledProject | null = null;
+  let storedThread: SlackFeatureThread | null = null;
   let registry = options.registry;
   let ownRegistry = false;
 
   try {
-    if (effectiveProjectId) {
+    if (ctx.projectId) {
       try {
         if (!registry) {
           const { createSqliteProjectRegistryAdapter } = await import(
@@ -89,98 +137,103 @@ export async function notifySlack(
           registry = createSqliteProjectRegistryAdapter();
           ownRegistry = true;
         }
-        const project = registry.getProject(effectiveProjectId);
-        if (project?.slack) {
-          projectChannelId = project.slack.channelId;
-          projectOpsChannelId = project.slack.opsChannelId;
-          projectWorkspaceId = project.slack.workspaceId;
-        }
+        project = registry.getProject(ctx.projectId);
         const featureId = options.featureId ?? event?.feature;
-        if (featureId && !options.opsOnly && !event?.opsOnly) {
-          const storedThread = registry.getFeatureThread(
-            project?.projectId ?? effectiveProjectId,
+        if (featureId && !ctx.opsOnly) {
+          storedThread = registry.getFeatureThread(
+            project?.projectId ?? ctx.projectId,
             featureId,
           );
-          if (
-            storedThread &&
-            project?.slack &&
-            storedThread.workspaceId === project.slack.workspaceId &&
-            storedThread.channelId === project.slack.channelId
-          ) {
-            if (storedThread.rootTs) {
-              routedMessage.thread_ts = storedThread.rootTs;
-            }
-            if (storedThread.channelId && !routedMessage.channel) {
-              routedMessage.channel = storedThread.channelId;
-            }
-          }
         }
       } catch {
         // Registry unavailable
       }
     }
 
-    const expectedWorkspaceId =
-      projectWorkspaceId ??
-      options.recipient?.workspaceId ??
-      event?.recipient?.workspaceId;
-
-    if (expectedWorkspaceId && app) {
-      if (typeof app.client?.auth?.test !== "function") {
-        return undefined;
-      }
-      const auth = await app.client.auth
-        .test()
-        .catch(() => ({ ok: false as const }));
-      // biome-ignore lint/suspicious/noExplicitAny: Slack auth test payload
-      if (!auth || !auth.ok || (auth as any).team_id !== expectedWorkspaceId) {
-        return undefined;
-      }
-    }
-
-    const isOpsOnly = Boolean(options.opsOnly ?? event?.opsOnly);
-    if (isOpsOnly) {
-      if (projectOpsChannelId) {
-        routedMessage.channel = projectOpsChannelId;
-        routedMessage.thread_ts = undefined;
-      } else if (!effectiveProjectId) {
+    let fallbackChannelId: string | undefined;
+    let fallbackOpsChannelId: string | undefined;
+    if (!ctx.projectId && !ctx.channelId) {
+      if (ctx.opsOnly) {
         try {
           const config = loadConfig(process.cwd());
-          const opsChannelId = config.project.slack?.opsChannelId;
-          if (opsChannelId) {
-            routedMessage.channel = opsChannelId;
-            routedMessage.thread_ts = undefined;
-          } else {
-            return undefined;
-          }
+          fallbackOpsChannelId = config.project.slack?.opsChannelId;
         } catch {
-          return undefined;
+          // Config not available
         }
-      } else {
-        return undefined;
+      } else if (client) {
+        try {
+          const config = loadConfig(process.cwd());
+          fallbackChannelId = config.project.slack?.channelId;
+        } catch (e) {
+          warnCli("Failed to load config for channel resolution:", e);
+        }
       }
-    } else if (!routedMessage.channel && projectChannelId) {
-      routedMessage.channel = projectChannelId;
     }
 
-    if (app) {
+    const resolved = resolveSlackDeliveryRoute({
+      projectId: options.projectId,
+      eventProjectId: event?.projectId,
+      recipient: options.recipient,
+      eventRecipient: event?.recipient,
+      channelId: message.channel,
+      threadTs: message.thread_ts,
+      opsOnly: options.opsOnly,
+      eventOpsOnly: event?.opsOnly,
+      project,
+      storedThread,
+      fallbackChannelId,
+      fallbackOpsChannelId,
+      requireChannel: Boolean(client && (!event || ctx.projectId)),
+    });
+    if (!resolved.ok) {
+      if (resolved.code === "MISSING_CHANNEL") {
+        warnCli("No Slack channel configured — skipping notification");
+      }
+      return undefined;
+    }
+
+    const route = resolved.route;
+
+    if (route.expectedWorkspaceId && client) {
+      const verified = await verifySlackClientWorkspace(
+        client,
+        route.expectedWorkspaceId,
+      );
+      if (!verified) {
+        return undefined;
+      }
+    }
+
+    const routedMessage: SlackMessage = {
+      ...message,
+      channel: route.channelId,
+      thread_ts: route.threadTs,
+    };
+
+    let receipt: NotificationReceipt | undefined;
+    if (client) {
       // Socket Mode path — full interactivity (buttons, actions)
       if (event) {
-        await presenceManager.handleNotification(event, routedMessage, {
-          projectId: effectiveProjectId,
-          recipient: options.recipient ?? event.recipient,
+        const routedEvent: SlackEvent = {
+          ...event,
+          projectId: route.projectId ?? event.projectId,
+          recipient: route.recipient,
+          opsOnly: route.opsOnly || undefined,
+        };
+        await presenceManager.handleNotification(routedEvent, routedMessage, {
+          projectId: route.projectId,
+          recipient: route.recipient,
+          opsOnly: route.opsOnly || undefined,
+          registry: options.registry,
         });
       } else {
-        receipt = await sendSlackMessage(routedMessage, {
-          webhookFallback: effectiveProjectId ? false : undefined,
-          projectId: effectiveProjectId,
-          recipient: options.recipient,
-          registry: options.registry ?? registry,
+        receipt = await postViaSlackClient(client, routedMessage, route, {
+          webhookFallback: route.projectId ? false : undefined,
         });
       }
     } else {
       // Webhook fallback — fire-and-forget, no interactive elements
-      if (!effectiveProjectId) {
+      if (!route.projectId) {
         await sendViaWebhook(routedMessage);
       }
     }
@@ -188,7 +241,7 @@ export async function notifySlack(
     // Forward to Telegram when configured (dual-channel control plane)
     if (
       !isTelegramPilotDisabled() &&
-      !effectiveProjectId &&
+      !route.projectId &&
       loadTelegramConfig()
     ) {
       await notifyTelegram(routedMessage);
@@ -206,35 +259,30 @@ export async function notifySlack(
  */
 export async function sendSlackMessage(
   message: SlackMessage,
-  options: {
-    webhookFallback?: boolean;
-    projectId?: string;
-    recipient?: DeliveryRecipient;
-    registry?: ProjectRegistryPort;
-  } = {},
+  options: SendSlackMessageOptions = {},
 ): Promise<NotificationReceipt | undefined> {
   const app = getSlackApp();
-  if (!app) return;
+  const client = app?.client;
+  if (!client) return undefined;
 
-  if (
-    options.projectId &&
-    options.recipient?.projectId &&
-    options.projectId !== options.recipient.projectId
-  ) {
+  const ctxResult = validateSlackDeliveryContext({
+    projectId: options.projectId,
+    recipient: options.recipient,
+    channelId: message.channel,
+    threadTs: message.thread_ts,
+    opsOnly: options.opsOnly,
+  });
+  if (!ctxResult.ok) {
     return undefined;
   }
 
-  const effectiveProjectId = options.projectId ?? options.recipient?.projectId;
-
+  const ctx = ctxResult.context;
+  let project: EnrolledProject | null = null;
   let registry = options.registry;
   let ownRegistry = false;
 
   try {
-    let projectWorkspaceId: string | undefined;
-
-    // Resolve channel
-    let channelId = message.channel ?? options.recipient?.channelId;
-    if (effectiveProjectId) {
+    if (ctx.projectId) {
       try {
         if (!registry) {
           const { createSqliteProjectRegistryAdapter } = await import(
@@ -243,75 +291,153 @@ export async function sendSlackMessage(
           registry = createSqliteProjectRegistryAdapter();
           ownRegistry = true;
         }
-        const project = registry.getProject(effectiveProjectId);
-        if (project?.slack) {
-          projectWorkspaceId = project.slack.workspaceId;
-          if (!channelId) {
-            channelId = project.slack.channelId;
-          }
-        }
+        project = registry.getProject(ctx.projectId);
       } catch {
         // Registry unavailable
       }
     }
 
-    const expectedWorkspaceId =
-      projectWorkspaceId ?? options.recipient?.workspaceId;
-    if (expectedWorkspaceId && app) {
-      if (typeof app.client?.auth?.test !== "function") {
-        return undefined;
-      }
-      const auth = await app.client.auth
-        .test()
-        .catch(() => ({ ok: false as const }));
-      // biome-ignore lint/suspicious/noExplicitAny: Slack auth test payload
-      if (!auth || !auth.ok || (auth as any).team_id !== expectedWorkspaceId) {
-        return undefined;
-      }
-    }
-
-    if (!channelId && !effectiveProjectId) {
+    let fallbackChannelId: string | undefined;
+    let fallbackOpsChannelId: string | undefined;
+    if (!ctx.projectId && !ctx.channelId) {
       try {
         const config = loadConfig(process.cwd());
-        channelId = config.project.slack?.channelId;
+        fallbackChannelId = config.project.slack?.channelId;
+        fallbackOpsChannelId = config.project.slack?.opsChannelId;
       } catch (e) {
         warnCli("Failed to load config for channel resolution:", e);
       }
     }
 
-    if (!channelId) {
-      warnCli("No Slack channel configured — skipping notification");
-      return;
+    const resolved = resolveSlackDeliveryRoute({
+      projectId: options.projectId,
+      recipient: options.recipient,
+      channelId: message.channel,
+      threadTs: message.thread_ts,
+      opsOnly: options.opsOnly,
+      project,
+      fallbackChannelId,
+      fallbackOpsChannelId,
+      requireChannel: true,
+    });
+    if (!resolved.ok) {
+      if (resolved.code === "MISSING_CHANNEL") {
+        warnCli("No Slack channel configured — skipping notification");
+      }
+      return undefined;
+    }
+
+    const route = resolved.route;
+    if (route.expectedWorkspaceId) {
+      const verified = await verifySlackClientWorkspace(
+        client,
+        route.expectedWorkspaceId,
+      );
+      if (!verified) {
+        return undefined;
+      }
+    }
+
+    return await postViaSlackClient(client, message, route, {
+      webhookFallback: options.webhookFallback,
+    });
+  } finally {
+    if (ownRegistry && registry) {
+      registry.close();
+    }
+  }
+}
+
+export async function sendSlackEphemeralMessage(
+  message: SlackMessage,
+  userId: string,
+  options: Omit<SendSlackMessageOptions, "webhookFallback"> = {},
+): Promise<NotificationReceipt | undefined> {
+  const app = getSlackApp();
+  const client = app?.client;
+  if (!client) return undefined;
+
+  const ctxResult = validateSlackDeliveryContext({
+    projectId: options.projectId,
+    recipient: options.recipient,
+    channelId: message.channel,
+    threadTs: message.thread_ts,
+    opsOnly: options.opsOnly,
+  });
+  if (!ctxResult.ok) {
+    return undefined;
+  }
+
+  const ctx = ctxResult.context;
+  let project: EnrolledProject | null = null;
+  let registry = options.registry;
+  let ownRegistry = false;
+
+  try {
+    if (ctx.projectId) {
+      try {
+        if (!registry) {
+          const { createSqliteProjectRegistryAdapter } = await import(
+            "../adapters/sqlite/index.js"
+          );
+          registry = createSqliteProjectRegistryAdapter();
+          ownRegistry = true;
+        }
+        project = registry.getProject(ctx.projectId);
+      } catch {
+        // Registry unavailable
+      }
+    }
+
+    const resolved = resolveSlackDeliveryRoute({
+      projectId: options.projectId,
+      recipient: options.recipient,
+      channelId: message.channel,
+      threadTs: message.thread_ts,
+      opsOnly: options.opsOnly,
+      project,
+      requireChannel: true,
+    });
+    if (!resolved.ok || !resolved.route.channelId) {
+      return undefined;
+    }
+
+    const route = resolved.route;
+    const channelId = resolved.route.channelId;
+    if (route.expectedWorkspaceId) {
+      const verified = await verifySlackClientWorkspace(
+        client,
+        route.expectedWorkspaceId,
+      );
+      if (!verified) {
+        return undefined;
+      }
+    }
+
+    if (!client.chat?.postEphemeral) {
+      return undefined;
     }
 
     try {
-      const response = await app.client.chat.postMessage({
+      const res = await client.chat.postEphemeral({
         channel: channelId,
+        user: userId,
+        thread_ts: route.threadTs,
         text: message.text,
         blocks: message.blocks,
-        thread_ts: message.thread_ts ?? options.recipient?.threadTs,
       });
-      if (response.ok) {
+      if (res?.ok) {
         return {
           delivered: true,
-          channelId: response.channel,
-          messageTs: response.ts,
-          threadTs:
-            response.message?.thread_ts ??
-            message.thread_ts ??
-            options.recipient?.threadTs,
+          channelId,
+          messageTs: res.message_ts,
+          threadTs: route.threadTs,
         };
       }
-    } catch (error) {
-      const errorMessage =
-        error instanceof Error ? error.message : String(error);
-      logCliError(`Failed to post Slack notification: ${errorMessage}`);
-
-      if (options.webhookFallback !== false && !effectiveProjectId) {
-        await sendViaWebhook(message);
-      }
+      return { delivered: false };
+    } catch {
+      return { delivered: false };
     }
-    return undefined;
   } finally {
     if (ownRegistry && registry) {
       registry.close();

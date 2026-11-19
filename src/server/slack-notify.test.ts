@@ -12,7 +12,8 @@ import {
 } from "../../tests/helpers/synthetic-slack.js";
 import { createSlackNotificationAdapter } from "../adapters/notifications/index.js";
 import { createProjectRoutingService } from "../application/project-routing/index.js";
-import { notifySlack } from "./slack-notify.js";
+import { notifySlack, sendSlackMessage } from "./slack-notify.js";
+import { presenceManager } from "./slack-presence.js";
 import { getSlackApp } from "./slack.js";
 
 vi.mock("./slack.js", () => ({
@@ -45,7 +46,10 @@ describe("US-003: Slack Event Bridge", () => {
     vi.clearAllMocks();
   });
 
-  afterEach(() => vi.unstubAllGlobals());
+  afterEach(() => {
+    presenceManager.stop();
+    vi.unstubAllGlobals();
+  });
 
   it("binds a confirmed Socket Mode root and sends the next project event as a reply", async () => {
     const rootTs = "1731320000.000100";
@@ -612,6 +616,169 @@ describe("US-003: Slack Event Bridge", () => {
     expect(conflictingEventProject).toBeUndefined();
 
     expect(postMessage).not.toHaveBeenCalled();
+  });
+
+  it("TR-013: enforces canonical routing and single captured client in direct sendSlackMessage calls", async () => {
+    const firstPostMessage = vi.fn().mockResolvedValue({
+      ok: true,
+      channel: "C_OPS",
+      ts: "1731320000.000900",
+    });
+    const secondPostMessage = vi.fn();
+    const authTest = vi
+      .fn()
+      .mockResolvedValue({ ok: true, team_id: SYNTHETIC_WORKSPACE_ID });
+    vi.mocked(getSlackApp)
+      .mockReturnValueOnce({
+        client: {
+          chat: { postMessage: firstPostMessage },
+          auth: { test: authTest },
+        },
+      } as unknown as ReturnType<typeof getSlackApp>)
+      .mockReturnValueOnce({
+        client: {
+          chat: { postMessage: secondPostMessage },
+          auth: { test: authTest },
+        },
+      } as unknown as ReturnType<typeof getSlackApp>);
+
+    const registry = createSyntheticRegistry();
+    const receipt = await sendSlackMessage(
+      { text: "Direct ops send", blocks: [] },
+      {
+        projectId: SYNTHETIC_PROJECT_ALPHA.projectId,
+        recipient: {
+          projectId: SYNTHETIC_PROJECT_ALPHA.projectId,
+          surface: "slack",
+          workspaceId: SYNTHETIC_WORKSPACE_ID,
+          threadTs: "1731320000.000100",
+          opsOnly: true,
+        },
+        registry,
+      },
+    );
+
+    expect(receipt).toMatchObject({
+      delivered: true,
+      channelId: "C_OPS",
+      threadTs: undefined,
+    });
+    expect(authTest).toHaveBeenCalledOnce();
+    expect(firstPostMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        channel: "C_OPS",
+        thread_ts: undefined,
+      }),
+    );
+    expect(secondPostMessage).not.toHaveBeenCalled();
+
+    const rejected = await sendSlackMessage(
+      { text: "Non-slack direct send", blocks: [] },
+      {
+        projectId: SYNTHETIC_PROJECT_ALPHA.projectId,
+        recipient: {
+          projectId: SYNTHETIC_PROJECT_ALPHA.projectId,
+          surface: "http",
+          workspaceId: SYNTHETIC_WORKSPACE_ID,
+          channelId: SYNTHETIC_CHANNEL_ALPHA,
+        },
+        registry,
+      },
+    );
+    expect(rejected).toBeUndefined();
+    expect(secondPostMessage).not.toHaveBeenCalled();
+  });
+
+  it("TR-013: delivers and queues opsOnly event notifications to project opsChannelId even when event.recipient carries a feature channel and thread", async () => {
+    const postMessage = vi.fn().mockResolvedValue({
+      ok: true,
+      channel: "C_OPS",
+      ts: "1731320000.000950",
+    });
+    const getPresence = vi.fn().mockResolvedValue({
+      ok: true,
+      presence: "active",
+    });
+    vi.mocked(getSlackApp).mockReturnValue({
+      client: {
+        chat: { postMessage },
+        users: { getPresence },
+        auth: {
+          test: vi
+            .fn()
+            .mockResolvedValue({ ok: true, team_id: SYNTHETIC_WORKSPACE_ID }),
+        },
+      },
+    } as unknown as ReturnType<typeof getSlackApp>);
+
+    const registry = createSyntheticRegistry();
+    const featureRecipient = {
+      projectId: SYNTHETIC_PROJECT_ALPHA.projectId,
+      surface: "slack" as const,
+      workspaceId: SYNTHETIC_WORKSPACE_ID,
+      channelId: SYNTHETIC_CHANNEL_ALPHA,
+      threadTs: "1731320000.000100",
+      actorUserId: "U-alice",
+    };
+
+    presenceManager.setUserPresence("U-alice", "active");
+    await notifySlack(
+      { text: "Active ops alert", blocks: [] },
+      {
+        type: "pulse",
+        feature: "003-slack",
+        projectId: SYNTHETIC_PROJECT_ALPHA.projectId,
+        recipient: featureRecipient,
+        payload: {},
+        timestamp: "2026-11-18T10:00:00.000Z",
+      },
+      {
+        projectId: SYNTHETIC_PROJECT_ALPHA.projectId,
+        opsOnly: true,
+        registry,
+      },
+    );
+
+    expect(postMessage).toHaveBeenCalledOnce();
+    expect(postMessage.mock.calls[0][0]).toEqual(
+      expect.objectContaining({
+        channel: "C_OPS",
+        text: "Active ops alert",
+        thread_ts: undefined,
+      }),
+    );
+
+    postMessage.mockClear();
+    presenceManager.setUserPresence("U-alice", "away");
+    await notifySlack(
+      { text: "Away ops alert", blocks: [] },
+      {
+        type: "pulse",
+        feature: "003-slack",
+        projectId: SYNTHETIC_PROJECT_ALPHA.projectId,
+        opsOnly: true,
+        recipient: featureRecipient,
+        payload: {},
+        timestamp: "2026-11-18T10:05:00.000Z",
+      },
+      {
+        projectId: SYNTHETIC_PROJECT_ALPHA.projectId,
+        registry,
+      },
+    );
+
+    expect(postMessage).not.toHaveBeenCalled();
+    expect(
+      presenceManager.getScopedQueue(
+        SYNTHETIC_PROJECT_ALPHA.projectId,
+        "U-alice",
+      )?.events,
+    ).toHaveLength(1);
+
+    await presenceManager.flushUserQueues("U-alice");
+    expect(postMessage).toHaveBeenCalledOnce();
+    expect(postMessage.mock.calls[0][0].channel).toBe("C_OPS");
+    expect(postMessage.mock.calls[0][0].thread_ts).toBeUndefined();
   });
 
   it("FR-005: Converts ship:complete event to Block Kit message", async () => {
