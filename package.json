@@ -21,7 +21,7 @@
     "test:coverage": "vitest run --coverage",
     "test:watch": "vitest watch",
     "test:report": "tsx scripts/dev/test-report.ts",
-    "lint": "biome check",
+    "lint": "node scripts/lint.mjs",
     "format": "biome format --write"
   },
   "dependencies": {

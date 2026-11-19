@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { z } from "zod";
+import type { DeliveryRecipient } from "./project-registry.js";
 
 export interface ProjectProfile {
   type: string;
@@ -208,6 +209,8 @@ export interface CompressionReport {
 }
 
 export interface HarvestRecord {
+  projectId?: string;
+  recipient?: DeliveryRecipient;
   featureId: string;
   phaseId?: string;
   prNumber: number;

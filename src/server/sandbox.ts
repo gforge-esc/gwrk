@@ -6,6 +6,7 @@ import { execSync } from "node:child_process";
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
+import { logCliError, warnCli } from "../adapters/cli/output-scope.js";
 import type { AgentBackendId } from "../utils/config.js";
 import type { SandboxInfo } from "./types.js";
 
@@ -128,7 +129,7 @@ export class SandboxManager {
       );
     } catch (e: unknown) {
       const err = e instanceof Error ? e : new Error(String(e));
-      console.warn(`  ⚠ could not update sandbox registry: ${err.message}`);
+      warnCli(`  ⚠ could not update sandbox registry: ${err.message}`);
     }
   }
 
@@ -185,7 +186,7 @@ export class SandboxManager {
           });
         } catch (e: unknown) {
           const err = e instanceof Error ? e : new Error(String(e));
-          console.warn(
+          warnCli(
             `  ⚠ teardown failed for orphan ${record.id}: ${err.message}`,
           );
           // Keep the record so a later prune can retry rather than losing the
@@ -336,7 +337,7 @@ export class SandboxManager {
         });
       } catch (e: unknown) {
         const err = e instanceof Error ? e : new Error(String(e));
-        console.error(
+        logCliError(
           `worktree setup ("${opts.setup}") failed in ${workDir}: ${err.message}`,
         );
       }
@@ -368,7 +369,7 @@ export class SandboxManager {
         });
       } catch (e: unknown) {
         const err = e instanceof Error ? e : new Error(String(e));
-        console.warn(
+        warnCli(
           `  ⚠ worktree teardown ("${teardown}") failed in ${workDir}: ${err.message}`,
         );
       }
@@ -409,7 +410,7 @@ export class SandboxManager {
           );
         } catch (e: unknown) {
           const err = e instanceof Error ? e : new Error(String(e));
-          console.error(`Failed to create PR for ${workDir}: ${err.message}`);
+          logCliError(`Failed to create PR for ${workDir}: ${err.message}`);
         }
       }
 
@@ -422,7 +423,7 @@ export class SandboxManager {
       this.forgetSandbox(workDir);
     } catch (e: unknown) {
       const err = e instanceof Error ? e : new Error(String(e));
-      console.error(
+      logCliError(
         `Error during sandbox destruction for ${workDir}: ${err.message}`,
       );
       // Try to cleanup worktree anyway if it failed midway
@@ -484,7 +485,7 @@ export class SandboxManager {
       execSync("git worktree prune", { stdio: "pipe" });
     } catch (e: unknown) {
       const err = e instanceof Error ? e : new Error(String(e));
-      console.error(`Failed to prune git worktrees: ${err.message}`);
+      logCliError(`Failed to prune git worktrees: ${err.message}`);
     }
   }
 }

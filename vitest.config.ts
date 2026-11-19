@@ -15,7 +15,6 @@ const QUARANTINED_INTEGRATION = [
   // (cli.ux is now in-process and un-quarantined — PR-7.)
   "**/src/cli.pulse.e2e.test.ts",
   // Other CI-hostile integration tests (carried from develop #96).
-  "**/src/**/notify.test.ts",
   "**/src/engine/pulse-integration.test.ts",
 ];
 

@@ -1,0 +1,19 @@
+{
+  "runId": "2026-11-11T17:02:15.504Z_define_all",
+  "feature": "042-port-adapter-separation",
+  "phase": "all",
+  "command": "define tasks",
+  "agent": "agy",
+  "model": "unknown",
+  "startedAt": "2026-11-11T17:02:15.504Z",
+  "finishedAt": "2026-11-11T17:02:15.797Z",
+  "durationS": 0,
+  "exitCode": 0,
+  "attempt": 1,
+  "filesChanged": 1,
+  "linesAdded": 40,
+  "linesDeleted": 38,
+  "gitCommit": "64908ea1de7eeeeb610ad5349cf410975d8521a6",
+  "gitBranch": "codex/port-adapter-separation-red",
+  "digest": []
+}

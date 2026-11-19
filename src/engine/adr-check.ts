@@ -4,6 +4,7 @@
 
 import fs from "node:fs/promises";
 import path from "node:path";
+import { resolveAdrPathInCheckout } from "../adapters/filesystem/adr-checkout.js";
 import { checkIndex } from "./adr-index.js";
 import type { AdrRecord } from "./adr-parser.js";
 
@@ -190,10 +191,24 @@ async function walkRoot(
  * Scans `src/`, `docs/`, and `specs/` under `projectRoot` using the AMBER-1
  * citation-shape rule and `SCAN_IGNORE` list (FR-024).
  */
-export async function scanSurface(projectRoot: string): Promise<Citation[]> {
+export async function scanSurface(
+  projectRoot: string,
+  verifiedCheckoutRoot?: string,
+): Promise<Citation[]> {
   const citations: Citation[] = [];
   for (const rootName of SCAN_ROOTS) {
     const rootDir = path.join(projectRoot, rootName);
+    if (verifiedCheckoutRoot) {
+      const exists = await fs.lstat(rootDir).then(
+        () => true,
+        (error: NodeJS.ErrnoException) => {
+          if (error.code === "ENOENT") return false;
+          throw error;
+        },
+      );
+      if (!exists) continue;
+      await resolveAdrPathInCheckout(verifiedCheckoutRoot, rootDir);
+    }
     await walkRoot(projectRoot, rootName, rootDir, citations);
   }
   return citations;
@@ -208,9 +223,10 @@ export async function scanSurface(projectRoot: string): Promise<Citation[]> {
 export async function checkCitations(
   projectRoot: string,
   records: AdrRecord[],
+  verifiedCheckoutRoot?: string,
 ): Promise<AdrCheckFinding[]> {
   const byId = new Map<string, AdrRecord>(records.map((r) => [r.id, r]));
-  const citations = await scanSurface(projectRoot);
+  const citations = await scanSurface(projectRoot, verifiedCheckoutRoot);
   const findings: AdrCheckFinding[] = [];
 
   for (const citation of citations) {

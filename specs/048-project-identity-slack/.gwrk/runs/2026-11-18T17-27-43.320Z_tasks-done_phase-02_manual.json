@@ -1,0 +1,19 @@
+{
+  "runId": "2026-11-18T17:27:43.320Z_tasks-done_T011",
+  "feature": "048-project-identity-slack",
+  "phase": "phase-02",
+  "command": "tasks-done",
+  "agent": "manual",
+  "model": "none",
+  "startedAt": "2026-11-18T17:27:43.320Z",
+  "finishedAt": "2026-11-18T17:27:58.445Z",
+  "durationS": 15,
+  "exitCode": 0,
+  "attempt": 1,
+  "filesChanged": 6,
+  "linesAdded": 160,
+  "linesDeleted": 18,
+  "gitCommit": "7db905b3aa8c13a34562aff79bbf52dedf1e7ce4",
+  "gitBranch": "feat/048-project-identity-slack",
+  "digest": []
+}

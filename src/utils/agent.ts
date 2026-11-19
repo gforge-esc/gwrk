@@ -10,6 +10,7 @@ import { spawn } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import readline from "node:readline";
+import { writeScopedStdout } from "../adapters/cli/output-scope.js";
 import { recordRoutingDecision } from "../db/plugins.js";
 import type { AgentBackend } from "../plugins/agent-backend.js";
 import { AgentBackendRegistry } from "../plugins/agent-registry.js";
@@ -245,7 +246,7 @@ async function dispatchAgent(opts: DispatchOptions): Promise<{
     const progress = opts.quiet
       ? startProgress({
           label: "agent running",
-          write: (chunk) => process.stdout.write(chunk),
+          write: (chunk) => writeScopedStdout(chunk),
           isTTY: process.stdout.isTTY === true,
           frameMs: 200,
         })
@@ -276,7 +277,7 @@ async function dispatchAgent(opts: DispatchOptions): Promise<{
         const now = new Date();
         const elapsed = Math.floor((Date.now() - startEpoch) / 1000);
         const stamp = `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}:${String(now.getSeconds()).padStart(2, "0")} +${String(Math.floor(elapsed / 60)).padStart(2, "0")}:${String(elapsed % 60).padStart(2, "0")}`;
-        process.stdout.write(
+        writeScopedStdout(
           `${DIM}${stamp}${RESET}  ${YELLOW}⏳ 429 — Rate limited (attempt ${attempt}), retrying…${RESET}\n`,
         );
         logStream.write(`[429] Attempt ${attempt} — rate limited, retrying\n`);
@@ -358,7 +359,7 @@ async function dispatchAgent(opts: DispatchOptions): Promise<{
       if (opts.quiet) {
         const status = code === 0 ? "✓" : "✗";
         const relLogPath = path.relative(process.cwd(), logPath);
-        process.stdout.write(
+        writeScopedStdout(
           `  ${status} agent done (${mins}m ${secs}s) → ${relLogPath}\n`,
         );
         // Surface concise error context on failure (goal: helpful context, not
@@ -366,9 +367,9 @@ async function dispatchAgent(opts: DispatchOptions): Promise<{
         const errSummary = formatResultError(lastResultEvent);
         if (code !== 0 || errSummary) {
           if (errSummary) {
-            process.stdout.write(`  ${YELLOW}⚠ ${errSummary}${RESET}\n`);
+            writeScopedStdout(`  ${YELLOW}⚠ ${errSummary}${RESET}\n`);
           }
-          process.stdout.write(
+          writeScopedStdout(
             `  ${DIM}↳ full transcript: ${relLogPath}${RESET}\n`,
           );
         }
@@ -534,7 +535,7 @@ export async function dispatchToAgent(task: TaskDispatch): Promise<TaskResult> {
       if (now - lastDispatch < throttleMs) {
         const wait = throttleMs - (now - lastDispatch);
         const waitSecs = Math.ceil(wait / 1000);
-        process.stdout.write(
+        writeScopedStdout(
           `\x1b[2m\x1b[33m⏳ Metering API limits (waiting ${waitSecs}s)...\x1b[0m\n`,
         );
         await new Promise((resolve) => setTimeout(resolve, wait));
@@ -614,13 +615,11 @@ export async function dispatchToAgent(task: TaskDispatch): Promise<TaskResult> {
         const content = fs.readFileSync(filePath, "utf-8");
         grounding += `<${tag}>\n${content}\n</${tag}>\n\n`;
         if (!task.quiet) {
-          process.stdout.write(
-            `${DIM}  → Grounding: <${tag}> injected${RESET}\n`,
-          );
+          writeScopedStdout(`${DIM}  → Grounding: <${tag}> injected${RESET}\n`);
         }
       } catch (err) {
         if (!task.quiet) {
-          process.stdout.write(
+          writeScopedStdout(
             `${DIM}  ⚠ Grounding: <${tag}> unreadable (${err instanceof Error ? err.message : err})${RESET}\n`,
           );
         }

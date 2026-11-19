@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import fs from "node:fs";
+import { logCliError, logCliOutput } from "../adapters/cli/output-scope.js";
 import { isRemote } from "../utils/device.js";
 import { CommandError } from "../utils/signal.js";
 import {
@@ -57,7 +58,7 @@ export const setupSlack = async (
   ) {
     const verification = await verifySlackConfig(existingConfig);
     if (verification.socketModeOk) {
-      console.log("Slack already configured");
+      logCliOutput("Slack already configured");
       return {
         alreadyConfigured: true,
         tokensWritten: false,
@@ -76,7 +77,7 @@ export const setupSlack = async (
         socketModeOk: false,
       };
     }
-    console.error(
+    logCliError(
       "Slack credentials not found. Set SLACK_BOT_TOKEN and SLACK_APP_TOKEN.",
     );
     throw new CommandError("Slack credentials not found", 1);
@@ -112,10 +113,10 @@ export const setupSlack = async (
   lines.push(`SLACK_APP_TOKEN=${appToken}`);
 
   fs.writeFileSync(envPath, lines.join("\n"));
-  console.log(`Slack app configured for workspace: ${verification.workspace}`);
+  logCliOutput(`Slack app configured for workspace: ${verification.workspace}`);
 
   if (options.verify) {
-    console.log("Socket Mode: OK");
+    logCliOutput("Socket Mode: OK");
   }
 
   return {

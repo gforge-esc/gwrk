@@ -3,227 +3,269 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { Command } from "commander";
+import { fileURLToPath } from "node:url";
+import { Command, type ParseOptions } from "commander";
 import pkg from "../package.json" with { type: "json" };
-import { assessCommand } from "./commands/assess.js";
-import { dbCommand } from "./commands/db.js";
-import { defineCommand } from "./commands/define.js";
-import { deviceCommand } from "./commands/device.js";
-import { gateCommand } from "./commands/gate.js";
-import { harvestCommand } from "./commands/harvest.js";
-import { initCommand } from "./commands/init.js";
-import { measureCommand } from "./commands/measure.js";
-import { planCommand } from "./commands/plan.js";
-import { pluginCommand } from "./commands/plugin.js";
-import { projectCommand } from "./commands/project.js";
-import { sandboxCommand } from "./commands/sandbox.js";
-import { serverCommand } from "./commands/server.js";
-import { shipCommand } from "./commands/ship.js";
-import { skillCommand } from "./commands/skill.js";
-import { statusCommand } from "./commands/status.js";
-import { tasksCommand } from "./commands/tasks.js";
-import { testCommand } from "./commands/test.js";
-import { processForAgent } from "./utils/agent-layer.js";
+import {
+  CliExit,
+  exitCli,
+  getOutputScope,
+  logCliError,
+  runWithOutputScope,
+  writeScopedStderr,
+  writeScopedStdout,
+} from "./adapters/cli/output-scope.js";
+import { createAssessCommand } from "./commands/assess.js";
+import { createDbCommand } from "./commands/db.js";
+import { createDefineCommand } from "./commands/define.js";
+import { createDeviceCommand } from "./commands/device.js";
+import { createGateCommand } from "./commands/gate.js";
+import { createHarvestCommand } from "./commands/harvest.js";
+import { createInitCommand } from "./commands/init.js";
+import { createMeasureCommand } from "./commands/measure.js";
+import { createPlanCommand } from "./commands/plan.js";
+import { createPluginCommand } from "./commands/plugin.js";
+import { createProjectCommand } from "./commands/project.js";
+import { createSandboxCommand } from "./commands/sandbox.js";
+import { createServerCommand } from "./commands/server.js";
+import { createShipCommand } from "./commands/ship.js";
+import { createSkillCommand } from "./commands/skill.js";
+import { createStatusCommand } from "./commands/status.js";
+import { createTasksCommand } from "./commands/tasks.js";
+import { createTestCommand } from "./commands/test.js";
 import { loadConfig } from "./utils/config.js";
 import { color } from "./utils/format.js";
 
 const { BOLD, DIM, CYAN, MAGENTA, YELLOW, GREEN, RED, RESET } = color;
 
-export const program = new Command();
+class ScopedCommand extends Command {
+  override parse(argv?: readonly string[], options?: ParseOptions): this {
+    if (getOutputScope()) return super.parse(argv, options);
+    return runWithOutputScope({ agentMode: false }, () =>
+      super.parse(argv, options),
+    );
+  }
 
-program.exitOverride();
-program.enablePositionalOptions();
-
-program
-  .name("gwrk")
-  .version(pkg.version)
-  .description("The Principal Engineer's Operating System")
-  .option("--format <type>", "Output format (json)")
-  .option("--workspace <name>", "Select a workspace profile")
-  .option("--agent", "Enable Agent-Native Mode (TC-006)", false)
-  .configureHelp({
-    formatHelp: (cmd, helper) => {
-      const ver = cmd.version() ?? pkg.version;
-
-      // Header
-      let out = "\n";
-      out += `  ${MAGENTA}🦩 gwrk${RESET} ${DIM}v${ver}${RESET}\n`;
-      out += `  ${DIM}You better gwrk.${RESET}\n`;
-      out += "\n";
-      out += `  ${BOLD}Truth → Clarity → Throughput → Value.${RESET}\n`;
-      out += "\n";
-
-      // Commands, grouped by purpose
-      const cmds = cmd.commands;
-      if (cmds.length > 0) {
-        // Foxtrot Charlie pillars
-        const pillars = ["define", "ship", "test", "gate", "measure"];
-        const ops = [
-          "init",
-          "assess",
-          "tasks",
-          "plan",
-          "db",
-          "server",
-          "device",
-          "status",
-          "project",
-          "plugin",
-        ];
-
-        out += `  ${CYAN}Foxtrot Charlie${RESET}\n`;
-        for (const name of pillars) {
-          const sub = cmds.find((c) => c.name() === name);
-          if (sub) {
-            out += `    ${GREEN}${sub.name().padEnd(12)}${RESET} ${DIM}${sub.description()}${RESET}\n`;
-          }
-        }
-
-        out += "\n";
-        out += `  ${CYAN}Operations${RESET}\n`;
-        for (const name of ops) {
-          const sub = cmds.find((c) => c.name() === name);
-          if (sub) {
-            out += `    ${sub.name().padEnd(12)} ${DIM}${sub.description()}${RESET}\n`;
-          }
-        }
-      }
-
-      // Options
-      const opts = helper.visibleOptions(cmd);
-      if (opts.length > 0) {
-        out += "\n";
-        out += `  ${CYAN}Options${RESET}\n`;
-        for (const opt of opts) {
-          const flags = opt.flags.padEnd(20);
-          out += `    ${DIM}${flags}${RESET} ${opt.description}\n`;
-        }
-      }
-
-      out += "\n";
-      out += `  ${DIM}Run${RESET} gwrk <command> --help ${DIM}for details on any command.${RESET}\n`;
-      out += "\n";
-      out += `  ${MAGENTA}🦩${RESET} ${DIM}Truth extracted. Clarity committed. Throughput shipped. Value delivered.${RESET}\n`;
-      out += "\n";
-
-      return out;
-    },
-  });
-
-program.addCommand(initCommand);
-program.addCommand(assessCommand);
-program.addCommand(projectCommand);
-
-// The Foxtrot Charlie Pillars
-program.addCommand(defineCommand); // Define: spec → plan → tasks → analyze
-program.addCommand(shipCommand); // Ship: autonomous implement → review → PR loop
-program.addCommand(testCommand); // Test: run vitest scoped to feature
-program.addCommand(gateCommand); // Gate: execute gates and enforce truth
-program.addCommand(harvestCommand); // Harvest: post-merge lifecycle
-program.addCommand(measureCommand); // Measure: pulse, effort, compression
-
-// Operational queries
-program.addCommand(tasksCommand);
-program.addCommand(planCommand);
-program.addCommand(dbCommand);
-program.addCommand(serverCommand);
-program.addCommand(statusCommand);
-program.addCommand(sandboxCommand); // Sandbox: inspect + reap ship worktree sandboxes
-program.addCommand(deviceCommand);
-program.addCommand(skillCommand);
-program.addCommand(pluginCommand);
-
-/**
- * Recursively apply exitOverride to a command and all its subcommands.
- */
-function applyExitOverride(cmd: Command) {
-  cmd.exitOverride();
-  for (const sub of cmd.commands) {
-    applyExitOverride(sub);
+  override parseAsync(
+    argv?: readonly string[],
+    options?: ParseOptions,
+  ): Promise<this> {
+    if (getOutputScope()) return super.parseAsync(argv, options);
+    return runWithOutputScope({ agentMode: false }, () =>
+      super.parseAsync(argv, options),
+    );
   }
 }
 
-applyExitOverride(program);
+export function createCliProgram(): Command {
+  const program = new ScopedCommand();
 
-program.hook("preAction", (thisCommand, actionCommand) => {
-  const opts = thisCommand.opts();
-  const isAgent = opts.agent || process.env.GWRK_AGENT === "1";
+  program.configureOutput({
+    writeOut: writeScopedStdout,
+    writeErr: writeScopedStderr,
+  });
 
-  if (isAgent) {
-    const originalWrite = process.stdout.write.bind(process.stdout);
-    process.stdout.write = (
-      chunk: string | Buffer,
-      encoding?: BufferEncoding | ((error: Error | null | undefined) => void),
-      callback?: (error: Error | null | undefined) => void,
-    ): boolean => {
-      const data = typeof chunk === "string" ? chunk : chunk.toString();
-      const processed = processForAgent(data);
+  program.exitOverride();
+  program.enablePositionalOptions();
 
-      if (typeof encoding === "function") {
-        return originalWrite(processed, encoding);
+  program
+    .name("gwrk")
+    .version(pkg.version)
+    .description("The Principal Engineer's Operating System")
+    .option("--format <type>", "Output format (json)")
+    .option("--workspace <name>", "Select a workspace profile")
+    .option("--agent", "Enable Agent-Native Mode (TC-006)", false)
+    .configureHelp({
+      formatHelp: (cmd, helper) => {
+        const ver = cmd.version() ?? pkg.version;
+
+        // Header
+        let out = "\n";
+        out += `  ${MAGENTA}🦩 gwrk${RESET} ${DIM}v${ver}${RESET}\n`;
+        out += `  ${DIM}You better gwrk.${RESET}\n`;
+        out += "\n";
+        out += `  ${BOLD}Truth → Clarity → Throughput → Value.${RESET}\n`;
+        out += "\n";
+
+        // Commands, grouped by purpose
+        const cmds = cmd.commands;
+        if (cmds.length > 0) {
+          // Foxtrot Charlie pillars
+          const pillars = ["define", "ship", "test", "gate", "measure"];
+          const ops = [
+            "init",
+            "assess",
+            "tasks",
+            "plan",
+            "db",
+            "server",
+            "device",
+            "status",
+            "project",
+            "plugin",
+          ];
+
+          out += `  ${CYAN}Foxtrot Charlie${RESET}\n`;
+          for (const name of pillars) {
+            const sub = cmds.find((c) => c.name() === name);
+            if (sub) {
+              out += `    ${GREEN}${sub.name().padEnd(12)}${RESET} ${DIM}${sub.description()}${RESET}\n`;
+            }
+          }
+
+          out += "\n";
+          out += `  ${CYAN}Operations${RESET}\n`;
+          for (const name of ops) {
+            const sub = cmds.find((c) => c.name() === name);
+            if (sub) {
+              out += `    ${sub.name().padEnd(12)} ${DIM}${sub.description()}${RESET}\n`;
+            }
+          }
+        }
+
+        // Options
+        const opts = helper.visibleOptions(cmd);
+        if (opts.length > 0) {
+          out += "\n";
+          out += `  ${CYAN}Options${RESET}\n`;
+          for (const opt of opts) {
+            const flags = opt.flags.padEnd(20);
+            out += `    ${DIM}${flags}${RESET} ${opt.description}\n`;
+          }
+        }
+
+        out += "\n";
+        out += `  ${DIM}Run${RESET} gwrk <command> --help ${DIM}for details on any command.${RESET}\n`;
+        out += "\n";
+        out += `  ${MAGENTA}🦩${RESET} ${DIM}Truth extracted. Clarity committed. Throughput shipped. Value delivered.${RESET}\n`;
+        out += "\n";
+
+        return out;
+      },
+    });
+
+  program.addCommand(createInitCommand());
+  program.addCommand(createAssessCommand());
+  program.addCommand(createProjectCommand());
+
+  // The Foxtrot Charlie Pillars
+  program.addCommand(createDefineCommand()); // Define: spec → plan → tasks → analyze
+  program.addCommand(createShipCommand()); // Ship: autonomous implement → review → PR loop
+  program.addCommand(createTestCommand()); // Test: run vitest scoped to feature
+  program.addCommand(createGateCommand()); // Gate: execute gates and enforce truth
+  program.addCommand(createHarvestCommand()); // Harvest: post-merge lifecycle
+  program.addCommand(createMeasureCommand()); // Measure: pulse, effort, compression
+
+  // Operational queries
+  program.addCommand(createTasksCommand());
+  program.addCommand(createPlanCommand());
+  program.addCommand(createDbCommand());
+  program.addCommand(createServerCommand());
+  program.addCommand(createStatusCommand());
+  program.addCommand(createSandboxCommand()); // Sandbox: inspect + reap ship worktree sandboxes
+  program.addCommand(createDeviceCommand());
+  program.addCommand(createSkillCommand());
+  program.addCommand(createPluginCommand());
+
+  /**
+   * Recursively apply exitOverride to a command and all its subcommands.
+   */
+  function applyExitOverride(cmd: Command) {
+    cmd.exitOverride();
+    for (const sub of cmd.commands) {
+      applyExitOverride(sub);
+    }
+  }
+
+  applyExitOverride(program);
+
+  program.hook("preAction", (thisCommand, actionCommand) => {
+    const opts = thisCommand.opts();
+    const scope = getOutputScope();
+    if (scope) scope.agentMode ||= opts.agent || process.env.GWRK_AGENT === "1";
+
+    if (opts.format && opts.format !== "json") {
+      logCliError(`Unknown format: ${opts.format}. Supported: json`);
+      exitCli(2);
+    }
+
+    // Commands that resolve the project root themselves are exempt from the
+    // cwd-anchored preflight. `loadConfig` joins its argument with
+    // `.gwrkrc.json` and never walks parents, so preflighting it against
+    // `process.cwd()` makes every command root-only. `init` has no project yet;
+    // `define adr` walks parents for the marker (adr-scaffold.ts `findProjectRoot`)
+    // and must work from any subdirectory (FR-002, US-001 scenario 3), so
+    // preflighting it here would defeat the walk before the handler runs.
+    const commandPath = [actionCommand.parent?.name(), actionCommand.name()]
+      .filter(Boolean)
+      .join(" ");
+    const resolvesOwnRoot =
+      actionCommand.name() === "init" ||
+      actionCommand.name() === "assess" ||
+      commandPath === "define adr";
+
+    if (!resolvesOwnRoot) {
+      loadConfig(process.cwd());
+    }
+  });
+  return program;
+}
+
+export const program = createCliProgram();
+
+export interface RunCliOptions {
+  agentMode?: boolean;
+  stdout?: (chunk: string) => void;
+  stderr?: (chunk: string) => void;
+}
+
+export async function runCli(
+  argv: readonly string[] = process.argv.slice(2),
+  options: RunCliOptions = {},
+): Promise<number> {
+  const scope = {
+    ...options,
+    agentMode: options.agentMode ?? false,
+    exitCode: 0,
+  };
+  return runWithOutputScope(scope, async () => {
+    try {
+      await createCliProgram().parseAsync(argv, { from: "user" });
+      return scope.exitCode;
+    } catch (err: unknown) {
+      if (err instanceof CliExit) return err.exitCode;
+      const error = err as {
+        code?: string;
+        exitCode?: number;
+        message?: string;
+      };
+      if (
+        error.code === "commander.helpDisplayed" ||
+        error.code === "commander.version"
+      ) {
+        return 0;
       }
-      return originalWrite(processed, encoding, callback);
-    };
-  }
+      if (error.code === "commander.unknownCommand") {
+        logCliError(
+          "Unknown command. Run 'gwrk --help' to see available commands.",
+        );
+        return 127;
+      }
+      if (
+        error.code === "commander.missingArgument" ||
+        error.code === "commander.unknownOption" ||
+        error.code === "commander.missingMandatoryOptionValue"
+      ) {
+        return 2;
+      }
+      if (!error.code?.startsWith("commander.")) {
+        logCliError(error.message ?? String(err));
+      }
+      return error.exitCode || 1;
+    }
+  });
+}
 
-  if (opts.format && opts.format !== "json") {
-    console.error(`Unknown format: ${opts.format}. Supported: json`);
-    process.exit(2);
-  }
-
-  // Commands that resolve the project root themselves are exempt from the
-  // cwd-anchored preflight. `loadConfig` joins its argument with
-  // `.gwrkrc.json` and never walks parents, so preflighting it against
-  // `process.cwd()` makes every command root-only. `init` has no project yet;
-  // `define adr` walks parents for the marker (adr-scaffold.ts `findProjectRoot`)
-  // and must work from any subdirectory (FR-002, US-001 scenario 3), so
-  // preflighting it here would defeat the walk before the handler runs.
-  const commandPath = [actionCommand.parent?.name(), actionCommand.name()]
-    .filter(Boolean)
-    .join(" ");
-  const resolvesOwnRoot =
-    actionCommand.name() === "init" ||
-    actionCommand.name() === "assess" ||
-    commandPath === "define adr";
-
-  if (!resolvesOwnRoot) {
-    // This will process.exit(1) if config is missing or invalid
-    loadConfig(process.cwd());
-  }
-});
-
-import { fileURLToPath } from "node:url";
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
-  try {
-    program.parse();
-  } catch (err: unknown) {
-    const error = err as { code?: string; exitCode?: number; message?: string };
-    // Commander writes --help / --version output itself; just exit cleanly.
-    if (
-      error.code === "commander.helpDisplayed" ||
-      error.code === "commander.version"
-    ) {
-      process.exit(0);
-    }
-    if (error.code === "commander.unknownCommand") {
-      console.error(
-        `Unknown command. Run 'gwrk --help' to see available commands.`,
-      );
-      process.exit(127);
-    }
-    if (
-      error.code === "commander.missingArgument" ||
-      error.code === "commander.unknownOption" ||
-      error.code === "commander.missingMandatoryOptionValue"
-    ) {
-      process.exit(2);
-    }
-    // Non-commander errors (e.g. config validation in the preAction hook)
-    // would otherwise exit silently — surface the message so the failure is
-    // debuggable instead of producing zero output.
-    if (!error.code?.startsWith("commander.")) {
-      console.error(error.message ?? String(err));
-    }
-    process.exit(error.exitCode || 1);
-  }
+  process.exitCode = await runCli();
 }

@@ -12,9 +12,10 @@ import type { DispatchRecord } from "./types.js";
  */
 export function persistDispatch(
   record: DispatchRecord,
-  projectRoot: string = process.cwd(),
+  projectRoot?: string,
 ): void {
-  const gwrkDir = path.join(projectRoot, ".gwrk");
+  const targetRoot = projectRoot ?? record.projectRoot ?? process.cwd();
+  const gwrkDir = path.join(targetRoot, ".gwrk");
   const dispatchesFile = path.join(gwrkDir, "dispatches.jsonl");
 
   if (!fs.existsSync(gwrkDir)) {

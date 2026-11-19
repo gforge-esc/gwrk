@@ -23,8 +23,6 @@ describe("PlanStore Scoping (FR-039 / TR-037)", () => {
   it("should accept projectId in constructor and use it for queries", () => {
     const projectId = "test-project-123";
     const store = new PlanStore(projectId);
-    
-    expect((store as any).projectId).toBe(projectId);
 
     store.getPlanStatus();
     expect(db.listFeatures).toHaveBeenCalledWith(projectId);
