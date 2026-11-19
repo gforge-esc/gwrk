@@ -1292,12 +1292,56 @@ export async function handleSlashCommand(
     };
   }
 
-  if (
+  const queueUnavailable =
     queueCommands.has(subcommand) &&
-    context.queueProjectId !== decision.project.projectId
-  ) {
+    context.queueProjectId !== decision.project.projectId;
+  let threadTs = queueUnavailable
+    ? undefined
+    : (decision.recipient.threadTs ?? context.threadTs);
+  const needsCheckout = !queueUnavailable && checkoutCommands.has(subcommand);
+  const needsFeatureThread =
+    !threadTs &&
+    args[0] &&
+    (queueUnavailable
+      ? subcommand === "dispatch"
+      : featureCommands.has(subcommand));
+  const checkout =
+    needsCheckout || needsFeatureThread || (subcommand === "status" && args[0])
+      ? resolveSlackCheckout(
+          decision.project,
+          subcommand === "dispatch" && !queueUnavailable
+            ? context.projectRoot
+            : undefined,
+        )
+      : undefined;
+
+  const threadCheckout = needsFeatureThread
+    ? (checkout ?? resolveSlackCheckout(decision.project))
+    : undefined;
+  if (threadCheckout && needsFeatureThread) {
+    const featureId = resolveScopedSlackFeature(
+      threadCheckout,
+      args[0],
+    )?.featureId;
+    if (featureId) {
+      const storedThread = context.routingService.getFeatureThread(
+        decision.project.projectId,
+        featureId,
+      );
+      if (
+        storedThread?.projectId === decision.project.projectId &&
+        storedThread.workspaceId === decision.recipient.workspaceId &&
+        storedThread.channelId === decision.recipient.channelId
+      ) {
+        threadTs = storedThread.rootTs;
+      }
+    }
+  }
+
+  if (queueUnavailable) {
     return {
       response_type: "ephemeral",
+      ...(threadTs ? { thread_ts: threadTs } : {}),
       blocks: [
         {
           type: "section",
@@ -1310,17 +1354,6 @@ export async function handleSlashCommand(
     };
   }
 
-  let threadTs = decision.recipient.threadTs ?? context.threadTs;
-  const needsCheckout = checkoutCommands.has(subcommand);
-  const needsFeatureThread =
-    !threadTs && args[0] && featureCommands.has(subcommand);
-  const checkout =
-    needsCheckout || needsFeatureThread || (subcommand === "status" && args[0])
-      ? resolveSlackCheckout(
-          decision.project,
-          subcommand === "dispatch" ? context.projectRoot : undefined,
-        )
-      : undefined;
   if (needsCheckout && !checkout) {
     return {
       response_type: "ephemeral",
@@ -1335,23 +1368,6 @@ export async function handleSlashCommand(
         },
       ],
     };
-  }
-
-  if (checkout && needsFeatureThread) {
-    const featureId = resolveScopedSlackFeature(checkout, args[0])?.featureId;
-    if (featureId) {
-      const storedThread = context.routingService.getFeatureThread(
-        decision.project.projectId,
-        featureId,
-      );
-      if (
-        storedThread?.projectId === decision.project.projectId &&
-        storedThread.workspaceId === decision.recipient.workspaceId &&
-        storedThread.channelId === decision.recipient.channelId
-      ) {
-        threadTs = storedThread.rootTs;
-      }
-    }
   }
 
   const projectContext: CommandContext = {

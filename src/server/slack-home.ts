@@ -11,13 +11,13 @@ import type { EnrolledProject } from "../domain/project-registry.js";
 import { generatePulseReport } from "../engine/pulse.js";
 import type { ProjectRegistryPort } from "../ports/store-port.js";
 import type { GwrkConfig } from "../utils/config.js";
-import { resolveProjectId } from "../utils/project-id.js";
 import type { DispatchQueue } from "./dispatch.js";
 import type { LifecycleMonitor } from "./lifecycle.js";
 import type { SystemMonitor } from "./monitor.js";
 import type { NetworkMonitor } from "./network.js";
 import { getStatusData } from "./routes/status.js";
 import type { SandboxManager } from "./sandbox.js";
+import { resolveSlackCheckout } from "./slack-commands.js";
 import type { DispatchRecord, SandboxInfo, SystemStatus } from "./types.js";
 
 function canonicalCheckout(checkout: string): string | undefined {
@@ -63,6 +63,7 @@ export async function buildHomeTab(
     userId?: string;
     workspaceId?: string;
     registry?: ProjectRegistryPort;
+    queueProjectId?: string | null;
   },
 ): Promise<HomeView> {
   const blocks: KnownBlock[] = [
@@ -85,14 +86,10 @@ export async function buildHomeTab(
   ];
 
   const registry = options?.registry;
-  const startupProject =
-    registry?.findByLocalRoot(projectRoot) ??
-    registry?.getProject(resolveProjectId(projectRoot));
-  const startupProjectId =
-    startupProject?.projectId ?? resolveProjectId(projectRoot);
+  const projects = registry?.listProjects() ?? [];
   const visibleProjects =
     registry && options.userId && options.workspaceId
-      ? registry.listProjects().filter((project) => {
+      ? projects.filter((project) => {
           if (project.slack?.workspaceId !== options.workspaceId) {
             return false;
           }
@@ -106,11 +103,20 @@ export async function buildHomeTab(
         })
       : [];
 
-  const showStartupProjectDetails = registry
-    ? visibleProjects.some((p) => p.projectId === startupProjectId)
-    : true;
+  const startupProjects =
+    visibleProjects.length > 0
+      ? projects.filter(
+          (project) => resolveSlackCheckout(project, projectRoot) !== undefined,
+        )
+      : [];
+  const startupProject =
+    startupProjects.length === 1 &&
+    startupProjects[0].projectId === options?.queueProjectId &&
+    visibleProjects.includes(startupProjects[0])
+      ? startupProjects[0]
+      : undefined;
 
-  if (showStartupProjectDetails) {
+  if (startupProject) {
     // 1. Active Agents (Sandboxes)
     blocks.push({
       type: "section",
@@ -188,7 +194,7 @@ export async function buildHomeTab(
     ],
   });
 
-  if (showStartupProjectDetails) {
+  if (startupProject) {
     // 4. Build Plan (from Plan DAG)
     blocks.push({ type: "divider" });
     blocks.push({
@@ -198,7 +204,7 @@ export async function buildHomeTab(
 
     try {
       const { PlanStore } = await import("../engine/plan-store.js");
-      const store = new PlanStore(startupProjectId);
+      const store = new PlanStore(startupProject.projectId);
       if (!store.isEmpty()) {
         const planStatus = store.getPlanStatus();
 
@@ -239,7 +245,9 @@ export async function buildHomeTab(
         text: { type: "mrkdwn", text: "_Plan data unavailable._" },
       });
     }
+  }
 
+  if (visibleProjects.length > 0) {
     // 5. Pulse Summary
     blocks.push({ type: "divider" });
     blocks.push({
@@ -248,9 +256,7 @@ export async function buildHomeTab(
     });
 
     try {
-      const report = registry
-        ? generateHomePulseReport(config, visibleProjects)
-        : generatePulseReport(config);
+      const report = generateHomePulseReport(config, visibleProjects);
       for (const repo of report.repositories.slice(0, 3)) {
         blocks.push({
           type: "section",
@@ -367,9 +373,23 @@ export async function registerSlackHomeHandler(
     config: GwrkConfig;
     projectRoot: string;
     registry?: ProjectRegistryPort;
+    queueProjectId?: string | null;
     workspaceId?: string;
   },
 ) {
+  const startupProjects =
+    deps.registry
+      ?.listProjects()
+      .filter(
+        (project) =>
+          resolveSlackCheckout(project, deps.projectRoot) !== undefined,
+      ) ?? [];
+  const queueProjectId =
+    startupProjects.length === 1 &&
+    (deps.queueProjectId === undefined ||
+      deps.queueProjectId === startupProjects[0].projectId)
+      ? startupProjects[0].projectId
+      : undefined;
   slackApp.event(
     "app_home_opened",
     async ({ event, body, context, client, logger }) => {
@@ -394,6 +414,7 @@ export async function registerSlackHomeHandler(
               (event.view as { team_id?: string } | undefined)?.team_id ??
               deps.workspaceId,
             registry: deps.registry,
+            queueProjectId,
           },
         );
 

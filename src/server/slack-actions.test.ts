@@ -449,11 +449,11 @@ describe("slack-actions (FR-007, US-004, US-005)", () => {
       expect(ack).toHaveBeenCalledOnce();
       expect(mockVcs.mergedPrs).toHaveLength(0);
       expect(chat.postMessage).not.toHaveBeenCalled();
-      expect(chat.postEphemeral).toHaveBeenCalledWith(
-        expect.objectContaining({
-          text: expect.stringContaining("A higher project role is required"),
-        }),
-      );
+      expect(chat.postEphemeral).toHaveBeenCalledExactlyOnceWith({
+        channel: SYNTHETIC_CHANNEL_ALPHA,
+        user: SYNTHETIC_USER_VIEWER,
+        text: expect.stringContaining("A higher project role is required"),
+      });
 
       // Verify no claim was left in the registry!
       const receiptKey = JSON.stringify([
@@ -508,16 +508,16 @@ describe("slack-actions (FR-007, US-004, US-005)", () => {
 
       expect(mockVcs.mergedPrs).toHaveLength(0);
       expect(chat.postMessage).not.toHaveBeenCalled();
-      expect(chat.postEphemeral).toHaveBeenCalledWith(
-        expect.objectContaining({
-          text: expect.stringContaining(
-            "does not match the project or feature thread",
-          ),
-        }),
-      );
+      expect(chat.postEphemeral).toHaveBeenCalledExactlyOnceWith({
+        channel: SYNTHETIC_CHANNEL_ALPHA,
+        user: SYNTHETIC_USER_MAINTAINER,
+        text: expect.stringContaining(
+          "does not match the project or feature thread",
+        ),
+      });
     });
 
-    it("authorized click merges PR via VcsPort, records receipt, and concurrent replay merges only once", async () => {
+    it("merges once and warns the authorized actor about replay in the stored feature thread", async () => {
       const registry = createSyntheticRegistry();
       const routingService = createProjectRoutingService({ registry });
       const mockVcs = createSyntheticVcsPort();
@@ -573,11 +573,26 @@ describe("slack-actions (FR-007, US-004, US-005)", () => {
 
       expect(mockVcs.mergedPrs).toHaveLength(1); // Still 1!
       expect(chat.postMessage).not.toHaveBeenCalled();
-      expect(chat.postEphemeral).toHaveBeenCalledWith(
-        expect.objectContaining({
-          text: expect.stringContaining("already has a receipt"),
-        }),
-      );
+      const replayWarning = {
+        channel: SYNTHETIC_CHANNEL_ALPHA,
+        user: SYNTHETIC_USER_MAINTAINER,
+        thread_ts: SYNTHETIC_THREAD_ALPHA.rootTs,
+        text: expect.stringContaining("already has a receipt"),
+      };
+      expect
+        .soft(chat.postEphemeral)
+        .toHaveBeenCalledExactlyOnceWith(replayWarning);
+
+      // Simulate another worker claiming the receipt between the read and write.
+      vi.spyOn(registry, "getActionReceipt").mockReturnValueOnce(null);
+      const claim = vi.spyOn(registry, "claimActionReceipt");
+      chat.postEphemeral.mockClear();
+      await actionHandlers.merge_pr(clickArgs);
+
+      expect(claim).toHaveReturnedWith(false);
+      expect(mockVcs.mergedPrs).toHaveLength(1);
+      expect(chat.postMessage).not.toHaveBeenCalled();
+      expect(chat.postEphemeral).toHaveBeenCalledExactlyOnceWith(replayWarning);
     });
 
     it("two users click view_review on one message and both receive the link without replay rejection", async () => {
@@ -1014,6 +1029,7 @@ describe("slack-actions (FR-007, US-004, US-005)", () => {
           threads: [alphaThread, betaThread],
         });
         const claim = vi.spyOn(registry, "claimActionReceipt");
+        const complete = vi.spyOn(registry, "completeActionReceipt");
         const queueContext = {
           ...mockContext,
           projectRoot: alpha.localRoot,
@@ -1033,10 +1049,16 @@ describe("slack-actions (FR-007, US-004, US-005)", () => {
         await actionHandlers[actionId](click);
 
         expect(click.ack).toHaveBeenCalledOnce();
-        expect(click.client.chat.postEphemeral).toHaveBeenCalledWith(
-          expect.objectContaining({ text: expect.stringContaining("queue") }),
-        );
+        expect
+          .soft(click.client.chat.postEphemeral)
+          .toHaveBeenCalledExactlyOnceWith({
+            channel: betaThread.channelId,
+            user: SYNTHETIC_USER_MAINTAINER,
+            thread_ts: betaThread.rootTs,
+            text: expect.stringContaining("queue"),
+          });
         expect(claim).not.toHaveBeenCalled();
+        expect(complete).not.toHaveBeenCalled();
         expect(mockContext.queue.enqueue).not.toHaveBeenCalled();
         expect(click.client.chat.postMessage).not.toHaveBeenCalled();
 
@@ -1657,6 +1679,62 @@ describe("slack-actions (FR-007, US-004, US-005)", () => {
     );
 
     const mergeTarget = { repository: "github.com/org/alpha", prNumber: 42 };
+
+    it.each([
+      {
+        failure: "an invalid pull request number",
+        project: SYNTHETIC_PROJECT_ALPHA,
+        prNumber: 0,
+        warning: "must specify a valid pull request number",
+      },
+      {
+        failure: "no enrolled checkout",
+        project: {
+          ...SYNTHETIC_PROJECT_ALPHA,
+          localRoot: null,
+          mirrorPath: null,
+        },
+        prNumber: 42,
+        warning: "requires a verified checkout",
+      },
+    ])(
+      "warns privately in the authorized merge thread for $failure",
+      async ({ project, prNumber, warning }) => {
+        const registry = createSyntheticRegistry({ projects: [project] });
+        const claim = vi.spyOn(registry, "claimActionReceipt");
+        const complete = vi.spyOn(registry, "completeActionReceipt");
+        const vcs = createSyntheticVcsPort();
+        const merge = vi.spyOn(vcs, "mergePullRequest");
+        await registerSlackActions(mockApp as App, {
+          ...mockContext,
+          routingService: createProjectRoutingService({ registry }),
+          vcs,
+        });
+        const click = clickArgs("merge_pr", project.projectId);
+        click.body.actions[0].value = JSON.stringify({
+          ...actionValue,
+          projectId: project.projectId,
+          prNumber,
+        });
+
+        await actionHandlers.merge_pr(click);
+
+        expect.soft(click.ack).toHaveBeenCalledOnce();
+        expect
+          .soft(click.client.chat.postEphemeral)
+          .toHaveBeenCalledExactlyOnceWith({
+            channel: SYNTHETIC_CHANNEL_ALPHA,
+            user: SYNTHETIC_USER_MAINTAINER,
+            thread_ts: SYNTHETIC_THREAD_ALPHA.rootTs,
+            text: expect.stringContaining(warning),
+          });
+        expect.soft(click.client.chat.postMessage).not.toHaveBeenCalled();
+        expect.soft(claim).not.toHaveBeenCalled();
+        expect.soft(complete).not.toHaveBeenCalled();
+        expect.soft(findOpenPr).not.toHaveBeenCalled();
+        expect(merge).not.toHaveBeenCalled();
+      },
+    );
 
     function mergeReceiptKey(projectId: string, attempt = 0) {
       return buildActionReceiptKey({

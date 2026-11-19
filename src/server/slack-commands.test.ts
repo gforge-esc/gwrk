@@ -358,6 +358,10 @@ describe("slack-commands (FR-015, US-004)", () => {
       scopedContext,
     );
     expect.soft(dispatch.response_type).toBe("ephemeral");
+    expect
+      .soft(JSON.stringify(dispatch.blocks))
+      .toContain("checkout is unavailable");
+    expect.soft(dispatch.thread_ts).toBe(SYNTHETIC_THREAD_ALPHA.rootTs);
     expect(mockQueue.enqueue).not.toHaveBeenCalled();
   });
 

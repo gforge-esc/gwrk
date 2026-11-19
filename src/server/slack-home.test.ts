@@ -71,7 +71,7 @@ vi.mock("../engine/plan-store.js", () => ({
   })),
 }));
 
-function initPulseCheckout(
+function initCheckout(
   project: typeof SYNTHETIC_PROJECT_ALPHA,
   localRoot: string,
 ) {
@@ -95,13 +95,14 @@ function initPulseCheckout(
   return { ...project, projectId: resolveProjectId(localRoot), localRoot };
 }
 
-function pulseRegistry(
+function homeRegistry(
   alpha: typeof SYNTHETIC_PROJECT_ALPHA,
   beta: typeof SYNTHETIC_PROJECT_ALPHA,
+  roles = SYNTHETIC_ROLES,
 ) {
   return createSyntheticRegistry({
     projects: [alpha, beta],
-    roles: SYNTHETIC_ROLES.map((role) => ({
+    roles: roles.map((role) => ({
       ...role,
       projectId:
         role.projectId === SYNTHETIC_PROJECT_ALPHA.projectId
@@ -109,6 +110,15 @@ function pulseRegistry(
           : beta.projectId,
     })),
   });
+}
+
+function createHomeCheckouts() {
+  const root = mkdtempSync(join(tmpdir(), "gwrk-home-"));
+  onTestFinished(() => rmSync(root, { recursive: true, force: true }));
+  return {
+    alpha: initCheckout(SYNTHETIC_PROJECT_ALPHA, join(root, "alpha")),
+    beta: initCheckout(SYNTHETIC_PROJECT_BETA, join(root, "beta")),
+  };
 }
 
 describe("slack-home", () => {
@@ -159,7 +169,18 @@ describe("slack-home", () => {
   } as unknown as GwrkConfig;
 
   it("builds the home tab with all expected sections", async () => {
-    const homeView = await buildHomeTab(mockStatus, mockConfig, "/tmp");
+    const { alpha, beta } = createHomeCheckouts();
+    const homeView = await buildHomeTab(
+      mockStatus,
+      mockConfig,
+      alpha.localRoot,
+      {
+        userId: SYNTHETIC_USER_VIEWER,
+        workspaceId: SYNTHETIC_WORKSPACE_ID,
+        registry: homeRegistry(alpha, beta),
+        queueProjectId: alpha.projectId,
+      },
+    );
 
     expect(homeView.type).toBe("home");
     const blocks = homeView.blocks;
@@ -221,8 +242,19 @@ describe("slack-home", () => {
   });
 
   it("handles empty plan dag", async () => {
-    mockIsEmpty.mockReturnValue(true);
-    const homeView = await buildHomeTab(mockStatus, mockConfig, "/tmp");
+    const { alpha, beta } = createHomeCheckouts();
+    mockIsEmpty.mockReturnValueOnce(true);
+    const homeView = await buildHomeTab(
+      mockStatus,
+      mockConfig,
+      alpha.localRoot,
+      {
+        userId: SYNTHETIC_USER_VIEWER,
+        workspaceId: SYNTHETIC_WORKSPACE_ID,
+        registry: homeRegistry(alpha, beta),
+        queueProjectId: alpha.projectId,
+      },
+    );
     expect(
       homeView.blocks.some(
         (b) =>
@@ -250,6 +282,7 @@ describe("slack-home", () => {
     ])(
       "uses the $source workspace and checks $userId on first App Home open",
       async ({ source, userId, project }) => {
+        const { alpha, beta } = createHomeCheckouts();
         const event = vi.fn();
         const publish = vi.fn();
         vi.mocked(getStatusData).mockResolvedValue(mockStatus);
@@ -257,24 +290,22 @@ describe("slack-home", () => {
           { event } as unknown as App,
           {
             config: mockConfig,
-            projectRoot: SYNTHETIC_PROJECT_ALPHA.localRoot!,
-            registry: createSyntheticRegistry({
-              roles: [
-                ...SYNTHETIC_ROLES,
-                {
-                  projectId: SYNTHETIC_PROJECT_BETA.projectId,
-                  principalType: "slack_user",
-                  principalId: `${SYNTHETIC_WORKSPACE_ID}:U_BETA`,
-                  role: "viewer",
-                },
-                {
-                  projectId: SYNTHETIC_PROJECT_ALPHA.projectId,
-                  principalType: "slack_user",
-                  principalId: "U_BARE",
-                  role: "viewer",
-                },
-              ],
-            }),
+            projectRoot: alpha.localRoot,
+            registry: homeRegistry(alpha, beta, [
+              ...SYNTHETIC_ROLES,
+              {
+                projectId: SYNTHETIC_PROJECT_BETA.projectId,
+                principalType: "slack_user",
+                principalId: `${SYNTHETIC_WORKSPACE_ID}:U_BETA`,
+                role: "viewer",
+              },
+              {
+                projectId: SYNTHETIC_PROJECT_ALPHA.projectId,
+                principalType: "slack_user",
+                principalId: "U_BARE",
+                role: "viewer",
+              },
+            ]),
           } as Parameters<typeof registerSlackHomeHandler>[1],
         );
         expect(event).toHaveBeenCalledWith(
@@ -323,11 +354,11 @@ describe("slack-home", () => {
       );
       const root = mkdtempSync(join(tmpdir(), "gwrk-home-pulse-"));
       onTestFinished(() => rmSync(root, { recursive: true, force: true }));
-      const alpha = initPulseCheckout(
+      const alpha = initCheckout(
         SYNTHETIC_PROJECT_ALPHA,
         join(root, "alpha-pulse"),
       );
-      const beta = initPulseCheckout(
+      const beta = initCheckout(
         SYNTHETIC_PROJECT_BETA,
         join(root, "beta-pulse"),
       );
@@ -360,7 +391,8 @@ describe("slack-home", () => {
         },
         alpha.localRoot,
         {
-          registry: pulseRegistry(alpha, beta),
+          registry: homeRegistry(alpha, beta),
+          queueProjectId: alpha.projectId,
           userId: SYNTHETIC_USER_VIEWER,
           workspaceId: SYNTHETIC_WORKSPACE_ID,
         },
@@ -372,7 +404,7 @@ describe("slack-home", () => {
     });
 
     it.each([false, true])(
-      "excludes a replacement checkout from Pulse with verified mirror available: %s",
+      "hides replacement checkout status and scopes Pulse with verified mirror available: %s",
       async (useMirror) => {
         const actual =
           await vi.importActual<typeof import("../engine/pulse.js")>(
@@ -383,14 +415,11 @@ describe("slack-home", () => {
         );
         const root = mkdtempSync(join(tmpdir(), "gwrk-home-replacement-"));
         onTestFinished(() => rmSync(root, { recursive: true, force: true }));
-        const alpha = initPulseCheckout(
+        const alpha = initCheckout(
           SYNTHETIC_PROJECT_ALPHA,
           join(root, "alpha-enrolled-path"),
         );
-        const beta = initPulseCheckout(
-          SYNTHETIC_PROJECT_BETA,
-          join(root, "beta"),
-        );
+        const beta = initCheckout(SYNTHETIC_PROJECT_BETA, join(root, "beta"));
         const betaFeature = join(beta.localRoot, "specs", "001-beta");
         mkdirSync(betaFeature, { recursive: true });
         writeFileSync(join(betaFeature, "spec.md"), "# Beta spec");
@@ -400,7 +429,7 @@ describe("slack-home", () => {
         const repos = [alpha.localRoot];
         let mirrorPath: string | null = null;
         if (useMirror) {
-          const mirror = initPulseCheckout(
+          const mirror = initCheckout(
             SYNTHETIC_PROJECT_ALPHA,
             join(root, "alpha-mirror"),
           );
@@ -412,14 +441,18 @@ describe("slack-home", () => {
           repos.push(mirror.localRoot);
         }
         const view = await buildHomeTab(
-          mockStatus,
+          {
+            ...mockStatus,
+            dispatch: { ...mockStatus.dispatch, queueDepth: 17 },
+            sandboxes: [{ ...mockStatus.sandboxes[0], featureId: "001-beta" }],
+          },
           {
             ...mockConfig,
             pulse: { repos },
           },
           alpha.localRoot,
           {
-            registry: pulseRegistry({ ...alpha, mirrorPath }, beta),
+            registry: homeRegistry({ ...alpha, mirrorPath }, beta),
             userId: SYNTHETIC_USER_VIEWER,
             workspaceId: SYNTHETIC_WORKSPACE_ID,
           },
@@ -427,6 +460,11 @@ describe("slack-home", () => {
         const blocks = JSON.stringify(view.blocks);
         expect.soft(blocks).toContain(alpha.name);
         expect.soft(blocks).not.toContain(beta.name);
+        expect.soft(blocks).not.toContain("Active Agents");
+        expect.soft(blocks).not.toContain("001-beta");
+        expect.soft(blocks).not.toContain("Dispatch Queue");
+        expect.soft(blocks).not.toContain("*Queue Depth:* 17");
+        expect.soft(blocks).not.toContain("Plan DAG Status");
         expect.soft(blocks).not.toContain("*alpha-enrolled-path*:");
         expect
           .soft(blocks)
@@ -438,6 +476,98 @@ describe("slack-home", () => {
         if (useMirror) expect(blocks).toContain("*alpha-mirror*:");
       },
     );
+
+    it.each([false, true])(
+      "does not reassign cached Alpha status to a Beta-only viewer after checkout replacement with provenance %s",
+      async (withProvenance) => {
+        const { alpha, beta } = createHomeCheckouts();
+        const queueProjectId = withProvenance ? alpha.projectId : undefined;
+        const saved = `${alpha.localRoot}-saved`;
+        renameSync(alpha.localRoot, saved);
+        renameSync(beta.localRoot, alpha.localRoot);
+        const registry = homeRegistry(
+          alpha,
+          { ...beta, localRoot: alpha.localRoot },
+          [
+            {
+              projectId: beta.projectId,
+              principalType: "slack_user",
+              principalId: `${SYNTHETIC_WORKSPACE_ID}:U_BETA`,
+              role: "viewer",
+            },
+          ],
+        );
+        const view = await buildHomeTab(
+          {
+            ...mockStatus,
+            dispatch: { ...mockStatus.dispatch, queueDepth: 17 },
+            sandboxes: [
+              { ...mockStatus.sandboxes[0], featureId: "001-alpha-private" },
+            ],
+          },
+          mockConfig,
+          alpha.localRoot,
+          {
+            registry,
+            userId: "U_BETA",
+            workspaceId: SYNTHETIC_WORKSPACE_ID,
+            queueProjectId,
+          },
+        );
+        const blocks = JSON.stringify(view.blocks);
+        expect.soft(blocks).not.toContain("001-alpha-private");
+        expect.soft(blocks).not.toContain("Active Agents");
+        expect.soft(blocks).not.toContain("*Queue Depth:* 17");
+        expect.soft(blocks).not.toContain("Plan DAG Status");
+      },
+    );
+
+    it("retains startup status ownership across the App Home event boundary", async () => {
+      const { alpha, beta } = createHomeCheckouts();
+      const event = vi.fn();
+      const publish = vi.fn();
+      let projects = [alpha, beta];
+      const registry = {
+        ...homeRegistry(alpha, beta, [
+          {
+            projectId: beta.projectId,
+            principalType: "slack_user",
+            principalId: `${SYNTHETIC_WORKSPACE_ID}:U_BETA`,
+            role: "viewer",
+          },
+        ]),
+        listProjects: () => projects,
+      };
+      vi.mocked(getStatusData).mockResolvedValue({
+        ...mockStatus,
+        dispatch: { ...mockStatus.dispatch, queueDepth: 17 },
+        sandboxes: [
+          { ...mockStatus.sandboxes[0], featureId: "001-alpha-private" },
+        ],
+      });
+      await registerSlackHomeHandler(
+        { event } as unknown as App,
+        {
+          config: mockConfig,
+          projectRoot: alpha.localRoot,
+          registry,
+        } as Parameters<typeof registerSlackHomeHandler>[1],
+      );
+      renameSync(alpha.localRoot, `${alpha.localRoot}-saved`);
+      renameSync(beta.localRoot, alpha.localRoot);
+      projects = [alpha, { ...beta, localRoot: alpha.localRoot }];
+      await event.mock.calls[0][1]({
+        event: { type: "app_home_opened", tab: "home", user: "U_BETA" },
+        body: { team_id: SYNTHETIC_WORKSPACE_ID },
+        context: {},
+        client: { views: { publish } },
+        logger: { error: vi.fn() },
+      });
+      expect(publish).toHaveBeenCalledOnce();
+      const blocks = JSON.stringify(publish.mock.calls[0][0].view.blocks);
+      expect.soft(blocks).not.toContain("001-alpha-private");
+      expect.soft(blocks).not.toContain("*Queue Depth:* 17");
+    });
 
     it("hides sandbox details and queue counts from an unbound user", async () => {
       const view = await buildHomeTab(
@@ -457,15 +587,16 @@ describe("slack-home", () => {
     });
 
     it("renders only projects where viewer holds a role and includes startup project sections when authorized", async () => {
-      const registry = createSyntheticRegistry();
+      const { alpha, beta } = createHomeCheckouts();
       const homeView = await buildHomeTab(
         mockStatus,
         mockConfig,
-        SYNTHETIC_PROJECT_ALPHA.localRoot!,
+        alpha.localRoot,
         {
           userId: SYNTHETIC_USER_VIEWER,
           workspaceId: SYNTHETIC_WORKSPACE_ID,
-          registry,
+          registry: homeRegistry(alpha, beta),
+          queueProjectId: alpha.projectId,
         },
       );
 
@@ -486,37 +617,36 @@ describe("slack-home", () => {
       expect(enrolledTexts.some((t) => t.includes("Pulse Summary"))).toBe(true);
     });
 
-    it("omits startup project sections when viewer holds no role in the startup project", async () => {
-      const registry = createSyntheticRegistry();
-      // Startup project is Beta, but viewer is only bound to Alpha
+    it("shows Alpha Pulse and hides Beta startup status for an Alpha-only viewer", async () => {
+      const { alpha, beta } = createHomeCheckouts();
+      const actual =
+        await vi.importActual<typeof import("../engine/pulse.js")>(
+          "../engine/pulse.js",
+        );
+      vi.mocked(generatePulseReport).mockImplementationOnce(
+        actual.generatePulseReport,
+      );
       const homeView = await buildHomeTab(
         mockStatus,
-        mockConfig,
-        SYNTHETIC_PROJECT_BETA.localRoot!,
+        { ...mockConfig, pulse: { repos: [alpha.localRoot, beta.localRoot] } },
+        beta.localRoot,
         {
           userId: SYNTHETIC_USER_VIEWER,
           workspaceId: SYNTHETIC_WORKSPACE_ID,
-          registry,
+          registry: homeRegistry(alpha, beta),
+          queueProjectId: alpha.projectId,
         },
       );
 
-      const sectionTexts = homeView.blocks
-        .filter((b) => b.type === "section" && (b as SectionBlock).text?.text)
-        .map((b) => (b as SectionBlock).text!.text);
-
-      // Viewer still sees Alpha in enrolled projects
-      expect(
-        sectionTexts.some((t) => t.includes(SYNTHETIC_PROJECT_ALPHA.name)),
-      ).toBe(true);
-      expect(
-        sectionTexts.some((t) => t.includes(SYNTHETIC_PROJECT_BETA.name)),
-      ).toBe(false);
-
-      // But does NOT see Plan DAG Status or Pulse Summary for the unauthorized startup project
-      expect(sectionTexts.some((t) => t.includes("Plan DAG Status"))).toBe(
-        false,
-      );
-      expect(sectionTexts.some((t) => t.includes("Pulse Summary"))).toBe(false);
+      const blocks = JSON.stringify(homeView.blocks);
+      expect.soft(blocks).toContain(alpha.name);
+      expect.soft(blocks).not.toContain(beta.name);
+      expect.soft(blocks).not.toContain("Active Agents");
+      expect.soft(blocks).not.toContain("Dispatch Queue");
+      expect.soft(blocks).not.toContain("Plan DAG Status");
+      expect.soft(blocks).toContain("Pulse Summary");
+      expect.soft(blocks).toContain("*alpha*:");
+      expect(blocks).not.toContain("*beta*:");
     });
 
     it("returns no projects and omits startup sections when userId or workspaceId is missing", async () => {
