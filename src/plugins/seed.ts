@@ -3,11 +3,11 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import fs from "node:fs/promises";
-import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { parse, stringify } from "yaml";
 import { logCliOutput } from "../adapters/cli/output-scope.js";
+import { gwrkHome } from "../adapters/config/paths.js";
 import { type SeedSkill, parseSeedTaxonomy } from "../domain/seed-taxonomy.js";
 import { CommandError } from "../utils/signal.js";
 import { AnyManifestSchema } from "./manifest.js";
@@ -49,7 +49,7 @@ export async function seedSkills(options: SeedOptions = {}): Promise<void> {
       `Cannot read valid taxonomy at ${taxonomyFile}: ${error instanceof Error ? error.message : String(error)}. Supply a valid Markdown taxonomy with gwrk plugin seed --taxonomy <path>.`,
     );
   }
-  const skillsRoot = path.join(os.homedir(), ".gwrk", "plugins", "skills");
+  const skillsRoot = path.join(gwrkHome(), "plugins", "skills");
   for (const skill of skills) {
     const directory = path.join(skillsRoot, skill.name);
     if (options.dryRun) {

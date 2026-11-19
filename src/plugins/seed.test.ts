@@ -14,12 +14,13 @@ const taxonomy =
   'Reasoning Modes\n\n1. **Analytical** - Break down structure.\n    > "ANALYZE THIS"\n\n---\n\nEvaluative Modes\n\n1. **Adversarial** - Attack the idea.\n    > "ATTACK THIS"\n';
 beforeEach(async () => {
   root = await fs.mkdtemp(path.join(os.tmpdir(), "gwrk-seed-"));
-  vi.spyOn(os, "homedir").mockReturnValue(root);
+  vi.stubEnv("GWRK_HOME", path.join(root, ".gwrk"));
   taxonomyPath = path.join(root, "taxonomy.md");
   await fs.writeFile(taxonomyPath, taxonomy);
 });
 afterEach(async () => {
   vi.restoreAllMocks();
+  vi.unstubAllEnvs();
   await fs.rm(root, { recursive: true, force: true });
 });
 const skillsRoot = () => path.join(root, ".gwrk/plugins/skills");
@@ -97,4 +98,17 @@ it("removes partial publication after a write failure so retry can finish", asyn
   expect(
     await fs.readFile(path.join(skillsRoot(), "analytical/SKILL.md"), "utf8"),
   ).toContain("ANALYZE THIS");
+});
+
+it("honors a configured gwrk home without writing into the default home", async () => {
+  const configuredHome = path.join(root, "configured-home");
+  vi.spyOn(os, "homedir").mockReturnValue(path.join(root, "fallback-home"));
+  vi.stubEnv("GWRK_HOME", configuredHome);
+  await seedSkills({ taxonomyPath });
+  expect(
+    (await fs.readdir(path.join(configuredHome, "plugins/skills"))).sort(),
+  ).toEqual(["adversarial", "analytical"]);
+  await expect(fs.stat(path.join(root, ".gwrk"))).rejects.toMatchObject({
+    code: "ENOENT",
+  });
 });
