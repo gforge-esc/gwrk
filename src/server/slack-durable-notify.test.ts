@@ -2,16 +2,50 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { App, LogLevel } from "@slack/bolt";
-import { beforeEach, expect, it, vi } from "vitest";
+import type { webApi } from "@slack/bolt";
+import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { sendSlackMessage } from "./slack-notify.js";
-const { postMessage, authTest, getSlackApp } = vi.hoisted(() => ({
+
+const { postMessage, authTest, fetchWebhook } = vi.hoisted(() => ({
   postMessage: vi.fn(),
   authTest: vi.fn(),
-  getSlackApp: vi.fn(),
+  fetchWebhook: vi.fn(),
 }));
-vi.mock("./slack.js", () => ({ getSlackApp }));
+vi.mock("@slack/bolt", async (importOriginal) => {
+  const bolt = await importOriginal<typeof import("@slack/bolt")>();
+  const adapter: webApi.WebClientOptions["adapter"] = async (config) => {
+    const isAuth = config.url?.endsWith("auth.test");
+    const body = new URLSearchParams(config.data);
+    return {
+      config,
+      status: 200,
+      statusText: "OK",
+      headers: {},
+      request: { path: `/api/${config.url}` },
+      data: isAuth
+        ? await authTest(config.headers.get("Authorization"))
+        : await postMessage({
+            channel: body.get("channel"),
+            thread_ts: body.get("thread_ts"),
+            metadata: JSON.parse(body.get("metadata") ?? "null"),
+          }),
+    };
+  };
+  return {
+    ...bolt,
+    webApi: {
+      ...bolt.webApi,
+      WebClient: class extends bolt.webApi.WebClient {
+        constructor(token?: string, options?: webApi.WebClientOptions) {
+          super(token, { ...options, adapter });
+        }
+      },
+    },
+  };
+});
+vi.mock("./slack.js", () => ({ getSlackApp: () => null }));
 vi.mock("./telegram-notify.js", () => ({ loadTelegramConfig: () => null }));
+
 const metadata = {
   event_type: "gwrk_notification" as const,
   event_payload: { projectId: "alpha", clientMetadataKey: "notice-1" },
@@ -25,10 +59,11 @@ const message = {
 };
 const options = { webhookFallback: false, workspaceId: "W1" };
 beforeEach(() => {
-  vi.clearAllMocks();
-  getSlackApp.mockReturnValue({
-    client: { chat: { postMessage }, auth: { test: authTest } },
-  });
+  vi.resetAllMocks();
+  vi.stubEnv("SLACK_BOT_TOKEN", "xoxb-fixture");
+  vi.stubEnv("SLACK_APP_TOKEN", "xapp-fixture");
+  vi.stubEnv("SLACK_WEBHOOK_URL", "https://example.invalid/slack");
+  vi.stubGlobal("fetch", fetchWebhook);
   authTest.mockResolvedValue({ ok: true, team_id: "W1" });
   postMessage.mockResolvedValue({
     ok: true,
@@ -37,6 +72,12 @@ beforeEach(() => {
     message: { thread_ts: message.thread_ts },
   });
 });
+afterEach(() => {
+  vi.unstubAllEnvs();
+  vi.unstubAllGlobals();
+  vi.useRealTimers();
+});
+
 it("verifies workspace and transmits durable metadata with the accepted thread", async () => {
   expect(await sendSlackMessage(message, options)).toMatchObject({
     delivered: true,
@@ -45,6 +86,7 @@ it("verifies workspace and transmits durable metadata with the accepted thread",
     threadTs: message.thread_ts,
   });
   expect(authTest).toHaveBeenCalledOnce();
+  expect(authTest).toHaveBeenCalledWith("Bearer xoxb-fixture");
   expect(postMessage).toHaveBeenCalledWith(
     expect.objectContaining({
       channel: "C1",
@@ -62,58 +104,26 @@ it.each([
   expect(postMessage).not.toHaveBeenCalled();
 });
 it("keeps an uncertain durable send off the webhook fallback", async () => {
-  const fallback = vi.fn();
-  vi.stubGlobal("fetch", fallback);
-  try {
-    postMessage.mockRejectedValue(new Error("transport uncertain"));
-    expect(await sendSlackMessage(message, options)).toBeUndefined();
-    expect(fallback).not.toHaveBeenCalled();
-  } finally {
-    vi.unstubAllGlobals();
-  }
+  postMessage.mockRejectedValue(new Error("transport uncertain"));
+  expect(await sendSlackMessage(message, options)).toBeUndefined();
+  expect(fetchWebhook).not.toHaveBeenCalled();
 });
 it("leaves a lost send response for reconciliation without a second post", async () => {
-  let posts = 0;
-  const app = new App({
-    token: "xoxb-fixture",
-    signingSecret: "fixture-secret",
-    tokenVerificationEnabled: false,
-    logLevel: LogLevel.ERROR,
-    clientOptions: {
-      async adapter(config) {
-        if (config.url?.endsWith("auth.test")) {
-          return {
-            config,
-            status: 200,
-            statusText: "OK",
-            headers: {},
-            request: { path: "/api/auth.test" },
-            data: { ok: true, team_id: "W1" },
-          };
-        }
-        expect(config.url).toMatch(/chat\.postMessage$/);
-        posts += 1;
-        if (posts === 1)
-          throw new Error("response lost after Slack accepted the message");
-        return {
-          config,
-          status: 200,
-          statusText: "OK",
-          headers: {},
-          request: { path: "/api/chat.postMessage" },
-          data: { ok: true, channel: "C1", ts: "1700000000.000003" },
-        };
-      },
-    },
-  });
-  getSlackApp.mockReturnValue(app);
+  postMessage.mockRejectedValueOnce(
+    new Error("response lost after Slack accepted the message"),
+  );
   vi.useFakeTimers();
-  try {
-    const result = sendSlackMessage(message, options);
-    await vi.runAllTimersAsync();
-    expect.soft(posts).toBe(1);
-    expect(await result).toBeUndefined();
-  } finally {
-    vi.useRealTimers();
-  }
+  const result = sendSlackMessage(message, {
+    ...options,
+    webhookFallback: true,
+  });
+  await vi.runAllTimersAsync();
+  expect(await result).toBeUndefined();
+  expect(postMessage).toHaveBeenCalledOnce();
+  expect(postMessage).toHaveBeenCalledWith({
+    channel: message.channel,
+    thread_ts: message.thread_ts,
+    metadata,
+  });
+  expect(fetchWebhook).not.toHaveBeenCalled();
 });

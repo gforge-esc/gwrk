@@ -164,7 +164,7 @@ describe.each([
         [
           "#!/bin/sh",
           'if [ "$3" = "push" ]; then',
-          '  "$GWRK_TEST_REAL_GIT" -C "$2" config --replace-all "$GWRK_TEST_REMOTE_SETTING" "$GWRK_TEST_OTHER_REMOTE" || exit "$?"',
+          '  GIT_DIR="$2/.git" "$GWRK_TEST_REAL_GIT" -C "$2" config --replace-all "$GWRK_TEST_REMOTE_SETTING" "$GWRK_TEST_OTHER_REMOTE" || exit "$?"',
           "fi",
           'exec "$GWRK_TEST_REAL_GIT" "$@"',
           "",
@@ -212,10 +212,13 @@ describe.each([
     expect(git(checkout, "remote", "get-url", "origin")).toBe(remote);
     expect(git(checkout, "remote", "get-url", "--push", "origin")).toBe(remote);
 
-    const [result] = await Promise.allSettled([
-      createAdapter().deleteRemoteBranchAtTip(checkout, "feature", initial),
-    ]);
+    const result = await createAdapter().deleteRemoteBranchAtTip(
+      checkout,
+      "feature",
+      initial,
+    );
 
+    expect.soft(result).toEqual({ deleted: true });
     expect
       .soft(
         git(
@@ -233,9 +236,34 @@ describe.each([
         "--format=%(objectname)",
         "refs/heads/feature",
       ),
-    ).toBe(
-      result.status === "fulfilled" && result.value.deleted ? "" : initial,
+    ).toBe("");
+  });
+  it("deletes a remote branch with a full SHA-256 lease", async () => {
+    const local = join(root, "sha256-checkout");
+    const target = join(root, "sha256-remote.git");
+    git(root, "init", "--quiet", "--object-format=sha256", local);
+    git(root, "init", "--quiet", "--bare", "--object-format=sha256", target);
+    git(
+      local,
+      "-c",
+      "user.name=Synthetic owner",
+      "-c",
+      "user.email=owner@example.invalid",
+      "-c",
+      "commit.gpgsign=false",
+      "commit",
+      "--allow-empty",
+      "-qm",
+      "Initial",
     );
+    git(local, "remote", "add", "origin", target);
+    git(local, "push", "--quiet", "origin", "HEAD:refs/heads/feature");
+    const sha = git(local, "rev-parse", "HEAD");
+    expect(sha).toHaveLength(64);
+    expect(
+      await createAdapter().deleteRemoteBranchAtTip(local, "feature", sha),
+    ).toEqual({ deleted: true });
+    expect(git(target, "for-each-ref", "refs/heads/feature")).toBe("");
   });
   it("preserves a branch that moves between remote inspection and delete", async () => {
     const adapter = createAdapter();

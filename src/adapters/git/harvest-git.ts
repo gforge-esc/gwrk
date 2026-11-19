@@ -19,38 +19,42 @@ const failureStatus = (error: unknown) =>
 
 export function createGitHarvestAdapter(): VcsHarvestExtensions {
   const checkouts = new Map<string, { repository: string; parent: string }>();
-  const gitOutput = async (cwd: string, args: string[]) => {
+  const gitOutput = async (
+    cwd: string,
+    args: string[],
+    env = repositoryGitEnv(cwd),
+  ) => {
     const result = await execute("git", ["-C", cwd, ...args], {
-      env: repositoryGitEnv(cwd),
+      env,
       encoding: "utf8",
       timeout: 30_000,
       maxBuffer: 4 * 1024 * 1024,
     });
     return result.stdout;
   };
-  const git = async (cwd: string, args: string[]) =>
-    (await gitOutput(cwd, args)).trim();
-  const verifyOriginDestination = async (cwd: string) => {
-    const fetch = await gitOutput(cwd, [
-      "remote",
-      "get-url",
-      "--all",
-      "origin",
-    ]);
-    const push = await gitOutput(cwd, [
-      "remote",
-      "get-url",
-      "--push",
-      "--all",
-      "origin",
-    ]);
+  const git = async (cwd: string, args: string[], env?: NodeJS.ProcessEnv) =>
+    (await gitOutput(cwd, args, env)).trim();
+  const verifyOriginDestination = async (
+    cwd: string,
+    env?: NodeJS.ProcessEnv,
+  ) => {
+    const fetch = await gitOutput(
+      cwd,
+      ["remote", "get-url", "--all", "origin"],
+      env,
+    );
+    const push = await gitOutput(
+      cwd,
+      ["remote", "get-url", "--push", "--all", "origin"],
+      env,
+    );
     const isSingleUrl = (output: string) =>
       /^[^\n]+\n$/.test(output) && output.trim().length > 0;
     if (!isSingleUrl(fetch) || !isSingleUrl(push))
       throw new Error("Origin must have one fetch URL and one push URL");
     if (fetch !== push)
       throw new Error("Origin fetch and push URLs must match");
-    return fetch.trim();
+    return fetch.slice(0, -1);
   };
   const validateBranch = async (cwd: string, branch: string) => {
     if (!branch || branch.startsWith("-"))
@@ -63,19 +67,23 @@ export function createGitHarvestAdapter(): VcsHarvestExtensions {
   const getRemoteBranchSha = async (
     cwd: string,
     branch: string,
-    destination = "origin",
+    env?: NodeJS.ProcessEnv,
   ) => {
     await validateBranch(cwd, branch);
     let output: string;
     try {
-      output = await git(cwd, [
-        "ls-remote",
-        "--exit-code",
-        "--heads",
-        "--",
-        destination,
-        `refs/heads/${branch}`,
-      ]);
+      output = await git(
+        cwd,
+        [
+          "ls-remote",
+          "--exit-code",
+          "--heads",
+          "--",
+          "origin",
+          `refs/heads/${branch}`,
+        ],
+        env,
+      );
     } catch (error) {
       if (failureStatus(error) === 2) return null;
       throw error;
@@ -182,29 +190,70 @@ export function createGitHarvestAdapter(): VcsHarvestExtensions {
       await rm(owned.parent, { recursive: true, force: true });
       checkouts.delete(resolve(checkoutDir));
     },
-    getRemoteBranchSha,
+    getRemoteBranchSha: (cwd, branch) => getRemoteBranchSha(cwd, branch),
     async deleteRemoteBranchAtTip(cwd, branch, expectedSha) {
       requireSha(expectedSha);
       const destination = await verifyOriginDestination(cwd);
-      const current = await getRemoteBranchSha(cwd, branch, destination);
-      if (current === null) return { deleted: false, reason: "missing" };
-      if (current !== expectedSha)
-        return { deleted: false, reason: "tip_moved" };
+      const env = repositoryGitEnv(cwd);
+      env.GIT_CONFIG_NOSYSTEM = "1";
+      env.GIT_CONFIG_GLOBAL = "/dev/null";
+      env.GIT_TERMINAL_PROMPT = "0";
+      const allowedProtocols = env.GIT_ALLOW_PROTOCOL?.split(":");
+      env.GIT_ALLOW_PROTOCOL = ["file", "git", "http", "https", "ssh"]
+        .filter((protocol) => allowedProtocols?.includes(protocol) ?? true)
+        .join(":");
+      const gitDir = await mkdtemp(join(tmpdir(), "gwrk-harvest-remote-"));
+      env.GIT_DIR = gitDir;
+      const run = (args: string[]) => git(cwd, args, env);
       try {
-        await git(cwd, [
-          "push",
-          `--force-with-lease=refs/heads/${branch}:${expectedSha}`,
-          "--",
-          destination,
-          `:refs/heads/${branch}`,
+        await run([
+          "init",
+          "--bare",
+          "--template=",
+          `--object-format=${expectedSha.length === 64 ? "sha256" : "sha1"}`,
         ]);
-        return { deleted: true };
-      } catch (error) {
-        const latest = await getRemoteBranchSha(cwd, branch, destination);
-        if (latest === null) return { deleted: false, reason: "missing" };
-        if (latest !== expectedSha)
+        await run([
+          "config",
+          "--local",
+          "--",
+          "remote.origin.url",
+          destination,
+        ]);
+        await run([
+          "config",
+          "--local",
+          "--",
+          "remote.origin.pushurl",
+          destination,
+        ]);
+        await run(["config", "--local", "http.followRedirects", "false"]);
+        if ((await verifyOriginDestination(cwd, env)) !== destination)
+          throw new Error(
+            "Isolated origin URL differs from the verified destination",
+          );
+
+        const current = await getRemoteBranchSha(cwd, branch, env);
+        if (current === null) return { deleted: false, reason: "missing" };
+        if (current !== expectedSha)
           return { deleted: false, reason: "tip_moved" };
-        throw error;
+        try {
+          await run([
+            "push",
+            `--force-with-lease=refs/heads/${branch}:${expectedSha}`,
+            "--",
+            "origin",
+            `:refs/heads/${branch}`,
+          ]);
+          return { deleted: true };
+        } catch (error) {
+          const latest = await getRemoteBranchSha(cwd, branch, env);
+          if (latest === null) return { deleted: false, reason: "missing" };
+          if (latest !== expectedSha)
+            return { deleted: false, reason: "tip_moved" };
+          throw error;
+        }
+      } finally {
+        await rm(gitDir, { recursive: true, force: true });
       }
     },
   };

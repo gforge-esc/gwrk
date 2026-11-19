@@ -2,9 +2,11 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import { webApi } from "@slack/bolt";
 import { logCliError, warnCli } from "../adapters/cli/output-scope.js";
 import type { NotificationReceipt } from "../ports/notification-port.js";
 import { loadConfig } from "../utils/config.js";
+import { loadSlackConfig } from "../utils/slack-client.js";
 import type { SlackMessage } from "./slack-messages.js";
 import { type SlackEvent, presenceManager } from "./slack-presence.js";
 import { getSlackApp } from "./slack.js";
@@ -56,14 +58,15 @@ export async function notifySlack(
 }
 
 /**
- * Send a message via Socket Mode app (rich: blocks, buttons, actions).
+ * Send a message via the Slack Web API.
  */
 export async function sendSlackMessage(
   message: SlackMessage,
   options: { webhookFallback?: boolean; workspaceId?: string } = {},
 ): Promise<NotificationReceipt | undefined> {
-  const app = getSlackApp();
-  if (!app) return;
+  const workspaceId = options.workspaceId;
+  let client = workspaceId === undefined ? getSlackApp()?.client : undefined;
+  if (workspaceId === undefined && !client) return;
 
   // Resolve channel
   let channelId = message.channel;
@@ -82,12 +85,19 @@ export async function sendSlackMessage(
   }
 
   try {
-    if (options.workspaceId !== undefined) {
-      const auth = await app.client.auth.test();
-      if (auth.ok !== true || auth.team_id !== options.workspaceId)
-        return undefined;
+    if (workspaceId !== undefined) {
+      const config = loadSlackConfig();
+      if (!config) return;
+      client = new webApi.WebClient(config.botToken, {
+        retryConfig: { retries: 0 },
+        rejectRateLimitedCalls: true,
+        timeout: 10_000,
+      });
+      const auth = await client.auth.test();
+      if (auth.ok !== true || auth.team_id !== workspaceId) return;
     }
-    const response = await app.client.chat.postMessage({
+    if (!client) return;
+    const response = await client.chat.postMessage({
       channel: channelId,
       text: message.text,
       blocks: message.blocks,
@@ -106,7 +116,7 @@ export async function sendSlackMessage(
     const errorMessage = error instanceof Error ? error.message : String(error);
     logCliError(`Failed to post Slack notification: ${errorMessage}`);
 
-    if (options.webhookFallback !== false) {
+    if (workspaceId === undefined && options.webhookFallback !== false) {
       await sendViaWebhook(message);
     }
   }
