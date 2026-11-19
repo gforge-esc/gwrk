@@ -178,6 +178,8 @@ For GitHub origin validation (TR-009), require a checkout-local origin before in
 
 Send private merge warnings to the authorized actor in the bound feature thread (TR-009). Cover origin mismatch and merge timeouts from both buttons and reactions. Keep failed and uncertain receipts subject to their existing retry rules.
 
+Send the merge replay warning privately in the stored feature thread after click authorization (TR-009). Cover an existing receipt and a lost receipt claim race. Assert each replay leaves the merge count at one. Omit the stored thread from role and thread mismatch warnings.
+
 For log and revision buttons (TR-009), replace Alpha's checkout with Beta. Return a checkout warning for logs and leave both revision receipts unclaimed. After restoring Alpha, show its logs and start one revision per button across concurrent clicks.
 
 For View Logs (TR-009), leave the bound feature directory missing or link it to a sibling feature. Put a run log in that sibling with a longer ID that shares the prefix. Assert one private no-logs reply in the bound thread. Assert zero sibling gate results, receipt claims and receipt completions.
@@ -185,6 +187,8 @@ For View Logs (TR-009), leave the bound feature directory missing or link it to 
 Replace Alpha's checkout with Beta for Approve Spec and both redispatch buttons (TR-009). Deny those clicks before claiming a receipt or starting work. After restoring Alpha, accept one claim and one launch or enqueue per button across concurrent clicks. Approve Spec runs `gwrk define plan <feature>` from the verified checkout and records one executed receipt.
 
 Start the dispatch queue in Alpha's verified mirror while its local checkout is also valid (TR-009). Deny both buttons before claiming a receipt when the mirror has only a longer feature ID with the same prefix. Add the exact feature to the mirror. For each button, accept one claim and one enqueue across concurrent clicks. Complete one executed receipt.
+
+Deny Retry Phase and Request Changes on Beta's feature thread when Alpha owns the queue (TR-009). Warn the authorized actor in Beta's stored thread. Assert zero receipt claims or completions. Assert zero enqueues or public replies.
 
 Link the bound feature directory outside the checkout or to a sibling feature (TR-009). Deny Approve Spec and both revision buttons. Deny Retry Phase and Request Changes. Reply once in private to the clicker at the stored feature thread root. Assert zero public replies, receipt claims and completions. Assert zero process launches and queue entries.
 
@@ -212,7 +216,7 @@ For `ship` and `approve` (TR-012a), link the requested feature outside the check
 
 For slash command delivery (TR-012b), send status via `chat.postEphemeral` to the caller in the authorized channel at the stored thread root. Send public dispatch and unthreaded help via `respond`. Set `replace_original: false` for public threaded replies.
 
-For slash command status (TR-012b), read Beta's ledger while the daemon serves Alpha. Scope feature history and summary statistics to Beta and leave the startup queue untouched. Deny dispatch and pause for Beta.
+For slash command status (TR-012b), read Beta's ledger while the daemon serves Alpha. Scope feature history and summary statistics to Beta and leave the startup queue untouched. Deny dispatch and pause for Beta. Send the feature dispatch denial privately in Beta's stored thread. Send the unthreaded pause denial via `respond`.
 
 Enroll Alpha's mirror through a symbolic link and start the daemon at the mirror's canonical path (TR-012b). Bind the startup queue to Alpha for review actions. Enqueue the authorized slash dispatch once and confirm it in Alpha's stored feature thread.
 

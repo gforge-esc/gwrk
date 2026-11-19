@@ -1292,50 +1292,28 @@ export async function handleSlashCommand(
     };
   }
 
-  if (
+  const queueUnavailable =
     queueCommands.has(subcommand) &&
-    context.queueProjectId !== decision.project.projectId
-  ) {
-    return {
-      response_type: "ephemeral",
-      blocks: [
-        {
-          type: "section",
-          text: {
-            type: "mrkdwn",
-            text: ":warning: The dispatch queue is unavailable for this project.",
-          },
-        },
-      ],
-    };
-  }
-
-  let threadTs = decision.recipient.threadTs ?? context.threadTs;
-  const needsCheckout = checkoutCommands.has(subcommand);
+    context.queueProjectId !== decision.project.projectId;
+  let threadTs = queueUnavailable
+    ? undefined
+    : (decision.recipient.threadTs ?? context.threadTs);
+  const needsCheckout = !queueUnavailable && checkoutCommands.has(subcommand);
   const needsFeatureThread =
-    !threadTs && args[0] && featureCommands.has(subcommand);
+    !threadTs &&
+    args[0] &&
+    (queueUnavailable
+      ? subcommand === "dispatch"
+      : featureCommands.has(subcommand));
   const checkout =
     needsCheckout || needsFeatureThread || (subcommand === "status" && args[0])
       ? resolveSlackCheckout(
           decision.project,
-          subcommand === "dispatch" ? context.projectRoot : undefined,
+          subcommand === "dispatch" && !queueUnavailable
+            ? context.projectRoot
+            : undefined,
         )
       : undefined;
-  if (needsCheckout && !checkout) {
-    return {
-      response_type: "ephemeral",
-      thread_ts: threadTs,
-      blocks: [
-        {
-          type: "section",
-          text: {
-            type: "mrkdwn",
-            text: ":warning: The project checkout is unavailable.",
-          },
-        },
-      ],
-    };
-  }
 
   if (checkout && needsFeatureThread) {
     const featureId = resolveScopedSlackFeature(checkout, args[0])?.featureId;
@@ -1352,6 +1330,38 @@ export async function handleSlashCommand(
         threadTs = storedThread.rootTs;
       }
     }
+  }
+
+  if (queueUnavailable) {
+    return {
+      response_type: "ephemeral",
+      ...(threadTs ? { thread_ts: threadTs } : {}),
+      blocks: [
+        {
+          type: "section",
+          text: {
+            type: "mrkdwn",
+            text: ":warning: The dispatch queue is unavailable for this project.",
+          },
+        },
+      ],
+    };
+  }
+
+  if (needsCheckout && !checkout) {
+    return {
+      response_type: "ephemeral",
+      thread_ts: threadTs,
+      blocks: [
+        {
+          type: "section",
+          text: {
+            type: "mrkdwn",
+            text: ":warning: The project checkout is unavailable.",
+          },
+        },
+      ],
+    };
   }
 
   const projectContext: CommandContext = {
