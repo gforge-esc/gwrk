@@ -52,3 +52,11 @@ After feature clearance, integrate the final heads with the companion plugins. R
 Use released capacity for onboarding final review and qualification review. Keep Slack delivery and durable coordinators moving as their prerequisites clear. Preserve all prior reviews and actual RED and GREEN evidence. Record unrelated improvements separately.
 
 Features 051 and 052 retain the hosted pilot handoff. Live deployment and DNS remain external prerequisites. Google authentication configuration and project enrollment also remain external. No PR has been merged on the user's behalf.
+
+## Transport correction at 18:16
+
+The earlier operator runner used plain stdin with Antigravity print mode. An isolated probe returned MISSING_STDIN. A second probe passed through the corrected private task-file handoff and returned the marker carried only in its expanded instructions. The reviewed core already uses structured input. Its adapter did not require reopening.
+
+The affected governance review and Slack UAT stopped without clearance. Slack's preliminary code GO is invalid. Its prior task state and review output remain retained. All affected work was preserved before the corrected jobs started.
+
+Current workers are 044 Phase 4 in sandbox `286d9f3e`, 048 Phase 3 in `1a247df0` and 049 Phase 3 in `1c025f67`. Governance readiness and qualification are queued for the next released slot. Native passing evidence remains valid. Incomplete or unscoped review evidence does not establish clearance.
