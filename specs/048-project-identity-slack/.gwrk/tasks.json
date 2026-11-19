@@ -185,11 +185,11 @@
         {
           "id": "T017",
           "title": "Create index.ts",
-          "description": "NEW src/application/project-routing/index.ts. Coordinate project resolution and role checks plus action receipts and thread delivery\nPrior review and diagnosis remain in .gwrk/review-history/phase-03-through-2026-11-18T2206Z.json and findings.jsonl. Seven preserved checkout boundary regressions failed before repair. The phase gate passes 182 tests. See evidence/phase03-checkout-boundary-repair.md. Independent review remains required.",
+          "description": "NEW src/application/project-routing/index.ts. Coordinate project resolution and role checks plus action receipts and thread delivery\nPrior review and diagnosis remain in .gwrk/review-history/phase-03-through-2026-11-18T2206Z.json and findings.jsonl. Seven preserved checkout boundary regressions failed before repair. The phase gate passes 182 tests. See evidence/phase03-checkout-boundary-repair.md. Independent review remains required.\n\nRepair evidence: evidence/phase03-postauthorization-warning-scope.md. Earlier findings remain in review-history/phase-03-through-2026-11-19T0028Z.json. Independent clearance remains required.",
           "status": "completed",
           "gateScript": "gates/phase-03.sh",
           "sp": 2,
-          "completedAt": "2026-11-18T22:19:08.855Z"
+          "completedAt": "2026-11-19T00:32:00.584Z"
         },
         {
           "id": "T018",
@@ -212,19 +212,20 @@
         {
           "id": "T020",
           "title": "Modify slack-commands.ts",
-          "description": "MODIFY src/server/slack-commands.ts. Parse `--project`, authorize via `ProjectRoutingService` and thread replies per project\nReview and diagnosis remain in .gwrk/review-history/phase-03-through-2026-11-18T2326Z.json and findings.jsonl. Seven retained reviewer regressions and three real authoring boundary cases failed before repair. The phase gate passes 274 tests. The full suite passes 2099 tests after correcting a synthetic citation fixture. Exact feature identity applies before receipt claims. ADR authoring carries its verified checkout into scaffold and index writes. See evidence/phase03-carried-authoring-and-action-boundaries.md. Independent clearance remains required.\n\nREVIEW FAIL (code): Slack ADR authoring launch failure \u2014 FR-003 (Scoped dispatch, threads and click authorization).\n  WHERE: src/server/slack-commands.ts:929-957\n  EXPECTED: Confirm dispatch after the scoped authoring child emits `spawn`. An asynchronous launch error returns a private warning to the operator.\n  ACTUAL: The slash handler calls `child.unref()` and returns `response_type: \"in_channel\"` without observing `spawn` or `error`. The regression emits `error` and gets a public dispatch confirmation.\n  FIX: Share the child launch handling used by the Slack review buttons. Keep `GWRK_ADR_CHECKOUT_ROOT` and the authorized working directory. Wait for `spawn` or handle `error` before replying. Pass the ADR authoring launch cases in `src/server/slack-commands.test.ts` (TR-012a).\n  EVIDENCE: The phase gate reports these failures in /tmp/gwrk-048-phase03-review-startup-checks.log. If review cleanup restored the tests and plan, run `git apply /tmp/gwrk-048-phase03-launch-and-mirror.oUrCS1` before the repair.\n\nREVIEW/GATE DIVERGENCE (T020, gate: gates/phase-03.sh, re-opened by review):\nThe review agent raised a finding on this task and its gate still passes, so the gate does not cover what review found. Add a test that fails on it, then fix, before completing.\n\nDIAGNOSIS (iteration 2):\nFIX: src/server/slack-commands.ts \u2014 Restore both test and plan updates with `git apply /tmp/gwrk-048-phase03-launch-and-mirror.oUrCS1` and reproduce the failures with `specs/048-project-identity-slack/gates/phase-03.sh`. Move `launchDetachedGwrk` from `slack-actions.ts` to `src/server/slack-launch.ts`, add `env?: NodeJS.ProcessEnv`, and import it from `./slack-launch.js` in both handlers. Await it for `adr record` with `scope.projectRoot` as `cwd` and `GWRK_ADR_CHECKOUT_ROOT: scope.verifiedCheckoutRoot` in the inherited environment. Call `unref()` and confirm publicly only after `spawn`. Route launch errors through the existing ephemeral warning. In `src/server/slack-commands.test.ts` (TR-012a), hold the child event until the request is pending and assert the public success and private error outcomes. Rerun the phase gate.\nFIX: src/server/slack-actions.ts \u2014 Rename and export `resolveSlashCheckout` from `slack-commands.ts` as `resolveSlackCheckout(project: EnrolledProject, queueRoot?: string): string | undefined`. Import it from `./slack-commands.js` and replace `resolveProjectCheckout`. For `retry_phase` and `request_changes`, pass `context.projectRoot` as `queueRoot` so its canonical path can match either verified enrolled root. Require `scopedFeatureDirectory(checkout, input.featureId, { exactId: true })` in the checkout callback and retain `requiredProjectId` before receipt claims. In `src/server/slack-actions.test.ts` (TR-009), keep both checkouts valid and assert one successful claim, one enqueue, and one executed receipt completion per button across concurrent clicks. Rerun the phase gate.",
+          "description": "MODIFY src/server/slack-commands.ts. Parse `--project`, authorize via `ProjectRoutingService` and thread replies per project\nReview and diagnosis remain in .gwrk/review-history/phase-03-through-2026-11-18T2326Z.json and findings.jsonl. Seven retained reviewer regressions and three real authoring boundary cases failed before repair. The phase gate passes 274 tests. The full suite passes 2099 tests after correcting a synthetic citation fixture. Exact feature identity applies before receipt claims. ADR authoring carries its verified checkout into scaffold and index writes. See evidence/phase03-carried-authoring-and-action-boundaries.md. Independent clearance remains required.\n\nRepair evidence: evidence/phase03-postauthorization-warning-scope.md. Earlier findings remain in review-history/phase-03-through-2026-11-19T0028Z.json. Independent clearance remains required.",
           "status": "completed",
           "gateScript": "gates/phase-03.sh",
           "sp": 1,
-          "completedAt": "2026-11-18T23:52:46.176Z"
+          "completedAt": "2026-11-19T00:32:17.510Z"
         },
         {
           "id": "T021",
           "title": "Modify slack-actions.ts",
           "description": "MODIFY src/server/slack-actions.ts. Re-authorize clicks, enforce replay receipts and merge pull requests via `VcsPort`. Tests: src/server/slack-actions.test.ts\nReview and diagnosis remain in .gwrk/review-history/phase-03-through-2026-11-18T2326Z.json and findings.jsonl. Seven retained reviewer regressions and three real authoring boundary cases failed before repair. The phase gate passes 274 tests. The full suite passes 2099 tests after correcting a synthetic citation fixture. Exact feature identity applies before receipt claims. ADR authoring carries its verified checkout into scaffold and index writes. See evidence/phase03-carried-authoring-and-action-boundaries.md. Independent clearance remains required.\n\nRepair evidence: evidence/phase03-canonical-startup-and-private-threads.md. Earlier findings remain in review-history/phase-03-through-2026-11-18T2359Z.json. Independent clearance remains required.",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/phase-03.sh",
-          "sp": 1
+          "sp": 1,
+          "completedAt": "2026-11-19T00:08:21.758Z"
         },
         {
           "id": "T022",
@@ -238,19 +239,19 @@
         {
           "id": "T023",
           "title": "Modify slack-home.ts",
-          "description": "MODIFY src/server/slack-home.ts. Render only enrolled projects where the Slack viewer holds a role\nPrior review and diagnosis remain in .gwrk/review-history/phase-03-through-2026-11-18T2206Z.json and findings.jsonl. Seven preserved checkout boundary regressions failed before repair. The phase gate passes 182 tests. See evidence/phase03-checkout-boundary-repair.md. Independent review remains required.",
-          "status": "completed",
+          "description": "MODIFY src/server/slack-home.ts. Render only enrolled projects where the Slack viewer holds a role\nPrior review and diagnosis remain in .gwrk/review-history/phase-03-through-2026-11-18T2206Z.json and findings.jsonl. Seven preserved checkout boundary regressions failed before repair. The phase gate passes 182 tests. See evidence/phase03-checkout-boundary-repair.md. Independent review remains required.\n\nRepair evidence: evidence/phase03-app-home-startup-provenance.md. Earlier findings remain in review-history/phase-03-through-2026-11-19T0050Z.json. Independent clearance remains required.",
+          "status": "open",
           "gateScript": "gates/phase-03.sh",
-          "sp": 1,
-          "completedAt": "2026-11-18T22:20:29.817Z"
+          "sp": 1
         },
         {
           "id": "T024",
           "title": "Modify slack.ts",
           "description": "MODIFY src/server/slack.ts. Remove single-project startup context and resolve workspace, channel and user per event. Tests: src/server/slack-actions.test.ts\nPrior review and diagnosis remain in .gwrk/review-history/phase-03-through-2026-11-18T2206Z.json and findings.jsonl. Seven preserved checkout boundary regressions failed before repair. The phase gate passes 182 tests. See evidence/phase03-checkout-boundary-repair.md. Independent review remains required.\n\nRepair evidence: evidence/phase03-canonical-startup-and-private-threads.md. Earlier findings remain in review-history/phase-03-through-2026-11-18T2359Z.json. Independent clearance remains required.",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/phase-03.sh",
-          "sp": 1
+          "sp": 1,
+          "completedAt": "2026-11-19T00:08:45.992Z"
         },
         {
           "id": "T025",

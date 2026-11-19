@@ -392,17 +392,25 @@ describe("Slack Server Integration", () => {
       join(root, "beta"),
       featureId,
     );
+    const betaThread = {
+      ...SYNTHETIC_THREAD_ALPHA,
+      projectId: beta.projectId,
+      channelId: SYNTHETIC_CHANNEL_BETA,
+      rootTs: "1731320010.000100",
+    };
     await startSlackApp({
       ...mockDeps,
       projectRoot: alpha.localRoot,
       registry: createSyntheticRegistry({
         projects: [alpha, beta],
         roles: rolesFor(alpha, beta),
+        threads: [betaThread],
       }),
     });
     const handler = vi.mocked(getSlackApp()!.command).mock.calls[0][1];
     async function run(text: string, channelId: string) {
       const respond = vi.fn();
+      const postEphemeral = vi.fn();
       await handler({
         command: {
           command: "/gwrk",
@@ -413,24 +421,48 @@ describe("Slack Server Integration", () => {
         },
         ack: vi.fn(),
         respond,
+        client: { chat: { postEphemeral } },
       } as Parameters<typeof handler>[0]);
-      return respond.mock.calls[0][0];
+      return { respond, postEphemeral };
     }
 
     const dispatch = `dispatch ${featureId} phase-03`;
-    const alphaResponse = await run(dispatch, SYNTHETIC_CHANNEL_ALPHA);
-    expect(alphaResponse.response_type).toBe("in_channel");
+    const alphaDispatch = await run(dispatch, SYNTHETIC_CHANNEL_ALPHA);
+    expect(alphaDispatch.respond).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({ response_type: "in_channel" }),
+    );
+    expect(alphaDispatch.postEphemeral).not.toHaveBeenCalled();
     expect(mockDeps.queue.enqueue).toHaveBeenCalledExactlyOnceWith({
       featureId,
       phaseId: "phase-03",
     });
     vi.mocked(mockDeps.queue.enqueue).mockClear();
 
-    for (const command of [dispatch, "pause"]) {
-      const response = await run(command, SYNTHETIC_CHANNEL_BETA);
-      expect.soft(response.response_type).toBe("ephemeral");
-      expect.soft(JSON.stringify(response.blocks)).toContain("queue");
-    }
+    const queueWarning = [
+      {
+        type: "section",
+        text: {
+          type: "mrkdwn",
+          text: ":warning: The dispatch queue is unavailable for this project.",
+        },
+      },
+    ];
+    const betaDispatch = await run(dispatch, SYNTHETIC_CHANNEL_BETA);
+    expect.soft(betaDispatch.respond).not.toHaveBeenCalled();
+    expect.soft(betaDispatch.postEphemeral).toHaveBeenCalledExactlyOnceWith({
+      channel: betaThread.channelId,
+      user: SYNTHETIC_USER_MAINTAINER,
+      thread_ts: betaThread.rootTs,
+      blocks: queueWarning,
+    });
+    const betaPause = await run("pause", SYNTHETIC_CHANNEL_BETA);
+    expect.soft(betaPause.respond).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({
+        response_type: "ephemeral",
+        blocks: queueWarning,
+      }),
+    );
+    expect(betaPause.postEphemeral).not.toHaveBeenCalled();
     vi.mocked(listRuns).mockReturnValueOnce([
       {
         feature_id: featureId,
@@ -444,13 +476,27 @@ describe("Slack Server Integration", () => {
       `status ${featureId} --project beta`,
       SYNTHETIC_CHANNEL_BETA,
     );
-    expect.soft(status.response_type).toBe("ephemeral");
+    expect.soft(status.respond).not.toHaveBeenCalled();
+    expect.soft(status.postEphemeral).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({
+        channel: betaThread.channelId,
+        user: SYNTHETIC_USER_MAINTAINER,
+        thread_ts: betaThread.rootTs,
+      }),
+    );
     expect
       .soft(listRuns)
       .toHaveBeenCalledExactlyOnceWith(featureId, beta.projectId);
-    expect.soft(JSON.stringify(status.blocks)).toContain("Beta ledger gate");
+    expect
+      .soft(JSON.stringify(status.postEphemeral.mock.calls))
+      .toContain("Beta ledger gate");
     const summary = await run("status --project beta", SYNTHETIC_CHANNEL_BETA);
-    expect.soft(summary.response_type).toBe("ephemeral");
+    expect
+      .soft(summary.respond)
+      .toHaveBeenCalledExactlyOnceWith(
+        expect.objectContaining({ response_type: "ephemeral" }),
+      );
+    expect(summary.postEphemeral).not.toHaveBeenCalled();
     expect.soft(getStats).toHaveBeenCalledExactlyOnceWith(beta.projectId);
     expect(mockDeps.queue.enqueue).not.toHaveBeenCalled();
     expect(mockDeps.queue.getQueue).not.toHaveBeenCalled();

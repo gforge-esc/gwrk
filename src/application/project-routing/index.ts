@@ -51,11 +51,12 @@ type MergeClaimInput = Omit<ActionInput, "actionId" | "requiredAccess"> & {
   vcs?: VcsPort;
 };
 
-function actionReplay(): ActionClaimDecision {
+function actionReplay(recipient: DeliveryRecipient): ActionClaimDecision {
   return {
     ok: false,
     code: "ACTION_REPLAYED",
     message: "This action already has a receipt.",
+    recipient,
   };
 }
 
@@ -197,7 +198,9 @@ export function createProjectRoutingService(
       recordedAt: input.nowIso,
       mergeTarget,
     });
-    return claimed ? { ...decision, receiptKey, mergeTarget } : actionReplay();
+    return claimed
+      ? { ...decision, receiptKey, mergeTarget }
+      : actionReplay(decision.recipient);
   }
 
   return {
@@ -230,6 +233,7 @@ export function createProjectRoutingService(
           ok: false,
           code: "REMOTE_AUTH_REQUIRED",
           message: "The dispatch queue is unavailable for this project.",
+          recipient: decision.recipient,
         };
       }
 
@@ -279,6 +283,7 @@ export function createProjectRoutingService(
           ok: false,
           code: "REMOTE_AUTH_REQUIRED",
           message: "Merging requires a verified checkout and VCS adapter.",
+          recipient: decision.recipient,
         };
       }
 
@@ -286,7 +291,9 @@ export function createProjectRoutingService(
       let attempt = 0;
       let receiptKey = attemptKey(scope, attempt);
       let receipt = deps.registry.getActionReceipt(receiptKey);
-      if (receipt && !input.retryFailed) return actionReplay();
+      if (receipt && !input.retryFailed) {
+        return actionReplay(decision.recipient);
+      }
 
       let previousTarget: MergeTarget | undefined;
       while (receipt?.outcome === "failed") {
@@ -301,13 +308,13 @@ export function createProjectRoutingService(
           target?.repository !== repository ||
           !input.vcs.inspectPullRequestMerge
         ) {
-          return actionReplay();
+          return actionReplay(decision.recipient);
         }
         let outcome: PullRequestMergeOutcome;
         try {
           outcome = await input.vcs.inspectPullRequestMerge(cwd, target);
         } catch {
-          return actionReplay();
+          return actionReplay(decision.recipient);
         }
         if (outcome === "merged") {
           deps.registry.completeActionReceipt(
@@ -326,13 +333,13 @@ export function createProjectRoutingService(
             "uncertain",
           )
         ) {
-          return actionReplay();
+          return actionReplay(decision.recipient);
         }
         // Reconciliation only grants a claim for the immediate next attempt.
         previousTarget = target;
         receiptKey = attemptKey(scope, ++attempt);
       } else if (receipt) {
-        return actionReplay();
+        return actionReplay(decision.recipient);
       }
 
       const { prNumber } = input;
@@ -345,6 +352,7 @@ export function createProjectRoutingService(
           ok: false,
           code: "REMOTE_AUTH_REQUIRED",
           message: "This review card must specify a valid pull request number.",
+          recipient: decision.recipient,
         };
       }
       if (
@@ -352,7 +360,7 @@ export function createProjectRoutingService(
         (previousTarget.repository !== repository ||
           previousTarget.prNumber !== prNumber)
       ) {
-        return actionReplay();
+        return actionReplay(decision.recipient);
       }
       return claimAction(decision, action, scope, receiptKey, {
         repository,
