@@ -185,4 +185,52 @@ describe("Telegram Control Plane & Notifications", () => {
     expect(sent).toBe(false);
     expect(mockFetch).not.toHaveBeenCalled();
   });
+
+  it("TR-015: disables Telegram transport by default in pilot mode with zero outbound HTTP calls even without GWRK_PILOT_MODE env", async () => {
+    vi.useFakeTimers();
+    const mockFetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: vi.fn().mockResolvedValue({ ok: true, result: [] }),
+    });
+    vi.stubGlobal("fetch", mockFetch);
+
+    // biome-ignore lint/performance/noDelete: env cleanup in test
+    delete process.env.GWRK_PILOT_MODE;
+    // biome-ignore lint/performance/noDelete: env cleanup in test
+    delete process.env.GWRK_HOSTED_PILOT;
+    // biome-ignore lint/performance/noDelete: env cleanup in test
+    delete process.env.GWRK_PILOT;
+
+    try {
+      expect(getTelegramStatus()).toEqual({
+        enabled: false,
+        reason: "disabled_in_pilot",
+      });
+
+      const status = await startTelegramBot({
+        queue: context.queue,
+        monitor: context.monitor,
+        git: context.git,
+        projectRoot: context.projectRoot,
+        config: {
+          server: { host: "localhost", port: 3000 },
+        } as unknown as Parameters<typeof startTelegramBot>[0]["config"],
+      });
+      expect(status).toEqual({
+        enabled: false,
+        reason: "disabled_in_pilot",
+      });
+
+      await vi.advanceTimersByTimeAsync(250);
+      expect(mockFetch).not.toHaveBeenCalled();
+
+      const sent = await notifyTelegramPilotGuarded({ text: "Default pilot" });
+      expect(sent).toBe(false);
+      expect(mockFetch).not.toHaveBeenCalled();
+    } finally {
+      await stopTelegramBot();
+      vi.unstubAllGlobals();
+      vi.useRealTimers();
+    }
+  });
 });

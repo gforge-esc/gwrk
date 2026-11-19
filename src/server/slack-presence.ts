@@ -73,29 +73,7 @@ class PresenceManager {
     if (!app) return;
 
     try {
-      // Find the PE user ID. For now, we take the first non-bot admin, or just the first non-bot user.
-      if (!this.userId) {
-        const users = await app.client.users.list({});
-        const human = users.members?.find(
-          (m) => !m.is_bot && m.id !== "USLACKBOT",
-        );
-        if (human?.id) {
-          this.userId = human.id;
-          logCliOutput(
-            `Presence polling started for user: ${human.name} (${this.userId})`,
-          );
-        } else {
-          warnCli(
-            "Could not find a human user for presence detection. Falling back to immediate delivery.",
-          );
-          return;
-        }
-      }
-
       const interval = config?.server?.slack?.presencePollIntervalMs || 60000;
-
-      // Initial check
-      await this.checkPresence(app);
 
       if (this.pollerInterval) {
         clearInterval(this.pollerInterval);
@@ -106,6 +84,9 @@ class PresenceManager {
           logCliError("Error checking Slack presence:", err);
         });
       }, interval);
+
+      // Initial check
+      await this.checkPresence(app);
     } catch (error) {
       warnCli("Presence detection initialization failed:", error);
     }
@@ -210,7 +191,6 @@ class PresenceManager {
       logCliOutput(
         `User away. Queuing event: ${event.type} for ${event.feature}`,
       );
-      this.queuedEvents.push(event);
 
       const targetUserId = recipientUserId ?? "unknown";
       const key = `${projectId}:${targetUserId}`;
@@ -227,6 +207,14 @@ class PresenceManager {
       }
       queue.events.push(event);
       queue.messages.push(message);
+
+      if (
+        !recipient &&
+        projectId === "default" &&
+        (!this.userId || targetUserId === this.userId)
+      ) {
+        this.queuedEvents.push(event);
+      }
     }
   }
 
@@ -253,7 +241,7 @@ class PresenceManager {
     for (const key of keysToFlush) {
       await this.flushScopedQueue(key);
     }
-    if (userId === this.userId && this.queuedEvents.length > 0) {
+    if (this.userId && userId === this.userId && this.queuedEvents.length > 0) {
       await this.flushQueue();
     }
   }
@@ -276,8 +264,16 @@ class PresenceManager {
     if (queue.recipient?.channelId) {
       summaryMessage.channel = queue.recipient.channelId;
     }
-    if (queue.recipient?.threadTs) {
-      summaryMessage.thread_ts = queue.recipient.threadTs;
+    const threadIds = new Set(
+      queue.events.map((e) => e.recipient?.threadTs).filter(Boolean),
+    );
+    if (
+      threadIds.size === 1 &&
+      queue.events.every((e) => e.recipient?.threadTs)
+    ) {
+      summaryMessage.thread_ts = queue.events[0].recipient?.threadTs;
+    } else {
+      summaryMessage.thread_ts = undefined;
     }
 
     const { sendSlackMessage } = await import("./slack-notify.js");
@@ -317,11 +313,17 @@ class PresenceManager {
     await sendSlackMessage(summaryMessage);
 
     this.queuedEvents = [];
-    this.scopedQueues.clear();
+  }
+
+  public setUserId(userId: string | null): void {
+    this.userId = userId;
   }
 
   public setUserPresence(userId: string, presence: "active" | "away"): void {
     this.userPresence.set(userId, presence);
+    if (!this.userId) {
+      this.userId = userId;
+    }
     if (userId === this.userId) {
       this.currentPresence = presence;
     }

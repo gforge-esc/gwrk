@@ -80,14 +80,17 @@ describe("PresenceManager", () => {
   } as unknown as GwrkConfig;
 
   it("should initialize and poll presence", async () => {
+    presenceManager.setUserPresence("U123", "away");
     await presenceManager.init(mockConfig);
-    expect(mockApp.client.users.list).toHaveBeenCalled();
+    expect(mockApp.client.users.list).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(1000);
     expect(mockApp.client.users.getPresence).toHaveBeenCalledWith({
       user: "U123",
     });
   });
 
   it("should deliver notifications immediately when active", async () => {
+    presenceManager.setUserPresence("U123", "active");
     await presenceManager.init(mockConfig);
     mockApp.client.users.getPresence.mockResolvedValue({
       ok: true,
@@ -119,6 +122,7 @@ describe("PresenceManager", () => {
   });
 
   it("should queue notifications when away and flush when returning to active", async () => {
+    presenceManager.setUserPresence("U123", "away");
     await presenceManager.init(mockConfig);
 
     // Set to away
@@ -312,5 +316,142 @@ describe("PresenceManager", () => {
     expect(
       presenceManager.getScopedQueue("proj-alpha", "U-alice"),
     ).toBeUndefined();
+  });
+
+  it("TR-014: does not flush or clear another user's project queue when the legacy polled user returns active", async () => {
+    const { sendSlackMessage } = await import("./slack-notify.js");
+    vi.mocked(sendSlackMessage).mockClear();
+
+    await presenceManager.init(mockConfig);
+    presenceManager.setUserPresence("U123", "away");
+    presenceManager.setUserPresence("U-bob", "away");
+
+    await presenceManager.handleNotification(
+      {
+        type: "phase_start",
+        feature: "feat-beta-private",
+        projectId: "proj-beta",
+        recipient: {
+          projectId: "proj-beta",
+          surface: "slack",
+          workspaceId: "W1",
+          channelId: "C-beta",
+          threadTs: "1700000000.000222",
+          actorUserId: "U-bob",
+        },
+        payload: {},
+        timestamp: "...",
+      },
+      { text: "Beta private event", blocks: [] },
+    );
+
+    presenceManager.setUserPresence("U123", "active");
+    await presenceManager.flushUserQueues("U123");
+
+    expect(sendSlackMessage).not.toHaveBeenCalled();
+    expect(
+      presenceManager.getScopedQueue("proj-beta", "U-bob")?.events,
+    ).toHaveLength(1);
+  });
+
+  it("TR-014: starts scoped presence polling without relying on workspace-wide users.list", async () => {
+    const { sendSlackMessage } = await import("./slack-notify.js");
+    vi.mocked(sendSlackMessage).mockClear();
+
+    mockApp.client.users.list = vi
+      .fn()
+      .mockRejectedValue(new Error("missing_scope: users:read"));
+    mockApp.client.users.getPresence = vi
+      .fn()
+      .mockResolvedValueOnce({ ok: true, presence: "away" })
+      .mockResolvedValueOnce({ ok: true, presence: "active" });
+
+    await presenceManager.init(mockConfig);
+    expect(mockApp.client.users.list).not.toHaveBeenCalled();
+
+    await presenceManager.handleNotification(
+      {
+        type: "phase_complete",
+        feature: "feat-alpha",
+        projectId: "proj-alpha",
+        recipient: {
+          projectId: "proj-alpha",
+          surface: "slack",
+          workspaceId: "W1",
+          channelId: "C-alpha",
+          threadTs: "1700000000.000111",
+          actorUserId: "U-alice",
+        },
+        payload: {},
+        timestamp: "...",
+      },
+      { text: "Alpha complete", blocks: [] },
+    );
+
+    expect(
+      presenceManager.getScopedQueue("proj-alpha", "U-alice")?.events,
+    ).toHaveLength(1);
+
+    await vi.advanceTimersByTimeAsync(1000);
+
+    expect(sendSlackMessage).toHaveBeenCalledTimes(1);
+    expect(
+      presenceManager.getScopedQueue("proj-alpha", "U-alice"),
+    ).toBeUndefined();
+  });
+
+  it("TR-014: does not post a multi-feature away batch into the first feature's thread", async () => {
+    const { sendSlackMessage } = await import("./slack-notify.js");
+    vi.mocked(sendSlackMessage).mockClear();
+
+    presenceManager.setUserPresence("U-same", "away");
+
+    await presenceManager.handleNotification(
+      {
+        type: "phase_start",
+        feature: "feat-one",
+        projectId: "proj-alpha",
+        recipient: {
+          projectId: "proj-alpha",
+          surface: "slack",
+          workspaceId: "W1",
+          channelId: "C-alpha",
+          threadTs: "1700000000.000111",
+          actorUserId: "U-same",
+        },
+        payload: {},
+        timestamp: "...",
+      },
+      { text: "Feature one", blocks: [] },
+    );
+
+    await presenceManager.handleNotification(
+      {
+        type: "phase_complete",
+        feature: "feat-two",
+        projectId: "proj-alpha",
+        recipient: {
+          projectId: "proj-alpha",
+          surface: "slack",
+          workspaceId: "W1",
+          channelId: "C-alpha",
+          threadTs: "1700000000.000222",
+          actorUserId: "U-same",
+        },
+        payload: {},
+        timestamp: "...",
+      },
+      { text: "Feature two", blocks: [] },
+    );
+
+    await presenceManager.flushUserQueues("U-same");
+
+    const calls = vi.mocked(sendSlackMessage).mock.calls;
+    expect(calls.length).toBeGreaterThanOrEqual(1);
+    for (const [msg] of calls) {
+      if (msg.thread_ts === "1700000000.000111") {
+        expect(JSON.stringify(msg.blocks)).not.toContain("feat-two");
+      }
+    }
   });
 });

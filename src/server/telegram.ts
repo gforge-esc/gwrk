@@ -28,13 +28,13 @@ export function isTelegramPilotDisabled(options?: {
     return options.pilotMode;
   }
   if (
-    process.env.GWRK_PILOT_MODE === "true" ||
-    process.env.GWRK_HOSTED_PILOT === "true" ||
-    process.env.GWRK_PILOT === "true"
+    process.env.GWRK_PILOT_MODE === "false" ||
+    process.env.GWRK_HOSTED_PILOT === "false" ||
+    process.env.GWRK_PILOT === "false"
   ) {
-    return true;
+    return false;
   }
-  return false;
+  return true;
 }
 
 export function getTelegramStatus(options?: {

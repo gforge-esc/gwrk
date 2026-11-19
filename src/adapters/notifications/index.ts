@@ -65,6 +65,12 @@ export function createSlackNotificationAdapter(): NotificationPort {
     async notify(payload: NotificationPayload) {
       if (payload.recipient) {
         if (
+          payload.recipient.surface &&
+          payload.recipient.surface !== "slack"
+        ) {
+          return undefined;
+        }
+        if (
           payload.projectId &&
           payload.recipient.projectId &&
           payload.projectId !== payload.recipient.projectId
@@ -78,20 +84,61 @@ export function createSlackNotificationAdapter(): NotificationPort {
         ) {
           return undefined;
         }
+        if (
+          payload.threadTs &&
+          payload.recipient.threadTs &&
+          payload.threadTs !== payload.recipient.threadTs
+        ) {
+          return undefined;
+        }
         if (payload.recipient.workspaceId) {
           const { getSlackApp } = await import("../../server/slack.js");
           const client = getSlackApp()?.client;
-          if (!client) {
+          if (!client || typeof client.auth?.test !== "function") {
             return undefined;
           }
-          if (client.auth?.test) {
-            const auth = await client.auth
-              .test()
-              .catch(() => ({ ok: false as const }));
-            if (!auth.ok || auth.team_id !== payload.recipient.workspaceId) {
-              return undefined;
-            }
+          const auth = await client.auth
+            .test()
+            .catch(() => ({ ok: false as const }));
+          if (
+            !auth ||
+            !auth.ok ||
+            auth.team_id !== payload.recipient.workspaceId
+          ) {
+            return undefined;
           }
+        }
+      }
+
+      if (payload.ephemeralUserId) {
+        const { getSlackApp } = await import("../../server/slack.js");
+        const client = getSlackApp()?.client;
+        if (!client?.chat?.postEphemeral) {
+          return undefined;
+        }
+        const channel = payload.channel ?? payload.recipient?.channelId;
+        if (!channel) return undefined;
+        const thread_ts = payload.threadTs ?? payload.recipient?.threadTs;
+        try {
+          const res = await client.chat.postEphemeral({
+            channel,
+            user: payload.ephemeralUserId,
+            thread_ts,
+            text: payload.text,
+            // biome-ignore lint/suspicious/noExplicitAny: blocks array passed to slack API
+            blocks: payload.blocks as any,
+          });
+          if (res?.ok) {
+            return {
+              delivered: true,
+              channelId: channel,
+              messageTs: res.message_ts,
+              threadTs: thread_ts,
+            };
+          }
+          return { delivered: false };
+        } catch {
+          return { delivered: false };
         }
       }
 
@@ -106,6 +153,8 @@ export function createSlackNotificationAdapter(): NotificationPort {
         if (!message.channel) return undefined;
         return notifications.sendSlackMessage(message, {
           webhookFallback: false,
+          projectId: payload.projectId,
+          recipient: payload.recipient,
         });
       }
       return notifications.notifySlack(message, undefined, {

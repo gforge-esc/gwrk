@@ -6,6 +6,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   SYNTHETIC_CHANNEL_ALPHA,
   SYNTHETIC_PROJECT_ALPHA,
+  SYNTHETIC_PROJECT_BETA,
+  SYNTHETIC_WORKSPACE_ID,
   createSyntheticRegistry,
 } from "../../tests/helpers/synthetic-slack.js";
 import { createSlackNotificationAdapter } from "../adapters/notifications/index.js";
@@ -17,6 +19,11 @@ vi.mock("./slack.js", () => ({
   getSlackApp: vi.fn().mockReturnValue({
     client: {
       chat: { postMessage: vi.fn().mockResolvedValue({ ok: true }) },
+      auth: {
+        test: vi
+          .fn()
+          .mockResolvedValue({ ok: true, team_id: SYNTHETIC_WORKSPACE_ID }),
+      },
     },
   }),
 }));
@@ -56,7 +63,14 @@ describe("US-003: Slack Event Bridge", () => {
         ts: replyTs,
       });
     vi.mocked(getSlackApp).mockReturnValue({
-      client: { chat: { postMessage } },
+      client: {
+        chat: { postMessage },
+        auth: {
+          test: vi
+            .fn()
+            .mockResolvedValue({ ok: true, team_id: SYNTHETIC_WORKSPACE_ID }),
+        },
+      },
     } as unknown as ReturnType<typeof getSlackApp>);
     const registry = createSyntheticRegistry({ threads: [] });
     const routing = createProjectRoutingService({
@@ -143,7 +157,14 @@ describe("US-003: Slack Event Bridge", () => {
   it("keeps a failed project notification out of the daemon's webhook", async () => {
     const postMessage = vi.fn().mockRejectedValue(new Error("not_in_channel"));
     vi.mocked(getSlackApp).mockReturnValue({
-      client: { chat: { postMessage } },
+      client: {
+        chat: { postMessage },
+        auth: {
+          test: vi
+            .fn()
+            .mockResolvedValue({ ok: true, team_id: SYNTHETIC_WORKSPACE_ID }),
+        },
+      },
     } as unknown as ReturnType<typeof getSlackApp>);
     const fetch = vi.fn().mockResolvedValue({ ok: true });
     vi.stubGlobal("fetch", fetch);
@@ -167,7 +188,14 @@ describe("US-003: Slack Event Bridge", () => {
       message: { thread_ts: "1731320000.000100" },
     });
     vi.mocked(getSlackApp).mockReturnValue({
-      client: { chat: { postMessage } },
+      client: {
+        chat: { postMessage },
+        auth: {
+          test: vi
+            .fn()
+            .mockResolvedValue({ ok: true, team_id: SYNTHETIC_WORKSPACE_ID }),
+        },
+      },
     } as unknown as ReturnType<typeof getSlackApp>);
 
     const registry = createSyntheticRegistry();
@@ -201,7 +229,14 @@ describe("US-003: Slack Event Bridge", () => {
       ts: "1731320000.000555",
     });
     vi.mocked(getSlackApp).mockReturnValue({
-      client: { chat: { postMessage } },
+      client: {
+        chat: { postMessage },
+        auth: {
+          test: vi
+            .fn()
+            .mockResolvedValue({ ok: true, team_id: SYNTHETIC_WORKSPACE_ID }),
+        },
+      },
     } as unknown as ReturnType<typeof getSlackApp>);
 
     const registry = createSyntheticRegistry();
@@ -231,7 +266,14 @@ describe("US-003: Slack Event Bridge", () => {
   it("TR-013: ignores process.cwd() config when projectId is set and project has no Slack channel", async () => {
     const postMessage = vi.fn();
     vi.mocked(getSlackApp).mockReturnValue({
-      client: { chat: { postMessage } },
+      client: {
+        chat: { postMessage },
+        auth: {
+          test: vi
+            .fn()
+            .mockResolvedValue({ ok: true, team_id: SYNTHETIC_WORKSPACE_ID }),
+        },
+      },
     } as unknown as ReturnType<typeof getSlackApp>);
     const fetch = vi.fn().mockResolvedValue({ ok: true });
     vi.stubGlobal("fetch", fetch);
@@ -258,6 +300,156 @@ describe("US-003: Slack Event Bridge", () => {
     expect(postMessage).not.toHaveBeenCalled();
     expect(fetch).not.toHaveBeenCalled();
     expect(receipt).toBeUndefined();
+  });
+
+  it("TR-013: skips opsOnly delivery when the enrolled project has no opsChannelId instead of posting to the feature channel", async () => {
+    const postMessage = vi.fn().mockResolvedValue({ ok: true });
+    vi.mocked(getSlackApp).mockReturnValue({
+      client: {
+        chat: { postMessage },
+        auth: {
+          test: vi
+            .fn()
+            .mockResolvedValue({ ok: true, team_id: SYNTHETIC_WORKSPACE_ID }),
+        },
+      },
+    } as unknown as ReturnType<typeof getSlackApp>);
+
+    const registry = createSyntheticRegistry({
+      projects: [
+        {
+          ...SYNTHETIC_PROJECT_ALPHA,
+          slack: {
+            workspaceId: SYNTHETIC_WORKSPACE_ID,
+            channelId: SYNTHETIC_CHANNEL_ALPHA,
+            sharedChannel: false,
+          },
+        },
+      ],
+    });
+
+    const receipt = await notifySlack(
+      { text: "Ops alert", blocks: [] },
+      undefined,
+      {
+        projectId: SYNTHETIC_PROJECT_ALPHA.projectId,
+        featureId: "003-slack",
+        opsOnly: true,
+        registry,
+      },
+    );
+
+    expect(postMessage).not.toHaveBeenCalled();
+    expect(receipt).toBeUndefined();
+  });
+
+  it("TR-013: ignores stale stored feature threads whose channel or workspace no longer matches the enrolled project", async () => {
+    const postMessage = vi.fn().mockResolvedValue({
+      ok: true,
+      channel: "C_ALPHA_NEW",
+      ts: "1731320000.000777",
+    });
+    vi.mocked(getSlackApp).mockReturnValue({
+      client: {
+        chat: { postMessage },
+        auth: {
+          test: vi
+            .fn()
+            .mockResolvedValue({ ok: true, team_id: SYNTHETIC_WORKSPACE_ID }),
+        },
+      },
+    } as unknown as ReturnType<typeof getSlackApp>);
+
+    const registry = createSyntheticRegistry({
+      projects: [
+        {
+          ...SYNTHETIC_PROJECT_ALPHA,
+          slack: {
+            workspaceId: SYNTHETIC_WORKSPACE_ID,
+            channelId: "C_ALPHA_NEW",
+            sharedChannel: false,
+          },
+        },
+      ],
+      threads: [
+        {
+          projectId: SYNTHETIC_PROJECT_ALPHA.projectId,
+          featureId: "003-slack",
+          workspaceId: SYNTHETIC_WORKSPACE_ID,
+          channelId: "C_ALPHA_OLD",
+          rootTs: "1731320000.000100",
+          updatedAt: "2026-01-01T00:00:00.000Z",
+        },
+      ],
+    });
+
+    const inputMessage = { text: "Feature update", blocks: [] };
+    await notifySlack(inputMessage, undefined, {
+      projectId: SYNTHETIC_PROJECT_ALPHA.projectId,
+      featureId: "003-slack",
+      registry,
+    });
+
+    expect(postMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        channel: "C_ALPHA_NEW",
+        thread_ts: undefined,
+      }),
+    );
+    expect(inputMessage).toEqual({ text: "Feature update", blocks: [] });
+  });
+
+  it("TR-013: blocks scoped notifySlack when connected workspace mismatches or projectId conflicts with recipient", async () => {
+    const postMessage = vi.fn().mockResolvedValue({ ok: true });
+    vi.mocked(getSlackApp).mockReturnValue({
+      client: {
+        chat: { postMessage },
+        auth: {
+          test: vi.fn().mockResolvedValue({ ok: true, team_id: "W_OTHER" }),
+        },
+      },
+    } as unknown as ReturnType<typeof getSlackApp>);
+
+    const registry = createSyntheticRegistry();
+    const wrongWorkspaceReceipt = await notifySlack(
+      { text: "Workspace check", blocks: [] },
+      undefined,
+      {
+        projectId: SYNTHETIC_PROJECT_ALPHA.projectId,
+        featureId: "003-slack",
+        registry,
+      },
+    );
+    expect(wrongWorkspaceReceipt).toBeUndefined();
+    expect(postMessage).not.toHaveBeenCalled();
+
+    vi.mocked(getSlackApp).mockReturnValue({
+      client: {
+        chat: { postMessage },
+        auth: {
+          test: vi
+            .fn()
+            .mockResolvedValue({ ok: true, team_id: SYNTHETIC_WORKSPACE_ID }),
+        },
+      },
+    } as unknown as ReturnType<typeof getSlackApp>);
+
+    const mismatchedRecipientReceipt = await notifySlack(
+      { text: "Mismatch check", blocks: [] },
+      undefined,
+      {
+        projectId: SYNTHETIC_PROJECT_ALPHA.projectId,
+        recipient: {
+          projectId: SYNTHETIC_PROJECT_BETA.projectId,
+          surface: "slack",
+          workspaceId: SYNTHETIC_WORKSPACE_ID,
+          channelId: SYNTHETIC_CHANNEL_ALPHA,
+        },
+        registry,
+      },
+    );
+    expect(mismatchedRecipientReceipt).toBeUndefined();
+    expect(postMessage).not.toHaveBeenCalled();
   });
 
   it("FR-005: Converts ship:complete event to Block Kit message", async () => {

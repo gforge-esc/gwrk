@@ -3,20 +3,23 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import { beforeEach, expect, it, vi } from "vitest";
 import { createSlackNotificationAdapter } from "./index.js";
-const { postMessage, getPresence, listUsers, authTest } = vi.hoisted(() => ({
+const {
+  postMessage,
+  postEphemeral,
+  getPresence,
+  listUsers,
+  authTest,
+  getSlackApp,
+} = vi.hoisted(() => ({
   postMessage: vi.fn(),
+  postEphemeral: vi.fn(),
   getPresence: vi.fn(),
   listUsers: vi.fn(),
   authTest: vi.fn(),
+  getSlackApp: vi.fn(),
 }));
 vi.mock("../../server/slack.js", () => ({
-  getSlackApp: () => ({
-    client: {
-      chat: { postMessage },
-      users: { getPresence, list: listUsers },
-      auth: { test: authTest },
-    },
-  }),
+  getSlackApp,
 }));
 vi.mock("../../server/telegram-notify.js", () => ({
   loadTelegramConfig: () => null,
@@ -40,11 +43,22 @@ const recipient = {
 };
 beforeEach(() => {
   vi.clearAllMocks();
+  getSlackApp.mockReturnValue({
+    client: {
+      chat: { postMessage, postEphemeral },
+      users: { getPresence, list: listUsers },
+      auth: { test: authTest },
+    },
+  });
   postMessage.mockResolvedValue({
     ok: true,
     channel: "C-alpha",
     ts: "1700000000.000200",
     message: { thread_ts: recipient.threadTs },
+  });
+  postEphemeral.mockResolvedValue({
+    ok: true,
+    message_ts: "1700000000.000300",
   });
   getPresence.mockResolvedValue({ ok: true, presence: "active" });
   authTest.mockResolvedValue({ ok: true, team_id: "W1" });
@@ -77,6 +91,16 @@ it.each([
     channel: "C-other",
   },
   {
+    name: "a conflicting thread hint",
+    projectId: "alpha",
+    threadTs: "1700000000.999999",
+  },
+  {
+    name: "a non-Slack recipient surface",
+    projectId: "alpha",
+    recipient: { ...recipient, surface: "local_cli" as const },
+  },
+  {
     name: "another workspace",
     projectId: "alpha",
     recipient: { ...recipient, workspaceId: "W2" },
@@ -88,6 +112,44 @@ it.each([
     .catch(() => undefined);
   expect(Boolean(result?.delivered)).toBe(false);
   expect(postMessage).not.toHaveBeenCalled();
+  expect(postEphemeral).not.toHaveBeenCalled();
+});
+it("fails closed when workspace verification cannot run on the Slack client", async () => {
+  getSlackApp.mockReturnValue({
+    client: {
+      chat: { postMessage, postEphemeral },
+    },
+  });
+  const adapter = createSlackNotificationAdapter();
+  const result = await adapter
+    .notify({ projectId: "alpha", recipient, text: "Private work" })
+    .catch(() => undefined);
+  expect(Boolean(result?.delivered)).toBe(false);
+  expect(postMessage).not.toHaveBeenCalled();
+});
+it("sends ephemeral notifications privately via chat.postEphemeral instead of posting publicly", async () => {
+  const adapter = createSlackNotificationAdapter();
+  const result = await adapter.notify({
+    projectId: "alpha",
+    recipient,
+    ephemeralUserId: "U-actor",
+    text: "Private warning",
+  });
+  expect(postMessage).not.toHaveBeenCalled();
+  expect(postEphemeral).toHaveBeenCalledWith(
+    expect.objectContaining({
+      channel: "C-alpha",
+      user: "U-actor",
+      thread_ts: recipient.threadTs,
+      text: "Private warning",
+    }),
+  );
+  expect(result).toMatchObject({
+    delivered: true,
+    channelId: "C-alpha",
+    messageTs: "1700000000.000300",
+    threadTs: recipient.threadTs,
+  });
 });
 it("checks the requested recipient presence without selecting a workspace user", async () => {
   const adapter = createSlackNotificationAdapter();
