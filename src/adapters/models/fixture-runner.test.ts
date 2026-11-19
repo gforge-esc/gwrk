@@ -526,6 +526,7 @@ describe("fixture runner adapter", () => {
         stderr: "",
         durationS: 0,
         durationMs: 1,
+        usage: { tokensIn: 23, tokensOut: 29, costUsd: 0.125 },
       };
     };
     const result = await createFixtureRunner({ dispatcher }).runFixtureRepeat({
@@ -536,6 +537,11 @@ describe("fixture runner adapter", () => {
     });
     expect(result.deterministicGatesPassed).toBe(true);
     expect(result.durationMs).toBeGreaterThanOrEqual(125);
+    expect(result.usage).toEqual({
+      tokensIn: 23,
+      tokensOut: 29,
+      costUsd: 0.125,
+    });
   });
 
   it.each([
@@ -755,6 +761,14 @@ describe("fixture runner adapter", () => {
           ...(task.workflow === "gwrk-specify"
             ? { durationS: 0.2 }
             : { durationS: 0, durationMs: 50 }),
+          ...(variant === "TR-027 valid plan"
+            ? {
+                usage:
+                  task.workflow === "gwrk-specify"
+                    ? { tokensIn: 11, costUsd: 0.25 }
+                    : { tokensOut: 17, costUsd: 0.5 },
+              }
+            : {}),
           observedModel: mismatchedWorkflow
             ? task.workflow === mismatchedWorkflow
               ? "other-model"
@@ -791,7 +805,16 @@ describe("fixture runner adapter", () => {
         result.deterministicGatesPassed,
         JSON.stringify(result.gateChecks),
       ).toBe(expectedCheck === undefined);
-      if (artifactOutputDir) expect(result.durationMs).toBe(250);
+      if (artifactOutputDir) {
+        expect(result.durationMs).toBe(250);
+        expect(result.usage).toEqual({
+          tokensIn: 11,
+          tokensOut: 17,
+          costUsd: 0.75,
+        });
+      } else {
+        expect(result).not.toHaveProperty("usage");
+      }
       if (expectedCheck) {
         expect(
           result.gateChecks.some(
@@ -920,6 +943,107 @@ describe("fixture runner adapter", () => {
       detail: expect.stringContaining("AGENTS.md"),
     });
   });
+
+  it("TR-029 rejects a forbidden mutation made during a passing candidate gate", async () => {
+    const dispatcher = async (task: TaskDispatch): Promise<TaskResult> => {
+      writeFileSync(
+        join(task.workDir!, "src/domain/select-queue.mjs"),
+        `import { appendFileSync } from "node:fs";
+appendFileSync(new URL("../../AGENTS.md", import.meta.url), "\\nChanged during the candidate gate\\n");
+${fixedPassingQueueImplementation}`,
+      );
+      return { exitCode: 0, stdout: "", stderr: "", durationS: 0 };
+    };
+    const evidence = await createFixtureRunner({ dispatcher }).runFixtureRepeat(
+      {
+        fixtureId: "implement-seeded-defect",
+        role: "implement",
+        repeatIndex: 0,
+        route: candidateRoute,
+      },
+    );
+
+    expect(evidence.gateChecks).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ checkId: "candidate-gate", passed: true }),
+        expect.objectContaining({
+          checkId: "forbidden-file-mutation",
+          passed: false,
+          detail: expect.stringContaining("AGENTS.md"),
+        }),
+      ]),
+    );
+    expect(evidence.deterministicGatesPassed).toBe(false);
+  });
+
+  it.each(["staged", "committed"] as const)(
+    "TR-030 rejects a %s forbidden edit when the working copy matches the baseline",
+    async (location) => {
+      const dispatcher = async (task: TaskDispatch): Promise<TaskResult> => {
+        const cwd = task.workDir!;
+        const git = (args: string[]) =>
+          execFileSync("git", args, {
+            cwd,
+            env: { ...process.env, ...task.env },
+            encoding: "utf8",
+          });
+        const protectedPath = join(cwd, "AGENTS.md");
+        const baseline = readFileSync(protectedPath, "utf8");
+        writeFileSync(protectedPath, `${baseline}\nChanged project rules\n`);
+        git(["add", "--", "AGENTS.md"]);
+        if (location === "committed") {
+          const baselineSha = git(["rev-parse", "HEAD"]).trim();
+          git([
+            "-c",
+            "commit.gpgsign=false",
+            "commit",
+            "--quiet",
+            "--no-edit",
+            "--author=Fixture Runner <runner@example.com>",
+            "-m",
+            "Change fixture project rules",
+          ]);
+          git([
+            "restore",
+            `--source=${baselineSha}`,
+            "--staged",
+            "--worktree",
+            "--",
+            "AGENTS.md",
+          ]);
+        } else {
+          writeFileSync(protectedPath, baseline);
+        }
+        writeFileSync(
+          join(cwd, "src/domain/select-queue.mjs"),
+          fixedPassingQueueImplementation,
+        );
+        return { exitCode: 0, stdout: "", stderr: "", durationS: 0 };
+      };
+
+      const evidence = await createFixtureRunner({
+        dispatcher,
+      }).runFixtureRepeat({
+        fixtureId: "implement-seeded-defect",
+        role: "implement",
+        repeatIndex: 0,
+        route: candidateRoute,
+      });
+
+      expect(evidence.gateChecks).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ checkId: "baseline-gate", passed: true }),
+          expect.objectContaining({ checkId: "candidate-gate", passed: true }),
+          expect.objectContaining({
+            checkId: "forbidden-file-mutation",
+            passed: false,
+            detail: expect.stringContaining("AGENTS.md"),
+          }),
+        ]),
+      );
+      expect(evidence.deterministicGatesPassed).toBe(false);
+    },
+  );
 
   it.each([
     ["plan", undefined],

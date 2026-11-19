@@ -268,29 +268,44 @@ describe("model qualification orchestration", () => {
 
   it.each(
     (["candidate", "incumbent"] as const).flatMap((side) =>
-      ["failed", "empty"].map((kind) => ({ side, kind })),
+      [
+        "failed check",
+        "empty check list",
+        "string aggregate",
+        "string check",
+      ].map((kind) => ({ side, kind })),
     ),
   )(
-    "TR-024 rejects $kind implementation checks despite a passing $side aggregate",
+    "TR-024 rejects $side implementation evidence with a $kind",
     async ({ side, kind }) => {
       const { deps, runFixtureRepeat, judgeComparison } = setup();
       const original = runFixtureRepeat.getMockImplementation()!;
       const failedModel = side === "candidate" ? candidate : incumbent;
       runFixtureRepeat.mockImplementation(async (request) => {
-        const evidence = await original(request);
-        const failed =
-          request.route.modelId === failedModel.modelId &&
-          request.repeatIndex === 1;
+        const evidence = {
+          ...(await original(request)),
+          durationMs: request.route.modelId === candidate.modelId ? 100 : 400,
+        };
+        if (
+          request.route.modelId !== failedModel.modelId ||
+          request.repeatIndex !== 1
+        ) {
+          return evidence;
+        }
+
+        const malformedFalse = "false" as unknown as boolean;
+        if (kind === "string aggregate") {
+          return { ...evidence, deterministicGatesPassed: malformedFalse };
+        }
+        if (kind === "empty check list") {
+          return { ...evidence, gateChecks: [] };
+        }
         return {
           ...evidence,
-          durationMs: request.route.modelId === candidate.modelId ? 100 : 400,
-          gateChecks:
-            failed && kind === "empty"
-              ? []
-              : evidence.gateChecks.map((check) => ({
-                  ...check,
-                  passed: !failed,
-                })),
+          gateChecks: evidence.gateChecks.map((check) => ({
+            ...check,
+            passed: kind === "string check" ? malformedFalse : false,
+          })),
         };
       });
       judgeComparison.mockImplementation(async (judge) =>
@@ -750,6 +765,14 @@ describe("model qualification orchestration", () => {
 
   it.each([
     { label: "slower", candidateMs: 400, incumbentMs: 100, promote: false },
+    { label: "negative", candidateMs: -1, incumbentMs: 100, promote: false },
+    {
+      label: "negative on both routes",
+      candidateMs: -2,
+      incumbentMs: -1,
+      promote: false,
+    },
+    { label: "zero elapsed", candidateMs: 0, incumbentMs: 100, promote: true },
     { label: "tied", candidateMs: 100, incumbentMs: 100, promote: false },
     {
       label: "missing finite incumbent timing",
@@ -1041,33 +1064,87 @@ describe("model qualification orchestration", () => {
   });
 
   it.each([
-    { route: "candidate", failedModel: candidate, passedChecks: 9 },
-    { route: "incumbent", failedModel: incumbent, passedChecks: 12 },
+    {
+      route: "candidate",
+      failedModel: candidate,
+      failedIndices: [0, 1, 2],
+      aggregatePasses: false,
+    },
+    {
+      route: "incumbent",
+      failedModel: incumbent,
+      failedIndices: [0, 1, 2],
+      aggregatePasses: false,
+    },
+    {
+      route: "incumbent",
+      failedModel: incumbent,
+      failedIndices: [1],
+      aggregatePasses: false,
+    },
+    {
+      route: "incumbent",
+      failedModel: incumbent,
+      failedIndices: [1],
+      aggregatePasses: true,
+    },
   ])(
-    "TR-026 scores definition coverage with a failed $route reference check",
-    async ({ failedModel, passedChecks }) => {
-      const { deps, runFixtureRepeat, judgeComparison } = setup();
+    "TR-026 scores definition coverage when $route fails reference checks at $failedIndices (aggregate passes: $aggregatePasses)",
+    async ({ failedModel, failedIndices, aggregatePasses }) => {
+      const { deps, runFixtureRepeat, judgeComparison } = setup({
+        handoffs: [candidateHandoff],
+      });
       const original = runFixtureRepeat.getMockImplementation()!;
-      runFixtureRepeat.mockImplementation(async (request) => ({
-        ...(await original(request)),
-        gateChecks: [
-          { checkId: "spec-ref-ADR-001", passed: true, detail: "ok" },
-          {
-            checkId: "spec-ref-ADR-002",
-            passed: request.route.modelId !== failedModel.modelId,
-            detail: "coverage",
-          },
-          { checkId: "plan-ref-queue", passed: true, detail: "ok" },
-          { checkId: "plan-ref-test", passed: true, detail: "ok" },
-        ],
-      }));
-
-      const result = await evaluateModels(deps, {
-        ...input,
-        role: "define",
-        fixtures: [{ id: "define-long-context" }],
+      runFixtureRepeat.mockImplementation(async (request) => {
+        const evidence = await original(request);
+        if (request.role !== "define") return { ...evidence, durationMs: 200 };
+        const referencePassed =
+          request.route.modelId !== failedModel.modelId ||
+          !failedIndices.includes(request.repeatIndex);
+        return {
+          ...evidence,
+          deterministicGatesPassed: referencePassed || aggregatePasses,
+          gateChecks: [
+            { checkId: "spec-ref-ADR-001", passed: true, detail: "ok" },
+            {
+              checkId: "spec-ref-ADR-002",
+              passed: referencePassed,
+              detail: "coverage",
+            },
+            { checkId: "plan-ref-queue", passed: true, detail: "ok" },
+            { checkId: "plan-ref-test", passed: true, detail: "ok" },
+          ],
+        };
       });
 
+      const result = await evaluateModels(deps, defineHandoffInput);
+      const allIndices = [0, 1, 2];
+      const passedIndices = allIndices.filter(
+        (index) => !failedIndices.includes(index),
+      );
+      const requests = runFixtureRepeat.mock.calls.map(([request]) => request);
+      for (const route of [candidate, incumbent]) {
+        expect(
+          requests
+            .filter(
+              (request) =>
+                request.role === "define" &&
+                request.route.modelId === route.modelId,
+            )
+            .map(({ repeatIndex }) => repeatIndex),
+        ).toEqual(allIndices);
+      }
+      const handoffIndices = (side: "candidate" | "incumbent") =>
+        requests
+          .filter(
+            (request) =>
+              request.role === "implement" &&
+              request.handoffArtifactDir?.startsWith(`/art/${side}/`),
+          )
+          .map(({ repeatIndex }) => repeatIndex);
+
+      const passedChecks =
+        failedModel === candidate ? 12 - failedIndices.length : 12;
       expect(result.roleScore).toEqual({
         role: "define",
         coverage: passedChecks / 12,
@@ -1080,15 +1157,43 @@ describe("model qualification orchestration", () => {
           reason: "gate-failure",
         });
         expect(judgeComparison).not.toHaveBeenCalled();
+        expect(handoffIndices("candidate")).toEqual([]);
         return;
       }
 
+      expect(handoffIndices("candidate")).toEqual(allIndices);
+      expect(handoffIndices("incumbent")).toEqual(passedIndices);
+      expect(requests).toHaveLength(9 + passedIndices.length);
       expect(judgeComparison).toHaveBeenCalledTimes(2);
+      const handoff = result.comparisons?.find(
+        (comparison) => comparison.handoff?.planSource === "candidate",
+      );
+      const incumbentRate = passedIndices.length / 3;
+      expect(handoff).toMatchObject({
+        gatePassRate: { candidate: 1, incumbent: incumbentRate },
+        skippedIncumbentRepeatIndices: failedIndices,
+      });
+      expect(
+        handoff?.repeats.incumbent.map(({ repeatIndex }) => repeatIndex),
+      ).toEqual(passedIndices);
+      const incumbentCoverage = (12 - failedIndices.length) / 12;
+      const incumbentOption = result.candidateOption === "A" ? "B" : "A";
       for (const [, packet] of judgeComparison.mock.calls) {
         expect(packet.gateEvidenceSummary).toContain(
           result.candidateOption === "A"
-            ? "Option A coverage 1, Option B coverage 0.75"
-            : "Option A coverage 0.75, Option B coverage 1",
+            ? `Option A coverage 1, Option B coverage ${incumbentCoverage}`
+            : `Option A coverage ${incumbentCoverage}, Option B coverage 1`,
+        );
+        expect(packet.gateEvidenceSummary).toContain(
+          result.candidateOption === "A"
+            ? `Option A gate pass rate 1, Option B gate pass rate ${incumbentRate}`
+            : `Option A gate pass rate ${incumbentRate}, Option B gate pass rate 1`,
+        );
+        expect(packet.gateEvidenceSummary).toContain(
+          `Option ${incumbentOption} skipped repeat indices ${failedIndices.join(", ")}`,
+        );
+        expect(packet.gateEvidenceSummary).toContain(
+          `Option ${incumbentOption} ${passedIndices.length > 0 ? "200ms elapsed" : "no elapsed evidence"}`,
         );
       }
     },
