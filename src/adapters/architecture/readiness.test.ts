@@ -14,7 +14,7 @@ import {
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { readArchitectureReadiness } from "./readiness.js";
 
 let root: string;
@@ -64,6 +64,7 @@ beforeEach(async () => {
   root = await realpath(await mkdtemp(join(tmpdir(), "gwrk-readiness-")));
 });
 afterEach(async () => {
+  vi.unstubAllEnvs();
   await rm(root, { recursive: true, force: true });
 });
 
@@ -194,6 +195,23 @@ describe("repository architecture readiness", () => {
       "custom review/evidence/report.md",
     );
   });
+  it.each([
+    { GIT_LITERAL_PATHSPECS: "1" },
+    { GIT_GLOB_PATHSPECS: "1", GIT_NOGLOB_PATHSPECS: "1" },
+    { GIT_LITERAL_PATHSPECS: "1", GIT_ICASE_PATHSPECS: "1" },
+  ])(
+    "finds custom evidence under inherited Git pathspec controls %j",
+    async (controls) => {
+      execFileSync("git", ["init", "--quiet", root]);
+      await report("custom", { generatedAt: "2026-11-19T10:00:00Z" });
+      for (const [key, value] of Object.entries(controls))
+        vi.stubEnv(key, value);
+      expect(
+        (await readArchitectureReadiness(root))?.assessment.latest?.reportPath,
+      ).toBe("custom/report.md");
+    },
+  );
+
   it("finds custom evidence when unrelated Git paths exceed the inventory buffer", async () => {
     execFileSync("git", ["init", "--quiet", root]);
     const blob = execFileSync(

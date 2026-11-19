@@ -226,3 +226,5 @@ The four configured Python dry runs failed before the profile detector repair. A
 The Phase 2 review regressions failed six checks before repair. The Phase 2 gate passed 62 checks after repair, with one existing skip.
 
 Compiled discovery guidance also covers unreadable target, manifest and decision-index inputs under TR-006. Suppress the init hint for these inputs. Preserve successful discovery and one terminal signal.
+
+TR-004 includes inherited literal and conflicting glob settings. It also covers literal mode combined with case-insensitive matching. Discovery must retain the filtered custom assessment inventory.

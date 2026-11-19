@@ -187,7 +187,14 @@ export async function readArchitectureReadiness(
       ],
       {
         cwd: root,
-        env: { ...repositoryGitEnv(root), GIT_OPTIONAL_LOCKS: "0" },
+        env: {
+          ...repositoryGitEnv(root),
+          GIT_OPTIONAL_LOCKS: "0",
+          GIT_LITERAL_PATHSPECS: "0",
+          GIT_GLOB_PATHSPECS: "0",
+          GIT_NOGLOB_PATHSPECS: "0",
+          GIT_ICASE_PATHSPECS: "0",
+        },
         timeout: 5_000,
         maxBuffer: 10 * 1024 * 1024,
       },
