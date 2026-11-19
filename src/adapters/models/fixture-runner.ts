@@ -809,6 +809,7 @@ export class FixtureRunner
       let specifiedSpec: string | undefined;
       let observedModel = "unknown";
       let definitionDurationMs = 0;
+      let reportedUsage: FixtureRepeatEvidence["usage"];
       let implementationStart: number | undefined;
       let implementationDuration: number | undefined;
       let taskResult: TaskResult = {
@@ -859,6 +860,15 @@ export class FixtureRunner
             durationS: 0,
             status: "failure",
           };
+        }
+        if (taskResult.usage) {
+          for (const key of ["tokensIn", "tokensOut", "costUsd"] as const) {
+            const value = taskResult.usage[key];
+            if (value !== undefined) {
+              reportedUsage ??= {};
+              reportedUsage[key] = (reportedUsage[key] ?? 0) + value;
+            }
+          }
         }
         if (request.role === "define") {
           definitionDurationMs +=
@@ -1251,6 +1261,7 @@ export class FixtureRunner
               taskResult.durationS * 1000),
         retries: 0,
         sanitizedOutput,
+        ...(reportedUsage ? { usage: reportedUsage } : {}),
       };
       assertNoSecretMaterial(evidence, knownSecrets);
 

@@ -765,6 +765,14 @@ describe("model qualification orchestration", () => {
 
   it.each([
     { label: "slower", candidateMs: 400, incumbentMs: 100, promote: false },
+    { label: "negative", candidateMs: -1, incumbentMs: 100, promote: false },
+    {
+      label: "negative on both routes",
+      candidateMs: -2,
+      incumbentMs: -1,
+      promote: false,
+    },
+    { label: "zero elapsed", candidateMs: 0, incumbentMs: 100, promote: true },
     { label: "tied", candidateMs: 100, incumbentMs: 100, promote: false },
     {
       label: "missing finite incumbent timing",

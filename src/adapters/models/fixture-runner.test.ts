@@ -526,6 +526,7 @@ describe("fixture runner adapter", () => {
         stderr: "",
         durationS: 0,
         durationMs: 1,
+        usage: { tokensIn: 23, tokensOut: 29, costUsd: 0.125 },
       };
     };
     const result = await createFixtureRunner({ dispatcher }).runFixtureRepeat({
@@ -536,6 +537,11 @@ describe("fixture runner adapter", () => {
     });
     expect(result.deterministicGatesPassed).toBe(true);
     expect(result.durationMs).toBeGreaterThanOrEqual(125);
+    expect(result.usage).toEqual({
+      tokensIn: 23,
+      tokensOut: 29,
+      costUsd: 0.125,
+    });
   });
 
   it.each([
@@ -755,6 +761,14 @@ describe("fixture runner adapter", () => {
           ...(task.workflow === "gwrk-specify"
             ? { durationS: 0.2 }
             : { durationS: 0, durationMs: 50 }),
+          ...(variant === "TR-027 valid plan"
+            ? {
+                usage:
+                  task.workflow === "gwrk-specify"
+                    ? { tokensIn: 11, costUsd: 0.25 }
+                    : { tokensOut: 17, costUsd: 0.5 },
+              }
+            : {}),
           observedModel: mismatchedWorkflow
             ? task.workflow === mismatchedWorkflow
               ? "other-model"
@@ -791,7 +805,16 @@ describe("fixture runner adapter", () => {
         result.deterministicGatesPassed,
         JSON.stringify(result.gateChecks),
       ).toBe(expectedCheck === undefined);
-      if (artifactOutputDir) expect(result.durationMs).toBe(250);
+      if (artifactOutputDir) {
+        expect(result.durationMs).toBe(250);
+        expect(result.usage).toEqual({
+          tokensIn: 11,
+          tokensOut: 17,
+          costUsd: 0.75,
+        });
+      } else {
+        expect(result).not.toHaveProperty("usage");
+      }
       if (expectedCheck) {
         expect(
           result.gateChecks.some(

@@ -649,6 +649,8 @@ export async function evaluateModels(
         incumbentMedianMsToGreen !== null &&
         Number.isFinite(candidateMedianMsToGreen) &&
         Number.isFinite(incumbentMedianMsToGreen) &&
+        candidateMedianMsToGreen >= 0 &&
+        incumbentMedianMsToGreen >= 0 &&
         candidateMedianMsToGreen < incumbentMedianMsToGreen
       );
     })
