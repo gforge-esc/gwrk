@@ -55,7 +55,8 @@ export const createProjectDiscoverCommand = () =>
             contextIssues.some(({ kind }) => kind === "missing")) &&
           !contextIssues.some(
             ({ path, kind }) =>
-              path === ".gwrk/context-manifest.json" && kind === "invalid",
+              kind === "unreadable" ||
+              (path === ".gwrk/context-manifest.json" && kind === "invalid"),
           )
         )
           writeScopedStdout("Repair managed context with gwrk init.\n");

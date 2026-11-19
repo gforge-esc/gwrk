@@ -221,3 +221,5 @@ The Phase 1 gate includes the existing source and built review prompt parity che
 The four configured Python dry runs failed before the profile detector repair. All 198 phase gate checks pass after the repair. The CI suite passes 2245 tests with seven skips and six todo cases.
 
 The Phase 2 review regressions failed six checks before repair. The Phase 2 gate passed 62 checks after repair, with one existing skip.
+
+Compiled discovery guidance also covers unreadable target, manifest and decision-index inputs under TR-006. Suppress the init hint for these inputs. Preserve successful discovery and one terminal signal.

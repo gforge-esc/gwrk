@@ -112,6 +112,15 @@ describe("project discovery with architecture evidence", () => {
     expect(text).not.toContain("gwrk init");
   });
 
+  it.each([".gwrk/context-manifest.json", ".gwrk/architecture.md", ".gwrk/decisions/index.md"])("suppresses the init hint when managed input %s is unreadable", (input) => {
+    const file = join(root, input);
+    rmSync(file, { force: true });
+    mkdirSync(file, { recursive: true });
+    const text = run(["project", "discover"]);
+    expect(text).toContain(`${input}: unreadable`);
+    expect(text).not.toContain("gwrk init");
+  });
+
   it("reports assessment scope alongside incomplete context in text and JSON", () => {
     const archive = "docs/architecture/assessments/2026-11-18";
     const reportPath = `${archive}/report.md`;
