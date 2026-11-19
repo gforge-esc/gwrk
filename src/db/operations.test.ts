@@ -103,7 +103,7 @@ describe("durable operations migration", () => {
     }
   });
 
-  it("preserves the existing execution ledger when migration 018 runs", () => {
+  it("preserves execution and Slack receipt data across both migration 018 files", () => {
     const previousMigrations = join(root, "previous-migrations");
     mkdirSync(previousMigrations);
     cpSync(migrations, previousMigrations, {
@@ -123,6 +123,21 @@ describe("durable operations migration", () => {
         { id: "alpha", name: "Alpha", path: "/fixture/alpha" },
         previous,
       );
+      previous
+        .prepare(`INSERT INTO slack_action_receipts
+        (receipt_key, project_id, action_id, feature_id, phase_id, message_ts, actor_user_id, outcome, recorded_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+        .run(
+          "pre-upgrade-receipt",
+          "alpha",
+          "merge_pr",
+          "001-fixture",
+          "phase-01",
+          "1731320000.000100",
+          "U-fixture",
+          "uncertain",
+          now,
+        );
       runId = startRun(
         {
           feature_id: "001-fixture",
@@ -148,6 +163,23 @@ describe("durable operations migration", () => {
       ).toBe("alpha");
       expect(
         upgraded
+          .prepare(`SELECT * FROM slack_action_receipts WHERE receipt_key = ?`)
+          .get("pre-upgrade-receipt"),
+      ).toEqual({
+        receipt_key: "pre-upgrade-receipt",
+        project_id: "alpha",
+        action_id: "merge_pr",
+        feature_id: "001-fixture",
+        phase_id: "phase-01",
+        message_ts: "1731320000.000100",
+        actor_user_id: "U-fixture",
+        outcome: "uncertain",
+        recorded_at: now,
+        merge_repository: null,
+        merge_pr_number: null,
+      });
+      expect(
+        upgraded
           .prepare("SELECT name FROM _migrations WHERE name = ?")
           .pluck()
           .get(durableMigration),
@@ -164,6 +196,7 @@ describe("durable operations migration", () => {
         "016-plan-write-order.sql",
         "017-plan-parent-provenance.sql",
         durableMigration,
+        "018-slack-merge-receipt-target.sql",
         "019-outbox-metadata-uniqueness.sql",
       ]);
       const tables = upgraded
