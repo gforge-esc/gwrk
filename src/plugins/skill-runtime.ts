@@ -4,10 +4,12 @@
 
 import fs from "node:fs/promises";
 import path from "node:path";
+import pkg from "../../package.json" with { type: "json" };
 import { createAgentPortAdapter } from "../adapters/agents/index.js";
 import {
   type EffectivePolicy,
   type EnforcementScope,
+  type PolicyCandidate,
   type PolicySourceLayer,
   composeEffectivePolicy,
 } from "../domain/policy-selection.js";
@@ -23,6 +25,20 @@ import type {
   CompoundSkillManifest,
   SkillManifest,
 } from "./manifest.js";
+import {
+  type PolicyLockCandidate,
+  type ProjectPolicyLock,
+  computePolicySkillDigest,
+  readProjectPolicyLock,
+  verifyProjectPolicyLock,
+} from "./policy-lock.js";
+
+export {
+  readProjectPolicyLock,
+  verifyProjectPolicyLock,
+  computePolicySkillDigest,
+};
+export type { ProjectPolicyLock };
 
 interface SkillOptions {
   input?: string;
@@ -202,6 +218,7 @@ export interface ResolvePolicyOptions {
   checksConfigured?: boolean;
   workspaceDir?: string;
   policyDirs?: readonly string[];
+  gwrkVersion?: string;
 }
 
 export async function resolveEffectivePolicy(
@@ -216,9 +233,45 @@ export async function resolveEffectivePolicy(
     options.profile ?? detectProfile(options.workspaceDir ?? projectRoot),
     loader.listEnforcementCandidates(options.workspaceDir, options.policyDirs),
   ]);
+
+  const lock =
+    (await readProjectPolicyLock(projectRoot)) ??
+    (options.workspaceDir && options.workspaceDir !== projectRoot
+      ? await readProjectPolicyLock(options.workspaceDir)
+      : undefined);
+
+  let verifiedCandidates: readonly PolicyCandidate[] = candidates;
+  if (lock) {
+    const candidatesWithSource = candidates.map((candidate) => {
+      const c = candidate as PolicyLockCandidate;
+      if (c.sourceManifest) return c;
+      const pin = lock.skills.find(
+        (p) => p.name === c.name && p.source === c.source,
+      );
+      if (pin && c.manifest.disabled === false) {
+        const { disabled: _, ...withoutDisabled } =
+          c.manifest as unknown as Record<string, unknown>;
+        if (
+          typeof c.content === "string" &&
+          computePolicySkillDigest(c.manifest, c.content) === pin.sha256
+        ) {
+          return { ...c, sourceManifest: c.manifest };
+        }
+        return { ...c, sourceManifest: withoutDisabled };
+      }
+      return c;
+    });
+
+    verifiedCandidates = verifyProjectPolicyLock(
+      lock,
+      candidatesWithSource,
+      options.gwrkVersion ?? pkg.version,
+    );
+  }
+
   return composeEffectivePolicy({
     profile,
-    candidates,
+    candidates: verifiedCandidates,
     scope: options.scope,
     checksConfigured: options.checksConfigured,
   });

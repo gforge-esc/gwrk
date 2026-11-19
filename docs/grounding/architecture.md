@@ -659,6 +659,41 @@ Layer 1 (AgentBackend) and future Layer 3 plugins include executable TypeScript.
 
 Layer 2 (Skills) are lower risk — they're markdown + YAML that invoke agent CLIs in YOLO mode. The agent CLI's own safety interlocks provide the boundary. Skills never execute code directly.
 
+### 7.7 Project Policy Lock
+
+Project policy locks enforce reproducible skill versions across isolated machines and CI environments.
+
+#### Lock Format
+
+The lock lives at `.gwrk/policy-lock.json`.
+
+| Field | Type | Description |
+|---|---|---|
+| `version` | `1` | Schema version literal |
+| `gwrkVersion` | string | Exact gwrk release for inline guidance |
+| `skills` | array | Unique list of policy pins |
+| `skills[].name` | string | Skill identifier |
+| `skills[].source` | enum | Layer: `builtin`, `global`, `project-entry`, `project-local` |
+| `skills[].version` | string | Exact skill version |
+| `skills[].sha256` | string | 64-character lowercase hex digest |
+
+#### Digest Procedure
+
+The digest hashes the manifest and body content:
+
+1. Recursively sort all object keys in the parsed manifest. Preserve array element order.
+2. Normalize all line endings in the skill content to LF.
+3. Encode the two-element tuple `[sortedManifest, normalizedContent]` as UTF-8 JSON.
+4. Compute the SHA-256 digest in lowercase hexadecimal.
+
+#### Provisioning
+
+1. `resolveEffectivePolicy` reads `.gwrk/policy-lock.json`. An absent lock preserves legacy resolution.
+2. The runtime verifies the running `gwrkVersion` against the lock.
+3. Each pin resolves against the declared layer. Disabled skills and mismatched versions or digests fail before dispatch.
+4. Unpinned machine skills cannot enter the locked policy.
+5. On pin failure, install the missing package via `gwrk plugin install` or update `.gwrk/policy-lock.json`.
+
 ---
 
 ## 8. Config Contract
