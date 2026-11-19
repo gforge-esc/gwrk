@@ -5,9 +5,14 @@
 import * as fs from "node:fs";
 import * as fsp from "node:fs/promises";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import pkg from "../../package.json" with { type: "json" };
 import type { ProjectProfile } from "../domain/types.js";
 import { detectProfile } from "../engine/profile-detector.js";
 import { type LoadedEnforcementCandidate, PluginLoader } from "./loader.js";
+import {
+  computePolicySkillDigest,
+  readProjectPolicyLock,
+} from "./policy-lock.js";
 import {
   formatEffectivePolicyPrompt,
   resolveEffectivePolicy,
@@ -19,6 +24,13 @@ vi.mock("node:fs/promises");
 vi.mock("./loader.js");
 vi.mock("../engine/profile-detector.js");
 vi.mock("../adapters/agents/index.js");
+vi.mock("./policy-lock.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("./policy-lock.js")>();
+  return {
+    ...actual,
+    readProjectPolicyLock: vi.fn().mockResolvedValue(undefined),
+  };
+});
 
 function candidate(
   name: string,
@@ -257,5 +269,93 @@ describe("FR-014: resolveEnforcementSkills", () => {
       }),
     );
     expect(execute.mock.calls[0][0]).not.toHaveProperty("prompt");
+  });
+
+  describe("TR-008: FR-004 project policy lock resolution", () => {
+    const tsManifest = {
+      type: "skill" as const,
+      tier: "enforcement" as const,
+      name: "typescript-standards",
+      version: "1.0.0",
+      description: "TypeScript standards",
+      scope: "all" as const,
+      language: "TypeScript",
+    };
+    const tsContent = "# TypeScript Standards\n- Strict typing\n";
+    const tsCandidate = {
+      name: "typescript-standards",
+      source: "global" as const,
+      path: "/fake/global/typescript-standards",
+      content: tsContent,
+      manifest: tsManifest,
+    };
+    const extraCandidate1 = candidate("extra-skill-1", "global", {
+      description: "User 1 extra skill",
+    });
+    const extraCandidate2 = candidate("extra-skill-2", "global", {
+      description: "User 2 extra skill",
+    });
+
+    const testLock = {
+      version: 1 as const,
+      gwrkVersion: pkg.version,
+      skills: [
+        {
+          name: "typescript-standards",
+          source: "global" as const,
+          version: "1.0.0",
+          sha256: computePolicySkillDigest(tsManifest, tsContent),
+        },
+      ],
+    };
+
+    it("resolves the exact same effective policy across two isolated homes with unrelated installed skills", async () => {
+      vi.mocked(readProjectPolicyLock).mockResolvedValue(testLock);
+
+      vi.mocked(
+        PluginLoader.prototype.listEnforcementCandidates,
+      ).mockResolvedValueOnce([tsCandidate, extraCandidate1]);
+
+      const policy1 = await resolveEffectivePolicy("/fake/root", {
+        globalDir: "/home/user1/.gwrk/plugins",
+      });
+
+      vi.mocked(
+        PluginLoader.prototype.listEnforcementCandidates,
+      ).mockResolvedValueOnce([tsCandidate, extraCandidate2]);
+
+      const policy2 = await resolveEffectivePolicy("/fake/root", {
+        globalDir: "/home/user2/.gwrk/plugins",
+      });
+
+      expect(policy1.selectedSkills.map((s) => s.name)).toEqual([
+        "typescript-standards",
+      ]);
+      expect(policy2.selectedSkills.map((s) => s.name)).toEqual([
+        "typescript-standards",
+      ]);
+      expect(formatEffectivePolicyPrompt(policy1)).toBe(
+        formatEffectivePolicyPrompt(policy2),
+      );
+    });
+
+    it("preserves legacy resolution when the lock is absent", async () => {
+      vi.mocked(readProjectPolicyLock).mockResolvedValue(undefined);
+
+      vi.mocked(
+        PluginLoader.prototype.listEnforcementCandidates,
+      ).mockResolvedValueOnce([tsCandidate, extraCandidate1]);
+
+      const legacy1 = await resolveEffectivePolicy("/fake/root", {
+        globalDir: "/home/user1/.gwrk/plugins",
+      });
+
+      expect(legacy1.selectedSkills.map((s) => s.name)).toContain(
+        "extra-skill-1",
+      );
+      expect(legacy1.selectedSkills.map((s) => s.name)).toContain(
+        "typescript-standards",
+      );
+    });
   });
 });

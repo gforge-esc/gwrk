@@ -82,6 +82,7 @@ export interface LoadedPlugin<T = AnyManifest> {
 
 export interface LoadedEnforcementCandidate extends PolicyCandidate {
   manifest: EnforcementSkillManifest;
+  sourceManifest?: EnforcementSkillManifest;
   path: string;
 }
 
@@ -302,6 +303,7 @@ export class PluginLoader {
         source,
         path: resolvedPath,
         manifest: { ...manifest, disabled },
+        sourceManifest: manifest,
         content,
       });
     };

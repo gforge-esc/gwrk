@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import { createHash } from "node:crypto";
 import {
+  chmod,
   mkdir,
   mkdtemp,
   readFile,
@@ -14,6 +15,7 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, expect, it } from "vitest";
+import { CommandError } from "../utils/signal.js";
 import {
   computePolicySkillDigest,
   readProjectPolicyLock,
@@ -180,4 +182,29 @@ it("does not treat a dangling tracked lock link as absence", async () => {
   await expect(readProjectPolicyLock(root)).rejects.toThrow(
     /policy-lock\.json.*review/i,
   );
+});
+
+it("wraps non-directory and unreadable .gwrk lock probe failures as CommandError", async () => {
+  await writeFile(join(root, ".gwrk"), "not-a-directory");
+  const enotdir = await readProjectPolicyLock(root).catch(
+    (error: unknown) => error,
+  );
+  expect(enotdir).toBeInstanceOf(CommandError);
+  expect((enotdir as Error).message).toMatch(/policy-lock\.json.*review/i);
+
+  await rm(join(root, ".gwrk"), { force: true });
+  if (process.getuid?.() !== 0) {
+    const gwrkDir = join(root, ".gwrk");
+    await mkdir(gwrkDir);
+    await chmod(gwrkDir, 0o000);
+    try {
+      const eacces = await readProjectPolicyLock(root).catch(
+        (error: unknown) => error,
+      );
+      expect(eacces).toBeInstanceOf(CommandError);
+      expect((eacces as Error).message).toMatch(/policy-lock\.json.*review/i);
+    } finally {
+      await chmod(gwrkDir, 0o755);
+    }
+  }
 });

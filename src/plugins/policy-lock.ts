@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import { createHash } from "node:crypto";
+import { lstatSync } from "node:fs";
 import { lstat, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { z } from "zod";
@@ -52,6 +53,18 @@ export async function readProjectPolicyLock(
   projectRoot: string,
 ): Promise<ProjectPolicyLock | undefined> {
   const file = join(projectRoot, ".gwrk", "policy-lock.json");
+  let stat: ReturnType<typeof lstatSync> | undefined;
+  try {
+    stat = lstatSync(file, { throwIfNoEntry: false });
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+      return undefined;
+    }
+    throw new CommandError(
+      `Cannot read ${file}. Review the tracked lock and restore a readable file.`,
+    );
+  }
+  if (stat === undefined) return undefined;
   let text: string;
   try {
     text = await readFile(file, "utf8");

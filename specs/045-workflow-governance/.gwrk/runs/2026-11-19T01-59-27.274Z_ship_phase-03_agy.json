@@ -1,0 +1,26 @@
+{
+  "runId": "2026-11-19T01:59:27.274Z_ship_p03",
+  "feature": "045-workflow-governance",
+  "phase": "phase-03",
+  "command": "ship",
+  "agent": "agy",
+  "model": "unknown",
+  "usage": {
+    "inputTokens": 1310645,
+    "outputTokens": 196626,
+    "totalTokens": 1507271
+  },
+  "startedAt": "2026-11-19T01:59:27.274Z",
+  "finishedAt": "2026-11-19T02:39:26.757Z",
+  "durationS": 2399,
+  "exitCode": 0,
+  "attempt": 1,
+  "gateResult": "PASS",
+  "reviewVerdict": "GO",
+  "filesChanged": 2,
+  "linesAdded": 27,
+  "linesDeleted": 1,
+  "gitCommit": "ec2aefa2d2b276112e0e0e4c84353e8e7a969b1d",
+  "gitBranch": "feat/045-workflow-governance",
+  "digest": []
+}

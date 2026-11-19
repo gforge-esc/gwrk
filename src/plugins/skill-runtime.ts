@@ -4,10 +4,12 @@
 
 import fs from "node:fs/promises";
 import path from "node:path";
+import pkg from "../../package.json" with { type: "json" };
 import { createAgentPortAdapter } from "../adapters/agents/index.js";
 import {
   type EffectivePolicy,
   type EnforcementScope,
+  type PolicyCandidate,
   type PolicySourceLayer,
   composeEffectivePolicy,
 } from "../domain/policy-selection.js";
@@ -15,7 +17,6 @@ import type { ProjectProfile } from "../engine/profile-detector.js";
 import { detectProfile } from "../engine/profile-detector.js";
 import { processForAgent } from "../utils/agent-layer.js";
 import { maskPromptExamples } from "../utils/markdown-examples.js";
-import { CommandError } from "../utils/signal.js";
 import { AgentBackendRegistry } from "./agent-registry.js";
 import { PluginLoader } from "./loader.js";
 import type {
@@ -23,6 +24,19 @@ import type {
   CompoundSkillManifest,
   SkillManifest,
 } from "./manifest.js";
+import {
+  type ProjectPolicyLock,
+  computePolicySkillDigest,
+  readProjectPolicyLock,
+  verifyProjectPolicyLock,
+} from "./policy-lock.js";
+
+export {
+  readProjectPolicyLock,
+  verifyProjectPolicyLock,
+  computePolicySkillDigest,
+};
+export type { ProjectPolicyLock };
 
 interface SkillOptions {
   input?: string;
@@ -202,6 +216,7 @@ export interface ResolvePolicyOptions {
   checksConfigured?: boolean;
   workspaceDir?: string;
   policyDirs?: readonly string[];
+  gwrkVersion?: string;
 }
 
 export async function resolveEffectivePolicy(
@@ -216,9 +231,25 @@ export async function resolveEffectivePolicy(
     options.profile ?? detectProfile(options.workspaceDir ?? projectRoot),
     loader.listEnforcementCandidates(options.workspaceDir, options.policyDirs),
   ]);
+
+  const lock =
+    (await readProjectPolicyLock(projectRoot)) ??
+    (options.workspaceDir && options.workspaceDir !== projectRoot
+      ? await readProjectPolicyLock(options.workspaceDir)
+      : undefined);
+
+  let verifiedCandidates: readonly PolicyCandidate[] = candidates;
+  if (lock) {
+    verifiedCandidates = verifyProjectPolicyLock(
+      lock,
+      candidates,
+      options.gwrkVersion ?? pkg.version,
+    );
+  }
+
   return composeEffectivePolicy({
     profile,
-    candidates,
+    candidates: verifiedCandidates,
     scope: options.scope,
     checksConfigured: options.checksConfigured,
   });
