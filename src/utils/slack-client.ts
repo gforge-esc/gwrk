@@ -3,9 +3,9 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import * as fs from "node:fs";
-import * as os from "node:os";
 import * as path from "node:path";
 import { App } from "@slack/bolt";
+import { gwrkHome, usesHostedRuntime } from "../adapters/config/paths.js";
 import { type SlackConfig, SlackConfigSchema } from "./config.js";
 
 interface SlackSetupResult {
@@ -16,7 +16,7 @@ interface SlackSetupResult {
 }
 
 export function getEnvPath(): string {
-  return path.join(os.homedir(), ".gwrk", ".env");
+  return path.join(gwrkHome(), ".env");
 }
 
 export function loadSlackConfig(): SlackConfig | null {
@@ -27,7 +27,7 @@ export function loadSlackConfig(): SlackConfig | null {
   if (process.env.SLACK_BOT_TOKEN && process.env.SLACK_APP_TOKEN) {
     envVars.botToken = process.env.SLACK_BOT_TOKEN;
     envVars.appToken = process.env.SLACK_APP_TOKEN;
-  } else if (fs.existsSync(envPath)) {
+  } else if (!usesHostedRuntime() && fs.existsSync(envPath)) {
     // Basic .env parser
     const content = fs.readFileSync(envPath, "utf-8");
     for (const line of content.split("\n")) {

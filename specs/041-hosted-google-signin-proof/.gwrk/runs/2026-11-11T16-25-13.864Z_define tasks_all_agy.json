@@ -1,0 +1,19 @@
+{
+  "runId": "2026-11-11T16:25:13.864Z_define_all",
+  "feature": "041-hosted-google-signin-proof",
+  "phase": "all",
+  "command": "define tasks",
+  "agent": "agy",
+  "model": "unknown",
+  "startedAt": "2026-11-11T16:25:13.864Z",
+  "finishedAt": "2026-11-11T16:25:14.184Z",
+  "durationS": 0,
+  "exitCode": 0,
+  "attempt": 1,
+  "filesChanged": 7,
+  "linesAdded": 242,
+  "linesDeleted": 0,
+  "gitCommit": "1eb1dd0de7e50fbc483cd4964bd0905e4b020bfe",
+  "gitBranch": "codex/hosted-auth-proof-red",
+  "digest": []
+}

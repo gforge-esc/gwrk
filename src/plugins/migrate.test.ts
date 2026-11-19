@@ -3,14 +3,12 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import fs from "node:fs/promises";
-import os from "node:os";
 import path from "node:path";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { parse } from "yaml";
 import { migratePlugins } from "./migrate.js";
 
 vi.mock("node:fs/promises");
-vi.mock("node:os");
 
 describe("TR-005: migrate()", () => {
   const mockHome = "/mock/home";
@@ -18,8 +16,13 @@ describe("TR-005: migrate()", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.mocked(os.homedir).mockReturnValue(mockHome);
+    vi.stubEnv("GWRK_HOME", path.join(mockHome, ".gwrk"));
     vi.spyOn(process, "cwd").mockReturnValue(mockCwd);
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    vi.restoreAllMocks();
   });
 
   it("generates valid manifest.yaml from frontmatter in skills", async () => {

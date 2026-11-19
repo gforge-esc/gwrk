@@ -3,22 +3,25 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import fs from "node:fs/promises";
-import os from "node:os";
 import path from "node:path";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { parse } from "yaml";
 import { AnyManifestSchema } from "./manifest.js";
 import { seedSkills } from "./seed.js";
 
 vi.mock("node:fs/promises");
-vi.mock("node:os");
 
 describe("TR-006: seed()", () => {
   const mockHome = "/mock/home";
 
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.mocked(os.homedir).mockReturnValue(mockHome);
+    vi.stubEnv("GWRK_HOME", path.join(mockHome, ".gwrk"));
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    vi.restoreAllMocks();
   });
 
   it("preserves categories from taxonomy", async () => {

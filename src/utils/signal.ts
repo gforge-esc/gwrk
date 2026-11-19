@@ -56,18 +56,22 @@ export async function withSignal(
       errorMsg = "Unknown error";
     }
   } finally {
-    const duration = performance.now() - start;
-    const formattedDuration = formatDuration(duration);
-
-    let signal = `[exit:${exitCode} | ${formattedDuration}]`;
-    if (exitCode !== 0 && errorMsg) {
-      signal += ` ${name}: ${errorMsg}`;
-    }
-
-    // Ensure it starts on a new line and ends with a newline
-    process.stderr.write(`\n${signal}\n`);
+    writeSignal(
+      exitCode,
+      performance.now() - start,
+      exitCode !== 0 && errorMsg ? `${name}: ${errorMsg}` : undefined,
+    );
     process.exitCode = exitCode;
   }
+}
+
+export function writeSignal(
+  exitCode: number,
+  duration: number,
+  context?: string,
+): void {
+  const signal = `[exit:${exitCode} | ${formatDuration(duration)}]`;
+  process.stderr.write(`\n${signal}${context ? ` ${context}` : ""}\n`);
 }
 
 /**

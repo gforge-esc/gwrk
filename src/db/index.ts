@@ -2,17 +2,15 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import { createHash } from "node:crypto";
 import fs from "node:fs";
-import os from "node:os";
+import { homedir } from "node:os";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import Database from "better-sqlite3";
 
-const GWRK_DIR = process.env.GWRK_DIR || path.join(os.homedir(), ".gwrk");
-const DB_PATH = process.env.GWRK_DB_PATH || path.join(GWRK_DIR, "gwrk.db");
-const MIGRATIONS_DIR = path.join(
-  path.dirname(new URL(import.meta.url).pathname),
-  "migrations",
-);
+import { resolveGwrkPaths } from "../domain/gwrk-paths.js";
+const MIGRATIONS_DIR = fileURLToPath(new URL("./migrations", import.meta.url));
 
 let _db: Database.Database | undefined;
 
@@ -23,17 +21,21 @@ let _db: Database.Database | undefined;
 export function getDb(): Database.Database {
   if (_db) return _db;
 
-  fs.mkdirSync(GWRK_DIR, { recursive: true });
+  const dbPath = getDbPath();
+  fs.mkdirSync(path.dirname(dbPath), { recursive: true });
 
-  _db = new Database(DB_PATH);
-
-  // WAL mode for better concurrent read performance
-  _db.pragma("journal_mode = WAL");
-  _db.pragma("foreign_keys = ON");
-
-  runMigrations(_db);
-
-  return _db;
+  const db = new Database(dbPath);
+  try {
+    // WAL mode for better concurrent read performance
+    db.pragma("journal_mode = WAL");
+    db.pragma("foreign_keys = ON");
+    runMigrations(db);
+  } catch (error) {
+    db.close();
+    throw error;
+  }
+  _db = db;
+  return db;
 }
 
 /**
@@ -61,13 +63,19 @@ export function closeDb(): void {
  * Tracks applied migrations in a _migrations table.
  */
 function runMigrations(db: Database.Database): void {
+  db.transaction(applyMigrations).immediate(db);
+}
+
+function applyMigrations(db: Database.Database): void {
   db.exec(`
     CREATE TABLE IF NOT EXISTS _migrations (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       name TEXT NOT NULL UNIQUE,
+      sha256 TEXT,
       applied_at TEXT NOT NULL DEFAULT (datetime('now'))
     );
   `);
+  safeAddColumn(db, "_migrations", "sha256", "TEXT");
 
   const applied = new Set(
     db
@@ -86,9 +94,13 @@ function runMigrations(db: Database.Database): void {
   for (const file of files) {
     if (applied.has(file)) continue;
 
-    const sql = fs.readFileSync(path.join(MIGRATIONS_DIR, file), "utf-8");
-    db.exec(sql);
-    db.prepare("INSERT INTO _migrations (name) VALUES (?)").run(file);
+    const sql = fs.readFileSync(path.join(MIGRATIONS_DIR, file));
+    const digest = createHash("sha256").update(sql).digest("hex");
+    db.exec(sql.toString("utf8"));
+    db.prepare("INSERT INTO _migrations (name, sha256) VALUES (?, ?)").run(
+      file,
+      digest,
+    );
   }
 
   // Post-migration idempotent column additions.
@@ -146,5 +158,5 @@ function safeAddColumn(
  * Get the database file path (for display).
  */
 export function getDbPath(): string {
-  return DB_PATH;
+  return _db?.name ?? resolveGwrkPaths(process.env, homedir()).database;
 }
