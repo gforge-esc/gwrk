@@ -1,0 +1,20 @@
+{
+  "runId": "2026-11-18T23:56:57.344Z_ship_p02",
+  "feature": "045-workflow-governance",
+  "phase": "phase-02",
+  "command": "ship",
+  "agent": "codex",
+  "model": "unknown",
+  "startedAt": "2026-11-18T23:56:57.344Z",
+  "finishedAt": "2026-11-19T00:06:25.857Z",
+  "durationS": 568,
+  "exitCode": 1,
+  "attempt": 1,
+  "reviewVerdict": "NO-GO",
+  "filesChanged": 5,
+  "linesAdded": 45,
+  "linesDeleted": 16,
+  "gitCommit": "00d36b3ef9f1ac570e1078d88a4ad343ade43b7d",
+  "gitBranch": "feat/045-workflow-governance",
+  "digest": []
+}

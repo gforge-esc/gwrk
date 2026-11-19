@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import * as crypto from "node:crypto";
+import { logCliError } from "../adapters/cli/output-scope.js";
 import { finishRun, startRun } from "../db/runs.js";
 import { ShipOrchestrator } from "../engine/ship-orchestrator.js";
 import type { AgentBackendId, GwrkConfig } from "../utils/config.js";
@@ -290,7 +291,7 @@ export class DispatchQueue {
           autoCommitPush: false,
         });
       } catch (e) {
-        console.error("Failed to destroy sandbox:", e);
+        logCliError("Failed to destroy sandbox:", e);
       }
       record.workDir = undefined;
     }

@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { Command } from "commander";
+import { writeScopedStdout } from "../adapters/cli/output-scope.js";
 import { discoverProject } from "../engine/discover.js";
 import { withSignal } from "../utils/signal.js";
 
@@ -11,41 +12,93 @@ import { withSignal } from "../utils/signal.js";
  * Assembles full project state from repository contents.
  * Primary agent-native surface: `gwrk project discover --format json`
  */
-export const projectDiscoverCommand = new Command("discover")
-  .description("Discover project structure, specs, gates, and config")
-  .option("--format <type>", "Output format (text, json)", "text")
-  .action(async (options) => {
-    await withSignal("project discover", async () => {
-      const result = await discoverProject(process.cwd());
+export const createProjectDiscoverCommand = () =>
+  new Command("discover")
+    .description("Discover project structure, specs, gates, and config")
+    .option("--format <type>", "Output format (text, json)")
+    .action(async (options, command) => {
+      await withSignal("project discover", async () => {
+        const result = await discoverProject(process.cwd());
 
-      if (options.format === "json") {
-        process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
-        return;
-      }
+        if ((options.format ?? command.optsWithGlobals().format) === "json") {
+          writeScopedStdout(`${JSON.stringify(result, null, 2)}\n`);
+          return;
+        }
 
-      // Text output
-      process.stdout.write(`Project: ${result.project.name}\n`);
-      process.stdout.write(`Root: ${result.project.root}\n`);
-      process.stdout.write(
-        `Git: ${result.project.git.branch} (${result.project.git.clean ? "clean" : "dirty"}) — ${result.project.git.lastCommit}\n`,
-      );
-      process.stdout.write("\n");
+        // Text output
+        writeScopedStdout(`Project: ${result.project.name}\n`);
+        writeScopedStdout(`Root: ${result.project.root}\n`);
+        writeScopedStdout(
+          `Git: ${result.project.git.branch} (${result.project.git.clean ? "clean" : "dirty"}) — ${result.project.git.lastCommit}\n`,
+        );
+        writeScopedStdout("\n");
 
-      process.stdout.write(`Specs (${result.specs.length}):\n`);
-      for (const s of result.specs) {
-        const tasks = s.hasTasks
-          ? ` [${s.tasksComplete}/${s.tasksComplete + s.tasksOpen} tasks]`
-          : "";
-        process.stdout.write(`  ${s.id} ${s.name} — ${s.status}${tasks}\n`);
-      }
-      process.stdout.write("\n");
+        const readiness = result.architecture;
+        if (readiness) {
+          writeScopedStdout(
+            `Architecture target: ${readiness.target.selection?.architecture ?? "unspecified"}\n`,
+          );
+          if (readiness.target.selection)
+            writeScopedStdout(
+              `Target principles: ${readiness.target.selection.principles.join(", ")}\n`,
+            );
+          writeScopedStdout("Code conformance: unassessed by initialization\n");
+          writeScopedStdout(
+            `Architecture context: ${readiness.context.status}\n`,
+          );
+          for (const issue of readiness.context.issues)
+            writeScopedStdout(`  ${issue.path}: ${issue.kind}\n`);
+        }
+        const contextIssues = readiness?.context.issues ?? [];
+        if (
+          (!readiness ||
+            contextIssues.some(({ kind }) => kind === "missing")) &&
+          !contextIssues.some(
+            ({ path, kind }) =>
+              kind === "unreadable" ||
+              (path === ".gwrk/context-manifest.json" && kind === "invalid"),
+          )
+        )
+          writeScopedStdout("Repair managed context with gwrk init.\n");
 
-      process.stdout.write(`Gates: ${result.gates.total} total\n`);
-      process.stdout.write(
-        `Config: slack=${result.config.hasSlack} server=${result.config.hasServer}\n`,
-      );
-      if (result.config.agents.length > 0) {
-        process.stdout.write(`Agents: ${result.config.agents.join(", ")}\n`);
-      }
+        const latest = readiness?.assessment.latest;
+        if (latest) {
+          writeScopedStdout(`Latest assessment: ${latest.reportPath}\n`);
+          writeScopedStdout(
+            `Assessment date: ${latest.generatedAt ?? "unknown"}\n`,
+          );
+          writeScopedStdout(
+            `Assessment revision: ${latest.revision ?? "unknown"}\n`,
+          );
+          writeScopedStdout(`Assessment target: ${latest.targetMatch}\n`);
+          writeScopedStdout(
+            `Assessment inspected: ${latest.scope?.inspected.join(", ") ?? "unknown"}\n`,
+          );
+          writeScopedStdout(
+            `Assessment limitations: ${latest.scope?.limitations.join(", ") ?? "unknown"}\n`,
+          );
+        } else {
+          writeScopedStdout("Assessment: no evidence. Run gwrk assess.\n");
+        }
+        writeScopedStdout("\n");
+
+        writeScopedStdout(`Specs (${result.specs.length}):\n`);
+        for (const s of result.specs) {
+          const tasks = s.hasTasks
+            ? ` [${s.tasksComplete}/${s.tasksComplete + s.tasksOpen} tasks]`
+            : "";
+          writeScopedStdout(`  ${s.id} ${s.name} — ${s.status}${tasks}\n`);
+        }
+        writeScopedStdout("\n");
+
+        writeScopedStdout(`Gates: ${result.gates.total} total\n`);
+        writeScopedStdout(
+          `Config: slack=${result.config.hasSlack} server=${result.config.hasServer}\n`,
+        );
+        if (result.config.agents.length > 0) {
+          writeScopedStdout(`Agents: ${result.config.agents.join(", ")}\n`);
+        }
+      });
     });
-  });
+
+export const projectDiscoverCommand = createProjectDiscoverCommand();

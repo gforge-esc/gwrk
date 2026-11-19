@@ -8,6 +8,8 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { installContext } from "../../application/architecture/install-context.js";
 import type { ContextInput } from "../../domain/architecture-context.js";
+import { detectProfile } from "../../engine/profile-detector.js";
+import { resolveEffectivePolicy } from "../../plugins/skill-runtime.js";
 import type { ContextFilesPort } from "../../ports/context-files-port.js";
 
 export function contextFiles(root: string): ContextFilesPort {
@@ -55,6 +57,23 @@ export function contextFiles(root: string): ContextFilesPort {
     },
   };
 }
-export function installArchitectureContext(root: string, input: ContextInput) {
-  return installContext(contextFiles(root), input);
+export async function installArchitectureContext(
+  root: string,
+  input: ContextInput,
+) {
+  const detected = await detectProfile(root);
+  const stack = {
+    ...detected.stack,
+    ...(input.language !== undefined ? { language: input.language } : {}),
+    ...(input.framework !== undefined ? { framework: input.framework } : {}),
+  };
+  const effectivePolicy = await resolveEffectivePolicy(root, {
+    profile: { ...detected, design: input.design, stack },
+  });
+  const { language, framework } = stack;
+  return installContext(
+    contextFiles(root),
+    { ...input, effectivePolicy },
+    { language, framework },
+  );
 }

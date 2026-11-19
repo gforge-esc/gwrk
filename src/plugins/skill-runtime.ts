@@ -4,19 +4,39 @@
 
 import fs from "node:fs/promises";
 import path from "node:path";
+import pkg from "../../package.json" with { type: "json" };
+import { createAgentPortAdapter } from "../adapters/agents/index.js";
+import {
+  type EffectivePolicy,
+  type EnforcementScope,
+  type PolicyCandidate,
+  type PolicySourceLayer,
+  composeEffectivePolicy,
+} from "../domain/policy-selection.js";
 import type { ProjectProfile } from "../engine/profile-detector.js";
-import { selectBackend } from "../engine/router.js";
+import { detectProfile } from "../engine/profile-detector.js";
 import { processForAgent } from "../utils/agent-layer.js";
-import { dispatchToAgent } from "../utils/agent.js";
-import { CommandError } from "../utils/signal.js";
+import { maskPromptExamples } from "../utils/markdown-examples.js";
 import { AgentBackendRegistry } from "./agent-registry.js";
 import { PluginLoader } from "./loader.js";
 import type {
   AtomicSkillManifest,
   CompoundSkillManifest,
-  EnforcementSkillManifest,
   SkillManifest,
 } from "./manifest.js";
+import {
+  type ProjectPolicyLock,
+  computePolicySkillDigest,
+  readProjectPolicyLock,
+  verifyProjectPolicyLock,
+} from "./policy-lock.js";
+
+export {
+  readProjectPolicyLock,
+  verifyProjectPolicyLock,
+  computePolicySkillDigest,
+};
+export type { ProjectPolicyLock };
 
 interface SkillOptions {
   input?: string;
@@ -158,23 +178,21 @@ export async function executeSkill(
   // Safely extract runtime preferences if they exist (Atomic/Compound tiers)
   const runtime = "runtime" in manifest ? manifest.runtime : undefined;
 
-  const backend = await selectBackend(
-    {
-      type: "skill",
-      skillName: name,
-      preferredAgent: runtime?.preferredAgent,
-    },
-    projectRoot,
-    registry,
-  );
+  const agents = createAgentPortAdapter({ projectRoot, registry });
+  const route = await agents.selectRoute({
+    type: "skill",
+    skillName: name,
+    preferredAgent: runtime?.preferredAgent,
+    explicitModel: runtime?.preferredModel,
+  });
 
-  const taskResult = await dispatchToAgent({
+  const taskResult = await agents.execute({
     type: `skill/${name}`,
-    prompt,
-    agent: backend.name,
-    model: runtime?.preferredModel,
+    agent: route.backend,
+    model: route.model,
+    env: route.effort ? { GWRK_EFFORT: route.effort } : undefined,
     stdin: prompt,
-    workflow: `skill/${name}`, // Symbolic path for logging
+    workflow: `skill/${name}`,
     workDir: projectRoot,
   });
 
@@ -191,100 +209,123 @@ export async function executeSkill(
   };
 }
 
-/**
- * FR-014: Resolves all enforcement skills applicable to the project.
- * Returns combined SKILL.md content.
- * Resolution order in string: builtins -> global -> project-local.
- * Precedence: project-local overrides global, global overrides builtins.
- */
-export async function resolveEnforcementSkills(
+export interface ResolvePolicyOptions {
+  scope?: EnforcementScope;
+  profile?: ProjectProfile;
+  globalDir?: string;
+  checksConfigured?: boolean;
+  workspaceDir?: string;
+  policyDirs?: readonly string[];
+  gwrkVersion?: string;
+}
+
+export async function resolveEffectivePolicy(
   projectRoot: string,
-  scope: "implementation" | "review" | "all" = "all",
-  profile?: ProjectProfile,
-): Promise<string> {
-  const loader = new PluginLoader({ projectDir: projectRoot });
-  const allPlugins = await loader.listPlugins({ tier: "enforcement" });
+  options: ResolvePolicyOptions = {},
+): Promise<EffectivePolicy> {
+  const loader = new PluginLoader({
+    projectDir: projectRoot,
+    globalDir: options.globalDir,
+  });
+  const [profile, candidates] = await Promise.all([
+    options.profile ?? detectProfile(options.workspaceDir ?? projectRoot),
+    loader.listEnforcementCandidates(options.workspaceDir, options.policyDirs),
+  ]);
 
-  // loader.listPlugins returns [project, global, builtins].
-  // We want to process them such that we find the highest-precedence version of each skill,
-  // but keep the final string order as [builtins, global, project].
-  const visitedNames = new Set<string>();
-  const skillMap = new Map<string, string>();
+  const lock =
+    (await readProjectPolicyLock(projectRoot)) ??
+    (options.workspaceDir && options.workspaceDir !== projectRoot
+      ? await readProjectPolicyLock(options.workspaceDir)
+      : undefined);
 
-  // Reverse to get [builtins, global, project] order for the final string
-  const orderedSummaries = [...allPlugins].reverse();
-
-  for (const summary of orderedSummaries) {
-    if (visitedNames.has(summary.name)) continue;
-
-    try {
-      // loader.resolvePlugin always returns the highest precedence version
-      const loaded = await loader.resolvePlugin(summary.name);
-      const manifest = loaded.manifest as EnforcementSkillManifest;
-
-      // Filter by scope
-      const manifestScope = manifest.scope ?? "all";
-      if (
-        scope !== "all" &&
-        manifestScope !== "all" &&
-        manifestScope !== scope
-      ) {
-        continue;
-      }
-
-      // Filter by language/framework (R007: profile-aware enforcement routing)
-      const isProjectLocal =
-        loaded.path.startsWith(path.resolve(projectRoot)) ||
-        loaded.path.includes("/project/local/");
-      const isBuiltinOrFrameworkSkill =
-        loaded.path.includes("builtins") ||
-        Boolean(manifest.framework) ||
-        [
-          "typescript-standards",
-          "python-standards",
-          "rust-standards",
-          "go-standards",
-        ].includes(manifest.name);
-
-      if (!isProjectLocal && isBuiltinOrFrameworkSkill && profile) {
-        // Language filtering
-        if (manifest.language && profile.stack?.language) {
-          const manifestLang = manifest.language.toLowerCase();
-          // Polyglot: check against languages array if present
-          if (profile.stack.languages && profile.stack.languages.length > 1) {
-            const profileLangs = profile.stack.languages.map((l) =>
-              l.toLowerCase(),
-            );
-            if (!profileLangs.includes(manifestLang)) {
-              continue;
-            }
-          } else if (manifestLang !== profile.stack.language.toLowerCase()) {
-            continue;
-          }
-        }
-
-        // Framework filtering
-        if (manifest.framework) {
-          const profileFramework = profile.stack?.framework?.toLowerCase();
-          const manifestFramework = manifest.framework.toLowerCase();
-          if (profileFramework !== manifestFramework) {
-            continue;
-          }
-        }
-      }
-
-      const skillMdPath = path.join(loaded.path, "SKILL.md");
-      const content = await fs.readFile(skillMdPath, "utf-8");
-
-      skillMap.set(
-        summary.name,
-        `<!-- enforcement-skill: ${manifest.name} -->\n${content}`,
-      );
-      visitedNames.add(summary.name);
-    } catch (e) {
-      // Skip invalid/failed plugins
-    }
+  let verifiedCandidates: readonly PolicyCandidate[] = candidates;
+  if (lock) {
+    verifiedCandidates = verifyProjectPolicyLock(
+      lock,
+      candidates,
+      options.gwrkVersion ?? pkg.version,
+    );
   }
 
-  return Array.from(skillMap.values()).join("\n\n---\n\n");
+  return composeEffectivePolicy({
+    profile,
+    candidates: verifiedCandidates,
+    scope: options.scope,
+    checksConfigured: options.checksConfigured,
+  });
+}
+
+interface EffectivePolicyPromptOptions {
+  architectureTarget?: string;
+  workspaceDir?: string;
+  policyDirs?: readonly string[];
+}
+
+export function formatEffectivePolicyPrompt(
+  policy: EffectivePolicy,
+  { architectureTarget }: EffectivePolicyPromptOptions = {},
+): string {
+  const sections: string[] = [];
+  if (policy.design) {
+    sections.push(
+      "Initialization does not assess code conformance. Architecture checks remain unchanged by initialization.",
+    );
+    const targetRulesSections = maskPromptExamples(architectureTarget ?? "")
+      .split(/^#{1,2}[ \t]+/m)
+      .slice(1)
+      .filter((section) => section.split("\n", 1)[0].trim() === "Rules");
+    const targetRules = new Set(
+      targetRulesSections.flatMap((section) =>
+        Array.from(
+          section.matchAll(/^ {0,3}[-+*][ \t]+([^\r\n]+)$/gm),
+          ([, rule]) => rule.trim(),
+        ),
+      ),
+    );
+    const rules = policy.architectureRules
+      .filter((rule) => !targetRules.has(rule))
+      .map((rule) => `- ${rule}`);
+    if (rules.length > 0)
+      sections.push(`## Architecture rules\n\n${rules.join("\n")}`);
+  }
+  if (policy.languageGuidance)
+    sections.push(`## Language guidance\n\n${policy.languageGuidance}`);
+  if (policy.frameworkGuidance)
+    sections.push(`## Framework guidance\n\n${policy.frameworkGuidance}`);
+  const highestSelectedLayer = new Map<string, PolicySourceLayer>();
+  // Policy composition orders selected skills from lowest to highest precedence.
+  for (const { path, source, content } of policy.selectedSkills) {
+    if (path !== undefined && content) highestSelectedLayer.set(path, source);
+  }
+  for (const { manifest, path, source, content } of policy.selectedSkills) {
+    if (!content) continue;
+    if (path !== undefined) {
+      if (highestSelectedLayer.get(path) !== source) continue;
+      highestSelectedLayer.delete(path);
+    }
+    sections.push(`<!-- enforcement-skill: ${manifest.name} -->\n${content}`);
+  }
+  if (policy.gaps.length > 0) {
+    const notes = policy.gaps.map(({ message }) => `- ${message}`).join("\n");
+    sections.push(`## Policy gaps\n\n${notes}`);
+  }
+  return sections.join("\n\n---\n\n");
+}
+
+/** FR-014: Resolves and renders applicable enforcement skills. */
+export async function resolveEnforcementSkills(
+  projectRoot: string,
+  scope: EnforcementScope = "all",
+  profile?: ProjectProfile,
+  options?: EffectivePolicyPromptOptions,
+): Promise<string> {
+  return formatEffectivePolicyPrompt(
+    await resolveEffectivePolicy(projectRoot, {
+      scope,
+      profile,
+      workspaceDir: options?.workspaceDir,
+      policyDirs: options?.policyDirs,
+    }),
+    options,
+  );
 }

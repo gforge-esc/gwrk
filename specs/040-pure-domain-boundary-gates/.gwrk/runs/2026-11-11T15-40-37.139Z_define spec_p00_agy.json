@@ -1,0 +1,19 @@
+{
+  "runId": "2026-11-11T15:40:37.139Z_define_p00",
+  "feature": "040-pure-domain-boundary-gates",
+  "phase": "p00",
+  "command": "define spec",
+  "agent": "agy",
+  "model": "unknown",
+  "startedAt": "2026-11-11T15:40:37.139Z",
+  "finishedAt": "2026-11-11T16:02:37.602Z",
+  "durationS": 1320,
+  "exitCode": 0,
+  "attempt": 1,
+  "filesChanged": 2,
+  "linesAdded": 469,
+  "linesDeleted": 0,
+  "gitCommit": "1f6ef607abed5ad4ac57aa653afa3fec9bb3d591",
+  "gitBranch": "codex/pure-domain-boundary-gates",
+  "digest": []
+}

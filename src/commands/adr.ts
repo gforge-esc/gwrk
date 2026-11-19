@@ -4,6 +4,7 @@
 
 import fs from "node:fs/promises";
 import { Command } from "commander";
+import { logCliOutput } from "../adapters/cli/output-scope.js";
 import { amendAtSection, appendSection, decide } from "../engine/adr-amend.js";
 import { checkCitations } from "../engine/adr-check.js";
 import { checkIndex, writeIndex } from "../engine/adr-index.js";
@@ -409,14 +410,15 @@ async function auditCorpus(cwd: string, args: AdrArgs): Promise<string> {
 /**
  * commander definition for `gwrk define adr`.
  */
-export const adrCommand = new Command("adr")
-  // The `Examples:` block lives in the description, not in an
-  // `addHelpText("after", …)` hook as `research.ts` uses, because TR-009 reads
-  // it back through `helpInformation()` — and Commander renders after-hooks in
-  // `outputHelp()` only, so a hook is invisible there. `summary()` keeps the
-  // parent `define --help` subcommand list to one line.
-  .summary("Author an architecture decision record (ADR-NNN)")
-  .description(`Author an architecture decision record (ADR-NNN)
+export const createAdrCommand = () =>
+  new Command("adr")
+    // The `Examples:` block lives in the description, not in an
+    // `addHelpText("after", …)` hook as `research.ts` uses, because TR-009 reads
+    // it back through `helpInformation()` — and Commander renders after-hooks in
+    // `outputHelp()` only, so a hook is invisible there. `summary()` keeps the
+    // parent `define --help` subcommand list to one line.
+    .summary("Author an architecture decision record (ADR-NNN)")
+    .description(`Author an architecture decision record (ADR-NNN)
 
 The number is allocated max+1 over docs/decisions/, and the command works from
 any subdirectory of the project. Records are written with Status: Proposed for
@@ -433,63 +435,65 @@ Examples:
   Scaffold the record and draft it with an agent:
     gwrk define adr "Decision Records" --run
 `)
-  .argument("[title]", "Title of the decision (e.g. 'Decision Records')")
-  .option("--print", "Print the template to stdout without writing a record")
-  .option(
-    "--run",
-    "Draft the scaffolded record with the gwrk-adr-record workflow",
-  )
-  .option(
-    "--reindex",
-    "Regenerate .gwrk/decisions/index.md from docs/decisions/",
-  )
-  .option("--check", "Verify the decision index and corpus citations")
-  .option("--amend", "Amend an existing architecture decision record")
-  .option("--at <section>", "Dotted section address for --amend (e.g. '2.1')")
-  .option(
-    "--append-section",
-    "Append a new numbered top-level section before ## Amendments",
-  )
-  .option("--decide", "Flip a Proposed record to Decided and stamp the date")
-  .option(
-    "--audit",
-    "Audit the decision corpus with the gwrk-constitution workflow",
-  )
-  .option(
-    "--format <format>",
-    "Output format for verifier invocations (text or json)",
-  )
-  .action(
-    async (
-      title: string | undefined,
-      opts: {
-        print?: boolean;
-        run?: boolean;
-        reindex?: boolean;
-        check?: boolean;
-        amend?: boolean;
-        at?: string;
-        appendSection?: boolean;
-        decide?: boolean;
-        audit?: boolean;
-        format?: "text" | "json";
-      },
-    ) => {
-      await withSignal("define adr", async () => {
-        const output = await adrCommandHandler({
-          target: title,
-          print: opts.print,
-          run: opts.run,
-          reindex: opts.reindex,
-          check: opts.check,
-          amend: opts.amend,
-          at: opts.at,
-          appendSection: opts.appendSection,
-          decide: opts.decide,
-          audit: opts.audit,
-          format: opts.format,
+    .argument("[title]", "Title of the decision (e.g. 'Decision Records')")
+    .option("--print", "Print the template to stdout without writing a record")
+    .option(
+      "--run",
+      "Draft the scaffolded record with the gwrk-adr-record workflow",
+    )
+    .option(
+      "--reindex",
+      "Regenerate .gwrk/decisions/index.md from docs/decisions/",
+    )
+    .option("--check", "Verify the decision index and corpus citations")
+    .option("--amend", "Amend an existing architecture decision record")
+    .option("--at <section>", "Dotted section address for --amend (e.g. '2.1')")
+    .option(
+      "--append-section",
+      "Append a new numbered top-level section before ## Amendments",
+    )
+    .option("--decide", "Flip a Proposed record to Decided and stamp the date")
+    .option(
+      "--audit",
+      "Audit the decision corpus with the gwrk-constitution workflow",
+    )
+    .option(
+      "--format <format>",
+      "Output format for verifier invocations (text or json)",
+    )
+    .action(
+      async (
+        title: string | undefined,
+        opts: {
+          print?: boolean;
+          run?: boolean;
+          reindex?: boolean;
+          check?: boolean;
+          amend?: boolean;
+          at?: string;
+          appendSection?: boolean;
+          decide?: boolean;
+          audit?: boolean;
+          format?: "text" | "json";
+        },
+      ) => {
+        await withSignal("define adr", async () => {
+          const output = await adrCommandHandler({
+            target: title,
+            print: opts.print,
+            run: opts.run,
+            reindex: opts.reindex,
+            check: opts.check,
+            amend: opts.amend,
+            at: opts.at,
+            appendSection: opts.appendSection,
+            decide: opts.decide,
+            audit: opts.audit,
+            format: opts.format,
+          });
+          logCliOutput(output);
         });
-        console.log(output);
-      });
-    },
-  );
+      },
+    );
+
+export const adrCommand = createAdrCommand();

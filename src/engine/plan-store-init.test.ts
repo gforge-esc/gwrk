@@ -70,6 +70,58 @@ describe("PlanStore.initFromSpecs Integration (plan_phases population)", () => {
     fs.writeFileSync(path.join(dir, "plan.md"), planContent);
   }
 
+  it.each(["phase-01", "feat-a/phase-01"])(
+    "records completion for %s and releases its dependent phase",
+    async (phaseId) => {
+      createFeatureDir("feat-a", "### Phase 1: Foundation");
+      createFeatureDir("feat-b", "### Phase 1: Integration");
+      const store = new PlanStore(projectId);
+      store.initFromSpecs(path.join(tempDir, "specs"));
+      store.addEdge({
+        from_id: "feat-a",
+        to_id: "feat-b",
+        edge_type: "DEPENDS_ON",
+      });
+
+      store.handleShipComplete({
+        featureId: "feat-a",
+        phaseId,
+        sp_actual: 3,
+        duration_ms: 1_000,
+        evidence: "Successful ship run",
+      });
+
+      const feature = store.getPlanStatus().features.find(({ id }) => id === "feat-a");
+      expect(feature?.status).toBe("SHIPPED");
+      expect(feature?.phases).toEqual([
+        expect.objectContaining({
+          id: "feat-a/phase-01",
+          status: "SHIPPED",
+          sp_actual: 3,
+          evidence: "Successful ship run",
+        }),
+      ]);
+      const solver = await store.getSolver();
+      expect(solver.getReadyQueue().map(({ id }) => id)).toEqual(["feat-b/phase-01"]);
+    },
+  );
+
+  it("keeps phase rows when definition completes", () => {
+    createFeatureDir("feat-a", "### Phase 1: Foundation");
+    const store = new PlanStore(projectId);
+    store.initFromSpecs(path.join(tempDir, "specs"));
+
+    store.handleDefineComplete({ featureId: "feat-a", status: "DEFINED" });
+
+    expect(store.getPlanStatus().features).toEqual([
+      expect.objectContaining({
+        id: "feat-a",
+        status: "DEFINED",
+        phases: [expect.objectContaining({ id: "feat-a/phase-01", status: "DEFINED" })],
+      }),
+    ]);
+  });
+
   it("should insert phases from plan.md into plan_phases", () => {
     createFeatureDir("feat-a", [
       "# Plan",

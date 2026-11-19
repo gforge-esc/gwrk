@@ -3,11 +3,11 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { QuotaProber } from "../adapters/agents/quota-prober.js";
 import { getDb, getTestDb } from "../db/index.js";
-import type { AgentRegistry } from "./agent-registry.js";
+import type { AgentRegistry } from "../domain/agent-config.js";
+import { TaskClassification, TaskType } from "../domain/types.js";
 import { BackendSelector, type TaskContext } from "./backend-selector.js";
-import { QuotaProber } from "./quota-prober.js";
-import { TaskClassification, TaskType } from "./task-classifier.js";
 
 vi.mock("../db/index.js", async () => {
   const actual = (await vi.importActual("../db/index.js")) as any;
@@ -78,7 +78,7 @@ describe("BackendSelector Integration", () => {
     const selection = await selector.selectBackend(context);
 
     expect(selection.backend).toBe("gemini");
-    expect(selection.model).toBe("gemini-flash");
+    expect(selection.model).toBe("flash");
     expect(selection.quotaPercent).toBe(85);
 
     // 2. Verify it was recorded in the database
@@ -88,7 +88,7 @@ describe("BackendSelector Integration", () => {
 
     expect(row).toBeDefined();
     expect(row.selected_backend).toBe("gemini");
-    expect(row.selected_model).toBe("gemini-flash");
+    expect(row.selected_model).toBe("flash");
     expect(row.task_classification).toBe(TaskClassification.FAST);
     expect(row.quota_percent).toBe(85);
     expect(row.probe_status).toBe("fresh");
@@ -103,14 +103,14 @@ describe("BackendSelector Integration", () => {
     const selection = await selector.selectBackend(context);
 
     expect(selection.backend).toBe("gemini");
-    expect(selection.model).toBe("gemini-pro");
+    expect(selection.model).toBe("pro");
     expect(selection.modelFailoverUsed).toBe(true);
 
     // Verify record
     const row = db
       .prepare("SELECT * FROM routing_decisions WHERE run_id = ?")
       .get(context.runId) as any;
-    expect(row.selected_model).toBe("gemini-pro");
+    expect(row.selected_model).toBe("pro");
     expect(row.model_failover_used).toBe(1);
   });
 });

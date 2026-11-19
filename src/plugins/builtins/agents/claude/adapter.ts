@@ -29,9 +29,12 @@ export class ClaudeAdapter implements AgentBackend {
   readonly emitsStreamJson = true;
   readonly nativeWriter = true;
 
-  async isAvailable(): Promise<boolean> {
+  async isAvailable(signal?: AbortSignal): Promise<boolean> {
     try {
-      const { exitCode } = await execCommand("which", ["claude"]);
+      const args = ["claude"];
+      const { exitCode } = signal
+        ? await execCommand("which", args, undefined, { signal })
+        : await execCommand("which", args);
       return exitCode === 0;
     } catch {
       return false;
@@ -169,9 +172,10 @@ export class ClaudeAdapter implements AgentBackend {
   parseResult(stdout: string, stderr: string, rawExitCode: number): TaskResult {
     const unwrapped = unwrapStreamJson(stdout);
     let errorType: TaskResult["errorType"];
-    let exitCode = rawExitCode;
+    let exitCode =
+      unwrapped.terminalStatus === "failure" ? rawExitCode || 1 : rawExitCode;
 
-    if (rawExitCode !== 0) {
+    if (exitCode !== 0) {
       if (rawExitCode === 127 || stderr.includes("command not found")) {
         errorType = "command_not_found";
         exitCode = 127;
@@ -204,6 +208,10 @@ export class ClaudeAdapter implements AgentBackend {
     return {
       exitCode,
       rawExitCode,
+      status: exitCode === 0 ? "success" : "failure",
+      ...(unwrapped.terminalStatus
+        ? { terminalStatus: unwrapped.terminalStatus }
+        : {}),
       stdout,
       unwrappedStdout: unwrapped.text,
       ...(unwrapped.structuredOutput

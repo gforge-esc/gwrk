@@ -10,112 +10,81 @@ import { resolveEnforcementSkills } from "./skill-runtime.js";
 vi.mock("node:fs/promises");
 vi.mock("./loader.js");
 
-describe("FR-014 / US-016: resolveEnforcementSkills Phase 15 RED", () => {
+const sources = ["builtin", "global", "project-local"] as const;
+
+describe.each(sources)("enforcement selectors from %s", (source) => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
-  it("FR-014: filters builtin enforcement skills by framework", async () => {
-    vi.mocked(PluginLoader.prototype.listPlugins).mockResolvedValue([
+  it.each([
+    "matching",
+    "foreign language",
+    "foreign framework",
+    "foreign workflow",
+  ])("applies the shared selection rules for %s", async (scenario) => {
+    vi.mocked(
+      PluginLoader.prototype.listEnforcementCandidates,
+    ).mockResolvedValue([
       {
-        name: "react-standards",
-        type: "skill",
-        tier: "enforcement",
-        version: "1.0.0",
-        description: "desc",
-        status: "active",
+        name: "fixture-rules",
+        source,
+        path: "/fixture/rules",
+        content: "# Fixture Rules",
+        manifest: {
+          name: "fixture-rules",
+          type: "skill",
+          tier: "enforcement",
+          version: "1.0.0",
+          description: "Fixture rules",
+          scope: "review",
+          language: "TypeScript",
+          framework: "React",
+        },
       },
     ]);
-    vi.mocked(PluginLoader.prototype.resolvePlugin).mockResolvedValue({
-      manifest: {
-        name: "react-standards",
-        type: "skill",
-        tier: "enforcement",
-        version: "1.0.0",
-        description: "desc",
-        language: "TypeScript",
-        framework: "React",
-      } as any,
-      path: "/gwrk/src/plugins/builtins/skills/react-standards", // Builtin path
-      status: "active",
-    });
-
-    // Mismatch framework: Vue vs React
-    const skills = await resolveEnforcementSkills("/fake/root", "all", {
-      type: "nodejs",
-      stack: { language: "TypeScript", framework: "Vue" },
-    } as any);
-
-    // Should fail (RED) because framework filtering is not yet implemented
-    expect(skills).not.toContain("react-standards");
+    const rendered = await resolveEnforcementSkills(
+      "/fixture",
+      scenario === "foreign workflow" ? "implementation" : "review",
+      {
+        type: "nodejs",
+        stack: {
+          language: scenario === "foreign language" ? "Python" : "TypeScript",
+          framework: scenario === "foreign framework" ? "Vue" : "React",
+        },
+      },
+    );
+    expect(rendered.includes("# Fixture Rules")).toBe(scenario === "matching");
+    expect(
+      PluginLoader.prototype.listEnforcementCandidates,
+    ).toHaveBeenCalledOnce();
+    expect(fsp.readFile).not.toHaveBeenCalled();
   });
 
-  it("R007: project-local enforcement skills always load even if language mismatches", async () => {
-    vi.mocked(PluginLoader.prototype.listPlugins).mockResolvedValue([
+  it("preserves an unscoped legacy review skill", async () => {
+    vi.mocked(
+      PluginLoader.prototype.listEnforcementCandidates,
+    ).mockResolvedValue([
       {
-        name: "local-ts-standards",
-        type: "skill",
-        tier: "enforcement",
-        version: "1.0.0",
-        description: "desc",
-        status: "active",
+        name: "legacy-review",
+        source,
+        path: "/fixture/legacy",
+        content: "# Legacy Review",
+        manifest: {
+          name: "legacy-review",
+          type: "skill",
+          tier: "enforcement",
+          version: "1.0.0",
+          description: "Legacy review",
+          scope: "review",
+        },
       },
     ]);
-    vi.mocked(PluginLoader.prototype.resolvePlugin).mockResolvedValue({
-      manifest: {
-        name: "local-ts-standards",
-        type: "skill",
-        tier: "enforcement",
-        version: "1.0.0",
-        description: "desc",
-        language: "TypeScript",
-      } as any,
-      path: "/project/.gwrk/plugins/skills/local-ts-standards", // Project-local path
-      status: "active",
-    });
-    vi.mocked(fsp.readFile).mockResolvedValue("# Local TS Standards");
-
-    const skills = await resolveEnforcementSkills("/project", "all", {
-      type: "python",
-      stack: { language: "Python" },
-    } as any);
-
-    // Should fail (RED) because current code filters everything with a language mismatch
-    expect(skills).toContain("Local TS Standards");
-  });
-
-  it("R007: global (non-builtin) enforcement skills always load (for now)", async () => {
-    vi.mocked(PluginLoader.prototype.listPlugins).mockResolvedValue([
-      {
-        name: "custom-standards",
-        type: "skill",
-        tier: "enforcement",
-        version: "1.0.0",
-        description: "desc",
-        status: "active",
-      },
-    ]);
-    vi.mocked(PluginLoader.prototype.resolvePlugin).mockResolvedValue({
-      manifest: {
-        name: "custom-standards",
-        type: "skill",
-        tier: "enforcement",
-        version: "1.0.0",
-        description: "desc",
-        language: "Go",
-      } as any,
-      path: "/Users/user/.gwrk/plugins/skills/custom-standards", // Global path
-      status: "active",
-    });
-    vi.mocked(fsp.readFile).mockResolvedValue("# Custom Go Standards");
-
-    const skills = await resolveEnforcementSkills("/fake/root", "all", {
-      type: "python",
-      stack: { language: "Python" },
-    } as any);
-
-    // R007: Only filter builtins.
-    // Should fail (RED) because current code filters everything with a language mismatch
-    expect(skills).toContain("Custom Go Standards");
+    expect(
+      await resolveEnforcementSkills("/fixture", "review", {
+        type: "python",
+        stack: { language: "Python" },
+      }),
+    ).toContain("# Legacy Review");
   });
 });
