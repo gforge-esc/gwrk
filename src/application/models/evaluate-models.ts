@@ -54,9 +54,9 @@ export function evaluateModelPromotion(
 
 function passedDeterministicChecks(repeat: FixtureRepeatEvidence): boolean {
   return (
-    repeat.deterministicGatesPassed &&
+    repeat.deterministicGatesPassed === true &&
     repeat.gateChecks.length > 0 &&
-    repeat.gateChecks.every(({ passed }) => passed)
+    repeat.gateChecks.every(({ passed }) => passed === true)
   );
 }
 

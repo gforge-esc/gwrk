@@ -268,29 +268,44 @@ describe("model qualification orchestration", () => {
 
   it.each(
     (["candidate", "incumbent"] as const).flatMap((side) =>
-      ["failed", "empty"].map((kind) => ({ side, kind })),
+      [
+        "failed check",
+        "empty check list",
+        "string aggregate",
+        "string check",
+      ].map((kind) => ({ side, kind })),
     ),
   )(
-    "TR-024 rejects $kind implementation checks despite a passing $side aggregate",
+    "TR-024 rejects $side implementation evidence with a $kind",
     async ({ side, kind }) => {
       const { deps, runFixtureRepeat, judgeComparison } = setup();
       const original = runFixtureRepeat.getMockImplementation()!;
       const failedModel = side === "candidate" ? candidate : incumbent;
       runFixtureRepeat.mockImplementation(async (request) => {
-        const evidence = await original(request);
-        const failed =
-          request.route.modelId === failedModel.modelId &&
-          request.repeatIndex === 1;
+        const evidence = {
+          ...(await original(request)),
+          durationMs: request.route.modelId === candidate.modelId ? 100 : 400,
+        };
+        if (
+          request.route.modelId !== failedModel.modelId ||
+          request.repeatIndex !== 1
+        ) {
+          return evidence;
+        }
+
+        const malformedFalse = "false" as unknown as boolean;
+        if (kind === "string aggregate") {
+          return { ...evidence, deterministicGatesPassed: malformedFalse };
+        }
+        if (kind === "empty check list") {
+          return { ...evidence, gateChecks: [] };
+        }
         return {
           ...evidence,
-          durationMs: request.route.modelId === candidate.modelId ? 100 : 400,
-          gateChecks:
-            failed && kind === "empty"
-              ? []
-              : evidence.gateChecks.map((check) => ({
-                  ...check,
-                  passed: !failed,
-                })),
+          gateChecks: evidence.gateChecks.map((check) => ({
+            ...check,
+            passed: kind === "string check" ? malformedFalse : false,
+          })),
         };
       });
       judgeComparison.mockImplementation(async (judge) =>

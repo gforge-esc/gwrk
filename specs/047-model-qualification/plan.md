@@ -107,12 +107,13 @@ Create versioned synthetic fixtures for long-context definition and seeded-defec
 | TR-021 | unit | `src/application/models/evaluate-models.test.ts` | Requires a lower finite candidate median on fixed-plan runs even when direct runs favor the candidate |
 | TR-022 | integration | `src/adapters/models/fixture-runner.test.ts` | Rejects a timed-out judge dispatch with a zero exit code and a valid verdict |
 | TR-023 | integration | `src/adapters/models/fixture-runner.test.ts` | Blocks opaque environment credentials in definition artifacts, repeat stdout, judge packets, verdicts and nested transport errors |
-| TR-024 | unit | `src/application/models/evaluate-models.test.ts` | Rejects a failed implementation check on either route before judging when the repeat reports a passing aggregate |
+| TR-024 | unit | `src/application/models/evaluate-models.test.ts` | Rejects failed or empty implementation checks and the string `"false"` in the aggregate or an individual check on either route before judging |
 | TR-025 | integration | `src/adapters/models/fixture-runner.test.ts` | Recomputes the recorded judge workflow hash from the dispatched prompt file and output schema |
 | TR-026 | unit | `src/application/models/evaluate-models.test.ts` | Definition coverage on candidate rejection and both judges' blinded scores and handoff pass rates after one or three incumbent reference failures skip dispatch |
 | TR-027 | integration | `src/adapters/models/fixture-runner.test.ts` | Records 250 ms for a 200 ms specification dispatch and a 50 ms planning dispatch |
 | TR-028 | integration | `src/adapters/models/fixture-runner.test.ts` | Citable fixture inputs and gate results by blinded option and repeat, rejection of absent references, and recorded generated handoff inputs |
 | TR-029 | integration | `src/adapters/models/fixture-runner.test.ts` | A passing candidate command that modifies `AGENTS.md` fails the protected path check and aggregate gate |
+| TR-030 | integration | `src/adapters/models/fixture-runner.test.ts` | Rejects staged and committed edits to `AGENTS.md` with the working tree restored to baseline in both cases and the index restored in the committed case |
 
 The matching-model handoff case keeps behavior pass rates of 1 and 0. A passing definition repeat exports the original specification and generated plan. The review cases accept report-only and canonical reopenings of T001, the routing task.
 
