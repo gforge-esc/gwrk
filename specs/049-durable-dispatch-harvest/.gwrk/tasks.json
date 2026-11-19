@@ -138,57 +138,66 @@
         {
           "id": "T012",
           "title": "Modify git.ts",
-          "description": "MODIFY src/utils/git.ts. Add detached commit worktrees and ancestry checks plus remote tip lookup and `--force-with-lease` delete. Tests: src/adapters/git/harvest-git.test.ts",
-          "status": "open",
-          "gateScript": "pnpm build\npnpm exec vitest run src/adapters/git/harvest-git.test.ts src/adapters/github/github-adapter.test.ts src/adapters/notifications/outbox-reconcile.test.ts src/architecture.test.ts",
-          "sp": 1
+          "description": "MODIFY src/utils/git.ts. Add detached commit worktrees and ancestry checks plus remote tip lookup and `--force-with-lease` delete. Tests: src/adapters/git/harvest-git.test.ts\nPrepared adapters pass the explicit 70-check phase gate. Combined storage and Slack preparation passes 2475 full-suite tests. The preparation includes scoped Slack source 2c7a2ea3. Merge its independently cleared feature head before phase clearance. See evidence/phase03-production-notification-composition.md. Keep this phase open until independent review.\n\nRepair evidence: evidence/phase03-pinned-cleanup-destination.md. Earlier findings remain in review-history/phase-03-through-2026-11-19T0044Z.json. Independent clearance remains required.\n\nREVIEW FAIL (code): Git rewrites the verified cleanup destination during push — FR-005.\n  WHERE: src/adapters/git/harvest-git.ts:33-54,185-207 and src/adapters/git/harvest-git.test.ts:206-239\n  EXPECTED: With matching effective origin URLs and the expected head SHA, delete only the verified repository branch or fail closed. Preserve the second repository's branch.\n  ACTUAL: The adapter verifies origin with git remote get-url and runs git push with the resolved URL as a positional destination. Git applies pushInsteadOf to that URL despite origin's explicit pushurl. Both factories report success after deleting the second repository's branch and leaving origin's branch intact.\n  FIX: Bind inspection and leased deletion to one effective destination that Git cannot rewrite between commands. Keep the expected SHA lease and fail closed when repository identity cannot be guaranteed.\n\nPOST-FLIGHT GATE FAIL (T012, gate: gates/phase-03.sh):\nexit: 1\nRUN  v3.2.4 /Users/gonzo/Code/gwrk-worktrees/durable-next-phases-nov18/.runs/sandboxes/049-durable-dispatch-harvest-ship-3050f947\n\n ✓ src/adapters/notifications/outbox-reconcile.test.ts (17 tests) 15ms\n ✓ src/adapters/notifications/slack-receipt-reader.test.ts (14 tests) 29ms\n ✓ src/adapters/github/github-adapter.test.ts (6 tests) 7ms\n ✓ src/adapters/notifications/outbox-adapter.integration.test.ts (6 tests) 8ms\n ❯ src/server/slack-durable-notify.test.ts (5 tests | 1 failed) 20ms\n   ✓ verifies w\n\nDIAGNOSIS (iteration 2):\nFIX: src/adapters/git/harvest-git.ts — After `verifyOriginDestination` finds one matching fetch and push URL, pin both `remote.origin.url` and `remote.origin.pushurl` in a temporary bare Git directory. Use that `GIT_DIR` with the original `-C` directory, `GIT_CONFIG_NOSYSTEM=1`, `GIT_CONFIG_GLOBAL=/dev/null`, and inherited config overrides cleared. Use its `origin` for `ls-remote`, the push with `--force-with-lease=refs/heads/${branch}:${expectedSha}`, and the failure recheck. Disable HTTP redirects, fail closed if setup or verification fails, and remove the temporary directory in `finally`. In `src/adapters/git/harvest-git.test.ts`, assert both factories delete the verified ref and preserve the second ref in the explicit `pushurl` and `pushInsteadOf` case. Keep the existing URL-change tests pointed at the original checkout’s config.\nFIX: src/server/slack-notify.ts — Import `webApi` from `@slack/bolt` and `loadSlackConfig` from `../utils/slack-client.js`. When `workspaceId` is supplied, use a dedicated `webApi.WebClient` with the configured bot token, `retryConfig: { retries: 0 }`, `rejectRateLimitedCalls: true`, and `timeout: 10_000`. Use that client for `auth.test` and the single `chat.postMessage`. Preserve the accepted channel, `thread_ts`, and metadata. Return `undefined` on a lost response without invoking the webhook fallback.\nFIX: src/server/slack-durable-notify.test.ts — Replace the lost-response fixture’s Bolt `App` with the production durable client. Inject only the HTTP adapter through `webApi.WebClientOptions[\"adapter\"]` so the test exercises production retry settings. Keep the simulated second response successful and assert exactly one post, an `undefined` receipt, and zero webhook calls. Preserve the workspace, thread, and metadata assertions. Update the Phase 3 `TR-003` entry in `specs/049-durable-dispatch-harvest/plan.md` and rerun `specs/049-durable-dispatch-harvest/gates/phase-03.sh` with both regression files included.\n\nREVIEW FAIL (code): Leased cleanup follows a retargeted local origin — FR-005.\n  WHERE: src/adapters/git/harvest-git.ts:194-245 and src/adapters/git/harvest-git.test.ts:247-286\n  EXPECTED: Delete the branch at the verified repository and tip, or leave both repositories intact.\n  ACTUAL: The adapter pins the symlink path. After the link changes between lookup and push, both factories return deleted: true. The second repository loses its branch and the verified branch remains.\n  FIX: Resolve local paths and file URLs to a concrete repository before inspection. Bind the leased push to that repository or reject destinations that cannot be pinned.\n\nREVIEW/GATE DIVERGENCE (T012, gate: gates/phase-03.sh, REVIEW FAIL block appended, status left unchanged):\nThe review agent raised a finding on this task and its gate still passes, so the gate does not cover what review found. Add a test that fails on it, then fix, before completing.",
+          "status": "completed",
+          "gateScript": "gates/phase-03.sh",
+          "sp": 1,
+          "completedAt": "2026-11-19T01:34:05.190Z"
         },
         {
           "id": "T013",
           "title": "Modify index.ts",
-          "description": "MODIFY src/adapters/git/index.ts. Implement detached merge-SHA checkouts, ancestry checks and tip-safe branch deletion on `VcsPort`",
-          "status": "open",
-          "gateScript": "pnpm build\npnpm exec vitest run src/adapters/git/harvest-git.test.ts src/adapters/github/github-adapter.test.ts src/adapters/notifications/outbox-reconcile.test.ts src/architecture.test.ts",
-          "sp": 1
+          "description": "MODIFY src/adapters/git/index.ts. Implement detached merge-SHA checkouts, ancestry checks and tip-safe branch deletion on `VcsPort`\nPrepared adapters pass the explicit 70-check phase gate. Combined storage and Slack preparation passes 2475 full-suite tests. The preparation includes scoped Slack source 2c7a2ea3. Merge its independently cleared feature head before phase clearance. See evidence/phase03-production-notification-composition.md. Keep this phase open until independent review.\n\nRepair evidence: evidence/phase03-pinned-cleanup-destination.md. Earlier findings remain in review-history/phase-03-through-2026-11-19T0044Z.json. Independent clearance remains required.\n\nREVIEW FAIL (code): Git rewrites the verified cleanup destination during push — FR-005.\n  WHERE: src/adapters/git/index.ts:171-174 and src/adapters/git/harvest-git.ts:33-54,185-207 and src/adapters/git/harvest-git.test.ts:206-239\n  EXPECTED: With matching effective origin URLs and the expected head SHA, delete only the verified repository branch or fail closed. Preserve the second repository's branch.\n  ACTUAL: The adapter verifies origin with git remote get-url and runs git push with the resolved URL as a positional destination. Git applies pushInsteadOf to that URL despite origin's explicit pushurl. Both factories report success after deleting the second repository's branch and leaving origin's branch intact.\n  FIX: Bind inspection and leased deletion to one effective destination that Git cannot rewrite between commands. Keep the expected SHA lease and fail closed when repository identity cannot be guaranteed.\n\nPOST-FLIGHT GATE FAIL (T013, gate: gates/phase-03.sh):\nexit: 1\nRUN  v3.2.4 /Users/gonzo/Code/gwrk-worktrees/durable-next-phases-nov18/.runs/sandboxes/049-durable-dispatch-harvest-ship-3050f947\n\n ✓ src/adapters/notifications/outbox-reconcile.test.ts (17 tests) 15ms\n ✓ src/adapters/notifications/slack-receipt-reader.test.ts (14 tests) 29ms\n ✓ src/adapters/github/github-adapter.test.ts (6 tests) 7ms\n ✓ src/adapters/notifications/outbox-adapter.integration.test.ts (6 tests) 8ms\n ❯ src/server/slack-durable-notify.test.ts (5 tests | 1 failed) 20ms\n   ✓ verifies w\n\nDIAGNOSIS (iteration 2):\nFIX: src/adapters/git/harvest-git.ts — After `verifyOriginDestination` finds one matching fetch and push URL, pin both `remote.origin.url` and `remote.origin.pushurl` in a temporary bare Git directory. Use that `GIT_DIR` with the original `-C` directory, `GIT_CONFIG_NOSYSTEM=1`, `GIT_CONFIG_GLOBAL=/dev/null`, and inherited config overrides cleared. Use its `origin` for `ls-remote`, the push with `--force-with-lease=refs/heads/${branch}:${expectedSha}`, and the failure recheck. Disable HTTP redirects, fail closed if setup or verification fails, and remove the temporary directory in `finally`. In `src/adapters/git/harvest-git.test.ts`, assert both factories delete the verified ref and preserve the second ref in the explicit `pushurl` and `pushInsteadOf` case. Keep the existing URL-change tests pointed at the original checkout’s config.\nFIX: src/server/slack-notify.ts — Import `webApi` from `@slack/bolt` and `loadSlackConfig` from `../utils/slack-client.js`. When `workspaceId` is supplied, use a dedicated `webApi.WebClient` with the configured bot token, `retryConfig: { retries: 0 }`, `rejectRateLimitedCalls: true`, and `timeout: 10_000`. Use that client for `auth.test` and the single `chat.postMessage`. Preserve the accepted channel, `thread_ts`, and metadata. Return `undefined` on a lost response without invoking the webhook fallback.\nFIX: src/server/slack-durable-notify.test.ts — Replace the lost-response fixture’s Bolt `App` with the production durable client. Inject only the HTTP adapter through `webApi.WebClientOptions[\"adapter\"]` so the test exercises production retry settings. Keep the simulated second response successful and assert exactly one post, an `undefined` receipt, and zero webhook calls. Preserve the workspace, thread, and metadata assertions. Update the Phase 3 `TR-003` entry in `specs/049-durable-dispatch-harvest/plan.md` and rerun `specs/049-durable-dispatch-harvest/gates/phase-03.sh` with both regression files included.\n\nREVIEW FAIL (code): Leased cleanup follows a retargeted local origin — FR-005.\n  WHERE: src/adapters/git/index.ts:169-172 and src/adapters/git/harvest-git.ts:194-245 and src/adapters/git/harvest-git.test.ts:247-286\n  EXPECTED: Delete the branch at the verified repository and tip, or leave both repositories intact.\n  ACTUAL: The adapter pins the symlink path. After the link changes between lookup and push, both factories return deleted: true. The second repository loses its branch and the verified branch remains.\n  FIX: Resolve local paths and file URLs to a concrete repository before inspection. Bind the leased push to that repository or reject destinations that cannot be pinned.\n\nREVIEW/GATE DIVERGENCE (T013, gate: gates/phase-03.sh, REVIEW FAIL block appended, status left unchanged):\nThe review agent raised a finding on this task and its gate still passes, so the gate does not cover what review found. Add a test that fails on it, then fix, before completing.",
+          "status": "completed",
+          "gateScript": "gates/phase-03.sh",
+          "sp": 1,
+          "completedAt": "2026-11-19T01:34:05.190Z"
         },
         {
           "id": "T014",
           "title": "Create index.ts",
-          "description": "NEW src/adapters/github/index.ts. Implement `GitHubHarvestPort` raw-body HMAC verification, cursor pagination and PR lookup",
-          "status": "open",
-          "gateScript": "pnpm build\npnpm exec vitest run src/adapters/git/harvest-git.test.ts src/adapters/github/github-adapter.test.ts src/adapters/notifications/outbox-reconcile.test.ts src/architecture.test.ts",
-          "sp": 2
+          "description": "NEW src/adapters/github/index.ts. Implement `GitHubHarvestPort` raw-body HMAC verification, cursor pagination and PR lookup\nPrepared adapters pass the explicit 70-check phase gate. Combined storage and Slack preparation passes 2475 full-suite tests. The preparation includes scoped Slack source 2c7a2ea3. Merge its independently cleared feature head before phase clearance. See evidence/phase03-production-notification-composition.md. Keep this phase open until independent review.\n\nPOST-FLIGHT GATE FAIL (T014, gate: gates/phase-03.sh):\nexit: 1\nRUN  v3.2.4 /Users/gonzo/Code/gwrk-worktrees/durable-next-phases-nov18/.runs/sandboxes/049-durable-dispatch-harvest-ship-bed3d54f\n\n ✓ src/adapters/notifications/slack-receipt-reader.test.ts (14 tests) 28ms\n ✓ src/adapters/notifications/outbox-reconcile.test.ts (17 tests) 16ms\n ✓ src/adapters/github/github-adapter.test.ts (6 tests) 7ms\n ✓ src/server/slack-durable-notify.test.ts (4 tests) 3ms\n ✓ src/adapters/notifications/outbox-adapter.integration.test.ts (6 tests) 8ms\n ✓ src/architecture.test.ts\n\nPOST-FLIGHT GATE FAIL (T014, gate: gates/phase-03.sh):\nexit: 1\nRUN  v3.2.4 /Users/gonzo/Code/gwrk-worktrees/durable-next-phases-nov18/.runs/sandboxes/049-durable-dispatch-harvest-ship-3050f947\n\n ✓ src/adapters/notifications/outbox-reconcile.test.ts (17 tests) 15ms\n ✓ src/adapters/notifications/slack-receipt-reader.test.ts (14 tests) 29ms\n ✓ src/adapters/github/github-adapter.test.ts (6 tests) 7ms\n ✓ src/adapters/notifications/outbox-adapter.integration.test.ts (6 tests) 8ms\n ❯ src/server/slack-durable-notify.test.ts (5 tests | 1 failed) 20ms\n   ✓ verifies w\n\nDIAGNOSIS (iteration 2):\nFIX: src/adapters/git/harvest-git.ts — After `verifyOriginDestination` finds one matching fetch and push URL, pin both `remote.origin.url` and `remote.origin.pushurl` in a temporary bare Git directory. Use that `GIT_DIR` with the original `-C` directory, `GIT_CONFIG_NOSYSTEM=1`, `GIT_CONFIG_GLOBAL=/dev/null`, and inherited config overrides cleared. Use its `origin` for `ls-remote`, the push with `--force-with-lease=refs/heads/${branch}:${expectedSha}`, and the failure recheck. Disable HTTP redirects, fail closed if setup or verification fails, and remove the temporary directory in `finally`. In `src/adapters/git/harvest-git.test.ts`, assert both factories delete the verified ref and preserve the second ref in the explicit `pushurl` and `pushInsteadOf` case. Keep the existing URL-change tests pointed at the original checkout’s config.\nFIX: src/server/slack-notify.ts — Import `webApi` from `@slack/bolt` and `loadSlackConfig` from `../utils/slack-client.js`. When `workspaceId` is supplied, use a dedicated `webApi.WebClient` with the configured bot token, `retryConfig: { retries: 0 }`, `rejectRateLimitedCalls: true`, and `timeout: 10_000`. Use that client for `auth.test` and the single `chat.postMessage`. Preserve the accepted channel, `thread_ts`, and metadata. Return `undefined` on a lost response without invoking the webhook fallback.\nFIX: src/server/slack-durable-notify.test.ts — Replace the lost-response fixture’s Bolt `App` with the production durable client. Inject only the HTTP adapter through `webApi.WebClientOptions[\"adapter\"]` so the test exercises production retry settings. Keep the simulated second response successful and assert exactly one post, an `undefined` receipt, and zero webhook calls. Preserve the workspace, thread, and metadata assertions. Update the Phase 3 `TR-003` entry in `specs/049-durable-dispatch-harvest/plan.md` and rerun `specs/049-durable-dispatch-harvest/gates/phase-03.sh` with both regression files included.\n\nRepair evidence: evidence/phase03-stable-pagination.md. Two retained boundary regressions fail before repair. Stable creation-order enumeration and a second identity-verified pass remove PR-number heuristics. The native gate passes 101 checks with build and lint. Prior findings remain in evidence/review-history/phase-03-through-2026-11-19T0214Z.json. Independent clearance remains required.\n\nREVIEW FAIL (code): Biome lint check fails on Phase 3 review-history snapshot — FR-006.\n  WHERE: specs/049-durable-dispatch-harvest/evidence/review-history/phase-03-through-2026-11-19T0214Z.json:129-132\n  EXPECTED: pnpm lint (node scripts/lint.mjs -> biome check --files-ignore-unknown=true) exits 0 with 0 Biome check errors across all tracked files.\n  ACTUAL: pnpm lint exits 1 with 1 Biome format error on specs/049-durable-dispatch-harvest/evidence/review-history/phase-03-through-2026-11-19T0214Z.json (added in commit 6df58c4c), where lines 129-132 expand the two-element testTargets array instead of Biome's single-line format.\n  FIX: Format specs/049-durable-dispatch-harvest/evidence/review-history/phase-03-through-2026-11-19T0214Z.json with `pnpm exec biome format --write specs/049-durable-dispatch-harvest/evidence/review-history/phase-03-through-2026-11-19T0214Z.json` and re-run `pnpm lint` plus `bash specs/049-durable-dispatch-harvest/gates/phase-03.sh` to verify 0 errors.\n  GATE: pnpm lint (not covered by gates/phase-03.sh)\n  REF: plan.md Phase 3 > Done When\n\nREVIEW/GATE DIVERGENCE (T014, gate: gates/phase-03.sh, re-opened by review):\nThe review agent raised a finding on this task and its gate still passes, so the gate does not cover what review found. Add a test that fails on it, then fix, before completing.\n\nDIAGNOSIS (iteration 2):\nFIX: specs/049-durable-dispatch-harvest/gates/phase-03.sh — Add `pnpm lint` after `pnpm build` and before `pnpm exec vitest run` so gate execution catches formatting and lint defects.\nFIX: specs/049-durable-dispatch-harvest/evidence/review-history/phase-03-through-2026-11-19T0214Z.json — Format lines 129-132 as a single-line array `\"testTargets\": [\"src/db/operations.test.ts\", \"src/db/db.test.ts\"]` with `pnpm exec biome format --write specs/049-durable-dispatch-harvest/evidence/review-history/phase-03-through-2026-11-19T0214Z.json`.",
+          "status": "completed",
+          "gateScript": "gates/phase-03.sh",
+          "sp": 2,
+          "completedAt": "2026-11-19T02:43:24.969Z"
         },
         {
           "id": "T015",
           "title": "Modify index.ts",
-          "description": "MODIFY src/adapters/notifications/index.ts. Stamp `clientMetadataKey`, implement `reconcileDelivery` and keep pilot Telegram disabled",
-          "status": "open",
-          "gateScript": "pnpm build\npnpm exec vitest run src/adapters/git/harvest-git.test.ts src/adapters/github/github-adapter.test.ts src/adapters/notifications/outbox-reconcile.test.ts src/architecture.test.ts",
-          "sp": 1
+          "description": "MODIFY src/adapters/notifications/index.ts. Stamp `clientMetadataKey`, implement `reconcileDelivery` and keep pilot Telegram disabled\nPrepared adapters pass the explicit 70-check phase gate. Combined storage and Slack preparation passes 2475 full-suite tests. The preparation includes scoped Slack source 2c7a2ea3. Merge its independently cleared feature head before phase clearance. See evidence/phase03-production-notification-composition.md. Keep this phase open until independent review.\n\nThe preceding bounded implementation repaired incomplete-receipt reconciliation, the Slack history scope and synthetic GitHub fixtures. The 86-check phase gate passes with the pinned-destination repair. Preserve the original findings in review-history/phase-03-repaired-adapters-through-2026-11-19T0045Z.json. Independent clearance remains required.\n\nPOST-FLIGHT GATE FAIL (T015, gate: gates/phase-03.sh):\nexit: 1\nRUN  v3.2.4 /Users/gonzo/Code/gwrk-worktrees/durable-next-phases-nov18/.runs/sandboxes/049-durable-dispatch-harvest-ship-3050f947\n\n ✓ src/adapters/notifications/outbox-reconcile.test.ts (17 tests) 15ms\n ✓ src/adapters/notifications/slack-receipt-reader.test.ts (14 tests) 29ms\n ✓ src/adapters/github/github-adapter.test.ts (6 tests) 7ms\n ✓ src/adapters/notifications/outbox-adapter.integration.test.ts (6 tests) 8ms\n ❯ src/server/slack-durable-notify.test.ts (5 tests | 1 failed) 20ms\n   ✓ verifies w\n\nDIAGNOSIS (iteration 2):\nFIX: src/adapters/git/harvest-git.ts — After `verifyOriginDestination` finds one matching fetch and push URL, pin both `remote.origin.url` and `remote.origin.pushurl` in a temporary bare Git directory. Use that `GIT_DIR` with the original `-C` directory, `GIT_CONFIG_NOSYSTEM=1`, `GIT_CONFIG_GLOBAL=/dev/null`, and inherited config overrides cleared. Use its `origin` for `ls-remote`, the push with `--force-with-lease=refs/heads/${branch}:${expectedSha}`, and the failure recheck. Disable HTTP redirects, fail closed if setup or verification fails, and remove the temporary directory in `finally`. In `src/adapters/git/harvest-git.test.ts`, assert both factories delete the verified ref and preserve the second ref in the explicit `pushurl` and `pushInsteadOf` case. Keep the existing URL-change tests pointed at the original checkout’s config.\nFIX: src/server/slack-notify.ts — Import `webApi` from `@slack/bolt` and `loadSlackConfig` from `../utils/slack-client.js`. When `workspaceId` is supplied, use a dedicated `webApi.WebClient` with the configured bot token, `retryConfig: { retries: 0 }`, `rejectRateLimitedCalls: true`, and `timeout: 10_000`. Use that client for `auth.test` and the single `chat.postMessage`. Preserve the accepted channel, `thread_ts`, and metadata. Return `undefined` on a lost response without invoking the webhook fallback.\nFIX: src/server/slack-durable-notify.test.ts — Replace the lost-response fixture’s Bolt `App` with the production durable client. Inject only the HTTP adapter through `webApi.WebClientOptions[\"adapter\"]` so the test exercises production retry settings. Keep the simulated second response successful and assert exactly one post, an `undefined` receipt, and zero webhook calls. Preserve the workspace, thread, and metadata assertions. Update the Phase 3 `TR-003` entry in `specs/049-durable-dispatch-harvest/plan.md` and rerun `specs/049-durable-dispatch-harvest/gates/phase-03.sh` with both regression files included.\n\nREVIEW FAIL (code): Slack reconciliation confirms absence from an unreadable page — FR-004.\n  WHERE: src/adapters/notifications/outbox-reconcile.ts:84-96,131-137 and src/adapters/notifications/slack-receipt-reader.test.ts:86-98\n  EXPECTED: Keep the delivery indeterminate when a message entry on the last authorized thread page cannot be read.\n  ACTUAL: record(null) returns undefined. The metadata filter skips the entry and returns confirmed_absent, which can authorize a duplicate send.\n  FIX: Return indeterminate when an entry cannot be parsed as a message. Keep the existing confirmed absence behavior for valid unrelated messages.\n\nREVIEW/GATE DIVERGENCE (T015, gate: gates/phase-03.sh, REVIEW FAIL block appended, status left unchanged):\nThe review agent raised a finding on this task and its gate still passes, so the gate does not cover what review found. Add a test that fails on it, then fix, before completing.",
+          "status": "completed",
+          "gateScript": "gates/phase-03.sh",
+          "sp": 1,
+          "completedAt": "2026-11-19T01:34:05.190Z"
         },
         {
           "id": "T016",
           "title": "Modify slack-notify.ts",
-          "description": "MODIFY src/server/slack-notify.ts. Return Slack delivery receipts and search thread or channel history for `clientMetadataKey`",
-          "status": "open",
-          "gateScript": "pnpm build\npnpm exec vitest run src/adapters/git/harvest-git.test.ts src/adapters/github/github-adapter.test.ts src/adapters/notifications/outbox-reconcile.test.ts src/architecture.test.ts",
-          "sp": 1
+          "description": "MODIFY src/server/slack-notify.ts. Return Slack delivery receipts and search thread or channel history for `clientMetadataKey`\nPrepared adapters pass the explicit 70-check phase gate. Combined storage and Slack preparation passes 2475 full-suite tests. The preparation includes scoped Slack source 2c7a2ea3. Merge its independently cleared feature head before phase clearance. See evidence/phase03-production-notification-composition.md. Keep this phase open until independent review.\n\nThe preceding bounded implementation repaired incomplete-receipt reconciliation, the Slack history scope and synthetic GitHub fixtures. The 86-check phase gate passes with the pinned-destination repair. Preserve the original findings in review-history/phase-03-repaired-adapters-through-2026-11-19T0045Z.json. Independent clearance remains required.\n\nREVIEW FAIL (code): Slack retries an uncertain durable send before reconciliation — FR-004.\n  WHERE: src/server/slack-notify.ts:84-113, src/server/slack.ts:36-50 and src/server/slack-durable-notify.test.ts:75-120\n  EXPECTED: After a lost response to chat.postMessage, issue one transport attempt and return undefined. The outbox reconciles clientMetadataKey before another send.\n  ACTUAL: sendSlackMessage uses app.client.chat.postMessage with the Slack client's default automatic retry policy. The SDK issues two posts after the first response is lost and the sender returns the second post's delivered receipt.\n  FIX: Use a bounded single-attempt transport for durable posts. Disable SDK transport retries for that path and return an uncertain outcome after a lost response. Keep accepted workspace, thread and metadata validation.\n\nPOST-FLIGHT GATE FAIL (T016, gate: gates/phase-03.sh):\nexit: 1\nRUN  v3.2.4 /Users/gonzo/Code/gwrk-worktrees/durable-next-phases-nov18/.runs/sandboxes/049-durable-dispatch-harvest-ship-3050f947\n\n ✓ src/adapters/notifications/outbox-reconcile.test.ts (17 tests) 15ms\n ✓ src/adapters/notifications/slack-receipt-reader.test.ts (14 tests) 29ms\n ✓ src/adapters/github/github-adapter.test.ts (6 tests) 7ms\n ✓ src/adapters/notifications/outbox-adapter.integration.test.ts (6 tests) 8ms\n ❯ src/server/slack-durable-notify.test.ts (5 tests | 1 failed) 20ms\n   ✓ verifies w\n\nDIAGNOSIS (iteration 2):\nFIX: src/adapters/git/harvest-git.ts — After `verifyOriginDestination` finds one matching fetch and push URL, pin both `remote.origin.url` and `remote.origin.pushurl` in a temporary bare Git directory. Use that `GIT_DIR` with the original `-C` directory, `GIT_CONFIG_NOSYSTEM=1`, `GIT_CONFIG_GLOBAL=/dev/null`, and inherited config overrides cleared. Use its `origin` for `ls-remote`, the push with `--force-with-lease=refs/heads/${branch}:${expectedSha}`, and the failure recheck. Disable HTTP redirects, fail closed if setup or verification fails, and remove the temporary directory in `finally`. In `src/adapters/git/harvest-git.test.ts`, assert both factories delete the verified ref and preserve the second ref in the explicit `pushurl` and `pushInsteadOf` case. Keep the existing URL-change tests pointed at the original checkout’s config.\nFIX: src/server/slack-notify.ts — Import `webApi` from `@slack/bolt` and `loadSlackConfig` from `../utils/slack-client.js`. When `workspaceId` is supplied, use a dedicated `webApi.WebClient` with the configured bot token, `retryConfig: { retries: 0 }`, `rejectRateLimitedCalls: true`, and `timeout: 10_000`. Use that client for `auth.test` and the single `chat.postMessage`. Preserve the accepted channel, `thread_ts`, and metadata. Return `undefined` on a lost response without invoking the webhook fallback.\nFIX: src/server/slack-durable-notify.test.ts — Replace the lost-response fixture’s Bolt `App` with the production durable client. Inject only the HTTP adapter through `webApi.WebClientOptions[\"adapter\"]` so the test exercises production retry settings. Keep the simulated second response successful and assert exactly one post, an `undefined` receipt, and zero webhook calls. Preserve the workspace, thread, and metadata assertions. Update the Phase 3 `TR-003` entry in `specs/049-durable-dispatch-harvest/plan.md` and rerun `specs/049-durable-dispatch-harvest/gates/phase-03.sh` with both regression files included.\n\nREVIEW FAIL (code): Slack reconciliation confirms absence from an unreadable page — FR-004.\n  WHERE: src/adapters/notifications/outbox-reconcile.ts:84-96,131-137 and src/adapters/notifications/slack-receipt-reader.test.ts:86-98\n  EXPECTED: Keep the delivery indeterminate when a message entry on the last authorized thread page cannot be read.\n  ACTUAL: record(null) returns undefined. The metadata filter skips the entry and returns confirmed_absent, which can authorize a duplicate send.\n  FIX: Return indeterminate when an entry cannot be parsed as a message. Keep the existing confirmed absence behavior for valid unrelated messages.\n\nREVIEW/GATE DIVERGENCE (T016, gate: gates/phase-03.sh, REVIEW FAIL block appended, status left unchanged):\nThe review agent raised a finding on this task and its gate still passes, so the gate does not cover what review found. Add a test that fails on it, then fix, before completing.",
+          "status": "completed",
+          "gateScript": "gates/phase-03.sh",
+          "sp": 1,
+          "completedAt": "2026-11-19T01:34:05.190Z"
         },
         {
           "id": "T017",
           "title": "Create synthetic-github.ts",
-          "description": "NEW tests/helpers/synthetic-github.ts. Provide deterministic synthetic GitHub webhook, PR metadata and paginated poller fixtures",
-          "status": "open",
-          "gateScript": "pnpm build\npnpm exec vitest run src/adapters/git/harvest-git.test.ts src/adapters/github/github-adapter.test.ts src/adapters/notifications/outbox-reconcile.test.ts src/architecture.test.ts",
-          "sp": 2
+          "description": "NEW tests/helpers/synthetic-github.ts. Provide deterministic synthetic GitHub webhook, PR metadata and paginated poller fixtures\nPrepared adapters pass the explicit 70-check phase gate. Combined storage and Slack preparation passes 2475 full-suite tests. The preparation includes scoped Slack source 2c7a2ea3. Merge its independently cleared feature head before phase clearance. See evidence/phase03-production-notification-composition.md. Keep this phase open until independent review.\n\nThe preceding bounded implementation repaired incomplete-receipt reconciliation, the Slack history scope and synthetic GitHub fixtures. The 86-check phase gate passes with the pinned-destination repair. Preserve the original findings in review-history/phase-03-repaired-adapters-through-2026-11-19T0045Z.json. Independent clearance remains required.\n\nPOST-FLIGHT GATE FAIL (T017, gate: gates/phase-03.sh):\nexit: 1\nRUN  v3.2.4 /Users/gonzo/Code/gwrk-worktrees/durable-next-phases-nov18/.runs/sandboxes/049-durable-dispatch-harvest-ship-3050f947\n\n ✓ src/adapters/notifications/outbox-reconcile.test.ts (17 tests) 15ms\n ✓ src/adapters/notifications/slack-receipt-reader.test.ts (14 tests) 29ms\n ✓ src/adapters/github/github-adapter.test.ts (6 tests) 7ms\n ✓ src/adapters/notifications/outbox-adapter.integration.test.ts (6 tests) 8ms\n ❯ src/server/slack-durable-notify.test.ts (5 tests | 1 failed) 20ms\n   ✓ verifies w\n\nDIAGNOSIS (iteration 2):\nFIX: src/adapters/git/harvest-git.ts — After `verifyOriginDestination` finds one matching fetch and push URL, pin both `remote.origin.url` and `remote.origin.pushurl` in a temporary bare Git directory. Use that `GIT_DIR` with the original `-C` directory, `GIT_CONFIG_NOSYSTEM=1`, `GIT_CONFIG_GLOBAL=/dev/null`, and inherited config overrides cleared. Use its `origin` for `ls-remote`, the push with `--force-with-lease=refs/heads/${branch}:${expectedSha}`, and the failure recheck. Disable HTTP redirects, fail closed if setup or verification fails, and remove the temporary directory in `finally`. In `src/adapters/git/harvest-git.test.ts`, assert both factories delete the verified ref and preserve the second ref in the explicit `pushurl` and `pushInsteadOf` case. Keep the existing URL-change tests pointed at the original checkout’s config.\nFIX: src/server/slack-notify.ts — Import `webApi` from `@slack/bolt` and `loadSlackConfig` from `../utils/slack-client.js`. When `workspaceId` is supplied, use a dedicated `webApi.WebClient` with the configured bot token, `retryConfig: { retries: 0 }`, `rejectRateLimitedCalls: true`, and `timeout: 10_000`. Use that client for `auth.test` and the single `chat.postMessage`. Preserve the accepted channel, `thread_ts`, and metadata. Return `undefined` on a lost response without invoking the webhook fallback.\nFIX: src/server/slack-durable-notify.test.ts — Replace the lost-response fixture’s Bolt `App` with the production durable client. Inject only the HTTP adapter through `webApi.WebClientOptions[\"adapter\"]` so the test exercises production retry settings. Keep the simulated second response successful and assert exactly one post, an `undefined` receipt, and zero webhook calls. Preserve the workspace, thread, and metadata assertions. Update the Phase 3 `TR-003` entry in `specs/049-durable-dispatch-harvest/plan.md` and rerun `specs/049-durable-dispatch-harvest/gates/phase-03.sh` with both regression files included.",
+          "status": "completed",
+          "gateScript": "gates/phase-03.sh",
+          "sp": 2,
+          "completedAt": "2026-11-19T01:06:16.922Z"
         }
       ],
       "sp_estimate": 8,
       "testTargets": [
         "src/adapters/github/github-adapter.test.ts",
         "src/adapters/notifications/outbox-reconcile.test.ts",
-        "src/adapters/git/harvest-git.test.ts"
+        "src/adapters/git/harvest-git.test.ts",
+        "src/adapters/notifications/outbox-adapter.integration.test.ts",
+        "src/adapters/notifications/slack-receipt-reader.test.ts",
+        "src/server/slack-durable-notify.test.ts"
       ]
     },
     {
@@ -200,7 +209,7 @@
           "title": "Create outbox.ts",
           "description": "NEW src/application/delivery/outbox.ts. Coordinate durable outbox claims, uncertain-send reconciliation and recipient thread delivery",
           "status": "open",
-          "gateScript": "pnpm build\npnpm exec vitest run src/application/dispatch/dispatch-service.test.ts src/application/harvest/harvest-service.test.ts src/engine/harvest.test.ts src/architecture.test.ts",
+          "gateScript": "gates/phase-04.sh",
           "sp": 2
         },
         {
@@ -208,7 +217,7 @@
           "title": "Create index.ts",
           "description": "NEW src/application/dispatch/index.ts. Implement `DurableDispatchService` acceptance receipts and startup replay plus stale-lease recovery and fencing",
           "status": "open",
-          "gateScript": "pnpm build\npnpm exec vitest run src/application/dispatch/dispatch-service.test.ts src/application/harvest/harvest-service.test.ts src/engine/harvest.test.ts src/architecture.test.ts",
+          "gateScript": "gates/phase-04.sh",
           "sp": 2
         },
         {
@@ -216,7 +225,7 @@
           "title": "Create index.ts",
           "description": "NEW src/application/harvest/index.ts. Implement `DurableHarvestService` intake dedup and stage resume plus closed-PR and cleanup handling",
           "status": "open",
-          "gateScript": "pnpm build\npnpm exec vitest run src/application/dispatch/dispatch-service.test.ts src/application/harvest/harvest-service.test.ts src/engine/harvest.test.ts src/architecture.test.ts",
+          "gateScript": "gates/phase-04.sh",
           "sp": 2
         },
         {
@@ -224,7 +233,7 @@
           "title": "Modify index.ts",
           "description": "MODIFY src/application/index.ts. Export durable dispatch, harvest and outbox services from the application barrel",
           "status": "open",
-          "gateScript": "pnpm build\npnpm exec vitest run src/application/dispatch/dispatch-service.test.ts src/application/harvest/harvest-service.test.ts src/engine/harvest.test.ts src/architecture.test.ts",
+          "gateScript": "gates/phase-04.sh",
           "sp": 1
         },
         {
@@ -232,7 +241,7 @@
           "title": "Create index.ts",
           "description": "NEW src/adapters/harvest/index.ts. Adapt `reconcileGates`, manifest loading and compression reporting behind `HarvestExecutionPort`",
           "status": "open",
-          "gateScript": "pnpm build\npnpm exec vitest run src/application/dispatch/dispatch-service.test.ts src/application/harvest/harvest-service.test.ts src/engine/harvest.test.ts src/architecture.test.ts",
+          "gateScript": "gates/phase-04.sh",
           "sp": 2
         },
         {
@@ -240,7 +249,7 @@
           "title": "Modify reconcile-gates.ts",
           "description": "MODIFY src/engine/reconcile-gates.ts. Support isolated merge-SHA checkouts without dirtying unrelated trees and return failed task IDs",
           "status": "open",
-          "gateScript": "pnpm build\npnpm exec vitest run src/application/dispatch/dispatch-service.test.ts src/application/harvest/harvest-service.test.ts src/engine/harvest.test.ts src/architecture.test.ts",
+          "gateScript": "gates/phase-04.sh",
           "sp": 1
         },
         {
@@ -248,15 +257,13 @@
           "title": "Modify harvest.ts",
           "description": "MODIFY src/engine/harvest.ts. Route `harvestFeature` through `DurableHarvestService` while keeping single-project local compatibility. Tests: src/application/harvest/harvest-service.test.ts",
           "status": "open",
-          "gateScript": "pnpm build\npnpm exec vitest run src/application/dispatch/dispatch-service.test.ts src/application/harvest/harvest-service.test.ts src/engine/harvest.test.ts src/architecture.test.ts",
+          "gateScript": "gates/phase-04.sh",
           "sp": 1
         }
       ],
       "sp_estimate": 11,
       "testTargets": [
         "src/application/dispatch/dispatch-service.test.ts",
-        "src/application/harvest/harvest-service.test.ts",
-        "src/application/harvest/harvest-service.test.ts",
         "src/application/harvest/harvest-service.test.ts"
       ]
     },
@@ -269,7 +276,7 @@
           "title": "Modify types.ts",
           "description": "MODIFY src/server/types.ts. Add `DispatchReceipt`, `DurableOperationsStatus` and harvest pending-stage fields",
           "status": "open",
-          "gateScript": "pnpm build\npnpm exec vitest run src/server/dispatch.test.ts src/server/github.test.ts src/server/routes/dispatch.test.ts src/server/slack-commands.test.ts src/server/slack-actions.test.ts src/architecture.test.ts",
+          "gateScript": "gates/phase-05.sh",
           "sp": 1
         },
         {
@@ -277,7 +284,7 @@
           "title": "Modify dispatch.ts",
           "description": "MODIFY src/server/dispatch.ts. Back `DispatchQueue` with `DurableDispatchService` and `WorkerExecutionPort` sandbox recovery. Tests: src/server/dispatch.test.ts",
           "status": "open",
-          "gateScript": "pnpm build\npnpm exec vitest run src/server/dispatch.test.ts src/server/github.test.ts src/server/routes/dispatch.test.ts src/server/slack-commands.test.ts src/server/slack-actions.test.ts src/architecture.test.ts",
+          "gateScript": "gates/phase-05.sh",
           "sp": 1
         },
         {
@@ -285,7 +292,7 @@
           "title": "Modify dispatch.ts",
           "description": "MODIFY src/server/routes/dispatch.ts. Persist dispatches before returning HTTP `201` or `200` `DispatchReceipt` responses. Tests: src/server/dispatch.test.ts",
           "status": "open",
-          "gateScript": "pnpm build\npnpm exec vitest run src/server/dispatch.test.ts src/server/github.test.ts src/server/routes/dispatch.test.ts src/server/slack-commands.test.ts src/server/slack-actions.test.ts src/architecture.test.ts",
+          "gateScript": "gates/phase-05.sh",
           "sp": 1
         },
         {
@@ -293,7 +300,7 @@
           "title": "Modify slack.ts",
           "description": "MODIFY src/server/slack.ts. Persist authorized dispatch commands before calling Slack `ack()`",
           "status": "open",
-          "gateScript": "pnpm build\npnpm exec vitest run src/server/dispatch.test.ts src/server/github.test.ts src/server/routes/dispatch.test.ts src/server/slack-commands.test.ts src/server/slack-actions.test.ts src/architecture.test.ts",
+          "gateScript": "gates/phase-05.sh",
           "sp": 1
         },
         {
@@ -301,7 +308,7 @@
           "title": "Modify slack-commands.ts",
           "description": "MODIFY src/server/slack-commands.ts. Return stable `operationId` receipts for `/gwrk dispatch` and `/gwrk ship`",
           "status": "open",
-          "gateScript": "pnpm build\npnpm exec vitest run src/server/dispatch.test.ts src/server/github.test.ts src/server/routes/dispatch.test.ts src/server/slack-commands.test.ts src/server/slack-actions.test.ts src/architecture.test.ts",
+          "gateScript": "gates/phase-05.sh",
           "sp": 1
         },
         {
@@ -309,7 +316,7 @@
           "title": "Modify slack-actions.ts",
           "description": "MODIFY src/server/slack-actions.ts. Persist retry and change-request dispatches before `ack()` and return `operationId` receipts",
           "status": "open",
-          "gateScript": "pnpm build\npnpm exec vitest run src/server/dispatch.test.ts src/server/github.test.ts src/server/routes/dispatch.test.ts src/server/slack-commands.test.ts src/server/slack-actions.test.ts src/architecture.test.ts",
+          "gateScript": "gates/phase-05.sh",
           "sp": 1
         },
         {
@@ -317,7 +324,7 @@
           "title": "Modify github.ts",
           "description": "MODIFY src/server/github.ts. Parse raw webhook bytes, persist deliveries before HTTP `200` and forward closed and merged PRs. Tests: src/server/github.test.ts",
           "status": "open",
-          "gateScript": "pnpm build\npnpm exec vitest run src/server/dispatch.test.ts src/server/github.test.ts src/server/routes/dispatch.test.ts src/server/slack-commands.test.ts src/server/slack-actions.test.ts src/architecture.test.ts",
+          "gateScript": "gates/phase-05.sh",
           "sp": 1
         },
         {
@@ -325,14 +332,13 @@
           "title": "Modify harvest-watcher.ts",
           "description": "MODIFY src/server/harvest-watcher.ts. Poll enrolled repositories from durable cursors and submit PRs to `DurableHarvestService`",
           "status": "open",
-          "gateScript": "pnpm build\npnpm exec vitest run src/server/dispatch.test.ts src/server/github.test.ts src/server/routes/dispatch.test.ts src/server/slack-commands.test.ts src/server/slack-actions.test.ts src/architecture.test.ts",
+          "gateScript": "gates/phase-05.sh",
           "sp": 1
         }
       ],
       "sp_estimate": 8,
       "testTargets": [
         "src/server/dispatch.test.ts",
-        "src/server/github.test.ts",
         "src/server/github.test.ts"
       ]
     },
@@ -345,7 +351,7 @@
           "title": "Modify status.ts",
           "description": "MODIFY src/server/routes/status.ts. Include `DurableOperationsStatus` queue age and last harvest plus outbox lag, gate failures and legacy counts. Tests: src/server/routes/status.test.ts",
           "status": "open",
-          "gateScript": "pnpm build\npnpm exec vitest run src/commands/harvest.test.ts src/commands/status.test.ts src/server/routes/status.test.ts src/server/routes/health.test.ts src/server/unattended-recovery.test.ts src/architecture.test.ts",
+          "gateScript": "gates/phase-06.sh",
           "sp": 1
         },
         {
@@ -353,7 +359,7 @@
           "title": "Modify health.ts",
           "description": "MODIFY src/server/routes/health.ts. Report outbox degradation, unresolved harvest failures and disabled pilot Telegram state",
           "status": "open",
-          "gateScript": "pnpm build\npnpm exec vitest run src/commands/harvest.test.ts src/commands/status.test.ts src/server/routes/status.test.ts src/server/routes/health.test.ts src/server/unattended-recovery.test.ts src/architecture.test.ts",
+          "gateScript": "gates/phase-06.sh",
           "sp": 1
         },
         {
@@ -361,7 +367,7 @@
           "title": "Modify index.ts",
           "description": "MODIFY src/server/index.ts. Wire `OperationsStorePort` and startup recovery sweeps plus raw-body webhook parsing and outbox flushing",
           "status": "open",
-          "gateScript": "pnpm build\npnpm exec vitest run src/commands/harvest.test.ts src/commands/status.test.ts src/server/routes/status.test.ts src/server/routes/health.test.ts src/server/unattended-recovery.test.ts src/architecture.test.ts",
+          "gateScript": "gates/phase-06.sh",
           "sp": 1
         },
         {
@@ -369,7 +375,7 @@
           "title": "Modify harvest.ts",
           "description": "MODIFY src/commands/harvest.ts. Route manual CLI harvest through `DurableHarvestService` with `--project`, `--format json` and ADR-004 signals. Tests: src/commands/harvest.test.ts",
           "status": "open",
-          "gateScript": "pnpm build\npnpm exec vitest run src/commands/harvest.test.ts src/commands/status.test.ts src/server/routes/status.test.ts src/server/routes/health.test.ts src/server/unattended-recovery.test.ts src/architecture.test.ts",
+          "gateScript": "gates/phase-06.sh",
           "sp": 1
         },
         {
@@ -377,7 +383,7 @@
           "title": "Modify status.ts",
           "description": "MODIFY src/commands/status.ts. Render queue age and pending harvest stages plus unresolved deliveries, gate failures and legacy counts. Tests: src/server/routes/status.test.ts",
           "status": "open",
-          "gateScript": "pnpm build\npnpm exec vitest run src/commands/harvest.test.ts src/commands/status.test.ts src/server/routes/status.test.ts src/server/routes/health.test.ts src/server/unattended-recovery.test.ts src/architecture.test.ts",
+          "gateScript": "gates/phase-06.sh",
           "sp": 1
         }
       ],

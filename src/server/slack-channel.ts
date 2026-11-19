@@ -45,6 +45,16 @@ async function slackFetch(
   return res.json();
 }
 
+export async function verifySlackWorkspaceWithSignal(
+  token: string,
+  workspaceId: string,
+  signal: AbortSignal,
+): Promise<boolean> {
+  signal.throwIfAborted();
+  const response = await slackFetch("auth.test", {}, token, signal);
+  return response.ok === true && response.team_id === workspaceId;
+}
+
 export async function postSlackMessageWithSignal(
   token: string | undefined,
   message: {
@@ -52,6 +62,7 @@ export async function postSlackMessageWithSignal(
     text: string;
     blocks?: unknown[];
     thread_ts?: string;
+    metadata?: unknown;
   },
   signal: AbortSignal,
 ): Promise<{

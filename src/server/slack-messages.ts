@@ -13,6 +13,10 @@ import type { DispatchRecord } from "./types.js";
 export interface SlackMessage {
   channel?: string;
   thread_ts?: string;
+  metadata?: {
+    event_type: "gwrk_notification";
+    event_payload: { projectId: string; clientMetadataKey: string };
+  };
   blocks: KnownBlock[];
   text: string;
 }

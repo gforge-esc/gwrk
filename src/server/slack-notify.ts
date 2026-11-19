@@ -2,10 +2,15 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import { webApi } from "@slack/bolt";
 import { logCliError, warnCli } from "../adapters/cli/output-scope.js";
 import type { NotificationReceipt } from "../ports/notification-port.js";
 import { loadConfig } from "../utils/config.js";
-import { postSlackMessageWithSignal } from "./slack-channel.js";
+import { loadSlackConfig } from "../utils/slack-client.js";
+import {
+  postSlackMessageWithSignal,
+  verifySlackWorkspaceWithSignal,
+} from "./slack-channel.js";
 import type { SlackMessage } from "./slack-messages.js";
 import { type SlackEvent, presenceManager } from "./slack-presence.js";
 import { getSlackApp } from "./slack.js";
@@ -16,6 +21,7 @@ type SlackTransportOptions = {
   signal?: AbortSignal;
   transportTimeoutMs?: number;
   webhookFallback?: boolean;
+  workspaceId?: string;
 };
 
 function deliverySignal(signal?: AbortSignal, timeoutMs?: number) {
@@ -76,11 +82,15 @@ export async function sendSlackMessage(
   message: SlackMessage,
   options: SlackTransportOptions = {},
 ): Promise<NotificationReceipt | undefined> {
-  const { projectRoot = process.cwd(), transportTimeoutMs } = options;
+  const {
+    projectRoot = process.cwd(),
+    transportTimeoutMs,
+    workspaceId,
+  } = options;
   const signal = deliverySignal(options.signal, transportTimeoutMs);
   if (signal?.aborted) return;
-  const app = getSlackApp();
-  if (!app) return;
+  let client = workspaceId === undefined ? getSlackApp()?.client : undefined;
+  if (workspaceId === undefined && !client) return;
   let channelId = message.channel;
   if (!channelId) {
     try {
@@ -89,21 +99,37 @@ export async function sendSlackMessage(
       warnCli("Failed to load config for channel resolution:", error);
     }
   }
-  if (!channelId) {
-    warnCli("No Slack channel configured — skipping notification");
-    return;
-  }
+  if (!channelId) return;
   try {
+    let token = client?.token;
+    if (workspaceId !== undefined) {
+      const config = loadSlackConfig();
+      if (!config) return;
+      token = config.botToken;
+      if (signal) {
+        if (!(await verifySlackWorkspaceWithSignal(token, workspaceId, signal)))
+          return;
+      } else {
+        client = new webApi.WebClient(token, {
+          retryConfig: { retries: 0 },
+          rejectRateLimitedCalls: true,
+          timeout: 10_000,
+        });
+        const auth = await client.auth.test();
+        if (auth.ok !== true || auth.team_id !== workspaceId) return;
+      }
+    }
     const payload = {
       channel: channelId,
       text: message.text,
       blocks: message.blocks,
       thread_ts: message.thread_ts,
+      ...(message.metadata ? { metadata: message.metadata } : {}),
     };
     const response = signal
-      ? await postSlackMessageWithSignal(app.client.token, payload, signal)
-      : await app.client.chat.postMessage(payload);
-    if (response.ok)
+      ? await postSlackMessageWithSignal(token, payload, signal)
+      : await client?.chat.postMessage(payload);
+    if (response?.ok)
       return {
         delivered: true,
         channelId: response.channel,
@@ -115,7 +141,7 @@ export async function sendSlackMessage(
     logCliError(
       `Failed to post Slack notification: ${error instanceof Error ? error.message : String(error)}`,
     );
-    if (options.webhookFallback !== false)
+    if (workspaceId === undefined && options.webhookFallback !== false)
       await sendViaWebhook(message, signal, projectRoot);
   }
   return undefined;

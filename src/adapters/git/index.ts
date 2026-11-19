@@ -19,6 +19,7 @@ import {
   isDirty,
   syncBranch,
 } from "../../utils/git.js";
+import { createGitHarvestAdapter } from "./harvest-git.js";
 import { repositoryGitEnv } from "./process-env.js";
 import { discoverGitIdentityFacts } from "./project-id.js";
 
@@ -167,6 +168,7 @@ export function mergePullRequest(
 
 export function createGitVcsAdapter(): VcsProjectPort {
   return {
+    ...createGitHarvestAdapter(),
     getCurrentBranch,
     isDirty,
     createBranch,

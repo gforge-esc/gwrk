@@ -23,6 +23,7 @@ oauth_config:
       - app_mentions:read
       - channels:manage
       - channels:read
+      - channels:history
       - chat:write
       - commands
       - reactions:read

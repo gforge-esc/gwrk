@@ -134,10 +134,18 @@ pnpm exec vitest run src/db/operations.test.ts src/db/db.test.ts src/architectur
 - `src/adapters/git/index.ts` (MODIFY: Implement detached merge-SHA checkouts, ancestry checks and tip-safe branch deletion on `VcsPort`)
 - `src/adapters/github/index.ts` (NEW: Implement `GitHubHarvestPort` raw-body HMAC verification, cursor pagination and PR lookup)
 - `src/adapters/notifications/index.ts` (MODIFY: Stamp `clientMetadataKey`, implement `reconcileDelivery` and keep pilot Telegram disabled)
+- `src/slack-manifest.yml` (MODIFY: Grant the bot `channels:history` for public channel reconciliation)
+- `src/server/slack-durable-notify.test.ts` (NEW: Verify workspace admission and durable metadata transmission without webhook fallback)
 - `src/server/slack-notify.ts` (MODIFY: Return Slack delivery receipts and search thread or channel history for `clientMetadataKey`)
-- `tests/helpers/synthetic-github.ts` (NEW: Provide deterministic synthetic GitHub webhook, PR metadata and paginated poller fixtures)
+- `tests/helpers/synthetic-github.ts` (NEW: Share signed raw webhook bytes, pull request metadata and paginated terminal results with the GitHub adapter tests)
+- `src/adapters/git/harvest-git.ts` (NEW: Implement the approved VcsHarvestExtensions behind a separate factory for later VcsPort composition)
+- `src/adapters/git/process-env.ts` (NEW: Reuse reviewed repository-selector isolation)
 - `src/adapters/git/harvest-git.test.ts` (NEW: Test isolated merge-SHA checkouts, trunk ancestry checks and moved-tip delete blocking)
 - `src/adapters/github/github-adapter.test.ts` (NEW: Test raw-body signature verification, cursor catch-up and per-repo PR isolation)
+- `src/adapters/notifications/slack-receipt-reader.ts` (NEW: Verify token workspace and read accepted Slack metadata with bounded authenticated requests)
+- `src/adapters/notifications/slack-receipt-reader.test.ts` (NEW: Verify authentication scope, accepted channel and thread pagination plus abort behavior)
+- `src/adapters/notifications/outbox-reconcile.ts` (NEW: Reconcile scoped Slack metadata through a bounded workspace-bound reader)
+- `src/adapters/notifications/outbox-adapter.integration.test.ts` (NEW: Keep the phase RED until production sender metadata, actual receipts and reconciliation are composed)
 - `src/adapters/notifications/outbox-reconcile.test.ts` (NEW: Test uncertain Slack send reconciliation by metadata key and pilot Telegram suppression)
 
 #### Governance and skills
@@ -151,21 +159,36 @@ pnpm exec vitest run src/db/operations.test.ts src/db/db.test.ts src/architectur
 
 | ID | Type | Target | Assertion |
 |---|---|---|---|
-| TR-002 | unit | `src/adapters/github/github-adapter.test.ts` | Adapter verifies raw-body HMAC signatures and paginates terminal PRs past missed intervals |
+| TR-002 | unit | `src/adapters/github/github-adapter.test.ts` | Signed raw bytes, fork identity on page two, inclusive cursor and foreign repository rejection |
+| TR-002 | unit | `src/adapters/github/github-adapter.test.ts` | Polling retains a terminal pull request when an updated item moves across page boundaries |
+| TR-002 | unit | `src/adapters/github/github-adapter.test.ts` | Polling retains or fails closed when a closed pull request on an earlier page is reopened across page boundaries |
+| TR-002 | unit | `src/adapters/github/github-adapter.test.ts` | Polling collects multi-page terminal pull requests with non-consecutive numbers and detects backward shifts across pages without relying on sequential PR numbering |
 | TR-003 | unit | `src/adapters/notifications/outbox-reconcile.test.ts` | Adapter finds the prior receipt by metadata key and suppresses resend after a partial or unauthorized lookup |
+| TR-003 | unit | `src/adapters/notifications/slack-receipt-reader.test.ts` | Indeterminate delivery for unreadable notification keys on the last thread page |
+| TR-003 | unit | `src/adapters/notifications/slack-receipt-reader.test.ts` | Indeterminate delivery for an unreadable message on the last thread page |
+| TR-003 | unit | `src/adapters/notifications/slack-receipt-reader.test.ts` | Confirmed absence for a valid unrelated notification key on the last thread page |
+| TR-003 | integration | `src/adapters/notifications/outbox-adapter.integration.test.ts` | The production manifest requests public channel history for the bot |
+| TR-003 | integration | `src/server/slack-durable-notify.test.ts` | After a lost response, the durable sender returns `undefined` after one Web API post attempt and zero webhook calls |
 | TR-004 | integration | `src/adapters/git/harvest-git.test.ts` | Detached checkout leaves developer branch untouched and moved remote tip blocks deletion |
+| TR-004 | integration | `src/adapters/git/harvest-git.test.ts` | Both Git adapter factories reject mismatched or multiple remote URLs and preserve both repository tips |
+| TR-004 | integration | `src/adapters/git/harvest-git.test.ts` | Both Git adapter factories preserve the second repository when the push URL changes after verification |
+| TR-004 | integration | `src/adapters/git/harvest-git.test.ts` | Both Git adapter factories delete the verified branch and preserve the second repository's branch when a rewrite conflicts with an explicit origin push URL |
+| TR-004 | integration | `src/adapters/git/harvest-git.test.ts` | Both Git adapter factories preserve the second repository's branch when a local origin alias changes before push |
+| TR-004 | integration | `src/adapters/git/harvest-git.test.ts` | Both Git adapter factories support leased deletion with SHA-256 refs |
 
 #### Done When
 
 ```bash
-pnpm build
-pnpm exec vitest run src/adapters/git/harvest-git.test.ts src/adapters/github/github-adapter.test.ts src/adapters/notifications/outbox-reconcile.test.ts src/architecture.test.ts
+bash specs/049-durable-dispatch-harvest/gates/phase-03.sh
 ```
+
+Reauthorize the Slack installation in the pilot workspace to apply the new scope. Verify channel and thread reads with the installed bot token during the integrated pilot.
 
 ### Phase 4: Dispatch, harvest and outbox services
 
 #### Files
 
+- `src/application/delivery/outbox.test.ts` (NEW: Exercise real SQLite delivery claims, uncertain reconciliation, restart route retention and stale completion fencing)
 - `src/application/delivery/outbox.ts` (NEW: Coordinate durable outbox claims, uncertain-send reconciliation and recipient thread delivery)
 - `src/application/dispatch/index.ts` (NEW: Implement `DurableDispatchService` acceptance receipts and startup replay plus stale-lease recovery and fencing)
 - `src/application/harvest/index.ts` (NEW: Implement `DurableHarvestService` intake dedup and stage resume plus closed-PR and cleanup handling)
@@ -299,6 +322,9 @@ pnpm exec vitest run src/commands/harvest.test.ts src/commands/status.test.ts sr
 
 None. Full coverage of `specs/049-durable-dispatch-harvest/spec.md`.
 
+Phase 3 Git adapter preparation passes five real repository tests. The race fixture moves the remote branch after inspection and before push. Atomic lease deletion preserves the newer tip. Detached checkouts leave developer changes untouched. This preparation does not complete notification reconciliation or application wiring.
 Phase 2 restart regression rejects a gate failure outbox row whose saved recipient names another project. The matching-project control still claims its saved route. The mismatch failed before the guard and passes without persisted changes after the repair. The original pending-send repair passed all 108 phase checks.
 
 Phase 2 heartbeat regressions preserve the saved expiry and renewal timestamps for earlier and equal-instant delayed heartbeats. Both dispatch and harvest tests reopen SQLite and verify takeover at the preserved expiry. The equal-expiry cases failed before repair. All 118 phase checks pass after the guard includes equality.
+
+TR-013 exercises fetch URL and push URL changes between validation and deletion through both Git factories. The other repository must retain its branch. Inspect and delete only at the captured verified destination with the expected tip lease.
