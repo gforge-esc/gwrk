@@ -28,7 +28,7 @@ import {
 import type { ProjectProfile } from "../domain/types.js";
 import {
   detectProfile,
-  resolveWorkspacePolicyRoot,
+  resolveWorkspacePolicyRoots,
 } from "../engine/profile-detector.js";
 import type { AgentBackend } from "../plugins/agent-backend.js";
 import { AgentBackendRegistry } from "../plugins/agent-registry.js";
@@ -846,47 +846,55 @@ export async function dispatchToAgent(task: TaskDispatch): Promise<TaskResult> {
   const startTime = Date.now();
   // ADR-009: Inject project knowledge documents (grounding)
   const workDir = projectRoot;
-  const policyRoot = resolveWorkspacePolicyRoot(workDir);
+  const { workspaceDir, ownerDir } = resolveWorkspacePolicyRoots(workDir);
+  const groundingRoots =
+    workspaceDir === ownerDir ? [workspaceDir] : [workspaceDir, ownerDir];
   const groundingFiles = [
     {
-      path: path.join(policyRoot, ".gwrk/architecture.md"),
+      relativePath: ".gwrk/architecture.md",
       tag: "architecture_target",
     },
     {
-      path: path.join(policyRoot, ".gwrk/ontology/domain.md"),
+      relativePath: ".gwrk/ontology/domain.md",
       tag: "domain_ontology",
     },
     {
-      path: path.join(policyRoot, ".gwrk/perspective/hierarchy.md"),
+      relativePath: ".gwrk/perspective/hierarchy.md",
       tag: "information_hierarchy",
     },
     {
-      path: path.join(policyRoot, ".gwrk/perspective/ux-posture.md"),
+      relativePath: ".gwrk/perspective/ux-posture.md",
       tag: "ux_posture",
     },
     {
-      path: path.join(policyRoot, ".gwrk/decisions/index.md"),
+      relativePath: ".gwrk/decisions/index.md",
       tag: "architecture_decisions",
     },
   ];
 
-  let architectureTarget: string | undefined;
+  let architectureTarget: { content: string; directory: string } | undefined;
   let grounding = "";
-  for (const { path: filePath, tag } of groundingFiles) {
-    if (fs.existsSync(filePath)) {
-      try {
-        const content = fs.readFileSync(filePath, "utf-8");
-        if (tag === "architecture_target") architectureTarget = content;
-        grounding += `<${tag}>\n${content}\n</${tag}>\n\n`;
-        if (!task.quiet) {
-          writeScopedStdout(`${DIM}  → Grounding: <${tag}> injected${RESET}\n`);
-        }
-      } catch (err) {
-        if (!task.quiet) {
-          writeScopedStdout(
-            `${DIM}  ⚠ Grounding: <${tag}> unreadable (${err instanceof Error ? err.message : err})${RESET}\n`,
-          );
-        }
+  for (const { relativePath, tag } of groundingFiles) {
+    const directory = groundingRoots.find((root) =>
+      fs.existsSync(path.join(root, relativePath)),
+    );
+    if (directory === undefined) continue;
+    try {
+      const content = fs.readFileSync(
+        path.join(directory, relativePath),
+        "utf-8",
+      );
+      if (tag === "architecture_target")
+        architectureTarget = { content, directory };
+      grounding += `<${tag}>\n${content}\n</${tag}>\n\n`;
+      if (!task.quiet) {
+        writeScopedStdout(`${DIM}  → Grounding: <${tag}> injected${RESET}\n`);
+      }
+    } catch (err) {
+      if (!task.quiet) {
+        writeScopedStdout(
+          `${DIM}  ⚠ Grounding: <${tag}> unreadable (${err instanceof Error ? err.message : err})${RESET}\n`,
+        );
       }
     }
   }
@@ -908,20 +916,23 @@ export async function dispatchToAgent(task: TaskDispatch): Promise<TaskResult> {
       architectureTarget === undefined
         ? undefined
         : withoutGeneratedPolicySections(
-            architectureTarget,
-            policyRoot,
+            architectureTarget.content,
+            architectureTarget.directory,
             profile.design,
           );
     const resolvedPolicy = await resolveEnforcementSkills(
-      policyRoot,
+      ownerDir,
       scope,
       profile,
-      { architectureTarget: projectedTarget },
+      {
+        architectureTarget: projectedTarget,
+        ...(workspaceDir !== ownerDir && { workspaceDir }),
+      },
     );
     const enforcement = `<effective_policy>\n${resolvedPolicy}\n</effective_policy>`;
     if (architectureTarget !== undefined && projectedTarget !== undefined) {
       grounding = grounding.replace(
-        `<architecture_target>\n${architectureTarget}\n</architecture_target>`,
+        `<architecture_target>\n${architectureTarget.content}\n</architecture_target>`,
         () =>
           `<architecture_target>\n${projectedTarget}\n</architecture_target>`,
       );

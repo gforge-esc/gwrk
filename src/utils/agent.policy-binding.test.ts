@@ -41,14 +41,20 @@ async function prompt(
 }
 describe("shared effective policy dispatch", () => {
   it.each([
-    { selection: "inherited Hexagonal Functional", workspaceDesign: undefined, registered: true },
-    { selection: "unregistered inherited Hexagonal Functional", workspaceDesign: undefined, registered: false },
+    { selection: "inherited Hexagonal Functional and owning worktree grounding", workspaceDesign: undefined, registered: true },
+    { selection: "unregistered inherited Hexagonal Functional and owning worktree grounding", workspaceDesign: undefined, registered: false },
     {
-      selection: "explicit Clean",
+      selection: "inherited Hexagonal Functional with workspace overrides and grounding",
+      workspaceDesign: undefined,
+      registered: true,
+      workspaceOverride: true,
+    },
+    {
+      selection: "explicit Clean and owning worktree grounding",
       registered: true,
       workspaceDesign: resolveDesign({ architecture: "clean", principles: ["tdd"] }),
     },
-  ])("uses $selection policy and owning worktree grounding", async ({ workspaceDesign, registered }) => {
+  ])("uses $selection", async ({ workspaceDesign, registered, workspaceOverride }) => {
     const worktree = join(root, "worktree");
     const workspace = join(worktree, "services/api");
     const git = (...args: string[]) =>
@@ -99,7 +105,7 @@ describe("shared effective policy dispatch", () => {
     const indexPath = join(worktree, ".gwrk/decisions/index.md");
     mkdirSync(join(worktree, ".gwrk/decisions"), { recursive: true });
     writeFileSync(indexPath, index);
-    const pack = join(worktree, ".gwrk/plugins/skills/fixture-fastapi");
+    const pack = join(worktree, workspaceOverride ? "policy/fixture-fastapi" : ".gwrk/plugins/skills/fixture-fastapi");
     mkdirSync(pack, { recursive: true });
     writeFileSync(
       join(pack, "manifest.yaml"),
@@ -116,6 +122,20 @@ describe("shared effective policy dispatch", () => {
     );
     const packRules = "Fixture FastAPI pack requires typed response models.";
     writeFileSync(join(pack, "SKILL.md"), packRules);
+    const workspaceRules = "Workspace FastAPI policy requires documented rate limits.";
+    const workspaceIndex = Buffer.from("# Architecture Decision Index\n\nWorkspace decisions for the fixture API.\n");
+    const workspaceIndexPath = join(workspace, ".gwrk/decisions/index.md");
+    if (workspaceOverride) {
+      const override = JSON.stringify({ override: { "fixture-fastapi": "./policy/fixture-fastapi" } });
+      writeFileSync(join(worktree, ".gwrk/plugins.json"), override);
+      mkdirSync(join(workspace, ".gwrk/decisions"), { recursive: true });
+      writeFileSync(workspaceIndexPath, workspaceIndex);
+      writeFileSync(join(workspace, ".gwrk/plugins.json"), override);
+      const workspacePack = join(workspace, "policy/fixture-fastapi");
+      mkdirSync(workspacePack, { recursive: true });
+      writeFileSync(join(workspacePack, "manifest.yaml"), readFileSync(join(pack, "manifest.yaml")));
+      writeFileSync(join(workspacePack, "SKILL.md"), workspaceRules);
+    }
 
     const { taskResult } = await new WorkflowRuntime().executeWorkflow(
       "gwrk-implement",
@@ -137,7 +157,13 @@ describe("shared effective policy dispatch", () => {
     const rendered: string = JSON.parse(taskResult.stdout).message.content;
     const policy = rendered.match(/<code_quality>\s*<effective_policy>([\s\S]*?)<\/effective_policy>\s*<\/code_quality>/)?.[1];
     expect(policy).toContain("FastAPI routers");
-    expect.soft(policy).toContain(packRules);
+    if (workspaceOverride) {
+      expect.soft(policy).toContain(workspaceRules);
+      expect.soft(rendered.split(workspaceRules)).toHaveLength(2);
+      expect.soft(rendered).not.toContain(packRules);
+    } else {
+      expect.soft(policy).toContain(packRules);
+    }
     const target = rendered.match(/<architecture_target>\n([\s\S]*?)\n<\/architecture_target>/)?.[1];
     const cleanRule = "Business rules MUST remain independent of frameworks";
     const rootOnlyRules = [
@@ -165,7 +191,12 @@ describe("shared effective policy dispatch", () => {
     const tddRule = "Implementation MUST follow observed RED tests with GREEN execution evidence";
     expect.soft(target).toContain(tddRule);
     expect.soft(rendered.split(tddRule)).toHaveLength(2);
-    expect.soft(rendered).toContain(`<architecture_decisions>\n${index}\n</architecture_decisions>`);
+    const expectedIndex = workspaceOverride ? workspaceIndex : index;
+    expect.soft(rendered).toContain(`<architecture_decisions>\n${expectedIndex}\n</architecture_decisions>`);
+    if (workspaceOverride) {
+      expect.soft(rendered).not.toContain(index.toString());
+      expect(readFileSync(workspaceIndexPath)).toEqual(workspaceIndex);
+    }
     expect(readFileSync(targetPath)).toEqual(savedTarget);
     expect(readFileSync(indexPath)).toEqual(index);
   });

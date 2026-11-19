@@ -49,17 +49,29 @@ export async function detectProfile(
   );
 }
 
-export function resolveWorkspacePolicyRoot(workDir: string): string {
+export function resolveWorkspacePolicyRoots(workDir: string): {
+  workspaceDir: string;
+  ownerDir: string;
+} {
   const requestedWorkspace = path.resolve(workDir);
+  const workspace = physicalPath(requestedWorkspace);
   const { ancestors, registrations } = ancestorWorkspaceConfigs(
-    physicalPath(requestedWorkspace),
+    workspace,
     requestedWorkspace,
   );
-  return (
-    registrations[0]?.directory ??
-    findNearestAncestorDesign(ancestors)?.directory ??
-    workDir
-  );
+  const registration = registrations[0];
+  if (registration?.matchedPath) {
+    return {
+      workspaceDir: physicalPath(
+        path.join(registration.directory, registration.matchedPath),
+      ),
+      ownerDir: registration.directory,
+    };
+  }
+  return {
+    workspaceDir: workspace,
+    ownerDir: findNearestAncestorDesign(ancestors)?.directory ?? workspace,
+  };
 }
 
 function detectProfileInDirectory(
