@@ -8,9 +8,11 @@ import type {
   NotificationPort,
 } from "../../ports/notification-port.js";
 import type { SlackMessage } from "../../server/slack-messages.js";
+import { readSlackUserPresence } from "./project-presence.js";
 
 export function createSlackNotificationAdapter(): NotificationPort {
   return {
+    getUserPresence: readSlackUserPresence,
     async notify(payload: NotificationPayload) {
       const notifications = await import("../../server/slack-notify.js");
       const message: SlackMessage = {

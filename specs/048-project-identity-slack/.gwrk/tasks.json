@@ -325,7 +325,8 @@
         "src/server/slack-presence.test.ts",
         "src/server/telegram.test.ts",
         "src/server/slack-commands.test.ts",
-        "src/adapters/notifications/project-delivery.test.ts"
+        "src/adapters/notifications/project-delivery.test.ts",
+        "src/adapters/notifications/project-presence.test.ts"
       ]
     },
     {
