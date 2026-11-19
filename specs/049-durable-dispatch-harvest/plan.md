@@ -166,6 +166,7 @@ pnpm exec vitest run src/db/operations.test.ts src/db/db.test.ts src/architectur
 | TR-003 | integration | `src/adapters/notifications/outbox-adapter.integration.test.ts` | The production manifest requests public channel history for the bot |
 | TR-004 | integration | `src/adapters/git/harvest-git.test.ts` | Detached checkout leaves developer branch untouched and moved remote tip blocks deletion |
 | TR-004 | integration | `src/adapters/git/harvest-git.test.ts` | Both Git adapter factories reject mismatched or multiple remote URLs and preserve both repository tips |
+| TR-004 | integration | `src/adapters/git/harvest-git.test.ts` | Both Git adapter factories preserve the second repository when the push URL changes after verification |
 
 #### Done When
 
