@@ -6,6 +6,7 @@
 set -euo pipefail
 test -f src/plugins/seed.test.ts
 test -f src/commands/plugin.test.ts
+test -f src/commands/plugin.seed.test.ts
 test -f src/architecture.test.ts
 pnpm run build
-pnpm exec vitest run src/plugins/seed.test.ts src/commands/plugin.test.ts src/architecture.test.ts
+pnpm exec vitest run src/plugins/seed.test.ts src/commands/plugin.test.ts src/commands/plugin.seed.test.ts src/architecture.test.ts

@@ -155,7 +155,9 @@
       "sp_estimate": 2,
       "testTargets": [
         "src/plugins/seed.test.ts",
-        "src/commands/plugin.test.ts"
+        "src/commands/plugin.test.ts",
+        "src/commands/plugin.seed.test.ts",
+        "src/architecture.test.ts"
       ]
     }
   ]
