@@ -37,7 +37,7 @@ Final completion requires every phase gate and blocking finding cleared. Both CI
 
 ## Evidence and scope
 
-The combined candidate at `056498a2` passes 4,142 full-suite checks with 16 skipped and six todo. Native Linux verification is running against its immutable archive. The durable merge passes its 112-check adapter gate and 27 focused composition checks. Two retained regressions first failed against the incoming transport. The composition preserves cancellation and metadata with the captured workspace-verified token.
+The combined candidate at `056498a2` passes 4,142 full-suite checks with 16 skipped and six todo. Native Linux verification passes 892 checks across 27 files with one todo. Its immutable archive matches `056498a2`. The durable merge passes its 112-check adapter gate and 27 focused composition checks. Two retained regressions first failed against the incoming transport. The composition preserves cancellation and metadata with the captured workspace-verified token.
 
 The companion plugin candidate passes nine checks. All 16 registry digests match. Goose now advertises exact model forwarding to core qualification. Companion PRs have no configured CI jobs. Their local evidence does not establish live model qualification.
 
