@@ -81,6 +81,7 @@ export function createGitHubHarvestAdapter(
         timeout: 12_000,
         maxBuffer: 8 * 1024 * 1024,
         encoding: "utf8",
+        env: { ...process.env, GH_PROMPT_DISABLED: "1" },
       });
       return stdout;
     });
@@ -121,6 +122,7 @@ export function createGitHubHarvestAdapter(
       for (let attempt = 0; attempt < 5; attempt += 1) {
         const collected = new Map<number, HarvestPullRequestFact>();
         const seenPrNumbers = new Set<number>();
+        let lastBoundaryPrNumber: number | undefined;
         let concurrentUpdateDetected = false;
         for (let page = 1; page <= 1000; page += 1) {
           const query = new URLSearchParams({
@@ -134,13 +136,18 @@ export function createGitHubHarvestAdapter(
           const response = await get(`${repository}/pulls?${query}`, cwd);
           if (!Array.isArray(response))
             throw new Error("Pull request page must be an array");
-          for (const value of response) {
-            const pr = fact(value, repoSlug);
+          for (let i = 0; i < response.length; i += 1) {
+            const pr = fact(response[i], repoSlug);
             if (pr.state === "OPEN" || pr.baseBranch !== baseBranch)
               throw new Error(
                 "Terminal pull request page contains mismatched scope",
               );
-            if (seenPrNumbers.has(pr.prNumber)) {
+            if (
+              seenPrNumbers.has(pr.prNumber) ||
+              (i === 0 &&
+                lastBoundaryPrNumber !== undefined &&
+                pr.prNumber > lastBoundaryPrNumber + 1)
+            ) {
               concurrentUpdateDetected = true;
               break;
             }
@@ -154,6 +161,10 @@ export function createGitHubHarvestAdapter(
               collected.set(pr.prNumber, pr);
           }
           if (concurrentUpdateDetected) break;
+          if (response.length > 0) {
+            const lastPr = fact(response[response.length - 1], repoSlug);
+            lastBoundaryPrNumber = lastPr.prNumber;
+          }
           if (response.length < 100) return [...collected.values()];
         }
         if (concurrentUpdateDetected) continue;

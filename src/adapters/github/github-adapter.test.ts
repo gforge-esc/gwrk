@@ -99,6 +99,61 @@ describe("GitHub durable harvest adapter", () => {
     expect(new Set(numbers).size).toBe(102);
   });
 
+  it("does not skip a terminal pull request when an earlier closed pull request is reopened across pages", async () => {
+    const earlier = "2026-11-18T12:00:00Z";
+    const mid = "2026-11-18T12:00:01Z";
+    const later = "2026-11-18T12:00:02Z";
+    const requests = Array.from({ length: 102 }, (_, index) => {
+      const prNumber = index + 1;
+      if (prNumber === 1) {
+        return {
+          ...syntheticPullRequest(prNumber, {
+            merged_at: null,
+            merge_commit_sha: null,
+            closed_at: earlier,
+          }),
+          updated_at: earlier,
+        };
+      }
+      const timestamp =
+        prNumber === 101 ? mid : prNumber === 102 ? later : earlier;
+      return {
+        ...syntheticPullRequest(prNumber, {
+          merged_at: timestamp,
+          closed_at: timestamp,
+        }),
+        updated_at: timestamp,
+      };
+    });
+    const executeGh = vi.fn(async (args: readonly string[]) => {
+      const path = new URL(args[args.length - 1], "https://api.github.com/");
+      const page = Number(path.searchParams.get("page") ?? 1);
+      const size = Number(path.searchParams.get("per_page") ?? 100);
+      const start = (page - 1) * size;
+      const results = requests.slice(start, start + size);
+      if (executeGh.mock.calls.length === 1) {
+        requests.splice(0, 1);
+      }
+      return JSON.stringify(results);
+    });
+    const adapter = createGitHubHarvestAdapter({ executeGh });
+
+    const [result] = await Promise.allSettled([
+      adapter.listTerminalPullRequests({
+        cwd: "/fixture/project",
+        repoSlug: "example/project",
+        baseBranch: "develop",
+        sinceIso: earlier,
+      }),
+    ]);
+
+    if (result.status === "fulfilled") {
+      const numbers = result.value.map(({ prNumber }) => prNumber);
+      expect(numbers).toContain(101);
+      expect(numbers).toContain(102);
+    }
+  });
+
   it("preserves closed-unmerged facts and unknown head repositories", async () => {
     const executeGh = vi.fn().mockResolvedValue(
       JSON.stringify(
