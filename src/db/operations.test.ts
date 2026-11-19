@@ -163,7 +163,7 @@ describe("durable operations migration", () => {
       ).toBe("alpha");
       expect(
         upgraded
-          .prepare(`SELECT * FROM slack_action_receipts WHERE receipt_key = ?`)
+          .prepare("SELECT * FROM slack_action_receipts WHERE receipt_key = ?")
           .get("pre-upgrade-receipt"),
       ).toEqual({
         receipt_key: "pre-upgrade-receipt",

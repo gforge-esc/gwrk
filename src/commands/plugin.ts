@@ -13,7 +13,10 @@ import {
   composeEffectivePolicy,
   evaluateEnforcementCandidate,
 } from "../domain/policy-selection.js";
-import { detectProfile } from "../engine/profile-detector.js";
+import {
+  detectProfile,
+  resolveWorkspacePolicyRoots,
+} from "../engine/profile-detector.js";
 import {
   doctorPlugins,
   generateRegistryIndex,
@@ -87,9 +90,10 @@ async function listProjectEnforcement(
   loader: PluginLoader,
   projectRoot: string,
 ): Promise<PluginSummary[]> {
+  const { workspaceDir, policyDirs } = resolveWorkspacePolicyRoots(projectRoot);
   const [profile, candidates] = await Promise.all([
     detectProfile(projectRoot),
-    loader.listEnforcementCandidates(),
+    loader.listEnforcementCandidates(workspaceDir, policyDirs),
   ]);
   const { selectedSkills, excludedSkills } = composeEffectivePolicy({
     profile,

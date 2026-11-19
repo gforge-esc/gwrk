@@ -149,12 +149,20 @@ bash specs/044-architecture-aware-policy/gates/phase-03.sh
 #### Files
 
 - `src/domain/architecture-context.ts` (MODIFY: Render explicit policy gap notes in `contextMarkdown` while preserving manifest hashes when gaps are empty)
+- `src/adapters/architecture/context-files.ts` (MODIFY: Resolve installed policy candidates before passing their deterministic composition into context installation)
 - `src/application/architecture/install-context.ts` (MODIFY: Compose `EffectivePolicy` deterministically during context installation without certifying existing code)
 - `src/commands/init.ts` (MODIFY: Preserve `workspaces` and `project.design` across fresh and existing and `--workspace` runs with zero agent calls)
-- `src/utils/agent.ts` (MODIFY: Resolve `EffectivePolicy` by workflow scope on the shared transport path and inject `<effective_policy>` with `<code_quality>`)
+- `src/domain/policy-selection.ts` (MODIFY: Resolve explicit task scope and built-in workflow scope as pure policy)
+- `src/utils/agent.ts` (MODIFY: Bind `EffectivePolicy` by workflow scope. Load grounding from the workspace owner. Read the active Selection section to identify generated guidance.)
+- `src/engine/profile-detector.ts` (MODIFY: Start policy lookup at the execution directory and retain the registered workspace and configured ancestors within the worktree)
+- `src/commands/plugin.ts` (MODIFY: Use the dispatch policy roots for project enforcement listing)
+- `src/plugins/skill-runtime.ts` (MODIFY: Omit generated rules already present in the architecture target)
+- `src/plugins/builtins/workflows/gwrk-specify/PROMPT.md` (MODIFY: Add the trusted enforcement slot)
 - `src/plugins/workflow-runtime.ts` (MODIFY: Forward workspace or root `ProjectProfile` with `design` into prompt conditioning and dispatch)
 - `src/application/architecture/context.test.ts` (MODIFY: Verify context rendering reflects composed rules and explicit gap notes while keeping checks inactive)
 - `src/commands/init.test.ts` (MODIFY: Verify zero agent dispatches and preserved source files and human `Decided` ADRs across fresh and repeat runs)
+- `src/utils/agent.test.ts` (MODIFY: Preserve trusted template and user input boundaries while accepting the effective policy wrapper. Use the real workspace policy root lookup.)
+- `src/utils/agent.grounding-decisions.test.ts` (MODIFY: Use the real workspace policy root lookup while testing decision grounding)
 - `src/utils/agent.policy-binding.test.ts` (NEW: Capture define and implement and review dispatches and verify effective policy bindings and gap notes)
 - `scripts/architecture-context-uat.py` (MODIFY: Exercise compiled CLI init across polyglot and missing-framework fixtures with zero model dispatches)
 
@@ -171,16 +179,44 @@ bash specs/044-architecture-aware-policy/gates/phase-03.sh
 |---|---|---|---|
 | TR-004 | integration | `src/commands/init.test.ts` | Fresh and repeated init calls make zero agent dispatches and preserve existing source code and human `Decided` ADRs |
 | TR-012 | unit | `src/application/architecture/context.test.ts` | Deterministic context rendering preserves manifest hashes without gaps and records explicit gap notes when bindings are missing |
-| TR-013 | integration | `src/utils/agent.policy-binding.test.ts` | Shared prompt transport includes compatible policy once across define, implement and review scopes |
+| TR-012 | unit | `src/application/architecture/context.test.ts` | Two-argument rendering uses the projected policy for TypeScript and Django and preserves Python and FastAPI output bytes when there are no gaps |
+| TR-013 | integration | `src/utils/agent.policy-binding.test.ts` | Define, implement and review prompts include Python and FastAPI workspace policy once and omit guidance from the installed TypeScript and Fastify root target |
+| TR-013 | integration | `src/utils/agent.policy-binding.test.ts` | Policy expansion preserves every byte of a target without generated policy sections, including literal `$$` in a Make recipe rule and headings in a fenced example |
+| TR-013 | integration | `src/utils/agent.policy-binding.test.ts` | One current gap per missing or incompatible framework pack before repair and zero after compatible rules load |
+| TR-013 | integration | `src/utils/agent.policy-binding.test.ts` | One current secondary-language gap before its pack loads and zero afterward, including older saved targets |
+| TR-013 | integration | `src/utils/agent.policy-binding.test.ts` | Byte equality for the saved target and decision index after pack repair |
+| TR-013 | integration | `src/utils/agent.policy-binding.test.ts` | FastAPI router guidance without the TypeScript root target's Django gap and fallback |
+| TR-013 | integration | `src/utils/agent.policy-binding.test.ts` | Go guidance in place of generated Python guidance for absent, `none` and `unspecified` primary languages |
+| TR-013 | integration | `src/utils/agent.policy-binding.test.ts` | Byte equality for saved polyglot targets and preservation of edited and quoted Python guidance |
+| TR-013 | integration | `src/utils/agent.policy-binding.test.ts` | Definition skill only in `<effective_policy>` for a custom workflow with task type `define` |
+| TR-013 | integration | `src/utils/agent.policy-binding.test.ts` | Byte equality for maintainer-edited guidance paragraphs and gap items with continuation lines |
+| TR-013 | integration | `src/utils/agent.policy-binding.test.ts` | Owning-worktree FastAPI policy and decision grounding for inherited Hexagonal Functional and explicit Clean |
+| TR-013 | integration | `src/utils/agent.policy-binding.test.ts` | One FastAPI rule from the registered workspace's relative override and no shadowed owner rule |
+| TR-013 | integration | `src/utils/agent.policy-binding.test.ts` | Workspace decision index with inherited architecture rules and execution in the workspace directory |
+| TR-013 | integration | `src/utils/agent.policy-binding.test.ts` | Inherited Python and FastAPI profile with execution in `services/api/src` |
+| TR-013 | integration | `src/utils/agent.policy-binding.test.ts` | One rule from the execution directory's relative rate-limit override and its decision index with both worktree defaults absent |
+| TR-013 | integration | `src/utils/agent.policy-binding.test.ts` | One active `fixture-fastapi` row at version `1.0.0` in project enforcement JSON from `services/api` when dispatch uses the owning worktree pack |
+| TR-013 | integration | `src/utils/agent.policy-binding.test.ts` | Byte equality for the inherited target and both decision indexes after dispatch |
+| TR-013 | integration | `src/utils/agent.policy-binding.test.ts` | Clean without root-only generated rules, with maintainer rules and one TDD rule |
+| TR-013 | integration | `src/utils/agent.policy-binding.test.ts` | Byte equality for the saved target and decision index under either design |
+| TR-013 | integration | `src/utils/agent.policy-binding.test.ts` | One active architecture rule with `-`, `*` or `+` as its list marker |
+| TR-013 | integration | `src/utils/agent.policy-binding.test.ts` | Active effective policy when the target quotes the rule in a fence or comment |
+| TR-013 | integration | `src/utils/agent.policy-binding.test.ts` | Selection fields govern generated guidance while preserving the Go and Gin maintainer note and saved target bytes |
+| TR-013 | integration | `src/utils/agent.test.ts` | Built-in `gwrk-specify` delivers the definition skill once and preserves user input |
+| TR-013 | integration | `src/utils/agent.test.ts` | Built-in `gwrk-implement` delivers the target rule once and retains the selected skill and framework gap |
 | TR-014 | e2e | `scripts/architecture-context-uat.py` | Built CLI init and assessment preview complete with zero model invocations across fresh and existing and polyglot fixtures |
+| TR-014 | e2e | `scripts/architecture-context-uat.py` | Context-only init combines detected Python and configured FastAPI without policy gaps or agent calls |
+| TR-014 | e2e | `scripts/architecture-context-uat.py` | Detecting Python on repeat init preserves the installed decision |
 
 #### Done When
 
 ```bash
 pnpm build
-pnpm exec vitest run src/application/architecture/context.test.ts src/commands/init.test.ts src/utils/agent.policy-binding.test.ts src/utils/agent.grounding-decisions.test.ts src/plugins/workflow-runtime.test.ts src/architecture.test.ts
+pnpm exec vitest run src/application/architecture/context.test.ts src/commands/init.test.ts src/utils/agent.test.ts src/utils/agent.policy-binding.test.ts src/utils/agent.grounding-decisions.test.ts src/plugins/workflow-runtime.test.ts src/architecture.test.ts
 python3 scripts/architecture-context-uat.py
 ```
+
+Both dispatch regressions failed before repair and passed afterward. The phase gate passed 254 tests and eight compiled CLI checks. The CI suite passed 2,229 tests.
 
 ## Coverage matrix
 
@@ -211,4 +247,15 @@ Phase 3 regression coverage rejects blank skill bodies before selection. The CLI
 
 Phase 3 shared-path alias regression keeps an installed policy active when a disabled override alias points to the same directory. Both project disable mechanisms failed before the effective-name deduplication repair. The phase gate now passes 95 checks.
 
+Phase 4 preparation adds an observed incompatible-framework initialization regression. TypeScript with Django must expose a policy gap and omit the Python ORM binding. The phase gate requires every named test file before execution, so a missing policy-dispatch test cannot produce a passing phase. Preserve the existing completed phases.
 Phase 3 canonical pack identity regression observes duplicate prompt rules when an override uses a symbolic link. Candidate discovery now resolves physical directories before prompt deduplication while preserving each effective policy name. The symbolic-link case failed before repair. Both disable mechanisms are also covered through links. All 101 phase checks pass.
+
+Phase 4 preparation now passes 176 checks and the compiled CLI acceptance script. The incompatible framework context regression, workspace design-loss regression and four shared-dispatch regressions failed before repair. The decision identity remains based on the selected context input. Installing a missing policy pack updates gaps without creating another target decision. Independent phase review remains required.
+
+TR-013 also dispatches an unregistered Python and FastAPI workspace. Verify inherited design and owning-worktree packs. Verify architecture target and decision grounding. Keep workspace execution and byte-identical saved context.
+
+TR-013 covers nearer registrations with inherited design and relative policy overrides. Grounding and enforcement retain configured ancestors within the worktree. Repeated initialization also deselects clean-code while preserving an edited target. Dispatch omits its generated rule and preserves maintainer text and saved bytes.
+
+The Phase 4 gate reproduced both review findings. Dispatch used the worktree policy and decision index, and project enforcement listed no `fixture-fastapi` row. After sharing the ordered policy lookup, the gate passed 264 tests and eight compiled CLI checks. Independent phase review remains required.
+
+The Phase 3 gate and `pnpm test:ci` fail three listing tests in `src/commands/plugin.p15.red.test.ts`. The module-wide profile detector mock returns `undefined` for the shared policy root lookup.

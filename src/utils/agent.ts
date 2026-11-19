@@ -12,6 +12,23 @@ import path from "node:path";
 import readline from "node:readline";
 import { writeScopedStdout } from "../adapters/cli/output-scope.js";
 import { recordRoutingDecision } from "../db/plugins.js";
+import {
+  type ProjectDesign,
+  designRules,
+  lookupFrameworkGuidance,
+  lookupLanguageGuidance,
+  normalizeArchitecture,
+  normalizeFramework,
+} from "../domain/architecture-context.js";
+import {
+  composeEffectivePolicy,
+  resolveWorkflowPolicyScope,
+} from "../domain/policy-selection.js";
+import type { ProjectProfile } from "../domain/types.js";
+import {
+  detectProfile,
+  resolveWorkspacePolicyRoots,
+} from "../engine/profile-detector.js";
 import type { AgentBackend } from "../plugins/agent-backend.js";
 import { AgentBackendRegistry } from "../plugins/agent-registry.js";
 import { resolveExtensionContext } from "../plugins/extension-runtime.js";
@@ -20,6 +37,7 @@ import { resolveEnforcementSkills } from "../plugins/skill-runtime.js";
 import type { AgentTaskRequest, AgentTaskResult } from "../ports/agent-port.js";
 import { formatResultError, renderStreamStdoutLine } from "./agent-log.js";
 import { type AgentBackendId, loadConfig } from "./config.js";
+import { maskPromptExamples } from "./markdown-examples.js";
 import { startProgress } from "./progress.js";
 import { resolveProjectId } from "./project-id.js";
 
@@ -452,6 +470,7 @@ async function dispatchAgent(opts: DispatchOptions): Promise<{
  */
 export interface TaskDispatch extends AgentTaskRequest {
   promptParts?: { template: string; userInput: string };
+  profile?: ProjectProfile;
   /** Project that selected the backend when execution uses a separate worktree. */
   backendProjectRoot?: string;
   commandOverride?: string;
@@ -536,73 +555,143 @@ function resolvePrimaryCheckout(executionDir: string): string {
 
 const ENFORCEMENT_MARKER = "{{enforcement}}";
 
-function maskPromptExamples(template: string): string {
-  // Keep offsets and line endings without turning quoted content into whitespace.
-  const mask = (code: string) => code.replace(/[^\r\n]/g, "\0");
-  const maskSpans = (text: string) =>
-    text
-      .replace(/^ {0,3}>[^\r\n]*/gm, mask)
-      .replace(
-        /^(?: {4}| {0,3}\t)[^\r\n]*(?:\r?\n(?:[ \t]*\r?\n)*(?: {4}| {0,3}\t)[^\r\n]*)*/gm,
-        (block, offset: number, text: string) =>
-          block.trim() === ENFORCEMENT_MARKER ||
-          (block.trimEnd().endsWith(ENFORCEMENT_MARKER) &&
-            /^\r?\n<\/code_quality>/.test(text.slice(offset + block.length)))
-            ? block
-            : mask(block),
-      )
-      .split(/(\r?\n[ \t]*\r?\n)/)
-      .map((paragraph) =>
-        paragraph.replace(/(?<!`)(`+)(?!`)[\s\S]*?(?<!`)\1(?!`)/g, mask),
-      )
-      .join("");
-
-  let masked = "";
-  let textStart = 0;
-  let fence: { delimiter: string; start: number } | undefined;
-  const blocks = /^ {0,3}(`{3,}|~{3,})([^\r\n]*)|<!--/gm;
-  for (
-    let block = blocks.exec(template);
-    block;
-    block = blocks.exec(template)
-  ) {
-    const [line, delimiter, rest] = block;
-    const { index } = block;
-    if (line === "<!--") {
-      if (fence) continue;
-      const closer = template.indexOf("-->", index + line.length);
-      if (closer === -1) continue;
-      const lineEnd = template.indexOf("\n", closer);
-      const visible = maskSpans(
-        template.slice(textStart, lineEnd === -1 ? template.length : lineEnd),
-      );
-      if (!visible.startsWith(line, index - textStart)) continue;
-
-      const end = closer + "-->".length;
-      masked += maskSpans(template.slice(textStart, index));
-      masked += mask(template.slice(index, end));
-      textStart = end;
-      blocks.lastIndex = end;
-    } else if (!fence) {
-      if (delimiter[0] === "`" && rest.includes("`")) continue;
-      masked += maskSpans(template.slice(textStart, index));
-      fence = { delimiter, start: index };
-    } else if (
-      delimiter[0] === fence.delimiter[0] &&
-      delimiter.length >= fence.delimiter.length &&
-      !rest.trim()
-    ) {
-      textStart = index + line.length;
-      masked += mask(template.slice(fence.start, textStart));
-      fence = undefined;
-    }
-  }
-  return (
-    masked +
-    (fence
-      ? mask(template.slice(fence.start))
-      : maskSpans(template.slice(textStart)))
+function withoutGeneratedPolicySections(
+  target: string,
+  selectedDesign?: ProjectDesign,
+): string {
+  const masked = maskPromptExamples(target);
+  const headings = Array.from(masked.matchAll(/^#{1,2}[ \t]+([^\r\n]*)/gm));
+  const selectionIndex = headings.findIndex(
+    (heading) =>
+      heading[0].startsWith("##") && heading[1].trim() === "Selection",
   );
+  const selectionHeading = headings[selectionIndex];
+  const selectionBody = selectionHeading
+    ? masked.slice(
+        selectionHeading.index + selectionHeading[0].length,
+        headings[selectionIndex + 1]?.index ?? masked.length,
+      )
+    : "";
+  const selection = (name: string) =>
+    new RegExp(`^- ${name}: (.+)$`, "m").exec(selectionBody)?.[1]?.trim();
+  const language = selection("Language");
+  const languageIsUnset = !language || /^(?:none|unspecified)$/i.test(language);
+  const languageFallback =
+    "No bundled language binding. Assess language-specific boundaries explicitly.";
+  const generatedLanguageGuidance = languageIsUnset
+    ? [
+        languageFallback,
+        ...["TypeScript", "JavaScript", "Python", "Go", "Rust"]
+          .map(lookupLanguageGuidance)
+          .filter((guidance) => guidance !== undefined),
+      ]
+    : [lookupLanguageGuidance(language) ?? languageFallback];
+  const framework = selection("Framework");
+  const hasFramework = normalizeFramework(framework) !== undefined;
+  const architecture = selection("Architecture");
+  const policy = composeEffectivePolicy({
+    profile: {
+      type: "app",
+      stack: { language },
+      ...(architecture
+        ? {
+            design: {
+              architecture,
+              principles: ["functional-core", "clean-code", "tdd"],
+              templateVersion: "1.0.0" as const,
+            },
+          }
+        : {}),
+    },
+    candidates: [],
+  });
+  const selectedRules = selectedDesign
+    ? designRules({
+        ...selectedDesign,
+        architecture: normalizeArchitecture(selectedDesign.architecture),
+      })
+    : [];
+  const generated = new Map<string, string[]>([
+    [
+      "Rules",
+      selectedDesign
+        ? policy.architectureRules.filter(
+            (rule) => !selectedRules.includes(rule),
+          )
+        : [],
+    ],
+    ["Language guidance", generatedLanguageGuidance],
+    [
+      "Framework guidance",
+      hasFramework
+        ? [
+            "No bundled framework binding. Framework compatibility remains unassessed.",
+            lookupFrameworkGuidance(framework),
+          ].filter((guidance) => guidance !== undefined)
+        : ["No framework selected."],
+    ],
+    [
+      "Policy gaps",
+      [
+        ...policy.gaps.map(({ message }) => `- ${message}`),
+        ...(hasFramework
+          ? [
+              `- No compatible policy found for framework ${framework}.`,
+              `- No bundled framework binding or policy for ${framework}.`,
+            ]
+          : []),
+      ],
+    ],
+  ]);
+  let projected = "";
+  let start = 0;
+  for (const [index, heading] of headings.entries()) {
+    const section = heading[1].trim();
+    const content = generated.get(section);
+    if (!content || !heading[0].startsWith("##")) continue;
+    const bodyStart = heading.index + heading[0].length;
+    const end = headings[index + 1]?.index ?? target.length;
+    const original = target.slice(bodyStart, end);
+    const visible = masked.slice(bodyStart, end);
+    const lines = Array.from(visible.matchAll(/^([^\r\n]*)(?:\r?\n|$)/gm));
+    let body = "";
+    let keptFrom = 0;
+    for (const [lineIndex, line] of lines.entries()) {
+      const itemText =
+        section === "Rules"
+          ? (/^ {0,3}[-+*][ \t]+(.+)$/.exec(line[1])?.[1].trim() ?? "")
+          : line[1];
+      const generatedLanguageGap =
+        section === "Policy gaps" &&
+        /^- No bundled language binding or selected policy for .+\. Assess language-specific boundaries explicitly\.$/.test(
+          line[1],
+        );
+      if (!content.includes(itemText) && !generatedLanguageGap) continue;
+      const next = line.index + line[0].length;
+      const nextLine = lines[lineIndex + 1]?.[1];
+      if (section === "Rules" || section === "Policy gaps") {
+        const following = original.slice(next);
+        // A list item can continue after a blank line when the text is indented.
+        if (/^(?:[ \t]*\r?\n)*(?: {2}| *\t)[ \t]*[^ \t\r\n]/.test(following))
+          continue;
+        if (
+          nextLine?.trim() &&
+          !/^ {0,1}(?:[-+*]|\d{1,9}[.)])(?:[ \t]|$)/.test(nextLine)
+        )
+          continue;
+      } else if (lines[lineIndex - 1]?.[1].trim() || nextLine?.trim()) {
+        continue;
+      }
+      body += original.slice(keptFrom, line.index);
+      keptFrom = next;
+    }
+    body += original.slice(keptFrom);
+    projected += target.slice(start, heading.index);
+    if (keptFrom === 0 || body.trim())
+      projected += target.slice(heading.index, bodyStart) + body;
+    start = end;
+  }
+  return projected + target.slice(start);
 }
 
 function findEnforcementSlot(
@@ -786,6 +875,68 @@ export async function dispatchToAgent(task: TaskDispatch): Promise<TaskResult> {
   const adapter = await registry.getAgentBackend(agentName);
 
   const startTime = Date.now();
+  // ADR-009: Inject project knowledge documents (grounding)
+  const workDir = projectRoot;
+  const { workspaceDir, ownerDir, policyDirs } =
+    resolveWorkspacePolicyRoots(workDir);
+  const groundingRoots = policyDirs;
+  const groundingFiles = [
+    {
+      relativePath: ".gwrk/architecture.md",
+      tag: "architecture_target",
+    },
+    {
+      relativePath: ".gwrk/ontology/domain.md",
+      tag: "domain_ontology",
+    },
+    {
+      relativePath: ".gwrk/perspective/hierarchy.md",
+      tag: "information_hierarchy",
+    },
+    {
+      relativePath: ".gwrk/perspective/ux-posture.md",
+      tag: "ux_posture",
+    },
+    {
+      relativePath: ".gwrk/decisions/index.md",
+      tag: "architecture_decisions",
+    },
+  ];
+
+  let architectureTarget: { content: string; directory: string } | undefined;
+  let grounding = "";
+  for (const { relativePath, tag } of groundingFiles) {
+    const directory = groundingRoots.find((root) =>
+      fs.existsSync(path.join(root, relativePath)),
+    );
+    if (directory === undefined) continue;
+    try {
+      const content = fs.readFileSync(
+        path.join(directory, relativePath),
+        "utf-8",
+      );
+      if (tag === "architecture_target")
+        architectureTarget = { content, directory };
+      grounding += `<${tag}>\n${content}\n</${tag}>\n\n`;
+      if (
+        tag === "architecture_decisions" &&
+        architectureTarget !== undefined
+      ) {
+        grounding +=
+          "<decision_authority>\nRead the complete applicable records and preserve every recorded status. Proposed targets require human ratification. They do not supersede Decided constraints. If a Proposed target conflicts with a Decided constraint, follow the Decided constraint and record the conflict in the plan. Resolve the conflict before implementation. Superseded records preserve history and lineage. Do not enforce their replaced constraints as current decisions.\n</decision_authority>\n\n";
+      }
+      if (!task.quiet) {
+        writeScopedStdout(`${DIM}  → Grounding: <${tag}> injected${RESET}\n`);
+      }
+    } catch (err) {
+      if (!task.quiet) {
+        writeScopedStdout(
+          `${DIM}  ⚠ Grounding: <${tag}> unreadable (${err instanceof Error ? err.message : err})${RESET}\n`,
+        );
+      }
+    }
+  }
+
   const legacyParts = promptParts ? undefined : splitLegacyStdin(task);
   let template = promptParts?.template ?? legacyParts?.template ?? "";
 
@@ -794,24 +945,36 @@ export async function dispatchToAgent(task: TaskDispatch): Promise<TaskResult> {
     ? findEnforcementSlot(template, "empty-section")
     : legacyParts?.slot;
   if (enforcementSlot?.index !== undefined) {
-    const scope =
-      task.workflow?.includes("review") || task.type?.includes("review")
-        ? "review"
-        : /^(?:gwrk-(?:spec(?:ify)?|plan|research|brief|tasks|adr)|define)/.test(
-              task.workflow ?? task.type ?? "",
-            )
-          ? "define"
-          : "implementation";
+    const scope = resolveWorkflowPolicyScope(task.workflow, task.type);
 
     // R007: Detect project profile for language-aware enforcement routing
-    const { detectProfile } = await import("../engine/profile-detector.js");
-    const profile = await detectProfile(projectRoot);
+    const profile = task.profile ?? (await detectProfile(workDir));
 
-    const enforcement = await resolveEnforcementSkills(
-      projectRoot,
+    const projectedTarget =
+      architectureTarget === undefined
+        ? undefined
+        : withoutGeneratedPolicySections(
+            architectureTarget.content,
+            profile.design,
+          );
+    const resolvedPolicy = await resolveEnforcementSkills(
+      ownerDir,
       scope,
       profile,
+      {
+        architectureTarget: projectedTarget,
+        policyDirs,
+        ...(workspaceDir !== ownerDir && { workspaceDir }),
+      },
     );
+    const enforcement = `<effective_policy>\n${resolvedPolicy}\n</effective_policy>`;
+    if (architectureTarget !== undefined && projectedTarget !== undefined) {
+      grounding = grounding.replace(
+        `<architecture_target>\n${architectureTarget.content}\n</architecture_target>`,
+        () =>
+          `<architecture_target>\n${projectedTarget}\n</architecture_target>`,
+      );
+    }
 
     const start = enforcementSlot.index;
     const [maskedSlot] = enforcementSlot;
@@ -848,56 +1011,6 @@ export async function dispatchToAgent(task: TaskDispatch): Promise<TaskResult> {
   )
     .filter(Boolean)
     .join("\n\n");
-
-  // ADR-009: Inject project knowledge documents (grounding)
-  const workDir = projectRoot;
-  const groundingFiles = [
-    {
-      path: path.join(workDir, ".gwrk/architecture.md"),
-      tag: "architecture_target",
-    },
-    {
-      path: path.join(workDir, ".gwrk/ontology/domain.md"),
-      tag: "domain_ontology",
-    },
-    {
-      path: path.join(workDir, ".gwrk/perspective/hierarchy.md"),
-      tag: "information_hierarchy",
-    },
-    {
-      path: path.join(workDir, ".gwrk/perspective/ux-posture.md"),
-      tag: "ux_posture",
-    },
-    {
-      path: path.join(workDir, ".gwrk/decisions/index.md"),
-      tag: "architecture_decisions",
-    },
-  ];
-
-  let grounding = "";
-  let hasReadableArchitectureTarget = false;
-  for (const { path: filePath, tag } of groundingFiles) {
-    if (fs.existsSync(filePath)) {
-      try {
-        const content = fs.readFileSync(filePath, "utf-8");
-        grounding += `<${tag}>\n${content}\n</${tag}>\n\n`;
-        if (tag === "architecture_target") hasReadableArchitectureTarget = true;
-        if (tag === "architecture_decisions" && hasReadableArchitectureTarget) {
-          grounding +=
-            "<decision_authority>\nRead the complete applicable records and preserve every recorded status. Proposed targets require human ratification. They do not supersede Decided constraints. If a Proposed target conflicts with a Decided constraint, follow the Decided constraint and record the conflict in the plan. Resolve the conflict before implementation. Superseded records preserve history and lineage. Do not enforce their replaced constraints as current decisions.\n</decision_authority>\n\n";
-        }
-        if (!task.quiet) {
-          writeScopedStdout(`${DIM}  → Grounding: <${tag}> injected${RESET}\n`);
-        }
-      } catch (err) {
-        if (!task.quiet) {
-          writeScopedStdout(
-            `${DIM}  ⚠ Grounding: <${tag}> unreadable (${err instanceof Error ? err.message : err})${RESET}\n`,
-          );
-        }
-      }
-    }
-  }
 
   if (grounding) {
     stdinPayload = `${grounding}${stdinPayload}`;

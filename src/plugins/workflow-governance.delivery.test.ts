@@ -392,6 +392,8 @@ describe("governance prompt delivery", () => {
 
     for (const workflow of ["gwrk-specify", "gwrk-plan"]) {
       const captured = await captureDispatch(workflow, { type: "unknown" });
+      expect(captured.match(/<code_quality>/g), workflow).toHaveLength(1);
+      expect(captured.match(/<effective_policy>/g), workflow).toHaveLength(1);
       const codeQuality =
         captured.match(/<code_quality>([\s\S]*?)<\/code_quality>/)?.[1] ?? "";
       expect.soft(codeQuality, workflow).toContain(policies.all);

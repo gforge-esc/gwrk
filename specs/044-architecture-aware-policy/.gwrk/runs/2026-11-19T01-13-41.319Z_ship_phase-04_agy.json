@@ -1,0 +1,26 @@
+{
+  "runId": "2026-11-19T01:13:41.319Z_ship_p04",
+  "feature": "044-architecture-aware-policy",
+  "phase": "phase-04",
+  "command": "ship",
+  "agent": "agy",
+  "model": "unknown",
+  "usage": {
+    "inputTokens": 839353,
+    "outputTokens": 102631,
+    "totalTokens": 941984
+  },
+  "startedAt": "2026-11-19T01:13:41.319Z",
+  "finishedAt": "2026-11-19T01:45:27.250Z",
+  "durationS": 1906,
+  "exitCode": 0,
+  "attempt": 2,
+  "gateResult": "PASS",
+  "reviewVerdict": "GO",
+  "filesChanged": 3,
+  "linesAdded": 31,
+  "linesDeleted": 20,
+  "gitCommit": "7f4087b2a2a9262a039ba5361f7f4d8af76ea9cb",
+  "gitBranch": "feat/044-architecture-aware-policy",
+  "digest": []
+}

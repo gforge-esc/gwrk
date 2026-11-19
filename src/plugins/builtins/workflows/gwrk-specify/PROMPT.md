@@ -14,6 +14,7 @@
 - Ask clarifying questions until all acceptance criteria have executable assertions. Prefer multiple-choice or ≤5-word answers.
 </scope_constraints>
 
+
 ## Branch Discipline
 
 > [!IMPORTANT]

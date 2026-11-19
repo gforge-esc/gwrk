@@ -15,6 +15,53 @@ import type { ProjectProfile } from "./types.js";
 
 export type EnforcementScope = "define" | "implementation" | "review" | "all";
 
+const definitionWorkflows = new Set([
+  "gwrk-spec",
+  "gwrk-specify",
+  "gwrk-plan",
+  "gwrk-plan-to-tasks",
+  "gwrk-research",
+  "gwrk-research-technical",
+  "gwrk-research-jtbd",
+  "gwrk-research-ontology",
+  "gwrk-brief",
+  "gwrk-tasks",
+  "gwrk-adr",
+  "gwrk-adr-record",
+  "define",
+]);
+const reviewWorkflows = new Set([
+  "gwrk-review-code",
+  "gwrk-review-uat",
+  "review-code-cli",
+  "review-code-webapp",
+  "review-uat-cli",
+  "review-uat-webapp",
+]);
+export function resolveWorkflowPolicyScope(
+  workflow?: string,
+  taskType?: string,
+): Exclude<EnforcementScope, "all"> {
+  const name = workflow?.trim().toLowerCase() ?? "";
+  const type = taskType?.trim().toLowerCase() ?? "";
+  if (definitionWorkflows.has(name)) return "define";
+  if (reviewWorkflows.has(name)) return "review";
+  if (name === "gwrk-implement" || name === "implement")
+    return "implementation";
+  if (/^(?:define|definition)(?:$|[-_: ])/.test(type)) return "define";
+  if (/^(?:implement|implementation)(?:$|[-_: ])/.test(type) || type === "code")
+    return "implementation";
+  if (/(?:^|[-_])review(?:$|[-_])/.test(type)) return "review";
+  if (/(?:^|[-_])review(?:$|[-_])/.test(name)) return "review";
+  if (
+    /^(?:gwrk-(?:spec(?:ify)?|plan|research|brief|tasks|adr)|define)(?:$|[-_ ])/.test(
+      name || type,
+    )
+  )
+    return "define";
+  return "implementation";
+}
+
 export type DesignPrinciple = "functional-core" | "clean-code" | "tdd";
 
 export type PolicySourceLayer =
