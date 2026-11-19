@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import path from "node:path";
+import type Database from "better-sqlite3";
 import { recordGateResult } from "../db/gates.js";
 import { type TaskGateResult, runTaskGate } from "../utils/gate-exec.js";
 import { resolveProjectId } from "../utils/project-id.js";
@@ -12,10 +13,17 @@ import {
   saveTaskState,
 } from "../utils/state.js";
 
-interface ReconcileResult {
+export interface ReconcileResult {
   passed: number;
   failed: number;
   total: number;
+  failedTaskIds: string[];
+}
+
+export interface ReconcileGateOptions {
+  projectId?: string;
+  db?: Database.Database;
+  updateLocalTaskState?: boolean;
 }
 
 /**
@@ -29,16 +37,18 @@ export async function reconcileGates(
   projectPath: string,
   featureId: string,
   phaseId?: string,
+  options: ReconcileGateOptions = {},
+  env?: NodeJS.ProcessEnv,
 ): Promise<ReconcileResult> {
   const featureDir = path.join(projectPath, "specs", featureId);
-  const projectId = resolveProjectId(projectPath);
+  const projectId = options.projectId ?? resolveProjectId(projectPath);
 
   let taskState: TaskState;
   try {
     taskState = loadTaskState(featureDir);
   } catch {
     // No tasks.json — nothing to reconcile
-    return { passed: 0, failed: 0, total: 0 };
+    return { passed: 0, failed: 0, total: 0, failedTaskIds: [] };
   }
 
   const targetPhases = phaseId
@@ -48,6 +58,7 @@ export async function reconcileGates(
   let passed = 0;
   let failed = 0;
   let total = 0;
+  const failedTaskIds: string[] = [];
 
   // 026: a fenced Done-When compiles the SAME gateScript onto every task in a
   // phase. Run each distinct gate once so a Docker integration gate (e.g.
@@ -72,6 +83,7 @@ export async function reconcileGates(
         gateResult = await runTaskGate(task, {
           featureDir,
           cwd: projectPath,
+          env,
         });
         gateCache.set(task.gateScript, gateResult);
       }
@@ -88,16 +100,21 @@ export async function reconcileGates(
           output: gateResult.output.slice(0, 2000), // Truncate for storage
         },
         projectId,
+        options.db,
       );
 
       if (gateResult.passed) {
         passed++;
-        if (task.status !== "completed") {
+        if (
+          options.updateLocalTaskState !== false &&
+          task.status !== "completed"
+        ) {
           task.status = "completed";
           task.completedAt = new Date().toISOString();
         }
       } else {
         failed++;
+        failedTaskIds.push(task.id);
         // Don't reopen completed tasks — gate may have regressed
         // but we don't want to lose "done" state from a flaky gate
       }
@@ -105,7 +122,8 @@ export async function reconcileGates(
   }
 
   // Save updated task state
-  saveTaskState(featureDir, taskState);
+  if (options.updateLocalTaskState !== false)
+    saveTaskState(featureDir, taskState);
 
-  return { passed, failed, total };
+  return { passed, failed, total, failedTaskIds };
 }

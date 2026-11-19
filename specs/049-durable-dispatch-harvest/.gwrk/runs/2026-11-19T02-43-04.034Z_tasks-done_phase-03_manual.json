@@ -1,0 +1,19 @@
+{
+  "runId": "2026-11-19T02:43:04.034Z_tasks-done_T014",
+  "feature": "049-durable-dispatch-harvest",
+  "phase": "phase-03",
+  "command": "tasks-done",
+  "agent": "manual",
+  "model": "none",
+  "startedAt": "2026-11-19T02:43:04.034Z",
+  "finishedAt": "2026-11-19T02:43:24.983Z",
+  "durationS": 21,
+  "exitCode": 0,
+  "attempt": 1,
+  "filesChanged": 4,
+  "linesAdded": 7,
+  "linesDeleted": 8,
+  "gitCommit": "d4ec7725576c5fddd3386bf197d40f89f8c93818",
+  "gitBranch": "feat/049-durable-dispatch-harvest",
+  "digest": []
+}

@@ -127,6 +127,37 @@ describe("ClaudeAdapter", () => {
       });
     });
 
+    it("rejects an explicit terminal failure on process exit zero", () => {
+      const output = '{"type":"result","is_error":true,"result":"GO"}';
+      expect(adapter.parseResult(output, "", 0)).toMatchObject({
+        status: "failure",
+        exitCode: 1,
+        unwrappedStdout: "GO",
+      });
+      const limited = '{"type":"result","subtype":"error_max_turns"}';
+      expect(adapter.parseResult(limited, "", 0)).toMatchObject({
+        status: "failure",
+        exitCode: 1,
+        errorType: "turn_limit",
+      });
+    });
+
+    it("classifies the expired OAuth terminal as an authentication failure", () => {
+      const stdout = JSON.stringify({
+        type: "result",
+        subtype: "success",
+        is_error: true,
+        result:
+          "Failed to authenticate: OAuth session expired and could not be refreshed",
+      });
+      expect(adapter.parseResult(stdout, "", 1)).toMatchObject({
+        exitCode: 1,
+        status: "failure",
+        terminalStatus: "failure",
+        errorType: "auth_failure",
+      });
+    });
+
     it("registers a valid agent manifest in PluginLoader with matching capabilities to agy", async () => {
       const loader = new PluginLoader({ projectDir: process.cwd() });
       const claudePlugin = await loader.resolvePlugin("claude");
@@ -151,5 +182,25 @@ describe("ClaudeAdapter", () => {
       expect(await adapter.isAvailable()).toBe(true);
       expect(execCommand).toHaveBeenCalledWith("which", ["claude"]);
     });
+  });
+  it("forwards typed effort and records the observed model separately", async () => {
+    const adapter = new ClaudeAdapter();
+    const dispatch = await adapter.dispatch({
+      effort: "high",
+      prompt: "Run checks",
+    });
+    const [flag, value] = ["--effort", "high"];
+    const flagIndex = dispatch.args.indexOf(flag);
+    expect(flagIndex).toBeGreaterThanOrEqual(0);
+    expect(dispatch.args[flagIndex + 1]).toBe(value);
+    const stdout = [
+      { type: "system", subtype: "init", model: "claude-opus-5-5" },
+      { type: "result", subtype: "success", result: "ok" },
+    ]
+      .map((event) => JSON.stringify(event))
+      .join("\n");
+    expect(adapter.parseResult(stdout, "", 0).observedModel).toBe(
+      "claude-opus-5-5",
+    );
   });
 });

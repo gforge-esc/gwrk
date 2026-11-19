@@ -1,0 +1,19 @@
+{
+  "runId": "2026-11-18T16:58:45.300Z_tasks-done_T016",
+  "feature": "043-unified-routing-prompt-delivery",
+  "phase": "phase-04",
+  "command": "tasks-done",
+  "agent": "manual",
+  "model": "none",
+  "startedAt": "2026-11-18T16:58:45.300Z",
+  "finishedAt": "2026-11-18T16:58:58.743Z",
+  "durationS": 13,
+  "exitCode": 0,
+  "attempt": 1,
+  "filesChanged": 1,
+  "linesAdded": 3,
+  "linesDeleted": 2,
+  "gitCommit": "074db3c4ff92d8143cbfe81c7ae35c40e1e34dbb",
+  "gitBranch": "feat/043-unified-routing-prompt-delivery",
+  "digest": []
+}

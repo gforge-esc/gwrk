@@ -5,7 +5,21 @@
   "bin": {
     "gwrk": "./dist/cli.js"
   },
-  "files": ["dist/", "package.json", "README.md", "LICENSE"],
+  "files": [
+    "dist/",
+    "deploy/linux-runner/.env.example",
+    "deploy/linux-runner/README.md",
+    "deploy/linux-runner/credentials.sh",
+    "deploy/linux-runner/gwrk-runner.service",
+    "deploy/linux-runner/live-pilot-record.example.md",
+    "deploy/linux-runner/preflight.sh",
+    "deploy/linux-runner/run.sh",
+    "deploy/linux-runner/install-release.sh",
+    "deploy/linux-runner/rollback-release.sh",
+    "package.json",
+    "README.md",
+    "LICENSE"
+  ],
   "engines": {
     "node": ">=18.0.0"
   },
@@ -17,11 +31,11 @@
     "build": "tsc",
     "postbuild": "mkdir -p dist/db/migrations && cp src/db/migrations/*.sql dist/db/migrations/ && cp src/slack-manifest.yml dist/ && mkdir -p dist/plugins/builtins && cp -r src/plugins/builtins/* dist/plugins/builtins/ && find dist/plugins/builtins -name '*.ts' ! -name '*.d.ts' -delete",
     "test": "vitest run",
-    "test:ci": "GWRK_SKIP_INTEGRATION=1 vitest run",
+    "test:ci": "vitest run",
     "test:coverage": "vitest run --coverage",
     "test:watch": "vitest watch",
     "test:report": "tsx scripts/dev/test-report.ts",
-    "lint": "biome check",
+    "lint": "node scripts/lint.mjs",
     "format": "biome format --write"
   },
   "dependencies": {

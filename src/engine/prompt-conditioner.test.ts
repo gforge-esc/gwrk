@@ -45,26 +45,31 @@ describe("FR-033: Project-Aware Prompt Conditioning", () => {
     expect(conditioned).toContain('<layout type="monorepo" />');
   });
 
-  it("TR-031.2: gwrk-native profile preserves ADR-004/Commander.js sections with whitespace", () => {
-    const prompt = "Gated section:\n[type: gwrk-native]\nADR-004 logic\n[/type]";
+  it("TR-031.2: verified GWRK profile preserves both native guards and whitespace", () => {
+    const prompt =
+      "Gated section:\n[type: gwrk-native]\nADR-004 logic\n[/type]\n[type: gwrk-cli]\nCommander.js guidance\n[/type]";
     const profile = {
       type: "gwrk-native",
+      _isGwrk: true,
     };
 
     const conditioned = conditionPrompt(prompt, profile);
     expect(conditioned).toContain("Gated section:\n\nADR-004 logic");
+    expect(conditioned).toContain("Commander.js guidance");
   });
 
-  it("TR-031.3: non-gwrk profile omits gwrk-native sections", () => {
-    const prompt = "Gated section: [type: gwrk-native] ADR-004 logic [/type] General info.";
-    const profile = {
-      type: "generic",
-    };
+  it.each(["generic", "gwrk-native", "gwrk-cli"])(
+    "TR-031.3: unverified %s profile omits both native guards",
+    (type) => {
+      const prompt =
+        "Gated section: [type: gwrk-native] ADR-004 logic [/type] [type: gwrk-cli] Commander.js guidance [/type] General info.";
 
-    const conditioned = conditionPrompt(prompt, profile);
-    expect(conditioned).not.toContain("ADR-004 logic");
-    expect(conditioned).toContain("General info.");
-  });
+      const conditioned = conditionPrompt(prompt, { type });
+      expect(conditioned).not.toContain("ADR-004 logic");
+      expect(conditioned).not.toContain("Commander.js guidance");
+      expect(conditioned).toContain("General info.");
+    },
+  );
 
   it("TR-031.4: omits <project_profile> if profile is unknown", () => {
     const prompt = "Test prompt";
@@ -101,5 +106,64 @@ describe("FR-034: PROMPT.md Refactoring Guards", () => {
     }
     
     expect(totalUngatedMatches, "Ungated gwrk-specific terms found in PROMPT.md files").toBe(0);
+  });
+});
+
+
+describe("FR-001: architecture metadata in prompts (044 phase p01)", () => {
+  it.each(["nodejs", "gwrk-native", "polyglot-monorepo"])("TR-006: renders design inside project context for %s", (type) => {
+    const design = {
+      architecture: "hexagonal-functional",
+      principles: ["functional-core", "clean-code", "tdd"],
+      templateVersion: "1.0.0",
+    };
+    const profile = { type, design, stack: { language: "TypeScript" } };
+    const result = conditionPrompt("Inspect ports.", profile);
+    const context = result.match(/<project_context\b[^>]*>([\s\S]*?)<\/project_context>/)?.[1];
+    expect(context).toBeDefined();
+    const block = context?.match(/<design\b[^>]*>[\s\S]*?<\/design>/)?.[0];
+    expect(block).toBeDefined();
+    for (const value of [design.architecture, ...design.principles]) expect(block).toContain(value);
+    expect(result.match(/<design\b/g)).toHaveLength(1);
+    expect(result).toContain("Inspect ports.");
+  });
+
+  it.each([
+    ["React & Vite", "React &amp; Vite"],
+    ['React & "Vite"', "React &amp; &quot;Vite&quot;"],
+  ])("escapes framework %s inside project context", (framework, escaped) => {
+    const result = conditionPrompt("Inspect ports.", {
+      type: "nodejs",
+      design: { architecture: "layered", principles: [], templateVersion: "1.0.0" },
+      stack: { framework },
+    });
+    const context = result.match(/<project_context>([\s\S]*?)<\/project_context>/)?.[1];
+    expect(context).toContain(`framework="${escaped}"`);
+    expect(context).toContain("<architecture>layered</architecture>");
+  });
+
+  it("TR-006: does not leak selected design into a later unconfigured prompt", () => {
+    const selected = { type: "nodejs", design: { architecture: "layered", principles: [], templateVersion: "1.0.0" } };
+    const withDesign = conditionPrompt("Selected", selected);
+    const withoutDesign = conditionPrompt("Legacy", { type: "nodejs" });
+    expect(withoutDesign).toBe('<project_profile type="nodejs">\n</project_profile>\n\nLegacy');
+    expect(withoutDesign).not.toMatch(/<design\b/);
+    expect(withDesign.match(/<design\b[^>]*>[\s\S]*?<\/design>/)?.[0]).toContain("layered");
+  });
+
+  it("renders escaped design metadata when the project type is unknown", () => {
+    const profile = {
+      type: "unknown",
+      design: {
+        architecture: "Ports & <adapters>",
+        principles: [],
+        templateVersion: "1.0.0" as const,
+      },
+    };
+    const prompt = "[type: generic]Inspect ports.[/type]";
+    const result = conditionPrompt(prompt, profile);
+    expect(result).toContain("<architecture>Ports &amp; &lt;adapters&gt;</architecture>");
+    expect(result).toContain("</design>\n</project_context>");
+    expect(result.endsWith(prompt)).toBe(true);
   });
 });

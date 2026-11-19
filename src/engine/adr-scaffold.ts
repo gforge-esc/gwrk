@@ -4,6 +4,10 @@
 
 import fs from "node:fs/promises";
 import path from "node:path";
+import {
+  resolveAdrPathInCheckout,
+  resolveIndexDestination,
+} from "../adapters/filesystem/adr-checkout.js";
 import { loadConfig } from "../utils/config.js";
 
 /**
@@ -56,6 +60,7 @@ export interface AdrTemplateInput {
 }
 
 export interface AdrScaffoldOptions {
+  verifiedCheckoutRoot?: string;
   /** Where the root walk starts. Defaults to the process working directory. */
   cwd?: string;
 }
@@ -386,6 +391,32 @@ export function todayLocal(now: Date = new Date()): string {
  * The claim is released in a `finally`: the happy path leaves no litter, and a
  * crash leaves one visible `.ADR-NNN.claim` that costs the corpus one number.
  */
+export async function resolveAdrAuthoringScope(
+  cwd: string,
+  verifiedCheckoutRoot: string | undefined = process.env.GWRK_ADR_CHECKOUT_ROOT,
+): Promise<{
+  projectRoot: string;
+  decisionsDir: string;
+  verifiedCheckoutRoot?: string;
+}> {
+  let projectRoot = await findProjectRoot(cwd);
+  let decisionsDir = await resolveDecisionsDir(projectRoot);
+  if (!verifiedCheckoutRoot) return { projectRoot, decisionsDir };
+  const checkout = await fs.realpath(verifiedCheckoutRoot);
+  projectRoot = await resolveAdrPathInCheckout(checkout, projectRoot);
+  decisionsDir = await resolveAdrPathInCheckout(
+    checkout,
+    decisionsDir,
+    resolveIndexDestination,
+  );
+  await resolveAdrPathInCheckout(
+    checkout,
+    path.join(projectRoot, ".gwrk", "decisions", "index.md"),
+    resolveIndexDestination,
+  );
+  return { projectRoot, decisionsDir, verifiedCheckoutRoot: checkout };
+}
+
 export async function scaffold(
   title: string,
   opts: AdrScaffoldOptions = {},
@@ -395,8 +426,10 @@ export async function scaffold(
     throw new Error('Title is required: gwrk define adr "<title>"');
   }
 
-  const projectRoot = await findProjectRoot(opts.cwd ?? process.cwd());
-  const decisionsDir = await resolveDecisionsDir(projectRoot);
+  const { projectRoot, decisionsDir } = await resolveAdrAuthoringScope(
+    opts.cwd ?? process.cwd(),
+    opts.verifiedCheckoutRoot,
+  );
   const number = await allocateNumber(decisionsDir);
   const id = `ADR-${number}`;
 

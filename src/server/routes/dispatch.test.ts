@@ -2,80 +2,59 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { execSync } from "node:child_process";
-import fs from "node:fs";
-import os from "node:os";
-import path from "node:path";
+import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { GwrkConfig } from "../../utils/config.js";
-import * as slackClient from "../../utils/slack-client.js";
-import { startServer } from "../index.js";
-import { removePid } from "../pid.js";
+import {
+  type ServerFixture,
+  createServerFixture,
+  fixtureGit,
+} from "../../../tests/helpers/server-fixture.js";
+import * as gwrkPaths from "../../adapters/config/paths.js";
+import * as instanceLocks from "../../adapters/server/instance-lock.js";
+import { listRuns } from "../../db/runs.js";
+import { ShipOrchestrator } from "../../engine/ship-orchestrator.js";
+import { HarvestWatcher } from "../harvest-watcher.js";
+import { SystemMonitor } from "../monitor.js";
 
-// Mock dependencies
-vi.mock("dockerode");
-vi.mock("../slack-notify.js");
-vi.mock("../../utils/slack-client.js", () => ({
-  loadSlackConfig: vi.fn().mockReturnValue(null),
+vi.mock("../slack-notify.js", () => ({
+  notifySlack: vi.fn().mockResolvedValue(undefined),
 }));
-vi.mock("../docker.js", () => ({
-  ensureDocker: vi.fn().mockResolvedValue({ installed: true, running: true }),
+vi.mock("../../engine/ship-orchestrator.js", () => ({
+  ShipOrchestrator: vi.fn(),
 }));
-
-const mockConfig: GwrkConfig = {
-  project: { name: "test" },
-  agents: { define: "gemini", implement: "codex-cloud" },
-  server: {
-    githubWebhookSecret: "mock_secret",
-    port: 0,
-    host: "localhost",
-    heartbeatIntervalMs: 1000,
-    networkCheckIntervalMs: 1000,
+vi.mock("../../db/index.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../db/index.js")>()),
+  getDb: () => {
+    throw new Error("Unexpected access to the default SQLite connection");
   },
-  parallelism: {
-    local: { maxCpu: 80, maxMem: 80, minDiskGb: 10, maxClones: 2 },
-    cloud: { maxConcurrent: 10 },
-  },
-};
+}));
 
 describe("dispatch routes", () => {
-  let tempDir: string;
-  let oldCwd: string;
+  let fixture: ServerFixture;
 
-  beforeEach(() => {
-    removePid();
-    tempDir = fs.mkdtempSync(
-      path.join(os.tmpdir(), "gwrk-dispatch-route-test-"),
+  beforeEach(async () => {
+    vi.spyOn(SystemMonitor.prototype, "isThrottled").mockReturnValue(false);
+    vi.mocked(ShipOrchestrator).mockImplementation(
+      () =>
+        ({
+          run: async () => 0,
+          getResult: () => ({ prNumber: 42 }),
+        }) as ShipOrchestrator,
     );
-    oldCwd = process.cwd();
-    process.chdir(tempDir);
-
-    // Create necessary dirs for context compilation
-    fs.mkdirSync(".gwrk/rules", { recursive: true });
-    fs.mkdirSync("specs/feat-1/.gwrk", { recursive: true });
-    fs.writeFileSync("specs/feat-1/spec.md", "spec");
-    fs.writeFileSync("specs/feat-1/plan.md", "plan");
-    fs.writeFileSync("specs/feat-1/.gwrk/tasks.json", '{"tasks":[]}');
-
-    // Initialize git repo in tempDir
-    execSync("git init", { cwd: tempDir, stdio: "ignore" });
-    execSync("git checkout -b feature/feat-1-wip", {
-      cwd: tempDir,
-      stdio: "ignore",
-    });
-    fs.writeFileSync("README.md", "test");
-    execSync("git add .", { cwd: tempDir, stdio: "ignore" });
-    execSync('git commit -m "init"', { cwd: tempDir, stdio: "ignore" });
+    fixture = await createServerFixture("routes", { routes: ["dispatch"] });
   });
 
-  afterEach(() => {
-    process.chdir(oldCwd);
-    fs.rmSync(tempDir, { recursive: true, force: true });
-    removePid();
+  afterEach(async () => {
+    try {
+      await fixture?.close();
+    } finally {
+      vi.restoreAllMocks();
+      vi.unstubAllEnvs();
+    }
   });
 
   it("should enqueue a dispatch via POST /api/dispatch", async () => {
-    const server = await startServer(mockConfig, { handleSignals: false });
+    const server = fixture.app;
 
     const response = await server.inject({
       method: "POST",
@@ -91,12 +70,10 @@ describe("dispatch routes", () => {
     expect(json.featureId).toBe("feat-1");
     expect(json.phaseId).toBe("phase-1");
     expect(json.status).toBeDefined();
-
-    await server.close();
   });
 
   it("should return the queue status via GET /api/dispatch/queue", async () => {
-    const server = await startServer(mockConfig, { handleSignals: false });
+    const server = fixture.app;
 
     const response = await server.inject({
       method: "GET",
@@ -107,12 +84,71 @@ describe("dispatch routes", () => {
     const json = response.json();
     expect(json.active).toBeDefined();
     expect(json.queued).toBeDefined();
-
-    await server.close();
   });
 
+  it.each([
+    {
+      hosted: true,
+      request: { backend: "unapproved-fixture", taskIds: ["T1", "T2"] },
+      taskIds: ["T1", "T2"],
+      backend: "fixture",
+    },
+    {
+      hosted: true,
+      request: { taskId: "T1" },
+      taskIds: ["T1"],
+      backend: "fixture",
+    },
+    {
+      hosted: false,
+      request: { backend: "explicit-fixture", taskId: "T1" },
+      taskIds: ["T1"],
+      backend: "explicit-fixture",
+    },
+  ])(
+    "keeps hosted=$hosted backend selection scoped through server startup",
+    async ({ hosted, request, taskIds, backend }) => {
+      const priorFixture = fixture;
+      vi.stubEnv("GWRK_APPROVED_AGENT", "fixture");
+      vi.stubEnv("GWRK_RUNTIME_DIR", join(priorFixture.projectRoot, "runtime"));
+      vi.spyOn(gwrkPaths, "usesHostedRuntime").mockReturnValue(hosted);
+      vi.spyOn(HarvestWatcher.prototype, "runCheck").mockResolvedValue(
+        undefined,
+      );
+      vi.spyOn(SystemMonitor.prototype, "isThrottled").mockReturnValue(true);
+      const lock = { pid: process.pid, lockPath: "fixture", release: vi.fn() };
+      vi.spyOn(instanceLocks, "acquireInstanceLock").mockReturnValue(lock);
+      vi.spyOn(instanceLocks, "acquireLedgerLock").mockReturnValue(lock);
+      try {
+        fixture = await createServerFixture("listen");
+        const response = await fixture.app.inject({
+          method: "POST",
+          url: "/api/dispatch",
+          payload: { featureId: "feat-1", phaseId: "phase-1", ...request },
+        });
+        expect(response.statusCode).toBe(201);
+        if (hosted) {
+          expect(instanceLocks.acquireLedgerLock).toHaveBeenCalledWith(
+            fixture.db.name,
+            process.pid,
+          );
+        }
+        const record = response.json();
+        expect(record.backend).toBe(backend);
+        expect(record.tasks).toMatchObject(
+          taskIds.map((id) => ({ id, backend })),
+        );
+        const queue = await fixture.app.inject("/api/dispatch/queue");
+        expect(queue.statusCode).toBe(200);
+        expect(queue.json()).toMatchObject({ active: [], queued: [record] });
+      } finally {
+        await priorFixture.close();
+      }
+    },
+  );
+
   it("should return a specific dispatch via GET /api/dispatch/:feature/:phase", async () => {
-    const server = await startServer(mockConfig, { handleSignals: false });
+    const server = fixture.app;
 
     // First enqueue it
     await server.inject({
@@ -133,7 +169,46 @@ describe("dispatch routes", () => {
     const json = response.json();
     expect(json.featureId).toBe("feat-1");
     expect(json.phaseId).toBe("phase-1");
-
-    await server.close();
   });
+  it.each([
+    { exitCode: 0, status: "completed" },
+    { exitCode: 1, status: "failed" },
+  ])(
+    "persists a $status dispatch only in its fixture",
+    async ({ exitCode, status }) => {
+      vi.mocked(ShipOrchestrator).mockImplementationOnce(
+        () =>
+          ({
+            run: async () => exitCode,
+            getResult: () => ({}),
+          }) as ShipOrchestrator,
+      );
+      const response = await fixture.app.inject({
+        method: "POST",
+        url: "/api/dispatch",
+        payload: { featureId: "feat-1", phaseId: "phase-1" },
+      });
+      expect(response.statusCode).toBe(201);
+      const { id } = response.json();
+
+      await vi.waitFor(() => {
+        expect(fixture.journal().at(-1)).toMatchObject({ id, status });
+      });
+      expect(listRuns("feat-1", fixture.projectId, fixture.db)).toEqual([
+        expect.objectContaining({
+          exit_code: exitCode,
+          finished_at: expect.any(String),
+        }),
+      ]);
+      expect(
+        fixtureGit(
+          fixture.projectRoot,
+          "worktree",
+          "list",
+          "--porcelain",
+        ).match(/^worktree /gm),
+      ).toHaveLength(1);
+      expect(fixtureGit(fixture.projectRoot, "remote")).toBe("");
+    },
+  );
 });

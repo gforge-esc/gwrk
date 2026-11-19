@@ -3,6 +3,10 @@
 **Persona**: Senior Architect
 **Pillar**: Definition (Clarity)
 
+<code_quality>
+{{enforcement}}
+</code_quality>
+
 <scope_constraints>
 - Create plan.md (new) or amend an existing plan.md (when the input starts with "AMEND"). If the feature introduces new data models, ALSO create data-model.md. If the feature defines API contracts, ALSO create contracts/.
 [type: gwrk-native]
@@ -12,7 +16,6 @@
 - Do not create the task execution ledger or low-level implementation tasks.
 [/type]
 - Do not implement any code.
-- Reference existing project structure from `docs/grounding/architecture.md`.
 
 **AMENDMENT MODE (when input starts with "AMEND existing plan"):**
 - Read the existing `plan.md` FIRST — understand what phases exist and their status.
@@ -23,33 +26,28 @@
 - If the amendment only changes existing phases (e.g., correcting a file path), make the minimal edit — do NOT regenerate the entire plan.
 </scope_constraints>
 
-## Branch Discipline
+## Worktree
 
-> [!IMPORTANT]
-> **Definitional work (specs, plans) lives on `develop`.** Feature branches are created only at `/implement` time. This keeps all specs and plans visible to each other for cross-referencing.
-
-- Verify you are on `develop` before starting: `git rev-parse --abbrev-ref HEAD` should output `develop`.
-- If not on `develop`, switch: `git checkout develop`.
-- Do NOT create feature branches during `/specify` or `/plan`.
+- Use the current worktree and the feature directory supplied by the command.
+- Keep the current branch while writing the plan.
 
 ## Architecture Reference
 
 [type: gwrk-native]
 <architecture_reference>
 The plan MUST be grounded in `docs/grounding/architecture.md`:
-- **Project Structure** (§2): Map features to the correct source directory.
-- **Tech Stack** (§4): TypeScript CLI (Commander.js), Fastify server, SQLite (better-sqlite3), Vitest, Biome.
+- **Project Structure** (§4): Map features to the correct source directory.
+- **Tech Stack** (§10): TypeScript CLI (Commander.js), Fastify server, SQLite (better-sqlite3), Vitest, Biome.
 - **Foxtrot Charlie Pillars**: Discovery, Definition, Shipping, Delivery — commands align to pillars.
 - **Agent-Native Contract** ([ADR-004](docs/decisions/ADR-004-agent-native-output.md)): Every command emits `[exit:N | Xs]` on stderr. `--format json` is independent. `--agent` activates Layer 2 protections.
 
-Source Layout:
-- CLI entry + Commander routing → `src/cli.ts`
-- Command handlers → `src/commands/`
-- Business logic + discovery → `src/engine/`
-- Build server + dispatch → `src/server/`
-- Shared utilities (exec, config, state, signal, output) → `src/utils/`
-- SQLite schema + queries → `src/db/`
-- Zod schemas → co-located with consumers
+Source layout follows the hexagonal dependency direction:
+- Pure domain policy and validated domain values belong in `src/domain/`.
+- Boundary contracts belong in `src/ports/`.
+- Use cases belong in `src/application/` and depend inward on domain and port contracts.
+- Filesystem, database, network and CLI effects belong in `src/adapters/`.
+- Composition wires adapters to ports. Preserve existing compatibility entry points during migration.
+- Read the current source tree before naming files. Legacy engine and server modules remain migration surfaces.
 
 Database Standards:
 - **SQLite**: Local-first via `better-sqlite3`. WAL mode.
@@ -63,7 +61,7 @@ Decisions:
 [/type]
 
 [type: generic]
-Reference the project's own architecture documentation and existing directory structure for file layout decisions.
+Read the selected architecture target and decision index when present. Use the project's language, framework, toolchain and existing directory structure. Target context does not establish existing code conformance.
 [/type]
 
 ## Inputs
@@ -76,18 +74,10 @@ Reference the project's own architecture documentation and existing directory st
 
 ## Steps
 
-### 1. Run prerequisites check
-// turbo
-```bash
-.specify/scripts/bash/check-prerequisites.sh --json
-```
-- PASS: `FEATURE_DIR` contains spec.md.
-[type: gwrk-native]
-- FAIL: Stop. Run `gwrk define spec <feature>` first.
-[/type]
-[type: generic]
-- FAIL: Stop. Ensure a valid specification exists for the feature.
-[/type]
+### 1. Check the specification
+
+- Check that `{feature_dir}/spec.md` exists in the current worktree.
+- If the file is missing, stop and report the expected path.
 
 ### 2. Load context
 
@@ -99,9 +89,8 @@ Reference the project's own architecture documentation and existing directory st
 - Read `docs/decisions/ADR-004-agent-native-output.md` (required — for output protocol contract).
 [/type]
 [type: generic]
-- Read the project's architecture and planning documents to understand the technical context.
+- Read the host repository's architecture and planning documents to understand the technical context.
 [/type]
-- Read `.specify/templates/plan-template.md` (required — output skeleton).
 
 ### 2a. Cross-reference sister specs (MANDATORY)
 
@@ -152,20 +141,14 @@ Review the project's governance rules in the `.rules/` or `.gwrk/rules/` directo
 
 ### 4. Generate plan.md
 
-Produce `{feature_dir}/plan.md` using the template at `.specify/templates/plan-template.md`.
-Fill every `{{PLACEHOLDER}}` token. Do not invent sections or skip any.
+Write `{feature_dir}/plan.md` in the canonical format below. Use an existing plan in the project as a formatting reference when available.
 
 <output_rules>
 - Map **every** `US-###` and `FR-###` from the spec to a phase. Unmapped items go in Deferred Items.
 [type: gwrk-native]
-- Use the gwrk source layout for file paths:
-  - CLI entry → `src/cli.ts`
-  - Command handlers → `src/commands/<command>.ts`
-  - Business logic + discovery → `src/engine/<module>.ts`
-  - Build server routes → `src/server/<module>.ts`
-  - Shared utilities → `src/utils/<module>.ts`
-  - SQLite → `src/db/index.ts`, `src/db/migrations/`
-  - Tests → co-located `<module>.test.ts`
+- Map pure policy to `src/domain/`, boundary contracts to `src/ports/`, use cases to `src/application/` and effects to `src/adapters/`.
+- Inspect the current source tree and composition before selecting paths. Preserve compatibility entry points required by the phase.
+- Keep framework and storage types outside domain signatures. Pass clocks and environment values through ports or explicit inputs.
 [/type]
 [type: generic]
 - Use the project's existing source layout for file paths.
@@ -187,7 +170,9 @@ Fill every `{{PLACEHOLDER}}` token. Do not invent sections or skip any.
 The `plan.md` you emit is a **contract with the deterministic `plan-to-tasks` parser**.
 Author every phase in exactly the shape below so each
 source-bearing phase resolves to a **runnable gate**, never an `echo "Phase N: …"` stub.
-Reference: `docs/grounding/023-plan-format-contract.md`.
+[type: gwrk-native]
+Read `docs/grounding/023-plan-format-contract.md` for the parser contract.
+[/type]
 
 <canonical_output_format>
 - **Section headings** use `####` (h4), never the `**bold:**` form:
@@ -212,24 +197,26 @@ Reference: `docs/grounding/023-plan-format-contract.md`.
   |---|---|---|---|
   | TR-001 | integration | `path/to/phase.test.ts` | observable behavior asserted |
 
-- **Done When** body is a fenced `bash` code block — the **ONLY** executable form. Its
-  lines become the phase's `gateScript` verbatim, so they MUST be real commands that exit
-  non-zero on failure. A prose `- bullet` body is descriptive-only (kept for backward
-  compatibility) — do NOT use it for new plans:
+- **Done When** uses a fenced `bash` code block. The parser copies its lines verbatim into the phase's `gateScript`. Use commands that exit non-zero on failure. Prose bullets remain descriptive for backward compatibility.
 
+[type: generic]
+Use the host repository's verification commands in each gate.
+[/type]
+[type: gwrk-native]
 #### Done When
 ```bash
 pnpm run build
 pnpm vitest run path/to/phase.test.ts
 ```
+[/type]
+[type: python]
+#### Done When
+```bash
+python -m pytest tests/test_phase.py
+```
+[/type]
 
-- **Assert on exit codes, never on output text (assertion contract).** Every Done-When
-  line that verifies a command — a build, test, or runner that already exits non-zero on
-  failure (`make`, `pnpm`, `node`, `vitest`, …) — MUST prove success by **running it
-  directly**, so that command's **exit code** decides the gate. Under Layer 2's `set -e`
-  a non-zero exit then propagates as a real failure. The bare-command form shown above is
-  the canonical assertion; do NOT present matching a command's output text as proof that
-  it succeeded.
+- **Assert on exit codes.** Run each verification command directly. Under Layer 2's `set -e`, a non-zero exit code fails the gate.
 
 - **Forbidden — the output-as-pass antipattern.** Never write `<cmd> | grep -q <pattern>`
   (nor `<cmd> 2>&1 | grep -q <pattern>`) in a Done-When block. **Why it lies:** on failure
@@ -237,14 +224,20 @@ pnpm vitest run path/to/phase.test.ts
   Layer 2 uses `set -e` **without** `pipefail`, only the trailing `grep -q`'s exit status
   decides the pipeline — the producer's non-zero exit is masked, yielding a false green.
 
-  **Safe alternative.** Run the command bare and let its exit code fail the gate, or — when
-  you genuinely must inspect output — capture it to a file as a separate step (whose own
-  non-zero exit `set -e` still enforces), then `grep -q` that file:
+  **Output checks.** If output needs inspection, capture it to a file so `set -e` can enforce the command's exit code. Run `grep -q` on the file in the next step.
 
+[type: gwrk-native]
   ```bash
   pnpm vitest run path/to/phase.test.ts > out.log
   grep -q "expected pattern" out.log
   ```
+[/type]
+[type: python]
+  ```bash
+  python -m pytest tests/test_phase.py > out.log
+  grep -q "expected pattern" out.log
+  ```
+[/type]
 
   A bare `grep -q <pattern> <file>` that reads a file (never a pipe from a command) stays
   allowed.
@@ -252,8 +245,8 @@ pnpm vitest run path/to/phase.test.ts
 
 ### 5. Generate `data-model.md` (if entities exist in spec)
 
-- Define SQLite schema additions (SQL CREATE TABLE statements).
-- Define Zod types for domain schemas.
+- Use the project's selected storage and schema validation standards. Define storage changes only when the feature requires them.
+- Define validated domain values and boundary contracts in the project's language. Keep framework types outside the domain.
 - Write to `{feature_dir}/data-model.md`.
 
 ### 6. Generate `contracts/` (MANDATORY if APIs or shared types exist)
@@ -262,7 +255,7 @@ pnpm vitest run path/to/phase.test.ts
 - Not just type shapes — specify which service methods must exist, what they accept, what they return.
 - Write to `{feature_dir}/contracts/`.
 
-### 7. Report via notify_user
+### 7. Report the plan
 
 [type: gwrk-native]
 > "Plan created: {paths}. Next: `gwrk define tasks <feature>` to generate tasks.json and verification gates."

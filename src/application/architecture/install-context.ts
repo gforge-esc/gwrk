@@ -7,6 +7,7 @@ import {
   contextMarkdown,
   decisionMarkdown,
 } from "../../domain/architecture-context.js";
+import { composeEffectivePolicy } from "../../domain/policy-selection.js";
 import type { ContextFilesPort } from "../../ports/context-files-port.js";
 
 interface ContextManifest {
@@ -26,14 +27,30 @@ const END = "<!-- gwrk:architecture:end -->";
 export async function installContext(
   files: ContextFilesPort,
   input: ContextInput,
+  stack: Pick<ContextInput, "language" | "framework"> = {
+    language: input.language,
+    framework: input.framework,
+  },
 ): Promise<ContextInstallation> {
+  const { effectivePolicy, ...selection } = input;
+  const policy =
+    effectivePolicy ??
+    composeEffectivePolicy({
+      profile: {
+        type: "app",
+        stack,
+        design: input.design,
+      },
+      candidates: [],
+    });
   const manifestPath = ".gwrk/context-manifest.json";
   const prior = await files.read(manifestPath);
   const manifest: ContextManifest = prior
     ? JSON.parse(prior)
     : { version: 1, files: {}, decisions: {} };
   const conflicts: string[] = [];
-  const key = JSON.stringify(input);
+  // Keep the original selection as the decision identity when detection changes.
+  const key = JSON.stringify(selection);
   let decisions = manifest.decisions[key];
   if (!decisions) {
     const entries = await files.list(input.decisionsDir);
@@ -87,7 +104,13 @@ export async function installContext(
     await files.write(file, next);
     manifest.files[file] = files.hash(content);
   }
-  await managed(".gwrk/architecture.md", contextMarkdown(input, decisions));
+  await managed(
+    ".gwrk/architecture.md",
+    contextMarkdown(
+      { ...selection, ...stack, effectivePolicy: policy },
+      decisions,
+    ),
+  );
   const instruction = `${BEGIN}\nRead .gwrk/architecture.md and .gwrk/decisions/index.md before design or implementation.\nThe selected architecture is a target. Initialization does not assess code conformance.\nUse the gwrk-assess skill for explicit assessment or run gwrk assess.\n${END}`;
   for (const file of ["AGENTS.md", "CLAUDE.md", "GEMINI.md"])
     await managed(file, instruction, true);

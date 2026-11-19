@@ -7,6 +7,7 @@ import crypto from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { Command } from "commander";
+import { writeScopedStdout } from "../adapters/cli/output-scope.js";
 import {
   renderAssessment,
   renderFeature,
@@ -134,7 +135,11 @@ export async function assessProject(options: AssessOptions = {}) {
           ).parseResult(recordedText, "", 0),
           logPath: path.resolve(root, options.fromLog as string),
         };
-  if (recordedResult && recordedResult.status !== "success")
+  if (
+    recordedResult &&
+    (recordedResult.terminalStatus !== "success" ||
+      recordedResult.status !== "success")
+  )
     throw new CommandError(
       "Recorded output has no verified successful terminal status.",
     );
@@ -229,23 +234,26 @@ export async function assessProject(options: AssessOptions = {}) {
     summary: result.summary,
   };
 }
-export const assessCommand = new Command("assess")
-  .description(
-    "Assess code against the declared architecture and propose feature specs",
-  )
-  .option("--output <directory>", "New project-local assessment directory")
-  .option("--refs <file...>", "Prior gap maps to preserve and reconcile")
-  .option("--backend <name>", "Override configured definition backend")
-  .option("--model <name>", "Override configured definition model")
-  .option(
-    "--from-log <file>",
-    "Recover a recorded agent response without another model call",
-  )
-  .option("--target-snapshot <file>", "Target used by a recorded response")
-  .option("--print", "Print assessment input without a model call")
-  .action(async (options) =>
-    withSignal("assess", async () => {
-      const result = await assessProject(options);
-      process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
-    }),
-  );
+export const createAssessCommand = () =>
+  new Command("assess")
+    .description(
+      "Assess code against the declared architecture and propose feature specs",
+    )
+    .option("--output <directory>", "New project-local assessment directory")
+    .option("--refs <file...>", "Prior gap maps to preserve and reconcile")
+    .option("--backend <name>", "Override configured definition backend")
+    .option("--model <name>", "Override configured definition model")
+    .option(
+      "--from-log <file>",
+      "Recover a recorded agent response without another model call",
+    )
+    .option("--target-snapshot <file>", "Target used by a recorded response")
+    .option("--print", "Print assessment input without a model call")
+    .action(async (options) =>
+      withSignal("assess", async () => {
+        const result = await assessProject(options);
+        writeScopedStdout(`${JSON.stringify(result, null, 2)}\n`);
+      }),
+    );
+
+export const assessCommand = createAssessCommand();

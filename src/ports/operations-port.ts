@@ -1,0 +1,529 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
+import type {
+  DispatchAcceptanceRequest,
+  DispatchAttemptStatus,
+  DispatchReceipt,
+  DurableDispatchOperation,
+  LeaseFence,
+  LeaseRejectionCode,
+  WorkerRecoveryEvidence,
+} from "../domain/durable-dispatch.js";
+import type {
+  HarvestCandidateInput,
+  HarvestOperationStatus,
+  HarvestSlackRecipient,
+  HarvestStageName,
+  HarvestStagePlanEntry,
+  HarvestStageReceipt,
+  HarvestStageStatus,
+  HarvestTerminalEvent,
+  OutboxStatus,
+} from "../domain/durable-harvest.js";
+import type {
+  DeliveryRecipient,
+  EnrolledProject,
+} from "../domain/project-registry.js";
+
+export interface ClockPort {
+  nowIso(): string;
+  nowMs(): number;
+}
+
+export interface HarvestPullRequestFact {
+  repoSlug: string;
+  /** Read the head repository from GitHub. Use null when it is unknown. */
+  headRepoSlug: string | null;
+  prNumber: number;
+  prUrl: string;
+  state: "OPEN" | "CLOSED" | "MERGED";
+  merged: boolean;
+  baseBranch: string;
+  headBranch: string;
+  headSha: string | null;
+  mergeCommitSha: string | null;
+  mergedAt: string | null;
+  closedAt: string | null;
+}
+
+export interface GitHubHarvestPort {
+  verifyWebhookSignature(
+    rawBody: Buffer,
+    signatureHeader: string | undefined,
+    secret: string,
+  ): boolean;
+  listTerminalPullRequests(input: {
+    cwd: string;
+    repoSlug: string;
+    baseBranch: string;
+    sinceIso?: string | null;
+  }): Promise<HarvestPullRequestFact[]>;
+  getPullRequest(input: {
+    cwd: string;
+    repoSlug: string;
+    prNumber: number;
+  }): Promise<HarvestPullRequestFact | null>;
+}
+
+export interface WorkerExecutionPort {
+  /**
+   * Set a pull request's evidence operation ID only after verifying its repository.
+   * Require the operation-specific head in that repository or a persisted pull request link.
+   * Report incomplete or failed lookups as unavailable, even if they return a candidate.
+   */
+  inspectRecoveredWork(input: {
+    operationId: string;
+    workKey: string;
+    projectRoot: string;
+    repoSlug: string | null;
+    featureId: string;
+    phaseId: string;
+    branchName: string;
+    persistedPullRequest?: { prNumber: number; prUrl: string | null };
+  }): Promise<WorkerRecoveryEvidence>;
+  launchPhaseShip(input: {
+    projectRoot: string;
+    trunkBranch: string;
+    branchName: string;
+    featureId: string;
+    phaseId: string;
+    backend: string;
+    /** Persisted task IDs. An empty list runs the whole phase. */
+    taskIds: readonly string[];
+  }): Promise<{
+    exitCode: number;
+    stderr: string;
+    workDir?: string;
+    prNumber?: number;
+    prUrl?: string;
+    runId?: number;
+  }>;
+  cleanupStaleSandbox(
+    projectRoot: string,
+    workDir: string,
+    featureId: string,
+  ): Promise<void>;
+}
+
+/** Use a detached checkout of a verified commit ID in the repository's object format. */
+export interface HarvestExecutionPort {
+  discoverPhasesAtCheckout(
+    checkoutDir: string,
+    featureId: string,
+  ): Promise<string[]>;
+  verifyGatesAtCheckout(input: {
+    checkoutDir: string;
+    projectId: string;
+    featureId: string;
+    phaseId: string;
+    updateLocalTaskState: boolean;
+  }): Promise<{
+    passed: number;
+    failed: number;
+    total: number;
+    failedTaskIds: string[];
+  }>;
+  recordLearningAtCheckout(input: {
+    checkoutDir: string;
+    projectId: string;
+    featureId: string;
+    phaseId: string | null;
+    prNumber: number | null;
+    prUrl: string | null;
+    terminalEvent: HarvestTerminalEvent;
+    mergeCommitSha: string | null;
+    terminalAt: string;
+    gatePassed: boolean;
+  }): Promise<{
+    linkedRunId: number | null;
+    forecastMissing: boolean;
+    pointCompression?: number;
+    summaryText: string;
+    blocks?: unknown[];
+  }>;
+}
+
+interface OperationLeaseRequest {
+  operationId: string;
+  leaseOwner: string;
+  nowIso: string;
+  leaseExpiresAt: string;
+}
+
+type FencedWrite = { ok: true } | { ok: false; code: LeaseRejectionCode };
+
+export interface DurableHarvestOperation {
+  operationId: string;
+  projectId: string;
+  workKey: string;
+  repoSlug: string | null;
+  headRepoSlug: string | null;
+  trunkBranch: string;
+  featureId: string;
+  phaseId: string | null;
+  prNumber: number | null;
+  prUrl: string | null;
+  headBranch: string | null;
+  expectedHeadSha: string | null;
+  terminalEvent: HarvestTerminalEvent;
+  mergeCommitSha: string | null;
+  terminalAt: string;
+  recipient: DeliveryRecipient | null;
+  plannedSlackRecipient: HarvestSlackRecipient | null;
+  status: HarvestOperationStatus;
+  leaseOwner: string | null;
+  leaseEpoch: number;
+  leaseExpiresAt: string | null;
+  linkedRunId: number | null;
+  lastError: string | null;
+  createdAt: string;
+  updatedAt: string;
+  completedAt: string | null;
+}
+
+export interface HarvestCursor {
+  projectId: string;
+  lastPolledAt: string;
+  lastTerminalAt: string | null;
+  lastPrNumber: number | null;
+  lastError: string | null;
+}
+
+export interface OutboxMessage {
+  outboxId: string;
+  projectId: string;
+  dedupeKey: string;
+  ownerKind: "dispatch" | "harvest";
+  ownerOperationId: string;
+  eventType: string;
+  featureId: string;
+  phaseId: string | null;
+  recipient: DeliveryRecipient;
+  payload: { text: string; blocks?: unknown[]; opsOnly?: boolean };
+  clientMetadataKey: string;
+}
+
+export interface OutboxItem extends OutboxMessage {
+  status: OutboxStatus;
+  workspaceId: string | null;
+  channelId: string | null;
+  threadTs: string | null;
+  messageTs: string | null;
+  attemptCount: number;
+  lastError: string | null;
+  createdAt: string;
+  updatedAt: string;
+  deliveredAt: string | null;
+}
+
+export interface OutboxClaim {
+  outboxId: string;
+  attemptNumber: number;
+  clientMetadataKey: string;
+}
+
+export interface OutboxDestination {
+  workspaceId: string;
+  channelId: string;
+  threadTs: string | null;
+}
+
+export interface DurableOperationsStatus {
+  projectId: string;
+  queue: {
+    queuedCount: number;
+    activeCount: number;
+    oldestQueuedAt: string | null;
+    staleLeasesReconciled: number;
+  };
+  harvest: {
+    lastCompletedAt: string | null;
+    lastMergeCommitSha: string | null;
+    pendingOperations: number;
+    pendingStages: Array<{
+      operationId: string;
+      featureId: string;
+      phaseId: string | null;
+      stage: HarvestStageName;
+      status: HarvestStageStatus;
+    }>;
+    unresolvedGateFailures: number;
+    closedUnmergedCount: number;
+    blockedCleanups: number;
+  };
+  delivery: {
+    pendingCount: number;
+    uncertainCount: number;
+    failedCount: number;
+    telegram: { enabled: false; reason: "disabled_in_pilot" };
+  };
+  historical: {
+    legacyUnverifiedRuns: number;
+    legacyUnverifiedDispatches: number;
+  };
+}
+
+export interface OperationsStorePort {
+  /** Select or insert active work in one transaction. */
+  acceptDispatch(input: DispatchAcceptanceRequest): DispatchReceipt;
+  claimDispatchLease(input: OperationLeaseRequest): {
+    fence: LeaseFence;
+    operation: DurableDispatchOperation;
+  } | null;
+  heartbeatDispatchLease(input: {
+    fence: LeaseFence;
+    nowIso: string;
+    leaseExpiresAt: string;
+  }): FencedWrite;
+  completeDispatchAttempt(input: {
+    fence: LeaseFence;
+    nowIso: string;
+    operationStatus: "accepted" | "completed" | "failed" | "superseded";
+    attemptStatus: Exclude<DispatchAttemptStatus, "running">;
+    runId?: number;
+    worktreeDir?: string;
+    exitCode?: number;
+    prNumber?: number;
+    prUrl?: string;
+    error?: string;
+  }): FencedWrite;
+  /** Return accepted work and expired worker leases in creation order. */
+  listRecoverableDispatches(input: {
+    nowIso: string;
+    projectId?: string;
+  }): DurableDispatchOperation[];
+  /**
+   * Read the newest dispatch for the project, feature and phase across task scopes and statuses.
+   * Break creation-time ties by greatest operation ID.
+   */
+  getDispatchOperation(input: {
+    projectId: string;
+    featureId: string;
+    phaseId: string;
+  }): DurableDispatchOperation | null;
+
+  /**
+   * Commit the original delivery and all resolved operations in one transaction.
+   * For a new delivery, verify the entire operation batch against enrollment and
+   * checkout coverage with verifyHarvestIntakeOperations before any write.
+   * Require checkout coverage for an explicit local or manual merge phase.
+   * When supplied, merge checkout coverage must include the branch-derived phase.
+   * Reject duplicate operation IDs across phase scopes.
+   * Resolve existing work before checking IDs for inserts. Matched work keeps its saved ID.
+   * Reject any insert whose operation ID already exists, even in another project.
+   * Return HARVEST_IDENTITY_MISMATCH and roll back all intake changes on collision.
+   * Require accepted status and lease epoch zero on every proposed new row.
+   * Require null lease owner, lease expiry, completion time, linked run, last error and planned Slack recipient.
+   * Return HARVEST_IDENTITY_MISMATCH before any write if a proposed row fails these checks.
+   * For pull requests, set the recipient of a new row from candidate.recipient, defaulting to null.
+   * Persist a null recipient for local commit work and retain it on replay and enrichment.
+   * Bind the planned Slack recipient only during fenced stage initialization.
+   * Resolve checkout coverage with scopeManualHarvestToPhases or scopeVerifiedMergeToPhases before intake.
+   * Derive verified phase work keys from the pull request identity returned by verifyHarvestTarget.
+   * Pass accepted: false when checkout coverage yields no scopes.
+   * Replay returns every persisted operation in the original scope order.
+   * Persist the resolved project and payload digest for accepted and rejected deliveries.
+   * Persist normalized supplied and verified checkout repositories separately.
+   * Record checkout identity only for manual intake without a pull request.
+   * Use null when checkout verification provides no repository.
+   * Return DELIVERY_ID_CONFLICT if any saved delivery identity field differs before loading operation rows.
+   * Scope verified work keys to the normalized repository and configured trunk.
+   * Verify compatible repository and trunk before matching a key or saving an alias.
+   * Supply checkoutRepoSlug only when checkout verification establishes the repository.
+   * Persist the repository returned by verifyHarvestTarget.
+   * Keep unknown checkout repositories null and eligible only for local harvest.
+   * Use canCorrelateHarvestIntake to match local commits to verified merged pull requests.
+   * If several verified pull requests match a local commit, use the earliest operation.
+   * Break creation-time ties by least operation ID.
+   * Preserve the first operation ID, work key and stage receipts.
+   * Attach verified pull request facts, including the head repository, when they arrive.
+   * Persist both work keys for replay and keep distinct verified pull requests separate.
+   * Before work-key matching, use isStaleHarvestClose to find a verified merge
+   * for a later close within the project and repository.
+   * Associate the delivery with the earliest matching merge. Break ties by least
+   * operation ID. Preserve its receipts and do not write a close operation or alias.
+   * Take head facts only from the verified pull request on first attachment.
+   * Fill missing head facts from later verified deliveries for the same pull request and merge scope.
+   * Return HARVEST_IDENTITY_MISMATCH on conflicting verified head facts and roll back the full intake batch.
+   * Deduplicate matching work when its verified facts are unchanged.
+   * Use planLateBranchCleanup when verified facts enrich a matching local or pull request harvest.
+   * Persist activated cleanup receipts with the new facts and rederive status atomically.
+   * Clear completedAt when a prior completion becomes recoverable. Preserve its lease fence.
+   */
+  recordHarvestIntake(input: {
+    candidate: HarvestCandidateInput;
+    payloadDigest: string;
+    receivedAt: string;
+    target:
+      | {
+          accepted: true;
+          project: EnrolledProject;
+          checkoutPhaseIds?: readonly string[];
+          operations: readonly [
+            DurableHarvestOperation,
+            ...DurableHarvestOperation[],
+          ];
+        }
+      | { accepted: false; projectId: string | null; reason: string };
+  }):
+    | {
+        ok: true;
+        operations: DurableHarvestOperation[];
+        deduplicatedTransport: boolean;
+        /** True when every accepted scope matched existing work. */
+        deduplicatedWork: boolean;
+      }
+    | { ok: false; code: "DELIVERY_ID_CONFLICT" | "HARVEST_IDENTITY_MISMATCH" };
+  /** List unstarted and resumable harvests without live leases in creation order. */
+  listRecoverableHarvests(input: {
+    nowIso: string;
+    projectId?: string;
+  }): DurableHarvestOperation[];
+  /** Acquire an eligible lease atomically and return the full set of persisted stage receipts. */
+  claimHarvestLease(input: OperationLeaseRequest): {
+    fence: LeaseFence;
+    operation: DurableHarvestOperation;
+    stages: HarvestStageReceipt[];
+  } | null;
+  /** Extend a live lease atomically after checking the fence. Keep the epoch unchanged. */
+  heartbeatHarvestLease(input: {
+    fence: LeaseFence;
+    nowIso: string;
+    leaseExpiresAt: string;
+  }): FencedWrite;
+  /**
+   * Persist the full, nonempty set of initial receipts and plannedSlackRecipient in one fenced write.
+   * Require all stages for the supplied phase IDs and the operation's terminal event.
+   * Use resolveHarvestSlackRecipient with the enrolled binding and scoped feature thread
+   * under the fence on first initialization.
+   * Derive cleanup eligibility from current stored pull request facts under the fence.
+   * Use hasVerifiedBranchCleanupTarget and validate the plan with isCompleteHarvestStagePlan.
+   * If the operation names a phase, require that phase alone.
+   * Validate replay against the saved Slack route and preserve every receipt.
+   * Reject incomplete or changed plans without writing a partial batch.
+   */
+  initializeHarvestStages(input: {
+    fence: LeaseFence;
+    nowIso: string;
+    phaseIds: readonly string[];
+    /** Target used to build the proposed plan. Stored routing decides eligibility. */
+    hasSlackTarget: boolean;
+    /** Target used to build the proposed plan. Stored facts decide eligibility. */
+    hasRemoteBranchTarget: boolean;
+    stages: readonly HarvestStagePlanEntry[];
+  }): FencedWrite | { ok: false; code: "HARVEST_PLAN_CONFLICT" };
+  /**
+   * Validate the fence and the planned receipt before any write.
+   * Reject invalid transitions with isValidHarvestStageTransition.
+   * Write the receipt and derive operation status in the same transaction.
+   * On successful learning_record, persist a supplied linkedRunId with the receipt.
+   * Preserve the saved run link when later transitions omit linkedRunId.
+   * Use deriveHarvestTerminalStatus with the terminal event and full saved phase plan.
+   * Set updatedAt to nowIso and set completedAt to nowIso for a terminal status.
+   * Require a failure notice when the phase's saved Slack receipt has a target.
+   * Use plannedSlackRecipient for gate failure notices.
+   * For a new notice, require a globally unique, nonblank clientMetadataKey and an unused outboxId.
+   * Return HARVEST_STAGE_TRANSITION_INVALID for invalid notice identity before either write.
+   * Reject conflicting recipient fields before changing either the receipt or outbox.
+   * Upsert harvest_gate_failed by project, operation and phase in the gate failure transaction.
+   * An existing dedupe row must match the event, harvest owner, feature, phase and planned recipient.
+   * Validate the saved metadata key and destination before either write or fenced replay.
+   * Require a nonblank messageTs for a saved delivered notice.
+   * Require a nonblank key and reject skipped_no_target for a required gate failure notice.
+   * Allow an unbound destination only while the notice is pending.
+   * Otherwise require the saved workspace, channel and thread to match plannedSlackRecipient.
+   * Compare an absent planned thread as null.
+   * On fenced replay, require the saved notice if the plan has a target and preserve its metadata key.
+   * Keep retryable_failure receipts and their errors eligible for a new claim after lease expiry.
+   * Set neither the receipt nor the operation completion time for a retryable failure.
+   * Exclude terminal operations from recovery scans and claims.
+   */
+  transitionHarvestStage(
+    input: {
+      fence: LeaseFence;
+      nowIso: string;
+      phaseKey: string;
+      stage: HarvestStageName;
+      evidenceJson?: string | null;
+      error?: string | null;
+      linkedRunId?: number | null;
+    } & (
+      | { status: "gate_failed"; failureNotice: OutboxMessage | null }
+      | {
+          status: Exclude<HarvestStageStatus, "gate_failed">;
+          failureNotice?: never;
+        }
+    ),
+  ):
+    | FencedWrite
+    | {
+        ok: false;
+        code: "HARVEST_STAGE_UNPLANNED" | "HARVEST_STAGE_TRANSITION_INVALID";
+      };
+
+  /** Reject blank or reused metadata keys for new notices. Preserve the saved key on deduplication. */
+  enqueueOutbox(input: OutboxMessage & { nowIso: string }): OutboxItem;
+  /** Read the accepted delivery context without acquiring a send claim. */
+  getOutboxItem(outboxId: string): OutboxItem | null;
+  /** List pending, uncertain and abandoned sending items for the project in creation order. */
+  listRecoverableOutboxItems(input: {
+    nowIso: string;
+    projectId: string;
+  }): OutboxItem[];
+  /**
+   * Bind the resolved destination and existing metadata key in the atomic send claim.
+   * For a pending harvest_gate_failed notice, bind the destination from its saved Slack recipient.
+   * Reject the send claim if that recipient lacks a workspace or channel.
+   * For other pending notices, preserve explicit Slack destination fields from the accepted recipient or stored outbox route.
+   * Resolve only unspecified destination fields. Return null without writes for a conflicting route.
+   * Return null without writes if a caller supplies no destination for a saved Slack workspace and channel.
+   * For other pending notices with no resolved destination, atomically record skipped_no_target.
+   * A skip returns no claim and preserves the attempt count.
+   * Send and reconcile require a bound workspace, channel and metadata key.
+   * Reconcile abandoned sending and uncertain items at the stored destination.
+   * Keep the stored destination on later claims.
+   */
+  claimOutboxItem(input: {
+    outboxId: string;
+    nowIso: string;
+    destination: OutboxDestination | null;
+  }):
+    | {
+        claim: OutboxClaim;
+        item: OutboxItem & OutboxDestination;
+        action: "send" | "reconcile";
+      }
+    | { action: "skipped_no_target"; item: OutboxItem }
+    | null;
+  markOutboxUncertain(input: {
+    claim: OutboxClaim;
+    nowIso: string;
+    error: string;
+  }): FencedWrite;
+  /**
+   * Record the outcome under the current claim and preserve the bound destination.
+   * Require a nonblank messageTs for delivered outcomes.
+   * Return OUTBOX_TRANSITION_INVALID before any write for a blank timestamp.
+   * Reserve skipped_no_target for the initial claim of an ordinary notice without a destination.
+   * Reject runtime skip outcomes with OUTBOX_TRANSITION_INVALID before any write.
+   */
+  completeOutboxItem(input: {
+    claim: OutboxClaim;
+    nowIso: string;
+    outcome:
+      | {
+          status: "delivered";
+          channelId: string;
+          messageTs: string;
+          threadTs?: string;
+        }
+      | { status: "failed"; error: string };
+  }): FencedWrite | { ok: false; code: "OUTBOX_TRANSITION_INVALID" };
+
+  getHarvestCursor(projectId: string): HarvestCursor | null;
+  /** Advance the watermark after intake commits through that watermark. */
+  saveHarvestCursor(cursor: HarvestCursor): void;
+  getOperationsStatus(projectId: string): DurableOperationsStatus;
+}

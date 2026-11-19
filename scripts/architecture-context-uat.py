@@ -63,6 +63,42 @@ with tempfile.TemporaryDirectory(prefix="gwrk-context-uat-") as temporary:
     assert json.loads(result.stdout)["context"]["status"] == "incomplete"
     assert "Human exception." in (existing / ".gwrk/architecture.md").read_text()
     checks.append("Edited generated context survives re-init with an explicit conflict")
+
+    detected_python = base / "detected-python"
+    detected_python.mkdir()
+    (detected_python / ".gwrkrc.json").write_text(json.dumps({"project": {"name": "detected-python", "stack": {"framework": "FastAPI"}}}))
+    result = run(detected_python, "init", "--context-only", "--non-interactive")
+    prior_decisions = json.loads(result.stdout)["context"]["decisions"]
+    (detected_python / "pyproject.toml").write_text('[project]\nname = "detected-python"\nversion = "0.1.0"\n')
+    result = run(detected_python, "init", "--context-only", "--non-interactive")
+    context = json.loads(result.stdout)["context"]
+    assert context["status"] == "ready", context
+    assert context["decisions"] == prior_decisions, context
+    target = (detected_python / ".gwrk/architecture.md").read_text()
+    assert "- Language: Python\n" in target, target
+    assert "typing.Protocol" in target, target
+    assert "FastAPI routers" in target, target
+    assert "## Policy gaps" not in target, target
+    assert not marker.exists(), "An agent executable ran during detected Python context installation"
+    checks.append("Context-only init combines detected Python with configured FastAPI without agent calls")
+
+    monorepo = base / "monorepo"
+    monorepo.mkdir()
+    root_config = {
+        "project": {"name": "mono", "type": "monorepo", "stack": {"language": "TypeScript"}, "design": {"architecture": "hexagonal-functional", "principles": ["functional-core", "clean-code", "tdd"], "templateVersion": "1.0.0"}},
+        "workspaces": {"api": {"type": "python", "stack": {"language": "Python", "framework": "FastAPI"}, "design": {"architecture": "clean", "principles": ["tdd"], "templateVersion": "1.0.0"}, "toolchain": {"test": "pytest"}}},
+    }
+    (monorepo / ".gwrkrc.json").write_text(json.dumps(root_config))
+    api = monorepo / "api"
+    api.mkdir()
+    run(api, "init", "--workspace", "api", "--non-interactive", "--context-only")
+    repaired = json.loads((monorepo / ".gwrkrc.json").read_text())
+    assert repaired["project"] == root_config["project"]
+    assert repaired["workspaces"]["api"]["design"] == root_config["workspaces"]["api"]["design"]
+    assert repaired["workspaces"]["api"]["toolchain"]["test"] == "pytest"
+    assert repaired["workspaces"]["api"]["stack"] == root_config["workspaces"]["api"]["stack"]
+    assert not marker.exists(), "An agent executable ran during workspace repair"
+    checks.append("Workspace repair preserves project and workspace design, stack and toolchain without inference")
     package = fresh / ".gwrk/plugins/gwrk"
     marketplace = json.loads((fresh / ".gwrk/.claude-plugin/marketplace.json").read_text())
     assert marketplace["plugins"][0]["source"] == "./plugins/gwrk"

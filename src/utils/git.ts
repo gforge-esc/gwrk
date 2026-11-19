@@ -5,6 +5,7 @@
 import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
+import { logCliError, warnCli } from "../adapters/cli/output-scope.js";
 
 /**
  * Auto-detects the default branch of a repository.
@@ -178,10 +179,14 @@ export function gitDraftLineCount(
 /**
  * Gets the current commit hash (HEAD).
  */
-export function getCurrentCommit(repoPath: string): string {
+export function getCurrentCommit(
+  repoPath: string,
+  env?: NodeJS.ProcessEnv,
+): string {
   try {
     const stdout = execFileSync("git", ["rev-parse", "HEAD"], {
       cwd: repoPath,
+      env,
       encoding: "utf-8",
       stdio: ["ignore", "pipe", "pipe"],
     });
@@ -194,10 +199,14 @@ export function getCurrentCommit(repoPath: string): string {
 /**
  * Gets the current branch name.
  */
-export function getCurrentBranch(repoPath: string): string {
+export function getCurrentBranch(
+  repoPath: string,
+  env?: NodeJS.ProcessEnv,
+): string {
   try {
     const stdout = execFileSync("git", ["rev-parse", "--abbrev-ref", "HEAD"], {
       cwd: repoPath,
+      env,
       encoding: "utf-8",
       stdio: ["ignore", "pipe", "pipe"],
     });
@@ -213,10 +222,12 @@ export function getCurrentBranch(repoPath: string): string {
 export function getDiffStats(
   repoPath: string,
   ref: string,
+  env?: NodeJS.ProcessEnv,
 ): { filesChanged: number; linesAdded: number; linesDeleted: number } {
   try {
     const stdout = execFileSync("git", ["diff", "--shortstat", ref], {
       cwd: repoPath,
+      env,
       encoding: "utf-8",
       stdio: ["ignore", "pipe", "pipe"],
     });
@@ -243,10 +254,14 @@ export function getDiffStats(
 /**
  * Checks if the working tree is dirty (has uncommitted changes).
  */
-export async function isDirty(repoPath: string): Promise<boolean> {
+export async function isDirty(
+  repoPath: string,
+  env?: NodeJS.ProcessEnv,
+): Promise<boolean> {
   try {
     const stdout = execFileSync("git", ["status", "--porcelain"], {
       cwd: repoPath,
+      env,
       encoding: "utf-8",
       stdio: ["ignore", "pipe", "pipe"],
     });
@@ -263,6 +278,7 @@ export async function createBranch(
   repoPath: string,
   branchName: string,
   baseBranch = "develop",
+  env?: NodeJS.ProcessEnv,
 ): Promise<void> {
   // Cold start: on a fresh repo the base branch (develop) may not exist on the
   // remote yet. Bootstrap it from the current HEAD so the first ship isn't
@@ -270,6 +286,7 @@ export async function createBranch(
   const remoteHasBase =
     execFileSync("git", ["ls-remote", "--heads", "origin", baseBranch], {
       cwd: repoPath,
+      env,
       stdio: ["ignore", "pipe", "pipe"],
     })
       .toString()
@@ -278,6 +295,7 @@ export async function createBranch(
   if (!remoteHasBase) {
     execFileSync("git", ["push", "origin", `HEAD:refs/heads/${baseBranch}`], {
       cwd: repoPath,
+      env,
       stdio: ["ignore", "ignore", "pipe"],
     });
   }
@@ -285,6 +303,7 @@ export async function createBranch(
   // Ensure base branch is fetched and up to date
   execFileSync("git", ["fetch", "origin", baseBranch], {
     cwd: repoPath,
+    env,
     stdio: ["ignore", "ignore", "pipe"],
   });
 
@@ -296,6 +315,7 @@ export async function createBranch(
     ["checkout", "-b", branchName, "--no-track", `origin/${baseBranch}`],
     {
       cwd: repoPath,
+      env,
       stdio: ["ignore", "ignore", "pipe"],
     },
   );
@@ -327,24 +347,29 @@ export async function syncBranch(
 export function syncTrunkForHarvest(
   repoPath: string,
   baseBranch = "develop",
+  env?: NodeJS.ProcessEnv,
 ): void {
   if (!fs.existsSync(path.join(repoPath, ".git"))) return;
   try {
-    execFileSync("git", ["fetch", "origin", baseBranch], {
+    const options = {
       cwd: repoPath,
-      stdio: ["ignore", "ignore", "ignore"],
-    });
-    const current = getCurrentBranch(repoPath);
-    if (current === baseBranch && isWorkingTreeClean(repoPath)) {
-      execFileSync("git", ["merge", "--ff-only", `origin/${baseBranch}`], {
-        cwd: repoPath,
-        stdio: ["ignore", "ignore", "ignore"],
-      });
+      env,
+      stdio: "ignore" as const,
+    };
+    execFileSync("git", ["fetch", "origin", baseBranch], options);
+    const current = getCurrentBranch(repoPath, env);
+    if (current === baseBranch && isWorkingTreeClean(repoPath, env)) {
+      execFileSync(
+        "git",
+        ["merge", "--ff-only", `origin/${baseBranch}`],
+        options,
+      );
     } else if (current !== baseBranch) {
-      execFileSync("git", ["fetch", "origin", `${baseBranch}:${baseBranch}`], {
-        cwd: repoPath,
-        stdio: ["ignore", "ignore", "ignore"],
-      });
+      execFileSync(
+        "git",
+        ["fetch", "origin", `${baseBranch}:${baseBranch}`],
+        options,
+      );
     }
   } catch {
     // Non-fatal: offline or local repository without origin remote
@@ -354,10 +379,14 @@ export function syncTrunkForHarvest(
 /**
  * Checks if the working tree is clean.
  */
-export function isWorkingTreeClean(repoPath: string): boolean {
+export function isWorkingTreeClean(
+  repoPath: string,
+  env?: NodeJS.ProcessEnv,
+): boolean {
   try {
     const stdout = execFileSync("git", ["status", "--porcelain"], {
       cwd: repoPath,
+      env,
       encoding: "utf-8",
       stdio: ["ignore", "pipe", "pipe"],
     });
@@ -374,12 +403,13 @@ export function commitFiles(
   repoPath: string,
   files: string[],
   message: string,
-  options?: { skipHooks?: boolean },
+  options?: { skipHooks?: boolean; env?: NodeJS.ProcessEnv },
 ): void {
   try {
     // Stage files
     execFileSync("git", ["add", ...files], {
       cwd: repoPath,
+      env: options?.env,
       stdio: ["ignore", "ignore", "pipe"],
     });
 
@@ -390,6 +420,7 @@ export function commitFiles(
     }
     execFileSync("git", commitArgs, {
       cwd: repoPath,
+      env: options?.env,
       stdio: ["ignore", "pipe", "pipe"],
     });
   } catch (e) {
@@ -436,15 +467,23 @@ export function commitPaths(
       cwd: repoPath,
       stdio: ["ignore", "ignore", "pipe"],
     });
-    const staged = execFileSync("git", ["diff", "--cached", "--name-only"], {
-      cwd: repoPath,
-      encoding: "utf-8",
-    }).trim();
+    const staged = execFileSync(
+      "git",
+      ["diff", "--cached", "--name-only", "--", ...paths],
+      { cwd: repoPath, encoding: "utf-8" },
+    ).trim();
     if (!staged) return;
-    execFileSync("git", ["commit", "-m", message], {
-      cwd: repoPath,
-      stdio: ["ignore", "ignore", "pipe"],
-    });
+    const identity = (key: string) =>
+      execFileSync("git", ["config", key], {
+        cwd: repoPath,
+        encoding: "utf-8",
+      }).trim();
+    const author = `${identity("user.name")} <${identity("user.email")}>`;
+    execFileSync(
+      "git",
+      ["commit", "--only", "--author", author, "-m", message, "--", ...paths],
+      { cwd: repoPath, stdio: ["ignore", "ignore", "pipe"] },
+    );
   } catch (e) {
     const err = e as { stderr?: Buffer | string; stdout?: Buffer | string };
     const stderr = err.stderr?.toString() || "";
@@ -457,7 +496,7 @@ export function commitPaths(
       return;
     }
     // Non-fatal — warn but don't fail the define command
-    console.warn(`Warning: post-define commit failed: ${combined.trim()}`);
+    warnCli(`Warning: post-define commit failed: ${combined.trim()}`);
   }
 }
 
@@ -480,10 +519,12 @@ export function deleteRemoteBranch(
   repoPath: string,
   branch: string,
   remote = "origin",
+  env?: NodeJS.ProcessEnv,
 ): void {
   try {
     execFileSync("git", ["push", remote, "--delete", branch], {
       cwd: repoPath,
+      env,
       stdio: ["ignore", "ignore", "pipe"],
     });
   } catch (e: unknown) {
@@ -491,7 +532,7 @@ export function deleteRemoteBranch(
     const msg = e instanceof Error ? e.message : String(e);
     // Suppress the massive stack trace and buffer output from execFileSync
     const cleanMsg = msg.split("\n")[0];
-    console.error(
+    logCliError(
       `Failed to delete remote branch ${branch} (non-fatal): ${cleanMsg}`,
     );
   }

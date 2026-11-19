@@ -15,14 +15,14 @@ describe("036-plugin-registry-versioning: AGY-style plugin state and discovery i
 
   beforeEach(async () => {
     tempHome = await fsp.mkdtemp(path.join(os.tmpdir(), "gwrk-loader-ver-"));
-    vi.spyOn(os, "homedir").mockReturnValue(tempHome);
+    vi.stubEnv("GWRK_HOME", path.join(tempHome, ".gwrk"));
     globalPluginsDir = path.join(tempHome, ".gwrk", "plugins");
     projectDir = path.join(tempHome, "project");
     await fsp.mkdir(path.join(projectDir, ".gwrk"), { recursive: true });
   });
 
   afterEach(async () => {
-    vi.restoreAllMocks();
+    vi.unstubAllEnvs();
     await fsp.rm(tempHome, { recursive: true, force: true });
   });
 

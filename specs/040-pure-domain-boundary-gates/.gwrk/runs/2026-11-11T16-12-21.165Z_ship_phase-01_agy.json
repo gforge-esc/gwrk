@@ -1,0 +1,19 @@
+{
+  "runId": "2026-11-11T16:12:21.165Z_ship_p01",
+  "feature": "040-pure-domain-boundary-gates",
+  "phase": "phase-01",
+  "command": "ship",
+  "agent": "agy",
+  "model": "gemini-3.8-flash-high",
+  "startedAt": "2026-11-11T16:12:21.165Z",
+  "finishedAt": "2026-11-11T16:14:32.109Z",
+  "durationS": 131,
+  "exitCode": 1,
+  "attempt": 1,
+  "filesChanged": 1,
+  "linesAdded": 10,
+  "linesDeleted": 9,
+  "gitCommit": "aca64f593d4be14a216de783a5bf2392f110bd50",
+  "gitBranch": "feat/040-pure-domain-boundary-gates",
+  "digest": []
+}

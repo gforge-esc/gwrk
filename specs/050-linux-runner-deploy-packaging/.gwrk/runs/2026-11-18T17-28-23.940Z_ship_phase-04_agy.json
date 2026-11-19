@@ -1,0 +1,26 @@
+{
+  "runId": "2026-11-18T17:28:23.940Z_ship_p04",
+  "feature": "050-linux-runner-deploy-packaging",
+  "phase": "phase-04",
+  "command": "ship",
+  "agent": "agy",
+  "model": "unknown",
+  "usage": {
+    "inputTokens": 1852965,
+    "outputTokens": 118794,
+    "totalTokens": 1971759
+  },
+  "startedAt": "2026-11-18T17:28:23.940Z",
+  "finishedAt": "2026-11-18T18:25:51.919Z",
+  "durationS": 3448,
+  "exitCode": 1,
+  "attempt": 1,
+  "gateResult": "PASS",
+  "reviewVerdict": "GO",
+  "filesChanged": 5,
+  "linesAdded": 387,
+  "linesDeleted": 52,
+  "gitCommit": "b137da4551876a54c05ae12c7c8002e6a3b78e3a",
+  "gitBranch": "feat/050-linux-runner-deploy-packaging",
+  "digest": []
+}

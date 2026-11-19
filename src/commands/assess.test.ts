@@ -26,15 +26,42 @@ function response() {
   return { summary: "Found a clock effect", intents: [], output: { assessment: { overview: "Clock effect violates the target", inspected: ["src/policy.ts"], limitations: ["No runtime tests executed"], findings: [{ id: "F1", rule: "Pure core", description: "Clock read", evidence: [{ file: "src/policy.ts", line: 1, observation: "Date.now reads the clock" }] }], features: [{ id: "clock-port", title: "Inject time", summary: "Pass time as input", dependsOn: [], findingIds: ["F1"], changes: ["Pass current time from adapter"], acceptance: ["Equal inputs return equal results"] }], reconciliation: [] } } };
 }
 describe("gwrk assess", () => {
-  it("recovers an observed agy response and records its origin", async () => {
+  it("validates a recorded Antigravity report through the real workflow without dispatch", async () => {
+    const { WorkflowRuntime } = await vi.importActual<
+      typeof import("../plugins/workflow-runtime.js")
+    >("../plugins/workflow-runtime.js");
+    const agent = await import("../utils/agent.js");
+    const agentDispatch = vi.spyOn(agent, "dispatchToAgent");
+    const runtime = new WorkflowRuntime();
+    dispatch.mockImplementation(runtime.executeWorkflow.bind(runtime));
     const file = "recorded.jsonl";
-    await fs.writeFile(path.join(root, file), JSON.stringify({ event: "result", result: { status: "SUCCESS", response: JSON.stringify({ summary: "Recovered", intents: [] }) } }));
-    dispatch.mockResolvedValue(response());
-    await assessProject({ cwd: root, output: "recovered", fromLog: file });
-    expect(dispatch).toHaveBeenCalledWith(expect.any(String), expect.any(String), expect.objectContaining({ reportOnly: true, recordedResult: expect.objectContaining({ unwrappedStdout: '{"summary":"Recovered","intents":[]}' }) }));
-    const provenance = JSON.parse(await fs.readFile(path.join(root, "recovered/provenance.json"), "utf8"));
-    expect(provenance.recoveredFrom).toBe(file);
-    expect(provenance.recordedOutputHash).toHaveLength(64);
+    const report = JSON.stringify({
+      summary: "Recovered",
+      intents: [],
+      assessment: response().output.assessment,
+    });
+    const successfulEvent = JSON.stringify({
+      event: "result",
+      result: { status: "SUCCESS", response: report },
+    });
+    await fs.writeFile(path.join(root, file), successfulEvent);
+    try {
+      const result = await assessProject({ cwd: root, output: "recovered", fromLog: file });
+      expect(result.features).toBe(1);
+      const provenance = JSON.parse(await fs.readFile(path.join(root, "recovered/provenance.json"), "utf8"));
+      expect(provenance.recoveredFrom).toBe(file);
+      expect(provenance.recordedOutputHash).toHaveLength(64);
+
+      const failedEvent = JSON.stringify({ event: "result", result: { status: "ERROR" } });
+      await fs.writeFile(path.join(root, file), `${successfulEvent}\n${failedEvent}`);
+      await expect(
+        assessProject({ cwd: root, output: "failed", fromLog: file }),
+      ).rejects.toThrow(/terminal status/);
+      await expect(fs.access(path.join(root, "failed"))).rejects.toThrow();
+      expect(agentDispatch).not.toHaveBeenCalled();
+    } finally {
+      agentDispatch.mockRestore();
+    }
   });
 
   it("rejects incomplete recorded streams before dispatch", async () => {

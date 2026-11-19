@@ -1,0 +1,7 @@
+type: skill
+name: javascript-standards
+version: 1.0.0
+description: JavaScript coding standards and runtime boundary contracts
+tier: enforcement
+scope: all
+language: JavaScript

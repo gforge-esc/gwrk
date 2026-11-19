@@ -1,0 +1,38 @@
+services:
+  traefik:
+    ports: !override ["127.0.0.1::80", "127.0.0.1::443"]
+    command: !override
+      - --entrypoints.web.address=:80
+      - --entrypoints.web.http.redirections.entrypoint.to=websecure
+      - --entrypoints.web.http.redirections.entrypoint.scheme=https
+      - --entrypoints.websecure.address=:443
+      - --entrypoints.websecure.http.tls=true
+      - --providers.file.directory=/etc/traefik/dynamic
+    volumes: !override
+      - ./traefik/dynamic.yaml:/etc/traefik/dynamic/gateway.yaml:ro
+      - ${GWRK_PROOF_TEST_DIR:?}/tls.yaml:/etc/traefik/dynamic/tls.yaml:ro
+      - ${GWRK_PROOF_TEST_DIR:?}:/tls:ro
+    networks: !override
+      auth: {}
+      status: {}
+
+  oauth2-proxy:
+    environment:
+      OAUTH2_PROXY_OIDC_ISSUER_URL: http://issuer:8081
+      OAUTH2_PROXY_COOKIE_EXPIRE: 12s
+      OAUTH2_PROXY_TRUSTED_PROXY_IPS: 172.16.0.0/12,192.168.0.0/16
+    volumes:
+      - ${GWRK_PROOF_TEST_DIR:?}:/run/gwrk-proof:ro
+    depends_on: [issuer]
+
+  issuer:
+    image: node:20-alpine@sha256:09e2b3d9726018aecf269bd35325f46bf75046a643a66d28360ec71132750ec8
+    command: ["node", "/fixture/oidc-issuer.mjs"]
+    volumes:
+      - ${GWRK_PROOF_TEST_FIXTURES:?}:/fixture:ro
+    networks: [auth]
+    ports: ["127.0.0.1::8081"]
+
+networks:
+  auth:
+    ipam: !reset null
