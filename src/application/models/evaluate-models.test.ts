@@ -879,6 +879,90 @@ describe("model qualification orchestration", () => {
     },
   );
 
+  it.each([
+    {
+      label: "single negative candidate repeat",
+      candidateTimes: [-1, 100, 100],
+      incumbentTimes: [400, 400, 400],
+      promote: false,
+    },
+    {
+      label: "single NaN candidate repeat",
+      candidateTimes: [Number.NaN, 100, 500],
+      incumbentTimes: [400, 400, 400],
+      promote: false,
+    },
+    {
+      label: "single infinite candidate repeat",
+      candidateTimes: [Number.POSITIVE_INFINITY, 100, 100],
+      incumbentTimes: [400, 400, 400],
+      promote: false,
+    },
+    {
+      label: "single negative incumbent repeat",
+      candidateTimes: [100, 100, 100],
+      incumbentTimes: [-1, 400, 400],
+      promote: false,
+    },
+    {
+      label: "single NaN incumbent repeat",
+      candidateTimes: [100, 100, 100],
+      incumbentTimes: [Number.NaN, 400, 400],
+      promote: false,
+    },
+    {
+      label: "single infinite incumbent repeat",
+      candidateTimes: [100, 100, 100],
+      incumbentTimes: [Number.POSITIVE_INFINITY, 400, 400],
+      promote: false,
+    },
+    {
+      label: "valid zero and positive timings control",
+      candidateTimes: [0, 100, 150],
+      incumbentTimes: [400, 400, 400],
+      promote: true,
+    },
+  ])(
+    "TR-021 rejects a malformed fixed-plan repeat duration ($label)",
+    async ({ candidateTimes, incumbentTimes, promote }) => {
+      const { deps, runFixtureRepeat, judgeComparison } = setup({
+        handoffs: [fixedHandoff],
+      });
+      const original = runFixtureRepeat.getMockImplementation()!;
+      let calls = 0;
+      runFixtureRepeat.mockImplementation(async (request) => {
+        const isDirect = calls++ < 6;
+        const route =
+          request.route.modelId === candidate.modelId
+            ? "candidate"
+            : "incumbent";
+        const durationMs = isDirect
+          ? route === "candidate"
+            ? 25
+            : 50
+          : (route === "candidate" ? candidateTimes : incumbentTimes)[
+              request.repeatIndex
+            ];
+        return {
+          ...(await original(request)),
+          durationMs,
+        };
+      });
+      judgeComparison.mockImplementation(async (judge) => ({
+        ...winningImplementationVerdict(judge),
+        observedJudgeModel: judge === judges[0] ? judge.modelId : "unknown",
+      }));
+
+      const result = await evaluateModels(deps, input);
+
+      expect(result.decision).toEqual(
+        promote
+          ? { promote: true }
+          : { promote: false, reason: "implementation-not-faster" },
+      );
+    },
+  );
+
   it("runs both plan authors on one fixed implementer and scores fixed-plan routes separately", async () => {
     const { deps, runFixtureRepeat, judgeComparison } = setup({
       handoffs: [candidateHandoff, fixedHandoff],
