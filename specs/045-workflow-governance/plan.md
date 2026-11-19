@@ -118,6 +118,8 @@ Delivers FR-003, scoped discovery. Reuse the selected design and managed target 
 
 The readiness test (TR-004) checks incomplete context for a version 1 manifest without its decision map. Replacing UTF-8 `EF BF BD` with `FF` produces a target hash mismatch. The assessment reports `targetMatch: "differs"`. Discovery finds `custom/report.md` when unrelated Git paths exceed 10 MiB.
 
+The readiness test (TR-004) also checks Markdown-only reports at 10 a.m. and noon UTC. Discovery selects the canonical noon report when `2026-11-18_legacy` points to its directory and appears last in the archive listing.
+
 The compiled discovery test (TR-006) checks that text and JSON link a readable report. Both show its scope alongside incomplete context.
 
 The compiled discovery regression supplies a version 1 manifest without `decisions` and leaves the decision index missing.

@@ -170,7 +170,10 @@ export async function readArchitectureReadiness(
           .then((entry) => entry.isDirectory())
           .catch(() => false))
       )
-        directories.set(directory, time);
+        directories.set(
+          directory,
+          Math.max(directories.get(directory) ?? time, time),
+        );
     }
   }
   try {

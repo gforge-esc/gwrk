@@ -7,6 +7,7 @@ import { createHash } from "node:crypto";
 import {
   mkdir,
   mkdtemp,
+  readdir,
   realpath,
   rm,
   symlink,
@@ -16,6 +17,11 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { readArchitectureReadiness } from "./readiness.js";
+
+vi.mock("node:fs/promises", async (importOriginal) => {
+  const fs = await importOriginal<typeof import("node:fs/promises")>();
+  return { ...fs, readdir: vi.fn(fs.readdir) };
+});
 
 let root: string;
 const target = "# Target\nSelected context without a conformance claim.\n";
@@ -285,18 +291,32 @@ describe("repository architecture readiness", () => {
     });
   });
 
-  it("finds default CLI timestamp directories without Git or provenance", async () => {
+  it("keeps the latest archive timestamp when a dated symlink is listed last", async () => {
+    const archive = "docs/architecture/assessments";
+    const later = `${archive}/2026-11-18T12-00-00-000Z`;
+    const alias = "2026-11-18_legacy";
     await put(
-      "docs/architecture/assessments/2026-11-18T10-00-00-000Z/report.md",
+      `${archive}/2026-11-18T10-00-00-000Z/report.md`,
       "# Earlier report\n",
     );
-    await put(
-      "docs/architecture/assessments/2026-11-18T12-00-00-000Z/report.md",
-      "# Later report\n",
-    );
+    await put(`${later}/report.md`, "# Later report\n");
+    await symlink(join(root, later), join(root, archive, alias));
+    const fs =
+      await vi.importActual<typeof import("node:fs/promises")>(
+        "node:fs/promises",
+      );
+    vi.mocked(readdir).mockImplementationOnce(async (path, options) => {
+      const entries = await fs.readdir(path, options);
+      return entries.sort(
+        (first, second) =>
+          Number(first.name.toString() === alias) -
+          Number(second.name.toString() === alias),
+      );
+    });
+
     expect(
       (await readArchitectureReadiness(root))?.assessment.latest?.reportPath,
-    ).toBe("docs/architecture/assessments/2026-11-18T12-00-00-000Z/report.md");
+    ).toBe(`${later}/report.md`);
   });
 
   it("does not inspect report directories outside the project", async () => {
