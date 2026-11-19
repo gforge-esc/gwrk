@@ -214,7 +214,13 @@ export async function notifySlack(
     if (client) {
       // Socket Mode path — full interactivity (buttons, actions)
       if (event) {
-        await presenceManager.handleNotification(event, routedMessage, {
+        const routedEvent: SlackEvent = {
+          ...event,
+          projectId: route.projectId ?? event.projectId,
+          recipient: route.recipient,
+          opsOnly: route.opsOnly || undefined,
+        };
+        await presenceManager.handleNotification(routedEvent, routedMessage, {
           projectId: route.projectId,
           recipient: route.recipient,
           opsOnly: route.opsOnly || undefined,
