@@ -89,14 +89,24 @@ async function read(root: string, path: string): Promise<FileRead> {
     };
   }
 }
-function json(file: FileRead): unknown {
+function decodedText(file: FileRead): string | undefined {
   if (file.kind !== "present") return undefined;
   try {
-    return JSON.parse(file.bytes.toString("utf8"));
+    return new TextDecoder("utf-8", { fatal: true }).decode(file.bytes);
   } catch {
     return undefined;
   }
 }
+function json(file: FileRead): unknown {
+  const text = decodedText(file);
+  if (text === undefined) return undefined;
+  try {
+    return JSON.parse(text);
+  } catch {
+    return undefined;
+  }
+}
+
 function archiveTimestamp(directory: string): number | undefined {
   const date = /^(\d{4}-\d{2}-\d{2})(?:$|[-_T])/.exec(directory)?.[1];
   if (!date) return undefined;
@@ -136,13 +146,15 @@ export async function readArchitectureReadiness(
     [indexPath, index],
   ] as const) {
     if (file.kind !== "present") issues.push({ path, kind: file.kind });
+    else if (decodedText(file) === undefined)
+      issues.push({ path, kind: "unreadable" });
   }
   const currentHash =
     target.kind === "present"
       ? createHash("sha256").update(target.bytes).digest("hex")
       : undefined;
   const parsedManifest = ManifestSchema.safeParse(json(manifest));
-  if (manifest.kind === "present") {
+  if (manifest.kind === "present" && decodedText(manifest) !== undefined) {
     if (!parsedManifest.success || !parsedManifest.data.files[targetPath])
       issues.push({ path: manifestPath, kind: "invalid" });
     else if (
@@ -228,8 +240,7 @@ export async function readArchitectureReadiness(
     assessmentEvidence ||= [report, data, source].some(
       (file) => file.kind !== "missing",
     );
-    if (report.kind !== "present" || !report.bytes.toString("utf8").trim())
-      continue;
+    if (!decodedText(report)?.trim()) continue;
     const provenance = ProvenanceSchema.safeParse(json(source));
     const recorded =
       provenance.success &&

@@ -131,7 +131,10 @@ describe("repository architecture readiness", () => {
     expect(await readArchitectureReadiness(root, design)).toMatchObject({
       context: {
         status: "incomplete",
-        issues: [{ path: ".gwrk/architecture.md", kind: "hash-mismatch" }],
+        issues: expect.arrayContaining([
+          { path: ".gwrk/architecture.md", kind: "hash-mismatch" },
+          { path: ".gwrk/architecture.md", kind: "unreadable" },
+        ]),
       },
       assessment: { latest: { targetMatch: "differs" } },
     });
@@ -263,6 +266,73 @@ describe("repository architecture readiness", () => {
       },
     });
   });
+  it("keeps the older readable report when a newer report has invalid UTF-8", async () => {
+    await put(
+      "docs/architecture/assessments/2026-11-17/report.md",
+      "# Readable report\n",
+    );
+    await put(
+      "docs/architecture/assessments/2026-11-18/report.md",
+      "# Newer\n",
+    );
+    await writeFile(
+      join(root, "docs/architecture/assessments/2026-11-18/report.md"),
+      Buffer.from([35, 32, 0xff]),
+    );
+    expect(
+      (await readArchitectureReadiness(root))?.assessment.latest?.reportPath,
+    ).toBe("docs/architecture/assessments/2026-11-17/report.md");
+  });
+  it("retains a readable report without inventing scope or provenance from invalid UTF-8 JSON", async () => {
+    const directory = "docs/architecture/assessments/2026-11-18";
+    await report(directory, {
+      generatedAt: "2026-11-18T12:00:00Z",
+      revision: "~",
+    });
+    const corrupt = (value: unknown) =>
+      Buffer.from(JSON.stringify(value)).map((byte) =>
+        byte === 126 ? 255 : byte,
+      );
+    await writeFile(
+      join(root, directory, "assessment.json"),
+      corrupt({ ...assessment, inspected: ["src/~"] }),
+    );
+    await writeFile(
+      join(root, directory, "provenance.json"),
+      corrupt({ generatedAt: "2026-11-18T12:00:00Z", revision: "~" }),
+    );
+    expect(
+      (await readArchitectureReadiness(root))?.assessment.latest,
+    ).toMatchObject({
+      reportPath: `${directory}/report.md`,
+      generatedAt: null,
+      revision: null,
+      scope: null,
+    });
+  });
+  it.each([".gwrk/architecture.md", ".gwrk/decisions/index.md"])(
+    "does not report ready for undecodable managed input %s",
+    async (file) => {
+      await context();
+      const bytes = Buffer.from([35, 32, 0xff]);
+      await writeFile(join(root, file), bytes);
+      if (file === ".gwrk/architecture.md")
+        await put(
+          ".gwrk/context-manifest.json",
+          JSON.stringify({
+            version: 1,
+            files: { [file]: createHash("sha256").update(bytes).digest("hex") },
+            decisions: {},
+          }),
+        );
+      const result = await readArchitectureReadiness(root, design);
+      expect.soft(result?.context.status).toBe("incomplete");
+      expect
+        .soft(result?.context.issues)
+        .toContainEqual({ path: file, kind: "unreadable" });
+    },
+  );
+
   it("keeps the last readable report when a newer output is empty", async () => {
     await put(
       "docs/architecture/assessments/2026-11-17/report.md",
