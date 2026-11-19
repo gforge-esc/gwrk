@@ -149,6 +149,7 @@ Persist runner-scoped discovery snapshots, evaluation bundles and temp-rename at
 | ID | Type | Target | Expected result |
 |---|---|---|---|
 | TR-011 | integration | `src/adapters/models/route-lock-store.test.ts` | Failed writes and stale incumbent evidence leave the active lock intact. Rollback restores the previous lock. |
+| TR-012 | application | `src/application/models/evaluate-models.test.ts` | Serialized promotion evidence replays gate and judge checks without retaining the blinding secret |
 | TR-012 | integration | `src/commands/models.test.ts` | Synthetic end-to-end CLI cycle promotes passing candidate and rejects absent, stale or split-judge runs |
 | TR-013 | gate | `src/cli.option-collisions.test.ts` | CLI consistency, help examples and option-collision gates pass |
 

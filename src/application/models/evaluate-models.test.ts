@@ -12,7 +12,11 @@ import type {
   JudgeVerdictPacket,
   StructuredJudgeVerdict,
 } from "../../ports/model-qualification-port.js";
-import { type EvaluateModelsDeps, evaluateModels } from "./evaluate-models.js";
+import {
+  type EvaluateModelsDeps,
+  evaluateModelPromotion,
+  evaluateModels,
+} from "./evaluate-models.js";
 
 const model = (
   backend: string,
@@ -170,6 +174,41 @@ function winningImplementationVerdict(
 }
 
 describe("model qualification orchestration", () => {
+  it("exports replayable promotion evidence without the blinding secret", async () => {
+    const { deps, runFixtureRepeat, judgeComparison } = setup({
+      handoffs: [fixedHandoff],
+    });
+    const original = runFixtureRepeat.getMockImplementation()!;
+    runFixtureRepeat.mockImplementation(async (request) => ({
+      ...(await original(request)),
+      durationMs: request.route.modelId === candidate.modelId ? 100 : 400,
+    }));
+    judgeComparison.mockImplementation(async (judge) =>
+      winningImplementationVerdict(judge),
+    );
+    const result = await evaluateModels(deps, input);
+    expect(result.decision).toEqual({ promote: true });
+    expect(result.promotionEvidence).toBeDefined();
+    const persisted = JSON.parse(JSON.stringify(result.promotionEvidence));
+    expect(evaluateModelPromotion(persisted)).toEqual({ promote: true });
+    expect(persisted.repeats).toHaveLength(6);
+    expect(persisted.refs.input.length).toBeGreaterThan(0);
+    expect(persisted.refs.output.length).toBeGreaterThan(0);
+    expect(persisted.refs.gate.length).toBeGreaterThan(0);
+    expect(JSON.stringify(persisted)).not.toContain(input.blindingSecret);
+    persisted.judges[1].winner = "tie";
+    expect(evaluateModelPromotion(persisted)).toEqual({
+      promote: false,
+      reason: "judge-non-regression",
+    });
+    const failedGate = JSON.parse(JSON.stringify(result.promotionEvidence));
+    failedGate.repeats[0].gatesPassed = false;
+    expect(evaluateModelPromotion(failedGate)).toEqual({
+      promote: false,
+      reason: "gate-failure",
+    });
+  });
+
   it.each(["define", "review"] as const)(
     "supplies blinded elapsed duration after coverage for %s ranking",
     async (role) => {

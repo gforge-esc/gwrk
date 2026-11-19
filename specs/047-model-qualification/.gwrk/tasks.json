@@ -190,7 +190,7 @@
         {
           "id": "T017",
           "title": "Create promote-model.ts",
-          "description": "NEW src/application/models/promote-model.ts. Verify evaluation freshness, assemble role pins and preserve `previousLock`",
+          "description": "NEW src/application/models/promote-model.ts. Verify evaluation freshness, assemble role pins and preserve `previousLock`\n\nPrepared producer: evaluate-models.ts exports promotionEvidence with normalized gate repeats, citation sets and structured independent judge verdicts. Its JSON replay regression passes. Consume that evidence rather than trusting a saved decision.promote boolean. Promotion must also revalidate role timing, handoff completeness, current suite and prompt hashes, runner scope and the incumbent digest. The application and CLI remain open.",
           "status": "open",
           "gateScript": "gates/phase-04.sh",
           "sp": 2
@@ -224,7 +224,8 @@
       "testTargets": [
         "src/adapters/models/route-lock-store.test.ts",
         "src/commands/models.test.ts",
-        "src/cli.option-collisions.test.ts"
+        "src/cli.option-collisions.test.ts",
+        "src/application/models/evaluate-models.test.ts"
       ]
     },
     {
