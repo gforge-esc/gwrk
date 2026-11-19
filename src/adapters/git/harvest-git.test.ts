@@ -203,6 +203,40 @@ describe.each([
       );
     },
   );
+  it("keeps an explicit origin push URL bound to the verified repository", async () => {
+    const other = join(root, "other.git");
+    git(root, "init", "--quiet", "--bare", other);
+    git(checkout, "push", "--quiet", other, "HEAD:refs/heads/feature");
+    git(checkout, "config", "remote.origin.pushurl", remote);
+    git(checkout, "config", `url.${other}.pushInsteadOf`, remote);
+    expect(git(checkout, "remote", "get-url", "origin")).toBe(remote);
+    expect(git(checkout, "remote", "get-url", "--push", "origin")).toBe(remote);
+
+    const [result] = await Promise.allSettled([
+      createAdapter().deleteRemoteBranchAtTip(checkout, "feature", initial),
+    ]);
+
+    expect
+      .soft(
+        git(
+          other,
+          "for-each-ref",
+          "--format=%(objectname)",
+          "refs/heads/feature",
+        ),
+      )
+      .toBe(initial);
+    expect(
+      git(
+        remote,
+        "for-each-ref",
+        "--format=%(objectname)",
+        "refs/heads/feature",
+      ),
+    ).toBe(
+      result.status === "fulfilled" && result.value.deleted ? "" : initial,
+    );
+  });
   it("preserves a branch that moves between remote inspection and delete", async () => {
     const adapter = createAdapter();
     writeFileSync(join(checkout, "file.txt"), "new trunk\n");

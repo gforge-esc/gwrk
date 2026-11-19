@@ -2,17 +2,15 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import { App, LogLevel } from "@slack/bolt";
 import { beforeEach, expect, it, vi } from "vitest";
 import { sendSlackMessage } from "./slack-notify.js";
-const { postMessage, authTest } = vi.hoisted(() => ({
+const { postMessage, authTest, getSlackApp } = vi.hoisted(() => ({
   postMessage: vi.fn(),
   authTest: vi.fn(),
+  getSlackApp: vi.fn(),
 }));
-vi.mock("./slack.js", () => ({
-  getSlackApp: () => ({
-    client: { chat: { postMessage }, auth: { test: authTest } },
-  }),
-}));
+vi.mock("./slack.js", () => ({ getSlackApp }));
 vi.mock("./telegram-notify.js", () => ({ loadTelegramConfig: () => null }));
 const metadata = {
   event_type: "gwrk_notification" as const,
@@ -28,6 +26,9 @@ const message = {
 const options = { webhookFallback: false, workspaceId: "W1" };
 beforeEach(() => {
   vi.clearAllMocks();
+  getSlackApp.mockReturnValue({
+    client: { chat: { postMessage }, auth: { test: authTest } },
+  });
   authTest.mockResolvedValue({ ok: true, team_id: "W1" });
   postMessage.mockResolvedValue({
     ok: true,
@@ -69,5 +70,50 @@ it("keeps an uncertain durable send off the webhook fallback", async () => {
     expect(fallback).not.toHaveBeenCalled();
   } finally {
     vi.unstubAllGlobals();
+  }
+});
+it("leaves a lost send response for reconciliation without a second post", async () => {
+  let posts = 0;
+  const app = new App({
+    token: "xoxb-fixture",
+    signingSecret: "fixture-secret",
+    tokenVerificationEnabled: false,
+    logLevel: LogLevel.ERROR,
+    clientOptions: {
+      async adapter(config) {
+        if (config.url?.endsWith("auth.test")) {
+          return {
+            config,
+            status: 200,
+            statusText: "OK",
+            headers: {},
+            request: { path: "/api/auth.test" },
+            data: { ok: true, team_id: "W1" },
+          };
+        }
+        expect(config.url).toMatch(/chat\.postMessage$/);
+        posts += 1;
+        if (posts === 1)
+          throw new Error("response lost after Slack accepted the message");
+        return {
+          config,
+          status: 200,
+          statusText: "OK",
+          headers: {},
+          request: { path: "/api/chat.postMessage" },
+          data: { ok: true, channel: "C1", ts: "1700000000.000003" },
+        };
+      },
+    },
+  });
+  getSlackApp.mockReturnValue(app);
+  vi.useFakeTimers();
+  try {
+    const result = sendSlackMessage(message, options);
+    await vi.runAllTimersAsync();
+    expect.soft(posts).toBe(1);
+    expect(await result).toBeUndefined();
+  } finally {
+    vi.useRealTimers();
   }
 });
