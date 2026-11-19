@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { spawn } from "node:child_process";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -13,6 +13,10 @@ import {
   type ProjectPolicyLock,
   computePolicySkillDigest,
 } from "./policy-lock.js";
+import {
+  formatEffectivePolicyPrompt,
+  resolveEffectivePolicy,
+} from "./skill-runtime.js";
 import { WorkflowRuntime } from "./workflow-runtime.js";
 
 vi.mock("node:child_process", async (importOriginal) => ({
@@ -261,5 +265,164 @@ describe("TR-009: FR-004 policy lock dispatch enforcement", () => {
     ).rejects.toThrow(/requires gwrk 99\.0\.0/i);
 
     expect(spawn).not.toHaveBeenCalled();
+  });
+
+  it("rejects mismatched disabled:false manifest digests against real disk manifests", async () => {
+    const lockWithComputedDisabled: ProjectPolicyLock = {
+      ...validLock,
+      skills: [
+        {
+          ...validLock.skills[0],
+          sha256: computePolicySkillDigest(
+            { ...customManifest, disabled: false },
+            customContent,
+          ),
+        },
+      ],
+    };
+    await writeFile(
+      join(root, ".gwrk/policy-lock.json"),
+      JSON.stringify(lockWithComputedDisabled, null, 2),
+    );
+    await expect(resolveEffectivePolicy(root)).rejects.toThrow(
+      /policy-lock\.json pin custom-policy from project-local requires/i,
+    );
+
+    await writeFile(
+      join(root, ".gwrk/plugins/skills/custom-policy/manifest.yaml"),
+      "type: skill\nname: custom-policy\nversion: 1.0.0\ndescription: Custom project enforcement rule\ntier: enforcement\nscope: all\ndisabled: false\n",
+    );
+    await writeFile(
+      join(root, ".gwrk/policy-lock.json"),
+      JSON.stringify(validLock, null, 2),
+    );
+    await expect(resolveEffectivePolicy(root)).rejects.toThrow(
+      /policy-lock\.json pin custom-policy from project-local requires/i,
+    );
+  });
+
+  it("resolves identical locked policy across two real isolated plugin homes and preserves legacy opt-in", async () => {
+    const homesRoot = await mkdtemp(join(tmpdir(), "gwrk-policy-homes-"));
+    try {
+      const homeA = join(homesRoot, "home-a/.gwrk/plugins");
+      const homeB = join(homesRoot, "home-b/.gwrk/plugins");
+      const expressManifest = {
+        type: "skill" as const,
+        name: "express-standards",
+        version: "1.2.0",
+        description: "Express standards",
+        tier: "enforcement" as const,
+        scope: "all" as const,
+        language: "TypeScript",
+      };
+      const expressYaml =
+        "type: skill\nname: express-standards\nversion: 1.2.0\ndescription: Express standards\ntier: enforcement\nscope: all\nlanguage: TypeScript\n";
+      const expressContent = "# Express Standards\n\n- Keep handlers thin.\n";
+
+      for (const home of [homeA, homeB]) {
+        await mkdir(join(home, "skills/express-standards"), {
+          recursive: true,
+        });
+        await writeFile(
+          join(home, "skills/express-standards/manifest.yaml"),
+          expressYaml,
+        );
+        await writeFile(
+          join(home, "skills/express-standards/SKILL.md"),
+          expressContent,
+        );
+      }
+      await mkdir(join(homeA, "skills/machine-a-extra"), { recursive: true });
+      await writeFile(
+        join(homeA, "skills/machine-a-extra/manifest.yaml"),
+        "type: skill\nname: machine-a-extra\nversion: 1.0.0\ndescription: Machine A extra\ntier: enforcement\nscope: all\n",
+      );
+      await writeFile(
+        join(homeA, "skills/machine-a-extra/SKILL.md"),
+        "# Machine A Extra\n",
+      );
+      await mkdir(join(homeB, "skills/machine-b-extra"), { recursive: true });
+      await writeFile(
+        join(homeB, "skills/machine-b-extra/manifest.yaml"),
+        "type: skill\nname: machine-b-extra\nversion: 1.0.0\ndescription: Machine B extra\ntier: enforcement\nscope: all\n",
+      );
+      await writeFile(
+        join(homeB, "skills/machine-b-extra/SKILL.md"),
+        "# Machine B Extra\n",
+      );
+      // Unpinned global copy on Machine B must not shadow the pinned builtin copy.
+      await mkdir(join(homeB, "skills/typescript-standards"), {
+        recursive: true,
+      });
+      await writeFile(
+        join(homeB, "skills/typescript-standards/manifest.yaml"),
+        "type: skill\nname: typescript-standards\nversion: 9.9.9\ndescription: Shadow\ntier: enforcement\nscope: all\nlanguage: TypeScript\n",
+      );
+      await writeFile(
+        join(homeB, "skills/typescript-standards/SKILL.md"),
+        "# Shadowed TypeScript Standards\n",
+      );
+
+      await rm(join(root, ".gwrk/plugins.json"), { force: true });
+      const tsBuiltinContent = await readFile(
+        "src/plugins/builtins/skills/typescript-standards/SKILL.md",
+        "utf8",
+      );
+      const tsBuiltinManifest = {
+        type: "skill" as const,
+        name: "typescript-standards",
+        version: "1.0.0",
+        description: "TypeScript coding standards and toolchain compliance",
+        tier: "enforcement" as const,
+        scope: "all" as const,
+        language: "TypeScript",
+      };
+      const twoHomeLock: ProjectPolicyLock = {
+        version: 1,
+        gwrkVersion: pkg.version,
+        skills: [
+          {
+            name: "typescript-standards",
+            source: "builtin",
+            version: "1.0.0",
+            sha256: computePolicySkillDigest(
+              tsBuiltinManifest,
+              tsBuiltinContent,
+            ),
+          },
+          {
+            name: "express-standards",
+            source: "global",
+            version: "1.2.0",
+            sha256: computePolicySkillDigest(expressManifest, expressContent),
+          },
+        ],
+      };
+      await writeFile(
+        join(root, ".gwrk/policy-lock.json"),
+        JSON.stringify(twoHomeLock, null, 2),
+      );
+
+      const policyA = await resolveEffectivePolicy(root, { globalDir: homeA });
+      const policyB = await resolveEffectivePolicy(root, { globalDir: homeB });
+
+      expect(
+        policyA.selectedSkills.map((s) => `${s.name}@${s.source}`),
+      ).toEqual(["typescript-standards@builtin", "express-standards@global"]);
+      expect(
+        policyB.selectedSkills.map((s) => `${s.name}@${s.source}`),
+      ).toEqual(["typescript-standards@builtin", "express-standards@global"]);
+      expect(formatEffectivePolicyPrompt(policyA)).toBe(
+        formatEffectivePolicyPrompt(policyB),
+      );
+
+      await rm(join(root, ".gwrk/policy-lock.json"), { force: true });
+      const legacyA = await resolveEffectivePolicy(root, { globalDir: homeA });
+      expect(legacyA.selectedSkills.map((s) => s.name)).toContain(
+        "machine-a-extra",
+      );
+    } finally {
+      await rm(homesRoot, { recursive: true, force: true });
+    }
   });
 });

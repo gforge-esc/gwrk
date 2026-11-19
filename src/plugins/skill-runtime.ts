@@ -17,7 +17,6 @@ import type { ProjectProfile } from "../engine/profile-detector.js";
 import { detectProfile } from "../engine/profile-detector.js";
 import { processForAgent } from "../utils/agent-layer.js";
 import { maskPromptExamples } from "../utils/markdown-examples.js";
-import { CommandError } from "../utils/signal.js";
 import { AgentBackendRegistry } from "./agent-registry.js";
 import { PluginLoader } from "./loader.js";
 import type {
@@ -26,7 +25,6 @@ import type {
   SkillManifest,
 } from "./manifest.js";
 import {
-  type PolicyLockCandidate,
   type ProjectPolicyLock,
   computePolicySkillDigest,
   readProjectPolicyLock,
@@ -242,29 +240,9 @@ export async function resolveEffectivePolicy(
 
   let verifiedCandidates: readonly PolicyCandidate[] = candidates;
   if (lock) {
-    const candidatesWithSource = candidates.map((candidate) => {
-      const c = candidate as PolicyLockCandidate;
-      if (c.sourceManifest) return c;
-      const pin = lock.skills.find(
-        (p) => p.name === c.name && p.source === c.source,
-      );
-      if (pin && c.manifest.disabled === false) {
-        const { disabled: _, ...withoutDisabled } =
-          c.manifest as unknown as Record<string, unknown>;
-        if (
-          typeof c.content === "string" &&
-          computePolicySkillDigest(c.manifest, c.content) === pin.sha256
-        ) {
-          return { ...c, sourceManifest: c.manifest };
-        }
-        return { ...c, sourceManifest: withoutDisabled };
-      }
-      return c;
-    });
-
     verifiedCandidates = verifyProjectPolicyLock(
       lock,
-      candidatesWithSource,
+      candidates,
       options.gwrkVersion ?? pkg.version,
     );
   }

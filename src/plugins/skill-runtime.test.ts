@@ -5,6 +5,7 @@
 import * as fs from "node:fs";
 import * as fsp from "node:fs/promises";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import pkg from "../../package.json" with { type: "json" };
 import type { ProjectProfile } from "../domain/types.js";
 import { detectProfile } from "../engine/profile-detector.js";
 import { type LoadedEnforcementCandidate, PluginLoader } from "./loader.js";
@@ -297,7 +298,7 @@ describe("FR-014: resolveEnforcementSkills", () => {
 
     const testLock = {
       version: 1 as const,
-      gwrkVersion: "1.6.0-beta.1",
+      gwrkVersion: pkg.version,
       skills: [
         {
           name: "typescript-standards",

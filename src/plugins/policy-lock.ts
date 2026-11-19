@@ -53,7 +53,17 @@ export async function readProjectPolicyLock(
   projectRoot: string,
 ): Promise<ProjectPolicyLock | undefined> {
   const file = join(projectRoot, ".gwrk", "policy-lock.json");
-  const stat = lstatSync(file, { throwIfNoEntry: false });
+  let stat: ReturnType<typeof lstatSync> | undefined;
+  try {
+    stat = lstatSync(file, { throwIfNoEntry: false });
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+      return undefined;
+    }
+    throw new CommandError(
+      `Cannot read ${file}. Review the tracked lock and restore a readable file.`,
+    );
+  }
   if (stat === undefined) return undefined;
   let text: string;
   try {
