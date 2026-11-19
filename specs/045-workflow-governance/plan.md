@@ -164,6 +164,7 @@ Delivers FR-005, actionable seed failures. Keep the existing `gwrk plugin seed` 
 #### Files
 
 - `src/plugins/seed.ts` — **amend** — Validate the taxonomy and propagate read, parse and write failures. FR-005.
+- `src/domain/seed-taxonomy.ts`: Parse and validate the full taxonomy without filesystem effects. FR-005.
 - `src/plugins/seed.test.ts` — **amend** — Cover absent or invalid input plus dry run and retry. FR-005.
 - `src/commands/plugin.ts` — **amend** — Accept an explicit taxonomy path and report actionable failure. FR-005.
 - `src/commands/plugin.test.ts` — **amend** — Verify seed CLI exit status, hint and dry-run behavior. FR-005.
@@ -173,13 +174,13 @@ Delivers FR-005, actionable seed failures. Keep the existing `gwrk plugin seed` 
 | TR-### | Type | Target | Assertion |
 |---|---|---|---|
 | TR-010 | unit | `src/plugins/seed.test.ts` | Valid taxonomy, no writes on invalid input, and safe retry after a write failure |
-| TR-011 | integration | `src/commands/plugin.test.ts` | Nonzero exit and path hint on missing input plus success for a valid dry run |
+| TR-011 | integration | `src/commands/plugin.seed.test.ts` and `src/commands/plugin.test.ts` | Compiled CLI exit status, path hint, one terminal signal and a valid dry run |
 
 #### Done When
 
 ```bash
 pnpm run build
-pnpm exec vitest run src/plugins/seed.test.ts src/commands/plugin.test.ts src/architecture.test.ts
+pnpm exec vitest run src/plugins/seed.test.ts src/commands/plugin.test.ts src/commands/plugin.seed.test.ts src/architecture.test.ts
 ```
 
 ## Coverage Matrix
