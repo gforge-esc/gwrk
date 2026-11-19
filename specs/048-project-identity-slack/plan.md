@@ -168,7 +168,7 @@ pnpm exec vitest run src/db/scoping.test.ts src/db/db.test.ts src/db/plan.test.t
 | TR-009 | integration | `src/server/slack-actions.test.ts` and `src/adapters/git/index.test.ts` | Checkout origin validation, merge receipt transitions and revision replay |
 | TR-010 | unit | `src/server/slack-messages.test.ts` | Interactive payloads carry `projectId` and `rootTs` metadata |
 | TR-011 | unit | `src/server/slack-agent.test.ts` | Project selection, roles and verified checkout summaries |
-| TR-012 | unit | `src/server/slack-home.test.ts` | Role-based enrollment visibility and Pulse totals from verified checkouts |
+| TR-012 | unit | `src/server/slack-home.test.ts` | Role-based enrollment, verified startup status and scoped Pulse totals |
 | TR-012a | integration | `src/server/slack-commands.test.ts` and `src/utils/agent-context.test.ts` | Scoped file reads, checkout replacement, mirror fallback and dispatch checkout verification |
 | TR-012b | integration | `src/server/slack.test.ts` | Scoped ledger status, startup queue restrictions and thread delivery |
 
@@ -200,7 +200,9 @@ Reject Slack confirmations for both approval and revision buttons (TR-009). Cove
 
 For mention summaries (TR-011), reply in the original thread when Beta replaces Alpha's checkout. Show Alpha's feature after restoration.
 
-For App Home Pulse (TR-012), exclude the replacement repository and its specs while keeping Alpha's enrollment visible. Count Alpha's specs and plans from a verified mirror when the local checkout fails verification.
+Replace Alpha's startup checkout with Beta for the App Home authorization tests (TR-012). Hide the agent, queue and plan sections in both cases. Keep Alpha's enrollment visible and exclude Beta from Pulse. Expect zero specs and plans without an Alpha mirror. Expect one spec with a plan when Alpha has a verified mirror.
+
+Start App Home at Beta's verified checkout for a viewer bound only to Alpha (TR-012). Show Alpha's enrollment and Pulse. Hide Beta's startup status.
 
 Status, logs and effort read files inside the verified checkout (TR-012a). Apply the same file boundary to Pulse and mention context. Skip filesystem-based thread lookup and disk history when the checkout fails verification. Use a verified mirror for logs and verify the queue's own checkout before dispatch.
 
