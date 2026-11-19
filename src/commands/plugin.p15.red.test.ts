@@ -35,7 +35,7 @@ function candidate(
 describe("plugin list --project", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.mocked(resolveWorkspacePolicyRoots).mockImplementation(async (directory) => ({
+    vi.mocked(resolveWorkspacePolicyRoots).mockImplementation((directory) => ({
       workspaceDir: directory, ownerDir: directory, policyDirs: [directory],
     }));
     vi.mocked(PluginLoader.prototype.listPlugins).mockResolvedValue([]);
@@ -52,6 +52,10 @@ describe("plugin list --project", () => {
     ]);
 
     const output = await listPlugins({ project: true, type: "skill" });
+    expect(PluginLoader.prototype.listEnforcementCandidates).toHaveBeenCalledWith(
+      process.cwd(),
+      [process.cwd()],
+    );
     expect(output).toContain("python-standards");
     expect(output).not.toContain("typescript-standards");
   });
