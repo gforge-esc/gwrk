@@ -139,18 +139,20 @@
         {
           "id": "T011",
           "title": "Modify seed.ts",
-          "description": "MODIFY src/plugins/seed.ts. Validate the taxonomy and propagate read, parse and write failures. FR-005.. Tests: src/plugins/seed.test.ts",
+          "description": "MODIFY src/plugins/seed.ts. Validate the taxonomy and propagate read, parse and write failures. FR-005.. Tests: src/plugins/seed.test.ts\n\nREVIEW FAIL (code): Default taxonomy apostrophe skill name rejection — FR-005.\n  WHERE: src/domain/seed-taxonomy.ts:42-44\n  EXPECTED: Normalize apostrophes when deriving kebab-case skill names so the repository default taxonomy at docs/archive/reference/reasoning-modes.md validates all 45 skills across all 7 categories (mapping \"Devil's Advocate\" to \"devils-advocate\" while continuing to reject path traversal, unsafe characters, and duplicate normalized names).\n  ACTUAL: parseSeedTaxonomy computes entry[1].trim().toLowerCase().replace(/\\s+/g, \"-\"), yielding \"devil's-advocate\", which fails /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/ and throws \"Invalid taxonomy skill name: Devil's Advocate\". Running gwrk plugin seed --dry-run (default path) or seedSkills() exits 1 on docs/archive/reference/reasoning-modes.md:140.\n  FIX: Strip ASCII and curly apostrophes before whitespace-to-hyphen conversion in parseSeedTaxonomy (e.g. .replace(/['\\u2019]/g, \"\").replace(/\\s+/g, \"-\")), apply and pass the preserved regression tests in .runs/review-regressions-phase04-20261119T0303Z.patch.\n  GATE: specs/045-workflow-governance/gates/phase-04.sh (coverage hole: green gate only tested a 2-skill synthetic fixture and never exercised docs/archive/reference/reasoning-modes.md)\n  REF: plan.md Phase 4 > Files & Test Strategy (TR-010, TR-011); contracts/governance.md#plugin-seed\n\nREVIEW FAIL (code): Empty explicit --taxonomy fallback to default path — FR-005.\n  WHERE: src/plugins/seed.ts:41-43\n  EXPECTED: Treat any supplied taxonomyPath (options.taxonomyPath !== undefined) as an explicit input and reject empty or whitespace-only values with CommandError (naming --taxonomy <path>) before reading the default taxonomy or writing skills.\n  ACTUAL: options.taxonomyPath ? path.resolve(options.taxonomyPath) : path.join(cliRoot, \"docs\", \"archive\", \"reference\", \"reasoning-modes.md\") treats \"\" as falsy, so seedSkills({ taxonomyPath: \"\" }) and gwrk plugin seed --taxonomy \"\" --dry-run silently fall back to docs/archive/reference/reasoning-modes.md.\n  FIX: Check options.taxonomyPath !== undefined in seedSkills; throw CommandError before reads or writes when options.taxonomyPath.trim() === \"\". Apply and pass the preserved regression tests in .runs/review-regressions-phase04-20261119T0303Z.patch.\n  GATE: specs/045-workflow-governance/gates/phase-04.sh (coverage hole: green gate did not test empty --taxonomy input)\n  REF: plan.md Phase 4 > Files & Test Strategy (TR-010, TR-011); contracts/governance.md#plugin-seed",
           "status": "open",
           "gateScript": "gates/phase-04.sh",
-          "sp": 1
+          "sp": 1,
+          "completedAt": "2026-11-19T02:55:19.698Z"
         },
         {
           "id": "T012",
           "title": "Modify plugin.ts",
           "description": "MODIFY src/commands/plugin.ts. Accept an explicit taxonomy path and report actionable failure. FR-005.. Tests: src/plugins/seed.test.ts",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/phase-04.sh",
-          "sp": 1
+          "sp": 1,
+          "completedAt": "2026-11-19T02:55:23.161Z"
         }
       ],
       "sp_estimate": 2,
