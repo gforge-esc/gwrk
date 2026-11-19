@@ -473,7 +473,10 @@ export const createPluginCommand = () =>
     .addCommand(
       new Command("seed")
         .description("Seed atomic skills from the reasoning modes taxonomy")
-        .option("--taxonomy <path>", "Read a Markdown reasoning taxonomy from this path")
+        .option(
+          "--taxonomy <path>",
+          "Read a Markdown reasoning taxonomy from this path",
+        )
         .option("--dry-run", "Show what would be seeded without copying")
         .action(async (options) => {
           await withSignal("plugin seed", async () => {
