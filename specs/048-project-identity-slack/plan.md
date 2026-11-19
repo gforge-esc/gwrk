@@ -123,14 +123,34 @@ pnpm exec vitest run src/db/scoping.test.ts src/db/db.test.ts src/db/plan.test.t
 
 #### Files
 
+- `src/ports/vcs-port.ts` (MODIFY: Type merge preflight errors and inspection outcomes)
+- `src/domain/project-registry.ts` (MODIFY: Add the repository and pull request number to merge receipts)
+- `src/ports/store-port.ts` (MODIFY: Allow receipt updates to require an expected outcome)
+- `src/db/project-registry.ts` (MODIFY: Store merge targets and condition receipt updates on the current outcome)
+- `src/db/migrations/018-slack-merge-receipt-target.sql` (CREATE: Add nullable merge target columns)
+- `src/adapters/git/project-id.ts` (MODIFY: Read origin from the checkout's repository config)
+- `src/adapters/git/process-env.ts` (CREATE: Reuse the reviewed checkout environment isolation helper)
+- `src/adapters/filesystem/scoped-feature.ts` (CREATE: Validate feature paths and file containment before scoped reads)
+- `src/engine/pulse.ts` (MODIFY: Count contained specification and plan files for scoped Pulse reports)
+- `src/utils/agent-context.ts` (MODIFY: Exclude feature entries and files outside the authorized checkout)
+- `src/utils/agent-context.test.ts` (MODIFY: Cover canonical feature containment)
+- `src/server/slack-commands.test.ts` (MODIFY: Cover scoped status, logs and effort reads)
+
 - `src/application/project-routing/index.ts` (NEW: Coordinate project resolution and role checks plus action receipts and thread delivery)
-- `src/adapters/git/index.ts` (MODIFY: Implement identity discovery, pull request URL lookup and pull request merge on `VcsPort`)
+- `src/adapters/git/index.ts` (MODIFY: Add merge inspection to the repository-scoped GitHub adapter)
+- `src/adapters/git/index.test.ts` (MODIFY: Verify the repository, pull request number and inspection outcomes)
 - `src/server/slack-messages.ts` (MODIFY: Stamp `projectId`, project slug and `rootTs` into Slack blocks and action values)
+- `src/adapters/filesystem/adr-checkout.ts` (NEW: Share canonical checkout containment and missing-destination validation)
+- `src/commands/adr.checkout.test.ts` (NEW: Prove carried authoring scope prevents escaped corpus and index writes)
+- `src/engine/adr-scaffold.ts` (MODIFY: Validate authoring paths at the write operation)
+- `src/engine/adr-check.ts` (MODIFY: Keep citation scan roots inside the authorized checkout)
 - `src/server/slack-commands.ts` (MODIFY: Parse `--project`, authorize via `ProjectRoutingService` and thread replies per project)
 - `src/server/slack-actions.ts` (MODIFY: Re-authorize clicks, enforce replay receipts and merge pull requests via `VcsPort`)
 - `src/server/slack-agent.ts` (MODIFY: Require authorized project resolution for mentions, direct messages and reactions)
 - `src/server/slack-home.ts` (MODIFY: Render only enrolled projects where the Slack viewer holds a role)
-- `src/server/slack.ts` (MODIFY: Remove single-project startup context and resolve workspace, channel and user per event)
+- `src/server/slack-home.test.ts` (MODIFY: Cover first open, viewer redaction and scoped Pulse totals)
+- `src/server/slack.ts` (MODIFY: Resolve workspace, channel and user per event and deliver private thread replies)
+- `src/server/slack.test.ts` (MODIFY: Verify slash command callback delivery)
 - `tests/helpers/synthetic-slack.ts` (NEW: Provide deterministic synthetic Slack fixtures with zero network calls)
 - `src/server/slack-actions.test.ts` (MODIFY: Test click-time re-authorization and thread mismatch plus click replay and `VcsPort` merge)
 
@@ -145,16 +165,71 @@ pnpm exec vitest run src/db/scoping.test.ts src/db/db.test.ts src/db/plan.test.t
 
 | ID | Type | Target | Assertion |
 |---|---|---|---|
-| TR-009 | integration | `src/server/slack-actions.test.ts` | Unauthorized clicks leave no claim. Concurrent replay invokes the merge port once |
+| TR-009 | integration | `src/server/slack-actions.test.ts` and `src/adapters/git/index.test.ts` | Checkout origin validation, merge receipt transitions and revision replay |
 | TR-010 | unit | `src/server/slack-messages.test.ts` | Interactive payloads carry `projectId` and `rootTs` metadata |
-| TR-011 | unit | `src/server/slack-agent.test.ts` | Mentions, direct messages and reactions enforce project selection and roles |
-| TR-012 | unit | `src/server/slack-home.test.ts` | App Home lists only projects visible to the requesting Slack user |
+| TR-011 | unit | `src/server/slack-agent.test.ts` | Project selection, roles and verified checkout summaries |
+| TR-012 | unit | `src/server/slack-home.test.ts` | Role-based enrollment, verified startup status and scoped Pulse totals |
+| TR-012a | integration | `src/server/slack-commands.test.ts` and `src/utils/agent-context.test.ts` | Scoped file reads, checkout replacement, mirror fallback and dispatch checkout verification |
+| TR-012b | integration | `src/server/slack.test.ts` | Scoped ledger status, startup queue restrictions and thread delivery |
+
+For the merge receipt tests (TR-009), block unauthorized claims and retries from Bolt redelivery. Inspect the stored repository and pull request after a timeout, even if the card changes. Complete the original receipt on confirmed merge. Keep it uncertain when inspection fails or is unavailable. Allow one claim across concurrent retries after confirmed rejection or preflight failure.
+
+For GitHub origin validation (TR-009), require a checkout-local origin before inspection or merge. Require it for pull request lookups by number or branch too. An origin mismatch records a failed receipt with zero `gh` calls. After the origin is restored, concurrent clicks by the same caller execute one retry without inspection.
+
+Send private merge warnings to the authorized actor in the bound feature thread (TR-009). Cover origin mismatch and merge timeouts from both buttons and reactions. Keep failed and uncertain receipts subject to their existing retry rules.
+
+Send the merge replay warning privately in the stored feature thread after click authorization (TR-009). Cover an existing receipt and a lost receipt claim race. Assert each replay leaves the merge count at one. Omit the stored thread from role and thread mismatch warnings.
+
+Send invalid pull request and missing checkout warnings to the authorized clicker in the stored feature thread (TR-009). Assert zero receipt writes and pull request lookups. Assert zero merges and public replies.
+
+For log and revision buttons (TR-009), replace Alpha's checkout with Beta. Return a checkout warning for logs and leave both revision receipts unclaimed. After restoring Alpha, show its logs and start one revision per button across concurrent clicks.
+
+For View Logs (TR-009), leave the bound feature directory missing or link it to a sibling feature. Put a run log in that sibling with a longer ID that shares the prefix. Assert one private no-logs reply in the bound thread. Assert zero sibling gate results, receipt claims and receipt completions.
+
+Replace Alpha's checkout with Beta for Approve Spec and both redispatch buttons (TR-009). Deny those clicks before claiming a receipt or starting work. After restoring Alpha, accept one claim and one launch or enqueue per button across concurrent clicks. Approve Spec runs `gwrk define plan <feature>` from the verified checkout and records one executed receipt.
+
+Start the dispatch queue in Alpha's verified mirror while its local checkout is also valid (TR-009). Deny both buttons before claiming a receipt when the mirror has only a longer feature ID with the same prefix. Add the exact feature to the mirror. For each button, accept one claim and one enqueue across concurrent clicks. Complete one executed receipt.
+
+Deny Retry Phase and Request Changes on Beta's feature thread when Alpha owns the queue (TR-009). Warn the authorized actor in Beta's stored thread. Assert zero receipt claims or completions. Assert zero enqueues or public replies.
+
+Link the bound feature directory outside the checkout or to a sibling feature (TR-009). Deny Approve Spec and both revision buttons. Deny Retry Phase and Request Changes. Reply once in private to the clicker at the stored feature thread root. Assert zero public replies, receipt claims and completions. Assert zero process launches and queue entries.
+
+Exercise asynchronous spawn errors for Approve Spec and both revision buttons (TR-009). Keep the receipt claimed until launch resolves. On launch failure, record one failed outcome and warn the actor privately in the authorized thread.
+
+Reject Slack confirmations for both approval and revision buttons (TR-009). Cover Request Changes and Retry Phase too. Assert one effect and one executed receipt completion before confirmation delivery. Verify the stored receipt stays executed. Log the delivery failure and assert zero execution-failure replies.
+
+For mention summaries (TR-011), reply in the original thread when Beta replaces Alpha's checkout. Show Alpha's feature after restoration.
+
+Replace Alpha's startup checkout with Beta for the App Home authorization tests (TR-012). Hide the agent, queue and plan sections in both cases. Keep Alpha's enrollment visible and exclude Beta from Pulse. Expect zero specs and plans without an Alpha mirror. Expect one spec with a plan when Alpha has a verified mirror.
+
+Start App Home at Beta's verified checkout for a viewer bound only to Alpha (TR-012). Show Alpha's enrollment and Pulse. Hide Beta's startup status.
+
+Status, logs and effort read files inside the verified checkout (TR-012a). Apply the same file boundary to Pulse and mention context. Skip filesystem-based thread lookup and disk history when the checkout fails verification. Use a verified mirror for logs and verify the queue's own checkout before dispatch.
+
+Reject dispatch when the queue checkout fails verification (TR-012a). Resolve the feature in the verified mirror and send the warning privately in its stored thread. Assert zero enqueues.
+
+Test external feature links for dispatch, define and ship (TR-012a). Deny all three commands. The ADR list command shows the local decision index. Omit the index content when the same path links to another checkout.
+
+Decide a local ADR and verify its status and generated index (TR-012a). Reject a configured or linked corpus outside the checkout. Reject an index file or directory linked outside the checkout and a dangling index link. Assert a private reply and zero ADR or index writes for each denial.
+
+Run `adr check` as a viewer against the generated local index (TR-012a). Omit foreign filenames and citations when a scan root links outside the checkout. Deny `adr record` privately when the decision corpus links outside the checkout. Assert zero process launches.
+
+For a valid local `adr record` request (TR-012a), pass the verified checkout to the child process. Keep the reply pending during launch. Confirm dispatch in channel after the child emits `spawn`. Return a private warning if the child emits `error` during launch.
+
+Point Alpha's specs at Beta's specs and request a missing feature with `ship` and `approve` (TR-012a). Both commands return a private checkout-scoped error without listing features. Assert zero process launches, pull request lookups and merges. Give `ship` a prefix that matches a local feature and a linked foreign feature. Assert it resolves the local feature and replies in its thread.
+
+For `ship` and `approve` (TR-012a), link the requested feature outside the checkout. Add a longer local feature ID with the same prefix. Deny the request privately. Assert zero process launches, pull request lookups and merges.
+
+For slash command delivery (TR-012b), send status via `chat.postEphemeral` to the caller in the authorized channel at the stored thread root. Send public dispatch and unthreaded help via `respond`. Set `replace_original: false` for public threaded replies.
+
+For slash command status (TR-012b), read Beta's ledger while the daemon serves Alpha. Scope feature history and summary statistics to Beta and leave the startup queue untouched. Deny dispatch and pause for Beta. Send the feature dispatch denial privately in Beta's stored thread. Send the unthreaded pause denial via `respond`.
+
+Enroll Alpha's mirror through a symbolic link and start the daemon at the mirror's canonical path (TR-012b). Bind the startup queue to Alpha for review actions. Enqueue the authorized slash dispatch once and confirm it in Alpha's stored feature thread.
 
 #### Done When
 
 ```bash
-pnpm build
-pnpm exec vitest run src/server/slack-actions.test.ts src/server/slack-messages.test.ts src/server/slack-agent.test.ts src/server/slack-home.test.ts src/server/slack.test.ts src/architecture.test.ts
+bash specs/048-project-identity-slack/gates/phase-03.sh
 ```
 
 ### Phase 4: Presence and pilot guards
@@ -275,7 +350,7 @@ pnpm exec vitest run src/commands/project.test.ts src/commands/status.test.ts sr
 |---|---|---|---|
 | FR-001: Project enrollment and legacy aliases | Enroll stable repo identity, trunk, checkout, runner policy, Slack binding and legacy hashes | Phase 1, Phase 2 and Phase 6 | `TR-001`, `TR-006` and `TR-021` |
 | FR-002: Slack workspace, channel and role auth | Authorize workspace, channel, user, selector and mutation role before accepting work | Phase 1, Phase 3 and Phase 4 | `TR-002`, `TR-011` and `TR-016` |
-| FR-003: Scoped dispatch, threads and click auth | Thread replies per project feature, carry recipients and re-authorize button clicks with replay receipts | Phase 1, Phase 3, Phase 4 and Phase 5 | `TR-003`, `TR-009`, `TR-013` and `TR-017` |
+| FR-003: Scoped dispatch, threads and click auth | Thread replies per project feature, carry recipients and re-authorize button clicks with replay receipts | Phase 1, Phase 3, Phase 4 and Phase 5 | `TR-003`, `TR-009`, `TR-012b`, `TR-013` and `TR-017` |
 | FR-004: Local single-project compatibility | Preserve local CLI workflow via `init` and loopback defaults while denying unauthenticated hosted requests, including gateway loopback | Phase 2 and Phase 6 | `TR-006`, `TR-021` and `TR-023` |
 | FR-005: Liveness, readiness and ops separation | Separate daemon liveness, project readiness, Slack delivery and explicit operations routing | Phase 4, Phase 5 and Phase 6 | `TR-013`, `TR-019` and `TR-022` |
 | FR-006: Two-repository collision proof | Prove two repos with matching feature and branch names stay isolated across synthetic Slack faults | Phase 2 and Phase 6 | `TR-005` and `TR-024` |
@@ -291,3 +366,9 @@ pnpm exec vitest run src/commands/project.test.ts src/commands/status.test.ts sr
 ## Deferred items
 
 None. Full coverage of `specs/048-project-identity-slack/spec.md`.
+
+Phase 3 review regressions cover enrolled repository propagation in URL lookup and slash approval, crash-left claimed merge reconciliation and synthetic receipt compare-and-set guards. Seven failures preceded the repair. The repaired phase gate passes 162 tests.
+
+Phase 3 final regression repairs classify missing and nonexecutable GitHub CLI launch as typed preflight failures with the original cause. A started process still has an uncertain outcome. Both authorized actors receive private review links at the stored root thread. Three tests failed before repair. The full phase gate passes 168 tests. Slack supports threaded private replies through chat.postEphemeral. Source: https://docs.slack.dev/reference/methods/chat.postEphemeral/.
+
+TR-012 binds App Home status to the startup project before event handling. After checkout replacement, require both immutable ownership and current checkout verification. Unknown provenance hides project-specific activity. Cover the event boundary and direct rendering for a Beta-only viewer.

@@ -13,7 +13,7 @@ export async function notifyRoutes(
   projectRoot?: string,
 ) {
   const shutdown = new AbortController();
-  const deliveries = new Set<Promise<void>>();
+  const deliveries = new Set<ReturnType<typeof notifySlack>>();
   server.addHook("preClose", async () => {
     shutdown.abort();
     await Promise.allSettled(deliveries);

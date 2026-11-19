@@ -2,31 +2,56 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { execSync, spawn } from "node:child_process";
+import { spawn } from "node:child_process";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import type { KnownBlock } from "@slack/types";
+import {
+  scopedFeatureDirectory,
+  scopedFeaturePath,
+  scopedSpecsDirectory,
+} from "../adapters/filesystem/scoped-feature.js";
+import { verifyEnrolledCheckout } from "../adapters/git/project-id.js";
+import type { ProjectRoutingService } from "../application/project-routing/index.js";
 import { findOpenPr } from "../db/runs.js";
+import { normalizeGitRemoteSlug } from "../domain/project-id.js";
+import type { EnrolledProject } from "../domain/project-registry.js";
+import {
+  parseProjectSelector,
+  requiredAccessForSlackCommand,
+} from "../domain/slack-routing.js";
+import type { VcsProjectPort } from "../ports/vcs-port.js";
 import { resolveProjectId } from "../utils/project-id.js";
-import { resolveFeature } from "../utils/resolve-feature.js";
 import type { DispatchQueue } from "./dispatch.js";
 import type { GitManager } from "./git-manager.js";
 import type { SystemMonitor } from "./monitor.js";
+import { launchDetachedGwrk } from "./slack-launch.js";
 import type { DispatchRecord } from "./types.js";
 
 interface SlackBlockKit {
   blocks: KnownBlock[];
   response_type: "ephemeral" | "in_channel";
+  thread_ts?: string;
 }
 
 export interface CommandContext {
   userId: string;
   channelId: string;
   projectRoot: string;
+  verifiedCheckoutRoot?: string;
   buildServerUrl: string;
   queue: DispatchQueue;
+  queueProjectId?: string;
   monitor: SystemMonitor;
   git: GitManager;
+  workspaceId?: string;
+  threadTs?: string;
+  messageTs?: string;
+  projectId?: string;
+  projectSlug?: string;
+  projectRepository?: string;
+  routingService?: ProjectRoutingService;
+  vcs?: VcsProjectPort;
 }
 
 export type SlashCommandHandler = (
@@ -34,13 +59,51 @@ export type SlashCommandHandler = (
   context: CommandContext,
 ) => Promise<SlackBlockKit>;
 
+const scopedFeatureUnavailable =
+  "Feature is unavailable inside this project's checkout.";
+
+function resolveScopedSlackFeature(
+  projectRoot: string,
+  featureInput: string,
+): { featureId: string; directory: string } | undefined {
+  if (!/^[a-zA-Z0-9][a-zA-Z0-9_-]*$/.test(featureInput)) return undefined;
+  const specs = scopedSpecsDirectory(projectRoot);
+  if (!specs) return undefined;
+
+  const exact = scopedFeatureDirectory(projectRoot, featureInput);
+  if (exact) return { featureId: featureInput, directory: exact };
+  try {
+    fs.lstatSync(path.join(specs, featureInput));
+    return undefined;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT") return undefined;
+  }
+
+  const prefix = /^\d+$/.test(featureInput) ? featureInput : `${featureInput}-`;
+  try {
+    let match: { featureId: string; directory: string } | undefined;
+    for (const featureId of fs.readdirSync(specs)) {
+      if (!featureId.startsWith(prefix)) continue;
+      const directory = scopedFeatureDirectory(projectRoot, featureId);
+      if (!directory) continue;
+      if (match) return undefined;
+      match = { featureId, directory };
+    }
+    return match;
+  } catch {
+    return undefined;
+  }
+}
+
 const handlers: Record<string, SlashCommandHandler> = {
   status: async (args, context) => {
     const { listRuns } = await import("../db/runs.js");
     const featureId = args[0];
     const resources = context.monitor.getResources();
-    const queueInfo = context.queue.getQueue();
-    const projectId = resolveProjectId(context.projectRoot);
+    const projectId =
+      context.projectId ?? resolveProjectId(context.projectRoot);
+    const ownsQueue =
+      !context.routingService || context.queueProjectId === projectId;
 
     const blocks: KnownBlock[] = [
       {
@@ -54,7 +117,9 @@ const handlers: Record<string, SlashCommandHandler> = {
 
     if (featureId) {
       // Check in-memory queue first (live dispatches)
-      const featureDispatch = context.queue.getDispatch(featureId, "");
+      const featureDispatch = ownsQueue
+        ? context.queue.getDispatch(featureId, "")
+        : undefined;
       if (featureDispatch) {
         blocks.push({
           type: "section",
@@ -102,17 +167,23 @@ const handlers: Record<string, SlashCommandHandler> = {
       // add a query here: SELECT phase, completed, total FROM task_state WHERE feature_id = ?
 
       // Also check for spec-local ship runs
-      const runsDir = path.join(
-        context.projectRoot,
-        "specs",
-        featureId,
-        ".gwrk",
-        "runs",
-      );
-      if (fs.existsSync(runsDir)) {
+      const checkout = context.routingService
+        ? context.verifiedCheckoutRoot
+        : context.projectRoot;
+      const scopedFeature = checkout
+        ? resolveScopedSlackFeature(checkout, featureId)?.directory
+        : undefined;
+      const runsDir = scopedFeature
+        ? scopedFeaturePath(scopedFeature, ".gwrk", "runs")
+        : undefined;
+      if (runsDir) {
         const files = fs
           .readdirSync(runsDir)
-          .filter((f) => f.endsWith(".json"))
+          .filter(
+            (f) =>
+              f.endsWith(".json") &&
+              scopedFeaturePath(runsDir, f) !== undefined,
+          )
           .sort()
           .reverse();
         if (files.length > 0) {
@@ -186,7 +257,7 @@ const handlers: Record<string, SlashCommandHandler> = {
       }
 
       // 3. Active dispatches
-      const activeDispatches = queueInfo.active;
+      const activeDispatches = ownsQueue ? context.queue.getQueue().active : [];
       if (activeDispatches.length > 0) {
         let text = `*🔧 Active Dispatches:* ${activeDispatches.length}`;
         for (const d of activeDispatches as DispatchRecord[]) {
@@ -224,7 +295,14 @@ const handlers: Record<string, SlashCommandHandler> = {
     }
 
     try {
-      const resolved = resolveFeature(featureId, context.projectRoot);
+      const resolved = resolveScopedSlackFeature(
+        context.projectRoot,
+        featureId,
+      )?.featureId;
+      if (!resolved)
+        throw new Error(
+          "Feature is unavailable inside this project's checkout.",
+        );
       const phaseId = phaseArg
         ? phaseArg.startsWith("phase-")
           ? phaseArg
@@ -280,13 +358,18 @@ const handlers: Record<string, SlashCommandHandler> = {
     }
 
     try {
-      const resolved = resolveFeature(featureArg, context.projectRoot);
+      const resolved = resolveScopedSlackFeature(
+        context.projectRoot,
+        featureArg,
+      )?.featureId;
+      if (!resolved) throw new Error(scopedFeatureUnavailable);
       const phaseId = phaseArg
         ? phaseArg.startsWith("phase-")
           ? phaseArg
           : `phase-${phaseArg.padStart(2, "0")}`
         : undefined;
-      const projectId = resolveProjectId(context.projectRoot);
+      const projectId =
+        context.projectId ?? resolveProjectId(context.projectRoot);
 
       const pr = findOpenPr(resolved, projectId, phaseId);
       if (!pr) {
@@ -304,11 +387,28 @@ const handlers: Record<string, SlashCommandHandler> = {
         };
       }
 
-      execSync(`gh pr merge ${pr.pr_number} --merge --delete-branch`, {
-        cwd: context.projectRoot,
-        encoding: "utf-8",
-        timeout: 30_000,
-      });
+      if (!context.vcs) {
+        return {
+          response_type: "ephemeral",
+          blocks: [
+            {
+              type: "section",
+              text: {
+                type: "mrkdwn",
+                text: ":warning: VCS port is required to merge pull requests.",
+              },
+            },
+          ],
+        };
+      }
+
+      if (!context.projectRepository)
+        throw new Error("The authorized project has no enrolled repository.");
+      await context.vcs.mergePullRequest(
+        context.projectRoot,
+        pr.pr_number,
+        context.projectRepository,
+      );
 
       return {
         response_type: "in_channel",
@@ -402,10 +502,24 @@ const handlers: Record<string, SlashCommandHandler> = {
   pulse: async (args, context) => {
     const { generatePulseReport } = await import("../engine/pulse.js");
     const { loadConfig } = await import("../utils/config.js");
-    const config = loadConfig(context.projectRoot);
 
     try {
-      const report = generatePulseReport(config);
+      const config = loadConfig(context.projectRoot);
+      const checkout = fs.realpathSync(context.projectRoot);
+      const tracksCheckout = config.pulse?.repos.some((repo) => {
+        try {
+          return fs.realpathSync(repo) === checkout;
+        } catch {
+          return false;
+        }
+      });
+      const report = generatePulseReport(
+        {
+          ...config,
+          pulse: { ...config.pulse, repos: tracksCheckout ? [checkout] : [] },
+        },
+        { specRoots: [checkout] },
+      );
       let text = `📊 *Pulse Daily Summary* (${new Date(report.generatedAt).toLocaleDateString()})\n`;
       for (const repo of report.repositories) {
         text += `• *${repo.repoName}*: ${repo.mainLoc} LOC (+${repo.draftLoc} draft)\n`;
@@ -450,11 +564,14 @@ const handlers: Record<string, SlashCommandHandler> = {
     try {
       const config = loadConfig(context.projectRoot);
       const roleMultipliers = resolveRoleMultipliers(config);
-      const featureDir = path.join(
-        context.projectRoot,
-        "specs",
-        featureId || "",
-      );
+      const featureDir = featureId
+        ? resolveScopedSlackFeature(context.projectRoot, featureId)?.directory
+        : undefined;
+      if (!featureDir || !scopedFeaturePath(featureDir, "spec.md")) {
+        throw new Error(
+          "Feature specification is unavailable inside this project's checkout.",
+        );
+      }
 
       const stories = extractStories(featureDir);
       const report = computeEffort(stories, roleMultipliers, 1.25);
@@ -488,131 +605,8 @@ const handlers: Record<string, SlashCommandHandler> = {
     }
   },
 
-  logs: async (args, context) => {
-    const [featureId, phaseId] = args;
-    if (!featureId) {
-      return {
-        response_type: "ephemeral",
-        blocks: [
-          {
-            type: "section",
-            text: {
-              type: "mrkdwn",
-              text: ":warning: Feature ID is required. Usage: `/gwrk logs <featureId> [phaseId]`",
-            },
-          },
-        ],
-      };
-    }
-
-    // Read ship run JSON files from specs/<feature>/.gwrk/runs/
-    const runsDir = path.join(
-      context.projectRoot,
-      "specs",
-      featureId,
-      ".gwrk",
-      "runs",
-    );
-    if (!fs.existsSync(runsDir)) {
-      return {
-        response_type: "ephemeral",
-        blocks: [
-          {
-            type: "section",
-            text: {
-              type: "mrkdwn",
-              text: `📋 No ship run logs found for *${featureId}* in \`specs/${featureId}/.gwrk/runs/\``,
-            },
-          },
-        ],
-      };
-    }
-
-    let files = fs
-      .readdirSync(runsDir)
-      .filter((f) => f.endsWith(".json"))
-      .sort()
-      .reverse();
-
-    // Filter by phase if provided
-    if (phaseId) {
-      const phaseNorm = phaseId.startsWith("phase-")
-        ? phaseId
-        : `phase-${phaseId}`;
-      files = files.filter(
-        (f) => f.includes(phaseNorm) || f.includes(`_${phaseId}_`),
-      );
-    }
-
-    if (files.length === 0) {
-      return {
-        response_type: "ephemeral",
-        blocks: [
-          {
-            type: "section",
-            text: {
-              type: "mrkdwn",
-              text: `📋 No logs found for *${featureId}*${phaseId ? ` phase *${phaseId}*` : ""}`,
-            },
-          },
-        ],
-      };
-    }
-
-    // Read the most recent log
-    const latestFile = files[0];
-    const blocks: KnownBlock[] = [];
-
-    try {
-      const content = fs.readFileSync(path.join(runsDir, latestFile), "utf-8");
-      const run = JSON.parse(content);
-
-      const status =
-        run.exit_code === 0
-          ? "✅ PASS"
-          : run.exit_code
-            ? "❌ FAIL"
-            : "🔄 IN PROGRESS";
-      let text = `📋 *Latest log: ${latestFile}*\n`;
-      text += `*Status:* ${status}\n`;
-      if (run.feature_id) text += `*Feature:* ${run.feature_id}\n`;
-      if (run.phase_id) text += `*Phase:* ${run.phase_id}\n`;
-      if (run.agent_backend) text += `*Agent:* ${run.agent_backend}\n`;
-      if (run.duration_s != null) text += `*Duration:* ${run.duration_s}s\n`;
-      if (run.gate_result) text += `*Gate:* ${run.gate_result}\n`;
-      if (run.review_verdict) text += `*Review:* ${run.review_verdict}\n`;
-
-      blocks.push({
-        type: "section",
-        text: { type: "mrkdwn", text },
-      });
-
-      if (files.length > 1) {
-        blocks.push({
-          type: "context",
-          elements: [
-            {
-              type: "mrkdwn",
-              text: `${files.length} total runs. Showing latest.`,
-            },
-          ],
-        });
-      }
-    } catch {
-      blocks.push({
-        type: "section",
-        text: {
-          type: "mrkdwn",
-          text: `📋 *${latestFile}*\n_Could not parse log file._`,
-        },
-      });
-    }
-
-    return {
-      response_type: "ephemeral",
-      blocks,
-    };
-  },
+  logs: async (args, context) =>
+    buildSlackLogResponse(args, context.projectRoot),
 
   ship: async (args, context) => {
     const featureArg = args[0];
@@ -633,7 +627,11 @@ const handlers: Record<string, SlashCommandHandler> = {
     }
 
     try {
-      const resolved = resolveFeature(featureArg, context.projectRoot);
+      const resolved = resolveScopedSlackFeature(
+        context.projectRoot,
+        featureArg,
+      )?.featureId;
+      if (!resolved) throw new Error(scopedFeatureUnavailable);
 
       // Spawn gwrk ship as background process
       const child = spawn("gwrk", ["ship", resolved, phaseArg], {
@@ -709,7 +707,11 @@ const handlers: Record<string, SlashCommandHandler> = {
     }
 
     try {
-      const resolved = resolveFeature(featureId, context.projectRoot);
+      const resolved = resolveScopedSlackFeature(
+        context.projectRoot,
+        featureId,
+      )?.featureId;
+      if (!resolved) throw new Error(scopedFeatureUnavailable);
 
       // Spawn gwrk define <sub> <feature> as background process
       const child = spawn("gwrk", ["define", subcommand, resolved], {
@@ -791,13 +793,13 @@ const handlers: Record<string, SlashCommandHandler> = {
     const sub = args[0] || "list";
 
     if (sub === "list") {
-      const indexPath = path.join(
+      const indexPath = scopedFeaturePath(
         context.projectRoot,
         ".gwrk",
         "decisions",
         "index.md",
       );
-      if (!fs.existsSync(indexPath)) {
+      if (!indexPath) {
         return {
           response_type: "ephemeral",
           blocks: [
@@ -832,6 +834,8 @@ const handlers: Record<string, SlashCommandHandler> = {
         const msg = await adrCommandHandler({
           check: true,
           cwd: context.projectRoot,
+          verifiedCheckoutRoot:
+            context.verifiedCheckoutRoot ?? context.projectRoot,
         });
         return {
           response_type: "ephemeral",
@@ -878,6 +882,7 @@ const handlers: Record<string, SlashCommandHandler> = {
           target: adrId,
           decide: true,
           cwd: context.projectRoot,
+          verifiedCheckoutRoot: context.verifiedCheckoutRoot,
         });
         return {
           response_type: "in_channel",
@@ -921,12 +926,36 @@ const handlers: Record<string, SlashCommandHandler> = {
           ],
         };
       }
-      const child = spawn("gwrk", ["define", "adr", title, "--run"], {
-        cwd: context.projectRoot,
-        detached: true,
-        stdio: "ignore",
-      });
-      child.unref();
+      try {
+        const { resolveAdrAuthoringScope } = await import(
+          "../engine/adr-scaffold.js"
+        );
+        const scope = await resolveAdrAuthoringScope(
+          context.projectRoot,
+          context.verifiedCheckoutRoot ?? context.projectRoot,
+        );
+        await launchDetachedGwrk(
+          ["define", "adr", title, "--run"],
+          scope.projectRoot,
+          {
+            ...process.env,
+            GWRK_ADR_CHECKOUT_ROOT: scope.verifiedCheckoutRoot,
+          },
+        );
+      } catch (error) {
+        return {
+          response_type: "ephemeral",
+          blocks: [
+            {
+              type: "section",
+              text: {
+                type: "mrkdwn",
+                text: `:warning: ${error instanceof Error ? error.message : String(error)}`,
+              },
+            },
+          ],
+        };
+      }
       return {
         response_type: "in_channel",
         blocks: [
@@ -956,11 +985,194 @@ const handlers: Record<string, SlashCommandHandler> = {
   },
 };
 
+export function buildSlackLogResponse(
+  args: string[],
+  projectRoot: string,
+  options: { exactFeature?: boolean } = {},
+): SlackBlockKit {
+  const [featureId, phaseId] = args;
+  if (!featureId) {
+    return {
+      response_type: "ephemeral",
+      blocks: [
+        {
+          type: "section",
+          text: {
+            type: "mrkdwn",
+            text: ":warning: Feature ID is required. Usage: `/gwrk logs <featureId> [phaseId]`",
+          },
+        },
+      ],
+    };
+  }
+
+  // Read ship run JSON files from specs/<feature>/.gwrk/runs/
+  const featureDir = options.exactFeature
+    ? scopedFeatureDirectory(projectRoot, featureId, { exactId: true })
+    : resolveScopedSlackFeature(projectRoot, featureId)?.directory;
+  const runsDir = featureDir
+    ? scopedFeaturePath(featureDir, ".gwrk", "runs")
+    : undefined;
+  if (!runsDir) {
+    return {
+      response_type: "ephemeral",
+      blocks: [
+        {
+          type: "section",
+          text: {
+            type: "mrkdwn",
+            text: `📋 No ship run logs found for *${featureId}* in \`specs/${featureId}/.gwrk/runs/\``,
+          },
+        },
+      ],
+    };
+  }
+
+  let files = fs
+    .readdirSync(runsDir)
+    .filter(
+      (f) => f.endsWith(".json") && scopedFeaturePath(runsDir, f) !== undefined,
+    )
+    .sort()
+    .reverse();
+
+  // Filter by phase if provided
+  if (phaseId) {
+    const phaseNorm = phaseId.startsWith("phase-")
+      ? phaseId
+      : `phase-${phaseId}`;
+    files = files.filter(
+      (f) => f.includes(phaseNorm) || f.includes(`_${phaseId}_`),
+    );
+  }
+
+  if (files.length === 0) {
+    return {
+      response_type: "ephemeral",
+      blocks: [
+        {
+          type: "section",
+          text: {
+            type: "mrkdwn",
+            text: `📋 No logs found for *${featureId}*${phaseId ? ` phase *${phaseId}*` : ""}`,
+          },
+        },
+      ],
+    };
+  }
+
+  // Read the most recent log
+  const latestFile = files[0];
+  const blocks: KnownBlock[] = [];
+
+  try {
+    const logPath = scopedFeaturePath(runsDir, latestFile);
+    if (!logPath)
+      throw new Error("Log file is outside the authorized feature.");
+    const content = fs.readFileSync(logPath, "utf-8");
+    const run = JSON.parse(content);
+
+    const status =
+      run.exit_code === 0
+        ? "✅ PASS"
+        : run.exit_code
+          ? "❌ FAIL"
+          : "🔄 IN PROGRESS";
+    let text = `📋 *Latest log: ${latestFile}*\n`;
+    text += `*Status:* ${status}\n`;
+    if (run.feature_id) text += `*Feature:* ${run.feature_id}\n`;
+    if (run.phase_id) text += `*Phase:* ${run.phase_id}\n`;
+    if (run.agent_backend) text += `*Agent:* ${run.agent_backend}\n`;
+    if (run.duration_s != null) text += `*Duration:* ${run.duration_s}s\n`;
+    if (run.gate_result) text += `*Gate:* ${run.gate_result}\n`;
+    if (run.review_verdict) text += `*Review:* ${run.review_verdict}\n`;
+
+    blocks.push({
+      type: "section",
+      text: { type: "mrkdwn", text },
+    });
+
+    if (files.length > 1) {
+      blocks.push({
+        type: "context",
+        elements: [
+          {
+            type: "mrkdwn",
+            text: `${files.length} total runs. Showing latest.`,
+          },
+        ],
+      });
+    }
+  } catch {
+    blocks.push({
+      type: "section",
+      text: {
+        type: "mrkdwn",
+        text: `📋 *${latestFile}*\n_Could not parse log file._`,
+      },
+    });
+  }
+
+  return {
+    response_type: "ephemeral",
+    blocks,
+  };
+}
+
+const featureCommands = new Set([
+  "approve",
+  "define",
+  "dispatch",
+  "effort",
+  "logs",
+  "pause",
+  "reject",
+  "ship",
+  "status",
+]);
+
+const queueCommands = new Set(["dispatch", "pause"]);
+
+const checkoutCommands = new Set([
+  "adr",
+  "approve",
+  "define",
+  "dispatch",
+  "effort",
+  "logs",
+  "pulse",
+  "research",
+  "ship",
+]);
+
+export function resolveSlackCheckout(
+  project: EnrolledProject,
+  queueRoot?: string,
+): string | undefined {
+  const local = verifyEnrolledCheckout(project, "localRoot");
+  if (queueRoot === undefined) {
+    return local ?? verifyEnrolledCheckout(project, "mirrorPath");
+  }
+
+  try {
+    const checkout = fs.realpathSync(queueRoot);
+    if (
+      checkout === local ||
+      checkout === verifyEnrolledCheckout(project, "mirrorPath")
+    ) {
+      return checkout;
+    }
+  } catch {
+    return undefined;
+  }
+}
+
 export async function handleSlashCommand(
   commandText: string,
   context: CommandContext,
 ): Promise<SlackBlockKit> {
-  const [subcommand, ...args] = commandText.trim().split(/\s+/);
+  const { requestedProject, cleanedText } = parseProjectSelector(commandText);
+  const [subcommand, ...args] = cleanedText.trim().split(/\s+/);
 
   // "help" returns the same rich help as no subcommand
   if (!subcommand || subcommand === "help") {
@@ -1025,5 +1237,159 @@ export async function handleSlashCommand(
     };
   }
 
-  return handler(args, context);
+  if (!context.routingService) {
+    if (
+      !context.workspaceId &&
+      /^-?\d+$/.test(context.channelId) &&
+      context.userId === `tg:${context.channelId}`
+    ) {
+      return handler(args, context);
+    }
+    return {
+      response_type: "ephemeral",
+      blocks: [
+        {
+          type: "section",
+          text: {
+            type: "mrkdwn",
+            text: ":warning: Slack service is running without project routing configuration (REMOTE_AUTH_REQUIRED).",
+          },
+        },
+      ],
+    };
+  }
+
+  const isDirectMessage = Boolean(context.channelId?.startsWith("D"));
+  const requiredAccess = requiredAccessForSlackCommand(subcommand, args[0]);
+  const envelope = {
+    workspaceId: context.workspaceId || "",
+    channelId: context.channelId || "",
+    isDirectMessage,
+    actorUserId: context.userId,
+    threadTs: context.threadTs,
+    messageTs: context.messageTs,
+    requestedProject,
+    requiredAccess,
+  };
+
+  const decision = context.routingService.authorizeCommand(envelope);
+  if (!decision.ok) {
+    let text = `:warning: ${decision.message}`;
+    if (decision.candidateSlugs && decision.candidateSlugs.length > 0) {
+      text += ` Candidate projects: ${decision.candidateSlugs.join(", ")}`;
+    }
+    return {
+      response_type: "ephemeral",
+      blocks: [
+        {
+          type: "section",
+          text: {
+            type: "mrkdwn",
+            text,
+          },
+        },
+      ],
+    };
+  }
+
+  const queueUnavailable =
+    queueCommands.has(subcommand) &&
+    context.queueProjectId !== decision.project.projectId;
+  let threadTs = queueUnavailable
+    ? undefined
+    : (decision.recipient.threadTs ?? context.threadTs);
+  const needsCheckout = !queueUnavailable && checkoutCommands.has(subcommand);
+  const needsFeatureThread =
+    !threadTs &&
+    args[0] &&
+    (queueUnavailable
+      ? subcommand === "dispatch"
+      : featureCommands.has(subcommand));
+  const checkout =
+    needsCheckout || needsFeatureThread || (subcommand === "status" && args[0])
+      ? resolveSlackCheckout(
+          decision.project,
+          subcommand === "dispatch" && !queueUnavailable
+            ? context.projectRoot
+            : undefined,
+        )
+      : undefined;
+
+  const threadCheckout = needsFeatureThread
+    ? (checkout ?? resolveSlackCheckout(decision.project))
+    : undefined;
+  if (threadCheckout && needsFeatureThread) {
+    const featureId = resolveScopedSlackFeature(
+      threadCheckout,
+      args[0],
+    )?.featureId;
+    if (featureId) {
+      const storedThread = context.routingService.getFeatureThread(
+        decision.project.projectId,
+        featureId,
+      );
+      if (
+        storedThread?.projectId === decision.project.projectId &&
+        storedThread.workspaceId === decision.recipient.workspaceId &&
+        storedThread.channelId === decision.recipient.channelId
+      ) {
+        threadTs = storedThread.rootTs;
+      }
+    }
+  }
+
+  if (queueUnavailable) {
+    return {
+      response_type: "ephemeral",
+      ...(threadTs ? { thread_ts: threadTs } : {}),
+      blocks: [
+        {
+          type: "section",
+          text: {
+            type: "mrkdwn",
+            text: ":warning: The dispatch queue is unavailable for this project.",
+          },
+        },
+      ],
+    };
+  }
+
+  if (needsCheckout && !checkout) {
+    return {
+      response_type: "ephemeral",
+      thread_ts: threadTs,
+      blocks: [
+        {
+          type: "section",
+          text: {
+            type: "mrkdwn",
+            text: ":warning: The project checkout is unavailable.",
+          },
+        },
+      ],
+    };
+  }
+
+  const projectContext: CommandContext = {
+    ...context,
+    projectRoot: checkout ?? context.projectRoot,
+    verifiedCheckoutRoot: checkout,
+    projectId: decision.project.projectId,
+    projectSlug: decision.project.slug,
+    projectRepository: decision.project.repoSlug
+      ? (() => {
+          const slug = normalizeGitRemoteSlug(decision.project.repoSlug);
+          return slug?.split("/").length === 2
+            ? `github.com/${slug}`
+            : (slug ?? undefined);
+        })()
+      : undefined,
+    threadTs,
+  };
+
+  const result = await handler(args, projectContext);
+  if (threadTs && !result.thread_ts) {
+    result.thread_ts = threadTs;
+  }
+  return result;
 }

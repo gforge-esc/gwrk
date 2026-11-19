@@ -125,12 +125,11 @@ class PresenceManager {
     if (this.currentPresence === "active") {
       if (signal) {
         const { sendSlackMessage } = await import("./slack-notify.js");
-        await sendSlackMessage(
-          message,
+        await sendSlackMessage(message, {
           signal,
           projectRoot,
           transportTimeoutMs,
-        );
+        });
       } else {
         await this.sendImmediately(message, projectRoot);
       }
@@ -208,12 +207,13 @@ class PresenceManager {
         const deadlines = group.flatMap(({ transportTimeoutMs }) =>
           transportTimeoutMs === undefined ? [] : [transportTimeoutMs],
         );
-        await sendSlackMessage(
-          summary,
+        await sendSlackMessage(summary, {
           signal,
           projectRoot,
-          deadlines.length ? Math.min(...deadlines) : undefined,
-        );
+          transportTimeoutMs: deadlines.length
+            ? Math.min(...deadlines)
+            : undefined,
+        });
       } finally {
         for (const pending of group) pending.finish?.();
       }

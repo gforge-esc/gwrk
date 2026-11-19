@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import type { KnownBlock } from "@slack/types";
+import type { ContextBlock, KnownBlock } from "@slack/types";
 import type {
   CompressionReport,
   PulseReport,
@@ -12,8 +12,24 @@ import type { DispatchRecord } from "./types.js";
 
 export interface SlackMessage {
   channel?: string;
+  thread_ts?: string;
   blocks: KnownBlock[];
   text: string;
+}
+
+function projectContext(project?: {
+  projectId?: string;
+  projectSlug?: string;
+}): ContextBlock[] {
+  const label = project?.projectSlug || project?.projectId;
+  return label
+    ? [
+        {
+          type: "context",
+          elements: [{ type: "mrkdwn", text: `*Project:* \`${label}\`` }],
+        },
+      ]
+    : [];
 }
 
 export const MessageBuilder = {
@@ -75,11 +91,24 @@ export const MessageBuilder = {
     };
   },
 
-  reviewReady(dispatch: DispatchRecord): SlackMessage {
+  reviewReady(
+    dispatch: DispatchRecord & {
+      projectId?: string;
+      projectSlug?: string;
+      rootTs?: string;
+    },
+  ): SlackMessage {
     const text = `🔍 Review ready for ${dispatch.featureId} (${dispatch.phaseId})`;
+    const routing = {
+      ...(dispatch.projectId ? { projectId: dispatch.projectId } : {}),
+      ...(dispatch.projectSlug ? { projectSlug: dispatch.projectSlug } : {}),
+      ...(dispatch.rootTs ? { rootTs: dispatch.rootTs } : {}),
+    };
     const value = JSON.stringify({
+      ...routing,
       featureId: dispatch.featureId,
       phaseId: dispatch.phaseId,
+      prNumber: dispatch.prNumber,
     });
 
     const blocks: KnownBlock[] = [
@@ -98,6 +127,8 @@ export const MessageBuilder = {
         },
       },
     ];
+
+    blocks.push(...projectContext(dispatch));
 
     if (dispatch.prUrl) {
       blocks.push({
@@ -137,9 +168,22 @@ export const MessageBuilder = {
     return { text, blocks };
   },
 
-  phaseFail(dispatch: DispatchRecord, error?: string): SlackMessage {
+  phaseFail(
+    dispatch: DispatchRecord & {
+      projectId?: string;
+      projectSlug?: string;
+      rootTs?: string;
+    },
+    error?: string,
+  ): SlackMessage {
     const text = `❌ Phase ${dispatch.phaseId} failed for ${dispatch.featureId}`;
+    const routing = {
+      ...(dispatch.projectId ? { projectId: dispatch.projectId } : {}),
+      ...(dispatch.projectSlug ? { projectSlug: dispatch.projectSlug } : {}),
+      ...(dispatch.rootTs ? { rootTs: dispatch.rootTs } : {}),
+    };
     const value = JSON.stringify({
+      ...routing,
       featureId: dispatch.featureId,
       phaseId: dispatch.phaseId,
     });
@@ -168,6 +212,7 @@ export const MessageBuilder = {
             text: `*Error:*\n\`\`\`${error || "Unknown error"}\`\`\``,
           },
         },
+        ...projectContext(dispatch),
         {
           type: "actions",
           elements: [
@@ -339,9 +384,19 @@ export const MessageBuilder = {
     };
   },
 
-  specReady(featureId: string, specPath: string): SlackMessage {
+  specReady(
+    featureId: string,
+    specPath: string,
+    routing?: { projectId?: string; projectSlug?: string; rootTs?: string },
+  ): SlackMessage {
     const text = `📄 Spec Ready for ${featureId}`;
-    const value = JSON.stringify({ featureId, specPath });
+    const value = JSON.stringify({
+      ...(routing?.projectId ? { projectId: routing.projectId } : {}),
+      ...(routing?.projectSlug ? { projectSlug: routing.projectSlug } : {}),
+      featureId,
+      specPath,
+      ...(routing?.rootTs ? { rootTs: routing.rootTs } : {}),
+    });
 
     return {
       text,
@@ -360,6 +415,7 @@ export const MessageBuilder = {
             text: `The specification for *${featureId}* is ready for your review at \`${specPath}\`.`,
           },
         },
+        ...projectContext(routing),
         {
           type: "actions",
           elements: [
@@ -386,9 +442,16 @@ export const MessageBuilder = {
     featureId: string,
     planPath: string,
     phaseCount: number,
+    routing?: { projectId?: string; projectSlug?: string; rootTs?: string },
   ): SlackMessage {
     const text = `🗺️ Plan Ready for ${featureId} (${phaseCount} phases)`;
-    const value = JSON.stringify({ featureId, planPath });
+    const value = JSON.stringify({
+      ...(routing?.projectId ? { projectId: routing.projectId } : {}),
+      ...(routing?.projectSlug ? { projectSlug: routing.projectSlug } : {}),
+      featureId,
+      planPath,
+      ...(routing?.rootTs ? { rootTs: routing.rootTs } : {}),
+    });
 
     const blocks: KnownBlock[] = [
       {
@@ -405,6 +468,7 @@ export const MessageBuilder = {
           text: `The build plan for *${featureId}* is ready with *${phaseCount}* phases. Review it at \`${planPath}\`.`,
         },
       },
+      ...projectContext(routing),
       {
         type: "actions",
         elements: [

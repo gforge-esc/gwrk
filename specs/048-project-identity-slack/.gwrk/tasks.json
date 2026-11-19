@@ -185,82 +185,102 @@
         {
           "id": "T017",
           "title": "Create index.ts",
-          "description": "NEW src/application/project-routing/index.ts. Coordinate project resolution and role checks plus action receipts and thread delivery",
-          "status": "open",
-          "gateScript": "pnpm build\npnpm exec vitest run src/server/slack-actions.test.ts src/server/slack-messages.test.ts src/server/slack-agent.test.ts src/server/slack-home.test.ts src/server/slack.test.ts src/architecture.test.ts",
-          "sp": 2
+          "description": "NEW src/application/project-routing/index.ts. Coordinate project resolution and role checks plus action receipts and thread delivery\nPrior review and diagnosis remain in .gwrk/review-history/phase-03-through-2026-11-18T2206Z.json and findings.jsonl. Seven preserved checkout boundary regressions failed before repair. The phase gate passes 182 tests. See evidence/phase03-checkout-boundary-repair.md. Independent review remains required.\n\nRepair evidence: evidence/phase03-postauthorization-warning-scope.md. Earlier findings remain in review-history/phase-03-through-2026-11-19T0028Z.json. Independent clearance remains required.\n\nReview integrity: the first Antigravity attempt did not receive its expanded task through the CLI stdin transport. Its code GO does not establish clearance. UAT was stopped. Source and native evidence remain preserved. Re-review with the corrected operator file handoff is required; no requirement changed.",
+          "status": "completed",
+          "gateScript": "gates/phase-03.sh",
+          "sp": 2,
+          "completedAt": "2026-11-19T01:15:42.495Z"
         },
         {
           "id": "T018",
           "title": "Modify index.ts",
-          "description": "MODIFY src/adapters/git/index.ts. Implement identity discovery, pull request URL lookup and pull request merge on `VcsPort`",
-          "status": "open",
-          "gateScript": "pnpm build\npnpm exec vitest run src/server/slack-actions.test.ts src/server/slack-messages.test.ts src/server/slack-agent.test.ts src/server/slack-home.test.ts src/server/slack.test.ts src/architecture.test.ts",
-          "sp": 1
+          "description": "MODIFY src/adapters/git/index.ts. Implement identity discovery, pull request URL lookup and pull request merge on `VcsPort`\nPrior review and diagnosis remain in .gwrk/review-history/phase-03-through-2026-11-18T2206Z.json and findings.jsonl. Seven preserved checkout boundary regressions failed before repair. The phase gate passes 182 tests. See evidence/phase03-checkout-boundary-repair.md. Independent review remains required.\n\nReview integrity: the first Antigravity attempt did not receive its expanded task through the CLI stdin transport. Its code GO does not establish clearance. UAT was stopped. Source and native evidence remain preserved. Re-review with the corrected operator file handoff is required; no requirement changed.",
+          "status": "completed",
+          "gateScript": "gates/phase-03.sh",
+          "sp": 1,
+          "completedAt": "2026-11-19T01:16:00.879Z"
         },
         {
           "id": "T019",
           "title": "Modify slack-messages.ts",
-          "description": "MODIFY src/server/slack-messages.ts. Stamp `projectId`, project slug and `rootTs` into Slack blocks and action values",
-          "status": "open",
-          "gateScript": "pnpm build\npnpm exec vitest run src/server/slack-actions.test.ts src/server/slack-messages.test.ts src/server/slack-agent.test.ts src/server/slack-home.test.ts src/server/slack.test.ts src/architecture.test.ts",
-          "sp": 1
+          "description": "MODIFY src/server/slack-messages.ts. Stamp `projectId`, project slug and `rootTs` into Slack blocks and action values\nPrior review and diagnosis remain in .gwrk/review-history/phase-03-through-2026-11-18T2206Z.json and findings.jsonl. Seven preserved checkout boundary regressions failed before repair. The phase gate passes 182 tests. See evidence/phase03-checkout-boundary-repair.md. Independent review remains required.\n\nReview integrity: the first Antigravity attempt did not receive its expanded task through the CLI stdin transport. Its code GO does not establish clearance. UAT was stopped. Source and native evidence remain preserved. Re-review with the corrected operator file handoff is required; no requirement changed.",
+          "status": "completed",
+          "gateScript": "gates/phase-03.sh",
+          "sp": 1,
+          "completedAt": "2026-11-19T01:16:24.928Z"
         },
         {
           "id": "T020",
           "title": "Modify slack-commands.ts",
-          "description": "MODIFY src/server/slack-commands.ts. Parse `--project`, authorize via `ProjectRoutingService` and thread replies per project",
-          "status": "open",
-          "gateScript": "pnpm build\npnpm exec vitest run src/server/slack-actions.test.ts src/server/slack-messages.test.ts src/server/slack-agent.test.ts src/server/slack-home.test.ts src/server/slack.test.ts src/architecture.test.ts",
-          "sp": 1
+          "description": "MODIFY src/server/slack-commands.ts. Parse `--project`, authorize via `ProjectRoutingService` and thread replies per project\nReview and diagnosis remain in .gwrk/review-history/phase-03-through-2026-11-18T2326Z.json and findings.jsonl. Seven retained reviewer regressions and three real authoring boundary cases failed before repair. The phase gate passes 274 tests. The full suite passes 2099 tests after correcting a synthetic citation fixture. Exact feature identity applies before receipt claims. ADR authoring carries its verified checkout into scaffold and index writes. See evidence/phase03-carried-authoring-and-action-boundaries.md. Independent clearance remains required.\n\nRepair evidence: evidence/phase03-postauthorization-warning-scope.md. Earlier findings remain in review-history/phase-03-through-2026-11-19T0028Z.json. Independent clearance remains required.\n\nReview integrity: the first Antigravity attempt did not receive its expanded task through the CLI stdin transport. Its code GO does not establish clearance. UAT was stopped. Source and native evidence remain preserved. Re-review with the corrected operator file handoff is required; no requirement changed.",
+          "status": "completed",
+          "gateScript": "gates/phase-03.sh",
+          "sp": 1,
+          "completedAt": "2026-11-19T01:16:42.647Z"
         },
         {
           "id": "T021",
           "title": "Modify slack-actions.ts",
-          "description": "MODIFY src/server/slack-actions.ts. Re-authorize clicks, enforce replay receipts and merge pull requests via `VcsPort`. Tests: src/server/slack-actions.test.ts",
-          "status": "open",
-          "gateScript": "pnpm build\npnpm exec vitest run src/server/slack-actions.test.ts src/server/slack-messages.test.ts src/server/slack-agent.test.ts src/server/slack-home.test.ts src/server/slack.test.ts src/architecture.test.ts",
-          "sp": 1
+          "description": "MODIFY src/server/slack-actions.ts. Re-authorize clicks, enforce replay receipts and merge pull requests via `VcsPort`. Tests: src/server/slack-actions.test.ts\nReview and diagnosis remain in .gwrk/review-history/phase-03-through-2026-11-18T2326Z.json and findings.jsonl. Seven retained reviewer regressions and three real authoring boundary cases failed before repair. The phase gate passes 274 tests. The full suite passes 2099 tests after correcting a synthetic citation fixture. Exact feature identity applies before receipt claims. ADR authoring carries its verified checkout into scaffold and index writes. See evidence/phase03-carried-authoring-and-action-boundaries.md. Independent clearance remains required.\n\nRepair evidence: evidence/phase03-canonical-startup-and-private-threads.md. Earlier findings remain in review-history/phase-03-through-2026-11-18T2359Z.json. Independent clearance remains required.\n\nReview integrity: the first Antigravity attempt did not receive its expanded task through the CLI stdin transport. Its code GO does not establish clearance. UAT was stopped. Source and native evidence remain preserved. Re-review with the corrected operator file handoff is required; no requirement changed.",
+          "status": "completed",
+          "gateScript": "gates/phase-03.sh",
+          "sp": 1,
+          "completedAt": "2026-11-19T01:17:01.068Z"
         },
         {
           "id": "T022",
           "title": "Modify slack-agent.ts",
-          "description": "MODIFY src/server/slack-agent.ts. Require authorized project resolution for mentions, direct messages and reactions",
-          "status": "open",
-          "gateScript": "pnpm build\npnpm exec vitest run src/server/slack-actions.test.ts src/server/slack-messages.test.ts src/server/slack-agent.test.ts src/server/slack-home.test.ts src/server/slack.test.ts src/architecture.test.ts",
-          "sp": 1
+          "description": "MODIFY src/server/slack-agent.ts. Require authorized project resolution for mentions, direct messages and reactions\nPrior review and diagnosis remain in .gwrk/review-history/phase-03-through-2026-11-18T2206Z.json and findings.jsonl. Seven preserved checkout boundary regressions failed before repair. The phase gate passes 182 tests. See evidence/phase03-checkout-boundary-repair.md. Independent review remains required.\n\nReview integrity: the first Antigravity attempt did not receive its expanded task through the CLI stdin transport. Its code GO does not establish clearance. UAT was stopped. Source and native evidence remain preserved. Re-review with the corrected operator file handoff is required; no requirement changed.",
+          "status": "completed",
+          "gateScript": "gates/phase-03.sh",
+          "sp": 1,
+          "completedAt": "2026-11-19T01:17:18.160Z"
         },
         {
           "id": "T023",
           "title": "Modify slack-home.ts",
-          "description": "MODIFY src/server/slack-home.ts. Render only enrolled projects where the Slack viewer holds a role",
-          "status": "open",
-          "gateScript": "pnpm build\npnpm exec vitest run src/server/slack-actions.test.ts src/server/slack-messages.test.ts src/server/slack-agent.test.ts src/server/slack-home.test.ts src/server/slack.test.ts src/architecture.test.ts",
-          "sp": 1
+          "description": "MODIFY src/server/slack-home.ts. Render only enrolled projects where the Slack viewer holds a role\nPrior review and diagnosis remain in .gwrk/review-history/phase-03-through-2026-11-18T2206Z.json and findings.jsonl. Seven preserved checkout boundary regressions failed before repair. The phase gate passes 182 tests. See evidence/phase03-checkout-boundary-repair.md. Independent review remains required.\n\nRepair evidence: evidence/phase03-app-home-startup-provenance.md. Earlier findings remain in review-history/phase-03-through-2026-11-19T0050Z.json. Independent clearance remains required.\n\nReview integrity: the first Antigravity attempt did not receive its expanded task through the CLI stdin transport. Its code GO does not establish clearance. UAT was stopped. Source and native evidence remain preserved. Re-review with the corrected operator file handoff is required; no requirement changed.",
+          "status": "completed",
+          "gateScript": "gates/phase-03.sh",
+          "sp": 1,
+          "completedAt": "2026-11-19T01:17:36.509Z"
         },
         {
           "id": "T024",
           "title": "Modify slack.ts",
-          "description": "MODIFY src/server/slack.ts. Remove single-project startup context and resolve workspace, channel and user per event. Tests: src/server/slack-actions.test.ts",
-          "status": "open",
-          "gateScript": "pnpm build\npnpm exec vitest run src/server/slack-actions.test.ts src/server/slack-messages.test.ts src/server/slack-agent.test.ts src/server/slack-home.test.ts src/server/slack.test.ts src/architecture.test.ts",
-          "sp": 1
+          "description": "MODIFY src/server/slack.ts. Remove single-project startup context and resolve workspace, channel and user per event. Tests: src/server/slack-actions.test.ts\nPrior review and diagnosis remain in .gwrk/review-history/phase-03-through-2026-11-18T2206Z.json and findings.jsonl. Seven preserved checkout boundary regressions failed before repair. The phase gate passes 182 tests. See evidence/phase03-checkout-boundary-repair.md. Independent review remains required.\n\nRepair evidence: evidence/phase03-canonical-startup-and-private-threads.md. Earlier findings remain in review-history/phase-03-through-2026-11-18T2359Z.json. Independent clearance remains required.\n\nReview integrity: the first Antigravity attempt did not receive its expanded task through the CLI stdin transport. Its code GO does not establish clearance. UAT was stopped. Source and native evidence remain preserved. Re-review with the corrected operator file handoff is required; no requirement changed.",
+          "status": "completed",
+          "gateScript": "gates/phase-03.sh",
+          "sp": 1,
+          "completedAt": "2026-11-19T01:17:53.725Z"
         },
         {
           "id": "T025",
           "title": "Create synthetic-slack.ts",
-          "description": "NEW tests/helpers/synthetic-slack.ts. Provide deterministic synthetic Slack fixtures with zero network calls",
-          "status": "open",
-          "gateScript": "pnpm build\npnpm exec vitest run src/server/slack-actions.test.ts src/server/slack-messages.test.ts src/server/slack-agent.test.ts src/server/slack-home.test.ts src/server/slack.test.ts src/architecture.test.ts",
-          "sp": 2
+          "description": "NEW tests/helpers/synthetic-slack.ts. Provide deterministic synthetic Slack fixtures with zero network calls\nPrior review and diagnosis remain in .gwrk/review-history/phase-03-through-2026-11-18T2206Z.json and findings.jsonl. Seven preserved checkout boundary regressions failed before repair. The phase gate passes 182 tests. See evidence/phase03-checkout-boundary-repair.md. Independent review remains required.\n\nReview integrity: the first Antigravity attempt did not receive its expanded task through the CLI stdin transport. Its code GO does not establish clearance. UAT was stopped. Source and native evidence remain preserved. Re-review with the corrected operator file handoff is required; no requirement changed.",
+          "status": "completed",
+          "gateScript": "gates/phase-03.sh",
+          "sp": 2,
+          "completedAt": "2026-11-19T01:18:10.343Z"
         }
       ],
       "sp_estimate": 11,
       "testTargets": [
+        "src/adapters/git/index.test.ts",
+        "src/utils/agent-context.test.ts",
+        "src/engine/issues.test.ts",
         "src/server/slack-actions.test.ts",
-        "src/server/slack-messages.test.ts",
         "src/server/slack-agent.test.ts",
-        "src/server/slack-home.test.ts"
+        "src/server/slack-commands.test.ts",
+        "src/server/slack-home.test.ts",
+        "src/server/slack-messages.test.ts",
+        "src/server/slack-notify.test.ts",
+        "src/server/slack.test.ts",
+        "src/architecture.test.ts",
+        "src/commands/adr.checkout.test.ts",
+        "src/commands/adr.test.ts",
+        "src/engine/adr-scaffold.test.ts",
+        "src/engine/adr-check.test.ts"
       ]
     },
     {

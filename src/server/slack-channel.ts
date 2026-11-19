@@ -47,13 +47,24 @@ async function slackFetch(
 
 export async function postSlackMessageWithSignal(
   token: string | undefined,
-  message: { channel: string; text: string; blocks?: unknown[] },
+  message: {
+    channel: string;
+    text: string;
+    blocks?: unknown[];
+    thread_ts?: string;
+  },
   signal: AbortSignal,
-): Promise<void> {
+): Promise<{
+  ok: boolean;
+  channel?: string;
+  ts?: string;
+  message?: { thread_ts?: string };
+}> {
   signal.throwIfAborted();
   if (!token) throw new Error("Slack client has no bot token.");
   const response = await slackFetch("chat.postMessage", message, token, signal);
   if (!response.ok) throw new Error("Slack rejected the message.");
+  return response;
 }
 
 /**

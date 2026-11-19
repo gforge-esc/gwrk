@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { logCliError, warnCli } from "../adapters/cli/output-scope.js";
+import type { NotificationReceipt } from "../ports/notification-port.js";
 import { loadConfig } from "../utils/config.js";
 import { postSlackMessageWithSignal } from "./slack-channel.js";
 import type { SlackMessage } from "./slack-messages.js";
@@ -10,28 +11,24 @@ import { type SlackEvent, presenceManager } from "./slack-presence.js";
 import { getSlackApp } from "./slack.js";
 import { loadTelegramConfig, notifyTelegram } from "./telegram-notify.js";
 
+type SlackTransportOptions = {
+  projectRoot?: string;
+  signal?: AbortSignal;
+  transportTimeoutMs?: number;
+  webhookFallback?: boolean;
+};
+
 function deliverySignal(signal?: AbortSignal, timeoutMs?: number) {
   if (timeoutMs === undefined) return signal;
   const timeout = AbortSignal.timeout(timeoutMs);
   return signal ? AbortSignal.any([signal, timeout]) : timeout;
 }
 
-/**
- * Dispatches a Slack notification.
- * Priority: Socket Mode app → Webhook URL fallback.
- * If an event is provided, it may be throttled/batched based on user presence.
- * If no event is provided, it is sent immediately.
- */
 export async function notifySlack(
   message: SlackMessage,
   event?: SlackEvent,
-  options: {
-    opsOnly?: boolean;
-    projectRoot?: string;
-    signal?: AbortSignal;
-    transportTimeoutMs?: number;
-  } = {},
-): Promise<void> {
+  options: SlackTransportOptions & { opsOnly?: boolean } = {},
+): Promise<NotificationReceipt | undefined> {
   const { projectRoot = process.cwd(), signal, transportTimeoutMs } = options;
   if (signal?.aborted) return;
   const app = getSlackApp();
@@ -44,19 +41,14 @@ export async function notifySlack(
       );
     }
   };
-
   if (options.opsOnly) {
     try {
-      const config = loadConfig(projectRoot);
-      const opsChannelId = config.project.slack?.opsChannelId;
-      if (opsChannelId) {
-        message.channel = opsChannelId;
-      }
+      const channel = loadConfig(projectRoot).project.slack?.opsChannelId;
+      if (channel) message.channel = channel;
     } catch {
-      // Config not available — use default channel
+      // Keep the accepted channel when project configuration is unavailable.
     }
   }
-
   if (app && event) {
     await presenceManager.handleNotification(
       event,
@@ -68,66 +60,65 @@ export async function notifySlack(
     );
     return;
   }
-  if (app) {
-    await sendSlackMessage(message, signal, projectRoot, transportTimeoutMs);
-  } else {
+  let receipt: NotificationReceipt | undefined;
+  if (app) receipt = await sendSlackMessage(message, options);
+  else
     await sendViaWebhook(
       message,
       deliverySignal(signal, transportTimeoutMs),
       projectRoot,
     );
-  }
-
   await forwardToTelegram();
+  return receipt;
 }
 
-/**
- * Send a message via Socket Mode app (rich: blocks, buttons, actions).
- */
 export async function sendSlackMessage(
   message: SlackMessage,
-  shutdownSignal?: AbortSignal,
-  projectRoot = process.cwd(),
-  transportTimeoutMs?: number,
-): Promise<void> {
-  const signal = deliverySignal(shutdownSignal, transportTimeoutMs);
+  options: SlackTransportOptions = {},
+): Promise<NotificationReceipt | undefined> {
+  const { projectRoot = process.cwd(), transportTimeoutMs } = options;
+  const signal = deliverySignal(options.signal, transportTimeoutMs);
   if (signal?.aborted) return;
   const app = getSlackApp();
   if (!app) return;
-
-  // Resolve channel
   let channelId = message.channel;
   if (!channelId) {
     try {
-      const config = loadConfig(projectRoot);
-      channelId = config.project.slack?.channelId;
-    } catch (e) {
-      warnCli("Failed to load config for channel resolution:", e);
+      channelId = loadConfig(projectRoot).project.slack?.channelId;
+    } catch (error) {
+      warnCli("Failed to load config for channel resolution:", error);
     }
   }
-
   if (!channelId) {
     warnCli("No Slack channel configured — skipping notification");
     return;
   }
-
   try {
     const payload = {
       channel: channelId,
       text: message.text,
       blocks: message.blocks,
+      thread_ts: message.thread_ts,
     };
-    if (signal)
-      await postSlackMessageWithSignal(app.client.token, payload, signal);
-    else await app.client.chat.postMessage(payload);
+    const response = signal
+      ? await postSlackMessageWithSignal(app.client.token, payload, signal)
+      : await app.client.chat.postMessage(payload);
+    if (response.ok)
+      return {
+        delivered: true,
+        channelId: response.channel,
+        messageTs: response.ts,
+        threadTs: response.message?.thread_ts ?? message.thread_ts,
+      };
   } catch (error) {
     if (signal?.aborted) return;
-    const errorMessage = error instanceof Error ? error.message : String(error);
-    logCliError(`Failed to post Slack notification: ${errorMessage}`);
-
-    // Fallback to webhook on Socket Mode failure
-    await sendViaWebhook(message, signal, projectRoot);
+    logCliError(
+      `Failed to post Slack notification: ${error instanceof Error ? error.message : String(error)}`,
+    );
+    if (options.webhookFallback !== false)
+      await sendViaWebhook(message, signal, projectRoot);
   }
+  return undefined;
 }
 
 /**

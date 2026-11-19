@@ -17,17 +17,25 @@ export function createSlackNotificationAdapter(
   } = {},
 ): NotificationPort {
   return {
-    async notify(payload: NotificationPayload): Promise<void> {
-      const { notifySlack } = await import("../../server/slack-notify.js");
-      await notifySlack(
-        {
-          text: payload.text,
-          channel: payload.channel,
-          blocks: payload.blocks as SlackMessage["blocks"],
-        },
-        undefined,
-        { ...options, opsOnly: payload.opsOnly },
-      );
+    async notify(payload: NotificationPayload) {
+      const notifications = await import("../../server/slack-notify.js");
+      const message: SlackMessage = {
+        text: payload.text,
+        channel: payload.channel ?? payload.recipient?.channelId,
+        thread_ts: payload.threadTs,
+        blocks: payload.blocks as SlackMessage["blocks"],
+      };
+      if (payload.projectId || payload.recipient) {
+        if (!message.channel) return undefined;
+        return notifications.sendSlackMessage(message, {
+          ...options,
+          webhookFallback: false,
+        });
+      }
+      return notifications.notifySlack(message, undefined, {
+        ...options,
+        opsOnly: payload.opsOnly,
+      });
     },
   };
 }
