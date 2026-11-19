@@ -18,7 +18,9 @@ import {
   listRuns,
   recordRun,
 } from "../db/runs.js";
+import type { DeliveryRecipient } from "../domain/project-registry.js";
 import type { NotificationPort } from "../ports/notification-port.js";
+import type { ProjectRegistryPort } from "../ports/store-port.js";
 import { loadConfig } from "../utils/config.js";
 import { commitFiles, deleteRemoteBranch } from "../utils/git.js";
 import { loadManifests } from "../utils/manifest.js";
@@ -127,7 +129,7 @@ export async function harvestFeature(
   const { featureId, phaseId, mergeCommitSha, prNumber, mergedAt, status } =
     record;
 
-  const projectId = resolveProjectId(projectPath);
+  const projectId = record.projectId ?? resolveProjectId(projectPath);
 
   // If no phaseId is specified, discover all phases from plan.md and run harvest for each
   if (!phaseId) {
@@ -409,7 +411,10 @@ export async function harvestFeature(
 
   // 4. Slack Done-Done (FR-H07)
   if (report) {
-    await notifyDoneDone(report);
+    await notifyDoneDone(report, undefined, {
+      projectId: record.projectId,
+      recipient: record.recipient,
+    });
   }
 
   // 5. Branch Cleanup (FR-H08)
@@ -434,8 +439,14 @@ export async function harvestFeature(
 export async function notifyDoneDone(
   report: CompressionReport,
   notifier?: NotificationPort,
+  options?: {
+    projectId?: string;
+    recipient?: DeliveryRecipient;
+    opsOnly?: boolean;
+    registry?: ProjectRegistryPort;
+  },
 ): Promise<void> {
-  await notifyHarvestComplete(report, notifier);
+  await notifyHarvestComplete(report, notifier, options);
 }
 
 /**

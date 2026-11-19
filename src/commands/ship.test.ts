@@ -144,6 +144,7 @@ vi.mock("../utils/manifest.js", () => ({
 }));
 
 vi.mock("../utils/git.js", () => ({
+  detectDefaultBranch: vi.fn().mockReturnValue("develop"),
   getCurrentCommit: vi.fn().mockReturnValue("mock-commit"),
   getCurrentBranch: vi.fn().mockReturnValue("mock-branch"),
   isDirty: vi.fn().mockResolvedValue(false),

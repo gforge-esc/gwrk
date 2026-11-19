@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import type { DeliveryRecipient } from "../../domain/project-registry.js";
 import { validateSlackDeliveryContext } from "../../domain/slack-delivery.js";
 import type { CompressionReport } from "../../domain/types.js";
 import type {
@@ -9,10 +10,13 @@ import type {
   NotificationPort,
   SlackDeliveryStatus,
 } from "../../ports/notification-port.js";
+import type { ProjectRegistryPort } from "../../ports/store-port.js";
 import type { SlackMessage } from "../../server/slack-messages.js";
 import { readSlackUserPresence } from "./project-presence.js";
 
-export function createSlackNotificationAdapter(): NotificationPort {
+export function createSlackNotificationAdapter(options?: {
+  registry?: ProjectRegistryPort;
+}): NotificationPort {
   return {
     getUserPresence: readSlackUserPresence,
     async getDeliveryStatus(): Promise<SlackDeliveryStatus> {
@@ -93,21 +97,24 @@ export function createSlackNotificationAdapter(): NotificationPort {
             projectId: ctx.projectId,
             recipient: ctx.recipient,
             opsOnly: ctx.opsOnly || undefined,
+            registry: options?.registry,
           },
         );
       }
 
       if (payload.projectId || payload.recipient) {
-        if (!message.channel) return undefined;
+        if (!message.channel && !options?.registry) return undefined;
         return notifications.sendSlackMessage(message, {
           webhookFallback: false,
           projectId: ctx.projectId,
           recipient: ctx.recipient,
           opsOnly: ctx.opsOnly || undefined,
+          registry: options?.registry,
         });
       }
       return notifications.notifySlack(message, undefined, {
         opsOnly: ctx.opsOnly || undefined,
+        registry: options?.registry,
       });
     },
   };
@@ -123,13 +130,30 @@ export async function dispatchNotification(
 export async function notifyHarvestComplete(
   report: CompressionReport,
   notifier?: NotificationPort,
+  options?: {
+    projectId?: string;
+    recipient?: DeliveryRecipient;
+    opsOnly?: boolean;
+    registry?: ProjectRegistryPort;
+  },
 ): Promise<void> {
   const { MessageBuilder } = await import("../../server/slack-messages.js");
+  const opsOnly =
+    options?.opsOnly ?? !(options?.projectId || options?.recipient);
+  const effectiveNotifier =
+    notifier ??
+    (options?.registry
+      ? createSlackNotificationAdapter({ registry: options.registry })
+      : undefined);
   await dispatchNotification(
     {
       ...MessageBuilder.doneDone(report.featureId, report),
-      opsOnly: true,
+      projectId: options?.projectId,
+      featureId: report.featureId,
+      phaseId: report.phaseId,
+      recipient: options?.recipient,
+      opsOnly,
     },
-    notifier,
+    effectiveNotifier,
   );
 }

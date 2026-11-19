@@ -6,37 +6,30 @@ import * as crypto from "node:crypto";
 import { logCliError } from "../adapters/cli/output-scope.js";
 import { finishRun, startRun } from "../db/runs.js";
 import { ShipOrchestrator } from "../engine/ship-orchestrator.js";
-import type { AgentBackendId, GwrkConfig } from "../utils/config.js";
-import { MessageBuilder } from "./slack-messages.js";
-import { notifySlack } from "./slack-notify.js";
-
+import type { ProjectRegistryPort } from "../ports/store-port.js";
+import type { GwrkConfig } from "../utils/config.js";
+import { resolveProjectId } from "../utils/project-id.js";
 import { pillarBackend } from "../utils/resolve-agent.js";
 import type { SystemMonitor } from "./monitor.js";
 import { persistDispatch } from "./persistence.js";
 import type { SandboxManager } from "./sandbox.js";
-import type { DispatchAttempt, DispatchRecord, TaskRecord } from "./types.js";
+import { MessageBuilder } from "./slack-messages.js";
+import { notifySlack } from "./slack-notify.js";
+import type {
+  DispatchAttempt,
+  DispatchRecord,
+  DispatchRequest,
+  TaskRecord,
+} from "./types.js";
 
-export interface DispatchRequest {
-  featureId: string;
-  phaseId: string;
-  taskId?: string;
-  taskIds?: string[]; // NEW: For multiple tasks
-  backend?: AgentBackendId;
-  parallel?: boolean; // NEW: Enable parallel dispatch
-}
+export type { DispatchRequest } from "./types.js";
 
 /**
  * DispatchQueue — the daemon's entry point into the unified ship engine.
  *
- * A dispatch is a **feature-phase**: the queue isolates it in a git worktree
- * and drives the SAME `ShipOrchestrator` the CLI (`gwrk ship`) uses, running
- * the full lifecycle (branch → implement → gates → review → PR to develop).
- * Concurrency is across feature-phases, bounded by `parallelism.local.maxClones`
- * — the queue's own active-ship gate, which replaced `DispatchOrchestrator`'s
- * bespoke per-task Semaphore fan-out (PR-8).
- *
- * The daemon does NOT merge locally: the engine opens the PR and harvest
- * finalizes post-merge from GitHub (the ship↔harvest seam, PR-3).
+ * A dispatch is a **feature-phase** scoped to an enrolled project: the queue
+ * isolates it in a git worktree branched from the project's enrolled trunk
+ * branch and drives the SAME `ShipOrchestrator` the CLI (`gwrk ship`) uses.
  */
 export class DispatchQueue {
   private queue: DispatchRecord[] = [];
@@ -49,6 +42,7 @@ export class DispatchQueue {
     private monitor: SystemMonitor,
     private sandbox: SandboxManager,
     private projectRoot: string,
+    private registry?: ProjectRegistryPort,
   ) {}
 
   pause() {
@@ -67,9 +61,43 @@ export class DispatchQueue {
     return `feat/${featureId}-${phaseId}`;
   }
 
+  private resolveProjectContext(request: DispatchRequest): {
+    projectId: string;
+    projectRoot: string;
+    trunkBranch: string;
+  } {
+    const requested = request.projectId ?? request.recipient?.projectId;
+    const enrolled = requested
+      ? (this.registry?.getProject(requested) ?? null)
+      : (this.registry?.findByLocalRoot(this.projectRoot) ?? null);
+
+    const projectId =
+      enrolled?.projectId ?? requested ?? resolveProjectId(this.projectRoot);
+    const projectRoot =
+      enrolled?.mirrorPath ?? enrolled?.localRoot ?? this.projectRoot;
+    const trunkBranch = enrolled?.trunkBranch ?? "develop";
+
+    return { projectId, projectRoot, trunkBranch };
+  }
+
+  private matchesProject(record: DispatchRecord, projectId?: string): boolean {
+    if (!projectId) return true;
+    const resolvedId =
+      this.registry?.getProject(projectId)?.projectId ?? projectId;
+    return record.projectId === projectId || record.projectId === resolvedId;
+  }
+
   enqueue(request: DispatchRequest): DispatchRecord {
-    // Idempotency guard: prevent double-dispatch for same feature+phase
-    const existing = this.getDispatch(request.featureId, request.phaseId);
+    const { projectId, projectRoot, trunkBranch } =
+      this.resolveProjectContext(request);
+
+    // Idempotency guard: prevent double-dispatch for same (projectId, featureId, phaseId)
+    const existing = this.getDispatch(
+      request.featureId,
+      request.phaseId,
+      undefined,
+      projectId,
+    );
     if (
       existing &&
       (existing.status === "queued" || existing.status === "running")
@@ -98,18 +126,22 @@ export class DispatchQueue {
 
     const record: DispatchRecord = {
       id: crypto.randomUUID(),
+      projectId,
       featureId: request.featureId,
       phaseId: request.phaseId,
       backend: pillarBackend(this.config, "implement", request.backend),
       status: "queued",
       branchName: this.shipBranch(request.featureId, request.phaseId),
+      projectRoot,
+      trunkBranch,
+      ...(request.recipient ? { recipient: request.recipient } : {}),
       attempts: [],
       tasks,
       createdAt: new Date().toISOString(),
     };
 
     this.queue.push(record);
-    persistDispatch(record);
+    persistDispatch(record, record.projectRoot);
     this.processNext();
     return record;
   }
@@ -122,13 +154,9 @@ export class DispatchQueue {
     }
 
     if (this.monitor.isThrottled()) {
-      // Potentially log or wait
       return;
     }
 
-    // Capacity: each active record is one feature-phase ship in its own
-    // worktree. Cap concurrent ships at maxClones — this is the queue's ship
-    // gate that superseded DispatchOrchestrator's per-task Semaphore (PR-8).
     if (this.active.length >= this.config.parallelism.local.maxClones) {
       return;
     }
@@ -138,9 +166,8 @@ export class DispatchQueue {
 
     this.active.push(record);
     record.status = "running";
-    persistDispatch(record);
+    persistDispatch(record, record.projectRoot);
 
-    // Run in background
     this.runDispatch(record).catch(console.error);
   }
 
@@ -154,6 +181,7 @@ export class DispatchQueue {
     attempt.runId = startRun({
       feature_id: record.featureId,
       phase_id: record.phaseId,
+      project_id: record.projectId,
       command: `gwrk ship ${record.featureId} ${record.phaseId}`,
       agent_backend: record.backend,
       workflow: "work-until-done",
@@ -161,30 +189,22 @@ export class DispatchQueue {
 
     record.attempts.push(attempt);
 
-    // Foxtrot Charlie: No phaseStart notification.
-    // PE started the dispatch — they know. Only bless messages.
-
     const shipBranch = this.shipBranch(record.featureId, record.phaseId);
 
     try {
-      // Isolate the feature-phase in a git worktree and drive the SAME unified
-      // ShipOrchestrator the CLI uses. The orchestrator owns branch setup,
-      // implement, build/test gates, review and the PR (→ develop). The daemon
-      // only supplies the isolated worktree and records the outcome; there is
-      // NO local merge-back — harvest finalizes post-merge from GitHub.
       const worktreeDir = await this.sandbox.createSandbox({
         featureId: record.featureId,
         phaseId: record.phaseId,
         taskId: "ship",
         backend: record.backend,
-        projectRoot: this.projectRoot,
-        baseBranch: "develop",
+        projectRoot: record.projectRoot,
+        baseBranch: record.trunkBranch,
         branchName: shipBranch,
         setup: this.config.worktree?.setup,
       });
       record.workDir = worktreeDir;
       record.branchName = shipBranch;
-      persistDispatch(record);
+      persistDispatch(record, record.projectRoot);
 
       const orchestrator = new ShipOrchestrator({
         featureId: record.featureId,
@@ -193,15 +213,12 @@ export class DispatchQueue {
         maxIterations: 3,
         ciTimeout: 30,
         cwd: worktreeDir,
-        // Crash-recovery state lives in the primary checkout so it survives
-        // worktree teardown; ship on the per-feature-phase branch.
-        stateRoot: this.projectRoot,
+        stateRoot: record.projectRoot,
         branchName: shipBranch,
       });
 
       const exitCode = await orchestrator.run();
 
-      // Surface PR metadata for the review-ready notification.
       const result = orchestrator.getResult();
       if (result.prNumber) record.prNumber = result.prNumber;
       if (result.prUrl) record.prUrl = result.prUrl;
@@ -230,7 +247,6 @@ export class DispatchQueue {
     attempt.exitCode = exitCode;
     attempt.stderr = stderr;
 
-    // Reflect the ship outcome on any task records (status dashboards read them).
     for (const task of record.tasks) {
       if (task.status === "running" || task.status === "pending") {
         task.status = exitCode === 0 ? "completed" : "failed";
@@ -252,39 +268,50 @@ export class DispatchQueue {
       });
     }
 
+    const notifyOptions = {
+      projectId: record.projectId,
+      recipient: record.recipient,
+      featureId: record.featureId,
+      registry: this.registry,
+    };
+
     if (exitCode === 0) {
       record.status = "completed";
       record.completedAt = attempt.completedAt;
 
-      // The unified engine already opened the PR (PR_CI → develop). Notify with
-      // the review/merge CTA. Harvest runs the Done-Done finalizer post-merge.
-      await notifySlack(MessageBuilder.reviewReady(record), {
-        type: "review_ready",
-        feature: record.featureId,
-        phase: record.phaseId,
-        payload: record as unknown as Record<string, unknown>,
-        timestamp: new Date().toISOString(),
-      });
+      await notifySlack(
+        MessageBuilder.reviewReady(record),
+        {
+          type: "review_ready",
+          feature: record.featureId,
+          phase: record.phaseId,
+          projectId: record.projectId,
+          recipient: record.recipient,
+          payload: record as unknown as Record<string, unknown>,
+          timestamp: new Date().toISOString(),
+        },
+        notifyOptions,
+      );
     } else {
-      // The engine owns iteration/diagnosis/failback internally, so a non-zero
-      // exit is terminal for the daemon — no bespoke outer retry/escalation
-      // (that overlap retired with DispatchOrchestrator, PR-8).
       record.status = "failed";
-      await notifySlack(MessageBuilder.phaseFail(record, stderr), {
-        type: "phase_fail",
-        feature: record.featureId,
-        phase: record.phaseId,
-        payload: { ...record, stderr } as unknown as Record<string, unknown>,
-        timestamp: new Date().toISOString(),
-      });
+      await notifySlack(
+        MessageBuilder.phaseFail(record, stderr),
+        {
+          type: "phase_fail",
+          feature: record.featureId,
+          phase: record.phaseId,
+          projectId: record.projectId,
+          recipient: record.recipient,
+          payload: { ...record, stderr } as unknown as Record<string, unknown>,
+          timestamp: new Date().toISOString(),
+        },
+        notifyOptions,
+      );
     }
 
-    // Move from active to history.
     this.active = this.active.filter((r) => r.id !== record.id);
     this.history.push(record);
 
-    // Always tear down the worktree — ship owns commit/push/PR via PR_CI, so
-    // destroy only removes the tree (no auto commit/push/PR).
     if (record.workDir) {
       try {
         await this.sandbox.destroySandbox(record.workDir, record.featureId, {
@@ -296,14 +323,18 @@ export class DispatchQueue {
       record.workDir = undefined;
     }
 
-    persistDispatch(record);
+    persistDispatch(record, record.projectRoot);
     this.processNext();
   }
 
-  getQueue() {
+  getQueue(projectId?: string) {
     return {
-      active: this.active,
-      queued: this.queue,
+      active: projectId
+        ? this.active.filter((r) => this.matchesProject(r, projectId))
+        : this.active,
+      queued: projectId
+        ? this.queue.filter((r) => this.matchesProject(r, projectId))
+        : this.queue,
       throttled: this.monitor.isThrottled(),
       paused: this.paused,
     };
@@ -313,43 +344,39 @@ export class DispatchQueue {
     featureId: string,
     phaseId: string,
     taskId?: string,
+    projectId?: string,
   ): DispatchRecord | null {
+    const matches = (r: DispatchRecord) =>
+      r.featureId === featureId &&
+      r.phaseId === phaseId &&
+      (!taskId || r.tasks.some((t) => t.id === taskId)) &&
+      this.matchesProject(r, projectId);
+
     return (
-      this.active.find(
-        (r) =>
-          r.featureId === featureId &&
-          r.phaseId === phaseId &&
-          (!taskId || r.tasks.some((t) => t.id === taskId)),
-      ) ||
-      this.queue.find(
-        (r) =>
-          r.featureId === featureId &&
-          r.phaseId === phaseId &&
-          (!taskId || r.tasks.some((t) => t.id === taskId)),
-      ) ||
-      this.history.find(
-        (r) =>
-          r.featureId === featureId &&
-          r.phaseId === phaseId &&
-          (!taskId || r.tasks.some((t) => t.id === taskId)),
-      ) ||
+      this.active.find(matches) ||
+      this.queue.find(matches) ||
+      this.history.find(matches) ||
       null
     );
   }
 
-  getQueueDepth(): number {
-    return this.queue.length;
+  getQueueDepth(projectId?: string): number {
+    return this.queue.filter((r) => this.matchesProject(r, projectId)).length;
   }
 
-  getActiveCount(): number {
-    return this.active.length;
+  getActiveCount(projectId?: string): number {
+    return this.active.filter((r) => this.matchesProject(r, projectId)).length;
   }
 
-  getCompletedCount(): number {
-    return this.history.filter((r) => r.status === "completed").length;
+  getCompletedCount(projectId?: string): number {
+    return this.history.filter(
+      (r) => r.status === "completed" && this.matchesProject(r, projectId),
+    ).length;
   }
 
-  getFailedCount(): number {
-    return this.history.filter((r) => r.status === "failed").length;
+  getFailedCount(projectId?: string): number {
+    return this.history.filter(
+      (r) => r.status === "failed" && this.matchesProject(r, projectId),
+    ).length;
   }
 }
