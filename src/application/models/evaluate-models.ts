@@ -641,7 +641,21 @@ export async function evaluateModels(
   if (
     decision.promote &&
     input.role === "implement" &&
-    !scoringComparisons.every(({ roleScore }) => {
+    !scoringComparisons.every(({ repeats, roleScore }) => {
+      const validDurations =
+        repeats.candidate.every(
+          ({ durationMs }) =>
+            typeof durationMs === "number" &&
+            Number.isFinite(durationMs) &&
+            durationMs >= 0,
+        ) &&
+        repeats.incumbent.every(
+          ({ durationMs }) =>
+            typeof durationMs === "number" &&
+            Number.isFinite(durationMs) &&
+            durationMs >= 0,
+        );
+      if (!validDurations) return false;
       if (roleScore?.role !== "implement") return false;
       const { candidateMedianMsToGreen, incumbentMedianMsToGreen } = roleScore;
       return (
