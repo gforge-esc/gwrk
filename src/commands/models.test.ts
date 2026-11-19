@@ -1560,6 +1560,22 @@ describe("gwrk models CLI (TR-012, TR-013)", () => {
       expect(runFixtureRepeat).not.toHaveBeenCalled();
     });
 
+    it.each([
+      { label: "unconfigured judge policy", judgeArgs: [] },
+      { label: "unavailable explicit judge", judgeArgs: ["--judges", "claude:claude-3-7-sonnet", "codex:gpt-4o"] },
+    ])("rejects $label before fixture or judge inference", async ({ judgeArgs }) => {
+      const { deps, runFixtureRepeat, judgeComparison } = createSyntheticDeps(root);
+      await runInjectedModels(["discover"], deps);
+      const result = await runInjectedModels([
+        "evaluate", "--role", "implement", "--candidate", "codex:gpt-6.1-sol",
+        "--incumbent", "claude:claude-3-7-sonnet", "--eval-id", "eval-judge-availability",
+        ...judgeArgs,
+      ], deps);
+      expect(result.exitCode).toBe(1);
+      expect(runFixtureRepeat).not.toHaveBeenCalled();
+      expect(judgeComparison).not.toHaveBeenCalled();
+    });
+
     it("rejects invalid --judges input instead of silently substituting hardcoded default judges", async () => {
       const { deps, judgeComparison } = createSyntheticDeps(root);
       await runInjectedModels(["discover"], deps);
