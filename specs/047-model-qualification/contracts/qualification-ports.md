@@ -80,6 +80,7 @@ export interface FixtureRepeatRequest {
     effort?: string;
   };
   handoffArtifactDir?: string;
+  artifactOutputDir?: string;
 }
 
 export interface FixtureRepeatEvidence {
@@ -88,6 +89,7 @@ export interface FixtureRepeatEvidence {
   requestedModel: string;
   observedModel: string | "unknown";
   deterministicGatesPassed: boolean;
+  fixtureInputs: Readonly<Record<string, string>>;
   gateChecks: Array<{
     checkId: string;
     passed: boolean;
@@ -146,7 +148,18 @@ export interface SmokeProbePort {
   runSmokeProbe(request: SmokeProbeRequest): Promise<SmokeProbeEvidence>;
 }
 
+export interface QualificationSuite {
+  repeats: number;
+  fixtures: readonly { id: string; roles: readonly ("define" | "implement" | "review")[] }[];
+  handoffs: readonly {
+    from: string;
+    to: string;
+    planSource: "candidate" | "fixed";
+  }[];
+}
+
 export interface QualificationRunnerPort {
+  loadSuite(): Promise<QualificationSuite>;
   computeSuiteHashes(): Promise<{
     fixtureSuiteHash: string;
     workflowPromptHashes: Record<string, string>;

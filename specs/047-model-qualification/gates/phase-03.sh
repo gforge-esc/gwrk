@@ -4,12 +4,19 @@
 # file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 set -euo pipefail
-tests=(src/application/models/evaluate-models.test.ts src/architecture.test.ts)
+tests=(
+  src/application/models/evaluate-models.test.ts
+  src/adapters/models/fixture-runner.test.ts
+  src/domain/model-qualification.test.ts
+  src/ports/model-qualification-port.contract.test.ts
+  src/architecture.test.ts
+)
 for test_file in "${tests[@]}"; do
   if [[ ! -f "$test_file" ]]; then
     echo "Missing required test: $test_file" >&2
     exit 1
   fi
 done
-pnpm build
+bash specs/047-model-qualification/gates/phase-01.sh
 pnpm exec vitest run "${tests[@]}"
+pnpm lint

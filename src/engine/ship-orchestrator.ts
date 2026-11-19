@@ -2790,7 +2790,7 @@ ${marker}`;
    * runs with its own default model.
    */
   private async dispatchWithFailback(task: TaskDispatch): Promise<TaskResult> {
-    const env: Record<string, string> = { ...task.env };
+    const env: Record<string, string | undefined> = { ...task.env };
     const review = task.type === "review";
     const model =
       task.model ??

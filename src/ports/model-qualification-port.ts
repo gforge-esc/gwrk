@@ -16,6 +16,7 @@ export type {
   AdapterDiscoveryReport,
   DiscoveredModel,
   DiscoverySnapshot,
+  RoleScore,
   RunnerScope,
 } from "../domain/model-qualification.js";
 
@@ -62,6 +63,7 @@ export interface FixtureRepeatRequest {
     effort?: string;
   };
   handoffArtifactDir?: string;
+  artifactOutputDir?: string;
 }
 
 export interface FixtureRepeatEvidence {
@@ -70,6 +72,7 @@ export interface FixtureRepeatEvidence {
   requestedModel: string;
   observedModel: string;
   deterministicGatesPassed: boolean;
+  fixtureInputs: Readonly<Record<string, string>>;
   gateChecks: { checkId: string; passed: boolean; detail: string }[];
   durationMs: number;
   retries: number;
@@ -77,7 +80,18 @@ export interface FixtureRepeatEvidence {
   sanitizedOutput: string;
 }
 
+export interface QualificationSuite {
+  repeats: number;
+  fixtures: readonly { id: string; roles: readonly ModelRole[] }[];
+  handoffs: readonly {
+    from: string;
+    to: string;
+    planSource: "candidate" | "fixed";
+  }[];
+}
+
 export interface QualificationRunnerPort {
+  loadSuite(): Promise<QualificationSuite>;
   computeSuiteHashes(): Promise<{
     fixtureSuiteHash: string;
     workflowPromptHashes: Record<string, string>;

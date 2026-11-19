@@ -124,6 +124,13 @@ it("exposes the documented smoke, repeat and judge contracts to consumers", asyn
     },
   };
   const runner: QualificationRunnerPort = {
+    async loadSuite() {
+      return {
+        repeats: 3,
+        fixtures: [{ id: "fixture", roles: ["implement"] }],
+        handoffs: [{ from: "definition", to: "fixture", planSource: "fixed" }],
+      };
+    },
     async computeSuiteHashes() {
       return { fixtureSuiteHash: "suite", workflowPromptHashes: {} };
     },
@@ -134,6 +141,7 @@ it("exposes the documented smoke, repeat and judge contracts to consumers", asyn
         requestedModel: route.modelId,
         observedModel: "unknown",
         deterministicGatesPassed: true,
+        fixtureInputs: { "spec.md": "Fixture requirements" },
         gateChecks: [{ checkId: "fixture", passed: true, detail: "Passed" }],
         durationMs: 1,
         retries: 0,
@@ -185,6 +193,10 @@ it("exposes the documented smoke, repeat and judge contracts to consumers", asyn
     route: { backend: route.backend, modelId: route.modelId },
   });
   expect(repeat.requestedModel).toBe(route.modelId);
+  expect(repeat.fixtureInputs["spec.md"]).toBe("Fixture requirements");
+  expectTypeOf(repeat.fixtureInputs).toEqualTypeOf<
+    Readonly<Record<string, string>>
+  >();
   expectTypeOf(repeat.gateChecks).toEqualTypeOf<
     { checkId: string; passed: boolean; detail: string }[]
   >();
