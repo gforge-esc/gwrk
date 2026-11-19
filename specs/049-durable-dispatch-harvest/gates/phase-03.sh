@@ -12,4 +12,5 @@ for test_file in "${required_tests[@]}"; do
   fi
 done
 pnpm build
+pnpm lint
 pnpm exec vitest run src/server/slack-durable-notify.test.ts src/adapters/notifications/slack-receipt-reader.test.ts src/adapters/notifications/outbox-adapter.integration.test.ts src/adapters/git/harvest-git.test.ts src/adapters/github/github-adapter.test.ts src/adapters/notifications/outbox-reconcile.test.ts src/architecture.test.ts

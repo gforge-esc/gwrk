@@ -126,10 +126,7 @@
         }
       ],
       "sp_estimate": 8,
-      "testTargets": [
-        "src/db/operations.test.ts",
-        "src/db/db.test.ts"
-      ]
+      "testTargets": ["src/db/operations.test.ts", "src/db/db.test.ts"]
     },
     {
       "id": "phase-03",
