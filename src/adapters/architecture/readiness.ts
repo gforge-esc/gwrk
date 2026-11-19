@@ -5,7 +5,15 @@
 import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
 import { readFile, readdir, realpath, stat } from "node:fs/promises";
-import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
+import {
+  dirname,
+  isAbsolute,
+  join,
+  posix,
+  relative,
+  resolve,
+  sep,
+} from "node:path";
 import { promisify } from "node:util";
 import { z } from "zod";
 import { validateAssessment } from "../../domain/architecture-assessment.js";
@@ -18,7 +26,7 @@ const manifestPath = ".gwrk/context-manifest.json";
 const indexPath = ".gwrk/decisions/index.md";
 type IssueKind = "missing" | "invalid" | "unreadable" | "hash-mismatch";
 type FileRead =
-  | { kind: "present"; text: string }
+  | { kind: "present"; bytes: Buffer }
   | { kind: "missing" | "unreadable" };
 export interface ArchitectureReadiness {
   target: { selection: ProjectDesign | null; path: string | null };
@@ -39,6 +47,7 @@ export interface ArchitectureReadiness {
 const ManifestSchema = z.object({
   version: z.literal(1),
   files: z.record(z.string().regex(/^[a-f0-9]{64}$/)),
+  decisions: z.record(z.array(z.string())),
 });
 const ProvenanceSchema = z.object({
   generatedAt: z.string().datetime({ offset: true }),
@@ -67,7 +76,7 @@ async function read(root: string, path: string): Promise<FileRead> {
     const canonical = await realpath(join(root, path));
     if (!within(root, canonical) || !(await stat(canonical)).isFile())
       return { kind: "unreadable" };
-    return { kind: "present", text: await readFile(canonical, "utf8") };
+    return { kind: "present", bytes: await readFile(canonical) };
   } catch (error) {
     return {
       kind:
@@ -80,14 +89,24 @@ async function read(root: string, path: string): Promise<FileRead> {
     };
   }
 }
-function json(file: FileRead): unknown {
+function decodedText(file: FileRead): string | undefined {
   if (file.kind !== "present") return undefined;
   try {
-    return JSON.parse(file.text);
+    return new TextDecoder("utf-8", { fatal: true }).decode(file.bytes);
   } catch {
     return undefined;
   }
 }
+function json(file: FileRead): unknown {
+  const text = decodedText(file);
+  if (text === undefined) return undefined;
+  try {
+    return JSON.parse(text);
+  } catch {
+    return undefined;
+  }
+}
+
 function archiveTimestamp(directory: string): number | undefined {
   const date = /^(\d{4}-\d{2}-\d{2})(?:$|[-_T])/.exec(directory)?.[1];
   if (!date) return undefined;
@@ -127,13 +146,15 @@ export async function readArchitectureReadiness(
     [indexPath, index],
   ] as const) {
     if (file.kind !== "present") issues.push({ path, kind: file.kind });
+    else if (decodedText(file) === undefined)
+      issues.push({ path, kind: "unreadable" });
   }
   const currentHash =
     target.kind === "present"
-      ? createHash("sha256").update(target.text).digest("hex")
+      ? createHash("sha256").update(target.bytes).digest("hex")
       : undefined;
   const parsedManifest = ManifestSchema.safeParse(json(manifest));
-  if (manifest.kind === "present") {
+  if (manifest.kind === "present" && decodedText(manifest) !== undefined) {
     if (!parsedManifest.success || !parsedManifest.data.files[targetPath])
       issues.push({ path: manifestPath, kind: "invalid" });
     else if (
@@ -161,22 +182,40 @@ export async function readArchitectureReadiness(
           .then((entry) => entry.isDirectory())
           .catch(() => false))
       )
-        directories.set(directory, time);
+        directories.set(
+          directory,
+          Math.max(directories.get(directory) ?? time, time),
+        );
     }
   }
   try {
     const { stdout } = await executeFile(
       "git",
-      ["ls-files", "-z", "--cached", "--others", "--exclude-standard"],
+      [
+        "ls-files",
+        "-z",
+        "--cached",
+        "--others",
+        "--exclude-standard",
+        "--",
+        ":(glob)**/assessment.json",
+      ],
       {
         cwd: root,
-        env: { ...repositoryGitEnv(root), GIT_OPTIONAL_LOCKS: "0" },
+        env: {
+          ...repositoryGitEnv(root),
+          GIT_OPTIONAL_LOCKS: "0",
+          GIT_LITERAL_PATHSPECS: "0",
+          GIT_GLOB_PATHSPECS: "0",
+          GIT_NOGLOB_PATHSPECS: "0",
+          GIT_ICASE_PATHSPECS: "0",
+        },
         timeout: 5_000,
         maxBuffer: 10 * 1024 * 1024,
       },
     );
     for (const path of stdout.split("\0")) {
-      if (!/(?:^|\/)assessment\.json$/.test(path)) continue;
+      if (!path) continue;
       const directory = await safePath(root, dirname(join(root, path)));
       if (directory && !directories.has(directory))
         directories.set(directory, undefined);
@@ -192,15 +231,16 @@ export async function readArchitectureReadiness(
   let assessmentEvidence = false;
   for (const [directory, fallbackTime] of directories) {
     const prefix = relative(root, directory).split(sep).join("/");
+    const reportPath = posix.join(prefix, "report.md");
     const [report, data, source] = await Promise.all([
-      read(root, `${prefix}/report.md`),
-      read(root, `${prefix}/assessment.json`),
-      read(root, `${prefix}/provenance.json`),
+      read(root, reportPath),
+      read(root, posix.join(prefix, "assessment.json")),
+      read(root, posix.join(prefix, "provenance.json")),
     ]);
     assessmentEvidence ||= [report, data, source].some(
       (file) => file.kind !== "missing",
     );
-    if (report.kind !== "present" || !report.text.trim()) continue;
+    if (!decodedText(report)?.trim()) continue;
     const provenance = ProvenanceSchema.safeParse(json(source));
     const recorded =
       provenance.success &&
@@ -229,7 +269,7 @@ export async function readArchitectureReadiness(
     candidates.push({
       time,
       report: {
-        reportPath: `${prefix}/report.md`,
+        reportPath,
         generatedAt: recorded?.generatedAt ?? null,
         revision:
           typeof recorded?.revision === "string" && recorded.revision.trim()

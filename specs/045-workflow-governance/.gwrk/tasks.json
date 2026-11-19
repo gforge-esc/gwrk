@@ -64,26 +64,29 @@
         {
           "id": "T005",
           "title": "Create readiness.ts",
-          "description": "NEW src/adapters/architecture/readiness.ts. Inspect project-local context and select the latest readable assessment. FR-003.. Tests: src/adapters/architecture/readiness.test.ts",
-          "status": "open",
+          "description": "NEW src/adapters/architecture/readiness.ts. Inspect project-local context and select the latest readable assessment. FR-003.. Tests: src/adapters/architecture/readiness.test.ts\n\nRepair evidence: evidence/phase02-managed-manifest-validation.md. Earlier findings and failed gates remain in review-history/phase-02-through-2026-11-18T2357Z.json. Independent clearance remains required.\n\nRepair evidence: evidence/phase02-deterministic-git-inventory.md. Earlier findings remain in review-history/phase-02-through-2026-11-19T0034Z.json. Independent clearance remains required.\n\nRepair evidence: evidence/phase02-strict-utf8-readability.md. Earlier findings remain in review-history/phase-02-through-2026-11-19T0055Z.json. Independent clearance remains required.\n\nReview integrity: the first Antigravity attempt lacked expanded task instructions because the older operator runner used plain stdin. That review was stopped and cannot establish clearance. Native passing evidence remains preserved. Re-review through the verified task-file handoff is required.",
+          "status": "completed",
           "gateScript": "gates/phase-02.sh",
-          "sp": 2
+          "sp": 2,
+          "completedAt": "2026-11-19T01:32:57.134Z"
         },
         {
           "id": "T006",
           "title": "Modify discover.ts",
-          "description": "MODIFY src/engine/discover.ts. Attach additive readiness data to the existing discovery result. FR-003.. Tests: src/engine/discover.test.ts",
-          "status": "open",
+          "description": "MODIFY src/engine/discover.ts. Attach additive readiness data to the existing discovery result. FR-003.. Tests: src/engine/discover.test.ts\n\nRepair evidence: evidence/phase02-managed-manifest-validation.md. Earlier findings and failed gates remain in review-history/phase-02-through-2026-11-18T2357Z.json. Independent clearance remains required.\n\nRepair evidence: evidence/phase02-strict-utf8-readability.md. Earlier findings remain in review-history/phase-02-through-2026-11-19T0055Z.json. Independent clearance remains required.\n\nReview integrity: the first Antigravity attempt lacked expanded task instructions because the older operator runner used plain stdin. That review was stopped and cannot establish clearance. Native passing evidence remains preserved. Re-review through the verified task-file handoff is required.",
+          "status": "completed",
           "gateScript": "gates/phase-02.sh",
-          "sp": 1
+          "sp": 1,
+          "completedAt": "2026-11-19T01:33:04.475Z"
         },
         {
           "id": "T007",
           "title": "Modify project-discover.ts",
-          "description": "MODIFY src/commands/project-discover.ts. Render target, context and latest assessment in text and JSON. FR-003.",
-          "status": "open",
+          "description": "MODIFY src/commands/project-discover.ts. Render target, context and latest assessment in text and JSON. FR-003.\n\nRepair evidence: evidence/phase02-managed-manifest-validation.md. Earlier findings and failed gates remain in review-history/phase-02-through-2026-11-18T2357Z.json. Independent clearance remains required.\n\nRepair evidence: evidence/phase02-unreadable-context-guidance.md. Earlier findings remain in review-history/phase-02-through-2026-11-19T0009Z.json. Independent clearance remains required.\n\nRepair evidence: evidence/phase02-strict-utf8-readability.md. Earlier findings remain in review-history/phase-02-through-2026-11-19T0055Z.json. Independent clearance remains required.\n\nReview integrity: the first Antigravity attempt lacked expanded task instructions because the older operator runner used plain stdin. That review was stopped and cannot establish clearance. Native passing evidence remains preserved. Re-review through the verified task-file handoff is required.",
+          "status": "completed",
           "gateScript": "gates/phase-02.sh",
-          "sp": 1
+          "sp": 1,
+          "completedAt": "2026-11-19T01:33:11.336Z"
         }
       ],
       "sp_estimate": 4,
@@ -153,7 +156,9 @@
       "sp_estimate": 2,
       "testTargets": [
         "src/plugins/seed.test.ts",
-        "src/commands/plugin.test.ts"
+        "src/commands/plugin.test.ts",
+        "src/commands/plugin.seed.test.ts",
+        "src/architecture.test.ts"
       ]
     }
   ]

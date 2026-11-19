@@ -1,0 +1,62 @@
+diff --git a/src/plugins/seed.test.ts b/src/plugins/seed.test.ts
+index 13c2d4a1..c8f2d2ab 100644
+--- a/src/plugins/seed.test.ts
++++ b/src/plugins/seed.test.ts
+@@ -14,12 +14,13 @@ const taxonomy =
+   'Reasoning Modes\n\n1. **Analytical** - Break down structure.\n    > "ANALYZE THIS"\n\n---\n\nEvaluative Modes\n\n1. **Adversarial** - Attack the idea.\n    > "ATTACK THIS"\n';
+ beforeEach(async () => {
+   root = await fs.mkdtemp(path.join(os.tmpdir(), "gwrk-seed-"));
+-  vi.spyOn(os, "homedir").mockReturnValue(root);
++  vi.stubEnv("GWRK_HOME", path.join(root, ".gwrk"));
+   taxonomyPath = path.join(root, "taxonomy.md");
+   await fs.writeFile(taxonomyPath, taxonomy);
+ });
+ afterEach(async () => {
+   vi.restoreAllMocks();
++  vi.unstubAllEnvs();
+   await fs.rm(root, { recursive: true, force: true });
+ });
+ const skillsRoot = () => path.join(root, ".gwrk/plugins/skills");
+@@ -98,3 +99,16 @@ it("removes partial publication after a write failure so retry can finish", asyn
+     await fs.readFile(path.join(skillsRoot(), "analytical/SKILL.md"), "utf8"),
+   ).toContain("ANALYZE THIS");
+ });
++
++it("honors a configured gwrk home without writing into the default home", async () => {
++  const configuredHome = path.join(root, "configured-home");
++  vi.spyOn(os, "homedir").mockReturnValue(path.join(root, "fallback-home"));
++  vi.stubEnv("GWRK_HOME", configuredHome);
++  await seedSkills({ taxonomyPath });
++  expect(
++    (await fs.readdir(path.join(configuredHome, "plugins/skills"))).sort(),
++  ).toEqual(["adversarial", "analytical"]);
++  await expect(fs.stat(path.join(root, ".gwrk"))).rejects.toMatchObject({
++    code: "ENOENT",
++  });
++});
+diff --git a/src/plugins/seed.ts b/src/plugins/seed.ts
+index d9231d1b..75581b50 100644
+--- a/src/plugins/seed.ts
++++ b/src/plugins/seed.ts
+@@ -3,11 +3,11 @@
+  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+ 
+ import fs from "node:fs/promises";
+-import os from "node:os";
+ import path from "node:path";
+ import { fileURLToPath } from "node:url";
+ import { parse, stringify } from "yaml";
+ import { logCliOutput } from "../adapters/cli/output-scope.js";
++import { gwrkHome } from "../adapters/config/paths.js";
+ import { type SeedSkill, parseSeedTaxonomy } from "../domain/seed-taxonomy.js";
+ import { CommandError } from "../utils/signal.js";
+ import { AnyManifestSchema } from "./manifest.js";
+@@ -49,7 +49,7 @@ export async function seedSkills(options: SeedOptions = {}): Promise<void> {
+       `Cannot read valid taxonomy at ${taxonomyFile}: ${error instanceof Error ? error.message : String(error)}. Supply a valid Markdown taxonomy with gwrk plugin seed --taxonomy <path>.`,
+     );
+   }
+-  const skillsRoot = path.join(os.homedir(), ".gwrk", "plugins", "skills");
++  const skillsRoot = path.join(gwrkHome(), "plugins", "skills");
+   for (const skill of skills) {
+     const directory = path.join(skillsRoot, skill.name);
+     if (options.dryRun) {

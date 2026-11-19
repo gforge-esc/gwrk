@@ -66,9 +66,20 @@ describe("discoverProject", () => {
     expect(result.specs[0].id).toBe("001");
     expect(result.config.agents).toContain("agy");
     expect(readArchitectureReadiness).toHaveBeenCalledWith(mockCwd, undefined);
-    expect(result).not.toHaveProperty("architectureReadiness");
-    const readiness = {target: {selection: null, path: ".gwrk/architecture.md"}, context: {status: "incomplete" as const, issues: [{path: ".gwrk/context-manifest.json", kind: "missing" as const}]}, assessment: {latest: null}};
+    expect(result).not.toHaveProperty("architecture");
+
+    const readiness = {
+      target: { selection: null, path: ".gwrk/architecture.md" },
+      context: {
+        status: "incomplete" as const,
+        issues: [{ path: ".gwrk/context-manifest.json", kind: "missing" as const }],
+      },
+      assessment: { latest: null },
+    };
     vi.mocked(readArchitectureReadiness).mockResolvedValue(readiness);
-    expect((await discoverProject(mockCwd))).toMatchObject({architectureReadiness: readiness});
+    expect(await discoverProject(mockCwd)).toHaveProperty(
+      "architecture",
+      readiness,
+    );
   });
 });

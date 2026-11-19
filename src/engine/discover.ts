@@ -32,7 +32,7 @@ interface SpecSummary {
 }
 
 interface ProjectDiscovery {
-  architectureReadiness?: ArchitectureReadiness;
+  architecture?: ArchitectureReadiness;
   project: {
     name: string;
     root: string;
@@ -62,7 +62,7 @@ export async function discoverProject(
   const config = loadRawConfig(projectRoot);
   const specs = await discoverSpecs(projectRoot);
   const gates = await discoverGates(projectRoot, specs);
-  const architectureReadiness = await readArchitectureReadiness(
+  const architecture = await readArchitectureReadiness(
     projectRoot,
     profile.design,
   );
@@ -70,7 +70,7 @@ export async function discoverProject(
   const projectName = config?.project?.name || path.basename(projectRoot);
 
   return {
-    ...(architectureReadiness ? { architectureReadiness } : {}),
+    ...(architecture ? { architecture } : {}),
     project: {
       name: projectName,
       root: projectRoot,

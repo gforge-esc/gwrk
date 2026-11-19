@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { spawnSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import {
   existsSync,
   mkdirSync,
@@ -16,27 +17,16 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 let root: string;
 const cli = resolve("dist/cli.js");
+const project = { name: "readiness-fixture", type: "generic" };
+const targetPath = ".gwrk/architecture.md";
+const target = "# Target\nContext only. Code conformance remains unassessed.\n";
+const jsonInvocations = [
+  { args: ["project", "discover", "--format", "json"] },
+  { args: ["--format", "json", "project", "discover"] },
+  { args: ["--agent", "project", "discover", "--format", "json"] },
+];
 beforeEach(() => {
   root = mkdtempSync(join(tmpdir(), "gwrk-discover-readiness-cli-"));
-  writeFileSync(
-    join(root, ".gwrkrc.json"),
-    JSON.stringify({
-      project: {
-        name: "readiness-fixture",
-        type: "generic",
-        design: {
-          architecture: "hexagonal-functional",
-          principles: ["functional-core"],
-          templateVersion: "1.0.0",
-        },
-      },
-    }),
-  );
-  mkdirSync(join(root, ".gwrk"));
-  writeFileSync(
-    join(root, ".gwrk/architecture.md"),
-    "# Target\nContext only. Code conformance remains unassessed.\n",
-  );
 });
 afterEach(() => rmSync(root, { recursive: true, force: true }));
 function run(args: string[]) {
@@ -54,19 +44,34 @@ function run(args: string[]) {
   });
   expect(result.error).toBeUndefined();
   expect(result.status, result.stderr).toBe(0);
-  expect(result.stderr.match(/\[exit:0 \| [\d.]+(?:ms|s)\]/g)).toHaveLength(1);
+  expect(result.stderr.match(/\[exit:\d+ \| [\d.]+(?:ms|s)\]/g)).toHaveLength(1);
+  expect(result.stderr.trimEnd()).toMatch(/\[exit:0 \| [\d.]+(?:ms|s)\]$/);
   expect(existsSync(env.GWRK_DB_PATH)).toBe(false);
   return result.stdout;
 }
-describe("architecture readiness discovery CLI", () => {
-  it.each([
-    { args: ["project", "discover", "--format", "json"] },
-    { args: ["--format", "json", "project", "discover"] },
-    { args: ["--agent", "project", "discover", "--format", "json"] },
-  ])("reports additive JSON evidence with %j", ({ args }) => {
+describe("project discovery with architecture evidence", () => {
+  beforeEach(() => {
+    writeFileSync(
+      join(root, ".gwrkrc.json"),
+      JSON.stringify({
+        project: {
+          ...project,
+          design: {
+            architecture: "hexagonal-functional",
+            principles: ["functional-core"],
+            templateVersion: "1.0.0",
+          },
+        },
+      }),
+    );
+    mkdirSync(join(root, ".gwrk"));
+    writeFileSync(join(root, targetPath), target);
+  });
+
+  it.each(jsonInvocations)("reports additive JSON evidence with %j", ({ args }) => {
     const result = JSON.parse(run(args));
-    expect(result.project.name).toBe("readiness-fixture");
-    expect(result.architectureReadiness).toMatchObject({
+    expect(result.project.name).toBe(project.name);
+    expect(result.architecture).toMatchObject({
       target: {
         selection: { architecture: "hexagonal-functional" },
         path: ".gwrk/architecture.md",
@@ -90,5 +95,81 @@ describe("architecture readiness discovery CLI", () => {
     expect(text).toContain(".gwrk/context-manifest.json: missing");
     expect(text).toContain("gwrk init");
     expect(text).toContain("gwrk assess");
+  });
+
+  it("suppresses the init hint when the manifest is invalid and the decision index is missing", () => {
+    writeFileSync(
+      join(root, ".gwrk/context-manifest.json"),
+      JSON.stringify({
+        version: 1,
+        files: { [targetPath]: createHash("sha256").update(target).digest("hex") },
+      }),
+    );
+
+    const text = run(["project", "discover"]);
+    expect(text).toContain(".gwrk/context-manifest.json: invalid");
+    expect(text).toContain(".gwrk/decisions/index.md: missing");
+    expect(text).not.toContain("gwrk init");
+  });
+
+  it.each([".gwrk/context-manifest.json", ".gwrk/architecture.md", ".gwrk/decisions/index.md"])("suppresses the init hint when managed input %s is unreadable", (input) => {
+    const file = join(root, input);
+    rmSync(file, { force: true });
+    mkdirSync(file, { recursive: true });
+    const text = run(["project", "discover"]);
+    expect(text).toContain(`${input}: unreadable`);
+    expect(text).not.toContain("gwrk init");
+  });
+
+  it("reports assessment scope alongside incomplete context in text and JSON", () => {
+    const archive = "docs/architecture/assessments/2026-11-18";
+    const reportPath = `${archive}/report.md`;
+    const scope = {
+      inspected: ["src/domain"],
+      limitations: ["Adapters unreviewed"],
+    };
+    mkdirSync(join(root, archive), { recursive: true });
+    writeFileSync(join(root, reportPath), "# Scoped assessment\n");
+    writeFileSync(
+      join(root, archive, "assessment.json"),
+      JSON.stringify({
+        overview: "Scoped assessment",
+        ...scope,
+        findings: [],
+        features: [],
+        reconciliation: [],
+      }),
+    );
+
+    const text = run(["project", "discover"]);
+    expect(text).toContain("Architecture context: incomplete");
+    expect(text).toContain(`Latest assessment: ${reportPath}`);
+    expect(text).toContain("Assessment inspected: src/domain");
+    expect(text).toContain("Assessment limitations: Adapters unreviewed");
+    expect(text).not.toContain("Run gwrk assess");
+
+    const result = JSON.parse(run(["project", "discover", "--format", "json"]));
+    expect(result.architecture).toMatchObject({
+      context: { status: "incomplete" },
+      assessment: { latest: { reportPath, scope } },
+    });
+  });
+});
+
+describe("project discovery with only project config", () => {
+  beforeEach(() => {
+    writeFileSync(join(root, ".gwrkrc.json"), JSON.stringify({ project }));
+  });
+
+  it("shows guidance for missing context and assessment", () => {
+    const text = run(["project", "discover"]);
+    expect(text).toContain("gwrk init");
+    expect(text).toContain("gwrk assess");
+  });
+
+  it.each(jsonInvocations)("omits architecture from JSON with %j", ({ args }) => {
+    const result = JSON.parse(run(args));
+    expect(result.project.name).toBe(project.name);
+    expect(result).not.toHaveProperty("architecture");
   });
 });

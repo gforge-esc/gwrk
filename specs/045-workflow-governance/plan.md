@@ -112,15 +112,23 @@ Delivers FR-003, scoped discovery. Reuse the selected design and managed target 
 
 | TR-### | Type | Target | Assertion |
 |---|---|---|---|
-| TR-004 | integration | `src/adapters/architecture/readiness.test.ts` | Independent states and deterministic selection across default and custom output |
-| TR-005 | integration | `src/engine/discover.test.ts` | Repository-only discovery with existing fields and no database or server |
-| TR-006 | integration | `src/commands/project.test.ts` | Text and JSON parity, scoped evidence and terminal stderr signal |
+| TR-004 | integration | `src/adapters/architecture/readiness.test.ts` | Independent states, deterministic selection across default and custom output, and a repository-relative `report.md` link for Git-staged evidence at the checkout root |
+| TR-005 | integration | `src/engine/discover.test.ts` | Repository-only discovery with existing fields and no database or server, plus exact adapter data in `architecture` or omission when the adapter returns `undefined` |
+| TR-006 | integration | `src/commands/project.test.ts`, `src/commands/project-discover.readiness.test.ts` | Scoped evidence, text hints for missing context and assessment, invalid-manifest reporting with the `gwrk init` hint suppressed, optional `architecture` in local, global and agent-mode JSON, and exit 0 with one terminal stderr signal per invocation |
+
+The readiness test (TR-004) checks incomplete context for a version 1 manifest without its decision map. Replacing UTF-8 `EF BF BD` with `FF` produces a target hash mismatch. The assessment reports `targetMatch: "differs"`. Discovery finds `custom/report.md` when unrelated Git paths exceed 10 MiB.
+
+The readiness test (TR-004) also checks Markdown-only reports at 10 a.m. and noon UTC. Discovery selects the canonical noon report when `2026-11-18_legacy` points to its directory and appears last in the archive listing.
+
+The compiled discovery test (TR-006) checks that text and JSON link a readable report. Both show its scope alongside incomplete context.
+
+The compiled discovery regression supplies a version 1 manifest without `decisions` and leaves the decision index missing.
 
 #### Done When
 
 ```bash
 pnpm run build
-pnpm exec vitest run src/adapters/architecture/readiness.test.ts src/engine/discover.test.ts src/commands/project.test.ts src/application/architecture/context.test.ts src/architecture.test.ts
+pnpm exec vitest run src/commands/project-discover.readiness.test.ts src/adapters/architecture/readiness.test.ts src/engine/discover.test.ts src/commands/project.test.ts src/application/architecture/context.test.ts src/architecture.test.ts
 ```
 
 ### Phase 3: Project policy versions
@@ -162,6 +170,7 @@ Delivers FR-005, actionable seed failures. Keep the existing `gwrk plugin seed` 
 #### Files
 
 - `src/plugins/seed.ts` — **amend** — Validate the taxonomy and propagate read, parse and write failures. FR-005.
+- `src/domain/seed-taxonomy.ts`: Parse and validate the full taxonomy without filesystem effects. FR-005.
 - `src/plugins/seed.test.ts` — **amend** — Cover absent or invalid input plus dry run and retry. FR-005.
 - `src/commands/plugin.ts` — **amend** — Accept an explicit taxonomy path and report actionable failure. FR-005.
 - `src/commands/plugin.test.ts` — **amend** — Verify seed CLI exit status, hint and dry-run behavior. FR-005.
@@ -171,13 +180,13 @@ Delivers FR-005, actionable seed failures. Keep the existing `gwrk plugin seed` 
 | TR-### | Type | Target | Assertion |
 |---|---|---|---|
 | TR-010 | unit | `src/plugins/seed.test.ts` | Valid taxonomy, no writes on invalid input, and safe retry after a write failure |
-| TR-011 | integration | `src/commands/plugin.test.ts` | Nonzero exit and path hint on missing input plus success for a valid dry run |
+| TR-011 | integration | `src/commands/plugin.seed.test.ts` and `src/commands/plugin.test.ts` | Compiled CLI exit status, path hint, one terminal signal and a valid dry run |
 
 #### Done When
 
 ```bash
 pnpm run build
-pnpm exec vitest run src/plugins/seed.test.ts src/commands/plugin.test.ts src/architecture.test.ts
+pnpm exec vitest run src/plugins/seed.test.ts src/commands/plugin.test.ts src/commands/plugin.seed.test.ts src/architecture.test.ts
 ```
 
 ## Coverage Matrix
@@ -215,3 +224,11 @@ Both Python dispatch regressions failed before the profile detector repair. The 
 The Phase 1 gate includes the existing source and built review prompt parity checks. Both review workflows now carry the same host guidance and persona reporting rules. Captured Python, unknown and native profiles exercise both workflows. The phase gate passes 194 checks after the parity regressions failed.
 
 The four configured Python dry runs failed before the profile detector repair. All 198 phase gate checks pass after the repair. The CI suite passes 2245 tests with seven skips and six todo cases.
+
+The Phase 2 review regressions failed six checks before repair. The Phase 2 gate passed 62 checks after repair, with one existing skip.
+
+Compiled discovery guidance also covers unreadable target, manifest and decision-index inputs under TR-006. Suppress the init hint for these inputs. Preserve successful discovery and one terminal signal.
+
+TR-004 includes inherited literal and conflicting glob settings. It also covers literal mode combined with case-insensitive matching. Discovery must retain the filtered custom assessment inventory.
+
+TR-004 rejects invalid UTF-8 in reports and optional JSON metadata. Managed target and index readability also require valid UTF-8. Target digests still hash the original bytes. Preserve readable report fallback and unknown optional evidence.

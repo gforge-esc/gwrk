@@ -7,6 +7,7 @@ import { createHash } from "node:crypto";
 import {
   mkdir,
   mkdtemp,
+  readdir,
   realpath,
   rm,
   symlink,
@@ -14,8 +15,13 @@ import {
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { readArchitectureReadiness } from "./readiness.js";
+
+vi.mock("node:fs/promises", async (importOriginal) => {
+  const fs = await importOriginal<typeof import("node:fs/promises")>();
+  return { ...fs, readdir: vi.fn(fs.readdir) };
+});
 
 let root: string;
 const target = "# Target\nSelected context without a conformance claim.\n";
@@ -37,13 +43,14 @@ async function put(path: string, content: string) {
   await mkdir(dirname(join(root, path)), { recursive: true });
   await writeFile(join(root, path), content);
 }
-async function context() {
-  await put(".gwrk/architecture.md", target);
+async function context(content = target) {
+  const targetHash = createHash("sha256").update(content).digest("hex");
+  await put(".gwrk/architecture.md", content);
   await put(
     ".gwrk/context-manifest.json",
     JSON.stringify({
       version: 1,
-      files: { ".gwrk/architecture.md": digest },
+      files: { ".gwrk/architecture.md": targetHash },
       decisions: {},
     }),
   );
@@ -51,6 +58,7 @@ async function context() {
     ".gwrk/decisions/index.md",
     "# Decisions\nStatus remains Proposed.\n",
   );
+  return targetHash;
 }
 async function report(directory: string, provenance?: Record<string, unknown>) {
   await put(`${directory}/report.md`, "# Scoped report\n");
@@ -62,6 +70,7 @@ beforeEach(async () => {
   root = await realpath(await mkdtemp(join(tmpdir(), "gwrk-readiness-")));
 });
 afterEach(async () => {
+  vi.unstubAllEnvs();
   await rm(root, { recursive: true, force: true });
 });
 
@@ -108,6 +117,43 @@ describe("repository architecture readiness", () => {
       );
     },
   );
+  it("detects target byte changes that decode to the same text", async () => {
+    const targetHash = await context(`${target}\uFFFD`);
+    await report("docs/architecture/assessments/2026-11-18", {
+      generatedAt: "2026-11-18T10:00:00Z",
+      targetHash,
+    });
+    await writeFile(
+      join(root, ".gwrk/architecture.md"),
+      Buffer.concat([Buffer.from(target), Buffer.from([0xff])]),
+    );
+
+    expect(await readArchitectureReadiness(root, design)).toMatchObject({
+      context: {
+        status: "incomplete",
+        issues: expect.arrayContaining([
+          { path: ".gwrk/architecture.md", kind: "hash-mismatch" },
+          { path: ".gwrk/architecture.md", kind: "unreadable" },
+        ]),
+      },
+      assessment: { latest: { targetMatch: "differs" } },
+    });
+  });
+  it("reports an incomplete context when the manifest omits its decision map", async () => {
+    await context();
+    await put(
+      ".gwrk/context-manifest.json",
+      JSON.stringify({
+        version: 1,
+        files: { ".gwrk/architecture.md": digest },
+      }),
+    );
+
+    expect((await readArchitectureReadiness(root, design))?.context).toEqual({
+      status: "incomplete",
+      issues: [{ path: ".gwrk/context-manifest.json", kind: "invalid" }],
+    });
+  });
   it("links a dated Markdown-only report without inventing provenance or scope", async () => {
     await put(
       "docs/architecture/assessments/2026-11-18/report.md",
@@ -158,6 +204,135 @@ describe("repository architecture readiness", () => {
       "custom review/evidence/report.md",
     );
   });
+  it.each([
+    { GIT_LITERAL_PATHSPECS: "1" },
+    { GIT_GLOB_PATHSPECS: "1", GIT_NOGLOB_PATHSPECS: "1" },
+    { GIT_LITERAL_PATHSPECS: "1", GIT_ICASE_PATHSPECS: "1" },
+  ])(
+    "finds custom evidence under inherited Git pathspec controls %j",
+    async (controls) => {
+      execFileSync("git", ["init", "--quiet", root]);
+      await report("custom", { generatedAt: "2026-11-19T10:00:00Z" });
+      for (const [key, value] of Object.entries(controls))
+        vi.stubEnv(key, value);
+      expect(
+        (await readArchitectureReadiness(root))?.assessment.latest?.reportPath,
+      ).toBe("custom/report.md");
+    },
+  );
+
+  it("finds custom evidence when unrelated Git paths exceed the inventory buffer", async () => {
+    execFileSync("git", ["init", "--quiet", root]);
+    const blob = execFileSync(
+      "git",
+      ["-C", root, "hash-object", "-w", "--stdin"],
+      { encoding: "utf8", input: "" },
+    ).trim();
+    // These paths alone exceed the 10 MiB inventory buffer.
+    const pathPrefix = `unrelated/${"x".repeat(240)}`;
+    const entries = Array.from(
+      { length: 45_000 },
+      (_, index) => `100644 ${blob}\t${pathPrefix}${index}\0`,
+    );
+    execFileSync("git", ["-C", root, "update-index", "-z", "--index-info"], {
+      input: entries.join(""),
+    });
+    await report("custom", { generatedAt: "2026-11-19T10:00:00Z" });
+
+    expect(
+      (await readArchitectureReadiness(root))?.assessment.latest?.reportPath,
+    ).toBe("custom/report.md");
+  });
+  it("links a Git-staged assessment at the checkout root", async () => {
+    const generatedAt = "2026-11-19T10:00:00Z";
+    execFileSync("git", ["init", "--quiet", root]);
+    await report(".", { generatedAt });
+    execFileSync("git", [
+      "-C",
+      root,
+      "add",
+      "--",
+      "report.md",
+      "assessment.json",
+      "provenance.json",
+    ]);
+    const result = await readArchitectureReadiness(root);
+    expect(result?.assessment.latest?.reportPath).toBe("report.md");
+    expect(result?.assessment.latest).toMatchObject({
+      generatedAt,
+      scope: {
+        inspected: assessment.inspected,
+        limitations: assessment.limitations,
+      },
+    });
+  });
+  it("keeps the older readable report when a newer report has invalid UTF-8", async () => {
+    await put(
+      "docs/architecture/assessments/2026-11-17/report.md",
+      "# Readable report\n",
+    );
+    await put(
+      "docs/architecture/assessments/2026-11-18/report.md",
+      "# Newer\n",
+    );
+    await writeFile(
+      join(root, "docs/architecture/assessments/2026-11-18/report.md"),
+      Buffer.from([35, 32, 0xff]),
+    );
+    expect(
+      (await readArchitectureReadiness(root))?.assessment.latest?.reportPath,
+    ).toBe("docs/architecture/assessments/2026-11-17/report.md");
+  });
+  it("retains a readable report without inventing scope or provenance from invalid UTF-8 JSON", async () => {
+    const directory = "docs/architecture/assessments/2026-11-18";
+    await report(directory, {
+      generatedAt: "2026-11-18T12:00:00Z",
+      revision: "~",
+    });
+    const corrupt = (value: unknown) =>
+      Buffer.from(JSON.stringify(value)).map((byte) =>
+        byte === 126 ? 255 : byte,
+      );
+    await writeFile(
+      join(root, directory, "assessment.json"),
+      corrupt({ ...assessment, inspected: ["src/~"] }),
+    );
+    await writeFile(
+      join(root, directory, "provenance.json"),
+      corrupt({ generatedAt: "2026-11-18T12:00:00Z", revision: "~" }),
+    );
+    expect(
+      (await readArchitectureReadiness(root))?.assessment.latest,
+    ).toMatchObject({
+      reportPath: `${directory}/report.md`,
+      generatedAt: null,
+      revision: null,
+      scope: null,
+    });
+  });
+  it.each([".gwrk/architecture.md", ".gwrk/decisions/index.md"])(
+    "does not report ready for undecodable managed input %s",
+    async (file) => {
+      await context();
+      const bytes = Buffer.from([35, 32, 0xff]);
+      await writeFile(join(root, file), bytes);
+      if (file === ".gwrk/architecture.md")
+        await put(
+          ".gwrk/context-manifest.json",
+          JSON.stringify({
+            version: 1,
+            files: { [file]: createHash("sha256").update(bytes).digest("hex") },
+            decisions: {},
+          }),
+        );
+      const result = await readArchitectureReadiness(root, design);
+      expect.soft(result?.context.status).toBe("incomplete");
+      expect
+        .soft(result?.context.issues)
+        .toContainEqual({ path: file, kind: "unreadable" });
+    },
+  );
+
   it("keeps the last readable report when a newer output is empty", async () => {
     await put(
       "docs/architecture/assessments/2026-11-17/report.md",
@@ -186,18 +361,32 @@ describe("repository architecture readiness", () => {
     });
   });
 
-  it("finds default CLI timestamp directories without Git or provenance", async () => {
+  it("keeps the latest archive timestamp when a dated symlink is listed last", async () => {
+    const archive = "docs/architecture/assessments";
+    const later = `${archive}/2026-11-18T12-00-00-000Z`;
+    const alias = "2026-11-18_legacy";
     await put(
-      "docs/architecture/assessments/2026-11-18T10-00-00-000Z/report.md",
+      `${archive}/2026-11-18T10-00-00-000Z/report.md`,
       "# Earlier report\n",
     );
-    await put(
-      "docs/architecture/assessments/2026-11-18T12-00-00-000Z/report.md",
-      "# Later report\n",
-    );
+    await put(`${later}/report.md`, "# Later report\n");
+    await symlink(join(root, later), join(root, archive, alias));
+    const fs =
+      await vi.importActual<typeof import("node:fs/promises")>(
+        "node:fs/promises",
+      );
+    vi.mocked(readdir).mockImplementationOnce(async (path, options) => {
+      const entries = await fs.readdir(path, options);
+      return entries.sort(
+        (first, second) =>
+          Number(first.name.toString() === alias) -
+          Number(second.name.toString() === alias),
+      );
+    });
+
     expect(
       (await readArchitectureReadiness(root))?.assessment.latest?.reportPath,
-    ).toBe("docs/architecture/assessments/2026-11-18T12-00-00-000Z/report.md");
+    ).toBe(`${later}/report.md`);
   });
 
   it("does not inspect report directories outside the project", async () => {
