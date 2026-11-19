@@ -50,6 +50,7 @@ export function createGitHarvestAdapter(): VcsHarvestExtensions {
       throw new Error("Origin must have one fetch URL and one push URL");
     if (fetch !== push)
       throw new Error("Origin fetch and push URLs must match");
+    return fetch.trim();
   };
   const validateBranch = async (cwd: string, branch: string) => {
     if (!branch || branch.startsWith("-"))
@@ -59,7 +60,11 @@ export function createGitHarvestAdapter(): VcsHarvestExtensions {
   const requireSha = (sha: string) => {
     if (!isSha(sha)) throw new Error("A complete commit SHA is required");
   };
-  const getRemoteBranchSha = async (cwd: string, branch: string) => {
+  const getRemoteBranchSha = async (
+    cwd: string,
+    branch: string,
+    destination = "origin",
+  ) => {
     await validateBranch(cwd, branch);
     let output: string;
     try {
@@ -67,7 +72,8 @@ export function createGitHarvestAdapter(): VcsHarvestExtensions {
         "ls-remote",
         "--exit-code",
         "--heads",
-        "origin",
+        "--",
+        destination,
         `refs/heads/${branch}`,
       ]);
     } catch (error) {
@@ -179,8 +185,8 @@ export function createGitHarvestAdapter(): VcsHarvestExtensions {
     getRemoteBranchSha,
     async deleteRemoteBranchAtTip(cwd, branch, expectedSha) {
       requireSha(expectedSha);
-      await verifyOriginDestination(cwd);
-      const current = await getRemoteBranchSha(cwd, branch);
+      const destination = await verifyOriginDestination(cwd);
+      const current = await getRemoteBranchSha(cwd, branch, destination);
       if (current === null) return { deleted: false, reason: "missing" };
       if (current !== expectedSha)
         return { deleted: false, reason: "tip_moved" };
@@ -188,12 +194,13 @@ export function createGitHarvestAdapter(): VcsHarvestExtensions {
         await git(cwd, [
           "push",
           `--force-with-lease=refs/heads/${branch}:${expectedSha}`,
-          "origin",
+          "--",
+          destination,
           `:refs/heads/${branch}`,
         ]);
         return { deleted: true };
       } catch (error) {
-        const latest = await getRemoteBranchSha(cwd, branch);
+        const latest = await getRemoteBranchSha(cwd, branch, destination);
         if (latest === null) return { deleted: false, reason: "missing" };
         if (latest !== expectedSha)
           return { deleted: false, reason: "tip_moved" };

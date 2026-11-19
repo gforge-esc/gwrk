@@ -145,60 +145,64 @@ describe.each([
       expect(git(other, "rev-parse", "refs/heads/feature")).toBe(initial);
     },
   );
-  it("preserves the second repository when the push URL changes after verification", async () => {
-    const adapter = createAdapter();
-    const other = join(root, "other.git");
-    git(root, "init", "--quiet", "--bare", other);
-    git(checkout, "push", "--quiet", other, "HEAD:refs/heads/feature");
-    expect(await adapter.getRemoteBranchSha(checkout, "feature")).toBe(initial);
-    const realGit = execFileSync("which", ["git"], {
-      encoding: "utf8",
-      env: cleanEnv,
-    }).trim();
-    writeFileSync(
-      join(root, "git"),
-      [
-        "#!/bin/sh",
-        'if [ "$3" = "push" ]; then',
-        '  "$GWRK_TEST_REAL_GIT" -C "$2" config --replace-all remote.origin.pushurl "$GWRK_TEST_OTHER_REMOTE" || exit "$?"',
-        "fi",
-        'exec "$GWRK_TEST_REAL_GIT" "$@"',
-        "",
-      ].join("\n"),
-      { mode: 0o755 },
-    );
-    vi.stubEnv("PATH", `${root}:${process.env.PATH}`);
-    vi.stubEnv("GWRK_TEST_REAL_GIT", realGit);
-    vi.stubEnv("GWRK_TEST_OTHER_REMOTE", other);
+  it.each(["remote.origin.pushurl", "remote.origin.url"])(
+    "preserves the second repository when %s changes after verification",
+    async (setting) => {
+      const adapter = createAdapter();
+      const other = join(root, "other.git");
+      git(root, "init", "--quiet", "--bare", other);
+      git(checkout, "push", "--quiet", other, "HEAD:refs/heads/feature");
+      expect(await adapter.getRemoteBranchSha(checkout, "feature")).toBe(
+        initial,
+      );
+      const realGit = execFileSync("which", ["git"], {
+        encoding: "utf8",
+        env: cleanEnv,
+      }).trim();
+      writeFileSync(
+        join(root, "git"),
+        [
+          "#!/bin/sh",
+          'if [ "$3" = "push" ]; then',
+          '  "$GWRK_TEST_REAL_GIT" -C "$2" config --replace-all "$GWRK_TEST_REMOTE_SETTING" "$GWRK_TEST_OTHER_REMOTE" || exit "$?"',
+          "fi",
+          'exec "$GWRK_TEST_REAL_GIT" "$@"',
+          "",
+        ].join("\n"),
+        { mode: 0o755 },
+      );
+      vi.stubEnv("PATH", `${root}:${process.env.PATH}`);
+      vi.stubEnv("GWRK_TEST_REAL_GIT", realGit);
+      vi.stubEnv("GWRK_TEST_OTHER_REMOTE", other);
+      vi.stubEnv("GWRK_TEST_REMOTE_SETTING", setting);
 
-    const [result] = await Promise.allSettled([
-      adapter.deleteRemoteBranchAtTip(checkout, "feature", initial),
-    ]);
+      const [result] = await Promise.allSettled([
+        adapter.deleteRemoteBranchAtTip(checkout, "feature", initial),
+      ]);
 
-    expect(git(checkout, "config", "--get", "remote.origin.pushurl")).toBe(
-      other,
-    );
-    expect
-      .soft(
+      expect(git(checkout, "config", "--get", setting)).toBe(other);
+      expect
+        .soft(
+          git(
+            other,
+            "for-each-ref",
+            "--format=%(objectname)",
+            "refs/heads/feature",
+          ),
+        )
+        .toBe(initial);
+      expect(
         git(
-          other,
+          remote,
           "for-each-ref",
           "--format=%(objectname)",
           "refs/heads/feature",
         ),
-      )
-      .toBe(initial);
-    expect(
-      git(
-        remote,
-        "for-each-ref",
-        "--format=%(objectname)",
-        "refs/heads/feature",
-      ),
-    ).toBe(
-      result.status === "fulfilled" && result.value.deleted ? "" : initial,
-    );
-  });
+      ).toBe(
+        result.status === "fulfilled" && result.value.deleted ? "" : initial,
+      );
+    },
+  );
   it("preserves a branch that moves between remote inspection and delete", async () => {
     const adapter = createAdapter();
     writeFileSync(join(checkout, "file.txt"), "new trunk\n");
