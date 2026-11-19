@@ -14,6 +14,7 @@ import {
 import type { ProjectProfile } from "../engine/profile-detector.js";
 import { detectProfile } from "../engine/profile-detector.js";
 import { processForAgent } from "../utils/agent-layer.js";
+import { maskPromptExamples } from "../utils/markdown-examples.js";
 import { CommandError } from "../utils/signal.js";
 import { AgentBackendRegistry } from "./agent-registry.js";
 import { PluginLoader } from "./loader.js";
@@ -199,6 +200,8 @@ export interface ResolvePolicyOptions {
   profile?: ProjectProfile;
   globalDir?: string;
   checksConfigured?: boolean;
+  workspaceDir?: string;
+  policyDirs?: readonly string[];
 }
 
 export async function resolveEffectivePolicy(
@@ -210,8 +213,8 @@ export async function resolveEffectivePolicy(
     globalDir: options.globalDir,
   });
   const [profile, candidates] = await Promise.all([
-    options.profile ?? detectProfile(projectRoot),
-    loader.listEnforcementCandidates(),
+    options.profile ?? detectProfile(options.workspaceDir ?? projectRoot),
+    loader.listEnforcementCandidates(options.workspaceDir, options.policyDirs),
   ]);
   return composeEffectivePolicy({
     profile,
@@ -221,8 +224,43 @@ export async function resolveEffectivePolicy(
   });
 }
 
-export function formatEffectivePolicyPrompt(policy: EffectivePolicy): string {
+interface EffectivePolicyPromptOptions {
+  architectureTarget?: string;
+  workspaceDir?: string;
+  policyDirs?: readonly string[];
+}
+
+export function formatEffectivePolicyPrompt(
+  policy: EffectivePolicy,
+  { architectureTarget }: EffectivePolicyPromptOptions = {},
+): string {
   const sections: string[] = [];
+  if (policy.design) {
+    sections.push(
+      "Initialization does not assess code conformance. Architecture checks remain unchanged by initialization.",
+    );
+    const targetRulesSections = maskPromptExamples(architectureTarget ?? "")
+      .split(/^#{1,2}[ \t]+/m)
+      .slice(1)
+      .filter((section) => section.split("\n", 1)[0].trim() === "Rules");
+    const targetRules = new Set(
+      targetRulesSections.flatMap((section) =>
+        Array.from(
+          section.matchAll(/^ {0,3}[-+*][ \t]+([^\r\n]+)$/gm),
+          ([, rule]) => rule.trim(),
+        ),
+      ),
+    );
+    const rules = policy.architectureRules
+      .filter((rule) => !targetRules.has(rule))
+      .map((rule) => `- ${rule}`);
+    if (rules.length > 0)
+      sections.push(`## Architecture rules\n\n${rules.join("\n")}`);
+  }
+  if (policy.languageGuidance)
+    sections.push(`## Language guidance\n\n${policy.languageGuidance}`);
+  if (policy.frameworkGuidance)
+    sections.push(`## Framework guidance\n\n${policy.frameworkGuidance}`);
   const highestSelectedLayer = new Map<string, PolicySourceLayer>();
   // Policy composition orders selected skills from lowest to highest precedence.
   for (const { path, source, content } of policy.selectedSkills) {
@@ -248,8 +286,15 @@ export async function resolveEnforcementSkills(
   projectRoot: string,
   scope: EnforcementScope = "all",
   profile?: ProjectProfile,
+  options?: EffectivePolicyPromptOptions,
 ): Promise<string> {
   return formatEffectivePolicyPrompt(
-    await resolveEffectivePolicy(projectRoot, { scope, profile }),
+    await resolveEffectivePolicy(projectRoot, {
+      scope,
+      profile,
+      workspaceDir: options?.workspaceDir,
+      policyDirs: options?.policyDirs,
+    }),
+    options,
   );
 }

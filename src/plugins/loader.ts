@@ -43,6 +43,20 @@ interface PluginLoaderOptions {
   projectDir?: string;
 }
 
+interface LocalPluginConfig {
+  inherits?: boolean;
+  entries?: string[];
+  disable?: string[];
+  override?: Record<string, string>;
+  plugins?: Record<string, { enabled?: boolean }>;
+  fromJson?: boolean;
+}
+
+interface PluginLocation {
+  directory: string;
+  source: PolicySourceLayer;
+}
+
 interface ListOptions {
   activeOnly?: boolean;
   type?: string;
@@ -81,17 +95,12 @@ export class PluginLoader {
     this.projectDir = options.projectDir;
   }
 
-  private async loadLocalConfig(): Promise<{
-    inherits?: boolean;
-    entries?: string[];
-    disable?: string[];
-    override?: Record<string, string>;
-    plugins?: Record<string, { enabled?: boolean }>;
-    fromJson?: boolean;
-  }> {
-    if (!this.projectDir) return {};
-    const yamlPath = path.join(this.projectDir, ".gwrk", "plugins.yaml");
-    const jsonPath = path.join(this.projectDir, ".gwrk", "plugins.json");
+  private async loadLocalConfig(
+    projectDir = this.projectDir,
+  ): Promise<LocalPluginConfig> {
+    if (!projectDir) return {};
+    const yamlPath = path.join(projectDir, ".gwrk", "plugins.yaml");
+    const jsonPath = path.join(projectDir, ".gwrk", "plugins.json");
     let yamlCfg: {
       disable?: string[];
       override?: Record<string, string>;
@@ -134,11 +143,7 @@ export class PluginLoader {
   private evaluateDisabledStatus(
     manifest: AnyManifest,
     typeFolder: string,
-    localConfig: {
-      disable?: string[];
-      plugins?: Record<string, { enabled?: boolean }>;
-      fromJson?: boolean;
-    },
+    localConfigs: readonly LocalPluginConfig[],
     globalConfig: {
       plugins?: Record<string, { enabled?: boolean }>;
     },
@@ -148,33 +153,29 @@ export class PluginLoader {
     const projectFullName = `${typeFolder}/${projectName}`;
     const projectAltFullName = `${manifest.type}s/${projectName}`;
 
-    // 1. Explicit project-level plugins.<name>.enabled (AGY style)
-    const projEntry =
-      localConfig.plugins?.[projectName] ??
-      localConfig.plugins?.[projectFullName] ??
-      localConfig.plugins?.[projectAltFullName];
-    if (typeof projEntry?.enabled === "boolean") {
-      return !projEntry.enabled;
-    }
-
-    // 2. Project disable list
-    const disabledSet = new Set(localConfig.disable || []);
-    if (
-      disabledSet.has(projectFullName) ||
-      disabledSet.has(projectName) ||
-      disabledSet.has(projectAltFullName)
-    ) {
-      if (
-        isResolveContext &&
-        !localConfig.fromJson &&
-        (typeFolder === "skills" || typeFolder === "agents")
-      ) {
-        return false;
+    for (const localConfig of localConfigs) {
+      const projEntry =
+        localConfig.plugins?.[projectName] ??
+        localConfig.plugins?.[projectFullName] ??
+        localConfig.plugins?.[projectAltFullName];
+      if (typeof projEntry?.enabled === "boolean") {
+        return !projEntry.enabled;
       }
-      return true;
+
+      const disabledSet = new Set(localConfig.disable || []);
+      if (
+        disabledSet.has(projectFullName) ||
+        disabledSet.has(projectName) ||
+        disabledSet.has(projectAltFullName)
+      ) {
+        return !(
+          isResolveContext &&
+          !localConfig.fromJson &&
+          (typeFolder === "skills" || typeFolder === "agents")
+        );
+      }
     }
 
-    // 3. Global ~/.gwrk/config.json plugins.<name>.enabled
     const fullName = `${typeFolder}/${manifest.name}`;
     const altFullName = `${manifest.type}s/${manifest.name}`;
     const globalEntry =
@@ -185,12 +186,7 @@ export class PluginLoader {
       return !globalEntry.enabled;
     }
 
-    // 4. Manifest default (disabled: true in manifest.yaml)
-    if (manifest.disabled === true) {
-      return true;
-    }
-
-    return false;
+    return manifest.disabled === true;
   }
 
   // T002-gate compatibility alias
@@ -203,25 +199,29 @@ export class PluginLoader {
     return this.listPlugins();
   }
 
-  private pluginLocations(config: {
-    inherits?: boolean;
-    entries?: string[];
-  }): Array<{ directory: string; source: PolicySourceLayer }> {
-    const locations: Array<{ directory: string; source: PolicySourceLayer }> =
-      [];
-    if (this.projectDir) {
+  private projectPluginLocations(
+    directory: string | undefined,
+    config: LocalPluginConfig,
+  ): PluginLocation[] {
+    const locations: PluginLocation[] = [];
+    if (directory) {
       locations.push({
-        directory: path.join(this.projectDir, ".gwrk", "plugins"),
+        directory: path.join(directory, ".gwrk", "plugins"),
         source: "project-local",
       });
     }
     for (const entry of config.entries ?? []) {
       locations.push({
-        directory: path.resolve(this.projectDir ?? ".", entry),
+        directory: path.resolve(directory ?? ".", entry),
         source: "project-entry",
       });
     }
-    if (config.inherits !== false) {
+    return locations;
+  }
+
+  private sharedPluginLocations(inherits?: boolean): PluginLocation[] {
+    const locations: PluginLocation[] = [];
+    if (inherits !== false) {
       locations.push({ directory: this.globalDir, source: "global" });
     }
     locations.push({
@@ -231,11 +231,28 @@ export class PluginLoader {
     return locations;
   }
 
-  async listEnforcementCandidates(): Promise<LoadedEnforcementCandidate[]> {
-    const [config, globalConfig] = await Promise.all([
-      this.loadLocalConfig(),
+  async listEnforcementCandidates(
+    workspaceDir?: string,
+    policyDirs?: readonly string[],
+  ): Promise<LoadedEnforcementCandidate[]> {
+    const directories = [
+      ...new Set(
+        (policyDirs ?? [workspaceDir, this.projectDir])
+          .filter((directory): directory is string => Boolean(directory))
+          .map((directory) => path.resolve(directory)),
+      ),
+    ];
+    const [configs, globalConfig] = await Promise.all([
+      Promise.all(
+        directories.map((directory) => this.loadLocalConfig(directory)),
+      ),
       this.loadGlobalConfig(),
     ]);
+    const projects = directories.map((directory, index) => ({
+      directory,
+      config: configs[index],
+    }));
+    const localConfigs = projects.map(({ config }) => config);
     const candidates: LoadedEnforcementCandidate[] = [];
     const visitedPaths = new Set<string>();
     const addCandidate = async (
@@ -259,7 +276,7 @@ export class PluginLoader {
       const disabled = this.evaluateDisabledStatus(
         manifest,
         "skills",
-        config,
+        localConfigs,
         globalConfig,
         false,
         name,
@@ -290,21 +307,41 @@ export class PluginLoader {
       });
     };
 
-    for (const [name, directory] of Object.entries(config.override ?? {})) {
-      if (typeof directory === "string") {
-        await addCandidate(
-          path.resolve(this.projectDir ?? ".", directory),
-          "project-local",
-          name,
-        );
-      }
-    }
-    for (const { directory, source } of this.pluginLocations(config)) {
+    const scanLocation = async ({ directory, source }: PluginLocation) => {
       const skillsDir = path.join(directory, "skills");
       const entries = await fs.readdir(skillsDir).catch(() => []);
       for (const entry of entries) {
         await addCandidate(path.join(skillsDir, entry), source);
       }
+    };
+    // Scan local copies before entries so path deduplication preserves precedence.
+    const entryLocations: PluginLocation[] = [];
+    for (const { directory, config } of projects) {
+      for (const [name, override] of Object.entries(config.override ?? {})) {
+        if (typeof override === "string") {
+          await addCandidate(
+            path.resolve(directory ?? ".", override),
+            "project-local",
+            name,
+          );
+        }
+      }
+      for (const location of this.projectPluginLocations(directory, config)) {
+        if (location.source === "project-entry") {
+          entryLocations.push(location);
+        } else {
+          await scanLocation(location);
+        }
+      }
+    }
+    for (const location of [
+      ...entryLocations,
+      ...this.sharedPluginLocations(
+        projects.find(({ config }) => config.inherits !== undefined)?.config
+          .inherits,
+      ),
+    ]) {
+      await scanLocation(location);
     }
     return candidates;
   }
@@ -345,7 +382,7 @@ export class PluginLoader {
               const isDisabled = this.evaluateDisabledStatus(
                 manifest,
                 typeFolder,
-                config,
+                [config],
                 globalConfig,
                 false,
               );
@@ -395,7 +432,10 @@ export class PluginLoader {
       }
     };
 
-    for (const { directory } of this.pluginLocations(config)) {
+    for (const { directory } of [
+      ...this.projectPluginLocations(this.projectDir, config),
+      ...this.sharedPluginLocations(config.inherits),
+    ]) {
       await scanDir(directory);
     }
 
@@ -443,7 +483,7 @@ export class PluginLoader {
             this.evaluateDisabledStatus(
               manifest,
               type,
-              config,
+              [config],
               globalConfig,
               true,
             )

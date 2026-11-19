@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { z } from "zod";
+import type { EffectivePolicy } from "./policy-selection.js";
 
 export const DesignSchema = z.object({
   architecture: z.string().min(1),
@@ -18,6 +19,14 @@ export interface ContextInput {
   language?: string;
   framework?: string;
   decisionsDir: string;
+  effectivePolicy?: Pick<
+    EffectivePolicy,
+    | "checksStatus"
+    | "architectureRules"
+    | "languageGuidance"
+    | "frameworkGuidance"
+    | "gaps"
+  >;
 }
 
 export function normalizeArchitecture(value: string): string {
@@ -174,15 +183,16 @@ export function contextMarkdown(
   input: ContextInput,
   decisions: string[],
 ): string {
+  const policy = input.effectivePolicy;
   const language = input.language?.toLowerCase() ?? "";
   const framework = normalizeFramework(input.framework);
-  return `# Project architecture target\n\nTarget context guides future work. Code conformance remains unassessed by initialization. Blocked: none.\n\n## Selection\n\n- Project: ${input.projectName}\n- Architecture: ${input.design.architecture}\n- Language: ${input.language ?? "unspecified"}\n- Framework: ${input.framework ?? "unspecified"}\n- Template version: ${input.design.templateVersion}\n- Architecture checks: activation unchanged by initialization\n\n## Rules\n\n${designRules(
-    input.design,
+  return `# Project architecture target\n\nTarget context guides future work. Code conformance remains unassessed by initialization. Blocked: none.\n\n## Selection\n\n- Project: ${input.projectName}\n- Architecture: ${input.design.architecture}\n- Language: ${input.language ?? "unspecified"}\n- Framework: ${input.framework ?? "unspecified"}\n- Template version: ${input.design.templateVersion}\n- Architecture checks: activation unchanged by initialization\n\n## Rules\n\n${(
+    policy?.architectureRules ?? designRules(input.design)
   )
     .map((rule) => `- ${rule}`)
     .join(
       "\n",
-    )}\n\n## Language guidance\n\n${LANGUAGE_GUIDANCE[language] ?? "No bundled language binding. Assess language-specific boundaries explicitly."}\n\n## Framework guidance\n\n${framework ? (lookupFrameworkGuidance(framework) ?? "No bundled framework binding. Framework compatibility remains unassessed.") : "No framework selected."}\n\n## Project decisions\n\n${decisions.map((file) => `- ${file}`).join("\n")}\n\nRead the complete decision corpus and preserve existing Decided constraints. Generated target records remain Proposed until human ratification. Resolve conflicts before implementation.\n\n## Later assessment\n\nRun \`gwrk assess\` to assess the existing code against this target. The portable gwrk-assess skill uses the same method. Assessment proposes feature specs and never certifies the entire codebase.\n`;
+    )}\n\n## Language guidance\n\n${policy?.languageGuidance ?? LANGUAGE_GUIDANCE[language] ?? "No bundled language binding. Assess language-specific boundaries explicitly."}\n\n## Framework guidance\n\n${framework ? ((policy ? policy.frameworkGuidance : lookupFrameworkGuidance(framework)) ?? "No bundled framework binding. Framework compatibility remains unassessed.") : "No framework selected."}${policy?.gaps.length ? `\n\n## Policy gaps\n\n${policy.gaps.map(({ message }) => `- ${message}`).join("\n")}` : ""}\n\n## Project decisions\n\n${decisions.map((file) => `- ${file}`).join("\n")}\n\nRead the complete decision corpus and preserve existing Decided constraints. Generated target records remain Proposed until human ratification. Resolve conflicts before implementation.\n\n## Later assessment\n\nRun \`gwrk assess\` to assess the existing code against this target. The portable gwrk-assess skill uses the same method. Assessment proposes feature specs and never certifies the entire codebase.\n`;
 }
 
 export function decisionMarkdown(

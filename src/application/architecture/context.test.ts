@@ -7,7 +7,11 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { installArchitectureContext } from "../../adapters/architecture/context-files.js";
-import { resolveDesign } from "../../domain/architecture-context.js";
+import {
+  contextMarkdown,
+  resolveDesign,
+} from "../../domain/architecture-context.js";
+import { composeEffectivePolicy } from "../../domain/policy-selection.js";
 
 const roots: string[] = [];
 async function fixture() {
@@ -28,6 +32,69 @@ describe("architecture context", () => {
     });
     expect(design.architecture).toBe("hexagonal-functional");
     expect(design.principles).toContain("functional-core");
+  });
+
+  it("renders the projected compatibility gap in a two-argument call", () => {
+    const design = resolveDesign({ architecture: "hexagonal-functional" });
+    const stack = { language: "TypeScript", framework: "Django" };
+    const input = {
+      projectName: "mixed-choice",
+      design,
+      ...stack,
+      decisionsDir: "docs/decisions",
+      effectivePolicy: composeEffectivePolicy({
+        profile: { type: "nodejs", design, stack },
+        candidates: [],
+      }),
+    };
+
+    const context = contextMarkdown(input, []);
+
+    expect(context).toContain(
+      "## Policy gaps\n\n- No compatible policy found for framework Django.",
+    );
+    expect(context).not.toContain("Keep Django ORM models and transactions");
+  });
+
+  it("preserves the legacy render bytes when the projected policy has no gaps", () => {
+    const design = resolveDesign({ architecture: "hexagonal-functional" });
+    const stack = { language: "Python", framework: "FastAPI" };
+    const input = {
+      projectName: "compatible-choice",
+      design,
+      ...stack,
+      decisionsDir: "docs/decisions",
+    };
+    const decisions = ["docs/decisions/ADR-001-desired-architecture.md"];
+    const effectivePolicy = composeEffectivePolicy({
+      profile: { type: "python", design, stack },
+      candidates: [],
+    });
+
+    expect(effectivePolicy.gaps).toEqual([]);
+    expect(contextMarkdown({ ...input, effectivePolicy }, decisions)).toBe(
+      contextMarkdown(input, decisions),
+    );
+  });
+
+  it("reports an incompatible framework choice without rendering another language's binding", async () => {
+    const root = await fixture();
+    const result = await installArchitectureContext(root, {
+      projectName: "mixed-choice",
+      design: resolveDesign({ architecture: "hexagonal-functional" }),
+      language: "TypeScript",
+      framework: "Django",
+      decisionsDir: "docs/decisions",
+    });
+    const context = await fs.readFile(
+      path.join(root, ".gwrk/architecture.md"),
+      "utf8",
+    );
+    expect(result.conformance).toBe("unassessed");
+    expect(context).toContain("## Policy gaps");
+    expect(context).toContain("TypeScript");
+    expect(context).toContain("Django");
+    expect(context).not.toContain("Keep Django ORM models and transactions");
   });
 
   it("installs portable context deterministically and preserves user instructions", async () => {
@@ -74,6 +141,36 @@ describe("architecture context", () => {
     ]) {
       expect((await fs.stat(path.join(root, file))).isFile()).toBe(true);
     }
+  });
+
+  it("updates policy gaps after installing a pack without creating another target decision", async () => {
+    const root = await fixture();
+    const input = {
+      projectName: "portable",
+      design: resolveDesign({ architecture: "hexagonal-functional" }),
+      language: "Clojure",
+      decisionsDir: "docs/decisions",
+    };
+    const first = await installArchitectureContext(root, input);
+    const architecture = path.join(root, ".gwrk/architecture.md");
+    expect(await fs.readFile(architecture, "utf8")).toContain("## Policy gaps");
+    const pack = path.join(root, ".gwrk/plugins/skills/clojure-policy");
+    await fs.mkdir(pack, { recursive: true });
+    await fs.writeFile(
+      path.join(pack, "manifest.yaml"),
+      "type: skill\nname: clojure-policy\nversion: 1.0.0\ndescription: Clojure project policy\ntier: enforcement\nscope: all\nlanguage: Clojure\n",
+    );
+    await fs.writeFile(
+      path.join(pack, "SKILL.md"),
+      "Keep effects behind explicit ports.",
+    );
+    const second = await installArchitectureContext(root, input);
+    expect(second.decisions).toEqual(first.decisions);
+    expect(second.conflicts).toEqual([]);
+    expect(await fs.readFile(architecture, "utf8")).not.toContain(
+      "## Policy gaps",
+    );
+    expect(await fs.readdir(path.join(root, "docs/decisions"))).toHaveLength(1);
   });
 
   it("preserves edited generated files and reports incomplete context", async () => {

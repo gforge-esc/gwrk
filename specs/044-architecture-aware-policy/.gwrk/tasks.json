@@ -187,50 +187,56 @@
         {
           "id": "T016",
           "title": "Modify architecture-context.ts",
-          "description": "MODIFY src/domain/architecture-context.ts. Render explicit policy gap notes in `contextMarkdown` while preserving manifest hashes when gaps are empty",
-          "status": "open",
-          "gateScript": "pnpm build\npnpm exec vitest run src/application/architecture/context.test.ts src/commands/init.test.ts src/utils/agent.policy-binding.test.ts src/utils/agent.grounding-decisions.test.ts src/plugins/workflow-runtime.test.ts src/architecture.test.ts\npython3 scripts/architecture-context-uat.py",
-          "sp": 1
+          "description": "MODIFY src/domain/architecture-context.ts. Render explicit policy gap notes in `contextMarkdown` while preserving manifest hashes when gaps are empty\nReview and diagnosis remain in .gwrk/review-history/phase-04-through-2026-11-18T2307Z.json and findings.jsonl. Three maintainer-guidance and quoted-example regressions failed before repair. Shared Markdown masking preserves active rules and custom target content. Only recognized generated guidance is replaced. The phase gate passes 185 tests and eight compiled CLI checks. The full suite passes 2212 tests. Repository lint passes. See evidence/phase04-maintainer-guidance-and-examples.md. Independent clearance remains required.\n\nRepair verification: 264 Phase 4 tests and eight compiled CLI cases pass. Phase 3 passes 102 checks after updating its resolver mock to the shared API. Previous findings and diagnosis remain in evidence/review-history/phase-04-through-2026-11-19T0112Z.json. Independent review remains required.",
+          "status": "completed",
+          "gateScript": "gates/phase-04.sh",
+          "sp": 1,
+          "completedAt": "2026-11-19T01:14:14.991Z"
         },
         {
           "id": "T017",
           "title": "Modify install-context.ts",
-          "description": "MODIFY src/application/architecture/install-context.ts. Compose `EffectivePolicy` deterministically during context installation without certifying existing code",
-          "status": "open",
-          "gateScript": "pnpm build\npnpm exec vitest run src/application/architecture/context.test.ts src/commands/init.test.ts src/utils/agent.policy-binding.test.ts src/utils/agent.grounding-decisions.test.ts src/plugins/workflow-runtime.test.ts src/architecture.test.ts\npython3 scripts/architecture-context-uat.py",
-          "sp": 1
+          "description": "MODIFY src/application/architecture/install-context.ts. Compose `EffectivePolicy` deterministically during context installation without certifying existing code\nPrior findings and diagnosis remain in .gwrk/review-history/phase-04-through-2026-11-18T2242Z.json and findings.jsonl. ContextInput policy projection, detected language fallback and single architecture rule ownership are implemented. A new real installation regression failed before removing stale injected target gaps. The phase gate passes 181 checks and eight compiled acceptance checks. The full suite passes 2208 tests. The target file and decision index remain intact. Independent clearance remains required.\n\nRepair verification: 264 Phase 4 tests and eight compiled CLI cases pass. Phase 3 passes 102 checks after updating its resolver mock to the shared API. Previous findings and diagnosis remain in evidence/review-history/phase-04-through-2026-11-19T0112Z.json. Independent review remains required.",
+          "status": "completed",
+          "gateScript": "gates/phase-04.sh",
+          "sp": 1,
+          "completedAt": "2026-11-19T01:14:39.139Z"
         },
         {
           "id": "T018",
           "title": "Modify init.ts",
-          "description": "MODIFY src/commands/init.ts. Preserve `workspaces` and `project.design` across fresh and existing and `--workspace` runs with zero agent calls. Tests: src/commands/init.test.ts",
-          "status": "open",
-          "gateScript": "pnpm build\npnpm exec vitest run src/application/architecture/context.test.ts src/commands/init.test.ts src/utils/agent.policy-binding.test.ts src/utils/agent.grounding-decisions.test.ts src/plugins/workflow-runtime.test.ts src/architecture.test.ts\npython3 scripts/architecture-context-uat.py",
-          "sp": 1
+          "description": "MODIFY src/commands/init.ts. Preserve `workspaces` and `project.design` across fresh and existing and `--workspace` runs with zero agent calls. Tests: src/commands/init.test.ts\nPrior findings and diagnosis remain in .gwrk/review-history/phase-04-through-2026-11-18T2242Z.json and findings.jsonl. ContextInput policy projection, detected language fallback and single architecture rule ownership are implemented. A new real installation regression failed before removing stale injected target gaps. The phase gate passes 181 checks and eight compiled acceptance checks. The full suite passes 2208 tests. The target file and decision index remain intact. Independent clearance remains required.\n\nRepair verification: 264 Phase 4 tests and eight compiled CLI cases pass. Phase 3 passes 102 checks after updating its resolver mock to the shared API. Previous findings and diagnosis remain in evidence/review-history/phase-04-through-2026-11-19T0112Z.json. Independent review remains required.",
+          "status": "completed",
+          "gateScript": "gates/phase-04.sh",
+          "sp": 1,
+          "completedAt": "2026-11-19T01:14:53.172Z"
         },
         {
           "id": "T019",
           "title": "Modify agent.ts",
-          "description": "MODIFY src/utils/agent.ts. Resolve `EffectivePolicy` by workflow scope on the shared transport path and inject `<effective_policy>` with `<code_quality>`. Tests: src/utils/agent.policy-binding.test.ts",
-          "status": "open",
-          "gateScript": "pnpm build\npnpm exec vitest run src/application/architecture/context.test.ts src/commands/init.test.ts src/utils/agent.policy-binding.test.ts src/utils/agent.grounding-decisions.test.ts src/plugins/workflow-runtime.test.ts src/architecture.test.ts\npython3 scripts/architecture-context-uat.py",
-          "sp": 1
+          "description": "MODIFY src/utils/agent.ts. Resolve `EffectivePolicy` by workflow scope on the shared transport path and inject `<effective_policy>` with `<code_quality>`. Tests: src/utils/agent.policy-binding.test.ts\nReview and diagnosis remain in .gwrk/review-history/phase-04-through-2026-11-18T2341Z.json and findings.jsonl. Two retained custom-workflow scope regressions fail before repair. Pure domain policy now resolves built-in workflow bindings and explicit custom task scope before name inference. The phase gate passes 252 tests and eight compiled CLI checks. The full suite passes 2227 tests. See evidence/phase04-explicit-custom-workflow-scope.md. Independent clearance remains required.\n\nRepair evidence: evidence/phase04-all-active-rule-sections.md. Earlier findings remain in review-history/phase-04-through-2026-11-18T2359Z.json. Independent clearance remains required.\n\nRepair evidence: evidence/phase04-unregistered-workspace-grounding.md. Earlier findings remain in review-history/phase-04-through-2026-11-19T0024Z.json. Independent clearance remains required.\n\nRepair evidence: evidence/phase04-policy-ancestry-and-saved-principles.md. Earlier findings remain in review-history/phase-04-through-2026-11-19T0049Z.json. Independent clearance remains required.\n\nRepair verification: 264 Phase 4 tests and eight compiled CLI cases pass. Phase 3 passes 102 checks after updating its resolver mock to the shared API. Previous findings and diagnosis remain in evidence/review-history/phase-04-through-2026-11-19T0112Z.json. Independent review remains required.\n\nREVIEW FAIL (code): Async mock breaks synchronous resolveWorkspacePolicyRoots contract — FR-005.\n  WHERE: src/commands/plugin.p15.red.test.ts:38-40\n  EXPECTED: resolveWorkspacePolicyRoots mock returns synchronous { workspaceDir: directory, ownerDir: directory, policyDirs: [directory] } so listProjectEnforcement passes (process.cwd(), [process.cwd()]) to listEnforcementCandidates and tsc passes without TS2739.\n  ACTUAL: mockImplementation uses an async arrow function returning a Promise. listProjectEnforcement destructures { workspaceDir: undefined, policyDirs: undefined } and calls listEnforcementCandidates(undefined, undefined). Strict TypeScript check reports TS2739 on line 38. Preserved regression assertion patch: .runs/review-regressions-phase04-listing-mock-20261118.patch.\n  FIX: Remove `async` from the resolveWorkspacePolicyRoots mockImplementation in src/commands/plugin.p15.red.test.ts:38 and apply the regression assertion in .runs/review-regressions-phase04-listing-mock-20261118.patch.\n\nREVIEW/GATE DIVERGENCE (T019, gate: gates/phase-04.sh, re-opened by review):\nThe review agent raised a finding on this task and its gate still passes, so the gate does not cover what review found. Add a test that fails on it, then fix, before completing.",
+          "status": "completed",
+          "gateScript": "gates/phase-04.sh",
+          "sp": 1,
+          "completedAt": "2026-11-19T01:38:48.296Z"
         },
         {
           "id": "T020",
           "title": "Modify workflow-runtime.ts",
-          "description": "MODIFY src/plugins/workflow-runtime.ts. Forward workspace or root `ProjectProfile` with `design` into prompt conditioning and dispatch",
-          "status": "open",
-          "gateScript": "pnpm build\npnpm exec vitest run src/application/architecture/context.test.ts src/commands/init.test.ts src/utils/agent.policy-binding.test.ts src/utils/agent.grounding-decisions.test.ts src/plugins/workflow-runtime.test.ts src/architecture.test.ts\npython3 scripts/architecture-context-uat.py",
-          "sp": 1
+          "description": "MODIFY src/plugins/workflow-runtime.ts. Forward workspace or root `ProjectProfile` with `design` into prompt conditioning and dispatch\nPrior findings and diagnosis remain in .gwrk/review-history/phase-04-through-2026-11-18T2242Z.json and findings.jsonl. ContextInput policy projection, detected language fallback and single architecture rule ownership are implemented. A new real installation regression failed before removing stale injected target gaps. The phase gate passes 181 checks and eight compiled acceptance checks. The full suite passes 2208 tests. The target file and decision index remain intact. Independent clearance remains required.\n\nRepair verification: 264 Phase 4 tests and eight compiled CLI cases pass. Phase 3 passes 102 checks after updating its resolver mock to the shared API. Previous findings and diagnosis remain in evidence/review-history/phase-04-through-2026-11-19T0112Z.json. Independent review remains required.",
+          "status": "completed",
+          "gateScript": "gates/phase-04.sh",
+          "sp": 1,
+          "completedAt": "2026-11-19T01:15:29.786Z"
         },
         {
           "id": "T021",
           "title": "Modify architecture-context-uat.py",
-          "description": "MODIFY scripts/architecture-context-uat.py. Exercise compiled CLI init across polyglot and missing-framework fixtures with zero model dispatches",
-          "status": "open",
-          "gateScript": "pnpm build\npnpm exec vitest run src/application/architecture/context.test.ts src/commands/init.test.ts src/utils/agent.policy-binding.test.ts src/utils/agent.grounding-decisions.test.ts src/plugins/workflow-runtime.test.ts src/architecture.test.ts\npython3 scripts/architecture-context-uat.py",
-          "sp": 1
+          "description": "MODIFY scripts/architecture-context-uat.py. Exercise compiled CLI init across polyglot and missing-framework fixtures with zero model dispatches\nPrior findings and diagnosis remain in .gwrk/review-history/phase-04-through-2026-11-18T2242Z.json and findings.jsonl. ContextInput policy projection, detected language fallback and single architecture rule ownership are implemented. A new real installation regression failed before removing stale injected target gaps. The phase gate passes 181 checks and eight compiled acceptance checks. The full suite passes 2208 tests. The target file and decision index remain intact. Independent clearance remains required.\n\nRepair verification: 264 Phase 4 tests and eight compiled CLI cases pass. Phase 3 passes 102 checks after updating its resolver mock to the shared API. Previous findings and diagnosis remain in evidence/review-history/phase-04-through-2026-11-19T0112Z.json. Independent review remains required.",
+          "status": "completed",
+          "gateScript": "gates/phase-04.sh",
+          "sp": 1,
+          "completedAt": "2026-11-19T01:15:47.215Z"
         }
       ],
       "sp_estimate": 6,
@@ -238,7 +244,8 @@
         "src/commands/init.test.ts",
         "src/application/architecture/context.test.ts",
         "src/utils/agent.policy-binding.test.ts",
-        "scripts/architecture-context-uat.py"
+        "scripts/architecture-context-uat.py",
+        "src/domain/policy-selection.test.ts"
       ]
     }
   ]

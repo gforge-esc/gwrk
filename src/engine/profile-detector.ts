@@ -49,6 +49,35 @@ export async function detectProfile(
   );
 }
 
+export function resolveWorkspacePolicyRoots(workDir: string): {
+  workspaceDir: string;
+  ownerDir: string;
+  policyDirs: string[];
+} {
+  const requestedWorkspace = path.resolve(workDir);
+  const workspace = physicalPath(requestedWorkspace);
+  const { ancestors, registrations } = ancestorWorkspaceConfigs(
+    workspace,
+    requestedWorkspace,
+  );
+  const registration = registrations[0];
+  const workspaceDir = registration?.matchedPath
+    ? physicalPath(path.join(registration.directory, registration.matchedPath))
+    : workspace;
+  const ownerDir =
+    registration?.directory ??
+    findNearestAncestorDesign(ancestors)?.directory ??
+    workspace;
+  const policyDirs = [
+    ...new Set([
+      workspace,
+      workspaceDir,
+      ...ancestors.map(({ directory }) => directory),
+    ]),
+  ];
+  return { workspaceDir, ownerDir, policyDirs };
+}
+
 function detectProfileInDirectory(
   projectRoot: string,
   requestedWorkspace: string,
