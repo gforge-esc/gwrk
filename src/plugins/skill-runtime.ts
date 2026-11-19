@@ -201,6 +201,7 @@ export interface ResolvePolicyOptions {
   globalDir?: string;
   checksConfigured?: boolean;
   workspaceDir?: string;
+  policyDirs?: readonly string[];
 }
 
 export async function resolveEffectivePolicy(
@@ -213,7 +214,7 @@ export async function resolveEffectivePolicy(
   });
   const [profile, candidates] = await Promise.all([
     options.profile ?? detectProfile(options.workspaceDir ?? projectRoot),
-    loader.listEnforcementCandidates(options.workspaceDir),
+    loader.listEnforcementCandidates(options.workspaceDir, options.policyDirs),
   ]);
   return composeEffectivePolicy({
     profile,
@@ -226,6 +227,7 @@ export async function resolveEffectivePolicy(
 interface EffectivePolicyPromptOptions {
   architectureTarget?: string;
   workspaceDir?: string;
+  policyDirs?: readonly string[];
 }
 
 export function formatEffectivePolicyPrompt(
@@ -291,6 +293,7 @@ export async function resolveEnforcementSkills(
       scope,
       profile,
       workspaceDir: options?.workspaceDir,
+      policyDirs: options?.policyDirs,
     }),
     options,
   );

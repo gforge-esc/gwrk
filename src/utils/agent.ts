@@ -13,13 +13,12 @@ import readline from "node:readline";
 import { writeScopedStdout } from "../adapters/cli/output-scope.js";
 import { recordRoutingDecision } from "../db/plugins.js";
 import {
+  type ProjectDesign,
   designRules,
-  DesignSchema,
   lookupFrameworkGuidance,
   lookupLanguageGuidance,
   normalizeArchitecture,
   normalizeFramework,
-  type ProjectDesign,
 } from "../domain/architecture-context.js";
 import {
   composeEffectivePolicy,
@@ -521,28 +520,15 @@ function resolvePrimaryCheckout(executionDir: string): string {
 
 const ENFORCEMENT_MARKER = "{{enforcement}}";
 
-function readConfiguredPrinciples(
-  policyRoot: string,
-): ProjectDesign["principles"] {
-  try {
-    const config = JSON.parse(
-      fs.readFileSync(path.join(policyRoot, ".gwrkrc.json"), "utf-8"),
-    );
-    return DesignSchema.safeParse(config?.project?.design).data?.principles ?? [];
-  } catch {
-    return [];
-  }
-}
-
 function withoutGeneratedPolicySections(
   target: string,
-  policyRoot: string,
   selectedDesign?: ProjectDesign,
 ): string {
   const masked = maskPromptExamples(target);
   const headings = Array.from(masked.matchAll(/^#{1,2}[ \t]+([^\r\n]*)/gm));
   const selectionIndex = headings.findIndex(
-    (heading) => heading[0].startsWith("##") && heading[1].trim() === "Selection",
+    (heading) =>
+      heading[0].startsWith("##") && heading[1].trim() === "Selection",
   );
   const selectionHeading = headings[selectionIndex];
   const selectionBody = selectionHeading
@@ -576,9 +562,7 @@ function withoutGeneratedPolicySections(
         ? {
             design: {
               architecture,
-              principles: selectedDesign
-                ? readConfiguredPrinciples(policyRoot)
-                : [],
+              principles: ["functional-core", "clean-code", "tdd"],
               templateVersion: "1.0.0" as const,
             },
           }
@@ -596,7 +580,9 @@ function withoutGeneratedPolicySections(
     [
       "Rules",
       selectedDesign
-        ? policy.architectureRules.filter((rule) => !selectedRules.includes(rule))
+        ? policy.architectureRules.filter(
+            (rule) => !selectedRules.includes(rule),
+          )
         : [],
     ],
     ["Language guidance", generatedLanguageGuidance],
@@ -846,9 +832,9 @@ export async function dispatchToAgent(task: TaskDispatch): Promise<TaskResult> {
   const startTime = Date.now();
   // ADR-009: Inject project knowledge documents (grounding)
   const workDir = projectRoot;
-  const { workspaceDir, ownerDir } = resolveWorkspacePolicyRoots(workDir);
-  const groundingRoots =
-    workspaceDir === ownerDir ? [workspaceDir] : [workspaceDir, ownerDir];
+  const { workspaceDir, ownerDir, policyDirs } =
+    resolveWorkspacePolicyRoots(workDir);
+  const groundingRoots = policyDirs;
   const groundingFiles = [
     {
       relativePath: ".gwrk/architecture.md",
@@ -917,7 +903,6 @@ export async function dispatchToAgent(task: TaskDispatch): Promise<TaskResult> {
         ? undefined
         : withoutGeneratedPolicySections(
             architectureTarget.content,
-            architectureTarget.directory,
             profile.design,
           );
     const resolvedPolicy = await resolveEnforcementSkills(
@@ -926,6 +911,7 @@ export async function dispatchToAgent(task: TaskDispatch): Promise<TaskResult> {
       profile,
       {
         architectureTarget: projectedTarget,
+        policyDirs,
         ...(workspaceDir !== ownerDir && { workspaceDir }),
       },
     );

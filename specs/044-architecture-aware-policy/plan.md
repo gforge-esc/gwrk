@@ -249,3 +249,5 @@ Phase 3 canonical pack identity regression observes duplicate prompt rules when 
 Phase 4 preparation now passes 176 checks and the compiled CLI acceptance script. The incompatible framework context regression, workspace design-loss regression and four shared-dispatch regressions failed before repair. The decision identity remains based on the selected context input. Installing a missing policy pack updates gaps without creating another target decision. Independent phase review remains required.
 
 TR-013 also dispatches an unregistered Python and FastAPI workspace. Verify inherited design and owning-worktree packs. Verify architecture target and decision grounding. Keep workspace execution and byte-identical saved context.
+
+TR-013 covers nearer registrations with inherited design and relative policy overrides. Grounding and enforcement retain configured ancestors within the worktree. Repeated initialization also deselects clean-code while preserving an edited target. Dispatch omits its generated rule and preserves maintainer text and saved bytes.

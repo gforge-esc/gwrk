@@ -43,6 +43,8 @@ describe("shared effective policy dispatch", () => {
   it.each([
     { selection: "inherited Hexagonal Functional and owning worktree grounding", workspaceDesign: undefined, registered: true },
     { selection: "unregistered inherited Hexagonal Functional and owning worktree grounding", workspaceDesign: undefined, registered: false },
+    { selection: "nearer registration with inherited design", workspaceDesign: undefined, registered: false, nearerRegistration: true },
+    { selection: "nearer registration with relative overrides", workspaceDesign: undefined, registered: false, nearerRegistration: true, workspaceOverride: true },
     {
       selection: "inherited Hexagonal Functional with workspace overrides and grounding",
       workspaceDesign: undefined,
@@ -54,7 +56,7 @@ describe("shared effective policy dispatch", () => {
       registered: true,
       workspaceDesign: resolveDesign({ architecture: "clean", principles: ["tdd"] }),
     },
-  ])("uses $selection", async ({ workspaceDesign, registered, workspaceOverride }) => {
+  ])("uses $selection", async ({ workspaceDesign, registered, workspaceOverride, nearerRegistration }) => {
     const worktree = join(root, "worktree");
     const workspace = join(worktree, "services/api");
     const git = (...args: string[]) =>
@@ -87,6 +89,7 @@ describe("shared effective policy dispatch", () => {
       }),
     );
     mkdirSync(workspace, { recursive: true });
+    if (nearerRegistration) writeFileSync(join(worktree, "services/.gwrkrc.json"), JSON.stringify({ project: { name: "nearer-owner" }, workspaces: { api: { type: "python", stack: workspaceStack } } }));
     writeFileSync(join(workspace, "requirements.txt"), "fastapi\n");
     await installArchitectureContext(worktree, {
       projectName: "binding-fixture",
@@ -124,14 +127,15 @@ describe("shared effective policy dispatch", () => {
     writeFileSync(join(pack, "SKILL.md"), packRules);
     const workspaceRules = "Workspace FastAPI policy requires documented rate limits.";
     const workspaceIndex = Buffer.from("# Architecture Decision Index\n\nWorkspace decisions for the fixture API.\n");
-    const workspaceIndexPath = join(workspace, ".gwrk/decisions/index.md");
+    const overrideOwner = nearerRegistration ? join(worktree, "services") : workspace;
+    const workspaceIndexPath = join(overrideOwner, ".gwrk/decisions/index.md");
     if (workspaceOverride) {
       const override = JSON.stringify({ override: { "fixture-fastapi": "./policy/fixture-fastapi" } });
       writeFileSync(join(worktree, ".gwrk/plugins.json"), override);
-      mkdirSync(join(workspace, ".gwrk/decisions"), { recursive: true });
+      mkdirSync(join(overrideOwner, ".gwrk/decisions"), { recursive: true });
       writeFileSync(workspaceIndexPath, workspaceIndex);
-      writeFileSync(join(workspace, ".gwrk/plugins.json"), override);
-      const workspacePack = join(workspace, "policy/fixture-fastapi");
+      writeFileSync(join(overrideOwner, ".gwrk/plugins.json"), override);
+      const workspacePack = join(overrideOwner, "policy/fixture-fastapi");
       mkdirSync(workspacePack, { recursive: true });
       writeFileSync(join(workspacePack, "manifest.yaml"), readFileSync(join(pack, "manifest.yaml")));
       writeFileSync(join(workspacePack, "SKILL.md"), workspaceRules);
@@ -596,4 +600,24 @@ it.each(["fence", "comment"])("retains active policy when the target only quotes
   const policy = rendered.match(/<effective_policy>\n([\s\S]*?)\n<\/effective_policy>/)?.[1];
   expect(policy).toContain(`- ${rule}`);
   expect(readFileSync(join(root, ".gwrk/architecture.md"), "utf8")).toBe(target);
+});
+
+it("removes deselected generated principles from an edited target after repeat initialization", async () => {
+  const originalDesign = resolveDesign({ architecture: "hexagonal-functional", principles: ["functional-core", "clean-code", "tdd"] });
+  const selectedDesign = resolveDesign({ architecture: "hexagonal-functional", principles: ["functional-core", "tdd"] });
+  const configPath = join(root, ".gwrkrc.json");
+  writeFileSync(configPath, JSON.stringify({ project: { name: "binding-fixture", design: originalDesign } }));
+  await installArchitectureContext(root, { projectName: "binding-fixture", design: originalDesign, decisionsDir: "docs/decisions" });
+  const targetPath = join(root, ".gwrk/architecture.md");
+  const maintainerRule = "- Preserve documented API error contracts.";
+  writeFileSync(targetPath, readFileSync(targetPath, "utf8").replace("## Rules\n\n", `## Rules\n\n${maintainerRule}\n`));
+  const saved = readFileSync(targetPath);
+  writeFileSync(configPath, JSON.stringify({ project: { name: "binding-fixture", design: selectedDesign } }));
+  await installArchitectureContext(root, { projectName: "binding-fixture", design: selectedDesign, decisionsDir: "docs/decisions" });
+  const rendered = await prompt("gwrk-implement", { type: "python", design: selectedDesign, stack: { language: "Python" } });
+  expect.soft(rendered).not.toContain("Functions MUST separate policy from effects");
+  expect.soft(rendered).toContain(maintainerRule);
+  expect.soft(rendered).toContain("Core operations MUST return explicit results");
+  expect.soft(rendered).toContain("Implementation MUST follow observed RED tests");
+  expect(readFileSync(targetPath)).toEqual(saved);
 });

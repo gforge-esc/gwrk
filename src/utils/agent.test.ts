@@ -131,7 +131,7 @@ describe('US-016: Enforcement Skills Dispatch Injection', () => {
       '/fake/root',
       'implementation',
       expect.objectContaining({ stack: { language: 'TypeScript' } }),
-      { architectureTarget: undefined },
+      { architectureTarget: undefined, policyDirs: ['/fake/root'] },
     );
     expect(capturedStdin()).toContain('<code_quality>\n<effective_policy>\n# Strict Typing Rule\n</effective_policy>\n</code_quality>');
   });

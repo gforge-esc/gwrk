@@ -233,25 +233,25 @@ export class PluginLoader {
 
   async listEnforcementCandidates(
     workspaceDir?: string,
+    policyDirs?: readonly string[],
   ): Promise<LoadedEnforcementCandidate[]> {
-    const distinctWorkspace =
-      workspaceDir &&
-      (!this.projectDir ||
-        path.resolve(workspaceDir) !== path.resolve(this.projectDir))
-        ? workspaceDir
-        : undefined;
-    const [ownerConfig, workspaceConfig, globalConfig] = await Promise.all([
-      this.loadLocalConfig(),
-      distinctWorkspace ? this.loadLocalConfig(distinctWorkspace) : undefined,
+    const directories = [
+      ...new Set(
+        (policyDirs ?? [workspaceDir, this.projectDir])
+          .filter((directory): directory is string => Boolean(directory))
+          .map((directory) => path.resolve(directory)),
+      ),
+    ];
+    const [configs, globalConfig] = await Promise.all([
+      Promise.all(
+        directories.map((directory) => this.loadLocalConfig(directory)),
+      ),
       this.loadGlobalConfig(),
     ]);
-    const projects = [{ directory: this.projectDir, config: ownerConfig }];
-    if (workspaceConfig) {
-      projects.unshift({
-        directory: distinctWorkspace,
-        config: workspaceConfig,
-      });
-    }
+    const projects = directories.map((directory, index) => ({
+      directory,
+      config: configs[index],
+    }));
     const localConfigs = projects.map(({ config }) => config);
     const candidates: LoadedEnforcementCandidate[] = [];
     const visitedPaths = new Set<string>();
@@ -337,7 +337,8 @@ export class PluginLoader {
     for (const location of [
       ...entryLocations,
       ...this.sharedPluginLocations(
-        workspaceConfig?.inherits ?? ownerConfig.inherits,
+        projects.find(({ config }) => config.inherits !== undefined)?.config
+          .inherits,
       ),
     ]) {
       await scanLocation(location);

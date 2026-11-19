@@ -52,6 +52,7 @@ export async function detectProfile(
 export function resolveWorkspacePolicyRoots(workDir: string): {
   workspaceDir: string;
   ownerDir: string;
+  policyDirs: string[];
 } {
   const requestedWorkspace = path.resolve(workDir);
   const workspace = physicalPath(requestedWorkspace);
@@ -60,18 +61,17 @@ export function resolveWorkspacePolicyRoots(workDir: string): {
     requestedWorkspace,
   );
   const registration = registrations[0];
-  if (registration?.matchedPath) {
-    return {
-      workspaceDir: physicalPath(
-        path.join(registration.directory, registration.matchedPath),
-      ),
-      ownerDir: registration.directory,
-    };
-  }
-  return {
-    workspaceDir: workspace,
-    ownerDir: findNearestAncestorDesign(ancestors)?.directory ?? workspace,
-  };
+  const workspaceDir = registration?.matchedPath
+    ? physicalPath(path.join(registration.directory, registration.matchedPath))
+    : workspace;
+  const ownerDir =
+    registration?.directory ??
+    findNearestAncestorDesign(ancestors)?.directory ??
+    workspace;
+  const policyDirs = [
+    ...new Set([workspaceDir, ...ancestors.map(({ directory }) => directory)]),
+  ];
+  return { workspaceDir, ownerDir, policyDirs };
 }
 
 function detectProfileInDirectory(
