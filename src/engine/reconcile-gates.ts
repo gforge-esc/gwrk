@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import path from "node:path";
+import type Database from "better-sqlite3";
 import { recordGateResult } from "../db/gates.js";
 import { type TaskGateResult, runTaskGate } from "../utils/gate-exec.js";
 import { resolveProjectId } from "../utils/project-id.js";
@@ -22,6 +23,7 @@ export interface ReconcileResult {
 export interface ReconcileGateOptions {
   projectId?: string;
   updateLocalTaskState?: boolean;
+  db?: Database.Database;
 }
 
 /**
@@ -85,18 +87,20 @@ export async function reconcileGates(
       }
 
       // Record evidence to SQLite (survives tasks.json regeneration)
-      recordGateResult(
-        {
-          feature_id: featureId,
-          phase_id: phase.id,
-          task_id: task.id,
-          gate_script: task.gateScript,
-          passed: gateResult.passed ? 1 : 0,
-          exit_code: gateResult.exitCode,
-          output: gateResult.output.slice(0, 2000), // Truncate for storage
-        },
-        projectId,
-      );
+      const gateEvidence = {
+        feature_id: featureId,
+        phase_id: phase.id,
+        task_id: task.id,
+        gate_script: task.gateScript,
+        passed: gateResult.passed ? 1 : 0,
+        exit_code: gateResult.exitCode,
+        output: gateResult.output.slice(0, 2000), // Truncate for storage
+      };
+      if (options.db) {
+        recordGateResult(gateEvidence, projectId, options.db);
+      } else {
+        recordGateResult(gateEvidence, projectId);
+      }
 
       if (gateResult.passed) {
         passed++;
