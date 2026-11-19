@@ -162,6 +162,7 @@ pnpm exec vitest run src/db/operations.test.ts src/db/db.test.ts src/architectur
 | TR-002 | unit | `src/adapters/github/github-adapter.test.ts` | Signed raw bytes, fork identity on page two, inclusive cursor and foreign repository rejection |
 | TR-002 | unit | `src/adapters/github/github-adapter.test.ts` | Polling retains a terminal pull request when an updated item moves across page boundaries |
 | TR-002 | unit | `src/adapters/github/github-adapter.test.ts` | Polling retains or fails closed when a closed pull request on an earlier page is reopened across page boundaries |
+| TR-002 | unit | `src/adapters/github/github-adapter.test.ts` | Polling collects multi-page terminal pull requests with non-consecutive numbers and detects backward shifts across pages without relying on sequential PR numbering |
 | TR-003 | unit | `src/adapters/notifications/outbox-reconcile.test.ts` | Adapter finds the prior receipt by metadata key and suppresses resend after a partial or unauthorized lookup |
 | TR-003 | unit | `src/adapters/notifications/slack-receipt-reader.test.ts` | Indeterminate delivery for unreadable notification keys on the last thread page |
 | TR-003 | unit | `src/adapters/notifications/slack-receipt-reader.test.ts` | Indeterminate delivery for an unreadable message on the last thread page |

@@ -119,39 +119,61 @@ export function createGitHubHarvestAdapter(
       const cutoff = sinceIso == null ? undefined : Date.parse(sinceIso);
       if (cutoff !== undefined && !Number.isFinite(cutoff))
         throw new Error("Invalid harvest cursor timestamp");
+      const pageFacts = async (page: number) => {
+        const query = new URLSearchParams({
+          state: "all",
+          sort: "created",
+          direction: "asc",
+          per_page: "100",
+          page: String(page),
+        });
+        const response = await get(`${repository}/pulls?${query}`, cwd);
+        if (!Array.isArray(response) || response.length > 100)
+          throw new Error(
+            "Pull request page must be an array of at most 100 records",
+          );
+        return response.map((value) => fact(value, repoSlug));
+      };
       for (let attempt = 0; attempt < 5; attempt += 1) {
-        const collected = new Map<number, HarvestPullRequestFact>();
-        const seenPrNumbers = new Set<number>();
-        let lastBoundaryPrNumber: number | undefined;
-        let concurrentUpdateDetected = false;
+        const identities: number[][] = [];
+        const seen = new Set<number>();
+        let complete = false;
+        let changed = false;
         for (let page = 1; page <= 1000; page += 1) {
-          const query = new URLSearchParams({
-            state: "closed",
-            base: baseBranch,
-            sort: "updated",
-            direction: "asc",
-            per_page: "100",
-            page: String(page),
-          });
-          const response = await get(`${repository}/pulls?${query}`, cwd);
-          if (!Array.isArray(response))
-            throw new Error("Pull request page must be an array");
-          for (let i = 0; i < response.length; i += 1) {
-            const pr = fact(response[i], repoSlug);
-            if (pr.state === "OPEN" || pr.baseBranch !== baseBranch)
-              throw new Error(
-                "Terminal pull request page contains mismatched scope",
-              );
-            if (
-              seenPrNumbers.has(pr.prNumber) ||
-              (i === 0 &&
-                lastBoundaryPrNumber !== undefined &&
-                pr.prNumber > lastBoundaryPrNumber + 1)
-            ) {
-              concurrentUpdateDetected = true;
-              break;
-            }
-            seenPrNumbers.add(pr.prNumber);
+          const facts = await pageFacts(page);
+          const numbers = facts.map(({ prNumber }) => prNumber);
+          if (
+            numbers.some((number) => seen.has(number)) ||
+            new Set(numbers).size !== numbers.length
+          ) {
+            changed = true;
+            break;
+          }
+          for (const number of numbers) seen.add(number);
+          identities.push(numbers);
+          if (facts.length < 100) {
+            complete = true;
+            break;
+          }
+        }
+        if (changed) continue;
+        if (!complete)
+          throw new Error(
+            "Pull request pagination exceeded the bounded page limit",
+          );
+        const collected = new Map<number, HarvestPullRequestFact>();
+        for (let index = 0; index < identities.length; index += 1) {
+          const facts = await pageFacts(index + 1);
+          const expected = identities[index];
+          if (
+            facts.length !== expected.length ||
+            facts.some((pr, i) => pr.prNumber !== expected[i])
+          ) {
+            changed = true;
+            break;
+          }
+          for (const pr of facts) {
+            if (pr.state === "OPEN" || pr.baseBranch !== baseBranch) continue;
             const terminalAt = pr.mergedAt ?? pr.closedAt;
             if (!terminalAt)
               throw new Error(
@@ -160,17 +182,8 @@ export function createGitHubHarvestAdapter(
             if (cutoff === undefined || Date.parse(terminalAt) >= cutoff)
               collected.set(pr.prNumber, pr);
           }
-          if (concurrentUpdateDetected) break;
-          if (response.length > 0) {
-            const lastPr = fact(response[response.length - 1], repoSlug);
-            lastBoundaryPrNumber = lastPr.prNumber;
-          }
-          if (response.length < 100) return [...collected.values()];
         }
-        if (concurrentUpdateDetected) continue;
-        throw new Error(
-          "Pull request pagination exceeded the bounded page limit",
-        );
+        if (!changed) return [...collected.values()];
       }
       throw new Error(
         "Pull request scan could not establish completeness due to concurrent updates",

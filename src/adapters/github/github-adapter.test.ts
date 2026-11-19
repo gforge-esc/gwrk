@@ -40,10 +40,14 @@ describe("GitHub durable harvest adapter", () => {
   });
 
   it("collects later pages without conflating repository identity and branch names", async () => {
-    const executeGh = vi.fn();
-    for (const page of syntheticTerminalPages()) {
-      executeGh.mockResolvedValueOnce(JSON.stringify(page));
-    }
+    const pages = syntheticTerminalPages();
+    const executeGh = vi.fn(async (args: readonly string[]) => {
+      const url = new URL(args[args.length - 1], "https://api.github.com/");
+      expect(url.searchParams.get("state")).toBe("all");
+      expect(url.searchParams.get("sort")).toBe("created");
+      expect(url.searchParams.has("base")).toBe(false);
+      return JSON.stringify(pages[Number(url.searchParams.get("page")) - 1]);
+    });
     const adapter = createGitHubHarvestAdapter({ executeGh });
     const facts = await adapter.listTerminalPullRequests({
       cwd: "/fixture/project",
@@ -58,7 +62,7 @@ describe("GitHub durable harvest adapter", () => {
       state: "MERGED",
       mergeCommitSha: "b".repeat(40),
     });
-    expect(executeGh).toHaveBeenCalledTimes(2);
+    expect(executeGh).toHaveBeenCalledTimes(4);
     for (const [, cwd] of executeGh.mock.calls)
       expect(cwd).toBe("/fixture/project");
   });
@@ -152,6 +156,183 @@ describe("GitHub durable harvest adapter", () => {
       expect(numbers).toContain(101);
       expect(numbers).toContain(102);
     }
+  });
+
+  it("collects multi-page terminal pull requests when pull request numbers are not consecutive across pages", async () => {
+    const earlier = "2026-11-18T12:00:00Z";
+    const later = "2026-11-18T12:00:01Z";
+    const requests = [
+      ...Array.from({ length: 100 }, (_, index) => ({
+        ...syntheticPullRequest(index + 1, {
+          merged_at: earlier,
+          closed_at: earlier,
+        }),
+        updated_at: earlier,
+      })),
+      {
+        ...syntheticPullRequest(102, {
+          merged_at: later,
+          closed_at: later,
+        }),
+        updated_at: later,
+      },
+    ];
+    const executeGh = vi.fn(async (args: readonly string[]) => {
+      const path = new URL(args[args.length - 1], "https://api.github.com/");
+      const page = Number(path.searchParams.get("page") ?? 1);
+      const size = Number(path.searchParams.get("per_page") ?? 100);
+      const direction = path.searchParams.get("direction") ?? "asc";
+      const ordered = direction === "desc" ? [...requests].reverse() : requests;
+      const start = (page - 1) * size;
+      return JSON.stringify(ordered.slice(start, start + size));
+    });
+    const adapter = createGitHubHarvestAdapter({ executeGh });
+
+    const facts = await adapter.listTerminalPullRequests({
+      cwd: "/fixture/project",
+      repoSlug: "example/project",
+      baseBranch: "develop",
+      sinceIso: earlier,
+    });
+
+    const numbers = facts.map(({ prNumber }) => prNumber);
+    expect(numbers).toHaveLength(101);
+    expect(numbers).toContain(100);
+    expect(numbers).toContain(102);
+  });
+
+  it("does not skip a terminal pull request across pages when pull request numbers are not ascending", async () => {
+    const earlier = "2026-11-18T12:00:00Z";
+    const mid = "2026-11-18T12:00:01Z";
+    const later = "2026-11-18T12:00:02Z";
+    const requests = [
+      {
+        ...syntheticPullRequest(10, {
+          merged_at: null,
+          merge_commit_sha: null,
+          closed_at: earlier,
+        }),
+        updated_at: earlier,
+      },
+      ...Array.from({ length: 99 }, (_, index) => ({
+        ...syntheticPullRequest(index + 102, {
+          merged_at: earlier,
+          closed_at: earlier,
+        }),
+        updated_at: earlier,
+      })),
+      {
+        ...syntheticPullRequest(50, {
+          merged_at: mid,
+          closed_at: mid,
+        }),
+        updated_at: mid,
+      },
+      {
+        ...syntheticPullRequest(51, {
+          merged_at: later,
+          closed_at: later,
+        }),
+        updated_at: later,
+      },
+    ];
+    const executeGh = vi.fn(async (args: readonly string[]) => {
+      const path = new URL(args[args.length - 1], "https://api.github.com/");
+      const page = Number(path.searchParams.get("page") ?? 1);
+      const size = Number(path.searchParams.get("per_page") ?? 100);
+      const direction = path.searchParams.get("direction") ?? "asc";
+      const ordered = direction === "desc" ? [...requests].reverse() : requests;
+      const start = (page - 1) * size;
+      const results = ordered.slice(start, start + size);
+      if (executeGh.mock.calls.length === 1) {
+        requests.splice(0, 1);
+      }
+      return JSON.stringify(results);
+    });
+    const adapter = createGitHubHarvestAdapter({ executeGh });
+
+    const [result] = await Promise.allSettled([
+      adapter.listTerminalPullRequests({
+        cwd: "/fixture/project",
+        repoSlug: "example/project",
+        baseBranch: "develop",
+        sinceIso: earlier,
+      }),
+    ]);
+
+    if (result.status === "fulfilled") {
+      const numbers = result.value.map(({ prNumber }) => prNumber);
+      expect(numbers).toContain(50);
+      expect(numbers).toContain(51);
+    }
+  });
+
+  it("filters eligible terminal facts after the repository-wide stable scan", async () => {
+    const executeGh = vi.fn().mockResolvedValue(
+      JSON.stringify([
+        syntheticPullRequest(1, {
+          state: "open",
+          merged_at: null,
+          merge_commit_sha: null,
+          closed_at: null,
+        }),
+        syntheticPullRequest(3),
+        syntheticPullRequest(7, {
+          base: { ref: "main", repo: { full_name: "example/project" } },
+        }),
+      ]),
+    );
+    const facts = await createGitHubHarvestAdapter({
+      executeGh,
+    }).listTerminalPullRequests({
+      cwd: "/fixture/project",
+      repoSlug: "example/project",
+      baseBranch: "develop",
+    });
+    expect(facts.map(({ prNumber }) => prNumber)).toEqual([3]);
+  });
+
+  it("refuses a continuously changing scan without returning a partial batch", async () => {
+    let generation = 0;
+    const executeGh = vi.fn(async () =>
+      JSON.stringify([syntheticPullRequest(++generation)]),
+    );
+    await expect(
+      createGitHubHarvestAdapter({ executeGh }).listTerminalPullRequests({
+        cwd: "/fixture/project",
+        repoSlug: "example/project",
+        baseBranch: "develop",
+      }),
+    ).rejects.toThrow(/could not establish completeness/);
+    expect(executeGh).toHaveBeenCalledTimes(10);
+  });
+
+  it("uses verified terminal state when a pull request is reopened without moving its identity", async () => {
+    const executeGh = vi
+      .fn()
+      .mockResolvedValueOnce(
+        JSON.stringify([
+          syntheticPullRequest(7, { merged_at: null, merge_commit_sha: null }),
+        ]),
+      )
+      .mockResolvedValueOnce(
+        JSON.stringify([
+          syntheticPullRequest(7, {
+            state: "open",
+            merged_at: null,
+            merge_commit_sha: null,
+            closed_at: null,
+          }),
+        ]),
+      );
+    const facts = await createGitHubHarvestAdapter({
+      executeGh,
+    }).listTerminalPullRequests({
+      cwd: "/fixture/project",
+      repoSlug: "example/project",
+      baseBranch: "develop",
+    });
+    expect(facts).toEqual([]);
   });
 
   it("preserves closed-unmerged facts and unknown head repositories", async () => {
