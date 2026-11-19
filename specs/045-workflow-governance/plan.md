@@ -116,7 +116,9 @@ Delivers FR-003, scoped discovery. Reuse the selected design and managed target 
 | TR-005 | integration | `src/engine/discover.test.ts` | Repository-only discovery with existing fields and no database or server, plus exact adapter data in `architecture` or omission when the adapter returns `undefined` |
 | TR-006 | integration | `src/commands/project.test.ts`, `src/commands/project-discover.readiness.test.ts` | Scoped evidence, text hints for missing context and assessment, invalid-manifest reporting with the `gwrk init` hint suppressed, optional `architecture` in local, global and agent-mode JSON, and exit 0 with one terminal stderr signal per invocation |
 
-The readiness test (TR-004) checks that a version 1 manifest without its required decision map reports incomplete context. The compiled discovery test (TR-006) checks that text and JSON link a readable report and show its scope alongside incomplete context.
+The readiness test (TR-004) checks incomplete context for a version 1 manifest without its decision map. Replacing UTF-8 `EF BF BD` with `FF` produces a target hash mismatch. The assessment reports `targetMatch: "differs"`. Discovery finds `custom/report.md` when unrelated Git paths exceed 10 MiB.
+
+The compiled discovery test (TR-006) checks that text and JSON link a readable report. Both show its scope alongside incomplete context.
 
 The compiled discovery regression supplies a version 1 manifest without `decisions` and leaves the decision index missing.
 

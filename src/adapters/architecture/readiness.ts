@@ -26,7 +26,7 @@ const manifestPath = ".gwrk/context-manifest.json";
 const indexPath = ".gwrk/decisions/index.md";
 type IssueKind = "missing" | "invalid" | "unreadable" | "hash-mismatch";
 type FileRead =
-  | { kind: "present"; text: string }
+  | { kind: "present"; bytes: Buffer }
   | { kind: "missing" | "unreadable" };
 export interface ArchitectureReadiness {
   target: { selection: ProjectDesign | null; path: string | null };
@@ -76,7 +76,7 @@ async function read(root: string, path: string): Promise<FileRead> {
     const canonical = await realpath(join(root, path));
     if (!within(root, canonical) || !(await stat(canonical)).isFile())
       return { kind: "unreadable" };
-    return { kind: "present", text: await readFile(canonical, "utf8") };
+    return { kind: "present", bytes: await readFile(canonical) };
   } catch (error) {
     return {
       kind:
@@ -92,7 +92,7 @@ async function read(root: string, path: string): Promise<FileRead> {
 function json(file: FileRead): unknown {
   if (file.kind !== "present") return undefined;
   try {
-    return JSON.parse(file.text);
+    return JSON.parse(file.bytes.toString("utf8"));
   } catch {
     return undefined;
   }
@@ -139,7 +139,7 @@ export async function readArchitectureReadiness(
   }
   const currentHash =
     target.kind === "present"
-      ? createHash("sha256").update(target.text).digest("hex")
+      ? createHash("sha256").update(target.bytes).digest("hex")
       : undefined;
   const parsedManifest = ManifestSchema.safeParse(json(manifest));
   if (manifest.kind === "present") {
@@ -176,7 +176,15 @@ export async function readArchitectureReadiness(
   try {
     const { stdout } = await executeFile(
       "git",
-      ["ls-files", "-z", "--cached", "--others", "--exclude-standard"],
+      [
+        "ls-files",
+        "-z",
+        "--cached",
+        "--others",
+        "--exclude-standard",
+        "--",
+        ":(glob)**/assessment.json",
+      ],
       {
         cwd: root,
         env: { ...repositoryGitEnv(root), GIT_OPTIONAL_LOCKS: "0" },
@@ -185,7 +193,7 @@ export async function readArchitectureReadiness(
       },
     );
     for (const path of stdout.split("\0")) {
-      if (!/(?:^|\/)assessment\.json$/.test(path)) continue;
+      if (!path) continue;
       const directory = await safePath(root, dirname(join(root, path)));
       if (directory && !directories.has(directory))
         directories.set(directory, undefined);
@@ -210,7 +218,8 @@ export async function readArchitectureReadiness(
     assessmentEvidence ||= [report, data, source].some(
       (file) => file.kind !== "missing",
     );
-    if (report.kind !== "present" || !report.text.trim()) continue;
+    if (report.kind !== "present" || !report.bytes.toString("utf8").trim())
+      continue;
     const provenance = ProvenanceSchema.safeParse(json(source));
     const recorded =
       provenance.success &&

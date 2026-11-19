@@ -37,13 +37,14 @@ async function put(path: string, content: string) {
   await mkdir(dirname(join(root, path)), { recursive: true });
   await writeFile(join(root, path), content);
 }
-async function context() {
-  await put(".gwrk/architecture.md", target);
+async function context(content = target) {
+  const targetHash = createHash("sha256").update(content).digest("hex");
+  await put(".gwrk/architecture.md", content);
   await put(
     ".gwrk/context-manifest.json",
     JSON.stringify({
       version: 1,
-      files: { ".gwrk/architecture.md": digest },
+      files: { ".gwrk/architecture.md": targetHash },
       decisions: {},
     }),
   );
@@ -51,6 +52,7 @@ async function context() {
     ".gwrk/decisions/index.md",
     "# Decisions\nStatus remains Proposed.\n",
   );
+  return targetHash;
 }
 async function report(directory: string, provenance?: Record<string, unknown>) {
   await put(`${directory}/report.md`, "# Scoped report\n");
@@ -108,6 +110,25 @@ describe("repository architecture readiness", () => {
       );
     },
   );
+  it("detects target byte changes that decode to the same text", async () => {
+    const targetHash = await context(`${target}\uFFFD`);
+    await report("docs/architecture/assessments/2026-11-18", {
+      generatedAt: "2026-11-18T10:00:00Z",
+      targetHash,
+    });
+    await writeFile(
+      join(root, ".gwrk/architecture.md"),
+      Buffer.concat([Buffer.from(target), Buffer.from([0xff])]),
+    );
+
+    expect(await readArchitectureReadiness(root, design)).toMatchObject({
+      context: {
+        status: "incomplete",
+        issues: [{ path: ".gwrk/architecture.md", kind: "hash-mismatch" }],
+      },
+      assessment: { latest: { targetMatch: "differs" } },
+    });
+  });
   it("reports an incomplete context when the manifest omits its decision map", async () => {
     await context();
     await put(
@@ -172,6 +193,28 @@ describe("repository architecture readiness", () => {
     expect(result?.assessment.latest?.reportPath).toBe(
       "custom review/evidence/report.md",
     );
+  });
+  it("finds custom evidence when unrelated Git paths exceed the inventory buffer", async () => {
+    execFileSync("git", ["init", "--quiet", root]);
+    const blob = execFileSync(
+      "git",
+      ["-C", root, "hash-object", "-w", "--stdin"],
+      { encoding: "utf8", input: "" },
+    ).trim();
+    // These paths alone exceed the 10 MiB inventory buffer.
+    const pathPrefix = `unrelated/${"x".repeat(240)}`;
+    const entries = Array.from(
+      { length: 45_000 },
+      (_, index) => `100644 ${blob}\t${pathPrefix}${index}\0`,
+    );
+    execFileSync("git", ["-C", root, "update-index", "-z", "--index-info"], {
+      input: entries.join(""),
+    });
+    await report("custom", { generatedAt: "2026-11-19T10:00:00Z" });
+
+    expect(
+      (await readArchitectureReadiness(root))?.assessment.latest?.reportPath,
+    ).toBe("custom/report.md");
   });
   it("links a Git-staged assessment at the checkout root", async () => {
     const generatedAt = "2026-11-19T10:00:00Z";
