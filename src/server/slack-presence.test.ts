@@ -448,10 +448,153 @@ describe("PresenceManager", () => {
 
     const calls = vi.mocked(sendSlackMessage).mock.calls;
     expect(calls.length).toBeGreaterThanOrEqual(1);
-    for (const [msg] of calls) {
-      if (msg.thread_ts === "1700000000.000111") {
+    for (const [msg, opts] of calls) {
+      const effectiveThreadTs = msg.thread_ts ?? opts?.recipient?.threadTs;
+      if (effectiveThreadTs === "1700000000.000111") {
         expect(JSON.stringify(msg.blocks)).not.toContain("feat-two");
       }
+      if (effectiveThreadTs === "1700000000.000222") {
+        expect(JSON.stringify(msg.blocks)).not.toContain("feat-one");
+      }
     }
+  });
+
+  it("TR-014: does not capture an unrelated project's channel event without actorUserId into another away user's queue", async () => {
+    const { notifySlack, sendSlackMessage } = await import("./slack-notify.js");
+    vi.mocked(notifySlack).mockClear();
+    vi.mocked(sendSlackMessage).mockClear();
+
+    presenceManager.setUserPresence("U-alice", "away");
+
+    await presenceManager.handleNotification(
+      {
+        type: "phase_start",
+        feature: "feat-beta-channel",
+        projectId: "proj-beta",
+        recipient: {
+          projectId: "proj-beta",
+          surface: "slack",
+          workspaceId: "W1",
+          channelId: "C-beta",
+        },
+        payload: {},
+        timestamp: "...",
+      },
+      { text: "Beta channel event", channel: "C-beta", blocks: [] },
+    );
+
+    expect(
+      presenceManager.getScopedQueue("proj-beta", "U-alice"),
+    ).toBeUndefined();
+    expect(notifySlack).toHaveBeenCalledOnce();
+  });
+
+  it("TR-014: does not inherit another user's away state when users.getPresence fails for a distinct recipient", async () => {
+    const { notifySlack } = await import("./slack-notify.js");
+    vi.mocked(notifySlack).mockClear();
+
+    presenceManager.setUserPresence("U-alice", "away");
+    mockApp.client.users.getPresence = vi
+      .fn()
+      .mockRejectedValue(new Error("presence_unavailable"));
+
+    await presenceManager.handleNotification(
+      {
+        type: "phase_start",
+        feature: "feat-bob",
+        projectId: "proj-beta",
+        recipient: {
+          projectId: "proj-beta",
+          surface: "slack",
+          workspaceId: "W1",
+          channelId: "C-beta",
+          actorUserId: "U-bob",
+        },
+        payload: {},
+        timestamp: "...",
+      },
+      { text: "Bob event", channel: "C-beta", blocks: [] },
+    );
+
+    expect(
+      presenceManager.getScopedQueue("proj-beta", "U-bob"),
+    ).toBeUndefined();
+    expect(notifySlack).toHaveBeenCalledOnce();
+  });
+
+  it("TR-014: preserves routed feature thread_ts on single-feature away flush and keeps opsOnly separate from feature batches", async () => {
+    const { sendSlackMessage } = await import("./slack-notify.js");
+    vi.mocked(sendSlackMessage).mockClear();
+
+    presenceManager.setUserPresence("U-alice", "away");
+
+    await presenceManager.handleNotification(
+      {
+        type: "phase_start",
+        feature: "feat-alpha",
+        projectId: "proj-alpha",
+        payload: {},
+        timestamp: "...",
+      },
+      {
+        text: "Feature update",
+        channel: "C-alpha",
+        thread_ts: "1700000000.000555",
+        blocks: [],
+      },
+      {
+        projectId: "proj-alpha",
+        recipient: {
+          projectId: "proj-alpha",
+          surface: "slack",
+          workspaceId: "W1",
+          channelId: "C-alpha",
+          actorUserId: "U-alice",
+        },
+      },
+    );
+
+    await presenceManager.handleNotification(
+      {
+        type: "pulse",
+        feature: "ops-health",
+        opsOnly: true,
+        projectId: "proj-alpha",
+        payload: {},
+        timestamp: "...",
+      },
+      {
+        text: "Ops alert",
+        channel: "C-ops",
+        blocks: [],
+      },
+      {
+        projectId: "proj-alpha",
+        recipient: {
+          projectId: "proj-alpha",
+          surface: "slack",
+          workspaceId: "W1",
+          channelId: "C-ops",
+          actorUserId: "U-alice",
+          opsOnly: true,
+        },
+      },
+    );
+
+    await presenceManager.flushUserQueues("U-alice");
+
+    const calls = vi.mocked(sendSlackMessage).mock.calls;
+    const featureCall = calls.find(([msg]) => msg.channel === "C-alpha");
+    const opsCall = calls.find(([msg]) => msg.channel === "C-ops");
+    expect(featureCall).toBeDefined();
+    expect(
+      featureCall?.[0].thread_ts ?? featureCall?.[1]?.recipient?.threadTs,
+    ).toBe("1700000000.000555");
+    expect(JSON.stringify(featureCall?.[0].blocks)).not.toContain("ops-health");
+    expect(opsCall).toBeDefined();
+    expect(
+      opsCall?.[0].thread_ts ?? opsCall?.[1]?.recipient?.threadTs,
+    ).toBeUndefined();
+    expect(JSON.stringify(opsCall?.[0].blocks)).toContain("ops-health");
   });
 });

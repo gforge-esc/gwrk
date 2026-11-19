@@ -159,3 +159,24 @@ it("checks the requested recipient presence without selecting a workspace user",
   );
   expect(listUsers).not.toHaveBeenCalled();
 });
+it("keeps opsOnly notifications unthreaded even when recipient carries a feature threadTs", async () => {
+  const adapter = createSlackNotificationAdapter();
+  const result = await adapter.notify({
+    projectId: "alpha",
+    opsOnly: true,
+    channel: "C-ops",
+    recipient: {
+      projectId: "alpha",
+      surface: "slack",
+      workspaceId: "W1",
+      channelId: "C-ops",
+      threadTs: "1700000000.000100",
+      opsOnly: true,
+    },
+    text: "Ops alert",
+  });
+  expect(result?.delivered).toBe(true);
+  expect(postMessage).toHaveBeenCalledOnce();
+  expect(postMessage.mock.calls[0][0].channel).toBe("C-ops");
+  expect(postMessage.mock.calls[0][0].thread_ts).toBeUndefined();
+});

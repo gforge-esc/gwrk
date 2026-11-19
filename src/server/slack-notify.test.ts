@@ -452,6 +452,168 @@ describe("US-003: Slack Event Bridge", () => {
     expect(postMessage).not.toHaveBeenCalled();
   });
 
+  it("TR-013: keeps opsOnly unthreaded even when recipient carries threadTs and honors recipient.opsOnly", async () => {
+    const postMessage = vi.fn().mockResolvedValue({
+      ok: true,
+      channel: "C_OPS",
+      ts: "1731320000.000888",
+    });
+    vi.mocked(getSlackApp).mockReturnValue({
+      client: {
+        chat: { postMessage },
+        auth: {
+          test: vi
+            .fn()
+            .mockResolvedValue({ ok: true, team_id: SYNTHETIC_WORKSPACE_ID }),
+        },
+      },
+    } as unknown as ReturnType<typeof getSlackApp>);
+
+    const registry = createSyntheticRegistry();
+    await notifySlack(
+      { text: "Ops with thread recipient", blocks: [] },
+      undefined,
+      {
+        projectId: SYNTHETIC_PROJECT_ALPHA.projectId,
+        featureId: "003-slack",
+        opsOnly: true,
+        recipient: {
+          projectId: SYNTHETIC_PROJECT_ALPHA.projectId,
+          surface: "slack",
+          workspaceId: SYNTHETIC_WORKSPACE_ID,
+          channelId: "C_OPS",
+          threadTs: "1731320000.000100",
+          opsOnly: true,
+        },
+        registry,
+      },
+    );
+
+    expect(postMessage).toHaveBeenCalledOnce();
+    expect(postMessage.mock.calls[0][0].channel).toBe("C_OPS");
+    expect(postMessage.mock.calls[0][0].thread_ts).toBeUndefined();
+
+    postMessage.mockClear();
+    await notifySlack({ text: "Recipient opsOnly", blocks: [] }, undefined, {
+      projectId: SYNTHETIC_PROJECT_ALPHA.projectId,
+      featureId: "003-slack",
+      recipient: {
+        projectId: SYNTHETIC_PROJECT_ALPHA.projectId,
+        surface: "slack",
+        workspaceId: SYNTHETIC_WORKSPACE_ID,
+        opsOnly: true,
+      },
+      registry,
+    });
+
+    expect(postMessage).toHaveBeenCalledOnce();
+    expect(postMessage.mock.calls[0][0].channel).toBe("C_OPS");
+    expect(postMessage.mock.calls[0][0].thread_ts).toBeUndefined();
+  });
+
+  it("TR-013: rejects conflicting recipient workspace, surface, channel, threadTs and event projectId", async () => {
+    const postMessage = vi.fn().mockResolvedValue({ ok: true });
+    vi.mocked(getSlackApp).mockReturnValue({
+      client: {
+        chat: { postMessage },
+        auth: {
+          test: vi
+            .fn()
+            .mockResolvedValue({ ok: true, team_id: SYNTHETIC_WORKSPACE_ID }),
+        },
+      },
+    } as unknown as ReturnType<typeof getSlackApp>);
+
+    const registry = createSyntheticRegistry();
+
+    const wrongRecipientWorkspace = await notifySlack(
+      { text: "Wrong recipient workspace", blocks: [] },
+      undefined,
+      {
+        projectId: SYNTHETIC_PROJECT_ALPHA.projectId,
+        recipient: {
+          projectId: SYNTHETIC_PROJECT_ALPHA.projectId,
+          surface: "slack",
+          workspaceId: "W_OTHER",
+          channelId: SYNTHETIC_CHANNEL_ALPHA,
+        },
+        registry,
+      },
+    );
+    expect(wrongRecipientWorkspace).toBeUndefined();
+
+    const nonSlackSurface = await notifySlack(
+      { text: "Non-Slack surface", blocks: [] },
+      undefined,
+      {
+        projectId: SYNTHETIC_PROJECT_ALPHA.projectId,
+        recipient: {
+          projectId: SYNTHETIC_PROJECT_ALPHA.projectId,
+          surface: "local_cli",
+          workspaceId: SYNTHETIC_WORKSPACE_ID,
+          channelId: SYNTHETIC_CHANNEL_ALPHA,
+        },
+        registry,
+      },
+    );
+    expect(nonSlackSurface).toBeUndefined();
+
+    const conflictingChannel = await notifySlack(
+      { text: "Conflicting channel", channel: "C_OTHER", blocks: [] },
+      undefined,
+      {
+        projectId: SYNTHETIC_PROJECT_ALPHA.projectId,
+        recipient: {
+          projectId: SYNTHETIC_PROJECT_ALPHA.projectId,
+          surface: "slack",
+          workspaceId: SYNTHETIC_WORKSPACE_ID,
+          channelId: SYNTHETIC_CHANNEL_ALPHA,
+        },
+        registry,
+      },
+    );
+    expect(conflictingChannel).toBeUndefined();
+
+    const conflictingThread = await notifySlack(
+      {
+        text: "Conflicting thread",
+        thread_ts: "1731320000.999999",
+        blocks: [],
+      },
+      undefined,
+      {
+        projectId: SYNTHETIC_PROJECT_ALPHA.projectId,
+        recipient: {
+          projectId: SYNTHETIC_PROJECT_ALPHA.projectId,
+          surface: "slack",
+          workspaceId: SYNTHETIC_WORKSPACE_ID,
+          channelId: SYNTHETIC_CHANNEL_ALPHA,
+          threadTs: "1731320000.000100",
+        },
+        registry,
+      },
+    );
+    expect(conflictingThread).toBeUndefined();
+
+    const conflictingEventProject = await notifySlack(
+      { text: "Conflicting event project", blocks: [] },
+      {
+        type: "phase_start",
+        feature: "003-slack",
+        projectId: SYNTHETIC_PROJECT_BETA.projectId,
+        payload: {},
+        timestamp: "2026-11-18T10:00:00.000Z",
+      },
+      {
+        projectId: SYNTHETIC_PROJECT_ALPHA.projectId,
+        registry,
+      },
+    );
+    expect(conflictingEventProject).toBeUndefined();
+
+    expect(postMessage).not.toHaveBeenCalled();
+  });
+
   it("FR-005: Converts ship:complete event to Block Kit message", async () => {
     // Test implementation here...
     expect(true).toBe(true);
