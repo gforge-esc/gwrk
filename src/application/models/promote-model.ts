@@ -7,8 +7,12 @@ import {
   type ModelCandidate,
   type ModelRole,
   type RunnerScope,
+  type ScoredRepeat,
   assertNoSecretMaterial,
   checkCandidate,
+  eligibleRoutesDigest,
+  qualificationStaleness,
+  scoreRole,
 } from "../../domain/model-qualification.js";
 import type {
   QualificationRunnerPort,
@@ -81,12 +85,49 @@ export type PromoteModelResult =
     }
   | { readonly promote: false; readonly reason: string };
 
+interface BundleRepeat {
+  readonly fixtureId?: string;
+  readonly repeatIndex: number;
+  readonly durationMs?: number;
+  readonly deterministicGatesPassed?: boolean;
+  readonly gateChecks?: readonly {
+    readonly checkId: string;
+    readonly passed: boolean;
+    readonly detail: string;
+  }[];
+}
+
+interface BundleComparison {
+  readonly fixtureId?: string;
+  readonly handoff?: {
+    readonly from: string;
+    readonly to: string;
+    readonly planSource: "candidate" | "fixed";
+  };
+  readonly repeats: {
+    readonly candidate: readonly BundleRepeat[];
+    readonly incumbent: readonly BundleRepeat[];
+  };
+  readonly skippedIncumbentRepeatIndices?: readonly number[];
+  readonly roleScore?: {
+    readonly role: ModelRole;
+    readonly candidateMedianMsToGreen?: number | null;
+    readonly incumbentMedianMsToGreen?: number | null;
+  };
+}
+
 interface EvaluationBundlePayload {
   readonly evaluationId: string;
   readonly role: ModelRole;
   readonly candidate: ModelCandidate;
   readonly incumbent?: ModelCandidate;
   readonly scope: RunnerScope;
+  readonly snapshotHash?: string;
+  readonly eligibleRoutesDigest?: string;
+  readonly toolVersions?: {
+    readonly cliVersion: string;
+    readonly adapterVersion: string;
+  };
   readonly suiteHashes?: {
     readonly fixtureSuiteHash: string;
     readonly workflowPromptHashes: Record<string, string>;
@@ -94,37 +135,101 @@ interface EvaluationBundlePayload {
   readonly judgeVerdictHashes?: readonly [string, string];
   readonly incumbentDigest: string | null;
   readonly promotionEvidence?: PromotionReplayEvidence;
-  readonly comparisons?: readonly {
-    readonly fixtureId?: string;
-    readonly handoff?: {
-      readonly from: string;
-      readonly to: string;
-      readonly planSource: "candidate" | "fixed";
-    };
-    readonly repeats: {
-      readonly candidate: readonly {
-        readonly repeatIndex: number;
-        readonly durationMs?: number;
-        readonly deterministicGatesPassed?: boolean;
-        readonly gateChecks?: readonly {
-          readonly checkId: string;
-          readonly passed: boolean;
-          readonly detail: string;
-        }[];
-      }[];
-      readonly incumbent: readonly {
-        readonly repeatIndex: number;
-        readonly durationMs?: number;
-        readonly deterministicGatesPassed?: boolean;
-      }[];
-    };
-    readonly roleScore?: {
-      readonly role: ModelRole;
-      readonly candidateMedianMsToGreen?: number | null;
-      readonly incumbentMedianMsToGreen?: number | null;
-    };
-  }[];
+  readonly comparisons?: readonly BundleComparison[];
   readonly fallbackRoutes?: PinnedRoleRoute["fallbackRoutes"];
+}
+
+const VALID_ROLES = new Set<ModelRole>(["define", "implement", "review"]);
+const SHA256_HEX_RE = /^[a-f0-9]{64}$/;
+
+function isPassingGateRepeat(repeat: BundleRepeat | null | undefined): boolean {
+  return (
+    repeat?.deterministicGatesPassed === true &&
+    Array.isArray(repeat.gateChecks) &&
+    repeat.gateChecks.length > 0 &&
+    repeat.gateChecks.every((gc) => gc?.passed === true)
+  );
+}
+
+function validateRepeatSet(
+  repeats: readonly BundleRepeat[] | undefined,
+  expectedFixtureId: string,
+  repeatFloor: number,
+  options: {
+    readonly requirePassingGates: boolean;
+    readonly skippedIndices?: readonly number[];
+  },
+): "ok" | "insufficient-repeats" | "gate-failure" {
+  if (!Array.isArray(repeats)) return "insufficient-repeats";
+  const indices: number[] = [];
+  for (const repeat of repeats) {
+    if (
+      !repeat ||
+      repeat.fixtureId !== expectedFixtureId ||
+      !Number.isSafeInteger(repeat.repeatIndex) ||
+      repeat.repeatIndex < 0
+    ) {
+      return "insufficient-repeats";
+    }
+    indices.push(repeat.repeatIndex);
+  }
+  if (options.skippedIndices) {
+    if (!Array.isArray(options.skippedIndices)) return "insufficient-repeats";
+    for (const skipped of options.skippedIndices) {
+      if (!Number.isSafeInteger(skipped) || skipped < 0) {
+        return "insufficient-repeats";
+      }
+      indices.push(skipped);
+    }
+  }
+  const distinct = new Set(indices);
+  if (distinct.size !== indices.length || distinct.size < repeatFloor) {
+    return "insufficient-repeats";
+  }
+  if (
+    options.requirePassingGates &&
+    !repeats.every((repeat) => isPassingGateRepeat(repeat))
+  ) {
+    return "gate-failure";
+  }
+  return "ok";
+}
+
+function toScoredRepeats(
+  repeats: readonly BundleRepeat[],
+): ScoredRepeat[] | null {
+  const scored: ScoredRepeat[] = [];
+  for (const repeat of repeats) {
+    if (
+      typeof repeat.durationMs !== "number" ||
+      !Number.isFinite(repeat.durationMs) ||
+      repeat.durationMs < 0 ||
+      typeof repeat.deterministicGatesPassed !== "boolean" ||
+      !Array.isArray(repeat.gateChecks)
+    ) {
+      return null;
+    }
+    scored.push({
+      durationMs: repeat.durationMs,
+      deterministicGatesPassed: repeat.deterministicGatesPassed,
+      gateChecks: repeat.gateChecks,
+    });
+  }
+  return scored;
+}
+
+function matchesIncumbentPin(
+  incumbent: ModelCandidate | undefined,
+  pin: PinnedRoleRoute,
+): boolean {
+  if (!incumbent) return false;
+  return (
+    incumbent.backend === pin.backend &&
+    incumbent.provider === pin.provider &&
+    incumbent.family === pin.family &&
+    incumbent.modelId === pin.modelId &&
+    (incumbent.effort || undefined) === (pin.effort || undefined)
+  );
 }
 
 export async function promoteModel(
@@ -151,6 +256,10 @@ export async function promoteModel(
 
   if (bundle.evaluationId !== input.evaluationId) {
     return { promote: false, reason: "evaluation-id-mismatch" };
+  }
+
+  if (!VALID_ROLES.has(bundle.role)) {
+    return { promote: false, reason: "invalid-evaluation-evidence" };
   }
 
   if (
@@ -198,6 +307,12 @@ export async function promoteModel(
     return { promote: false, reason: "incumbent-changed" };
   }
 
+  const activeDoc = activeLock?.document as RouteLockDocument | undefined;
+  const incumbentPin = activeDoc?.routes?.[bundle.role];
+  if (incumbentPin && !matchesIncumbentPin(bundle.incumbent, incumbentPin)) {
+    return { promote: false, reason: "incumbent-changed" };
+  }
+
   if (!bundle.promotionEvidence) {
     return { promote: false, reason: "invalid-evaluation-evidence" };
   }
@@ -207,120 +322,272 @@ export async function promoteModel(
     return { promote: false, reason: replayDecision.reason };
   }
 
-  if (bundle.role === "implement") {
-    const comparisons = bundle.comparisons;
-    if (!Array.isArray(comparisons) || comparisons.length === 0) {
-      return { promote: false, reason: "invalid-evaluation-evidence" };
-    }
-    const direct = comparisons.filter(({ handoff }) => !handoff);
-    const fixed = comparisons.filter(
-      ({ handoff }) => handoff?.planSource === "fixed",
-    );
-    const scoringComparisons = fixed.length > 0 ? fixed : direct;
-
-    const validDurations = scoringComparisons.every(
-      ({ repeats, roleScore }) => {
-        if (!repeats?.candidate || !repeats?.incumbent) return false;
-        const validCandidates = repeats.candidate.every(
-          ({ durationMs }: { readonly durationMs?: number }) =>
-            typeof durationMs === "number" &&
-            Number.isFinite(durationMs) &&
-            durationMs >= 0,
-        );
-        const validIncumbents = repeats.incumbent.every(
-          ({ durationMs }: { readonly durationMs?: number }) =>
-            typeof durationMs === "number" &&
-            Number.isFinite(durationMs) &&
-            durationMs >= 0,
-        );
-        if (!validCandidates || !validIncumbents) return false;
-        if (roleScore?.role !== "implement") return false;
-        const { candidateMedianMsToGreen, incumbentMedianMsToGreen } =
-          roleScore;
-        return (
-          candidateMedianMsToGreen !== null &&
-          incumbentMedianMsToGreen !== null &&
-          Number.isFinite(candidateMedianMsToGreen) &&
-          Number.isFinite(incumbentMedianMsToGreen) &&
-          candidateMedianMsToGreen >= 0 &&
-          incumbentMedianMsToGreen >= 0 &&
-          candidateMedianMsToGreen < incumbentMedianMsToGreen
-        );
-      },
-    );
-
-    if (!validDurations) {
-      return { promote: false, reason: "implementation-not-faster" };
-    }
+  if (
+    !Array.isArray(bundle.judgeVerdictHashes) ||
+    bundle.judgeVerdictHashes.length !== 2 ||
+    !Array.isArray(bundle.promotionEvidence.judges) ||
+    bundle.promotionEvidence.judges.length !== 2
+  ) {
+    return { promote: false, reason: "invalid-evaluation-evidence" };
+  }
+  const expectedVerdictHashes: [string, string] = [
+    createHash("sha256")
+      .update(JSON.stringify(bundle.promotionEvidence.judges[0]))
+      .digest("hex"),
+    createHash("sha256")
+      .update(JSON.stringify(bundle.promotionEvidence.judges[1]))
+      .digest("hex"),
+  ];
+  if (
+    bundle.judgeVerdictHashes[0] !== expectedVerdictHashes[0] ||
+    bundle.judgeVerdictHashes[1] !== expectedVerdictHashes[1]
+  ) {
+    return { promote: false, reason: "invalid-evaluation-evidence" };
   }
 
   const suite = await deps.runner.loadSuite();
+  const repeatFloor = Math.max(3, suite.repeats);
+  if (!Array.isArray(bundle.comparisons) || bundle.comparisons.length === 0) {
+    return { promote: false, reason: "invalid-evaluation-evidence" };
+  }
+  const comparisons: readonly BundleComparison[] = bundle.comparisons;
+
   const requiredHandoffs = suite.handoffs.filter(({ planSource }) =>
     bundle.role === "define"
       ? planSource === "candidate"
       : bundle.role === "implement" && planSource === "fixed",
   );
 
-  if (bundle.role === "define" && requiredHandoffs.length > 0) {
-    const comparisons = bundle.comparisons;
-    if (!Array.isArray(comparisons)) {
+  for (const handoff of requiredHandoffs) {
+    const matching = comparisons.find(
+      (c) =>
+        c.handoff?.from === handoff.from &&
+        c.handoff?.to === handoff.to &&
+        c.handoff?.planSource === handoff.planSource &&
+        c.fixtureId === handoff.to,
+    );
+    if (!matching) {
       return { promote: false, reason: "missing-handoff-artifacts" };
     }
-    for (const handoff of requiredHandoffs) {
-      const matching = comparisons.find(
-        (c) =>
-          c.handoff?.from === handoff.from &&
-          c.handoff?.to === handoff.to &&
-          c.handoff?.planSource === handoff.planSource,
-      );
-      if (!matching) {
-        return { promote: false, reason: "missing-handoff-artifacts" };
+    const candidateStatus = validateRepeatSet(
+      matching.repeats?.candidate,
+      handoff.to,
+      repeatFloor,
+      { requirePassingGates: true },
+    );
+    if (candidateStatus !== "ok") {
+      return { promote: false, reason: candidateStatus };
+    }
+    const incumbentStatus = validateRepeatSet(
+      matching.repeats?.incumbent,
+      handoff.to,
+      repeatFloor,
+      {
+        requirePassingGates: bundle.role === "implement",
+        skippedIndices:
+          handoff.planSource === "candidate"
+            ? matching.skippedIncumbentRepeatIndices
+            : undefined,
+      },
+    );
+    if (incumbentStatus !== "ok") {
+      return { promote: false, reason: incumbentStatus };
+    }
+  }
+
+  if (bundle.role === "implement") {
+    const direct = comparisons.filter(({ handoff }) => !handoff);
+    const fixed = comparisons.filter(
+      ({ handoff }) => handoff?.planSource === "fixed",
+    );
+    const scoringComparisons = requiredHandoffs.length > 0 ? fixed : direct;
+    if (scoringComparisons.length === 0) {
+      return { promote: false, reason: "invalid-evaluation-evidence" };
+    }
+
+    for (const comparison of scoringComparisons) {
+      if (!comparison.fixtureId) {
+        return { promote: false, reason: "invalid-evaluation-evidence" };
       }
+      const candStatus = validateRepeatSet(
+        comparison.repeats?.candidate,
+        comparison.fixtureId,
+        repeatFloor,
+        { requirePassingGates: true },
+      );
+      if (candStatus !== "ok") {
+        return { promote: false, reason: candStatus };
+      }
+      const incStatus = validateRepeatSet(
+        comparison.repeats?.incumbent,
+        comparison.fixtureId,
+        repeatFloor,
+        { requirePassingGates: true },
+      );
+      if (incStatus !== "ok") {
+        return { promote: false, reason: incStatus };
+      }
+      const candidateScored = toScoredRepeats(comparison.repeats.candidate);
+      const incumbentScored = toScoredRepeats(comparison.repeats.incumbent);
+      if (!candidateScored || !incumbentScored) {
+        return { promote: false, reason: "implementation-not-faster" };
+      }
+      const recomputed = scoreRole(
+        "implement",
+        candidateScored,
+        incumbentScored,
+      );
       if (
-        !matching.repeats?.candidate ||
-        matching.repeats.candidate.length < Math.max(3, suite.repeats)
+        recomputed.role !== "implement" ||
+        recomputed.candidateMedianMsToGreen === null ||
+        recomputed.incumbentMedianMsToGreen === null ||
+        !Number.isFinite(recomputed.candidateMedianMsToGreen) ||
+        !Number.isFinite(recomputed.incumbentMedianMsToGreen) ||
+        recomputed.candidateMedianMsToGreen < 0 ||
+        recomputed.incumbentMedianMsToGreen < 0 ||
+        recomputed.candidateMedianMsToGreen >=
+          recomputed.incumbentMedianMsToGreen
       ) {
-        return { promote: false, reason: "insufficient-repeats" };
-      }
-      const allPassed = matching.repeats.candidate.every(
-        (r: {
-          readonly deterministicGatesPassed?: boolean;
-          readonly gateChecks?: readonly { readonly passed: boolean }[];
-        }) =>
-          r.deterministicGatesPassed === true &&
-          Array.isArray(r.gateChecks) &&
-          r.gateChecks.length > 0 &&
-          r.gateChecks.every(
-            (gc: { readonly passed: boolean }) => gc.passed === true,
-          ),
-      );
-      if (!allPassed) {
-        return { promote: false, reason: "gate-failure" };
+        return { promote: false, reason: "implementation-not-faster" };
       }
     }
   }
 
+  const requiredDirectFixtures = suite.fixtures.filter((f) =>
+    f.roles.includes(bundle.role),
+  );
+  if (requiredDirectFixtures.length === 0) {
+    return { promote: false, reason: "invalid-evaluation-evidence" };
+  }
+  for (const fixture of requiredDirectFixtures) {
+    const matching = comparisons.find(
+      (c) => !c.handoff && c.fixtureId === fixture.id,
+    );
+    if (!matching) {
+      return { promote: false, reason: "insufficient-repeats" };
+    }
+    const candidateStatus = validateRepeatSet(
+      matching.repeats?.candidate,
+      fixture.id,
+      repeatFloor,
+      { requirePassingGates: true },
+    );
+    if (candidateStatus !== "ok") {
+      return { promote: false, reason: candidateStatus };
+    }
+    const incumbentStatus = validateRepeatSet(
+      matching.repeats?.incumbent,
+      fixture.id,
+      repeatFloor,
+      { requirePassingGates: bundle.role === "implement" },
+    );
+    if (incumbentStatus !== "ok") {
+      return { promote: false, reason: incumbentStatus };
+    }
+  }
+
+  if (bundle.promotionEvidence.requiredFixtures.length !== comparisons.length) {
+    return { promote: false, reason: "invalid-evaluation-evidence" };
+  }
+  const requiredKeySet = new Set(bundle.promotionEvidence.requiredFixtures);
   if (
-    !Array.isArray(bundle.judgeVerdictHashes) ||
-    bundle.judgeVerdictHashes.length !== 2
+    requiredKeySet.size !== comparisons.length ||
+    bundle.promotionEvidence.repeats.some(
+      (r) => !requiredKeySet.has(r.fixtureId),
+    )
   ) {
     return { promote: false, reason: "invalid-evaluation-evidence" };
   }
+  for (let i = 0; i < comparisons.length; i += 1) {
+    const comparison = comparisons[i];
+    if (!comparison.fixtureId) {
+      return { promote: false, reason: "invalid-evaluation-evidence" };
+    }
+    const compCandStatus = validateRepeatSet(
+      comparison.repeats?.candidate,
+      comparison.fixtureId,
+      repeatFloor,
+      { requirePassingGates: true },
+    );
+    if (compCandStatus !== "ok") {
+      return { promote: false, reason: compCandStatus };
+    }
+    const evidenceKey = bundle.promotionEvidence.requiredFixtures[i];
+    const evidenceRepeats = bundle.promotionEvidence.repeats.filter(
+      (r) => r.fixtureId === evidenceKey,
+    );
+    const compIndices = comparison.repeats.candidate
+      .map((r) => r.repeatIndex)
+      .sort((a, b) => a - b);
+    const evIndices = evidenceRepeats
+      .map((r) => r.repeatIndex)
+      .sort((a, b) => a - b);
+    if (
+      compIndices.length !== evIndices.length ||
+      compIndices.some((idx, pos) => evIndices[pos] !== idx)
+    ) {
+      return { promote: false, reason: "invalid-evaluation-evidence" };
+    }
+  }
 
-  const snapshotHash = createHash("sha256")
+  const currentSnapshotHash = createHash("sha256")
     .update(JSON.stringify(snapshot))
     .digest("hex");
-
+  const currentEligibleDigest = eligibleRoutesDigest(snapshot, input.scope);
   const adapterReport = snapshot.adapters.find(
     (a) => a.backend === bundle.candidate.backend,
   );
-  const toolVersions = {
-    cliVersion: adapterReport?.cliVersion || "unknown",
-    adapterVersion: adapterReport?.adapterVersion || "unknown",
+  const currentToolVersions = {
+    cliVersion: adapterReport?.cliVersion || "",
+    adapterVersion: adapterReport?.adapterVersion || "",
   };
 
-  const incumbentPin = (activeLock?.document as RouteLockDocument | undefined)
-    ?.routes?.[bundle.role];
+  if (
+    typeof bundle.snapshotHash !== "string" ||
+    !SHA256_HEX_RE.test(bundle.snapshotHash) ||
+    typeof bundle.eligibleRoutesDigest !== "string" ||
+    !SHA256_HEX_RE.test(bundle.eligibleRoutesDigest) ||
+    !bundle.toolVersions ||
+    typeof bundle.toolVersions.cliVersion !== "string" ||
+    !bundle.toolVersions.cliVersion.trim() ||
+    typeof bundle.toolVersions.adapterVersion !== "string" ||
+    !bundle.toolVersions.adapterVersion.trim()
+  ) {
+    return { promote: false, reason: "stale-evaluation-inputs" };
+  }
+
+  const stalenessReasons = qualificationStaleness(
+    {
+      fixtureSuiteHash: bundle.suiteHashes.fixtureSuiteHash,
+      workflowPromptHashes: bundle.suiteHashes.workflowPromptHashes,
+      cliVersion: bundle.toolVersions.cliVersion,
+      adapterVersion: bundle.toolVersions.adapterVersion,
+      eligibleRoutesDigest: bundle.eligibleRoutesDigest,
+    },
+    {
+      fixtureSuiteHash: currentHashes.fixtureSuiteHash,
+      workflowPromptHashes: currentHashes.workflowPromptHashes,
+      cliVersion: currentToolVersions.cliVersion,
+      adapterVersion: currentToolVersions.adapterVersion,
+      eligibleRoutesDigest: currentEligibleDigest,
+    },
+    candidateCheck.ok,
+  );
+  if (
+    stalenessReasons.length > 0 ||
+    bundle.snapshotHash !== currentSnapshotHash
+  ) {
+    return {
+      promote: false,
+      reason: stalenessReasons[0] ?? "stale-evaluation-inputs",
+    };
+  }
+
+  const snapshotHash = bundle.snapshotHash;
+  const toolVersions = {
+    cliVersion: bundle.toolVersions.cliVersion,
+    adapterVersion: bundle.toolVersions.adapterVersion,
+  };
 
   const fallbackRoutes: Array<{
     backend: string;
@@ -392,7 +659,6 @@ export async function promoteModel(
   };
 
   const nowIso = input.nowIso ?? new Date().toISOString();
-  const activeDoc = activeLock?.document as RouteLockDocument | undefined;
   let previousLock: Omit<RouteLockDocument, "previousLock"> | undefined;
   if (activeDoc) {
     const { previousLock: _discard, ...base } = activeDoc;

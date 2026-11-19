@@ -2,14 +2,11 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { existsSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { Command } from "commander";
-import {
-  writeScopedStderr,
-  writeScopedStdout,
-} from "../adapters/cli/output-scope.js";
+import { writeScopedStdout } from "../adapters/cli/output-scope.js";
 import { createModelCatalog } from "../adapters/models/catalog-discovery.js";
 import { createFixtureRunner } from "../adapters/models/fixture-runner.js";
 import { createRouteLockStore } from "../adapters/models/route-lock-store.js";
@@ -25,6 +22,8 @@ import {
   type ModelRole,
   type RunnerScope,
   assertNoSecretMaterial,
+  checkCandidate,
+  eligibleRoutesDigest,
 } from "../domain/model-qualification.js";
 import type {
   ModelCatalogPort,
@@ -86,6 +85,14 @@ export function resolveRunnerScope(
   };
 }
 
+const EVALUATION_ID_RE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
+
+function resolveOutputFormat(format?: string): "text" | "json" {
+  if (format === undefined || format === "text") return "text";
+  if (format === "json") return "json";
+  throw new CommandError(`Unknown format: ${format}. Supported: text, json`, 2);
+}
+
 function parseCandidateSpec(
   spec?: string,
   explicit?: Partial<ModelCandidate>,
@@ -93,31 +100,51 @@ function parseCandidateSpec(
 ): ModelCandidate | null {
   if (!spec && !explicit?.modelId && !explicit?.backend) return null;
 
-  let backend = explicit?.backend || "";
-  let modelId = explicit?.modelId || "";
-  let effort = explicit?.effort;
-  let provider = explicit?.provider;
-  let family = explicit?.family;
+  let backend = explicit?.backend?.trim() || "";
+  let modelId = explicit?.modelId?.trim() || "";
+  let effort = explicit?.effort?.trim() || undefined;
+  let provider = explicit?.provider?.trim() || undefined;
+  let family = explicit?.family?.trim() || undefined;
 
-  if (spec) {
-    if (spec.startsWith("{")) {
+  if (spec !== undefined) {
+    const trimmed = spec.trim();
+    if (!trimmed) return null;
+    if (trimmed.startsWith("{")) {
       try {
-        const parsed = JSON.parse(spec);
-        backend = parsed.backend || backend;
-        modelId = parsed.modelId || modelId;
-        effort = parsed.effort ?? effort;
-        provider = parsed.provider ?? provider;
-        family = parsed.family ?? family;
+        const parsed = JSON.parse(trimmed) as unknown;
+        if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+          return null;
+        }
+        const record = parsed as Record<string, unknown>;
+        backend =
+          typeof record.backend === "string" ? record.backend.trim() : backend;
+        modelId =
+          typeof record.modelId === "string" ? record.modelId.trim() : modelId;
+        effort =
+          typeof record.effort === "string" ? record.effort.trim() : effort;
+        provider =
+          typeof record.provider === "string"
+            ? record.provider.trim()
+            : provider;
+        family =
+          typeof record.family === "string" ? record.family.trim() : family;
       } catch {
         throw new CommandError("Invalid JSON candidate specification", 1);
       }
     } else {
-      const parts = spec.split(":");
-      backend = parts[0] || backend;
-      modelId = parts[1] || modelId;
-      if (parts.length > 2) effort = parts[2];
+      const parts = trimmed.split(":");
+      if (parts.length < 2 || parts.length > 3) return null;
+      backend = parts[0]?.trim() || backend;
+      modelId = parts[1]?.trim() || modelId;
+      if (parts.length === 3) {
+        const parsedEffort = parts[2]?.trim();
+        if (!parsedEffort) return null;
+        effort = parsedEffort;
+      }
     }
   }
+
+  if (!backend || !modelId) return null;
 
   if (snapshot?.adapters) {
     for (const adapter of snapshot.adapters) {
@@ -133,8 +160,6 @@ function parseCandidateSpec(
 
   provider = provider || backend;
   family = family || backend;
-
-  if (!backend || !modelId) return null;
 
   return {
     backend,
@@ -162,59 +187,59 @@ Examples:
     gwrk models discover --format json
 `,
     )
-    .option("--runner <profile>", "Runner profile", "local")
+    .option("--runner <profile>", "Runner profile")
     .option("--workspace <id>", "Workspace identifier")
     .option("--backends <backends...>", "Backends to probe")
     .option("--format <type>", "Output format (text, json)")
-    .action(
-      async (opts: {
+    .action(async (_localOpts: unknown, command: Command) => {
+      const opts = command.optsWithGlobals<{
         runner?: string;
         workspace?: string;
         backends?: string[];
         format?: string;
-      }) => {
-        await withSignal("models discover", async () => {
-          const root = deps.projectRoot || process.cwd();
-          const scope = resolveRunnerScope(root, opts);
-          const catalog = deps.catalog || createModelCatalog(root);
-          const store = deps.store || createRouteLockStore(root);
+      }>();
+      await withSignal("models discover", async () => {
+        const format = resolveOutputFormat(opts.format);
+        const root = deps.projectRoot || process.cwd();
+        const scope = resolveRunnerScope(root, opts);
+        const catalog = deps.catalog || createModelCatalog(root);
+        const store = deps.store || createRouteLockStore(root);
 
-          const reports = await catalog.discoverCatalog({
-            scope,
-            backends: opts.backends,
-            nowIso: new Date().toISOString(),
-          });
-
-          const snapshot: DiscoverySnapshot = {
-            scope,
-            adapters: reports,
-          };
-
-          assertNoSecretMaterial(snapshot);
-          await store.writeDiscoverySnapshot(scope, snapshot);
-
-          if (
-            reports.length > 0 &&
-            reports.every((r) => r.status !== "available")
-          ) {
-            throw new CommandError("All requested backends failed", 1);
-          }
-
-          if (opts.format === "json") {
-            writeScopedStdout(`${JSON.stringify(snapshot, null, 2)}\n`);
-          } else {
-            writeScopedStdout(
-              `Discovered ${reports.length} adapters for runner ${scope.runnerProfile} (${reports.filter((r) => r.status === "available").length} available)\n`,
-            );
-            for (const r of reports) {
-              writeScopedStdout(
-                `  ${r.backend.padEnd(14)} ${r.status.padEnd(12)} (${r.models.length} models)\n`,
-              );
-            }
-          }
+        const reports = await catalog.discoverCatalog({
+          scope,
+          backends: opts.backends,
+          nowIso: new Date().toISOString(),
         });
-      },
-    );
+
+        const snapshot: DiscoverySnapshot = {
+          scope,
+          adapters: reports,
+        };
+
+        assertNoSecretMaterial(snapshot);
+        await store.writeDiscoverySnapshot(scope, snapshot);
+
+        if (
+          reports.length > 0 &&
+          reports.every((r) => r.status !== "available")
+        ) {
+          throw new CommandError("All requested backends failed", 1);
+        }
+
+        if (format === "json") {
+          writeScopedStdout(`${JSON.stringify(snapshot, null, 2)}\n`);
+        } else {
+          writeScopedStdout(
+            `Discovered ${reports.length} adapters for runner ${scope.runnerProfile} (${reports.filter((r) => r.status === "available").length} available)\n`,
+          );
+          for (const r of reports) {
+            writeScopedStdout(
+              `  ${r.backend.padEnd(14)} ${r.status.padEnd(12)} (${r.models.length} models)\n`,
+            );
+          }
+        }
+      });
+    });
 }
 
 export function createModelsEvaluateCommand(
@@ -228,7 +253,7 @@ export function createModelsEvaluateCommand(
 Examples:
 
   Evaluate candidate model for the define role:
-    gwrk models evaluate --role define --candidate codex:gpt-6.1-sol
+    gwrk models evaluate --role define --candidate codex:gpt-6.1-sol --fixed-implementer codex:gpt-6.1-sol
 
   Evaluate candidate with explicit incumbent and JSON format:
     gwrk models evaluate --role implement --candidate codex:gpt-6.1-sol --incumbent codex:gpt-5.2-codex --format json
@@ -253,15 +278,19 @@ Examples:
     .option("--incumbent-effort <effort>", "Incumbent effort value")
     .option("--incumbent-provider <provider>", "Incumbent provider")
     .option("--incumbent-family <family>", "Incumbent family")
+    .option(
+      "--fixed-implementer <route>",
+      "Fixed implementer route for define handoffs (backend:modelId[:effort])",
+    )
     .option("--judges <judges...>", "Judges for comparison")
     .option("--eval-id <id>", "Evaluation run identifier")
     .option("--evaluation-id <id>", "Evaluation run identifier")
-    .option("--runner <profile>", "Runner profile", "local")
+    .option("--runner <profile>", "Runner profile")
     .option("--workspace <id>", "Workspace identifier")
     .option("--repeats <number>", "Number of repeats per fixture")
     .option("--format <type>", "Output format (text, json)")
-    .action(
-      async (opts: {
+    .action(async (_localOpts: unknown, command: Command) => {
+      const opts = command.optsWithGlobals<{
         role: string;
         candidate?: string;
         candidateBackend?: string;
@@ -275,6 +304,7 @@ Examples:
         incumbentEffort?: string;
         incumbentProvider?: string;
         incumbentFamily?: string;
+        fixedImplementer?: string;
         judges?: string[];
         evalId?: string;
         evaluationId?: string;
@@ -282,74 +312,164 @@ Examples:
         workspace?: string;
         repeats?: string;
         format?: string;
-      }) => {
-        await withSignal("models evaluate", async () => {
-          const root = deps.projectRoot || process.cwd();
-          const scope = resolveRunnerScope(root, opts);
-          const store = deps.store || createRouteLockStore(root);
-          const runner =
-            deps.runner ||
-            createFixtureRunner({ fixturesDir: findFixturesDir(root) });
+      }>();
+      await withSignal("models evaluate", async () => {
+        const format = resolveOutputFormat(opts.format);
+        const root = deps.projectRoot || process.cwd();
+        const scope = resolveRunnerScope(root, opts);
+        const store = deps.store || createRouteLockStore(root);
+        const runner =
+          deps.runner ||
+          createFixtureRunner({ fixturesDir: findFixturesDir(root) });
 
-          const role = opts.role as ModelRole;
-          if (!["define", "implement", "review"].includes(role)) {
+        const role = opts.role as ModelRole;
+        if (!["define", "implement", "review"].includes(role)) {
+          throw new CommandError(
+            "Valid role (define, implement, review) is required",
+            1,
+          );
+        }
+
+        const snapshot = await store.readDiscoverySnapshot(scope);
+        if (!snapshot) {
+          throw new CommandError(
+            `Candidate check failed: model-unavailable (run 'gwrk models discover' for runner '${scope.runnerProfile}')`,
+            1,
+          );
+        }
+
+        const candidate = parseCandidateSpec(
+          opts.candidate,
+          {
+            backend: opts.candidateBackend,
+            modelId: opts.candidateModel,
+            effort: opts.candidateEffort,
+            provider: opts.candidateProvider,
+            family: opts.candidateFamily,
+          },
+          snapshot,
+        );
+
+        if (!candidate) {
+          throw new CommandError("Candidate model is required", 1);
+        }
+
+        const candidateCheck = checkCandidate(snapshot, scope, candidate);
+        if (!candidateCheck.ok) {
+          throw new CommandError(
+            `Candidate check failed: ${candidateCheck.reason}`,
+            1,
+          );
+        }
+
+        const activeLock = await store.readRouteLock(scope);
+        const activeDoc = activeLock?.document as RouteLockDocument | null;
+        const incumbentPin = activeDoc?.routes?.[role];
+
+        let incumbent = parseCandidateSpec(
+          opts.incumbent,
+          {
+            backend: opts.incumbentBackend,
+            modelId: opts.incumbentModel,
+            effort: opts.incumbentEffort,
+            provider: opts.incumbentProvider,
+            family: opts.incumbentFamily,
+          },
+          snapshot,
+        );
+
+        if (!incumbent && incumbentPin) {
+          incumbent = {
+            backend: incumbentPin.backend,
+            provider: incumbentPin.provider,
+            family: incumbentPin.family,
+            modelId: incumbentPin.modelId,
+            ...(incumbentPin.effort ? { effort: incumbentPin.effort } : {}),
+          };
+        }
+
+        if (!incumbent) {
+          throw new CommandError(
+            "Incumbent candidate is required when no active route lock exists (use --incumbent <backend:model>)",
+            1,
+          );
+        }
+
+        let fixedImplementer: ModelCandidate | undefined;
+        if (opts.fixedImplementer !== undefined) {
+          const parsedFixed = parseCandidateSpec(
+            opts.fixedImplementer,
+            {},
+            snapshot,
+          );
+          if (!parsedFixed) {
             throw new CommandError(
-              "Valid role (define, implement, review) is required",
+              "Invalid --fixed-implementer specification",
               1,
             );
           }
+          fixedImplementer = parsedFixed;
+        } else if (role === "define" && activeDoc?.routes?.implement) {
+          const implPin = activeDoc.routes.implement;
+          fixedImplementer = {
+            backend: implPin.backend,
+            provider: implPin.provider,
+            family: implPin.family,
+            modelId: implPin.modelId,
+            ...(implPin.effort ? { effort: implPin.effort } : {}),
+          };
+        }
 
-          const snapshot = await store.readDiscoverySnapshot(scope);
-          const candidate = parseCandidateSpec(
-            opts.candidate,
-            {
-              backend: opts.candidateBackend,
-              modelId: opts.candidateModel,
-              effort: opts.candidateEffort,
-              provider: opts.candidateProvider,
-              family: opts.candidateFamily,
-            },
-            snapshot,
-          );
-
-          if (!candidate) {
-            throw new CommandError("Candidate model is required", 1);
-          }
-
-          const activeLock = await store.readRouteLock(scope);
-          const activeDoc = activeLock?.document as RouteLockDocument | null;
-          const incumbentPin = activeDoc?.routes?.[role];
-
-          let incumbent = parseCandidateSpec(
-            opts.incumbent,
-            {
-              backend: opts.incumbentBackend,
-              modelId: opts.incumbentModel,
-              effort: opts.incumbentEffort,
-              provider: opts.incumbentProvider,
-              family: opts.incumbentFamily,
-            },
-            snapshot,
-          );
-
-          if (!incumbent && incumbentPin) {
-            incumbent = {
-              backend: incumbentPin.backend,
-              provider: incumbentPin.provider,
-              family: incumbentPin.family,
-              modelId: incumbentPin.modelId,
-              ...(incumbentPin.effort ? { effort: incumbentPin.effort } : {}),
-            };
-          }
-
-          if (!incumbent) {
+        if (role === "define" && fixedImplementer) {
+          const fixedCheck = checkCandidate(snapshot, scope, fixedImplementer);
+          if (!fixedCheck.ok) {
             throw new CommandError(
-              "Incumbent candidate is required when no active route lock exists (use --incumbent <backend:model>)",
+              `Fixed implementer check failed: ${fixedCheck.reason}`,
               1,
             );
           }
+        }
 
-          const judges: [ModelCandidate, ModelCandidate] = [
+        let judges: [ModelCandidate, ModelCandidate];
+        if (opts.judges !== undefined) {
+          if (!Array.isArray(opts.judges) || opts.judges.length !== 2) {
+            throw new CommandError(
+              "Exactly two judges are required when --judges is specified",
+              1,
+            );
+          }
+          const j1 = parseCandidateSpec(opts.judges[0], {}, snapshot);
+          const j2 = parseCandidateSpec(opts.judges[1], {}, snapshot);
+          if (!j1 || !j2) {
+            throw new CommandError(
+              "Invalid --judges specification: provide two valid backend:modelId routes",
+              1,
+            );
+          }
+          judges = [j1, j2];
+        } else if (activeDoc?.judges && activeDoc.judges.length === 2) {
+          judges = [
+            {
+              backend: activeDoc.judges[0].backend,
+              provider: activeDoc.judges[0].provider,
+              family: activeDoc.judges[0].family,
+              modelId: activeDoc.judges[0].modelId,
+              ...(activeDoc.judges[0].effort
+                ? { effort: activeDoc.judges[0].effort }
+                : {}),
+            },
+            {
+              backend: activeDoc.judges[1].backend,
+              provider: activeDoc.judges[1].provider,
+              family: activeDoc.judges[1].family,
+              modelId: activeDoc.judges[1].modelId,
+              ...(activeDoc.judges[1].effort
+                ? { effort: activeDoc.judges[1].effort }
+                : {}),
+            },
+          ];
+        } else {
+          judges = [
             {
               backend: "claude",
               provider: "anthropic",
@@ -363,66 +483,94 @@ Examples:
               modelId: "gpt-4o",
             },
           ];
+        }
 
-          if (opts.judges && opts.judges.length >= 2) {
-            const j1 = parseCandidateSpec(opts.judges[0], {}, snapshot);
-            const j2 = parseCandidateSpec(opts.judges[1], {}, snapshot);
-            if (j1 && j2) {
-              judges[0] = j1;
-              judges[1] = j2;
-            }
-          }
+        const evaluationId =
+          opts.evaluationId ||
+          opts.evalId ||
+          `eval-${randomUUID().slice(0, 8)}`;
+        if (!EVALUATION_ID_RE.test(evaluationId)) {
+          throw new CommandError("Invalid evaluation identifier", 1);
+        }
 
-          const suite = await runner.loadSuite();
-          const evaluationId =
-            opts.evaluationId ||
-            opts.evalId ||
-            `eval-${randomUUID().slice(0, 8)}`;
-          const repeats = opts.repeats
-            ? Number.parseInt(opts.repeats, 10)
-            : undefined;
-
-          const result = await evaluateModels(
-            { runner, judge: runner },
-            {
-              evaluationId,
-              role,
-              candidate,
-              incumbent,
-              judges,
-              blindingSecret: randomUUID(),
-              fixtures: suite.fixtures,
-              repeats,
-            },
-          );
-
-          const bundle = {
-            ...result,
-            scope,
-            incumbentDigest: activeLock?.digest ?? null,
-            createdAt: new Date().toISOString(),
-          };
-
-          assertNoSecretMaterial(bundle);
-          await store.writeEvaluationBundle(evaluationId, bundle);
-
-          if (!result.decision.promote) {
+        let repeats: number | undefined;
+        if (opts.repeats !== undefined) {
+          if (!/^\d+$/.test(opts.repeats)) {
             throw new CommandError(
-              `Evaluation rejected: ${result.decision.reason}`,
+              "Invalid --repeats value: expected positive integer",
               1,
             );
           }
+          repeats = Number.parseInt(opts.repeats, 10);
+        }
 
-          if (opts.format === "json") {
-            writeScopedStdout(`${JSON.stringify(bundle, null, 2)}\n`);
-          } else {
-            writeScopedStdout(
-              `Evaluation ${evaluationId} qualified ${candidate.modelId} for ${role}\n`,
-            );
-          }
-        });
-      },
-    );
+        const suite = await runner.loadSuite();
+        const artifactRoot = join(
+          root,
+          ".runs",
+          "models",
+          "evaluations",
+          evaluationId,
+          "artifacts",
+        );
+
+        const result = await evaluateModels(
+          { runner, judge: runner },
+          {
+            evaluationId,
+            role,
+            candidate,
+            incumbent,
+            judges,
+            blindingSecret: randomUUID(),
+            fixtures: suite.fixtures,
+            ...(fixedImplementer ? { fixedImplementer } : {}),
+            artifactRoot,
+            repeats,
+          },
+        );
+
+        const snapshotHash = createHash("sha256")
+          .update(JSON.stringify(snapshot))
+          .digest("hex");
+        const snapshotEligibleDigest = eligibleRoutesDigest(snapshot, scope);
+        const adapterReport = snapshot.adapters.find(
+          (a) => a.backend === candidate.backend,
+        );
+        const toolVersions = {
+          cliVersion: adapterReport?.cliVersion || "unknown",
+          adapterVersion: adapterReport?.adapterVersion || "unknown",
+        };
+
+        const bundle = {
+          ...result,
+          scope,
+          incumbentDigest: activeLock?.digest ?? null,
+          snapshotHash,
+          eligibleRoutesDigest: snapshotEligibleDigest,
+          toolVersions,
+          createdAt: new Date().toISOString(),
+        };
+
+        assertNoSecretMaterial(bundle);
+        await store.writeEvaluationBundle(evaluationId, bundle);
+
+        if (!result.decision.promote) {
+          throw new CommandError(
+            `Evaluation rejected: ${result.decision.reason}`,
+            1,
+          );
+        }
+
+        if (format === "json") {
+          writeScopedStdout(`${JSON.stringify(bundle, null, 2)}\n`);
+        } else {
+          writeScopedStdout(
+            `Evaluation ${evaluationId} qualified ${candidate.modelId} for ${role}\n`,
+          );
+        }
+      });
+    });
 }
 
 export function createModelsPromoteCommand(
@@ -445,74 +593,74 @@ Examples:
     .option("--eval <id>", "Evaluation identifier to promote")
     .option("--evaluation-id <id>", "Evaluation identifier to promote")
     .option("--rollback", "Roll back to previous route lock")
-    .option("--runner <profile>", "Runner profile", "local")
+    .option("--runner <profile>", "Runner profile")
     .option("--workspace <id>", "Workspace identifier")
     .option("--format <type>", "Output format (text, json)")
-    .action(
-      async (opts: {
+    .action(async (_localOpts: unknown, command: Command) => {
+      const opts = command.optsWithGlobals<{
         eval?: string;
         evaluationId?: string;
         rollback?: boolean;
         runner?: string;
         workspace?: string;
         format?: string;
-      }) => {
-        await withSignal("models promote", async () => {
-          const root = deps.projectRoot || process.cwd();
-          const scope = resolveRunnerScope(root, opts);
-          const store = deps.store || createRouteLockStore(root);
-          const runner =
-            deps.runner ||
-            createFixtureRunner({ fixturesDir: findFixturesDir(root) });
+      }>();
+      await withSignal("models promote", async () => {
+        const format = resolveOutputFormat(opts.format);
+        const root = deps.projectRoot || process.cwd();
+        const scope = resolveRunnerScope(root, opts);
+        const store = deps.store || createRouteLockStore(root);
+        const runner =
+          deps.runner ||
+          createFixtureRunner({ fixturesDir: findFixturesDir(root) });
 
-          if (opts.rollback) {
-            const rollbackResult = await rollbackRouteLock({ store }, scope);
-            if (!rollbackResult.ok) {
-              throw new CommandError(
-                `Rollback failed: ${rollbackResult.reason}`,
-                1,
-              );
-            }
-            if (opts.format === "json") {
-              writeScopedStdout(`${JSON.stringify(rollbackResult, null, 2)}\n`);
-            } else {
-              writeScopedStdout(
-                `Rolled back active route lock for ${scope.runnerProfile} (digest: ${rollbackResult.digest})\n`,
-              );
-            }
-            return;
-          }
-
-          const evaluationId = opts.eval || opts.evaluationId;
-          if (!evaluationId) {
+        if (opts.rollback) {
+          const rollbackResult = await rollbackRouteLock({ store }, scope);
+          if (!rollbackResult.ok) {
             throw new CommandError(
-              "Evaluation ID is required (--eval <id>) or use --rollback",
+              `Rollback failed: ${rollbackResult.reason}`,
               1,
             );
           }
-
-          const promoteResult = await promoteModel(
-            { store, runner },
-            { scope, evaluationId },
-          );
-
-          if (!promoteResult.promote) {
-            throw new CommandError(
-              `Promotion failed: ${promoteResult.reason}`,
-              1,
-            );
-          }
-
-          if (opts.format === "json") {
-            writeScopedStdout(`${JSON.stringify(promoteResult, null, 2)}\n`);
+          if (format === "json") {
+            writeScopedStdout(`${JSON.stringify(rollbackResult, null, 2)}\n`);
           } else {
             writeScopedStdout(
-              `Promoted evaluation ${evaluationId} for ${scope.runnerProfile} (digest: ${promoteResult.digest})\n`,
+              `Rolled back active route lock for ${scope.runnerProfile} (digest: ${rollbackResult.digest})\n`,
             );
           }
-        });
-      },
-    );
+          return;
+        }
+
+        const evaluationId = opts.eval || opts.evaluationId;
+        if (!evaluationId) {
+          throw new CommandError(
+            "Evaluation ID is required (--eval <id>) or use --rollback",
+            1,
+          );
+        }
+
+        const promoteResult = await promoteModel(
+          { store, runner },
+          { scope, evaluationId },
+        );
+
+        if (!promoteResult.promote) {
+          throw new CommandError(
+            `Promotion failed: ${promoteResult.reason}`,
+            1,
+          );
+        }
+
+        if (format === "json") {
+          writeScopedStdout(`${JSON.stringify(promoteResult, null, 2)}\n`);
+        } else {
+          writeScopedStdout(
+            `Promoted evaluation ${evaluationId} for ${scope.runnerProfile} (digest: ${promoteResult.digest})\n`,
+          );
+        }
+      });
+    });
 }
 
 export function createModelsCommand(deps: ModelsCommandDeps = {}): Command {
