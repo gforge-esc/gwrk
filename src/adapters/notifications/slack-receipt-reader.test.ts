@@ -90,9 +90,10 @@ it("keeps an unreadable message on the final page indeterminate", async () => {
     .mockResolvedValueOnce(response(page([], "next")))
     .mockResolvedValueOnce(response(page([null])));
 
-  expect(
-    await reconcile({ ...query, threadTs: "1700000000.000000" }),
-  ).toEqual({ status: "indeterminate", reason: "lookup_incomplete" });
+  expect(await reconcile({ ...query, threadTs: "1700000000.000000" })).toEqual({
+    status: "indeterminate",
+    reason: "lookup_incomplete",
+  });
   expect(fetchImpl).toHaveBeenCalledTimes(3);
 });
 it.each([

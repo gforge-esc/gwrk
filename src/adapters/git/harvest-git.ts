@@ -3,9 +3,10 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { execFile } from "node:child_process";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, realpath, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { promisify } from "node:util";
 import type { VcsHarvestExtensions } from "../../ports/vcs-port.js";
 import { repositoryGitEnv } from "./process-env.js";
@@ -34,6 +35,44 @@ export function createGitHarvestAdapter(): VcsHarvestExtensions {
   };
   const git = async (cwd: string, args: string[], env?: NodeJS.ProcessEnv) =>
     (await gitOutput(cwd, args, env)).trim();
+  const resolveConcreteDestination = async (
+    destination: string,
+    cwd: string,
+  ): Promise<string> => {
+    let isFileUrl = false;
+    let candidatePath: string | null = null;
+    if (destination.startsWith("file://")) {
+      isFileUrl = true;
+      try {
+        candidatePath = fileURLToPath(destination);
+      } catch {
+        throw new Error("Invalid file URL destination");
+      }
+    } else if (
+      !/^[a-zA-Z][a-zA-Z0-9+.-]*:\/\//.test(destination) &&
+      !/^[^/@]+@[^:]+:/.test(destination) &&
+      !/^[^/:]+:[^/]/.test(destination)
+    ) {
+      candidatePath = resolve(cwd, destination);
+    }
+    if (candidatePath !== null) {
+      try {
+        const concretePath = await realpath(candidatePath);
+        const concreteEnv = repositoryGitEnv(concretePath);
+        await execute("git", ["-C", concretePath, "rev-parse", "--git-dir"], {
+          env: concreteEnv,
+          encoding: "utf8",
+          timeout: 10_000,
+        });
+        return isFileUrl ? pathToFileURL(concretePath).href : concretePath;
+      } catch {
+        throw new Error(
+          "Local destination cannot be resolved to a concrete repository",
+        );
+      }
+    }
+    return destination;
+  };
   const verifyOriginDestination = async (
     cwd: string,
     env?: NodeJS.ProcessEnv,
@@ -54,7 +93,7 @@ export function createGitHarvestAdapter(): VcsHarvestExtensions {
       throw new Error("Origin must have one fetch URL and one push URL");
     if (fetch !== push)
       throw new Error("Origin fetch and push URLs must match");
-    return fetch.slice(0, -1);
+    return resolveConcreteDestination(fetch.slice(0, -1), cwd);
   };
   const validateBranch = async (cwd: string, branch: string) => {
     if (!branch || branch.startsWith("-"))
