@@ -195,12 +195,6 @@ export async function harvestFeature(
     options?.project?.projectId ?? resolveProjectId(projectPath);
 
   if (options?.durableService) {
-    try {
-      await finalizeLogs(featureId, projectPath);
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      warnCli(`Log finalization failed (non-fatal): ${msg}`);
-    }
     const project =
       options.project ?? buildFallbackLocalProject(projectPath, projectId);
     await options.durableService.runManualHarvest({
@@ -215,6 +209,14 @@ export async function harvestFeature(
       updateLocalTaskState: options.updateLocalTaskState ?? true,
       ownerId: options.ownerId ?? "local-harvest",
     });
+    if (options.updateLocalTaskState !== false) {
+      try {
+        await finalizeLogs(featureId, projectPath);
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        warnCli(`Log finalization failed (non-fatal): ${msg}`);
+      }
+    }
     return undefined;
   }
 
@@ -238,12 +240,6 @@ export async function harvestFeature(
         registry.findByLocalRoot(projectPath) ??
         registry.getProject(projectId);
       if (enrolled) {
-        try {
-          await finalizeLogs(featureId, projectPath);
-        } catch (err) {
-          const msg = err instanceof Error ? err.message : String(err);
-          warnCli(`Log finalization failed (non-fatal): ${msg}`);
-        }
         let capturedReport: CompressionReport | undefined;
         const store = createSqliteOperationsStoreAdapter({ db });
         const clock = {
@@ -282,6 +278,14 @@ export async function harvestFeature(
           updateLocalTaskState: options?.updateLocalTaskState ?? true,
           ownerId: options?.ownerId ?? "local-harvest",
         });
+        if (options?.updateLocalTaskState !== false) {
+          try {
+            await finalizeLogs(featureId, projectPath);
+          } catch (err) {
+            const msg = err instanceof Error ? err.message : String(err);
+            warnCli(`Log finalization failed (non-fatal): ${msg}`);
+          }
+        }
         return capturedReport;
       }
     } catch (err) {
@@ -313,7 +317,7 @@ export async function harvestFeature(
           logCliOutput(
             `Reconciling/Harvesting phase ${phase.id} for feature ${featureId}...`,
           );
-          await harvestFeature(projectPath, subRecord);
+          await harvestFeature(projectPath, subRecord, options);
         }
       } catch (err) {
         logCliError(
@@ -356,11 +360,13 @@ export async function harvestFeature(
   }
 
   // 1. Finalize Logs (FR-H02)
-  try {
-    await finalizeLogs(featureId, projectPath);
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    warnCli(`Log finalization failed (non-fatal): ${msg}`);
+  if (options?.updateLocalTaskState !== false) {
+    try {
+      await finalizeLogs(featureId, projectPath);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      warnCli(`Log finalization failed (non-fatal): ${msg}`);
+    }
   }
 
   // 2. Finalize DB Run Records (FR-H03)

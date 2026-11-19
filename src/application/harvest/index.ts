@@ -4,6 +4,7 @@
 
 import { createHash, randomUUID } from "node:crypto";
 import { z } from "zod";
+import type { DurableDispatchOperation } from "../../domain/durable-dispatch.js";
 import {
   type HarvestCandidateInput,
   type HarvestOperationStatus,
@@ -101,6 +102,7 @@ export interface DurableHarvestServiceDeps {
   clock: ClockPort;
   newId?: () => string;
   leaseDurationMs?: number;
+  heartbeatIntervalMs?: number | null;
 }
 
 const WebhookPullRequestPayloadSchema = z.object({
@@ -242,27 +244,51 @@ export function createDurableHarvestService(
   const { store, registry, vcs, github, executor, outbox, clock } = deps;
   const newId = deps.newId ?? (() => randomUUID());
   const leaseDurationMs = deps.leaseDurationMs ?? DEFAULT_LEASE_DURATION_MS;
+  const heartbeatIntervalMs =
+    deps.heartbeatIntervalMs === undefined
+      ? Math.max(10, Math.floor(leaseDurationMs / 3))
+      : deps.heartbeatIntervalMs;
 
   function defaultSlackRecipient(
     project: EnrolledProject,
     featureId?: string,
-    phaseId?: string | null,
+    phaseIds?: string | null | readonly (string | null)[],
   ): DeliveryRecipient | null {
     if (!project.slack) return null;
-    if (featureId && phaseId) {
-      const dispatch = store.getDispatchOperation({
-        projectId: project.projectId,
-        featureId,
-        phaseId,
-      });
-      if (dispatch?.recipient) {
+    const normalizedPhaseIds = (
+      Array.isArray(phaseIds) ? phaseIds : phaseIds ? [phaseIds] : []
+    ).filter((id): id is string => typeof id === "string" && id.length > 0);
+    if (featureId && normalizedPhaseIds.length > 0) {
+      let newestDispatch: DurableDispatchOperation | null = null;
+      for (const phaseId of new Set(normalizedPhaseIds)) {
+        const dispatch = store.getDispatchOperation({
+          projectId: project.projectId,
+          featureId,
+          phaseId,
+        });
+        if (!dispatch?.recipient) continue;
         const resolved = resolveHarvestSlackRecipient({
           projectId: project.projectId,
           featureId,
           recipient: dispatch.recipient,
           binding: project.slack,
         });
-        if (resolved) return dispatch.recipient;
+        if (!resolved) continue;
+        const dispatchTime = Date.parse(dispatch.createdAt);
+        const newestTime = newestDispatch
+          ? Date.parse(newestDispatch.createdAt)
+          : Number.NEGATIVE_INFINITY;
+        if (
+          !newestDispatch ||
+          dispatchTime > newestTime ||
+          (dispatchTime === newestTime &&
+            dispatch.operationId > newestDispatch.operationId)
+        ) {
+          newestDispatch = dispatch;
+        }
+      }
+      if (newestDispatch?.recipient) {
+        return newestDispatch.recipient;
       }
     }
     return {
@@ -427,57 +453,6 @@ export function createDurableHarvestService(
       ...s,
     }));
 
-    if (receipts.length === 0) {
-      const binding = enrolledProject.slack;
-      const thread = binding
-        ? (registry.getFeatureThread(
-            operation.projectId,
-            operation.featureId,
-          ) ?? undefined)
-        : undefined;
-      plannedSlackRecipient = resolveHarvestSlackRecipient({
-        projectId: operation.projectId,
-        featureId: operation.featureId,
-        recipient: operation.recipient,
-        binding,
-        thread,
-      });
-      const hasSlackTarget = plannedSlackRecipient !== null;
-      const hasRemoteBranchTarget = hasVerifiedBranchCleanupTarget(operation);
-      const plan = planHarvestStages({
-        terminalEvent: operation.terminalEvent,
-        phaseIds,
-        hasSlackTarget,
-        hasRemoteBranchTarget,
-      });
-      const initNow = clock.nowIso();
-      const initResult = store.initializeHarvestStages({
-        fence,
-        nowIso: initNow,
-        phaseIds,
-        hasSlackTarget,
-        hasRemoteBranchTarget,
-        stages: plan,
-      });
-      if (!initResult.ok) {
-        return summaryFromOperation(operation, options, receipts);
-      }
-      for (const entry of plan) {
-        receipts.push({
-          operationId: operation.operationId,
-          phaseKey: entry.phaseKey,
-          stage: entry.stage,
-          status: entry.initialStatus,
-          leaseEpoch: fence.leaseEpoch,
-          attemptCount: 0,
-          evidenceJson: null,
-          error: null,
-          updatedAt: initNow,
-          completedAt: null,
-        });
-      }
-    }
-
     const receiptFor = (
       phaseKey: string,
       stage: HarvestStageName,
@@ -489,6 +464,31 @@ export function createDurableHarvestService(
       handle: null,
     };
     let fenced = false;
+    let heartbeat: ReturnType<typeof setInterval> | null = null;
+    if (heartbeatIntervalMs !== null && heartbeatIntervalMs > 0) {
+      heartbeat = setInterval(() => {
+        try {
+          const res = store.heartbeatHarvestLease({
+            fence,
+            nowIso: clock.nowIso(),
+            leaseExpiresAt: leaseExpiryIso(clock, leaseDurationMs),
+          });
+          if (!res.ok) {
+            fenced = true;
+            if (heartbeat) {
+              clearInterval(heartbeat);
+              heartbeat = null;
+            }
+          }
+        } catch {
+          if (heartbeat) {
+            clearInterval(heartbeat);
+            heartbeat = null;
+          }
+        }
+      }, heartbeatIntervalMs);
+      heartbeat.unref?.();
+    }
 
     const ensureCheckout = async (): Promise<DetachedCheckoutHandle> => {
       if (checkoutState.handle) return checkoutState.handle;
@@ -558,6 +558,56 @@ export function createDurableHarvestService(
     };
 
     try {
+      if (receipts.length === 0) {
+        const binding = enrolledProject.slack;
+        const thread = binding
+          ? (registry.getFeatureThread(
+              operation.projectId,
+              operation.featureId,
+            ) ?? undefined)
+          : undefined;
+        plannedSlackRecipient = resolveHarvestSlackRecipient({
+          projectId: operation.projectId,
+          featureId: operation.featureId,
+          recipient: operation.recipient,
+          binding,
+          thread,
+        });
+        const hasSlackTarget = plannedSlackRecipient !== null;
+        const hasRemoteBranchTarget = hasVerifiedBranchCleanupTarget(operation);
+        const plan = planHarvestStages({
+          terminalEvent: operation.terminalEvent,
+          phaseIds,
+          hasSlackTarget,
+          hasRemoteBranchTarget,
+        });
+        const initNow = clock.nowIso();
+        const initResult = store.initializeHarvestStages({
+          fence,
+          nowIso: initNow,
+          phaseIds,
+          hasSlackTarget,
+          hasRemoteBranchTarget,
+          stages: plan,
+        });
+        if (!initResult.ok) {
+          return summaryFromOperation(operation, options, receipts);
+        }
+        for (const entry of plan) {
+          receipts.push({
+            operationId: operation.operationId,
+            phaseKey: entry.phaseKey,
+            stage: entry.stage,
+            status: entry.initialStatus,
+            leaseEpoch: fence.leaseEpoch,
+            attemptCount: 0,
+            evidenceJson: null,
+            error: null,
+            updatedAt: initNow,
+            completedAt: null,
+          });
+        }
+      }
       if (operation.terminalEvent === "closed_unmerged") {
         const phaseKey = operation.phaseId ?? "feature";
         const receipt = receiptFor(phaseKey, "learning_record");
@@ -630,17 +680,20 @@ export function createDurableHarvestService(
                 projectRoot,
                 operation.trunkBranch,
               );
-              if (trunkSha !== null) {
-                const ancestor = await vcs.isCommitAncestorOfRef(
-                  projectRoot,
-                  mergeSha,
-                  operation.trunkBranch,
+              if (trunkSha === null) {
+                throw new Error(
+                  `Configured trunk branch ${operation.trunkBranch} cannot be resolved`,
                 );
-                if (!ancestor) {
-                  throw new Error(
-                    `Commit ${mergeSha} is not an ancestor of ${operation.trunkBranch}`,
-                  );
-                }
+              }
+              const ancestor = await vcs.isCommitAncestorOfRef(
+                projectRoot,
+                mergeSha,
+                operation.trunkBranch,
+              );
+              if (!ancestor) {
+                throw new Error(
+                  `Commit ${mergeSha} is not an ancestor of ${operation.trunkBranch}`,
+                );
               }
             }
             if (
@@ -670,6 +723,7 @@ export function createDurableHarvestService(
           if (!transition(phaseKey, "gate_verify", { status: "running" })) {
             break;
           }
+          let gateSucceeded = false;
           try {
             const checkout = await ensureCheckout();
             const gateResult = await executor.verifyGatesAtCheckout({
@@ -677,7 +731,7 @@ export function createDurableHarvestService(
               projectId: operation.projectId,
               featureId: operation.featureId,
               phaseId: phaseKey,
-              updateLocalTaskState: options.updateLocalTaskState,
+              updateLocalTaskState: false,
             });
             if (gateResult.failed > 0 || gateResult.failedTaskIds.length > 0) {
               const failedList = gateResult.failedTaskIds.join(", ");
@@ -723,12 +777,32 @@ export function createDurableHarvestService(
             ) {
               break;
             }
+            gateSucceeded = true;
           } catch (error) {
             transition(phaseKey, "gate_verify", {
               status: "retryable_failure",
               error: error instanceof Error ? error.message : String(error),
             });
             break;
+          }
+          if (
+            gateSucceeded &&
+            options.updateLocalTaskState &&
+            operation.mergeCommitSha
+          ) {
+            const localHeadSha = await vcs.resolveRefSha(projectRoot, "HEAD");
+            if (
+              localHeadSha &&
+              localHeadSha.toLowerCase() ===
+                operation.mergeCommitSha.toLowerCase()
+            ) {
+              await executor.markLocalPhaseTasksCompleted?.({
+                projectRoot,
+                featureId: operation.featureId,
+                phaseId: phaseKey,
+                completedAt: clock.nowIso(),
+              });
+            }
           }
         }
 
@@ -941,6 +1015,10 @@ export function createDurableHarvestService(
         }
       }
     } finally {
+      if (heartbeat) {
+        clearInterval(heartbeat);
+        heartbeat = null;
+      }
       if (checkoutState.handle) {
         try {
           await vcs.removeDetachedCheckout(
@@ -1115,14 +1193,6 @@ export function createDurableHarvestService(
         };
       }
 
-      if (project.slack) {
-        candidate.recipient = defaultSlackRecipient(
-          project,
-          verified.featureId,
-          verified.phaseId,
-        );
-      }
-
       let checkoutPhaseIds: string[] | undefined;
       if (
         verified.pullRequestIdentity.terminalEvent === "merged" &&
@@ -1168,6 +1238,14 @@ export function createDurableHarvestService(
           httpStatus: 200,
           reason: "No covered phases found at merge checkout",
         };
+      }
+
+      if (project.slack) {
+        candidate.recipient = defaultSlackRecipient(
+          project,
+          verified.featureId,
+          scopes.map((s) => s.phaseId),
+        );
       }
 
       const proposed = scopes.map((scope) =>
@@ -1255,6 +1333,18 @@ export function createDurableHarvestService(
       let maxTerminalAt: string | null = existingCursor?.lastTerminalAt ?? null;
       let maxPrNumber: number | null = existingCursor?.lastPrNumber ?? null;
 
+      const failPoll = (error: unknown): never => {
+        const message = error instanceof Error ? error.message : String(error);
+        store.saveHarvestCursor({
+          projectId: project.projectId,
+          lastPolledAt: clock.nowIso(),
+          lastTerminalAt: maxTerminalAt,
+          lastPrNumber: maxPrNumber,
+          lastError: message,
+        });
+        throw error instanceof Error ? error : new Error(message);
+      };
+
       for (const fact of sorted) {
         const receivedAt = clock.nowIso();
         const terminalEvent: HarvestTerminalEvent = fact.merged
@@ -1286,83 +1376,102 @@ export function createDurableHarvestService(
           project,
           fact,
         );
-        const verified = verifyHarvestTarget(project, candidate);
-        if (!verified.ok || verified.kind !== "pull_request") {
-          store.recordHarvestIntake({
-            candidate,
-            payloadDigest,
-            receivedAt,
-            target: {
-              accepted: false,
-              projectId: project.projectId,
-              reason: verified.ok
-                ? "Unexpected non-PR poller target"
-                : verified.reason,
-            },
-          });
-        } else {
-          if (project.slack) {
-            candidate.recipient = defaultSlackRecipient(
-              project,
-              verified.featureId,
-              verified.phaseId,
-            );
-          }
-
-          let checkoutPhaseIds: string[] | undefined;
-          if (
-            verified.pullRequestIdentity.terminalEvent === "merged" &&
-            verified.phaseId === null &&
-            verified.pullRequestIdentity.mergeCommitSha
-          ) {
-            checkoutPhaseIds = await discoverCheckoutPhases(
-              projectRoot,
-              verified.pullRequestIdentity.mergeCommitSha,
-              verified.featureId,
-              project.trunkBranch,
-            );
-          }
-
-          const scopes = scopeVerifiedMergeToPhases(verified, checkoutPhaseIds);
-          if (scopes.length === 0) {
-            store.recordHarvestIntake({
+        try {
+          const verified = verifyHarvestTarget(project, candidate);
+          if (!verified.ok || verified.kind !== "pull_request") {
+            const rejected = store.recordHarvestIntake({
               candidate,
               payloadDigest,
               receivedAt,
               target: {
                 accepted: false,
                 projectId: project.projectId,
-                reason: "No covered phases found at merge checkout",
+                reason: verified.ok
+                  ? "Unexpected non-PR poller target"
+                  : verified.reason,
               },
             });
+            if (!rejected.ok) {
+              throw new Error(
+                `Harvest poller intake rejected for PR #${fact.prNumber}: ${rejected.code}`,
+              );
+            }
           } else {
-            const proposed = scopes.map((scope) =>
-              buildProposedOperation({
-                project,
-                candidate,
-                repoSlug: verified.repoSlug,
-                featureId: scope.featureId,
-                phaseId: scope.phaseId,
-                workKey: scope.workKey,
-                mergeCommitSha: verified.pullRequestIdentity.mergeCommitSha,
-                receivedAt,
-              }),
+            let checkoutPhaseIds: string[] | undefined;
+            if (
+              verified.pullRequestIdentity.terminalEvent === "merged" &&
+              verified.phaseId === null &&
+              verified.pullRequestIdentity.mergeCommitSha
+            ) {
+              checkoutPhaseIds = await discoverCheckoutPhases(
+                projectRoot,
+                verified.pullRequestIdentity.mergeCommitSha,
+                verified.featureId,
+                project.trunkBranch,
+              );
+            }
+
+            const scopes = scopeVerifiedMergeToPhases(
+              verified,
+              checkoutPhaseIds,
             );
-            const intake = store.recordHarvestIntake({
-              candidate,
-              payloadDigest,
-              receivedAt,
-              target: {
-                accepted: true,
-                project,
-                ...(checkoutPhaseIds !== undefined ? { checkoutPhaseIds } : {}),
-                operations: proposed as [
-                  DurableHarvestOperation,
-                  ...DurableHarvestOperation[],
-                ],
-              },
-            });
-            if (intake.ok) {
+            if (scopes.length === 0) {
+              const rejected = store.recordHarvestIntake({
+                candidate,
+                payloadDigest,
+                receivedAt,
+                target: {
+                  accepted: false,
+                  projectId: project.projectId,
+                  reason: "No covered phases found at merge checkout",
+                },
+              });
+              if (!rejected.ok) {
+                throw new Error(
+                  `Harvest poller intake rejected for PR #${fact.prNumber}: ${rejected.code}`,
+                );
+              }
+            } else {
+              if (project.slack) {
+                candidate.recipient = defaultSlackRecipient(
+                  project,
+                  verified.featureId,
+                  scopes.map((s) => s.phaseId),
+                );
+              }
+              const proposed = scopes.map((scope) =>
+                buildProposedOperation({
+                  project,
+                  candidate,
+                  repoSlug: verified.repoSlug,
+                  featureId: scope.featureId,
+                  phaseId: scope.phaseId,
+                  workKey: scope.workKey,
+                  mergeCommitSha: verified.pullRequestIdentity.mergeCommitSha,
+                  receivedAt,
+                }),
+              );
+              const intake = store.recordHarvestIntake({
+                candidate,
+                payloadDigest,
+                receivedAt,
+                target: {
+                  accepted: true,
+                  project,
+                  ...(checkoutPhaseIds !== undefined
+                    ? { checkoutPhaseIds }
+                    : {}),
+                  operations: proposed as [
+                    DurableHarvestOperation,
+                    ...DurableHarvestOperation[],
+                  ],
+                },
+              });
+              if (!intake.ok) {
+                throw new Error(
+                  `Harvest poller intake rejected for PR #${fact.prNumber}: ${intake.code}`,
+                );
+              }
               for (const operation of intake.operations) {
                 acceptedEntries.push({
                   operation,
@@ -1372,6 +1481,8 @@ export function createDurableHarvestService(
               }
             }
           }
+        } catch (error) {
+          failPoll(error);
         }
 
         if (
@@ -1505,6 +1616,14 @@ export function createDurableHarvestService(
           throw new Error("Requested phase is not covered at merge checkout");
         }
 
+        if (input.recipient === undefined && project.slack) {
+          candidate.recipient = defaultSlackRecipient(
+            project,
+            verified.featureId,
+            scopes.map((s) => s.phaseId),
+          );
+        }
+
         const proposed = scopes.map((scope) =>
           buildProposedOperation({
             project,
@@ -1549,19 +1668,39 @@ export function createDurableHarvestService(
       }
 
       // Manual local commit harvest (prNumber is undefined).
+      const trunkSha = await vcs.resolveRefSha(
+        projectRoot,
+        project.trunkBranch,
+      );
+      if (trunkSha === null) {
+        throw new Error(
+          `Configured trunk branch ${project.trunkBranch} cannot be resolved`,
+        );
+      }
+
       const resolvedSha = input.commitSha
         ? FULL_GIT_SHA.test(input.commitSha.trim())
           ? input.commitSha.trim().toLowerCase()
           : ((
               await vcs.resolveRefSha(projectRoot, input.commitSha.trim())
             )?.toLowerCase() ?? null)
-        : ((
-            (await vcs.resolveRefSha(projectRoot, project.trunkBranch)) ??
-            (await vcs.resolveRefSha(projectRoot, "HEAD"))
-          )?.toLowerCase() ?? null);
+        : trunkSha.toLowerCase();
 
       if (!resolvedSha) {
         throw new Error("Could not resolve commit SHA for manual harvest");
+      }
+
+      if (input.commitSha) {
+        const ancestor = await vcs.isCommitAncestorOfRef(
+          projectRoot,
+          resolvedSha,
+          project.trunkBranch,
+        );
+        if (!ancestor) {
+          throw new Error(
+            `Commit ${resolvedSha} is not an ancestor of configured trunk branch ${project.trunkBranch}`,
+          );
+        }
       }
 
       const identityFacts = vcs.discoverIdentityFacts?.(projectRoot);

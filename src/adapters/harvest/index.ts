@@ -24,7 +24,7 @@ import type { HarvestExecutionPort } from "../../ports/operations-port.js";
 import { loadConfig } from "../../utils/config.js";
 import { loadManifests } from "../../utils/manifest.js";
 import { parsePlan } from "../../utils/parser.js";
-import { loadTaskState } from "../../utils/state.js";
+import { loadTaskState, saveTaskState } from "../../utils/state.js";
 import { createSqliteRunStoreAdapter } from "../sqlite/index.js";
 
 export interface HarvestExecutionAdapterOptions {
@@ -84,13 +84,21 @@ export function createHarvestExecutionAdapter(
       } = input;
 
       const runStatus = terminalEvent === "merged" ? "merged" : "closed";
+      const normalizedMergeSha = mergeCommitSha?.trim().toLowerCase() ?? null;
       const runs = listRuns(featureId, projectId, db);
 
       const alreadyProcessedRun = runs.find(
         (r) =>
           (phaseId ? r.phase_id === phaseId : !r.phase_id) &&
-          (prNumber !== null ? r.pr_number === prNumber : true) &&
-          r.status === runStatus,
+          r.status === runStatus &&
+          (prNumber === null
+            ? normalizedMergeSha !== null &&
+              r.merge_commit_sha?.toLowerCase() === normalizedMergeSha
+            : r.pr_number === prNumber &&
+              (runStatus !== "merged" ||
+                !normalizedMergeSha ||
+                !r.merge_commit_sha ||
+                r.merge_commit_sha.toLowerCase() === normalizedMergeSha)),
       );
 
       const targetRun = runs.find(
@@ -277,6 +285,34 @@ export function createHarvestExecutionAdapter(
         summaryText: message.text,
         blocks: message.blocks,
       };
+    },
+
+    markLocalPhaseTasksCompleted({
+      projectRoot,
+      featureId,
+      phaseId,
+      completedAt,
+    }) {
+      const featureDir = path.join(projectRoot, "specs", featureId);
+      let taskState: ReturnType<typeof loadTaskState>;
+      try {
+        taskState = loadTaskState(featureDir);
+      } catch {
+        return;
+      }
+      const phase = taskState.phases.find((p) => p.id === phaseId);
+      if (!phase) return;
+      let changed = false;
+      for (const task of phase.tasks) {
+        if (task.status !== "cancelled" && task.status !== "completed") {
+          task.status = "completed";
+          task.completedAt = completedAt;
+          changed = true;
+        }
+      }
+      if (changed) {
+        saveTaskState(featureDir, taskState);
+      }
     },
   };
 }

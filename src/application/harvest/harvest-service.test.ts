@@ -963,4 +963,363 @@ describe("DurableHarvestService", () => {
     expect(runs[0].status).toBe("merged");
     expect(runs[0].merge_commit_sha).toBe(commitSha);
   });
+
+  it("FR-003 harvestFeature does not mutate git history via finalizeLogs when updateLocalTaskState is false", async () => {
+    const repoDir = alphaProject.localRoot!;
+    execFileSync("git", ["config", "user.email", "test@example.com"], {
+      cwd: repoDir,
+    });
+    execFileSync("git", ["config", "user.name", "Test User"], { cwd: repoDir });
+    execFileSync("git", ["checkout", "-q", "-b", "main"], { cwd: repoDir });
+    writeFileSync(
+      join(repoDir, ".gwrkrc.json"),
+      JSON.stringify({ project: { name: "alpha" } }),
+    );
+
+    const featureDir = join(repoDir, "specs", "049-local-sync");
+    const runsDir = join(featureDir, ".gwrk", "runs");
+    mkdirSync(runsDir, { recursive: true });
+    writeFileSync(
+      join(featureDir, "plan.md"),
+      "# Plan\n\n### Phase 1: Durable core\n\n**Story Points**: 2 SP\n",
+    );
+    writeFileSync(
+      join(featureDir, ".gwrk", "tasks.json"),
+      JSON.stringify(
+        {
+          featureId: "049-local-sync",
+          createdAt: time,
+          phases: [
+            {
+              id: "phase-01",
+              title: "Durable core",
+              tasks: [
+                {
+                  id: "T001",
+                  title: "Pass gate",
+                  description: "",
+                  status: "open",
+                  gateScript: "true",
+                },
+              ],
+            },
+          ],
+        },
+        null,
+        2,
+      ),
+    );
+    execFileSync("git", ["add", "."], { cwd: repoDir });
+    execFileSync("git", ["commit", "-q", "-m", "feat: add 049-local-sync"], {
+      cwd: repoDir,
+    });
+    const commitSha = execFileSync("git", ["rev-parse", "HEAD"], {
+      cwd: repoDir,
+      encoding: "utf8",
+    }).trim();
+
+    // Add an untracked log file to verify updateLocalTaskState: false does not commit to projectPath.
+    writeFileSync(join(runsDir, "2026-1-phase01-claude.log"), "log-body");
+    await harvestFeature(
+      repoDir,
+      {
+        featureId: "049-local-sync",
+        phaseId: "phase-01",
+        prNumber: 0,
+        prUrl: "",
+        mergeCommitSha: commitSha,
+        mergedAt: time,
+        mergedBy: "manual",
+        status: "merged",
+      },
+      { db, project: alphaProject, updateLocalTaskState: false },
+    );
+    const headAfterReadOnly = execFileSync("git", ["rev-parse", "HEAD"], {
+      cwd: repoDir,
+      encoding: "utf8",
+    }).trim();
+    expect(headAfterReadOnly).toBe(commitSha);
+  });
+
+  it("FR-006 updates local tasks.json when harvestFeature runs with updateLocalTaskState: true on an enrolled checkout", async () => {
+    const repoDir = alphaProject.localRoot!;
+    execFileSync("git", ["config", "user.email", "test@example.com"], {
+      cwd: repoDir,
+    });
+    execFileSync("git", ["config", "user.name", "Test User"], { cwd: repoDir });
+    execFileSync("git", ["checkout", "-q", "-b", "main"], { cwd: repoDir });
+    writeFileSync(
+      join(repoDir, ".gwrkrc.json"),
+      JSON.stringify({ project: { name: "alpha" } }),
+    );
+
+    const featureDir = join(repoDir, "specs", "049-local-write");
+    mkdirSync(join(featureDir, ".gwrk", "runs"), { recursive: true });
+    writeFileSync(
+      join(featureDir, "plan.md"),
+      "# Plan\n\n### Phase 1: Durable core\n\n**Story Points**: 2 SP\n",
+    );
+    const tasksPath = join(featureDir, ".gwrk", "tasks.json");
+    writeFileSync(
+      tasksPath,
+      JSON.stringify(
+        {
+          featureId: "049-local-write",
+          createdAt: time,
+          phases: [
+            {
+              id: "phase-01",
+              title: "Durable core",
+              tasks: [
+                {
+                  id: "T001",
+                  title: "Pass gate",
+                  description: "",
+                  status: "open",
+                  gateScript: "true",
+                },
+              ],
+            },
+          ],
+        },
+        null,
+        2,
+      ),
+    );
+    execFileSync("git", ["add", "."], { cwd: repoDir });
+    execFileSync("git", ["commit", "-q", "-m", "feat: add 049-local-write"], {
+      cwd: repoDir,
+    });
+    const commitSha = execFileSync("git", ["rev-parse", "HEAD"], {
+      cwd: repoDir,
+      encoding: "utf8",
+    }).trim();
+
+    await harvestFeature(
+      repoDir,
+      {
+        featureId: "049-local-write",
+        phaseId: "phase-01",
+        prNumber: 0,
+        prUrl: "",
+        mergeCommitSha: commitSha,
+        mergedAt: time,
+        mergedBy: "manual",
+        status: "merged",
+      },
+      { db, project: alphaProject, updateLocalTaskState: true },
+    );
+    const { readFileSync } = await import("node:fs");
+    const updatedTasks = JSON.parse(readFileSync(tasksPath, "utf8"));
+    expect(updatedTasks.phases[0].tasks[0].status).toBe("completed");
+  });
+
+  it("FR-002 rejects manual local harvest when configured trunkBranch cannot be resolved instead of falling back to HEAD", async () => {
+    const harness = createHarness();
+    const developProject: EnrolledProject = {
+      ...alphaProject,
+      trunkBranch: "develop",
+    };
+    harness.registry.enrollProject(developProject);
+
+    vi.mocked(harness.vcs.resolveRefSha).mockImplementation(
+      async (_cwd, ref) => (ref === "develop" ? null : MERGE_SHA),
+    );
+
+    await expect(
+      harness.service.runManualHarvest({
+        project: developProject,
+        featureId: "049-durable",
+        phaseId: "phase-01",
+        updateLocalTaskState: false,
+        ownerId: "cli-1",
+      }),
+    ).rejects.toThrow(/trunk|develop/i);
+  });
+
+  it("TR-002 pollProject does not advance the harvest cursor past a PR whose intake failed", async () => {
+    const harness = createHarness();
+    // Seed PR #42 via webhook with HEAD_SHA.
+    await harness.service.ingestWebhook({
+      deliveryId: "del-seed-42",
+      eventType: "pull_request",
+      ...signWebhook(prWebhookPayload({ prNumber: 42, headSha: HEAD_SHA })),
+      webhookSecret: SECRET,
+    });
+
+    // Poller observes PR #42 with conflicting headSha (causing HARVEST_IDENTITY_MISMATCH)
+    // followed by PR #43 at a later timestamp.
+    vi.mocked(harness.github.listTerminalPullRequests).mockResolvedValueOnce([
+      prFact({
+        prNumber: 42,
+        headSha: MOVED_SHA,
+        mergedAt: "2026-11-18T00:02:00.000Z",
+      }),
+      prFact({
+        prNumber: 43,
+        mergeCommitSha: "d".repeat(40),
+        mergedAt: "2026-11-18T00:03:00.000Z",
+      }),
+    ]);
+
+    await expect(
+      harness.service.pollProject(alphaProject, "poller-1"),
+    ).rejects.toThrow(/HARVEST_IDENTITY_MISMATCH|intake/i);
+
+    const cursor = harness.store.getHarvestCursor(alphaProject.projectId);
+    expect(cursor?.lastTerminalAt).not.toBe("2026-11-18T00:03:00.000Z");
+    expect(cursor?.lastError).toBeTruthy();
+  });
+
+  it("TR-003 renews harvest lease via heartbeatHarvestLease so long-running gate verification completes without LEASE_EXPIRED", async () => {
+    const harness = createHarness({ leaseDurationMs: 60 });
+    await harness.service.ingestWebhook({
+      deliveryId: "del-long-gate",
+      eventType: "pull_request",
+      ...signWebhook(prWebhookPayload()),
+      webhookSecret: SECRET,
+    });
+
+    const heartbeatSpy = vi.spyOn(harness.store, "heartbeatHarvestLease");
+    vi.mocked(harness.executor.verifyGatesAtCheckout).mockImplementationOnce(
+      async () => {
+        // Simulate gate work taking longer than leaseDurationMs (60ms) while clock advances.
+        for (let i = 0; i < 4; i++) {
+          await new Promise((resolve) => setTimeout(resolve, 25));
+          time = new Date(Date.parse(time) + 25).toISOString();
+        }
+        return { passed: 2, failed: 0, total: 2, failedTaskIds: [] };
+      },
+    );
+
+    const summaries = await harness.service.resumeIncomplete("runner-1");
+    expect(heartbeatSpy).toHaveBeenCalled();
+    expect(summaries[0].status).toBe("completed");
+  });
+
+  it("FR-004 preserves accepted dispatch recipient on manual PR harvest and whole-feature webhook harvest", async () => {
+    const harness = createHarness();
+    // Accept a dispatch with an actorUserId on its Slack recipient.
+    harness.store.acceptDispatch({
+      projectId: alphaProject.projectId,
+      featureId: "049-durable",
+      phaseId: "phase-01",
+      backend: "claude",
+      trunkBranch: "main",
+      recipient: {
+        projectId: alphaProject.projectId,
+        surface: "slack",
+        workspaceId: "W1",
+        channelId: "C1",
+        actorUserId: "U_DISPATCHER",
+      },
+      newOperationId: "disp-recipient-1",
+      nowIso: time,
+    });
+
+    const manual = await harness.service.runManualHarvest({
+      project: alphaProject,
+      featureId: "049-durable",
+      phaseId: "phase-01",
+      prNumber: 42,
+      updateLocalTaskState: false,
+      ownerId: "cli-1",
+    });
+    expect(manual[0].status).toBe("completed");
+    expect(harness.notify).toHaveBeenCalledWith(
+      expect.objectContaining({
+        recipient: expect.objectContaining({
+          actorUserId: "U_DISPATCHER",
+        }),
+      }),
+    );
+
+    // Whole-feature webhook harvest resolves scoped phases before selecting the dispatch recipient.
+    harness.notify.mockClear();
+    vi.mocked(harness.executor.discoverPhasesAtCheckout).mockResolvedValueOnce([
+      "phase-01",
+      "phase-02",
+    ]);
+    harness.store.acceptDispatch({
+      projectId: alphaProject.projectId,
+      featureId: "049-whole",
+      phaseId: "phase-02",
+      backend: "claude",
+      trunkBranch: "main",
+      recipient: {
+        projectId: alphaProject.projectId,
+        surface: "slack",
+        workspaceId: "W1",
+        channelId: "C1",
+        actorUserId: "U_WHOLE_DISPATCHER",
+      },
+      newOperationId: "disp-recipient-whole",
+      nowIso: time,
+    });
+
+    const webhook = await harness.service.ingestWebhook({
+      deliveryId: "del-whole-recipient",
+      eventType: "pull_request",
+      ...signWebhook(
+        prWebhookPayload({
+          prNumber: 44,
+          headBranch: "feat/049-whole",
+          mergeCommitSha: "e".repeat(40),
+        }),
+      ),
+      webhookSecret: SECRET,
+    });
+    expect(webhook.accepted).toBe(true);
+    const resumed = await harness.service.resumeIncomplete("runner-whole");
+    expect(resumed.length).toBeGreaterThanOrEqual(2);
+    expect(resumed.every((s) => s.status === "completed")).toBe(true);
+    expect(harness.notify).toHaveBeenCalledWith(
+      expect.objectContaining({
+        recipient: expect.objectContaining({
+          actorUserId: "U_WHOLE_DISPATCHER",
+        }),
+      }),
+    );
+  });
+
+  it("FR-003 HarvestExecutionAdapter.recordLearningAtCheckout records a distinct merged run for a new local commit instead of matching an earlier commit", async () => {
+    const repoDir = alphaProject.localRoot!;
+    const featureDir = join(repoDir, "specs", "049-two-commits");
+    mkdirSync(join(featureDir, ".gwrk", "runs"), { recursive: true });
+
+    const adapter = createHarvestExecutionAdapter({ db });
+    const first = await adapter.recordLearningAtCheckout({
+      checkoutDir: repoDir,
+      projectId: alphaProject.projectId,
+      featureId: "049-two-commits",
+      phaseId: "phase-01",
+      prNumber: null,
+      prUrl: null,
+      terminalEvent: "merged",
+      mergeCommitSha: "1".repeat(40),
+      terminalAt: "2026-11-18T00:01:00.000Z",
+      gatePassed: true,
+    });
+    const second = await adapter.recordLearningAtCheckout({
+      checkoutDir: repoDir,
+      projectId: alphaProject.projectId,
+      featureId: "049-two-commits",
+      phaseId: "phase-01",
+      prNumber: null,
+      prUrl: null,
+      terminalEvent: "merged",
+      mergeCommitSha: "2".repeat(40),
+      terminalAt: "2026-11-18T00:02:00.000Z",
+      gatePassed: true,
+    });
+
+    expect(first.linkedRunId).not.toBeNull();
+    expect(second.linkedRunId).not.toBeNull();
+    expect(second.linkedRunId).not.toBe(first.linkedRunId);
+    const runs = listRuns("049-two-commits", alphaProject.projectId, db);
+    expect(runs.map((r) => r.merge_commit_sha).sort()).toEqual([
+      "1".repeat(40),
+      "2".repeat(40),
+    ]);
+  });
 });

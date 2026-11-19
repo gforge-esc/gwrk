@@ -587,4 +587,110 @@ describe("DurableDispatchService", () => {
     await draining;
     expect(inFlight).toBe(0);
   });
+
+  it("TR-001 does not strand a stale dispatch under a new live lease when sandbox cleanup fails transiently", async () => {
+    const harness = createHarness({
+      leaseDurationMs: 60_000,
+      maxCrashRecoveryAttempts: 2,
+    });
+    const receipt = harness.service.accept({
+      project: alphaProject,
+      featureId: "049-durable",
+      phaseId: "phase-04",
+      backend: "claude",
+    });
+    harness.store.claimDispatchLease({
+      operationId: receipt.operationId,
+      leaseOwner: "worker-1",
+      nowIso: time,
+      leaseExpiresAt: new Date(Date.parse(time) + 60_000).toISOString(),
+    });
+    advanceSeconds(120);
+
+    harness.inspectRecoveredWork.mockResolvedValue({
+      ...stoppedNoPrEvidence,
+      sandboxDir: "/tmp/busy-sandbox",
+    });
+    harness.cleanupStaleSandbox
+      .mockRejectedValueOnce(new Error("EBUSY: sandbox locked"))
+      .mockResolvedValueOnce(undefined);
+
+    const firstAttempt = await harness.service.recoverOnStartup("coord-2");
+    expect(firstAttempt).toEqual({
+      requeuedCount: 0,
+      completedFromPrCount: 0,
+      failedCount: 0,
+    });
+
+    // Immediate retry (without waiting for a 60s lease expiry) must recover and requeue.
+    const opAfterFailure = harness.service.getOperation(
+      alphaProject.projectId,
+      "049-durable",
+      "phase-04",
+    );
+    expect(opAfterFailure?.leaseEpoch).toBe(1);
+    expect(opAfterFailure?.attemptCount).toBe(1);
+
+    const retryAttempt = await harness.service.recoverOnStartup("coord-2");
+    expect(retryAttempt).toEqual({
+      requeuedCount: 1,
+      completedFromPrCount: 0,
+      failedCount: 0,
+    });
+  });
+
+  it("TR-003 concurrent recoverOnStartup does not hijack an already-requeued operation or fail it prematurely", async () => {
+    const harness = createHarness({
+      leaseDurationMs: 60_000,
+      maxCrashRecoveryAttempts: 2,
+    });
+    const receipt = harness.service.accept({
+      project: alphaProject,
+      featureId: "049-durable",
+      phaseId: "phase-04",
+      backend: "claude",
+    });
+    harness.store.claimDispatchLease({
+      operationId: receipt.operationId,
+      leaseOwner: "worker-1",
+      nowIso: time,
+      leaseExpiresAt: new Date(Date.parse(time) + 60_000).toISOString(),
+    });
+    advanceSeconds(120);
+
+    let releaseCoordA!: (evidence: WorkerRecoveryEvidence) => void;
+    harness.inspectRecoveredWork
+      .mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            releaseCoordA = resolve;
+          }),
+      )
+      .mockResolvedValue(stoppedNoPrEvidence);
+
+    const coordARecovery = harness.service.recoverOnStartup("coord-a");
+    await vi.waitFor(() =>
+      expect(harness.inspectRecoveredWork).toHaveBeenCalledTimes(1),
+    );
+
+    // Coord B recovers and requeues the expired operation to "accepted".
+    const coordBResult = await harness.service.recoverOnStartup("coord-b");
+    expect(coordBResult).toEqual({
+      requeuedCount: 1,
+      completedFromPrCount: 0,
+      failedCount: 0,
+    });
+
+    // Coord A's stale inspection finishes after Coord B already requeued the operation.
+    releaseCoordA(stoppedNoPrEvidence);
+    const coordAResult = await coordARecovery;
+    expect(coordAResult.failedCount).toBe(0);
+
+    const op = harness.service.getOperation(
+      alphaProject.projectId,
+      "049-durable",
+      "phase-04",
+    );
+    expect(op?.status).toBe("accepted");
+  });
 });

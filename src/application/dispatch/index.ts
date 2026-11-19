@@ -6,7 +6,6 @@ import { randomUUID } from "node:crypto";
 import {
   type DispatchReceipt,
   type DurableDispatchOperation,
-  type StaleLeaseDecision,
   type WorkerRecoveryEvidence,
   evaluateStaleDispatchReconciliation,
 } from "../../domain/durable-dispatch.js";
@@ -267,37 +266,46 @@ export function createDurableDispatchService(
           continue;
         }
 
+        const stillRecoverable = store
+          .listRecoverableDispatches({
+            nowIso: clock.nowIso(),
+            projectId: op.projectId,
+          })
+          .some(
+            (candidate) =>
+              candidate.operationId === op.operationId &&
+              candidate.status !== "accepted" &&
+              candidate.leaseEpoch === op.leaseEpoch,
+          );
+        if (!stillRecoverable) continue;
+
+        if (
+          initialDecision.action !== "complete_from_pr" &&
+          initialEvidence.sandboxDir
+        ) {
+          try {
+            await worker.cleanupStaleSandbox(
+              projectRoot,
+              initialEvidence.sandboxDir,
+              op.featureId,
+            );
+          } catch {
+            // Preserve sandbox cleanup failures without hiding terminal state.
+            if (initialDecision.action === "requeue_attempt") continue;
+          }
+        }
+
         const claimed = store.claimDispatchLease({
           operationId: op.operationId,
           leaseOwner: ownerId,
           nowIso: clock.nowIso(),
           leaseExpiresAt: leaseExpiryIso(clock, leaseDurationMs),
+          expectedLeaseEpoch: op.leaseEpoch,
         });
         if (!claimed) continue;
 
-        let evidence: WorkerRecoveryEvidence = initialEvidence;
-        let decision: StaleLeaseDecision = initialDecision;
-        if (claimed.operation.leaseEpoch !== op.leaseEpoch + 1) {
-          evidence = await inspectOperation(
-            claimed.operation,
-            project,
-            projectRoot,
-          );
-          decision = evaluateStaleDispatchReconciliation({
-            operation: {
-              ...claimed.operation,
-              attemptCount: Math.max(0, claimed.operation.attemptCount - 1),
-            },
-            evidence,
-            maxCrashRecoveryAttempts,
-          });
-          if (
-            decision.action === "await_worker_stop" ||
-            decision.action === "await_pr_evidence"
-          ) {
-            continue;
-          }
-        }
+        const evidence = initialEvidence;
+        const decision = initialDecision;
 
         if (decision.action === "complete_from_pr") {
           const done = store.completeDispatchAttempt({
@@ -322,19 +330,6 @@ export function createDurableDispatchService(
             }
           }
           continue;
-        }
-
-        if (evidence.sandboxDir) {
-          try {
-            await worker.cleanupStaleSandbox(
-              projectRoot,
-              evidence.sandboxDir,
-              op.featureId,
-            );
-          } catch {
-            // Preserve sandbox cleanup failures without hiding terminal state.
-            if (decision.action === "requeue_attempt") continue;
-          }
         }
 
         if (decision.action === "requeue_attempt") {
