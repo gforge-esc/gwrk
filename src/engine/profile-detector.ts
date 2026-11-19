@@ -51,11 +51,15 @@ export async function detectProfile(
 
 export function resolveWorkspacePolicyRoot(workDir: string): string {
   const requestedWorkspace = path.resolve(workDir);
-  const { registrations } = ancestorWorkspaceConfigs(
+  const { ancestors, registrations } = ancestorWorkspaceConfigs(
     physicalPath(requestedWorkspace),
     requestedWorkspace,
   );
-  return registrations[0]?.directory ?? workDir;
+  return (
+    registrations[0]?.directory ??
+    findNearestAncestorDesign(ancestors)?.directory ??
+    workDir
+  );
 }
 
 function detectProfileInDirectory(

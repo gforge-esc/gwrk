@@ -41,12 +41,14 @@ async function prompt(
 }
 describe("shared effective policy dispatch", () => {
   it.each([
-    { selection: "inherited Hexagonal Functional", workspaceDesign: undefined },
+    { selection: "inherited Hexagonal Functional", workspaceDesign: undefined, registered: true },
+    { selection: "unregistered inherited Hexagonal Functional", workspaceDesign: undefined, registered: false },
     {
       selection: "explicit Clean",
+      registered: true,
       workspaceDesign: resolveDesign({ architecture: "clean", principles: ["tdd"] }),
     },
-  ])("uses $selection policy and owning worktree grounding", async ({ workspaceDesign }) => {
+  ])("uses $selection policy and owning worktree grounding", async ({ workspaceDesign, registered }) => {
     const worktree = join(root, "worktree");
     const workspace = join(worktree, "services/api");
     const git = (...args: string[]) =>
@@ -73,9 +75,9 @@ describe("shared effective policy dispatch", () => {
       join(worktree, ".gwrkrc.json"),
       JSON.stringify({
         project: { name: "binding-fixture", type: "nodejs", stack: projectStack, design },
-        workspaces: {
+        ...(registered ? { workspaces: {
           "services/api": { type: "python", stack: workspaceStack, design: workspaceDesign },
-        },
+        } } : {}),
       }),
     );
     mkdirSync(workspace, { recursive: true });

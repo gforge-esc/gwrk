@@ -244,3 +244,5 @@ Phase 4 preparation adds an observed incompatible-framework initialization regre
 Phase 3 canonical pack identity regression observes duplicate prompt rules when an override uses a symbolic link. Candidate discovery now resolves physical directories before prompt deduplication while preserving each effective policy name. The symbolic-link case failed before repair. Both disable mechanisms are also covered through links. All 101 phase checks pass.
 
 Phase 4 preparation now passes 176 checks and the compiled CLI acceptance script. The incompatible framework context regression, workspace design-loss regression and four shared-dispatch regressions failed before repair. The decision identity remains based on the selected context input. Installing a missing policy pack updates gaps without creating another target decision. Independent phase review remains required.
+
+TR-013 also dispatches an unregistered Python and FastAPI workspace. Verify inherited design and owning-worktree packs. Verify architecture target and decision grounding. Keep workspace execution and byte-identical saved context.
