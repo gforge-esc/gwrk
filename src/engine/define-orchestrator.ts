@@ -17,6 +17,7 @@ import {
 } from "../adapters/cli/output-scope.js";
 import { isPolyglotTestFile } from "../domain/test-rules.js";
 import { WorkflowRuntime } from "../plugins/workflow-runtime.js";
+import type { AgentTaskRequest } from "../ports/agent-port.js";
 import { dryRun as dryRunFmt } from "../utils/format.js";
 import {
   type GateGenResult,
@@ -36,13 +37,16 @@ import {
 import { planToTasks } from "./plan-to-tasks.js";
 import { detectProfile } from "./profile-detector.js";
 
+type RoutedDefineConfig = DefineRunConfig &
+  Pick<AgentTaskRequest, "effort" | "routeMode">;
+
 export class DefineOrchestrator extends EventEmitter {
-  private config: DefineRunConfig;
+  private config: RoutedDefineConfig;
   private state: DefineState;
   private runtime: WorkflowRuntime;
 
   constructor(
-    config: DefineRunConfig,
+    config: RoutedDefineConfig,
     state?: DefineState,
     runtime?: WorkflowRuntime,
   ) {
@@ -176,7 +180,10 @@ export class DefineOrchestrator extends EventEmitter {
    */
   public async runLoop(
     initialInput?: string,
-    options: { stopAfterOne?: boolean } = {},
+    options: {
+      stopAfterOne?: boolean;
+      onSpecified?: (observedModel?: string) => void;
+    } = {},
   ): Promise<number> {
     if (!this.config.dryRun) {
       logCliOutput(
@@ -195,7 +202,7 @@ export class DefineOrchestrator extends EventEmitter {
 
       switch (this.state.stage) {
         case DefineStage.SPECIFY:
-          result = await this.stageSpecify(currentInput);
+          result = await this.stageSpecify(currentInput, options.onSpecified);
           break;
         case DefineStage.PLAN:
           result = await this.stagePlan(currentInput);
@@ -313,7 +320,10 @@ export class DefineOrchestrator extends EventEmitter {
     }
   }
 
-  private async stageSpecify(input?: string): Promise<StageResult> {
+  private async stageSpecify(
+    input?: string,
+    onSpecified?: (observedModel?: string) => void,
+  ): Promise<StageResult> {
     if (this.config.dryRun) {
       dryRunFmt("gwrk-specify", this.config.backend);
       return { success: true, exitCode: 0 };
@@ -332,12 +342,15 @@ export class DefineOrchestrator extends EventEmitter {
         {
           agent: this.config.backend,
           model: this.config.model,
+          effort: this.config.effort,
+          routeMode: this.config.routeMode,
           projectRoot: this.config.cwd,
           quiet: this.config.quiet ?? true,
           tolerant: this.config.tolerant,
         },
       );
 
+      onSpecified?.(result.observedModel);
       logCliOutput(`  ${result.summary}`);
       return { success: true, exitCode: 0 };
     } catch (err: unknown) {

@@ -6,7 +6,8 @@ import { execSync } from "node:child_process";
 import * as fs from "node:fs";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
-import { warnCli } from "../adapters/cli/output-scope.js";
+import { logCliOutput, warnCli } from "../adapters/cli/output-scope.js";
+import { resolveWorkflowPolicyScope } from "../domain/policy-selection.js";
 import type { ProjectProfile } from "../domain/types.js";
 import { IntentEngine, type IntentSummary } from "../engine/intent-engine.js";
 import { detectProfile } from "../engine/profile-detector.js";
@@ -16,6 +17,7 @@ import {
   type TaskResult,
   dispatchToAgent,
 } from "../utils/agent.js";
+import { resolveWorkflowPin } from "../utils/resolve-agent.js";
 import { PluginLoader, PluginNotFoundError } from "./loader.js";
 import type { JsonIntent, WorkflowManifest } from "./manifest.js";
 
@@ -180,10 +182,15 @@ interface WorkflowOptions {
   dispatcher?: (task: TaskDispatch) => Promise<TaskResult>;
   featureDir?: string;
   taskType?: string;
+  /** Router defaults apply only when the project has no qualified route. */
+  routeDefaults?: { backend: string; model?: string; effort?: string };
   projectRoot?: string;
+  /** Owning runner checkout that stores `.runs/models` discovery and evaluation evidence. */
+  evidenceRoot?: string;
   agent?: string;
   model?: string;
   effort?: string;
+  routeMode?: "pinned" | "provider-default";
   quiet?: boolean;
   tolerant?: boolean;
   /**
@@ -208,6 +215,13 @@ interface WorkflowResult {
   summaries: IntentSummary[];
   logPath?: string;
   taskResult?: TaskResult;
+  observedModel?: string;
+}
+
+function normalizeObservedModel(value: string | undefined): string {
+  return typeof value === "string" && value.trim().length > 0
+    ? value.trim()
+    : "unknown";
 }
 
 /**
@@ -309,36 +323,14 @@ export class WorkflowRuntime {
     }
   }
 
-  /**
-   * Executes a workflow by resolving its prompt, invoking an agent,
-   * parsing the JSON intent output, and executing those intents.
-   */
-  async executeWorkflow(
+  async renderWorkflowPrompt(
     name: string,
     input: string,
-    options: WorkflowOptions & { nativeOnly: true },
-  ): Promise<WorkflowResult & { taskResult: TaskResult }>;
-  async executeWorkflow(
-    name: string,
-    input: string,
-    options?: WorkflowOptions,
-  ): Promise<WorkflowResult>;
-  async executeWorkflow(
-    name: string,
-    input: string,
-    options: WorkflowOptions = {},
-  ): Promise<WorkflowResult> {
-    const projectRoot = options.projectRoot || process.cwd();
-
-    if (options.nativeOnly && options.reportOnly) {
-      throw new Error(
-        "Native execution and report-only execution are mutually exclusive.",
-      );
-    }
-    if (options.recordedResult && !options.reportOnly) {
-      throw new Error("Recorded output requires report-only execution.");
-    }
-    const dispatcher = options.dispatcher ?? dispatchToAgent;
+    options: Pick<
+      WorkflowOptions,
+      "projectRoot" | "profile" | "nativeOnly" | "allowMissingPrompt"
+    >,
+  ) {
     const loader = options.projectRoot
       ? new PluginLoader({ projectDir: options.projectRoot })
       : this.loader;
@@ -380,7 +372,9 @@ export class WorkflowRuntime {
       throw new Error(`Workflow '${name}' has no prompt directory.`);
     }
 
-    const profile = options.profile ?? (await detectProfile(projectRoot));
+    const profile =
+      options.profile ??
+      (await detectProfile(options.projectRoot || process.cwd()));
     const conditionedPrompt =
       name === "gwrk-specify" ||
       name === "gwrk-plan" ||
@@ -395,14 +389,96 @@ export class WorkflowRuntime {
       ? conditionedPrompt
       : `${conditionedPrompt}\n\n<output_contract>\nYour output MUST be a single JSON object matching this schema:\n${JSON.stringify(outputSchema, null, 2)}\n</output_contract>`;
 
+    return {
+      template,
+      userInput,
+      stdin: [template, userInput].filter(Boolean).join("\n\n"),
+      profile,
+      manifest,
+    };
+  }
+
+  /**
+   * Executes a workflow by resolving its prompt, invoking an agent,
+   * parsing the JSON intent output, and executing those intents.
+   */
+  async executeWorkflow(
+    name: string,
+    input: string,
+    options: WorkflowOptions & { nativeOnly: true },
+  ): Promise<WorkflowResult & { taskResult: TaskResult }>;
+  async executeWorkflow(
+    name: string,
+    input: string,
+    options?: WorkflowOptions,
+  ): Promise<WorkflowResult>;
+  async executeWorkflow(
+    name: string,
+    input: string,
+    options: WorkflowOptions = {},
+  ): Promise<WorkflowResult> {
+    const projectRoot = options.projectRoot || process.cwd();
+
+    if (options.nativeOnly && options.reportOnly) {
+      throw new Error(
+        "Native execution and report-only execution are mutually exclusive.",
+      );
+    }
+    if (options.recordedResult && !options.reportOnly) {
+      throw new Error("Recorded output requires report-only execution.");
+    }
+    const dispatcher = options.dispatcher ?? dispatchToAgent;
+    const { template, userInput, stdin, profile, manifest } =
+      await this.renderWorkflowPrompt(name, input, options);
+    const outputSchema = manifest?.outputSchema;
+
+    const definitionTask = [
+      "gwrk-ontology-construct",
+      "gwrk-architecture-assessment",
+      "gwrk-define-tests",
+      "gwrk-checklist",
+      "gwrk-analyze",
+    ].includes(name);
+    const policyScope = resolveWorkflowPolicyScope(
+      name,
+      options.taskType ?? (definitionTask ? "define" : undefined),
+    );
+    const route = options.recordedResult
+      ? undefined
+      : resolveWorkflowPin(
+          policyScope === "implementation" ? "implement" : policyScope,
+          projectRoot,
+          {
+            agent: options.agent,
+            model: options.model,
+            effort: options.effort,
+            routeMode: options.routeMode,
+            evidenceRoot: options.evidenceRoot,
+          },
+        );
+    if (route?.preflightBanner) logCliOutput(route.preflightBanner);
+    const defaults = route ? undefined : options.routeDefaults;
+    const selectedModel = route?.model ?? options.model ?? defaults?.model;
+    const routeMode =
+      route?.routeMode ??
+      options.routeMode ??
+      (selectedModel ? undefined : "provider-default");
+    const effort =
+      route?.effort ??
+      options.effort ??
+      (options.routeMode === "provider-default" ? undefined : defaults?.effort);
+    const effectiveModel =
+      routeMode === "provider-default" ? undefined : selectedModel;
     const task: TaskDispatch = {
       type: options.taskType ?? "workflow",
-      stdin: [template, userInput].filter(Boolean).join("\n\n"),
+      stdin,
       promptParts: { template, userInput },
       profile,
-      agent: options.agent,
-      model: options.model,
-      env: options.effort ? { GWRK_EFFORT: options.effort } : undefined,
+      agent: route?.backend ?? options.agent ?? defaults?.backend,
+      model: effectiveModel,
+      ...(effort ? { effort } : {}),
+      ...(routeMode ? { routeMode } : {}),
+      env: effort ? { GWRK_EFFORT: effort } : undefined,
       featureDir: options.featureDir,
       workDir: projectRoot,
       workflow: name,
@@ -421,6 +497,7 @@ export class WorkflowRuntime {
         summaries: [],
         logPath: taskResult.logPath,
         taskResult,
+        observedModel: normalizeObservedModel(taskResult.observedModel),
       };
     }
 
@@ -485,6 +562,8 @@ export class WorkflowRuntime {
             "Agent completed successfully (native execution; structured output not serialized)",
           intents: [],
           summaries: [],
+          logPath: result.logPath,
+          observedModel: normalizeObservedModel(result.observedModel),
         };
       }
       throw new Error(
@@ -516,6 +595,8 @@ export class WorkflowRuntime {
             "Agent completed successfully (native execution, no JSON intents)",
           intents: [],
           summaries: [],
+          logPath: result.logPath,
+          observedModel: normalizeObservedModel(result.observedModel),
         };
       }
       // Truncate raw output in error — full output is in the log file
@@ -642,6 +723,7 @@ export class WorkflowRuntime {
       summaries,
       logPath: result.logPath,
       output: parsedOutput,
+      observedModel: normalizeObservedModel(result.observedModel),
     };
   }
 }

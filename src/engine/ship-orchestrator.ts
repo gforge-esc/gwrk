@@ -354,7 +354,10 @@ function inferSpanFromBody(body: string): PrPhaseRecord[] {
   return single ? [{ id: `phase-${single[1].padStart(2, "0")}` }] : [];
 }
 
-type ShipOrchestratorConfig = ShipRunConfig & { gitEnv?: NodeJS.ProcessEnv };
+type ShipOrchestratorConfig = ShipRunConfig & {
+  gitEnv?: NodeJS.ProcessEnv;
+  explicitBackend?: string;
+};
 
 export class ShipOrchestrator extends EventEmitter {
   private config: ShipOrchestratorConfig;
@@ -2796,7 +2799,19 @@ ${marker}`;
       input,
       {
         projectRoot: this.config.cwd,
-        agent: this.config.backend,
+        evidenceRoot: this.config.stateRoot,
+        agent: this.config.explicitBackend,
+        routeDefaults: {
+          backend: this.config.backend,
+          model:
+            taskType === "review"
+              ? this.config.reviewModel
+              : this.config.selectedModel,
+          effort:
+            taskType === "review"
+              ? this.config.reviewEffort
+              : this.config.selectedEffort,
+        },
         featureDir: `specs/${this.config.featureId}`,
         taskType,
         nativeOnly: true,
@@ -2813,16 +2828,7 @@ ${marker}`;
    * runs with its own default model.
    */
   private async dispatchWithFailback(task: TaskDispatch): Promise<TaskResult> {
-    const env: Record<string, string | undefined> = { ...task.env };
-    const review = task.type === "review";
-    const model =
-      task.model ??
-      (review ? this.config.reviewModel : this.config.selectedModel);
-    const effort = review
-      ? this.config.reviewEffort
-      : this.config.selectedEffort;
-    if (effort) env.GWRK_EFFORT = effort;
-    if (model) logCliOutput(`    🤖 Router model: ${model}`);
+    if (task.model) logCliOutput(`    🤖 Router model: ${task.model}`);
 
     // 2. Dispatch — run the agent in the ship working tree (cwd), not
     // process.cwd(). Identical for the primary checkout; under worktree-isolated
@@ -2834,8 +2840,6 @@ ${marker}`;
     // every earlier stage already proved good.
     const dispatch = {
       ...task,
-      model,
-      env,
       workDir: task.workDir ?? this.config.cwd,
       backendProjectRoot: this.config.stateRoot ?? this.config.cwd,
     };

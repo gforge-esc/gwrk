@@ -142,6 +142,13 @@ function validateDocument(
   }
 }
 
+export function parseRouteLockDocument(scope: RunnerScope, value: unknown) {
+  guardSecrets(value);
+  const document = lockSchema.parse(value);
+  validateDocument(scope, document);
+  return document;
+}
+
 export function createRouteLockStore(projectRoot: string): RouteLockStorePort {
   const root = realpathSync(resolve(projectRoot));
   const locate = (parts: string[], create = false): string | null => {
@@ -280,11 +287,10 @@ export function createRouteLockStore(projectRoot: string): RouteLockStorePort {
         join(directory, `route-lock.${scope.runnerProfile}.json`),
       );
       if (bytes === null) return null;
-      const value = JSON.parse(bytes);
-      guardSecrets(value);
-      const document = lockSchema.parse(value);
-      validateDocument(scope, document);
-      return { digest: hash(bytes), document };
+      return {
+        digest: hash(bytes),
+        document: parseRouteLockDocument(scope, JSON.parse(bytes)),
+      };
     },
     async writeRouteLockAtomic(scope, request) {
       scopeSchema.parse(scope);

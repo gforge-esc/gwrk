@@ -60,7 +60,7 @@ Add discovery adapters separate from `dispatch()` (`ADR-006`). Support `agy mode
 - `src/adapters/models/catalog-discovery.ts` (NEW: Collect built-in, external plugin and explicit candidate catalogs with versions)
 - `src/adapters/models/smoke-probe.ts` (NEW: Run bounded exact-model and effort smoke probes in clean temporary directories)
 - `src/adapters/models/catalog-discovery.test.ts` (NEW: Test catalog parsers and unavailable reporting)
-- `src/adapters/models/smoke-probe.test.ts` (NEW: Verify the exact route, clean checkout, response schema and probe evidence)
+- `src/adapters/models/smoke-probe.test.ts` (NEW: Verify the exact route in a clean checkout. Check the response schema and probe evidence.)
 - `src/utils/agent.ts` (MODIFY: Enforce explicit dispatch deadlines and allow synthetic fixtures to exclude external context)
 - `src/utils/agent.test.ts` (MODIFY: Verify deadline expiry terminates the subprocess and reports a timeout)
 
@@ -148,7 +148,8 @@ Persist runner-scoped discovery snapshots, evaluation bundles and temp-rename at
 
 | ID | Type | Target | Expected result |
 |---|---|---|---|
-| TR-011 | integration | `src/adapters/models/route-lock-store.test.ts` | Failed writes and stale incumbent evidence leave the active lock intact. Rollback restores the previous lock. |
+| TR-011 | integration | `src/adapters/models/route-lock-store.test.ts` | Active lock preserved after failed writes or stale incumbent evidence |
+| TR-011 | integration | `src/adapters/models/route-lock-store.test.ts` | Previous lock restored on rollback |
 | TR-012 | application | `src/application/models/evaluate-models.test.ts` | Serialized promotion evidence replays gate and judge checks without retaining the blinding secret |
 | TR-012 | integration | `src/commands/models.test.ts` | Synthetic end-to-end CLI cycle promotes passing candidate and rejects absent, stale or split-judge runs |
 | TR-013 | gate | `src/cli.option-collisions.test.ts` | CLI consistency, help examples and option-collision gates pass |
@@ -171,6 +172,12 @@ Connect `.gwrk/models/route-lock.<runner>.json` to the unified routing seam once
 - `src/utils/manifest.ts` (MODIFY: Record `requestedModel`, `observedModel` and `fallbackReason` in manifests)
 - `docs/operations/model-qualification-live.md` (NEW: Define separate live qualification steps for local workstation and Linux pilot runners)
 - `src/application/models/resolve-route.test.ts` (NEW: Seam tests for pinned dispatch, qualified fallback chains and `provider-default` mode)
+- `src/commands/implement.test.ts` (MODIFY: Verify task order and both gate checks through WorkflowRuntime. Keep absent-lock and dry-run coverage.)
+- `src/commands/implement.ts` (MODIFY: Dispatch each eligible task with its resolved model and effort.)
+- `src/adapters/models/fixture-runner.ts` (MODIFY: Include inherited governance files in the prompt hashes.)
+- `src/commands/research.ts` (MODIFY: Validate and forward the requested route mode.)
+- `src/engine/define-orchestrator.ts` (MODIFY: Return the specification workflow’s observed model to the command.)
+- `src/commands/specify.ts` (MODIFY: Persist the requested route and observed model in the run manifest.)
 
 #### Test Strategy
 
@@ -180,10 +187,32 @@ Connect `.gwrk/models/route-lock.<runner>.json` to the unified routing seam once
 | TR-015 | unit | `src/utils/manifest.test.ts` | Execution manifests persist `requestedModel` and `observedModel` or `"unknown"` without credentials |
 | TR-016 | gate | `src/utils/config-resolution.conformance.test.ts` | Config resolution stays centralized and architecture gates pass |
 
+The command regressions exercise research dispatch and the provider-default CLI option. They read the manifest written by `define spec` and check that changed project or inherited architecture instructions invalidate the pin. The routing fixtures use current suite hashes and a runner discovery snapshot. The regression patch is `.runs/review-regressions-phase05-20261123T194753Z-3772F026.patch`.
+
+The implementation regression loads a runner lock and checks the request sent to the transport. It verifies task completion after the post-flight gate passes. The retry patch is `.runs/review-regressions-phase05-20261123T195650Z-6f2c26e1.patch`.
+
+The Phase 5 review adds seven routing regressions. Two cover rejected and stale fallbacks. The others cover policy changes and lock validation plus provider-default selection and reporting. The patch against `f1b87ba3` is `.runs/review-regressions-phase05-20261123T200627Z-de181462.patch`. The [code review](evidence/code-review-phase-05.md) records the separate runbook reproduction.
+
+The fallback tests start with a passing evaluation and change one input at a time. A rejected decision disqualifies the fallback. Separate cases change the fixture or prompt hash. The discovery cases change the snapshot hash, eligible catalog digest or adapter CLI version. The CLI lifecycle tests retain the `incumbent-changed` rejection and verify sequential promotion for all three roles. The test patch against `1d667bca` is `.runs/review-regressions-phase05-20261123T201643Z-955c7fad.patch`.
+
+The [repair review](evidence/code-review-phase-05-4be1dbc6.md) retains two routing regressions. One changes the active project workflow prompt. The other leaves a fresh primary pin beside unreadable fallback evidence. The patch against `4be1dbc6` is `.runs/review-regressions-phase05-20261123T202611Z-79777da2.patch`.
+
+The CLI review regression dispatches the workflow selected by the project’s review plugin. Editing that workflow’s prompt must expire the review pin before a second dispatch. The [review of c779b492](evidence/code-review-phase-05-c779b492.md) records the reproduction and patch.
+
+The selected workflow tests also cover a review workflow installed only in the project. Changes to active code or acceptance review steps in the strategy manifest must expire the review pin. The [review of a6b4ba07](evidence/code-review-phase-05-a6b4ba07.md) records the failures.
+
+The [review of 3d0a8fae](evidence/code-review-phase-05-3d0a8fae.md) adds four TR-014 cases. A catalog change must expire a pin even when the local evaluation bundle is absent. Editing the active research methodology prompt must stop pinned dispatch. Ship must use the review role’s backend when it differs from the implementation backend. A specification dry run must show the qualified model and effort.
+
+The route fixture hashes its discovery snapshot with the same algorithm as promotion. Two ship tests exercise conflicting router defaults. One checks the effort sent to the pinned backend. The other checks that provider-default dispatch leaves model and effort unset. Both failed before repair. Test patch: `.runs/review-regressions-phase05-20261123T214151Z-40c524dc.patch`.
+
+The explicit backend test runs the public ship command with a synthetic transport. An operator requests Claude and only Codex has a review pin. The command must report `unavailable_pin` before dispatch. The patch `.runs/review-regressions-phase05-20261123T214515Z-8f316fb7.patch` includes all three ship cases.
+
+The [review of 2200ac60](evidence/code-review-phase-05-2200ac60.md) adds two TR-014 cases. One dispatches from a ship worktree with discovery evidence in the primary checkout. The other changes the eligible catalog and supplies a local bundle whose digest differs from the promoted evidence. The regression patch is `.runs/review-regressions-phase05-20261123T220200Z-bf520f03.patch`.
+
 #### Done When
 
 ```bash
-pnpm exec vitest run src/application/models/resolve-route.test.ts src/utils/manifest.test.ts src/utils/config-resolution.conformance.test.ts src/architecture.test.ts
+bash specs/047-model-qualification/gates/phase-05.sh
 ```
 
 ## Coverage matrix
@@ -209,7 +238,7 @@ Phase 3 regressions reject candidate and incumbent review route identity failure
 
 Inherited Git selectors are removed from fixture commands and delegated agent environments. The agent environment contract permits undefined entries so the subprocess merge can remove inherited values. The behavioral fixture proves that a delegated Git command leaves another repository configuration unchanged.
 
-TR-023 now guards judge packets, raw dispatch results, transport error messages and assembled verdicts with the known dispatch credentials. Four cases failed before repair. They cover citation claims, reported runtime identity, failed stderr and thrown transport errors. The repaired phase gate passes 669 tests and lint.
+The credential checks in TR-023 cover judge packets and assembled verdicts. They also check raw dispatch results and transport error messages against known dispatch credentials. Four cases failed before repair. Two covered citation claims and reported runtime identity. The others covered failed stderr and thrown transport errors. The repaired phase gate passes 669 tests and lint.
 
 The staged-path and contradictory aggregate regressions remain in the phase 3 gate. Two observed failures preceded the repair. The gate now passes 685 checks and lint. Evidence is `evidence/phase03-handoff-checks-and-staged-paths.md`.
 

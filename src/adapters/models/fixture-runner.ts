@@ -24,8 +24,15 @@ import {
   type ModelRole,
   assertNoSecretMaterial,
 } from "../../domain/model-qualification.js";
+import { resolveWorkflowPolicyScope } from "../../domain/policy-selection.js";
 import { parsePlanMarkdown } from "../../engine/plan-to-tasks.js";
+import {
+  detectProfile,
+  resolveWorkspacePolicyRoots,
+} from "../../engine/profile-detector.js";
 import { PluginLoader } from "../../plugins/loader.js";
+import { resolveReviewPlugin } from "../../plugins/review-plugin.js";
+import { resolveEnforcementSkills } from "../../plugins/skill-runtime.js";
 import {
   WorkflowRuntime,
   extractJsonFromOutput,
@@ -592,8 +599,11 @@ export class FixtureRunner
     }
     const fixtureSuiteHash = suiteHasher.digest("hex");
 
-    const projectRoot = process.cwd();
-    const governancePaths = [
+    const projectDir = process.cwd();
+    const { ownerDir, workspaceDir, policyDirs } =
+      resolveWorkspacePolicyRoots(projectDir);
+    const profile = await detectProfile(projectDir);
+    const governancePaths = new Set([
       "AGENTS.md",
       ".gwrk/agent-context.md",
       ".gwrk/architecture.md",
@@ -601,24 +611,27 @@ export class FixtureRunner
       ".gwrk/perspective/hierarchy.md",
       ".gwrk/perspective/ux-posture.md",
       ".gwrk/decisions/index.md",
-    ];
-    for (const directory of [".gwrk/rules", "docs/decisions"]) {
-      const path = join(projectRoot, directory);
-      if (!existsSync(path)) continue;
-      const entries = await readdir(path, { withFileTypes: true });
-      for (const entry of entries) {
-        if (entry.isFile() && entry.name.endsWith(".md")) {
-          governancePaths.push(join(directory, entry.name));
+    ]);
+    for (const root of policyDirs) {
+      for (const directory of [".gwrk/rules", "docs/decisions"]) {
+        const path = join(root, directory);
+        if (!existsSync(path)) continue;
+        const entries = await readdir(path, { withFileTypes: true });
+        for (const entry of entries) {
+          if (entry.isFile() && entry.name.endsWith(".md")) {
+            governancePaths.add(join(directory, entry.name));
+          }
         }
       }
     }
     const governance = await Promise.all(
-      governancePaths
-        .sort()
-        .map(async (path) => [
-          path,
-          await readOptionalFile(join(projectRoot, path)),
-        ]),
+      [...governancePaths].sort().map(async (path) => {
+        for (const root of policyDirs) {
+          const content = await readOptionalFile(join(root, path));
+          if (content !== undefined) return [path, content];
+        }
+        return [path, undefined];
+      }),
     );
 
     const runtime = this.workflowRuntime ?? new WorkflowRuntime();
@@ -653,28 +666,46 @@ export class FixtureRunner
               inputs.push(stageInput(fixture, stage, true));
             }
             for (const input of inputs) {
-              await runtime.executeWorkflow(stage, input, {
-                nativeOnly: true,
-                projectRoot,
-                quiet: true,
-                dispatcher: async ({ stdin }) => {
-                  rendered.get(stage)?.push(stdin ?? "");
-                  return { exitCode: 0, stdout: "", stderr: "", durationS: 0 };
+              const { stdin } = await runtime.renderWorkflowPrompt(
+                stage,
+                input,
+                {
+                  nativeOnly: true,
+                  projectRoot,
                 },
-              });
+              );
+              rendered.get(stage)?.push(stdin);
             }
           }
         } finally {
           await rm(projectRoot, { recursive: true, force: true });
         }
       }
-      const roleHashes = stages.map((stage) => {
+      const enforcement = await resolveEnforcementSkills(
+        ownerDir,
+        resolveWorkflowPolicyScope(stages[0]),
+        profile,
+        { workspaceDir, policyDirs },
+      );
+      const roleHashes: string[] = [];
+      for (const stage of stages) {
+        const { template } = await runtime.renderWorkflowPrompt(stage, "", {
+          projectRoot: projectDir,
+          profile,
+        });
         const hash = createHash("sha256")
-          .update(JSON.stringify([rendered.get(stage), governance]))
+          .update(
+            JSON.stringify([
+              template,
+              rendered.get(stage),
+              governance,
+              enforcement,
+            ]),
+          )
           .digest("hex");
         workflowPromptHashes[stage] = hash;
-        return hash;
-      });
+        roleHashes.push(hash);
+      }
       workflowPromptHashes[role] =
         roleHashes.length === 1
           ? roleHashes[0]
@@ -682,6 +713,53 @@ export class FixtureRunner
               .update(JSON.stringify(roleHashes))
               .digest("hex");
     }
+
+    const loader = new PluginLoader({ projectDir });
+    const researchWorkflows = (await loader.listPlugins({ type: "workflow" }))
+      .map(({ name }) => name)
+      .filter((name) => name.startsWith("gwrk-research-"))
+      .sort();
+    const definitionHash = createHash("sha256").update(
+      workflowPromptHashes.define,
+    );
+    for (const workflow of researchWorkflows) {
+      const { template } = await runtime.renderWorkflowPrompt(workflow, "", {
+        projectRoot: projectDir,
+        profile,
+      });
+      const promptHash = createHash("sha256").update(template).digest("hex");
+      workflowPromptHashes[workflow] = promptHash;
+      definitionHash.update(JSON.stringify([workflow, promptHash]));
+    }
+    workflowPromptHashes.define = definitionHash.digest("hex");
+
+    const reviewPlugin = await resolveReviewPlugin(projectDir);
+    const reviewInputs = fixtures
+      .filter(({ roles }) => roles.includes("review"))
+      .map((fixture) => stageInput(fixture, "gwrk-review-code"));
+    const reviewHash = createHash("sha256").update(workflowPromptHashes.review);
+    for (const [stage, workflow] of [
+      ["code", reviewPlugin.codeReviewWorkflow],
+      ["uat", reviewPlugin.uatReviewWorkflow],
+    ] as const) {
+      const prompts = [];
+      for (const input of reviewInputs.length ? reviewInputs : [""]) {
+        const { stdin } = await runtime.renderWorkflowPrompt(workflow, input, {
+          projectRoot: projectDir,
+          profile,
+        });
+        prompts.push(stdin);
+      }
+      const promptHash = createHash("sha256")
+        .update(JSON.stringify(prompts))
+        .digest("hex");
+      workflowPromptHashes[workflow] ??= promptHash;
+      const steps = reviewPlugin.steps[stage]
+        .filter((step) => !step.skip)
+        .map((step) => [step.title, step.description]);
+      reviewHash.update(JSON.stringify({ stage, workflow, promptHash, steps }));
+    }
+    workflowPromptHashes.review = reviewHash.digest("hex");
 
     return { fixtureSuiteHash, workflowPromptHashes };
   }

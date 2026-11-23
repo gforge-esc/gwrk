@@ -1696,6 +1696,10 @@ ${fixedPassingQueueImplementation}`,
     const projectRoot = await mkdtemp(join(tmpdir(), "gwrk-governance-hash-"));
     const cwd = vi.spyOn(process, "cwd").mockReturnValue(projectRoot);
     try {
+      await writeFile(
+        join(projectRoot, ".gwrkrc.json"),
+        JSON.stringify({ project: { name: "governance-hash-fixture" } }),
+      );
       const runner = createFixtureRunner();
       let previous = await runner.computeSuiteHashes();
       for (const path of [
