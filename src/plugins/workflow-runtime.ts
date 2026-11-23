@@ -429,12 +429,14 @@ export class WorkflowRuntime {
           },
         );
     if (route?.preflightBanner) logCliOutput(route.preflightBanner);
-    const routeMode = route?.routeMode ?? options.routeMode;
+    const selectedModel = route?.model ?? options.model;
+    const routeMode =
+      route?.routeMode ??
+      options.routeMode ??
+      (selectedModel ? undefined : "provider-default");
     const effort = route?.effort ?? options.effort;
     const effectiveModel =
-      routeMode === "provider-default"
-        ? undefined
-        : (route?.model ?? options.model);
+      routeMode === "provider-default" ? undefined : selectedModel;
     const task: TaskDispatch = {
       type: options.taskType ?? "workflow",
       stdin: [template, userInput].filter(Boolean).join("\n\n"),

@@ -192,6 +192,8 @@ The implementation regression loads a runner lock and checks the request sent to
 
 The Phase 5 review adds seven routing regressions. Two cover rejected and stale fallbacks. The others cover policy changes and lock validation plus provider-default selection and reporting. The patch against `f1b87ba3` is `.runs/review-regressions-phase05-20261123T200627Z-de181462.patch`. The [code review](evidence/code-review-phase-05.md) records the separate runbook reproduction.
 
+The fallback tests start with a passing evaluation and change one input at a time. A rejected decision disqualifies the fallback. Separate cases change the fixture or prompt hash. The discovery cases change the snapshot hash, eligible catalog digest or adapter CLI version. The CLI lifecycle tests retain the `incumbent-changed` rejection and verify sequential promotion for all three roles. The test patch against `1d667bca` is `.runs/review-regressions-phase05-20261123T201643Z-955c7fad.patch`.
+
 #### Done When
 
 ```bash

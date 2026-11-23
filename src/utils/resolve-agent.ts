@@ -8,6 +8,7 @@ import fs from "node:fs";
 import { createRequire } from "node:module";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
+import { parseRouteLockDocument } from "../adapters/models/route-lock-store.js";
 import type { RouteLockDocument } from "../application/models/promote-model.js";
 import {
   type FallbackQualificationRecord,
@@ -246,12 +247,13 @@ export function resolveAgent(
   const role: ModelRole = overrides.role ?? pillar;
   const scope = buildRunnerScope(config, overrides.runnerProfile);
 
-  const routeLock =
+  const rawLock =
     overrides.routeMode === "provider-default"
       ? null
       : overrides.routeLock !== undefined
         ? overrides.routeLock
         : readLocalRouteLock(projectRoot, scope.runnerProfile);
+  const routeLock = rawLock && parseRouteLockDocument(scope, rawLock);
   const snapshot =
     overrides.snapshot !== undefined
       ? overrides.snapshot
@@ -272,6 +274,10 @@ export function resolveAgent(
       : undefined);
 
   const pin = routeLock?.routes[role];
+  const currentSuiteHashes =
+    pin && overrides.currentSuiteHashes === undefined
+      ? readCurrentSuiteHashes(projectRoot)
+      : overrides.currentSuiteHashes;
   const qualifiedFallbacks =
     overrides.qualifiedFallbacks ??
     pin?.fallbackRoutes.flatMap((fallback) => {
@@ -291,13 +297,11 @@ export function resolveAgent(
         fallback,
         role,
         scope,
+        snapshot,
+        currentSuiteHashes,
       );
       return record ? [record] : [];
     });
-  const currentSuiteHashes =
-    pin && overrides.currentSuiteHashes === undefined
-      ? readCurrentSuiteHashes(projectRoot)
-      : overrides.currentSuiteHashes;
   if (
     pin?.routeMode === "pinned" &&
     snapshot &&
@@ -338,7 +342,10 @@ export function resolveAgent(
     ...(route.effort ? { effort: route.effort } : {}),
     requestedModel: route.requestedModel,
     // Legacy registry models must still reach dispatch when no pin or mode was selected.
-    routeMode: routeLock || overrides.routeMode ? route.routeMode : undefined,
+    routeMode:
+      resolvedModel && !routeLock && !overrides.routeMode
+        ? undefined
+        : route.routeMode,
     role: route.role,
     routeStatus: route.status,
     ...(route.fallbackReason ? { fallbackReason: route.fallbackReason } : {}),

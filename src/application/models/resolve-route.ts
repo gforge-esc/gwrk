@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import { createHash } from "node:crypto";
 import {
   type DiscoverySnapshot,
   type ModelCandidate,
@@ -124,6 +125,10 @@ interface StoredEvaluationSummary {
     readonly arch?: unknown;
   };
   readonly candidate?: Partial<ModelCandidate>;
+  readonly decision?: { readonly promote?: unknown };
+  readonly snapshotHash?: unknown;
+  readonly suiteHashes?: SuiteDigestSnapshot;
+  readonly toolVersions?: PinnedRoleRoute["toolVersions"];
   readonly eligibleRoutesDigest?: unknown;
   readonly promotionEvidence?: PromotionReplayEvidence;
 }
@@ -688,6 +693,8 @@ export function parseStoredFallbackQualification(
   fallback: RouteFallbackCandidate,
   role: ModelRole,
   scope: RunnerScope,
+  snapshot: DiscoverySnapshot | null | undefined,
+  currentHashes: SuiteDigestSnapshot | null | undefined,
 ): FallbackQualificationRecord | null {
   if (!rawBundle || typeof rawBundle !== "object") return null;
   assertNoSecretMaterial(rawBundle);
@@ -707,11 +714,43 @@ export function parseStoredFallbackQualification(
     typeof bundle.candidate.modelId !== "string" ||
     bundle.candidate.provider !== fallback.provider ||
     bundle.candidate.family !== fallback.family ||
-    !bundle.promotionEvidence
+    bundle.decision?.promote !== true ||
+    !bundle.promotionEvidence ||
+    !snapshot ||
+    !currentHashes ||
+    !bundle.suiteHashes?.workflowPromptHashes ||
+    !bundle.toolVersions ||
+    typeof bundle.eligibleRoutesDigest !== "string"
   ) {
     return null;
   }
 
+  const adapter = snapshot.adapters.find(
+    ({ backend }) => backend === fallback.backend,
+  );
+  if (
+    !adapter ||
+    bundle.snapshotHash !==
+      createHash("sha256").update(JSON.stringify(snapshot)).digest("hex") ||
+    qualificationStaleness(
+      {
+        fixtureSuiteHash: bundle.suiteHashes.fixtureSuiteHash,
+        workflowPromptHashes: bundle.suiteHashes.workflowPromptHashes,
+        cliVersion: bundle.toolVersions.cliVersion,
+        adapterVersion: bundle.toolVersions.adapterVersion,
+        eligibleRoutesDigest: bundle.eligibleRoutesDigest,
+      },
+      {
+        ...currentHashes,
+        cliVersion: adapter.cliVersion,
+        adapterVersion: adapter.adapterVersion,
+        eligibleRoutesDigest: eligibleRoutesDigest(snapshot, scope),
+      },
+      checkCandidate(snapshot, scope, fallback).ok,
+    ).length > 0
+  ) {
+    return null;
+  }
   const replay = evaluateModelPromotion(bundle.promotionEvidence);
   return {
     evaluationId: fallback.evaluationId,
@@ -777,6 +816,8 @@ export async function resolveQualifiedRouteFromStore(
             fallback,
             input.role,
             input.scope,
+            snapshot,
+            currentSuiteHashes,
           );
           if (record) {
             qualifiedFallbacks.push(record);

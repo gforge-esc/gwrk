@@ -38,29 +38,24 @@ Hermetic CI exercises discovery and evaluation against injected fakes. It also v
    ```
 
 4. Inspect `.runs/models/discovery/local.json` and pick a concrete candidate `backend:modelId[:effort]` from an available adapter. Exclude aliases such as `default` and `auto`. Exclude `latest` and `unknown` as well.
-5. Run evaluation for `define` with an incumbent route, a fixed implementer and two independent judges.
+5. Set `CANDIDATE` and `INCUMBENT` to the definition routes. Set `FIXED_IMPLEMENTER`, `JUDGE_1` and `JUDGE_2` to their discovered routes. Evaluate the definition candidate.
 
    ```bash
-   GWRK_RUNNER_PROFILE=local gwrk models evaluate \
-     --runner local \
-     --role define \
-     --candidate <backend:modelId[:effort]> \
-     --incumbent <backend:modelId[:effort]> \
-     --fixed-implementer <backend:modelId[:effort]> \
-     --judges <judge1-backend:modelId> <judge2-backend:modelId> \
-     --format json
+   GWRK_RUNNER_PROFILE=local gwrk models evaluate --runner local --role define \
+     --candidate "$CANDIDATE" --incumbent "$INCUMBENT" --fixed-implementer "$FIXED_IMPLEMENTER" \
+     --judges "$JUDGE_1" "$JUDGE_2" --format json
    ```
 
-6. Run evaluation for `implement` and `review` roles against their incumbents and the same independent judge policy.
-7. If deterministic gates fail or judges disagree, keep the incumbent lock intact and record the rejection reason from `.runs/models/evaluations/<evalId>/bundle.json`.
-8. Promote a passing evaluation to write `.gwrk/models/route-lock.local.json` atomically.
+6. If evaluation fails, keep the incumbent and inspect the rejection in `.runs/models/evaluations/<evalId>/bundle.json`.
+7. If evaluation passes, set `EVAL_ID` to its returned `evaluationId`. Promote it before evaluating another role.
 
    ```bash
-   GWRK_RUNNER_PROFILE=local gwrk models promote --runner local --eval <evalId> --format json
+   GWRK_RUNNER_PROFILE=local gwrk models promote --runner local --eval "$EVAL_ID" --format json
    ```
 
-9. Inspect `.gwrk/models/route-lock.local.json` to confirm `toolVersions` and `evidence` hashes. Confirm `fallbackRoutes` and zero credential strings.
-10. If a promoted route regresses in daily use, restore the prior lock immediately.
+8. Repeat steps 5 through 7 for `implement`, then for `review`. Change the role and both comparison routes. Omit `--fixed-implementer` for these roles. Each promotion changes the runner lock digest. If promotion returns `incumbent-changed`, evaluate that role again against the current lock.
+9. Inspect each role in `.gwrk/models/route-lock.local.json`. Confirm its tool versions, evidence hashes and fallback order.
+10. If a promoted route regresses, restore the prior lock.
 
     ```bash
     GWRK_RUNNER_PROFILE=local gwrk models promote --runner local --rollback --format json
@@ -68,56 +63,45 @@ Hermetic CI exercises discovery and evaluation against injected fakes. It also v
 
 ## Hosted Linux pilot runner qualification
 
-Execute hosted runner commands as the dedicated `gwrk` service user inside `/var/lib/gwrk/repos/pilot` using the service paths defined in [Linux runner](../../deploy/linux-runner/README.md). Do not copy a macOS route lock onto the Linux host.
-
-1. Confirm systemd preflight passes and `/etc/gwrk/secrets/agent-credential` is readable only by `root:gwrk` with mode `0640`.
-2. Run discovery as the `gwrk` user under `linux-pilot`.
+1. Confirm service preflight passes. The approved wrapper reads `GWRK_AGENT_CREDENTIAL_FILE` from the service environment. Its default path is `/etc/gwrk/secrets/agent-credential`. [Linux runner credentials](../../deploy/linux-runner/README.md#credentials)
+2. Define this helper in the operator's root shell. It loads the installed service environment and credential setup as the `gwrk` user.
 
    ```bash
-   runuser -u gwrk -- env \
-     GWRK_HOME=/var/lib/gwrk \
-     GWRK_RUNTIME_DIR=/run/gwrk \
-     GWRK_RUNNER_PROFILE=linux-pilot \
-     node /opt/gwrk/current/dist/cli.js models discover --runner linux-pilot --format json
+   pilot_models() {
+     systemd-run --quiet --pipe --wait --collect --uid=gwrk --gid=gwrk \
+       --property=EnvironmentFile=/etc/gwrk/runner.env \
+       --setenv=HOME=/var/lib/gwrk --setenv=GWRK_RUNNER_PROFILE=linux-pilot \
+       /bin/bash -euc '
+         source /opt/gwrk/current/deploy/linux-runner/credentials.sh
+         load_runner_credentials
+         cd -- "$GWRK_PILOT_REPO"
+         exec node /opt/gwrk/current/dist/cli.js models "$@"
+       ' pilot-models "$@"
+   }
+   pilot_models discover --runner linux-pilot --format json
    ```
 
-3. Verify `.runs/models/discovery/linux-pilot.json` records the Linux platform and architecture. Confirm CLI versions and adapter status match the host.
-4. Run evaluation as `gwrk` for each enabled role with two independent judges available to the hosted runner. Enabled roles are `define`, `implement` and `review`.
+3. Check the platform, architecture and CLI versions in `.runs/models/discovery/linux-pilot.json`. If a required adapter reports `auth_error` or `unavailable`, repair its wrapper or credential and repeat discovery.
+4. Use routes from the pilot snapshot for the candidate and incumbent. Select a fixed implementer and two independent judges from that snapshot.
 
    ```bash
-   runuser -u gwrk -- env \
-     GWRK_HOME=/var/lib/gwrk \
-     GWRK_RUNTIME_DIR=/run/gwrk \
-     GWRK_RUNNER_PROFILE=linux-pilot \
-     node /opt/gwrk/current/dist/cli.js models evaluate \
-       --runner linux-pilot \
-       --role implement \
-       --candidate <backend:modelId[:effort]> \
-       --incumbent <backend:modelId[:effort]> \
-       --judges <judge1-backend:modelId> <judge2-backend:modelId> \
-       --format json
+   pilot_models evaluate --runner linux-pilot --role define \
+     --candidate "$CANDIDATE" --incumbent "$INCUMBENT" --fixed-implementer "$FIXED_IMPLEMENTER" \
+     --judges "$JUDGE_1" "$JUDGE_2" --format json
    ```
 
-5. If any required adapter reports `auth_error` or `unavailable`, fix the host wrapper or credential file and repeat discovery before evaluating.
-6. Promote each passing evaluation explicitly to write `.gwrk/models/route-lock.linux-pilot.json`.
+5. If evaluation passes, set `EVAL_ID` to its returned `evaluationId`. Promote it before evaluating the next role.
 
    ```bash
-   runuser -u gwrk -- env \
-     GWRK_HOME=/var/lib/gwrk \
-     GWRK_RUNTIME_DIR=/run/gwrk \
-     GWRK_RUNNER_PROFILE=linux-pilot \
-     node /opt/gwrk/current/dist/cli.js models promote --runner linux-pilot --eval <evalId> --format json
+   pilot_models promote --runner linux-pilot --eval "$EVAL_ID" --format json
    ```
 
-7. If prompts or fixtures change on the Linux host, requalify before dispatching pinned runs. Requalify after CLI version or eligible model changes as well.
-8. To revert an active Linux pilot pin, run rollback under `linux-pilot`.
+6. Repeat evaluation and promotion for `implement`, then for `review`. Use each role's candidate and incumbent. Omit `--fixed-implementer` for these roles. Verify each successful promotion in `.gwrk/models/route-lock.linux-pilot.json`.
+7. Requalify when the prompt or fixture changes. Tool version and catalog changes also require requalification.
+8. To revert the last promotion, restore the prior pilot lock.
 
    ```bash
-   runuser -u gwrk -- env \
-     GWRK_HOME=/var/lib/gwrk \
-     GWRK_RUNTIME_DIR=/run/gwrk \
-     GWRK_RUNNER_PROFILE=linux-pilot \
-     node /opt/gwrk/current/dist/cli.js models promote --runner linux-pilot --rollback --format json
+   pilot_models promote --runner linux-pilot --rollback --format json
    ```
 
 ## Provider default and diagnostics

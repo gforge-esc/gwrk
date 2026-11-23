@@ -4,13 +4,14 @@
 
 import fs from "node:fs";
 import path from "node:path";
-import { Command } from "commander";
+import { Command, Option } from "commander";
 import {
   logCliError,
   logCliOutput,
   setCliExitCode,
   warnCli,
 } from "../adapters/cli/output-scope.js";
+import type { RouteMode } from "../application/models/resolve-route.js";
 import { finishRun, startRun } from "../db/runs.js";
 import { DefineOrchestrator } from "../engine/define-orchestrator.js";
 import { DefineStage } from "../engine/define-types.js";
@@ -75,12 +76,18 @@ Arguments:
       "Feature description (new) or rework instructions (existing)",
     )
     .option("--refs <path>", "Path to additional reference docs")
+    .addOption(
+      new Option("--route <mode>", "Model routing mode").choices([
+        "pinned",
+        "provider-default",
+      ]),
+    )
     .option("--dry-run", "Print the command without executing")
     .action(
       async (
         featureArg: string | undefined,
         prompt: string | undefined,
-        opts: { refs?: string; dryRun?: boolean },
+        opts: { refs?: string; dryRun?: boolean; route?: RouteMode },
         command: Command,
       ) => {
         // --refs and --dry-run are declared on BOTH `define` and here, so commander
@@ -89,7 +96,7 @@ Arguments:
         opts = withParentFlags(opts, command);
         await withSignal("define spec", async () => {
           const cwd = process.cwd();
-          const route = resolveAgent("define", cwd);
+          const route = resolveAgent("define", cwd, { routeMode: opts.route });
           const { backend, model } = route;
           const specsDir = path.join(cwd, "specs");
 

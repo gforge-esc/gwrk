@@ -1495,19 +1495,69 @@ describe("gwrk models CLI (TR-012, TR-013)", () => {
       };
     }
 
-    it("checks the live runbook's evaluate-all then promote-all order", async () => {
+    async function evaluateRunbookRole(
+      deps: ModelsCommandDeps,
+      role: string,
+      id: string,
+    ) {
+      const result = await runInjectedModels(
+        [
+          "evaluate",
+          "--role",
+          role,
+          "--candidate",
+          "codex:gpt-6.1-sol",
+          "--incumbent",
+          "claude:claude-3-7-sonnet",
+          ...(role === "define"
+            ? ["--fixed-implementer", "codex:gpt-6.1-sol"]
+            : []),
+          "--judges",
+          "claude:claude-3-7-sonnet",
+          "agy:gemini-2.5-pro",
+          "--eval-id",
+          id,
+        ],
+        deps,
+      );
+      expect(result.exitCode, result.stderr).toBe(0);
+    }
+
+    it("rejects a second promotion evaluated against the prior runner lock", async () => {
       const { deps } = createSyntheticDeps(root);
       expect((await runInjectedModels(["discover"], deps)).exitCode).toBe(0);
       for (const role of ["define", "implement"]) {
-        const result = await runInjectedModels(["evaluate", "--role", role,
-          "--candidate", "codex:gpt-6.1-sol", "--incumbent", "claude:claude-3-7-sonnet",
-          ...(role === "define" ? ["--fixed-implementer", "codex:gpt-6.1-sol"] : []),
-          "--judges", "claude:claude-3-7-sonnet", "agy:gemini-2.5-pro", "--eval-id", "runbook-" + role], deps);
+        await evaluateRunbookRole(deps, role, "runbook-" + role);
+      }
+      expect(
+        (await runInjectedModels(["promote", "--eval", "runbook-define"], deps))
+          .exitCode,
+      ).toBe(0);
+      const second = await runInjectedModels(
+        ["promote", "--eval", "runbook-implement"],
+        deps,
+      );
+      expect(second.exitCode).toBe(1);
+      expect(second.stderr).toContain("incumbent-changed");
+    });
+
+    it("promotes each passing role before evaluating the next runbook role", async () => {
+      const { deps, store } = createSyntheticDeps(root);
+      expect((await runInjectedModels(["discover"], deps)).exitCode).toBe(0);
+      for (const role of ["define", "implement", "review"]) {
+        const id = "runbook-" + role;
+        await evaluateRunbookRole(deps, role, id);
+        const result = await runInjectedModels(["promote", "--eval", id], deps);
         expect(result.exitCode, result.stderr).toBe(0);
       }
-      expect((await runInjectedModels(["promote", "--eval", "runbook-define"], deps)).exitCode).toBe(0);
-      const second = await runInjectedModels(["promote", "--eval", "runbook-implement"], deps);
-      expect(second.exitCode, second.stderr).toBe(0);
+      const active = await store.readRouteLock(scope);
+      expect(active?.document).toMatchObject({
+        routes: {
+          define: { evidence: { evaluationId: "runbook-define" } },
+          implement: { evidence: { evaluationId: "runbook-implement" } },
+          review: { evidence: { evaluationId: "runbook-review" } },
+        },
+      });
     });
 
     it("executes synthetic discover -> evaluate --role define -> promote end-to-end without live CLIs", async () => {

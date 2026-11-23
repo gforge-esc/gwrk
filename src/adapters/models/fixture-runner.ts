@@ -24,9 +24,14 @@ import {
   type ModelRole,
   assertNoSecretMaterial,
 } from "../../domain/model-qualification.js";
+import { resolveWorkflowPolicyScope } from "../../domain/policy-selection.js";
 import { parsePlanMarkdown } from "../../engine/plan-to-tasks.js";
-import { resolveWorkspacePolicyRoots } from "../../engine/profile-detector.js";
+import {
+  detectProfile,
+  resolveWorkspacePolicyRoots,
+} from "../../engine/profile-detector.js";
 import { PluginLoader } from "../../plugins/loader.js";
+import { resolveEnforcementSkills } from "../../plugins/skill-runtime.js";
 import {
   WorkflowRuntime,
   extractJsonFromOutput,
@@ -593,7 +598,10 @@ export class FixtureRunner
     }
     const fixtureSuiteHash = suiteHasher.digest("hex");
 
-    const { policyDirs } = resolveWorkspacePolicyRoots(process.cwd());
+    const projectDir = process.cwd();
+    const { ownerDir, workspaceDir, policyDirs } =
+      resolveWorkspacePolicyRoots(projectDir);
+    const profile = await detectProfile(projectDir);
     const governancePaths = new Set([
       "AGENTS.md",
       ".gwrk/agent-context.md",
@@ -672,9 +680,17 @@ export class FixtureRunner
           await rm(projectRoot, { recursive: true, force: true });
         }
       }
+      const enforcement = await resolveEnforcementSkills(
+        ownerDir,
+        resolveWorkflowPolicyScope(stages[0]),
+        profile,
+        { workspaceDir, policyDirs },
+      );
       const roleHashes = stages.map((stage) => {
         const hash = createHash("sha256")
-          .update(JSON.stringify([rendered.get(stage), governance]))
+          .update(
+            JSON.stringify([rendered.get(stage), governance, enforcement]),
+          )
           .digest("hex");
         workflowPromptHashes[stage] = hash;
         return hash;

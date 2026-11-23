@@ -132,6 +132,30 @@ function makeSnapshot(
   };
 }
 
+function fallbackFingerprints(
+  backend: string,
+  suiteHashes: {
+    fixtureSuiteHash: string;
+    workflowPromptHashes: Record<string, string>;
+  },
+) {
+  const snapshot = makeSnapshot();
+  const adapter = snapshot.adapters.find(
+    (report) => report.backend === backend,
+  )!;
+  return {
+    suiteHashes,
+    snapshotHash: createHash("sha256")
+      .update(JSON.stringify(snapshot))
+      .digest("hex"),
+    eligibleRoutesDigest: eligibleRoutesDigest(snapshot, SCOPE),
+    toolVersions: {
+      cliVersion: adapter.cliVersion,
+      adapterVersion: adapter.adapterVersion,
+    },
+  };
+}
+
 function makePin(overrides: Partial<PinnedRoleRoute> = {}): PinnedRoleRoute {
   return {
     role: "define",
@@ -622,6 +646,8 @@ describe("TR-014: resolveQualifiedRoute", () => {
             modelId: "claude-opus-4-6",
             effort: "high",
           },
+          decision: { promote: true },
+          ...fallbackFingerprints("claude", makePin().evidence),
           promotionEvidence: makePassingPromotionEvidence(),
         },
       ],
@@ -638,6 +664,8 @@ describe("TR-014: resolveQualifiedRoute", () => {
             modelId: "gemini-4-carbon",
             effort: "medium",
           },
+          decision: { promote: true },
+          ...fallbackFingerprints("agy", makePin().evidence),
           promotionEvidence: {
             ...makePassingPromotionEvidence(),
             repeats: [
@@ -706,7 +734,14 @@ describe("TR-014: resolveQualifiedRoute", () => {
     expect(route.fallbackRoutes).toEqual([]);
   });
 
-  it.each(["rejected", "expired"] as const)(
+  it.each([
+    "rejected",
+    "expired",
+    "outdated prompts",
+    "outdated catalog",
+    "outdated snapshot",
+    "outdated tools",
+  ] as const)(
     "refuses a fallback whose evaluation is %s even when both judges favored it",
     async (condition) => {
       const root = createTempProject({ project: { name: "gwrk" } });
@@ -720,32 +755,47 @@ describe("TR-014: resolveQualifiedRoute", () => {
         fallback.evaluationId,
       );
       fs.mkdirSync(bundleDir, { recursive: true });
-      fs.writeFileSync(
-        path.join(bundleDir, "bundle.json"),
-        JSON.stringify({
-          evaluationId: fallback.evaluationId,
-          scope: SCOPE,
-          role,
-          candidate: fallback,
-          decision:
-            condition === "rejected"
-              ? { promote: false, reason: "implementation-not-faster" }
-              : { promote: true },
-          suiteHashes: {
-            workflowPromptHashes: evidence.workflowPromptHashes,
-            fixtureSuiteHash:
-              condition === "expired" ? HASH_A : evidence.fixtureSuiteHash,
-          },
-          promotionEvidence: makePassingPromotionEvidence(),
-        }),
-      );
+      const bundlePath = path.join(bundleDir, "bundle.json");
+      const fingerprints = fallbackFingerprints(fallback.backend, evidence);
+      const passing = {
+        ...fingerprints,
+        evaluationId: fallback.evaluationId,
+        scope: SCOPE,
+        role,
+        candidate: fallback,
+        decision: { promote: true },
+        promotionEvidence: makePassingPromotionEvidence(),
+      };
       const lock = makeRouteLock({}, { routes: { implement: pin } });
-      expect(() =>
+      const resolveFallback = () =>
         resolveAgent("implement", root, {
           agent: fallback.backend,
           routeLock: lock,
-        }),
-      ).toThrow(/unavailable|stale|qualif/i);
+        });
+      fs.writeFileSync(bundlePath, JSON.stringify(passing));
+      expect(resolveFallback().model).toBe(fallback.modelId);
+      const changes = {
+        rejected: {
+          decision: { promote: false, reason: "implementation-not-faster" },
+        },
+        expired: { suiteHashes: { ...evidence, fixtureSuiteHash: HASH_A } },
+        "outdated prompts": {
+          suiteHashes: { ...evidence, workflowPromptHashes: {} },
+        },
+        "outdated catalog": { eligibleRoutesDigest: HASH_A },
+        "outdated snapshot": { snapshotHash: HASH_A },
+        "outdated tools": {
+          toolVersions: {
+            ...fingerprints.toolVersions,
+            cliVersion: "obsolete",
+          },
+        },
+      };
+      fs.writeFileSync(
+        bundlePath,
+        JSON.stringify({ ...passing, ...changes[condition] }),
+      );
+      expect(resolveFallback).toThrow(/unavailable|stale|qualif/i);
     },
   );
 
