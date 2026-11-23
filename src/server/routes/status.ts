@@ -8,6 +8,10 @@ import {
   type RouteDenialCode,
   evaluateHttpProjectAccess,
 } from "../../domain/slack-routing.js";
+import type {
+  ClockPort,
+  OperationsStorePort,
+} from "../../ports/operations-port.js";
 import type { ProjectRegistryPort } from "../../ports/store-port.js";
 import type { DispatchQueue } from "../dispatch.js";
 import type { LifecycleMonitor } from "../lifecycle.js";
@@ -20,6 +24,8 @@ const startTime = Date.now();
 
 export interface StatusRoutesOptions {
   registry?: ProjectRegistryPort;
+  operationsStore?: Pick<OperationsStorePort, "getOperationsStatus">;
+  clock?: ClockPort;
   transport?: "trusted_local" | "hosted";
   localDefaultProjectId?: string;
   resolvePrincipal?: (request: FastifyRequest) =>
@@ -52,7 +58,12 @@ export async function getStatusData(
   lifecycle: LifecycleMonitor,
   network: NetworkMonitor,
   fastify?: FastifyInstance,
-  options?: { projectId?: string; projectRoots?: readonly string[] },
+  options?: {
+    projectId?: string;
+    projectRoots?: readonly string[];
+    operationsStore?: Pick<OperationsStorePort, "getOperationsStatus">;
+    clock?: ClockPort;
+  },
 ): Promise<SystemStatus> {
   const stats = monitor.getResources();
   const uptime = Math.floor((Date.now() - startTime) / 1000);
@@ -107,6 +118,11 @@ export async function getStatusData(
     port = address && typeof address === "object" ? address.port : undefined;
   }
 
+  const operations =
+    projectId && options?.operationsStore
+      ? options.operationsStore.getOperationsStatus(projectId)
+      : undefined;
+
   return {
     ...(projectId ? { projectId } : {}),
     server: {
@@ -132,6 +148,7 @@ export async function getStatusData(
       paused: queue.getQueue(projectId).paused,
     },
     sandboxes,
+    ...(operations ? { operations } : {}),
   };
 }
 
@@ -189,10 +206,17 @@ export async function statusRoutes(
           lifecycle,
           network,
           fastify,
-          { projectId: decision.project.projectId, projectRoots },
+          {
+            projectId: decision.project.projectId,
+            projectRoots,
+            operationsStore: options.operationsStore,
+            clock: options.clock,
+          },
         );
       }
 
+      const fallbackProjectId =
+        requestedProject ?? options?.localDefaultProjectId;
       return getStatusData(
         monitor,
         queue,
@@ -200,7 +224,13 @@ export async function statusRoutes(
         lifecycle,
         network,
         fastify,
-        requestedProject ? { projectId: requestedProject } : undefined,
+        fallbackProjectId || options?.operationsStore
+          ? {
+              ...(fallbackProjectId ? { projectId: fallbackProjectId } : {}),
+              operationsStore: options?.operationsStore,
+              clock: options?.clock,
+            }
+          : undefined,
       );
     },
   );

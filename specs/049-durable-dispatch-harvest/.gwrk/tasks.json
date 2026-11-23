@@ -365,7 +365,7 @@
         {
           "id": "T035",
           "title": "Modify index.ts",
-          "description": "MODIFY src/server/index.ts. Wire `OperationsStorePort` and startup recovery sweeps plus raw-body webhook parsing and outbox flushing Tests: src/server/index.test.ts, src/server/unattended-recovery.test.ts, src/server/two-repo-isolation.test.ts, src/server/github.test.ts, src/application/harvest/harvest-service.test.ts. Reject unconfigured webhook authentication before durable writes.",
+          "description": "MODIFY src/server/index.ts. Wire `OperationsStorePort` and startup recovery sweeps plus raw-body webhook parsing and outbox flushing Tests: src/server/index.test.ts, src/server/unattended-recovery.test.ts, src/server/two-repo-isolation.test.ts, src/server/github.test.ts, src/application/harvest/harvest-service.test.ts. Reject unconfigured webhook authentication before durable writes. Tests: src/server/integration.test.ts. Repair actual durable GitHub process selector isolation and bounded poll cancellation. Preserve the implementation at 82901eba and the configured webhook authentication guards.",
           "status": "open",
           "gateScript": "gates/phase-06.sh",
           "sp": 1
@@ -399,7 +399,8 @@
         "src/commands/project.test.ts",
         "src/commands/server.test.ts",
         "src/server/github.test.ts",
-        "src/application/harvest/harvest-service.test.ts"
+        "src/application/harvest/harvest-service.test.ts",
+        "src/server/integration.test.ts"
       ]
     }
   ]

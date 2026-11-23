@@ -25,17 +25,21 @@ import { loadConfig } from "../../utils/config.js";
 import { loadManifests } from "../../utils/manifest.js";
 import { parsePlan } from "../../utils/parser.js";
 import { loadTaskState, saveTaskState } from "../../utils/state.js";
+import { repositoryGitEnv } from "../git/process-env.js";
 import { createSqliteRunStoreAdapter } from "../sqlite/index.js";
 
 export interface HarvestExecutionAdapterOptions {
   db?: Database.Database;
+  gitEnv?: () => NodeJS.ProcessEnv;
   onCompressionReport?: (report: CompressionReport) => void;
 }
 
 export function createHarvestExecutionAdapter(
   options: HarvestExecutionAdapterOptions = {},
 ): HarvestExecutionPort {
-  const { db, onCompressionReport } = options;
+  const { db, gitEnv, onCompressionReport } = options;
+  const resolveEnv = (checkoutDir: string): NodeJS.ProcessEnv =>
+    gitEnv ? gitEnv() : repositoryGitEnv(checkoutDir);
 
   return {
     async discoverPhasesAtCheckout(checkoutDir, featureId) {
@@ -62,11 +66,17 @@ export function createHarvestExecutionAdapter(
       phaseId,
       updateLocalTaskState,
     }) {
-      return reconcileGates(checkoutDir, featureId, phaseId, {
-        projectId,
-        updateLocalTaskState,
-        ...(db ? { db } : {}),
-      });
+      return reconcileGates(
+        checkoutDir,
+        featureId,
+        phaseId,
+        {
+          projectId,
+          updateLocalTaskState,
+          ...(db ? { db } : {}),
+        },
+        resolveEnv(checkoutDir),
+      );
     },
 
     async recordLearningAtCheckout(input) {
@@ -230,15 +240,21 @@ export function createHarvestExecutionAdapter(
         estimatedDays,
       };
 
-      const actuals = gatherDeliveryActuals(featureDir, 30, prNumber ?? 0);
+      const env = resolveEnv(checkoutDir);
+      const actuals = gatherDeliveryActuals(featureDir, 30, prNumber ?? 0, env);
       const compression = computeCompression(forecast, actuals);
       let indicators: CompressionReport["indicators"];
-      if (!db) {
-        try {
-          indicators = computeLeadingIndicators(featureId, forecast, projectId);
-        } catch {
-          // Non-fatal when leading indicators cannot query the default ledger.
-        }
+      try {
+        indicators = computeLeadingIndicators(
+          featureId,
+          forecast,
+          projectId,
+          checkoutDir,
+          db,
+          env,
+        );
+      } catch {
+        // Non-fatal when leading indicators cannot be computed.
       }
 
       let telemetry: CompressionReport["telemetry"];

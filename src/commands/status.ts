@@ -28,7 +28,7 @@ import { type GwrkConfig, loadConfig } from "../utils/config.js";
 import { color } from "../utils/format.js";
 import { getCurrentBranch, isWorkingTreeClean } from "../utils/git.js";
 import { createOutput, resolveFormat } from "../utils/output.js";
-import { withSignal } from "../utils/signal.js";
+import { CommandError, withSignal } from "../utils/signal.js";
 import { evaluateEnrolledProjectReadiness } from "./project-enroll.js";
 
 const { BOLD, DIM, CYAN, GREEN, YELLOW, RED, RESET } = color;
@@ -82,9 +82,23 @@ function resolveServerBaseUrl(
   return `http://${config.server.host}:${config.server.port}`;
 }
 
+function computeQueueAgeSeconds(
+  oldestQueuedAt: string | null | undefined,
+  nowMs = Date.now(),
+): number | null {
+  if (!oldestQueuedAt) return null;
+  const parsed = Date.parse(oldestQueuedAt);
+  if (Number.isNaN(parsed)) return null;
+  return Math.max(0, Math.floor((nowMs - parsed) / 1000));
+}
+
 export const createStatusCommand = () =>
   new Command("status")
     .description("Show gwrk build server and system status")
+    .option(
+      "--project <slug>",
+      "Select an enrolled project by slug, ID, repository, or legacy alias",
+    )
     .option("--json", "Output status as JSON")
     .option("--format <type>", "Output format (text, json)")
     .option("--server-url <url>", "Override configured server base URL")
@@ -95,23 +109,45 @@ Type: query (read-only)
 Format: use --json or gwrk --format json for structured output
 Exit codes:
   0: Success
-  1: Configured or running server unreachable, or config missing
+  1: Configured or running server unreachable, unresolved gate failure, or failed delivery
   2: Usage error
 `,
     )
     .action(
       async (
-        options: { json?: boolean; format?: string; serverUrl?: string },
+        options: {
+          project?: string;
+          json?: boolean;
+          format?: string;
+          serverUrl?: string;
+        },
         command: Command,
       ) => {
         await withSignal("status", async () => {
-          const out = options.json
-            ? createOutput("json")
-            : options.format
-              ? createOutput(
-                  options.format === "text" ? undefined : options.format,
-                )
-              : resolveFormat(command);
+          let out: ReturnType<typeof createOutput>;
+          if (options.json) {
+            out = createOutput("json");
+          } else if (options.format !== undefined) {
+            if (options.format === "text") {
+              out = createOutput(undefined);
+            } else if (options.format === "json") {
+              out = createOutput("json");
+            } else {
+              throw new CommandError(
+                `Unknown format: ${options.format}. Supported: text, json`,
+                2,
+              );
+            }
+          } else {
+            try {
+              out = resolveFormat(command);
+            } catch (err) {
+              throw new CommandError(
+                err instanceof Error ? err.message : String(err),
+                2,
+              );
+            }
+          }
 
           const projectRoot = process.cwd();
           const canonicalRoot = fs.existsSync(projectRoot)
@@ -146,10 +182,20 @@ Exit codes:
             const db = openDatabase();
             try {
               const registry = createSqliteProjectRegistryAdapter({ db });
-              enrolledProject =
-                registry.findByLocalRoot(canonicalRoot) ??
-                registry.findByLocalRoot(projectRoot) ??
-                registry.getProject(localProjectId);
+              if (options.project) {
+                enrolledProject = registry.getProject(options.project);
+                if (!enrolledProject) {
+                  throw new CommandError(
+                    `Project '${options.project}' is not enrolled. Run 'gwrk project list' to inspect enrollments.`,
+                    1,
+                  );
+                }
+              } else {
+                enrolledProject =
+                  registry.findByLocalRoot(canonicalRoot) ??
+                  registry.findByLocalRoot(projectRoot) ??
+                  registry.getProject(localProjectId);
+              }
               if (enrolledProject) {
                 localProjectId = enrolledProject.projectId;
               }
@@ -181,7 +227,8 @@ Exit codes:
             } finally {
               if (db.open) db.close();
             }
-          } catch {
+          } catch (err) {
+            if (err instanceof CommandError) throw err;
             // Local registry or durable operations store unavailable.
           }
 
@@ -226,6 +273,12 @@ Exit codes:
             }
           }
 
+          const effectiveOperations: DurableOperationsStatus | null =
+            serverStatus?.operations ?? durableOperations;
+          const queueAgeSeconds = computeQueueAgeSeconds(
+            effectiveOperations?.queue.oldestQueuedAt,
+          );
+
           const projectReadiness =
             healthData?.projectReadiness ?? localReadiness;
           const slackDelivery: SlackDeliveryStatus =
@@ -238,7 +291,33 @@ Exit codes:
             reason: "disabled_in_pilot" as const,
           };
 
-          const shouldFail = serverConfigured && !serverReachable;
+          const serverUnreachable = serverConfigured && !serverReachable;
+          const unresolvedGateFailures =
+            effectiveOperations?.harvest.unresolvedGateFailures ?? 0;
+          const failedDeliveries =
+            effectiveOperations?.delivery.failedCount ?? 0;
+          const shouldFail =
+            serverUnreachable ||
+            unresolvedGateFailures > 0 ||
+            failedDeliveries > 0;
+
+          const writeFailureHints = () => {
+            if (serverUnreachable) {
+              writeScopedStderr(
+                `hint: Server at ${serverUrl} is unreachable (${serverError}). Run 'gwrk server start' or verify the configured server URL.\n`,
+              );
+            }
+            if (unresolvedGateFailures > 0) {
+              writeScopedStderr(
+                `hint: ${unresolvedGateFailures} unresolved harvest gate failure(s). Fix failing gates and run 'gwrk harvest <feature> [phase]${enrolledProject ? ` --project ${enrolledProject.slug}` : ""}'.\n`,
+              );
+            }
+            if (failedDeliveries > 0) {
+              writeScopedStderr(
+                `hint: ${failedDeliveries} failed outbox delivery(ies). Verify Slack credentials/channel binding and restart 'gwrk server'.\n`,
+              );
+            }
+          };
 
           if (out.isJson) {
             const branch = getCurrentBranch(projectRoot);
@@ -254,8 +333,11 @@ Exit codes:
 
             const statusData: Record<string, unknown> = {
               project: {
-                name: config.project.name,
-                root: projectRoot,
+                name: enrolledProject?.name ?? config.project.name,
+                root:
+                  enrolledProject?.localRoot ??
+                  enrolledProject?.mirrorPath ??
+                  projectRoot,
                 projectId: localProjectId,
                 slug: enrolledProject?.slug ?? null,
                 enrolled: Boolean(enrolledProject),
@@ -271,7 +353,8 @@ Exit codes:
               projectReadiness,
               slackDelivery,
               telegram,
-              durableOperations,
+              durableOperations: effectiveOperations,
+              queueAgeSeconds,
             };
 
             if (serverStatus) {
@@ -284,9 +367,7 @@ Exit codes:
 
             out.write(statusData);
             if (shouldFail) {
-              writeScopedStderr(
-                `hint: Server at ${serverUrl} is unreachable (${serverError}). Run 'gwrk server start' or verify the configured server URL.\n`,
-              );
+              writeFailureHints();
               setCliExitCode(1);
             }
             return;
@@ -302,7 +383,14 @@ Exit codes:
               slackDelivery,
               telegram,
             );
+            if (effectiveOperations) {
+              printDurableOperations(effectiveOperations, queueAgeSeconds);
+            }
             await printAgents();
+            if (shouldFail) {
+              writeFailureHints();
+              setCliExitCode(1);
+            }
             return;
           }
 
@@ -319,17 +407,25 @@ Exit codes:
               slackDelivery,
               telegram,
             );
+            if (effectiveOperations) {
+              printDurableOperations(effectiveOperations, queueAgeSeconds);
+            }
             await printAgents();
-            writeScopedStderr(
-              `hint: Run 'gwrk server start' or verify the configured server endpoint.\n`,
-            );
+            writeFailureHints();
             setCliExitCode(1);
             return;
           }
 
           printStatus(serverStatus, daemonLiveness);
           printOperationalReadiness(projectReadiness, slackDelivery, telegram);
+          if (effectiveOperations) {
+            printDurableOperations(effectiveOperations, queueAgeSeconds);
+          }
           await printAgents();
+          if (shouldFail) {
+            writeFailureHints();
+            setCliExitCode(1);
+          }
         });
       },
     );
@@ -356,6 +452,52 @@ function printOperationalReadiness(
     `    ${DIM}Slack:    ${RESET}${slackDelivery.mode} (connected: ${slackDelivery.connected})${slackDelivery.lastError ? ` - ${slackDelivery.lastError}` : ""}`,
   );
   logCliOutput(`    ${DIM}Telegram: ${RESET}disabled (${telegram.reason})`);
+}
+
+function printDurableOperations(
+  ops: DurableOperationsStatus,
+  queueAgeSeconds: number | null,
+) {
+  const queueAgeLabel =
+    queueAgeSeconds !== null && ops.queue.oldestQueuedAt
+      ? `${formatUptime(queueAgeSeconds)} (since ${ops.queue.oldestQueuedAt})`
+      : "none";
+  logCliOutput(`\n  ${CYAN}Durable Operations${RESET}`);
+  logCliOutput(
+    `    ${DIM}Queue:                      ${RESET}queued=${ops.queue.queuedCount}, active=${ops.queue.activeCount}, oldest=${queueAgeLabel}, reconciled=${ops.queue.staleLeasesReconciled}`,
+  );
+  logCliOutput(
+    `    ${DIM}Last harvest:               ${RESET}${ops.harvest.lastCompletedAt ? `${ops.harvest.lastCompletedAt} (${ops.harvest.lastMergeCommitSha ?? "unknown"})` : "none"}`,
+  );
+  logCliOutput(
+    `    ${DIM}Pending harvest ops:        ${RESET}${ops.harvest.pendingOperations}`,
+  );
+  logCliOutput(
+    `    ${DIM}Unresolved gate failures:   ${RESET}${ops.harvest.unresolvedGateFailures > 0 ? `${RED}${ops.harvest.unresolvedGateFailures}${RESET}` : "0"}`,
+  );
+  logCliOutput(
+    `    ${DIM}Closed unmerged:            ${RESET}${ops.harvest.closedUnmergedCount}`,
+  );
+  logCliOutput(
+    `    ${DIM}Blocked cleanups:           ${RESET}${ops.harvest.blockedCleanups}`,
+  );
+  if (ops.harvest.pendingStages.length > 0) {
+    logCliOutput(`    ${DIM}Pending harvest stages:${RESET}`);
+    for (const stage of ops.harvest.pendingStages) {
+      logCliOutput(
+        `      ${stage.operationId} | ${stage.featureId} | ${stage.phaseId ?? "feature"} | ${stage.stage} | ${stage.status}`,
+      );
+    }
+  }
+  logCliOutput(
+    `    ${DIM}Unresolved outbox:          ${RESET}pending=${ops.delivery.pendingCount}, uncertain=${ops.delivery.uncertainCount}, failed=${ops.delivery.failedCount > 0 ? `${RED}${ops.delivery.failedCount}${RESET}` : "0"}`,
+  );
+  logCliOutput(
+    `    ${DIM}Legacy unverified runs:     ${RESET}${ops.historical.legacyUnverifiedRuns}`,
+  );
+  logCliOutput(
+    `    ${DIM}Legacy unverified dispatches: ${RESET}${ops.historical.legacyUnverifiedDispatches}`,
+  );
 }
 
 async function printAgents() {

@@ -59,17 +59,20 @@ export interface GitHubHarvestPort {
     repoSlug: string;
     baseBranch: string;
     sinceIso?: string | null;
+    signal?: AbortSignal;
   }): Promise<HarvestPullRequestFact[]>;
   listOpenPullRequests?(input: {
     cwd: string;
     repoSlug: string;
     baseBranch: string;
     headBranch?: string;
+    signal?: AbortSignal;
   }): Promise<HarvestPullRequestFact[]>;
   getPullRequest(input: {
     cwd: string;
     repoSlug: string;
     prNumber: number;
+    signal?: AbortSignal;
   }): Promise<HarvestPullRequestFact | null>;
 }
 

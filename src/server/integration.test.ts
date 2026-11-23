@@ -12,32 +12,48 @@ import {
   rmSync,
   writeFileSync,
 } from "node:fs";
-import { homedir, tmpdir } from "node:os";
+import { devNull, homedir, tmpdir } from "node:os";
 import { join, sep } from "node:path";
-import fastify from "fastify";
+import fastify, { type FastifyInstance } from "fastify";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   type ServerFixture,
   createServerFixture,
   fixtureGit,
 } from "../../tests/helpers/server-fixture.js";
+import { repositoryGitEnv } from "../adapters/git/process-env.js";
+import { resolveProjectId } from "../adapters/git/project-id.js";
+import { createGitHubHarvestAdapter } from "../adapters/github/index.js";
+import {
+  createSqliteOperationsStoreAdapter,
+  createSqliteProjectRegistryAdapter,
+} from "../adapters/sqlite/index.js";
 import { getCompressionRecord } from "../db/compression.js";
 import { getGateResults } from "../db/gates.js";
 import { getDb } from "../db/index.js";
 import { listIssues } from "../db/issues.js";
 import { insertFeature, insertPhase } from "../db/plan.js";
 import { listRuns, recordHistory, startRun } from "../db/runs.js";
+import {
+  computeHarvestWorkKey,
+  planHarvestStages,
+} from "../domain/durable-harvest.js";
+import type { EnrolledProject } from "../domain/project-registry.js";
 import { ShipStage } from "../domain/ship-types.js";
 import { gatherDeliveryActuals } from "../engine/compression.js";
 import { ShipOrchestrator } from "../engine/ship-orchestrator.js";
+import type { GitHubHarvestPort } from "../ports/operations-port.js";
 import { GwrkConfigSchema } from "../utils/config.js";
 import * as projectConfig from "../utils/config.js";
 import { execCommand } from "../utils/exec.js";
 import * as gateExec from "../utils/gate-exec.js";
-import { syncTrunkForHarvest } from "../utils/git.js";
 import { HarvestWatcher } from "./harvest-watcher.js";
 import { PlanHeartbeat } from "./heartbeat.js";
-import { startServer } from "./index.js";
+import {
+  ScopedSandboxManager,
+  type ServerStartOptions,
+  startServer,
+} from "./index.js";
 import { SystemMonitor } from "./monitor.js";
 import { NetworkMonitor } from "./network.js";
 import * as persistence from "./persistence.js";
@@ -126,7 +142,7 @@ function stubListener() {
   vi.spyOn(app, "listen").mockResolvedValue("http://127.0.0.1:0");
 }
 
-function githubHeaders(event: string, body: string) {
+function githubHeaders(event: string, body: string, deliveryId?: string) {
   const signature = createHmac("sha256", "fixture-secret")
     .update(body)
     .digest("hex");
@@ -134,20 +150,145 @@ function githubHeaders(event: string, body: string) {
     "content-type": "application/json",
     "x-github-event": event,
     "x-hub-signature-256": `sha256=${signature}`,
+    ...(deliveryId ? { "x-github-delivery": deliveryId } : {}),
   };
 }
 
 function injectGitHub(
-  fixture: ServerFixture,
+  fixture: { app: FastifyInstance },
   event: string,
   payload: Record<string, unknown>,
+  deliveryId?: string,
 ) {
   const body = JSON.stringify(payload);
   return fixture.app.inject({
     method: "POST",
     url: "/webhook/github",
-    headers: githubHeaders(event, body),
+    headers: githubHeaders(event, body, deliveryId),
     payload: body,
+  });
+}
+
+function isolatedFixtureGitEnv(root: string): NodeJS.ProcessEnv {
+  const env = repositoryGitEnv(root);
+  for (const key of Object.keys(env)) {
+    if (key === "GIT_EXEC_PATH" || /^GIT_TRACE/i.test(key)) delete env[key];
+  }
+  return {
+    ...env,
+    GIT_CONFIG_GLOBAL: devNull,
+    GIT_CONFIG_NOSYSTEM: "1",
+    GIT_DEFAULT_HASH: "sha1",
+    GIT_DEFAULT_REF_FORMAT: "files",
+    GIT_AUTHOR_NAME: "Gwrk Test",
+    GIT_AUTHOR_EMAIL: "gwrk-test@example.invalid",
+    GIT_AUTHOR_DATE: "2000-01-01T00:00:00Z",
+    GIT_COMMITTER_NAME: "Gwrk Test",
+    GIT_COMMITTER_EMAIL: "gwrk-test@example.invalid",
+    GIT_COMMITTER_DATE: "2000-01-01T00:00:00Z",
+    GIT_EDITOR: "true",
+    EDITOR: "true",
+    GIT_TERMINAL_PROMPT: "0",
+  };
+}
+
+function enrollFixtureProject(
+  fixture: ServerFixture,
+  input: {
+    repoSlug: string;
+    slug?: string;
+    trunkBranch?: string;
+    localOriginPath?: string;
+  },
+): EnrolledProject {
+  const remoteUrl = `https://github.com/${input.repoSlug}.git`;
+  const existingRemotes = fixtureGit(fixture.projectRoot, "remote")
+    .split("\n")
+    .filter(Boolean);
+  if (existingRemotes.includes("origin")) {
+    fixtureGit(fixture.projectRoot, "remote", "set-url", "origin", remoteUrl);
+  } else {
+    fixtureGit(fixture.projectRoot, "remote", "add", "origin", remoteUrl);
+  }
+  if (input.localOriginPath) {
+    fixtureGit(
+      fixture.projectRoot,
+      "config",
+      "--local",
+      `url.${input.localOriginPath}.insteadOf`,
+      remoteUrl,
+    );
+  }
+  const projectId = resolveProjectId(fixture.projectRoot);
+  const registry = createSqliteProjectRegistryAdapter({ db: fixture.db });
+  const project: EnrolledProject = {
+    projectId,
+    slug: input.slug ?? fixture.projectId,
+    name: input.slug ?? fixture.projectId,
+    repoSlug: input.repoSlug,
+    trunkBranch: input.trunkBranch ?? "develop",
+    localRoot: fixture.projectRoot,
+    mirrorPath: null,
+    runnerPolicy: { allowedKinds: ["local"] },
+    slack: null,
+    legacyProjectIds: [],
+    createdAt: "2026-11-23T00:00:00.000Z",
+    updatedAt: "2026-11-23T00:00:00.000Z",
+  };
+  return registry.enrollProject(project);
+}
+
+async function startDurableServerOnFixture(
+  fixture: ServerFixture,
+  options: {
+    projectId?: string;
+    github?: GitHubHarvestPort;
+    heartbeatIntervalMs?: number | null;
+    extra?: Partial<ServerStartOptions>;
+  } = {},
+): Promise<FastifyInstance> {
+  const projectId = options.projectId ?? fixture.projectId;
+  const gitEnv = () => isolatedFixtureGitEnv(fixture.projectRoot);
+  const sandbox = new ScopedSandboxManager(fixture.projectRoot, gitEnv);
+  const config = GwrkConfigSchema.parse({
+    project: { name: projectId },
+    agents: { implement: "gemini" },
+    server: {
+      host: "127.0.0.1",
+      port: 0,
+      githubWebhookSecret: "fixture-secret",
+      heartbeatIntervalMs: 100,
+      networkCheckIntervalMs: 100,
+    },
+    parallelism: {
+      local: { maxCpu: 100, maxMem: 100, minDiskGb: 1, maxClones: 2 },
+    },
+  });
+  return startServer(config, {
+    handleSignals: false,
+    projectRoot: fixture.projectRoot,
+    ledger: { db: fixture.db, projectId },
+    sandbox,
+    gitEnv,
+    ...(options.github ? { github: options.github } : {}),
+    ...(options.heartbeatIntervalMs !== undefined
+      ? { heartbeatIntervalMs: options.heartbeatIntervalMs }
+      : {}),
+    pid: {
+      writePid(pid) {
+        mkdirSync(join(fixture.projectRoot, ".gwrk"), { recursive: true });
+        writeFileSync(fixture.pidPath, String(pid), { flag: "wx" });
+      },
+      removePid() {
+        if (
+          existsSync(fixture.pidPath) &&
+          readFileSync(fixture.pidPath, "utf8") === String(process.pid)
+        ) {
+          rmSync(fixture.pidPath, { force: true });
+        }
+      },
+    },
+    ...options.extra,
   });
 }
 
@@ -187,17 +328,43 @@ describe("Server E2E Integration", () => {
     ];
     const schedule = vi.spyOn(globalThis, "setInterval");
     const cancel = vi.spyOn(globalThis, "clearInterval");
-    const fixtures: ServerFixture[] = [];
+    const fixtures: Array<ServerFixture & { server: FastifyInstance }> = [];
+    const listTerminalPullRequests = vi.fn<
+      GitHubHarvestPort["listTerminalPullRequests"]
+    >(async () => []);
+    const baseGithub = createGitHubHarvestAdapter();
+    const githubPort: GitHubHarvestPort = {
+      verifyWebhookSignature: baseGithub.verifyWebhookSignature,
+      listTerminalPullRequests,
+      getPullRequest: vi.fn(async () => null),
+    };
     let finishShips!: (exitCode: number) => void;
     const ships = new Promise<number>((resolve) => {
       finishShips = resolve;
     });
 
     try {
-      const first = await createServerFixture("listen");
-      fixtures.push(first);
-      const second = await createServerFixture("listen");
-      fixtures.push(second);
+      for (let index = 0; index < 2; index += 1) {
+        const base = await createServerFixture("routes", {
+          routes: ["dispatch"],
+        });
+        const enrolled = enrollFixtureProject(base, {
+          repoSlug: `synthetic/server-${index}`,
+          slug: `server-${index}`,
+        });
+        const server = await startDurableServerOnFixture(base, {
+          projectId: enrolled.projectId,
+          github: githubPort,
+          heartbeatIntervalMs: null,
+        });
+        fixtures.push({
+          ...base,
+          projectId: enrolled.projectId,
+          app: server,
+          server,
+        });
+      }
+      const [first, second] = fixtures;
 
       const pollers = schedule.mock.results.map(({ value }) => value);
       expect(pollers).toHaveLength(10);
@@ -206,15 +373,21 @@ describe("Server E2E Integration", () => {
         process.listenerCount("SIGINT"),
         process.listenerCount("SIGTERM"),
       ]).toEqual(signalCounts);
-      for (const fixture of fixtures) {
+      for (const [index, fixture] of fixtures.entries()) {
         expect(readFileSync(fixture.pidPath, "utf8")).toBe(String(process.pid));
-        expect(fixtureGit(fixture.projectRoot, "remote")).toBe("");
+        expect(
+          fixtureGit(fixture.projectRoot, "remote", "get-url", "origin"),
+        ).toBe(`https://github.com/synthetic/server-${index}.git`);
       }
 
+      const launchedCwds = new Map<string, string>();
       const run = vi.fn(() => ships);
-      vi.mocked(ShipOrchestrator).mockImplementation(
-        () => ({ run, getResult: () => ({}) }) as ShipOrchestrator,
-      );
+      vi.mocked(ShipOrchestrator).mockImplementation((config) => {
+        if (config?.featureId && config?.cwd) {
+          launchedCwds.set(config.featureId, config.cwd);
+        }
+        return { run, getResult: () => ({}) } as ShipOrchestrator;
+      });
       const responses = await Promise.all(
         fixtures.map((fixture, index) =>
           fixture.app.inject({
@@ -231,7 +404,11 @@ describe("Server E2E Integration", () => {
         const featureId = `feature-${index}`;
         const response = responses[index];
         expect(response.statusCode).toBe(201);
-        const { id } = response.json();
+        const receipt = response.json() as {
+          operationId: string;
+          projectId: string;
+        };
+        expect(receipt.projectId).toBe(fixture.projectId);
 
         const queue = await fixture.app.inject({
           method: "GET",
@@ -239,31 +416,30 @@ describe("Server E2E Integration", () => {
         });
         expect(queue.statusCode).toBe(200);
 
-        const lookup = await fixture.app.inject({
-          method: "GET",
-          url: `/api/dispatch/${featureId}/phase-01`,
-        });
-        expect(lookup.statusCode).toBe(200);
-        expect(lookup.json().id).toBe(id);
-        await vi.waitFor(() => {
-          expect(fixture.journal().at(-1)).toMatchObject({
-            id,
+        await vi.waitFor(async () => {
+          const lookup = await fixture.app.inject({
+            method: "GET",
+            url: `/api/dispatch/${featureId}/phase-01`,
+          });
+          expect(lookup.statusCode).toBe(200);
+          expect(lookup.json()).toMatchObject({
+            operationId: receipt.operationId,
             status: "completed",
           });
         });
-        const journal = fixture.journal();
-        expect(journal.map(({ status }) => status)).toEqual([
-          "queued",
-          "running",
-          "running",
-          "completed",
-        ]);
-        expect(
-          journal.every(
-            (record) => record.id === id && record.featureId === featureId,
-          ),
-        ).toBe(true);
-        expect(journal[2].workDir).toContain(
+
+        const persisted = fixture.db
+          .prepare(
+            "SELECT operation_id, project_id, feature_id, status FROM dispatch_operations WHERE operation_id = ?",
+          )
+          .get(receipt.operationId);
+        expect(persisted).toEqual({
+          operation_id: receipt.operationId,
+          project_id: fixture.projectId,
+          feature_id: featureId,
+          status: "completed",
+        });
+        expect(launchedCwds.get(featureId)).toContain(
           join(fixture.projectRoot, ".runs", "sandboxes") + sep,
         );
         expect(listRuns(featureId, fixture.projectId, fixture.db)).toEqual([
@@ -283,13 +459,16 @@ describe("Server E2E Integration", () => {
             "--porcelain",
           ).match(/^worktree /gm),
         ).toHaveLength(1);
-        expect(fixtureGit(fixture.projectRoot, "remote")).toBe("");
+        expect(
+          fixtureGit(fixture.projectRoot, "remote", "get-url", "origin"),
+        ).toBe(`https://github.com/synthetic/server-${index}.git`);
       }
 
+      await vi.waitFor(() =>
+        expect(listTerminalPullRequests).toHaveBeenCalledTimes(2),
+      );
       expect(
-        vi
-          .mocked(execCommand)
-          .mock.calls.map(([, , , options]) => options?.cwd),
+        listTerminalPullRequests.mock.calls.map(([input]) => input.cwd),
       ).toEqual(fixtures.map(({ projectRoot }) => projectRoot));
       const gitRoots = [
         ...vi
@@ -336,7 +515,15 @@ describe("Server E2E Integration", () => {
       expect(removePid).not.toHaveBeenCalled();
     } finally {
       finishShips(0);
-      await Promise.all(fixtures.map((fixture) => fixture.close()));
+      await Promise.all(
+        fixtures.map(async (fixture) => {
+          try {
+            await fixture.server.close();
+          } finally {
+            await fixture.close();
+          }
+        }),
+      );
     }
 
     for (const fixture of fixtures) {
@@ -349,6 +536,7 @@ describe("Server E2E Integration", () => {
     const bin = mkdtempSync(join(tmpdir(), "gwrk-poll-bin-"));
     const marker = join(bin, "poll.pid");
     let fixture: ServerFixture | undefined;
+    let server: FastifyInstance | undefined;
     let childPid: number | undefined;
     const stopChild = () => {
       if (childPid === undefined) return;
@@ -361,7 +549,7 @@ describe("Server E2E Integration", () => {
     try {
       writeFileSync(
         join(bin, "gh"),
-        `#!/usr/bin/env node
+        `#!${process.execPath}
 process.on("SIGTERM", () => {});
 require("node:fs").writeFileSync(${JSON.stringify(marker)}, String(process.pid));
 setInterval(() => {}, 1000);
@@ -369,13 +557,15 @@ setInterval(() => {}, 1000);
         { mode: 0o755 },
       );
       vi.stubEnv("PATH", `${bin}:${process.env.PATH}`);
-      const actual =
-        await vi.importActual<typeof import("../utils/exec.js")>(
-          "../utils/exec.js",
-        );
-      vi.mocked(execCommand).mockImplementationOnce(actual.execCommand);
+      fixture = await createServerFixture("routes", { routes: ["dispatch"] });
+      const enrolled = enrollFixtureProject(fixture, {
+        repoSlug: "synthetic/poll-bound",
+        slug: "poll-bound",
+      });
       stubListener();
-      fixture = await createServerFixture("listen");
+      server = await startDurableServerOnFixture(fixture, {
+        projectId: enrolled.projectId,
+      });
       const pollPid = await vi.waitFor(() => {
         const pid = Number(readFileSync(marker, "utf8"));
         expect(pid).toBeGreaterThan(0);
@@ -385,7 +575,7 @@ setInterval(() => {}, 1000);
       expect(readIfPresent(fixture.pidPath)).toBe(String(process.pid));
 
       const closeFinished = vi.fn();
-      const closing = fixture.app.close().then(closeFinished);
+      const closing = server.close().then(closeFinished);
       await vi.waitFor(() => expect(closeFinished).toHaveBeenCalledOnce(), {
         timeout: 6500,
       });
@@ -399,11 +589,126 @@ setInterval(() => {}, 1000);
         stopChild();
       } finally {
         try {
-          await fixture?.close();
+          await server?.close();
         } finally {
-          rmSync(bin, { recursive: true, force: true });
+          try {
+            await fixture?.close();
+          } finally {
+            rmSync(bin, { recursive: true, force: true });
+          }
         }
       }
+    }
+  }, 10_000);
+
+  it("keeps inherited repository selectors out of the actual durable GitHub port", async () => {
+    const fixture = await createServerFixture("routes", {
+      routes: ["dispatch"],
+    });
+    const bin = join(fixture.projectRoot, ".git", "durable-gh-bin");
+    const marker = join(bin, "observed.json");
+    mkdirSync(bin);
+    writeFileSync(
+      join(bin, "gh"),
+      `#!${process.execPath}
+require("node:fs").writeFileSync(${JSON.stringify(marker)}, JSON.stringify({cwd:process.cwd(), GIT_DIR:process.env.GIT_DIR, GIT_WORK_TREE:process.env.GIT_WORK_TREE, GH_REPO:process.env.GH_REPO}));
+process.stdout.write("[]");
+`,
+      { mode: 0o755 },
+    );
+    try {
+      vi.stubEnv("PATH", `${bin}:${process.env.PATH}`);
+      vi.stubEnv("GIT_DIR", "/synthetic/external/.git");
+      vi.stubEnv("GIT_WORK_TREE", "/synthetic/external");
+      vi.stubEnv("GH_REPO", "external/repo");
+      await createGitHubHarvestAdapter().listTerminalPullRequests({
+        cwd: fixture.projectRoot,
+        repoSlug: "synthetic/fixture",
+        baseBranch: "develop",
+      });
+      const observed = JSON.parse(readFileSync(marker, "utf8"));
+      expect(observed.cwd).toBe(fixture.projectRoot);
+      expect.soft(observed.GIT_DIR).toBeUndefined();
+      expect.soft(observed.GIT_WORK_TREE).toBeUndefined();
+      expect.soft(observed.GH_REPO).toBeUndefined();
+      expect(getDb).not.toHaveBeenCalled();
+    } finally {
+      await fixture.close();
+    }
+  });
+
+  it("drains the actual enrolled durable GitHub poll within the existing shutdown bound", async () => {
+    const fixture = await createServerFixture("routes", {
+      routes: ["dispatch"],
+    });
+    const registry = createSqliteProjectRegistryAdapter({ db: fixture.db });
+    fixtureGit(
+      fixture.projectRoot,
+      "remote",
+      "add",
+      "origin",
+      "https://github.com/synthetic/fixture.git",
+    );
+    registry.enrollProject({
+      projectId: resolveProjectId(fixture.projectRoot),
+      slug: "durable-shutdown",
+      name: "Synthetic poll",
+      repoSlug: "synthetic/fixture",
+      trunkBranch: "develop",
+      localRoot: fixture.projectRoot,
+      mirrorPath: null,
+      runnerPolicy: { allowedKinds: ["local"] },
+      slack: null,
+      legacyProjectIds: [],
+      createdAt: "2026-11-23T00:00:00Z",
+      updatedAt: "2026-11-23T00:00:00Z",
+    });
+    const bin = join(fixture.projectRoot, ".git", "durable-stall-bin");
+    const marker = join(bin, "poll.pid");
+    mkdirSync(bin);
+    writeFileSync(
+      join(bin, "gh"),
+      `#!${process.execPath}
+process.on("SIGTERM", () => {});
+require("node:fs").writeFileSync(${JSON.stringify(marker)}, String(process.pid));
+setInterval(() => {}, 1000);
+`,
+      { mode: 0o755 },
+    );
+    vi.stubEnv("PATH", `${bin}:${process.env.PATH}`);
+    const watcher = new HarvestWatcher(
+      GwrkConfigSchema.parse({ project: { name: fixture.projectId } }),
+      null,
+      fixture.projectRoot,
+      { db: fixture.db, projectId: fixture.projectId },
+      undefined,
+      { registry, github: createGitHubHarvestAdapter() },
+    );
+    let childPid: number | undefined;
+    let stopping: Promise<void> | void;
+    try {
+      watcher.start();
+      childPid = await vi.waitFor(() => Number(readFileSync(marker, "utf8")));
+      expect(childPid).toBeGreaterThan(0);
+      const drained = vi.fn();
+      stopping = Promise.resolve(watcher.stop()).then(drained);
+      await vi.waitFor(() => expect(drained).toHaveBeenCalledOnce(), {
+        timeout: 6500,
+      });
+      await stopping;
+      expect(() => process.kill(childPid as number, 0)).toThrow(/ESRCH/);
+      childPid = undefined;
+    } finally {
+      if (childPid) {
+        try {
+          process.kill(childPid, "SIGKILL");
+        } catch (error) {
+          expect((error as NodeJS.ErrnoException).code).toBe("ESRCH");
+        }
+      }
+      await stopping;
+      await watcher.stop();
+      await fixture.close();
     }
   }, 10_000);
 
@@ -950,151 +1255,299 @@ setInterval(() => {}, 1000);
   });
 
   it("uses scoped persistence when the startup watcher sees terminal pull requests", async () => {
-    stubListener();
     const watcher = vi.spyOn(HarvestWatcher.prototype, "runCheck");
-    let returnPullRequests!: (
-      value: Awaited<ReturnType<typeof execCommand>>,
-    ) => void;
-    vi.mocked(execCommand).mockReturnValueOnce(
-      new Promise((resolve) => {
-        returnPullRequests = resolve;
-      }),
-    );
-    const fixture = await createServerFixture("listen");
+    const repoSlug = "synthetic/startup-watcher";
     const closedAt = "2026-01-01T00:00:00Z";
+    const origin = await createServerFixture("routes", {
+      routes: ["dispatch"],
+    });
+    const fixture = await createServerFixture("routes", {
+      routes: ["dispatch"],
+    });
+    let server: FastifyInstance | undefined;
+    let returnPullRequests!: (
+      value: Awaited<ReturnType<GitHubHarvestPort["listTerminalPullRequests"]>>,
+    ) => void;
+    const baseGithub = createGitHubHarvestAdapter();
+    const githubPort: GitHubHarvestPort = {
+      verifyWebhookSignature: baseGithub.verifyWebhookSignature,
+      listTerminalPullRequests: vi.fn(
+        () =>
+          new Promise((resolve) => {
+            returnPullRequests = resolve;
+          }),
+      ),
+      getPullRequest: vi.fn(async () => null),
+    };
     const features = [
-      { id: "already-harvested", state: "CLOSED" },
-      { id: "pending-harvest", state: "CLOSED" },
-      { id: "merged-feature", state: "MERGED" },
+      { id: "already-harvested", state: "CLOSED" as const },
+      { id: "pending-harvest", state: "CLOSED" as const },
+      { id: "merged-feature", state: "MERGED" as const },
     ];
-    const pullRequests = features.map(({ id, state }, index) => ({
-      number: index + 1,
-      headRefName: `feat/${id}-phase-01`,
-      state,
-      closedAt,
-      mergedAt: state === "MERGED" ? closedAt : null,
-      url: `https://example.invalid/pr/${index + 1}`,
-    }));
     try {
-      try {
-        vi.stubEnv("GWRK_HOME", join(fixture.projectRoot, ".gwrk"));
-        writeFileSync(
-          join(fixture.projectRoot, ".gwrkrc.json"),
-          JSON.stringify({ project: { name: fixture.projectId } }),
-        );
-        fixture.db
-          .prepare(`
+      const enrolled = enrollFixtureProject(fixture, {
+        repoSlug,
+        slug: "startup-watcher",
+        localOriginPath: origin.projectRoot,
+      });
+      const projectId = enrolled.projectId;
+      fixtureGit(fixture.projectRoot, "fetch", "origin", "develop");
+      fixtureGit(fixture.projectRoot, "reset", "--hard", "origin/develop");
+
+      const featureDir = join(origin.projectRoot, "specs", "merged-feature");
+      const featureStateDir = join(featureDir, ".gwrk");
+      mkdirSync(featureStateDir, { recursive: true });
+      writeFileSync(
+        join(origin.projectRoot, ".gwrkrc.json"),
+        JSON.stringify({ project: { name: projectId } }),
+      );
+      writeFileSync(join(featureDir, "plan.md"), "## Phase 1: Merge (1 SP)\n");
+      writeFileSync(
+        join(featureStateDir, "tasks.json"),
+        JSON.stringify({
+          featureId: "merged-feature",
+          createdAt: closedAt,
+          phases: [
+            {
+              id: "phase-01",
+              title: "Merge",
+              tasks: [
+                {
+                  id: "T001",
+                  title: "Verify merged phase",
+                  description: "",
+                  status: "open",
+                  gateScript: "true",
+                },
+                {
+                  id: "T002",
+                  title: "Cancelled before merge",
+                  description: "",
+                  status: "cancelled",
+                  gateScript: "false",
+                },
+              ],
+            },
+          ],
+        }),
+      );
+      fixtureGit(origin.projectRoot, "add", "--", ".gwrkrc.json", "specs");
+      fixtureGit(
+        origin.projectRoot,
+        "-c",
+        "user.name=Gwrk Test",
+        "-c",
+        "user.email=gwrk-test@example.invalid",
+        "commit",
+        "--author=Gwrk Test <gwrk-test@example.invalid>",
+        "--no-gpg-sign",
+        "-m",
+        "Add merged feature specs",
+      );
+      const mergeCommitSha = fixtureGit(
+        origin.projectRoot,
+        "rev-parse",
+        "HEAD",
+      );
+      const operationsStore = createSqliteOperationsStoreAdapter({
+        db: fixture.db,
+      });
+      // Record PR #1 as already durably harvested so startup watcher skips re-applying it.
+      const priorWorkKey = computeHarvestWorkKey({
+        repoSlug,
+        baseBranch: "develop",
+        prNumber: 1,
+        terminalEvent: "closed_unmerged",
+        mergeCommitSha: null,
+        featureId: "already-harvested",
+        phaseId: "phase-01",
+      });
+      const priorIntake = operationsStore.recordHarvestIntake({
+        candidate: {
+          source: "github_poller",
+          deliveryId: `prior:${repoSlug}:1:closed_unmerged:${closedAt}`,
+          repoSlug,
+          headRepoSlug: repoSlug,
+          baseBranch: "develop",
+          headBranch: "feat/already-harvested-phase-01",
+          expectedHeadSha: null,
+          prNumber: 1,
+          prUrl: `https://github.com/${repoSlug}/pull/1`,
+          terminalEvent: "closed_unmerged",
+          mergeCommitSha: null,
+          terminalAt: closedAt,
+          recipient: null,
+        },
+        payloadDigest: "a".repeat(64),
+        receivedAt: closedAt,
+        target: {
+          accepted: true,
+          project: enrolled,
+          operations: [
+            {
+              operationId: "op-already-harvested-1",
+              projectId: enrolled.projectId,
+              workKey: priorWorkKey,
+              repoSlug,
+              headRepoSlug: repoSlug,
+              trunkBranch: "develop",
+              featureId: "already-harvested",
+              phaseId: "phase-01",
+              prNumber: 1,
+              prUrl: `https://github.com/${repoSlug}/pull/1`,
+              headBranch: "feat/already-harvested-phase-01",
+              expectedHeadSha: null,
+              terminalEvent: "closed_unmerged",
+              mergeCommitSha: null,
+              terminalAt: closedAt,
+              recipient: null,
+              plannedSlackRecipient: null,
+              status: "accepted",
+              leaseOwner: null,
+              leaseEpoch: 0,
+              leaseExpiresAt: null,
+              linkedRunId: null,
+              lastError: null,
+              createdAt: closedAt,
+              updatedAt: closedAt,
+              completedAt: null,
+            },
+          ],
+        },
+      });
+      expect(priorIntake.ok).toBe(true);
+      const priorClaim = operationsStore.claimHarvestLease({
+        operationId: "op-already-harvested-1",
+        leaseOwner: "prior-watcher",
+        nowIso: closedAt,
+        leaseExpiresAt: "2026-01-01T00:05:00Z",
+      });
+      expect(priorClaim).not.toBeNull();
+      if (priorClaim) {
+        const priorPlan = planHarvestStages({
+          terminalEvent: "closed_unmerged",
+          phaseIds: ["phase-01"],
+          hasSlackTarget: false,
+          hasRemoteBranchTarget: false,
+        });
+        expect(
+          operationsStore.initializeHarvestStages({
+            fence: priorClaim.fence,
+            nowIso: closedAt,
+            phaseIds: ["phase-01"],
+            hasSlackTarget: false,
+            hasRemoteBranchTarget: false,
+            stages: priorPlan,
+          }).ok,
+        ).toBe(true);
+        expect(
+          operationsStore.transitionHarvestStage({
+            fence: priorClaim.fence,
+            nowIso: closedAt,
+            phaseKey: "phase-01",
+            stage: "learning_record",
+            status: "running",
+          }).ok,
+        ).toBe(true);
+        expect(
+          operationsStore.transitionHarvestStage({
+            fence: priorClaim.fence,
+            nowIso: closedAt,
+            phaseKey: "phase-01",
+            stage: "learning_record",
+            status: "succeeded",
+          }).ok,
+        ).toBe(true);
+      }
+
+      vi.stubEnv("GWRK_HOME", join(fixture.projectRoot, ".gwrk"));
+      fixture.db
+        .prepare(`
         INSERT INTO compression (
           feature_id, phase_id, project_id, estimated_hours, actual_coding_hours,
           estimated_days, actual_delivery_days, point_compression, total_compression, merge_timestamp
         ) VALUES ('already-harvested', 'phase-01', ?, 1, 1, 1, 1, 1, 1, ?)
       `)
-          .run(fixture.projectId, closedAt);
-        for (const { id } of features) {
-          const runId = startRun(
+        .run(projectId, closedAt);
+      for (const { id } of features) {
+        const runId = startRun(
+          {
+            feature_id: id,
+            phase_id: "phase-01",
+            project_id: projectId,
+            command: "ship",
+            attempt: 1,
+          },
+          fixture.db,
+        );
+        if (id === "merged-feature") {
+          recordHistory(
             {
+              project_id: projectId,
               feature_id: id,
-              phase_id: "phase-01",
-              project_id: fixture.projectId,
-              command: "ship",
-              attempt: 1,
+              task_id: "T001",
+              to_status: "completed",
+              run_id: runId,
             },
             fixture.db,
           );
-          if (id === "merged-feature") {
-            recordHistory(
-              {
-                project_id: fixture.projectId,
-                feature_id: id,
-                task_id: "T001",
-                to_status: "completed",
-                run_id: runId,
-              },
-              fixture.db,
-            );
-          }
         }
-        const featureDir = join(fixture.projectRoot, "specs", "merged-feature");
-        const featureStateDir = join(featureDir, ".gwrk");
-        mkdirSync(featureStateDir, { recursive: true });
-        writeFileSync(
-          join(featureDir, "plan.md"),
-          "## Phase 1: Merge (1 SP)\n",
-        );
-        writeFileSync(
-          join(featureStateDir, "tasks.json"),
-          JSON.stringify({
-            featureId: "merged-feature",
-            createdAt: closedAt,
-            phases: [
-              {
-                id: "phase-01",
-                title: "Merge",
-                tasks: [
-                  {
-                    id: "T001",
-                    title: "Verify merged phase",
-                    description: "",
-                    status: "open",
-                    gateScript: "true",
-                  },
-                  {
-                    id: "T002",
-                    title: "Cancelled before merge",
-                    description: "",
-                    status: "cancelled",
-                    gateScript: "false",
-                  },
-                ],
-              },
-            ],
-          }),
-        );
-        vi.mocked(gatherDeliveryActuals).mockReturnValueOnce({
-          specCreatedAt: closedAt,
-          firstImplCommit: closedAt,
-          lastImplCommit: closedAt,
-          prMergedAt: closedAt,
-          dormancyDays: 0,
-          activeCodingMinutes: 60,
-          sessionCount: 1,
-          deliveryWindowHours: 1,
-        });
-      } finally {
-        returnPullRequests({
-          exitCode: 0,
-          stdout: JSON.stringify(pullRequests),
-          stderr: "",
-        });
-        await watcher.mock.results[0]?.value;
       }
+
+      vi.mocked(gatherDeliveryActuals).mockReturnValueOnce({
+        specCreatedAt: closedAt,
+        firstImplCommit: closedAt,
+        lastImplCommit: closedAt,
+        prMergedAt: closedAt,
+        dormancyDays: 0,
+        activeCodingMinutes: 60,
+        sessionCount: 1,
+        deliveryWindowHours: 1,
+      });
+
+      const pullRequests = features.map(({ id, state }, index) => ({
+        repoSlug,
+        headRepoSlug: repoSlug,
+        prNumber: index + 1,
+        prUrl: `https://github.com/${repoSlug}/pull/${index + 1}`,
+        state,
+        merged: state === "MERGED",
+        baseBranch: "develop",
+        headBranch: `feat/${id}-phase-01`,
+        headSha: null,
+        mergeCommitSha: state === "MERGED" ? mergeCommitSha : null,
+        mergedAt: state === "MERGED" ? closedAt : null,
+        closedAt,
+      }));
+
+      stubListener();
+      server = await startDurableServerOnFixture(fixture, {
+        projectId,
+        github: githubPort,
+      });
+      await vi.waitFor(() => expect(returnPullRequests).toBeDefined());
+      returnPullRequests(pullRequests);
+      await watcher.mock.results[0]?.value;
+
       expect(watcher).toHaveBeenCalledOnce();
       expect(getDb).not.toHaveBeenCalled();
-      expect(syncTrunkForHarvest).toHaveBeenCalledTimes(2);
-      expect(
-        listRuns("pending-harvest", fixture.projectId, fixture.db),
-      ).toEqual([
+      expect(listRuns("pending-harvest", projectId, fixture.db)).toEqual([
         expect.objectContaining({ status: "closed", finished_at: closedAt }),
       ]);
+      expect(listRuns("already-harvested", projectId, fixture.db)).toEqual([
+        expect.objectContaining({ finished_at: null }),
+      ]);
+      expect(listRuns("merged-feature", projectId, fixture.db)).toEqual([
+        expect.objectContaining({ status: "merged", finished_at: closedAt }),
+      ]);
       expect(
-        listRuns("already-harvested", fixture.projectId, fixture.db),
-      ).toEqual([expect.objectContaining({ finished_at: null })]);
-      expect(listRuns("merged-feature", fixture.projectId, fixture.db)).toEqual(
-        [expect.objectContaining({ status: "merged", finished_at: closedAt })],
-      );
-      expect(
-        getGateResults(
-          "merged-feature",
-          "phase-01",
-          fixture.projectId,
-          fixture.db,
-        ),
+        getGateResults("merged-feature", "phase-01", projectId, fixture.db),
       ).toEqual([expect.objectContaining({ task_id: "T001", passed: 1 })]);
       expect(
         getCompressionRecord(
           "merged-feature",
           "phase-01",
-          fixture.projectId,
+          projectId,
           fixture.db,
         ),
       ).toMatchObject({
@@ -1102,7 +1555,12 @@ setInterval(() => {}, 1000);
         convergence_first_pass_rate: 50,
       });
     } finally {
-      await fixture.close();
+      returnPullRequests?.([]);
+      try {
+        await server?.close();
+      } finally {
+        await Promise.all([fixture.close(), origin.close()]);
+      }
     }
   });
 
@@ -1277,64 +1735,109 @@ setInterval(() => {}, 1000);
   });
 
   it("harvests a signed merged GitHub pull request in scoped SQLite", async () => {
-    stubListener();
-    const fixture = await createServerFixture("listen");
+    const repoSlug = "synthetic/webhook-merge";
+    const origin = await createServerFixture("routes", {
+      routes: ["dispatch"],
+    });
+    const fixture = await createServerFixture("routes", {
+      routes: ["dispatch"],
+    });
+    let server: FastifyInstance | undefined;
     const featureId = "webhook-merge";
     const phaseId = "phase-01";
     const mergedAt = "2026-01-01T00:00:00Z";
+    const baseGithub = createGitHubHarvestAdapter();
+    const githubPort: GitHubHarvestPort = {
+      verifyWebhookSignature: baseGithub.verifyWebhookSignature,
+      listTerminalPullRequests: vi.fn(async () => []),
+      getPullRequest: vi.fn(async () => null),
+    };
     try {
+      const enrolled = enrollFixtureProject(fixture, {
+        repoSlug,
+        slug: "webhook-merge",
+        localOriginPath: origin.projectRoot,
+      });
+      const projectId = enrolled.projectId;
+      fixtureGit(fixture.projectRoot, "fetch", "origin", "develop");
+      fixtureGit(fixture.projectRoot, "reset", "--hard", "origin/develop");
+      const mergeCommitSha = fixtureGit(
+        origin.projectRoot,
+        "rev-parse",
+        "HEAD",
+      );
+      stubListener();
+      server = await startDurableServerOnFixture(fixture, {
+        projectId,
+        github: githubPort,
+      });
       startRun(
         {
           feature_id: featureId,
           phase_id: phaseId,
-          project_id: fixture.projectId,
+          project_id: projectId,
           command: "ship",
         },
         fixture.db,
       );
-      const response = await injectGitHub(fixture, "pull_request", {
-        action: "closed",
-        pull_request: {
-          number: 8,
-          merged: true,
-          merged_at: mergedAt,
-          merge_commit_sha: "abcdef",
-          html_url: "https://example.invalid/pr/8",
-          base: { ref: "develop" },
-          head: { ref: `feat/${featureId}-${phaseId}` },
+      const response = await injectGitHub(
+        { app: server },
+        "pull_request",
+        {
+          action: "closed",
+          repository: { full_name: repoSlug },
+          pull_request: {
+            number: 8,
+            merged: true,
+            merged_at: mergedAt,
+            merge_commit_sha: mergeCommitSha,
+            html_url: `https://github.com/${repoSlug}/pull/8`,
+            base: { ref: "develop", repo: { full_name: repoSlug } },
+            head: {
+              ref: `feat/${featureId}-${phaseId}`,
+              sha: null,
+              repo: { full_name: repoSlug },
+            },
+          },
         },
-      });
+        "delivery-webhook-merge-8",
+      );
       expect(response.statusCode).toBe(200);
-      await fixture.app.close();
+      expect(response.json()).toMatchObject({
+        status: "accepted",
+        projectId,
+        deliveryId: "delivery-webhook-merge-8",
+      });
+      await server.close();
       expect(getDb).not.toHaveBeenCalled();
-      expect(listRuns(featureId, fixture.projectId, fixture.db)).toEqual([
+      expect(listRuns(featureId, projectId, fixture.db)).toEqual([
         expect.objectContaining({
-          merge_commit_sha: "abcdef",
+          merge_commit_sha: mergeCommitSha,
           status: "merged",
           finished_at: mergedAt,
         }),
       ]);
     } finally {
-      await fixture.close();
+      try {
+        await server?.close();
+      } finally {
+        await Promise.all([fixture.close(), origin.close()]);
+      }
     }
   });
 
   it.each(["webhook", "watcher"] as const)(
     "syncs the scoped checkout during %s harvest with inherited Git selectors",
     async (entryPoint) => {
-      const git =
-        await vi.importActual<typeof import("../utils/git.js")>(
-          "../utils/git.js",
-        );
-      vi.mocked(syncTrunkForHarvest).mockImplementationOnce(
-        git.syncTrunkForHarvest,
-      );
       const fixtures: ServerFixture[] = [];
-      let returnPullRequests: (() => void) | undefined;
+      let server: FastifyInstance | undefined;
+      const repoSlug = "synthetic/scoped-sync";
       const featureId = "scoped-sync";
       const phaseId = "phase-01";
+      const slowPhaseId = "phase-02";
       const mergedAt = "2026-12-01T00:00:00Z";
       const headRef = `feat/${featureId}-${phaseId}`;
+      const slowHeadRef = `feat/${featureId}-${slowPhaseId}`;
       const slowCommand = "exec /bin/sleep 1";
       const slowGates = [
         { id: "T003", gateScript: "gates/T003-gate.sh" },
@@ -1359,63 +1862,33 @@ setInterval(() => {}, 1000);
           routes: ["dispatch"],
         });
         fixtures.push(external);
-        vi.stubEnv("GIT_DIR", join(external.projectRoot, ".git"));
-        vi.stubEnv("GIT_WORK_TREE", external.projectRoot);
-        vi.stubEnv("GH_REPO", "external/repo");
-        const binDir = join(external.projectRoot, ".git", "fixture-bin");
-        mkdirSync(binDir);
-        writeFileSync(
-          join(binDir, "gh"),
-          [
-            "#!/bin/sh",
-            'test "$1 $2 $3" = "pr view 9" || exit 1',
-            'test -z "${GIT_DIR-}${GIT_WORK_TREE-}${GH_REPO-}" || exit 1',
-            `printf '%s\\n' '${mergedAt}'`,
-            "",
-          ].join("\n"),
-          { mode: 0o755 },
-        );
-        vi.stubEnv("PATH", `${binDir}:${process.env.PATH}`);
-
-        stubListener();
-        const watcher = vi.spyOn(HarvestWatcher.prototype, "runCheck");
-        if (entryPoint === "watcher") {
-          vi.mocked(execCommand).mockReturnValueOnce(
-            new Promise((resolve) => {
-              returnPullRequests = () =>
-                resolve({
-                  exitCode: 0,
-                  stdout: JSON.stringify([
-                    {
-                      number: 9,
-                      headRefName: headRef,
-                      state: "MERGED",
-                      mergedAt,
-                      mergeCommit: { oid: "abcdef" },
-                      url: "https://example.invalid/pr/9",
-                    },
-                  ]),
-                  stderr: "",
-                });
-            }),
-          );
-        }
-        const fixture = await createServerFixture("listen");
+        const fixture = await createServerFixture("routes", {
+          routes: ["dispatch"],
+        });
         fixtures.push(fixture);
+
         vi.stubEnv("GWRK_HOME", join(fixture.projectRoot, ".gwrk"));
+        const enrolled = enrollFixtureProject(fixture, {
+          repoSlug,
+          slug: "scoped-sync",
+          localOriginPath: origin.projectRoot,
+        });
+        const projectId = enrolled.projectId;
         for (const { projectRoot } of [fixture, external]) {
           mkdirSync(join(projectRoot, ".git", "info"), { recursive: true });
           writeFileSync(
             join(projectRoot, ".git", "info", "exclude"),
             ".gwrk/\n",
           );
-          fixtureGit(
-            projectRoot,
-            "remote",
-            "add",
-            "origin",
-            origin.projectRoot,
-          );
+          if (projectRoot === external.projectRoot) {
+            fixtureGit(
+              projectRoot,
+              "remote",
+              "add",
+              "origin",
+              origin.projectRoot,
+            );
+          }
           fixtureGit(projectRoot, "fetch", "origin", "develop");
           fixtureGit(projectRoot, "reset", "--hard", "origin/develop");
         }
@@ -1428,13 +1901,13 @@ setInterval(() => {}, 1000);
         const featureDir = join(origin.projectRoot, "specs", featureId);
         writeFileSync(
           join(origin.projectRoot, ".gwrkrc.json"),
-          JSON.stringify({ project: { name: fixture.projectId } }),
+          JSON.stringify({ project: { name: projectId } }),
         );
         mkdirSync(join(featureDir, ".gwrk"), { recursive: true });
         mkdirSync(join(featureDir, "gates"));
         writeFileSync(
           join(featureDir, "plan.md"),
-          "## Phase 1: Merge (1 SP)\n",
+          "## Phase 1: Merge (1 SP)\n## Phase 2: Slow Gates (1 SP)\n",
         );
         const gitGate = 'test "$(git log -1 --format=%s)" = "Advance origin"';
         writeFileSync(
@@ -1477,13 +1950,17 @@ setInterval(() => {}, 1000);
                     status: "open",
                     gateScript: "gates/T002-gate.sh",
                   },
-                  ...slowGates.map((gate) => ({
-                    ...gate,
-                    title: "Verify gate deadline",
-                    description: "",
-                    status: "open",
-                  })),
                 ],
+              },
+              {
+                id: slowPhaseId,
+                title: "Slow Gates",
+                tasks: slowGates.map((gate) => ({
+                  ...gate,
+                  title: "Verify gate deadline",
+                  description: "",
+                  status: "open",
+                })),
               },
             ],
           }),
@@ -1504,54 +1981,170 @@ setInterval(() => {}, 1000);
         );
         const originHead = fixtureGit(origin.projectRoot, "rev-parse", "HEAD");
         expect(originHead).not.toBe(externalBefore[0]);
-        if (entryPoint === "watcher") {
-          const options = vi.mocked(execCommand).mock.calls[0]?.[3];
-          expect(options?.cwd).toBe(fixture.projectRoot);
-          expect(options?.env).toBeDefined();
-          expect(options?.env?.GIT_DIR).toBeUndefined();
-          expect(options?.env?.GIT_WORK_TREE).toBeUndefined();
-          expect(options?.env?.GH_REPO).toBeUndefined();
-          returnPullRequests?.();
-          expect(watcher).toHaveBeenCalledOnce();
-        } else {
-          const response = await injectGitHub(fixture, "pull_request", {
-            action: "closed",
-            pull_request: {
-              number: 9,
-              merged: true,
-              merged_at: mergedAt,
-              merge_commit_sha: "abcdef",
-              html_url: "https://example.invalid/pr/9",
-              base: { ref: "develop" },
-              head: { ref: headRef },
+
+        const binDir = join(external.projectRoot, ".git", "fixture-bin");
+        const pollObservedPath = join(binDir, "poll-observed.json");
+        mkdirSync(binDir);
+        const watcherPayload = JSON.stringify([
+          {
+            number: 9,
+            html_url: `https://github.com/${repoSlug}/pull/9`,
+            state: "closed",
+            merged_at: mergedAt,
+            closed_at: mergedAt,
+            merge_commit_sha: originHead,
+            base: { ref: "develop", repo: { full_name: repoSlug } },
+            head: { ref: headRef, sha: null, repo: { full_name: repoSlug } },
+          },
+          {
+            number: 10,
+            html_url: `https://github.com/${repoSlug}/pull/10`,
+            state: "closed",
+            merged_at: mergedAt,
+            closed_at: mergedAt,
+            merge_commit_sha: originHead,
+            base: { ref: "develop", repo: { full_name: repoSlug } },
+            head: {
+              ref: slowHeadRef,
+              sha: null,
+              repo: { full_name: repoSlug },
             },
-          });
+          },
+        ]);
+        writeFileSync(
+          join(binDir, "gh"),
+          `#!${process.execPath}
+const fs = require("node:fs");
+const args = process.argv.slice(2);
+if (process.env.GIT_DIR || process.env.GIT_WORK_TREE || process.env.GH_REPO) {
+  process.exit(1);
+}
+if (args[0] === "pr" && args[1] === "view" && args[2] === "9") {
+  process.stdout.write(${JSON.stringify(`${mergedAt}\n`)});
+  process.exit(0);
+}
+if (args[0] === "api") {
+  fs.writeFileSync(
+    ${JSON.stringify(pollObservedPath)},
+    JSON.stringify({
+      cwd: process.cwd(),
+      GIT_DIR: process.env.GIT_DIR,
+      GIT_WORK_TREE: process.env.GIT_WORK_TREE,
+      GH_REPO: process.env.GH_REPO,
+    }),
+  );
+  process.stdout.write(${JSON.stringify(watcherPayload)});
+  process.exit(0);
+}
+process.exit(1);
+`,
+          { mode: 0o755 },
+        );
+        vi.stubEnv("GIT_DIR", join(external.projectRoot, ".git"));
+        vi.stubEnv("GIT_WORK_TREE", external.projectRoot);
+        vi.stubEnv("GH_REPO", "external/repo");
+        vi.stubEnv("PATH", `${binDir}:${process.env.PATH}`);
+
+        stubListener();
+        const watcher = vi.spyOn(HarvestWatcher.prototype, "runCheck");
+        const baseGithub = createGitHubHarvestAdapter();
+        server = await startDurableServerOnFixture(fixture, {
+          projectId,
+          github:
+            entryPoint === "webhook"
+              ? {
+                  verifyWebhookSignature: baseGithub.verifyWebhookSignature,
+                  listTerminalPullRequests: vi.fn(async () => []),
+                  getPullRequest: vi.fn(async () => null),
+                }
+              : undefined,
+        });
+
+        if (entryPoint === "watcher") {
+          await watcher.mock.results[0]?.value;
+          expect(watcher).toHaveBeenCalledOnce();
+          const observed = JSON.parse(readFileSync(pollObservedPath, "utf8"));
+          expect(observed.cwd).toBe(fixture.projectRoot);
+          expect(observed.GIT_DIR).toBeUndefined();
+          expect(observed.GIT_WORK_TREE).toBeUndefined();
+          expect(observed.GH_REPO).toBeUndefined();
+        } else {
+          const response = await injectGitHub(
+            { app: server },
+            "pull_request",
+            {
+              action: "closed",
+              repository: { full_name: repoSlug },
+              pull_request: {
+                number: 9,
+                merged: true,
+                merged_at: mergedAt,
+                merge_commit_sha: originHead,
+                html_url: `https://github.com/${repoSlug}/pull/9`,
+                base: { ref: "develop", repo: { full_name: repoSlug } },
+                head: {
+                  ref: headRef,
+                  sha: null,
+                  repo: { full_name: repoSlug },
+                },
+              },
+            },
+            "delivery-scoped-sync-9",
+          );
           expect(response.statusCode).toBe(200);
+          const slowResponse = await injectGitHub(
+            { app: server },
+            "pull_request",
+            {
+              action: "closed",
+              repository: { full_name: repoSlug },
+              pull_request: {
+                number: 10,
+                merged: true,
+                merged_at: mergedAt,
+                merge_commit_sha: originHead,
+                html_url: `https://github.com/${repoSlug}/pull/10`,
+                base: { ref: "develop", repo: { full_name: repoSlug } },
+                head: {
+                  ref: slowHeadRef,
+                  sha: null,
+                  repo: { full_name: repoSlug },
+                },
+              },
+            },
+            "delivery-scoped-sync-10",
+          );
+          expect(slowResponse.statusCode).toBe(200);
         }
-        await fixture.app.close();
+        await server.close();
 
         expect([
           fixtureGit(external.projectRoot, "rev-parse", "HEAD"),
           fixtureGit(external.projectRoot, "show-ref"),
         ]).toEqual(externalBefore);
-        expect(fixtureGit(fixture.projectRoot, "rev-parse", "HEAD")).toBe(
-          originHead,
-        );
-        expect(listRuns(featureId, fixture.projectId, fixture.db)).toEqual([
+        expect(
+          fixtureGit(fixture.projectRoot, "rev-parse", "origin/develop"),
+        ).toBe(originHead);
+        expect(listRuns(featureId, projectId, fixture.db)).toEqual([
           expect.objectContaining({
+            phase_id: phaseId,
             status: "merged",
-            merge_commit_sha: "abcdef",
+            merge_commit_sha: originHead,
           }),
         ]);
         expect
-          .soft(
-            getGateResults(featureId, phaseId, fixture.projectId, fixture.db),
-          )
+          .soft(getGateResults(featureId, phaseId, projectId, fixture.db))
           .toEqual(
             expect.arrayContaining([
               expect.objectContaining({ task_id: "T001", passed: 1 }),
               expect.objectContaining({ task_id: "T002", passed: 1 }),
-              ...slowGates.map(({ id }) =>
+            ]),
+          );
+        expect
+          .soft(getGateResults(featureId, slowPhaseId, projectId, fixture.db))
+          .toEqual(
+            expect.arrayContaining(
+              slowGates.map(({ id }) =>
                 expect.objectContaining({
                   task_id: id,
                   passed: 0,
@@ -1565,24 +2158,27 @@ setInterval(() => {}, 1000);
                       }),
                 }),
               ),
-            ]),
-          );
-        expect
-          .soft(
-            getCompressionRecord(
-              featureId,
-              phaseId,
-              fixture.projectId,
-              fixture.db,
             ),
-          )
+          );
+        expect(
+          fixture.db
+            .prepare(
+              "SELECT status FROM harvest_operations WHERE project_id = ? AND feature_id = ? AND phase_id = ?",
+            )
+            .get(projectId, featureId, slowPhaseId),
+        ).toEqual({ status: "gate_failed" });
+        expect
+          .soft(getCompressionRecord(featureId, phaseId, projectId, fixture.db))
           .toMatchObject({
             merge_timestamp: mergedAt,
           });
         expect(getDb).not.toHaveBeenCalled();
       } finally {
-        returnPullRequests?.();
-        await Promise.all(fixtures.map((fixture) => fixture.close()));
+        try {
+          await server?.close();
+        } finally {
+          await Promise.all(fixtures.map((fixture) => fixture.close()));
+        }
       }
     },
   );

@@ -12,6 +12,10 @@ import type {
   NotificationPort,
   SlackDeliveryStatus,
 } from "../../ports/notification-port.js";
+import type {
+  DurableOperationsStatus,
+  OperationsStorePort,
+} from "../../ports/operations-port.js";
 import type { ProjectRegistryPort } from "../../ports/store-port.js";
 import type { LifecycleMonitor } from "../lifecycle.js";
 import type { NetworkMonitor } from "../network.js";
@@ -22,14 +26,96 @@ import type { HealthResponse, ProjectReadinessReport } from "../types.js";
 
 export interface HealthRoutesOptions {
   registry?: ProjectRegistryPort;
+  operationsStore?: Pick<OperationsStorePort, "getOperationsStatus">;
   notifier?: NotificationPort;
   runnerKind?: AllowedRunnerKind;
+}
+
+export interface OutboxHealthSummary {
+  status: "ok" | "degraded";
+  pendingCount: number;
+  uncertainCount: number;
+  failedCount: number;
+}
+
+export interface HarvestHealthSummary {
+  status: "ok" | "degraded";
+  pendingOperations: number;
+  unresolvedGateFailures: number;
+  blockedCleanups: number;
+  closedUnmergedCount: number;
+}
+
+export interface DurableProjectReadinessReport extends ProjectReadinessReport {
+  operations?: {
+    outbox: OutboxHealthSummary;
+    harvest: HarvestHealthSummary;
+  };
+}
+
+export interface DurableHealthResponse extends HealthResponse {
+  projectReadiness: {
+    status: "ready" | "degraded" | "unconfigured";
+    readyCount: number;
+    totalCount: number;
+    projects: DurableProjectReadinessReport[];
+  };
+  outbox?: OutboxHealthSummary;
+  harvest?: HarvestHealthSummary;
+}
+
+function summarizeProjectOperations(ops: DurableOperationsStatus): {
+  outbox: OutboxHealthSummary;
+  harvest: HarvestHealthSummary;
+  degradationReasons: string[];
+} {
+  const outboxDegraded =
+    ops.delivery.failedCount > 0 ||
+    ops.delivery.uncertainCount > 0 ||
+    ops.delivery.pendingCount > 0;
+  const harvestDegraded =
+    ops.harvest.unresolvedGateFailures > 0 || ops.harvest.blockedCleanups > 0;
+
+  const degradationReasons: string[] = [];
+  if (ops.harvest.unresolvedGateFailures > 0) {
+    degradationReasons.push(
+      `${ops.harvest.unresolvedGateFailures} unresolved harvest gate failure(s)`,
+    );
+  }
+  if (ops.harvest.blockedCleanups > 0) {
+    degradationReasons.push(
+      `${ops.harvest.blockedCleanups} blocked branch cleanup(s)`,
+    );
+  }
+  if (outboxDegraded) {
+    degradationReasons.push(
+      `outbox degraded (pending: ${ops.delivery.pendingCount}, uncertain: ${ops.delivery.uncertainCount}, failed: ${ops.delivery.failedCount})`,
+    );
+  }
+
+  return {
+    outbox: {
+      status: outboxDegraded ? "degraded" : "ok",
+      pendingCount: ops.delivery.pendingCount,
+      uncertainCount: ops.delivery.uncertainCount,
+      failedCount: ops.delivery.failedCount,
+    },
+    harvest: {
+      status: harvestDegraded ? "degraded" : "ok",
+      pendingOperations: ops.harvest.pendingOperations,
+      unresolvedGateFailures: ops.harvest.unresolvedGateFailures,
+      blockedCleanups: ops.harvest.blockedCleanups,
+      closedUnmergedCount: ops.harvest.closedUnmergedCount,
+    },
+    degradationReasons,
+  };
 }
 
 function evaluateProjectReadiness(
   project: EnrolledProject,
   runnerKind: AllowedRunnerKind,
-): ProjectReadinessReport {
+  operations?: DurableOperationsStatus,
+): DurableProjectReadinessReport {
   const runnerAllowed = project.runnerPolicy.allowedKinds.includes(runnerKind);
   const verifiedCheckout =
     verifyEnrolledCheckout(project, "mirrorPath") ??
@@ -40,6 +126,9 @@ function evaluateProjectReadiness(
   const slackBound = Boolean(
     project.slack?.workspaceId && project.slack?.channelId,
   );
+  const opsSummary = operations
+    ? summarizeProjectOperations(operations)
+    : undefined;
 
   let status: ProjectReadinessReport["status"];
   let reason: string | undefined;
@@ -56,6 +145,9 @@ function evaluateProjectReadiness(
   } else if (!slackBound) {
     status = "degraded";
     reason = "Project has no Slack workspace and channel binding";
+  } else if (opsSummary && opsSummary.degradationReasons.length > 0) {
+    status = "degraded";
+    reason = opsSummary.degradationReasons.join("; ");
   } else {
     status = "ready";
   }
@@ -71,6 +163,14 @@ function evaluateProjectReadiness(
     slackBound,
     status,
     ...(reason ? { reason } : {}),
+    ...(opsSummary
+      ? {
+          operations: {
+            outbox: opsSummary.outbox,
+            harvest: opsSummary.harvest,
+          },
+        }
+      : {}),
   };
 }
 
@@ -81,7 +181,7 @@ export async function healthRoutes(
   sandbox: SandboxManager,
   options?: HealthRoutesOptions,
 ) {
-  const handler = async (): Promise<HealthResponse> => {
+  const handler = async (): Promise<DurableHealthResponse> => {
     const gitOk = await sandbox.checkGit();
     const networkOk = network.isOnline();
     const lifecycleStatus = lifecycle.getStatus();
@@ -98,8 +198,13 @@ export async function healthRoutes(
 
     const runnerKind: AllowedRunnerKind = options?.runnerKind ?? "local";
     const enrolledProjects = options?.registry?.listProjects() ?? [];
-    const projects = enrolledProjects.map((project) =>
-      evaluateProjectReadiness(project, runnerKind),
+    const projectOperations = options?.operationsStore
+      ? enrolledProjects.map((project) =>
+          options.operationsStore?.getOperationsStatus(project.projectId),
+        )
+      : [];
+    const projects = enrolledProjects.map((project, index) =>
+      evaluateProjectReadiness(project, runnerKind, projectOperations[index]),
     );
     const totalCount = projects.length;
     const readyCount = projects.filter((p) => p.status === "ready").length;
@@ -109,6 +214,45 @@ export async function healthRoutes(
         : readyCount === totalCount
           ? "ready"
           : "degraded";
+
+    let outbox: OutboxHealthSummary | undefined;
+    let harvest: HarvestHealthSummary | undefined;
+    if (options?.operationsStore) {
+      let pendingCount = 0;
+      let uncertainCount = 0;
+      let failedCount = 0;
+      let pendingOperations = 0;
+      let unresolvedGateFailures = 0;
+      let blockedCleanups = 0;
+      let closedUnmergedCount = 0;
+      for (const ops of projectOperations) {
+        if (!ops) continue;
+        pendingCount += ops.delivery.pendingCount;
+        uncertainCount += ops.delivery.uncertainCount;
+        failedCount += ops.delivery.failedCount;
+        pendingOperations += ops.harvest.pendingOperations;
+        unresolvedGateFailures += ops.harvest.unresolvedGateFailures;
+        blockedCleanups += ops.harvest.blockedCleanups;
+        closedUnmergedCount += ops.harvest.closedUnmergedCount;
+      }
+      outbox = {
+        status:
+          pendingCount > 0 || uncertainCount > 0 || failedCount > 0
+            ? "degraded"
+            : "ok",
+        pendingCount,
+        uncertainCount,
+        failedCount,
+      };
+      harvest = {
+        status:
+          unresolvedGateFailures > 0 || blockedCleanups > 0 ? "degraded" : "ok",
+        pendingOperations,
+        unresolvedGateFailures,
+        blockedCleanups,
+        closedUnmergedCount,
+      };
+    }
 
     const rawTelegram = getTelegramStatus();
     const telegram: HealthResponse["telegram"] = {
@@ -143,7 +287,9 @@ export async function healthRoutes(
       components.git.status === "ok" &&
       components.network.status === "ok" &&
       components.slack.status === "ok" &&
-      readinessStatus !== "degraded"
+      readinessStatus !== "degraded" &&
+      (!outbox || outbox.status === "ok") &&
+      (!harvest || harvest.status === "ok")
         ? "ok"
         : "degraded";
 
@@ -158,6 +304,8 @@ export async function healthRoutes(
       },
       slackDelivery,
       telegram,
+      ...(outbox ? { outbox } : {}),
+      ...(harvest ? { harvest } : {}),
       components,
     };
   };

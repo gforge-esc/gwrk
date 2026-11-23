@@ -2,17 +2,24 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { execFile } from "node:child_process";
+import { spawn } from "node:child_process";
 import { createHmac, timingSafeEqual } from "node:crypto";
-import { promisify } from "node:util";
 import { z } from "zod";
 import type {
   GitHubHarvestPort,
   HarvestPullRequestFact,
 } from "../../ports/operations-port.js";
+import { repositoryGitEnv } from "../git/process-env.js";
 
-const executeFile = promisify(execFile);
-type ExecuteGh = (args: readonly string[], cwd: string) => Promise<string>;
+const DEFAULT_GH_TIMEOUT_MS = 12_000;
+const DEFAULT_GH_KILL_GRACE_MS = 500;
+const DEFAULT_GH_MAX_BUFFER_BYTES = 8 * 1024 * 1024;
+
+type ExecuteGh = (
+  args: readonly string[],
+  cwd: string,
+  signal?: AbortSignal,
+) => Promise<string>;
 const sha = z
   .string()
   .regex(/^[0-9a-f]{40}(?:[0-9a-f]{24})?$/)
@@ -70,23 +77,196 @@ function fact(value: unknown, repoSlug: string): HarvestPullRequestFact {
   };
 }
 
+function combineSignals(
+  first?: AbortSignal,
+  second?: AbortSignal,
+): AbortSignal | undefined {
+  if (first && second) return AbortSignal.any([first, second]);
+  return first ?? second;
+}
+
+function spawnGh(
+  args: readonly string[],
+  cwd: string,
+  signal: AbortSignal | undefined,
+  timeoutMs: number,
+  killGraceMs: number,
+): Promise<string> {
+  if (signal?.aborted) {
+    return Promise.reject(new Error("GitHub CLI command aborted"));
+  }
+  return new Promise((resolve, reject) => {
+    const processGroup = process.platform !== "win32";
+    let env: NodeJS.ProcessEnv;
+    try {
+      env = { ...repositoryGitEnv(cwd), GH_PROMPT_DISABLED: "1" };
+    } catch (error) {
+      reject(error);
+      return;
+    }
+
+    const child = spawn("gh", [...args], {
+      cwd,
+      env,
+      detached: processGroup,
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+
+    const sendSignal = (sig: NodeJS.Signals) => {
+      if (processGroup && child.pid !== undefined) {
+        try {
+          process.kill(-child.pid, sig);
+          return;
+        } catch (error) {
+          if ((error as NodeJS.ErrnoException).code === "ESRCH") return;
+        }
+      }
+      try {
+        child.kill(sig);
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== "ESRCH") throw error;
+      }
+    };
+
+    let settled = false;
+    let terminationReason: "aborted" | "timeout" | "maxBuffer" | null = null;
+    let killTimer: ReturnType<typeof setTimeout> | null = null;
+    let timeoutTimer: ReturnType<typeof setTimeout> | null = null;
+
+    const clearTimers = () => {
+      if (timeoutTimer !== null) {
+        clearTimeout(timeoutTimer);
+        timeoutTimer = null;
+      }
+      if (killTimer !== null) {
+        clearTimeout(killTimer);
+        killTimer = null;
+      }
+      signal?.removeEventListener("abort", onAbort);
+    };
+
+    const terminate = (reason: "aborted" | "timeout" | "maxBuffer") => {
+      if (terminationReason !== null) return;
+      terminationReason = reason;
+      if (timeoutTimer !== null) {
+        clearTimeout(timeoutTimer);
+        timeoutTimer = null;
+      }
+      sendSignal("SIGTERM");
+      killTimer = setTimeout(() => {
+        killTimer = null;
+        sendSignal("SIGKILL");
+      }, killGraceMs);
+      killTimer.unref?.();
+    };
+
+    const onAbort = () => terminate("aborted");
+
+    timeoutTimer = setTimeout(() => terminate("timeout"), timeoutMs);
+    timeoutTimer.unref?.();
+
+    if (signal) {
+      if (signal.aborted) {
+        terminate("aborted");
+      } else {
+        signal.addEventListener("abort", onAbort, { once: true });
+      }
+    }
+
+    const stdoutChunks: Buffer[] = [];
+    const stderrChunks: Buffer[] = [];
+    let stdoutBytes = 0;
+    let stderrBytes = 0;
+
+    child.stdout.on("data", (chunk: Buffer | string) => {
+      const buf = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+      stdoutBytes += buf.length;
+      if (stdoutBytes > DEFAULT_GH_MAX_BUFFER_BYTES) {
+        terminate("maxBuffer");
+        return;
+      }
+      stdoutChunks.push(buf);
+    });
+
+    child.stderr.on("data", (chunk: Buffer | string) => {
+      const buf = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+      stderrBytes += buf.length;
+      if (stderrBytes > DEFAULT_GH_MAX_BUFFER_BYTES) {
+        terminate("maxBuffer");
+        return;
+      }
+      stderrChunks.push(buf);
+    });
+
+    child.once("error", (error) => {
+      if (settled) return;
+      settled = true;
+      clearTimers();
+      reject(error);
+    });
+
+    child.once("close", (code, exitSignal) => {
+      if (settled) return;
+      settled = true;
+      clearTimers();
+      const stdout = Buffer.concat(stdoutChunks).toString("utf8");
+      const stderr = Buffer.concat(stderrChunks).toString("utf8");
+      if (terminationReason === "aborted") {
+        reject(new Error("GitHub CLI command aborted"));
+        return;
+      }
+      if (terminationReason === "timeout") {
+        reject(new Error(`Command timed out: gh ${args.join(" ")}`));
+        return;
+      }
+      if (terminationReason === "maxBuffer") {
+        reject(new Error(`Command exceeded maxBuffer: gh ${args.join(" ")}`));
+        return;
+      }
+      if (code !== 0 || exitSignal !== null) {
+        const detail = stderr.trim();
+        reject(
+          new Error(
+            `Command failed: gh ${args.join(" ")}${detail ? `\n${detail}` : ""}`,
+          ),
+        );
+        return;
+      }
+      resolve(stdout);
+    });
+  });
+}
+
 export function createGitHubHarvestAdapter(
-  options: { executeGh?: ExecuteGh } = {},
+  options: {
+    executeGh?: ExecuteGh;
+    signal?: AbortSignal;
+    timeoutMs?: number;
+    killGraceMs?: number;
+  } = {},
 ): GitHubHarvestPort {
+  const timeoutMs = options.timeoutMs ?? DEFAULT_GH_TIMEOUT_MS;
+  const killGraceMs = options.killGraceMs ?? DEFAULT_GH_KILL_GRACE_MS;
   const executeGh: ExecuteGh =
     options.executeGh ??
-    (async (args, cwd) => {
-      const { stdout } = await executeFile("gh", [...args], {
+    ((args, cwd, callSignal) =>
+      spawnGh(
+        args,
         cwd,
-        timeout: 12_000,
-        maxBuffer: 8 * 1024 * 1024,
-        encoding: "utf8",
-        env: { ...process.env, GH_PROMPT_DISABLED: "1" },
-      });
-      return stdout;
-    });
-  const get = async (path: string, cwd: string): Promise<unknown> =>
-    JSON.parse(
+        combineSignals(options.signal, callSignal),
+        timeoutMs,
+        killGraceMs,
+      ));
+  const get = async (
+    path: string,
+    cwd: string,
+    callSignal?: AbortSignal,
+  ): Promise<unknown> => {
+    const effectiveSignal = combineSignals(options.signal, callSignal);
+    if (effectiveSignal?.aborted) {
+      throw new Error("GitHub CLI command aborted");
+    }
+    return JSON.parse(
       await executeGh(
         [
           "api",
@@ -97,8 +277,10 @@ export function createGitHubHarvestAdapter(
           path,
         ],
         cwd,
+        effectiveSignal,
       ),
     );
+  };
   return {
     verifyWebhookSignature(rawBody, signatureHeader, secret) {
       if (
@@ -114,7 +296,13 @@ export function createGitHubHarvestAdapter(
         timingSafeEqual(received, expected)
       );
     },
-    async listTerminalPullRequests({ cwd, repoSlug, baseBranch, sinceIso }) {
+    async listTerminalPullRequests({
+      cwd,
+      repoSlug,
+      baseBranch,
+      sinceIso,
+      signal,
+    }) {
       const repository = repositoryPath(repoSlug);
       const cutoff = sinceIso == null ? undefined : Date.parse(sinceIso);
       if (cutoff !== undefined && !Number.isFinite(cutoff))
@@ -127,7 +315,7 @@ export function createGitHubHarvestAdapter(
           per_page: "100",
           page: String(page),
         });
-        const response = await get(`${repository}/pulls?${query}`, cwd);
+        const response = await get(`${repository}/pulls?${query}`, cwd, signal);
         if (!Array.isArray(response) || response.length > 100)
           throw new Error(
             "Pull request page must be an array of at most 100 records",
@@ -189,7 +377,13 @@ export function createGitHubHarvestAdapter(
         "Pull request scan could not establish completeness due to concurrent updates",
       );
     },
-    async listOpenPullRequests({ cwd, repoSlug, baseBranch, headBranch }) {
+    async listOpenPullRequests({
+      cwd,
+      repoSlug,
+      baseBranch,
+      headBranch,
+      signal,
+    }) {
       const repository = repositoryPath(repoSlug);
       const owner = repoSlug.split("/")[0];
       const collected = new Map<number, HarvestPullRequestFact>();
@@ -203,7 +397,7 @@ export function createGitHubHarvestAdapter(
         if (headBranch) {
           query.set("head", `${owner}:${headBranch}`);
         }
-        const response = await get(`${repository}/pulls?${query}`, cwd);
+        const response = await get(`${repository}/pulls?${query}`, cwd, signal);
         if (!Array.isArray(response) || response.length > 100)
           throw new Error(
             "Pull request page must be an array of at most 100 records",
@@ -222,11 +416,11 @@ export function createGitHubHarvestAdapter(
         "Pull request pagination exceeded the bounded page limit",
       );
     },
-    async getPullRequest({ cwd, repoSlug, prNumber }) {
+    async getPullRequest({ cwd, repoSlug, prNumber, signal }) {
       if (!Number.isSafeInteger(prNumber) || prNumber <= 0)
         throw new Error("Invalid pull request number");
       const result = fact(
-        await get(`${repositoryPath(repoSlug)}/pulls/${prNumber}`, cwd),
+        await get(`${repositoryPath(repoSlug)}/pulls/${prNumber}`, cwd, signal),
         repoSlug,
       );
       if (result.prNumber !== prNumber)

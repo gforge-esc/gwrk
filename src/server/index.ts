@@ -3,8 +3,10 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { execFileSync } from "node:child_process";
+import * as crypto from "node:crypto";
 import { existsSync, realpathSync } from "node:fs";
 import { basename, dirname, join, resolve } from "node:path";
+import type Database from "better-sqlite3";
 import fastify, { type FastifyRequest } from "fastify";
 import { QuotaProber } from "../adapters/agents/quota-prober.js";
 import { loadRegistry } from "../adapters/agents/registry-loader.js";
@@ -16,21 +18,41 @@ import {
 import { gwrkRuntimeDir, usesHostedRuntime } from "../adapters/config/paths.js";
 import { createGitVcsAdapter } from "../adapters/git/index.js";
 import { repositoryGitEnv } from "../adapters/git/process-env.js";
+import { createGitHubHarvestAdapter } from "../adapters/github/index.js";
+import { createHarvestExecutionAdapter } from "../adapters/harvest/index.js";
 import { createSlackNotificationAdapter } from "../adapters/notifications/index.js";
 import {
   acquireInstanceLock,
   acquireLedgerLock,
 } from "../adapters/server/instance-lock.js";
-import { createSqliteProjectRegistryAdapter } from "../adapters/sqlite/index.js";
+import {
+  createSqliteOperationsStoreAdapter,
+  createSqliteProjectRegistryAdapter,
+} from "../adapters/sqlite/index.js";
+import {
+  type OutboxDeliveryService,
+  createOutboxDeliveryService,
+} from "../application/delivery/outbox.js";
+import {
+  type DurableHarvestService,
+  createDurableHarvestService,
+} from "../application/harvest/index.js";
 import {
   type ProjectRoutingService,
   createProjectRoutingService,
 } from "../application/project-routing/index.js";
-import { closeDb, getDbPath } from "../db/index.js";
+import { closeDb, getDbPath, openDatabase } from "../db/index.js";
 import { PENDING_LEDGER_RESTORE } from "../domain/ledger-backup.js";
 import type { AllowedRunnerKind } from "../domain/project-registry.js";
 import { isPrivateRunnerBind } from "../domain/release-packaging.js";
 import type { NotificationPort } from "../ports/notification-port.js";
+import type {
+  ClockPort,
+  GitHubHarvestPort,
+  HarvestExecutionPort,
+  OperationsStorePort,
+  WorkerExecutionPort,
+} from "../ports/operations-port.js";
 import type { InstanceLockHandle } from "../ports/release-ops-port.js";
 import type { ProjectRegistryPort } from "../ports/store-port.js";
 import type { VcsPort } from "../ports/vcs-port.js";
@@ -83,9 +105,21 @@ export interface ServerStartOptions {
   sandbox?: SandboxManager;
   gitEnv?: () => NodeJS.ProcessEnv;
   registry?: ProjectRegistryPort;
+  operationsStore?: OperationsStorePort;
   routingService?: ProjectRoutingService;
   vcs?: VcsPort;
+  github?: GitHubHarvestPort;
+  worker?: WorkerExecutionPort;
+  harvestExecutor?: HarvestExecutionPort;
+  outbox?: OutboxDeliveryService;
+  harvestService?: DurableHarvestService;
   notifier?: NotificationPort;
+  clock?: ClockPort;
+  ownerId?: string;
+  leaseDurationMs?: number;
+  heartbeatIntervalMs?: number | null;
+  maxCrashRecoveryAttempts?: number;
+  autoResumeWebhook?: boolean;
   transport?: "trusted_local" | "hosted";
   localDefaultProjectId?: string;
   resolvePrincipal?: (request: FastifyRequest) =>
@@ -331,34 +365,59 @@ async function startLockedServer(
     options.runnerKind ??
     (effectiveTransport === "hosted" ? "hosted" : "local");
 
-  let ownedRegistry: ProjectRegistryPort | undefined;
+  let ownedDb: Database.Database | undefined;
+  let sharedDb: Database.Database | undefined = options.ledger?.db;
   let registry: ProjectRegistryPort | undefined = options.registry;
   if (!registry) {
-    if (options.ledger?.db) {
-      registry = createSqliteProjectRegistryAdapter({ db: options.ledger.db });
+    if (sharedDb) {
+      registry = createSqliteProjectRegistryAdapter({ db: sharedDb });
     } else if (options.useProjectRegistry || effectiveTransport === "hosted") {
-      ownedRegistry = createSqliteProjectRegistryAdapter();
-      registry = ownedRegistry;
+      ownedDb = openDatabase();
+      sharedDb = ownedDb;
+      registry = createSqliteProjectRegistryAdapter({ db: ownedDb });
     }
   }
+
+  const operationsStore: OperationsStorePort | undefined =
+    options.operationsStore ??
+    (sharedDb
+      ? createSqliteOperationsStoreAdapter({ db: sharedDb })
+      : undefined);
 
   const enrolledCount = registry ? registry.listProjects().length : 0;
   const enforceRegistryScope = Boolean(
     options.registry || effectiveTransport === "hosted" || enrolledCount > 0,
   );
   const activeRegistry = enforceRegistryScope ? registry : undefined;
+  const durableRegistry =
+    activeRegistry ?? (operationsStore ? registry : undefined);
   const localDefaultProjectId =
     options.localDefaultProjectId ??
     activeRegistry?.findByLocalRoot(canonicalRoot)?.projectId ??
     activeRegistry?.findByLocalRoot(projectRoot)?.projectId;
 
-  const vcs = options.vcs ?? createGitVcsAdapter();
+  const serverShutdown = new AbortController();
+  const clock: ClockPort = options.clock ?? {
+    nowIso: () => new Date().toISOString(),
+    nowMs: () => Date.now(),
+  };
+  const ownerId =
+    options.ownerId ??
+    `server:${process.pid}:${crypto.randomUUID().slice(0, 8)}`;
+
+  const baseVcs = createGitVcsAdapter();
+  const vcs: VcsPort = options.vcs ? { ...baseVcs, ...options.vcs } : baseVcs;
+  const githubPort =
+    options.github ??
+    createGitHubHarvestAdapter({ signal: serverShutdown.signal });
   const notifier =
     options.notifier ??
-    (activeRegistry
+    (durableRegistry
       ? createSlackNotificationAdapter({
-          registry: activeRegistry,
+          registry: durableRegistry,
           projectRoot,
+          signal: serverShutdown.signal,
+          transportTimeoutMs: 5_000,
         })
       : undefined);
   const routingService =
@@ -371,7 +430,41 @@ async function startLockedServer(
             createSlackNotificationAdapter({
               registry: activeRegistry,
               projectRoot,
+              signal: serverShutdown.signal,
+              transportTimeoutMs: 5_000,
             }),
+        })
+      : undefined);
+  const outbox: OutboxDeliveryService | undefined =
+    options.outbox ??
+    (operationsStore && durableRegistry && notifier
+      ? createOutboxDeliveryService({
+          store: operationsStore,
+          registry: durableRegistry,
+          notifier,
+          clock,
+          newId: () => crypto.randomUUID(),
+        })
+      : undefined);
+  const harvestExecutor =
+    options.harvestExecutor ??
+    createHarvestExecutionAdapter({
+      ...(sharedDb ? { db: sharedDb } : {}),
+      ...(gitEnv ? { gitEnv } : {}),
+    });
+  const harvestService: DurableHarvestService | undefined =
+    options.harvestService ??
+    (operationsStore && durableRegistry && outbox
+      ? createDurableHarvestService({
+          store: operationsStore,
+          registry: durableRegistry,
+          vcs,
+          github: githubPort,
+          executor: harvestExecutor,
+          outbox,
+          clock,
+          leaseDurationMs: options.leaseDurationMs,
+          heartbeatIntervalMs: options.heartbeatIntervalMs,
         })
       : undefined);
 
@@ -389,17 +482,62 @@ async function startLockedServer(
       ? new ScopedSandboxManager(projectRoot, options.gitEnv, activeRegistry)
       : new SandboxManager(projectRoot));
 
+  const sharedLedger: DispatchLedgerScope | undefined =
+    options.ledger ??
+    (sharedDb && localDefaultProjectId
+      ? { db: sharedDb, projectId: localDefaultProjectId }
+      : undefined);
+
   const git = new GitManager(projectRoot);
   const queue = new DispatchQueue(
     config,
     monitor,
     sandbox,
     projectRoot,
-    options.ledger,
+    sharedLedger,
     gitEnv,
     approvedBackend,
     activeRegistry,
+    operationsStore || durableRegistry || options.worker
+      ? {
+          store: operationsStore,
+          registry: durableRegistry,
+          worker: options.worker,
+          outbox,
+          notifier,
+          clock,
+          github: githubPort,
+          ownerId: `${ownerId}:dispatch`,
+          leaseDurationMs: options.leaseDurationMs,
+          heartbeatIntervalMs: options.heartbeatIntervalMs,
+          maxCrashRecoveryAttempts: options.maxCrashRecoveryAttempts,
+          onRecoveredMerge: harvestService
+            ? async ({ project, operation, prNumber, mergeCommitSha }) => {
+                try {
+                  await harvestService.runManualHarvest({
+                    project,
+                    featureId: operation.featureId,
+                    phaseId: operation.phaseId,
+                    prNumber,
+                    commitSha: mergeCommitSha,
+                    recipient: operation.recipient,
+                    updateLocalTaskState: false,
+                    ownerId: `${ownerId}:recovered-merge`,
+                  });
+                } catch (err) {
+                  server.log.warn(
+                    `Recovered merge harvest failed for ${operation.operationId}: ${err instanceof Error ? err.message : String(err)}`,
+                  );
+                }
+              }
+            : undefined,
+        }
+      : undefined,
   );
+  // Hold new worker launches until startup recovery completes.
+  if (operationsStore && durableRegistry) {
+    queue.pause();
+  }
 
   const lifecycle = new LifecycleMonitor(config);
   const network = new NetworkMonitor(config);
@@ -454,9 +592,11 @@ async function startLockedServer(
   let ownsPidRecord = false;
   const stopPollers: Array<() => void | Promise<void>> = [];
   const cleanup: Array<() => void | Promise<void>> = [];
-  if (ownedRegistry) {
-    const registryToClose = ownedRegistry;
-    cleanup.push(() => registryToClose.close());
+  if (ownedDb) {
+    const dbToClose = ownedDb;
+    cleanup.push(() => {
+      if (dbToClose.open) dbToClose.close();
+    });
   }
 
   const shutdown = async () => {
@@ -473,6 +613,7 @@ async function startLockedServer(
 
   server.addHook("onClose", async () => {
     closing = true;
+    serverShutdown.abort();
     process.off("SIGTERM", shutdown);
     process.off("SIGINT", shutdown);
     const errors: unknown[] = [];
@@ -517,8 +658,20 @@ async function startLockedServer(
         }
       : undefined;
 
+    const statusRouteOptions =
+      routeAuthOptions || operationsStore
+        ? {
+            ...routeAuthOptions,
+            ...(operationsStore ? { operationsStore, clock } : {}),
+            ...(!routeAuthOptions && localDefaultProjectId
+              ? { localDefaultProjectId }
+              : {}),
+          }
+        : undefined;
+
     await healthRoutes(server, lifecycle, network, sandbox, {
       registry,
+      operationsStore,
       notifier,
       runnerKind,
     });
@@ -529,7 +682,7 @@ async function startLockedServer(
       sandbox,
       lifecycle,
       network,
-      routeAuthOptions,
+      statusRouteOptions,
     );
     await dispatchRoutes(server, queue, routeAuthOptions);
     await githubWebhookPlugin(server, {
@@ -537,8 +690,18 @@ async function startLockedServer(
       projectRoot,
       registry: activeRegistry,
       vcs,
-      ledger: options.ledger,
+      ledger: sharedLedger,
       gitEnv,
+      ...(harvestService ? { harvestService } : {}),
+      ...(operationsStore ? { store: operationsStore } : {}),
+      github: githubPort,
+      executor: harvestExecutor,
+      ...(outbox ? { outbox } : {}),
+      clock,
+      ownerId: `${ownerId}:webhook`,
+      ...(options.autoResumeWebhook !== undefined
+        ? { autoResume: options.autoResumeWebhook }
+        : {}),
     });
     await notifyRoutes(server, projectRoot, routeAuthOptions);
 
@@ -560,6 +723,33 @@ async function startLockedServer(
     // FR-002: Prune worktrees on startup
     await sandbox.pruneSandboxes();
 
+    // T035: Run startup recovery before draining dispatches or starting pollers.
+    if (operationsStore && durableRegistry) {
+      await queue.recoverOnStartup();
+      if (harvestService) {
+        try {
+          await harvestService.resumeIncomplete(`${ownerId}:startup`);
+        } catch (err) {
+          server.log.warn(
+            `Startup harvest resume failed: ${err instanceof Error ? err.message : String(err)}`,
+          );
+        }
+      }
+      if (outbox) {
+        for (const project of durableRegistry.listProjects()) {
+          if (closing) break;
+          try {
+            await outbox.flushPendingForProject(project.projectId);
+          } catch (err) {
+            server.log.warn(
+              `Startup outbox flush failed for ${project.slug}: ${err instanceof Error ? err.message : String(err)}`,
+            );
+          }
+        }
+      }
+      queue.resume();
+    }
+
     monitor.startPolling();
     lifecycle.start();
     network.start();
@@ -569,7 +759,7 @@ async function startLockedServer(
       config,
       slackApp,
       projectRoot,
-      options.ledger,
+      sharedLedger,
       activeRegistry || options.notifier
         ? { registry: activeRegistry, notifier: options.notifier }
         : undefined,
@@ -581,9 +771,22 @@ async function startLockedServer(
       config,
       slackApp,
       projectRoot,
-      options.ledger,
+      sharedLedger,
       gitEnv,
-      activeRegistry ? { registry: activeRegistry } : undefined,
+      durableRegistry || harvestService || operationsStore
+        ? {
+            registry: durableRegistry,
+            ...(harvestService ? { harvestService } : {}),
+            ...(operationsStore ? { store: operationsStore } : {}),
+            github: githubPort,
+            vcs,
+            executor: harvestExecutor,
+            ...(outbox ? { outbox } : {}),
+            ...(notifier ? { notifier } : {}),
+            clock,
+            ownerId: `${ownerId}:watcher`,
+          }
+        : undefined,
     );
     stopPollers.push(() => harvestWatcher.stop());
     harvestWatcher.start();

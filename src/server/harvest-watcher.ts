@@ -172,10 +172,17 @@ export class HarvestWatcher {
         store,
         registry,
         vcs: durableOptions?.vcs ?? createGitVcsAdapter(),
-        github: durableOptions?.github ?? createGitHubHarvestAdapter(),
+        github:
+          durableOptions?.github ??
+          createGitHubHarvestAdapter({
+            signal: this.notificationShutdown.signal,
+          }),
         executor:
           durableOptions?.executor ??
-          createHarvestExecutionAdapter({ db: ledger?.db }),
+          createHarvestExecutionAdapter({
+            db: ledger?.db,
+            ...(this.gitEnv ? { gitEnv: this.gitEnv } : {}),
+          }),
         outbox,
         clock,
       });
@@ -297,6 +304,7 @@ export class HarvestWatcher {
             const summaries = await this.durableHarvestService.pollProject(
               project,
               this.ownerId,
+              { signal: this.notificationShutdown.signal },
             );
             for (const summary of summaries) {
               logCliOutput(
@@ -304,6 +312,9 @@ export class HarvestWatcher {
               );
             }
           } catch (error) {
+            if (this.stopping || this.notificationShutdown.signal.aborted) {
+              break;
+            }
             warnCli(
               `HarvestWatcher: Durable poll failed for ${project.slug}: ${error instanceof Error ? error.message : String(error)}`,
             );

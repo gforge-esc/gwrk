@@ -10,6 +10,10 @@ import type {
   EnrolledProject,
   ProjectRoleBinding,
 } from "../../domain/project-registry.js";
+import type {
+  DurableOperationsStatus,
+  OperationsStorePort,
+} from "../../ports/operations-port.js";
 import type { ProjectRegistryPort } from "../../ports/store-port.js";
 import type { DispatchQueue } from "../dispatch.js";
 import type { LifecycleMonitor } from "../lifecycle.js";
@@ -442,6 +446,170 @@ describe("status routes (FR-003, FR-004, FR-005, FR-006, TR-020)", () => {
           workDir: "/repos/alpha/.runs/sandboxes/048-shared-ship-bbb22222",
         }),
       ]);
+    } finally {
+      await server.close();
+    }
+  });
+
+  it("T033: includes project-scoped DurableOperationsStatus with queue age, last harvest, pending stages, outbox lag, gate failures and legacy counts", async () => {
+    const alphaOps: DurableOperationsStatus = {
+      projectId: "proj-alpha",
+      queue: {
+        queuedCount: 2,
+        activeCount: 1,
+        oldestQueuedAt: "2026-11-23T11:55:00.000Z",
+        staleLeasesReconciled: 1,
+      },
+      harvest: {
+        lastCompletedAt: "2026-11-23T11:40:00.000Z",
+        lastMergeCommitSha: "a".repeat(40),
+        pendingOperations: 1,
+        pendingStages: [
+          {
+            operationId: "harv-alpha-1",
+            featureId: "049-shared",
+            phaseId: "phase-01",
+            stage: "slack_delivery",
+            status: "uncertain",
+          },
+        ],
+        unresolvedGateFailures: 1,
+        closedUnmergedCount: 2,
+        blockedCleanups: 1,
+      },
+      delivery: {
+        pendingCount: 1,
+        uncertainCount: 1,
+        failedCount: 0,
+        telegram: { enabled: false, reason: "disabled_in_pilot" },
+      },
+      historical: {
+        legacyUnverifiedRuns: 3,
+        legacyUnverifiedDispatches: 4,
+      },
+    };
+    const betaOps: DurableOperationsStatus = {
+      projectId: "proj-beta",
+      queue: {
+        queuedCount: 0,
+        activeCount: 0,
+        oldestQueuedAt: null,
+        staleLeasesReconciled: 0,
+      },
+      harvest: {
+        lastCompletedAt: null,
+        lastMergeCommitSha: null,
+        pendingOperations: 0,
+        pendingStages: [],
+        unresolvedGateFailures: 0,
+        closedUnmergedCount: 1,
+        blockedCleanups: 0,
+      },
+      delivery: {
+        pendingCount: 0,
+        uncertainCount: 0,
+        failedCount: 0,
+        telegram: { enabled: false, reason: "disabled_in_pilot" },
+      },
+      historical: {
+        legacyUnverifiedRuns: 0,
+        legacyUnverifiedDispatches: 0,
+      },
+    };
+
+    const getOperationsStatus = vi.fn((projectId: string) =>
+      projectId === "proj-alpha" ? alphaOps : betaOps,
+    );
+    const operationsStore = {
+      getOperationsStatus,
+    } as unknown as Pick<OperationsStorePort, "getOperationsStatus">;
+
+    const monitor = {
+      getResources: vi
+        .fn()
+        .mockReturnValue({ cpuPercent: 10, memPercent: 20, diskFreeGb: 50 }),
+    } as unknown as SystemMonitor;
+    const lifecycle = {
+      getStatus: vi.fn().mockReturnValue("ready"),
+    } as unknown as LifecycleMonitor;
+    const network = {
+      getStatus: vi.fn().mockReturnValue("online"),
+    } as unknown as NetworkMonitor;
+    const queue = {
+      getQueue: vi.fn().mockReturnValue({
+        active: [],
+        queued: [],
+        throttled: false,
+        paused: false,
+      }),
+      getQueueDepth: vi.fn().mockReturnValue(0),
+      getActiveCount: vi.fn().mockReturnValue(0),
+      getCompletedCount: vi.fn().mockReturnValue(0),
+      getFailedCount: vi.fn().mockReturnValue(0),
+    } as unknown as DispatchQueue;
+    const sandbox = {
+      listSandboxes: vi.fn().mockResolvedValue([]),
+    } as unknown as SandboxManager;
+
+    const registry = makeRegistry(
+      [alphaProject, betaProject],
+      [
+        {
+          projectId: "proj-alpha",
+          principalType: "google_sub",
+          principalId: "iss:alpha-viewer",
+          role: "viewer",
+        },
+        {
+          projectId: "proj-beta",
+          principalType: "google_sub",
+          principalId: "iss:beta-viewer",
+          role: "viewer",
+        },
+      ],
+    );
+
+    const server = fastify();
+    await statusRoutes(server, monitor, queue, sandbox, lifecycle, network, {
+      registry,
+      operationsStore,
+      transport: "hosted",
+      resolvePrincipal: (req) => {
+        const sub = req.headers["x-verified-test-sub"];
+        return typeof sub === "string"
+          ? { principalType: "google_sub", principalId: sub }
+          : undefined;
+      },
+    });
+
+    try {
+      const alphaRes = await server.inject({
+        method: "GET",
+        url: "/api/status?project=alpha",
+        headers: { "x-verified-test-sub": "iss:alpha-viewer" },
+      });
+      expect(alphaRes.statusCode).toBe(200);
+      expect(getOperationsStatus).toHaveBeenCalledWith("proj-alpha");
+      expect(alphaRes.json().operations).toEqual(alphaOps);
+
+      const betaRes = await server.inject({
+        method: "GET",
+        url: "/api/status?project=beta",
+        headers: { "x-verified-test-sub": "iss:beta-viewer" },
+      });
+      expect(betaRes.statusCode).toBe(200);
+      expect(getOperationsStatus).toHaveBeenCalledWith("proj-beta");
+      expect(betaRes.json().operations).toEqual(betaOps);
+
+      // Unauthorized access still rejected without leaking operations
+      getOperationsStatus.mockClear();
+      const denied = await server.inject({
+        method: "GET",
+        url: "/api/status?project=beta",
+        headers: { "x-verified-test-sub": "iss:alpha-viewer" },
+      });
+      expect(denied.statusCode).toBe(403);
+      expect(getOperationsStatus).not.toHaveBeenCalled();
     } finally {
       await server.close();
     }

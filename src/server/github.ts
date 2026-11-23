@@ -140,8 +140,10 @@ export async function githubWebhookPlugin(
   });
   const issueDeliveries = new Set<Promise<void>>();
   const inFlight = new Set<Promise<void>>();
+  let resumeChain: Promise<void> = Promise.resolve();
   const rawBodies = new WeakMap<FastifyRequest, Buffer>();
-  const githubPort = options.github ?? createGitHubHarvestAdapter();
+  const githubPort =
+    options.github ?? createGitHubHarvestAdapter({ signal: shutdown.signal });
   const clock: ClockPort = options.clock ?? {
     nowIso: () => new Date().toISOString(),
     nowMs: () => Date.now(),
@@ -174,7 +176,10 @@ export async function githubWebhookPlugin(
           github: githubPort,
           executor:
             options.executor ??
-            createHarvestExecutionAdapter({ db: ledger?.db }),
+            createHarvestExecutionAdapter({
+              db: ledger?.db,
+              ...(gitEnv ? { gitEnv } : {}),
+            }),
           outbox:
             options.outbox ??
             createOutboxDeliveryService({
@@ -394,8 +399,8 @@ export async function githubWebhookPlugin(
         }
 
         if (options.autoResume !== false) {
-          const resume = durableHarvestService
-            .resumeIncomplete(ownerId)
+          const resume = resumeChain
+            .then(() => durableHarvestService.resumeIncomplete(ownerId))
             .then(() => undefined)
             .catch((err: unknown) => {
               const msg = err instanceof Error ? err.message : String(err);
@@ -404,6 +409,7 @@ export async function githubWebhookPlugin(
               );
             })
             .finally(() => inFlight.delete(resume));
+          resumeChain = resume;
           inFlight.add(resume);
         }
 
