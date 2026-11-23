@@ -171,7 +171,12 @@ Connect `.gwrk/models/route-lock.<runner>.json` to the unified routing seam once
 - `src/utils/manifest.ts` (MODIFY: Record `requestedModel`, `observedModel` and `fallbackReason` in manifests)
 - `docs/operations/model-qualification-live.md` (NEW: Define separate live qualification steps for local workstation and Linux pilot runners)
 - `src/application/models/resolve-route.test.ts` (NEW: Seam tests for pinned dispatch, qualified fallback chains and `provider-default` mode)
-- `src/commands/implement.test.ts` (MODIFY: Model absent pin artifacts and verify task iteration, preflight skips, dry-run gate checks and pinned task dispatch)
+- `src/commands/implement.test.ts` (MODIFY: Verify task order and both gate checks through WorkflowRuntime. Keep absent-lock and dry-run coverage.)
+- `src/commands/implement.ts` (MODIFY: Dispatch each eligible task with its resolved model and effort.)
+- `src/adapters/models/fixture-runner.ts` (MODIFY: Include inherited governance files in the prompt hashes.)
+- `src/commands/research.ts` (MODIFY: Validate and forward the requested route mode.)
+- `src/engine/define-orchestrator.ts` (MODIFY: Return the specification workflow’s observed model to the command.)
+- `src/commands/specify.ts` (MODIFY: Persist the requested route and observed model in the run manifest.)
 
 #### Test Strategy
 
@@ -182,6 +187,8 @@ Connect `.gwrk/models/route-lock.<runner>.json` to the unified routing seam once
 | TR-016 | gate | `src/utils/config-resolution.conformance.test.ts` | Config resolution stays centralized and architecture gates pass |
 
 The command regressions exercise research dispatch and the provider-default CLI option. They read the manifest written by `define spec` and check that changed project or inherited architecture instructions invalidate the pin. The routing fixtures use current suite hashes and a runner discovery snapshot. The regression patch is `.runs/review-regressions-phase05-20261123T194753Z-3772F026.patch`.
+
+The implementation regression loads a runner lock and checks the request sent to the transport. It verifies task completion after the post-flight gate passes. The retry patch is `.runs/review-regressions-phase05-20261123T195650Z-6f2c26e1.patch`.
 
 #### Done When
 

@@ -25,6 +25,7 @@ import {
   assertNoSecretMaterial,
 } from "../../domain/model-qualification.js";
 import { parsePlanMarkdown } from "../../engine/plan-to-tasks.js";
+import { resolveWorkspacePolicyRoots } from "../../engine/profile-detector.js";
 import { PluginLoader } from "../../plugins/loader.js";
 import {
   WorkflowRuntime,
@@ -592,8 +593,8 @@ export class FixtureRunner
     }
     const fixtureSuiteHash = suiteHasher.digest("hex");
 
-    const projectRoot = process.cwd();
-    const governancePaths = [
+    const { policyDirs } = resolveWorkspacePolicyRoots(process.cwd());
+    const governancePaths = new Set([
       "AGENTS.md",
       ".gwrk/agent-context.md",
       ".gwrk/architecture.md",
@@ -601,24 +602,27 @@ export class FixtureRunner
       ".gwrk/perspective/hierarchy.md",
       ".gwrk/perspective/ux-posture.md",
       ".gwrk/decisions/index.md",
-    ];
-    for (const directory of [".gwrk/rules", "docs/decisions"]) {
-      const path = join(projectRoot, directory);
-      if (!existsSync(path)) continue;
-      const entries = await readdir(path, { withFileTypes: true });
-      for (const entry of entries) {
-        if (entry.isFile() && entry.name.endsWith(".md")) {
-          governancePaths.push(join(directory, entry.name));
+    ]);
+    for (const root of policyDirs) {
+      for (const directory of [".gwrk/rules", "docs/decisions"]) {
+        const path = join(root, directory);
+        if (!existsSync(path)) continue;
+        const entries = await readdir(path, { withFileTypes: true });
+        for (const entry of entries) {
+          if (entry.isFile() && entry.name.endsWith(".md")) {
+            governancePaths.add(join(directory, entry.name));
+          }
         }
       }
     }
     const governance = await Promise.all(
-      governancePaths
-        .sort()
-        .map(async (path) => [
-          path,
-          await readOptionalFile(join(projectRoot, path)),
-        ]),
+      [...governancePaths].sort().map(async (path) => {
+        for (const root of policyDirs) {
+          const content = await readOptionalFile(join(root, path));
+          if (content !== undefined) return [path, content];
+        }
+        return [path, undefined];
+      }),
     );
 
     const runtime = this.workflowRuntime ?? new WorkflowRuntime();

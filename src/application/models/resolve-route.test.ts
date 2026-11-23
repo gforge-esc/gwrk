@@ -9,6 +9,7 @@ import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { FixtureRunner } from "../../adapters/models/fixture-runner.js";
 import { runCli } from "../../cli.js";
+import { implementAction } from "../../commands/implement.js";
 import { researchCommandHandler } from "../../commands/research.js";
 import * as runLedger from "../../db/runs.js";
 import {
@@ -24,6 +25,7 @@ import * as agentTransport from "../../utils/agent.js";
 import type { TaskDispatch, TaskResult } from "../../utils/agent.js";
 import { loadManifests } from "../../utils/manifest.js";
 import { resolveAgent, resolveRoleAgent } from "../../utils/resolve-agent.js";
+import { loadTaskState, saveTaskState } from "../../utils/state.js";
 import type { PromotionReplayEvidence } from "./evaluate-models.js";
 import type { PinnedRoleRoute, RouteLockDocument } from "./promote-model.js";
 import {
@@ -798,6 +800,75 @@ describe("TR-014: resolveQualifiedRoute", () => {
     );
     expect(() => resolveAgent("define", root)).toThrow(/prompts-changed/);
     expect(dispatch).toHaveBeenCalledTimes(1);
+  });
+
+  it("dispatches an implementation task using its runner's qualified route", async () => {
+    const root = createTempProject({ project: { name: "gwrk" } });
+    const feature = "001-qualification";
+    const featureDir = path.join(root, "specs", feature);
+    const task = {
+      id: "T001",
+      title: "Implement routing",
+      description: "Use the pinned route",
+      status: "open" as const,
+      gateScript: "gates/T001-gate.sh",
+      sp: 1,
+    };
+    saveTaskState(featureDir, {
+      featureId: feature,
+      createdAt: new Date().toISOString(),
+      phases: [
+        { id: "phase-01", title: "Routing", tasks: [task], sp_estimate: 1 },
+      ],
+    });
+    const gates = path.join(featureDir, "gates");
+    fs.mkdirSync(gates);
+    fs.writeFileSync(
+      path.join(featureDir, task.gateScript),
+      '#!/bin/sh\ngrep -qx qualified "$0.output"\n',
+      { mode: 0o755 },
+    );
+    const evidence = await projectEvidence(root);
+    const pin = makePin({ role: "implement", evidence, fallbackRoutes: [] });
+    const lock = path.join(root, ".gwrk/models/route-lock.local.json");
+    fs.mkdirSync(path.dirname(lock), { recursive: true });
+    fs.writeFileSync(
+      lock,
+      JSON.stringify(makeRouteLock({}, { routes: { implement: pin } })),
+    );
+    vi.spyOn(process, "cwd").mockReturnValue(root);
+    vi.spyOn(runLedger, "startRun").mockReturnValue(1);
+    vi.spyOn(runLedger, "finishRun").mockImplementation(() => {});
+    vi.spyOn(runLedger, "recordHistory").mockReturnValue(1);
+    const dispatch = vi
+      .spyOn(agentTransport, "dispatchToAgent")
+      .mockImplementation(async () => {
+        fs.writeFileSync(
+          path.join(featureDir, `${task.gateScript}.output`),
+          "qualified\n",
+        );
+        return {
+          exitCode: 0,
+          stdout: '{"summary":"done","intents":[]}',
+          stderr: "",
+          durationS: 0,
+        };
+      });
+    await implementAction(feature, "1", {});
+    expect(loadTaskState(featureDir).phases[0].tasks[0].status).toBe(
+      "completed",
+    );
+    expect(dispatch).toHaveBeenCalledTimes(1);
+    expect(dispatch).toHaveBeenCalledWith(
+      expect.objectContaining({
+        workflow: "gwrk-implement",
+        agent: pin.backend,
+        model: pin.modelId,
+        effort: pin.effort,
+        routeMode: "pinned",
+        stdin: expect.stringContaining(task.id),
+      }),
+    );
   });
 
   it("expires a workspace pin after its inherited architecture instructions change", async () => {

@@ -56,6 +56,7 @@ export interface ResolvedAgent {
   backend: string;
   /** The model the registry picked, or undefined to let the dispatcher choose. */
   model: string | undefined;
+  requestedModel?: string;
   /** Effort selected by the active route lock or override. */
   effort?: string;
   /** Active route mode ("pinned" or "provider-default"). */
@@ -335,7 +336,9 @@ export function resolveAgent(
     backend: resolvedBackend,
     model: resolvedModel,
     ...(route.effort ? { effort: route.effort } : {}),
-    routeMode: route.routeMode,
+    requestedModel: route.requestedModel,
+    // Legacy registry models must still reach dispatch when no pin or mode was selected.
+    routeMode: routeLock || overrides.routeMode ? route.routeMode : undefined,
     role: route.role,
     routeStatus: route.status,
     ...(route.fallbackReason ? { fallbackReason: route.fallbackReason } : {}),

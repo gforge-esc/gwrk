@@ -89,7 +89,8 @@ Arguments:
         opts = withParentFlags(opts, command);
         await withSignal("define spec", async () => {
           const cwd = process.cwd();
-          const { backend, model } = resolveAgent("define", cwd);
+          const route = resolveAgent("define", cwd);
+          const { backend, model } = route;
           const specsDir = path.join(cwd, "specs");
 
           // Read prompt/stdin BEFORE resolution — we need the prompt to decide
@@ -239,6 +240,8 @@ Arguments:
                 featureId: feature,
                 backend,
                 model,
+                effort: route.effort,
+                routeMode: route.routeMode,
                 cwd,
                 refs: opts.refs,
                 dryRun: opts.dryRun,
@@ -253,8 +256,12 @@ Arguments:
               },
             );
 
+            let observedModel: string | undefined;
             const exitCode = await orchestrator.runLoop(effectivePrompt, {
               stopAfterOne: true,
+              onSpecified: (identity) => {
+                observedModel = identity;
+              },
             });
 
             if (exitCode !== 0) {
@@ -292,7 +299,12 @@ Arguments:
                 phase: "p00",
                 command: "define spec",
                 agent: backend,
-                model: "unknown",
+                model: model ?? "unknown",
+                requestedModel: route.requestedModel,
+                requestedEffort: route.effort,
+                routeMode: route.routeMode,
+                fallbackReason: route.fallbackReason,
+                observedModel,
                 startedAt,
                 finishedAt,
                 durationS,

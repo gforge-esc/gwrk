@@ -3,20 +3,22 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { loadConfig } from "../utils/config.js";
 import * as routing from "../utils/resolve-agent.js";
-import * as agentTransport from "../utils/agent.js";
-import { run } from "../utils/exec.js";
 import { runGate } from "../utils/gate-runner.js";
 import { loadTaskState } from "../utils/state.js";
 import { implementAction } from "./implement.js";
 
-vi.mock("../utils/exec.js", () => ({
-  run: vi.fn().mockResolvedValue(undefined),
+const executeWorkflow = vi.hoisted(() => vi.fn());
+vi.mock("../plugins/workflow-runtime.js", () => ({
+  WorkflowRuntime: class {
+    executeWorkflow = executeWorkflow;
+  },
 }));
 
 vi.mock("../utils/gate-runner.js", () => ({
-  runGate: vi.fn().mockResolvedValue({ passed: false, exitCode: 1, output: "" }),
+  runGate: vi
+    .fn()
+    .mockResolvedValue({ passed: false, exitCode: 1, output: "" }),
 }));
 
 vi.mock("../utils/config.js", () => ({
@@ -57,7 +59,9 @@ vi.mock("node:fs", () => ({
       const runner = process.env.GWRK_RUNNER_PROFILE || "local";
       if (file.endsWith(`.gwrk/models/route-lock.${runner}.json`)) {
         if (options?.throwIfNoEntry === false) return undefined;
-        throw Object.assign(new Error("No route lock in this fixture"), { code: "ENOENT" });
+        throw Object.assign(new Error("No route lock in this fixture"), {
+          code: "ENOENT",
+        });
       }
       throw new Error(`Unexpected lstat in implement fixture: ${file}`);
     },
@@ -82,26 +86,25 @@ describe("implementAction", () => {
     });
   });
 
-  it("iterates through tasks and calls agent-run.sh", async () => {
+  it("executes each open task and runs both gates in task order", async () => {
     await implementAction("004-ship-loop", "1", {});
 
     expect(loadTaskState).toHaveBeenCalled();
-    expect(run).toHaveBeenCalledTimes(2);
-    expect(run).toHaveBeenNthCalledWith(
-      1,
-      expect.stringContaining("agent-run.sh"),
-      ["implement", "004-ship-loop", "1", "T001"],
-      expect.any(Object),
-    );
-    expect(run).toHaveBeenNthCalledWith(
-      2,
-      expect.stringContaining("agent-run.sh"),
-      ["implement", "004-ship-loop", "1", "T002"],
-      expect.any(Object),
-    );
+    expect(executeWorkflow).toHaveBeenCalledTimes(2);
+    for (const [index, task] of ["T001", "T002"].entries()) {
+      expect(executeWorkflow).toHaveBeenNthCalledWith(
+        index + 1,
+        "gwrk-implement",
+        expect.stringMatching(new RegExp(`${task}.*004-ship-loop.*phase-01`)),
+        expect.objectContaining({ agent: "mock-backend" }),
+      );
+    }
+    expect(
+      vi.mocked(runGate).mock.calls.map(([gate]) => gate.split("/").pop()),
+    ).toEqual(["T001-gate.sh", "T001-gate.sh", "T002-gate.sh", "T002-gate.sh"]);
   });
 
-  it("sends the pinned model and effort when executing an implementation task", async () => {
+  it("passes the qualified route to the workflow for each task", async () => {
     const model = "qualified-implementation-model";
     const selected = vi.spyOn(routing, "resolveAgent").mockReturnValue({
       backend: "codex",
@@ -110,31 +113,19 @@ describe("implementAction", () => {
       routeMode: "pinned",
       role: "implement",
     });
-    const dispatch = vi.spyOn(agentTransport, "dispatchToAgent").mockResolvedValue({
-      exitCode: 0, stdout: "done", stderr: "", durationS: 0,
-    });
     try {
       await implementAction("004-ship-loop", "1", {});
-      const scriptCalls = vi.mocked(run).mock.calls;
-      if (scriptCalls.length > 0) {
-        expect(scriptCalls).toHaveLength(2);
-        for (const [, args, options] of scriptCalls) {
-          const assigned = Object.entries(options?.env ?? {}).filter(
-            ([key, value]) => value !== process.env[key],
-          );
-          const forwarded = [...args, ...assigned.map(([, value]) => value)];
-          expect(forwarded.includes(model), "qualified model sent to task").toBe(true);
-          expect(forwarded.includes("high"), "qualified effort sent to task").toBe(true);
-        }
-      } else {
-        expect(dispatch).toHaveBeenCalledTimes(2);
-        for (const [request] of dispatch.mock.calls) {
-          expect(request).toMatchObject({ agent: "codex", model, effort: "high" });
-        }
+      expect(executeWorkflow).toHaveBeenCalledTimes(2);
+      for (const [, , options] of executeWorkflow.mock.calls) {
+        expect(options).toMatchObject({
+          agent: "codex",
+          model,
+          effort: "high",
+          routeMode: "pinned",
+        });
       }
     } finally {
       selected.mockRestore();
-      dispatch.mockRestore();
     }
   });
 
@@ -150,10 +141,10 @@ describe("implementAction", () => {
 
     await implementAction("004-ship-loop", "1", {});
 
-    expect(run).toHaveBeenCalledTimes(1);
-    expect(run).toHaveBeenCalledWith(
-      expect.stringContaining("agent-run.sh"),
-      ["implement", "004-ship-loop", "1", "T002"],
+    expect(executeWorkflow).toHaveBeenCalledTimes(1);
+    expect(executeWorkflow).toHaveBeenCalledWith(
+      "gwrk-implement",
+      expect.stringContaining("T002"),
       expect.any(Object),
     );
   });
@@ -163,6 +154,6 @@ describe("implementAction", () => {
 
     expect(loadTaskState).toHaveBeenCalled();
     expect(runGate).toHaveBeenCalledTimes(2);
-    expect(run).not.toHaveBeenCalled();
+    expect(executeWorkflow).not.toHaveBeenCalled();
   });
 });
