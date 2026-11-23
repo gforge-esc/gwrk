@@ -12,8 +12,7 @@ import { describe, expect, it, vi } from "vitest";
 import { acquireInstanceLock } from "../../src/adapters/server/instance-lock.js";
 import { closeDb, getDb } from "../../src/db/index.js";
 import { HarvestWatcher } from "../../src/server/harvest-watcher.js";
-import { startServer } from "../../src/server/index.js";
-import { SandboxManager } from "../../src/server/sandbox.js";
+import { ScopedSandboxManager, startServer } from "../../src/server/index.js";
 import { notifyTelegram } from "../../src/server/telegram-notify.js";
 import { GwrkConfigSchema } from "../../src/utils/config.js";
 
@@ -96,7 +95,7 @@ describe.skipIf(process.platform !== "linux")("Linux instance lock", () => {
       .spyOn(HarvestWatcher.prototype, "runCheck")
       .mockResolvedValue(undefined);
     const prune = vi
-      .spyOn(SandboxManager.prototype, "pruneSandboxes")
+      .spyOn(ScopedSandboxManager.prototype, "pruneSandboxes")
       .mockResolvedValue(undefined);
     let server: Awaited<ReturnType<typeof startServer>> | undefined;
     try {
@@ -109,8 +108,10 @@ describe.skipIf(process.platform !== "linux")("Linux instance lock", () => {
       ).rejects.toThrow(/already holds/);
       expect(poll).toHaveBeenCalledTimes(1);
       expect(prune).toHaveBeenCalledTimes(1);
+      expect(prune.mock.contexts[0]).toBeInstanceOf(ScopedSandboxManager);
 
       const db = getDb();
+      expect(db.name).toBe(join(state, "gwrk.db"));
       db.exec("CREATE TABLE recovery_fixture (marker TEXT NOT NULL)");
       db.prepare("INSERT INTO recovery_fixture VALUES (?)").run("persisted");
       await server.close();
@@ -126,6 +127,12 @@ describe.skipIf(process.platform !== "linux")("Linux instance lock", () => {
         getDb().prepare("SELECT marker FROM recovery_fixture").get(),
       ).toEqual({ marker: "persisted" });
       expect((await server.inject("/health")).statusCode).toBe(200);
+      expect(prune).toHaveBeenCalledTimes(2);
+      expect(prune.mock.contexts[1]).toBeInstanceOf(ScopedSandboxManager);
+      expect(getDb().name).toBe(db.name);
+      expect(getDb()).not.toBe(db);
+      expect(prune.mock.contexts[1]).not.toBe(prune.mock.contexts[0]);
+      expect(poll).toHaveBeenCalledTimes(2);
     } finally {
       await server?.close();
       closeDb();

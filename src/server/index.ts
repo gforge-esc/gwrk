@@ -3,9 +3,10 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { execFileSync } from "node:child_process";
-import { existsSync } from "node:fs";
+import { existsSync, realpathSync } from "node:fs";
 import { basename, dirname, join, resolve } from "node:path";
-import fastify from "fastify";
+import fastify, { type FastifyRequest } from "fastify";
+import { QuotaProber } from "../adapters/agents/quota-prober.js";
 import { loadRegistry } from "../adapters/agents/registry-loader.js";
 import {
   exitCli,
@@ -13,16 +14,28 @@ import {
   warnCli,
 } from "../adapters/cli/output-scope.js";
 import { gwrkRuntimeDir, usesHostedRuntime } from "../adapters/config/paths.js";
+import { createGitVcsAdapter } from "../adapters/git/index.js";
 import { repositoryGitEnv } from "../adapters/git/process-env.js";
+import { createSlackNotificationAdapter } from "../adapters/notifications/index.js";
 import {
   acquireInstanceLock,
   acquireLedgerLock,
 } from "../adapters/server/instance-lock.js";
+import { createSqliteProjectRegistryAdapter } from "../adapters/sqlite/index.js";
+import {
+  type ProjectRoutingService,
+  createProjectRoutingService,
+} from "../application/project-routing/index.js";
 import { closeDb, getDbPath } from "../db/index.js";
 import { PENDING_LEDGER_RESTORE } from "../domain/ledger-backup.js";
+import type { AllowedRunnerKind } from "../domain/project-registry.js";
 import { isPrivateRunnerBind } from "../domain/release-packaging.js";
+import type { NotificationPort } from "../ports/notification-port.js";
 import type { InstanceLockHandle } from "../ports/release-ops-port.js";
+import type { ProjectRegistryPort } from "../ports/store-port.js";
+import type { VcsPort } from "../ports/vcs-port.js";
 import type { AgentBackendId, GwrkConfig } from "../utils/config.js";
+import { BackendSelector } from "./backend-selector.js";
 import { type DispatchLedgerScope, DispatchQueue } from "./dispatch.js";
 import { GitManager } from "./git-manager.js";
 import { githubWebhookPlugin } from "./github.js";
@@ -40,9 +53,6 @@ import { SandboxManager } from "./sandbox.js";
 import { getSlackApp, startSlackApp, stopSlackApp } from "./slack.js";
 import { startTelegramBot } from "./telegram.js";
 import type { SandboxInfo } from "./types.js";
-
-import { QuotaProber } from "../adapters/agents/quota-prober.js";
-import { BackendSelector } from "./backend-selector.js";
 
 export { BackendSelector } from "./backend-selector.js";
 export { QuotaProber } from "../adapters/agents/quota-prober.js";
@@ -72,22 +82,98 @@ export interface ServerStartOptions {
   ledger?: DispatchLedgerScope;
   sandbox?: SandboxManager;
   gitEnv?: () => NodeJS.ProcessEnv;
+  registry?: ProjectRegistryPort;
+  routingService?: ProjectRoutingService;
+  vcs?: VcsPort;
+  notifier?: NotificationPort;
+  transport?: "trusted_local" | "hosted";
+  localDefaultProjectId?: string;
+  resolvePrincipal?: (request: FastifyRequest) =>
+    | {
+        principalType: "cli_token" | "google_sub";
+        principalId: string;
+      }
+    | undefined;
+  runnerKind?: AllowedRunnerKind;
+  useProjectRegistry?: boolean;
+}
+
+function isLoopbackListenHost(host: string): boolean {
+  const normalized = host.trim().toLowerCase();
+  return (
+    normalized === "localhost" ||
+    normalized === "127.0.0.1" ||
+    normalized === "::1" ||
+    normalized === "[::1]"
+  );
 }
 
 export class ScopedSandboxManager extends SandboxManager {
+  private readonly root: string;
+  private readonly gitEnv: () => NodeJS.ProcessEnv;
+  private readonly childManagers = new Map<string, ScopedSandboxManager>();
+  private readonly workDirRoots = new Map<string, string>();
+
   constructor(
-    private readonly root: string,
-    private readonly gitEnv = () => repositoryGitEnv(root),
+    root: string,
+    private readonly scopedGitEnv?: () => NodeJS.ProcessEnv,
+    private readonly registry?: ProjectRegistryPort,
   ) {
-    super(root);
+    const normalizedRoot = resolve(root);
+    super(normalizedRoot);
+    this.root = normalizedRoot;
+    this.gitEnv = scopedGitEnv ?? (() => repositoryGitEnv(normalizedRoot));
   }
 
   protected override gitOptions() {
     return { env: this.gitEnv() };
   }
 
-  override async pruneSandboxes(): Promise<void> {
-    if (!existsSync(join(this.root, ".git"))) return;
+  private managerForRoot(targetRoot: string): ScopedSandboxManager {
+    const normalized = resolve(targetRoot);
+    if (normalized === this.root) return this;
+    let manager = this.childManagers.get(normalized);
+    if (!manager) {
+      manager = new ScopedSandboxManager(normalized, this.scopedGitEnv);
+      this.childManagers.set(normalized, manager);
+    }
+    return manager;
+  }
+
+  private knownRoots(): string[] {
+    const roots = new Set<string>([this.root, ...this.childManagers.keys()]);
+    if (this.registry) {
+      for (const project of this.registry.listProjects()) {
+        const checkoutRoot = project.mirrorPath ?? project.localRoot;
+        if (checkoutRoot) {
+          roots.add(resolve(checkoutRoot));
+        }
+      }
+    }
+    return Array.from(roots);
+  }
+
+  private resolveWorkDirRoot(workDir: string): string {
+    const normalizedWorkDir = resolve(workDir);
+    const tracked = this.workDirRoots.get(normalizedWorkDir);
+    if (tracked) return tracked;
+    const sandboxesDir = dirname(normalizedWorkDir);
+    const runsDir = dirname(sandboxesDir);
+    if (
+      basename(sandboxesDir) === "sandboxes" &&
+      basename(runsDir) === ".runs"
+    ) {
+      return dirname(runsDir);
+    }
+    return this.root;
+  }
+
+  private pruneOwnRoot(): void {
+    const hasGitRepo =
+      existsSync(join(this.root, ".git")) ||
+      (existsSync(join(this.root, "HEAD")) &&
+        existsSync(join(this.root, "objects")));
+    if (!hasGitRepo) return;
     execFileSync("git", ["worktree", "prune"], {
       cwd: this.root,
       ...this.gitOptions(),
@@ -96,7 +182,7 @@ export class ScopedSandboxManager extends SandboxManager {
     });
   }
 
-  override async listSandboxes(): Promise<SandboxInfo[]> {
+  private listOwnSandboxes(): SandboxInfo[] {
     return this.listRecords()
       .filter(({ orphaned }) => !orphaned)
       .map(
@@ -109,6 +195,68 @@ export class ScopedSandboxManager extends SandboxManager {
             startedAt: createdAt,
           }) as SandboxInfo,
       );
+  }
+
+  override async createSandbox(
+    opts: Parameters<SandboxManager["createSandbox"]>[0],
+  ): Promise<string> {
+    const targetRoot = resolve(opts.projectRoot || this.root);
+    const manager = this.managerForRoot(targetRoot);
+    const workDir =
+      manager === this
+        ? await super.createSandbox({ ...opts, projectRoot: targetRoot })
+        : await manager.createSandbox({ ...opts, projectRoot: targetRoot });
+    this.workDirRoots.set(resolve(workDir), targetRoot);
+    return workDir;
+  }
+
+  override async destroySandbox(
+    workDir: string,
+    featureId: string,
+    options?: Parameters<SandboxManager["destroySandbox"]>[2],
+  ): Promise<void> {
+    const normalizedWorkDir = resolve(workDir);
+    const targetRoot = this.resolveWorkDirRoot(normalizedWorkDir);
+    const manager = this.managerForRoot(targetRoot);
+    try {
+      if (manager === this) {
+        await super.destroySandbox(workDir, featureId, options);
+      } else {
+        await manager.destroySandbox(workDir, featureId, options);
+      }
+    } finally {
+      this.workDirRoots.delete(normalizedWorkDir);
+    }
+  }
+
+  override async pruneSandboxes(): Promise<void> {
+    for (const targetRoot of this.knownRoots()) {
+      const manager = this.managerForRoot(targetRoot);
+      if (manager === this) {
+        this.pruneOwnRoot();
+      } else {
+        await manager.pruneSandboxes();
+      }
+    }
+  }
+
+  override async listSandboxes(): Promise<SandboxInfo[]> {
+    const results: SandboxInfo[] = [];
+    const seen = new Set<string>();
+    for (const targetRoot of this.knownRoots()) {
+      const manager = this.managerForRoot(targetRoot);
+      const items =
+        manager === this
+          ? this.listOwnSandboxes()
+          : await manager.listSandboxes();
+      for (const item of items) {
+        const key = resolve(item.workDir);
+        if (seen.has(key)) continue;
+        seen.add(key);
+        results.push(item);
+      }
+    }
+    return results;
   }
 }
 
@@ -141,6 +289,7 @@ export async function startServer(
       options,
       instanceLock,
       ledgerLock,
+      hosted,
       hosted ? process.env.GWRK_APPROVED_AGENT : undefined,
     );
   } catch (error) {
@@ -155,9 +304,13 @@ async function startLockedServer(
   options: ServerStartOptions,
   instanceLock: InstanceLockHandle | undefined,
   ledgerLock: InstanceLockHandle | undefined,
+  hosted: boolean,
   approvedBackend: AgentBackendId | undefined,
 ) {
   const projectRoot = resolve(options.projectRoot ?? process.cwd());
+  const canonicalRoot = existsSync(projectRoot)
+    ? realpathSync(projectRoot)
+    : projectRoot;
   const gitEnv =
     options.gitEnv ??
     (options.projectRoot !== undefined || options.ledger
@@ -167,6 +320,60 @@ async function startLockedServer(
   const server = fastify({
     logger: true,
   });
+
+  // Derive transport mode from hosted runtime or listener bind address unless explicitly overridden.
+  const effectiveTransport: "trusted_local" | "hosted" =
+    options.transport ??
+    (hosted || !isLoopbackListenHost(config.server.host)
+      ? "hosted"
+      : "trusted_local");
+  const runnerKind: AllowedRunnerKind =
+    options.runnerKind ??
+    (effectiveTransport === "hosted" ? "hosted" : "local");
+
+  let ownedRegistry: ProjectRegistryPort | undefined;
+  let registry: ProjectRegistryPort | undefined = options.registry;
+  if (!registry) {
+    if (options.ledger?.db) {
+      registry = createSqliteProjectRegistryAdapter({ db: options.ledger.db });
+    } else if (options.useProjectRegistry || effectiveTransport === "hosted") {
+      ownedRegistry = createSqliteProjectRegistryAdapter();
+      registry = ownedRegistry;
+    }
+  }
+
+  const enrolledCount = registry ? registry.listProjects().length : 0;
+  const enforceRegistryScope = Boolean(
+    options.registry || effectiveTransport === "hosted" || enrolledCount > 0,
+  );
+  const activeRegistry = enforceRegistryScope ? registry : undefined;
+  const localDefaultProjectId =
+    options.localDefaultProjectId ??
+    activeRegistry?.findByLocalRoot(canonicalRoot)?.projectId ??
+    activeRegistry?.findByLocalRoot(projectRoot)?.projectId;
+
+  const vcs = options.vcs ?? createGitVcsAdapter();
+  const notifier =
+    options.notifier ??
+    (activeRegistry
+      ? createSlackNotificationAdapter({
+          registry: activeRegistry,
+          projectRoot,
+        })
+      : undefined);
+  const routingService =
+    options.routingService ??
+    (activeRegistry
+      ? createProjectRoutingService({
+          registry: activeRegistry,
+          notificationPort:
+            notifier ??
+            createSlackNotificationAdapter({
+              registry: activeRegistry,
+              projectRoot,
+            }),
+        })
+      : undefined);
 
   // GitHub webhook is optional — plugin handles the missing case gracefully
   if (!config.server.githubWebhookSecret) {
@@ -178,9 +385,9 @@ async function startLockedServer(
   const monitor = new SystemMonitor(config);
   const sandbox =
     options.sandbox ??
-    (options.projectRoot === undefined
-      ? new SandboxManager(projectRoot)
-      : new ScopedSandboxManager(projectRoot, gitEnv));
+    (options.projectRoot !== undefined || activeRegistry !== undefined
+      ? new ScopedSandboxManager(projectRoot, options.gitEnv, activeRegistry)
+      : new SandboxManager(projectRoot));
 
   const git = new GitManager(projectRoot);
   const queue = new DispatchQueue(
@@ -191,6 +398,7 @@ async function startLockedServer(
     options.ledger,
     gitEnv,
     approvedBackend,
+    activeRegistry,
   );
 
   const lifecycle = new LifecycleMonitor(config);
@@ -246,6 +454,10 @@ async function startLockedServer(
   let ownsPidRecord = false;
   const stopPollers: Array<() => void | Promise<void>> = [];
   const cleanup: Array<() => void | Promise<void>> = [];
+  if (ownedRegistry) {
+    const registryToClose = ownedRegistry;
+    cleanup.push(() => registryToClose.close());
+  }
 
   const shutdown = async () => {
     server.log.info("Shutting down server...");
@@ -296,16 +508,39 @@ async function startLockedServer(
   });
 
   try {
-    await healthRoutes(server, lifecycle, network, sandbox);
-    await statusRoutes(server, monitor, queue, sandbox, lifecycle, network);
-    await dispatchRoutes(server, queue);
+    const routeAuthOptions = enforceRegistryScope
+      ? {
+          registry: activeRegistry,
+          transport: effectiveTransport,
+          localDefaultProjectId,
+          resolvePrincipal: options.resolvePrincipal,
+        }
+      : undefined;
+
+    await healthRoutes(server, lifecycle, network, sandbox, {
+      registry,
+      notifier,
+      runnerKind,
+    });
+    await statusRoutes(
+      server,
+      monitor,
+      queue,
+      sandbox,
+      lifecycle,
+      network,
+      routeAuthOptions,
+    );
+    await dispatchRoutes(server, queue, routeAuthOptions);
     await githubWebhookPlugin(server, {
       config,
       projectRoot,
+      registry: activeRegistry,
+      vcs,
       ledger: options.ledger,
       gitEnv,
     });
-    await notifyRoutes(server, options.projectRoot);
+    await notifyRoutes(server, projectRoot, routeAuthOptions);
 
     const address = await server.listen({
       port: config.server.port,
@@ -335,6 +570,9 @@ async function startLockedServer(
       slackApp,
       projectRoot,
       options.ledger,
+      activeRegistry || options.notifier
+        ? { registry: activeRegistry, notifier: options.notifier }
+        : undefined,
     );
     stopPollers.push(() => planHeartbeat.stop());
     planHeartbeat.start();
@@ -345,6 +583,7 @@ async function startLockedServer(
       projectRoot,
       options.ledger,
       gitEnv,
+      activeRegistry ? { registry: activeRegistry } : undefined,
     );
     stopPollers.push(() => harvestWatcher.stop());
     harvestWatcher.start();
@@ -369,6 +608,9 @@ async function startLockedServer(
         git,
         projectRoot,
         config,
+        ...(registry ? { registry } : {}),
+        ...(routingService ? { routingService } : {}),
+        ...(options.vcs || activeRegistry ? { vcs } : {}),
       });
     }
 

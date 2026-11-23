@@ -357,7 +357,7 @@
         {
           "id": "T034",
           "title": "Modify health.ts",
-          "description": "MODIFY src/server/routes/health.ts. Report outbox degradation, unresolved harvest failures and disabled pilot Telegram state",
+          "description": "MODIFY src/server/routes/health.ts. Report outbox degradation, unresolved harvest failures and disabled pilot Telegram state Tests: src/server/routes/health.test.ts",
           "status": "open",
           "gateScript": "gates/phase-06.sh",
           "sp": 1
@@ -365,7 +365,7 @@
         {
           "id": "T035",
           "title": "Modify index.ts",
-          "description": "MODIFY src/server/index.ts. Wire `OperationsStorePort` and startup recovery sweeps plus raw-body webhook parsing and outbox flushing",
+          "description": "MODIFY src/server/index.ts. Wire `OperationsStorePort` and startup recovery sweeps plus raw-body webhook parsing and outbox flushing Tests: src/server/index.test.ts, src/server/unattended-recovery.test.ts, src/server/two-repo-isolation.test.ts",
           "status": "open",
           "gateScript": "gates/phase-06.sh",
           "sp": 1
@@ -381,7 +381,7 @@
         {
           "id": "T037",
           "title": "Modify status.ts",
-          "description": "MODIFY src/commands/status.ts. Render queue age and pending harvest stages plus unresolved deliveries, gate failures and legacy counts. Tests: src/server/routes/status.test.ts",
+          "description": "MODIFY src/commands/status.ts. Render queue age and pending harvest stages plus unresolved deliveries, gate failures and legacy counts. Tests: src/commands/status.test.ts, src/server/routes/status.test.ts",
           "status": "open",
           "gateScript": "gates/phase-06.sh",
           "sp": 1
@@ -391,7 +391,13 @@
       "testTargets": [
         "src/commands/harvest.test.ts",
         "src/commands/status.test.ts",
-        "src/server/unattended-recovery.test.ts"
+        "src/server/unattended-recovery.test.ts",
+        "src/server/routes/status.test.ts",
+        "src/server/routes/health.test.ts",
+        "src/server/index.test.ts",
+        "src/server/two-repo-isolation.test.ts",
+        "src/commands/project.test.ts",
+        "src/commands/server.test.ts"
       ]
     }
   ]

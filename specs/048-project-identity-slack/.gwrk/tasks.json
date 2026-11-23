@@ -424,57 +424,64 @@
           "id": "T039",
           "title": "Modify dispatch.ts",
           "description": "MODIFY src/server/routes/dispatch.ts. Enforce `evaluateHttpProjectAccess` and pass `projectId` and `recipient` to `DispatchQueue`",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/phase-06.sh",
-          "sp": 1
+          "sp": 1,
+          "completedAt": "2026-11-23T20:36:47.867Z"
         },
         {
           "id": "T040",
           "title": "Modify index.ts",
-          "description": "MODIFY src/server/index.ts. Wire `ProjectRegistryPort` and `ProjectRoutingService` plus `VcsPort` and multi-project watchers",
-          "status": "open",
+          "description": "MODIFY src/server/index.ts. Wire `ProjectRegistryPort` and `ProjectRoutingService` plus `VcsPort` and multi-project watchers\n\nREVIEW FAIL (code): Multi-project worktree placement and cleanup in startServer — FR-006 (Two-repository collision proof) and FR-003 (Scoped dispatch).\n  WHERE: src/server/index.ts:111-147 and src/server/index.ts:268-284\n  EXPECTED: Each enrolled project's dispatch creates and removes worktrees inside its own checkout root (project.mirrorPath ?? project.localRoot), leaving zero cross-project worktrees and closing cleanly.\n  ACTUAL: startLockedServer wires a single ScopedSandboxManager(projectRoot, gitEnv) rooted at the daemon's startup directory. When unthrottled dispatches run for Alpha and Beta, Beta's worktree is created inside alphaRoot/.runs/sandboxes/ and destroySandbox executes git worktree remove --force in alphaRoot, failing with \"fatal: '<alphaRoot>/.runs/sandboxes/048-shared-ship-...' is not a working tree\" and stranding Beta's worktree.\n  FIX: Route createSandbox, destroySandbox, listSandboxes, and pruneSandboxes per projectRoot (tracking workDir -> projectRoot for destruction and aggregating enrolled project roots for list/prune) so each project owns its own .runs/sandboxes directory and git worktree operations run against the owning repository. Keep the regression in src/server/two-repo-isolation.test.ts passing.\n  GATE: specs/048-project-identity-slack/gates/phase-06.sh (coverage hole: existing test throttled SystemMonitor so sandboxes never executed)\n  PATCH: .runs/review-regressions-phase06-20261123-1408.patch\n  REF: plan.md Phase 6 > T040 and contracts/slack-routing-and-operations.md\n\nREVIEW FAIL (code): Symlinked projectRoot fails localDefaultProjectId lookup — FR-004 (Local single-project compatibility).\n  WHERE: src/server/index.ts:196 and src/server/index.ts:233-235\n  EXPECTED: Trusted-local HTTP requests without an explicit projectId resolve the enrolled project whose localRoot matches the canonicalized startup projectRoot, even when projectRoot is passed via a symlink.\n  ACTUAL: startLockedServer uses resolve(options.projectRoot ?? process.cwd()) without realpathSync before calling activeRegistry.findByLocalRoot(projectRoot). Because gwrk project enroll and gwrk init store realpathSync paths in local_root, starting with a symlinked projectRoot leaves localDefaultProjectId undefined and GET /api/status returns HTTP 400 AMBIGUOUS_PROJECT_SELECTION when two projects are enrolled.\n  FIX: Canonicalize projectRoot with realpathSync when it exists (checking findByLocalRoot on both canonicalRoot and projectRoot, matching src/commands/status.ts:149-151). Keep the symlinked trusted-local regression in src/server/two-repo-isolation.test.ts passing.\n  GATE: specs/048-project-identity-slack/gates/phase-06.sh (coverage hole: no symlinked projectRoot test)\n  PATCH: .runs/review-regressions-phase06-20261123-1408.patch\n  REF: plan.md Phase 6 > T040 and contracts/slack-routing-and-operations.md\n\nREVIEW/GATE DIVERGENCE (T040, gate: gates/phase-06.sh, re-opened by review):\nThe review agent raised a finding on this task and its gate still passes, so the gate does not cover what review found. Add a test that fails on it, then fix, before completing.\n\nDIAGNOSIS (iteration 2):\nFIX: src/server/index.ts — Update `ScopedSandboxManager` (lines 111-147) to accept `registry?: ProjectRegistryPort`, keep per-root child managers (`Map<string, ScopedSandboxManager>`) using `customGitEnv ?? (() => repositoryGitEnv(targetRoot))` and `workDirRoots: Map<string, string>`, override `createSandbox(opts: Parameters<SandboxManager[\"createSandbox\"]>[0])` to route by `resolve(opts.projectRoot || this.root)` and record `workDir -> targetRoot`, override `destroySandbox(workDir, featureId, options?: Parameters<SandboxManager[\"destroySandbox\"]>[2])` to route to the owning root (from `workDirRoots`, or derived from `<root>/.runs/sandboxes/<id>`, or `this.root`) and delete the `workDirRoots` entry in `finally`, aggregate `listSandboxes()` and `pruneSandboxes()` across `this.root`, cached roots, and enrolled projects' `mirrorPath ?? localRoot` from `registry?.listProjects()`, and wire `new ScopedSandboxManager(projectRoot, options.gitEnv, activeRegistry)` at lines 268-272 whenever `options.projectRoot !== undefined || activeRegistry !== undefined`.\nFIX: src/server/index.ts — Change line 6 import to `import { existsSync, realpathSync } from \"node:fs\"`, compute `const canonicalRoot = existsSync(projectRoot) ? realpathSync(projectRoot) : projectRoot;` after line 196, and update lines 233-235 to `options.localDefaultProjectId ?? activeRegistry?.findByLocalRoot(canonicalRoot)?.projectId ?? activeRegistry?.findByLocalRoot(projectRoot)?.projectId`.\nFIX: src/commands/project-enroll.ts — Move `const parsedBindings = (options.role ?? []).map((spec) => parseRoleBindingSpec(spec, projectId));` before `registry.enrollProject(...)` (above line 492) so invalid `--role` entries throw `CommandError` with exit code 2 before mutating SQLite, then persist `parsedBindings` via `registry.setRoleBinding(binding)` after `registry.enrollProject(...)` returns.\nFIX: src/server/two-repo-isolation.test.ts — Apply `.runs/review-regressions-phase06-20261123-1408.patch` to retain both `TR-024 review regression (T040)` tests covering unthrottled per-project worktree placement/cleanup and symlinked `projectRoot` resolution of `localDefaultProjectId`.\nFIX: src/commands/project.test.ts — Apply `.runs/review-regressions-phase06-20261123-1408.patch` to retain the `TR-021 review regression (T041)` test asserting invalid `--role` exits 2 with `total: 0` from `gwrk project list --format json`.",
+          "status": "completed",
           "gateScript": "gates/phase-06.sh",
-          "sp": 1
+          "sp": 1,
+          "completedAt": "2026-11-23T21:23:33Z"
         },
         {
           "id": "T041",
           "title": "Create project-enroll.ts",
-          "description": "NEW src/commands/project-enroll.ts. Implement `gwrk project enroll`, `list` and `show` with ADR-004 output",
-          "status": "open",
+          "description": "NEW src/commands/project-enroll.ts. Implement `gwrk project enroll`, `list` and `show` with ADR-004 output\n\nREVIEW FAIL (code): Non-atomic --role validation commits partial enrollment before usage error — FR-001 (Project enrollment and legacy aliases).\n  WHERE: src/commands/project-enroll.ts:492-512\n  EXPECTED: Invalid --role syntax exits with code 2 (usage error) without mutating the SQLite project registry.\n  ACTUAL: enrollLocalRepository calls registry.enrollProject(...) before parseRoleBindingSpec(spec, enrolled.projectId). Running gwrk project enroll --slug alpha --role slack_user:T_ALPHA:U1=invalid-role exits 2 while leaving alpha committed in SQLite (gwrk project list --format json reports total: 1 instead of 0).\n  FIX: Parse and validate all options.role entries against projectId with parseRoleBindingSpec before calling registry.enrollProject(...). Keep the invalid --role regression in src/commands/project.test.ts passing.\n  GATE: specs/048-project-identity-slack/gates/phase-06.sh (coverage hole: no invalid --role atomicity check)\n  PATCH: .runs/review-regressions-phase06-20261123-1408.patch\n  REF: plan.md Phase 6 > T041 and contracts/slack-routing-and-operations.md\n\nREVIEW/GATE DIVERGENCE (T041, gate: gates/phase-06.sh, re-opened by review):\nThe review agent raised a finding on this task and its gate still passes, so the gate does not cover what review found. Add a test that fails on it, then fix, before completing.\n\nDIAGNOSIS (iteration 2):\nFIX: src/server/index.ts — Update `ScopedSandboxManager` (lines 111-147) to accept `registry?: ProjectRegistryPort`, keep per-root child managers (`Map<string, ScopedSandboxManager>`) using `customGitEnv ?? (() => repositoryGitEnv(targetRoot))` and `workDirRoots: Map<string, string>`, override `createSandbox(opts: Parameters<SandboxManager[\"createSandbox\"]>[0])` to route by `resolve(opts.projectRoot || this.root)` and record `workDir -> targetRoot`, override `destroySandbox(workDir, featureId, options?: Parameters<SandboxManager[\"destroySandbox\"]>[2])` to route to the owning root (from `workDirRoots`, or derived from `<root>/.runs/sandboxes/<id>`, or `this.root`) and delete the `workDirRoots` entry in `finally`, aggregate `listSandboxes()` and `pruneSandboxes()` across `this.root`, cached roots, and enrolled projects' `mirrorPath ?? localRoot` from `registry?.listProjects()`, and wire `new ScopedSandboxManager(projectRoot, options.gitEnv, activeRegistry)` at lines 268-272 whenever `options.projectRoot !== undefined || activeRegistry !== undefined`.\nFIX: src/server/index.ts — Change line 6 import to `import { existsSync, realpathSync } from \"node:fs\"`, compute `const canonicalRoot = existsSync(projectRoot) ? realpathSync(projectRoot) : projectRoot;` after line 196, and update lines 233-235 to `options.localDefaultProjectId ?? activeRegistry?.findByLocalRoot(canonicalRoot)?.projectId ?? activeRegistry?.findByLocalRoot(projectRoot)?.projectId`.\nFIX: src/commands/project-enroll.ts — Move `const parsedBindings = (options.role ?? []).map((spec) => parseRoleBindingSpec(spec, projectId));` before `registry.enrollProject(...)` (above line 492) so invalid `--role` entries throw `CommandError` with exit code 2 before mutating SQLite, then persist `parsedBindings` via `registry.setRoleBinding(binding)` after `registry.enrollProject(...)` returns.\nFIX: src/server/two-repo-isolation.test.ts — Apply `.runs/review-regressions-phase06-20261123-1408.patch` to retain both `TR-024 review regression (T040)` tests covering unthrottled per-project worktree placement/cleanup and symlinked `projectRoot` resolution of `localDefaultProjectId`.\nFIX: src/commands/project.test.ts — Apply `.runs/review-regressions-phase06-20261123-1408.patch` to retain the `TR-021 review regression (T041)` test asserting invalid `--role` exits 2 with `total: 0` from `gwrk project list --format json`.",
+          "status": "completed",
           "gateScript": "gates/phase-06.sh",
-          "sp": 2
+          "sp": 2,
+          "completedAt": "2026-11-23T21:23:33Z"
         },
         {
           "id": "T042",
           "title": "Modify project.ts",
-          "description": "MODIFY src/commands/project.ts. Register `enroll`, `list` and `show` subcommands on `gwrk project`. Tests: src/commands/project.test.ts",
-          "status": "open",
+          "description": "MODIFY src/commands/project.ts. Register `enroll`, `list` and `show` subcommands on `gwrk project`. Tests: src/commands/project.test.ts\n\nREVIEW FAIL (uat): FR-001 Enrollment CLI (gwrk project enroll, list, show) — Expected: Running gwrk project enroll, gwrk project list, and gwrk project show via the root CLI works inside a git checkout without .gwrkrc.json and from uninitialized directories (with ADR-004 [exit:N | Xs] signals and --repo/git-checkout error navigation outside git). Actual: src/cli.ts preAction hook calls loadConfig(process.cwd()) before project enroll/list/show execute, failing immediately with exit code 1 and 'Configuration file .gwrkrc.json not found at <cwd>/.gwrkrc.json. Run '\\''gwrk init'\\'' to initialize this project.' and no ADR-004 signal. See spec.md > Requirements (FR-001) and contracts/slack-routing-and-operations.md. Fix: Exempt 'project enroll', 'project list', and 'project show' from the cwd .gwrkrc.json preflight in src/cli.ts (resolvesOwnRoot) and restore/retain the root-CLI regression in src/commands/project.test.ts from PATCH: .runs/review-regressions-phase06-uat-20261123-1431.patch (GATE: specs/048-project-identity-slack/gates/phase-06.sh).\n\nREVIEW/GATE DIVERGENCE (T042, gate: gates/phase-06.sh, re-opened by review):\nThe review agent raised a finding on this task and its gate still passes, so the gate does not cover what review found. Add a test that fails on it, then fix, before completing.",
+          "status": "completed",
           "gateScript": "gates/phase-06.sh",
-          "sp": 1
+          "sp": 1,
+          "completedAt": "2026-11-23T21:48:23Z"
         },
         {
           "id": "T043",
           "title": "Modify init.ts",
           "description": "MODIFY src/commands/init.ts. Enroll or update the local repository with legacy alias preservation",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/phase-06.sh",
-          "sp": 1
+          "sp": 1,
+          "completedAt": "2026-11-23T20:37:14.981Z"
         },
         {
           "id": "T044",
           "title": "Modify status.ts",
           "description": "MODIFY src/commands/status.ts. Surface daemon liveness and server reachability plus project readiness and Slack delivery. Tests: src/commands/status.test.ts",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/phase-06.sh",
-          "sp": 1
+          "sp": 1,
+          "completedAt": "2026-11-23T20:37:22.455Z"
         },
         {
           "id": "T045",
           "title": "Modify server.ts",
-          "description": "MODIFY src/commands/server.ts. Start the server against the project registry while keeping local single-repo defaults. Tests: src/server/two-repo-isolation.test.ts",
-          "status": "open",
+          "description": "MODIFY src/commands/server.ts. Start the server against the project registry while keeping local single-repo defaults. Tests: src/server/two-repo-isolation.test.ts\n\nREVIEW FAIL (uat): FR-004 Registry-backed server CLI (gwrk server start, _run, status, stop) — Expected: When projects are enrolled in SQLite, gwrk server start, server _run, and server status run via the root CLI even when cwd lacks .gwrkrc.json, using loadServerConfig's project-registry fallback in src/commands/server.ts. Actual: src/cli.ts preAction hook calls loadConfig(process.cwd()) before server subcommands execute, failing with exit code 1 and 'Configuration file .gwrkrc.json not found...' so loadServerConfig's registry fallback is unreachable from the root CLI. See spec.md > Requirements (FR-004) and plan.md > Phase 6 > T045. Fix: Exempt 'server start', 'server _run', 'server status', 'server stop', and 'server logs' from the cwd .gwrkrc.json preflight in src/cli.ts (resolvesOwnRoot) so loadServerConfig handles config and registry fallback with ADR-004 signals, and restore/retain the root-CLI regression in src/commands/server.test.ts from PATCH: .runs/review-regressions-phase06-uat-20261123-1431.patch (GATE: specs/048-project-identity-slack/gates/phase-06.sh).\n\nREVIEW/GATE DIVERGENCE (T045, gate: gates/phase-06.sh, re-opened by review):\nThe review agent raised a finding on this task and its gate still passes, so the gate does not cover what review found. Add a test that fails on it, then fix, before completing.",
+          "status": "completed",
           "gateScript": "gates/phase-06.sh",
-          "sp": 1
+          "sp": 1,
+          "completedAt": "2026-11-23T21:48:23Z"
         }
       ],
       "sp_estimate": 8,

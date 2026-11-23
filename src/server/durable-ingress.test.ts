@@ -133,6 +133,18 @@ describe("durable HTTP ingress", () => {
       url: `/api/dispatch/${payload.featureId}/${payload.phaseId}?projectId=unrelated-project`,
     });
     expect(crossProjectLookup.statusCode).toBe(404);
+
+    const suppressed = await fixture.app.inject({
+      method: "POST",
+      url: "/api/dispatch",
+      payload: { ...payload, phaseId: "phase-02", recipient: null },
+    });
+    expect(suppressed.statusCode).toBe(201);
+    expect(suppressed.json().recipient).toBeNull();
+    expect(
+      store.getDispatchOperation({ ...payload, phaseId: "phase-02" })
+        ?.recipient,
+    ).toBeNull();
   });
 
   it("rejects unknown explicit projectId and cross-project recipient without persisting", async () => {
