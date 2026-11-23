@@ -196,6 +196,8 @@ The fallback tests start with a passing evaluation and change one input at a tim
 
 The [repair review](evidence/code-review-phase-05-4be1dbc6.md) retains two routing regressions. One changes the active project workflow prompt. The other leaves a fresh primary pin beside unreadable fallback evidence. The patch against `4be1dbc6` is `.runs/review-regressions-phase05-20261123T202611Z-79777da2.patch`.
 
+The CLI review regression dispatches the workflow selected by the project’s review plugin. Editing that workflow’s prompt must expire the review pin before a second dispatch. The [review of c779b492](evidence/code-review-phase-05-c779b492.md) records the reproduction and patch.
+
 #### Done When
 
 ```bash
