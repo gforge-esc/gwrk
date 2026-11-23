@@ -660,6 +660,47 @@ describe("TR-014: resolveQualifiedRoute", () => {
     expect((await resolve()).status).toBe("stale");
   });
 
+  it("rejects catalog drift when the local bundle differs from the promoted evidence", async () => {
+    const root = createTempProject({ project: { name: "gwrk" } });
+    const store = createRouteLockStore(root);
+    const snapshot = makeSnapshot();
+    await store.writeDiscoverySnapshot(SCOPE, snapshot);
+    const pin = makePin();
+    const originalBundle = {
+      evaluationId: pin.evidence.evaluationId,
+      eligibleRoutesDigest: eligibleRoutesDigest(snapshot, SCOPE),
+    };
+    const evidence = {
+      ...pin.evidence,
+      evaluationBundleHash: createHash("sha256")
+        .update(JSON.stringify(originalBundle))
+        .digest("hex"),
+      snapshotHash: createHash("sha256")
+        .update(JSON.stringify(await store.readDiscoverySnapshot(SCOPE)))
+        .digest("hex"),
+    };
+    await store.writeRouteLockAtomic(SCOPE, {
+      document: makeRouteLock({ evidence, fallbackRoutes: [] }),
+      expectedIncumbentDigest: null,
+    });
+    const changed = makeSnapshot({
+      adapters: snapshot.adapters.filter(({ backend }) => backend !== "agy"),
+    });
+    await store.writeDiscoverySnapshot(SCOPE, changed);
+    const changedDigest = eligibleRoutesDigest(changed, SCOPE);
+    expect(changedDigest).not.toBe(originalBundle.eligibleRoutesDigest);
+    await store.writeEvaluationBundle(originalBundle.evaluationId, {
+      ...originalBundle,
+      eligibleRoutesDigest: changedDigest,
+    });
+    const route = await resolveQualifiedRouteFromStore(
+      { store, runner: { computeSuiteHashes: async () => evidence } },
+      { role: "define", scope: SCOPE },
+    );
+    expect(route.status).toBe("stale");
+    expect(route.model).toBeUndefined();
+  });
+
   it("replays fallback evaluation bundles from RouteLockStorePort before admitting fallbacks", async () => {
     const snapshot = makeSnapshot();
     const lock = makeRouteLock();
@@ -990,6 +1031,53 @@ describe("TR-014: resolveQualifiedRoute", () => {
     );
     expect(dispatch).toHaveBeenCalledWith(
       expect.objectContaining({
+        agent: review.backend,
+        model: review.modelId,
+        effort: review.effort,
+        routeMode: "pinned",
+      }),
+    );
+  });
+
+  it("uses the runner discovery evidence for a review in an isolated ship worktree", async () => {
+    const root = createTempProject({ project: { name: "gwrk" } });
+    const evidence = await projectEvidence(root);
+    const review = makePin({ role: "review", evidence, fallbackRoutes: [] });
+    await createRouteLockStore(root).writeRouteLockAtomic(SCOPE, {
+      document: makeRouteLock({}, { routes: { review } }),
+      expectedIncumbentDigest: null,
+    });
+    expect(resolveRoleAgent("review", root).model).toBe(review.modelId);
+    const worktree = path.join(root, ".runs/sandboxes/worktree");
+    fs.mkdirSync(worktree, { recursive: true });
+    for (const entry of [".gwrkrc.json", ".gwrk", "tests"]) {
+      fs.cpSync(path.join(root, entry), path.join(worktree, entry), {
+        recursive: true,
+      });
+    }
+    const dispatch = vi
+      .spyOn(agentTransport, "dispatchToAgent")
+      .mockResolvedValue({
+        stdout: "",
+        stderr: "",
+        exitCode: 0,
+        durationS: 0,
+      });
+    const ship = new ShipOrchestrator({
+      cwd: worktree,
+      stateRoot: root,
+      featureId: "001-qualification",
+      phaseId: "phase-01",
+      backend: "claude",
+      maxIterations: 1,
+      ciTimeout: 1,
+    });
+    const { codeReviewWorkflow } = await resolveReviewPlugin(worktree);
+    // biome-ignore lint/complexity/useLiteralKeys: Exercise one review without running the ship loop.
+    await ship["runNativeWorkflow"](codeReviewWorkflow, "Review", "review");
+    expect(dispatch).toHaveBeenCalledWith(
+      expect.objectContaining({
+        workDir: worktree,
         agent: review.backend,
         model: review.modelId,
         effort: review.effort,

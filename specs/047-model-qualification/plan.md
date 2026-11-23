@@ -207,6 +207,8 @@ The route fixture hashes its discovery snapshot with the same algorithm as promo
 
 The explicit backend test runs the public ship command with a synthetic transport. An operator requests Claude and only Codex has a review pin. The command must report `unavailable_pin` before dispatch. The patch `.runs/review-regressions-phase05-20261123T214515Z-8f316fb7.patch` includes all three ship cases.
 
+The [review of 2200ac60](evidence/code-review-phase-05-2200ac60.md) adds two TR-014 cases. One dispatches from a ship worktree with discovery evidence in the primary checkout. The other changes the eligible catalog and supplies a local bundle whose digest differs from the promoted evidence. The regression patch is `.runs/review-regressions-phase05-20261123T220200Z-bf520f03.patch`.
+
 #### Done When
 
 ```bash
