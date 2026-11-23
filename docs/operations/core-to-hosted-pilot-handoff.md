@@ -15,7 +15,7 @@ Core features 044 through 050 prepare the interfaces for hosted pilot 051 and pr
 | Process and credentials | [Supervision contract](../../specs/050-linux-runner-deploy-packaging/contracts/supervision-and-preflight.md) | Supply the dedicated service user and unattended credentials |
 | Release and restore | [Backup and pilot record](../../specs/050-linux-runner-deploy-packaging/contracts/backup-rollback-and-pilot-record.md) | Record the installed digest and observed restore proof |
 
-An interface listed here does not imply its current phase is cleared. Use the latest [implementation checkpoint](checkpoints/2026-11-23-1317-phase-boundary.md) for review status. Final delivery must supply the final PR heads and combined verification receipt.
+An interface listed here does not imply its current phase is cleared. Use the latest [implementation checkpoint](checkpoints/2026-11-23-1426-phase-boundary.md) for review status. Final delivery must supply the final PR heads and combined verification receipt.
 
 ## Hosted pilot 051
 
