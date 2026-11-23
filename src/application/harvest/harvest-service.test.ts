@@ -1322,4 +1322,79 @@ describe("DurableHarvestService", () => {
       "2".repeat(40),
     ]);
   });
+
+  it("FR-004 harvestFeature preserves default Slack and accepted dispatch recipient when options.recipient is omitted", async () => {
+    const harness = createHarness();
+    harness.store.acceptDispatch({
+      projectId: alphaProject.projectId,
+      featureId: "049-durable",
+      phaseId: "phase-01",
+      backend: "claude",
+      trunkBranch: "main",
+      recipient: {
+        projectId: alphaProject.projectId,
+        surface: "slack",
+        workspaceId: "W1",
+        channelId: "C1",
+        actorUserId: "U_HARVEST_FEATURE",
+      },
+      newOperationId: "disp-harvest-feature-1",
+      nowIso: time,
+    });
+
+    await harvestFeature(
+      alphaProject.localRoot!,
+      {
+        featureId: "049-durable",
+        phaseId: "phase-01",
+        prNumber: 42,
+        prUrl: "https://github.com/acme/alpha/pull/42",
+        mergeCommitSha: MERGE_SHA,
+        mergedAt: time,
+        mergedBy: "github",
+        status: "merged",
+      },
+      {
+        durableService: harness.service,
+        project: alphaProject,
+        updateLocalTaskState: false,
+      },
+    );
+
+    expect(harness.notify).toHaveBeenCalledTimes(1);
+    expect(harness.notify).toHaveBeenCalledWith(
+      expect.objectContaining({
+        projectId: alphaProject.projectId,
+        channel: "C1",
+        recipient: expect.objectContaining({
+          actorUserId: "U_HARVEST_FEATURE",
+        }),
+      }),
+    );
+
+    // Explicit recipient: null still suppresses Slack delivery.
+    vi.mocked(harness.github.getPullRequest).mockResolvedValueOnce(
+      prFact({ prNumber: 45, mergeCommitSha: "f".repeat(40) }),
+    );
+    await harvestFeature(
+      alphaProject.localRoot!,
+      {
+        featureId: "049-durable",
+        phaseId: "phase-01",
+        prNumber: 45,
+        prUrl: "https://github.com/acme/alpha/pull/45",
+        mergeCommitSha: "f".repeat(40),
+        mergedAt: time,
+        mergedBy: "github",
+        status: "merged",
+      },
+      {
+        durableService: harness.service,
+        project: alphaProject,
+        recipient: null,
+        updateLocalTaskState: false,
+      },
+    );
+    expect(harness.notify).toHaveBeenCalledTimes(1);
+  });
 });
