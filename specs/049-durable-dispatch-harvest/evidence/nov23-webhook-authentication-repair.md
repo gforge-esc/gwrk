@@ -1,6 +1,6 @@
 # Webhook authentication repair
 
-Webhook intake now rejects an absent or blank configured secret before writes or effects. Both the HTTP adapter and durable harvest service enforce this boundary. Blocked: independent review and final integration checks remain required.
+Webhook intake now rejects an absent or blank configured secret before writes or effects. Both the HTTP adapter and durable harvest service enforce this boundary. Independent review is GO at `89ac728b`. Blocked: final integration checks and required CI remain pending.
 
 ## Reproduction
 
@@ -25,3 +25,7 @@ Phase 6 task T035 and its shared gate now require both authentication regression
 | Production authentication adapter | Pilot prerequisite | Google sessions and API credentials |
 
 The GREEN log is `/tmp/gwrk-nov23-webhook-guard-focused-green.log`. The original audit evidence remains in the security review worktree. No live webhook or cloud deployment occurred. Final source integration must retain these regressions and pass required CI.
+
+## Independent clearance
+
+Independent build and lint pass. Three complete suites pass 48 tests. The wider server integration selection passes 85 tests. The review receipt is `nov23-webhook-authentication-review.md`. Final candidate checks must include this repair after recovery integration.
