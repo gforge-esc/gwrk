@@ -635,14 +635,6 @@ export class FixtureRunner
     );
 
     const runtime = this.workflowRuntime ?? new WorkflowRuntime();
-    const reviewPlugin = await resolveReviewPlugin(projectDir);
-    const reviewStages = [
-      ...new Set([
-        ...ROLE_WORKFLOWS.review,
-        reviewPlugin.codeReviewWorkflow,
-        reviewPlugin.uatReviewWorkflow,
-      ]),
-    ];
     const workflowPromptHashes: Record<string, string> = {
       [JUDGE_WORKFLOW]: createHash("sha256")
         .update(JSON.stringify([JUDGE_PROMPT, JUDGE_OUTPUT_SCHEMA]))
@@ -650,7 +642,7 @@ export class FixtureRunner
     };
     for (const role of Object.keys(ROLE_WORKFLOWS) as ModelRole[]) {
       const roleFixtures = fixtures.filter(({ roles }) => roles.includes(role));
-      const stages = role === "review" ? reviewStages : ROLE_WORKFLOWS[role];
+      const stages = ROLE_WORKFLOWS[role];
       const rendered = new Map(
         stages.map((stage) => [stage, [] as string[]] as const),
       );
@@ -715,20 +707,40 @@ export class FixtureRunner
         roleHashes.push(hash);
       }
       workflowPromptHashes[role] =
-        role === "review"
-          ? createHash("sha256")
-              .update(
-                JSON.stringify(
-                  stages.map((stage, index) => [stage, roleHashes[index]]),
-                ),
-              )
-              .digest("hex")
-          : roleHashes.length === 1
-            ? roleHashes[0]
-            : createHash("sha256")
-                .update(JSON.stringify(roleHashes))
-                .digest("hex");
+        roleHashes.length === 1
+          ? roleHashes[0]
+          : createHash("sha256")
+              .update(JSON.stringify(roleHashes))
+              .digest("hex");
     }
+
+    const reviewPlugin = await resolveReviewPlugin(projectDir);
+    const reviewInputs = fixtures
+      .filter(({ roles }) => roles.includes("review"))
+      .map((fixture) => stageInput(fixture, "gwrk-review-code"));
+    const reviewHash = createHash("sha256").update(workflowPromptHashes.review);
+    for (const [stage, workflow] of [
+      ["code", reviewPlugin.codeReviewWorkflow],
+      ["uat", reviewPlugin.uatReviewWorkflow],
+    ] as const) {
+      const prompts = [];
+      for (const input of reviewInputs.length ? reviewInputs : [""]) {
+        const { stdin } = await runtime.renderWorkflowPrompt(workflow, input, {
+          projectRoot: projectDir,
+          profile,
+        });
+        prompts.push(stdin);
+      }
+      const promptHash = createHash("sha256")
+        .update(JSON.stringify(prompts))
+        .digest("hex");
+      workflowPromptHashes[workflow] ??= promptHash;
+      const steps = reviewPlugin.steps[stage]
+        .filter((step) => !step.skip)
+        .map((step) => [step.title, step.description]);
+      reviewHash.update(JSON.stringify({ stage, workflow, promptHash, steps }));
+    }
+    workflowPromptHashes.review = reviewHash.digest("hex");
 
     return { fixtureSuiteHash, workflowPromptHashes };
   }
