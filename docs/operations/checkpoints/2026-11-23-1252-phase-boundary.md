@@ -43,3 +43,9 @@ After those phases clear review, integrate their final heads. Run combined gates
 ## Subsequent scope
 
 Hosted pilot and project rollout remain features 051 and 052. This implementation prepares interfaces and handoffs. Live deployment and DNS changes remain external prerequisites. Google authentication setup and project enrollment also remain external.
+
+## Native Linux follow-up
+
+The immutable `0b126495` full Linux run passes 4,283 tests but fails two Git-manager fixtures. Both fail while creating their initial commit. The fixtures depend on a host Git identity. Evidence is `/tmp/gwrk-nov23-native-0b126495-full.log`.
+
+The repair uses the existing isolated Git fixture helper with an explicit test identity. It preserves branch creation and merge-conflict assertions. Both repaired tests pass locally. Evidence is `/tmp/gwrk-nov23-native-git-fixture-host-green.log`. A fresh native Linux run must verify the repair.
