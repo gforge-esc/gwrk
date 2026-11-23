@@ -11,7 +11,7 @@ import type { MergeTarget } from "../../domain/project-registry.js";
 import {
   MergePreflightError,
   type PullRequestMergeOutcome,
-  type VcsProjectPort,
+  type VcsPort,
 } from "../../ports/vcs-port.js";
 import {
   createBranch,
@@ -166,7 +166,7 @@ export function mergePullRequest(
   );
 }
 
-export function createGitVcsAdapter(): VcsProjectPort {
+export function createGitVcsAdapter(): VcsPort {
   return {
     ...createGitHarvestAdapter(),
     getCurrentBranch,

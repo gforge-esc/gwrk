@@ -2,9 +2,10 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import type { webApi } from "@slack/bolt";
+import { webApi } from "@slack/bolt";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
-import { sendSlackMessage } from "./slack-notify.js";
+import { sendSlackEphemeralMessage, sendSlackMessage } from "./slack-notify.js";
+import { getSlackApp } from "./slack.js";
 
 const { postMessage, authTest, fetchWebhook } = vi.hoisted(() => ({
   postMessage: vi.fn(),
@@ -43,7 +44,7 @@ vi.mock("@slack/bolt", async (importOriginal) => {
     },
   };
 });
-vi.mock("./slack.js", () => ({ getSlackApp: () => null }));
+vi.mock("./slack.js", () => ({ getSlackApp: vi.fn(() => null) }));
 vi.mock("./telegram-notify.js", () => ({ loadTelegramConfig: () => null }));
 
 const metadata = {
@@ -60,6 +61,7 @@ const message = {
 const options = { webhookFallback: false, workspaceId: "W1" };
 beforeEach(() => {
   vi.resetAllMocks();
+  vi.mocked(getSlackApp).mockReturnValue(null);
   vi.stubEnv("SLACK_BOT_TOKEN", "xoxb-fixture");
   vi.stubEnv("SLACK_APP_TOKEN", "xapp-fixture");
   vi.stubEnv("SLACK_WEBHOOK_URL", "https://example.invalid/slack");
@@ -180,3 +182,47 @@ it(
     expect(postMessage).not.toHaveBeenCalled();
   },
 );
+
+it("bounds private Slack replies while retaining the accepted thread", async () => {
+  vi.mocked(getSlackApp).mockReturnValue({
+    client: new webApi.WebClient("xoxb-fixture"),
+  } as unknown as NonNullable<ReturnType<typeof getSlackApp>>);
+  fetchWebhook.mockResolvedValue({
+    json: async () => ({ ok: true, message_ts: "private-receipt" }),
+  });
+  expect(
+    await sendSlackEphemeralMessage(message, "U_CALLER", {
+      transportTimeoutMs: 100,
+    }),
+  ).toMatchObject({
+    delivered: true,
+    messageTs: "private-receipt",
+    threadTs: message.thread_ts,
+  });
+  expect(fetchWebhook).toHaveBeenCalledOnce();
+  const [url, request] = fetchWebhook.mock.calls[0];
+  expect(url).toBe("https://slack.com/api/chat.postEphemeral");
+  expect(request.signal).toBeInstanceOf(AbortSignal);
+  expect(request.headers.Authorization).toBe("Bearer xoxb-fixture");
+  expect(JSON.parse(request.body)).toMatchObject({
+    channel: "C1",
+    user: "U_CALLER",
+    thread_ts: message.thread_ts,
+  });
+  expect(postMessage).not.toHaveBeenCalled();
+});
+
+it("rejects an already cancelled private reply before transport", async () => {
+  vi.mocked(getSlackApp).mockReturnValue({
+    client: new webApi.WebClient("xoxb-fixture"),
+  } as unknown as NonNullable<ReturnType<typeof getSlackApp>>);
+  const controller = new AbortController();
+  controller.abort();
+  expect(
+    await sendSlackEphemeralMessage(message, "U_CALLER", {
+      signal: controller.signal,
+    }),
+  ).toBeUndefined();
+  expect(postMessage).not.toHaveBeenCalled();
+  expect(fetchWebhook).not.toHaveBeenCalled();
+});

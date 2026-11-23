@@ -42,6 +42,7 @@ export interface ShipState {
   branchName?: string;
   testBaseline?: number;
   fullSuiteBaseline?: number;
+  testExecutionFailure?: string;
   prNumber?: number;
   prUrl?: string;
   gateResult?: "PASS" | "FAIL";

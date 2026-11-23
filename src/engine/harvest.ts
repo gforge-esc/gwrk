@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import { randomUUID } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import type Database from "better-sqlite3";
@@ -10,18 +11,43 @@ import {
   logCliOutput,
   warnCli,
 } from "../adapters/cli/output-scope.js";
-import { notifyHarvestComplete } from "../adapters/notifications/index.js";
-import { createSqliteRunStoreAdapter } from "../adapters/sqlite/index.js";
+import { createGitVcsAdapter } from "../adapters/git/index.js";
+import { createGitHubHarvestAdapter } from "../adapters/github/index.js";
+import { createHarvestExecutionAdapter } from "../adapters/harvest/index.js";
+import {
+  createSlackNotificationAdapter,
+  notifyHarvestComplete,
+} from "../adapters/notifications/index.js";
+import {
+  createSqliteOperationsStoreAdapter,
+  createSqliteProjectRegistryAdapter,
+  createSqliteRunStoreAdapter,
+} from "../adapters/sqlite/index.js";
+import { createOutboxDeliveryService } from "../application/delivery/outbox.js";
+import {
+  type DurableHarvestService,
+  createDurableHarvestService,
+} from "../application/harvest/index.js";
 import { getCompressionRecord } from "../db/compression.js";
+import { openDatabase } from "../db/index.js";
 import {
   finishRun,
   getFeatureRunTelemetry,
   listRuns,
   recordRun,
 } from "../db/runs.js";
+import type {
+  DeliveryRecipient,
+  EnrolledProject,
+} from "../domain/project-registry.js";
 import type { NotificationPort } from "../ports/notification-port.js";
+import type { ProjectRegistryPort } from "../ports/store-port.js";
 import { loadConfig } from "../utils/config.js";
-import { commitFiles, deleteRemoteBranch } from "../utils/git.js";
+import {
+  commitFiles,
+  deleteRemoteBranch,
+  detectDefaultBranch,
+} from "../utils/git.js";
 import { loadManifests } from "../utils/manifest.js";
 import { parsePlan } from "../utils/parser.js";
 import { resolveProjectId } from "../utils/project-id.js";
@@ -118,21 +144,170 @@ export async function finalizeLogs(
   );
 }
 
+export interface HarvestFeatureOptions {
+  projectId?: string;
+  durableService?: DurableHarvestService;
+  project?: EnrolledProject;
+  db?: Database.Database;
+  ownerId?: string;
+  recipient?: DeliveryRecipient | null;
+  updateLocalTaskState?: boolean;
+}
+
+const FULL_GIT_SHA = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/i;
+
+function buildFallbackLocalProject(
+  projectPath: string,
+  projectId: string,
+): EnrolledProject {
+  const now = new Date().toISOString();
+  const trunkBranch = detectDefaultBranch(projectPath, "main");
+  const slug = path.basename(projectPath) || projectId;
+  return {
+    projectId,
+    slug,
+    name: slug,
+    repoSlug: null,
+    trunkBranch,
+    localRoot: projectPath,
+    mirrorPath: null,
+    runnerPolicy: { allowedKinds: ["local"] },
+    slack: null,
+    legacyProjectIds: [],
+    createdAt: now,
+    updatedAt: now,
+  };
+}
+
 /**
  * Orchestrate the post-merge harvest for a feature phase.
+ * Routes through DurableHarvestService when a durable service or enrolled
+ * repository checkout is available, while preserving single-project local
+ * compatibility for legacy callers.
  * (FR-H01, FR-H03, FR-H04, FR-H05, FR-H06, FR-H07, FR-H08)
  */
 export async function harvestFeature(
   projectPath: string,
   record: HarvestRecord,
-  scope?: { projectId: string; db: Database.Database },
+  options?: HarvestFeatureOptions,
   env?: NodeJS.ProcessEnv,
 ): Promise<CompressionReport | undefined> {
   const { featureId, phaseId, mergeCommitSha, prNumber, mergedAt, status } =
     record;
 
-  const projectId = scope?.projectId ?? resolveProjectId(projectPath);
-  const connectionArgs: [Database.Database?] = scope ? [scope.db] : [];
+  const projectId =
+    options?.project?.projectId ??
+    options?.projectId ??
+    record.projectId ??
+    resolveProjectId(projectPath);
+  const recipient =
+    options?.recipient !== undefined ? options.recipient : record.recipient;
+  const connectionArgs: [Database.Database?] = options?.db ? [options.db] : [];
+
+  if (options?.durableService) {
+    const project =
+      options.project ?? buildFallbackLocalProject(projectPath, projectId);
+    await options.durableService.runManualHarvest({
+      project,
+      featureId,
+      phaseId,
+      prNumber: prNumber > 0 ? prNumber : undefined,
+      commitSha: FULL_GIT_SHA.test(mergeCommitSha ?? "")
+        ? mergeCommitSha
+        : undefined,
+      recipient,
+      updateLocalTaskState: options.updateLocalTaskState ?? true,
+      ownerId: options.ownerId ?? "local-harvest",
+    });
+    if (options.updateLocalTaskState !== false) {
+      try {
+        await finalizeLogs(featureId, projectPath, env);
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        warnCli(`Log finalization failed (non-fatal): ${msg}`);
+      }
+    }
+    return undefined;
+  }
+
+  if (
+    status === "merged" &&
+    FULL_GIT_SHA.test(mergeCommitSha ?? "") &&
+    fs.existsSync(path.join(projectPath, ".git"))
+  ) {
+    let ownedDb: Database.Database | null = null;
+    try {
+      let db: Database.Database;
+      if (options?.db) {
+        db = options.db;
+      } else {
+        ownedDb = openDatabase();
+        db = ownedDb;
+      }
+      const registry = createSqliteProjectRegistryAdapter({ db });
+      const enrolled =
+        options?.project ??
+        registry.findByLocalRoot(projectPath) ??
+        registry.getProject(projectId);
+      if (enrolled) {
+        let capturedReport: CompressionReport | undefined;
+        const store = createSqliteOperationsStoreAdapter({ db });
+        const clock = {
+          nowIso: () => new Date().toISOString(),
+          nowMs: () => Date.now(),
+        };
+        const outbox = createOutboxDeliveryService({
+          store,
+          registry,
+          notifier: createSlackNotificationAdapter(),
+          clock,
+          newId: () => randomUUID(),
+        });
+        const durableService = createDurableHarvestService({
+          store,
+          registry,
+          vcs: createGitVcsAdapter(),
+          github: createGitHubHarvestAdapter(),
+          executor: createHarvestExecutionAdapter({
+            db,
+            onCompressionReport: (report) => {
+              capturedReport = report;
+            },
+          }),
+          outbox,
+          clock,
+          newId: () => randomUUID(),
+        });
+        await durableService.runManualHarvest({
+          project: enrolled,
+          featureId,
+          phaseId,
+          prNumber: prNumber > 0 && enrolled.repoSlug ? prNumber : undefined,
+          commitSha: mergeCommitSha,
+          recipient,
+          updateLocalTaskState: options?.updateLocalTaskState ?? true,
+          ownerId: options?.ownerId ?? "local-harvest",
+        });
+        if (options?.updateLocalTaskState !== false) {
+          try {
+            await finalizeLogs(featureId, projectPath, env);
+          } catch (err) {
+            const msg = err instanceof Error ? err.message : String(err);
+            warnCli(`Log finalization failed (non-fatal): ${msg}`);
+          }
+        }
+        return capturedReport;
+      }
+    } catch (err) {
+      if (options?.project || options?.db) throw err;
+      const msg = err instanceof Error ? err.message : String(err);
+      warnCli(
+        `Durable harvest unavailable for local checkout; falling back to local compatibility mode: ${msg}`,
+      );
+    } finally {
+      if (ownedDb?.open) ownedDb.close();
+    }
+  }
 
   // If no phaseId is specified, discover all phases from plan.md and run harvest for each
   if (!phaseId) {
@@ -152,7 +327,7 @@ export async function harvestFeature(
           logCliOutput(
             `Reconciling/Harvesting phase ${phase.id} for feature ${featureId}...`,
           );
-          await harvestFeature(projectPath, subRecord, scope, env);
+          await harvestFeature(projectPath, subRecord, options, env);
         }
       } catch (err) {
         logCliError(
@@ -200,11 +375,13 @@ export async function harvestFeature(
   }
 
   // 1. Finalize Logs (FR-H02)
-  try {
-    await finalizeLogs(featureId, projectPath, env);
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    warnCli(`Log finalization failed (non-fatal): ${msg}`);
+  if (options?.updateLocalTaskState !== false) {
+    try {
+      await finalizeLogs(featureId, projectPath, env);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      warnCli(`Log finalization failed (non-fatal): ${msg}`);
+    }
   }
 
   // 2. Finalize DB Run Records (FR-H03)
@@ -341,7 +518,11 @@ export async function harvestFeature(
         projectPath,
         featureId,
         phaseId,
-        scope,
+        {
+          projectId,
+          db: options?.db,
+          updateLocalTaskState: options?.updateLocalTaskState,
+        },
         env,
       );
       logCliOutput(
@@ -391,8 +572,8 @@ export async function harvestFeature(
             featureId,
             forecast,
             projectId,
-            scope ? projectPath : undefined,
-            scope?.db,
+            options?.db ? projectPath : undefined,
+            options?.db,
             env,
           );
           let telemetry: CompressionReport["telemetry"];
@@ -427,7 +608,7 @@ export async function harvestFeature(
           };
 
           createSqliteRunStoreAdapter(
-            scope ? { db: scope.db } : undefined,
+            options?.db ? { db: options.db } : undefined,
           ).recordCompression(report, projectId);
           logCliOutput(
             `Recorded compression for ${featureId} ${phaseId}: point=${compression.pointCompression.toFixed(1)}x`,
@@ -441,8 +622,12 @@ export async function harvestFeature(
   }
 
   // 4. Slack Done-Done (FR-H07)
-  if (report) {
-    await notifyDoneDone(report);
+  if (report && recipient !== null) {
+    await notifyDoneDone(report, undefined, {
+      projectId:
+        options?.project?.projectId ?? options?.projectId ?? record.projectId,
+      recipient,
+    });
   }
 
   // 5. Branch Cleanup (FR-H08)
@@ -467,8 +652,14 @@ export async function harvestFeature(
 export async function notifyDoneDone(
   report: CompressionReport,
   notifier?: NotificationPort,
+  options?: {
+    projectId?: string;
+    recipient?: DeliveryRecipient;
+    opsOnly?: boolean;
+    registry?: ProjectRegistryPort;
+  },
 ): Promise<void> {
-  await notifyHarvestComplete(report, notifier);
+  await notifyHarvestComplete(report, notifier, options);
 }
 
 /**

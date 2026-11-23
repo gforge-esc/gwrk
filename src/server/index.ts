@@ -379,7 +379,7 @@ async function startLockedServer(
       projectRoot,
       config,
     });
-    if (stopTelegram) stopPollers.push(stopTelegram);
+    if (typeof stopTelegram === "function") stopPollers.push(stopTelegram);
 
     if (options.handleSignals) {
       process.on("SIGTERM", shutdown);

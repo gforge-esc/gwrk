@@ -81,7 +81,7 @@ import {
   type ShipState,
 } from "./ship-types.js";
 import { activatePhaseTests } from "./test-activator.js";
-import { isIntegrationTestCommand, parseTestOutput } from "./test-runner.js";
+import { executeTestCommand, isIntegrationTestCommand } from "./test-runner.js";
 
 /**
  * Start the progress indicator shared by both spinner wrappers. Animates on a
@@ -880,6 +880,10 @@ export class ShipOrchestrator extends EventEmitter {
       // not-yet-built behavior. Recorded here as the precondition for a
       // meaningful GREEN at TEST_GATE.
       const red = await this.runTestSuite(files);
+      if (red.executionError) {
+        this.state.testExecutionFailure = red.output;
+        return { success: false, exitCode: 1, error: red.executionError };
+      }
       if (red.testsRun === 0) {
         // Liveness (ADR-005 §10.2.1): a test that never ran cannot be RED. A
         // suite that discovered nothing or all-cancelled must NO-GO here — not
@@ -1181,6 +1185,7 @@ export class ShipOrchestrator extends EventEmitter {
    */
   private async stageTestGate(): Promise<ShipStageResult> {
     logCliOutput("  ▸ TEST_GATE");
+    this.state.testExecutionFailure = undefined;
 
     // ADR-005 §10.4 — a phase's integration Done-When targets (e.g. `make
     // test:auth`) run here under liveness, before the file-mapped suite.
@@ -1195,6 +1200,7 @@ export class ShipOrchestrator extends EventEmitter {
     if (phaseTestFiles.length > 0) {
       logCliOutput(`    scoped to: ${phaseTestFiles.join(", ")}`);
       const r = await this.runTestSuite(phaseTestFiles);
+      if (r.executionError) return this.rejectTestExecution(r);
       if (r.skipped) {
         logCliOutput("  ✓ tests skipped (no test toolchain)");
         return { success: true, exitCode: 0, nextStage: ShipStage.CODE_REVIEW };
@@ -1276,6 +1282,7 @@ export class ShipOrchestrator extends EventEmitter {
       logCliOutput("  ✓ tests skipped (no test toolchain)");
       return { success: true, exitCode: 0, nextStage: ShipStage.CODE_REVIEW };
     }
+    if (wholeSuite.executionError) return this.rejectTestExecution(wholeSuite);
     const { failCount, output } = wholeSuite;
     const baseline = this.state.testBaseline ?? 0;
 
@@ -1347,19 +1354,12 @@ export class ShipOrchestrator extends EventEmitter {
 
     for (const cmd of commands) {
       logCliOutput(`    integration: ${cmd}`);
-      let output: string;
-      try {
-        output = execSync(cmd, {
-          ...this.childOptions(),
-          stdio: "pipe",
-          timeout: 300_000,
-        }).toString();
-      } catch (err: unknown) {
-        const e = err as { stdout?: Buffer; stderr?: Buffer };
-        output =
-          `${e.stdout?.toString() ?? ""}\n${e.stderr?.toString() ?? ""}`.trim();
-      }
-      const { testsRun, passed, failed } = parseTestOutput(output);
+      const result = executeTestCommand(cmd, {
+        ...this.childOptions(),
+        timeout: 300_000,
+      });
+      if (result.executionError) return this.rejectTestExecution(result);
+      const { testsRun, passed, failed } = result;
       if (testsRun === 0) {
         logCliOutput(
           `  ✗ TEST_GATE: integration target ran 0 tests (\`${cmd}\`) — liveness fail (ADR-005 §10.2.1)`,
@@ -1421,6 +1421,7 @@ export class ShipOrchestrator extends EventEmitter {
     passed: number;
     output: string;
     skipped?: boolean;
+    executionError?: string;
   }> {
     const profile = await detectProfile(this.config.cwd);
 
@@ -1447,22 +1448,27 @@ export class ShipOrchestrator extends EventEmitter {
       else if (command.includes("jest")) command = "npx jest";
     }
 
-    let output: string;
-    try {
-      output = execSync(command, {
-        ...this.childOptions(),
-        stdio: "pipe",
-        timeout: 120_000,
-      }).toString();
-    } catch (err: unknown) {
-      const stdout =
-        (err as { stdout?: Buffer })?.stdout?.toString().trim() || "";
-      const stderr =
-        (err as { stderr?: Buffer })?.stderr?.toString().trim() || "";
-      output = `${stdout}\n${stderr}`.trim();
-    }
-    const { testsRun, passed, failed } = parseTestOutput(output);
-    return { failCount: failed, testsRun, passed, output };
+    const result = executeTestCommand(command, {
+      ...this.childOptions(),
+      // Include the verification wrapper's bounded 300-second capacity wait.
+      timeout: scoped ? 360_000 : 600_000,
+    });
+    return {
+      failCount: result.failed,
+      testsRun: result.testsRun,
+      passed: result.passed,
+      output: result.output,
+      executionError: result.executionError,
+    };
+  }
+
+  private rejectTestExecution(result: {
+    executionError?: string;
+    output: string;
+  }): ShipStageResult {
+    this.state.testExecutionFailure = result.output;
+    logCliOutput(`  ✗ TEST_GATE: ${result.executionError}\n${result.output}`);
+    return this.handleNoGo("TEST_GATE");
   }
 
   /**
@@ -1528,7 +1534,14 @@ export class ShipOrchestrator extends EventEmitter {
     if (phaseTestFiles.length > 0) {
       logCliOutput(`    scoped to: ${phaseTestFiles.join(", ")}`);
     }
-    const { failCount } = await this.runTestSuite(phaseTestFiles);
+    this.state.testBaseline = undefined;
+    this.state.fullSuiteBaseline = undefined;
+    const scoped = await this.runTestSuite(phaseTestFiles);
+    if (scoped.executionError) {
+      this.state.testExecutionFailure = scoped.output;
+      throw new Error(scoped.output);
+    }
+    const { failCount } = scoped;
     this.state.testBaseline = failCount;
     logCliOutput(`  ✓ baseline: ${failCount} pre-existing failure(s)`);
 
@@ -1540,6 +1553,11 @@ export class ShipOrchestrator extends EventEmitter {
       return;
     }
     const whole = await this.runTestSuite([]);
+    if (whole.executionError) {
+      this.state.testBaseline = undefined;
+      this.state.testExecutionFailure = whole.output;
+      throw new Error(whole.output);
+    }
     this.state.fullSuiteBaseline = whole.skipped ? 0 : whole.failCount;
     logCliOutput(
       `  ✓ baseline: ${this.state.fullSuiteBaseline} pre-existing failure(s) repo-wide`,
@@ -1569,6 +1587,7 @@ export class ShipOrchestrator extends EventEmitter {
     if (baseline === undefined) return null;
 
     const whole = await this.runTestSuite([]);
+    if (whole.executionError) return this.rejectTestExecution(whole);
     if (whole.skipped || whole.testsRun === 0) return null;
     if (whole.failCount <= baseline) {
       logCliOutput(
@@ -2688,6 +2707,10 @@ ${marker}`;
 
     // Collect error context from open tasks (appended by BUILD_CHECK/TEST_GATE)
     const errorContext = extractOpenTaskErrors(phase.tasks);
+    if (this.state.testExecutionFailure)
+      errorContext.push(
+        `TEST RUNNER EXECUTION FAILED:\n${this.state.testExecutionFailure}`,
+      );
 
     if (errorContext.length === 0) {
       logCliOutput("    ⏭ no error context to diagnose");

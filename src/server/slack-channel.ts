@@ -5,6 +5,15 @@
 import { logCliError } from "../adapters/cli/output-scope.js";
 import { loadSlackConfig } from "../utils/slack-client.js";
 
+export function boundedSlackSignal(
+  signal?: AbortSignal,
+  timeoutMs?: number,
+): AbortSignal | undefined {
+  if (timeoutMs === undefined) return signal;
+  const timeout = AbortSignal.timeout(timeoutMs);
+  return signal ? AbortSignal.any([signal, timeout]) : timeout;
+}
+
 interface SlackChannel {
   id: string;
   name: string;
@@ -53,6 +62,22 @@ export async function verifySlackWorkspaceWithSignal(
   signal.throwIfAborted();
   const response = await slackFetch("auth.test", {}, token, signal);
   return response.ok === true && response.team_id === workspaceId;
+}
+
+export async function postSlackEphemeralWithSignal(
+  token: string | undefined,
+  payload: {
+    channel: string;
+    user: string;
+    text: string;
+    blocks?: unknown[];
+    thread_ts?: string;
+  },
+  signal: AbortSignal,
+): Promise<{ ok: boolean; message_ts?: string }> {
+  signal.throwIfAborted();
+  if (!token) throw new Error("Slack client has no bot token.");
+  return slackFetch("chat.postEphemeral", payload, token, signal);
 }
 
 export async function postSlackMessageWithSignal(

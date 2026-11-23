@@ -4,6 +4,7 @@
 
 import { z } from "zod";
 import type { ProjectDesign } from "./architecture-context.js";
+import type { DeliveryRecipient } from "./project-registry.js";
 
 export interface ProjectProfile {
   type: string;
@@ -221,6 +222,8 @@ export interface CompressionReport {
 }
 
 export interface HarvestRecord {
+  projectId?: string;
+  recipient?: DeliveryRecipient;
   featureId: string;
   phaseId?: string;
   prNumber: number;
