@@ -6,6 +6,7 @@ import * as crypto from "node:crypto";
 import { logCliError } from "../adapters/cli/output-scope.js";
 import { finishRun, startRun } from "../db/runs.js";
 import type { DeliveryRecipient } from "../domain/project-registry.js";
+import { resolveProjectSlackRecipient } from "../domain/slack-delivery.js";
 import { ShipOrchestrator } from "../engine/ship-orchestrator.js";
 import type { ProjectRegistryPort } from "../ports/store-port.js";
 import type { GwrkConfig } from "../utils/config.js";
@@ -100,6 +101,25 @@ export class DispatchQueue {
         recipientProject ??
         this.registry.findByLocalRoot(this.projectRoot) ??
         null;
+
+      if (enrolled && request.recipient) {
+        const storedThread = !request.recipient.opsOnly
+          ? this.registry.getFeatureThread(
+              enrolled.projectId,
+              request.featureId,
+            )
+          : null;
+        const recipientCheck = resolveProjectSlackRecipient({
+          project: enrolled,
+          enrolledProjects: this.registry.listProjects(),
+          storedThread,
+          recipient: request.recipient,
+          opsOnly: Boolean(request.recipient.opsOnly),
+        });
+        if (!recipientCheck.ok) {
+          throw new Error(recipientCheck.message);
+        }
+      }
 
       const projectId =
         enrolled?.projectId ?? resolveProjectId(this.projectRoot);
@@ -327,11 +347,60 @@ export class DispatchQueue {
       });
     }
 
+    const enrolled = this.registry?.getProject(record.projectId) ?? null;
+    const isOps = Boolean(record.recipient?.opsOnly);
+    let slackRecipient: DeliveryRecipient | undefined;
+    let cardRootTs: string | undefined;
+
+    if (enrolled) {
+      const storedThread = !isOps
+        ? (this.registry?.getFeatureThread(
+            enrolled.projectId,
+            record.featureId,
+          ) ?? null)
+        : null;
+      const enrolledProjects = this.registry?.listProjects();
+      const resolved = resolveProjectSlackRecipient({
+        project: enrolled,
+        enrolledProjects,
+        storedThread,
+        recipient: record.recipient,
+        opsOnly: isOps,
+      });
+      if (resolved.ok) {
+        slackRecipient = resolved.recipient;
+        cardRootTs =
+          resolved.recipient?.threadTs ?? resolved.validStoredThread?.rootTs;
+      } else {
+        const fallback = resolveProjectSlackRecipient({
+          project: enrolled,
+          enrolledProjects,
+          storedThread,
+          opsOnly: isOps,
+        });
+        if (fallback.ok) {
+          slackRecipient = fallback.recipient;
+          cardRootTs =
+            fallback.recipient?.threadTs ?? fallback.validStoredThread?.rootTs;
+        }
+      }
+    } else if (record.recipient?.surface === "slack") {
+      slackRecipient = record.recipient;
+      cardRootTs = isOps ? undefined : record.recipient.threadTs;
+    }
+
+    const cardRecord = {
+      ...record,
+      ...(enrolled?.slug ? { projectSlug: enrolled.slug } : {}),
+      ...(cardRootTs ? { rootTs: cardRootTs } : {}),
+    };
+
     const notifyOptions = {
       projectId: record.projectId,
-      recipient: record.recipient,
+      recipient: slackRecipient,
       featureId: record.featureId,
       registry: this.registry,
+      ...(slackRecipient?.opsOnly ? { opsOnly: true } : {}),
     };
 
     if (exitCode === 0) {
@@ -339,13 +408,14 @@ export class DispatchQueue {
       record.completedAt = attempt.completedAt;
 
       await notifySlack(
-        MessageBuilder.reviewReady(record),
+        MessageBuilder.reviewReady(cardRecord),
         {
           type: "review_ready",
           feature: record.featureId,
           phase: record.phaseId,
           projectId: record.projectId,
-          recipient: record.recipient,
+          recipient: slackRecipient,
+          ...(slackRecipient?.opsOnly ? { opsOnly: true } : {}),
           payload: record as unknown as Record<string, unknown>,
           timestamp: new Date().toISOString(),
         },
@@ -354,13 +424,14 @@ export class DispatchQueue {
     } else {
       record.status = "failed";
       await notifySlack(
-        MessageBuilder.phaseFail(record, stderr),
+        MessageBuilder.phaseFail(cardRecord, stderr),
         {
           type: "phase_fail",
           feature: record.featureId,
           phase: record.phaseId,
           projectId: record.projectId,
-          recipient: record.recipient,
+          recipient: slackRecipient,
+          ...(slackRecipient?.opsOnly ? { opsOnly: true } : {}),
           payload: { ...record, stderr } as unknown as Record<string, unknown>,
           timestamp: new Date().toISOString(),
         },

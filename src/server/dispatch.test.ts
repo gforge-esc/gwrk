@@ -800,4 +800,217 @@ describe("DispatchQueue (unified ship engine)", () => {
       phaseId: "phase-01",
     });
   });
+
+  it("TR-017 regression: preserves local_cli recipient on phase_fail, derives Slack destination, and stamps retry card routing", async () => {
+    const alphaProject: EnrolledProject = {
+      projectId: "proj-alpha",
+      slug: "alpha",
+      name: "Alpha",
+      repoSlug: "org/alpha",
+      trunkBranch: "main",
+      localRoot: "/repos/alpha",
+      mirrorPath: "/mirrors/alpha",
+      runnerPolicy: { allowedKinds: ["local", "hosted"] },
+      slack: {
+        workspaceId: "W-ALPHA",
+        channelId: "C-ALPHA",
+        opsChannelId: "C-ALPHA-OPS",
+        sharedChannel: false,
+      },
+      legacyProjectIds: [],
+      createdAt: "2026-11-18T00:00:00.000Z",
+      updatedAt: "2026-11-18T00:00:00.000Z",
+    };
+    const alphaThread: SlackFeatureThread = {
+      projectId: "proj-alpha",
+      featureId: "048-shared",
+      workspaceId: "W-ALPHA",
+      channelId: "C-ALPHA",
+      rootTs: "1700000100.000200",
+      updatedAt: "2026-11-18T00:00:00.000Z",
+    };
+    const registry: ProjectRegistryPort = {
+      enrollProject: (p) => p,
+      getProject: (id) =>
+        id === "proj-alpha" || id === "alpha" ? alphaProject : null,
+      findByRepoSlug: () => null,
+      findByLocalRoot: () => null,
+      listBySlackChannel: () => [],
+      listProjects: () => [alphaProject],
+      setRoleBinding: () => {},
+      listRoleBindings: () => [],
+      getFeatureThread: (projectId, featureId) =>
+        projectId === "proj-alpha" && featureId === "048-shared"
+          ? alphaThread
+          : null,
+      bindFeatureThread: (t) => t,
+      getActionReceipt: () => null,
+      claimActionReceipt: () => true,
+      completeActionReceipt: () => true,
+      close: () => {},
+    };
+
+    mockMonitor.isThrottled.mockReturnValue(false);
+    mockRun.mockResolvedValueOnce(1);
+    const scopedQueue = new DispatchQueue(
+      mockConfig,
+      mockMonitor,
+      mockSandbox,
+      projectRoot,
+      registry,
+    );
+
+    const localRecipient: DeliveryRecipient = {
+      projectId: "proj-alpha",
+      surface: "local_cli",
+    };
+    const record = scopedQueue.enqueue({
+      projectId: "proj-alpha",
+      featureId: "048-shared",
+      phaseId: "phase-02",
+      recipient: localRecipient,
+    });
+
+    await vi.waitFor(() => {
+      if (record.status !== "failed") throw new Error("not failed yet");
+    });
+
+    expect(record.recipient).toEqual(localRecipient);
+    expect(notifySlack).toHaveBeenCalledTimes(1);
+    const [message, event, options] = vi.mocked(notifySlack).mock.calls[0];
+    expect(event?.type).toBe("phase_fail");
+    const resolved = resolveSlackDeliveryRoute({
+      projectId: options?.projectId,
+      eventProjectId: event?.projectId,
+      recipient: options?.recipient,
+      eventRecipient: event?.recipient,
+      channelId: message.channel,
+      threadTs: message.thread_ts,
+      opsOnly: options?.opsOnly,
+      eventOpsOnly: event?.opsOnly,
+      project: alphaProject,
+      storedThread: alphaThread,
+      requireChannel: true,
+    });
+    expect(resolved).toEqual({
+      ok: true,
+      route: expect.objectContaining({
+        projectId: "proj-alpha",
+        expectedWorkspaceId: "W-ALPHA",
+        channelId: "C-ALPHA",
+        threadTs: "1700000100.000200",
+        opsOnly: false,
+      }),
+    });
+
+    const actionsBlock = message.blocks.find(
+      (
+        b,
+      ): b is {
+        type: "actions";
+        elements: Array<{ action_id: string; value?: string }>;
+      } => b.type === "actions",
+    );
+    const retryButton = actionsBlock?.elements.find(
+      (el) => el.action_id === "retry_phase",
+    );
+    expect(JSON.parse(retryButton?.value ?? "{}")).toMatchObject({
+      projectId: "proj-alpha",
+      projectSlug: "alpha",
+      rootTs: "1700000100.000200",
+      featureId: "048-shared",
+      phaseId: "phase-02",
+    });
+  });
+
+  it("TR-017 regression: rejects wrong bound threadTs and unverified shared-channel threadTs on enqueue", () => {
+    const sharedAlpha: EnrolledProject = {
+      projectId: "proj-alpha",
+      slug: "alpha",
+      name: "Alpha",
+      repoSlug: "org/alpha",
+      trunkBranch: "main",
+      localRoot: "/repos/alpha",
+      mirrorPath: "/mirrors/alpha",
+      runnerPolicy: { allowedKinds: ["local", "hosted"] },
+      slack: {
+        workspaceId: "W-SHARED",
+        channelId: "C-SHARED",
+        opsChannelId: "C-ALPHA-OPS",
+        sharedChannel: true,
+      },
+      legacyProjectIds: [],
+      createdAt: "2026-11-18T00:00:00.000Z",
+      updatedAt: "2026-11-18T00:00:00.000Z",
+    };
+    const alphaThread: SlackFeatureThread = {
+      projectId: "proj-alpha",
+      featureId: "048-shared",
+      workspaceId: "W-SHARED",
+      channelId: "C-SHARED",
+      rootTs: "1700000100.000200",
+      updatedAt: "2026-11-18T00:00:00.000Z",
+    };
+    const registry: ProjectRegistryPort = {
+      enrollProject: (p) => p,
+      getProject: (id) =>
+        id === "proj-alpha" || id === "alpha" ? sharedAlpha : null,
+      findByRepoSlug: () => null,
+      findByLocalRoot: () => null,
+      listBySlackChannel: () => [sharedAlpha],
+      listProjects: () => [sharedAlpha],
+      setRoleBinding: () => {},
+      listRoleBindings: () => [],
+      getFeatureThread: (projectId, featureId) =>
+        projectId === "proj-alpha" && featureId === "048-shared"
+          ? alphaThread
+          : null,
+      bindFeatureThread: (t) => t,
+      getActionReceipt: () => null,
+      claimActionReceipt: () => true,
+      completeActionReceipt: () => true,
+      close: () => {},
+    };
+
+    mockMonitor.isThrottled.mockReturnValue(true);
+    const scopedQueue = new DispatchQueue(
+      mockConfig,
+      mockMonitor,
+      mockSandbox,
+      projectRoot,
+      registry,
+    );
+
+    // Wrong threadTs against a bound feature root must reject
+    expect(() =>
+      scopedQueue.enqueue({
+        projectId: "proj-alpha",
+        featureId: "048-shared",
+        phaseId: "phase-01",
+        recipient: {
+          projectId: "proj-alpha",
+          surface: "slack",
+          workspaceId: "W-SHARED",
+          channelId: "C-SHARED",
+          threadTs: "1700000999.000999",
+        },
+      }),
+    ).toThrow();
+
+    // Unverified threadTs for an unbound feature in a shared channel must reject
+    expect(() =>
+      scopedQueue.enqueue({
+        projectId: "proj-alpha",
+        featureId: "050-unbound",
+        phaseId: "phase-01",
+        recipient: {
+          projectId: "proj-alpha",
+          surface: "slack",
+          workspaceId: "W-SHARED",
+          channelId: "C-SHARED",
+          threadTs: "1700000888.000888",
+        },
+      }),
+    ).toThrow();
+  });
 });

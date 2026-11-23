@@ -7,6 +7,7 @@ import type {
   DeliveryRecipient,
   EnrolledProject,
 } from "../../domain/project-registry.js";
+import { resolveProjectSlackRecipient } from "../../domain/slack-delivery.js";
 import {
   type RouteDenialCode,
   evaluateHttpProjectAccess,
@@ -120,37 +121,6 @@ export async function notifyRoutes(
         Boolean(payload.recipient?.opsOnly) ||
         payload.type === "pulse";
 
-      if (authorizedProject && payload.recipient) {
-        const slackBinding = authorizedProject.slack;
-        if (
-          payload.recipient.workspaceId &&
-          (!slackBinding?.workspaceId ||
-            payload.recipient.workspaceId !== slackBinding.workspaceId)
-        ) {
-          return reply.status(403).send({
-            ok: false,
-            code: "THREAD_PROJECT_MISMATCH",
-            error: "Recipient workspace does not match authorized project.",
-          });
-        }
-
-        if (payload.recipient.channelId) {
-          const expectedChannelId = isOps
-            ? slackBinding?.opsChannelId
-            : slackBinding?.channelId;
-          if (
-            !expectedChannelId ||
-            payload.recipient.channelId !== expectedChannelId
-          ) {
-            return reply.status(403).send({
-              ok: false,
-              code: "THREAD_PROJECT_MISMATCH",
-              error: "Recipient channel does not match authorized project.",
-            });
-          }
-        }
-      }
-
       const notifyProjectId =
         authorizedProject?.projectId ??
         payload.projectId ??
@@ -163,50 +133,27 @@ export async function notifyRoutes(
 
       let resolvedRecipient: DeliveryRecipient | undefined;
       if (authorizedProject) {
-        const slackBinding = authorizedProject.slack;
         const storedThread = !isOps
           ? (options?.registry?.getFeatureThread(
               authorizedProject.projectId,
               payload.feature,
             ) ?? null)
           : null;
-        const validStoredThread =
-          storedThread &&
-          slackBinding &&
-          storedThread.workspaceId === slackBinding.workspaceId &&
-          storedThread.channelId === slackBinding.channelId
-            ? storedThread
-            : undefined;
-
-        if (payload.recipient?.surface === "slack") {
-          const { opsOnly: _ignoredOpsOnly, ...slackRecipientRest } =
-            payload.recipient;
-          resolvedRecipient = {
-            ...slackRecipientRest,
-            projectId: authorizedProject.projectId,
-            surface: "slack",
-            workspaceId:
-              payload.recipient.workspaceId ?? slackBinding?.workspaceId,
-            channelId:
-              payload.recipient.channelId ??
-              (isOps ? slackBinding?.opsChannelId : slackBinding?.channelId),
-            threadTs: isOps
-              ? undefined
-              : (payload.recipient.threadTs ?? validStoredThread?.rootTs),
-            ...(isOps ? { opsOnly: true } : {}),
-          };
-        } else if (slackBinding) {
-          resolvedRecipient = {
-            projectId: authorizedProject.projectId,
-            surface: "slack",
-            workspaceId: slackBinding.workspaceId,
-            channelId: isOps
-              ? slackBinding.opsChannelId
-              : slackBinding.channelId,
-            threadTs: isOps ? undefined : validStoredThread?.rootTs,
-            ...(isOps ? { opsOnly: true } : {}),
-          };
+        const recipientResult = resolveProjectSlackRecipient({
+          project: authorizedProject,
+          enrolledProjects: options?.registry?.listProjects(),
+          storedThread,
+          recipient: payload.recipient,
+          opsOnly: isOps,
+        });
+        if (!recipientResult.ok) {
+          return reply.status(403).send({
+            ok: false,
+            code: "THREAD_PROJECT_MISMATCH",
+            error: recipientResult.message,
+          });
         }
+        resolvedRecipient = recipientResult.recipient;
       } else if (payload.recipient?.surface === "slack") {
         const { opsOnly: _ignoredOpsOnly, ...slackRecipientRest } =
           payload.recipient;

@@ -927,7 +927,104 @@ describe("notify routes (FR-003, FR-005, FR-007, TR-018)", () => {
       expect(hijackUnbound.statusCode).toBe(403);
       expect(hijackUnbound.json().code).toBe("THREAD_PROJECT_MISMATCH");
 
+      // Alpha operator attempting to target another feature's foreign thread in C-SHARED -> 403
+      const hijackOtherFeature = await server.inject({
+        method: "POST",
+        url: "/api/notify",
+        headers: { "x-verified-test-sub": "iss:alpha-operator" },
+        payload: {
+          type: "done_done",
+          projectId: "proj-alpha",
+          feature: "050-alpha-new",
+          recipient: {
+            projectId: "proj-alpha",
+            surface: "slack",
+            workspaceId: "W-SHARED",
+            channelId: "C-SHARED",
+            threadTs: betaOnlyFeatureThread.rootTs,
+          },
+        },
+      });
+      expect(hijackOtherFeature.statusCode).toBe(403);
+      expect(hijackOtherFeature.json().code).toBe("THREAD_PROJECT_MISMATCH");
+
+      // Alpha operator supplying an unproven threadTs for an unbound feature in C-SHARED -> 403
+      const unprovenHint = await server.inject({
+        method: "POST",
+        url: "/api/notify",
+        headers: { "x-verified-test-sub": "iss:alpha-operator" },
+        payload: {
+          type: "done_done",
+          projectId: "proj-alpha",
+          feature: "051-alpha-fresh",
+          recipient: {
+            projectId: "proj-alpha",
+            surface: "slack",
+            workspaceId: "W-SHARED",
+            channelId: "C-SHARED",
+            threadTs: "1700000555.000555",
+          },
+        },
+      });
+      expect(unprovenHint.statusCode).toBe(403);
+      expect(unprovenHint.json().code).toBe("THREAD_PROJECT_MISMATCH");
+
       expect(spy).not.toHaveBeenCalled();
+
+      // Authorized matching bound root in C-SHARED still succeeds
+      const matchingBound = await server.inject({
+        method: "POST",
+        url: "/api/notify",
+        headers: { "x-verified-test-sub": "iss:alpha-operator" },
+        payload: {
+          type: "review_ready",
+          projectId: "proj-alpha",
+          feature: "048-shared",
+          phase: "phase-05",
+          prNumber: 77,
+          recipient: {
+            projectId: "proj-alpha",
+            surface: "slack",
+            workspaceId: "W-SHARED",
+            channelId: "C-SHARED",
+            threadTs: alphaThread.rootTs,
+          },
+        },
+      });
+      expect(matchingBound.statusCode).toBe(200);
+
+      // Authorized unbound feature in C-SHARED without caller threadTs succeeds without a threadTs
+      const unboundWithoutHint = await server.inject({
+        method: "POST",
+        url: "/api/notify",
+        headers: { "x-verified-test-sub": "iss:alpha-operator" },
+        payload: {
+          type: "done_done",
+          projectId: "proj-alpha",
+          feature: "050-alpha-new",
+          recipient: {
+            projectId: "proj-alpha",
+            surface: "slack",
+            workspaceId: "W-SHARED",
+            channelId: "C-SHARED",
+          },
+        },
+      });
+      expect(unboundWithoutHint.statusCode).toBe(200);
+      expect(spy).toHaveBeenLastCalledWith(
+        expect.anything(),
+        expect.objectContaining({
+          projectId: "proj-alpha",
+          recipient: expect.objectContaining({
+            projectId: "proj-alpha",
+            surface: "slack",
+            workspaceId: "W-SHARED",
+            channelId: "C-SHARED",
+          }),
+        }),
+        expect.anything(),
+      );
+      expect(spy.mock.calls.at(-1)?.[1]?.recipient?.threadTs).toBeUndefined();
     } finally {
       await server.close();
     }
