@@ -205,7 +205,7 @@ export async function harvestFeature(
       commitSha: FULL_GIT_SHA.test(mergeCommitSha ?? "")
         ? mergeCommitSha
         : undefined,
-      recipient: options.recipient ?? null,
+      recipient: options.recipient,
       updateLocalTaskState: options.updateLocalTaskState ?? true,
       ownerId: options.ownerId ?? "local-harvest",
     });
@@ -274,7 +274,7 @@ export async function harvestFeature(
           phaseId,
           prNumber: prNumber > 0 && enrolled.repoSlug ? prNumber : undefined,
           commitSha: mergeCommitSha,
-          recipient: options?.recipient ?? null,
+          recipient: options?.recipient,
           updateLocalTaskState: options?.updateLocalTaskState ?? true,
           ownerId: options?.ownerId ?? "local-harvest",
         });

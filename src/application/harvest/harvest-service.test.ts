@@ -1397,4 +1397,48 @@ describe("DurableHarvestService", () => {
     );
     expect(harness.notify).toHaveBeenCalledTimes(1);
   });
+
+  it("FR-004 harvestFeature falls back to enrolled project default Slack recipient when options.recipient is omitted without a dispatch", async () => {
+    const harness = createHarness();
+    vi.mocked(harness.github.getPullRequest).mockResolvedValueOnce(
+      prFact({
+        prNumber: 46,
+        headBranch: "feat/049-default-slack-phase-01",
+        mergeCommitSha: "e".repeat(40),
+      }),
+    );
+
+    await harvestFeature(
+      alphaProject.localRoot!,
+      {
+        featureId: "049-default-slack",
+        phaseId: "phase-01",
+        prNumber: 46,
+        prUrl: "https://github.com/acme/alpha/pull/46",
+        mergeCommitSha: "e".repeat(40),
+        mergedAt: time,
+        mergedBy: "github",
+        status: "merged",
+      },
+      {
+        durableService: harness.service,
+        project: alphaProject,
+        updateLocalTaskState: false,
+      },
+    );
+
+    expect(harness.notify).toHaveBeenCalledTimes(1);
+    expect(harness.notify).toHaveBeenCalledWith(
+      expect.objectContaining({
+        projectId: alphaProject.projectId,
+        channel: "C1",
+        recipient: expect.objectContaining({
+          projectId: alphaProject.projectId,
+          surface: "slack",
+          workspaceId: "W1",
+          channelId: "C1",
+        }),
+      }),
+    );
+  });
 });
