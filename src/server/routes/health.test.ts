@@ -6,6 +6,10 @@ import fastify, { type FastifyInstance } from "fastify";
 import { type Mocked, beforeEach, describe, expect, it, vi } from "vitest";
 import type { EnrolledProject } from "../../domain/project-registry.js";
 import type { NotificationPort } from "../../ports/notification-port.js";
+import type {
+  DurableOperationsStatus,
+  OperationsStorePort,
+} from "../../ports/operations-port.js";
 import type { ProjectRegistryPort } from "../../ports/store-port.js";
 import type { LifecycleMonitor } from "../lifecycle.js";
 import type { NetworkMonitor } from "../network.js";
@@ -303,5 +307,180 @@ describe("healthRoutes (FR-002, FR-005, TR-019)", () => {
     });
 
     await readyServer.close();
+  });
+
+  it("T034: reports outbox degradation and unresolved harvest failures while preserving daemonLiveness and disabled pilot Telegram", async () => {
+    const project: EnrolledProject = {
+      projectId: "proj-ops",
+      slug: "ops-app",
+      name: "Ops App",
+      repoSlug: "org/ops-app",
+      trunkBranch: "main",
+      localRoot: "/repos/ops-app",
+      mirrorPath: null,
+      runnerPolicy: { allowedKinds: ["local", "hosted"] },
+      slack: {
+        workspaceId: "W1",
+        channelId: "C-OPS-APP",
+        sharedChannel: false,
+      },
+      legacyProjectIds: [],
+      createdAt: "2026-11-23T00:00:00.000Z",
+      updatedAt: "2026-11-23T00:00:00.000Z",
+    };
+
+    verifyEnrolledCheckoutMock.mockImplementation(
+      (p: EnrolledProject, key: "localRoot" | "mirrorPath") =>
+        p.projectId === "proj-ops" && key === "localRoot"
+          ? "/repos/ops-app"
+          : undefined,
+    );
+
+    const notifier: NotificationPort = {
+      notify: vi.fn(),
+      getDeliveryStatus: vi.fn().mockResolvedValue({
+        mode: "socket_connected",
+        workspaceId: "W1",
+        connected: true,
+      }),
+    };
+
+    let currentStatus: DurableOperationsStatus = {
+      projectId: "proj-ops",
+      queue: {
+        queuedCount: 0,
+        activeCount: 0,
+        oldestQueuedAt: null,
+        staleLeasesReconciled: 0,
+      },
+      harvest: {
+        lastCompletedAt: null,
+        lastMergeCommitSha: null,
+        pendingOperations: 1,
+        pendingStages: [
+          {
+            operationId: "harv-1",
+            featureId: "049-durable",
+            phaseId: "phase-06",
+            stage: "slack_delivery",
+            status: "uncertain",
+          },
+        ],
+        unresolvedGateFailures: 1,
+        closedUnmergedCount: 2,
+        blockedCleanups: 1,
+      },
+      delivery: {
+        pendingCount: 1,
+        uncertainCount: 2,
+        failedCount: 1,
+        telegram: { enabled: false, reason: "disabled_in_pilot" },
+      },
+      historical: {
+        legacyUnverifiedRuns: 0,
+        legacyUnverifiedDispatches: 0,
+      },
+    };
+
+    const operationsStore: Pick<OperationsStorePort, "getOperationsStatus"> = {
+      getOperationsStatus: vi.fn(() => currentStatus),
+    };
+
+    const opsServer = fastify();
+    await healthRoutes(opsServer, lifecycle, network, sandbox, {
+      registry: makeRegistry([project]),
+      operationsStore,
+      notifier,
+      runnerKind: "hosted",
+    });
+
+    try {
+      const degradedRes = await opsServer.inject({
+        method: "GET",
+        url: "/api/health",
+      });
+      expect(degradedRes.statusCode).toBe(200);
+      const degraded = degradedRes.json();
+      expect(degraded.daemonLiveness).toBe("alive");
+      expect(degraded.status).toBe("degraded");
+      expect(degraded.telegram).toEqual({
+        enabled: false,
+        reason: "disabled_in_pilot",
+      });
+      expect(degraded.outbox).toEqual({
+        status: "degraded",
+        pendingCount: 1,
+        uncertainCount: 2,
+        failedCount: 1,
+      });
+      expect(degraded.harvest).toEqual({
+        status: "degraded",
+        pendingOperations: 1,
+        unresolvedGateFailures: 1,
+        blockedCleanups: 1,
+        closedUnmergedCount: 2,
+      });
+      expect(degraded.projectReadiness).toMatchObject({
+        status: "degraded",
+        readyCount: 0,
+        totalCount: 1,
+      });
+      expect(degraded.projectReadiness.projects[0]).toMatchObject({
+        projectId: "proj-ops",
+        status: "degraded",
+        checkoutReady: true,
+        slackBound: true,
+      });
+      expect(degraded.projectReadiness.projects[0].reason).toContain("gate");
+      expect(degraded.projectReadiness.projects[0].reason).toContain("outbox");
+
+      // closed_unmerged alone MUST NOT degrade health or project readiness
+      currentStatus = {
+        ...currentStatus,
+        harvest: {
+          ...currentStatus.harvest,
+          pendingOperations: 0,
+          pendingStages: [],
+          unresolvedGateFailures: 0,
+          blockedCleanups: 0,
+          closedUnmergedCount: 3,
+        },
+        delivery: {
+          pendingCount: 0,
+          uncertainCount: 0,
+          failedCount: 0,
+          telegram: { enabled: false, reason: "disabled_in_pilot" },
+        },
+      };
+
+      const healthyRes = await opsServer.inject({
+        method: "GET",
+        url: "/api/health",
+      });
+      expect(healthyRes.statusCode).toBe(200);
+      const healthy = healthyRes.json();
+      expect(healthy.status).toBe("ok");
+      expect(healthy.daemonLiveness).toBe("alive");
+      expect(healthy.outbox).toEqual({
+        status: "ok",
+        pendingCount: 0,
+        uncertainCount: 0,
+        failedCount: 0,
+      });
+      expect(healthy.harvest).toEqual({
+        status: "ok",
+        pendingOperations: 0,
+        unresolvedGateFailures: 0,
+        blockedCleanups: 0,
+        closedUnmergedCount: 3,
+      });
+      expect(healthy.projectReadiness).toMatchObject({
+        status: "ready",
+        readyCount: 1,
+        totalCount: 1,
+      });
+    } finally {
+      await opsServer.close();
+    }
   });
 });

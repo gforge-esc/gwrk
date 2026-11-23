@@ -10,7 +10,9 @@ import { Command } from "commander";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { runWithOutputScope } from "../adapters/cli/output-scope.js";
 import { repositoryGitEnv } from "../adapters/git/process-env.js";
-import { createSqliteProjectRegistryAdapter } from "../adapters/sqlite/index.js";
+import { createSqliteOperationsStoreAdapter, createSqliteProjectRegistryAdapter } from "../adapters/sqlite/index.js";
+import { openDatabase } from "../db/index.js";
+import { computeHarvestWorkKey } from "../domain/durable-harvest.js";
 import { computeProjectId } from "../domain/project-id.js";
 import type { EnrolledProject } from "../domain/project-registry.js";
 import * as pidUtils from "../server/pid.js";
@@ -357,5 +359,399 @@ describe("TR-022: gwrk status liveness, reachability, readiness and Slack delive
     expect(result.stdout).toContain("Project Readiness");
     expect(result.stdout).toContain("Telegram:");
     expect(result.stderr).toMatch(/\[exit:1 \| /);
+  });
+
+  it("T037 / TR-004: renders queue age, pending stages, legacy counts and exits non-zero on unresolved gate_failed or failed delivery while keeping closed_unmerged exit 0", async () => {
+    const projectId = computeProjectId({
+      projectRoot: tempDir,
+      remoteOriginUrl: "git@github.com:org/status-demo.git",
+      gitCommonDir: path.join(tempDir, ".git"),
+    });
+    fs.writeFileSync(
+      path.join(tempDir, ".gwrkrc.json"),
+      JSON.stringify({ project: { name: "status-demo" } }),
+    );
+    fs.mkdirSync(path.join(tempDir, ".gwrk"), { recursive: true });
+    fs.writeFileSync(
+      path.join(tempDir, ".gwrk", "dispatches.jsonl"),
+      `${JSON.stringify({
+        id: "legacy-1",
+        featureId: "001-legacy",
+        phaseId: "phase-01",
+        backend: "claude",
+        branchName: "feat/001-legacy-phase-01",
+        status: "completed",
+        attempts: [],
+        tasks: [],
+        createdAt: "2026-11-01T00:00:00.000Z",
+      })}\n`,
+    );
+
+    vi.spyOn(pidUtils, "readPid").mockReturnValue(undefined);
+    vi.spyOn(pidUtils, "isPidRunning").mockReturnValue(false);
+    vi.stubGlobal("fetch", vi.fn());
+
+    const db = openDatabase();
+    try {
+      const registry = createSqliteProjectRegistryAdapter({ db });
+      const ops = createSqliteOperationsStoreAdapter({ db });
+      const enrolled: EnrolledProject = {
+        projectId,
+        slug: "status-demo",
+        name: "status-demo",
+        repoSlug: "org/status-demo",
+        trunkBranch: "main",
+        localRoot: tempDir,
+        mirrorPath: null,
+        runnerPolicy: { allowedKinds: ["local"] },
+        slack: {
+          workspaceId: "T_DEMO",
+          channelId: "C_DEMO",
+          sharedChannel: false,
+        },
+        legacyProjectIds: [],
+        createdAt: "2026-11-23T00:00:00.000Z",
+        updatedAt: "2026-11-23T00:00:00.000Z",
+      };
+      registry.enrollProject(enrolled);
+
+      // Seed queued dispatch for queue age + closed_unmerged harvest + pending/uncertain outbox
+      ops.acceptDispatch({
+        projectId,
+        featureId: "049-durable",
+        phaseId: "phase-06",
+        backend: "claude",
+        trunkBranch: "main",
+        recipient: null,
+        newOperationId: "disp-age-1",
+        nowIso: "2026-11-23T10:00:00.000Z",
+      });
+
+      const closedIntake = ops.recordHarvestIntake({
+        candidate: {
+          source: "github_webhook",
+          deliveryId: "deliv-closed-1",
+          repoSlug: "org/status-demo",
+          headRepoSlug: "org/status-demo",
+          baseBranch: "main",
+          headBranch: "feat/049-durable-phase-01",
+          expectedHeadSha: "a".repeat(40),
+          prNumber: 77,
+          prUrl: "https://github.com/org/status-demo/pull/77",
+          terminalEvent: "closed_unmerged",
+          mergeCommitSha: null,
+          terminalAt: "2026-11-23T10:05:00.000Z",
+          recipient: null,
+        },
+        payloadDigest: "digest-closed-1",
+        receivedAt: "2026-11-23T10:05:01.000Z",
+        target: {
+          accepted: true,
+          project: enrolled,
+          operations: [
+            {
+              operationId: "harv-closed-1",
+              projectId,
+              workKey: computeHarvestWorkKey({
+                repoSlug: "org/status-demo",
+                baseBranch: "main",
+                prNumber: 77,
+                terminalEvent: "closed_unmerged",
+                mergeCommitSha: null,
+                featureId: "049-durable",
+                phaseId: "phase-01",
+              }),
+              repoSlug: "org/status-demo",
+              headRepoSlug: "org/status-demo",
+              trunkBranch: "main",
+              featureId: "049-durable",
+              phaseId: "phase-01",
+              prNumber: 77,
+              prUrl: "https://github.com/org/status-demo/pull/77",
+              headBranch: "feat/049-durable-phase-01",
+              expectedHeadSha: "a".repeat(40),
+              terminalEvent: "closed_unmerged",
+              mergeCommitSha: null,
+              terminalAt: "2026-11-23T10:05:00.000Z",
+              recipient: null,
+              plannedSlackRecipient: null,
+              status: "accepted",
+              leaseOwner: null,
+              leaseEpoch: 0,
+              leaseExpiresAt: null,
+              linkedRunId: null,
+              lastError: null,
+              createdAt: "2026-11-23T10:05:01.000Z",
+              updatedAt: "2026-11-23T10:05:01.000Z",
+              completedAt: null,
+            },
+          ],
+        },
+      });
+      expect(closedIntake.ok).toBe(true);
+      const closedLease = ops.claimHarvestLease({
+        operationId: "harv-closed-1",
+        leaseOwner: "test",
+        nowIso: "2026-11-23T10:05:02.000Z",
+        leaseExpiresAt: "2026-11-23T10:15:02.000Z",
+      });
+      expect(closedLease).not.toBeNull();
+      if (closedLease) {
+        ops.initializeHarvestStages({
+          fence: closedLease.fence,
+          nowIso: "2026-11-23T10:05:02.000Z",
+          phaseIds: ["phase-01"],
+          hasSlackTarget: false,
+          hasRemoteBranchTarget: false,
+          stages: [
+            {
+              phaseKey: "phase-01",
+              stage: "learning_record",
+              initialStatus: "pending",
+            },
+          ],
+        });
+        ops.transitionHarvestStage({
+          fence: closedLease.fence,
+          nowIso: "2026-11-23T10:05:03.000Z",
+          phaseKey: "phase-01",
+          stage: "learning_record",
+          status: "succeeded",
+        });
+      }
+
+      // Seed an uncertain outbox delivery (must NOT appear delivered, but is not terminal failed)
+      const uncertainOutbox = ops.enqueueOutbox({
+        outboxId: "outbox-uncertain-1",
+        projectId,
+        dedupeKey: "dedupe-uncertain-1",
+        ownerKind: "dispatch",
+        ownerOperationId: "disp-age-1",
+        eventType: "review_ready",
+        featureId: "049-durable",
+        phaseId: "phase-06",
+        recipient: {
+          projectId,
+          surface: "slack",
+          workspaceId: "T_DEMO",
+          channelId: "C_DEMO",
+        },
+        payload: { text: "review ready" },
+        clientMetadataKey: "meta-uncertain-1",
+        nowIso: "2026-11-23T10:06:00.000Z",
+      });
+      const uncertainClaim = ops.claimOutboxItem({
+        outboxId: uncertainOutbox.outboxId,
+        nowIso: "2026-11-23T10:06:01.000Z",
+        destination: {
+          workspaceId: "T_DEMO",
+          channelId: "C_DEMO",
+          threadTs: null,
+        },
+      });
+      expect(uncertainClaim && "claim" in uncertainClaim).toBe(true);
+      if (uncertainClaim && "claim" in uncertainClaim) {
+        ops.markOutboxUncertain({
+          claim: uncertainClaim.claim,
+          nowIso: "2026-11-23T10:06:02.000Z",
+          error: "timeout",
+        });
+      }
+
+      // 1. closed_unmerged + uncertain delivery + queued item -> exit 0, JSON & text show counts distinctly
+      const healthyJson = await runStatus([
+        "--project",
+        "status-demo",
+        "--format",
+        "json",
+      ]);
+      expect(healthyJson.exitCode).toBe(0);
+      expect(healthyJson.stderr).toMatch(/\[exit:0 \| /);
+      const parsedHealthy = JSON.parse(healthyJson.stdout);
+      expect(parsedHealthy.durableOperations.queue.oldestQueuedAt).toBe(
+        "2026-11-23T10:00:00.000Z",
+      );
+      expect(typeof parsedHealthy.queueAgeSeconds).toBe("number");
+      expect(parsedHealthy.durableOperations.harvest.closedUnmergedCount).toBe(1);
+      expect(parsedHealthy.durableOperations.harvest.unresolvedGateFailures).toBe(0);
+      expect(parsedHealthy.durableOperations.delivery.uncertainCount).toBe(1);
+      expect(parsedHealthy.durableOperations.delivery.failedCount).toBe(0);
+      expect(parsedHealthy.durableOperations.historical.legacyUnverifiedDispatches).toBe(1);
+
+      const healthyText = await runStatus(["--project", "status-demo"]);
+      expect(healthyText.exitCode).toBe(0);
+      expect(healthyText.stdout).toContain("Closed unmerged");
+      expect(healthyText.stdout).toContain("uncertain");
+      expect(healthyText.stdout).toContain("Legacy unverified dispatches");
+      expect(healthyText.stdout).not.toMatch(/outbox.*delivered/i);
+
+      // 2. Add unresolved gate_failed harvest -> MUST exit 1 with remediation hint
+      const mergeIntake = ops.recordHarvestIntake({
+        candidate: {
+          source: "github_webhook",
+          deliveryId: "deliv-gate-fail-1",
+          repoSlug: "org/status-demo",
+          headRepoSlug: "org/status-demo",
+          baseBranch: "main",
+          headBranch: "feat/049-durable-phase-02",
+          expectedHeadSha: "b".repeat(40),
+          prNumber: 78,
+          prUrl: "https://github.com/org/status-demo/pull/78",
+          terminalEvent: "merged",
+          mergeCommitSha: "c".repeat(40),
+          terminalAt: "2026-11-23T10:10:00.000Z",
+          recipient: null,
+        },
+        payloadDigest: "digest-gate-fail-1",
+        receivedAt: "2026-11-23T10:10:01.000Z",
+        target: {
+          accepted: true,
+          project: enrolled,
+          operations: [
+            {
+              operationId: "harv-gate-fail-1",
+              projectId,
+              workKey: computeHarvestWorkKey({
+                repoSlug: "org/status-demo",
+                baseBranch: "main",
+                prNumber: 78,
+                terminalEvent: "merged",
+                mergeCommitSha: "c".repeat(40),
+                featureId: "049-durable",
+                phaseId: "phase-02",
+              }),
+              repoSlug: "org/status-demo",
+              headRepoSlug: "org/status-demo",
+              trunkBranch: "main",
+              featureId: "049-durable",
+              phaseId: "phase-02",
+              prNumber: 78,
+              prUrl: "https://github.com/org/status-demo/pull/78",
+              headBranch: "feat/049-durable-phase-02",
+              expectedHeadSha: "b".repeat(40),
+              terminalEvent: "merged",
+              mergeCommitSha: "c".repeat(40),
+              terminalAt: "2026-11-23T10:10:00.000Z",
+              recipient: null,
+              plannedSlackRecipient: null,
+              status: "accepted",
+              leaseOwner: null,
+              leaseEpoch: 0,
+              leaseExpiresAt: null,
+              linkedRunId: null,
+              lastError: null,
+              createdAt: "2026-11-23T10:10:01.000Z",
+              updatedAt: "2026-11-23T10:10:01.000Z",
+              completedAt: null,
+            },
+          ],
+        },
+      });
+      expect(mergeIntake.ok).toBe(true);
+      const mergeLease = ops.claimHarvestLease({
+        operationId: "harv-gate-fail-1",
+        leaseOwner: "test",
+        nowIso: "2026-11-23T10:10:02.000Z",
+        leaseExpiresAt: "2026-11-23T10:20:02.000Z",
+      });
+      expect(mergeLease).not.toBeNull();
+      if (mergeLease) {
+        ops.initializeHarvestStages({
+          fence: mergeLease.fence,
+          nowIso: "2026-11-23T10:10:02.000Z",
+          phaseIds: ["phase-02"],
+          hasSlackTarget: false,
+          hasRemoteBranchTarget: true,
+          stages: [
+            { phaseKey: "phase-02", stage: "git_sync", initialStatus: "pending" },
+            { phaseKey: "phase-02", stage: "gate_verify", initialStatus: "pending" },
+            { phaseKey: "phase-02", stage: "learning_record", initialStatus: "pending" },
+            { phaseKey: "phase-02", stage: "slack_delivery", initialStatus: "skipped_no_target" },
+            { phaseKey: "phase-02", stage: "branch_cleanup", initialStatus: "pending" },
+          ],
+        });
+        ops.transitionHarvestStage({
+          fence: mergeLease.fence,
+          nowIso: "2026-11-23T10:10:03.000Z",
+          phaseKey: "phase-02",
+          stage: "git_sync",
+          status: "succeeded",
+        });
+        ops.transitionHarvestStage({
+          fence: mergeLease.fence,
+          nowIso: "2026-11-23T10:10:04.000Z",
+          phaseKey: "phase-02",
+          stage: "gate_verify",
+          status: "gate_failed",
+          failureNotice: null,
+          error: "T001 gate failed",
+        });
+      }
+
+      const gateFailJson = await runStatus([
+        "--project",
+        "status-demo",
+        "--format",
+        "json",
+      ]);
+      expect(gateFailJson.exitCode).toBe(1);
+      expect(gateFailJson.stderr).toMatch(/\[exit:1 \| /);
+      expect(gateFailJson.stderr).toContain("hint:");
+      const parsedGateFail = JSON.parse(gateFailJson.stdout);
+      expect(parsedGateFail.durableOperations.harvest.unresolvedGateFailures).toBe(1);
+      expect(parsedGateFail.durableOperations.harvest.closedUnmergedCount).toBe(1);
+
+      // 3. Also verify failed delivery alone triggers exit 1
+      db.prepare("DELETE FROM harvest_operations WHERE operation_id = ?").run(
+        "harv-gate-fail-1",
+      );
+      const failedOutbox = ops.enqueueOutbox({
+        outboxId: "outbox-failed-1",
+        projectId,
+        dedupeKey: "dedupe-failed-1",
+        ownerKind: "dispatch",
+        ownerOperationId: "disp-age-1",
+        eventType: "phase_fail",
+        featureId: "049-durable",
+        phaseId: "phase-06",
+        recipient: {
+          projectId,
+          surface: "slack",
+          workspaceId: "T_DEMO",
+          channelId: "C_DEMO",
+        },
+        payload: { text: "phase failed" },
+        clientMetadataKey: "meta-failed-1",
+        nowIso: "2026-11-23T10:11:00.000Z",
+      });
+      const failClaim = ops.claimOutboxItem({
+        outboxId: failedOutbox.outboxId,
+        nowIso: "2026-11-23T10:11:01.000Z",
+        destination: {
+          workspaceId: "T_DEMO",
+          channelId: "C_DEMO",
+          threadTs: null,
+        },
+      });
+      if (failClaim && "claim" in failClaim) {
+        ops.completeOutboxItem({
+          claim: failClaim.claim,
+          nowIso: "2026-11-23T10:11:02.000Z",
+          outcome: { status: "failed", error: "channel_not_found" },
+        });
+      }
+
+      const deliveryFailJson = await runStatus([
+        "--project",
+        "status-demo",
+        "--json",
+      ]);
+      expect(deliveryFailJson.exitCode).toBe(1);
+      expect(deliveryFailJson.stderr).toMatch(/\[exit:1 \| /);
+      expect(deliveryFailJson.stderr).toContain("hint:");
+      expect(JSON.parse(deliveryFailJson.stdout).durableOperations.delivery.failedCount).toBe(1);
+    } finally {
+      if (db.open) db.close();
+    }
   });
 });
