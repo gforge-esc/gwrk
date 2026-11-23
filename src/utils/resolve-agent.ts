@@ -43,6 +43,8 @@ export interface ResolveAgentOverrides {
   role?: ModelRole;
   routeMode?: RouteMode;
   runnerProfile?: string;
+  /** Owning runner checkout that stores `.runs/models` discovery and evaluation evidence. */
+  evidenceRoot?: string;
   routeLock?: RouteLockDocument | null;
   snapshot?: DiscoverySnapshot | null;
   currentSuiteHashes?: SuiteDigestSnapshot | null;
@@ -252,12 +254,13 @@ export function resolveAgent(
       : overrides.routeLock !== undefined
         ? overrides.routeLock
         : readLocalRouteLock(projectRoot, scope.runnerProfile);
+  const evidenceRoot = overrides.evidenceRoot?.trim() || projectRoot;
   const routeLock = rawLock && parseRouteLockDocument(scope, rawLock);
   const snapshot =
     overrides.snapshot !== undefined
       ? overrides.snapshot
       : routeLock
-        ? readLocalDiscoverySnapshot(projectRoot, scope.runnerProfile)
+        ? readLocalDiscoverySnapshot(evidenceRoot, scope.runnerProfile)
         : null;
 
   // Projects without a registry use the provider default.
@@ -284,7 +287,7 @@ export function resolveAgent(
       try {
         const bundle = readJsonSafely<unknown>(
           path.join(
-            projectRoot,
+            evidenceRoot,
             ".runs",
             "models",
             "evaluations",

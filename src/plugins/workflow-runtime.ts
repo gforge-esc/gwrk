@@ -185,6 +185,8 @@ interface WorkflowOptions {
   /** Router defaults apply only when the project has no qualified route. */
   routeDefaults?: { backend: string; model?: string; effort?: string };
   projectRoot?: string;
+  /** Owning runner checkout that stores `.runs/models` discovery and evaluation evidence. */
+  evidenceRoot?: string;
   agent?: string;
   model?: string;
   effort?: string;
@@ -451,6 +453,7 @@ export class WorkflowRuntime {
             model: options.model,
             effort: options.effort,
             routeMode: options.routeMode,
+            evidenceRoot: options.evidenceRoot,
           },
         );
     if (route?.preflightBanner) logCliOutput(route.preflightBanner);

@@ -2799,6 +2799,7 @@ ${marker}`;
       input,
       {
         projectRoot: this.config.cwd,
+        evidenceRoot: this.config.stateRoot,
         agent: this.config.explicitBackend,
         routeDefaults: {
           backend: this.config.backend,

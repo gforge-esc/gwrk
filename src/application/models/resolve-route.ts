@@ -805,6 +805,10 @@ export async function resolveQualifiedRouteFromStore(
       )) as StoredEvaluationSummary | null;
       if (
         primaryBundle &&
+        typeof primaryBundle === "object" &&
+        createHash("sha256")
+          .update(JSON.stringify(primaryBundle))
+          .digest("hex") === pin.evidence.evaluationBundleHash &&
         typeof primaryBundle.eligibleRoutesDigest === "string" &&
         primaryBundle.eligibleRoutesDigest.trim().length > 0
       ) {
