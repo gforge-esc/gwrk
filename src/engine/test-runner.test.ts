@@ -10,6 +10,16 @@ import {
 } from "./test-runner.js";
 
 describe("parseTestOutput — structured {testsRun, passed, failed}", () => {
+  it("uses the terminal summary after a passing sample printed by a fixture", () => {
+    const output = "stdout | fixture\nTests 16 passed (16)\nTests 3 failed | 20 passed (23)";
+    expect(parseTestOutput(output)).toEqual({ testsRun: 23, passed: 20, failed: 3 });
+  });
+
+  it("ignores a failing sample before the real successful summary", () => {
+    const output = "stdout | fixture\nTests 3 failed (3)\nTests 20 passed (20)";
+    expect(parseTestOutput(output)).toEqual({ testsRun: 20, passed: 20, failed: 0 });
+  });
+
   it("parses a vitest summary and ignores the 'Test Files' line", () => {
     const out = [
       " Test Files  1 failed | 3 passed (4)",

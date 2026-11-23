@@ -114,6 +114,7 @@ export function parseTestOutput(output: string): {
   // Pytest has a separate terminal summary. Fixture logs are not summaries.
   const testsLine = output
     .split("\n")
+    .reverse()
     .find((l) => /^\s*Tests[:\s]/.test(l) && !/Test\s+Files/.test(l));
   const scope = testsLine ?? pytestSummary(output) ?? "";
 
