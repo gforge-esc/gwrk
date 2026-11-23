@@ -184,6 +184,7 @@ interface WorkflowOptions {
   agent?: string;
   model?: string;
   effort?: string;
+  routeMode?: "pinned" | "provider-default";
   quiet?: boolean;
   tolerant?: boolean;
   /**
@@ -208,6 +209,13 @@ interface WorkflowResult {
   summaries: IntentSummary[];
   logPath?: string;
   taskResult?: TaskResult;
+  observedModel?: string;
+}
+
+function normalizeObservedModel(value: string | undefined): string {
+  return typeof value === "string" && value.trim().length > 0
+    ? value.trim()
+    : "unknown";
 }
 
 /**
@@ -395,13 +403,17 @@ export class WorkflowRuntime {
       ? conditionedPrompt
       : `${conditionedPrompt}\n\n<output_contract>\nYour output MUST be a single JSON object matching this schema:\n${JSON.stringify(outputSchema, null, 2)}\n</output_contract>`;
 
+    const effectiveModel =
+      options.routeMode === "provider-default" ? undefined : options.model;
     const task: TaskDispatch = {
       type: options.taskType ?? "workflow",
       stdin: [template, userInput].filter(Boolean).join("\n\n"),
       promptParts: { template, userInput },
       profile,
       agent: options.agent,
-      model: options.model,
+      model: effectiveModel,
+      ...(options.effort ? { effort: options.effort } : {}),
+      ...(options.routeMode ? { routeMode: options.routeMode } : {}),
       env: options.effort ? { GWRK_EFFORT: options.effort } : undefined,
       featureDir: options.featureDir,
       workDir: projectRoot,
@@ -421,6 +433,7 @@ export class WorkflowRuntime {
         summaries: [],
         logPath: taskResult.logPath,
         taskResult,
+        observedModel: normalizeObservedModel(taskResult.observedModel),
       };
     }
 
@@ -485,6 +498,8 @@ export class WorkflowRuntime {
             "Agent completed successfully (native execution; structured output not serialized)",
           intents: [],
           summaries: [],
+          logPath: result.logPath,
+          observedModel: normalizeObservedModel(result.observedModel),
         };
       }
       throw new Error(
@@ -516,6 +531,8 @@ export class WorkflowRuntime {
             "Agent completed successfully (native execution, no JSON intents)",
           intents: [],
           summaries: [],
+          logPath: result.logPath,
+          observedModel: normalizeObservedModel(result.observedModel),
         };
       }
       // Truncate raw output in error — full output is in the log file
@@ -642,6 +659,7 @@ export class WorkflowRuntime {
       summaries,
       logPath: result.logPath,
       output: parsedOutput,
+      observedModel: normalizeObservedModel(result.observedModel),
     };
   }
 }

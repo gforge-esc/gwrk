@@ -132,4 +132,71 @@ describe("Execution Manifest Utility", () => {
       expect(digest).toEqual([]);
     });
   });
+
+  describe("TR-015: model identity and credential guards", () => {
+    it("persists requestedModel, observedModel, requestedEffort, routeMode and fallbackReason", () => {
+      const filePath = writeManifest(tempDir, {
+        ...mockManifest,
+        agent: "claude",
+        model: "claude-opus-4-6",
+        requestedModel: "claude-opus-4-6",
+        observedModel: "claude-opus-4-6-20261101",
+        requestedEffort: "high",
+        routeMode: "pinned",
+        fallbackReason: "rate_limit",
+      });
+
+      const content = JSON.parse(fs.readFileSync(filePath, "utf-8"));
+      expect(content.requestedModel).toBe("claude-opus-4-6");
+      expect(content.observedModel).toBe("claude-opus-4-6-20261101");
+      expect(content.requestedEffort).toBe("high");
+      expect(content.routeMode).toBe("pinned");
+      expect(content.fallbackReason).toBe("rate_limit");
+
+      const loaded = loadManifests(tempDir);
+      expect(loaded).toHaveLength(1);
+      expect(loaded[0]?.requestedModel).toBe("claude-opus-4-6");
+      expect(loaded[0]?.observedModel).toBe("claude-opus-4-6-20261101");
+      expect(loaded[0]?.fallbackReason).toBe("rate_limit");
+    });
+
+    it("defaults observedModel to unknown and derives requestedModel for provider-default runs", () => {
+      const pinnedPath = writeManifest(tempDir, mockManifest);
+      const pinned = JSON.parse(fs.readFileSync(pinnedPath, "utf-8"));
+      expect(pinned.requestedModel).toBe("gemini-2.0-flash");
+      expect(pinned.observedModel).toBe("unknown");
+
+      const defaultPath = writeManifest(tempDir, {
+        ...mockManifest,
+        runId: "2026-03-08T15:10:00Z_ship_p01",
+        startedAt: "2026-03-08T15:10:00.000Z",
+        model: "default",
+        routeMode: "provider-default",
+        observedModel: "   ",
+      });
+      const providerDefault = JSON.parse(fs.readFileSync(defaultPath, "utf-8"));
+      expect(providerDefault.requestedModel).toBe("provider-default");
+      expect(providerDefault.observedModel).toBe("unknown");
+      expect(providerDefault.routeMode).toBe("provider-default");
+    });
+
+    it("rejects credential material before writing a manifest", () => {
+      expect(() =>
+        writeManifest(tempDir, {
+          ...mockManifest,
+          fallbackReason: "Authorization: Bearer sk-secret123456",
+        }),
+      ).toThrow(/Secret material/);
+
+      expect(() =>
+        writeManifest(tempDir, {
+          ...mockManifest,
+          digest: ["Account owner@example.com triggered run"],
+        }),
+      ).toThrow(/Secret material/);
+
+      const runsDir = path.join(tempDir, ".gwrk", "runs");
+      expect(fs.readdirSync(runsDir)).toEqual([]);
+    });
+  });
 });
