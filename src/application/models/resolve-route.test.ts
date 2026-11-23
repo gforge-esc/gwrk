@@ -19,6 +19,7 @@ import {
 } from "../../domain/model-qualification.js";
 import { PlanStore } from "../../engine/plan-store.js";
 import { resolveWorkspacePolicyRoots } from "../../engine/profile-detector.js";
+import { resolveEnforcementSkills } from "../../plugins/skill-runtime.js";
 import { WorkflowRuntime } from "../../plugins/workflow-runtime.js";
 import type { RouteLockStorePort } from "../../ports/model-qualification-port.js";
 import * as agentTransport from "../../utils/agent.js";
@@ -705,6 +706,151 @@ describe("TR-014: resolveQualifiedRoute", () => {
     expect(route.fallbackRoutes).toEqual([]);
   });
 
+  it.each(["rejected", "expired"] as const)(
+    "refuses a fallback whose evaluation is %s even when both judges favored it",
+    async (condition) => {
+      const root = createTempProject({ project: { name: "gwrk" } });
+      const role = "implement";
+      const evidence = await projectEvidence(root);
+      const fallback = makePin().fallbackRoutes[0];
+      const pin = makePin({ role, evidence, fallbackRoutes: [fallback] });
+      const bundleDir = path.join(
+        root,
+        ".runs/models/evaluations",
+        fallback.evaluationId,
+      );
+      fs.mkdirSync(bundleDir, { recursive: true });
+      fs.writeFileSync(
+        path.join(bundleDir, "bundle.json"),
+        JSON.stringify({
+          evaluationId: fallback.evaluationId,
+          scope: SCOPE,
+          role,
+          candidate: fallback,
+          decision:
+            condition === "rejected"
+              ? { promote: false, reason: "implementation-not-faster" }
+              : { promote: true },
+          suiteHashes: {
+            workflowPromptHashes: evidence.workflowPromptHashes,
+            fixtureSuiteHash:
+              condition === "expired" ? HASH_A : evidence.fixtureSuiteHash,
+          },
+          promotionEvidence: makePassingPromotionEvidence(),
+        }),
+      );
+      const lock = makeRouteLock({}, { routes: { implement: pin } });
+      expect(() =>
+        resolveAgent("implement", root, {
+          agent: fallback.backend,
+          routeLock: lock,
+        }),
+      ).toThrow(/unavailable|stale|qualif/i);
+    },
+  );
+
+  it("requires requalification when the selected project enforcement skill changes", async () => {
+    const root = createTempProject({ project: { name: "gwrk" } });
+    const pack = path.join(root, ".gwrk/plugins/skills/review-fixture-policy");
+    fs.mkdirSync(pack, { recursive: true });
+    fs.writeFileSync(
+      path.join(pack, "manifest.yaml"),
+      JSON.stringify({
+        type: "skill",
+        tier: "enforcement",
+        name: "review-fixture-policy",
+        version: "1.0.0",
+        description: "Test policy",
+        scope: "define",
+      }),
+    );
+    const body = path.join(pack, "SKILL.md");
+    fs.writeFileSync(body, "Include the original acceptance criterion.");
+    expect(await resolveEnforcementSkills(root, "define")).toContain(
+      "original acceptance criterion",
+    );
+    const evidence = await projectEvidence(root);
+    const pinFile = path.join(root, ".gwrk/models/route-lock.local.json");
+    fs.mkdirSync(path.dirname(pinFile), { recursive: true });
+    fs.writeFileSync(pinFile, JSON.stringify(makeRouteLock({ evidence })));
+    expect(resolveAgent("define", root).model).toBe(makePin().modelId);
+    fs.writeFileSync(body, "Include the revised acceptance criterion.");
+    expect(await resolveEnforcementSkills(root, "define")).toContain(
+      "revised acceptance criterion",
+    );
+    expect(() => resolveAgent("define", root)).toThrow(/stale|requalif/i);
+  });
+
+  it("rejects an unsupported route lock version before workflow dispatch", async () => {
+    const root = createTempProject({ project: { name: "gwrk" } });
+    const evidence = await projectEvidence(root);
+    const lock = path.join(root, ".gwrk/models/route-lock.local.json");
+    fs.mkdirSync(path.dirname(lock), { recursive: true });
+    fs.writeFileSync(
+      lock,
+      JSON.stringify({ ...makeRouteLock({ evidence }), schemaVersion: 2 }),
+    );
+    const dispatch = vi
+      .fn()
+      .mockResolvedValue({ stdout: "", stderr: "", exitCode: 0, durationS: 0 });
+    await expect(
+      new WorkflowRuntime().executeWorkflow("gwrk-specify", "Specify", {
+        nativeOnly: true,
+        projectRoot: root,
+        dispatcher: dispatch,
+      }),
+    ).rejects.toThrow();
+    expect(dispatch).not.toHaveBeenCalled();
+  });
+
+  it("passes provider-default mode to the backend in a project without a pin or a model override", async () => {
+    const root = createTempProject({ project: { name: "gwrk" } });
+    const dispatch = vi.fn().mockResolvedValue({
+      stdout: "",
+      stderr: "",
+      exitCode: 0,
+      durationS: 0,
+    });
+    await new WorkflowRuntime().executeWorkflow("gwrk-implement", "Implement", {
+      nativeOnly: true,
+      agent: "codex",
+      projectRoot: root,
+      dispatcher: dispatch,
+    });
+    expect(dispatch).toHaveBeenCalledWith(
+      expect.objectContaining({
+        routeMode: "provider-default",
+        model: undefined,
+      }),
+    );
+  });
+
+  it("accepts explicit provider default on define spec with an unreadable lock", async () => {
+    const root = createTempProject({ project: { name: "gwrk" } });
+    const feature = "001-qualification";
+    fs.mkdirSync(path.join(root, "specs", feature), { recursive: true });
+    fs.mkdirSync(path.join(root, ".gwrk/models/route-lock.local.json"), {
+      recursive: true,
+    });
+    vi.spyOn(process, "cwd").mockReturnValue(root);
+    const dispatch = vi.spyOn(agentTransport, "dispatchToAgent");
+    const errors: string[] = [];
+    const code = await runCli(
+      [
+        "define",
+        "spec",
+        feature,
+        "Write a specification",
+        "--route",
+        "provider-default",
+        "--dry-run",
+      ],
+      { stderr: (chunk) => errors.push(chunk) },
+    );
+    expect(code, errors.join("")).toBe(0);
+    expect(dispatch).not.toHaveBeenCalled();
+  });
+
   it("requires current hashes before declaring a lock fresh", () => {
     const route = resolveQualifiedRoute({
       role: "define",
@@ -938,51 +1084,57 @@ describe("TR-014: resolveQualifiedRoute", () => {
     );
   });
 
-  it("persists the requested and observed identities of a define spec dispatch", async () => {
-    const root = createTempProject({
-      project: { name: "gwrk" },
-      agents: { define: "codex", implement: "codex" },
-    });
-    vi.stubEnv("GIT_DIR", path.join(root, "unused.git"));
-    const feature = "001-qualification";
-    const featureDir = path.join(root, "specs", feature);
-    fs.mkdirSync(featureDir, { recursive: true });
-    const evidence = await projectEvidence(root);
-    const lock = path.join(root, ".gwrk/models/route-lock.local.json");
-    fs.mkdirSync(path.dirname(lock), { recursive: true });
-    fs.writeFileSync(lock, JSON.stringify(makeRouteLock({ evidence })));
-    vi.spyOn(process, "cwd").mockReturnValue(root);
-    vi.spyOn(runLedger, "startRun").mockReturnValue(1);
-    vi.spyOn(runLedger, "finishRun").mockImplementation(() => {});
-    vi.spyOn(PlanStore.prototype, "handleDefineComplete").mockImplementation(
-      () => {},
-    );
-    const dispatch = vi
-      .spyOn(agentTransport, "dispatchToAgent")
-      .mockResolvedValue({
-        exitCode: 0,
-        stdout: '{"summary":"done","intents":[]}',
-        stderr: "",
-        durationS: 0,
-        observedModel: "runtime-revision",
+  it.each(["pinned", "provider-default"] as const)(
+    "persists the identities and mode of a %s define spec dispatch",
+    async (mode) => {
+      const root = createTempProject({
+        project: { name: "gwrk" },
+        agents: { define: "codex", implement: "codex" },
       });
-    const code = await runCli([
-      "define",
-      "spec",
-      feature,
-      "Write a specification",
-    ]);
-    expect(code).toBe(0);
-    expect(dispatch).toHaveBeenCalledTimes(1);
-    expect(loadManifests(featureDir)).toEqual([
-      expect.objectContaining({
-        requestedModel: "gpt-6.1-sol",
-        requestedEffort: "high",
-        routeMode: "pinned",
-        observedModel: "runtime-revision",
-      }),
-    ]);
-  });
+      vi.stubEnv("GIT_DIR", path.join(root, "unused.git"));
+      const feature = "001-qualification";
+      const featureDir = path.join(root, "specs", feature);
+      fs.mkdirSync(featureDir, { recursive: true });
+      if (mode === "pinned") {
+        const evidence = await projectEvidence(root);
+        const lock = path.join(root, ".gwrk/models/route-lock.local.json");
+        fs.mkdirSync(path.dirname(lock), { recursive: true });
+        fs.writeFileSync(lock, JSON.stringify(makeRouteLock({ evidence })));
+      }
+      vi.spyOn(process, "cwd").mockReturnValue(root);
+      vi.spyOn(runLedger, "startRun").mockReturnValue(1);
+      vi.spyOn(runLedger, "finishRun").mockImplementation(() => {});
+      vi.spyOn(PlanStore.prototype, "handleDefineComplete").mockImplementation(
+        () => {},
+      );
+      const dispatch = vi
+        .spyOn(agentTransport, "dispatchToAgent")
+        .mockResolvedValue({
+          exitCode: 0,
+          stdout: '{"summary":"done","intents":[]}',
+          stderr: "",
+          durationS: 0,
+          observedModel: "runtime-revision",
+        });
+      const code = await runCli([
+        "define",
+        "spec",
+        feature,
+        "Write a specification",
+      ]);
+      expect(code).toBe(0);
+      expect(dispatch).toHaveBeenCalledTimes(1);
+      expect(loadManifests(featureDir)).toEqual([
+        expect.objectContaining({
+          requestedModel:
+            mode === "pinned" ? "gpt-6.1-sol" : "provider-default",
+          ...(mode === "pinned" ? { requestedEffort: "high" } : {}),
+          routeMode: mode,
+          observedModel: "runtime-revision",
+        }),
+      ]);
+    },
+  );
 
   it("connects resolveAgent and WorkflowRuntime to forward typed model, effort, routeMode and return observedModel", async () => {
     const projectRoot = createTempProject({

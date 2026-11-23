@@ -190,6 +190,8 @@ The command regressions exercise research dispatch and the provider-default CLI 
 
 The implementation regression loads a runner lock and checks the request sent to the transport. It verifies task completion after the post-flight gate passes. The retry patch is `.runs/review-regressions-phase05-20261123T195650Z-6f2c26e1.patch`.
 
+The Phase 5 review adds seven routing regressions. Two cover rejected and stale fallbacks. The others cover policy changes and lock validation plus provider-default selection and reporting. The patch against `f1b87ba3` is `.runs/review-regressions-phase05-20261123T200627Z-de181462.patch`. The [code review](evidence/code-review-phase-05.md) records the separate runbook reproduction.
+
 #### Done When
 
 ```bash
