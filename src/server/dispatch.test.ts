@@ -2123,6 +2123,84 @@ describe("DispatchQueue (durable SQLite backing, recovery & outbox notifications
     }
   });
 
+  it("waits for a worker's outstanding completion delivery before close resolves", async () => {
+    const { config, monitor, sandbox, realRoot, db, projectId } =
+      setupDurableEnv({ withSlack: true });
+    let finishWorker!: () => void;
+    let finishSend!: () => void;
+    const workerPending = new Promise<void>((resolve) => {
+      finishWorker = resolve;
+    });
+    const sendPending = new Promise<void>((resolve) => {
+      finishSend = resolve;
+    });
+    let sending = false;
+    const launchPhaseShip = vi.fn(async () => {
+      await workerPending;
+      return { exitCode: 0, stderr: "" };
+    });
+    const queue = new DispatchQueue(
+      config,
+      monitor,
+      sandbox,
+      realRoot,
+      { db, projectId },
+      undefined,
+      undefined,
+      {
+        worker: {
+          launchPhaseShip,
+          inspectRecoveredWork: vi.fn(),
+          cleanupStaleSandbox: vi.fn(),
+        },
+        notifier: {
+          notify: async () => {
+            sending = true;
+            await sendPending;
+            sending = false;
+            return {
+              delivered: true,
+              channelId: "C_DURABLE",
+              messageTs: "1731320099.000123",
+            };
+          },
+        },
+        heartbeatIntervalMs: null,
+      },
+    );
+    try {
+      queue.accept({
+        projectId,
+        featureId: "049-durable",
+        phaseId: "phase-01",
+      });
+      await vi.waitFor(() => expect(launchPhaseShip).toHaveBeenCalledOnce());
+      const closedWhileSending = queue.close().then(() => sending);
+      finishWorker();
+      await new Promise<void>((resolve) => setImmediate(resolve));
+      finishSend();
+      expect(await closedWhileSending).toBe(false);
+      const notices = db
+        .prepare(
+          "SELECT event_type, status FROM notification_outbox WHERE project_id = ? AND feature_id = ? AND phase_id = ?",
+        )
+        .all(projectId, "049-durable", "phase-01");
+      expect(notices).toEqual([
+        expect.objectContaining({
+          event_type: "review_ready",
+          status: expect.stringMatching(
+            /^(pending|sending|uncertain|delivered)$/,
+          ),
+        }),
+      ]);
+    } finally {
+      finishWorker();
+      finishSend();
+      await queue.close();
+      db.close();
+    }
+  });
+
   it("keeps scheduled work accepted when the queue closes before the next turn", async () => {
     const { realRoot, db, projectId, store, config, monitor, sandbox } =
       setupDurableEnv();

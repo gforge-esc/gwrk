@@ -283,7 +283,10 @@ describe("durable HTTP ingress", () => {
     }
   });
 
-  async function verifyActionAck(actionId: string) {
+  async function verifyActionAck(
+    actionId: string,
+    retryAfterAckFailure = false,
+  ) {
     const tempRoot = mkdtempSync(join(tmpdir(), "gwrk-durable-slack-act-"));
     tempDirs.push(tempRoot);
     const repoRoot = initTestRepo(
@@ -412,6 +415,67 @@ describe("durable HTTP ingress", () => {
         ],
       };
 
+      if (retryAfterAckFailure) {
+        try {
+          const request = { projectId, featureId, phaseId: "phase-04" };
+          await expect(
+            actionHandlers[actionId]({
+              ack: vi.fn().mockRejectedValue(new Error("ack transport closed")),
+              body,
+              client: { chat },
+              logger: { error: vi.fn() },
+            }),
+          ).rejects.toThrow("ack transport closed");
+          const accepted = store.getDispatchOperation(request);
+          expect(accepted).toMatchObject({
+            status: "accepted",
+            attemptCount: 0,
+          });
+          finishPrior();
+          await new Promise<void>((resolve) => setImmediate(resolve));
+          expect(launchPhaseShip).not.toHaveBeenCalled();
+
+          const deniedAck = vi.fn().mockResolvedValue(undefined);
+          await actionHandlers[actionId]({
+            ack: deniedAck,
+            body: { ...body, user: { id: "U_UNAUTHORIZED_REPLAY" } },
+            client: { chat },
+            logger: { error: vi.fn() },
+          });
+          expect(deniedAck).toHaveBeenCalledOnce();
+          queue.resume();
+          await new Promise<void>((resolve) => setImmediate(resolve));
+          expect(store.getDispatchOperation(request)).toMatchObject({
+            operationId: accepted?.operationId,
+            status: "accepted",
+            attemptCount: 0,
+          });
+          expect(launchPhaseShip).not.toHaveBeenCalled();
+
+          const replayAck = vi.fn().mockResolvedValue(undefined);
+          await actionHandlers[actionId]({
+            ack: replayAck,
+            body,
+            client: { chat },
+            logger: { error: vi.fn() },
+          });
+          expect(replayAck).toHaveBeenCalledOnce();
+          queue.resume();
+          await vi.waitFor(() =>
+            expect(store.getDispatchOperation(request)).toMatchObject({
+              operationId: accepted?.operationId,
+              status: "completed",
+              attemptCount: 1,
+            }),
+          );
+          expect(launchPhaseShip).toHaveBeenCalledOnce();
+        } finally {
+          finishPrior();
+          await queue.close();
+        }
+        return;
+      }
+
       await actionHandlers[actionId]({
         ack,
         body,
@@ -463,7 +527,12 @@ describe("durable HTTP ingress", () => {
 
   it.each(["retry_phase", "request_changes"])(
     "persists %s and waits for ack before launch",
-    verifyActionAck,
+    (actionId) => verifyActionAck(actionId),
+  );
+
+  it.each(["retry_phase", "request_changes"])(
+    "releases the original %s operation after a successful acknowledgment on replay",
+    (actionId) => verifyActionAck(actionId, true),
   );
 
   it("rolls back Slack action claim and skips ack() if durable dispatch persistence fails", async () => {
