@@ -201,6 +201,8 @@ The CLI review regression dispatches the workflow selected by the project’s re
 
 The selected workflow tests also cover a review workflow installed only in the project. Changes to active code or acceptance review steps in the strategy manifest must expire the review pin. The [review of a6b4ba07](evidence/code-review-phase-05-a6b4ba07.md) records the failures.
 
+The [review of 3d0a8fae](evidence/code-review-phase-05-3d0a8fae.md) adds four TR-014 cases. A catalog change must expire a pin even when the local evaluation bundle is absent. Editing the active research methodology prompt must stop pinned dispatch. Ship must use the review role’s backend when it differs from the implementation backend. A specification dry run must show the qualified model and effort.
+
 #### Done When
 
 ```bash

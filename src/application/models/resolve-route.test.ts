@@ -8,6 +8,7 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { FixtureRunner } from "../../adapters/models/fixture-runner.js";
+import { createRouteLockStore } from "../../adapters/models/route-lock-store.js";
 import { runCli } from "../../cli.js";
 import { implementAction } from "../../commands/implement.js";
 import { researchCommandHandler } from "../../commands/research.js";
@@ -19,6 +20,7 @@ import {
 } from "../../domain/model-qualification.js";
 import { PlanStore } from "../../engine/plan-store.js";
 import { resolveWorkspacePolicyRoots } from "../../engine/profile-detector.js";
+import { ShipOrchestrator } from "../../engine/ship-orchestrator.js";
 import { resolveReviewPlugin } from "../../plugins/review-plugin.js";
 import { resolveEnforcementSkills } from "../../plugins/skill-runtime.js";
 import { WorkflowRuntime } from "../../plugins/workflow-runtime.js";
@@ -621,6 +623,37 @@ describe("TR-014: resolveQualifiedRoute", () => {
     );
   });
 
+  it("expires a store-backed pin after catalog drift without a local evaluation bundle", async () => {
+    const root = createTempProject({ project: { name: "gwrk" } });
+    const store = createRouteLockStore(root);
+    const snapshot = makeSnapshot();
+    await store.writeDiscoverySnapshot(SCOPE, snapshot);
+    const evidence = {
+      ...makePin().evidence,
+      snapshotHash: createHash("sha256")
+        .update(JSON.stringify(await store.readDiscoverySnapshot(SCOPE)))
+        .digest("hex"),
+    };
+    await store.writeRouteLockAtomic(SCOPE, {
+      document: makeRouteLock({ evidence, fallbackRoutes: [] }),
+      expectedIncumbentDigest: null,
+    });
+    const resolve = () =>
+      resolveQualifiedRouteFromStore(
+        { store, runner: { computeSuiteHashes: async () => evidence } },
+        { role: "define", scope: SCOPE },
+      );
+    expect((await resolve()).status).toBe("pinned");
+    const changed = makeSnapshot({
+      adapters: snapshot.adapters.filter(({ backend }) => backend !== "agy"),
+    });
+    expect(eligibleRoutesDigest(changed, SCOPE)).not.toEqual(
+      eligibleRoutesDigest(snapshot, SCOPE),
+    );
+    await store.writeDiscoverySnapshot(SCOPE, changed);
+    expect((await resolve()).status).toBe("stale");
+  });
+
   it("replays fallback evaluation bundles from RouteLockStorePort before admitting fallbacks", async () => {
     const snapshot = makeSnapshot();
     const lock = makeRouteLock();
@@ -903,6 +936,62 @@ describe("TR-014: resolveQualifiedRoute", () => {
     },
   );
 
+  it("uses the review role's backend when ship selected another backend for implementation", async () => {
+    const root = createTempProject({ project: { name: "gwrk" } });
+    const evidence = await projectEvidence(root);
+    const implement = makePin({
+      role: "implement",
+      evidence,
+      fallbackRoutes: [],
+    });
+    const review = makePin({
+      role: "review",
+      backend: "claude",
+      provider: "anthropic",
+      family: "claude-4",
+      modelId: "claude-opus-4-6",
+      toolVersions: fallbackFingerprints("claude", evidence).toolVersions,
+      fallbackRoutes: [],
+      evidence: { ...evidence, evaluationId: "eval-claude-review" },
+    });
+    await createRouteLockStore(root).writeRouteLockAtomic(SCOPE, {
+      document: makeRouteLock({}, { routes: { implement, review } }),
+      expectedIncumbentDigest: null,
+    });
+    expect(resolveRoleAgent("review", root).backend).toBe(review.backend);
+    const dispatch = vi
+      .spyOn(agentTransport, "dispatchToAgent")
+      .mockResolvedValue({
+        stdout: "",
+        stderr: "",
+        exitCode: 0,
+        durationS: 0,
+      });
+    const ship = new ShipOrchestrator({
+      cwd: root,
+      featureId: "001-qualification",
+      phaseId: "phase-01",
+      backend: implement.backend,
+      maxIterations: 1,
+      ciTimeout: 1,
+    });
+    const { codeReviewWorkflow } = await resolveReviewPlugin(root);
+    // biome-ignore lint/complexity/useLiteralKeys: Exercise one dispatch without starting the ship loop.
+    await ship["runNativeWorkflow"](
+      codeReviewWorkflow,
+      "Review the phase",
+      "review",
+    );
+    expect(dispatch).toHaveBeenCalledWith(
+      expect.objectContaining({
+        agent: review.backend,
+        model: review.modelId,
+        effort: review.effort,
+        routeMode: "pinned",
+      }),
+    );
+  });
+
   it("fingerprints a selected workflow installed only in the project", async () => {
     const root = createTempProject({ project: { name: "gwrk" } });
     const reviews = path.join(root, ".gwrk/plugins/reviews");
@@ -1169,6 +1258,75 @@ describe("TR-014: resolveQualifiedRoute", () => {
       routeMode: "provider-default",
       model: undefined,
     });
+  });
+
+  it("stops pinned research when its selected methodology prompt changes", async () => {
+    const root = createTempProject({ project: { name: "gwrk" } });
+    const name = "gwrk-research-technical";
+    const installation = path.join(root, "installation");
+    vi.stubEnv("GWRK_HOME", installation);
+    const workflow = path.join(installation, "plugins/workflows", name);
+    fs.mkdirSync(workflow, { recursive: true });
+    fs.copyFileSync(
+      path.resolve("src/plugins/builtins/workflows", name, "manifest.yaml"),
+      path.join(workflow, "manifest.yaml"),
+    );
+    const prompt = path.join(workflow, "PROMPT.md");
+    fs.writeFileSync(prompt, "Research the original technical question.");
+    const evidence = await projectEvidence(root);
+    await createRouteLockStore(root).writeRouteLockAtomic(SCOPE, {
+      document: makeRouteLock({ evidence }),
+      expectedIncumbentDigest: null,
+    });
+    vi.spyOn(process, "cwd").mockReturnValue(root);
+    const dispatch = vi
+      .spyOn(agentTransport, "dispatchToAgent")
+      .mockResolvedValue({
+        stdout: '{"summary":"done","intents":[]}',
+        stderr: "",
+        exitCode: 0,
+        durationS: 0,
+      });
+    const research = () =>
+      researchCommandHandler({ initiative: "qualification", run: true });
+    await research();
+    expect(dispatch).toHaveBeenCalledWith(
+      expect.objectContaining({
+        routeMode: "pinned",
+        stdin: expect.stringContaining(
+          "Research the original technical question.",
+        ),
+      }),
+    );
+    fs.writeFileSync(prompt, "Research the revised technical question.");
+    await expect(research()).rejects.toThrow(/stale|requalif/i);
+    expect(dispatch).toHaveBeenCalledTimes(1);
+  });
+
+  it("shows the qualified model and effort in the specification dry run", async () => {
+    const root = createTempProject({ project: { name: "gwrk" } });
+    const feature = "001-qualification";
+    fs.mkdirSync(path.join(root, "specs", feature), { recursive: true });
+    const evidence = await projectEvidence(root);
+    const pin = makePin({ evidence });
+    await createRouteLockStore(root).writeRouteLockAtomic(SCOPE, {
+      document: makeRouteLock({ evidence }),
+      expectedIncumbentDigest: null,
+    });
+    vi.spyOn(process, "cwd").mockReturnValue(root);
+    const dispatch = vi.spyOn(agentTransport, "dispatchToAgent");
+    const output: string[] = [];
+    const code = await runCli(
+      ["define", "spec", feature, "Write a specification", "--dry-run"],
+      {
+        stdout: (chunk) => output.push(chunk),
+        stderr: (chunk) => output.push(chunk),
+      },
+    );
+    expect(code).toBe(0);
+    expect(dispatch).not.toHaveBeenCalled();
+    expect(output.join("")).toContain(pin.modelId);
+    expect(output.join("")).toContain(pin.effort);
   });
 
   it("dispatches a qualified research command and rejects later project changes", async () => {
