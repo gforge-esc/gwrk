@@ -2,8 +2,13 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import { execFileSync } from "node:child_process";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import fastify from "fastify";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { computeProjectId } from "../domain/project-id.js";
 import type {
   EnrolledProject,
   SlackFeatureThread,
@@ -463,5 +468,108 @@ describe("FR-H01/FR-H09/TC-H01: Webhook Handler", () => {
         closed_at: "2026-11-18T03:00:00Z",
       }),
     );
+  });
+
+  it("T033 regression: fails closed when enrolled checkout is replaced by another repo and normalizes expectedRepository to host/owner/repo", async () => {
+    const tmpBase = fs.mkdtempSync(path.join(os.tmpdir(), "gwrk-gh-reg-"));
+    const alphaDir = path.join(tmpBase, "alpha");
+    fs.mkdirSync(alphaDir, { recursive: true });
+    try {
+      execFileSync("git", ["init"], { cwd: alphaDir, stdio: "ignore" });
+      // Checkout at alphaDir actually points to org/beta instead of org/alpha
+      execFileSync(
+        "git",
+        ["remote", "add", "origin", "https://github.com/org/beta.git"],
+        { cwd: alphaDir, stdio: "ignore" },
+      );
+
+      const alphaProject: EnrolledProject = {
+        ...enrolledProject,
+        projectId: computeProjectId({
+          projectRoot: alphaDir,
+          remoteOriginUrl: "https://github.com/org/alpha.git",
+        }),
+        slug: "alpha",
+        repoSlug: "org/alpha",
+        trunkBranch: "main",
+        localRoot: alphaDir,
+        mirrorPath: null,
+      };
+      const registry = makeRegistry([alphaProject]);
+      const vcs = {
+        resolvePullRequestUrl: vi
+          .fn()
+          .mockResolvedValue("https://github.com/org/alpha/pull/50"),
+      } as unknown as VcsPort;
+
+      const server = fastify();
+      await githubWebhookPlugin(server, {
+        config: mockConfig,
+        projectRoot: "/fallback",
+        registry,
+        vcs,
+      });
+
+      const replacedRes = await server.inject({
+        method: "POST",
+        url: "/webhook/github",
+        headers: { "x-github-event": "pull_request" },
+        payload: {
+          action: "closed",
+          repository: { full_name: "org/alpha" },
+          pull_request: {
+            number: 50,
+            merged: true,
+            head: { ref: "feat/048-shared-phase-01" },
+            base: { ref: "main" },
+          },
+        },
+      });
+
+      expect(replacedRes.statusCode).toBe(200);
+      expect(replacedRes.json()).toMatchObject({
+        status: "ignored",
+        reason: "unverified_checkout",
+      });
+      expect(vcs.resolvePullRequestUrl).not.toHaveBeenCalled();
+      expect(syncTrunkForHarvestMock).not.toHaveBeenCalled();
+      expect(harvestFeatureMock).not.toHaveBeenCalled();
+
+      // Restore Alpha's real origin and verify expectedRepository carries github.com/ prefix
+      execFileSync(
+        "git",
+        ["remote", "set-url", "origin", "https://github.com/org/alpha.git"],
+        { cwd: alphaDir, stdio: "ignore" },
+      );
+
+      const validRes = await server.inject({
+        method: "POST",
+        url: "/webhook/github",
+        headers: { "x-github-event": "pull_request" },
+        payload: {
+          action: "closed",
+          repository: { full_name: "org/alpha" },
+          pull_request: {
+            number: 50,
+            merged: true,
+            head: { ref: "feat/048-shared-phase-01" },
+            base: { ref: "main" },
+          },
+        },
+      });
+
+      expect(validRes.statusCode).toBe(200);
+      expect(vcs.resolvePullRequestUrl).toHaveBeenCalledWith(
+        fs.realpathSync(alphaDir),
+        expect.objectContaining({
+          prNumber: 50,
+          headBranch: "feat/048-shared-phase-01",
+          expectedRepository: "github.com/org/alpha",
+        }),
+      );
+      await server.close();
+    } finally {
+      fs.rmSync(tmpBase, { recursive: true, force: true });
+    }
   });
 });

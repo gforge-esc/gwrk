@@ -336,4 +336,150 @@ describe("status routes (FR-003, FR-004, FR-005, FR-006, TR-020)", () => {
       await localServer.close();
     }
   });
+
+  it("TR-020 regression: excludes another project's active sandbox even when it lives under the daemon checkout's .runs/sandboxes directory", async () => {
+    const alphaDispatch: DispatchRecord = {
+      id: "disp-alpha-1",
+      projectId: "proj-alpha",
+      featureId: "048-shared",
+      phaseId: "phase-01",
+      backend: "claude",
+      status: "running",
+      branchName: "feat/048-shared-phase-01",
+      projectRoot: "/repos/alpha",
+      trunkBranch: "main",
+      workDir: "/repos/alpha/.runs/sandboxes/048-shared-ship-aaa11111",
+      attempts: [],
+      tasks: [],
+      createdAt: "2026-11-18T00:00:00.000Z",
+    };
+    const betaDispatch: DispatchRecord = {
+      id: "disp-beta-1",
+      projectId: "proj-beta",
+      featureId: "048-shared",
+      phaseId: "phase-01",
+      backend: "agy",
+      status: "running",
+      branchName: "feat/048-shared-phase-01",
+      projectRoot: "/repos/beta",
+      trunkBranch: "release",
+      // Real SandboxManager creates worktrees under daemonRoot/.runs/sandboxes/
+      workDir: "/repos/alpha/.runs/sandboxes/048-shared-ship-bbb22222",
+      attempts: [],
+      tasks: [],
+      createdAt: "2026-11-18T00:00:00.000Z",
+    };
+
+    const monitor = {
+      getResources: vi
+        .fn()
+        .mockReturnValue({ cpuPercent: 10, memPercent: 20, diskFreeGb: 50 }),
+    } as unknown as SystemMonitor;
+    const lifecycle = {
+      getStatus: vi.fn().mockReturnValue("ready"),
+    } as unknown as LifecycleMonitor;
+    const network = {
+      getStatus: vi.fn().mockReturnValue("online"),
+    } as unknown as NetworkMonitor;
+    const queue = {
+      getQueue: vi.fn((projectId?: string) => ({
+        active:
+          projectId === "proj-alpha"
+            ? [alphaDispatch]
+            : projectId === "proj-beta"
+              ? [betaDispatch]
+              : [alphaDispatch, betaDispatch],
+        queued: [],
+        throttled: false,
+        paused: false,
+      })),
+      getQueueDepth: vi.fn().mockReturnValue(0),
+      getActiveCount: vi.fn().mockReturnValue(1),
+      getCompletedCount: vi.fn().mockReturnValue(0),
+      getFailedCount: vi.fn().mockReturnValue(0),
+    } as unknown as DispatchQueue;
+
+    // SandboxManager.listSandboxes() does NOT populate projectId
+    const allSandboxes: SandboxInfo[] = [
+      {
+        workDir: "/repos/alpha/.runs/sandboxes/048-shared-ship-aaa11111",
+        taskId: "ship",
+        featureId: "048-shared",
+        phaseId: "phase-01",
+        backend: "claude",
+        status: "running",
+        startedAt: "2026-11-18T00:00:00.000Z",
+      },
+      {
+        workDir: "/repos/alpha/.runs/sandboxes/048-shared-ship-bbb22222",
+        taskId: "ship",
+        featureId: "048-shared",
+        phaseId: "phase-01",
+        backend: "agy",
+        status: "running",
+        startedAt: "2026-11-18T00:00:00.000Z",
+      },
+    ];
+    const sandbox = {
+      listSandboxes: vi.fn().mockResolvedValue(allSandboxes),
+    } as unknown as SandboxManager;
+
+    const registry = makeRegistry(
+      [alphaProject, betaProject],
+      [
+        {
+          projectId: "proj-alpha",
+          principalType: "google_sub",
+          principalId: "iss:alpha-viewer",
+          role: "viewer",
+        },
+        {
+          projectId: "proj-beta",
+          principalType: "google_sub",
+          principalId: "iss:beta-viewer",
+          role: "viewer",
+        },
+      ],
+    );
+
+    const server = fastify();
+    await statusRoutes(server, monitor, queue, sandbox, lifecycle, network, {
+      registry,
+      transport: "hosted",
+      resolvePrincipal: (req) => {
+        const verified = req.headers["x-verified-test-sub"];
+        return typeof verified === "string"
+          ? { principalType: "google_sub", principalId: verified }
+          : undefined;
+      },
+    });
+
+    try {
+      const alphaRes = await server.inject({
+        method: "GET",
+        url: "/api/status?projectId=proj-alpha",
+        headers: { "x-verified-test-sub": "iss:alpha-viewer" },
+      });
+      expect(alphaRes.statusCode).toBe(200);
+      expect(alphaRes.json().sandboxes).toEqual([
+        expect.objectContaining({
+          workDir: "/repos/alpha/.runs/sandboxes/048-shared-ship-aaa11111",
+        }),
+      ]);
+
+      const betaRes = await server.inject({
+        method: "GET",
+        url: "/api/status?projectId=proj-beta",
+        headers: { "x-verified-test-sub": "iss:beta-viewer" },
+      });
+      expect(betaRes.statusCode).toBe(200);
+      expect(betaRes.json().sandboxes).toEqual([
+        expect.objectContaining({
+          workDir: "/repos/alpha/.runs/sandboxes/048-shared-ship-bbb22222",
+        }),
+      ]);
+    } finally {
+      await server.close();
+    }
+  });
 });

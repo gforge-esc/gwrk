@@ -2,7 +2,12 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import { execFileSync } from "node:child_process";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { computeProjectId } from "../domain/project-id.js";
 import type {
   EnrolledProject,
   SlackFeatureThread,
@@ -294,5 +299,108 @@ describe("HarvestWatcher multi-project enrollment (T034)", () => {
       undefined,
       { cwd: "/mirrors/alpha" },
     );
+  });
+
+  it("T034 regression: skips enrolled projects whose checkout fails verification and ignores stale cross-channel threads", async () => {
+    const tmpBase = fs.mkdtempSync(path.join(os.tmpdir(), "gwrk-hw-reg-"));
+    const replacedAlphaDir = path.join(tmpBase, "alpha");
+    const validBetaDir = path.join(tmpBase, "beta");
+    fs.mkdirSync(replacedAlphaDir, { recursive: true });
+    fs.mkdirSync(validBetaDir, { recursive: true });
+    try {
+      execFileSync("git", ["init"], {
+        cwd: replacedAlphaDir,
+        stdio: "ignore",
+      });
+      execFileSync(
+        "git",
+        ["remote", "add", "origin", "https://github.com/org/beta.git"],
+        { cwd: replacedAlphaDir, stdio: "ignore" },
+      );
+
+      execFileSync("git", ["init"], { cwd: validBetaDir, stdio: "ignore" });
+      execFileSync(
+        "git",
+        ["remote", "add", "origin", "https://github.com/org/beta.git"],
+        { cwd: validBetaDir, stdio: "ignore" },
+      );
+
+      const alphaEnrolled: EnrolledProject = {
+        ...alphaProject,
+        projectId: computeProjectId({
+          projectRoot: replacedAlphaDir,
+          remoteOriginUrl: "https://github.com/org/alpha.git",
+        }),
+        localRoot: replacedAlphaDir,
+        mirrorPath: null,
+      };
+      const betaEnrolled: EnrolledProject = {
+        ...betaProject,
+        projectId: computeProjectId({
+          projectRoot: validBetaDir,
+          remoteOriginUrl: "https://github.com/org/beta.git",
+        }),
+        localRoot: validBetaDir,
+        mirrorPath: null,
+      };
+      const staleBetaThread: SlackFeatureThread = {
+        projectId: betaEnrolled.projectId,
+        featureId: "048-shared",
+        workspaceId: "W-BETA",
+        channelId: "C-OLD-UNBOUND",
+        rootTs: "1700000999.000100",
+        updatedAt: "2026-11-18T00:00:00.000Z",
+      };
+
+      const registry = makeRegistry([alphaEnrolled, betaEnrolled], {
+        [`${betaEnrolled.projectId}:048-shared`]: staleBetaThread,
+      });
+      const listPullRequests = vi.fn().mockResolvedValue([
+        {
+          number: 91,
+          headRefName: "feat/048-shared-phase-01",
+          mergedAt: "2026-11-18T02:00:00.000Z",
+          closedAt: "2026-11-18T02:00:00.000Z",
+          state: "MERGED",
+          mergeCommit: { oid: "sha-beta" },
+          url: "https://github.com/org/beta/pull/91",
+        },
+      ]);
+      const harvest = vi.fn().mockResolvedValue(undefined);
+      const syncTrunk = vi.fn();
+
+      const watcher = new HarvestWatcher(baseConfig, null, "/fallback", {
+        registry,
+        listPullRequests,
+        harvest,
+        syncTrunk,
+      });
+
+      await watcher.runCheck();
+
+      expect(listPullRequests).toHaveBeenCalledTimes(1);
+      expect(listPullRequests).toHaveBeenCalledWith(
+        expect.objectContaining({
+          projectId: betaEnrolled.projectId,
+          projectRoot: fs.realpathSync(validBetaDir),
+        }),
+      );
+      expect(harvest).toHaveBeenCalledTimes(1);
+      expect(harvest).toHaveBeenCalledWith(
+        fs.realpathSync(validBetaDir),
+        expect.objectContaining({
+          projectId: betaEnrolled.projectId,
+          recipient: {
+            projectId: betaEnrolled.projectId,
+            surface: "slack",
+            workspaceId: "W-BETA",
+            channelId: "C-BETA",
+            threadTs: undefined,
+          },
+        }),
+      );
+    } finally {
+      fs.rmSync(tmpBase, { recursive: true, force: true });
+    }
   });
 });

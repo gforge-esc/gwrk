@@ -516,4 +516,90 @@ describe("DispatchQueue (unified ship engine)", () => {
       }),
     );
   });
+
+  it("TR-017 regression: rejects unenrolled projectId and conflicting recipient.projectId, and canonicalizes slug recipient.projectId", () => {
+    const alphaProject: EnrolledProject = {
+      projectId: "proj-alpha",
+      slug: "alpha",
+      name: "Alpha",
+      repoSlug: "org/alpha",
+      trunkBranch: "main",
+      localRoot: "/repos/alpha",
+      mirrorPath: "/mirrors/alpha",
+      runnerPolicy: { allowedKinds: ["local", "hosted"] },
+      slack: {
+        workspaceId: "W-ALPHA",
+        channelId: "C-ALPHA",
+        sharedChannel: false,
+      },
+      legacyProjectIds: [],
+      createdAt: "2026-11-18T00:00:00.000Z",
+      updatedAt: "2026-11-18T00:00:00.000Z",
+    };
+    const registry: ProjectRegistryPort = {
+      enrollProject: (p) => p,
+      getProject: (id) =>
+        id === "proj-alpha" || id === "alpha" ? alphaProject : null,
+      findByRepoSlug: () => null,
+      findByLocalRoot: () => null,
+      listBySlackChannel: () => [],
+      listProjects: () => [alphaProject],
+      setRoleBinding: () => {},
+      listRoleBindings: () => [],
+      getFeatureThread: () => null,
+      bindFeatureThread: (t) => t,
+      getActionReceipt: () => null,
+      claimActionReceipt: () => true,
+      completeActionReceipt: () => true,
+      close: () => {},
+    };
+
+    mockMonitor.isThrottled.mockReturnValue(true);
+    const scopedQueue = new DispatchQueue(
+      mockConfig,
+      mockMonitor,
+      mockSandbox,
+      projectRoot,
+      registry,
+    );
+
+    // Unenrolled projectId must fail closed instead of falling back to daemon projectRoot
+    expect(() =>
+      scopedQueue.enqueue({
+        projectId: "proj-unknown",
+        featureId: "048-shared",
+        phaseId: "phase-01",
+      }),
+    ).toThrow();
+
+    // Conflicting request.projectId and recipient.projectId must fail closed
+    expect(() =>
+      scopedQueue.enqueue({
+        projectId: "proj-alpha",
+        featureId: "048-shared",
+        phaseId: "phase-01",
+        recipient: {
+          projectId: "proj-beta",
+          surface: "slack",
+          workspaceId: "W-BETA",
+          channelId: "C-BETA",
+        },
+      }),
+    ).toThrow();
+
+    // Slug selector with matching slug recipient.projectId must canonicalize recipient.projectId
+    const slugRecord = scopedQueue.enqueue({
+      projectId: "alpha",
+      featureId: "048-shared",
+      phaseId: "phase-01",
+      recipient: {
+        projectId: "alpha",
+        surface: "slack",
+        workspaceId: "W-ALPHA",
+        channelId: "C-ALPHA",
+      },
+    });
+    expect(slugRecord.projectId).toBe("proj-alpha");
+    expect(slugRecord.recipient?.projectId).toBe("proj-alpha");
+  });
 });

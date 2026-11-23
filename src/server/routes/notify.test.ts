@@ -466,4 +466,100 @@ describe("notify routes (FR-003, FR-005, FR-007, TR-018)", () => {
       await localServer.close();
     }
   });
+
+  it("TR-018 regression: rejects cross-channel, cross-workspace, and ops/feature channel-mismatched caller recipients", async () => {
+    const registry = makeRegistry(
+      [alphaHostedProject],
+      [
+        {
+          projectId: "proj-alpha",
+          principalType: "google_sub",
+          principalId: "iss:operator",
+          role: "operator",
+        },
+      ],
+    );
+
+    const hostedServer = fastify();
+    await notifyRoutes(hostedServer, {
+      registry,
+      transport: "hosted",
+      resolvePrincipal: (req) => {
+        const verified = req.headers["x-verified-test-sub"];
+        return typeof verified === "string"
+          ? { principalType: "google_sub", principalId: verified }
+          : undefined;
+      },
+    });
+
+    try {
+      const spy = vi.spyOn(slackNotify, "notifySlack");
+
+      // Alpha operator attempting to hijack Beta's channel via recipient.channelId -> 403
+      const crossChannel = await hostedServer.inject({
+        method: "POST",
+        url: "/api/notify",
+        headers: { "x-verified-test-sub": "iss:operator" },
+        payload: {
+          type: "done_done",
+          feature: "048-shared",
+          projectId: "proj-alpha",
+          recipient: {
+            projectId: "proj-alpha",
+            surface: "slack",
+            workspaceId: "W-ALPHA",
+            channelId: "C-BETA",
+            threadTs: "1700000999.000100",
+          },
+        },
+      });
+      expect(crossChannel.statusCode).toBe(403);
+      expect(crossChannel.json().code).toBe("THREAD_PROJECT_MISMATCH");
+
+      // Alpha operator attempting to target another workspace -> 403
+      const crossWorkspace = await hostedServer.inject({
+        method: "POST",
+        url: "/api/notify",
+        headers: { "x-verified-test-sub": "iss:operator" },
+        payload: {
+          type: "done_done",
+          feature: "048-shared",
+          projectId: "proj-alpha",
+          recipient: {
+            projectId: "proj-alpha",
+            surface: "slack",
+            workspaceId: "W-OTHER",
+            channelId: "C-ALPHA",
+          },
+        },
+      });
+      expect(crossWorkspace.statusCode).toBe(403);
+      expect(crossWorkspace.json().code).toBe("THREAD_PROJECT_MISMATCH");
+
+      // opsOnly notification targeting feature channel instead of opsChannelId -> 403
+      const wrongOpsChannel = await hostedServer.inject({
+        method: "POST",
+        url: "/api/notify",
+        headers: { "x-verified-test-sub": "iss:operator" },
+        payload: {
+          type: "done_done",
+          feature: "048-shared",
+          projectId: "proj-alpha",
+          opsOnly: true,
+          recipient: {
+            projectId: "proj-alpha",
+            surface: "slack",
+            workspaceId: "W-ALPHA",
+            channelId: "C-ALPHA",
+          },
+        },
+      });
+      expect(wrongOpsChannel.statusCode).toBe(403);
+      expect(wrongOpsChannel.json().code).toBe("THREAD_PROJECT_MISMATCH");
+
+      expect(spy).not.toHaveBeenCalled();
+    } finally {
+      await hostedServer.close();
+    }
+  });
 });

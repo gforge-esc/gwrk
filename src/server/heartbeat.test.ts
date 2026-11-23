@@ -2,7 +2,13 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import { execFileSync } from "node:child_process";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import type { App } from "@slack/bolt";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { computeProjectId } from "../domain/project-id.js";
 import type { EnrolledProject } from "../domain/project-registry.js";
 import type { PlanStore } from "../engine/plan-store.js";
 import type { NotificationPort } from "../ports/notification-port.js";
@@ -215,5 +221,76 @@ describe("PlanHeartbeat per-project ops health (T035)", () => {
         }),
       }),
     );
+  });
+
+  it("T035 regression: skips enrolled projects with replaced checkouts and never falls back to feature channelId in legacy mode", async () => {
+    const tmpBase = fs.mkdtempSync(path.join(os.tmpdir(), "gwrk-hb-reg-"));
+    const replacedAlphaDir = path.join(tmpBase, "alpha");
+    fs.mkdirSync(replacedAlphaDir, { recursive: true });
+    try {
+      execFileSync("git", ["init"], {
+        cwd: replacedAlphaDir,
+        stdio: "ignore",
+      });
+      execFileSync(
+        "git",
+        ["remote", "add", "origin", "https://github.com/org/beta.git"],
+        { cwd: replacedAlphaDir, stdio: "ignore" },
+      );
+
+      const alphaEnrolled: EnrolledProject = {
+        ...alphaProject,
+        projectId: computeProjectId({
+          projectRoot: replacedAlphaDir,
+          remoteOriginUrl: "https://github.com/org/alpha.git",
+        }),
+        localRoot: replacedAlphaDir,
+        mirrorPath: null,
+      };
+      const store = makeStalePlanStore("P-ALPHA");
+      const createPlanStore = vi.fn().mockReturnValue(store);
+      const notifier: NotificationPort = {
+        notify: vi.fn().mockResolvedValue({ delivered: true }),
+      };
+      const registry = makeRegistry([alphaEnrolled]);
+
+      const heartbeat = new PlanHeartbeat(baseConfig, null, "/fallback", {
+        registry,
+        notifier,
+        createPlanStore,
+      });
+
+      await heartbeat.runCheck();
+
+      expect(createPlanStore).not.toHaveBeenCalledWith(alphaEnrolled.projectId);
+      expect(store.updatePhase).not.toHaveBeenCalled();
+      expect(notifier.notify).not.toHaveBeenCalled();
+
+      // Legacy fallback without opsChannelId must NOT post to feature channelId
+      const postMessage = vi.fn().mockResolvedValue({ ok: true });
+      const fakeSlackApp = {
+        client: { chat: { postMessage } },
+      } as unknown as App;
+      const featureOnlyConfig = {
+        project: {
+          name: "feature-only",
+          slack: { channelId: "C-FEATURE-ONLY" },
+        },
+      } as unknown as GwrkConfig;
+      const legacyStore = makeStalePlanStore("P-LEGACY");
+      const legacyHeartbeat = new PlanHeartbeat(
+        featureOnlyConfig,
+        fakeSlackApp,
+        replacedAlphaDir,
+        {
+          createPlanStore: () => legacyStore,
+        },
+      );
+
+      await legacyHeartbeat.runCheck();
+      expect(postMessage).not.toHaveBeenCalled();
+    } finally {
+      fs.rmSync(tmpBase, { recursive: true, force: true });
+    }
   });
 });
