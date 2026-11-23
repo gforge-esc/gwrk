@@ -18,8 +18,10 @@ import { openDatabase } from "../db/index.js";
 import type { GwrkConfig } from "../utils/config.js";
 import { githubWebhookPlugin } from "./github.js";
 
+const FIXTURE_SECRET = "synthetic-webhook-secret";
+
 const mockConfig = {
-  server: {},
+  server: { githubWebhookSecret: FIXTURE_SECRET },
 } as GwrkConfig;
 
 function signRaw(rawBody: Buffer, secret: string): string {
@@ -36,6 +38,29 @@ function initRepo(root: string, repoSlug: string): string {
     opts,
   );
   return realpathSync(root);
+}
+
+function postSignedWebhook(
+  server: ReturnType<typeof fastify>,
+  request: {
+    method: "POST";
+    url: string;
+    headers: Record<string, string>;
+    payload: unknown;
+  },
+) {
+  const payload = JSON.stringify(request.payload) ?? "null";
+  const signature = `sha256=${createHmac("sha256", FIXTURE_SECRET).update(payload).digest("hex")}`;
+  return server.inject({
+    ...request,
+    payload,
+    headers: {
+      "content-type": "application/json",
+      ...request.headers,
+      "x-hub-signature-256":
+        request.headers["x-hub-signature-256"] ?? signature,
+    },
+  });
 }
 
 describe("FR-H01/FR-H09/TC-H01: Webhook Handler", () => {
@@ -58,18 +83,15 @@ describe("FR-H01/FR-H09/TC-H01: Webhook Handler", () => {
       },
     };
 
-    const response = await server.inject({
+    const response = await postSignedWebhook(server, {
       method: "POST",
       url: "/webhook/github",
       headers: {
         "x-github-event": "pull_request",
-        "x-hub-signature-256": "sha256=invalid-signature-for-red-test",
       },
       payload,
     });
 
-    // Expect 200 even if it ignores some things, but in RED state this might be anything.
-    // For now, testing handler exists and responds.
     expect(response.statusCode).toBe(200);
   });
 
@@ -90,7 +112,7 @@ describe("FR-H01/FR-H09/TC-H01: Webhook Handler", () => {
       },
     };
 
-    const response = await server.inject({
+    const response = await postSignedWebhook(server, {
       method: "POST",
       url: "/webhook/github",
       headers: { "x-github-event": "pull_request" },
@@ -116,7 +138,7 @@ describe("FR-H01/FR-H09/TC-H01: Webhook Handler", () => {
       },
     };
 
-    const response = await server.inject({
+    const response = await postSignedWebhook(server, {
       method: "POST",
       url: "/webhook/github",
       headers: { "x-github-event": "pull_request" },
@@ -142,7 +164,7 @@ describe("FR-H01/FR-H09/TC-H01: Webhook Handler", () => {
       pull_request: { merged: true },
     };
 
-    const response = await server.inject({
+    const response = await postSignedWebhook(server, {
       method: "POST",
       url: "/webhook/github",
       headers: {
@@ -217,59 +239,84 @@ describe("durable GitHub webhook ingress (FR-002, FR-005, TR-002, TR-004)", () =
     };
   }
 
-  it("TR-002 security regression: rejects unsigned enrolled durable intake when no webhook secret is configured", async () => {
-    const { alphaRoot, alphaId, db, registry } = setupDurableFixture();
-    const enrolled = registry.getProject(alphaId);
-    if (!enrolled) throw new Error("Missing synthetic enrollment");
-    registry.enrollProject({
-      ...enrolled,
-      runnerPolicy: { allowedKinds: ["hosted"] },
-    });
-    const server = fastify();
-    try {
-      await githubWebhookPlugin(server, {
-        config: { server: {} } as GwrkConfig,
-        projectRoot: alphaRoot,
-        registry,
-        ledger: { db, projectId: alphaId },
-        autoResume: false,
+  it.each([
+    { label: "absent", secret: undefined },
+    { label: "empty", secret: "" },
+    { label: "whitespace", secret: "   " },
+  ])(
+    "TR-002 security regression: rejects $label secret before enrolled durable intake",
+    async ({ secret }) => {
+      const { alphaRoot, alphaId, db, registry } = setupDurableFixture();
+      const enrolled = registry.getProject(alphaId);
+      if (!enrolled) throw new Error("Missing synthetic enrollment");
+      registry.enrollProject({
+        ...enrolled,
+        runnerPolicy: { allowedKinds: ["hosted"] },
       });
-      const response = await server.inject({
-        method: "POST",
-        url: "/webhook/github",
-        headers: {
-          "x-github-event": "pull_request",
-          "x-github-delivery": "unsigned-enrolled-security-probe",
-        },
-        payload: {
-          action: "closed",
-          repository: { full_name: "org/alpha" },
-          pull_request: {
-            number: 77,
-            html_url: "https://github.com/org/alpha/pull/77",
-            merged: true,
-            merged_at: "2026-11-23T12:05:00Z",
-            merge_commit_sha: "a".repeat(40),
-            head: {
-              ref: "feat/049-durable-phase-01",
-              sha: "b".repeat(40),
-              repo: { full_name: "org/alpha" },
-            },
-            base: { ref: "develop", repo: { full_name: "org/alpha" } },
+      const server = fastify();
+      const payload = {
+        action: "closed",
+        repository: { full_name: "org/alpha" },
+        pull_request: {
+          number: 77,
+          html_url: "https://github.com/org/alpha/pull/77",
+          merged: true,
+          merged_at: "2026-11-23T12:05:00Z",
+          merge_commit_sha: "a".repeat(40),
+          head: {
+            ref: "feat/049-durable-phase-01",
+            sha: "b".repeat(40),
+            repo: { full_name: "org/alpha" },
           },
+          base: { ref: "develop", repo: { full_name: "org/alpha" } },
         },
-      });
-      const operationCount = db.prepare("SELECT COUNT(*) AS count FROM harvest_operations").get() as { count: number };
-      const deliveryCount = db.prepare("SELECT COUNT(*) AS count FROM harvest_deliveries").get() as { count: number };
-      console.info("Unsigned enrolled intake", { statusCode: response.statusCode, body: response.json(), operationCount, deliveryCount });
-      expect.soft(response.statusCode).toBeGreaterThanOrEqual(400);
-      expect.soft(operationCount.count).toBe(0);
-      expect.soft(deliveryCount.count).toBe(0);
-    } finally {
-      await server.close();
-      db.close();
-    }
-  });
+      };
+      try {
+        await githubWebhookPlugin(server, {
+          config: { server: { githubWebhookSecret: secret } } as GwrkConfig,
+          projectRoot: alphaRoot,
+          registry,
+          ledger: { db, projectId: alphaId },
+          autoResume: false,
+        });
+        const response = await server.inject({
+          method: "POST",
+          url: "/webhook/github",
+          headers: {
+            "x-github-event": "pull_request",
+            "x-github-delivery": "unsigned-enrolled-security-probe",
+            ...(secret
+              ? {
+                  "x-hub-signature-256": signRaw(
+                    Buffer.from(JSON.stringify(payload)),
+                    secret,
+                  ),
+                }
+              : {}),
+          },
+          payload,
+        });
+        expect.soft(response.statusCode).toBe(401);
+        expect
+          .soft(
+            db
+              .prepare("SELECT COUNT(*) AS count FROM harvest_operations")
+              .get(),
+          )
+          .toEqual({ count: 0 });
+        expect
+          .soft(
+            db
+              .prepare("SELECT COUNT(*) AS count FROM harvest_deliveries")
+              .get(),
+          )
+          .toEqual({ count: 0 });
+      } finally {
+        await server.close();
+        db.close();
+      }
+    },
+  );
 
   it("TR-002 verifies raw pretty-printed JSON HMAC, persists before HTTP 200, and deduplicates X-GitHub-Delivery", async () => {
     const { alphaRoot, alphaId, db, store } = setupDurableFixture();

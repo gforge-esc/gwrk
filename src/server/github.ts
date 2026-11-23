@@ -241,20 +241,19 @@ export async function githubWebhookPlugin(
         );
 
       // 1. Raw-body HMAC signature verification (FR-H01, TC-H03, FR-002)
-      if (config.server.githubWebhookSecret) {
-        if (!signature) {
-          return reply.status(401).send({ error: "Missing signature" });
-        }
-
-        if (
-          !githubPort.verifyWebhookSignature(
-            rawBody,
-            signature,
-            config.server.githubWebhookSecret,
-          )
-        ) {
-          return reply.status(401).send({ error: "Invalid signature" });
-        }
+      const webhookSecret = config.server.githubWebhookSecret;
+      if (!webhookSecret?.trim()) {
+        return reply.status(401).send({
+          error: "GitHub webhook is disabled: secret is not configured",
+        });
+      }
+      if (!signature) {
+        return reply.status(401).send({ error: "Missing signature" });
+      }
+      if (
+        !githubPort.verifyWebhookSignature(rawBody, signature, webhookSecret)
+      ) {
+        return reply.status(401).send({ error: "Invalid signature" });
       }
 
       // biome-ignore lint/suspicious/noExplicitAny: Fastify request body parsing

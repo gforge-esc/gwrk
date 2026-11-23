@@ -1064,20 +1064,25 @@ export function createDurableHarvestService(
         };
       }
 
-      if (input.webhookSecret !== undefined) {
-        if (
-          !github?.verifyWebhookSignature(
-            input.rawBody,
-            input.signatureHeader,
-            input.webhookSecret,
-          )
-        ) {
-          return {
-            accepted: false,
-            httpStatus: 401,
-            reason: "Invalid webhook signature",
-          };
-        }
+      if (!input.webhookSecret?.trim()) {
+        return {
+          accepted: false,
+          httpStatus: 401,
+          reason: "GitHub webhook is disabled: secret is not configured",
+        };
+      }
+      if (
+        !github?.verifyWebhookSignature(
+          input.rawBody,
+          input.signatureHeader,
+          input.webhookSecret,
+        )
+      ) {
+        return {
+          accepted: false,
+          httpStatus: 401,
+          reason: "Invalid webhook signature",
+        };
       }
 
       if (input.eventType !== "pull_request") {

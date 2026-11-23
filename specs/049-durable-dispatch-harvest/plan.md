@@ -277,6 +277,9 @@ pnpm exec vitest run src/server/durable-ingress.test.ts src/server/dispatch.test
 - `src/commands/status.test.ts` (MODIFY: Verify `gwrk status` exits non-zero on unresolved gate failure or failed delivery and formats JSON)
 - `src/server/unattended-recovery.test.ts` (NEW: Exercise unattended restarts, two-repo PR collisions and synthetic GitHub and Slack fault recovery)
 
+- `src/server/github.test.ts` (MODIFY: Require configured webhook authentication before durable intake)
+- `src/application/harvest/harvest-service.test.ts` (MODIFY: Reject missing or blank webhook secrets before writes and effects)
+
 #### Governance and skills
 
 - Architecture rules: `docs/decisions/ADR-004-agent-native-output.md` and `docs/decisions/ADR-008-command-safety-posture.md`
@@ -296,7 +299,7 @@ pnpm exec vitest run src/server/durable-ingress.test.ts src/server/dispatch.test
 
 ```bash
 pnpm build
-pnpm exec vitest run src/commands/harvest.test.ts src/commands/status.test.ts src/server/routes/status.test.ts src/server/routes/health.test.ts src/server/unattended-recovery.test.ts src/architecture.test.ts
+pnpm exec vitest run src/commands/harvest.test.ts src/commands/status.test.ts src/server/routes/status.test.ts src/server/routes/health.test.ts src/server/unattended-recovery.test.ts src/server/github.test.ts src/application/harvest/harvest-service.test.ts src/architecture.test.ts
 ```
 
 ## Coverage matrix

@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { execFileSync } from "node:child_process";
+import { createHmac } from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -60,8 +61,10 @@ vi.mock("../engine/issues.js", async () => {
   };
 });
 
+const FIXTURE_SECRET = "synthetic-webhook-secret";
+
 const mockConfig = {
-  server: {},
+  server: { githubWebhookSecret: FIXTURE_SECRET },
 } as GwrkConfig;
 
 const enrolledProject: EnrolledProject = {
@@ -109,10 +112,81 @@ function makeRegistry(
   };
 }
 
+function postSignedWebhook(
+  server: ReturnType<typeof fastify>,
+  request: {
+    method: "POST";
+    url: string;
+    headers: Record<string, string>;
+    payload: unknown;
+  },
+) {
+  const payload = JSON.stringify(request.payload) ?? "null";
+  const signature = `sha256=${createHmac("sha256", FIXTURE_SECRET).update(payload).digest("hex")}`;
+  return server.inject({
+    ...request,
+    payload,
+    headers: {
+      "content-type": "application/json",
+      ...request.headers,
+      "x-hub-signature-256":
+        request.headers["x-hub-signature-256"] ?? signature,
+    },
+  });
+}
+
 describe("FR-H01/FR-H09/TC-H01: Webhook Handler", () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
+
+  it.each([
+    { label: "absent", secret: undefined },
+    { label: "empty", secret: "" },
+    { label: "whitespace", secret: "   " },
+  ])(
+    "TR-002 security regression: disables legacy $label-secret webhook effects",
+    async ({ secret }) => {
+      const server = fastify();
+      const payload = {
+        action: "opened",
+        repository: { full_name: "org/alpha" },
+        issue: {
+          number: 15,
+          title: "[049-durable] Fix routing",
+          body: "details",
+          state: "open",
+          html_url: "https://github.com/org/alpha/issues/15",
+          labels: [{ name: "feature:049-durable" }],
+        },
+      };
+      try {
+        await githubWebhookPlugin(server, {
+          config: { server: { githubWebhookSecret: secret } } as GwrkConfig,
+          projectRoot: "/test",
+        });
+        const response = await server.inject({
+          method: "POST",
+          url: "/webhook/github",
+          headers: {
+            "x-github-event": "issues",
+            ...(secret
+              ? {
+                  "x-hub-signature-256": `sha256=${createHmac("sha256", secret).update(JSON.stringify(payload)).digest("hex")}`,
+                }
+              : {}),
+          },
+          payload,
+        });
+        expect.soft(response.statusCode).toBe(401);
+        expect.soft(upsertIssueMock).not.toHaveBeenCalled();
+        expect.soft(notifyIssueOpenedMock).not.toHaveBeenCalled();
+        expect.soft(harvestFeatureMock).not.toHaveBeenCalled();
+      } finally {
+        await server.close();
+      }
+    },
+  );
 
   it("US-H01: Valid PR merge webhook triggers harvest", async () => {
     const server = fastify();
@@ -133,12 +207,11 @@ describe("FR-H01/FR-H09/TC-H01: Webhook Handler", () => {
       },
     };
 
-    const response = await server.inject({
+    const response = await postSignedWebhook(server, {
       method: "POST",
       url: "/webhook/github",
       headers: {
         "x-github-event": "pull_request",
-        "x-hub-signature-256": "sha256=invalid-signature-for-red-test",
       },
       payload,
     });
@@ -162,7 +235,7 @@ describe("FR-H01/FR-H09/TC-H01: Webhook Handler", () => {
       },
     };
 
-    const response = await server.inject({
+    const response = await postSignedWebhook(server, {
       method: "POST",
       url: "/webhook/github",
       headers: { "x-github-event": "pull_request" },
@@ -189,7 +262,7 @@ describe("FR-H01/FR-H09/TC-H01: Webhook Handler", () => {
       },
     };
 
-    const response = await server.inject({
+    const response = await postSignedWebhook(server, {
       method: "POST",
       url: "/webhook/github",
       headers: { "x-github-event": "pull_request" },
@@ -215,7 +288,7 @@ describe("FR-H01/FR-H09/TC-H01: Webhook Handler", () => {
       pull_request: { merged: true },
     };
 
-    const response = await server.inject({
+    const response = await postSignedWebhook(server, {
       method: "POST",
       url: "/webhook/github",
       headers: {
@@ -242,7 +315,7 @@ describe("FR-H01/FR-H09/TC-H01: Webhook Handler", () => {
       vcs,
     });
 
-    const prResponse = await server.inject({
+    const prResponse = await postSignedWebhook(server, {
       method: "POST",
       url: "/webhook/github",
       headers: { "x-github-event": "pull_request" },
@@ -266,7 +339,7 @@ describe("FR-H01/FR-H09/TC-H01: Webhook Handler", () => {
     expect(vcs.resolvePullRequestUrl).not.toHaveBeenCalled();
     expect(harvestFeatureMock).not.toHaveBeenCalled();
 
-    const issueResponse = await server.inject({
+    const issueResponse = await postSignedWebhook(server, {
       method: "POST",
       url: "/webhook/github",
       headers: { "x-github-event": "issues" },
@@ -341,7 +414,7 @@ describe("FR-H01/FR-H09/TC-H01: Webhook Handler", () => {
       });
 
       // 'develop' does NOT match enrolled trunkBranch 'release' -> ignored
-      const wrongTrunkRes = await server.inject({
+      const wrongTrunkRes = await postSignedWebhook(server, {
         method: "POST",
         url: "/webhook/github",
         headers: { "x-github-event": "pull_request" },
@@ -363,7 +436,7 @@ describe("FR-H01/FR-H09/TC-H01: Webhook Handler", () => {
       expect(harvestFeatureMock).not.toHaveBeenCalled();
 
       // 'release' matches enrolled trunkBranch -> resolves via VcsPort and harvests in enrolled checkout
-      const res = await server.inject({
+      const res = await postSignedWebhook(server, {
         method: "POST",
         url: "/webhook/github",
         headers: { "x-github-event": "pull_request" },
@@ -436,7 +509,7 @@ describe("FR-H01/FR-H09/TC-H01: Webhook Handler", () => {
       registry,
     });
 
-    const opened = await server.inject({
+    const opened = await postSignedWebhook(server, {
       method: "POST",
       url: "/webhook/github",
       headers: { "x-github-event": "issues" },
@@ -475,7 +548,7 @@ describe("FR-H01/FR-H09/TC-H01: Webhook Handler", () => {
       }),
     );
 
-    const closed = await server.inject({
+    const closed = await postSignedWebhook(server, {
       method: "POST",
       url: "/webhook/github",
       headers: { "x-github-event": "issues" },
@@ -549,7 +622,7 @@ describe("FR-H01/FR-H09/TC-H01: Webhook Handler", () => {
         vcs,
       });
 
-      const replacedRes = await server.inject({
+      const replacedRes = await postSignedWebhook(server, {
         method: "POST",
         url: "/webhook/github",
         headers: { "x-github-event": "pull_request" },
@@ -581,7 +654,7 @@ describe("FR-H01/FR-H09/TC-H01: Webhook Handler", () => {
         { cwd: alphaDir, stdio: "ignore" },
       );
 
-      const validRes = await server.inject({
+      const validRes = await postSignedWebhook(server, {
         method: "POST",
         url: "/webhook/github",
         headers: { "x-github-event": "pull_request" },
