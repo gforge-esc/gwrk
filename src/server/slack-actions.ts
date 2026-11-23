@@ -9,10 +9,11 @@ import type { ProjectRoutingService } from "../application/project-routing/index
 import { findOpenPr } from "../db/runs.js";
 import type { DispatchReceipt } from "../domain/durable-dispatch.js";
 import { normalizeGitRemoteSlug } from "../domain/project-id.js";
-import type {
-  DeliveryRecipient,
-  MergeTarget,
-  SlackActionReceipt,
+import {
+  type DeliveryRecipient,
+  type MergeTarget,
+  type SlackActionReceipt,
+  buildActionReceiptKey,
 } from "../domain/project-registry.js";
 import { requiredAccessForSlackAction } from "../domain/slack-routing.js";
 import { PlanStore } from "../engine/plan-store.js";
@@ -341,6 +342,15 @@ async function handleMerge(
 export async function registerSlackActions(app: App, context: CommandContext) {
   const defaultProjectId = resolveProjectId(context.projectRoot);
   const activeMergeClicks = new Set<string>();
+  const pendingAckDispatches = new Map<
+    string,
+    {
+      actorUserId: string;
+      threadTs?: string;
+      receipt: DispatchReceipt;
+      release: () => void;
+    }
+  >();
 
   // Handle button actions
   app.action<BlockAction<ButtonAction>>(
@@ -439,7 +449,9 @@ export async function registerSlackActions(app: App, context: CommandContext) {
           threadTs?: string;
           receipt: DispatchReceipt | null;
           record?: DispatchRecord;
+          receiptKey?: string;
           releaseDispatch?: () => void;
+          isPendingAckReplay?: boolean;
         };
 
     const runTx = context.queue.runInTransaction
@@ -477,6 +489,31 @@ export async function registerSlackActions(app: App, context: CommandContext) {
       });
 
       if (!decision.ok) {
+        if (
+          decision.code === "ACTION_REPLAYED" &&
+          decision.recipient?.projectId
+        ) {
+          const replayReceiptKey = buildActionReceiptKey({
+            projectId: decision.recipient.projectId,
+            actionId,
+            featureId,
+            phaseId: phaseId ?? null,
+            workspaceId,
+            channelId,
+            messageTs: messageTs ?? threadTs ?? "",
+          });
+          const pending = pendingAckDispatches.get(replayReceiptKey);
+          if (pending && pending.actorUserId === actorUserId) {
+            return {
+              ok: true,
+              threadTs: pending.threadTs ?? decision.recipient.threadTs,
+              receipt: pending.receipt,
+              receiptKey: replayReceiptKey,
+              releaseDispatch: pending.release,
+              isPendingAckReplay: true,
+            };
+          }
+        }
         return { ok: false, kind: "denied", decision };
       }
 
@@ -512,6 +549,7 @@ export async function registerSlackActions(app: App, context: CommandContext) {
             ok: true,
             threadTs: decision.recipient.threadTs,
             receipt,
+            receiptKey: decision.receiptKey,
             releaseDispatch,
           };
         }
@@ -539,6 +577,21 @@ export async function registerSlackActions(app: App, context: CommandContext) {
         };
       }
     });
+
+    if (
+      outcome.ok &&
+      !outcome.isPendingAckReplay &&
+      outcome.receipt &&
+      outcome.receiptKey &&
+      outcome.releaseDispatch
+    ) {
+      pendingAckDispatches.set(outcome.receiptKey, {
+        actorUserId,
+        threadTs: outcome.threadTs,
+        receipt: outcome.receipt,
+        release: outcome.releaseDispatch,
+      });
+    }
 
     await ack();
 
@@ -573,7 +626,14 @@ export async function registerSlackActions(app: App, context: CommandContext) {
       return;
     }
 
-    outcome.releaseDispatch?.();
+    if (outcome.receiptKey && outcome.releaseDispatch) {
+      const pending = pendingAckDispatches.get(outcome.receiptKey);
+      if (!pending) return;
+      pendingAckDispatches.delete(outcome.receiptKey);
+      pending.release();
+    } else {
+      outcome.releaseDispatch?.();
+    }
 
     const operationId =
       outcome.receipt?.operationId ??

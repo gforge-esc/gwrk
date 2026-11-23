@@ -746,6 +746,8 @@ export class DispatchQueue {
       },
     });
 
+    if (this.closed) return;
+
     const flushWork = this.durableOutbox
       .flushOutboxItem(outboxId)
       .then(() => undefined)
@@ -927,9 +929,12 @@ export class DispatchQueue {
   async close(): Promise<void> {
     this.closed = true;
     clearImmediate(this.scheduledDrain);
+    this.scheduledDrain = undefined;
     this.pause();
     this.notificationShutdown.abort();
-    await Promise.all(this.inFlight);
+    while (this.inFlight.size > 0) {
+      await Promise.all([...this.inFlight]);
+    }
     if (this.errors.length === 1) throw this.errors[0];
     if (this.errors.length > 1)
       throw new AggregateError(this.errors, "Dispatch queue failed");
