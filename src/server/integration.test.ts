@@ -611,7 +611,7 @@ setInterval(() => {}, 1000);
     writeFileSync(
       join(bin, "gh"),
       `#!${process.execPath}
-require("node:fs").writeFileSync(${JSON.stringify(marker)}, JSON.stringify({cwd:process.cwd(), GIT_DIR:process.env.GIT_DIR, GIT_WORK_TREE:process.env.GIT_WORK_TREE, GH_REPO:process.env.GH_REPO}));
+require("node:fs").writeFileSync(${JSON.stringify(marker)}, JSON.stringify({cwd:process.cwd(), args:process.argv.slice(2), GIT_DIR:process.env.GIT_DIR, GIT_WORK_TREE:process.env.GIT_WORK_TREE, GH_REPO:process.env.GH_REPO, GH_HOST:process.env.GH_HOST}));
 process.stdout.write("[]");
 `,
       { mode: 0o755 },
@@ -621,6 +621,7 @@ process.stdout.write("[]");
       vi.stubEnv("GIT_DIR", "/synthetic/external/.git");
       vi.stubEnv("GIT_WORK_TREE", "/synthetic/external");
       vi.stubEnv("GH_REPO", "external/repo");
+      vi.stubEnv("GH_HOST", "ghe.internal.example");
       await createGitHubHarvestAdapter().listTerminalPullRequests({
         cwd: fixture.projectRoot,
         repoSlug: "synthetic/fixture",
@@ -631,6 +632,13 @@ process.stdout.write("[]");
       expect.soft(observed.GIT_DIR).toBeUndefined();
       expect.soft(observed.GIT_WORK_TREE).toBeUndefined();
       expect.soft(observed.GH_REPO).toBeUndefined();
+      const explicitPublicHost =
+        Array.isArray(observed.args) &&
+        observed.args.includes("--hostname") &&
+        observed.args[observed.args.indexOf("--hostname") + 1] === "github.com";
+      expect
+        .soft(observed.GH_HOST === undefined || explicitPublicHost)
+        .toBe(true);
       expect(getDb).not.toHaveBeenCalled();
     } finally {
       await fixture.close();

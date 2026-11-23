@@ -206,14 +206,17 @@ export function createCliProgram(): Command {
     // `define adr` walks parents for the marker (adr-scaffold.ts `findProjectRoot`)
     // and must work from any subdirectory (FR-002, US-001 scenario 3), so
     // preflighting it here would defeat the walk before the handler runs.
-    // Registry-backed `project` enrollment and `server` lifecycle commands
-    // resolve SQLite enrollment or daemon state themselves and emit ADR-004 signals.
+    // Registry-backed `project` enrollment, `harvest`, `status`, and `server`
+    // lifecycle commands resolve SQLite enrollment or daemon state themselves
+    // and emit ADR-004 signals.
     const commandPath = [actionCommand.parent?.name(), actionCommand.name()]
       .filter(Boolean)
       .join(" ");
     const resolvesOwnRoot =
       actionCommand.name() === "init" ||
       actionCommand.name() === "assess" ||
+      actionCommand.name() === "harvest" ||
+      actionCommand.name() === "status" ||
       commandPath === "define adr" ||
       [
         "db backup",

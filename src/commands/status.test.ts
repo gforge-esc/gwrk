@@ -11,6 +11,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { runWithOutputScope } from "../adapters/cli/output-scope.js";
 import { repositoryGitEnv } from "../adapters/git/process-env.js";
 import { createSqliteOperationsStoreAdapter, createSqliteProjectRegistryAdapter } from "../adapters/sqlite/index.js";
+import { runCli } from "../cli.js";
 import { openDatabase } from "../db/index.js";
 import { computeHarvestWorkKey } from "../domain/durable-harvest.js";
 import { computeProjectId } from "../domain/project-id.js";
@@ -752,6 +753,110 @@ describe("TR-022: gwrk status liveness, reachability, readiness and Slack delive
       expect(JSON.parse(deliveryFailJson.stdout).durableOperations.delivery.failedCount).toBe(1);
     } finally {
       if (db.open) db.close();
+    }
+  });
+
+  it("T037 regression: scopes git and spec metadata to --project <slug> and works via root CLI without cwd .gwrkrc.json", async () => {
+    const alphaDir = fs.realpathSync(
+      fs.mkdtempSync(path.join(tempDir, "alpha-status-")),
+    );
+    const betaDir = fs.realpathSync(
+      fs.mkdtempSync(path.join(tempDir, "beta-status-")),
+    );
+    const emptyHostDir = fs.realpathSync(
+      fs.mkdtempSync(path.join(tempDir, "empty-host-")),
+    );
+
+    initGitRepo(alphaDir, "git@github.com:org/alpha-status.git");
+    runGit(alphaDir, "checkout", "-b", "alpha-trunk");
+    fs.mkdirSync(path.join(alphaDir, "specs", "049-alpha"), {
+      recursive: true,
+    });
+    fs.writeFileSync(
+      path.join(alphaDir, ".gwrkrc.json"),
+      JSON.stringify({ project: { name: "alpha-status" } }),
+    );
+    runGit(alphaDir, "add", ".");
+    runGit(alphaDir, "commit", "--no-gpg-sign", "-m", "add alpha spec");
+
+    initGitRepo(betaDir, "git@github.com:org/beta-status.git");
+    runGit(betaDir, "checkout", "-b", "beta-other");
+    fs.writeFileSync(
+      path.join(betaDir, ".gwrkrc.json"),
+      JSON.stringify({ project: { name: "beta-status" } }),
+    );
+    // Leave beta dirty with an untracked file and 0 specs
+    fs.writeFileSync(path.join(betaDir, "dirty.txt"), "dirty\n");
+
+    vi.spyOn(pidUtils, "readPid").mockReturnValue(undefined);
+    vi.spyOn(pidUtils, "isPidRunning").mockReturnValue(false);
+    vi.stubGlobal("fetch", vi.fn());
+
+    const alphaId = computeProjectId({
+      projectRoot: alphaDir,
+      remoteOriginUrl: "git@github.com:org/alpha-status.git",
+      gitCommonDir: path.join(alphaDir, ".git"),
+    });
+    const db = openDatabase();
+    try {
+      const registry = createSqliteProjectRegistryAdapter({ db });
+      registry.enrollProject({
+        projectId: alphaId,
+        slug: "alpha-status",
+        name: "Alpha Status",
+        repoSlug: "org/alpha-status",
+        trunkBranch: "alpha-trunk",
+        localRoot: alphaDir,
+        mirrorPath: null,
+        runnerPolicy: { allowedKinds: ["local"] },
+        slack: null,
+        legacyProjectIds: [],
+        createdAt: "2026-11-23T00:00:00.000Z",
+        updatedAt: "2026-11-23T00:00:00.000Z",
+      });
+    } finally {
+      if (db.open) db.close();
+    }
+
+    // 1. From betaDir, --project alpha-status must report alpha's git branch, clean state, and spec count
+    process.chdir(betaDir);
+    const crossDir = await runStatus([
+      "--project",
+      "alpha-status",
+      "--format",
+      "json",
+    ]);
+    expect(crossDir.exitCode, crossDir.stderr).toBe(0);
+    const crossParsed = JSON.parse(crossDir.stdout);
+    expect(crossParsed.project.slug).toBe("alpha-status");
+    expect(crossParsed.project.root).toBe(alphaDir);
+    expect.soft(crossParsed.project.git).toEqual({
+      branch: "alpha-trunk",
+      clean: true,
+    });
+    expect.soft(crossParsed.specs).toBe(1);
+
+    // 2. From emptyHostDir (no .gwrkrc.json), root CLI `gwrk status --project alpha-status --format json` must succeed
+    process.chdir(emptyHostDir);
+    let stdout = "";
+    let stderr = "";
+    const cliExit = await runCli(
+      ["status", "--project", "alpha-status", "--format", "json"],
+      {
+        stdout: (chunk) => {
+          stdout += chunk;
+        },
+        stderr: (chunk) => {
+          stderr += chunk;
+        },
+      },
+    );
+    expect.soft(cliExit, stderr).toBe(0);
+    expect.soft(stderr).toMatch(/\[exit:0 \| /);
+    if (stdout.trim()) {
+      const cliParsed = JSON.parse(stdout);
+      expect(cliParsed.project.slug).toBe("alpha-status");
+      expect(cliParsed.durableOperations.projectId).toBe(alphaId);
     }
   });
 });
