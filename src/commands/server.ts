@@ -12,9 +12,16 @@ import {
   warnCli,
 } from "../adapters/cli/output-scope.js";
 import { gwrkHome, usesHostedRuntime } from "../adapters/config/paths.js";
+import { createSqliteProjectRegistryAdapter } from "../adapters/sqlite/index.js";
 import { startServer } from "../server/index.js";
 import { isPidRunning, readPid, removePid } from "../server/pid.js";
-import { loadConfig } from "../utils/config.js";
+import type { HealthResponse } from "../server/types.js";
+import {
+  type GwrkConfig,
+  GwrkConfigSchema,
+  deepMerge,
+  loadConfig,
+} from "../utils/config.js";
 import { isRemote } from "../utils/device.js";
 import { getLogs, installServer, uninstallServer } from "./server-install.js";
 
@@ -22,6 +29,49 @@ import { CommandError, withSignal } from "../utils/signal.js";
 
 function logFile(): string {
   return path.join(gwrkHome(), "server.log");
+}
+
+function loadServerConfig(projectRoot: string): GwrkConfig {
+  try {
+    return loadConfig(projectRoot);
+  } catch (err) {
+    const configPath = path.join(projectRoot, ".gwrkrc.json");
+    if (fs.existsSync(configPath)) {
+      throw err;
+    }
+    const registry = createSqliteProjectRegistryAdapter();
+    try {
+      const enrolled = registry.listProjects();
+      if (enrolled.length === 0) {
+        throw err;
+      }
+      let raw: Record<string, unknown> = {
+        project: { name: enrolled[0].name },
+      };
+      const globalConfigPath = path.join(gwrkHome(), "config.json");
+      if (fs.existsSync(globalConfigPath)) {
+        try {
+          const overlay = JSON.parse(
+            fs.readFileSync(globalConfigPath, "utf-8"),
+          ) as Record<string, unknown>;
+          raw = deepMerge(raw, overlay);
+        } catch {
+          // Ignore malformed global overlay and fall back to defaults.
+        }
+      }
+      if (process.env.GITHUB_WEBHOOK_SECRET) {
+        raw.server = {
+          ...(typeof raw.server === "object" && raw.server !== null
+            ? (raw.server as Record<string, unknown>)
+            : {}),
+          githubWebhookSecret: process.env.GITHUB_WEBHOOK_SECRET,
+        };
+      }
+      return GwrkConfigSchema.parse(raw);
+    } finally {
+      registry.close();
+    }
+  }
 }
 
 export function createServerCommand(): Command {
@@ -44,7 +94,7 @@ export function createServerCommand(): Command {
         }
 
         const projectRoot = process.cwd();
-        const config = loadConfig(projectRoot);
+        const config = loadServerConfig(projectRoot);
 
         const existingPid = readPid();
         if (!usesHostedRuntime() && existingPid && isPidRunning(existingPid)) {
@@ -55,7 +105,11 @@ export function createServerCommand(): Command {
         }
 
         if (options.foreground) {
-          await startServer(config);
+          await startServer(config, {
+            handleSignals: true,
+            projectRoot,
+            useProjectRegistry: true,
+          });
         } else {
           fs.mkdirSync(gwrkHome(), { recursive: true });
           const out = fs.openSync(logFile(), "a");
@@ -107,8 +161,12 @@ export function createServerCommand(): Command {
     .action(async () => {
       await withSignal("server _run", async () => {
         const projectRoot = process.env.GWRK_PROJECT_ROOT || process.cwd();
-        const config = loadConfig(projectRoot);
-        await startServer(config, { handleSignals: true });
+        const config = loadServerConfig(projectRoot);
+        await startServer(config, {
+          handleSignals: true,
+          projectRoot,
+          useProjectRegistry: true,
+        });
       });
     });
 
@@ -156,7 +214,7 @@ export function createServerCommand(): Command {
     .action(async () => {
       await withSignal("server status", async () => {
         const projectRoot = process.cwd();
-        const config = loadConfig(projectRoot);
+        const config = loadServerConfig(projectRoot);
         const pid = readPid();
 
         if (!pid || !isPidRunning(pid)) {
@@ -172,12 +230,27 @@ export function createServerCommand(): Command {
 
         // Health check
         try {
-          const resp = await fetch(`${url}/health`);
-          const data = (await resp.json()) as {
-            status?: string;
-            components?: Record<string, { status: string }>;
-          };
+          const resp = await fetch(`${url}/api/health`, {
+            signal: AbortSignal.timeout(5_000),
+          });
+          if (!resp.ok) {
+            throw new Error(`HTTP ${resp.status}`);
+          }
+          const data = (await resp.json()) as Partial<HealthResponse>;
           logCliOutput(`Health: ${data.status || "unknown"}`);
+          if (data.daemonLiveness) {
+            logCliOutput(`Daemon: ${data.daemonLiveness}`);
+          }
+          if (data.projectReadiness) {
+            logCliOutput(
+              `Projects: ${data.projectReadiness.status} (${data.projectReadiness.readyCount}/${data.projectReadiness.totalCount} ready)`,
+            );
+          }
+          if (data.slackDelivery) {
+            logCliOutput(
+              `Slack:  ${data.slackDelivery.mode} (connected: ${data.slackDelivery.connected})`,
+            );
+          }
           if (data.components) {
             for (const [name, info] of Object.entries(data.components)) {
               const icon = info.status === "ok" ? "✓" : "✗";
@@ -186,6 +259,7 @@ export function createServerCommand(): Command {
           }
         } catch {
           logCliOutput("Health: unreachable (port bound but not responding)");
+          setCliExitCode(1);
         }
       });
     });

@@ -10,7 +10,9 @@ import readline from "node:readline/promises";
 import { Command } from "commander";
 import { installArchitectureContext } from "../adapters/architecture/context-files.js";
 import { writeScopedStdout } from "../adapters/cli/output-scope.js";
+import { discoverVerifiedCheckout } from "../adapters/git/project-id.js";
 import { resolveDesign } from "../domain/architecture-context.js";
+import type { EnrolledProject } from "../domain/project-registry.js";
 import { resolveDecisionsDir } from "../engine/adr-scaffold.js";
 import { detectExtensions } from "../engine/extension-detector.js";
 import { detectProfile } from "../engine/profile-detector.js";
@@ -24,6 +26,7 @@ import {
   getSourceExtension,
   getTestExtension,
 } from "../utils/toolchain-mapper.js";
+import { enrollLocalRepository } from "./project-enroll.js";
 import { setupSlack } from "./setup-slack.js";
 
 /**
@@ -750,12 +753,40 @@ export const initAction = async (options: any): Promise<void> => {
     },
   });
 
+  // Enroll or update the local repository in the project registry while
+  // preserving legacy identity aliases and existing architecture/workflow guidance.
+  let enrolledProject: EnrolledProject | undefined;
+  try {
+    const canonicalCwd = fs.realpathSync(cwd);
+    if (discoverVerifiedCheckout(canonicalCwd)) {
+      enrolledProject = enrollLocalRepository({
+        cwd: canonicalCwd,
+        path: canonicalCwd,
+        name: config.project.name,
+      }).project;
+    }
+  } catch {
+    // Non-git directories and unavailable local registry stay non-fatal for init.
+  }
+
   // 9. Output
   if (isAgent) {
     const output = {
       status: context.status === "ready" ? "success" : "incomplete",
       context,
       projectId: config.project.name,
+      ...(enrolledProject
+        ? {
+            enrollment: {
+              projectId: enrolledProject.projectId,
+              slug: enrolledProject.slug,
+              repoSlug: enrolledProject.repoSlug,
+              trunkBranch: enrolledProject.trunkBranch,
+              localRoot: enrolledProject.localRoot,
+              legacyProjectIds: enrolledProject.legacyProjectIds,
+            },
+          }
+        : {}),
       profile: config.project,
       extensions: config.extensions,
       agents: config.agents,
@@ -773,6 +804,11 @@ export const initAction = async (options: any): Promise<void> => {
     writeScopedStdout(
       `Architecture context: ${context.status}. Code conformance: unassessed.\n`,
     );
+    if (enrolledProject) {
+      writeScopedStdout(
+        `Project registry: enrolled '${enrolledProject.slug}' (${enrolledProject.projectId})\n`,
+      );
+    }
     if (context.conflicts.length)
       writeScopedStdout(
         `Preserved edited files: ${context.conflicts.join(", ")}\n`,

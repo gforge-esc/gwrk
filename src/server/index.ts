@@ -5,7 +5,8 @@
 import { execFileSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import { basename, dirname, join, resolve } from "node:path";
-import fastify from "fastify";
+import fastify, { type FastifyRequest } from "fastify";
+import { QuotaProber } from "../adapters/agents/quota-prober.js";
 import { loadRegistry } from "../adapters/agents/registry-loader.js";
 import {
   exitCli,
@@ -13,16 +14,28 @@ import {
   warnCli,
 } from "../adapters/cli/output-scope.js";
 import { gwrkRuntimeDir, usesHostedRuntime } from "../adapters/config/paths.js";
+import { createGitVcsAdapter } from "../adapters/git/index.js";
 import { repositoryGitEnv } from "../adapters/git/process-env.js";
+import { createSlackNotificationAdapter } from "../adapters/notifications/index.js";
 import {
   acquireInstanceLock,
   acquireLedgerLock,
 } from "../adapters/server/instance-lock.js";
+import { createSqliteProjectRegistryAdapter } from "../adapters/sqlite/index.js";
+import {
+  type ProjectRoutingService,
+  createProjectRoutingService,
+} from "../application/project-routing/index.js";
 import { closeDb, getDbPath } from "../db/index.js";
 import { PENDING_LEDGER_RESTORE } from "../domain/ledger-backup.js";
+import type { AllowedRunnerKind } from "../domain/project-registry.js";
 import { isPrivateRunnerBind } from "../domain/release-packaging.js";
+import type { NotificationPort } from "../ports/notification-port.js";
 import type { InstanceLockHandle } from "../ports/release-ops-port.js";
+import type { ProjectRegistryPort } from "../ports/store-port.js";
+import type { VcsPort } from "../ports/vcs-port.js";
 import type { AgentBackendId, GwrkConfig } from "../utils/config.js";
+import { BackendSelector } from "./backend-selector.js";
 import { type DispatchLedgerScope, DispatchQueue } from "./dispatch.js";
 import { GitManager } from "./git-manager.js";
 import { githubWebhookPlugin } from "./github.js";
@@ -40,9 +53,6 @@ import { SandboxManager } from "./sandbox.js";
 import { getSlackApp, startSlackApp, stopSlackApp } from "./slack.js";
 import { startTelegramBot } from "./telegram.js";
 import type { SandboxInfo } from "./types.js";
-
-import { QuotaProber } from "../adapters/agents/quota-prober.js";
-import { BackendSelector } from "./backend-selector.js";
 
 export { BackendSelector } from "./backend-selector.js";
 export { QuotaProber } from "../adapters/agents/quota-prober.js";
@@ -72,6 +82,30 @@ export interface ServerStartOptions {
   ledger?: DispatchLedgerScope;
   sandbox?: SandboxManager;
   gitEnv?: () => NodeJS.ProcessEnv;
+  registry?: ProjectRegistryPort;
+  routingService?: ProjectRoutingService;
+  vcs?: VcsPort;
+  notifier?: NotificationPort;
+  transport?: "trusted_local" | "hosted";
+  localDefaultProjectId?: string;
+  resolvePrincipal?: (request: FastifyRequest) =>
+    | {
+        principalType: "cli_token" | "google_sub";
+        principalId: string;
+      }
+    | undefined;
+  runnerKind?: AllowedRunnerKind;
+  useProjectRegistry?: boolean;
+}
+
+function isLoopbackListenHost(host: string): boolean {
+  const normalized = host.trim().toLowerCase();
+  return (
+    normalized === "localhost" ||
+    normalized === "127.0.0.1" ||
+    normalized === "::1" ||
+    normalized === "[::1]"
+  );
 }
 
 export class ScopedSandboxManager extends SandboxManager {
@@ -141,6 +175,7 @@ export async function startServer(
       options,
       instanceLock,
       ledgerLock,
+      hosted,
       hosted ? process.env.GWRK_APPROVED_AGENT : undefined,
     );
   } catch (error) {
@@ -155,6 +190,7 @@ async function startLockedServer(
   options: ServerStartOptions,
   instanceLock: InstanceLockHandle | undefined,
   ledgerLock: InstanceLockHandle | undefined,
+  hosted: boolean,
   approvedBackend: AgentBackendId | undefined,
 ) {
   const projectRoot = resolve(options.projectRoot ?? process.cwd());
@@ -167,6 +203,59 @@ async function startLockedServer(
   const server = fastify({
     logger: true,
   });
+
+  // Derive transport mode from hosted runtime or listener bind address unless explicitly overridden.
+  const effectiveTransport: "trusted_local" | "hosted" =
+    options.transport ??
+    (hosted || !isLoopbackListenHost(config.server.host)
+      ? "hosted"
+      : "trusted_local");
+  const runnerKind: AllowedRunnerKind =
+    options.runnerKind ??
+    (effectiveTransport === "hosted" ? "hosted" : "local");
+
+  let ownedRegistry: ProjectRegistryPort | undefined;
+  let registry: ProjectRegistryPort | undefined = options.registry;
+  if (!registry) {
+    if (options.ledger?.db) {
+      registry = createSqliteProjectRegistryAdapter({ db: options.ledger.db });
+    } else if (options.useProjectRegistry || effectiveTransport === "hosted") {
+      ownedRegistry = createSqliteProjectRegistryAdapter();
+      registry = ownedRegistry;
+    }
+  }
+
+  const enrolledCount = registry ? registry.listProjects().length : 0;
+  const enforceRegistryScope = Boolean(
+    options.registry || effectiveTransport === "hosted" || enrolledCount > 0,
+  );
+  const activeRegistry = enforceRegistryScope ? registry : undefined;
+  const localDefaultProjectId =
+    options.localDefaultProjectId ??
+    activeRegistry?.findByLocalRoot(projectRoot)?.projectId;
+
+  const vcs = options.vcs ?? createGitVcsAdapter();
+  const notifier =
+    options.notifier ??
+    (activeRegistry
+      ? createSlackNotificationAdapter({
+          registry: activeRegistry,
+          projectRoot,
+        })
+      : undefined);
+  const routingService =
+    options.routingService ??
+    (activeRegistry
+      ? createProjectRoutingService({
+          registry: activeRegistry,
+          notificationPort:
+            notifier ??
+            createSlackNotificationAdapter({
+              registry: activeRegistry,
+              projectRoot,
+            }),
+        })
+      : undefined);
 
   // GitHub webhook is optional — plugin handles the missing case gracefully
   if (!config.server.githubWebhookSecret) {
@@ -191,6 +280,7 @@ async function startLockedServer(
     options.ledger,
     gitEnv,
     approvedBackend,
+    activeRegistry,
   );
 
   const lifecycle = new LifecycleMonitor(config);
@@ -246,6 +336,10 @@ async function startLockedServer(
   let ownsPidRecord = false;
   const stopPollers: Array<() => void | Promise<void>> = [];
   const cleanup: Array<() => void | Promise<void>> = [];
+  if (ownedRegistry) {
+    const registryToClose = ownedRegistry;
+    cleanup.push(() => registryToClose.close());
+  }
 
   const shutdown = async () => {
     server.log.info("Shutting down server...");
@@ -296,16 +390,39 @@ async function startLockedServer(
   });
 
   try {
-    await healthRoutes(server, lifecycle, network, sandbox);
-    await statusRoutes(server, monitor, queue, sandbox, lifecycle, network);
-    await dispatchRoutes(server, queue);
+    const routeAuthOptions = enforceRegistryScope
+      ? {
+          registry: activeRegistry,
+          transport: effectiveTransport,
+          localDefaultProjectId,
+          resolvePrincipal: options.resolvePrincipal,
+        }
+      : undefined;
+
+    await healthRoutes(server, lifecycle, network, sandbox, {
+      registry,
+      notifier,
+      runnerKind,
+    });
+    await statusRoutes(
+      server,
+      monitor,
+      queue,
+      sandbox,
+      lifecycle,
+      network,
+      routeAuthOptions,
+    );
+    await dispatchRoutes(server, queue, routeAuthOptions);
     await githubWebhookPlugin(server, {
       config,
       projectRoot,
+      registry: activeRegistry,
+      vcs,
       ledger: options.ledger,
       gitEnv,
     });
-    await notifyRoutes(server, options.projectRoot);
+    await notifyRoutes(server, projectRoot, routeAuthOptions);
 
     const address = await server.listen({
       port: config.server.port,
@@ -335,6 +452,9 @@ async function startLockedServer(
       slackApp,
       projectRoot,
       options.ledger,
+      activeRegistry || options.notifier
+        ? { registry: activeRegistry, notifier: options.notifier }
+        : undefined,
     );
     stopPollers.push(() => planHeartbeat.stop());
     planHeartbeat.start();
@@ -345,6 +465,7 @@ async function startLockedServer(
       projectRoot,
       options.ledger,
       gitEnv,
+      activeRegistry ? { registry: activeRegistry } : undefined,
     );
     stopPollers.push(() => harvestWatcher.stop());
     harvestWatcher.start();
@@ -369,6 +490,9 @@ async function startLockedServer(
         git,
         projectRoot,
         config,
+        ...(registry ? { registry } : {}),
+        ...(routingService ? { routingService } : {}),
+        ...(options.vcs || activeRegistry ? { vcs } : {}),
       });
     }
 
