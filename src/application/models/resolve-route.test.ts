@@ -837,60 +837,71 @@ describe("TR-014: resolveQualifiedRoute", () => {
     expect(dispatch).toHaveBeenCalledTimes(1);
   });
 
-  it("expires the review pin when the selected CLI code review prompt changes", async () => {
-    const root = createTempProject({ project: { name: "gwrk" } });
-    const { codeReviewWorkflow } = await resolveReviewPlugin(root);
-    const directory = path.join(
-      root,
-      ".gwrk/plugins/reviews",
-      codeReviewWorkflow,
-    );
-    fs.mkdirSync(directory, { recursive: true });
-    fs.copyFileSync(
-      path.resolve(
-        "src/plugins/builtins/reviews",
-        codeReviewWorkflow,
-        "manifest.yaml",
-      ),
-      path.join(directory, "manifest.yaml"),
-    );
-    const prompt = path.join(directory, "PROMPT.md");
-    fs.writeFileSync(prompt, "Review the original acceptance criteria.");
-    const evidence = await projectEvidence(root);
-    const pin = makePin({ role: "review", evidence });
-    const lock = path.join(root, ".gwrk/models/route-lock.local.json");
-    fs.mkdirSync(path.dirname(lock), { recursive: true });
-    fs.writeFileSync(
-      lock,
-      JSON.stringify(makeRouteLock({}, { routes: { review: pin } })),
-    );
-    const dispatch = vi.fn(async (_task: TaskDispatch) => ({
-      stdout: "",
-      stderr: "",
-      durationS: 0,
-      exitCode: 0,
-    }));
-    const runtime = new WorkflowRuntime();
-    const review = () =>
-      runtime.executeWorkflow(codeReviewWorkflow, "Review phase 5", {
-        projectRoot: root,
-        nativeOnly: true,
-        taskType: "review",
-        dispatcher: dispatch,
+  it.each([
+    { strategy: "cli", workflowKey: "codeReviewWorkflow" },
+    { strategy: "cli", workflowKey: "uatReviewWorkflow" },
+    { strategy: "webapp", workflowKey: "codeReviewWorkflow" },
+    { strategy: "webapp", workflowKey: "uatReviewWorkflow" },
+  ] as const)(
+    "expires the review pin after the selected $strategy $workflowKey prompt changes",
+    async ({ strategy, workflowKey }) => {
+      const root = createTempProject({
+        project: { name: "gwrk" },
+        review: { strategy },
       });
+      const reviewWorkflow = (await resolveReviewPlugin(root))[workflowKey];
+      const directory = path.join(
+        root,
+        ".gwrk/plugins/reviews",
+        reviewWorkflow,
+      );
+      fs.mkdirSync(directory, { recursive: true });
+      fs.copyFileSync(
+        path.resolve(
+          "src/plugins/builtins/reviews",
+          reviewWorkflow,
+          "manifest.yaml",
+        ),
+        path.join(directory, "manifest.yaml"),
+      );
+      const prompt = path.join(directory, "PROMPT.md");
+      fs.writeFileSync(prompt, "Review the original acceptance criteria.");
+      const evidence = await projectEvidence(root);
+      const pin = makePin({ role: "review", evidence });
+      const lock = path.join(root, ".gwrk/models/route-lock.local.json");
+      fs.mkdirSync(path.dirname(lock), { recursive: true });
+      fs.writeFileSync(
+        lock,
+        JSON.stringify(makeRouteLock({}, { routes: { review: pin } })),
+      );
+      const dispatch = vi.fn(async (_task: TaskDispatch) => ({
+        stdout: "",
+        stderr: "",
+        durationS: 0,
+        exitCode: 0,
+      }));
+      const runtime = new WorkflowRuntime();
+      const review = () =>
+        runtime.executeWorkflow(reviewWorkflow, "Review phase 5", {
+          projectRoot: root,
+          nativeOnly: true,
+          taskType: "review",
+          dispatcher: dispatch,
+        });
 
-    await review();
-    expect(dispatch.mock.calls[0][0]).toMatchObject({
-      model: pin.modelId,
-      routeMode: "pinned",
-      stdin: expect.stringContaining(
-        "Review the original acceptance criteria.",
-      ),
-    });
-    fs.writeFileSync(prompt, "Review the revised acceptance criteria.");
-    await expect(review()).rejects.toThrow(/stale|requalif/i);
-    expect(dispatch).toHaveBeenCalledTimes(1);
-  });
+      await review();
+      expect(dispatch.mock.calls[0][0]).toMatchObject({
+        model: pin.modelId,
+        routeMode: "pinned",
+        stdin: expect.stringContaining(
+          "Review the original acceptance criteria.",
+        ),
+      });
+      fs.writeFileSync(prompt, "Review the revised acceptance criteria.");
+      await expect(review()).rejects.toThrow(/stale|requalif/i);
+      expect(dispatch).toHaveBeenCalledTimes(1);
+    },
+  );
 
   it("keeps a qualified primary usable when an unselected fallback bundle is unreadable", async () => {
     const root = createTempProject({ project: { name: "gwrk" } });

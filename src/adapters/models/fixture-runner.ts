@@ -31,6 +31,7 @@ import {
   resolveWorkspacePolicyRoots,
 } from "../../engine/profile-detector.js";
 import { PluginLoader } from "../../plugins/loader.js";
+import { resolveReviewPlugin } from "../../plugins/review-plugin.js";
 import { resolveEnforcementSkills } from "../../plugins/skill-runtime.js";
 import {
   WorkflowRuntime,
@@ -634,6 +635,14 @@ export class FixtureRunner
     );
 
     const runtime = this.workflowRuntime ?? new WorkflowRuntime();
+    const reviewPlugin = await resolveReviewPlugin(projectDir);
+    const reviewStages = [
+      ...new Set([
+        ...ROLE_WORKFLOWS.review,
+        reviewPlugin.codeReviewWorkflow,
+        reviewPlugin.uatReviewWorkflow,
+      ]),
+    ];
     const workflowPromptHashes: Record<string, string> = {
       [JUDGE_WORKFLOW]: createHash("sha256")
         .update(JSON.stringify([JUDGE_PROMPT, JUDGE_OUTPUT_SCHEMA]))
@@ -641,7 +650,7 @@ export class FixtureRunner
     };
     for (const role of Object.keys(ROLE_WORKFLOWS) as ModelRole[]) {
       const roleFixtures = fixtures.filter(({ roles }) => roles.includes(role));
-      const stages = ROLE_WORKFLOWS[role];
+      const stages = role === "review" ? reviewStages : ROLE_WORKFLOWS[role];
       const rendered = new Map(
         stages.map((stage) => [stage, [] as string[]] as const),
       );
@@ -706,11 +715,19 @@ export class FixtureRunner
         roleHashes.push(hash);
       }
       workflowPromptHashes[role] =
-        roleHashes.length === 1
-          ? roleHashes[0]
-          : createHash("sha256")
-              .update(JSON.stringify(roleHashes))
-              .digest("hex");
+        role === "review"
+          ? createHash("sha256")
+              .update(
+                JSON.stringify(
+                  stages.map((stage, index) => [stage, roleHashes[index]]),
+                ),
+              )
+              .digest("hex")
+          : roleHashes.length === 1
+            ? roleHashes[0]
+            : createHash("sha256")
+                .update(JSON.stringify(roleHashes))
+                .digest("hex");
     }
 
     return { fixtureSuiteHash, workflowPromptHashes };
