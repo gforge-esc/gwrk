@@ -488,6 +488,10 @@ export function enrollLocalRepository(
       };
     }
 
+    const parsedBindings = (options.role ?? []).map((spec) =>
+      parseRoleBindingSpec(spec, projectId),
+    );
+
     const nowIso = new Date().toISOString();
     const enrolled = registry.enrollProject({
       projectId,
@@ -504,11 +508,8 @@ export function enrollLocalRepository(
       updatedAt: nowIso,
     });
 
-    const parsedBindings = (options.role ?? []).map((spec) =>
-      parseRoleBindingSpec(spec, enrolled.projectId),
-    );
     for (const binding of parsedBindings) {
-      registry.setRoleBinding(binding);
+      registry.setRoleBinding({ ...binding, projectId: enrolled.projectId });
     }
 
     const roleBindings = registry.listRoleBindings(enrolled.projectId);
