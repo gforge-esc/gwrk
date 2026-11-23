@@ -714,6 +714,25 @@ export class FixtureRunner
               .digest("hex");
     }
 
+    const loader = new PluginLoader({ projectDir });
+    const researchWorkflows = (await loader.listPlugins({ type: "workflow" }))
+      .map(({ name }) => name)
+      .filter((name) => name.startsWith("gwrk-research-"))
+      .sort();
+    const definitionHash = createHash("sha256").update(
+      workflowPromptHashes.define,
+    );
+    for (const workflow of researchWorkflows) {
+      const { template } = await runtime.renderWorkflowPrompt(workflow, "", {
+        projectRoot: projectDir,
+        profile,
+      });
+      const promptHash = createHash("sha256").update(template).digest("hex");
+      workflowPromptHashes[workflow] = promptHash;
+      definitionHash.update(JSON.stringify([workflow, promptHash]));
+    }
+    workflowPromptHashes.define = definitionHash.digest("hex");
+
     const reviewPlugin = await resolveReviewPlugin(projectDir);
     const reviewInputs = fixtures
       .filter(({ roles }) => roles.includes("review"))

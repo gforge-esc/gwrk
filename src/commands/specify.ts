@@ -224,6 +224,9 @@ Arguments:
                 workflow: "specify",
               });
 
+          if (opts.dryRun && route.preflightBanner) {
+            logCliOutput(route.preflightBanner);
+          }
           banner("define spec", {
             Agent: backend,
             Feature: feature,

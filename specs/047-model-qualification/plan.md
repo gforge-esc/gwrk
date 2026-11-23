@@ -203,6 +203,10 @@ The selected workflow tests also cover a review workflow installed only in the p
 
 The [review of 3d0a8fae](evidence/code-review-phase-05-3d0a8fae.md) adds four TR-014 cases. A catalog change must expire a pin even when the local evaluation bundle is absent. Editing the active research methodology prompt must stop pinned dispatch. Ship must use the review role’s backend when it differs from the implementation backend. A specification dry run must show the qualified model and effort.
 
+The route fixture hashes its discovery snapshot with the same algorithm as promotion. Two ship tests exercise conflicting router defaults. One checks the effort sent to the pinned backend. The other checks that provider-default dispatch leaves model and effort unset. Both failed before repair. Test patch: `.runs/review-regressions-phase05-20261123T214151Z-40c524dc.patch`.
+
+The explicit backend test runs the public ship command with a synthetic transport. An operator requests Claude and only Codex has a review pin. The command must report `unavailable_pin` before dispatch. The patch `.runs/review-regressions-phase05-20261123T214515Z-8f316fb7.patch` includes all three ship cases.
+
 #### Done When
 
 ```bash

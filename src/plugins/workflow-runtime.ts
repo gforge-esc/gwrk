@@ -182,6 +182,8 @@ interface WorkflowOptions {
   dispatcher?: (task: TaskDispatch) => Promise<TaskResult>;
   featureDir?: string;
   taskType?: string;
+  /** Router defaults apply only when the project has no qualified route. */
+  routeDefaults?: { backend: string; model?: string; effort?: string };
   projectRoot?: string;
   agent?: string;
   model?: string;
@@ -452,12 +454,16 @@ export class WorkflowRuntime {
           },
         );
     if (route?.preflightBanner) logCliOutput(route.preflightBanner);
-    const selectedModel = route?.model ?? options.model;
+    const defaults = route ? undefined : options.routeDefaults;
+    const selectedModel = route?.model ?? options.model ?? defaults?.model;
     const routeMode =
       route?.routeMode ??
       options.routeMode ??
       (selectedModel ? undefined : "provider-default");
-    const effort = route?.effort ?? options.effort;
+    const effort =
+      route?.effort ??
+      options.effort ??
+      (options.routeMode === "provider-default" ? undefined : defaults?.effort);
     const effectiveModel =
       routeMode === "provider-default" ? undefined : selectedModel;
     const task: TaskDispatch = {
@@ -465,7 +471,7 @@ export class WorkflowRuntime {
       stdin,
       promptParts: { template, userInput },
       profile,
-      agent: route?.backend ?? options.agent,
+      agent: route?.backend ?? options.agent ?? defaults?.backend,
       model: effectiveModel,
       ...(effort ? { effort } : {}),
       ...(routeMode ? { routeMode } : {}),

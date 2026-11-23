@@ -3,7 +3,6 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { execFileSync } from "node:child_process";
-import { createHash } from "node:crypto";
 import fs from "node:fs";
 import { createRequire } from "node:module";
 import path from "node:path";
@@ -306,17 +305,6 @@ export function resolveAgent(
         return [];
       }
     });
-  if (
-    pin?.routeMode === "pinned" &&
-    snapshot &&
-    overrides.snapshot === undefined &&
-    createHash("sha256").update(JSON.stringify(snapshot)).digest("hex") !==
-      pin.evidence.snapshotHash
-  ) {
-    throw new Error(
-      "stale: discovery snapshot changed; requalification required",
-    );
-  }
   const route = resolveQualifiedRoute({
     role,
     scope,

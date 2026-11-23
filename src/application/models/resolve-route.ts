@@ -494,7 +494,7 @@ function selectQualifiedRoute(
       }).ok
     : false;
 
-  const stalenessReasons = qualificationStaleness(
+  const stalenessReasons: string[] = qualificationStaleness(
     {
       fixtureSuiteHash: pin.evidence.fixtureSuiteHash,
       workflowPromptHashes: pin.evidence.workflowPromptHashes,
@@ -512,6 +512,16 @@ function selectQualifiedRoute(
     modelAvailable,
   );
 
+  // Version 1 locks retain the snapshot hash even on checkouts without the evaluation bundle.
+  if (
+    !input.pinnedEligibleRoutesDigest &&
+    input.snapshot &&
+    createHash("sha256")
+      .update(JSON.stringify(input.snapshot))
+      .digest("hex") !== pin.evidence.snapshotHash
+  ) {
+    stalenessReasons.push("discovery-snapshot-changed");
+  }
   if (stalenessReasons.length > 0) {
     return {
       status: "stale",

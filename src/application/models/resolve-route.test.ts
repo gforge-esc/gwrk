@@ -7,11 +7,13 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import * as agents from "../../adapters/agents/index.js";
 import { FixtureRunner } from "../../adapters/models/fixture-runner.js";
 import { createRouteLockStore } from "../../adapters/models/route-lock-store.js";
 import { runCli } from "../../cli.js";
 import { implementAction } from "../../commands/implement.js";
 import { researchCommandHandler } from "../../commands/research.js";
+import * as database from "../../db/index.js";
 import * as runLedger from "../../db/runs.js";
 import {
   type DiscoverySnapshot,
@@ -27,8 +29,10 @@ import { WorkflowRuntime } from "../../plugins/workflow-runtime.js";
 import type { RouteLockStorePort } from "../../ports/model-qualification-port.js";
 import * as agentTransport from "../../utils/agent.js";
 import type { TaskDispatch, TaskResult } from "../../utils/agent.js";
+import * as commands from "../../utils/exec.js";
 import { loadManifests } from "../../utils/manifest.js";
 import { resolveAgent, resolveRoleAgent } from "../../utils/resolve-agent.js";
+import * as setup from "../../utils/setup-state.js";
 import { loadTaskState, saveTaskState } from "../../utils/state.js";
 import type { PromotionReplayEvidence } from "./evaluate-models.js";
 import type { PinnedRoleRoute, RouteLockDocument } from "./promote-model.js";
@@ -192,7 +196,9 @@ function makePin(overrides: Partial<PinnedRoleRoute> = {}): PinnedRoleRoute {
     },
     evidence: {
       evaluationId: "eval-codex-define-1",
-      snapshotHash: HASH_A,
+      snapshotHash: createHash("sha256")
+        .update(JSON.stringify(makeSnapshot()))
+        .digest("hex"),
       evaluationBundleHash: HASH_B,
       fixtureSuiteHash: HASH_C,
       workflowPromptHashes: {
@@ -991,6 +997,137 @@ describe("TR-014: resolveQualifiedRoute", () => {
       }),
     );
   });
+
+  it("rejects an explicit ship backend without a qualified review route", async () => {
+    const root = createTempProject({ project: { name: "gwrk" } });
+    const feature = "001-qualification";
+    const featureDir = path.join(root, "specs", feature);
+    const evidence = await projectEvidence(root);
+    const review = makePin({ role: "review", evidence, fallbackRoutes: [] });
+    await createRouteLockStore(root).writeRouteLockAtomic(SCOPE, {
+      document: makeRouteLock({}, { routes: { review } }),
+      expectedIncumbentDigest: null,
+    });
+    saveTaskState(featureDir, {
+      featureId: feature,
+      createdAt: new Date().toISOString(),
+      phases: [
+        {
+          id: "phase-01",
+          title: "Review routing",
+          sp_estimate: 0,
+          testTargets: ["fixture.test.ts"],
+          tasks: [
+            {
+              id: "T001",
+              title: "Review",
+              description: "",
+              status: "open",
+              gateScript: "",
+              sp: 0,
+            },
+          ],
+        },
+      ],
+    });
+    fs.writeFileSync(path.join(featureDir, "spec.md"), "# Qualified review");
+    fs.writeFileSync(path.join(root, "fixture.test.ts"), "");
+    vi.spyOn(process, "cwd").mockReturnValue(root);
+    vi.spyOn(setup, "isSetupComplete").mockReturnValue(true);
+    vi.spyOn(commands, "run").mockResolvedValue(undefined);
+    const ledger = database.getTestDb();
+    vi.spyOn(database, "getDb").mockReturnValue(ledger);
+    const selectRoute = vi.fn(async () => ({
+      backend: "claude",
+      model: "legacy",
+      mode: "selected" as const,
+      reason: "operator override",
+      fallbackUsed: false,
+      modelFailoverUsed: false,
+    }));
+    vi.spyOn(agents, "createAgentPortAdapter").mockReturnValue({
+      selectRoute,
+      execute: vi.fn(),
+    });
+    const dispatch = vi
+      .spyOn(agentTransport, "dispatchToAgent")
+      .mockResolvedValue({
+        stdout: "",
+        stderr: "",
+        exitCode: 0,
+        durationS: 0,
+      });
+    const { codeReviewWorkflow } = await resolveReviewPlugin(root);
+    vi.spyOn(ShipOrchestrator.prototype, "run").mockImplementation(
+      async function (this: ShipOrchestrator) {
+        // biome-ignore lint/complexity/useLiteralKeys: Dispatch one review without running the ship loop.
+        const result = await this["runNativeWorkflow"](
+          codeReviewWorkflow,
+          "Review",
+          "review",
+        );
+        return result.exitCode;
+      },
+    );
+    const errors: string[] = [];
+    try {
+      const code = await runCli(["ship", feature, "1", "--agent", "claude"], {
+        stderr: (chunk) => errors.push(chunk),
+      });
+      expect(selectRoute).toHaveBeenCalledWith(
+        expect.objectContaining({ explicitBackend: "claude" }),
+      );
+      expect(dispatch.mock.calls.map(([task]) => task.agent)).toEqual([]);
+      expect(errors.join("")).toMatch(/unavailable_pin/);
+      expect(code).toBe(1);
+    } finally {
+      ledger.close();
+    }
+  });
+
+  it.each(["pinned", "provider-default"] as const)(
+    "preserves the review role's %s model and effort over ship defaults",
+    async (routeMode) => {
+      const root = createTempProject({ project: { name: "gwrk" } });
+      const evidence = await projectEvidence(root);
+      const pin = makePin({
+        role: "review",
+        routeMode,
+        evidence,
+        fallbackRoutes: [],
+      });
+      await createRouteLockStore(root).writeRouteLockAtomic(SCOPE, {
+        document: makeRouteLock({}, { routes: { review: pin } }),
+        expectedIncumbentDigest: null,
+      });
+      const dispatch = vi
+        .spyOn(agentTransport, "dispatchToAgent")
+        .mockResolvedValue({
+          stdout: "",
+          stderr: "",
+          durationS: 0,
+          exitCode: 0,
+        });
+      const ship = new ShipOrchestrator({
+        cwd: root,
+        featureId: "001-qualification",
+        phaseId: "phase-01",
+        backend: pin.backend,
+        maxIterations: 1,
+        ciTimeout: 1,
+        reviewModel: "legacy-model",
+        reviewEffort: "low",
+      });
+      const { codeReviewWorkflow } = await resolveReviewPlugin(root);
+      // biome-ignore lint/complexity/useLiteralKeys: Exercise the dispatch without starting the ship loop.
+      await ship["runNativeWorkflow"](codeReviewWorkflow, "Review", "review");
+      const task = dispatch.mock.calls[0][0];
+      expect(task.routeMode).toBe(routeMode);
+      expect(task.model).toBe(routeMode === "pinned" ? pin.modelId : undefined);
+      expect(task.effort).toBe(routeMode === "pinned" ? pin.effort : undefined);
+      expect(task.env?.GWRK_EFFORT).toBe(task.effort);
+    },
+  );
 
   it("fingerprints a selected workflow installed only in the project", async () => {
     const root = createTempProject({ project: { name: "gwrk" } });
