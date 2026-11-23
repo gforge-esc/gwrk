@@ -28,11 +28,11 @@ Each parent lives under `/Users/gonzo/Code/gwrk-worktrees`. Each feature branch 
 
 ## Blocking findings
 
-Model review retains eight failing cases at `1d667bca`. They cover rejected or stale fallback evidence and changed enforcement policy. They also cover unsupported lock versions and missing provider-default behavior. The runbook needs sequential evaluation and promotion. Its hosted examples need the approved credential-file environment. Evidence is `/tmp/gwrk-nov23-model5-review-restored-red.log`.
+Model qualification repairs eight reproduced findings at `4be1dbc6`. Its 184 scoped checks pass and the full suite has no failures. Independent review remains active. The retained failures cover rejected or stale fallback evidence and changed enforcement policy. They also cover unsupported lock versions and missing provider-default behavior. The runbook needs sequential evaluation and promotion with the approved hosted credential environment. Original evidence is `/tmp/gwrk-nov23-model5-review-restored-red.log`.
 
 Enrollment needs its own implementation and isolation proof. Its parent includes the combined candidate at `72413f16`. The handoff preserves zero-inference initialization and target architecture context. It also preserves scoped authorization and Linux shutdown behavior.
 
-Durable ingress starts from the real HTTP acceptance regression at `80dc86f4`. The server acknowledges work without a committed operation. The worker must compose durable receipts and startup recovery against the approved ports. Its later command and recovery phase remains open.
+Durable ingress commits its implementation at `e84474c7`. Its 163 scoped checks pass and the full suite has no failures. Independent code review remains active. The original HTTP acceptance regression at `80dc86f4` proved acknowledgement without a committed operation. The later command and recovery phase remains open.
 
 ## Combined verification
 
@@ -46,9 +46,13 @@ The combined branch is `codex/full-feature-integration-nov18` at `72413f16`. PR 
 | Native Node 22 Linux before Slack Phase 5 | `1240e615` | PASS, 4,285 tests |
 | CI before Slack Phase 5 | `1240e615` | PASS, both jobs in run 45254321695 |
 | Full local suite after Slack Phase 5 | `72413f16` | PASS, 4,311 tests |
+| Native Node 22 Linux after Slack Phase 5 | `fa002ca4` | PASS, 4,320 tests |
+| CI after Slack Phase 5 | `fa002ca4` | PASS, both jobs in run 45257757323 |
 | Final combined native Linux | Final head | PENDING |
 
 The current local suite skips 16 tests and retains six todo cases. Evidence is `/tmp/gwrk-nov23-slack5-combined-full-ci.log`.
+
+The latest immutable Linux run skips seven tests and retains six todo cases. Evidence is `/tmp/gwrk-nov23-native-fa002ca4-full.log`. Later worker integration still needs final verification.
 
 The Linux run first exposed two fixtures that relied on the host Git identity. The repaired fixtures use the existing isolated Git helper and explicit test identity. The fresh native run passes. The subsequent Slack composition preserves legacy notification compatibility only without a registry or explicit recipient. It also preserves explicit-null recipient suppression and adds enrolled-project drain regressions. See `specs/048-project-identity-slack/evidence/nov23-integration-composition.md`.
 
