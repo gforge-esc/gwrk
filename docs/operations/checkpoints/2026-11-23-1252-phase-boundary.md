@@ -48,4 +48,12 @@ Hosted pilot and project rollout remain features 051 and 052. This implementatio
 
 The immutable `0b126495` full Linux run passes 4,283 tests but fails two Git-manager fixtures. Both fail while creating their initial commit. The fixtures depend on a host Git identity. Evidence is `/tmp/gwrk-nov23-native-0b126495-full.log`.
 
-The repair uses the existing isolated Git fixture helper with an explicit test identity. It preserves branch creation and merge-conflict assertions. Both repaired tests pass locally. Evidence is `/tmp/gwrk-nov23-native-git-fixture-host-green.log`. A fresh native Linux run must verify the repair.
+The repair uses the existing isolated Git fixture helper with an explicit test identity. It preserves branch creation and merge-conflict assertions. Both repaired tests pass locally. Evidence is `/tmp/gwrk-nov23-native-git-fixture-host-green.log`. The immutable `1240e615` native Node 22 run passes all 4,285 tests. It skips seven tests and retains six todo cases. Evidence is `/tmp/gwrk-nov23-native-1240e615-full.log`. Both CI jobs pass at that head in run 45254321695. Later feature integration still needs final verification.
+
+## Review boundary
+
+Slack Phase 5 clears code review and acceptance review at `69ce770b`. Both CI jobs are running in run 45255409890. This is review clearance with merge pending. No inference slot remains occupied during that wait. Enrollment and isolation Phase 6 is the next assignment after final CI clearance.
+
+Model qualification remains in code review at `f1b87ba3`. Its 173 scoped checks pass and its full suite has no failures. Durable ingress remains in implementation. Their branch and worktree ownership stays unchanged.
+
+Two inference workers remain active. One slot is free. The heavy verification limit remains two. The next completion dependency is durable ingress before durable command status and unattended recovery. Slack enrollment interfaces can advance independently.
