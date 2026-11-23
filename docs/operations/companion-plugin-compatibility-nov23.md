@@ -6,7 +6,7 @@ The companion plugins are compatible with the checked core contracts. No blocker
 
 | Source | Commit |
 |---|---|
-| Core integration | `317835c5282436c1ff7f777e8c908464c7f6d675` |
+| Core integration | `c346c4ca9d679bb09e933f06df40b3468c821d2c` |
 | Companion proof | `f40af40b8ad873c100a2d50defe1105e4556844b` |
 | Core model qualification final | `543b6c2a340584777709171c21a2cac3f611055e` |
 | Core webhook authentication repair | `89ac728be54c07d1bd50fde0bc04cbab058d644c` |
@@ -54,6 +54,6 @@ The proof head has zero GitHub check runs and zero commit statuses. The status A
 
 ## Evidence
 
-Private scripts, logs and SHA-256 digests are in `.runs/core-compatibility-nov23/manifest.json`. The adapter log is `/tmp/plugin-core-compatibility-adapters.log`. Contract results are in `/tmp/plugin-core-compatibility-contracts.log`.
+The final private receipt is `.runs/core-compatibility-final-nov23/manifest.json` in the companion proof checkout. It records logs and compiled module digests. The verifier imports the final core build directly. Earlier receipts remain in `.runs/core-compatibility-nov23/`. The source differs from `f1272d02` only through operations documents.
 
-No source changes, commits or pushes occurred. No live inference, promotion or authentication probes ran. The companion proof branch records this report in metadata commit `35933eb`. Verified plugin source remains `f40af40`.
+The final recheck changed no tracked source or documentation. It made no commits or pushes. No live inference or promotion ran. No authentication probes ran. The companion proof branch records this report in metadata commit `35933eb`. Verified plugin source remains `f40af40`.
