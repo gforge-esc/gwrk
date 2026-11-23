@@ -1,6 +1,6 @@
 # Hosted security readiness
 
-Do not expose this server publicly yet. Production login and API credential verification remain pilot work. The core webhook finding has a reviewed repair at `89ac728b`. Final integration and CI remain required. The pilot owner owns exposure clearance.
+Do not expose this server publicly yet. Production login and API credential verification remain pilot work. The core webhook finding has a reviewed repair at `89ac728b`. Combined platform checks retain the repair and pass. Final PR-head CI controls merge readiness. The pilot owner owns exposure clearance.
 
 Audit source is `07cb062a` on November 23. The intended deployment target is David's AWS account at `gwrk.gforge.ai`. Account and region selection remain pending. This audit made no deployment or external authentication change.
 
@@ -87,6 +87,6 @@ The server enables request logging. This source does not configure a gateway-lev
 | Secrets and logs | Canary credentials never appear in logs or responses | Pilot |
 | Abuse controls | Over-limit requests fail without accepted work | Pilot |
 
-The reviewed repair rejects missing or blank secrets at both boundaries. Independent build and lint pass. All 48 focused tests pass. A broader server integration run passes 85 tests. See [core repair evidence](https://github.com/gforge-esc/gwrk/blob/07cb062a4101fb0004be499ee51766693addca22/specs/049-durable-dispatch-harvest/evidence/nov23-webhook-authentication-repair.md). Final integration must retain those cases and pass required CI. Keep public exposure blocked until production authentication and the route inventory pass their pilot acceptance tests. Then verify the real private origin and HTTPS boundary from outside the host. The read-only proof alone cannot clear that gate.
+The reviewed repair rejects missing or blank secrets at both boundaries. Independent build and lint pass. All 48 focused tests pass. A broader server integration run passes 85 tests. See [core repair evidence](https://github.com/gforge-esc/gwrk/blob/89ac728be54c07d1bd50fde0bc04cbab058d644c/specs/049-durable-dispatch-harvest/evidence/nov23-webhook-authentication-repair.md). The final combined macOS and native Linux suites retain those cases and pass. Required final-head CI controls merge readiness. Keep public exposure blocked until production authentication and the route inventory pass their pilot acceptance tests. Then verify the real private origin and HTTPS boundary from outside the host. The read-only proof alone cannot clear that gate.
 
 No live account or credential was inspected. No full test suite ran during this audit. The two characterization cases passed. The original audit retained the enrolled route and direct coordinator RED evidence. All probes used synthetic payloads and temporary local state.

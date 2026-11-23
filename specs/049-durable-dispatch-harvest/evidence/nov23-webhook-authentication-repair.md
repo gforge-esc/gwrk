@@ -24,8 +24,8 @@ Phase 6 task T035 and its shared gate now require both authentication regression
 | Complete route and application suites after repair | Pass, 48 tests | Zero failures |
 | Production authentication adapter | Pilot prerequisite | Google sessions and API credentials |
 
-The GREEN log is `/tmp/gwrk-nov23-webhook-guard-focused-green.log`. The original audit evidence remains in the security review worktree. No live webhook or cloud deployment occurred. Final source integration must retain these regressions and pass required CI.
+The GREEN log is `/tmp/gwrk-nov23-webhook-guard-focused-green.log`. The original audit evidence remains in the security review worktree. No live webhook or cloud deployment occurred. Final source integration retains these regressions. Both complete platform suites pass. Required final-head CI controls merge readiness.
 
 ## Independent clearance
 
-Independent build and lint pass. Three complete suites pass 48 tests. The wider server integration selection passes 85 tests. The review receipt is `nov23-webhook-authentication-review.md`. Final candidate checks must include this repair after recovery integration.
+Independent build and lint pass. Three complete suites pass 48 tests. The wider server integration selection passes 85 tests. The review receipt is `nov23-webhook-authentication-review.md`. Final candidate checks include this repair after recovery integration. The complete macOS suite passes 4468 tests. Native Linux passes 4477 tests. Both have zero failures.

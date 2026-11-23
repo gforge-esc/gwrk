@@ -6,7 +6,7 @@ The companion plugins are compatible with the checked core contracts. No blocker
 
 | Source | Commit |
 |---|---|
-| Core integration | `c346c4ca9d679bb09e933f06df40b3468c821d2c` |
+| Core integration | `9361efe65bafb25fd503239255ab660ce3c95446` |
 | Companion proof | `f40af40b8ad873c100a2d50defe1105e4556844b` |
 | Core model qualification final | `543b6c2a340584777709171c21a2cac3f611055e` |
 | Core webhook authentication repair | `89ac728be54c07d1bd50fde0bc04cbab058d644c` |
@@ -54,6 +54,6 @@ The proof head has zero GitHub check runs and zero commit statuses. The status A
 
 ## Evidence
 
-The final private receipt is `.runs/core-compatibility-final-nov23/manifest.json` in the companion proof checkout. It records logs and compiled module digests. The verifier imports the final core build directly. Earlier receipts remain in `.runs/core-compatibility-nov23/`. The source differs from `f1272d02` only through operations documents.
+The final private receipt is `.runs/core-compatibility-throttle-final-nov23/manifest.json` in the companion proof checkout. It records logs and compiled module digests. The verifier imports the final core build directly. Earlier receipts remain in `.runs/core-compatibility-nov23/`. The source includes throttle repair `f8d1f2d8`. Its compiled contract module hashes match the earlier final receipt. Later changes add review records and documentation.
 
 The final recheck changed no tracked source or documentation. It made no commits or pushes. No live inference or promotion ran. No authentication probes ran. The companion proof branch records this report in metadata commit `35933eb`. Verified plugin source remains `f40af40`.
