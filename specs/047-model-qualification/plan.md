@@ -194,6 +194,8 @@ The Phase 5 review adds seven routing regressions. Two cover rejected and stale 
 
 The fallback tests start with a passing evaluation and change one input at a time. A rejected decision disqualifies the fallback. Separate cases change the fixture or prompt hash. The discovery cases change the snapshot hash, eligible catalog digest or adapter CLI version. The CLI lifecycle tests retain the `incumbent-changed` rejection and verify sequential promotion for all three roles. The test patch against `1d667bca` is `.runs/review-regressions-phase05-20261123T201643Z-955c7fad.patch`.
 
+The [repair review](evidence/code-review-phase-05-4be1dbc6.md) retains two routing regressions. One changes the active project workflow prompt. The other leaves a fresh primary pin beside unreadable fallback evidence. The patch against `4be1dbc6` is `.runs/review-regressions-phase05-20261123T202611Z-79777da2.patch`.
+
 #### Done When
 
 ```bash

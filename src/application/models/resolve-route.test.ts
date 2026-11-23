@@ -799,6 +799,69 @@ describe("TR-014: resolveQualifiedRoute", () => {
     },
   );
 
+  it("stops pinned dispatch after the active project workflow prompt changes", async () => {
+    const root = createTempProject({ project: { name: "gwrk" } });
+    const workflow = path.join(root, ".gwrk/plugins/workflows/gwrk-specify");
+    fs.mkdirSync(workflow, { recursive: true });
+    fs.copyFileSync(
+      path.resolve("src/plugins/builtins/workflows/gwrk-specify/manifest.yaml"),
+      path.join(workflow, "manifest.yaml"),
+    );
+    const prompt = path.join(workflow, "PROMPT.md");
+    fs.writeFileSync(prompt, "Use the original project instructions.");
+    const evidence = await projectEvidence(root);
+    const lock = path.join(root, ".gwrk/models/route-lock.local.json");
+    fs.mkdirSync(path.dirname(lock), { recursive: true });
+    fs.writeFileSync(lock, JSON.stringify(makeRouteLock({ evidence })));
+
+    const dispatch = vi.fn(async (_task: TaskDispatch) => ({
+      stdout: "",
+      stderr: "",
+      durationS: 0,
+      exitCode: 0,
+    }));
+    const runtime = new WorkflowRuntime();
+    const execute = () =>
+      runtime.executeWorkflow("gwrk-specify", "Specify", {
+        nativeOnly: true,
+        projectRoot: root,
+        dispatcher: dispatch,
+      });
+    await execute();
+    expect(dispatch.mock.calls[0][0].stdin).toContain(
+      "Use the original project instructions.",
+    );
+    fs.writeFileSync(prompt, "Use the revised project instructions.");
+    await expect(execute()).rejects.toThrow(/stale|requalif/i);
+    expect(dispatch).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps a qualified primary usable when an unselected fallback bundle is unreadable", async () => {
+    const root = createTempProject({ project: { name: "gwrk" } });
+    const evidence = await projectEvidence(root);
+    const pin = makePin({ evidence });
+    const lock = path.join(root, ".gwrk/models/route-lock.local.json");
+    fs.mkdirSync(path.dirname(lock), { recursive: true });
+    fs.writeFileSync(lock, JSON.stringify(makeRouteLock({ evidence })));
+    expect(resolveAgent("define", root).model).toBe(pin.modelId);
+
+    const fallback = pin.fallbackRoutes[0];
+    const directory = path.join(
+      root,
+      ".runs/models/evaluations",
+      fallback.evaluationId,
+    );
+    fs.mkdirSync(directory, { recursive: true });
+    fs.writeFileSync(path.join(directory, "bundle.json"), "{");
+    expect(resolveAgent("define", root)).toMatchObject({
+      backend: pin.backend,
+      model: pin.modelId,
+    });
+    expect(() =>
+      resolveAgent("define", root, { agent: fallback.backend }),
+    ).toThrow(/unavailable_pin/i);
+  });
+
   it("requires requalification when the selected project enforcement skill changes", async () => {
     const root = createTempProject({ project: { name: "gwrk" } });
     const pack = path.join(root, ".gwrk/plugins/skills/review-fixture-policy");
