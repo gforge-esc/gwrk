@@ -75,6 +75,7 @@ export interface DurableHarvestService {
   pollProject(
     project: EnrolledProject,
     ownerId: string,
+    options?: { signal?: AbortSignal },
   ): Promise<HarvestExecutionSummary[]>;
   runManualHarvest(input: {
     project: EnrolledProject;
@@ -1298,9 +1299,10 @@ export function createDurableHarvestService(
       };
     },
 
-    async pollProject(project, ownerId) {
+    async pollProject(project, ownerId, pollOptions) {
       const projectRoot = projectCheckoutRoot(project);
       if (!github || !project.repoSlug || !projectRoot) return [];
+      if (pollOptions?.signal?.aborted) return [];
 
       const existingCursor = store.getHarvestCursor(project.projectId);
       let facts: HarvestPullRequestFact[];
@@ -1310,17 +1312,21 @@ export function createDurableHarvestService(
           repoSlug: project.repoSlug,
           baseBranch: project.trunkBranch,
           sinceIso: existingCursor?.lastTerminalAt ?? null,
+          ...(pollOptions?.signal ? { signal: pollOptions.signal } : {}),
         });
       } catch (error) {
-        store.saveHarvestCursor({
-          projectId: project.projectId,
-          lastPolledAt: clock.nowIso(),
-          lastTerminalAt: existingCursor?.lastTerminalAt ?? null,
-          lastPrNumber: existingCursor?.lastPrNumber ?? null,
-          lastError: error instanceof Error ? error.message : String(error),
-        });
+        if (!pollOptions?.signal?.aborted) {
+          store.saveHarvestCursor({
+            projectId: project.projectId,
+            lastPolledAt: clock.nowIso(),
+            lastTerminalAt: existingCursor?.lastTerminalAt ?? null,
+            lastPrNumber: existingCursor?.lastPrNumber ?? null,
+            lastError: error instanceof Error ? error.message : String(error),
+          });
+        }
         throw error;
       }
+      if (pollOptions?.signal?.aborted) return [];
 
       const sorted = [...facts].sort((a, b) => {
         const aTime = Date.parse(a.mergedAt ?? a.closedAt ?? "");
@@ -1511,6 +1517,7 @@ export function createDurableHarvestService(
 
       const summaries: HarvestExecutionSummary[] = [];
       for (const entry of acceptedEntries) {
+        if (pollOptions?.signal?.aborted) break;
         summaries.push(
           await executeHarvestOperation(entry.operation, project, ownerId, {
             updateLocalTaskState: false,

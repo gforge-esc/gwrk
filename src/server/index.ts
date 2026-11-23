@@ -407,7 +407,9 @@ async function startLockedServer(
 
   const baseVcs = createGitVcsAdapter();
   const vcs: VcsPort = options.vcs ? { ...baseVcs, ...options.vcs } : baseVcs;
-  const githubPort = options.github ?? createGitHubHarvestAdapter();
+  const githubPort =
+    options.github ??
+    createGitHubHarvestAdapter({ signal: serverShutdown.signal });
   const notifier =
     options.notifier ??
     (durableRegistry
@@ -446,7 +448,10 @@ async function startLockedServer(
       : undefined);
   const harvestExecutor =
     options.harvestExecutor ??
-    createHarvestExecutionAdapter(sharedDb ? { db: sharedDb } : {});
+    createHarvestExecutionAdapter({
+      ...(sharedDb ? { db: sharedDb } : {}),
+      ...(gitEnv ? { gitEnv } : {}),
+    });
   const harvestService: DurableHarvestService | undefined =
     options.harvestService ??
     (operationsStore && durableRegistry && outbox
