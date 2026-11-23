@@ -60,6 +60,12 @@ export interface GitHubHarvestPort {
     baseBranch: string;
     sinceIso?: string | null;
   }): Promise<HarvestPullRequestFact[]>;
+  listOpenPullRequests?(input: {
+    cwd: string;
+    repoSlug: string;
+    baseBranch: string;
+    headBranch?: string;
+  }): Promise<HarvestPullRequestFact[]>;
   getPullRequest(input: {
     cwd: string;
     repoSlug: string;

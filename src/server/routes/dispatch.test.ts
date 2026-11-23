@@ -221,17 +221,20 @@ describe("dispatch routes", () => {
               priorFixture.db.name,
               process.pid,
             );
-            const record = response.json();
-            expect(record.backend).toBe(backend);
-            expect(record.tasks).toMatchObject(
-              taskIds.map((id) => ({ id, backend })),
-            );
+            const receipt = response.json();
+            expect(receipt.operationId).toBeDefined();
             const queue = await hostedApp.inject({
               method: "GET",
               url: `/api/dispatch/queue?projectId=${enrolledId}`,
               headers: { "x-verified-test-sub": "iss:hosted-op" },
             });
             expect(queue.statusCode).toBe(200);
+            const record = queue.json().queued[0];
+            expect(record.id).toBe(receipt.operationId);
+            expect(record.backend).toBe(backend);
+            expect(record.tasks).toMatchObject(
+              taskIds.map((id) => ({ id, backend })),
+            );
             expect(queue.json()).toMatchObject({
               active: [],
               queued: [record],
@@ -596,7 +599,7 @@ describe("TR-023: /api/dispatch HTTP project access enforcement", () => {
           projectId: "proj-alpha",
           featureId: "048-shared",
           phaseId: "phase-07",
-          recipient: undefined,
+          recipient: null,
         }),
       );
 

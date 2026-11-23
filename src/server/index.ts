@@ -116,13 +116,13 @@ export class ScopedSandboxManager extends SandboxManager {
 
   constructor(
     root: string,
-    private readonly customGitEnv?: () => NodeJS.ProcessEnv,
+    private readonly scopedGitEnv?: () => NodeJS.ProcessEnv,
     private readonly registry?: ProjectRegistryPort,
   ) {
     const normalizedRoot = resolve(root);
     super(normalizedRoot);
     this.root = normalizedRoot;
-    this.gitEnv = customGitEnv ?? (() => repositoryGitEnv(normalizedRoot));
+    this.gitEnv = scopedGitEnv ?? (() => repositoryGitEnv(normalizedRoot));
   }
 
   protected override gitOptions() {
@@ -134,7 +134,7 @@ export class ScopedSandboxManager extends SandboxManager {
     if (normalized === this.root) return this;
     let manager = this.childManagers.get(normalized);
     if (!manager) {
-      manager = new ScopedSandboxManager(normalized, this.customGitEnv);
+      manager = new ScopedSandboxManager(normalized, this.scopedGitEnv);
       this.childManagers.set(normalized, manager);
     }
     return manager;

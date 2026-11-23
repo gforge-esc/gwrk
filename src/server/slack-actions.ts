@@ -7,10 +7,13 @@ import type { ActionsBlock } from "@slack/types";
 import { scopedFeatureDirectory } from "../adapters/filesystem/scoped-feature.js";
 import type { ProjectRoutingService } from "../application/project-routing/index.js";
 import { findOpenPr } from "../db/runs.js";
+import type { DispatchReceipt } from "../domain/durable-dispatch.js";
 import { normalizeGitRemoteSlug } from "../domain/project-id.js";
-import type {
-  MergeTarget,
-  SlackActionReceipt,
+import {
+  type DeliveryRecipient,
+  type MergeTarget,
+  type SlackActionReceipt,
+  buildActionReceiptKey,
 } from "../domain/project-registry.js";
 import { requiredAccessForSlackAction } from "../domain/slack-routing.js";
 import { PlanStore } from "../engine/plan-store.js";
@@ -22,6 +25,7 @@ import {
   resolveSlackCheckout,
 } from "./slack-commands.js";
 import { launchDetachedGwrk } from "./slack-launch.js";
+import type { DispatchRecord } from "./types.js";
 
 function parseActionPayload(rawPayload?: string): {
   featureId?: string;
@@ -338,6 +342,15 @@ async function handleMerge(
 export async function registerSlackActions(app: App, context: CommandContext) {
   const defaultProjectId = resolveProjectId(context.projectRoot);
   const activeMergeClicks = new Set<string>();
+  const pendingAckDispatches = new Map<
+    string,
+    {
+      actorUserId: string;
+      threadTs?: string;
+      receipt: DispatchReceipt;
+      release: () => void;
+    }
+  >();
 
   // Handle button actions
   app.action<BlockAction<ButtonAction>>(
@@ -370,47 +383,290 @@ export async function registerSlackActions(app: App, context: CommandContext) {
     },
   );
 
-  app.action("request_changes", async ({ ack, body, client, logger }) => {
-    await ack();
+  async function handleDurableDispatchAction(
+    actionId: "request_changes" | "retry_phase",
+    // biome-ignore lint/suspicious/noExplicitAny: Slack action handler args
+    { ack, body, client, logger }: any,
+  ) {
     // biome-ignore lint/suspicious/noExplicitAny: Slack body structure is complex
     const actionBody = body as any;
     const payload = actionBody.actions?.[0]?.value;
-    if (!payload) return;
+    if (!payload) {
+      await ack();
+      return;
+    }
     const payloadObj = parseActionPayload(payload);
-    if (!payloadObj?.featureId) return;
+    if (!payloadObj?.featureId) {
+      await ack();
+      return;
+    }
 
     const { featureId, phaseId } = payloadObj;
-    const auth = await verifyAndClaimClick(
-      "request_changes",
-      actionBody,
-      payloadObj,
-      context,
-      client,
-      logger,
-    );
-    if (!auth.ok) return;
+    const channelId = actionBody.channel?.id ?? context.channelId ?? "";
+    const actorUserId = actionBody.user?.id ?? context.userId ?? "";
 
-    try {
-      context.queue.enqueue({ featureId, phaseId: phaseId ?? "" });
-    } catch (error) {
-      completeReceipt(context, auth.receiptKey, "failed");
-      const errorMessage =
-        error instanceof Error ? error.message : String(error);
+    const routingService = context.routingService;
+    if (!routingService) {
+      await ack();
+      logger?.error?.(
+        `Action ${actionId} failed: no routing service available to authorize action`,
+      );
+      if (client?.chat?.postEphemeral && channelId && actorUserId) {
+        await client.chat.postEphemeral({
+          channel: channelId,
+          user: actorUserId,
+          text: ":warning: Action unauthorized: no routing service available",
+        });
+      }
+      return;
+    }
+
+    const workspaceId =
+      actionBody.team?.id ?? actionBody.team_id ?? context.workspaceId ?? "";
+    const isDirectMessage = Boolean(channelId.startsWith("D"));
+    const messageTs = actionBody.message?.ts;
+    const threadTs = actionBody.message?.thread_ts;
+    const requiredAccess = requiredAccessForSlackAction(actionId);
+    const nowIso = new Date().toISOString();
+
+    type DurableActionTxOutcome =
+      | {
+          ok: false;
+          kind: "denied";
+          decision: Extract<
+            ReturnType<ProjectRoutingService["authorizeAndClaimAction"]>,
+            { ok: false }
+          >;
+        }
+      | {
+          ok: false;
+          kind: "legacy_enqueue_failed";
+          threadTs?: string;
+          errorMessage: string;
+        }
+      | {
+          ok: true;
+          threadTs?: string;
+          receipt: DispatchReceipt | null;
+          record?: DispatchRecord;
+          receiptKey?: string;
+          releaseDispatch?: () => void;
+          isPendingAckReplay?: boolean;
+        };
+
+    const runTx = context.queue.runInTransaction
+      ? <T>(fn: () => T) => context.queue.runInTransaction(fn)
+      : <T>(fn: () => T) => fn();
+
+    // Claim the authorized Slack action and persist DispatchReceipt in one
+    // SQLite transaction strictly BEFORE calling Slack ack().
+    const outcome = runTx((): DurableActionTxOutcome => {
+      const decision = routingService.authorizeAndClaimAction({
+        workspaceId,
+        channelId,
+        isDirectMessage,
+        actorUserId,
+        threadTs,
+        messageTs,
+        actionId,
+        payloadProjectId: payloadObj.projectId,
+        featureId,
+        phaseId,
+        payloadRootTs: payloadObj.rootTs,
+        requiredAccess,
+        nowIso,
+        resolveCheckout: (project) => {
+          const checkout = resolveSlackCheckout(project, context.projectRoot);
+          if (
+            !checkout ||
+            !scopedFeatureDirectory(checkout, featureId, { exactId: true })
+          ) {
+            return undefined;
+          }
+          return checkout;
+        },
+        requiredProjectId: context.queueProjectId ?? null,
+      });
+
+      if (!decision.ok) {
+        if (
+          decision.code === "ACTION_REPLAYED" &&
+          decision.recipient?.projectId
+        ) {
+          const replayReceiptKey = buildActionReceiptKey({
+            projectId: decision.recipient.projectId,
+            actionId,
+            featureId,
+            phaseId: phaseId ?? null,
+            workspaceId,
+            channelId,
+            messageTs: messageTs ?? threadTs ?? "",
+          });
+          const pending = pendingAckDispatches.get(replayReceiptKey);
+          if (pending && pending.actorUserId === actorUserId) {
+            return {
+              ok: true,
+              threadTs: pending.threadTs ?? decision.recipient.threadTs,
+              receipt: pending.receipt,
+              receiptKey: replayReceiptKey,
+              releaseDispatch: pending.release,
+              isPendingAckReplay: true,
+            };
+          }
+        }
+        return { ok: false, kind: "denied", decision };
+      }
+
+      const recipient: DeliveryRecipient = {
+        projectId: decision.project.projectId,
+        surface: "slack",
+        workspaceId: decision.recipient.workspaceId ?? workspaceId,
+        channelId: decision.recipient.channelId ?? channelId,
+        ...(decision.recipient.threadTs
+          ? { threadTs: decision.recipient.threadTs }
+          : {}),
+        actorUserId,
+      };
+
+      if (typeof context.queue.accept === "function") {
+        let releaseDispatch: (() => void) | undefined;
+        const receipt = context.queue.accept(
+          {
+            projectId: decision.project.projectId,
+            featureId,
+            phaseId: phaseId ?? "",
+            recipient,
+          },
+          {
+            deferDrain: (release) => {
+              releaseDispatch = release;
+            },
+          },
+        );
+        if (receipt) {
+          completeReceipt(context, decision.receiptKey, "executed");
+          return {
+            ok: true,
+            threadTs: decision.recipient.threadTs,
+            receipt,
+            receiptKey: decision.receiptKey,
+            releaseDispatch,
+          };
+        }
+      }
+
+      try {
+        const record = context.queue.enqueue({
+          featureId,
+          phaseId: phaseId ?? "",
+        });
+        completeReceipt(context, decision.receiptKey, "executed");
+        return {
+          ok: true,
+          threadTs: decision.recipient.threadTs,
+          receipt: null,
+          record,
+        };
+      } catch (error) {
+        completeReceipt(context, decision.receiptKey, "failed");
+        return {
+          ok: false,
+          kind: "legacy_enqueue_failed",
+          threadTs: decision.recipient.threadTs,
+          errorMessage: error instanceof Error ? error.message : String(error),
+        };
+      }
+    });
+
+    if (
+      outcome.ok &&
+      !outcome.isPendingAckReplay &&
+      outcome.receipt &&
+      outcome.receiptKey &&
+      outcome.releaseDispatch
+    ) {
+      pendingAckDispatches.set(outcome.receiptKey, {
+        actorUserId,
+        threadTs: outcome.threadTs,
+        receipt: outcome.receipt,
+        release: outcome.releaseDispatch,
+      });
+    }
+
+    await ack();
+
+    if (!outcome.ok) {
+      if (outcome.kind === "denied") {
+        logger?.error?.(
+          `Action ${actionId} unauthorized: ${outcome.decision.code} - ${outcome.decision.message}`,
+        );
+        if (client?.chat?.postEphemeral) {
+          await client.chat.postEphemeral({
+            channel: channelId,
+            user: actorUserId,
+            ...(outcome.decision.recipient?.threadTs
+              ? { thread_ts: outcome.decision.recipient.threadTs }
+              : {}),
+            text: `:warning: Action unauthorized: ${outcome.decision.message}`,
+          });
+        }
+        return;
+      }
+
+      const failPrefix =
+        actionId === "request_changes"
+          ? "Failed to re-dispatch"
+          : "Failed to retry phase";
       await client.chat.postEphemeral({
-        channel: actionBody.channel?.id || "",
-        user: actionBody.user.id,
-        thread_ts: auth.threadTs,
-        text: `:warning: Failed to re-dispatch: ${errorMessage}`,
+        channel: channelId,
+        user: actorUserId,
+        thread_ts: outcome.threadTs,
+        text: `:warning: ${failPrefix}: ${outcome.errorMessage}`,
       });
       return;
     }
 
-    completeReceipt(context, auth.receiptKey, "executed");
-    await postActionConfirmation(client, logger, "request_changes", {
-      channel: actionBody.channel?.id || "",
-      thread_ts: auth.threadTs,
-      text: `🔄 Changes requested for *${featureId}*${phaseId ? ` phase *${phaseId}*` : ""} by <@${actionBody.user.id}>. Agent notified and re-dispatching.`,
+    if (outcome.receiptKey && outcome.releaseDispatch) {
+      const pending = pendingAckDispatches.get(outcome.receiptKey);
+      if (!pending) return;
+      pendingAckDispatches.delete(outcome.receiptKey);
+      pending.release();
+    } else {
+      outcome.releaseDispatch?.();
+    }
+
+    const operationId =
+      outcome.receipt?.operationId ??
+      outcome.record?.operationId ??
+      outcome.record?.id;
+    const attempt = outcome.receipt
+      ? outcome.receipt.attemptCount > 0
+        ? outcome.receipt.attemptCount
+        : 1
+      : 1;
+    const phaseLabel = phaseId ? ` phase *${phaseId}*` : "";
+    const receiptSuffix = operationId
+      ? outcome.receipt?.deduplicated
+        ? ` Active operation \`${operationId}\` (attempt ${attempt}).`
+        : ` Operation \`${operationId}\` (attempt ${attempt}).`
+      : actionId === "request_changes"
+        ? " Agent notified and re-dispatching."
+        : "";
+
+    const text =
+      actionId === "request_changes"
+        ? `🔄 Changes requested for *${featureId}*${phaseLabel} by <@${actorUserId}>.${receiptSuffix}`
+        : `🔄 Retrying *${featureId}*${phaseLabel} as requested by <@${actorUserId}>.${receiptSuffix}`;
+
+    await postActionConfirmation(client, logger, actionId, {
+      channel: channelId,
+      thread_ts: outcome.threadTs,
+      text,
     });
+  }
+
+  app.action("request_changes", async (args) => {
+    await handleDurableDispatchAction("request_changes", args);
   });
 
   app.action("approve_spec", async ({ ack, body, client, logger }) => {
@@ -674,47 +930,8 @@ export async function registerSlackActions(app: App, context: CommandContext) {
     });
   });
 
-  app.action("retry_phase", async ({ ack, body, client, logger }) => {
-    await ack();
-    // biome-ignore lint/suspicious/noExplicitAny: Slack body structure is complex
-    const actionBody = body as any;
-    const payload = actionBody.actions?.[0]?.value;
-    if (!payload) return;
-    const payloadObj = parseActionPayload(payload);
-    if (!payloadObj?.featureId) return;
-
-    const { featureId, phaseId } = payloadObj;
-    const auth = await verifyAndClaimClick(
-      "retry_phase",
-      actionBody,
-      payloadObj,
-      context,
-      client,
-      logger,
-    );
-    if (!auth.ok) return;
-
-    try {
-      context.queue.enqueue({ featureId, phaseId: phaseId ?? "" });
-    } catch (error) {
-      completeReceipt(context, auth.receiptKey, "failed");
-      const errorMessage =
-        error instanceof Error ? error.message : String(error);
-      await client.chat.postEphemeral({
-        channel: actionBody.channel?.id || "",
-        user: actionBody.user.id,
-        thread_ts: auth.threadTs,
-        text: `:warning: Failed to retry phase: ${errorMessage}`,
-      });
-      return;
-    }
-
-    completeReceipt(context, auth.receiptKey, "executed");
-    await postActionConfirmation(client, logger, "retry_phase", {
-      channel: actionBody.channel?.id || "",
-      thread_ts: auth.threadTs,
-      text: `🔄 Retrying *${featureId}*${phaseId ? ` phase *${phaseId}*` : ""} as requested by <@${actionBody.user.id}>`,
-    });
+  app.action("retry_phase", async (args) => {
+    await handleDurableDispatchAction("retry_phase", args);
   });
 
   app.event(

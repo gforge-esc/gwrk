@@ -189,6 +189,39 @@ export function createGitHubHarvestAdapter(
         "Pull request scan could not establish completeness due to concurrent updates",
       );
     },
+    async listOpenPullRequests({ cwd, repoSlug, baseBranch, headBranch }) {
+      const repository = repositoryPath(repoSlug);
+      const owner = repoSlug.split("/")[0];
+      const collected = new Map<number, HarvestPullRequestFact>();
+      for (let page = 1; page <= 1000; page += 1) {
+        const query = new URLSearchParams({
+          state: "open",
+          base: baseBranch,
+          per_page: "100",
+          page: String(page),
+        });
+        if (headBranch) {
+          query.set("head", `${owner}:${headBranch}`);
+        }
+        const response = await get(`${repository}/pulls?${query}`, cwd);
+        if (!Array.isArray(response) || response.length > 100)
+          throw new Error(
+            "Pull request page must be an array of at most 100 records",
+          );
+        for (const value of response) {
+          const pr = fact(value, repoSlug);
+          if (pr.state !== "OPEN" || pr.baseBranch !== baseBranch) continue;
+          if (headBranch && pr.headBranch !== headBranch) continue;
+          collected.set(pr.prNumber, pr);
+        }
+        if (response.length < 100) {
+          return [...collected.values()];
+        }
+      }
+      throw new Error(
+        "Pull request pagination exceeded the bounded page limit",
+      );
+    },
     async getPullRequest({ cwd, repoSlug, prNumber }) {
       if (!Number.isSafeInteger(prNumber) || prNumber <= 0)
         throw new Error("Invalid pull request number");

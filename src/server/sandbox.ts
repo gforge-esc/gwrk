@@ -78,9 +78,14 @@ export class SandboxManager {
    * it is never mistaken for a worktree by anything scanning that directory.
    */
   private registryPath: string;
+  private readonly customGitEnv?: () => NodeJS.ProcessEnv;
 
-  constructor(projectRoot: string = process.cwd()) {
+  constructor(
+    projectRoot: string = process.cwd(),
+    gitEnv?: () => NodeJS.ProcessEnv,
+  ) {
     this.projectRoot = projectRoot;
+    this.customGitEnv = gitEnv;
     this.runsDir = path.join(projectRoot, ".runs", "sandboxes");
     this.registryPath = path.join(
       projectRoot,
@@ -90,7 +95,7 @@ export class SandboxManager {
   }
 
   protected gitOptions(): { env?: NodeJS.ProcessEnv } {
-    return {};
+    return this.customGitEnv ? { env: this.customGitEnv() } : {};
   }
 
   private runWorktree(args: string[], cwd: string): void {

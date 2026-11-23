@@ -13,7 +13,10 @@ import {
   createSyntheticVcsPort,
 } from "../../tests/helpers/synthetic-slack.js";
 import { repositoryGitEnv } from "../adapters/git/process-env.js";
-import { createSqliteProjectRegistryAdapter } from "../adapters/sqlite/index.js";
+import {
+  createSqliteOperationsStoreAdapter,
+  createSqliteProjectRegistryAdapter,
+} from "../adapters/sqlite/index.js";
 import { createProjectRoutingService } from "../application/project-routing/index.js";
 import { getCompressionRecord, recordCompression } from "../db/compression.js";
 import { getGateResults, recordGateResult } from "../db/gates.js";
@@ -97,6 +100,7 @@ describe("TR-024: two-repo isolation across identical feature IDs and synthetic 
       "git@github.com:org/beta.git",
     );
 
+    vi.stubEnv("GWRK_HOME", path.join(workspaceDir, "isolated-home"));
     db = openDatabase({ dbPath: path.join(workspaceDir, "gwrk.db") });
     registry = createSqliteProjectRegistryAdapter({ db });
 
@@ -450,10 +454,20 @@ describe("TR-024: two-repo isolation across identical feature IDs and synthetic 
         },
       });
       expect(alphaRes.statusCode).toBe(201);
-      const alphaRecord = alphaRes.json();
+      const alphaReceipt = alphaRes.json();
+      const operations = createSqliteOperationsStoreAdapter({ db });
+      const alphaRecord = operations.getDispatchOperation({
+        projectId: alphaProject.projectId,
+        featureId: "048-shared",
+        phaseId: "phase-01",
+      });
+      expect(alphaReceipt.operationId).toBe(alphaRecord?.operationId);
+      expect(alphaRecord).not.toBeNull();
       expect(alphaRecord.projectId).toBe(alphaProject.projectId);
       expect(alphaRecord.trunkBranch).toBe("main");
-      expect(alphaRecord.projectRoot).toBe(alphaRoot);
+      expect(registry.getProject(alphaRecord.projectId)?.localRoot).toBe(
+        alphaRoot,
+      );
       expect(alphaRecord.recipient).toEqual({
         projectId: alphaProject.projectId,
         surface: "http",
@@ -471,13 +485,22 @@ describe("TR-024: two-repo isolation across identical feature IDs and synthetic 
         },
       });
       expect(betaRes.statusCode).toBe(201);
-      const betaRecord = betaRes.json();
+      const betaReceipt = betaRes.json();
+      const betaRecord = operations.getDispatchOperation({
+        projectId: betaProject.projectId,
+        featureId: "048-shared",
+        phaseId: "phase-01",
+      });
+      expect(betaReceipt.operationId).toBe(betaRecord?.operationId);
+      expect(betaRecord).not.toBeNull();
       expect(betaRecord.projectId).toBe(betaProject.projectId);
       expect(betaRecord.trunkBranch).toBe("develop");
-      expect(betaRecord.projectRoot).toBe(betaRoot);
+      expect(registry.getProject(betaRecord.projectId)?.localRoot).toBe(
+        betaRoot,
+      );
       // Explicit null recipient stays distinct from omitted recipient
-      expect(betaRecord.recipient).toBeUndefined();
-      expect(betaRecord.id).not.toBe(alphaRecord.id);
+      expect(betaRecord.recipient).toBeNull();
+      expect(betaRecord.operationId).not.toBe(alphaRecord.operationId);
 
       // Scoped queue and status views stay strictly isolated
       const alphaStatus = await server.inject({
@@ -802,27 +825,66 @@ describe("TR-024: two-repo isolation across identical feature IDs and synthetic 
       undefined,
       {
         registry,
-        listPullRequests: async ({ projectId }) => [
-          {
-            number: projectId === alphaProject.projectId ? 11 : 22,
-            headRefName: "feat/048-shared-phase-02",
-            mergedAt: "2026-11-23T02:00:00.000Z",
-            closedAt: "2026-11-23T02:00:00.000Z",
-            state: "MERGED",
-            mergeCommit: {
-              oid: projectId === alphaProject.projectId ? "aaa111" : "bbb222",
+        github: {
+          verifyWebhookSignature: () => false,
+          getPullRequest: async () => null,
+          listTerminalPullRequests: async ({ cwd, repoSlug, baseBranch }) => [
+            {
+              repoSlug,
+              headRepoSlug: repoSlug,
+              prNumber: cwd === alphaRoot ? 11 : 22,
+              prUrl: `https://github.com/${repoSlug}/pull/${cwd === alphaRoot ? 11 : 22}`,
+              headBranch: "feat/048-shared-phase-02",
+              baseBranch,
+              state: "MERGED",
+              merged: true,
+              headSha: null,
+              mergedAt: "2026-11-23T02:00:00.000Z",
+              closedAt: "2026-11-23T02:00:00.000Z",
+              mergeCommitSha: "a".repeat(40),
             },
-            url: `https://github.com/org/${projectId === alphaProject.projectId ? "alpha" : "beta"}/pull/1`,
+          ],
+        },
+        vcs: createSyntheticVcsPort({
+          fetchBranch: () => {},
+          resolveRefSha: () => "a".repeat(40),
+          isCommitAncestorOfRef: () => true,
+          createDetachedCheckout: async (cwd, commitSha) => ({
+            checkoutDir: cwd,
+            commitSha,
+          }),
+          removeDetachedCheckout: async () => {},
+          getRemoteBranchSha: async () => null,
+          deleteRemoteBranchAtTip: async () => ({
+            deleted: false,
+            reason: "missing",
+          }),
+        }),
+        executor: {
+          discoverPhasesAtCheckout: async () => ["phase-02"],
+          verifyGatesAtCheckout: async () => ({
+            passed: 1,
+            failed: 0,
+            total: 1,
+            failedTaskIds: [],
+          }),
+          recordLearningAtCheckout: async ({ checkoutDir, projectId }) => {
+            harvested.push({ projectRoot: checkoutDir, projectId });
+            return {
+              linkedRunId: null,
+              forecastMissing: false,
+              summaryText: "Synthetic harvest",
+            };
           },
-        ],
-        syncTrunk: () => {},
-        harvest: async (root, record, opts) => {
-          harvested.push({
-            projectRoot: root,
-            projectId: opts?.projectId ?? record.projectId ?? "",
-            threadTs: opts?.recipient?.threadTs,
-          });
-          return null;
+        },
+        notifier: {
+          notify: async (payload) => {
+            const record = harvested.find(
+              ({ projectId }) => projectId === payload.projectId,
+            );
+            if (record) record.threadTs = payload.recipient?.threadTs;
+            return { delivered: true };
+          },
         },
       },
     );

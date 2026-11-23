@@ -234,7 +234,9 @@ pnpm exec vitest run src/application/dispatch/dispatch-service.test.ts src/appli
 - `src/server/slack-actions.ts` (MODIFY: Persist retry and change-request dispatches before `ack()` and return `operationId` receipts)
 - `src/server/github.ts` (MODIFY: Parse raw webhook bytes, persist deliveries before HTTP `200` and forward closed and merged PRs)
 - `src/server/harvest-watcher.ts` (MODIFY: Poll enrolled repositories from durable cursors and submit PRs to `DurableHarvestService`)
-- `src/server/dispatch.test.ts` (MODIFY: Test durable HTTP acceptance receipts, restart queue replay and active worker reconciliation)
+- `src/server/durable-ingress.test.ts src/server/dispatch.test.ts` (MODIFY: Test durable HTTP acceptance receipts, restart queue replay and active worker reconciliation)
+- `src/server/github.scoped.test.ts` (CREATE: Preserve scoped repository routing and thread recipient tests)
+- `src/server/slack.test.ts` (MODIFY: Test persistence before acknowledgment and worker launch after acknowledgment)
 - `src/server/github.test.ts` (MODIFY: Test raw-body HMAC verification, duplicate `X-GitHub-Delivery` handling and closed unmerged PR intake)
 
 #### Governance and skills
@@ -248,7 +250,9 @@ pnpm exec vitest run src/application/dispatch/dispatch-service.test.ts src/appli
 
 | ID | Type | Target | Assertion |
 |---|---|---|---|
-| TR-001 | integration | `src/server/dispatch.test.ts` | HTTP and Slack dispatch paths persist stable receipts before acknowledgement and recover on restart |
+| TR-001 | integration | `src/server/durable-ingress.test.ts src/server/dispatch.test.ts` | HTTP and Slack dispatch paths persist stable receipts before acknowledgement and recover on restart |
+| TR-002 | integration | `src/server/github.scoped.test.ts` | Preserve project authorization and feature thread recipients |
+| TR-001 | integration | `src/server/slack.test.ts` | Persist receipts before acknowledgment and launch workers afterward |
 | TR-002 | integration | `src/server/github.test.ts` | Webhook verifies raw-body signatures, deduplicates `X-GitHub-Delivery` and scopes by enrolled repo |
 | TR-004 | integration | `src/server/github.test.ts` | Closed unmerged PR webhooks record terminal attempts on configured trunk without promoting phases |
 
@@ -256,7 +260,7 @@ pnpm exec vitest run src/application/dispatch/dispatch-service.test.ts src/appli
 
 ```bash
 pnpm build
-pnpm exec vitest run src/server/dispatch.test.ts src/server/github.test.ts src/server/routes/dispatch.test.ts src/server/slack-commands.test.ts src/server/slack-actions.test.ts src/architecture.test.ts
+pnpm exec vitest run src/server/durable-ingress.test.ts src/server/dispatch.test.ts src/server/github.test.ts src/server/github.scoped.test.ts src/server/routes/dispatch.test.ts src/server/slack.test.ts src/server/slack-commands.test.ts src/server/slack-actions.test.ts src/architecture.test.ts
 ```
 
 ### Phase 6: Status, CLI and unattended proof

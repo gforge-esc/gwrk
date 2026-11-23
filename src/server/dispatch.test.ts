@@ -2,15 +2,26 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import { execFileSync } from "node:child_process";
+import { mkdirSync, mkdtempSync, realpathSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import {
   type Mock,
   type Mocked,
+  afterEach,
   beforeEach,
   describe,
   expect,
   it,
   vi,
 } from "vitest";
+import { resolveProjectId } from "../adapters/git/project-id.js";
+import {
+  createSqliteOperationsStoreAdapter,
+  createSqliteProjectRegistryAdapter,
+} from "../adapters/sqlite/index.js";
+import { openDatabase } from "../db/index.js";
 import { finishRun, startRun } from "../db/runs.js";
 import type {
   DeliveryRecipient,
@@ -19,6 +30,11 @@ import type {
 } from "../domain/project-registry.js";
 import { resolveSlackDeliveryRoute } from "../domain/slack-delivery.js";
 import { ShipOrchestrator } from "../engine/ship-orchestrator.js";
+import type { NotificationPort } from "../ports/notification-port.js";
+import type {
+  GitHubHarvestPort,
+  WorkerExecutionPort,
+} from "../ports/operations-port.js";
 import type { ProjectRegistryPort } from "../ports/store-port.js";
 import type { GwrkConfig } from "../utils/config.js";
 import { DispatchQueue } from "./dispatch.js";
@@ -471,17 +487,13 @@ describe("DispatchQueue (unified ship engine)", () => {
     });
 
     mockMonitor.isThrottled.mockReturnValue(false);
-    const scopedDb = {} as NonNullable<
-      ConstructorParameters<typeof DispatchQueue>[4]
-    >["db"];
-    const scopedLedger = { projectId: "daemon-ledger", db: scopedDb };
     const gitEnvironment = { GWRK_SCOPED_TEST: "dispatch" };
     const scopedQueue = new DispatchQueue(
       mockConfig,
       mockMonitor,
       mockSandbox,
       projectRoot,
-      scopedLedger,
+      undefined,
       () => gitEnvironment,
       "claude",
       registry,
@@ -576,7 +588,7 @@ describe("DispatchQueue (unified ship engine)", () => {
         phase_id: "phase-01",
         project_id: "proj-alpha",
       }),
-      scopedDb,
+      undefined,
     );
     expect(startRun).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -584,7 +596,7 @@ describe("DispatchQueue (unified ship engine)", () => {
         phase_id: "phase-01",
         project_id: "proj-beta",
       }),
-      scopedDb,
+      undefined,
     );
 
     expect(mockSandbox.createSandbox).toHaveBeenCalledWith(
@@ -620,12 +632,12 @@ describe("DispatchQueue (unified ship engine)", () => {
     expect(finishRun).toHaveBeenCalledWith(
       123,
       expect.objectContaining({ exit_code: 0 }),
-      scopedDb,
+      undefined,
     );
     expect(finishRun).toHaveBeenCalledWith(
       123,
       expect.objectContaining({ exit_code: 1 }),
-      scopedDb,
+      undefined,
     );
     expect(persistDispatch).toHaveBeenCalledWith(alphaRecord, "/mirrors/alpha");
     expect(persistDispatch).toHaveBeenCalledWith(betaRecord, "/repos/beta");
@@ -1168,5 +1180,1148 @@ describe("DispatchQueue (unified ship engine)", () => {
         },
       }),
     ).toThrow();
+  });
+});
+
+describe("DispatchQueue (durable SQLite backing, recovery & outbox notifications)", () => {
+  const tempDirs: string[] = [];
+
+  afterEach(() => {
+    for (const dir of tempDirs.splice(0)) {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  function setupDurableEnv(opts?: { withSlack?: boolean }) {
+    const tempRoot = mkdtempSync(join(tmpdir(), "gwrk-durable-queue-"));
+    tempDirs.push(tempRoot);
+    const repoRoot = join(tempRoot, "repo");
+    mkdirSync(repoRoot, { recursive: true });
+    execFileSync("git", ["init", "--quiet", "--initial-branch=develop"], {
+      cwd: repoRoot,
+      stdio: "ignore",
+      timeout: 5_000,
+    });
+    const realRoot = realpathSync(repoRoot);
+    const db = openDatabase({ dbPath: join(tempRoot, "gwrk.db") });
+    const projectId = resolveProjectId(realRoot);
+    const registry = createSqliteProjectRegistryAdapter({ db });
+    const store = createSqliteOperationsStoreAdapter({ db });
+
+    registry.enrollProject({
+      projectId,
+      slug: "durable-proj",
+      name: "Durable Project",
+      repoSlug: null,
+      trunkBranch: "develop",
+      localRoot: realRoot,
+      mirrorPath: null,
+      runnerPolicy: { allowedKinds: ["local"] },
+      slack: opts?.withSlack
+        ? {
+            workspaceId: "T_DURABLE",
+            channelId: "C_DURABLE",
+            sharedChannel: false,
+          }
+        : null,
+      legacyProjectIds: [],
+      createdAt: "2026-11-23T12:00:00.000Z",
+      updatedAt: "2026-11-23T12:00:00.000Z",
+    });
+    if (opts?.withSlack) {
+      registry.bindFeatureThread({
+        projectId,
+        featureId: "049-durable",
+        workspaceId: "T_DURABLE",
+        channelId: "C_DURABLE",
+        rootTs: "1731320000.000777",
+        updatedAt: "2026-11-23T12:00:00.000Z",
+      });
+    }
+
+    const config: GwrkConfig = {
+      project: { name: "durable-proj" },
+      agents: { define: "gemini", implement: "agy" },
+      server: {
+        port: 18790,
+        host: "127.0.0.1",
+        heartbeatIntervalMs: 1000,
+        networkCheckIntervalMs: 1000,
+      },
+      parallelism: {
+        local: { maxCpu: 80, maxMem: 80, minDiskGb: 10, maxClones: 2 },
+        cloud: { maxConcurrent: 10 },
+      },
+    };
+    const monitor = new SystemMonitor() as Mocked<SystemMonitor>;
+    monitor.isThrottled.mockReturnValue(false);
+    const sandbox = new SandboxManager(realRoot) as Mocked<SandboxManager>;
+    sandbox.createSandbox.mockResolvedValue("/work/durable");
+    sandbox.destroySandbox.mockResolvedValue(undefined);
+
+    return {
+      tempRoot,
+      realRoot,
+      db,
+      projectId,
+      registry,
+      store,
+      config,
+      monitor,
+      sandbox,
+    };
+  }
+
+  it("preserves registry recipient validation when durable acceptance bypasses legacy enqueue", async () => {
+    vi.clearAllMocks();
+    const {
+      realRoot,
+      db,
+      projectId,
+      registry,
+      store,
+      config,
+      monitor,
+      sandbox,
+    } = setupDurableEnv({ withSlack: true });
+    const queue = new DispatchQueue(
+      config,
+      monitor,
+      sandbox,
+      realRoot,
+      { db, projectId },
+      undefined,
+      undefined,
+      registry,
+      { heartbeatIntervalMs: null },
+    );
+    queue.pause();
+    try {
+      for (const recipient of [
+        {
+          projectId,
+          surface: "slack" as const,
+          workspaceId: "WRONG",
+          channelId: "C_DURABLE",
+        },
+        {
+          projectId,
+          surface: "slack" as const,
+          workspaceId: "T_DURABLE",
+          channelId: "WRONG",
+        },
+        {
+          projectId,
+          surface: "slack" as const,
+          workspaceId: "T_DURABLE",
+          channelId: "C_DURABLE",
+          threadTs: "wrong-thread",
+        },
+      ]) {
+        expect(() =>
+          queue.accept({
+            projectId,
+            featureId: "049-durable",
+            phaseId: "phase-01",
+            recipient,
+          }),
+        ).toThrow();
+      }
+      expect(
+        store.getDispatchOperation({
+          projectId,
+          featureId: "049-durable",
+          phaseId: "phase-01",
+        }),
+      ).toBeNull();
+      const receipt = queue.accept({
+        projectId: "durable-proj",
+        featureId: "049-durable",
+        phaseId: "phase-01",
+        recipient: { projectId: "durable-proj", surface: "http" },
+      });
+      expect(receipt?.projectId).toBe(projectId);
+      expect(receipt?.recipient).toEqual({ projectId, surface: "http" });
+      expect(queue.getQueue(projectId).queued).toHaveLength(1);
+      expect(queue.getQueue("other-project").queued).toEqual([]);
+    } finally {
+      await queue.close();
+      db.close();
+    }
+  });
+
+  it("TR-001 replays accepted operations across restart and delivers completion only via durable outbox", async () => {
+    vi.clearAllMocks();
+    const {
+      realRoot,
+      db,
+      projectId,
+      registry,
+      store,
+      config,
+      monitor,
+      sandbox,
+    } = setupDurableEnv({ withSlack: true });
+    try {
+      // Queue #1 accepts while paused (simulating crash between acceptance and launch)
+      const queue1 = new DispatchQueue(config, monitor, sandbox, realRoot, {
+        db,
+        projectId,
+      });
+      queue1.pause();
+      const receipt = queue1.accept(
+        {
+          projectId,
+          featureId: "049-durable",
+          phaseId: "phase-01",
+        },
+        { defaultRecipientSurface: "http" },
+      );
+      expect(receipt).not.toBeNull();
+      expect(receipt?.deduplicated).toBe(false);
+      expect(receipt?.recipient).toEqual({ projectId, surface: "http" });
+      await queue1.close();
+
+      // Queue #2 starts fresh on same SQLite DB with synthetic worker & notifier
+      const launchPhaseShip = vi.fn().mockResolvedValue({
+        exitCode: 0,
+        stderr: "",
+        workDir: "/work/durable",
+        prNumber: 91,
+        prUrl: "https://github.com/org/durable/pull/91",
+      });
+      const worker: WorkerExecutionPort = {
+        inspectRecoveredWork: vi.fn(),
+        launchPhaseShip,
+        cleanupStaleSandbox: vi.fn(),
+      };
+      const notify = vi.fn().mockResolvedValue({
+        delivered: true,
+        channelId: "C_DURABLE",
+        messageTs: "1731320099.000123",
+        threadTs: "1731320000.000777",
+      });
+      const notifier: NotificationPort = { notify };
+
+      const queue2 = new DispatchQueue(
+        config,
+        monitor,
+        sandbox,
+        realRoot,
+        { db, projectId },
+        undefined,
+        undefined,
+        registry,
+        { worker, notifier, heartbeatIntervalMs: null },
+      );
+
+      await queue2.recoverOnStartup();
+      await vi.waitFor(() => {
+        const op = store.getDispatchOperation({
+          projectId,
+          featureId: "049-durable",
+          phaseId: "phase-01",
+        });
+        expect(op?.status).toBe("completed");
+      });
+      await queue2.close();
+
+      expect(launchPhaseShip).toHaveBeenCalledOnce();
+      const completed = store.getDispatchOperation({
+        projectId,
+        featureId: "049-durable",
+        phaseId: "phase-01",
+      });
+      expect(completed?.prNumber).toBe(91);
+      // Original HTTP recipient preserved on operation
+      expect(completed?.recipient).toEqual({ projectId, surface: "http" });
+      // Derived Slack destination delivered solely via outbox (no legacy notifySlack!)
+      expect(notify).toHaveBeenCalledOnce();
+      expect(notify).toHaveBeenCalledWith(
+        expect.objectContaining({
+          projectId,
+          featureId: "049-durable",
+          phaseId: "phase-01",
+          channel: "C_DURABLE",
+          threadTs: "1731320000.000777",
+          clientMetadataKey: expect.any(String),
+        }),
+      );
+      expect(notifySlack).not.toHaveBeenCalled();
+      expect(persistDispatch).not.toHaveBeenCalled();
+      expect(queue2.getCompletedCount(projectId)).toBe(1);
+      expect(queue2.getCompletedCount("other-project")).toBe(0);
+      expect(
+        queue2.getDispatch("049-durable", "phase-01", undefined, projectId)
+          ?.projectRoot,
+      ).toBe(realRoot);
+      expect(
+        queue2.getDispatch(
+          "049-durable",
+          "phase-01",
+          undefined,
+          "other-project",
+        ),
+      ).toBeNull();
+    } finally {
+      db.close();
+    }
+  });
+
+  it("TR-001 reconciles stale running leases via WorkerExecutionPort before launching work", async () => {
+    vi.clearAllMocks();
+    const { realRoot, db, projectId, store, config, monitor, sandbox } =
+      setupDurableEnv();
+    try {
+      // Seed three stale expired running operations in SQLite
+      const acceptAndExpire = (featureId: string) => {
+        const r = store.acceptDispatch({
+          projectId,
+          featureId,
+          phaseId: "phase-01",
+          backend: "agy",
+          trunkBranch: "develop",
+          recipient: { projectId, surface: "http" },
+          newOperationId: `op-${featureId}`,
+          nowIso: "2026-11-23T10:00:00.000Z",
+        });
+        store.claimDispatchLease({
+          operationId: r.operationId,
+          leaseOwner: "crashed-daemon",
+          nowIso: "2026-11-23T10:00:01.000Z",
+          leaseExpiresAt: "2026-11-23T10:05:00.000Z",
+        });
+        return r.operationId;
+      };
+
+      const opWithPr = acceptAndExpire("049-has-pr");
+      const opStillRunning = acceptAndExpire("049-still-running");
+      const opStopped = acceptAndExpire("049-stopped-sandbox");
+
+      const inspectRecoveredWork = vi.fn(
+        async ({ operationId }: { operationId: string }) => {
+          if (operationId === opWithPr) {
+            return {
+              workerState: "stopped" as const,
+              pullRequestLookup: "complete" as const,
+              openPullRequest: {
+                operationId,
+                prNumber: 404,
+                prUrl: "https://github.com/org/durable/pull/404",
+              },
+              mergedPullRequest: null,
+              completedManifestRunId: null,
+              sandboxDir: null,
+            };
+          }
+          if (operationId === opStillRunning) {
+            return {
+              workerState: "running" as const,
+              pullRequestLookup: "complete" as const,
+              openPullRequest: null,
+              mergedPullRequest: null,
+              completedManifestRunId: null,
+              sandboxDir: "/work/still-alive",
+            };
+          }
+          return {
+            workerState: "stopped" as const,
+            pullRequestLookup: "complete" as const,
+            openPullRequest: null,
+            mergedPullRequest: null,
+            completedManifestRunId: null,
+            sandboxDir: "/work/stale-sandbox",
+          };
+        },
+      );
+      const cleanupStaleSandbox = vi.fn().mockResolvedValue(undefined);
+      const launchPhaseShip = vi.fn().mockResolvedValue({
+        exitCode: 0,
+        stderr: "",
+        prNumber: 505,
+        prUrl: "https://github.com/org/durable/pull/505",
+      });
+
+      const queue = new DispatchQueue(
+        config,
+        monitor,
+        sandbox,
+        realRoot,
+        { db, projectId },
+        undefined,
+        undefined,
+        {
+          worker: {
+            inspectRecoveredWork,
+            launchPhaseShip,
+            cleanupStaleSandbox,
+          },
+          clock: {
+            nowIso: () => "2026-11-23T12:00:00.000Z",
+            nowMs: () => Date.parse("2026-11-23T12:00:00.000Z"),
+          },
+          heartbeatIntervalMs: null,
+        },
+      );
+
+      const summary = await queue.recoverOnStartup();
+      expect(summary).toEqual({
+        requeuedCount: 1,
+        completedFromPrCount: 1,
+        failedCount: 0,
+      });
+
+      await vi.waitFor(() => {
+        expect(
+          store.getDispatchOperation({
+            projectId,
+            featureId: "049-stopped-sandbox",
+            phaseId: "phase-01",
+          })?.status,
+        ).toBe("completed");
+      });
+      await queue.close();
+
+      expect(inspectRecoveredWork).toHaveBeenCalledTimes(3);
+      expect(cleanupStaleSandbox).toHaveBeenCalledExactlyOnceWith(
+        realRoot,
+        "/work/stale-sandbox",
+        "049-stopped-sandbox",
+      );
+      // Only the confirmed-stopped operation launched a worker
+      expect(launchPhaseShip).toHaveBeenCalledOnce();
+      expect(launchPhaseShip).toHaveBeenCalledWith(
+        expect.objectContaining({ featureId: "049-stopped-sandbox" }),
+      );
+      // PR-completed operation finished without relaunch
+      const prOp = store.getDispatchOperation({
+        projectId,
+        featureId: "049-has-pr",
+        phaseId: "phase-01",
+      });
+      expect(prOp?.status).toBe("completed");
+      expect(prOp?.prNumber).toBe(404);
+      // Live worker was NOT relaunched and kept its leased status
+      const liveOp = store.getDispatchOperation({
+        projectId,
+        featureId: "049-still-running",
+        phaseId: "phase-01",
+      });
+      expect(liveOp?.status).toBe("leased");
+    } finally {
+      db.close();
+    }
+  });
+
+  it("TR-001 default WorkerExecutionPort rejects fork merged PRs and recovers stopped GitHub-enrolled leases", async () => {
+    vi.clearAllMocks();
+    const tempRoot = mkdtempSync(
+      join(tmpdir(), "gwrk-durable-default-worker-"),
+    );
+    tempDirs.push(tempRoot);
+    const repoRoot = join(tempRoot, "repo");
+    mkdirSync(repoRoot, { recursive: true });
+    execFileSync("git", ["init", "--quiet", "--initial-branch=develop"], {
+      cwd: repoRoot,
+      stdio: "ignore",
+      timeout: 5_000,
+    });
+    execFileSync(
+      "git",
+      ["remote", "add", "origin", "https://github.com/org/alpha.git"],
+      { cwd: repoRoot, stdio: "ignore", timeout: 5_000 },
+    );
+    const realRoot = realpathSync(repoRoot);
+    const db = openDatabase({ dbPath: join(tempRoot, "gwrk.db") });
+    try {
+      const projectId = resolveProjectId(realRoot);
+      const registry = createSqliteProjectRegistryAdapter({ db });
+      const store = createSqliteOperationsStoreAdapter({ db });
+      registry.enrollProject({
+        projectId,
+        slug: "alpha",
+        name: "Alpha",
+        repoSlug: "org/alpha",
+        trunkBranch: "develop",
+        localRoot: realRoot,
+        mirrorPath: null,
+        runnerPolicy: { allowedKinds: ["local"] },
+        slack: null,
+        legacyProjectIds: [],
+        createdAt: "2026-11-23T10:00:00.000Z",
+        updatedAt: "2026-11-23T10:00:00.000Z",
+      });
+
+      const seedExpiredLease = (featureId: string, operationId: string) => {
+        const receipt = store.acceptDispatch({
+          projectId,
+          featureId,
+          phaseId: "phase-01",
+          backend: "agy",
+          trunkBranch: "develop",
+          recipient: { projectId, surface: "http" },
+          newOperationId: operationId,
+          nowIso: "2026-11-23T10:00:00.000Z",
+        });
+        store.claimDispatchLease({
+          operationId: receipt.operationId,
+          leaseOwner: "crashed-daemon",
+          nowIso: "2026-11-23T10:00:01.000Z",
+          leaseExpiresAt: "2026-11-23T10:05:00.000Z",
+        });
+        return receipt;
+      };
+
+      const forkReceipt = seedExpiredLease("049-fork-head", "op-fork-head");
+      seedExpiredLease("049-no-pr", "op-no-pr");
+
+      const github: GitHubHarvestPort = {
+        verifyWebhookSignature: () => true,
+        listTerminalPullRequests: vi.fn().mockResolvedValue([
+          {
+            repoSlug: "org/alpha",
+            headRepoSlug: "evil-fork/alpha",
+            prNumber: 777,
+            prUrl: "https://github.com/org/alpha/pull/777",
+            state: "MERGED",
+            merged: true,
+            baseBranch: "develop",
+            headBranch: forkReceipt.branchName,
+            headSha: "a".repeat(40),
+            mergeCommitSha: "b".repeat(40),
+            mergedAt: "2026-11-23T10:02:00.000Z",
+            closedAt: "2026-11-23T10:02:00.000Z",
+          },
+        ]),
+        getPullRequest: vi.fn().mockResolvedValue(null),
+      };
+
+      const config: GwrkConfig = {
+        project: { name: "alpha" },
+        agents: { define: "gemini", implement: "agy" },
+        server: {
+          port: 18790,
+          host: "127.0.0.1",
+          heartbeatIntervalMs: 1000,
+          networkCheckIntervalMs: 1000,
+        },
+        parallelism: {
+          local: { maxCpu: 80, maxMem: 80, minDiskGb: 10, maxClones: 2 },
+          cloud: { maxConcurrent: 10 },
+        },
+      };
+      const monitor = new SystemMonitor() as Mocked<SystemMonitor>;
+      monitor.isThrottled.mockReturnValue(false);
+      const sandbox = new SandboxManager(realRoot) as Mocked<SandboxManager>;
+
+      const queue = new DispatchQueue(
+        config,
+        monitor,
+        sandbox,
+        realRoot,
+        { db, projectId },
+        undefined,
+        undefined,
+        {
+          github,
+          clock: {
+            nowIso: () => "2026-11-23T12:00:00.000Z",
+            nowMs: () => Date.parse("2026-11-23T12:00:00.000Z"),
+          },
+          heartbeatIntervalMs: null,
+        },
+      );
+      queue.pause();
+
+      const summary = await queue.recoverOnStartup();
+      await queue.close();
+
+      // Foreign fork head must NEVER complete the operation
+      const forkOp = store.getDispatchOperation({
+        projectId,
+        featureId: "049-fork-head",
+        phaseId: "phase-01",
+      });
+      expect(forkOp?.status).not.toBe("completed");
+      expect(summary.completedFromPrCount).toBe(0);
+
+      // Stopped worker with no PR on GitHub must be requeued rather than wedged forever
+      const noPrOp = store.getDispatchOperation({
+        projectId,
+        featureId: "049-no-pr",
+        phaseId: "phase-01",
+      });
+      expect(noPrOp?.status).toBe("accepted");
+    } finally {
+      db.close();
+    }
+  });
+
+  it("TR-003 clears activeDurableOps when a stale worker is fenced on completion", async () => {
+    vi.clearAllMocks();
+    const { realRoot, db, projectId, store, config, monitor, sandbox } =
+      setupDurableEnv();
+    try {
+      let nowMs = Date.parse("2026-11-23T12:00:00.000Z");
+      const clock = {
+        nowIso: () => new Date(nowMs).toISOString(),
+        nowMs: () => nowMs,
+      };
+      let releaseWorker!: () => void;
+      const workerStarted = new Promise<void>((resolve) => {
+        releaseWorker = resolve;
+      });
+      let finishWorker!: (result: { exitCode: number; stderr: string }) => void;
+      const worker: WorkerExecutionPort = {
+        inspectRecoveredWork: vi.fn(),
+        launchPhaseShip: vi.fn(
+          () =>
+            new Promise<{ exitCode: number; stderr: string }>((resolve) => {
+              releaseWorker();
+              finishWorker = resolve;
+            }),
+        ),
+        cleanupStaleSandbox: vi.fn(),
+      };
+
+      const queue = new DispatchQueue(
+        config,
+        monitor,
+        sandbox,
+        realRoot,
+        { db, projectId },
+        undefined,
+        undefined,
+        {
+          worker,
+          clock,
+          leaseDurationMs: 1_000,
+          heartbeatIntervalMs: null,
+        },
+      );
+
+      const receipt = queue.accept({
+        projectId,
+        featureId: "049-fenced",
+        phaseId: "phase-01",
+      });
+      expect(receipt).not.toBeNull();
+      await workerStarted;
+      expect(queue.getActiveCount()).toBe(1);
+
+      // Advance past lease expiry and let a successor daemon claim the lease
+      nowMs += 5_000;
+      const takeover = store.claimDispatchLease({
+        operationId: receipt!.operationId,
+        leaseOwner: "successor-daemon",
+        nowIso: clock.nowIso(),
+        leaseExpiresAt: new Date(nowMs + 60_000).toISOString(),
+      });
+      expect(takeover).not.toBeNull();
+
+      // Original stale worker finishes and receives LEASE_FENCED
+      finishWorker({ exitCode: 0, stderr: "" });
+      await queue.close();
+
+      expect(queue.getActiveCount()).toBe(0);
+      expect(queue.getQueue().active).toHaveLength(0);
+    } finally {
+      db.close();
+    }
+  });
+
+  it("TR-001 default WorkerExecutionPort attributes same-repo open PRs and ignores fork open PRs when persistedPullRequest is absent", async () => {
+    vi.clearAllMocks();
+    const tempRoot = mkdtempSync(
+      join(tmpdir(), "gwrk-durable-open-pr-worker-"),
+    );
+    tempDirs.push(tempRoot);
+    const repoRoot = join(tempRoot, "repo");
+    mkdirSync(repoRoot, { recursive: true });
+    execFileSync("git", ["init", "--quiet", "--initial-branch=develop"], {
+      cwd: repoRoot,
+      stdio: "ignore",
+      timeout: 5_000,
+    });
+    execFileSync(
+      "git",
+      ["remote", "add", "origin", "https://github.com/org/alpha.git"],
+      { cwd: repoRoot, stdio: "ignore", timeout: 5_000 },
+    );
+    const realRoot = realpathSync(repoRoot);
+    const db = openDatabase({ dbPath: join(tempRoot, "gwrk.db") });
+    try {
+      const projectId = resolveProjectId(realRoot);
+      const registry = createSqliteProjectRegistryAdapter({ db });
+      const store = createSqliteOperationsStoreAdapter({ db });
+      registry.enrollProject({
+        projectId,
+        slug: "alpha",
+        name: "Alpha",
+        repoSlug: "org/alpha",
+        trunkBranch: "develop",
+        localRoot: realRoot,
+        mirrorPath: null,
+        runnerPolicy: { allowedKinds: ["local"] },
+        slack: null,
+        legacyProjectIds: [],
+        createdAt: "2026-11-23T10:00:00.000Z",
+        updatedAt: "2026-11-23T10:00:00.000Z",
+      });
+
+      const seedExpiredLease = (featureId: string, operationId: string) => {
+        const receipt = store.acceptDispatch({
+          projectId,
+          featureId,
+          phaseId: "phase-01",
+          backend: "agy",
+          trunkBranch: "develop",
+          recipient: { projectId, surface: "http" },
+          newOperationId: operationId,
+          nowIso: "2026-11-23T10:00:00.000Z",
+        });
+        store.claimDispatchLease({
+          operationId: receipt.operationId,
+          leaseOwner: "crashed-daemon",
+          nowIso: "2026-11-23T10:00:01.000Z",
+          leaseExpiresAt: "2026-11-23T10:05:00.000Z",
+        });
+        return receipt;
+      };
+
+      const ownOpenReceipt = seedExpiredLease("049-own-open", "op-own-open");
+      const forkOpenReceipt = seedExpiredLease("049-fork-open", "op-fork-open");
+
+      const listOpenPullRequests = vi.fn(
+        async ({ headBranch }: { headBranch?: string }) => {
+          if (headBranch === ownOpenReceipt.branchName) {
+            return [
+              {
+                repoSlug: "org/alpha",
+                headRepoSlug: "Org/Alpha",
+                prNumber: 801,
+                prUrl: "https://github.com/org/alpha/pull/801",
+                state: "OPEN" as const,
+                merged: false,
+                baseBranch: "develop",
+                headBranch: ownOpenReceipt.branchName,
+                headSha: "c".repeat(40),
+                mergeCommitSha: null,
+                mergedAt: null,
+                closedAt: null,
+              },
+            ];
+          }
+          if (headBranch === forkOpenReceipt.branchName) {
+            return [
+              {
+                repoSlug: "org/alpha",
+                headRepoSlug: "evil-fork/alpha",
+                prNumber: 802,
+                prUrl: "https://github.com/org/alpha/pull/802",
+                state: "OPEN" as const,
+                merged: false,
+                baseBranch: "develop",
+                headBranch: forkOpenReceipt.branchName,
+                headSha: "d".repeat(40),
+                mergeCommitSha: null,
+                mergedAt: null,
+                closedAt: null,
+              },
+            ];
+          }
+          return [];
+        },
+      );
+
+      const github: GitHubHarvestPort = {
+        verifyWebhookSignature: () => true,
+        listTerminalPullRequests: vi.fn().mockResolvedValue([]),
+        listOpenPullRequests,
+        getPullRequest: vi.fn().mockResolvedValue(null),
+      };
+
+      const config: GwrkConfig = {
+        project: { name: "alpha" },
+        agents: { define: "gemini", implement: "agy" },
+        server: {
+          port: 18790,
+          host: "127.0.0.1",
+          heartbeatIntervalMs: 1000,
+          networkCheckIntervalMs: 1000,
+        },
+        parallelism: {
+          local: { maxCpu: 80, maxMem: 80, minDiskGb: 10, maxClones: 2 },
+          cloud: { maxConcurrent: 10 },
+        },
+      };
+      const monitor = new SystemMonitor() as Mocked<SystemMonitor>;
+      monitor.isThrottled.mockReturnValue(false);
+      const sandbox = new SandboxManager(realRoot) as Mocked<SandboxManager>;
+
+      const queue = new DispatchQueue(
+        config,
+        monitor,
+        sandbox,
+        realRoot,
+        { db, projectId },
+        undefined,
+        undefined,
+        {
+          github,
+          clock: {
+            nowIso: () => "2026-11-23T12:00:00.000Z",
+            nowMs: () => Date.parse("2026-11-23T12:00:00.000Z"),
+          },
+          heartbeatIntervalMs: null,
+        },
+      );
+      queue.pause();
+
+      const summary = await queue.recoverOnStartup();
+      await queue.close();
+
+      expect(listOpenPullRequests).toHaveBeenCalledWith({
+        cwd: realRoot,
+        repoSlug: "org/alpha",
+        baseBranch: "develop",
+        headBranch: ownOpenReceipt.branchName,
+      });
+      const ownOp = store.getDispatchOperation({
+        projectId,
+        featureId: "049-own-open",
+        phaseId: "phase-01",
+      });
+      expect(ownOp?.status).toBe("completed");
+      expect(ownOp?.prNumber).toBe(801);
+      expect(summary.completedFromPrCount).toBe(1);
+
+      const forkOp = store.getDispatchOperation({
+        projectId,
+        featureId: "049-fork-open",
+        phaseId: "phase-01",
+      });
+      expect(forkOp?.status).toBe("accepted");
+      expect(forkOp?.prNumber).toBeNull();
+      expect(summary.requeuedCount).toBe(1);
+    } finally {
+      db.close();
+    }
+  });
+
+  it("FR-001 returns DispatchReceipt from accept() before launching worker execution on a recovered queue", async () => {
+    vi.clearAllMocks();
+    const { realRoot, db, projectId, store, config, monitor, sandbox } =
+      setupDurableEnv();
+    let queue: DispatchQueue | undefined;
+    try {
+      const events: string[] = [];
+      const launchPhaseShip = vi.fn(async () => {
+        events.push("worker_launched");
+        return { exitCode: 0, stderr: "" };
+      });
+      const worker: WorkerExecutionPort = {
+        inspectRecoveredWork: vi.fn(),
+        launchPhaseShip,
+        cleanupStaleSandbox: vi.fn(),
+      };
+
+      queue = new DispatchQueue(
+        config,
+        monitor,
+        sandbox,
+        realRoot,
+        { db, projectId },
+        undefined,
+        undefined,
+        { worker, heartbeatIntervalMs: null },
+      );
+
+      // Steady-state daemon: startup recovery and initial empty drain have completed.
+      await queue.recoverOnStartup();
+      await new Promise((resolve) => setTimeout(resolve, 10));
+
+      const receipt = queue.accept(
+        {
+          projectId,
+          featureId: "049-post-ack-launch",
+          phaseId: "phase-01",
+        },
+        { defaultRecipientSurface: "http" },
+      );
+      events.push("accept_returned");
+
+      expect(receipt).not.toBeNull();
+      expect(events).toEqual(["accept_returned"]);
+      expect(launchPhaseShip).not.toHaveBeenCalled();
+
+      await vi.waitFor(() => {
+        expect(
+          store.getDispatchOperation({
+            projectId,
+            featureId: "049-post-ack-launch",
+            phaseId: "phase-01",
+          })?.status,
+        ).toBe("completed");
+      });
+      expect(launchPhaseShip).toHaveBeenCalledOnce();
+    } finally {
+      await queue?.close();
+      db.close();
+    }
+  });
+
+  it("starts newly accepted work in a free slot while another worker is still running", async () => {
+    const { config, monitor, sandbox, realRoot, db, projectId, store } =
+      setupDurableEnv();
+    let finishFirst!: () => void;
+    const first = new Promise<void>((resolve) => {
+      finishFirst = resolve;
+    });
+    const worker: WorkerExecutionPort = {
+      launchPhaseShip: vi.fn(async ({ phaseId }) => {
+        if (phaseId === "phase-01") await first;
+        return { exitCode: 0, stderr: "" };
+      }),
+      inspectRecoveredWork: vi.fn(),
+      cleanupStaleSandbox: vi.fn(),
+    };
+    const queue = new DispatchQueue(
+      config,
+      monitor,
+      sandbox,
+      realRoot,
+      { db, projectId },
+      undefined,
+      undefined,
+      { worker, heartbeatIntervalMs: null },
+    );
+    try {
+      const request = {
+        projectId,
+        featureId: "049-free-slot",
+        phaseId: "phase-01",
+      };
+      expect(config.parallelism.local.maxClones).toBe(2);
+      queue.accept(request);
+      await vi.waitFor(() =>
+        expect(worker.launchPhaseShip).toHaveBeenCalledOnce(),
+      );
+      const second = { ...request, phaseId: "phase-02" };
+      const receipt = queue.accept(second);
+      await vi.waitFor(() =>
+        expect(store.getDispatchOperation(second)).toMatchObject({
+          operationId: receipt?.operationId,
+          status: "completed",
+        }),
+      );
+      expect(worker.launchPhaseShip).toHaveBeenCalledTimes(2);
+    } finally {
+      finishFirst();
+      await queue.close();
+      db.close();
+    }
+  });
+
+  it("waits for a worker's outstanding completion delivery before close resolves", async () => {
+    const { config, monitor, sandbox, realRoot, db, projectId } =
+      setupDurableEnv({ withSlack: true });
+    let finishWorker!: () => void;
+    let finishSend!: () => void;
+    const workerPending = new Promise<void>((resolve) => {
+      finishWorker = resolve;
+    });
+    const sendPending = new Promise<void>((resolve) => {
+      finishSend = resolve;
+    });
+    let sending = false;
+    const launchPhaseShip = vi.fn(async () => {
+      await workerPending;
+      return { exitCode: 0, stderr: "" };
+    });
+    const queue = new DispatchQueue(
+      config,
+      monitor,
+      sandbox,
+      realRoot,
+      { db, projectId },
+      undefined,
+      undefined,
+      {
+        worker: {
+          launchPhaseShip,
+          inspectRecoveredWork: vi.fn(),
+          cleanupStaleSandbox: vi.fn(),
+        },
+        notifier: {
+          notify: async () => {
+            sending = true;
+            await sendPending;
+            sending = false;
+            return {
+              delivered: true,
+              channelId: "C_DURABLE",
+              messageTs: "1731320099.000123",
+            };
+          },
+        },
+        heartbeatIntervalMs: null,
+      },
+    );
+    try {
+      queue.accept({
+        projectId,
+        featureId: "049-durable",
+        phaseId: "phase-01",
+      });
+      await vi.waitFor(() => expect(launchPhaseShip).toHaveBeenCalledOnce());
+      const closedWhileSending = queue.close().then(() => sending);
+      finishWorker();
+      await new Promise<void>((resolve) => setImmediate(resolve));
+      finishSend();
+      expect(await closedWhileSending).toBe(false);
+      const notices = db
+        .prepare(
+          "SELECT event_type, status FROM notification_outbox WHERE project_id = ? AND feature_id = ? AND phase_id = ?",
+        )
+        .all(projectId, "049-durable", "phase-01");
+      expect(notices).toEqual([
+        expect.objectContaining({
+          event_type: "review_ready",
+          status: expect.stringMatching(
+            /^(pending|sending|uncertain|delivered)$/,
+          ),
+        }),
+      ]);
+    } finally {
+      finishWorker();
+      finishSend();
+      await queue.close();
+      db.close();
+    }
+  });
+
+  it("keeps scheduled work accepted when the queue closes before the next turn", async () => {
+    const { realRoot, db, projectId, store, config, monitor, sandbox } =
+      setupDurableEnv();
+    const worker: WorkerExecutionPort = {
+      launchPhaseShip: vi.fn().mockResolvedValue({ exitCode: 0, stderr: "" }),
+      inspectRecoveredWork: vi.fn(),
+      cleanupStaleSandbox: vi.fn(),
+    };
+    const queue = new DispatchQueue(
+      config,
+      monitor,
+      sandbox,
+      realRoot,
+      { db, projectId },
+      undefined,
+      undefined,
+      { worker, heartbeatIntervalMs: null },
+    );
+    try {
+      await queue.recoverOnStartup();
+      await new Promise<void>((resolve) => setImmediate(resolve));
+      const request = {
+        projectId,
+        featureId: "049-close-before-launch",
+        phaseId: "phase-01",
+      };
+      const receipt = queue.accept(request);
+      await queue.close();
+      await new Promise<void>((resolve) => setImmediate(resolve));
+      expect(worker.launchPhaseShip).not.toHaveBeenCalled();
+      expect(store.getDispatchOperation(request)).toMatchObject({
+        operationId: receipt?.operationId,
+        status: "accepted",
+        attemptCount: 0,
+      });
+    } finally {
+      await queue.close();
+      db.close();
+    }
+  });
+
+  it("FR-001 does not spin-loop when SQLite has an accepted dispatch that drainReady cannot run", async () => {
+    vi.clearAllMocks();
+    const {
+      realRoot,
+      db,
+      projectId,
+      registry,
+      store,
+      config,
+      monitor,
+      sandbox,
+    } = setupDurableEnv();
+    let queue: DispatchQueue | undefined;
+    try {
+      store.acceptDispatch({
+        projectId,
+        featureId: "049-unrunnable",
+        phaseId: "phase-01",
+        backend: "agy",
+        trunkBranch: "develop",
+        recipient: { projectId, surface: "http" },
+        newOperationId: "op-unrunnable",
+        nowIso: "2026-11-23T12:00:00.000Z",
+      });
+
+      const unrunnableRegistry = {
+        ...registry,
+        getProject: (id: string) => {
+          const project = registry.getProject(id);
+          return project
+            ? { ...project, localRoot: null, mirrorPath: null }
+            : null;
+        },
+      };
+
+      let listCalls = 0;
+      const instrumentedStore = {
+        ...store,
+        listRecoverableDispatches: (
+          input: Parameters<typeof store.listRecoverableDispatches>[0],
+        ) => {
+          listCalls++;
+          // Safety breaker so a livelock fails the assertion instead of hanging the test runner
+          if (listCalls >= 15) {
+            queue?.pause();
+          }
+          return store.listRecoverableDispatches(input);
+        },
+      };
+
+      const worker: WorkerExecutionPort = {
+        inspectRecoveredWork: vi.fn(),
+        launchPhaseShip: vi.fn().mockResolvedValue({ exitCode: 0, stderr: "" }),
+        cleanupStaleSandbox: vi.fn(),
+      };
+
+      queue = new DispatchQueue(
+        config,
+        monitor,
+        sandbox,
+        realRoot,
+        { db, projectId },
+        undefined,
+        undefined,
+        {
+          store: instrumentedStore,
+          registry: unrunnableRegistry,
+          worker,
+          heartbeatIntervalMs: null,
+        },
+      );
+
+      await queue.recoverOnStartup();
+      await new Promise((resolve) => setTimeout(resolve, 20));
+
+      expect(listCalls).toBeLessThanOrEqual(4);
+      expect(worker.launchPhaseShip).not.toHaveBeenCalled();
+    } finally {
+      await queue?.close();
+      db.close();
+    }
   });
 });

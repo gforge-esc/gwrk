@@ -11,7 +11,11 @@ import {
   evaluateHttpProjectAccess,
 } from "../../domain/slack-routing.js";
 import type { ProjectRegistryPort } from "../../ports/store-port.js";
-import type { DispatchQueue, DispatchRequest } from "../dispatch.js";
+import {
+  DispatchIntakeError,
+  type DispatchQueue,
+  type DispatchRequest,
+} from "../dispatch.js";
 
 export interface DispatchRoutesOptions {
   registry?: ProjectRegistryPort;
@@ -92,6 +96,23 @@ export async function dispatchRoutes(
   );
 
   fastify.post("/api/dispatch", async (request, reply) => {
+    const submit = (dispatch: DispatchRequest) => {
+      try {
+        const receipt =
+          typeof queue.accept === "function"
+            ? queue.accept(dispatch, { defaultRecipientSurface: "http" })
+            : null;
+        if (receipt) {
+          return reply.status(receipt.deduplicated ? 200 : 201).send(receipt);
+        }
+        return reply.status(201).send(queue.enqueue(dispatch));
+      } catch (error) {
+        if (error instanceof DispatchIntakeError) {
+          return reply.status(error.statusCode).send({ error: error.message });
+        }
+        throw error;
+      }
+    };
     const body = (request.body ?? {}) as RawDispatchBody;
     if (!body.featureId || !body.phaseId) {
       return reply.status(400).send({ error: "Missing featureId or phaseId" });
@@ -130,7 +151,8 @@ export async function dispatchRoutes(
         }
       }
 
-      let resolvedRecipient: DeliveryRecipient | undefined;
+      let resolvedRecipient: DeliveryRecipient | null | undefined =
+        hasExplicitNullRecipient ? null : undefined;
       if (rawRecipient) {
         if (
           rawRecipient.surface === "slack" ||
@@ -173,20 +195,22 @@ export async function dispatchRoutes(
       }
 
       const { recipient: _rawRecipient, ...rest } = body;
-      const record = queue.enqueue({
+      return submit({
         ...rest,
         projectId: project.projectId,
         recipient: resolvedRecipient,
       });
-      return reply.status(201).send(record);
     }
 
     const { recipient: _rawRecipient, ...rest } = body;
-    const record = queue.enqueue({
+    return submit({
       ...rest,
-      ...(rawRecipient ? { recipient: rawRecipient } : {}),
+      ...(hasExplicitNullRecipient
+        ? { recipient: null }
+        : rawRecipient
+          ? { recipient: rawRecipient }
+          : {}),
     });
-    return reply.status(201).send(record);
   });
 
   fastify.get<{ Querystring: { projectId?: string; project?: string } }>(
@@ -224,7 +248,12 @@ export async function dispatchRoutes(
       }
       projectId = auth.decision.project.projectId;
     }
-    const record = queue.getDispatch(feature, phase, undefined, projectId);
+    const record =
+      projectId !== undefined
+        ? ((typeof queue.getOperation === "function"
+            ? queue.getOperation(projectId, feature, phase)
+            : null) ?? queue.getDispatch(feature, phase, undefined, projectId))
+        : queue.getDispatch(feature, phase);
     if (!record) {
       return reply.status(404).send({ error: "Not found" });
     }

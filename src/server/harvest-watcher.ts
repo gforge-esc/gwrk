@@ -2,13 +2,30 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import * as crypto from "node:crypto";
 import type { App } from "@slack/bolt";
 import {
   logCliError,
   logCliOutput,
   warnCli,
 } from "../adapters/cli/output-scope.js";
+import { createGitVcsAdapter } from "../adapters/git/index.js";
 import { verifyEnrolledCheckout } from "../adapters/git/project-id.js";
+import { createGitHubHarvestAdapter } from "../adapters/github/index.js";
+import { createHarvestExecutionAdapter } from "../adapters/harvest/index.js";
+import { createSlackNotificationAdapter } from "../adapters/notifications/index.js";
+import {
+  createSqliteOperationsStoreAdapter,
+  createSqliteProjectRegistryAdapter,
+} from "../adapters/sqlite/index.js";
+import {
+  type OutboxDeliveryService,
+  createOutboxDeliveryService,
+} from "../application/delivery/outbox.js";
+import {
+  type DurableHarvestService,
+  createDurableHarvestService,
+} from "../application/harvest/index.js";
 import { getCompressionRecord } from "../db/compression.js";
 import type {
   DeliveryRecipient,
@@ -16,7 +33,15 @@ import type {
 } from "../domain/project-registry.js";
 import { harvestFeature } from "../engine/harvest.js";
 import type { HarvestRecord } from "../engine/types.js";
+import type { NotificationPort } from "../ports/notification-port.js";
+import type {
+  ClockPort,
+  GitHubHarvestPort,
+  HarvestExecutionPort,
+  OperationsStorePort,
+} from "../ports/operations-port.js";
 import type { ProjectRegistryPort } from "../ports/store-port.js";
+import type { VcsHarvestExtensions, VcsPort } from "../ports/vcs-port.js";
 import type { GwrkConfig } from "../utils/config.js";
 import { execCommand } from "../utils/exec.js";
 import { parseFeatureBranch } from "../utils/feature-branch.js";
@@ -25,6 +50,19 @@ import { resolveProjectId } from "../utils/project-id.js";
 import type { DispatchLedgerScope } from "./dispatch.js";
 
 const GH_POLL_TIMEOUT_MS = 5_000;
+
+export interface DurableHarvestWatcherOptions {
+  harvestService?: DurableHarvestService;
+  store?: OperationsStorePort;
+  registry?: ProjectRegistryPort;
+  github?: GitHubHarvestPort;
+  vcs?: VcsHarvestExtensions & Partial<Pick<VcsPort, "discoverIdentityFacts">>;
+  executor?: HarvestExecutionPort;
+  outbox?: OutboxDeliveryService;
+  notifier?: NotificationPort;
+  clock?: ClockPort;
+  ownerId?: string;
+}
 
 export interface HarvestPullRequest {
   number: number;
@@ -36,7 +74,7 @@ export interface HarvestPullRequest {
   url: string;
 }
 
-export interface HarvestWatcherOptions {
+export interface HarvestWatcherOptions extends DurableHarvestWatcherOptions {
   registry?: ProjectRegistryPort;
   listPullRequests?: (target: {
     projectId: string;
@@ -69,6 +107,12 @@ export class HarvestWatcher {
   private inFlight?: Promise<void>;
   private stopping = false;
   private projectId: string;
+  private readonly ownerId: string;
+  private readonly notificationShutdown = new AbortController();
+  private readonly durableRegistry?: ProjectRegistryPort;
+  private readonly durableOutbox?: OutboxDeliveryService;
+  private readonly durableHarvestService?: DurableHarvestService;
+  private readonly hasExplicitDurable: boolean;
 
   constructor(
     private config: GwrkConfig,
@@ -76,9 +120,66 @@ export class HarvestWatcher {
     private projectRoot: string = process.cwd(),
     private ledger?: DispatchLedgerScope,
     private gitEnv?: () => NodeJS.ProcessEnv,
-    private options: HarvestWatcherOptions = {},
+    private readonly options: HarvestWatcherOptions = {},
   ) {
+    const durableOptions = this.options;
     this.projectId = ledger?.projectId ?? resolveProjectId(this.projectRoot);
+    this.ownerId =
+      durableOptions?.ownerId ??
+      `watcher:${process.pid}:${crypto.randomUUID().slice(0, 8)}`;
+    this.hasExplicitDurable = Boolean(
+      durableOptions?.harvestService ||
+        durableOptions?.registry ||
+        durableOptions?.store,
+    );
+
+    const db = ledger?.db;
+    const store =
+      durableOptions?.store ??
+      (db ? createSqliteOperationsStoreAdapter({ db }) : undefined);
+    const registry =
+      durableOptions?.registry ??
+      (db ? createSqliteProjectRegistryAdapter({ db }) : undefined);
+    if (durableOptions?.harvestService) {
+      this.durableHarvestService = durableOptions.harvestService;
+      this.durableRegistry = registry;
+      this.durableOutbox = durableOptions.outbox;
+    } else if (store && registry) {
+      const clock: ClockPort = durableOptions?.clock ?? {
+        nowIso: () => new Date().toISOString(),
+        nowMs: () => Date.now(),
+      };
+      const notifier =
+        durableOptions?.notifier ??
+        createSlackNotificationAdapter({
+          projectRoot: this.projectRoot,
+          registry,
+          signal: this.notificationShutdown.signal,
+          transportTimeoutMs: 5_000,
+        });
+      const outbox =
+        durableOptions?.outbox ??
+        createOutboxDeliveryService({
+          store,
+          registry,
+          notifier,
+          clock,
+          newId: () => crypto.randomUUID(),
+        });
+      this.durableRegistry = registry;
+      this.durableOutbox = outbox;
+      this.durableHarvestService = createDurableHarvestService({
+        store,
+        registry,
+        vcs: durableOptions?.vcs ?? createGitVcsAdapter(),
+        github: durableOptions?.github ?? createGitHubHarvestAdapter(),
+        executor:
+          durableOptions?.executor ??
+          createHarvestExecutionAdapter({ db: ledger?.db }),
+        outbox,
+        clock,
+      });
+    }
   }
 
   start() {
@@ -98,6 +199,7 @@ export class HarvestWatcher {
 
   stop(): void | Promise<void> {
     this.stopping = true;
+    this.notificationShutdown.abort();
     if (this.interval) {
       clearInterval(this.interval);
       this.interval = null;
@@ -181,9 +283,64 @@ export class HarvestWatcher {
 
   async runCheck() {
     if (this.stopping) return;
+
+    if (this.durableHarvestService && this.durableRegistry) {
+      const allEnrolledProjects = this.durableRegistry.listProjects();
+      const pollableProjects = allEnrolledProjects.filter((project) =>
+        Boolean(project.repoSlug && (project.localRoot ?? project.mirrorPath)),
+      );
+
+      if (this.hasExplicitDurable || allEnrolledProjects.length > 0) {
+        for (const project of pollableProjects) {
+          if (this.stopping) break;
+          try {
+            const summaries = await this.durableHarvestService.pollProject(
+              project,
+              this.ownerId,
+            );
+            for (const summary of summaries) {
+              logCliOutput(
+                `HarvestWatcher: Polled ${project.slug} operation ${summary.operationId} (${summary.status})`,
+              );
+            }
+          } catch (error) {
+            warnCli(
+              `HarvestWatcher: Durable poll failed for ${project.slug}: ${error instanceof Error ? error.message : String(error)}`,
+            );
+          }
+        }
+
+        if (!this.stopping) {
+          try {
+            await this.durableHarvestService.resumeIncomplete(this.ownerId);
+          } catch (error) {
+            logCliError(
+              "HarvestWatcher: Failed to resume incomplete harvests:",
+              error,
+            );
+          }
+        }
+
+        if (!this.stopping && this.durableOutbox) {
+          for (const project of allEnrolledProjects) {
+            if (this.stopping) break;
+            try {
+              await this.durableOutbox.flushPendingForProject(
+                project.projectId,
+              );
+            } catch (error) {
+              warnCli(
+                `HarvestWatcher: Outbox flush failed for ${project.slug}: ${error instanceof Error ? error.message : String(error)}`,
+              );
+            }
+          }
+        }
+        return;
+      }
+    }
+
     const harvest = this.options.harvest ?? harvestFeature;
     const syncTrunk = this.options.syncTrunk ?? syncTrunkForHarvest;
-
     try {
       const targets = this.resolveTargets();
       for (const target of targets) {

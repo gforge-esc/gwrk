@@ -411,4 +411,116 @@ describe("GitHub durable harvest adapter", () => {
       }),
     ).rejects.toThrow("credentials unavailable");
   });
+
+  it("queries open pull requests with state, base, and optional head parameters and extracts headRepoSlug", async () => {
+    const executeGh = vi.fn(async (args: readonly string[]) => {
+      const url = new URL(args[args.length - 1], "https://api.github.com/");
+      expect(url.pathname).toBe("/repos/example/project/pulls");
+      expect(url.searchParams.get("state")).toBe("open");
+      expect(url.searchParams.get("base")).toBe("develop");
+      expect(url.searchParams.get("head")).toBe(
+        "example:feat/049-phase-01--dispatch-abc",
+      );
+      return JSON.stringify([
+        syntheticPullRequest(19, {
+          state: "open",
+          merged_at: null,
+          merge_commit_sha: null,
+          closed_at: null,
+          head: {
+            ref: "feat/049-phase-01--dispatch-abc",
+            sha: "a".repeat(40),
+            repo: { full_name: "example/project" },
+          },
+        }),
+        syntheticPullRequest(20, {
+          state: "closed",
+          merged_at: null,
+          merge_commit_sha: null,
+          closed_at: "2026-11-18T12:00:00Z",
+          head: {
+            ref: "feat/049-phase-01--dispatch-abc",
+            sha: "b".repeat(40),
+            repo: { full_name: "example/project" },
+          },
+        }),
+      ]);
+    });
+    const adapter = createGitHubHarvestAdapter({ executeGh });
+    const facts = await adapter.listOpenPullRequests?.({
+      cwd: "/fixture/project",
+      repoSlug: "example/project",
+      baseBranch: "develop",
+      headBranch: "feat/049-phase-01--dispatch-abc",
+    });
+    expect(facts).toHaveLength(1);
+    expect(facts?.[0]).toMatchObject({
+      repoSlug: "example/project",
+      headRepoSlug: "example/project",
+      prNumber: 19,
+      state: "OPEN",
+      merged: false,
+      baseBranch: "develop",
+      headBranch: "feat/049-phase-01--dispatch-abc",
+    });
+    expect(executeGh).toHaveBeenCalledTimes(1);
+    expect(executeGh.mock.calls[0]?.[1]).toBe("/fixture/project");
+  });
+
+  it("omits head query parameter when headBranch is absent and validates repository identity on open pull requests", async () => {
+    const executeGh = vi
+      .fn()
+      .mockResolvedValueOnce(
+        JSON.stringify([
+          syntheticPullRequest(21, {
+            state: "open",
+            merged_at: null,
+            merge_commit_sha: null,
+            closed_at: null,
+            head: {
+              ref: "feat/049-phase-02",
+              sha: "c".repeat(40),
+              repo: { full_name: "fork/project" },
+            },
+          }),
+        ]),
+      )
+      .mockResolvedValueOnce(
+        JSON.stringify([
+          syntheticPullRequest(22, {
+            state: "open",
+            merged_at: null,
+            merge_commit_sha: null,
+            closed_at: null,
+            base: { ref: "develop", repo: { full_name: "foreign/project" } },
+          }),
+        ]),
+      );
+
+    const adapter = createGitHubHarvestAdapter({ executeGh });
+    const openFacts = await adapter.listOpenPullRequests?.({
+      cwd: "/fixture/project",
+      repoSlug: "example/project",
+      baseBranch: "develop",
+    });
+    const firstUrl = new URL(
+      executeGh.mock.calls[0]?.[0].at(-1) ?? "",
+      "https://api.github.com/",
+    );
+    expect(firstUrl.searchParams.has("head")).toBe(false);
+    expect(openFacts?.[0]).toMatchObject({
+      repoSlug: "example/project",
+      headRepoSlug: "fork/project",
+      prNumber: 21,
+      state: "OPEN",
+    });
+
+    await expect(
+      adapter.listOpenPullRequests?.({
+        cwd: "/fixture/project",
+        repoSlug: "example/project",
+        baseBranch: "develop",
+      }),
+    ).rejects.toThrow(/does not match the requested project/);
+  });
 });
