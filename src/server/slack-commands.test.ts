@@ -505,11 +505,11 @@ describe("slack-commands (FR-015, US-004)", () => {
 
     expect.soft(response.response_type).toBe("in_channel");
     expect.soft(response.thread_ts).toBe(SYNTHETIC_THREAD_ALPHA.rootTs);
-    expect(spawn).toHaveBeenCalledExactlyOnceWith(
-      "gwrk",
-      ["ship", "003-slack", "1"],
-      expect.objectContaining({ cwd: context.projectRoot }),
-    );
+    expect(mockQueue.enqueue).toHaveBeenCalledExactlyOnceWith({
+      featureId: "003-slack",
+      phaseId: "phase-01",
+    });
+    expect(spawn).not.toHaveBeenCalled();
   });
 
   it("only reads a decision index inside the authorized checkout", async () => {
@@ -763,19 +763,21 @@ describe("slack-commands (FR-015, US-004)", () => {
     );
   });
 
-  it("handles ship command — spawns background process", async () => {
+  it("handles ship command — enqueues dispatch through the unified queue", async () => {
     const { spawn } = await import("node:child_process");
+    mockQueue.enqueue.mockReturnValueOnce({
+      id: "op-ship-003",
+      operationId: "op-ship-003",
+    } as never);
     const response = await handleSlashCommand("ship 003-slack 1", context);
     expect(response.response_type).toBe("in_channel");
     expect(response.blocks[0].text.text).toContain("Dispatching *003-slack*");
-    expect(spawn).toHaveBeenCalledWith(
-      "gwrk",
-      ["ship", "003-slack", "1"],
-      expect.objectContaining({
-        cwd: context.projectRoot,
-        detached: true,
-      }),
-    );
+    expect(response.blocks[0].text.text).toContain("op-ship-003");
+    expect(mockQueue.enqueue).toHaveBeenCalledWith({
+      featureId: "003-slack",
+      phaseId: "phase-01",
+    });
+    expect(spawn).not.toHaveBeenCalled();
   });
 
   it("handles define command — spawns background process (FR-015)", async () => {

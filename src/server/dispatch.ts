@@ -2,11 +2,44 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import { execFileSync } from "node:child_process";
 import * as crypto from "node:crypto";
 import type Database from "better-sqlite3";
 import { logCliError } from "../adapters/cli/output-scope.js";
+import { createGitHubHarvestAdapter } from "../adapters/github/index.js";
+import { createSlackNotificationAdapter } from "../adapters/notifications/index.js";
+import {
+  createSqliteOperationsStoreAdapter,
+  createSqliteProjectRegistryAdapter,
+} from "../adapters/sqlite/index.js";
+import {
+  type OutboxDeliveryService,
+  createOutboxDeliveryService,
+} from "../application/delivery/outbox.js";
+import {
+  type DurableDispatchService,
+  type DurableDispatchServiceDeps,
+  createDurableDispatchService,
+} from "../application/dispatch/index.js";
 import { finishRun, startRun } from "../db/runs.js";
+import type {
+  DispatchReceipt,
+  DurableDispatchOperation,
+  WorkerRecoveryEvidence,
+} from "../domain/durable-dispatch.js";
+import type {
+  DeliveryRecipient,
+  EnrolledProject,
+} from "../domain/project-registry.js";
 import { ShipOrchestrator } from "../engine/ship-orchestrator.js";
+import type { NotificationPort } from "../ports/notification-port.js";
+import type {
+  ClockPort,
+  GitHubHarvestPort,
+  OperationsStorePort,
+  WorkerExecutionPort,
+} from "../ports/operations-port.js";
+import type { ProjectRegistryPort } from "../ports/store-port.js";
 import type { AgentBackendId, GwrkConfig } from "../utils/config.js";
 import { MessageBuilder } from "./slack-messages.js";
 import { notifySlack } from "./slack-notify.js";
@@ -15,20 +48,132 @@ import { pillarBackend } from "../utils/resolve-agent.js";
 import type { SystemMonitor } from "./monitor.js";
 import { persistDispatch } from "./persistence.js";
 import type { SandboxManager } from "./sandbox.js";
-import type { DispatchAttempt, DispatchRecord, TaskRecord } from "./types.js";
+import type {
+  DispatchAttempt,
+  DispatchRecord,
+  DispatchStatus,
+  TaskRecord,
+} from "./types.js";
+
+export class DispatchIntakeError extends Error {
+  constructor(
+    readonly statusCode: number,
+    message: string,
+  ) {
+    super(message);
+    this.name = "DispatchIntakeError";
+  }
+}
 
 export interface DispatchRequest {
+  projectId?: string;
   featureId: string;
   phaseId: string;
   taskId?: string;
   taskIds?: string[]; // NEW: For multiple tasks
   backend?: AgentBackendId;
   parallel?: boolean; // NEW: Enable parallel dispatch
+  recipient?: DeliveryRecipient | null;
 }
 
 export interface DispatchLedgerScope {
   db: Database.Database;
   projectId: string;
+}
+
+export interface DurableDispatchQueueOptions {
+  store?: OperationsStorePort;
+  registry?: ProjectRegistryPort;
+  worker?: WorkerExecutionPort;
+  outbox?: OutboxDeliveryService;
+  notifier?: NotificationPort;
+  clock?: ClockPort;
+  github?: GitHubHarvestPort;
+  ownerId?: string;
+  leaseDurationMs?: number;
+  heartbeatIntervalMs?: number | null;
+  maxCrashRecoveryAttempts?: number;
+  onRecoveredMerge?: DurableDispatchServiceDeps["onRecoveredMerge"];
+}
+
+function mapOperationStatus(
+  status: DurableDispatchOperation["status"],
+): DispatchStatus {
+  switch (status) {
+    case "accepted":
+      return "queued";
+    case "leased":
+    case "running":
+    case "reconciling":
+      return "running";
+    case "completed":
+      return "completed";
+    case "failed":
+    case "superseded":
+      return "failed";
+  }
+}
+
+function operationToRecord(op: DurableDispatchOperation): DispatchRecord {
+  const status = mapOperationStatus(op.status);
+  return {
+    id: op.operationId,
+    operationId: op.operationId,
+    projectId: op.projectId,
+    workKey: op.workKey,
+    featureId: op.featureId,
+    phaseId: op.phaseId,
+    backend: op.backend as AgentBackendId,
+    status,
+    branchName: op.branchName,
+    attempts: [],
+    attemptCount: op.attemptCount,
+    recipient: op.recipient,
+    tasks: op.taskIds.map((id) => ({
+      id,
+      status:
+        status === "completed"
+          ? "completed"
+          : status === "failed"
+            ? "failed"
+            : status === "running"
+              ? "running"
+              : "pending",
+      sandboxDir: "",
+      backend: op.backend as AgentBackendId,
+    })),
+    createdAt: op.createdAt,
+    ...(op.completedAt ? { completedAt: op.completedAt } : {}),
+    ...(op.prNumber !== null ? { prNumber: op.prNumber } : {}),
+    ...(op.prUrl !== null ? { prUrl: op.prUrl } : {}),
+  };
+}
+
+function findWorktreeForBranch(
+  projectRoot: string,
+  branchName: string,
+  env?: NodeJS.ProcessEnv,
+): { found: boolean; worktreeDir: string | null } {
+  const output = execFileSync("git", ["worktree", "list", "--porcelain"], {
+    cwd: projectRoot,
+    ...(env ? { env } : {}),
+    encoding: "utf8",
+    stdio: ["ignore", "pipe", "pipe"],
+    timeout: 5_000,
+  });
+  const targetRef = `refs/heads/${branchName}`;
+  for (const block of output.split("\n\n")) {
+    let wtPath = "";
+    let wtBranch = "";
+    for (const line of block.trim().split("\n")) {
+      if (line.startsWith("worktree ")) wtPath = line.slice(9).trim();
+      if (line.startsWith("branch ")) wtBranch = line.slice(7).trim();
+    }
+    if (wtPath && wtBranch === targetRef) {
+      return { found: true, worktreeDir: wtPath };
+    }
+  }
+  return { found: false, worktreeDir: null };
 }
 
 /**
@@ -53,6 +198,25 @@ export class DispatchQueue {
   private readonly notificationShutdown = new AbortController();
   private inFlight = new Set<Promise<void>>();
   private errors: unknown[] = [];
+  private readonly ownerId: string;
+  private readonly clock: ClockPort;
+  private readonly durableStore?: OperationsStorePort;
+  private readonly durableRegistry?: ProjectRegistryPort;
+  private readonly durableOutbox?: OutboxDeliveryService;
+  private readonly durableService?: DurableDispatchService;
+  private readonly activeDurableOps = new Map<
+    string,
+    DurableDispatchOperation
+  >();
+  private readonly completedDurableIds = new Set<string>();
+  private readonly failedDurableIds = new Set<string>();
+  private startupRecovered = false;
+  private recoveryPromise: Promise<{
+    requeuedCount: number;
+    completedFromPrCount: number;
+    failedCount: number;
+  }> | null = null;
+  private draining = false;
 
   constructor(
     private config: GwrkConfig,
@@ -62,7 +226,603 @@ export class DispatchQueue {
     private ledger?: DispatchLedgerScope,
     private gitEnv?: () => NodeJS.ProcessEnv,
     private readonly approvedBackend?: AgentBackendId,
-  ) {}
+    private readonly durableOptions?: DurableDispatchQueueOptions,
+  ) {
+    this.ownerId =
+      durableOptions?.ownerId ??
+      `daemon:${process.pid}:${crypto.randomUUID().slice(0, 8)}`;
+    this.clock = durableOptions?.clock ?? {
+      nowIso: () => new Date().toISOString(),
+      nowMs: () => Date.now(),
+    };
+
+    const db = ledger?.db;
+    const rawStore =
+      durableOptions?.store ??
+      (db ? createSqliteOperationsStoreAdapter({ db }) : undefined);
+    const registry =
+      durableOptions?.registry ??
+      (db ? createSqliteProjectRegistryAdapter({ db }) : undefined);
+    if (rawStore && registry) {
+      const notifier =
+        durableOptions?.notifier ??
+        createSlackNotificationAdapter({
+          projectRoot,
+          signal: this.notificationShutdown.signal,
+          transportTimeoutMs: 5_000,
+        });
+      const outbox =
+        durableOptions?.outbox ??
+        createOutboxDeliveryService({
+          store: rawStore,
+          registry,
+          notifier,
+          clock: this.clock,
+          newId: () => crypto.randomUUID(),
+        });
+      const worker =
+        durableOptions?.worker ??
+        this.createDefaultWorkerPort(durableOptions?.github);
+
+      const fencedStore: OperationsStorePort = {
+        ...rawStore,
+        claimDispatchLease: (input) => {
+          const claimed = rawStore.claimDispatchLease(input);
+          if (claimed) {
+            this.activeDurableOps.set(
+              claimed.operation.operationId,
+              claimed.operation,
+            );
+          }
+          return claimed;
+        },
+        completeDispatchAttempt: (input) => {
+          const prior = this.activeDurableOps.get(input.fence.operationId);
+          const result = rawStore.completeDispatchAttempt(input);
+          if (result.ok) {
+            this.activeDurableOps.delete(input.fence.operationId);
+            if (input.operationStatus === "completed") {
+              this.completedDurableIds.add(input.fence.operationId);
+            } else if (input.operationStatus === "failed") {
+              this.failedDurableIds.add(input.fence.operationId);
+            }
+            if (
+              prior &&
+              (input.operationStatus === "completed" ||
+                input.operationStatus === "failed")
+            ) {
+              this.enqueueDurableOutcomeNotification(prior, {
+                operationStatus: input.operationStatus,
+                prNumber: input.prNumber,
+                prUrl: input.prUrl,
+                error: input.error,
+              });
+            }
+          }
+          return result;
+        },
+      };
+
+      this.durableStore = rawStore;
+      this.durableRegistry = registry;
+      this.durableOutbox = outbox;
+      this.durableService = createDurableDispatchService({
+        store: fencedStore,
+        registry,
+        worker,
+        clock: this.clock,
+        leaseDurationMs: durableOptions?.leaseDurationMs,
+        heartbeatIntervalMs: durableOptions?.heartbeatIntervalMs,
+        maxCrashRecoveryAttempts: durableOptions?.maxCrashRecoveryAttempts,
+        onRecoveredMerge: durableOptions?.onRecoveredMerge,
+      });
+    }
+  }
+
+  private createDefaultWorkerPort(
+    injectedGithub?: GitHubHarvestPort,
+  ): WorkerExecutionPort {
+    const github = injectedGithub ?? createGitHubHarvestAdapter();
+    return {
+      inspectRecoveredWork: async (input): Promise<WorkerRecoveryEvidence> => {
+        const isLocallyActive = this.activeDurableOps.has(input.operationId);
+        let workerState: WorkerRecoveryEvidence["workerState"] = isLocallyActive
+          ? "running"
+          : "stopped";
+        let sandboxDir: string | null = null;
+        if (!isLocallyActive) {
+          try {
+            const wt = findWorktreeForBranch(
+              input.projectRoot,
+              input.branchName,
+              this.gitEnv?.(),
+            );
+            sandboxDir = wt.worktreeDir;
+          } catch {
+            workerState = "unknown";
+            sandboxDir = null;
+          }
+        }
+
+        if (!input.repoSlug) {
+          return {
+            workerState,
+            pullRequestLookup: "complete",
+            openPullRequest: null,
+            mergedPullRequest: null,
+            completedManifestRunId: null,
+            sandboxDir,
+          };
+        }
+
+        try {
+          if (input.persistedPullRequest) {
+            const fact = await github.getPullRequest({
+              cwd: input.projectRoot,
+              repoSlug: input.repoSlug,
+              prNumber: input.persistedPullRequest.prNumber,
+            });
+            if (
+              fact &&
+              fact.repoSlug.toLowerCase() === input.repoSlug.toLowerCase()
+            ) {
+              if (fact.merged && fact.mergeCommitSha) {
+                return {
+                  workerState,
+                  pullRequestLookup: "complete",
+                  openPullRequest: null,
+                  mergedPullRequest: {
+                    operationId: input.operationId,
+                    prNumber: fact.prNumber,
+                    prUrl: fact.prUrl,
+                    mergeCommitSha: fact.mergeCommitSha,
+                  },
+                  completedManifestRunId: null,
+                  sandboxDir,
+                };
+              }
+              if (fact.state === "OPEN") {
+                return {
+                  workerState,
+                  pullRequestLookup: "complete",
+                  openPullRequest: {
+                    operationId: input.operationId,
+                    prNumber: fact.prNumber,
+                    prUrl: fact.prUrl,
+                  },
+                  mergedPullRequest: null,
+                  completedManifestRunId: null,
+                  sandboxDir,
+                };
+              }
+            }
+            return {
+              workerState,
+              pullRequestLookup: "complete",
+              openPullRequest: null,
+              mergedPullRequest: null,
+              completedManifestRunId: null,
+              sandboxDir,
+            };
+          }
+
+          const enrolledForRepo =
+            this.durableRegistry?.findByRepoSlug(input.repoSlug) ??
+            this.durableRegistry?.findByLocalRoot(input.projectRoot);
+          const terminalPrs = await github.listTerminalPullRequests({
+            cwd: input.projectRoot,
+            repoSlug: input.repoSlug,
+            baseBranch: enrolledForRepo?.trunkBranch ?? "develop",
+          });
+          const matched = terminalPrs.find(
+            (pr) =>
+              pr.merged &&
+              pr.mergeCommitSha &&
+              pr.repoSlug.toLowerCase() === input.repoSlug?.toLowerCase() &&
+              pr.headBranch === input.branchName,
+          );
+          if (matched?.mergeCommitSha) {
+            return {
+              workerState,
+              pullRequestLookup: "complete",
+              openPullRequest: null,
+              mergedPullRequest: {
+                operationId: input.operationId,
+                prNumber: matched.prNumber,
+                prUrl: matched.prUrl,
+                mergeCommitSha: matched.mergeCommitSha,
+              },
+              completedManifestRunId: null,
+              sandboxDir,
+            };
+          }
+          // Without a persisted PR link and open-PR check, fail closed for remote repos.
+          return {
+            workerState,
+            pullRequestLookup: "unavailable",
+            openPullRequest: null,
+            mergedPullRequest: null,
+            completedManifestRunId: null,
+            sandboxDir,
+          };
+        } catch {
+          return {
+            workerState: isLocallyActive ? "running" : "unknown",
+            pullRequestLookup: "unavailable",
+            openPullRequest: null,
+            mergedPullRequest: null,
+            completedManifestRunId: null,
+            sandboxDir,
+          };
+        }
+      },
+
+      launchPhaseShip: async (input) => {
+        const startedAtMs = this.clock.nowMs();
+        const activeOp = [...this.activeDurableOps.values()].find(
+          (op) => op.branchName === input.branchName,
+        );
+        const runProjectId =
+          activeOp?.projectId ??
+          this.durableRegistry?.findByLocalRoot(input.projectRoot)?.projectId ??
+          this.ledger?.projectId;
+        const runId = startRun(
+          {
+            feature_id: input.featureId,
+            phase_id: input.phaseId,
+            command: `gwrk ship ${input.featureId} ${input.phaseId}`,
+            agent_backend: input.backend,
+            workflow: "work-until-done",
+            project_id: runProjectId,
+          },
+          this.ledger?.db,
+        );
+
+        let worktreeDir: string | undefined;
+        let exitCode = 1;
+        let stderr = "";
+        let prNumber: number | undefined;
+        let prUrl: string | undefined;
+
+        try {
+          worktreeDir = await this.sandbox.createSandbox({
+            featureId: input.featureId,
+            phaseId: input.phaseId,
+            taskId: "ship",
+            backend: input.backend as AgentBackendId,
+            projectRoot: input.projectRoot,
+            baseBranch: input.trunkBranch,
+            branchName: input.branchName,
+            setup: this.config.worktree?.setup,
+          });
+
+          const orchestrator = new ShipOrchestrator({
+            featureId: input.featureId,
+            phaseId: input.phaseId,
+            backend: input.backend as AgentBackendId,
+            maxIterations: 3,
+            ciTimeout: 30,
+            cwd: worktreeDir,
+            gitEnv: this.gitEnv?.(),
+            stateRoot: input.projectRoot,
+            branchName: input.branchName,
+          });
+
+          exitCode = await orchestrator.run();
+          const result = orchestrator.getResult();
+          if (result.prNumber) prNumber = result.prNumber;
+          if (result.prUrl) prUrl = result.prUrl;
+          stderr =
+            exitCode === 0
+              ? ""
+              : `ShipOrchestrator exited with code ${exitCode}`;
+        } catch (error) {
+          exitCode = 1;
+          stderr = error instanceof Error ? error.message : String(error);
+        } finally {
+          const duration = Math.max(
+            0,
+            Math.floor((this.clock.nowMs() - startedAtMs) / 1000),
+          );
+          try {
+            finishRun(
+              runId,
+              { exit_code: exitCode, duration_s: duration },
+              this.ledger?.db,
+            );
+          } catch (error) {
+            this.errors.push(error);
+          }
+          if (worktreeDir) {
+            try {
+              await this.sandbox.destroySandbox(worktreeDir, input.featureId, {
+                autoCommitPush: false,
+              });
+            } catch (error) {
+              this.errors.push(error);
+              logCliError("Failed to destroy sandbox:", error);
+            }
+          }
+        }
+
+        return {
+          exitCode,
+          stderr,
+          workDir: worktreeDir,
+          prNumber,
+          prUrl,
+          runId,
+        };
+      },
+
+      cleanupStaleSandbox: async (_projectRoot, workDir, featureId) => {
+        await this.sandbox.destroySandbox(workDir, featureId, {
+          autoCommitPush: false,
+        });
+      },
+    };
+  }
+
+  private deriveDurableSlackDestination(
+    project: EnrolledProject,
+    featureId: string,
+    recipient: DeliveryRecipient | null,
+  ): DeliveryRecipient | null {
+    if (!project.slack || !this.durableRegistry) return null;
+    const binding = project.slack;
+    const storedThread = this.durableRegistry.getFeatureThread(
+      project.projectId,
+      featureId,
+    );
+    const validThread =
+      storedThread &&
+      storedThread.projectId === project.projectId &&
+      storedThread.featureId === featureId &&
+      storedThread.workspaceId === binding.workspaceId &&
+      storedThread.channelId === binding.channelId
+        ? storedThread
+        : null;
+
+    if (
+      recipient?.surface === "slack" &&
+      recipient.projectId === project.projectId &&
+      (recipient.workspaceId === undefined ||
+        recipient.workspaceId === binding.workspaceId) &&
+      (recipient.channelId === undefined ||
+        recipient.channelId === binding.channelId ||
+        recipient.channelId === binding.opsChannelId)
+    ) {
+      const channelId = recipient.channelId ?? binding.channelId;
+      const threadTs =
+        channelId === binding.channelId
+          ? (recipient.threadTs ?? validThread?.rootTs)
+          : recipient.threadTs;
+      return {
+        projectId: project.projectId,
+        surface: "slack",
+        workspaceId: binding.workspaceId,
+        channelId,
+        ...(threadTs ? { threadTs } : {}),
+        ...(recipient.actorUserId
+          ? { actorUserId: recipient.actorUserId }
+          : {}),
+        ...(recipient.opsOnly ? { opsOnly: recipient.opsOnly } : {}),
+      };
+    }
+
+    return {
+      projectId: project.projectId,
+      surface: "slack",
+      workspaceId: binding.workspaceId,
+      channelId: binding.channelId,
+      ...(validThread ? { threadTs: validThread.rootTs } : {}),
+    };
+  }
+
+  private enqueueDurableOutcomeNotification(
+    operation: DurableDispatchOperation,
+    completion: {
+      operationStatus: "completed" | "failed";
+      prNumber?: number;
+      prUrl?: string;
+      error?: string;
+    },
+  ): void {
+    if (!this.durableOutbox || !this.durableRegistry) return;
+    const project = this.durableRegistry.getProject(operation.projectId);
+    if (!project) return;
+    const slackDestination = this.deriveDurableSlackDestination(
+      project,
+      operation.featureId,
+      operation.recipient,
+    );
+    if (!slackDestination) return;
+
+    const reviewReady = completion.operationStatus === "completed";
+    const eventType = reviewReady ? "review_ready" : "phase_fail";
+    const record: DispatchRecord = {
+      ...operationToRecord(operation),
+      status: reviewReady ? "completed" : "failed",
+      ...(completion.prNumber !== undefined
+        ? { prNumber: completion.prNumber }
+        : {}),
+      ...(completion.prUrl !== undefined ? { prUrl: completion.prUrl } : {}),
+    };
+    const message = reviewReady
+      ? MessageBuilder.reviewReady(record)
+      : MessageBuilder.phaseFail(record, completion.error ?? "Dispatch failed");
+
+    const outboxId = this.durableOutbox.enqueueProjectNotification({
+      project,
+      dedupeKey: JSON.stringify([
+        "dispatch_outcome",
+        operation.operationId,
+        eventType,
+      ]),
+      ownerKind: "dispatch",
+      ownerOperationId: operation.operationId,
+      eventType,
+      featureId: operation.featureId,
+      phaseId: operation.phaseId,
+      recipient: slackDestination,
+      message: {
+        text: message.text,
+        blocks: message.blocks,
+      },
+    });
+
+    const flushWork = this.durableOutbox
+      .flushOutboxItem(outboxId)
+      .then(() => undefined)
+      .catch((error: unknown) => {
+        logCliError("Failed to flush durable dispatch notification:", error);
+      })
+      .finally(() => this.inFlight.delete(flushWork));
+    this.inFlight.add(flushWork);
+  }
+
+  private resolveEnrolledProject(
+    request: Pick<DispatchRequest, "projectId">,
+  ): EnrolledProject | null {
+    if (!this.durableRegistry) {
+      if (request.projectId) {
+        throw new DispatchIntakeError(
+          404,
+          `Project is not enrolled: ${request.projectId}`,
+        );
+      }
+      return null;
+    }
+    if (request.projectId) {
+      const enrolled = this.durableRegistry.getProject(request.projectId);
+      if (!enrolled) {
+        throw new DispatchIntakeError(
+          404,
+          `Project is not enrolled: ${request.projectId}`,
+        );
+      }
+      return enrolled;
+    }
+    return (
+      this.durableRegistry.findByLocalRoot(this.projectRoot) ??
+      (this.ledger?.projectId
+        ? this.durableRegistry.getProject(this.ledger.projectId)
+        : null)
+    );
+  }
+
+  runInTransaction<T>(fn: () => T): T {
+    if (this.ledger?.db) {
+      return this.ledger.db.transaction(fn).immediate();
+    }
+    return fn();
+  }
+
+  getRegistry(): ProjectRegistryPort | undefined {
+    return this.durableRegistry;
+  }
+
+  accept(
+    request: DispatchRequest,
+    options?: {
+      deferDrain?: boolean;
+      defaultRecipientSurface?: "http" | "local_cli";
+    },
+  ): DispatchReceipt | null {
+    if (this.closed) throw new Error("Dispatch queue is closed");
+    if (!this.durableService) {
+      if (request.projectId) {
+        throw new DispatchIntakeError(
+          404,
+          `Project is not enrolled: ${request.projectId}`,
+        );
+      }
+      return null;
+    }
+    const project = this.resolveEnrolledProject(request);
+    if (!project) return null;
+
+    const backend =
+      this.approvedBackend ??
+      pillarBackend(this.config, "implement", request.backend);
+    const taskIds = request.taskIds
+      ? [...request.taskIds]
+      : request.taskId
+        ? [request.taskId]
+        : undefined;
+    const recipient: DeliveryRecipient | null =
+      request.recipient !== undefined
+        ? request.recipient
+        : options?.defaultRecipientSurface
+          ? {
+              projectId: project.projectId,
+              surface: options.defaultRecipientSurface,
+            }
+          : null;
+
+    let receipt: DispatchReceipt;
+    try {
+      receipt = this.durableService.accept({
+        project,
+        featureId: request.featureId,
+        phaseId: request.phaseId,
+        taskIds,
+        backend,
+        recipient,
+      });
+    } catch (error) {
+      if (
+        error instanceof Error &&
+        error.message.includes("belongs to another project")
+      ) {
+        throw new DispatchIntakeError(400, error.message);
+      }
+      throw error;
+    }
+
+    if (!options?.deferDrain) {
+      this.processNext();
+    }
+    return receipt;
+  }
+
+  async recoverOnStartup(): Promise<{
+    requeuedCount: number;
+    completedFromPrCount: number;
+    failedCount: number;
+  }> {
+    if (!this.durableService) {
+      this.startupRecovered = true;
+      return { requeuedCount: 0, completedFromPrCount: 0, failedCount: 0 };
+    }
+    if (!this.recoveryPromise) {
+      const work = this.durableService
+        .recoverOnStartup(this.ownerId)
+        .then((summary) => {
+          this.startupRecovered = true;
+          return summary;
+        })
+        .finally(() => {
+          this.recoveryPromise = null;
+        });
+      this.recoveryPromise = work;
+    }
+    const result = await this.recoveryPromise;
+    if (!this.paused && !this.closed) {
+      this.processNext();
+    }
+    return result;
+  }
+
+  getOperation(
+    projectId: string,
+    featureId: string,
+    phaseId: string,
+  ): DurableDispatchOperation | null {
+    return (
+      this.durableService?.getOperation(projectId, featureId, phaseId) ?? null
+    );
+  }
 
   pause() {
     this.paused = true;
@@ -93,6 +853,36 @@ export class DispatchQueue {
 
   enqueue(request: DispatchRequest): DispatchRecord {
     if (this.closed) throw new Error("Dispatch queue is closed");
+
+    const durableReceipt = this.accept(request);
+    if (durableReceipt) {
+      const op = this.durableService?.getOperation(
+        durableReceipt.projectId,
+        durableReceipt.featureId,
+        durableReceipt.phaseId,
+      );
+      const record = op
+        ? operationToRecord(op)
+        : {
+            id: durableReceipt.operationId,
+            operationId: durableReceipt.operationId,
+            projectId: durableReceipt.projectId,
+            workKey: durableReceipt.workKey,
+            featureId: durableReceipt.featureId,
+            phaseId: durableReceipt.phaseId,
+            backend:
+              this.approvedBackend ??
+              pillarBackend(this.config, "implement", request.backend),
+            status: mapOperationStatus(durableReceipt.status),
+            branchName: durableReceipt.branchName,
+            attempts: [],
+            attemptCount: durableReceipt.attemptCount,
+            recipient: durableReceipt.recipient,
+            tasks: [],
+            createdAt: durableReceipt.createdAt,
+          };
+      return { ...record, deduplicated: durableReceipt.deduplicated };
+    }
 
     // Idempotency guard: prevent double-dispatch for same feature+phase
     const existing = this.getDispatch(request.featureId, request.phaseId);
@@ -144,9 +934,7 @@ export class DispatchQueue {
   }
 
   async processNext() {
-    if (this.queue.length === 0) return;
-
-    if (this.paused) {
+    if (this.paused || this.closed) {
       return;
     }
 
@@ -155,10 +943,51 @@ export class DispatchQueue {
       return;
     }
 
+    if (this.durableService && !this.draining) {
+      this.draining = true;
+      const runDrain = async () => {
+        try {
+          if (!this.startupRecovered) {
+            await this.recoverOnStartup();
+          }
+          if (this.paused || this.closed || this.monitor.isThrottled()) {
+            return;
+          }
+          await this.durableService?.drainReady(
+            this.ownerId,
+            this.config.parallelism.local.maxClones,
+          );
+        } catch (error) {
+          this.errors.push(error);
+          logCliError("Durable dispatch drain failed:", error);
+        }
+      };
+      const durableWork = runDrain().finally(() => {
+        this.draining = false;
+        this.inFlight.delete(durableWork);
+        if (
+          !this.paused &&
+          !this.closed &&
+          !this.monitor.isThrottled() &&
+          this.durableStore
+            ?.listRecoverableDispatches({ nowIso: this.clock.nowIso() })
+            .some((op) => op.status === "accepted")
+        ) {
+          this.processNext();
+        }
+      });
+      this.inFlight.add(durableWork);
+    }
+
+    if (this.queue.length === 0) return;
+
     // Capacity: each active record is one feature-phase ship in its own
     // worktree. Cap concurrent ships at maxClones — this is the queue's ship
     // gate that superseded DispatchOrchestrator's per-task Semaphore (PR-8).
-    if (this.active.length >= this.config.parallelism.local.maxClones) {
+    if (
+      this.active.length + this.activeDurableOps.size >=
+      this.config.parallelism.local.maxClones
+    ) {
       return;
     }
 
@@ -353,10 +1182,26 @@ export class DispatchQueue {
     }
   }
 
+  private listDurableQueuedRecords(): DispatchRecord[] {
+    if (!this.durableStore) return [];
+    return this.durableStore
+      .listRecoverableDispatches({ nowIso: this.clock.nowIso() })
+      .filter(
+        (op) =>
+          op.status === "accepted" &&
+          !this.activeDurableOps.has(op.operationId),
+      )
+      .map(operationToRecord);
+  }
+
   getQueue() {
+    const durableActive = [...this.activeDurableOps.values()].map(
+      operationToRecord,
+    );
+    const durableQueued = this.listDurableQueuedRecords();
     return {
-      active: this.active,
-      queued: this.queue,
+      active: [...this.active, ...durableActive],
+      queued: [...this.queue, ...durableQueued],
       throttled: this.monitor.isThrottled(),
       paused: this.paused,
     };
@@ -366,8 +1211,9 @@ export class DispatchQueue {
     featureId: string,
     phaseId: string,
     taskId?: string,
+    projectId?: string,
   ): DispatchRecord | null {
-    return (
+    const legacy =
       this.active.find(
         (r) =>
           r.featureId === featureId &&
@@ -385,24 +1231,47 @@ export class DispatchQueue {
           r.featureId === featureId &&
           r.phaseId === phaseId &&
           (!taskId || r.tasks.some((t) => t.id === taskId)),
-      ) ||
-      null
-    );
+      );
+    if (legacy) return legacy;
+
+    if (this.durableService && this.durableRegistry) {
+      const resolvedProjectId =
+        projectId ??
+        this.durableRegistry.findByLocalRoot(this.projectRoot)?.projectId ??
+        this.ledger?.projectId;
+      if (resolvedProjectId) {
+        const op = this.durableService.getOperation(
+          resolvedProjectId,
+          featureId,
+          phaseId,
+        );
+        if (op && (!taskId || op.taskIds.includes(taskId))) {
+          return operationToRecord(op);
+        }
+      }
+    }
+    return null;
   }
 
   getQueueDepth(): number {
-    return this.queue.length;
+    return this.queue.length + this.listDurableQueuedRecords().length;
   }
 
   getActiveCount(): number {
-    return this.active.length;
+    return this.active.length + this.activeDurableOps.size;
   }
 
   getCompletedCount(): number {
-    return this.history.filter((r) => r.status === "completed").length;
+    return (
+      this.history.filter((r) => r.status === "completed").length +
+      this.completedDurableIds.size
+    );
   }
 
   getFailedCount(): number {
-    return this.history.filter((r) => r.status === "failed").length;
+    return (
+      this.history.filter((r) => r.status === "failed").length +
+      this.failedDurableIds.size
+    );
   }
 }

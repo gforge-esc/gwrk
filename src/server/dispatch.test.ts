@@ -2,17 +2,30 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import { execFileSync } from "node:child_process";
+import { mkdirSync, mkdtempSync, realpathSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import {
   type Mock,
   type Mocked,
+  afterEach,
   beforeEach,
   describe,
   expect,
   it,
   vi,
 } from "vitest";
+import { resolveProjectId } from "../adapters/git/project-id.js";
+import {
+  createSqliteOperationsStoreAdapter,
+  createSqliteProjectRegistryAdapter,
+} from "../adapters/sqlite/index.js";
+import { openDatabase } from "../db/index.js";
 import { finishRun } from "../db/runs.js";
 import { ShipOrchestrator } from "../engine/ship-orchestrator.js";
+import type { NotificationPort } from "../ports/notification-port.js";
+import type { WorkerExecutionPort } from "../ports/operations-port.js";
 import type { GwrkConfig } from "../utils/config.js";
 import { DispatchQueue } from "./dispatch.js";
 import { SystemMonitor } from "./monitor.js";
@@ -356,5 +369,335 @@ describe("DispatchQueue (unified ship engine)", () => {
     });
     expect(queue.getDispatch("feat-1", "phase-01", "T1")).toBe(record);
     expect(queue.getDispatch("feat-2", "phase-01", "T1")).toBeNull();
+  });
+});
+
+describe("DispatchQueue (durable SQLite backing, recovery & outbox notifications)", () => {
+  const tempDirs: string[] = [];
+
+  afterEach(() => {
+    for (const dir of tempDirs.splice(0)) {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  function setupDurableEnv(opts?: { withSlack?: boolean }) {
+    const tempRoot = mkdtempSync(join(tmpdir(), "gwrk-durable-queue-"));
+    tempDirs.push(tempRoot);
+    const repoRoot = join(tempRoot, "repo");
+    mkdirSync(repoRoot, { recursive: true });
+    execFileSync("git", ["init", "--quiet", "--initial-branch=develop"], {
+      cwd: repoRoot,
+      stdio: "ignore",
+      timeout: 5_000,
+    });
+    const realRoot = realpathSync(repoRoot);
+    const db = openDatabase({ dbPath: join(tempRoot, "gwrk.db") });
+    const projectId = resolveProjectId(realRoot);
+    const registry = createSqliteProjectRegistryAdapter({ db });
+    const store = createSqliteOperationsStoreAdapter({ db });
+
+    registry.enrollProject({
+      projectId,
+      slug: "durable-proj",
+      name: "Durable Project",
+      repoSlug: null,
+      trunkBranch: "develop",
+      localRoot: realRoot,
+      mirrorPath: null,
+      runnerPolicy: { allowedKinds: ["local"] },
+      slack: opts?.withSlack
+        ? {
+            workspaceId: "T_DURABLE",
+            channelId: "C_DURABLE",
+            sharedChannel: false,
+          }
+        : null,
+      legacyProjectIds: [],
+      createdAt: "2026-11-23T12:00:00.000Z",
+      updatedAt: "2026-11-23T12:00:00.000Z",
+    });
+    if (opts?.withSlack) {
+      registry.bindFeatureThread({
+        projectId,
+        featureId: "049-durable",
+        workspaceId: "T_DURABLE",
+        channelId: "C_DURABLE",
+        rootTs: "1731320000.000777",
+        updatedAt: "2026-11-23T12:00:00.000Z",
+      });
+    }
+
+    const config: GwrkConfig = {
+      project: { name: "durable-proj" },
+      agents: { define: "gemini", implement: "agy" },
+      server: {
+        port: 18790,
+        host: "127.0.0.1",
+        heartbeatIntervalMs: 1000,
+        networkCheckIntervalMs: 1000,
+      },
+      parallelism: {
+        local: { maxCpu: 80, maxMem: 80, minDiskGb: 10, maxClones: 2 },
+        cloud: { maxConcurrent: 10 },
+      },
+    };
+    const monitor = new SystemMonitor() as Mocked<SystemMonitor>;
+    monitor.isThrottled.mockReturnValue(false);
+    const sandbox = new SandboxManager(realRoot) as Mocked<SandboxManager>;
+    sandbox.createSandbox.mockResolvedValue("/work/durable");
+    sandbox.destroySandbox.mockResolvedValue(undefined);
+
+    return {
+      tempRoot,
+      realRoot,
+      db,
+      projectId,
+      registry,
+      store,
+      config,
+      monitor,
+      sandbox,
+    };
+  }
+
+  it("TR-001 replays accepted operations across restart and delivers completion only via durable outbox", async () => {
+    vi.clearAllMocks();
+    const { realRoot, db, projectId, store, config, monitor, sandbox } =
+      setupDurableEnv({ withSlack: true });
+    try {
+      // Queue #1 accepts while paused (simulating crash between acceptance and launch)
+      const queue1 = new DispatchQueue(config, monitor, sandbox, realRoot, {
+        db,
+        projectId,
+      });
+      queue1.pause();
+      const receipt = queue1.accept(
+        {
+          projectId,
+          featureId: "049-durable",
+          phaseId: "phase-01",
+        },
+        { defaultRecipientSurface: "http" },
+      );
+      expect(receipt).not.toBeNull();
+      expect(receipt?.deduplicated).toBe(false);
+      expect(receipt?.recipient).toEqual({ projectId, surface: "http" });
+      await queue1.close();
+
+      // Queue #2 starts fresh on same SQLite DB with synthetic worker & notifier
+      const launchPhaseShip = vi.fn().mockResolvedValue({
+        exitCode: 0,
+        stderr: "",
+        workDir: "/work/durable",
+        prNumber: 91,
+        prUrl: "https://github.com/org/durable/pull/91",
+      });
+      const worker: WorkerExecutionPort = {
+        inspectRecoveredWork: vi.fn(),
+        launchPhaseShip,
+        cleanupStaleSandbox: vi.fn(),
+      };
+      const notify = vi.fn().mockResolvedValue({
+        delivered: true,
+        channelId: "C_DURABLE",
+        messageTs: "1731320099.000123",
+        threadTs: "1731320000.000777",
+      });
+      const notifier: NotificationPort = { notify };
+
+      const queue2 = new DispatchQueue(
+        config,
+        monitor,
+        sandbox,
+        realRoot,
+        { db, projectId },
+        undefined,
+        undefined,
+        { worker, notifier, heartbeatIntervalMs: null },
+      );
+
+      await queue2.recoverOnStartup();
+      await vi.waitFor(() => {
+        const op = store.getDispatchOperation({
+          projectId,
+          featureId: "049-durable",
+          phaseId: "phase-01",
+        });
+        expect(op?.status).toBe("completed");
+      });
+      await queue2.close();
+
+      expect(launchPhaseShip).toHaveBeenCalledOnce();
+      const completed = store.getDispatchOperation({
+        projectId,
+        featureId: "049-durable",
+        phaseId: "phase-01",
+      });
+      expect(completed?.prNumber).toBe(91);
+      // Original HTTP recipient preserved on operation
+      expect(completed?.recipient).toEqual({ projectId, surface: "http" });
+      // Derived Slack destination delivered solely via outbox (no legacy notifySlack!)
+      expect(notify).toHaveBeenCalledOnce();
+      expect(notify).toHaveBeenCalledWith(
+        expect.objectContaining({
+          projectId,
+          featureId: "049-durable",
+          phaseId: "phase-01",
+          channel: "C_DURABLE",
+          threadTs: "1731320000.000777",
+          clientMetadataKey: expect.any(String),
+        }),
+      );
+      expect(notifySlack).not.toHaveBeenCalled();
+      expect(persistDispatch).not.toHaveBeenCalled();
+    } finally {
+      db.close();
+    }
+  });
+
+  it("TR-001 reconciles stale running leases via WorkerExecutionPort before launching work", async () => {
+    vi.clearAllMocks();
+    const { realRoot, db, projectId, store, config, monitor, sandbox } =
+      setupDurableEnv();
+    try {
+      // Seed three stale expired running operations in SQLite
+      const acceptAndExpire = (featureId: string) => {
+        const r = store.acceptDispatch({
+          projectId,
+          featureId,
+          phaseId: "phase-01",
+          backend: "agy",
+          trunkBranch: "develop",
+          recipient: { projectId, surface: "http" },
+          newOperationId: `op-${featureId}`,
+          nowIso: "2026-11-23T10:00:00.000Z",
+        });
+        store.claimDispatchLease({
+          operationId: r.operationId,
+          leaseOwner: "crashed-daemon",
+          nowIso: "2026-11-23T10:00:01.000Z",
+          leaseExpiresAt: "2026-11-23T10:05:00.000Z",
+        });
+        return r.operationId;
+      };
+
+      const opWithPr = acceptAndExpire("049-has-pr");
+      const opStillRunning = acceptAndExpire("049-still-running");
+      const opStopped = acceptAndExpire("049-stopped-sandbox");
+
+      const inspectRecoveredWork = vi.fn(
+        async ({ operationId }: { operationId: string }) => {
+          if (operationId === opWithPr) {
+            return {
+              workerState: "stopped" as const,
+              pullRequestLookup: "complete" as const,
+              openPullRequest: {
+                operationId,
+                prNumber: 404,
+                prUrl: "https://github.com/org/durable/pull/404",
+              },
+              mergedPullRequest: null,
+              completedManifestRunId: null,
+              sandboxDir: null,
+            };
+          }
+          if (operationId === opStillRunning) {
+            return {
+              workerState: "running" as const,
+              pullRequestLookup: "complete" as const,
+              openPullRequest: null,
+              mergedPullRequest: null,
+              completedManifestRunId: null,
+              sandboxDir: "/work/still-alive",
+            };
+          }
+          return {
+            workerState: "stopped" as const,
+            pullRequestLookup: "complete" as const,
+            openPullRequest: null,
+            mergedPullRequest: null,
+            completedManifestRunId: null,
+            sandboxDir: "/work/stale-sandbox",
+          };
+        },
+      );
+      const cleanupStaleSandbox = vi.fn().mockResolvedValue(undefined);
+      const launchPhaseShip = vi.fn().mockResolvedValue({
+        exitCode: 0,
+        stderr: "",
+        prNumber: 505,
+        prUrl: "https://github.com/org/durable/pull/505",
+      });
+
+      const queue = new DispatchQueue(
+        config,
+        monitor,
+        sandbox,
+        realRoot,
+        { db, projectId },
+        undefined,
+        undefined,
+        {
+          worker: {
+            inspectRecoveredWork,
+            launchPhaseShip,
+            cleanupStaleSandbox,
+          },
+          clock: {
+            nowIso: () => "2026-11-23T12:00:00.000Z",
+            nowMs: () => Date.parse("2026-11-23T12:00:00.000Z"),
+          },
+          heartbeatIntervalMs: null,
+        },
+      );
+
+      const summary = await queue.recoverOnStartup();
+      expect(summary).toEqual({
+        requeuedCount: 1,
+        completedFromPrCount: 1,
+        failedCount: 0,
+      });
+
+      await vi.waitFor(() => {
+        expect(
+          store.getDispatchOperation({
+            projectId,
+            featureId: "049-stopped-sandbox",
+            phaseId: "phase-01",
+          })?.status,
+        ).toBe("completed");
+      });
+      await queue.close();
+
+      expect(inspectRecoveredWork).toHaveBeenCalledTimes(3);
+      expect(cleanupStaleSandbox).toHaveBeenCalledExactlyOnceWith(
+        realRoot,
+        "/work/stale-sandbox",
+        "049-stopped-sandbox",
+      );
+      // Only the confirmed-stopped operation launched a worker
+      expect(launchPhaseShip).toHaveBeenCalledOnce();
+      expect(launchPhaseShip).toHaveBeenCalledWith(
+        expect.objectContaining({ featureId: "049-stopped-sandbox" }),
+      );
+      // PR-completed operation finished without relaunch
+      const prOp = store.getDispatchOperation({
+        projectId,
+        featureId: "049-has-pr",
+        phaseId: "phase-01",
+      });
+      expect(prOp?.status).toBe("completed");
+      expect(prOp?.prNumber).toBe(404);
+      // Live worker was NOT relaunched and kept its leased status
+      const liveOp = store.getDispatchOperation({
+        projectId,
+        featureId: "049-still-running",
+        phaseId: "phase-01",
+      });
+      expect(liveOp?.status).toBe("leased");
+    } finally {
+      db.close();
+    }
   });
 });

@@ -11,6 +11,7 @@ import {
   type ProjectRoutingService,
   createProjectRoutingService,
 } from "../application/project-routing/index.js";
+import { parseProjectSelector } from "../domain/slack-routing.js";
 import type { ProjectRegistryPort } from "../ports/store-port.js";
 import type { VcsProjectPort } from "../ports/vcs-port.js";
 import type { GwrkConfig } from "../utils/config.js";
@@ -74,7 +75,10 @@ export async function startSlackApp(deps: {
   if (slackApp) {
     let registry: ProjectRegistryPort;
     try {
-      registry = deps.registry ?? createSqliteProjectRegistryAdapter();
+      registry =
+        deps.registry ??
+        deps.queue.getRegistry?.() ??
+        createSqliteProjectRegistryAdapter();
     } catch (error) {
       warnCli(
         `Slack startup skipped. Project registry initialization failed: ${error instanceof Error ? error.message : String(error)}`,
@@ -111,14 +115,27 @@ export async function startSlackApp(deps: {
 
     // Register slash command /gwrk with per-event context resolution
     slackApp.command("/gwrk", async ({ command, ack, respond, client }) => {
-      await ack();
       const eventContext: CommandContext = {
         ...baseContext,
         userId: command.user_id,
         channelId: command.channel_id,
         workspaceId: command.team_id,
       };
-      const response = await handleSlashCommand(command.text, eventContext);
+      const { cleanedText } = parseProjectSelector(command.text);
+      const [subcommand] = cleanedText.trim().split(/\s+/);
+      const persistBeforeAck =
+        subcommand === "dispatch" || subcommand === "ship";
+
+      let response: Awaited<ReturnType<typeof handleSlashCommand>>;
+      if (persistBeforeAck) {
+        // Authorize via 048 and persist DispatchReceipt before acknowledging Slack.
+        response = await handleSlashCommand(command.text, eventContext);
+        await ack();
+      } else {
+        await ack();
+        response = await handleSlashCommand(command.text, eventContext);
+      }
+
       if (response.response_type === "ephemeral" && response.thread_ts) {
         await client.chat.postEphemeral({
           channel: eventContext.channelId,

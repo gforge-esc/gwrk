@@ -15,7 +15,10 @@ import { verifyEnrolledCheckout } from "../adapters/git/project-id.js";
 import type { ProjectRoutingService } from "../application/project-routing/index.js";
 import { findOpenPr } from "../db/runs.js";
 import { normalizeGitRemoteSlug } from "../domain/project-id.js";
-import type { EnrolledProject } from "../domain/project-registry.js";
+import type {
+  DeliveryRecipient,
+  EnrolledProject,
+} from "../domain/project-registry.js";
 import {
   parseProjectSelector,
   requiredAccessForSlackCommand,
@@ -50,6 +53,7 @@ export interface CommandContext {
   projectId?: string;
   projectSlug?: string;
   projectRepository?: string;
+  recipient?: DeliveryRecipient;
   routingService?: ProjectRoutingService;
   vcs?: VcsProjectPort;
 }
@@ -294,37 +298,11 @@ const handlers: Record<string, SlashCommandHandler> = {
       };
     }
 
-    try {
-      const resolved = resolveScopedSlackFeature(
-        context.projectRoot,
-        featureId,
-      )?.featureId;
-      if (!resolved)
-        throw new Error(
-          "Feature is unavailable inside this project's checkout.",
-        );
-      const phaseId = phaseArg
-        ? phaseArg.startsWith("phase-")
-          ? phaseArg
-          : `phase-${phaseArg.padStart(2, "0")}`
-        : "phase-01";
-      context.queue.enqueue({ featureId: resolved, phaseId });
-
-      return {
-        response_type: "in_channel",
-        blocks: [
-          {
-            type: "section",
-            text: {
-              type: "mrkdwn",
-              text: `🚀 Dispatching feature *${resolved}* phase *${phaseId}*...`,
-            },
-          },
-        ],
-      };
-    } catch (error) {
-      const errorMessage =
-        error instanceof Error ? error.message : String(error);
+    const resolved = resolveScopedSlackFeature(
+      context.projectRoot,
+      featureId,
+    )?.featureId;
+    if (!resolved) {
       return {
         response_type: "ephemeral",
         blocks: [
@@ -332,12 +310,61 @@ const handlers: Record<string, SlashCommandHandler> = {
             type: "section",
             text: {
               type: "mrkdwn",
-              text: `:warning: Error: ${errorMessage}`,
+              text: `:warning: Error: ${scopedFeatureUnavailable}`,
             },
           },
         ],
       };
     }
+    const phaseId = phaseArg
+      ? phaseArg.startsWith("phase-")
+        ? phaseArg
+        : `phase-${phaseArg.padStart(2, "0")}`
+      : "phase-01";
+
+    const receipt =
+      typeof context.queue.accept === "function"
+        ? context.queue.accept({
+            projectId: context.projectId,
+            featureId: resolved,
+            phaseId,
+            recipient: context.recipient,
+          })
+        : null;
+
+    if (receipt) {
+      const text = receipt.deduplicated
+        ? `🚀 Dispatch already active for *${resolved}* phase *${phaseId}* (operation \`${receipt.operationId}\`, status: \`${receipt.status}\`).`
+        : `🚀 Dispatching feature *${resolved}* phase *${phaseId}* (operation \`${receipt.operationId}\`)...`;
+      return {
+        response_type: "in_channel",
+        blocks: [
+          {
+            type: "section",
+            text: {
+              type: "mrkdwn",
+              text,
+            },
+          },
+        ],
+      };
+    }
+
+    const record = context.queue.enqueue({ featureId: resolved, phaseId });
+    const operationId = record?.operationId ?? record?.id;
+
+    return {
+      response_type: "in_channel",
+      blocks: [
+        {
+          type: "section",
+          text: {
+            type: "mrkdwn",
+            text: `🚀 Dispatching feature *${resolved}* phase *${phaseId}*${operationId ? ` (operation \`${operationId}\`)` : ""}...`,
+          },
+        },
+      ],
+    };
   },
 
   approve: async (args, context) => {
@@ -626,36 +653,11 @@ const handlers: Record<string, SlashCommandHandler> = {
       };
     }
 
-    try {
-      const resolved = resolveScopedSlackFeature(
-        context.projectRoot,
-        featureArg,
-      )?.featureId;
-      if (!resolved) throw new Error(scopedFeatureUnavailable);
-
-      // Spawn gwrk ship as background process
-      const child = spawn("gwrk", ["ship", resolved, phaseArg], {
-        cwd: context.projectRoot,
-        detached: true,
-        stdio: "ignore",
-      });
-      child.unref();
-
-      return {
-        response_type: "in_channel",
-        blocks: [
-          {
-            type: "section",
-            text: {
-              type: "mrkdwn",
-              text: `🚀 Dispatching *${resolved}* phase *${phaseArg}*... Progress will be posted here.`,
-            },
-          },
-        ],
-      };
-    } catch (error) {
-      const errorMessage =
-        error instanceof Error ? error.message : String(error);
+    const resolved = resolveScopedSlackFeature(
+      context.projectRoot,
+      featureArg,
+    )?.featureId;
+    if (!resolved) {
       return {
         response_type: "ephemeral",
         blocks: [
@@ -663,12 +665,60 @@ const handlers: Record<string, SlashCommandHandler> = {
             type: "section",
             text: {
               type: "mrkdwn",
-              text: `:warning: Error: ${errorMessage}`,
+              text: `:warning: Error: ${scopedFeatureUnavailable}`,
             },
           },
         ],
       };
     }
+
+    const phaseId = phaseArg.startsWith("phase-")
+      ? phaseArg
+      : `phase-${phaseArg.padStart(2, "0")}`;
+
+    const receipt =
+      typeof context.queue.accept === "function"
+        ? context.queue.accept({
+            projectId: context.projectId,
+            featureId: resolved,
+            phaseId,
+            recipient: context.recipient,
+          })
+        : null;
+
+    if (receipt) {
+      const text = receipt.deduplicated
+        ? `🚀 Ship already active for *${resolved}* phase *${phaseId}* (operation \`${receipt.operationId}\`, status: \`${receipt.status}\`).`
+        : `🚀 Dispatching *${resolved}* phase *${phaseId}* (operation \`${receipt.operationId}\`)... Progress will be posted here.`;
+      return {
+        response_type: "in_channel",
+        blocks: [
+          {
+            type: "section",
+            text: {
+              type: "mrkdwn",
+              text,
+            },
+          },
+        ],
+      };
+    }
+
+    const record = context.queue.enqueue({ featureId: resolved, phaseId });
+    const operationId = record?.operationId ?? record?.id;
+
+    return {
+      response_type: "in_channel",
+      blocks: [
+        {
+          type: "section",
+          text: {
+            type: "mrkdwn",
+            text: `🚀 Dispatching *${resolved}* phase *${phaseId}*${operationId ? ` (operation \`${operationId}\`)` : ""}... Progress will be posted here.`,
+          },
+        },
+      ],
+    };
   },
 
   define: async (args, context) => {
@@ -1131,7 +1181,7 @@ const featureCommands = new Set([
   "status",
 ]);
 
-const queueCommands = new Set(["dispatch", "pause"]);
+const queueCommands = new Set(["dispatch", "pause", "ship"]);
 
 const checkoutCommands = new Set([
   "adr",
@@ -1303,13 +1353,14 @@ export async function handleSlashCommand(
     !threadTs &&
     args[0] &&
     (queueUnavailable
-      ? subcommand === "dispatch"
+      ? subcommand === "dispatch" || subcommand === "ship"
       : featureCommands.has(subcommand));
   const checkout =
     needsCheckout || needsFeatureThread || (subcommand === "status" && args[0])
       ? resolveSlackCheckout(
           decision.project,
-          subcommand === "dispatch" && !queueUnavailable
+          (subcommand === "dispatch" || subcommand === "ship") &&
+            !queueUnavailable
             ? context.projectRoot
             : undefined,
         )
@@ -1384,6 +1435,10 @@ export async function handleSlashCommand(
             : (slug ?? undefined);
         })()
       : undefined,
+    recipient: {
+      ...decision.recipient,
+      ...(threadTs ? { threadTs } : {}),
+    },
     threadTs,
   };
 

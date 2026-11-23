@@ -2,7 +2,38 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import type {
+  DispatchOperationStatus,
+  DispatchReceipt,
+  DurableDispatchOperation,
+} from "../domain/durable-dispatch.js";
+import type {
+  HarvestOperationStatus,
+  HarvestStageName,
+  HarvestStageStatus,
+} from "../domain/durable-harvest.js";
+import type { DeliveryRecipient } from "../domain/project-registry.js";
+import type { DurableOperationsStatus } from "../ports/operations-port.js";
 import type { AgentBackendId } from "../utils/config.js";
+
+export type {
+  DeliveryRecipient,
+  DispatchOperationStatus,
+  DispatchReceipt,
+  DurableDispatchOperation,
+  DurableOperationsStatus,
+  HarvestOperationStatus,
+  HarvestStageName,
+  HarvestStageStatus,
+};
+
+export interface HarvestPendingStage {
+  operationId: string;
+  featureId: string;
+  phaseId: string | null;
+  stage: HarvestStageName;
+  status: HarvestStageStatus;
+}
 
 export type DispatchStatus =
   | "queued"
@@ -59,12 +90,18 @@ export interface TaskRecord {
 
 export interface DispatchRecord {
   id: string;
+  operationId?: string;
+  projectId?: string;
+  workKey?: string;
   featureId: string;
   phaseId: string;
   backend: AgentBackendId;
   status: DispatchStatus;
   branchName: string;
   attempts: DispatchAttempt[];
+  attemptCount?: number;
+  deduplicated?: boolean;
+  recipient?: DeliveryRecipient | null;
   tasks: TaskRecord[]; // NEW: Parallel tasks within this phase
   createdAt: string;
   completedAt?: string;
@@ -109,6 +146,7 @@ export interface SystemStatus {
     paused: boolean;
   };
   sandboxes: SandboxInfo[];
+  operations?: DurableOperationsStatus;
 }
 
 export interface NotifyPayload {

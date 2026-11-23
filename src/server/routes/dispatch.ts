@@ -3,19 +3,37 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import type { FastifyInstance } from "fastify";
-import type { DispatchQueue, DispatchRequest } from "../dispatch.js";
+import {
+  DispatchIntakeError,
+  type DispatchQueue,
+  type DispatchRequest,
+} from "../dispatch.js";
 
 export async function dispatchRoutes(
   fastify: FastifyInstance,
   queue: DispatchQueue,
 ) {
   fastify.post("/api/dispatch", async (request, reply) => {
-    const body = request.body as DispatchRequest;
+    const body = (request.body ?? {}) as DispatchRequest;
     if (!body.featureId || !body.phaseId) {
       return reply.status(400).send({ error: "Missing featureId or phaseId" });
     }
-    const record = queue.enqueue(body);
-    return reply.status(201).send(record);
+    try {
+      const receipt =
+        typeof queue.accept === "function"
+          ? queue.accept(body, { defaultRecipientSurface: "http" })
+          : null;
+      if (receipt) {
+        return reply.status(receipt.deduplicated ? 200 : 201).send(receipt);
+      }
+      const record = queue.enqueue(body);
+      return reply.status(201).send(record);
+    } catch (error) {
+      if (error instanceof DispatchIntakeError) {
+        return reply.status(error.statusCode).send({ error: error.message });
+      }
+      throw error;
+    }
   });
 
   fastify.get("/api/dispatch/queue", async () => {
@@ -27,6 +45,14 @@ export async function dispatchRoutes(
       feature: string;
       phase: string;
     };
+    const { projectId } = (request.query ?? {}) as { projectId?: string };
+    const operation =
+      projectId && typeof queue.getOperation === "function"
+        ? queue.getOperation(projectId, feature, phase)
+        : null;
+    if (operation) {
+      return operation;
+    }
     const record = queue.getDispatch(feature, phase);
     if (!record) {
       return reply.status(404).send({ error: "Not found" });
