@@ -806,4 +806,130 @@ describe("notify routes (FR-003, FR-005, FR-007, TR-018)", () => {
       await server.close();
     }
   });
+
+  it("TR-018 regression: rejects caller-supplied recipient.threadTs that disagrees with the stored feature thread or belongs to another project in a shared channel", async () => {
+    const sharedAlpha: EnrolledProject = {
+      ...alphaHostedProject,
+      slack: {
+        workspaceId: "W-SHARED",
+        channelId: "C-SHARED",
+        opsChannelId: "C-ALPHA-OPS",
+        sharedChannel: true,
+      },
+    };
+    const sharedBeta: EnrolledProject = {
+      ...betaLocalOnlyProject,
+      runnerPolicy: { allowedKinds: ["local", "hosted"] },
+      slack: {
+        workspaceId: "W-SHARED",
+        channelId: "C-SHARED",
+        opsChannelId: "C-BETA-OPS",
+        sharedChannel: true,
+      },
+    };
+    const alphaThread: SlackFeatureThread = {
+      projectId: "proj-alpha",
+      featureId: "048-shared",
+      workspaceId: "W-SHARED",
+      channelId: "C-SHARED",
+      rootTs: "1700000100.000200",
+      updatedAt: "2026-11-18T00:00:00.000Z",
+    };
+    const betaThread: SlackFeatureThread = {
+      projectId: "proj-beta",
+      featureId: "048-shared",
+      workspaceId: "W-SHARED",
+      channelId: "C-SHARED",
+      rootTs: "1700000999.000999",
+      updatedAt: "2026-11-18T00:00:00.000Z",
+    };
+    const betaOnlyFeatureThread: SlackFeatureThread = {
+      projectId: "proj-beta",
+      featureId: "049-beta-thread",
+      workspaceId: "W-SHARED",
+      channelId: "C-SHARED",
+      rootTs: "1700000888.000888",
+      updatedAt: "2026-11-18T00:00:00.000Z",
+    };
+    const registry = makeRegistry(
+      [sharedAlpha, sharedBeta],
+      [
+        {
+          projectId: "proj-alpha",
+          principalType: "google_sub",
+          principalId: "iss:alpha-operator",
+          role: "operator",
+        },
+      ],
+      {
+        "proj-alpha:048-shared": alphaThread,
+        "proj-beta:048-shared": betaThread,
+        "proj-beta:049-beta-thread": betaOnlyFeatureThread,
+      },
+    );
+
+    const server = fastify();
+    await notifyRoutes(server, {
+      registry,
+      transport: "hosted",
+      resolvePrincipal: (req) => {
+        const verified = req.headers["x-verified-test-sub"];
+        return typeof verified === "string"
+          ? { principalType: "google_sub", principalId: verified }
+          : undefined;
+      },
+    });
+
+    try {
+      const spy = vi.spyOn(slackNotify, "notifySlack");
+
+      // Alpha operator attempting to override Alpha's stored thread with Beta's thread in C-SHARED -> 403
+      const hijackBound = await server.inject({
+        method: "POST",
+        url: "/api/notify",
+        headers: { "x-verified-test-sub": "iss:alpha-operator" },
+        payload: {
+          type: "review_ready",
+          projectId: "proj-alpha",
+          feature: "048-shared",
+          phase: "phase-05",
+          prNumber: 77,
+          recipient: {
+            projectId: "proj-alpha",
+            surface: "slack",
+            workspaceId: "W-SHARED",
+            channelId: "C-SHARED",
+            threadTs: betaThread.rootTs,
+          },
+        },
+      });
+      expect(hijackBound.statusCode).toBe(403);
+      expect(hijackBound.json().code).toBe("THREAD_PROJECT_MISMATCH");
+
+      // Alpha operator attempting to target Beta's stored thread when Alpha has no stored thread yet -> 403
+      const hijackUnbound = await server.inject({
+        method: "POST",
+        url: "/api/notify",
+        headers: { "x-verified-test-sub": "iss:alpha-operator" },
+        payload: {
+          type: "done_done",
+          projectId: "proj-alpha",
+          feature: "049-beta-thread",
+          recipient: {
+            projectId: "proj-alpha",
+            surface: "slack",
+            workspaceId: "W-SHARED",
+            channelId: "C-SHARED",
+            threadTs: betaOnlyFeatureThread.rootTs,
+          },
+        },
+      });
+      expect(hijackUnbound.statusCode).toBe(403);
+      expect(hijackUnbound.json().code).toBe("THREAD_PROJECT_MISMATCH");
+
+      expect(spy).not.toHaveBeenCalled();
+    } finally {
+      await server.close();
+    }
+  });
 });

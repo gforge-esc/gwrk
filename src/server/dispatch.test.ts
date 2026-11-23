@@ -15,7 +15,9 @@ import { startRun } from "../db/runs.js";
 import type {
   DeliveryRecipient,
   EnrolledProject,
+  SlackFeatureThread,
 } from "../domain/project-registry.js";
+import { resolveSlackDeliveryRoute } from "../domain/slack-delivery.js";
 import { ShipOrchestrator } from "../engine/ship-orchestrator.js";
 import type { ProjectRegistryPort } from "../ports/store-port.js";
 import type { GwrkConfig } from "../utils/config.js";
@@ -601,5 +603,201 @@ describe("DispatchQueue (unified ship engine)", () => {
     });
     expect(slugRecord.projectId).toBe("proj-alpha");
     expect(slugRecord.recipient?.projectId).toBe("proj-alpha");
+  });
+
+  it("TR-017 regression: rejects cross-channel and cross-workspace Slack recipients on enqueue", () => {
+    const alphaProject: EnrolledProject = {
+      projectId: "proj-alpha",
+      slug: "alpha",
+      name: "Alpha",
+      repoSlug: "org/alpha",
+      trunkBranch: "main",
+      localRoot: "/repos/alpha",
+      mirrorPath: "/mirrors/alpha",
+      runnerPolicy: { allowedKinds: ["local", "hosted"] },
+      slack: {
+        workspaceId: "W-ALPHA",
+        channelId: "C-ALPHA",
+        opsChannelId: "C-ALPHA-OPS",
+        sharedChannel: false,
+      },
+      legacyProjectIds: [],
+      createdAt: "2026-11-18T00:00:00.000Z",
+      updatedAt: "2026-11-18T00:00:00.000Z",
+    };
+    const registry: ProjectRegistryPort = {
+      enrollProject: (p) => p,
+      getProject: (id) =>
+        id === "proj-alpha" || id === "alpha" ? alphaProject : null,
+      findByRepoSlug: () => null,
+      findByLocalRoot: () => null,
+      listBySlackChannel: () => [],
+      listProjects: () => [alphaProject],
+      setRoleBinding: () => {},
+      listRoleBindings: () => [],
+      getFeatureThread: () => null,
+      bindFeatureThread: (t) => t,
+      getActionReceipt: () => null,
+      claimActionReceipt: () => true,
+      completeActionReceipt: () => true,
+      close: () => {},
+    };
+
+    mockMonitor.isThrottled.mockReturnValue(true);
+    const scopedQueue = new DispatchQueue(
+      mockConfig,
+      mockMonitor,
+      mockSandbox,
+      projectRoot,
+      registry,
+    );
+
+    expect(() =>
+      scopedQueue.enqueue({
+        projectId: "proj-alpha",
+        featureId: "048-shared",
+        phaseId: "phase-01",
+        recipient: {
+          projectId: "proj-alpha",
+          surface: "slack",
+          workspaceId: "W-ALPHA",
+          channelId: "C-BETA",
+        },
+      }),
+    ).toThrow();
+    expect(() =>
+      scopedQueue.enqueue({
+        projectId: "proj-alpha",
+        featureId: "048-shared",
+        phaseId: "phase-01",
+        recipient: {
+          projectId: "proj-alpha",
+          surface: "slack",
+          workspaceId: "W-OTHER",
+          channelId: "C-ALPHA",
+        },
+      }),
+    ).toThrow();
+  });
+
+  it("TR-017 regression: translates non-Slack recipients for Slack completion notices and stamps card routing", async () => {
+    const alphaProject: EnrolledProject = {
+      projectId: "proj-alpha",
+      slug: "alpha",
+      name: "Alpha",
+      repoSlug: "org/alpha",
+      trunkBranch: "main",
+      localRoot: "/repos/alpha",
+      mirrorPath: "/mirrors/alpha",
+      runnerPolicy: { allowedKinds: ["local", "hosted"] },
+      slack: {
+        workspaceId: "W-ALPHA",
+        channelId: "C-ALPHA",
+        opsChannelId: "C-ALPHA-OPS",
+        sharedChannel: false,
+      },
+      legacyProjectIds: [],
+      createdAt: "2026-11-18T00:00:00.000Z",
+      updatedAt: "2026-11-18T00:00:00.000Z",
+    };
+    const alphaThread: SlackFeatureThread = {
+      projectId: "proj-alpha",
+      featureId: "048-shared",
+      workspaceId: "W-ALPHA",
+      channelId: "C-ALPHA",
+      rootTs: "1700000100.000200",
+      updatedAt: "2026-11-18T00:00:00.000Z",
+    };
+    const registry: ProjectRegistryPort = {
+      enrollProject: (p) => p,
+      getProject: (id) =>
+        id === "proj-alpha" || id === "alpha" ? alphaProject : null,
+      findByRepoSlug: () => null,
+      findByLocalRoot: () => null,
+      listBySlackChannel: () => [],
+      listProjects: () => [alphaProject],
+      setRoleBinding: () => {},
+      listRoleBindings: () => [],
+      getFeatureThread: (projectId, featureId) =>
+        projectId === "proj-alpha" && featureId === "048-shared"
+          ? alphaThread
+          : null,
+      bindFeatureThread: (t) => t,
+      getActionReceipt: () => null,
+      claimActionReceipt: () => true,
+      completeActionReceipt: () => true,
+      close: () => {},
+    };
+
+    mockMonitor.isThrottled.mockReturnValue(false);
+    const scopedQueue = new DispatchQueue(
+      mockConfig,
+      mockMonitor,
+      mockSandbox,
+      projectRoot,
+      registry,
+    );
+
+    // Non-Slack recipient (as returned by evaluateHttpProjectAccess) must still deliver to Slack
+    const httpRecipient: DeliveryRecipient = {
+      projectId: "proj-alpha",
+      surface: "http",
+    };
+    const record = scopedQueue.enqueue({
+      projectId: "proj-alpha",
+      featureId: "048-shared",
+      phaseId: "phase-01",
+      recipient: httpRecipient,
+    });
+
+    await vi.waitFor(() => {
+      if (record.status !== "completed") throw new Error("not completed yet");
+    });
+
+    expect(record.recipient).toEqual(httpRecipient);
+    expect(notifySlack).toHaveBeenCalledTimes(1);
+    const [message, event, options] = vi.mocked(notifySlack).mock.calls[0];
+    const resolved = resolveSlackDeliveryRoute({
+      projectId: options?.projectId,
+      eventProjectId: event?.projectId,
+      recipient: options?.recipient,
+      eventRecipient: event?.recipient,
+      channelId: message.channel,
+      threadTs: message.thread_ts,
+      opsOnly: options?.opsOnly,
+      eventOpsOnly: event?.opsOnly,
+      project: alphaProject,
+      storedThread: alphaThread,
+      requireChannel: true,
+    });
+    expect(resolved).toEqual({
+      ok: true,
+      route: expect.objectContaining({
+        projectId: "proj-alpha",
+        expectedWorkspaceId: "W-ALPHA",
+        channelId: "C-ALPHA",
+        threadTs: "1700000100.000200",
+        opsOnly: false,
+      }),
+    });
+
+    const actionsBlock = message.blocks.find(
+      (
+        b,
+      ): b is {
+        type: "actions";
+        elements: Array<{ action_id: string; value?: string }>;
+      } => b.type === "actions",
+    );
+    const mergeButton = actionsBlock?.elements.find(
+      (el) => el.action_id === "merge_pr",
+    );
+    expect(JSON.parse(mergeButton?.value ?? "{}")).toMatchObject({
+      projectId: "proj-alpha",
+      projectSlug: "alpha",
+      rootTs: "1700000100.000200",
+      featureId: "048-shared",
+      phaseId: "phase-01",
+    });
   });
 });
