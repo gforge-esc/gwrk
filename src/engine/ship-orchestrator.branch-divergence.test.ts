@@ -62,6 +62,7 @@ function scriptGit(opts: {
   vi.mocked(execSync).mockImplementation(((cmd: string) => {
     const c = String(cmd);
     commands.push(c);
+    if (c.includes("vitest")) return "Tests 1 passed (1)";
     if (c.includes("rev-parse") && c.includes("refs/remotes/origin/")) {
       if (!opts.remoteExists) throw new Error("fatal: bad revision");
       return "abc123\n";

@@ -21,6 +21,7 @@ vi.mock("node:child_process", async (importOriginal) => {
   return {
     ...actual,
     execSync: vi.fn().mockImplementation((cmd: string) => {
+      if (typeof cmd === "string" && cmd.includes("vitest")) return "Tests: 5 passed";
       if (typeof cmd === "string" && cmd.includes("gh pr list")) return "";
       if (typeof cmd === "string" && cmd.includes("gh pr create")) return "https://github.com/mock/pull/42";
       if (typeof cmd === "string" && cmd.includes("gh pr checks")) return "";
@@ -520,7 +521,7 @@ describe("ShipOrchestrator", () => {
         }
         return "";
       }
-      if (typeof cmd === "string" && cmd.includes("pnpm test")) {
+      if (typeof cmd === "string" && (cmd.includes("pnpm test") || cmd.includes("vitest"))) {
         return "Tests: 5 passed";
       }
       if (typeof cmd === "string" && cmd.includes("gh pr list")) return "";
@@ -620,6 +621,7 @@ describe("ShipOrchestrator", () => {
         err.stderr = Buffer.from("error TS2345");
         throw err;
       }
+      if (typeof cmd === "string" && cmd.includes("vitest")) return "Tests: 5 passed";
       return Buffer.from("");
     });
 
