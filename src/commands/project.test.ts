@@ -18,6 +18,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { runWithOutputScope } from "../adapters/cli/output-scope.js";
 import { repositoryGitEnv } from "../adapters/git/process-env.js";
 import { createSqliteProjectRegistryAdapter } from "../adapters/sqlite/index.js";
+import { runCli } from "../cli.js";
 import {
   computeLegacyProjectIds,
   computeProjectId,
@@ -356,6 +357,75 @@ describe("TR-021: gwrk project enroll, list, show and init enrollment", () => {
 		const listRes = await runProjectSubcommand(["list", "--format", "json"]);
 		expect(listRes.exitCode).toBe(0);
 		expect(JSON.parse(listRes.stdout).total).toBe(0);
+	});
+
+	it("TR-021 UAT regression (T042): gwrk project enroll, list and show run via root CLI without .gwrkrc.json", async () => {
+		const runRootCli = async (args: string[]) => {
+			let stdout = "";
+			let stderr = "";
+			const exitCode = await runCli(args, {
+				stdout: (chunk) => {
+					stdout += chunk;
+				},
+				stderr: (chunk) => {
+					stderr += chunk;
+				},
+			});
+			return { stdout, stderr, exitCode };
+		};
+
+		// Empty registry list in a git checkout without .gwrkrc.json
+		const emptyList = await runRootCli(["project", "list"]);
+		expect(emptyList.exitCode, emptyList.stderr).toBe(0);
+		expect(emptyList.stdout).toContain("gwrk project enroll");
+		expect(emptyList.stderr).toMatch(/\[exit:0 \| /);
+
+		// Enroll a plain git checkout without prior gwrk init (.gwrkrc.json absent)
+		const enrollRes = await runRootCli([
+			"project",
+			"enroll",
+			"--slug",
+			"alpha",
+			"--trunk",
+			"main",
+			"--workspace",
+			"T_ALPHA",
+			"--channel",
+			"C_ALPHA",
+			"--format",
+			"json",
+		]);
+		expect(enrollRes.exitCode).toBe(0);
+		expect(enrollRes.stderr).toMatch(/\[exit:0 \| /);
+		const enrolled = JSON.parse(enrollRes.stdout);
+		expect(enrolled.slug).toBe("alpha");
+		expect(enrolled.repoSlug).toBe("org/alpha");
+
+		// List, show and negative enroll from an uninitialized non-git directory
+		const emptyDir = path.join(tempRoot, "no-config-dir");
+		fs.mkdirSync(emptyDir, { recursive: true });
+		process.chdir(emptyDir);
+
+		const listRes = await runRootCli(["project", "list", "--format", "json"]);
+		expect(listRes.exitCode).toBe(0);
+		expect(listRes.stderr).toMatch(/\[exit:0 \| /);
+		expect(JSON.parse(listRes.stdout).total).toBe(1);
+
+		const showRes = await runRootCli([
+			"project",
+			"show",
+			"alpha",
+			"--format",
+			"json",
+		]);
+		expect(showRes.exitCode).toBe(0);
+		expect(showRes.stderr).toMatch(/\[exit:0 \| /);
+		expect(JSON.parse(showRes.stdout).slug).toBe("alpha");
+
+		const badEnroll = await runRootCli(["project", "enroll"]);
+		expect(badEnroll.exitCode).toBe(1);
+		expect(badEnroll.stderr).toContain("--repo");
+		expect(badEnroll.stderr).toMatch(/\[exit:1 \| /);
 	});
 
 	it("FR-001/FR-004: gwrk init enrolls the local repository and preserves legacy aliases and architecture guidance when origin is added", async () => {

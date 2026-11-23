@@ -310,6 +310,8 @@ bash specs/048-project-identity-slack/gates/phase-05.sh
 
 #### Files
 
+- `src/cli.ts` (MODIFY: Allow registry-backed command handlers to resolve configuration before applying local project requirements)
+
 - `src/server/routes/dispatch.ts` (MODIFY: Enforce `evaluateHttpProjectAccess` and pass `projectId` and `recipient` to `DispatchQueue`)
 - `src/server/index.ts` (MODIFY: Wire `ProjectRegistryPort` and `ProjectRoutingService` plus `VcsPort` and multi-project watchers)
 - `src/commands/project-enroll.ts` (NEW: Implement `gwrk project enroll`, `list` and `show` with ADR-004 output)
@@ -317,6 +319,7 @@ bash specs/048-project-identity-slack/gates/phase-05.sh
 - `src/commands/init.ts` (MODIFY: Enroll or update the local repository with legacy alias preservation)
 - `src/commands/status.ts` (MODIFY: Surface daemon liveness and server reachability plus project readiness and Slack delivery)
 - `src/commands/server.ts` (MODIFY: Start the server against the project registry while keeping local single-repo defaults)
+- `src/commands/server.test.ts` (MODIFY: Verify root CLI registry fallback for foreground and internal startup plus status without local config)
 - `src/commands/project.test.ts` (MODIFY: Test `gwrk project enroll`, `list` and `show` JSON and text contracts)
 - `src/commands/status.test.ts` (NEW: Verify `gwrk status --json` exits non-zero when a configured server is unreachable)
 - `src/server/two-repo-isolation.test.ts` (NEW: Prove two-repo isolation across identical feature IDs and synthetic Slack fault cases)
@@ -332,7 +335,8 @@ bash specs/048-project-identity-slack/gates/phase-05.sh
 
 | ID | Type | Target | Assertion |
 |---|---|---|---|
-| TR-021 | integration | `src/commands/project.test.ts` | CLI enrolls repositories, records aliases and emits ADR-004 JSON and stderr signals |
+| TR-021 | integration | `src/commands/project.test.ts` | Root CLI enrolls, lists and shows projects without local config while preserving aliases and operational signals |
+| TR-021 | integration | `src/commands/server.test.ts` | Root CLI foreground startup, internal startup and status use registry fallback without local config |
 | TR-022 | unit | `src/commands/status.test.ts` | `gwrk status` distinguishes daemon liveness, project readiness, Slack delivery and unreachable servers |
 | TR-023 | unit | `src/server/routes/dispatch.test.ts` | Remote `/api/dispatch` calls without project authorization fail while local enrolled calls succeed |
 | TR-024 | integration | `src/server/two-repo-isolation.test.ts` | Two repos with matching feature IDs isolate reads, writes, threads, presence and replay guards with zero live calls |
