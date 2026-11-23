@@ -852,14 +852,17 @@ export async function dispatchToAgent(task: TaskDispatch): Promise<TaskResult> {
         lastDispatch =
           Number.parseInt(fs.readFileSync(statePath, "utf-8"), 10) || 0;
       }
-      const now = Date.now();
-      if (now - lastDispatch < throttleMs) {
-        const wait = throttleMs - (now - lastDispatch);
+      const throttleDeadline = lastDispatch + throttleMs;
+      let wait = throttleDeadline - Date.now();
+      if (wait > 0) {
         const waitSecs = Math.ceil(wait / 1000);
         writeScopedStdout(
           `\x1b[2m\x1b[33m⏳ Metering API limits (waiting ${waitSecs}s)...\x1b[0m\n`,
         );
-        await new Promise((resolve) => setTimeout(resolve, wait));
+        do {
+          await new Promise((resolve) => setTimeout(resolve, wait));
+          wait = throttleDeadline - Date.now();
+        } while (wait > 0);
       }
       fs.writeFileSync(statePath, Date.now().toString(), "utf-8");
     }
