@@ -21,7 +21,7 @@ An interface listed here does not imply its current phase is cleared. Use the la
 
 The [sign-in proof](../../deploy/hosted-auth-proof/README.md) uses a disposable read-only origin. Its successful synthetic tests do not establish authentication for the full gwrk service. The pilot must connect the approved routes to the private origin. Project authorization remains separate from Google sign-in.
 
-The operator supplies the host and persistent storage. DNS and HTTPS must resolve `gwrk.gforge.ai`. Google web client configuration must use the approved same-origin callback. Supply the intended allowlist and test accounts. Record allowed and denied account results in the [live sign-in record](../../deploy/hosted-auth-proof/live-acceptance.example.md).
+The intended hosting target is David's AWS account at `gwrk.gforge.ai`. AWS provisioning has not started. The pilot must select the account and region. The operator supplies the host and persistent storage. DNS and HTTPS must resolve `gwrk.gforge.ai`. Google web client configuration must use the approved same-origin callback. Supply the intended allowlist and test accounts. Record allowed and denied account results in the [live sign-in record](../../deploy/hosted-auth-proof/live-acceptance.example.md).
 
 Use the reviewed [Linux runner bundle](../../deploy/linux-runner/README.md). Supply repository-scoped Git credentials and the approved headless agent credential. Record installed adapter availability separately from credential success. Verify a systemd restart on the real host. A container process restart does not establish that result.
 
