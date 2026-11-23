@@ -1495,6 +1495,21 @@ describe("gwrk models CLI (TR-012, TR-013)", () => {
       };
     }
 
+    it("checks the live runbook's evaluate-all then promote-all order", async () => {
+      const { deps } = createSyntheticDeps(root);
+      expect((await runInjectedModels(["discover"], deps)).exitCode).toBe(0);
+      for (const role of ["define", "implement"]) {
+        const result = await runInjectedModels(["evaluate", "--role", role,
+          "--candidate", "codex:gpt-6.1-sol", "--incumbent", "claude:claude-3-7-sonnet",
+          ...(role === "define" ? ["--fixed-implementer", "codex:gpt-6.1-sol"] : []),
+          "--judges", "claude:claude-3-7-sonnet", "agy:gemini-2.5-pro", "--eval-id", "runbook-" + role], deps);
+        expect(result.exitCode, result.stderr).toBe(0);
+      }
+      expect((await runInjectedModels(["promote", "--eval", "runbook-define"], deps)).exitCode).toBe(0);
+      const second = await runInjectedModels(["promote", "--eval", "runbook-implement"], deps);
+      expect(second.exitCode, second.stderr).toBe(0);
+    });
+
     it("executes synthetic discover -> evaluate --role define -> promote end-to-end without live CLIs", async () => {
       const { deps, store } = createSyntheticDeps(root);
 

@@ -4,7 +4,7 @@
 # file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 set -euo pipefail
-tests=(src/application/models/resolve-route.test.ts src/utils/manifest.test.ts src/utils/config-resolution.conformance.test.ts src/utils/resolve-agent.test.ts src/plugins/workflow-runtime.test.ts src/commands/implement.test.ts src/commands/models.test.ts src/architecture.test.ts)
+tests=(src/application/models/resolve-route.test.ts src/utils/manifest.test.ts src/utils/config-resolution.conformance.test.ts src/utils/resolve-agent.test.ts src/plugins/workflow-runtime.test.ts src/commands/implement.test.ts src/commands/models.test.ts src/adapters/models/fixture-runner.test.ts src/commands/research.test.ts src/commands/specify.test.ts src/architecture.test.ts)
 for test_file in "${tests[@]}"; do
   if [[ ! -f "$test_file" ]]; then
     echo "Missing required test: $test_file" >&2
