@@ -841,4 +841,178 @@ describe("TR-024: two-repo isolation across identical feature IDs and synthetic 
     ]);
     expect(fetchSpy).not.toHaveBeenCalled();
   });
+
+  it("TR-024 review regression (T040): executes unthrottled two-repo dispatches in each project's own worktree root and cleans up without error", async () => {
+    vi.spyOn(SystemMonitor.prototype, "isThrottled").mockReturnValue(false);
+    vi.spyOn(HarvestWatcher.prototype, "runCheck").mockResolvedValue(undefined);
+    vi.spyOn(slackModule, "getSlackApp").mockReturnValue(null);
+    vi.spyOn(slackModule, "startSlackApp").mockResolvedValue(undefined);
+    vi.spyOn(slackNotify, "notifySlack").mockResolvedValue({ delivered: true });
+
+    const observedCwds: Array<{ stateRoot: string; cwd: string }> = [];
+    vi.mocked(ShipOrchestrator).mockImplementation((opts) => {
+      observedCwds.push({
+        stateRoot: opts.stateRoot ?? "",
+        cwd: opts.cwd ?? "",
+      });
+      return {
+        run: async () => 0,
+        getResult: () => ({}),
+      } as unknown as ShipOrchestrator;
+    });
+
+    const notifier = createSyntheticNotificationPort();
+    const vcs = createSyntheticVcsPort();
+    const routingService = createProjectRoutingService({
+      registry,
+      notificationPort: notifier,
+    });
+    const config = GwrkConfigSchema.parse({
+      project: { name: "multi-repo" },
+      server: { host: "127.0.0.1", port: 0 },
+    });
+
+    const server = await startServer(config, {
+      handleSignals: false,
+      projectRoot: alphaRoot,
+      pid: { writePid: vi.fn(), removePid: vi.fn() },
+      ledger: { db, projectId: alphaProject.projectId },
+      registry,
+      routingService,
+      vcs,
+      notifier,
+      transport: "hosted",
+      runnerKind: "hosted",
+      resolvePrincipal: (req) => {
+        const sub = req.headers["x-verified-test-sub"];
+        return typeof sub === "string"
+          ? { principalType: "google_sub", principalId: sub }
+          : undefined;
+      },
+    });
+
+    let closeError: unknown;
+    try {
+      const alphaRes = await server.inject({
+        method: "POST",
+        url: "/api/dispatch",
+        headers: { "x-verified-test-sub": "iss:alpha-op" },
+        payload: {
+          projectId: "alpha",
+          featureId: "048-shared",
+          phaseId: "phase-01",
+        },
+      });
+      expect(alphaRes.statusCode).toBe(201);
+
+      const betaRes = await server.inject({
+        method: "POST",
+        url: "/api/dispatch",
+        headers: { "x-verified-test-sub": "iss:beta-op" },
+        payload: {
+          projectId: "beta",
+          featureId: "048-shared",
+          phaseId: "phase-01",
+        },
+      });
+      expect(betaRes.statusCode).toBe(201);
+
+      await vi.waitFor(async () => {
+        const aStatus = await server.inject({
+          method: "GET",
+          url: `/api/dispatch/048-shared/phase-01?projectId=${alphaProject.projectId}`,
+          headers: { "x-verified-test-sub": "iss:alpha-op" },
+        });
+        const bStatus = await server.inject({
+          method: "GET",
+          url: `/api/dispatch/048-shared/phase-01?projectId=${betaProject.projectId}`,
+          headers: { "x-verified-test-sub": "iss:beta-op" },
+        });
+        expect(aStatus.json().status).toBe("completed");
+        expect(bStatus.json().status).toBe("completed");
+      });
+
+      const alphaRun = observedCwds.find((c) => c.stateRoot === alphaRoot);
+      const betaRun = observedCwds.find((c) => c.stateRoot === betaRoot);
+      expect(alphaRun?.cwd.startsWith(`${alphaRoot}${path.sep}`)).toBe(true);
+      expect(betaRun?.cwd.startsWith(`${betaRoot}${path.sep}`)).toBe(true);
+
+      expect(
+        runGit(alphaRoot, "worktree", "list", "--porcelain").match(
+          /^worktree /gm,
+        ),
+      ).toHaveLength(1);
+      expect(
+        runGit(betaRoot, "worktree", "list", "--porcelain").match(
+          /^worktree /gm,
+        ),
+      ).toHaveLength(1);
+    } finally {
+      try {
+        await server.close();
+      } catch (err) {
+        closeError = err;
+      }
+    }
+    expect(closeError).toBeUndefined();
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it("TR-024 review regression (T040): resolves localDefaultProjectId when startServer receives a symlinked projectRoot", async () => {
+    vi.spyOn(SystemMonitor.prototype, "isThrottled").mockReturnValue(true);
+    vi.spyOn(HarvestWatcher.prototype, "runCheck").mockResolvedValue(undefined);
+    vi.spyOn(SandboxManager.prototype, "pruneSandboxes").mockResolvedValue(
+      undefined,
+    );
+    vi.spyOn(slackModule, "getSlackApp").mockReturnValue(null);
+    vi.spyOn(slackModule, "startSlackApp").mockResolvedValue(undefined);
+
+    const alphaLink = path.join(workspaceDir, "alpha-symlink");
+    fs.symlinkSync(alphaRoot, alphaLink);
+
+    const notifier = createSyntheticNotificationPort();
+    const vcs = createSyntheticVcsPort();
+    const routingService = createProjectRoutingService({
+      registry,
+      notificationPort: notifier,
+    });
+    const config = GwrkConfigSchema.parse({
+      project: { name: "alpha" },
+      server: { host: "127.0.0.1", port: 0 },
+    });
+
+    const server = await startServer(config, {
+      handleSignals: false,
+      projectRoot: alphaLink,
+      pid: { writePid: vi.fn(), removePid: vi.fn() },
+      ledger: { db, projectId: alphaProject.projectId },
+      registry,
+      routingService,
+      vcs,
+      notifier,
+      transport: "trusted_local",
+    });
+
+    try {
+      const statusRes = await server.inject({
+        method: "GET",
+        url: "/api/status",
+      });
+      expect(statusRes.statusCode).toBe(200);
+      expect(statusRes.json().projectId).toBe(alphaProject.projectId);
+
+      const dispatchRes = await server.inject({
+        method: "POST",
+        url: "/api/dispatch",
+        payload: {
+          featureId: "048-shared",
+          phaseId: "phase-01",
+        },
+      });
+      expect(dispatchRes.statusCode).toBe(201);
+      expect(dispatchRes.json().projectId).toBe(alphaProject.projectId);
+    } finally {
+      await server.close();
+    }
+  });
 });

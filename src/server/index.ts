@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { execFileSync } from "node:child_process";
-import { existsSync } from "node:fs";
+import { existsSync, realpathSync } from "node:fs";
 import { basename, dirname, join, resolve } from "node:path";
 import fastify, { type FastifyRequest } from "fastify";
 import { QuotaProber } from "../adapters/agents/quota-prober.js";
@@ -109,19 +109,71 @@ function isLoopbackListenHost(host: string): boolean {
 }
 
 export class ScopedSandboxManager extends SandboxManager {
+  private readonly root: string;
+  private readonly gitEnv: () => NodeJS.ProcessEnv;
+  private readonly childManagers = new Map<string, ScopedSandboxManager>();
+  private readonly workDirRoots = new Map<string, string>();
+
   constructor(
-    private readonly root: string,
-    private readonly gitEnv = () => repositoryGitEnv(root),
+    root: string,
+    private readonly customGitEnv?: () => NodeJS.ProcessEnv,
+    private readonly registry?: ProjectRegistryPort,
   ) {
-    super(root);
+    const normalizedRoot = resolve(root);
+    super(normalizedRoot);
+    this.root = normalizedRoot;
+    this.gitEnv = customGitEnv ?? (() => repositoryGitEnv(normalizedRoot));
   }
 
   protected override gitOptions() {
     return { env: this.gitEnv() };
   }
 
-  override async pruneSandboxes(): Promise<void> {
-    if (!existsSync(join(this.root, ".git"))) return;
+  private managerForRoot(targetRoot: string): ScopedSandboxManager {
+    const normalized = resolve(targetRoot);
+    if (normalized === this.root) return this;
+    let manager = this.childManagers.get(normalized);
+    if (!manager) {
+      manager = new ScopedSandboxManager(normalized, this.customGitEnv);
+      this.childManagers.set(normalized, manager);
+    }
+    return manager;
+  }
+
+  private knownRoots(): string[] {
+    const roots = new Set<string>([this.root, ...this.childManagers.keys()]);
+    if (this.registry) {
+      for (const project of this.registry.listProjects()) {
+        const checkoutRoot = project.mirrorPath ?? project.localRoot;
+        if (checkoutRoot) {
+          roots.add(resolve(checkoutRoot));
+        }
+      }
+    }
+    return Array.from(roots);
+  }
+
+  private resolveWorkDirRoot(workDir: string): string {
+    const normalizedWorkDir = resolve(workDir);
+    const tracked = this.workDirRoots.get(normalizedWorkDir);
+    if (tracked) return tracked;
+    const sandboxesDir = dirname(normalizedWorkDir);
+    const runsDir = dirname(sandboxesDir);
+    if (
+      basename(sandboxesDir) === "sandboxes" &&
+      basename(runsDir) === ".runs"
+    ) {
+      return dirname(runsDir);
+    }
+    return this.root;
+  }
+
+  private pruneOwnRoot(): void {
+    const hasGitRepo =
+      existsSync(join(this.root, ".git")) ||
+      (existsSync(join(this.root, "HEAD")) &&
+        existsSync(join(this.root, "objects")));
+    if (!hasGitRepo) return;
     execFileSync("git", ["worktree", "prune"], {
       cwd: this.root,
       ...this.gitOptions(),
@@ -130,7 +182,7 @@ export class ScopedSandboxManager extends SandboxManager {
     });
   }
 
-  override async listSandboxes(): Promise<SandboxInfo[]> {
+  private listOwnSandboxes(): SandboxInfo[] {
     return this.listRecords()
       .filter(({ orphaned }) => !orphaned)
       .map(
@@ -143,6 +195,68 @@ export class ScopedSandboxManager extends SandboxManager {
             startedAt: createdAt,
           }) as SandboxInfo,
       );
+  }
+
+  override async createSandbox(
+    opts: Parameters<SandboxManager["createSandbox"]>[0],
+  ): Promise<string> {
+    const targetRoot = resolve(opts.projectRoot || this.root);
+    const manager = this.managerForRoot(targetRoot);
+    const workDir =
+      manager === this
+        ? await super.createSandbox({ ...opts, projectRoot: targetRoot })
+        : await manager.createSandbox({ ...opts, projectRoot: targetRoot });
+    this.workDirRoots.set(resolve(workDir), targetRoot);
+    return workDir;
+  }
+
+  override async destroySandbox(
+    workDir: string,
+    featureId: string,
+    options?: Parameters<SandboxManager["destroySandbox"]>[2],
+  ): Promise<void> {
+    const normalizedWorkDir = resolve(workDir);
+    const targetRoot = this.resolveWorkDirRoot(normalizedWorkDir);
+    const manager = this.managerForRoot(targetRoot);
+    try {
+      if (manager === this) {
+        await super.destroySandbox(workDir, featureId, options);
+      } else {
+        await manager.destroySandbox(workDir, featureId, options);
+      }
+    } finally {
+      this.workDirRoots.delete(normalizedWorkDir);
+    }
+  }
+
+  override async pruneSandboxes(): Promise<void> {
+    for (const targetRoot of this.knownRoots()) {
+      const manager = this.managerForRoot(targetRoot);
+      if (manager === this) {
+        this.pruneOwnRoot();
+      } else {
+        await manager.pruneSandboxes();
+      }
+    }
+  }
+
+  override async listSandboxes(): Promise<SandboxInfo[]> {
+    const results: SandboxInfo[] = [];
+    const seen = new Set<string>();
+    for (const targetRoot of this.knownRoots()) {
+      const manager = this.managerForRoot(targetRoot);
+      const items =
+        manager === this
+          ? this.listOwnSandboxes()
+          : await manager.listSandboxes();
+      for (const item of items) {
+        const key = resolve(item.workDir);
+        if (seen.has(key)) continue;
+        seen.add(key);
+        results.push(item);
+      }
+    }
+    return results;
   }
 }
 
@@ -194,6 +308,9 @@ async function startLockedServer(
   approvedBackend: AgentBackendId | undefined,
 ) {
   const projectRoot = resolve(options.projectRoot ?? process.cwd());
+  const canonicalRoot = existsSync(projectRoot)
+    ? realpathSync(projectRoot)
+    : projectRoot;
   const gitEnv =
     options.gitEnv ??
     (options.projectRoot !== undefined || options.ledger
@@ -232,6 +349,7 @@ async function startLockedServer(
   const activeRegistry = enforceRegistryScope ? registry : undefined;
   const localDefaultProjectId =
     options.localDefaultProjectId ??
+    activeRegistry?.findByLocalRoot(canonicalRoot)?.projectId ??
     activeRegistry?.findByLocalRoot(projectRoot)?.projectId;
 
   const vcs = options.vcs ?? createGitVcsAdapter();
@@ -267,9 +385,9 @@ async function startLockedServer(
   const monitor = new SystemMonitor(config);
   const sandbox =
     options.sandbox ??
-    (options.projectRoot === undefined
-      ? new SandboxManager(projectRoot)
-      : new ScopedSandboxManager(projectRoot, gitEnv));
+    (options.projectRoot !== undefined || activeRegistry !== undefined
+      ? new ScopedSandboxManager(projectRoot, options.gitEnv, activeRegistry)
+      : new SandboxManager(projectRoot));
 
   const git = new GitManager(projectRoot);
   const queue = new DispatchQueue(

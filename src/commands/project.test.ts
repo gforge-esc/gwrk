@@ -342,6 +342,22 @@ describe("TR-021: gwrk project enroll, list, show and init enrollment", () => {
 		expect(res.stderr).toMatch(/\[exit:1 \| /);
 	});
 
+	it("TR-021 review regression (T041): invalid --role exits 2 without writing a partial project enrollment", async () => {
+		const res = await runProjectSubcommand([
+			"enroll",
+			"--slug",
+			"alpha",
+			"--role",
+			"slack_user:T_ALPHA:U1=invalid-role",
+		]);
+		expect(res.exitCode).toBe(2);
+		expect(res.stderr).toMatch(/\[exit:2 \| /);
+
+		const listRes = await runProjectSubcommand(["list", "--format", "json"]);
+		expect(listRes.exitCode).toBe(0);
+		expect(JSON.parse(listRes.stdout).total).toBe(0);
+	});
+
 	it("FR-001/FR-004: gwrk init enrolls the local repository and preserves legacy aliases and architecture guidance when origin is added", async () => {
 		const localOnlyDir = path.join(tempRoot, "local-only");
 		fs.mkdirSync(localOnlyDir, { recursive: true });
