@@ -217,6 +217,60 @@ describe("durable GitHub webhook ingress (FR-002, FR-005, TR-002, TR-004)", () =
     };
   }
 
+  it("TR-002 security regression: rejects unsigned enrolled durable intake when no webhook secret is configured", async () => {
+    const { alphaRoot, alphaId, db, registry } = setupDurableFixture();
+    const enrolled = registry.getProject(alphaId);
+    if (!enrolled) throw new Error("Missing synthetic enrollment");
+    registry.enrollProject({
+      ...enrolled,
+      runnerPolicy: { allowedKinds: ["hosted"] },
+    });
+    const server = fastify();
+    try {
+      await githubWebhookPlugin(server, {
+        config: { server: {} } as GwrkConfig,
+        projectRoot: alphaRoot,
+        registry,
+        ledger: { db, projectId: alphaId },
+        autoResume: false,
+      });
+      const response = await server.inject({
+        method: "POST",
+        url: "/webhook/github",
+        headers: {
+          "x-github-event": "pull_request",
+          "x-github-delivery": "unsigned-enrolled-security-probe",
+        },
+        payload: {
+          action: "closed",
+          repository: { full_name: "org/alpha" },
+          pull_request: {
+            number: 77,
+            html_url: "https://github.com/org/alpha/pull/77",
+            merged: true,
+            merged_at: "2026-11-23T12:05:00Z",
+            merge_commit_sha: "a".repeat(40),
+            head: {
+              ref: "feat/049-durable-phase-01",
+              sha: "b".repeat(40),
+              repo: { full_name: "org/alpha" },
+            },
+            base: { ref: "develop", repo: { full_name: "org/alpha" } },
+          },
+        },
+      });
+      const operationCount = db.prepare("SELECT COUNT(*) AS count FROM harvest_operations").get() as { count: number };
+      const deliveryCount = db.prepare("SELECT COUNT(*) AS count FROM harvest_deliveries").get() as { count: number };
+      console.info("Unsigned enrolled intake", { statusCode: response.statusCode, body: response.json(), operationCount, deliveryCount });
+      expect.soft(response.statusCode).toBeGreaterThanOrEqual(400);
+      expect.soft(operationCount.count).toBe(0);
+      expect.soft(deliveryCount.count).toBe(0);
+    } finally {
+      await server.close();
+      db.close();
+    }
+  });
+
   it("TR-002 verifies raw pretty-printed JSON HMAC, persists before HTTP 200, and deduplicates X-GitHub-Delivery", async () => {
     const { alphaRoot, alphaId, db, store } = setupDurableFixture();
     const secret = "raw-body-secret";

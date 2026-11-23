@@ -303,6 +303,35 @@ afterEach(() => {
 });
 
 describe("DurableHarvestService", () => {
+  it.each([
+    { label: "absent", secret: undefined },
+    { label: "empty", secret: "" },
+    { label: "whitespace", secret: "   " },
+  ])(
+    "TR-002 security regression: rejects $label webhook secrets before durable writes",
+    async ({ label, secret }) => {
+      const harness = createHarness();
+      const result = await harness.service.ingestWebhook({
+        deliveryId: `security-secret-${label}`,
+        eventType: "pull_request",
+        ...signWebhook(prWebhookPayload(), secret ?? "synthetic-unused-secret"),
+        webhookSecret: secret,
+      });
+      const operationCount = db
+        .prepare("SELECT COUNT(*) AS count FROM harvest_operations")
+        .get() as { count: number };
+      const deliveryCount = db
+        .prepare("SELECT COUNT(*) AS count FROM harvest_deliveries")
+        .get() as { count: number };
+      expect.soft(result.accepted).toBe(false);
+      expect.soft(operationCount.count).toBe(0);
+      expect.soft(deliveryCount.count).toBe(0);
+      expect(harness.vcs.fetchBranch).not.toHaveBeenCalled();
+      expect(harness.executor.verifyGatesAtCheckout).not.toHaveBeenCalled();
+      expect(harness.notify).not.toHaveBeenCalled();
+    },
+  );
+
   it("TR-002 converges duplicate webhook, poller and manual deliveries onto one merge and rejects stale close", async () => {
     const harness = createHarness();
 
