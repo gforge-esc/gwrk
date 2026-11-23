@@ -22,3 +22,21 @@ The merged reconciliation options retain the injected project and database. Isol
 | Lint | 432 files passed | `/tmp/gwrk-integration-durable3-merge-lint.log` |
 
 Durable Phase 3 cleared code review and acceptance review at `679c6825`. Both required CI jobs passed in run 44447926701. These checks sent no live Slack messages.
+
+## Scoped delivery integration
+
+The November 23 composition preserves the canonical Slack delivery resolver from project identity Phase 4. It retains durable reconciliation and transport cancellation. Project recipient validation applies before delivery. Pilot Telegram remains disabled by default.
+
+The caller owns a queued away-user notification until its abort signal ends. Each network request has a separate timeout. An expired presence lookup must not remove a notification queued for later delivery. Pending batches partition by project and caller ownership. Private ephemeral replies retain the validated thread and recipient.
+
+The incoming composition failed four transport regressions. Two private-reply regressions then proved the missing network bounds. One away-user regression proved that a request timeout incorrectly canceled queued ownership. All retained cases pass after repair. The affected integration file also passes after updating its explicit legacy pilot fixtures.
+
+| Check | Verdict | Evidence |
+|---|---|---|
+| Transport composition baseline | FAIL, four regressions | `/tmp/gwrk-nov23-slack4-durable-composition-red.log` |
+| Private reply baseline | FAIL, two regressions | `/tmp/gwrk-nov23-private-reply-bounds-red.log` |
+| Away-user ownership baseline | FAIL, one regression | `/tmp/gwrk-nov23-away-owner-lifetime-red.log` |
+| Ownership and server integration | PASS, 65 checks | `/tmp/gwrk-nov23-owner-lifetime-integration-green-3.log` |
+| Durable coordination composition | PASS, 84 checks | `/tmp/gwrk-nov23-durable4-merge-gate-2.log` |
+
+Durable coordination integration retains injected project identity and database scope. Recursive harvest calls preserve the process environment and local-state suppression. The Git adapter exposes its implemented harvest methods through the full VCS port. Consumers that need project methods retain the narrower port.
