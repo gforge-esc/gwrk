@@ -9,6 +9,7 @@ import type {
   ProjectRoleBinding,
   SlackFeatureThread,
 } from "../../domain/project-registry.js";
+import { evaluateSlackAction } from "../../domain/slack-routing.js";
 import type { ProjectRegistryPort } from "../../ports/store-port.js";
 import * as slackNotify from "../slack-notify.js";
 import { notifyRoutes } from "./notify.js";
@@ -620,6 +621,189 @@ describe("notify routes (FR-003, FR-005, FR-007, TR-018)", () => {
       );
     } finally {
       await hostedServer.close();
+    }
+  });
+
+  it("TR-018 UAT regression: stamps projectId, projectSlug, and rootTs on interactive notify cards so shared-channel clicks authorize", async () => {
+    const sharedAlpha: EnrolledProject = {
+      ...alphaHostedProject,
+      slack: {
+        workspaceId: "W-SHARED",
+        channelId: "C-SHARED",
+        opsChannelId: "C-ALPHA-OPS",
+        sharedChannel: true,
+      },
+    };
+    const sharedBeta: EnrolledProject = {
+      ...betaLocalOnlyProject,
+      runnerPolicy: { allowedKinds: ["local", "hosted"] },
+      slack: {
+        workspaceId: "W-SHARED",
+        channelId: "C-SHARED",
+        opsChannelId: "C-BETA-OPS",
+        sharedChannel: true,
+      },
+    };
+    const storedThread: SlackFeatureThread = {
+      projectId: "proj-alpha",
+      featureId: "048-shared",
+      workspaceId: "W-SHARED",
+      channelId: "C-SHARED",
+      rootTs: "1700000100.000200",
+      updatedAt: "2026-11-18T00:00:00.000Z",
+    };
+    const roles: ProjectRoleBinding[] = [
+      {
+        projectId: "proj-alpha",
+        principalType: "google_sub",
+        principalId: "iss:operator",
+        role: "operator",
+      },
+      {
+        projectId: "proj-alpha",
+        principalType: "slack_user",
+        principalId: "W-SHARED:U-MAINT",
+        role: "maintainer",
+      },
+    ];
+    const registry = makeRegistry([sharedAlpha, sharedBeta], roles, {
+      "proj-alpha:048-shared": storedThread,
+    });
+
+    const server = fastify();
+    await notifyRoutes(server, {
+      registry,
+      transport: "hosted",
+      resolvePrincipal: (req) => {
+        const verified = req.headers["x-verified-test-sub"];
+        return typeof verified === "string"
+          ? { principalType: "google_sub", principalId: verified }
+          : undefined;
+      },
+    });
+
+    try {
+      const spy = vi.spyOn(slackNotify, "notifySlack");
+
+      const specRes = await server.inject({
+        method: "POST",
+        url: "/api/notify",
+        headers: { "x-verified-test-sub": "iss:operator" },
+        payload: {
+          type: "define_spec_ready",
+          projectId: "proj-alpha",
+          feature: "048-shared",
+          specPath: "specs/048-shared/spec.md",
+        },
+      });
+      expect(specRes.statusCode).toBe(200);
+
+      const planRes = await server.inject({
+        method: "POST",
+        url: "/api/notify",
+        headers: { "x-verified-test-sub": "iss:operator" },
+        payload: {
+          type: "define_plan_ready",
+          projectId: "proj-alpha",
+          feature: "048-shared",
+          planPath: "specs/048-shared/plan.md",
+          phaseCount: 5,
+        },
+      });
+      expect(planRes.statusCode).toBe(200);
+
+      const reviewRes = await server.inject({
+        method: "POST",
+        url: "/api/notify",
+        headers: { "x-verified-test-sub": "iss:operator" },
+        payload: {
+          type: "review_ready",
+          projectId: "proj-alpha",
+          feature: "048-shared",
+          phase: "phase-05",
+          prNumber: 77,
+          prUrl: "https://github.com/org/alpha/pull/77",
+        },
+      });
+      expect(reviewRes.statusCode).toBe(200);
+
+      const failRes = await server.inject({
+        method: "POST",
+        url: "/api/notify",
+        headers: { "x-verified-test-sub": "iss:operator" },
+        payload: {
+          type: "phase_fail",
+          projectId: "proj-alpha",
+          feature: "048-shared",
+          phase: "phase-05",
+          error: "gate failed",
+        },
+      });
+      expect(failRes.statusCode).toBe(200);
+
+      const extractFirstAction = (callIndex: number) => {
+        const message = spy.mock.calls[callIndex][0];
+        const actionsBlock = message.blocks.find(
+          (
+            b,
+          ): b is {
+            type: "actions";
+            elements: Array<{ action_id: string; value?: string }>;
+          } => b.type === "actions",
+        );
+        expect(actionsBlock).toBeDefined();
+        const button = actionsBlock?.elements[0];
+        expect(button?.value).toBeDefined();
+        return {
+          actionId: button?.action_id ?? "",
+          parsed: JSON.parse(button?.value ?? "{}") as {
+            projectId?: string;
+            projectSlug?: string;
+            rootTs?: string;
+            featureId?: string;
+            phaseId?: string;
+          },
+        };
+      };
+
+      for (const [callIndex, expectedActionId, requiredAccess] of [
+        [0, "approve_spec", "maintain"],
+        [1, "approve_plan", "maintain"],
+        [2, "merge_pr", "maintain"],
+        [3, "retry_phase", "operate"],
+      ] as const) {
+        const { actionId, parsed } = extractFirstAction(callIndex);
+        expect(actionId).toBe(expectedActionId);
+
+        const decision = evaluateSlackAction([sharedAlpha, sharedBeta], roles, {
+          workspaceId: "W-SHARED",
+          channelId: "C-SHARED",
+          isDirectMessage: false,
+          actorUserId: "U-MAINT",
+          threadTs: storedThread.rootTs,
+          messageTs: "1700000200.000300",
+          actionId,
+          payloadProjectId: parsed.projectId,
+          payloadRootTs: parsed.rootTs,
+          featureId: parsed.featureId ?? "",
+          phaseId: parsed.phaseId,
+          requiredAccess,
+          storedThread,
+          priorReceipt: null,
+        });
+        expect(decision).toMatchObject({
+          ok: true,
+          project: expect.objectContaining({ projectId: "proj-alpha" }),
+        });
+        expect(parsed).toMatchObject({
+          projectId: "proj-alpha",
+          projectSlug: "alpha",
+          rootTs: "1700000100.000200",
+          featureId: "048-shared",
+        });
+      }
+    } finally {
+      await server.close();
     }
   });
 });

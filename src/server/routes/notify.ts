@@ -235,6 +235,12 @@ export async function notifyRoutes(
         prNumber: payload.prNumber,
       };
 
+      const cardRouting = {
+        projectId: notifyProjectId,
+        projectSlug: authorizedProject?.slug,
+        rootTs: resolvedRecipient?.threadTs,
+      };
+
       let message: SlackMessage;
       switch (payload.type) {
         case "phase_start":
@@ -246,7 +252,14 @@ export async function notifyRoutes(
           break;
         case "phase_fail":
           dispatch.status = "failed";
-          message = MessageBuilder.phaseFail(dispatch, payload.error);
+          message = MessageBuilder.phaseFail(
+            {
+              ...dispatch,
+              projectSlug: authorizedProject?.slug,
+              rootTs: resolvedRecipient?.threadTs,
+            },
+            payload.error,
+          );
           break;
         case "ci_result":
           message = MessageBuilder.ciResult(dispatch, {
@@ -255,7 +268,11 @@ export async function notifyRoutes(
           });
           break;
         case "review_ready":
-          message = MessageBuilder.reviewReady(dispatch);
+          message = MessageBuilder.reviewReady({
+            ...dispatch,
+            projectSlug: authorizedProject?.slug,
+            rootTs: resolvedRecipient?.threadTs,
+          });
           break;
         case "done_done":
           message = MessageBuilder.doneDone(
@@ -279,7 +296,11 @@ export async function notifyRoutes(
               error: "Missing required field: specPath",
             });
           }
-          message = MessageBuilder.specReady(payload.feature, payload.specPath);
+          message = MessageBuilder.specReady(
+            payload.feature,
+            payload.specPath,
+            cardRouting,
+          );
           break;
         case "define_plan_ready":
           if (!payload.planPath || !payload.phaseCount) {
@@ -292,6 +313,7 @@ export async function notifyRoutes(
             payload.feature,
             payload.planPath,
             payload.phaseCount,
+            cardRouting,
           );
           break;
         default:
