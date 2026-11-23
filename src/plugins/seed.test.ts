@@ -112,3 +112,30 @@ it("honors a configured gwrk home without writing into the default home", async 
     code: "ENOENT",
   });
 });
+
+it("seeds the default repository taxonomy including apostrophe names", async () => {
+  await seedSkills();
+  const seeded = (await fs.readdir(skillsRoot())).sort();
+  expect(seeded).toHaveLength(45);
+  expect(seeded).toContain("devils-advocate");
+  const manifest = parse(
+    await fs.readFile(
+      path.join(skillsRoot(), "devils-advocate", "manifest.yaml"),
+      "utf8",
+    ),
+  );
+  expect(AnyManifestSchema.parse(manifest)).toMatchObject({
+    name: "devils-advocate",
+    category: "persona",
+  });
+});
+
+it("rejects empty explicit taxonomy paths without falling back to the default taxonomy", async () => {
+  const error = await seedSkills({ taxonomyPath: "" }).catch((err) => err);
+  expect(error).toBeInstanceOf(Error);
+  expect(error.message).toContain("--taxonomy");
+  expect(error.message).not.toContain("reasoning-modes.md");
+  await expect(fs.stat(skillsRoot())).rejects.toMatchObject({
+    code: "ENOENT",
+  });
+});

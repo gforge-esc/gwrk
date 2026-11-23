@@ -71,7 +71,8 @@ vi.mock("./slack-notify.js", async (importOriginal) => ({
   ...(await importOriginal<typeof import("./slack-notify.js")>()),
   notifySlack: vi.fn().mockResolvedValue(undefined),
 }));
-vi.mock("./telegram.js", () => ({
+vi.mock("./telegram.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("./telegram.js")>()),
   startTelegramBot: vi.fn().mockResolvedValue(undefined),
   stopTelegramBot: vi.fn().mockResolvedValue(undefined),
 }));
@@ -519,8 +520,8 @@ setInterval(() => {}, 1000);
   it("drains a cancelled Telegram poll before removing its process record", async () => {
     const telegram =
       await vi.importActual<typeof import("./telegram.js")>("./telegram.js");
-    vi.mocked(startTelegramBot).mockImplementationOnce(
-      telegram.startTelegramBot,
+    vi.mocked(startTelegramBot).mockImplementationOnce((deps) =>
+      telegram.startTelegramBot({ ...deps, pilotMode: false }),
     );
     vi.stubEnv("TELEGRAM_BOT_TOKEN", "fixture-telegram");
     vi.stubEnv("TELEGRAM_CHAT_ID", "123");
@@ -570,8 +571,12 @@ setInterval(() => {}, 1000);
     const telegram =
       await vi.importActual<typeof import("./telegram.js")>("./telegram.js");
     vi.mocked(startTelegramBot)
-      .mockImplementationOnce(telegram.startTelegramBot)
-      .mockImplementationOnce(telegram.startTelegramBot);
+      .mockImplementationOnce((deps) =>
+        telegram.startTelegramBot({ ...deps, pilotMode: false }),
+      )
+      .mockImplementationOnce((deps) =>
+        telegram.startTelegramBot({ ...deps, pilotMode: false }),
+      );
     vi.stubEnv(
       "GWRK_HOME",
       join(tmpdir(), "gwrk-fixture-absent-telegram-config"),
@@ -719,7 +724,7 @@ setInterval(() => {}, 1000);
   );
 
   it.each(["webhook", "presence"] as const)(
-    "routes dispatch notifications to the fixture via %s and Telegram",
+    "routes dispatch notifications to the fixture via %s with pilot Telegram disabled",
     async (transport) => {
       const realNotifier =
         await vi.importActual<typeof import("./slack-notify.js")>(
@@ -774,16 +779,15 @@ setInterval(() => {}, 1000);
         expect(fixture.journal().at(-1)?.status).toBe("completed");
         expect(provider.mock.calls.map(([url]) => url)).toEqual([
           transport === "presence" ? slackApi : webhook,
-          telegramApi,
         ]);
+        expect(provider.mock.calls.map(([url]) => url)).not.toContain(
+          telegramApi,
+        );
         if (transport === "presence") {
           expect(
             JSON.parse(String(provider.mock.calls[0][1]?.body)).channel,
           ).toBe("C_FIXTURE");
         }
-        expect(
-          JSON.parse(String(provider.mock.calls[1][1]?.body)).chat_id,
-        ).toBe("123");
       } finally {
         await fixture.close();
         vi.unstubAllGlobals();
@@ -839,6 +843,7 @@ setInterval(() => {}, 1000);
           },
         }),
       );
+      presenceManager.setUserPresence("fixture-user", "away");
       await presenceManager.init(
         GwrkConfigSchema.parse({ project: { name: fixture.projectId } }),
       );

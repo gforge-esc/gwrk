@@ -19,6 +19,7 @@ import type { ProjectRegistryPort } from "../ports/store-port.js";
 import { loadConfig } from "../utils/config.js";
 import { loadSlackConfig } from "../utils/slack-client.js";
 import {
+  boundedSlackSignal,
   postSlackEphemeralWithSignal,
   postSlackMessageWithSignal,
   verifySlackWorkspaceWithSignal,
@@ -33,12 +34,6 @@ export interface SlackTransportOptions {
   projectRoot?: string;
   signal?: AbortSignal;
   transportTimeoutMs?: number;
-}
-
-function deliverySignal(signal?: AbortSignal, timeoutMs?: number) {
-  if (timeoutMs === undefined) return signal;
-  const timeout = AbortSignal.timeout(timeoutMs);
-  return signal ? AbortSignal.any([signal, timeout]) : timeout;
 }
 
 export interface NotifySlackOptions extends SlackTransportOptions {
@@ -146,7 +141,7 @@ export async function notifySlack(
   event?: SlackEvent,
   options: NotifySlackOptions = {},
 ): Promise<NotificationReceipt | undefined> {
-  const signal = deliverySignal(options.signal, options.transportTimeoutMs);
+  const signal = boundedSlackSignal(options.signal, options.transportTimeoutMs);
   if (signal?.aborted) return undefined;
   const ctxResult = validateSlackDeliveryContext({
     projectId: options.projectId,
@@ -270,7 +265,7 @@ export async function notifySlack(
           recipient: route.recipient,
           opsOnly: route.opsOnly || undefined,
           registry: options.registry,
-          signal,
+          signal: options.signal,
           projectRoot: options.projectRoot,
           transportTimeoutMs: options.transportTimeoutMs,
         });
@@ -312,7 +307,7 @@ export async function sendSlackMessage(
   message: SlackMessage,
   options: SendSlackMessageOptions = {},
 ): Promise<NotificationReceipt | undefined> {
-  const signal = deliverySignal(options.signal, options.transportTimeoutMs);
+  const signal = boundedSlackSignal(options.signal, options.transportTimeoutMs);
   if (signal?.aborted) return undefined;
   const app = getSlackApp();
   let client = app?.client;
@@ -426,7 +421,7 @@ export async function sendSlackEphemeralMessage(
   userId: string,
   options: Omit<SendSlackMessageOptions, "webhookFallback"> = {},
 ): Promise<NotificationReceipt | undefined> {
-  const signal = deliverySignal(options.signal, options.transportTimeoutMs);
+  const signal = boundedSlackSignal(options.signal, options.transportTimeoutMs);
   if (signal?.aborted) return undefined;
   const app = getSlackApp();
   const client = app?.client;

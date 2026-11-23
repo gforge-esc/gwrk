@@ -17,6 +17,7 @@ import {
 } from "../domain/slack-delivery.js";
 import type { ProjectRegistryPort } from "../ports/store-port.js";
 import type { GwrkConfig } from "../utils/config.js";
+import { boundedSlackSignal } from "./slack-channel.js";
 import { MessageBuilder, type SlackMessage } from "./slack-messages.js";
 import type { SlackTransportOptions } from "./slack-notify.js";
 import { getSlackApp } from "./slack.js";
@@ -223,7 +224,10 @@ class PresenceManager {
             try {
               const res = await withCancellation(
                 app.client.users.getPresence({ user: target.recipientUserId }),
-                options?.signal,
+                boundedSlackSignal(
+                  options?.signal,
+                  options?.transportTimeoutMs,
+                ),
               );
               if (
                 res?.ok &&
@@ -250,7 +254,7 @@ class PresenceManager {
           try {
             const res = await withCancellation(
               app.client.users.getPresence({ user: target.recipientUserId }),
-              options?.signal,
+              boundedSlackSignal(options?.signal, options?.transportTimeoutMs),
             );
             if (
               res?.ok &&

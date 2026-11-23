@@ -5,6 +5,15 @@
 import { logCliError } from "../adapters/cli/output-scope.js";
 import { loadSlackConfig } from "../utils/slack-client.js";
 
+export function boundedSlackSignal(
+  signal?: AbortSignal,
+  timeoutMs?: number,
+): AbortSignal | undefined {
+  if (timeoutMs === undefined) return signal;
+  const timeout = AbortSignal.timeout(timeoutMs);
+  return signal ? AbortSignal.any([signal, timeout]) : timeout;
+}
+
 interface SlackChannel {
   id: string;
   name: string;

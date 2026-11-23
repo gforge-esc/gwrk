@@ -1004,4 +1004,65 @@ describe("US-003: Slack Event Bridge", () => {
       vi.unstubAllEnvs();
     }
   });
+
+  it("keeps away notifications beyond a network timeout until their owner cancels or they flush", async () => {
+    const controller = new AbortController();
+    const provider = vi
+      .fn<typeof fetch>()
+      .mockResolvedValue(Response.json({ ok: true }));
+    vi.mocked(getSlackApp).mockReturnValue({
+      client: {
+        token: "fixture-owner",
+        users: {
+          getPresence: vi
+            .fn()
+            .mockResolvedValue({ ok: true, presence: "away" }),
+        },
+      },
+    } as unknown as NonNullable<ReturnType<typeof getSlackApp>>);
+    vi.stubGlobal("fetch", provider);
+    vi.useFakeTimers();
+    const timeout = vi
+      .spyOn(AbortSignal, "timeout")
+      .mockImplementation((milliseconds) => {
+        const expired = new AbortController();
+        setTimeout(
+          () => expired.abort(new DOMException("Expired", "TimeoutError")),
+          milliseconds,
+        );
+        return expired.signal;
+      });
+    presenceManager.setUserPresence("U_OWNER", "away");
+    const pending = notifySlack(
+      { text: "queued", channel: "C_OWNER", thread_ts: "owner-thread" },
+      {
+        type: "phase_fail",
+        feature: "owner-feature",
+        payload: {},
+        timestamp: "",
+      },
+      { signal: controller.signal, transportTimeoutMs: 5 },
+    );
+    try {
+      await vi.advanceTimersByTimeAsync(10);
+      expect(
+        presenceManager.getScopedQueue("default", "U_OWNER")?.events,
+      ).toHaveLength(1);
+      expect(provider).not.toHaveBeenCalled();
+      presenceManager.setUserPresence("U_OWNER", "active");
+      await presenceManager.flushUserQueues("U_OWNER");
+      await pending;
+      expect(provider).toHaveBeenCalledOnce();
+      expect(JSON.parse(String(provider.mock.calls[0][1]?.body))).toMatchObject(
+        { channel: "C_OWNER", thread_ts: "owner-thread" },
+      );
+    } finally {
+      controller.abort();
+      await pending;
+      presenceManager.stop();
+      timeout.mockRestore();
+      vi.useRealTimers();
+      vi.unstubAllGlobals();
+    }
+  });
 });

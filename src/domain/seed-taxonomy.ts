@@ -39,7 +39,11 @@ export function parseSeedTaxonomy(content: string): SeedSkill[] {
     if (!declared || entries.length !== declared)
       throw new Error(`Incomplete taxonomy entries in ${category}`);
     for (const entry of entries) {
-      const name = entry[1].trim().toLowerCase().replace(/\s+/g, "-");
+      const name = entry[1]
+        .trim()
+        .toLowerCase()
+        .replace(/['\u2019]/g, "")
+        .replace(/\s+/g, "-");
       if (!/^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/.test(name))
         throw new Error(`Invalid taxonomy skill name: ${entry[1]}`);
       if (names.has(name)) throw new Error(`Duplicate taxonomy skill: ${name}`);
