@@ -1086,6 +1086,80 @@ describe("TR-014: resolveQualifiedRoute", () => {
     );
   });
 
+  it("expires a ship review pin for active worktree instructions while primary evidence stays fresh", async () => {
+    const root = createTempProject({ project: { name: "gwrk" } });
+    const strategy = path.join(root, ".gwrk/plugins/reviews/review-cli");
+    fs.mkdirSync(strategy, { recursive: true });
+    const manifest = path.join(strategy, "manifest.yaml");
+    const original = fs.readFileSync(
+      "src/plugins/builtins/reviews/review-cli/manifest.yaml",
+      "utf8",
+    );
+    fs.writeFileSync(manifest, original);
+    const evidence = await projectEvidence(root);
+    const review = makePin({ role: "review", evidence, fallbackRoutes: [] });
+    await createRouteLockStore(root).writeRouteLockAtomic(SCOPE, {
+      document: makeRouteLock({}, { routes: { review } }),
+      expectedIncumbentDigest: null,
+    });
+    const worktree = path.join(root, ".runs/sandboxes/worktree");
+    fs.mkdirSync(worktree, { recursive: true });
+    for (const entry of [".gwrkrc.json", ".gwrk", "tests"]) {
+      fs.cpSync(path.join(root, entry), path.join(worktree, entry), {
+        recursive: true,
+      });
+    }
+    // Mirror discovery to isolate prompt freshness from the missing-evidence regression.
+    fs.cpSync(
+      path.join(root, ".runs/models"),
+      path.join(worktree, ".runs/models"),
+      {
+        recursive: true,
+      },
+    );
+    expect(resolveRoleAgent("review", worktree).model).toBe(review.modelId);
+    const revised = "Verify the active worktree release contract";
+    fs.writeFileSync(
+      path.join(worktree, ".gwrk/plugins/reviews/review-cli/manifest.yaml"),
+      original.replace("Check for lint errors", revised),
+    );
+    const selected = await resolveReviewPlugin(worktree);
+    expect(selected.steps.code).toContainEqual(
+      expect.objectContaining({ description: revised }),
+    );
+    const active = await projectEvidence(worktree);
+    expect(active.workflowPromptHashes.review).not.toBe(
+      evidence.workflowPromptHashes.review,
+    );
+    expect(resolveRoleAgent("review", root).model).toBe(review.modelId);
+    const dispatch = vi
+      .spyOn(agentTransport, "dispatchToAgent")
+      .mockResolvedValue({
+        stdout: "",
+        stderr: "",
+        exitCode: 0,
+        durationS: 0,
+      });
+    const ship = new ShipOrchestrator({
+      cwd: worktree,
+      stateRoot: root,
+      featureId: "001-qualification",
+      phaseId: "phase-01",
+      backend: "claude",
+      maxIterations: 1,
+      ciTimeout: 1,
+    });
+    await expect(
+      // biome-ignore lint/complexity/useLiteralKeys: Exercise one review without running the ship loop.
+      ship["runNativeWorkflow"](
+        selected.codeReviewWorkflow,
+        "Review",
+        "review",
+      ),
+    ).rejects.toThrow(/stale.*prompt/i);
+    expect(dispatch).not.toHaveBeenCalled();
+  });
+
   it("rejects an explicit ship backend without a qualified review route", async () => {
     const root = createTempProject({ project: { name: "gwrk" } });
     const feature = "001-qualification";
