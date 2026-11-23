@@ -328,6 +328,8 @@ async function shipPhase(
           featureId: feature,
           phaseId: phaseId,
           backend,
+          explicitBackend:
+            typeof opts.agent === "string" ? opts.agent : undefined,
           maxIterations: Number.parseInt(opts.maxIterations as string),
           ciTimeout: Number.parseInt(opts.ciTimeout as string),
           cwd,

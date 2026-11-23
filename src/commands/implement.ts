@@ -16,7 +16,7 @@ import {
   writeScopedStderr,
 } from "../adapters/cli/output-scope.js";
 import { finishRun, startRun } from "../db/runs.js";
-import { run } from "../utils/exec.js";
+import { WorkflowRuntime } from "../plugins/workflow-runtime.js";
 import { banner, color, dryRun, fail, success } from "../utils/format.js";
 import { runGate } from "../utils/gate-runner.js";
 import { getCurrentCommit, getDiffStats } from "../utils/git.js";
@@ -44,9 +44,8 @@ export const implementAction = async (
     const projectId = resolveProjectId(cwd);
     const feature = resolveFeature(featureInput, cwd);
     const specDir = path.join(cwd, "specs", feature);
-    const scriptPath = path.join(cwd, "scripts/dev/agent-run.sh");
-
-    const { backend } = resolveAgent("implement", cwd, { agent: opts.agent });
+    const route = resolveAgent("implement", cwd, { agent: opts.agent });
+    const runtime = new WorkflowRuntime();
 
     const phaseId = `phase-${phase.padStart(2, "0")}`;
     const tasks = loadTaskState(specDir);
@@ -61,14 +60,14 @@ export const implementAction = async (
       phase_id: phaseId,
       project_id: projectId,
       command: "implement",
-      agent_backend: backend,
+      agent_backend: route.backend,
       workflow: "implement",
     });
 
     banner("implement", {
       Feature: feature,
       Phase: phase,
-      Agent: backend,
+      Agent: route.backend,
       "Run ID": `${runId}`,
     });
 
@@ -111,22 +110,29 @@ export const implementAction = async (
         }
 
         if (opts.dryRun) {
-          dryRun(`${scriptPath} implement ${feature} ${phase} ${task.id}`);
+          dryRun(`gwrk-implement ${feature} ${phaseId} ${task.id}`);
           continue;
         }
 
         logCliOutput(
           `${GREEN}▶${RESET} Implementing ${task.id}: ${task.title}`,
         );
-        await run(scriptPath, ["implement", feature, phase, task.id], {
-          cwd,
-          env: {
-            ...process.env,
-            APPROVAL_MODE: "yolo",
-            AGENT_BACKEND: backend,
+        await runtime.executeWorkflow(
+          "gwrk-implement",
+          [
+            `Implement only ${task.id} in ${feature} ${phaseId}.`,
+            task.title,
+            task.description,
+          ].join("\n"),
+          {
+            projectRoot: cwd,
+            featureDir: specDir,
+            agent: route.backend,
+            model: route.model,
+            effort: route.effort,
+            routeMode: route.routeMode,
           },
-          stdio: "inherit",
-        });
+        );
 
         // Verify the gate after agent execution
         if (fs.existsSync(gatePath)) {

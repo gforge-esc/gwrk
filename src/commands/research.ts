@@ -5,12 +5,13 @@
 import * as fsSync from "node:fs";
 import * as fsPromises from "node:fs/promises";
 import path from "node:path";
-import { Command } from "commander";
+import { Command, Option } from "commander";
 import {
   exitCli,
   logCliError,
   logCliOutput,
 } from "../adapters/cli/output-scope.js";
+import type { RouteMode } from "../application/models/resolve-route.js";
 import { ResearchScaffolder } from "../engine/research-scaffold.js";
 import { WorkflowRuntime } from "../plugins/workflow-runtime.js";
 import { info, startTimer, stopTimer, success } from "../utils/format.js";
@@ -25,6 +26,7 @@ import { resolveAgent } from "../utils/resolve-agent.js";
 export interface ResearchArgs {
   initiative: string;
   methodology?: string;
+  routeMode?: RouteMode;
   run?: boolean;
   refs?: string;
 }
@@ -85,7 +87,13 @@ export async function researchCommandHandler(
       // Resolve the configured agent + model for define-pillar work.
       // Without this the dispatcher falls back to its hardcoded "agy"
       // default and fails on projects configured for another backend.
-      const { backend, model } = resolveAgent("define", process.cwd());
+      const { backend, model, effort, routeMode } = resolveAgent(
+        "define",
+        process.cwd(),
+        {
+          routeMode: args.routeMode,
+        },
+      );
 
       info(
         `Executing methodology workflow: ${workflowName} (agent: ${backend}${model ? `, model: ${model}` : ""})...`,
@@ -119,7 +127,7 @@ export async function researchCommandHandler(
       const workflowResult = await runtime.executeWorkflow(
         workflowName,
         workflowInput,
-        { agent: backend, model },
+        { agent: backend, model, effort, routeMode },
       );
 
       const durationS = Math.round((Date.now() - startTime) / 1000);
@@ -177,12 +185,23 @@ Examples:
       "--methodology <type>",
       "Research methodology: technical, jtbd, ontology (default: brief frontmatter, else technical)",
     )
+    .addOption(
+      new Option("--route <mode>", "Model routing mode").choices([
+        "pinned",
+        "provider-default",
+      ]),
+    )
     .option("--run", "Execute the methodology plugin (reads brief.md as input)")
     .option("--refs <path>", "Path to additional reference docs")
     .action(
       async (
         initiative: string,
-        opts: { methodology: string; run?: boolean; refs?: string },
+        opts: {
+          methodology: string;
+          run?: boolean;
+          refs?: string;
+          route?: RouteMode;
+        },
       ) => {
         try {
           const output = await researchCommandHandler({
@@ -190,6 +209,7 @@ Examples:
             methodology: opts.methodology,
             run: opts.run,
             refs: opts.refs,
+            routeMode: opts.route,
           });
           logCliOutput(output);
         } catch (error: unknown) {
