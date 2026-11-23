@@ -5,7 +5,9 @@
 import crypto from "node:crypto";
 import type { FastifyInstance } from "fastify";
 import { verifyEnrolledCheckout } from "../adapters/git/project-id.js";
+import { createSlackNotificationAdapter } from "../adapters/notifications/index.js";
 import { type IssueRecord, updateIssue, upsertIssue } from "../db/issues.js";
+import { normalizeGitRemoteSlug } from "../domain/project-id.js";
 import type {
   DeliveryRecipient,
   EnrolledProject,
@@ -16,6 +18,7 @@ import {
   notifyIssueOpened,
 } from "../engine/issues.js";
 import type { HarvestRecord } from "../engine/types.js";
+import type { NotificationPort } from "../ports/notification-port.js";
 import type { ProjectRegistryPort } from "../ports/store-port.js";
 import type { VcsPort } from "../ports/vcs-port.js";
 import type { GwrkConfig } from "../utils/config.js";
@@ -68,9 +71,55 @@ function resolveEnrolledCheckout(project: EnrolledProject): string | null {
   return (
     verifyEnrolledCheckout(project, "mirrorPath") ??
     verifyEnrolledCheckout(project, "localRoot") ??
-    project.mirrorPath ??
-    project.localRoot
+    null
   );
+}
+
+function normalizeExpectedRepository(
+  repo: string | null | undefined,
+): string | undefined {
+  if (!repo) return undefined;
+  const slug = normalizeGitRemoteSlug(repo);
+  if (!slug) return undefined;
+  return slug.split("/").length === 2 ? `github.com/${slug}` : slug;
+}
+
+function createProjectScopedIssueNotifier(
+  project: EnrolledProject,
+  featureId: string,
+  registry?: ProjectRegistryPort,
+): NotificationPort {
+  const base = createSlackNotificationAdapter({ registry });
+  return {
+    async notify(payload) {
+      if (!project.slack) return undefined;
+      const storedThread = registry?.getFeatureThread(
+        project.projectId,
+        featureId,
+      );
+      const validStoredThread =
+        storedThread &&
+        storedThread.workspaceId === project.slack.workspaceId &&
+        storedThread.channelId === project.slack.channelId
+          ? storedThread
+          : undefined;
+      const recipient: DeliveryRecipient = {
+        projectId: project.projectId,
+        surface: "slack",
+        workspaceId: project.slack.workspaceId,
+        channelId: project.slack.channelId,
+        threadTs: validStoredThread?.rootTs,
+      };
+      return base.notify({
+        ...payload,
+        projectId: project.projectId,
+        featureId,
+        recipient,
+        channel: project.slack.channelId,
+        threadTs: validStoredThread?.rootTs,
+      });
+    },
+  };
 }
 
 export async function githubWebhookPlugin(
@@ -130,9 +179,6 @@ export async function githubWebhookPlugin(
 
       const targetProjectId =
         enrolledProject?.projectId ?? resolveProjectId(projectRoot);
-      const checkoutPath =
-        (enrolledProject ? resolveEnrolledCheckout(enrolledProject) : null) ??
-        projectRoot;
 
       // Handle Issues events (FR-H12)
       if (event === "issues") {
@@ -172,7 +218,16 @@ export async function githubWebhookPlugin(
             upsertIssue(record, targetProjectId);
             // FR-H15: Slack notification
             if (action === "opened") {
-              await notifyIssueOpened(record);
+              await notifyIssueOpened(
+                record,
+                enrolledProject
+                  ? createProjectScopedIssueNotifier(
+                      enrolledProject,
+                      featureId,
+                      registry,
+                    )
+                  : undefined,
+              );
             }
           } else if (action === "closed") {
             updateIssue(issue.number, targetProjectId, {
@@ -230,12 +285,23 @@ export async function githubWebhookPlugin(
       }
       const { featureId, phaseId } = parsed;
 
+      const checkoutPath = enrolledProject
+        ? resolveEnrolledCheckout(enrolledProject)
+        : projectRoot;
+      if (!checkoutPath) {
+        return reply
+          .status(200)
+          .send({ status: "ignored", reason: "unverified_checkout" });
+      }
+
       let resolvedPrUrl = pr.html_url || "";
       if (vcs) {
         const verifiedUrl = await vcs.resolvePullRequestUrl(checkoutPath, {
           prNumber: pr.number,
           headBranch: headRef,
-          expectedRepository: enrolledProject?.repoSlug ?? repoFullName,
+          expectedRepository: normalizeExpectedRepository(
+            enrolledProject?.repoSlug ?? repoFullName,
+          ),
         });
         if (verifiedUrl) {
           resolvedPrUrl = verifiedUrl;
@@ -243,22 +309,24 @@ export async function githubWebhookPlugin(
       }
 
       let recipient: DeliveryRecipient | undefined;
-      if (enrolledProject) {
+      if (enrolledProject?.slack) {
         const storedThread = registry?.getFeatureThread(
           enrolledProject.projectId,
           featureId,
         );
-        if (enrolledProject.slack || storedThread) {
-          recipient = {
-            projectId: enrolledProject.projectId,
-            surface: "slack",
-            workspaceId:
-              storedThread?.workspaceId ?? enrolledProject.slack?.workspaceId,
-            channelId:
-              storedThread?.channelId ?? enrolledProject.slack?.channelId,
-            threadTs: storedThread?.rootTs,
-          };
-        }
+        const validStoredThread =
+          storedThread &&
+          storedThread.workspaceId === enrolledProject.slack.workspaceId &&
+          storedThread.channelId === enrolledProject.slack.channelId
+            ? storedThread
+            : undefined;
+        recipient = {
+          projectId: enrolledProject.projectId,
+          surface: "slack",
+          workspaceId: enrolledProject.slack.workspaceId,
+          channelId: enrolledProject.slack.channelId,
+          threadTs: validStoredThread?.rootTs,
+        };
       }
 
       const record: HarvestRecord = {

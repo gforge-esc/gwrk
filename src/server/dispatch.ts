@@ -5,6 +5,7 @@
 import * as crypto from "node:crypto";
 import { logCliError } from "../adapters/cli/output-scope.js";
 import { finishRun, startRun } from "../db/runs.js";
+import type { DeliveryRecipient } from "../domain/project-registry.js";
 import { ShipOrchestrator } from "../engine/ship-orchestrator.js";
 import type { ProjectRegistryPort } from "../ports/store-port.js";
 import type { GwrkConfig } from "../utils/config.js";
@@ -65,19 +66,77 @@ export class DispatchQueue {
     projectId: string;
     projectRoot: string;
     trunkBranch: string;
+    recipient?: DeliveryRecipient;
   } {
-    const requested = request.projectId ?? request.recipient?.projectId;
-    const enrolled = requested
-      ? (this.registry?.getProject(requested) ?? null)
-      : (this.registry?.findByLocalRoot(this.projectRoot) ?? null);
+    if (this.registry) {
+      const requestedProject = request.projectId
+        ? this.registry.getProject(request.projectId)
+        : null;
+      if (request.projectId && !requestedProject) {
+        throw new Error(`Project is not enrolled: ${request.projectId}`);
+      }
+
+      const recipientProject = request.recipient?.projectId
+        ? this.registry.getProject(request.recipient.projectId)
+        : null;
+      if (request.recipient?.projectId && !recipientProject) {
+        throw new Error(
+          `Recipient project is not enrolled: ${request.recipient.projectId}`,
+        );
+      }
+
+      if (
+        requestedProject &&
+        recipientProject &&
+        requestedProject.projectId !== recipientProject.projectId
+      ) {
+        throw new Error(
+          `Conflicting dispatch projectId (${requestedProject.projectId}) and recipient.projectId (${recipientProject.projectId})`,
+        );
+      }
+
+      const enrolled =
+        requestedProject ??
+        recipientProject ??
+        this.registry.findByLocalRoot(this.projectRoot) ??
+        null;
+
+      const projectId =
+        enrolled?.projectId ?? resolveProjectId(this.projectRoot);
+      const projectRoot =
+        enrolled?.mirrorPath ?? enrolled?.localRoot ?? this.projectRoot;
+      const trunkBranch = enrolled?.trunkBranch ?? "develop";
+      const recipient = request.recipient
+        ? { ...request.recipient, projectId }
+        : undefined;
+
+      return { projectId, projectRoot, trunkBranch, recipient };
+    }
+
+    if (
+      request.projectId &&
+      request.recipient?.projectId &&
+      request.projectId !== request.recipient.projectId
+    ) {
+      throw new Error(
+        `Conflicting dispatch projectId (${request.projectId}) and recipient.projectId (${request.recipient.projectId})`,
+      );
+    }
 
     const projectId =
-      enrolled?.projectId ?? requested ?? resolveProjectId(this.projectRoot);
-    const projectRoot =
-      enrolled?.mirrorPath ?? enrolled?.localRoot ?? this.projectRoot;
-    const trunkBranch = enrolled?.trunkBranch ?? "develop";
+      request.projectId ??
+      request.recipient?.projectId ??
+      resolveProjectId(this.projectRoot);
+    const recipient = request.recipient
+      ? { ...request.recipient, projectId }
+      : undefined;
 
-    return { projectId, projectRoot, trunkBranch };
+    return {
+      projectId,
+      projectRoot: this.projectRoot,
+      trunkBranch: "develop",
+      recipient,
+    };
   }
 
   private matchesProject(record: DispatchRecord, projectId?: string): boolean {
@@ -88,7 +147,7 @@ export class DispatchQueue {
   }
 
   enqueue(request: DispatchRequest): DispatchRecord {
-    const { projectId, projectRoot, trunkBranch } =
+    const { projectId, projectRoot, trunkBranch, recipient } =
       this.resolveProjectContext(request);
 
     // Idempotency guard: prevent double-dispatch for same (projectId, featureId, phaseId)
@@ -134,7 +193,7 @@ export class DispatchQueue {
       branchName: this.shipBranch(request.featureId, request.phaseId),
       projectRoot,
       trunkBranch,
-      ...(request.recipient ? { recipient: request.recipient } : {}),
+      ...(recipient ? { recipient } : {}),
       attempts: [],
       tasks,
       createdAt: new Date().toISOString(),

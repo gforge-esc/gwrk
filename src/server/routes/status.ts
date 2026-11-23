@@ -62,8 +62,15 @@ export async function getStatusData(
   let sandboxes = allSandboxes;
   if (projectId) {
     const activeForProject = queue.getQueue(projectId).active;
+    const allActive = queue.getQueue().active;
     const activeWorkDirs = new Set(
       activeForProject
+        .map((d) => d.workDir)
+        .filter((dir): dir is string => Boolean(dir)),
+    );
+    const otherProjectWorkDirs = new Set(
+      allActive
+        .filter((d) => d.projectId !== projectId)
         .map((d) => d.workDir)
         .filter((dir): dir is string => Boolean(dir)),
     );
@@ -80,6 +87,9 @@ export async function getStatusData(
       }
       if (activeWorkDirs.has(sb.workDir)) {
         return true;
+      }
+      if (otherProjectWorkDirs.has(sb.workDir)) {
+        return false;
       }
       for (const root of projectRoots) {
         const prefix = root.endsWith(path.sep) ? root : `${root}${path.sep}`;

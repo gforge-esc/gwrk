@@ -557,7 +557,67 @@ describe("notify routes (FR-003, FR-005, FR-007, TR-018)", () => {
       expect(wrongOpsChannel.statusCode).toBe(403);
       expect(wrongOpsChannel.json().code).toBe("THREAD_PROJECT_MISMATCH");
 
+      // Conflicting payload.opsOnly vs recipient.opsOnly -> 403
+      const conflictingOps = await hostedServer.inject({
+        method: "POST",
+        url: "/api/notify",
+        headers: { "x-verified-test-sub": "iss:operator" },
+        payload: {
+          type: "done_done",
+          feature: "048-shared",
+          projectId: "proj-alpha",
+          opsOnly: false,
+          recipient: {
+            projectId: "proj-alpha",
+            surface: "slack",
+            workspaceId: "W-ALPHA",
+            channelId: "C-ALPHA-OPS",
+            opsOnly: true,
+          },
+        },
+      });
+      expect(conflictingOps.statusCode).toBe(403);
+      expect(conflictingOps.json().code).toBe("THREAD_PROJECT_MISMATCH");
+
       expect(spy).not.toHaveBeenCalled();
+
+      // Non-Slack recipient surface derives Slack recipient from project binding instead of forwarding non-Slack surface
+      const nonSlackRecipient = await hostedServer.inject({
+        method: "POST",
+        url: "/api/notify",
+        headers: { "x-verified-test-sub": "iss:operator" },
+        payload: {
+          type: "done_done",
+          feature: "048-shared",
+          projectId: "proj-alpha",
+          recipient: {
+            projectId: "proj-alpha",
+            surface: "http",
+          },
+        },
+      });
+      expect(nonSlackRecipient.statusCode).toBe(200);
+      expect(spy).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({
+          projectId: "proj-alpha",
+          recipient: expect.objectContaining({
+            projectId: "proj-alpha",
+            surface: "slack",
+            workspaceId: "W-ALPHA",
+            channelId: "C-ALPHA",
+          }),
+        }),
+        expect.objectContaining({
+          projectId: "proj-alpha",
+          recipient: expect.objectContaining({
+            projectId: "proj-alpha",
+            surface: "slack",
+            workspaceId: "W-ALPHA",
+            channelId: "C-ALPHA",
+          }),
+        }),
+      );
     } finally {
       await hostedServer.close();
     }

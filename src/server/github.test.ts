@@ -295,112 +295,136 @@ describe("FR-H01/FR-H09/TC-H01: Webhook Handler", () => {
   });
 
   it("T033: validates baseRef against enrolled trunkBranch, verifies PR via VcsPort, and attaches projectId and thread recipient", async () => {
-    const storedThread: SlackFeatureThread = {
-      projectId: "proj-custom",
-      featureId: "048-shared",
-      workspaceId: "W-CUSTOM",
-      channelId: "C-CUSTOM",
-      rootTs: "1700000123.000456",
-      updatedAt: "2026-11-18T01:00:00.000Z",
-    };
-    const registry = makeRegistry([enrolledProject], {
-      "proj-custom:048-shared": storedThread,
-    });
-    const vcs = {
-      resolvePullRequestUrl: vi
-        .fn()
-        .mockResolvedValue("https://github.com/org/custom-repo/pull/88"),
-    } as unknown as VcsPort;
+    const tmpBase = fs.mkdtempSync(path.join(os.tmpdir(), "gwrk-gh-custom-"));
+    const customDir = path.join(tmpBase, "custom-repo");
+    fs.mkdirSync(customDir, { recursive: true });
+    try {
+      execFileSync("git", ["init"], { cwd: customDir, stdio: "ignore" });
+      execFileSync(
+        "git",
+        ["remote", "add", "origin", "https://github.com/org/custom-repo.git"],
+        { cwd: customDir, stdio: "ignore" },
+      );
+      const canonicalCustomDir = fs.realpathSync(customDir);
+      const verifiedProject: EnrolledProject = {
+        ...enrolledProject,
+        projectId: computeProjectId({
+          projectRoot: canonicalCustomDir,
+          remoteOriginUrl: "https://github.com/org/custom-repo.git",
+        }),
+        localRoot: canonicalCustomDir,
+        mirrorPath: null,
+      };
+      const storedThread: SlackFeatureThread = {
+        projectId: verifiedProject.projectId,
+        featureId: "048-shared",
+        workspaceId: "W-CUSTOM",
+        channelId: "C-CUSTOM",
+        rootTs: "1700000123.000456",
+        updatedAt: "2026-11-18T01:00:00.000Z",
+      };
+      const registry = makeRegistry([verifiedProject], {
+        [`${verifiedProject.projectId}:048-shared`]: storedThread,
+      });
+      const vcs = {
+        resolvePullRequestUrl: vi
+          .fn()
+          .mockResolvedValue("https://github.com/org/custom-repo/pull/88"),
+      } as unknown as VcsPort;
 
-    const server = fastify();
-    await githubWebhookPlugin(server, {
-      config: mockConfig,
-      projectRoot: "/fallback",
-      registry,
-      vcs,
-    });
+      const server = fastify();
+      await githubWebhookPlugin(server, {
+        config: mockConfig,
+        projectRoot: "/fallback",
+        registry,
+        vcs,
+      });
 
-    // 'develop' does NOT match enrolled trunkBranch 'release' -> ignored
-    const wrongTrunkRes = await server.inject({
-      method: "POST",
-      url: "/webhook/github",
-      headers: { "x-github-event": "pull_request" },
-      payload: {
-        action: "closed",
-        repository: { full_name: "org/custom-repo" },
-        pull_request: {
-          number: 88,
-          merged: true,
-          head: { ref: "feat/048-shared-phase-01" },
-          base: { ref: "develop" },
+      // 'develop' does NOT match enrolled trunkBranch 'release' -> ignored
+      const wrongTrunkRes = await server.inject({
+        method: "POST",
+        url: "/webhook/github",
+        headers: { "x-github-event": "pull_request" },
+        payload: {
+          action: "closed",
+          repository: { full_name: "org/custom-repo" },
+          pull_request: {
+            number: 88,
+            merged: true,
+            head: { ref: "feat/048-shared-phase-01" },
+            base: { ref: "develop" },
+          },
         },
-      },
-    });
-    expect(wrongTrunkRes.json()).toEqual({
-      status: "ignored",
-      reason: "not_trunk_target",
-    });
-    expect(harvestFeatureMock).not.toHaveBeenCalled();
+      });
+      expect(wrongTrunkRes.json()).toEqual({
+        status: "ignored",
+        reason: "not_trunk_target",
+      });
+      expect(harvestFeatureMock).not.toHaveBeenCalled();
 
-    // 'release' matches enrolled trunkBranch -> resolves via VcsPort and harvests in enrolled checkout
-    const res = await server.inject({
-      method: "POST",
-      url: "/webhook/github",
-      headers: { "x-github-event": "pull_request" },
-      payload: {
-        action: "closed",
-        repository: { full_name: "org/custom-repo" },
-        pull_request: {
-          number: 88,
-          merged: true,
-          html_url: "https://unverified.invalid/pull/88",
-          merged_at: "2026-11-18T02:00:00Z",
-          merge_commit_sha: "deadbeef",
-          merged_by: { login: "alice" },
-          head: { ref: "feat/048-shared-phase-01" },
-          base: { ref: "release" },
+      // 'release' matches enrolled trunkBranch -> resolves via VcsPort and harvests in enrolled checkout
+      const res = await server.inject({
+        method: "POST",
+        url: "/webhook/github",
+        headers: { "x-github-event": "pull_request" },
+        payload: {
+          action: "closed",
+          repository: { full_name: "org/custom-repo" },
+          pull_request: {
+            number: 88,
+            merged: true,
+            html_url: "https://unverified.invalid/pull/88",
+            merged_at: "2026-11-18T02:00:00Z",
+            merge_commit_sha: "deadbeef",
+            merged_by: { login: "alice" },
+            head: { ref: "feat/048-shared-phase-01" },
+            base: { ref: "release" },
+          },
         },
-      },
-    });
+      });
 
-    expect(res.statusCode).toBe(200);
-    expect(res.json()).toMatchObject({
-      status: "accepted",
-      featureId: "048-shared",
-      phaseId: "phase-01",
-    });
-    expect(vcs.resolvePullRequestUrl).toHaveBeenCalledWith(
-      "/mirrors/custom-repo",
-      {
-        prNumber: 88,
-        headBranch: "feat/048-shared-phase-01",
-        expectedRepository: "org/custom-repo",
-      },
-    );
-    expect(syncTrunkForHarvestMock).toHaveBeenCalledWith(
-      "/mirrors/custom-repo",
-      "release",
-    );
-    expect(harvestFeatureMock).toHaveBeenCalledWith(
-      "/mirrors/custom-repo",
-      expect.objectContaining({
-        projectId: "proj-custom",
+      expect(res.statusCode).toBe(200);
+      expect(res.json()).toMatchObject({
+        status: "accepted",
         featureId: "048-shared",
         phaseId: "phase-01",
-        prNumber: 88,
-        prUrl: "https://github.com/org/custom-repo/pull/88",
-        recipient: {
-          projectId: "proj-custom",
-          surface: "slack",
-          workspaceId: "W-CUSTOM",
-          channelId: "C-CUSTOM",
-          threadTs: "1700000123.000456",
+      });
+      expect(vcs.resolvePullRequestUrl).toHaveBeenCalledWith(
+        canonicalCustomDir,
+        {
+          prNumber: 88,
+          headBranch: "feat/048-shared-phase-01",
+          expectedRepository: "github.com/org/custom-repo",
         },
-      }),
-    );
+      );
+      expect(syncTrunkForHarvestMock).toHaveBeenCalledWith(
+        canonicalCustomDir,
+        "release",
+      );
+      expect(harvestFeatureMock).toHaveBeenCalledWith(
+        canonicalCustomDir,
+        expect.objectContaining({
+          projectId: verifiedProject.projectId,
+          featureId: "048-shared",
+          phaseId: "phase-01",
+          prNumber: 88,
+          prUrl: "https://github.com/org/custom-repo/pull/88",
+          recipient: {
+            projectId: verifiedProject.projectId,
+            surface: "slack",
+            workspaceId: "W-CUSTOM",
+            channelId: "C-CUSTOM",
+            threadTs: "1700000123.000456",
+          },
+        }),
+      );
+      await server.close();
+    } finally {
+      fs.rmSync(tmpBase, { recursive: true, force: true });
+    }
   });
 
-  it("T033: scopes issue upsert and closure to enrolled projectId", async () => {
+  it("T033: scopes issue upsert, notification, and closure to enrolled projectId", async () => {
     const registry = makeRegistry([enrolledProject]);
     const server = fastify();
     await githubWebhookPlugin(server, {
@@ -437,6 +461,15 @@ describe("FR-H01/FR-H09/TC-H01: Webhook Handler", () => {
       }),
       "proj-custom",
     );
+    expect(notifyIssueOpenedMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        issue_number: 15,
+        feature_id: "048-shared",
+      }),
+      expect.objectContaining({
+        notify: expect.any(Function),
+      }),
+    );
 
     const closed = await server.inject({
       method: "POST",
@@ -468,6 +501,7 @@ describe("FR-H01/FR-H09/TC-H01: Webhook Handler", () => {
         closed_at: "2026-11-18T03:00:00Z",
       }),
     );
+    await server.close();
   });
 
   it("T033 regression: fails closed when enrolled checkout is replaced by another repo and normalizes expectedRepository to host/owner/repo", async () => {

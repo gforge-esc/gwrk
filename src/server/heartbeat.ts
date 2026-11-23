@@ -28,14 +28,13 @@ function resolveProjectCheckout(project: EnrolledProject): string | null {
   return (
     verifyEnrolledCheckout(project, "mirrorPath") ??
     verifyEnrolledCheckout(project, "localRoot") ??
-    project.mirrorPath ??
-    project.localRoot
+    null
   );
 }
 
 export class PlanHeartbeat {
   private interval: NodeJS.Timeout | null = null;
-  private store: PlanStore;
+  private store: PlanStore | null = null;
   private projectId: string;
 
   constructor(
@@ -45,9 +44,11 @@ export class PlanHeartbeat {
     private options: PlanHeartbeatOptions = {},
   ) {
     this.projectId = resolveProjectId(this.projectRoot);
-    this.store = this.options.createPlanStore
-      ? this.options.createPlanStore(this.projectId)
-      : new PlanStore(this.projectId);
+    if (!this.options.registry) {
+      this.store = this.options.createPlanStore
+        ? this.options.createPlanStore(this.projectId)
+        : new PlanStore(this.projectId);
+    }
   }
 
   start() {
@@ -69,15 +70,29 @@ export class PlanHeartbeat {
       for (const project of this.options.registry.listProjects()) {
         const checkout = resolveProjectCheckout(project);
         if (!checkout) continue;
-        const store = this.options.createPlanStore
-          ? this.options.createPlanStore(project.projectId)
-          : new PlanStore(project.projectId);
-        await this.evaluateProject(project.projectId, checkout, store, project);
+        try {
+          const store = this.options.createPlanStore
+            ? this.options.createPlanStore(project.projectId)
+            : new PlanStore(project.projectId);
+          await this.evaluateProject(
+            project.projectId,
+            checkout,
+            store,
+            project,
+          );
+        } catch (err) {
+          logCliError(
+            `Heartbeat: Failed to evaluate project ${project.slug} (${project.projectId}):`,
+            err,
+          );
+        }
       }
       return;
     }
 
-    await this.evaluateProject(this.projectId, this.projectRoot, this.store);
+    if (this.store) {
+      await this.evaluateProject(this.projectId, this.projectRoot, this.store);
+    }
   }
 
   private async evaluateProject(
@@ -248,9 +263,7 @@ export class PlanHeartbeat {
 
     if (!this.slackApp) return;
 
-    const channelId =
-      this.config.project.slack?.opsChannelId ??
-      this.config.project.slack?.channelId;
+    const channelId = this.config.project.slack?.opsChannelId;
     if (!channelId) {
       logCliError(
         "Heartbeat: no slack.opsChannelId configured — skipping Slack report",

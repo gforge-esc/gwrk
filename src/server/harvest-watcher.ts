@@ -57,8 +57,7 @@ function resolveProjectCheckout(project: EnrolledProject): string | null {
   return (
     verifyEnrolledCheckout(project, "mirrorPath") ??
     verifyEnrolledCheckout(project, "localRoot") ??
-    project.mirrorPath ??
-    project.localRoot
+    null
   );
 }
 
@@ -199,23 +198,25 @@ export class HarvestWatcher {
             : pr.closedAt || new Date().toISOString();
 
           let recipient: DeliveryRecipient | undefined;
-          if (target.project) {
+          if (target.project?.slack) {
+            const slackBinding = target.project.slack;
             const storedThread = this.options.registry?.getFeatureThread(
               target.project.projectId,
               featureId,
             );
-            if (target.project.slack || storedThread) {
-              recipient = {
-                projectId: target.project.projectId,
-                surface: "slack",
-                workspaceId:
-                  storedThread?.workspaceId ??
-                  target.project.slack?.workspaceId,
-                channelId:
-                  storedThread?.channelId ?? target.project.slack?.channelId,
-                threadTs: storedThread?.rootTs,
-              };
-            }
+            const validStoredThread =
+              storedThread &&
+              storedThread.workspaceId === slackBinding.workspaceId &&
+              storedThread.channelId === slackBinding.channelId
+                ? storedThread
+                : undefined;
+            recipient = {
+              projectId: target.project.projectId,
+              surface: "slack",
+              workspaceId: slackBinding.workspaceId,
+              channelId: slackBinding.channelId,
+              threadTs: validStoredThread?.rootTs,
+            };
           }
 
           logCliOutput(

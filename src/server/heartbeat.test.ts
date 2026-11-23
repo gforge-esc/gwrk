@@ -130,97 +130,206 @@ function makeStalePlanStore(phaseId: string): PlanStore {
   } as unknown as PlanStore;
 }
 
+function createVerifiedProject(
+  tmpBase: string,
+  base: EnrolledProject,
+  dirName: string,
+): EnrolledProject {
+  const dir = path.join(tmpBase, dirName);
+  fs.mkdirSync(dir, { recursive: true });
+  execFileSync("git", ["init"], { cwd: dir, stdio: "ignore" });
+  const remoteUrl = `https://github.com/${base.repoSlug}.git`;
+  execFileSync("git", ["remote", "add", "origin", remoteUrl], {
+    cwd: dir,
+    stdio: "ignore",
+  });
+  const canonicalDir = fs.realpathSync(dir);
+  return {
+    ...base,
+    projectId: computeProjectId({
+      projectRoot: canonicalDir,
+      remoteOriginUrl: remoteUrl,
+    }),
+    localRoot: canonicalDir,
+    mirrorPath: null,
+  };
+}
+
 describe("PlanHeartbeat per-project ops health (T035)", () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
   it("evaluates enrolled projects independently and routes alerts with opsOnly: true only to explicit opsChannelId via notifier", async () => {
-    const stores = new Map<string, PlanStore>([
-      ["proj-alpha", makeStalePlanStore("P-ALPHA")],
-      ["proj-beta", makeStalePlanStore("P-BETA")],
-    ]);
-    const createPlanStore = vi.fn(
-      (projectId: string) => stores.get(projectId) as PlanStore,
-    );
-    const notifier: NotificationPort = {
-      notify: vi.fn().mockResolvedValue({ delivered: true }),
-    };
-    const registry = makeRegistry([alphaProject, betaFeatureOnlyProject]);
+    const tmpBase = fs.mkdtempSync(path.join(os.tmpdir(), "gwrk-hb-multi-"));
+    try {
+      const verifiedAlpha = createVerifiedProject(
+        tmpBase,
+        alphaProject,
+        "alpha",
+      );
+      const verifiedBeta = createVerifiedProject(
+        tmpBase,
+        betaFeatureOnlyProject,
+        "beta",
+      );
+      const stores = new Map<string, PlanStore>([
+        [verifiedAlpha.projectId, makeStalePlanStore("P-ALPHA")],
+        [verifiedBeta.projectId, makeStalePlanStore("P-BETA")],
+      ]);
+      const createPlanStore = vi.fn(
+        (projectId: string) => stores.get(projectId) as PlanStore,
+      );
+      const notifier: NotificationPort = {
+        notify: vi.fn().mockResolvedValue({ delivered: true }),
+      };
+      const registry = makeRegistry([verifiedAlpha, verifiedBeta]);
 
-    const heartbeat = new PlanHeartbeat(baseConfig, null, "/fallback", {
-      registry,
-      notifier,
-      createPlanStore,
-    });
+      const heartbeat = new PlanHeartbeat(baseConfig, null, "/fallback", {
+        registry,
+        notifier,
+        createPlanStore,
+      });
 
-    await heartbeat.runCheck();
+      await heartbeat.runCheck();
 
-    expect(createPlanStore).toHaveBeenCalledWith("proj-alpha");
-    expect(createPlanStore).toHaveBeenCalledWith("proj-beta");
-    expect(stores.get("proj-alpha")?.updatePhase).toHaveBeenCalledWith(
-      "P-ALPHA",
-      { health: "YELLOW" },
-    );
-    expect(stores.get("proj-beta")?.updatePhase).toHaveBeenCalledWith(
-      "P-BETA",
-      { health: "YELLOW" },
-    );
+      expect(createPlanStore).toHaveBeenCalledWith(verifiedAlpha.projectId);
+      expect(createPlanStore).toHaveBeenCalledWith(verifiedBeta.projectId);
+      expect(
+        stores.get(verifiedAlpha.projectId)?.updatePhase,
+      ).toHaveBeenCalledWith("P-ALPHA", { health: "YELLOW" });
+      expect(
+        stores.get(verifiedBeta.projectId)?.updatePhase,
+      ).toHaveBeenCalledWith("P-BETA", { health: "YELLOW" });
 
-    // Alpha has opsChannelId -> receives alert with opsOnly: true
-    // Beta has only feature channelId and NO opsChannelId -> suppressed (no leak to feature or global channel)
-    expect(notifier.notify).toHaveBeenCalledTimes(1);
-    expect(notifier.notify).toHaveBeenCalledWith(
-      expect.objectContaining({
-        projectId: "proj-alpha",
-        channel: "C-ALPHA-OPS",
-        opsOnly: true,
-        recipient: expect.objectContaining({
-          projectId: "proj-alpha",
-          surface: "slack",
-          workspaceId: "W-ALPHA",
-          channelId: "C-ALPHA-OPS",
+      // Alpha has opsChannelId -> receives alert with opsOnly: true
+      // Beta has only feature channelId and NO opsChannelId -> suppressed (no leak to feature or global channel)
+      expect(notifier.notify).toHaveBeenCalledTimes(1);
+      expect(notifier.notify).toHaveBeenCalledWith(
+        expect.objectContaining({
+          projectId: verifiedAlpha.projectId,
+          channel: "C-ALPHA-OPS",
           opsOnly: true,
+          recipient: expect.objectContaining({
+            projectId: verifiedAlpha.projectId,
+            surface: "slack",
+            workspaceId: "W-ALPHA",
+            channelId: "C-ALPHA-OPS",
+            opsOnly: true,
+          }),
         }),
-      }),
-    );
-    expect(notifySlack).not.toHaveBeenCalled();
+      );
+      expect(notifySlack).not.toHaveBeenCalled();
+    } finally {
+      fs.rmSync(tmpBase, { recursive: true, force: true });
+    }
   });
 
   it("falls back to notifySlack with opsOnly: true and registry when no notifier is injected", async () => {
-    const stores = new Map<string, PlanStore>([
-      ["proj-alpha", makeStalePlanStore("P-ALPHA")],
-      ["proj-beta", makeStalePlanStore("P-BETA")],
-    ]);
-    const registry = makeRegistry([alphaProject, betaFeatureOnlyProject]);
+    const tmpBase = fs.mkdtempSync(path.join(os.tmpdir(), "gwrk-hb-slack-"));
+    try {
+      const verifiedAlpha = createVerifiedProject(
+        tmpBase,
+        alphaProject,
+        "alpha",
+      );
+      const verifiedBeta = createVerifiedProject(
+        tmpBase,
+        betaFeatureOnlyProject,
+        "beta",
+      );
+      const stores = new Map<string, PlanStore>([
+        [verifiedAlpha.projectId, makeStalePlanStore("P-ALPHA")],
+        [verifiedBeta.projectId, makeStalePlanStore("P-BETA")],
+      ]);
+      const registry = makeRegistry([verifiedAlpha, verifiedBeta]);
 
-    const heartbeat = new PlanHeartbeat(baseConfig, null, "/fallback", {
-      registry,
-      createPlanStore: (projectId) => stores.get(projectId) as PlanStore,
-    });
-
-    await heartbeat.runCheck();
-
-    expect(notifySlack).toHaveBeenCalledTimes(1);
-    expect(notifySlack).toHaveBeenCalledWith(
-      expect.objectContaining({
-        channel: "C-ALPHA-OPS",
-        text: expect.stringContaining("Build Plan Health Report"),
-      }),
-      undefined,
-      expect.objectContaining({
-        projectId: "proj-alpha",
-        opsOnly: true,
+      const heartbeat = new PlanHeartbeat(baseConfig, null, "/fallback", {
         registry,
-        recipient: expect.objectContaining({
-          projectId: "proj-alpha",
-          surface: "slack",
-          workspaceId: "W-ALPHA",
-          channelId: "C-ALPHA-OPS",
+        createPlanStore: (projectId) => stores.get(projectId) as PlanStore,
+      });
+
+      await heartbeat.runCheck();
+
+      expect(notifySlack).toHaveBeenCalledTimes(1);
+      expect(notifySlack).toHaveBeenCalledWith(
+        expect.objectContaining({
+          channel: "C-ALPHA-OPS",
+          text: expect.stringContaining("Build Plan Health Report"),
+        }),
+        undefined,
+        expect.objectContaining({
+          projectId: verifiedAlpha.projectId,
+          opsOnly: true,
+          registry,
+          recipient: expect.objectContaining({
+            projectId: verifiedAlpha.projectId,
+            surface: "slack",
+            workspaceId: "W-ALPHA",
+            channelId: "C-ALPHA-OPS",
+            opsOnly: true,
+          }),
+        }),
+      );
+    } finally {
+      fs.rmSync(tmpBase, { recursive: true, force: true });
+    }
+  });
+
+  it("isolates per-project evaluation errors so subsequent enrolled projects still run", async () => {
+    const tmpBase = fs.mkdtempSync(path.join(os.tmpdir(), "gwrk-hb-err-"));
+    try {
+      const verifiedAlpha = createVerifiedProject(
+        tmpBase,
+        alphaProject,
+        "alpha",
+      );
+      const verifiedBeta = createVerifiedProject(
+        tmpBase,
+        {
+          ...betaFeatureOnlyProject,
+          slack: {
+            workspaceId: "W-BETA",
+            channelId: "C-BETA-FEATURE",
+            opsChannelId: "C-BETA-OPS",
+            sharedChannel: false,
+          },
+        },
+        "beta",
+      );
+      const betaStore = makeStalePlanStore("P-BETA");
+      const notifier: NotificationPort = {
+        notify: vi.fn().mockResolvedValue({ delivered: true }),
+      };
+      const registry = makeRegistry([verifiedAlpha, verifiedBeta]);
+
+      const heartbeat = new PlanHeartbeat(baseConfig, null, "/fallback", {
+        registry,
+        notifier,
+        createPlanStore: (projectId) => {
+          if (projectId === verifiedAlpha.projectId) {
+            throw new Error("corrupt plan db");
+          }
+          return betaStore;
+        },
+      });
+
+      await heartbeat.runCheck();
+
+      expect(betaStore.updatePhase).toHaveBeenCalledWith("P-BETA", {
+        health: "YELLOW",
+      });
+      expect(notifier.notify).toHaveBeenCalledTimes(1);
+      expect(notifier.notify).toHaveBeenCalledWith(
+        expect.objectContaining({
+          projectId: verifiedBeta.projectId,
+          channel: "C-BETA-OPS",
           opsOnly: true,
         }),
-      }),
-    );
+      );
+    } finally {
+      fs.rmSync(tmpBase, { recursive: true, force: true });
+    }
   });
 
   it("T035 regression: skips enrolled projects with replaced checkouts and never falls back to feature channelId in legacy mode", async () => {

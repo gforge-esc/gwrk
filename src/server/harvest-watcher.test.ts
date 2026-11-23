@@ -108,6 +108,32 @@ function makeRegistry(
   };
 }
 
+function createVerifiedProject(
+  tmpBase: string,
+  base: EnrolledProject,
+  dirName: string,
+): { project: EnrolledProject; checkout: string } {
+  const dir = path.join(tmpBase, dirName);
+  fs.mkdirSync(dir, { recursive: true });
+  execFileSync("git", ["init"], { cwd: dir, stdio: "ignore" });
+  const remoteUrl = `https://github.com/${base.repoSlug}.git`;
+  execFileSync("git", ["remote", "add", "origin", remoteUrl], {
+    cwd: dir,
+    stdio: "ignore",
+  });
+  const canonicalDir = fs.realpathSync(dir);
+  const project: EnrolledProject = {
+    ...base,
+    projectId: computeProjectId({
+      projectRoot: canonicalDir,
+      remoteOriginUrl: remoteUrl,
+    }),
+    localRoot: canonicalDir,
+    mirrorPath: null,
+  };
+  return { project, checkout: canonicalDir };
+}
+
 describe("HarvestWatcher multi-project enrollment (T034)", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -115,190 +141,213 @@ describe("HarvestWatcher multi-project enrollment (T034)", () => {
   });
 
   it("watches multiple enrolled project roots using each project's trunkBranch and attaches projectId and thread recipients", async () => {
-    const alphaThread: SlackFeatureThread = {
-      projectId: "proj-alpha",
-      featureId: "048-shared",
-      workspaceId: "W-ALPHA",
-      channelId: "C-ALPHA",
-      rootTs: "1700000001.000100",
-      updatedAt: "2026-11-18T01:00:00.000Z",
-    };
-    const betaThread: SlackFeatureThread = {
-      projectId: "proj-beta",
-      featureId: "048-shared",
-      workspaceId: "W-BETA",
-      channelId: "C-BETA",
-      rootTs: "1700000002.000200",
-      updatedAt: "2026-11-18T01:00:00.000Z",
-    };
-    const registry = makeRegistry([alphaProject, betaProject], {
-      "proj-alpha:048-shared": alphaThread,
-      "proj-beta:048-shared": betaThread,
-    });
+    const tmpBase = fs.mkdtempSync(path.join(os.tmpdir(), "gwrk-hw-multi-"));
+    try {
+      const alpha = createVerifiedProject(tmpBase, alphaProject, "alpha");
+      const beta = createVerifiedProject(tmpBase, betaProject, "beta");
 
-    const listPullRequests = vi.fn(
-      async (target: {
-        projectId: string;
-        projectRoot: string;
-        baseBranch: string;
-        repoSlug: string | null;
-      }): Promise<HarvestPullRequest[]> => [
+      const alphaThread: SlackFeatureThread = {
+        projectId: alpha.project.projectId,
+        featureId: "048-shared",
+        workspaceId: "W-ALPHA",
+        channelId: "C-ALPHA",
+        rootTs: "1700000001.000100",
+        updatedAt: "2026-11-18T01:00:00.000Z",
+      };
+      const betaThread: SlackFeatureThread = {
+        projectId: beta.project.projectId,
+        featureId: "048-shared",
+        workspaceId: "W-BETA",
+        channelId: "C-BETA",
+        rootTs: "1700000002.000200",
+        updatedAt: "2026-11-18T01:00:00.000Z",
+      };
+      const registry = makeRegistry([alpha.project, beta.project], {
+        [`${alpha.project.projectId}:048-shared`]: alphaThread,
+        [`${beta.project.projectId}:048-shared`]: betaThread,
+      });
+
+      const listPullRequests = vi.fn(
+        async (target: {
+          projectId: string;
+          projectRoot: string;
+          baseBranch: string;
+          repoSlug: string | null;
+        }): Promise<HarvestPullRequest[]> => [
+          {
+            number: target.projectId === alpha.project.projectId ? 11 : 22,
+            headRefName: "feat/048-shared-phase-01",
+            mergedAt: "2026-11-18T02:00:00.000Z",
+            closedAt: "2026-11-18T02:00:00.000Z",
+            state: "MERGED",
+            mergeCommit: { oid: `sha-${target.projectId}` },
+            url: `https://github.com/${target.repoSlug}/pull/${target.projectId === alpha.project.projectId ? 11 : 22}`,
+          },
+        ],
+      );
+      const harvest = vi.fn().mockResolvedValue(undefined);
+      const syncTrunk = vi.fn();
+
+      const watcher = new HarvestWatcher(baseConfig, null, "/fallback", {
+        registry,
+        listPullRequests,
+        harvest,
+        syncTrunk,
+      });
+
+      await watcher.runCheck();
+
+      expect(listPullRequests).toHaveBeenCalledTimes(2);
+      expect(listPullRequests).toHaveBeenNthCalledWith(1, {
+        projectId: alpha.project.projectId,
+        projectRoot: alpha.checkout,
+        baseBranch: "main",
+        repoSlug: "org/alpha",
+      });
+      expect(listPullRequests).toHaveBeenNthCalledWith(2, {
+        projectId: beta.project.projectId,
+        projectRoot: beta.checkout,
+        baseBranch: "release",
+        repoSlug: "org/beta",
+      });
+
+      expect(getCompressionRecordMock).toHaveBeenCalledWith(
+        "048-shared",
+        "phase-01",
+        alpha.project.projectId,
+      );
+      expect(getCompressionRecordMock).toHaveBeenCalledWith(
+        "048-shared",
+        "phase-01",
+        beta.project.projectId,
+      );
+
+      expect(syncTrunk).toHaveBeenCalledWith(alpha.checkout, "main");
+      expect(syncTrunk).toHaveBeenCalledWith(beta.checkout, "release");
+
+      expect(harvest).toHaveBeenCalledTimes(2);
+      expect(harvest).toHaveBeenNthCalledWith(
+        1,
+        alpha.checkout,
+        expect.objectContaining({
+          projectId: alpha.project.projectId,
+          featureId: "048-shared",
+          phaseId: "phase-01",
+          prNumber: 11,
+          recipient: {
+            projectId: alpha.project.projectId,
+            surface: "slack",
+            workspaceId: "W-ALPHA",
+            channelId: "C-ALPHA",
+            threadTs: "1700000001.000100",
+          },
+        }),
+      );
+      expect(harvest).toHaveBeenNthCalledWith(
+        2,
+        beta.checkout,
+        expect.objectContaining({
+          projectId: beta.project.projectId,
+          featureId: "048-shared",
+          phaseId: "phase-01",
+          prNumber: 22,
+          recipient: {
+            projectId: beta.project.projectId,
+            surface: "slack",
+            workspaceId: "W-BETA",
+            channelId: "C-BETA",
+            threadTs: "1700000002.000200",
+          },
+        }),
+      );
+    } finally {
+      fs.rmSync(tmpBase, { recursive: true, force: true });
+    }
+  });
+
+  it("scopes idempotency by projectId so an already-harvested feature in Alpha still harvests in Beta", async () => {
+    const tmpBase = fs.mkdtempSync(path.join(os.tmpdir(), "gwrk-hw-idem-"));
+    try {
+      const alpha = createVerifiedProject(tmpBase, alphaProject, "alpha");
+      const beta = createVerifiedProject(tmpBase, betaProject, "beta");
+      const registry = makeRegistry([alpha.project, beta.project]);
+      getCompressionRecordMock.mockImplementation(
+        (_featureId: string, _phaseId: string, projectId: string) =>
+          projectId === alpha.project.projectId
+            ? { feature_id: "048-shared" }
+            : undefined,
+      );
+
+      const listPullRequests = vi.fn().mockResolvedValue([
         {
-          number: target.projectId === "proj-alpha" ? 11 : 22,
+          number: 77,
           headRefName: "feat/048-shared-phase-01",
           mergedAt: "2026-11-18T02:00:00.000Z",
           closedAt: "2026-11-18T02:00:00.000Z",
           state: "MERGED",
-          mergeCommit: { oid: `sha-${target.projectId}` },
-          url: `https://github.com/${target.repoSlug}/pull/${target.projectId === "proj-alpha" ? 11 : 22}`,
+          mergeCommit: { oid: "abc123" },
+          url: "https://github.com/org/repo/pull/77",
         },
-      ],
-    );
-    const harvest = vi.fn().mockResolvedValue(undefined);
-    const syncTrunk = vi.fn();
+      ]);
+      const harvest = vi.fn().mockResolvedValue(undefined);
+      const syncTrunk = vi.fn();
 
-    const watcher = new HarvestWatcher(baseConfig, null, "/fallback", {
-      registry,
-      listPullRequests,
-      harvest,
-      syncTrunk,
-    });
+      const watcher = new HarvestWatcher(baseConfig, null, "/fallback", {
+        registry,
+        listPullRequests,
+        harvest,
+        syncTrunk,
+      });
 
-    await watcher.runCheck();
+      await watcher.runCheck();
 
-    expect(listPullRequests).toHaveBeenCalledTimes(2);
-    expect(listPullRequests).toHaveBeenNthCalledWith(1, {
-      projectId: "proj-alpha",
-      projectRoot: "/mirrors/alpha",
-      baseBranch: "main",
-      repoSlug: "org/alpha",
-    });
-    expect(listPullRequests).toHaveBeenNthCalledWith(2, {
-      projectId: "proj-beta",
-      projectRoot: "/repos/beta",
-      baseBranch: "release",
-      repoSlug: "org/beta",
-    });
-
-    expect(getCompressionRecordMock).toHaveBeenCalledWith(
-      "048-shared",
-      "phase-01",
-      "proj-alpha",
-    );
-    expect(getCompressionRecordMock).toHaveBeenCalledWith(
-      "048-shared",
-      "phase-01",
-      "proj-beta",
-    );
-
-    expect(syncTrunk).toHaveBeenCalledWith("/mirrors/alpha", "main");
-    expect(syncTrunk).toHaveBeenCalledWith("/repos/beta", "release");
-
-    expect(harvest).toHaveBeenCalledTimes(2);
-    expect(harvest).toHaveBeenNthCalledWith(
-      1,
-      "/mirrors/alpha",
-      expect.objectContaining({
-        projectId: "proj-alpha",
-        featureId: "048-shared",
-        phaseId: "phase-01",
-        prNumber: 11,
-        recipient: {
-          projectId: "proj-alpha",
-          surface: "slack",
-          workspaceId: "W-ALPHA",
-          channelId: "C-ALPHA",
-          threadTs: "1700000001.000100",
-        },
-      }),
-    );
-    expect(harvest).toHaveBeenNthCalledWith(
-      2,
-      "/repos/beta",
-      expect.objectContaining({
-        projectId: "proj-beta",
-        featureId: "048-shared",
-        phaseId: "phase-01",
-        prNumber: 22,
-        recipient: {
-          projectId: "proj-beta",
-          surface: "slack",
-          workspaceId: "W-BETA",
-          channelId: "C-BETA",
-          threadTs: "1700000002.000200",
-        },
-      }),
-    );
-  });
-
-  it("scopes idempotency by projectId so an already-harvested feature in Alpha still harvests in Beta", async () => {
-    const registry = makeRegistry([alphaProject, betaProject]);
-    getCompressionRecordMock.mockImplementation(
-      (_featureId: string, _phaseId: string, projectId: string) =>
-        projectId === "proj-alpha" ? { feature_id: "048-shared" } : undefined,
-    );
-
-    const listPullRequests = vi.fn().mockResolvedValue([
-      {
-        number: 77,
-        headRefName: "feat/048-shared-phase-01",
-        mergedAt: "2026-11-18T02:00:00.000Z",
-        closedAt: "2026-11-18T02:00:00.000Z",
-        state: "MERGED",
-        mergeCommit: { oid: "abc123" },
-        url: "https://github.com/org/repo/pull/77",
-      },
-    ]);
-    const harvest = vi.fn().mockResolvedValue(undefined);
-    const syncTrunk = vi.fn();
-
-    const watcher = new HarvestWatcher(baseConfig, null, "/fallback", {
-      registry,
-      listPullRequests,
-      harvest,
-      syncTrunk,
-    });
-
-    await watcher.runCheck();
-
-    expect(harvest).toHaveBeenCalledTimes(1);
-    expect(harvest).toHaveBeenCalledWith(
-      "/repos/beta",
-      expect.objectContaining({
-        projectId: "proj-beta",
-        featureId: "048-shared",
-        phaseId: "phase-01",
-      }),
-    );
+      expect(harvest).toHaveBeenCalledTimes(1);
+      expect(harvest).toHaveBeenCalledWith(
+        beta.checkout,
+        expect.objectContaining({
+          projectId: beta.project.projectId,
+          featureId: "048-shared",
+          phaseId: "phase-01",
+        }),
+      );
+    } finally {
+      fs.rmSync(tmpBase, { recursive: true, force: true });
+    }
   });
 
   it("passes --repo <repoSlug> and project trunkBranch to gh pr list by default", async () => {
-    const registry = makeRegistry([alphaProject]);
-    execCommandMock.mockResolvedValue({
-      exitCode: 0,
-      stdout: "[]",
-      stderr: "",
-    });
+    const tmpBase = fs.mkdtempSync(path.join(os.tmpdir(), "gwrk-hw-gh-"));
+    try {
+      const alpha = createVerifiedProject(tmpBase, alphaProject, "alpha");
+      const registry = makeRegistry([alpha.project]);
+      execCommandMock.mockResolvedValue({
+        exitCode: 0,
+        stdout: "[]",
+        stderr: "",
+      });
 
-    const watcher = new HarvestWatcher(baseConfig, null, "/fallback", {
-      registry,
-    });
+      const watcher = new HarvestWatcher(baseConfig, null, "/fallback", {
+        registry,
+      });
 
-    await watcher.runCheck();
+      await watcher.runCheck();
 
-    expect(execCommandMock).toHaveBeenCalledWith(
-      "gh",
-      expect.arrayContaining([
-        "pr",
-        "list",
-        "--repo",
-        "org/alpha",
-        "--base",
-        "main",
-      ]),
-      undefined,
-      { cwd: "/mirrors/alpha" },
-    );
+      expect(execCommandMock).toHaveBeenCalledWith(
+        "gh",
+        expect.arrayContaining([
+          "pr",
+          "list",
+          "--repo",
+          "org/alpha",
+          "--base",
+          "main",
+        ]),
+        undefined,
+        { cwd: alpha.checkout },
+      );
+    } finally {
+      fs.rmSync(tmpBase, { recursive: true, force: true });
+    }
   });
 
   it("T034 regression: skips enrolled projects whose checkout fails verification and ignores stale cross-channel threads", async () => {
