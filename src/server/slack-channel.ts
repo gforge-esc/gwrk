@@ -55,6 +55,22 @@ export async function verifySlackWorkspaceWithSignal(
   return response.ok === true && response.team_id === workspaceId;
 }
 
+export async function postSlackEphemeralWithSignal(
+  token: string | undefined,
+  payload: {
+    channel: string;
+    user: string;
+    text: string;
+    blocks?: unknown[];
+    thread_ts?: string;
+  },
+  signal: AbortSignal,
+): Promise<{ ok: boolean; message_ts?: string }> {
+  signal.throwIfAborted();
+  if (!token) throw new Error("Slack client has no bot token.");
+  return slackFetch("chat.postEphemeral", payload, token, signal);
+}
+
 export async function postSlackMessageWithSignal(
   token: string | undefined,
   message: {

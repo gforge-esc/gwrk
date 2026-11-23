@@ -6,6 +6,7 @@ export * from "./types.js";
 export * from "./effort.js";
 export * from "./project-id.js";
 export * from "./project-registry.js";
+export * from "./slack-delivery.js";
 export * from "./slack-routing.js";
 export * from "./prompt-conditioner.js";
 export * from "./agent-config.js";
