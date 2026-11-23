@@ -240,41 +240,46 @@
           "id": "T021",
           "title": "Create resolve-route.ts",
           "description": "NEW src/application/models/resolve-route.ts. Resolve pinned routes, qualified fallbacks and `provider-default` mode. Tests: src/application/models/resolve-route.test.ts",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/phase-05.sh",
-          "sp": 2
+          "sp": 2,
+          "completedAt": "2026-11-23T19:23:29.882Z"
         },
         {
           "id": "T022",
           "title": "Modify resolve-agent.ts",
           "description": "MODIFY src/utils/resolve-agent.ts. Delegate pillar and role selection through `resolve-route` with centralized config access",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/phase-05.sh",
-          "sp": 1
+          "sp": 1,
+          "completedAt": "2026-11-23T19:23:34.521Z"
         },
         {
           "id": "T023",
           "title": "Modify workflow-runtime.ts",
           "description": "MODIFY src/plugins/workflow-runtime.ts. Forward typed `model`, `effort` and `routeMode` and return `observedModel`",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/phase-05.sh",
-          "sp": 1
+          "sp": 1,
+          "completedAt": "2026-11-23T19:23:39.186Z"
         },
         {
           "id": "T024",
           "title": "Modify manifest.ts",
           "description": "MODIFY src/utils/manifest.ts. Record `requestedModel`, `observedModel` and `fallbackReason` in manifests",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/phase-05.sh",
-          "sp": 1
+          "sp": 1,
+          "completedAt": "2026-11-23T19:23:43.698Z"
         },
         {
           "id": "T025",
           "title": "Create model-qualification-live.md",
           "description": "NEW docs/operations/model-qualification-live.md. Define separate live qualification steps for local workstation and Linux pilot runners",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/phase-05.sh",
-          "sp": 2
+          "sp": 2,
+          "completedAt": "2026-11-23T19:23:48.311Z"
         }
       ],
       "sp_estimate": 7,
