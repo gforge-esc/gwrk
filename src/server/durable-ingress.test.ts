@@ -283,7 +283,7 @@ describe("durable HTTP ingress", () => {
     }
   });
 
-  it("claims Slack retry_phase and request_changes and persists DispatchReceipt atomically before ack()", async () => {
+  async function verifyActionAck(actionId: string) {
     const tempRoot = mkdtempSync(join(tmpdir(), "gwrk-durable-slack-act-"));
     tempDirs.push(tempRoot);
     const repoRoot = initTestRepo(
@@ -320,11 +320,38 @@ describe("durable HTTP ingress", () => {
       });
       const monitor = new SystemMonitor(config);
       const sandbox = new SandboxManager(repoRoot);
-      const queue = new DispatchQueue(config, monitor, sandbox, repoRoot, {
-        db,
-        projectId,
+      vi.spyOn(monitor, "isThrottled").mockReturnValue(false);
+      let finishPrior!: () => void;
+      const prior = new Promise<void>((resolve) => {
+        finishPrior = resolve;
       });
-      queue.pause();
+      const launchPhaseShip = vi.fn(
+        async ({ phaseId }: { phaseId: string }) => {
+          if (phaseId === "phase-03") await prior;
+          return { exitCode: 0, stderr: "" };
+        },
+      );
+      const queue = new DispatchQueue(
+        config,
+        monitor,
+        sandbox,
+        repoRoot,
+        { db, projectId },
+        undefined,
+        undefined,
+        {
+          worker: {
+            launchPhaseShip,
+            inspectRecoveredWork: vi.fn(),
+            cleanupStaleSandbox: vi.fn(),
+          },
+          notifier: { notify: vi.fn() },
+          heartbeatIntervalMs: null,
+        },
+      );
+      queue.accept({ projectId, featureId, phaseId: "phase-03" });
+      await vi.waitFor(() => expect(launchPhaseShip).toHaveBeenCalledOnce());
+      launchPhaseShip.mockClear();
 
       const actionHandlers: Record<string, (args: unknown) => Promise<void>> =
         {};
@@ -357,6 +384,11 @@ describe("durable HTTP ingress", () => {
             featureId,
             phaseId: "phase-04",
           }) !== null;
+        finishPrior();
+        await new Promise<void>((resolve) => setImmediate(resolve));
+        expect
+          .soft(launchPhaseShip, "no worker until acknowledgment resolves")
+          .not.toHaveBeenCalled();
       });
       const chat = { postMessage: vi.fn(), postEphemeral: vi.fn() };
       const body = {
@@ -369,7 +401,7 @@ describe("durable HTTP ingress", () => {
         },
         actions: [
           {
-            action_id: "retry_phase",
+            action_id: actionId,
             value: JSON.stringify({
               projectId,
               featureId,
@@ -380,7 +412,7 @@ describe("durable HTTP ingress", () => {
         ],
       };
 
-      await actionHandlers.retry_phase({
+      await actionHandlers[actionId]({
         ack,
         body,
         client: { chat },
@@ -406,9 +438,11 @@ describe("durable HTTP ingress", () => {
         }),
       );
 
+      await vi.waitFor(() => expect(launchPhaseShip).toHaveBeenCalledOnce());
+
       // Replayed click must be rejected without creating a second dispatch.
       chat.postMessage.mockClear();
-      await actionHandlers.retry_phase({
+      await actionHandlers[actionId]({
         ack: vi.fn(),
         body,
         client: { chat },
@@ -425,7 +459,12 @@ describe("durable HTTP ingress", () => {
     } finally {
       db.close();
     }
-  });
+  }
+
+  it.each(["retry_phase", "request_changes"])(
+    "persists %s and waits for ack before launch",
+    verifyActionAck,
+  );
 
   it("rolls back Slack action claim and skips ack() if durable dispatch persistence fails", async () => {
     const tempRoot = mkdtempSync(join(tmpdir(), "gwrk-durable-slack-rb-"));

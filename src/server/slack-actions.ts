@@ -439,7 +439,7 @@ export async function registerSlackActions(app: App, context: CommandContext) {
           threadTs?: string;
           receipt: DispatchReceipt | null;
           record?: DispatchRecord;
-          usedDurableAccept: boolean;
+          releaseDispatch?: () => void;
         };
 
     const runTx = context.queue.runInTransaction
@@ -492,6 +492,7 @@ export async function registerSlackActions(app: App, context: CommandContext) {
       };
 
       if (typeof context.queue.accept === "function") {
+        let releaseDispatch: (() => void) | undefined;
         const receipt = context.queue.accept(
           {
             projectId: decision.project.projectId,
@@ -499,7 +500,11 @@ export async function registerSlackActions(app: App, context: CommandContext) {
             phaseId: phaseId ?? "",
             recipient,
           },
-          { deferDrain: true },
+          {
+            deferDrain: (release) => {
+              releaseDispatch = release;
+            },
+          },
         );
         if (receipt) {
           completeReceipt(context, decision.receiptKey, "executed");
@@ -507,7 +512,7 @@ export async function registerSlackActions(app: App, context: CommandContext) {
             ok: true,
             threadTs: decision.recipient.threadTs,
             receipt,
-            usedDurableAccept: true,
+            releaseDispatch,
           };
         }
       }
@@ -523,7 +528,6 @@ export async function registerSlackActions(app: App, context: CommandContext) {
           threadTs: decision.recipient.threadTs,
           receipt: null,
           record,
-          usedDurableAccept: false,
         };
       } catch (error) {
         completeReceipt(context, decision.receiptKey, "failed");
@@ -569,9 +573,7 @@ export async function registerSlackActions(app: App, context: CommandContext) {
       return;
     }
 
-    if (outcome.usedDurableAccept) {
-      void context.queue.processNext?.();
-    }
+    outcome.releaseDispatch?.();
 
     const operationId =
       outcome.receipt?.operationId ??

@@ -2071,6 +2071,58 @@ describe("DispatchQueue (durable SQLite backing, recovery & outbox notifications
     }
   });
 
+  it("starts newly accepted work in a free slot while another worker is still running", async () => {
+    const { config, monitor, sandbox, realRoot, db, projectId, store } =
+      setupDurableEnv();
+    let finishFirst!: () => void;
+    const first = new Promise<void>((resolve) => {
+      finishFirst = resolve;
+    });
+    const worker: WorkerExecutionPort = {
+      launchPhaseShip: vi.fn(async ({ phaseId }) => {
+        if (phaseId === "phase-01") await first;
+        return { exitCode: 0, stderr: "" };
+      }),
+      inspectRecoveredWork: vi.fn(),
+      cleanupStaleSandbox: vi.fn(),
+    };
+    const queue = new DispatchQueue(
+      config,
+      monitor,
+      sandbox,
+      realRoot,
+      { db, projectId },
+      undefined,
+      undefined,
+      { worker, heartbeatIntervalMs: null },
+    );
+    try {
+      const request = {
+        projectId,
+        featureId: "049-free-slot",
+        phaseId: "phase-01",
+      };
+      expect(config.parallelism.local.maxClones).toBe(2);
+      queue.accept(request);
+      await vi.waitFor(() =>
+        expect(worker.launchPhaseShip).toHaveBeenCalledOnce(),
+      );
+      const second = { ...request, phaseId: "phase-02" };
+      const receipt = queue.accept(second);
+      await vi.waitFor(() =>
+        expect(store.getDispatchOperation(second)).toMatchObject({
+          operationId: receipt?.operationId,
+          status: "completed",
+        }),
+      );
+      expect(worker.launchPhaseShip).toHaveBeenCalledTimes(2);
+    } finally {
+      finishFirst();
+      await queue.close();
+      db.close();
+    }
+  });
+
   it("keeps scheduled work accepted when the queue closes before the next turn", async () => {
     const { realRoot, db, projectId, store, config, monitor, sandbox } =
       setupDurableEnv();

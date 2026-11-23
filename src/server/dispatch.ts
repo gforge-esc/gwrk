@@ -212,8 +212,6 @@ export class DispatchQueue {
     completedFromPrCount: number;
     failedCount: number;
   }> | null = null;
-  private draining = false;
-  private drainRequested = false;
   private scheduledDrain?: NodeJS.Immediate;
   private readonly awaitingAcknowledgment = new Set<string>();
   private readonly suppliedRegistry?: ProjectRegistryPort;
@@ -295,6 +293,7 @@ export class DispatchQueue {
             input.expectedLeaseEpoch === undefined &&
             (this.paused ||
               this.closed ||
+              !this.hasWorkerCapacity() ||
               this.awaitingAcknowledgment.has(input.operationId))
           ) {
             return null;
@@ -313,6 +312,7 @@ export class DispatchQueue {
           const result = rawStore.completeDispatchAttempt(input);
           if (result.ok || prior?.leaseEpoch === input.fence.leaseEpoch) {
             this.activeDurableOps.delete(input.fence.operationId);
+            this.scheduleDrain();
           }
           if (result.ok) {
             if (input.operationStatus === "completed") {
@@ -1152,6 +1152,13 @@ export class DispatchQueue {
     return record;
   }
 
+  private hasWorkerCapacity() {
+    return (
+      this.active.length + this.activeDurableOps.size <
+      this.config.parallelism.local.maxClones
+    );
+  }
+
   private scheduleDrain() {
     if (this.closed || this.paused || this.scheduledDrain) return;
     this.scheduledDrain = setImmediate(() => {
@@ -1169,35 +1176,20 @@ export class DispatchQueue {
       return;
     }
 
-    if (this.draining) {
-      this.drainRequested = true;
-    } else if (this.durableService) {
-      this.draining = true;
-      const runDrain = async () => {
-        try {
-          if (!this.startupRecovered) {
-            await this.recoverOnStartup();
-          }
-          if (this.paused || this.closed || this.monitor.isThrottled()) {
-            return;
-          }
-          await this.durableService?.drainReady(
+    if (this.durableService) {
+      const pass = this.startupRecovered
+        ? this.durableService.drainReady(
             this.ownerId,
             this.config.parallelism.local.maxClones,
-          );
-        } catch (error) {
+          )
+        : this.recoverOnStartup();
+      const durableWork = pass
+        .then(() => undefined)
+        .catch((error: unknown) => {
           this.errors.push(error);
           logCliError("Durable dispatch drain failed:", error);
-        }
-      };
-      const durableWork = runDrain().finally(() => {
-        this.draining = false;
-        this.inFlight.delete(durableWork);
-        if (this.drainRequested) {
-          this.drainRequested = false;
-          this.scheduleDrain();
-        }
-      });
+        })
+        .finally(() => this.inFlight.delete(durableWork));
       this.inFlight.add(durableWork);
     }
 
@@ -1206,12 +1198,7 @@ export class DispatchQueue {
     // Capacity: each active record is one feature-phase ship in its own
     // worktree. Cap concurrent ships at maxClones — this is the queue's ship
     // gate that superseded DispatchOrchestrator's per-task Semaphore (PR-8).
-    if (
-      this.active.length + this.activeDurableOps.size >=
-      this.config.parallelism.local.maxClones
-    ) {
-      return;
-    }
+    if (!this.hasWorkerCapacity()) return;
 
     const record = this.queue.shift();
     if (!record) return;
