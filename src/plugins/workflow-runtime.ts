@@ -6,7 +6,8 @@ import { execSync } from "node:child_process";
 import * as fs from "node:fs";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
-import { warnCli } from "../adapters/cli/output-scope.js";
+import { logCliOutput, warnCli } from "../adapters/cli/output-scope.js";
+import { resolveWorkflowPolicyScope } from "../domain/policy-selection.js";
 import type { ProjectProfile } from "../domain/types.js";
 import { IntentEngine, type IntentSummary } from "../engine/intent-engine.js";
 import { detectProfile } from "../engine/profile-detector.js";
@@ -16,6 +17,7 @@ import {
   type TaskResult,
   dispatchToAgent,
 } from "../utils/agent.js";
+import { resolveWorkflowPin } from "../utils/resolve-agent.js";
 import { PluginLoader, PluginNotFoundError } from "./loader.js";
 import type { JsonIntent, WorkflowManifest } from "./manifest.js";
 
@@ -403,18 +405,46 @@ export class WorkflowRuntime {
       ? conditionedPrompt
       : `${conditionedPrompt}\n\n<output_contract>\nYour output MUST be a single JSON object matching this schema:\n${JSON.stringify(outputSchema, null, 2)}\n</output_contract>`;
 
+    const definitionTask = [
+      "gwrk-ontology-construct",
+      "gwrk-architecture-assessment",
+      "gwrk-define-tests",
+      "gwrk-checklist",
+      "gwrk-analyze",
+    ].includes(name);
+    const policyScope = resolveWorkflowPolicyScope(
+      name,
+      options.taskType ?? (definitionTask ? "define" : undefined),
+    );
+    const route = options.recordedResult
+      ? undefined
+      : resolveWorkflowPin(
+          policyScope === "implementation" ? "implement" : policyScope,
+          projectRoot,
+          {
+            agent: options.agent,
+            model: options.model,
+            effort: options.effort,
+            routeMode: options.routeMode,
+          },
+        );
+    if (route?.preflightBanner) logCliOutput(route.preflightBanner);
+    const routeMode = route?.routeMode ?? options.routeMode;
+    const effort = route?.effort ?? options.effort;
     const effectiveModel =
-      options.routeMode === "provider-default" ? undefined : options.model;
+      routeMode === "provider-default"
+        ? undefined
+        : (route?.model ?? options.model);
     const task: TaskDispatch = {
       type: options.taskType ?? "workflow",
       stdin: [template, userInput].filter(Boolean).join("\n\n"),
       promptParts: { template, userInput },
       profile,
-      agent: options.agent,
+      agent: route?.backend ?? options.agent,
       model: effectiveModel,
-      ...(options.effort ? { effort: options.effort } : {}),
-      ...(options.routeMode ? { routeMode: options.routeMode } : {}),
-      env: options.effort ? { GWRK_EFFORT: options.effort } : undefined,
+      ...(effort ? { effort } : {}),
+      ...(routeMode ? { routeMode } : {}),
+      env: effort ? { GWRK_EFFORT: effort } : undefined,
       featureDir: options.featureDir,
       workDir: projectRoot,
       workflow: name,

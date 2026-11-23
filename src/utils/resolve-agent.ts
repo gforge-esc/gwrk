@@ -2,8 +2,12 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import { execFileSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import fs from "node:fs";
+import { createRequire } from "node:module";
 import path from "node:path";
+import { pathToFileURL } from "node:url";
 import type { RouteLockDocument } from "../application/models/promote-model.js";
 import {
   type FallbackQualificationRecord,
@@ -12,6 +16,7 @@ import {
   type RouteMode,
   type SuiteDigestSnapshot,
   formatRoutePreflightBanner,
+  parseStoredFallbackQualification,
   resolveQualifiedRoute,
 } from "../application/models/resolve-route.js";
 import {
@@ -75,9 +80,14 @@ const RUNNER_PROFILE_RE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
 
 function readJsonSafely<T>(filePath: string): T | null {
   try {
-    const info = fs.lstatSync(filePath);
-    if (!info.isFile() || info.isSymbolicLink()) return null;
+    const info = fs.lstatSync(filePath, { throwIfNoEntry: false });
+    if (!info) return null;
+    if (!info.isFile() || info.isSymbolicLink())
+      throw new Error("Invalid model storage file");
     const parsed = JSON.parse(fs.readFileSync(filePath, "utf8")) as T;
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      throw new Error("Invalid model storage document");
+    }
     assertNoSecretMaterial(parsed);
     return parsed;
   } catch (error) {
@@ -85,7 +95,7 @@ function readJsonSafely<T>(filePath: string): T | null {
       error && typeof error === "object" && "code" in error
         ? (error as { code?: string }).code
         : undefined;
-    if (code === "ENOENT" || code === "ENOTDIR") return null;
+    if (code === "ENOENT") return null;
     throw error;
   }
 }
@@ -94,7 +104,8 @@ function readLocalRouteLock(
   projectRoot: string,
   runnerProfile: string,
 ): RouteLockDocument | null {
-  if (!RUNNER_PROFILE_RE.test(runnerProfile)) return null;
+  if (!RUNNER_PROFILE_RE.test(runnerProfile))
+    throw new Error("Invalid runner profile");
   return readJsonSafely<RouteLockDocument>(
     path.join(
       projectRoot,
@@ -109,7 +120,8 @@ function readLocalDiscoverySnapshot(
   projectRoot: string,
   runnerProfile: string,
 ): DiscoverySnapshot | null {
-  if (!RUNNER_PROFILE_RE.test(runnerProfile)) return null;
+  if (!RUNNER_PROFILE_RE.test(runnerProfile))
+    throw new Error("Invalid runner profile");
   return readJsonSafely<DiscoverySnapshot>(
     path.join(
       projectRoot,
@@ -119,6 +131,74 @@ function readLocalDiscoverySnapshot(
       `${runnerProfile}.json`,
     ),
   );
+}
+
+// The CLI resolver is synchronous. Render the qualification suite in a bounded
+// process so its filesystem effects use the selected checkout, including under worktrees.
+function readCurrentSuiteHashes(projectRoot: string): SuiteDigestSnapshot {
+  let directory = path.resolve(projectRoot);
+  let fixturesDir = process.env.GWRK_FIXTURES_DIR;
+  if (!fixturesDir || !fs.existsSync(fixturesDir)) {
+    while (
+      !fs.existsSync(
+        path.join(directory, "tests/fixtures/model-qualification/suite.json"),
+      )
+    ) {
+      const parent = path.dirname(directory);
+      if (parent === directory)
+        throw new Error(
+          "Cannot verify pin: qualification fixture suite missing.",
+        );
+      directory = parent;
+    }
+    fixturesDir = path.join(directory, "tests/fixtures/model-qualification");
+  }
+  const source = import.meta.url.endsWith(".ts");
+  const runner = new URL(
+    `../adapters/models/fixture-runner.${source ? "ts" : "js"}`,
+    import.meta.url,
+  );
+  const program = [
+    "const { FixtureRunner } = await import(process.argv[1]);",
+    "const hashes = await new FixtureRunner({ fixturesDir: process.argv[2] }).computeSuiteHashes();",
+    "process.stdout.write(JSON.stringify(hashes));",
+  ].join("\n");
+  const output = execFileSync(
+    process.execPath,
+    [
+      ...(source
+        ? [
+            "--import",
+            pathToFileURL(createRequire(import.meta.url).resolve("tsx")).href,
+          ]
+        : []),
+      "--input-type=module",
+      "--eval",
+      program,
+      runner.href,
+      path.resolve(fixturesDir),
+    ],
+    {
+      cwd: projectRoot,
+      encoding: "utf8",
+      timeout: 30_000,
+      stdio: ["ignore", "pipe", "pipe"],
+    },
+  );
+  return JSON.parse(output) as SuiteDigestSnapshot;
+}
+
+export function resolveWorkflowPin(
+  role: ModelRole,
+  projectRoot: string,
+  overrides: ResolveAgentOverrides,
+): ResolvedAgent | undefined {
+  if (overrides.routeMode === "provider-default") return undefined;
+  const profile =
+    overrides.runnerProfile || process.env.GWRK_RUNNER_PROFILE || "local";
+  const routeLock = readLocalRouteLock(projectRoot, profile);
+  if (!routeLock && overrides.routeMode !== "pinned") return undefined;
+  return resolveRoleAgent(role, projectRoot, { ...overrides, routeLock });
 }
 
 function buildRunnerScope(
@@ -166,9 +246,11 @@ export function resolveAgent(
   const scope = buildRunnerScope(config, overrides.runnerProfile);
 
   const routeLock =
-    overrides.routeLock !== undefined
-      ? overrides.routeLock
-      : readLocalRouteLock(projectRoot, scope.runnerProfile);
+    overrides.routeMode === "provider-default"
+      ? null
+      : overrides.routeLock !== undefined
+        ? overrides.routeLock
+        : readLocalRouteLock(projectRoot, scope.runnerProfile);
   const snapshot =
     overrides.snapshot !== undefined
       ? overrides.snapshot
@@ -188,28 +270,66 @@ export function resolveAgent(
       ? resolveModelForTask(role, backend, projectRoot)
       : undefined);
 
+  const pin = routeLock?.routes[role];
+  const qualifiedFallbacks =
+    overrides.qualifiedFallbacks ??
+    pin?.fallbackRoutes.flatMap((fallback) => {
+      if (!RUNNER_PROFILE_RE.test(fallback.evaluationId)) return [];
+      const bundle = readJsonSafely<unknown>(
+        path.join(
+          projectRoot,
+          ".runs",
+          "models",
+          "evaluations",
+          fallback.evaluationId,
+          "bundle.json",
+        ),
+      );
+      const record = parseStoredFallbackQualification(
+        bundle,
+        fallback,
+        role,
+        scope,
+      );
+      return record ? [record] : [];
+    });
+  const currentSuiteHashes =
+    pin && overrides.currentSuiteHashes === undefined
+      ? readCurrentSuiteHashes(projectRoot)
+      : overrides.currentSuiteHashes;
+  if (
+    pin?.routeMode === "pinned" &&
+    snapshot &&
+    overrides.snapshot === undefined &&
+    createHash("sha256").update(JSON.stringify(snapshot)).digest("hex") !==
+      pin.evidence.snapshotHash
+  ) {
+    throw new Error(
+      "stale: discovery snapshot changed; requalification required",
+    );
+  }
   const route = resolveQualifiedRoute({
     role,
     scope,
     routeLock,
     snapshot,
-    currentSuiteHashes: overrides.currentSuiteHashes,
+    currentSuiteHashes,
     requestedBackend: overrides.agent || undefined,
     requestedModel: overrides.model || undefined,
     requestedEffort: overrides.effort,
     routeMode: overrides.routeMode,
     unavailableBackends: overrides.unavailableBackends,
     primaryFailureReason: overrides.primaryFailureReason,
-    qualifiedFallbacks: overrides.qualifiedFallbacks,
+    qualifiedFallbacks,
     defaultBackend: configuredBackend,
     defaultModel: fallbackModel,
   });
 
+  if (route.status === "stale" || route.status === "unavailable_pin") {
+    throw new Error(`${route.status}: ${route.diagnostic}`);
+  }
   const resolvedBackend = route.backend || backend;
-  const resolvedModel =
-    route.routeMode === "provider-default"
-      ? route.model
-      : overrides.model || route.model;
+  const resolvedModel = route.model;
 
   return {
     backend: resolvedBackend,

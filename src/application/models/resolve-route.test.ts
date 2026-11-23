@@ -2,18 +2,27 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import { createHash } from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { FixtureRunner } from "../../adapters/models/fixture-runner.js";
+import { runCli } from "../../cli.js";
+import { researchCommandHandler } from "../../commands/research.js";
+import * as runLedger from "../../db/runs.js";
 import {
   type DiscoverySnapshot,
   type RunnerScope,
   eligibleRoutesDigest,
 } from "../../domain/model-qualification.js";
+import { PlanStore } from "../../engine/plan-store.js";
+import { resolveWorkspacePolicyRoots } from "../../engine/profile-detector.js";
 import { WorkflowRuntime } from "../../plugins/workflow-runtime.js";
 import type { RouteLockStorePort } from "../../ports/model-qualification-port.js";
+import * as agentTransport from "../../utils/agent.js";
 import type { TaskDispatch, TaskResult } from "../../utils/agent.js";
+import { loadManifests } from "../../utils/manifest.js";
 import { resolveAgent, resolveRoleAgent } from "../../utils/resolve-agent.js";
 import type { PromotionReplayEvidence } from "./evaluate-models.js";
 import type { PinnedRoleRoute, RouteLockDocument } from "./promote-model.js";
@@ -252,8 +261,35 @@ function createTempProject(config: Record<string, unknown>): string {
   return dir;
 }
 
+async function projectEvidence(root: string) {
+  const fixturesDir = path.join(root, "tests/fixtures/model-qualification");
+  fs.cpSync(path.resolve("tests/fixtures/model-qualification"), fixturesDir, {
+    recursive: true,
+  });
+  const cwd = vi.spyOn(process, "cwd").mockReturnValue(root);
+  try {
+    const current = await new FixtureRunner({
+      fixturesDir,
+    }).computeSuiteHashes();
+    const snapshot = makeSnapshot();
+    const catalog = path.join(root, ".runs/models/discovery/local.json");
+    fs.mkdirSync(path.dirname(catalog), { recursive: true });
+    fs.writeFileSync(catalog, JSON.stringify(snapshot));
+    return {
+      ...makePin().evidence,
+      ...current,
+      snapshotHash: createHash("sha256")
+        .update(JSON.stringify(snapshot))
+        .digest("hex"),
+    };
+  } finally {
+    cwd.mockRestore();
+  }
+}
+
 afterEach(() => {
   vi.restoreAllMocks();
+  vi.unstubAllEnvs();
   while (tempDirs.length > 0) {
     const dir = tempDirs.pop();
     if (dir && fs.existsSync(dir)) {
@@ -359,6 +395,7 @@ describe("TR-014: resolveQualifiedRoute", () => {
       role: "define",
       scope: SCOPE,
       routeLock: lock,
+      currentSuiteHashes: makePin().evidence,
       snapshot,
       unavailableBackends: ["codex"],
       primaryFailureReason: "rate_limit",
@@ -374,6 +411,7 @@ describe("TR-014: resolveQualifiedRoute", () => {
       role: "define",
       scope: SCOPE,
       routeLock: lock,
+      currentSuiteHashes: makePin().evidence,
       snapshot,
       unavailableBackends: ["codex"],
       primaryFailureReason: "rate_limit",
@@ -422,6 +460,7 @@ describe("TR-014: resolveQualifiedRoute", () => {
       role: "define",
       scope: SCOPE,
       routeLock: lock,
+      currentSuiteHashes: makePin().evidence,
       snapshot,
       requestedBackend: "agy",
       qualifiedFallbacks: [
@@ -450,6 +489,7 @@ describe("TR-014: resolveQualifiedRoute", () => {
       role: "define",
       scope: SCOPE,
       routeLock: lock,
+      currentSuiteHashes: makePin().evidence,
       snapshot,
       requestedBackend: "claude",
       qualifiedFallbacks: [
@@ -663,11 +703,222 @@ describe("TR-014: resolveQualifiedRoute", () => {
     expect(route.fallbackRoutes).toEqual([]);
   });
 
+  it("requires current hashes before declaring a lock fresh", () => {
+    const route = resolveQualifiedRoute({
+      role: "define",
+      scope: SCOPE,
+      routeLock: makeRouteLock(),
+      snapshot: makeSnapshot(),
+    });
+    expect(route.status).toBe("stale");
+    expect(route.model).toBeUndefined();
+  });
+
+  it("stops callers before dispatch on an unavailable backend or stale evidence", () => {
+    const root = createTempProject({ project: { name: "gwrk" } });
+    const routeLock = makeRouteLock();
+    const inputs = {
+      routeLock,
+      snapshot: makeSnapshot(),
+      currentSuiteHashes: makePin().evidence,
+      runnerProfile: "local",
+    };
+    for (const overrides of [
+      { agent: "agy" },
+      { agent: "claude" },
+      { model: "never-evaluated" },
+      { effort: "low" },
+      { snapshot: null },
+      {
+        currentSuiteHashes: {
+          fixtureSuiteHash: HASH_A,
+          workflowPromptHashes: {},
+        },
+      },
+    ]) {
+      expect(() =>
+        resolveAgent("define", root, { ...inputs, ...overrides }),
+      ).toThrow(/unavailable_pin|stale|requalif/i);
+    }
+  });
+
+  it("treats an unreadable lock as an error and allows explicit provider default", () => {
+    const root = createTempProject({ project: { name: "gwrk" } });
+    const lock = path.join(root, ".gwrk/models/route-lock.local.json");
+    fs.mkdirSync(lock, { recursive: true });
+    expect(() =>
+      resolveAgent("define", root, { runnerProfile: "local" }),
+    ).toThrow();
+    expect(
+      resolveAgent("define", root, {
+        runnerProfile: "local",
+        routeMode: "provider-default",
+        agent: "codex",
+      }),
+    ).toMatchObject({
+      backend: "codex",
+      routeMode: "provider-default",
+      model: undefined,
+    });
+  });
+
+  it("dispatches a qualified research command and rejects later project changes", async () => {
+    const root = createTempProject({
+      project: { name: "gwrk" },
+      agents: { define: "codex", implement: "codex" },
+    });
+    const evidence = await projectEvidence(root);
+    const pin = makePin({ evidence });
+    const file = path.join(root, ".gwrk/models/route-lock.local.json");
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(file, JSON.stringify(makeRouteLock({ evidence })));
+    const cwd = vi.spyOn(process, "cwd").mockReturnValue(root);
+    const dispatch = vi
+      .spyOn(agentTransport, "dispatchToAgent")
+      .mockResolvedValue({
+        exitCode: 0,
+        stdout: '{"summary":"done","intents":[]}',
+        stderr: "",
+        durationS: 0,
+        observedModel: "observed-id",
+      });
+    await researchCommandHandler({ initiative: "qualification", run: true });
+    expect(dispatch).toHaveBeenCalledWith(
+      expect.objectContaining({
+        agent: "codex",
+        model: pin.modelId,
+        effort: "high",
+        routeMode: "pinned",
+      }),
+    );
+    cwd.mockRestore();
+    fs.writeFileSync(
+      path.join(root, ".gwrk/architecture.md"),
+      "New architecture",
+    );
+    expect(() => resolveAgent("define", root)).toThrow(/prompts-changed/);
+    expect(dispatch).toHaveBeenCalledTimes(1);
+  });
+
+  it("expires a workspace pin after its inherited architecture instructions change", async () => {
+    const owner = createTempProject({
+      project: { name: "owner" },
+      workspaces: { "packages/api": { type: "nodejs" } },
+    });
+    const root = path.join(owner, "packages/api");
+    fs.mkdirSync(root, { recursive: true });
+    fs.writeFileSync(
+      path.join(root, ".gwrkrc.json"),
+      JSON.stringify({ project: { name: "gwrk" } }),
+    );
+    fs.mkdirSync(path.join(owner, ".gwrk"), { recursive: true });
+    const architecture = path.join(owner, ".gwrk/architecture.md");
+    fs.writeFileSync(architecture, "Original architecture instructions");
+    expect(resolveWorkspacePolicyRoots(root).policyDirs).toContain(
+      fs.realpathSync(owner),
+    );
+    const evidence = await projectEvidence(root);
+    const lock = path.join(root, ".gwrk/models/route-lock.local.json");
+    fs.mkdirSync(path.dirname(lock), { recursive: true });
+    fs.writeFileSync(lock, JSON.stringify(makeRouteLock({ evidence })));
+    expect(resolveAgent("define", root).model).toBe("gpt-6.1-sol");
+    fs.writeFileSync(architecture, "Revised architecture instructions");
+    expect(() => resolveAgent("define", root)).toThrow(/prompts-changed/);
+  });
+
+  it("honors the provider-default CLI escape with an unreadable pin", async () => {
+    const root = createTempProject({
+      project: { name: "gwrk" },
+      agents: { define: "codex", implement: "codex" },
+    });
+    fs.mkdirSync(path.join(root, ".gwrk/models/route-lock.local.json"), {
+      recursive: true,
+    });
+    vi.spyOn(process, "cwd").mockReturnValue(root);
+    const dispatch = vi
+      .spyOn(agentTransport, "dispatchToAgent")
+      .mockResolvedValue({
+        exitCode: 0,
+        stdout: '{"summary":"done","intents":[]}',
+        stderr: "",
+        durationS: 0,
+      });
+    const errors: string[] = [];
+    const code = await runCli(
+      [
+        "define",
+        "research",
+        "qualification",
+        "--run",
+        "--route",
+        "provider-default",
+      ],
+      {
+        stderr: (chunk) => errors.push(chunk),
+      },
+    );
+    expect(code, errors.join("")).toBe(0);
+    expect(dispatch).toHaveBeenCalledWith(
+      expect.objectContaining({
+        agent: "codex",
+        model: undefined,
+        routeMode: "provider-default",
+      }),
+    );
+  });
+
+  it("persists the requested and observed identities of a define spec dispatch", async () => {
+    const root = createTempProject({
+      project: { name: "gwrk" },
+      agents: { define: "codex", implement: "codex" },
+    });
+    vi.stubEnv("GIT_DIR", path.join(root, "unused.git"));
+    const feature = "001-qualification";
+    const featureDir = path.join(root, "specs", feature);
+    fs.mkdirSync(featureDir, { recursive: true });
+    const evidence = await projectEvidence(root);
+    const lock = path.join(root, ".gwrk/models/route-lock.local.json");
+    fs.mkdirSync(path.dirname(lock), { recursive: true });
+    fs.writeFileSync(lock, JSON.stringify(makeRouteLock({ evidence })));
+    vi.spyOn(process, "cwd").mockReturnValue(root);
+    vi.spyOn(runLedger, "startRun").mockReturnValue(1);
+    vi.spyOn(runLedger, "finishRun").mockImplementation(() => {});
+    vi.spyOn(PlanStore.prototype, "handleDefineComplete").mockImplementation(
+      () => {},
+    );
+    const dispatch = vi
+      .spyOn(agentTransport, "dispatchToAgent")
+      .mockResolvedValue({
+        exitCode: 0,
+        stdout: '{"summary":"done","intents":[]}',
+        stderr: "",
+        durationS: 0,
+        observedModel: "runtime-revision",
+      });
+    const code = await runCli([
+      "define",
+      "spec",
+      feature,
+      "Write a specification",
+    ]);
+    expect(code).toBe(0);
+    expect(dispatch).toHaveBeenCalledTimes(1);
+    expect(loadManifests(featureDir)).toEqual([
+      expect.objectContaining({
+        requestedModel: "gpt-6.1-sol",
+        requestedEffort: "high",
+        routeMode: "pinned",
+        observedModel: "runtime-revision",
+      }),
+    ]);
+  });
+
   it("connects resolveAgent and WorkflowRuntime to forward typed model, effort, routeMode and return observedModel", async () => {
     const projectRoot = createTempProject({
       project: { name: "gwrk" },
       agents: { define: "agy", implement: "codex" },
     });
+    const evidence = await projectEvidence(projectRoot);
     const modelsDir = path.join(projectRoot, ".gwrk", "models");
     fs.mkdirSync(modelsDir, { recursive: true });
     fs.writeFileSync(
@@ -677,9 +928,10 @@ describe("TR-014: resolveQualifiedRoute", () => {
           {},
           {
             routes: {
-              define: makePin(),
+              define: makePin({ evidence }),
               review: makePin({
                 role: "review",
+                evidence,
                 backend: "claude",
                 provider: "anthropic",
                 family: "claude-4",
@@ -729,6 +981,7 @@ describe("TR-014: resolveQualifiedRoute", () => {
         projectRoot,
         nativeOnly: true,
         allowMissingPrompt: true,
+        taskType: "define",
         agent: resolvedDefine.backend,
         model: resolvedDefine.model,
         effort: resolvedDefine.effort,

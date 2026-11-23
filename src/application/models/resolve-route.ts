@@ -223,21 +223,21 @@ function filterQualifiedFallbacks(
       }
     }
 
-    if (qualifiedFallbacks !== undefined) {
-      const verified = qualifiedFallbacks.some(
-        (record) =>
-          record.passed === true &&
-          record.evaluationId === fallback.evaluationId &&
-          record.role === role &&
-          matchesScope(record.scope, scope) &&
-          sameRouteKey(record, fallback) &&
-          (record.provider === undefined ||
-            record.provider === fallback.provider) &&
-          (record.family === undefined || record.family === fallback.family),
-      );
-      if (!verified) {
-        continue;
-      }
+    const verified = qualifiedFallbacks?.some(
+      (record) =>
+        record.passed === true &&
+        record.evaluationId === fallback.evaluationId &&
+        record.role === role &&
+        matchesScope(record.scope, scope) &&
+        record.scope.platform === scope.platform &&
+        record.scope.arch === scope.arch &&
+        sameRouteKey(record, fallback) &&
+        (record.provider === undefined ||
+          record.provider === fallback.provider) &&
+        (record.family === undefined || record.family === fallback.family),
+    );
+    if (!verified) {
+      continue;
     }
 
     eligible.push(fallback);
@@ -247,6 +247,27 @@ function filterQualifiedFallbacks(
 }
 
 export function resolveQualifiedRoute(
+  input: ResolveQualifiedRouteInput,
+): ResolvedModelRoute {
+  const route = selectQualifiedRoute(input);
+  if (
+    route.status === "pinned" &&
+    ((input.requestedModel && input.requestedModel !== route.model) ||
+      (input.requestedEffort && input.requestedEffort !== route.effort))
+  ) {
+    return {
+      ...route,
+      status: "unavailable_pin",
+      model: undefined,
+      fallbackReason: "unavailable_pin",
+      diagnostic:
+        "The requested model or effort differs from the qualified route.",
+    };
+  }
+  return route;
+}
+
+function selectQualifiedRoute(
   input: ResolveQualifiedRouteInput,
 ): ResolvedModelRoute {
   const requestedBackend = normalizeOptional(input.requestedBackend);
@@ -337,7 +358,7 @@ export function resolveQualifiedRoute(
     };
   }
 
-  if (!pin) {
+  if (!pin || pin.role !== input.role) {
     const backend = requestedBackend ?? defaultBackend;
     return {
       status: "unavailable_pin",
@@ -354,10 +375,23 @@ export function resolveQualifiedRoute(
     };
   }
 
-  const currentHashes = input.currentSuiteHashes ?? {
-    fixtureSuiteHash: pin.evidence.fixtureSuiteHash,
-    workflowPromptHashes: pin.evidence.workflowPromptHashes,
-  };
+  const currentHashes = input.currentSuiteHashes;
+  if (!currentHashes) {
+    return {
+      status: "stale",
+      role: input.role,
+      routeMode: pin.routeMode,
+      backend: pin.backend,
+      model: undefined,
+      requestedModel: pin.modelId,
+      usedFallback: false,
+      fallbackRoutes: [],
+      fallbackReason: "stale_pin",
+      stalenessReasons: [],
+      diagnostic:
+        "Current qualification fingerprints are missing. Requalification is required.",
+    };
+  }
 
   if (pin.routeMode === "provider-default") {
     if (requestedBackend && requestedBackend !== pin.backend) {
@@ -453,7 +487,7 @@ export function resolveQualifiedRoute(
         modelId: pin.modelId,
         effort: pin.effort,
       }).ok
-    : isConcreteModel(pin.modelId);
+    : false;
 
   const stalenessReasons = qualificationStaleness(
     {
@@ -649,7 +683,7 @@ export function resolveQualifiedRoute(
   };
 }
 
-function parseStoredFallbackQualification(
+export function parseStoredFallbackQualification(
   rawBundle: unknown,
   fallback: RouteFallbackCandidate,
   role: ModelRole,
@@ -671,6 +705,8 @@ function parseStoredFallbackQualification(
     !bundle.candidate ||
     typeof bundle.candidate.backend !== "string" ||
     typeof bundle.candidate.modelId !== "string" ||
+    bundle.candidate.provider !== fallback.provider ||
+    bundle.candidate.family !== fallback.family ||
     !bundle.promotionEvidence
   ) {
     return null;
@@ -699,15 +735,15 @@ export async function resolveQualifiedRouteFromStore(
   deps: ResolveRouteDeps,
   input: ResolveRouteFromStoreInput,
 ): Promise<ResolvedModelRoute> {
-  const [activeLock, snapshot, currentSuiteHashes] = await Promise.all([
-    deps.store.readRouteLock(input.scope),
+  if (input.routeMode === "provider-default")
+    return resolveQualifiedRoute(input);
+  const activeLock = await deps.store.readRouteLock(input.scope);
+  if (!activeLock) return resolveQualifiedRoute(input);
+  const routeLock = activeLock.document as RouteLockDocument;
+  const [snapshot, currentSuiteHashes] = await Promise.all([
     deps.store.readDiscoverySnapshot(input.scope),
-    deps.runner ? deps.runner.computeSuiteHashes() : Promise.resolve(null),
+    deps.runner?.computeSuiteHashes(),
   ]);
-
-  const routeLock = activeLock
-    ? (activeLock.document as RouteLockDocument)
-    : null;
   const pin = routeLock?.routes?.[input.role];
 
   let pinnedEligibleRoutesDigest: string | undefined;

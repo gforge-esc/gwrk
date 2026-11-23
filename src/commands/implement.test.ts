@@ -4,6 +4,8 @@
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { loadConfig } from "../utils/config.js";
+import * as routing from "../utils/resolve-agent.js";
+import * as agentTransport from "../utils/agent.js";
 import { run } from "../utils/exec.js";
 import { runGate } from "../utils/gate-runner.js";
 import { loadTaskState } from "../utils/state.js";
@@ -51,6 +53,14 @@ vi.mock("../db/runs.js", () => ({
 vi.mock("node:fs", () => ({
   default: {
     existsSync: vi.fn().mockReturnValue(true),
+    lstatSync(file: string, options?: { throwIfNoEntry?: boolean }) {
+      const runner = process.env.GWRK_RUNNER_PROFILE || "local";
+      if (file.endsWith(`.gwrk/models/route-lock.${runner}.json`)) {
+        if (options?.throwIfNoEntry === false) return undefined;
+        throw Object.assign(new Error("No route lock in this fixture"), { code: "ENOENT" });
+      }
+      throw new Error(`Unexpected lstat in implement fixture: ${file}`);
+    },
   },
   existsSync: vi.fn().mockReturnValue(true),
 }));
@@ -91,6 +101,43 @@ describe("implementAction", () => {
     );
   });
 
+  it("sends the pinned model and effort when executing an implementation task", async () => {
+    const model = "qualified-implementation-model";
+    const selected = vi.spyOn(routing, "resolveAgent").mockReturnValue({
+      backend: "codex",
+      model,
+      effort: "high",
+      routeMode: "pinned",
+      role: "implement",
+    });
+    const dispatch = vi.spyOn(agentTransport, "dispatchToAgent").mockResolvedValue({
+      exitCode: 0, stdout: "done", stderr: "", durationS: 0,
+    });
+    try {
+      await implementAction("004-ship-loop", "1", {});
+      const scriptCalls = vi.mocked(run).mock.calls;
+      if (scriptCalls.length > 0) {
+        expect(scriptCalls).toHaveLength(2);
+        for (const [, args, options] of scriptCalls) {
+          const assigned = Object.entries(options?.env ?? {}).filter(
+            ([key, value]) => value !== process.env[key],
+          );
+          const forwarded = [...args, ...assigned.map(([, value]) => value)];
+          expect(forwarded.includes(model), "qualified model sent to task").toBe(true);
+          expect(forwarded.includes("high"), "qualified effort sent to task").toBe(true);
+        }
+      } else {
+        expect(dispatch).toHaveBeenCalledTimes(2);
+        for (const [request] of dispatch.mock.calls) {
+          expect(request).toMatchObject({ agent: "codex", model, effort: "high" });
+        }
+      }
+    } finally {
+      selected.mockRestore();
+      dispatch.mockRestore();
+    }
+  });
+
   it("skips tasks that already pass pre-flight gate", async () => {
     // T001 passes pre-flight, T002 fails pre-flight then passes post-flight
     const gateCalls: Record<string, number> = {};
@@ -114,6 +161,8 @@ describe("implementAction", () => {
   it("respects dry-run flag", async () => {
     await implementAction("004-ship-loop", "1", { dryRun: true });
 
+    expect(loadTaskState).toHaveBeenCalled();
+    expect(runGate).toHaveBeenCalledTimes(2);
     expect(run).not.toHaveBeenCalled();
   });
 });

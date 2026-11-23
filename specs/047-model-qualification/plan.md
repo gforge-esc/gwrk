@@ -171,6 +171,7 @@ Connect `.gwrk/models/route-lock.<runner>.json` to the unified routing seam once
 - `src/utils/manifest.ts` (MODIFY: Record `requestedModel`, `observedModel` and `fallbackReason` in manifests)
 - `docs/operations/model-qualification-live.md` (NEW: Define separate live qualification steps for local workstation and Linux pilot runners)
 - `src/application/models/resolve-route.test.ts` (NEW: Seam tests for pinned dispatch, qualified fallback chains and `provider-default` mode)
+- `src/commands/implement.test.ts` (MODIFY: Model absent pin artifacts and verify task iteration, preflight skips, dry-run gate checks and pinned task dispatch)
 
 #### Test Strategy
 
@@ -180,10 +181,12 @@ Connect `.gwrk/models/route-lock.<runner>.json` to the unified routing seam once
 | TR-015 | unit | `src/utils/manifest.test.ts` | Execution manifests persist `requestedModel` and `observedModel` or `"unknown"` without credentials |
 | TR-016 | gate | `src/utils/config-resolution.conformance.test.ts` | Config resolution stays centralized and architecture gates pass |
 
+The command regressions exercise research dispatch and the provider-default CLI option. They read the manifest written by `define spec` and check that changed project or inherited architecture instructions invalidate the pin. The routing fixtures use current suite hashes and a runner discovery snapshot. The regression patch is `.runs/review-regressions-phase05-20261123T194753Z-3772F026.patch`.
+
 #### Done When
 
 ```bash
-pnpm exec vitest run src/application/models/resolve-route.test.ts src/utils/manifest.test.ts src/utils/config-resolution.conformance.test.ts src/architecture.test.ts
+bash specs/047-model-qualification/gates/phase-05.sh
 ```
 
 ## Coverage matrix
