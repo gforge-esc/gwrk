@@ -626,12 +626,38 @@ describe("029 FR-002: concurrent allocation on a real filesystem (US-001, TC-015
       .sort();
 
   it("FR-002: two overlapping runs land exactly one record at the number", async () => {
+    let releaseSnapshots!: () => void;
+    const snapshotsReady = new Promise<void>((resolve) => {
+      releaseSnapshots = resolve;
+    });
+    let snapshotCount = 0;
+    vi.doMock("node:fs/promises", () => {
+      const readdir = async (directory: string) => {
+        const entries = await realFs.readdir(directory);
+        if (directory === decisions && snapshotCount < 2) {
+          snapshotCount++;
+          if (snapshotCount === 2) releaseSnapshots();
+          await snapshotsReady;
+        }
+        return entries;
+      };
+      return { ...realFs, readdir, default: { ...realFs, readdir } };
+    });
+    vi.resetModules();
     const { scaffold } = await import("./adr-scaffold.js");
 
-    const settled = await Promise.allSettled([
-      scaffold("Alpha One", { cwd: root }),
-      scaffold("Beta Two", { cwd: root }),
-    ]);
+    let settled: PromiseSettledResult<unknown>[];
+    try {
+      settled = await Promise.allSettled([
+        scaffold("Alpha One", { cwd: root }),
+        scaffold("Beta Two", { cwd: root }),
+      ]);
+    } finally {
+      vi.doUnmock("node:fs/promises");
+      vi.resetModules();
+    }
+
+    expect(snapshotCount).toBe(2);
 
     // The invariant, whichever run wins: never two records at one number.
     const written = await records();

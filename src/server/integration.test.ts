@@ -1826,6 +1826,14 @@ setInterval(() => {}, 1000);
         expect(fixtureGit(projectRoot, "log", "-1", "--format=%at %ct")).toBe(
           "946684800 946684800",
         );
+        writeFileSync(
+          join(projectRoot, ".gwrkrc.json"),
+          JSON.stringify({
+            project: { name: fixture.projectId, toolchain: { test: null } },
+          }),
+        );
+        fixtureGit(projectRoot, "add", ".gwrkrc.json");
+        fixtureGit(projectRoot, "commit", "-m", "Declare Git-only fixture");
         const worktrees = () =>
           fixtureGit(projectRoot, "worktree", "list", "--porcelain").match(
             /^worktree .+$/gm,
