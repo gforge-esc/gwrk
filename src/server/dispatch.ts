@@ -71,6 +71,8 @@ export class DispatchIntakeError extends Error {
 
 export type { DispatchRequest } from "./types.js";
 
+export type DeferDispatchDrain = boolean | ((release: () => void) => void);
+
 export interface DispatchLedgerScope {
   db: Database.Database;
   projectId: string;
@@ -211,6 +213,9 @@ export class DispatchQueue {
     failedCount: number;
   }> | null = null;
   private draining = false;
+  private drainRequested = false;
+  private scheduledDrain?: NodeJS.Immediate;
+  private readonly awaitingAcknowledgment = new Set<string>();
   private readonly suppliedRegistry?: ProjectRegistryPort;
 
   private get registry(): ProjectRegistryPort | undefined {
@@ -285,6 +290,15 @@ export class DispatchQueue {
       const fencedStore: OperationsStorePort = {
         ...rawStore,
         claimDispatchLease: (input) => {
+          // Recovery can reconcile a lease while paused. Only gate new workers here.
+          if (
+            input.expectedLeaseEpoch === undefined &&
+            (this.paused ||
+              this.closed ||
+              this.awaitingAcknowledgment.has(input.operationId))
+          ) {
+            return null;
+          }
           const claimed = rawStore.claimDispatchLease(input);
           if (claimed) {
             this.activeDurableOps.set(
@@ -786,7 +800,7 @@ export class DispatchQueue {
   accept(
     request: DispatchRequest,
     options?: {
-      deferDrain?: boolean;
+      deferDrain?: DeferDispatchDrain;
       defaultRecipientSurface?: "http" | "local_cli";
     },
   ): DispatchReceipt | null {
@@ -849,8 +863,15 @@ export class DispatchQueue {
       throw error;
     }
 
-    if (!options?.deferDrain) {
-      this.processNext();
+    if (typeof options?.deferDrain === "function") {
+      const { operationId } = receipt;
+      if (!receipt.deduplicated) this.awaitingAcknowledgment.add(operationId);
+      options.deferDrain(() => {
+        this.awaitingAcknowledgment.delete(operationId);
+        this.scheduleDrain();
+      });
+    } else if (!options?.deferDrain) {
+      this.scheduleDrain();
     }
     return receipt;
   }
@@ -905,6 +926,7 @@ export class DispatchQueue {
 
   async close(): Promise<void> {
     this.closed = true;
+    clearImmediate(this.scheduledDrain);
     this.pause();
     this.notificationShutdown.abort();
     await Promise.all(this.inFlight);
@@ -1130,6 +1152,14 @@ export class DispatchQueue {
     return record;
   }
 
+  private scheduleDrain() {
+    if (this.closed || this.paused || this.scheduledDrain) return;
+    this.scheduledDrain = setImmediate(() => {
+      this.scheduledDrain = undefined;
+      void this.processNext();
+    });
+  }
+
   async processNext() {
     if (this.paused || this.closed) {
       return;
@@ -1139,7 +1169,9 @@ export class DispatchQueue {
       return;
     }
 
-    if (this.durableService && !this.draining) {
+    if (this.draining) {
+      this.drainRequested = true;
+    } else if (this.durableService) {
       this.draining = true;
       const runDrain = async () => {
         try {
@@ -1161,15 +1193,9 @@ export class DispatchQueue {
       const durableWork = runDrain().finally(() => {
         this.draining = false;
         this.inFlight.delete(durableWork);
-        if (
-          !this.paused &&
-          !this.closed &&
-          !this.monitor.isThrottled() &&
-          this.durableStore
-            ?.listRecoverableDispatches({ nowIso: this.clock.nowIso() })
-            .some((op) => op.status === "accepted")
-        ) {
-          this.processNext();
+        if (this.drainRequested) {
+          this.drainRequested = false;
+          this.scheduleDrain();
         }
       });
       this.inFlight.add(durableWork);

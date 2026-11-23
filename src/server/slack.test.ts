@@ -623,7 +623,7 @@ describe("Slack Server Integration", () => {
     expect(boltApp?.start).not.toHaveBeenCalled();
   });
 
-  it("persists /gwrk dispatch receipt before ack() and launches worker only after ack()", async () => {
+  async function verifySlashAck(command: string) {
     vi.mocked(slackClient.loadSlackConfig).mockReturnValue({
       botToken: "xoxb-test",
       appToken: "xapp-test",
@@ -662,7 +662,15 @@ describe("Slack Server Integration", () => {
     });
 
     const events: string[] = [];
-    const launchPhaseShip = vi.fn(async () => {
+    let finishPriorWorker!: () => void;
+    const priorWorker = new Promise<void>((resolve) => {
+      finishPriorWorker = resolve;
+    });
+    const launchPhaseShip = vi.fn(async ({ phaseId }: { phaseId: string }) => {
+      if (phaseId === "phase-01") {
+        await priorWorker;
+        return { exitCode: 0, stderr: "" };
+      }
       events.push("worker_launched");
       return { exitCode: 0, stderr: "" };
     });
@@ -689,9 +697,22 @@ describe("Slack Server Integration", () => {
         heartbeatIntervalMs: null,
       },
     );
-    onTestFinished(() => queue.close());
+    onTestFinished(() => {
+      finishPriorWorker();
+      return queue.close();
+    });
     await queue.recoverOnStartup();
     await new Promise((resolve) => setTimeout(resolve, 10));
+
+    if (command === "ship") {
+      queue.accept({
+        projectId: alpha.projectId,
+        featureId,
+        phaseId: "phase-01",
+      });
+      await vi.waitFor(() => expect(launchPhaseShip).toHaveBeenCalledOnce());
+      launchPhaseShip.mockClear();
+    }
 
     await startSlackApp({
       ...mockDeps,
@@ -710,6 +731,8 @@ describe("Slack Server Integration", () => {
           featureId,
           phaseId: "phase-02",
         }) !== null;
+      finishPriorWorker();
+      await new Promise<void>((resolve) => setImmediate(resolve));
       workerLaunchedBeforeAck = launchPhaseShip.mock.calls.length > 0;
       events.push("ack");
     });
@@ -717,7 +740,7 @@ describe("Slack Server Integration", () => {
     await handler({
       command: {
         command: "/gwrk",
-        text: `dispatch ${featureId} 2`,
+        text: `${command} ${featureId} 2`,
         channel_id: SYNTHETIC_CHANNEL_ALPHA,
         user_id: SYNTHETIC_USER_MAINTAINER,
         team_id: SYNTHETIC_WORKSPACE_ID,
@@ -734,5 +757,10 @@ describe("Slack Server Integration", () => {
       expect(launchPhaseShip).toHaveBeenCalledOnce();
     });
     expect(events).toEqual(["ack", "worker_launched"]);
-  });
+  }
+
+  it.each(["dispatch", "ship"])(
+    "persists /gwrk %s receipt before ack() and launches worker only after ack()",
+    verifySlashAck,
+  );
 });

@@ -129,8 +129,15 @@ export async function startSlackApp(deps: {
       let response: Awaited<ReturnType<typeof handleSlashCommand>>;
       if (persistBeforeAck) {
         // Authorize via 048 and persist DispatchReceipt before acknowledging Slack.
-        response = await handleSlashCommand(command.text, eventContext);
+        let releaseDispatch: (() => void) | undefined;
+        response = await handleSlashCommand(command.text, {
+          ...eventContext,
+          deferDispatchDrain: (release) => {
+            releaseDispatch = release;
+          },
+        });
         await ack();
+        releaseDispatch?.();
       } else {
         await ack();
         response = await handleSlashCommand(command.text, eventContext);

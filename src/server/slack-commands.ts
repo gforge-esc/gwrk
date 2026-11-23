@@ -25,7 +25,7 @@ import {
 } from "../domain/slack-routing.js";
 import type { VcsProjectPort } from "../ports/vcs-port.js";
 import { resolveProjectId } from "../utils/project-id.js";
-import type { DispatchQueue } from "./dispatch.js";
+import type { DeferDispatchDrain, DispatchQueue } from "./dispatch.js";
 import type { GitManager } from "./git-manager.js";
 import type { SystemMonitor } from "./monitor.js";
 import { launchDetachedGwrk } from "./slack-launch.js";
@@ -44,6 +44,7 @@ export interface CommandContext {
   verifiedCheckoutRoot?: string;
   buildServerUrl: string;
   queue: DispatchQueue;
+  deferDispatchDrain?: DeferDispatchDrain;
   queueProjectId?: string;
   monitor: SystemMonitor;
   git: GitManager;
@@ -324,12 +325,15 @@ const handlers: Record<string, SlashCommandHandler> = {
 
     const receipt =
       typeof context.queue.accept === "function"
-        ? context.queue.accept({
-            projectId: context.projectId,
-            featureId: resolved,
-            phaseId,
-            recipient: context.recipient,
-          })
+        ? context.queue.accept(
+            {
+              projectId: context.projectId,
+              featureId: resolved,
+              phaseId,
+              recipient: context.recipient,
+            },
+            { deferDrain: context.deferDispatchDrain },
+          )
         : null;
 
     if (receipt) {
@@ -678,12 +682,15 @@ const handlers: Record<string, SlashCommandHandler> = {
 
     const receipt =
       typeof context.queue.accept === "function"
-        ? context.queue.accept({
-            projectId: context.projectId,
-            featureId: resolved,
-            phaseId,
-            recipient: context.recipient,
-          })
+        ? context.queue.accept(
+            {
+              projectId: context.projectId,
+              featureId: resolved,
+              phaseId,
+              recipient: context.recipient,
+            },
+            { deferDrain: context.deferDispatchDrain },
+          )
         : null;
 
     if (receipt) {

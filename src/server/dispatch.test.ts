@@ -2071,6 +2071,47 @@ describe("DispatchQueue (durable SQLite backing, recovery & outbox notifications
     }
   });
 
+  it("keeps scheduled work accepted when the queue closes before the next turn", async () => {
+    const { realRoot, db, projectId, store, config, monitor, sandbox } =
+      setupDurableEnv();
+    const worker: WorkerExecutionPort = {
+      launchPhaseShip: vi.fn().mockResolvedValue({ exitCode: 0, stderr: "" }),
+      inspectRecoveredWork: vi.fn(),
+      cleanupStaleSandbox: vi.fn(),
+    };
+    const queue = new DispatchQueue(
+      config,
+      monitor,
+      sandbox,
+      realRoot,
+      { db, projectId },
+      undefined,
+      undefined,
+      { worker, heartbeatIntervalMs: null },
+    );
+    try {
+      await queue.recoverOnStartup();
+      await new Promise<void>((resolve) => setImmediate(resolve));
+      const request = {
+        projectId,
+        featureId: "049-close-before-launch",
+        phaseId: "phase-01",
+      };
+      const receipt = queue.accept(request);
+      await queue.close();
+      await new Promise<void>((resolve) => setImmediate(resolve));
+      expect(worker.launchPhaseShip).not.toHaveBeenCalled();
+      expect(store.getDispatchOperation(request)).toMatchObject({
+        operationId: receipt?.operationId,
+        status: "accepted",
+        attemptCount: 0,
+      });
+    } finally {
+      await queue.close();
+      db.close();
+    }
+  });
+
   it("FR-001 does not spin-loop when SQLite has an accepted dispatch that drainReady cannot run", async () => {
     vi.clearAllMocks();
     const {
