@@ -50,7 +50,8 @@ Raw logs remain under `.runs/durable-composed-ingress-nov23/` in this checkout.
 
 | Check | Result | Target |
 |---|---|---|
-| Combined focused checks | Pass, 283 tests; expected RED, 3 tests | Only the three review failures |
+| Combined focused checks | Pass, 283 tests | Existing assertions |
+| Preserved review regressions | RED, 3 tests | Only the three review failures |
 | Real server integration and HTTP ingress | Pass, 52 tests | Zero failures |
 | Build | Pass | Zero type errors |
 | Lint | Pass | Zero findings |
