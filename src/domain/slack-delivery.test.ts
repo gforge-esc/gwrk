@@ -9,8 +9,10 @@ import type {
   SlackFeatureThread,
 } from "./project-registry.js";
 import {
+  isSharedSlackChannel,
   partitionAwayBatch,
   resolveAwayQueueTarget,
+  resolveProjectSlackRecipient,
   resolveSlackDeliveryRoute,
   validateSlackDeliveryContext,
 } from "./slack-delivery.js";
@@ -462,5 +464,98 @@ describe("partitionAwayBatch", () => {
     expect(partitions).toHaveLength(1);
     expect(partitions[0].threadTs).toBe("1700000000.000555");
     expect(partitions[0].recipient?.threadTs).toBe("1700000000.000555");
+  });
+});
+
+describe("resolveProjectSlackRecipient", () => {
+  const sharedAlpha: EnrolledProject = {
+    ...alphaProject,
+    slack: {
+      workspaceId: "W1",
+      channelId: "C-shared",
+      opsChannelId: "C-ops",
+      sharedChannel: true,
+    },
+  };
+  const coBoundBeta: EnrolledProject = {
+    ...alphaProject,
+    projectId: "proj-beta",
+    slug: "beta",
+    name: "Beta",
+    slack: {
+      workspaceId: "W1",
+      channelId: "C-alpha",
+      sharedChannel: false,
+    },
+  };
+
+  it("detects shared channels from sharedChannel flag or multiple co-bound projects", () => {
+    expect(isSharedSlackChannel(alphaProject, [alphaProject])).toBe(false);
+    expect(isSharedSlackChannel(sharedAlpha, [sharedAlpha])).toBe(true);
+    expect(
+      isSharedSlackChannel(alphaProject, [alphaProject, coBoundBeta]),
+    ).toBe(true);
+  });
+
+  it("translates non-Slack recipients into project Slack destinations using valid stored threads", () => {
+    const result = resolveProjectSlackRecipient({
+      project: alphaProject,
+      enrolledProjects: [alphaProject],
+      storedThread: validThread,
+      recipient: { projectId: "proj-alpha", surface: "http" },
+    });
+    expect(result).toEqual({
+      ok: true,
+      validStoredThread: validThread,
+      recipient: {
+        projectId: "proj-alpha",
+        surface: "slack",
+        workspaceId: "W1",
+        channelId: "C-alpha",
+        threadTs: "1700000000.000100",
+      },
+    });
+  });
+
+  it("rejects workspace, channel, wrong bound root, and unverified shared-channel thread hints", () => {
+    expect(
+      resolveProjectSlackRecipient({
+        project: alphaProject,
+        enrolledProjects: [alphaProject],
+        recipient: { ...alphaRecipient, workspaceId: "W-other" },
+      }),
+    ).toMatchObject({ ok: false, reason: "WORKSPACE_MISMATCH" });
+
+    expect(
+      resolveProjectSlackRecipient({
+        project: alphaProject,
+        enrolledProjects: [alphaProject],
+        recipient: { ...alphaRecipient, channelId: "C-other" },
+      }),
+    ).toMatchObject({ ok: false, reason: "CHANNEL_MISMATCH" });
+
+    expect(
+      resolveProjectSlackRecipient({
+        project: alphaProject,
+        enrolledProjects: [alphaProject],
+        storedThread: validThread,
+        recipient: { ...alphaRecipient, threadTs: "1700000000.999999" },
+      }),
+    ).toMatchObject({ ok: false, reason: "THREAD_MISMATCH" });
+
+    expect(
+      resolveProjectSlackRecipient({
+        project: sharedAlpha,
+        enrolledProjects: [sharedAlpha],
+        storedThread: null,
+        recipient: {
+          projectId: "proj-alpha",
+          surface: "slack",
+          workspaceId: "W1",
+          channelId: "C-shared",
+          threadTs: "1700000000.888888",
+        },
+      }),
+    ).toMatchObject({ ok: false, reason: "THREAD_MISMATCH" });
   });
 });

@@ -1,0 +1,265 @@
+diff --git a/src/server/dispatch.test.ts b/src/server/dispatch.test.ts
+index 2986d1d5..8c82ba2e 100644
+--- a/src/server/dispatch.test.ts
++++ b/src/server/dispatch.test.ts
+@@ -1099,4 +1099,141 @@ describe("DispatchQueue (durable SQLite backing, recovery & outbox notifications
+       db.close();
+     }
+   });
++
++  it("FR-001 returns DispatchReceipt from accept() before launching worker execution on a recovered queue", async () => {
++    vi.clearAllMocks();
++    const { realRoot, db, projectId, store, config, monitor, sandbox } =
++      setupDurableEnv();
++    let queue: DispatchQueue | undefined;
++    try {
++      const events: string[] = [];
++      const launchPhaseShip = vi.fn(async () => {
++        events.push("worker_launched");
++        return { exitCode: 0, stderr: "" };
++      });
++      const worker: WorkerExecutionPort = {
++        inspectRecoveredWork: vi.fn(),
++        launchPhaseShip,
++        cleanupStaleSandbox: vi.fn(),
++      };
++
++      queue = new DispatchQueue(
++        config,
++        monitor,
++        sandbox,
++        realRoot,
++        { db, projectId },
++        undefined,
++        undefined,
++        { worker, heartbeatIntervalMs: null },
++      );
++
++      // Steady-state daemon: startup recovery and initial empty drain have completed.
++      await queue.recoverOnStartup();
++      await new Promise((resolve) => setTimeout(resolve, 10));
++
++      const receipt = queue.accept(
++        {
++          projectId,
++          featureId: "049-post-ack-launch",
++          phaseId: "phase-01",
++        },
++        { defaultRecipientSurface: "http" },
++      );
++      events.push("accept_returned");
++
++      expect(receipt).not.toBeNull();
++      expect(events).toEqual(["accept_returned"]);
++      expect(launchPhaseShip).not.toHaveBeenCalled();
++
++      await vi.waitFor(() => {
++        expect(
++          store.getDispatchOperation({
++            projectId,
++            featureId: "049-post-ack-launch",
++            phaseId: "phase-01",
++          })?.status,
++        ).toBe("completed");
++      });
++      expect(launchPhaseShip).toHaveBeenCalledOnce();
++    } finally {
++      await queue?.close();
++      db.close();
++    }
++  });
++
++  it("FR-001 does not spin-loop when SQLite has an accepted dispatch that drainReady cannot run", async () => {
++    vi.clearAllMocks();
++    const { realRoot, db, projectId, registry, store, config, monitor, sandbox } =
++      setupDurableEnv();
++    let queue: DispatchQueue | undefined;
++    try {
++      store.acceptDispatch({
++        projectId,
++        featureId: "049-unrunnable",
++        phaseId: "phase-01",
++        backend: "agy",
++        trunkBranch: "develop",
++        recipient: { projectId, surface: "http" },
++        newOperationId: "op-unrunnable",
++        nowIso: "2026-11-23T12:00:00.000Z",
++      });
++
++      const unrunnableRegistry = {
++        ...registry,
++        getProject: (id: string) => {
++          const project = registry.getProject(id);
++          return project
++            ? { ...project, localRoot: null, mirrorPath: null }
++            : null;
++        },
++      };
++
++      let listCalls = 0;
++      const instrumentedStore = {
++        ...store,
++        listRecoverableDispatches: (
++          input: Parameters<typeof store.listRecoverableDispatches>[0],
++        ) => {
++          listCalls++;
++          // Safety breaker so a livelock fails the assertion instead of hanging the test runner
++          if (listCalls >= 15) {
++            queue?.pause();
++          }
++          return store.listRecoverableDispatches(input);
++        },
++      };
++
++      const worker: WorkerExecutionPort = {
++        inspectRecoveredWork: vi.fn(),
++        launchPhaseShip: vi.fn().mockResolvedValue({ exitCode: 0, stderr: "" }),
++        cleanupStaleSandbox: vi.fn(),
++      };
++
++      queue = new DispatchQueue(
++        config,
++        monitor,
++        sandbox,
++        realRoot,
++        { db, projectId },
++        undefined,
++        undefined,
++        {
++          store: instrumentedStore,
++          registry: unrunnableRegistry,
++          worker,
++          heartbeatIntervalMs: null,
++        },
++      );
++
++      await queue.recoverOnStartup();
++      await new Promise((resolve) => setTimeout(resolve, 20));
++
++      expect(listCalls).toBeLessThanOrEqual(4);
++      expect(worker.launchPhaseShip).not.toHaveBeenCalled();
++    } finally {
++      await queue?.close();
++      db.close();
++    }
++  });
+ });
+diff --git a/src/server/slack.test.ts b/src/server/slack.test.ts
+index 7e90aa04..78ec0a6a 100644
+--- a/src/server/slack.test.ts
++++ b/src/server/slack.test.ts
+@@ -622,4 +622,114 @@ describe("Slack Server Integration", () => {
+     expect(registerSlackHomeHandler).not.toHaveBeenCalled();
+     expect(boltApp?.start).not.toHaveBeenCalled();
+   });
++
++  it("persists /gwrk dispatch receipt before ack() and launches worker only after ack()", async () => {
++    vi.mocked(slackClient.loadSlackConfig).mockReturnValue({
++      botToken: "xoxb-test",
++      appToken: "xapp-test",
++    });
++    const featureId = SYNTHETIC_THREAD_ALPHA.featureId;
++    const root = mkdtempSync(join(tmpdir(), "gwrk-slack-preack-"));
++    onTestFinished(() => rmSync(root, { recursive: true, force: true }));
++    const alpha = initCheckout(SYNTHETIC_PROJECT_ALPHA, join(root, "alpha"), featureId);
++    const { openDatabase } = await vi.importActual<typeof import("../db/index.js")>(
++      "../db/index.js",
++    );
++    const sqlite = await vi.importActual<typeof import("../adapters/sqlite/index.js")>(
++      "../adapters/sqlite/index.js",
++    );
++    const { DispatchQueue } = await vi.importActual<typeof import("./dispatch.js")>(
++      "./dispatch.js",
++    );
++    const { GwrkConfigSchema } = await vi.importActual<typeof import("../utils/config.js")>(
++      "../utils/config.js",
++    );
++    const db = openDatabase({ dbPath: join(root, "gwrk.db") });
++    onTestFinished(() => db.close());
++    const registry = sqlite.createSqliteProjectRegistryAdapter({ db });
++    const store = sqlite.createSqliteOperationsStoreAdapter({ db });
++    registry.enrollProject({ ...alpha, legacyProjectIds: [] });
++    for (const role of rolesFor(alpha)) {
++      if (role.projectId === alpha.projectId) registry.setRoleBinding(role);
++    }
++    registry.bindFeatureThread({
++      ...SYNTHETIC_THREAD_ALPHA,
++      featureId,
++      projectId: alpha.projectId,
++    });
++
++    const events: string[] = [];
++    const launchPhaseShip = vi.fn(async () => {
++      events.push("worker_launched");
++      return { exitCode: 0, stderr: "" };
++    });
++    const config = GwrkConfigSchema.parse({
++      project: { name: "alpha" },
++      agents: { implement: "agy" },
++    });
++    const queue = new DispatchQueue(
++      config,
++      { isThrottled: () => false } as unknown as SystemMonitor,
++      mockDeps.sandbox,
++      alpha.localRoot,
++      { db, projectId: alpha.projectId },
++      undefined,
++      undefined,
++      {
++        store,
++        registry,
++        worker: {
++          inspectRecoveredWork: vi.fn(),
++          launchPhaseShip,
++          cleanupStaleSandbox: vi.fn(),
++        },
++        heartbeatIntervalMs: null,
++      },
++    );
++    onTestFinished(() => queue.close());
++    await queue.recoverOnStartup();
++    await new Promise((resolve) => setTimeout(resolve, 10));
++
++    await startSlackApp({
++      ...mockDeps,
++      queue,
++      projectRoot: alpha.localRoot,
++      config,
++      registry,
++    });
++    const handler = vi.mocked(getSlackApp()!.command).mock.calls[0][1];
++    let persistedBeforeAck = false;
++    let workerLaunchedBeforeAck = false;
++    const ack = vi.fn(async () => {
++      persistedBeforeAck =
++        store.getDispatchOperation({
++          projectId: alpha.projectId,
++          featureId,
++          phaseId: "phase-02",
++        }) !== null;
++      workerLaunchedBeforeAck = launchPhaseShip.mock.calls.length > 0;
++      events.push("ack");
++    });
++    const respond = vi.fn();
++    await handler({
++      command: {
++        command: "/gwrk",
++        text: `dispatch ${featureId} 2`,
++        channel_id: SYNTHETIC_CHANNEL_ALPHA,
++        user_id: SYNTHETIC_USER_MAINTAINER,
++        team_id: SYNTHETIC_WORKSPACE_ID,
++      },
++      ack,
++      respond,
++      client: { chat: { postEphemeral: vi.fn() } },
++    } as Parameters<typeof handler>[0]);
++
++    expect(ack).toHaveBeenCalledOnce();
++    expect(persistedBeforeAck).toBe(true);
++    expect(workerLaunchedBeforeAck).toBe(false);
++    await vi.waitFor(() => {
++      expect(launchPhaseShip).toHaveBeenCalledOnce();
++    });
++    expect(events).toEqual(["ack", "worker_launched"]);
++  });
+ });

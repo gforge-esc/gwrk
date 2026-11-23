@@ -117,7 +117,7 @@ describe("Phase 5: Visualization & Monitoring", () => {
   describe("PlanHeartbeat", () => {
     it("should detect stale phases and update health", async () => {
       const mockConfig = {
-        project: { name: "test", slack: { channelId: "C123" } },
+        project: { name: "test", slack: { opsChannelId: "C123" } },
       } as any;
       const mockSlack = {
         client: {

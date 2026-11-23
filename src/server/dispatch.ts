@@ -33,6 +33,7 @@ import type {
   DeliveryRecipient,
   EnrolledProject,
 } from "../domain/project-registry.js";
+import { resolveProjectSlackRecipient } from "../domain/slack-delivery.js";
 import { ShipOrchestrator } from "../engine/ship-orchestrator.js";
 import type { NotificationPort } from "../ports/notification-port.js";
 import type {
@@ -43,16 +44,17 @@ import type {
 } from "../ports/operations-port.js";
 import type { ProjectRegistryPort } from "../ports/store-port.js";
 import type { AgentBackendId, GwrkConfig } from "../utils/config.js";
-import { MessageBuilder } from "./slack-messages.js";
-import { notifySlack } from "./slack-notify.js";
-
+import { resolveProjectId } from "../utils/project-id.js";
 import { pillarBackend } from "../utils/resolve-agent.js";
 import type { SystemMonitor } from "./monitor.js";
 import { persistDispatch } from "./persistence.js";
 import { SandboxManager } from "./sandbox.js";
+import { MessageBuilder } from "./slack-messages.js";
+import { notifySlack } from "./slack-notify.js";
 import type {
   DispatchAttempt,
   DispatchRecord,
+  DispatchRequest,
   DispatchStatus,
   TaskRecord,
 } from "./types.js";
@@ -67,16 +69,7 @@ export class DispatchIntakeError extends Error {
   }
 }
 
-export interface DispatchRequest {
-  projectId?: string;
-  featureId: string;
-  phaseId: string;
-  taskId?: string;
-  taskIds?: string[]; // NEW: For multiple tasks
-  backend?: AgentBackendId;
-  parallel?: boolean; // NEW: Enable parallel dispatch
-  recipient?: DeliveryRecipient | null;
-}
+export type { DispatchRequest } from "./types.js";
 
 export interface DispatchLedgerScope {
   db: Database.Database;
@@ -116,13 +109,18 @@ function mapOperationStatus(
   }
 }
 
-function operationToRecord(op: DurableDispatchOperation): DispatchRecord {
+function operationToRecord(
+  op: DurableDispatchOperation,
+  project?: EnrolledProject,
+): DispatchRecord {
   const status = mapOperationStatus(op.status);
   return {
     id: op.operationId,
     operationId: op.operationId,
     projectId: op.projectId,
     workKey: op.workKey,
+    projectRoot: project?.mirrorPath ?? project?.localRoot ?? "",
+    trunkBranch: op.trunkBranch,
     featureId: op.featureId,
     phaseId: op.phaseId,
     backend: op.backend as AgentBackendId,
@@ -181,15 +179,9 @@ function findWorktreeForBranch(
 /**
  * DispatchQueue — the daemon's entry point into the unified ship engine.
  *
- * A dispatch is a **feature-phase**: the queue isolates it in a git worktree
- * and drives the SAME `ShipOrchestrator` the CLI (`gwrk ship`) uses, running
- * the full lifecycle (branch → implement → gates → review → PR to develop).
- * Concurrency is across feature-phases, bounded by `parallelism.local.maxClones`
- * — the queue's own active-ship gate, which replaced `DispatchOrchestrator`'s
- * bespoke per-task Semaphore fan-out (PR-8).
- *
- * The daemon does NOT merge locally: the engine opens the PR and harvest
- * finalizes post-merge from GitHub (the ship↔harvest seam, PR-3).
+ * A dispatch is a **feature-phase** scoped to an enrolled project: the queue
+ * isolates it in a git worktree branched from the project's enrolled trunk
+ * branch and drives the SAME `ShipOrchestrator` the CLI (`gwrk ship`) uses.
  */
 export class DispatchQueue {
   private queue: DispatchRecord[] = [];
@@ -210,8 +202,8 @@ export class DispatchQueue {
     string,
     DurableDispatchOperation
   >();
-  private readonly completedDurableIds = new Set<string>();
-  private readonly failedDurableIds = new Set<string>();
+  private readonly completedDurableIds = new Map<string, string | undefined>();
+  private readonly failedDurableIds = new Map<string, string | undefined>();
   private startupRecovered = false;
   private recoveryPromise: Promise<{
     requeuedCount: number;
@@ -219,6 +211,16 @@ export class DispatchQueue {
     failedCount: number;
   }> | null = null;
   private draining = false;
+  private readonly suppliedRegistry?: ProjectRegistryPort;
+
+  private get registry(): ProjectRegistryPort | undefined {
+    return (
+      this.suppliedRegistry ??
+      (this.durableRegistry?.listProjects().length
+        ? this.durableRegistry
+        : undefined)
+    );
+  }
 
   constructor(
     private config: GwrkConfig,
@@ -228,8 +230,21 @@ export class DispatchQueue {
     private ledger?: DispatchLedgerScope,
     private gitEnv?: () => NodeJS.ProcessEnv,
     private readonly approvedBackend?: AgentBackendId,
-    private readonly durableOptions?: DurableDispatchQueueOptions,
+    registryOrDurableOptions?:
+      | ProjectRegistryPort
+      | DurableDispatchQueueOptions,
+    appendedDurableOptions?: DurableDispatchQueueOptions,
   ) {
+    const registryOnly =
+      registryOrDurableOptions !== undefined &&
+      "getProject" in registryOrDurableOptions;
+    const durableOptions = registryOnly
+      ? appendedDurableOptions
+      : (registryOrDurableOptions ?? appendedDurableOptions);
+    const suppliedRegistry = registryOnly
+      ? registryOrDurableOptions
+      : durableOptions?.registry;
+    this.suppliedRegistry = suppliedRegistry;
     this.ownerId =
       durableOptions?.ownerId ??
       `daemon:${process.pid}:${crypto.randomUUID().slice(0, 8)}`;
@@ -243,13 +258,14 @@ export class DispatchQueue {
       durableOptions?.store ??
       (db ? createSqliteOperationsStoreAdapter({ db }) : undefined);
     const registry =
-      durableOptions?.registry ??
+      suppliedRegistry ??
       (db ? createSqliteProjectRegistryAdapter({ db }) : undefined);
     if (rawStore && registry) {
       const notifier =
         durableOptions?.notifier ??
         createSlackNotificationAdapter({
           projectRoot,
+          registry,
           signal: this.notificationShutdown.signal,
           transportTimeoutMs: 5_000,
         });
@@ -286,9 +302,15 @@ export class DispatchQueue {
           }
           if (result.ok) {
             if (input.operationStatus === "completed") {
-              this.completedDurableIds.add(input.fence.operationId);
+              this.completedDurableIds.set(
+                input.fence.operationId,
+                prior?.projectId,
+              );
             } else if (input.operationStatus === "failed") {
-              this.failedDurableIds.add(input.fence.operationId);
+              this.failedDurableIds.set(
+                input.fence.operationId,
+                prior?.projectId,
+              );
             }
             if (
               prior &&
@@ -626,54 +648,22 @@ export class DispatchQueue {
     recipient: DeliveryRecipient | null,
   ): DeliveryRecipient | null {
     if (!project.slack || !this.durableRegistry) return null;
-    const binding = project.slack;
-    const storedThread = this.durableRegistry.getFeatureThread(
+    const thread = this.durableRegistry.getFeatureThread(
       project.projectId,
       featureId,
     );
-    const validThread =
-      storedThread &&
-      storedThread.projectId === project.projectId &&
-      storedThread.featureId === featureId &&
-      storedThread.workspaceId === binding.workspaceId &&
-      storedThread.channelId === binding.channelId
-        ? storedThread
+    const storedThread =
+      thread?.projectId === project.projectId && thread.featureId === featureId
+        ? thread
         : null;
-
-    if (
-      recipient?.surface === "slack" &&
-      recipient.projectId === project.projectId &&
-      (recipient.workspaceId === undefined ||
-        recipient.workspaceId === binding.workspaceId) &&
-      (recipient.channelId === undefined ||
-        recipient.channelId === binding.channelId ||
-        recipient.channelId === binding.opsChannelId)
-    ) {
-      const channelId = recipient.channelId ?? binding.channelId;
-      const threadTs =
-        channelId === binding.channelId
-          ? (recipient.threadTs ?? validThread?.rootTs)
-          : recipient.threadTs;
-      return {
-        projectId: project.projectId,
-        surface: "slack",
-        workspaceId: binding.workspaceId,
-        channelId,
-        ...(threadTs ? { threadTs } : {}),
-        ...(recipient.actorUserId
-          ? { actorUserId: recipient.actorUserId }
-          : {}),
-        ...(recipient.opsOnly ? { opsOnly: recipient.opsOnly } : {}),
-      };
-    }
-
-    return {
-      projectId: project.projectId,
-      surface: "slack",
-      workspaceId: binding.workspaceId,
-      channelId: binding.channelId,
-      ...(validThread ? { threadTs: validThread.rootTs } : {}),
-    };
+    const resolved = resolveProjectSlackRecipient({
+      project,
+      enrolledProjects: this.durableRegistry.listProjects(),
+      storedThread,
+      recipient: recipient ?? undefined,
+      opsOnly: Boolean(recipient?.opsOnly),
+    });
+    return resolved.ok ? (resolved.recipient ?? null) : null;
   }
 
   private enqueueDurableOutcomeNotification(
@@ -698,7 +688,10 @@ export class DispatchQueue {
     const reviewReady = completion.operationStatus === "completed";
     const eventType = reviewReady ? "review_ready" : "phase_fail";
     const record: DispatchRecord = {
-      ...operationToRecord(operation),
+      ...operationToRecord(
+        operation,
+        this.durableRegistry?.getProject(operation.projectId) ?? undefined,
+      ),
       status: reviewReady ? "completed" : "failed",
       ...(completion.prNumber !== undefined
         ? { prNumber: completion.prNumber }
@@ -706,8 +699,19 @@ export class DispatchQueue {
       ...(completion.prUrl !== undefined ? { prUrl: completion.prUrl } : {}),
     };
     const message = reviewReady
-      ? MessageBuilder.reviewReady(record)
-      : MessageBuilder.phaseFail(record, completion.error ?? "Dispatch failed");
+      ? MessageBuilder.reviewReady({
+          ...record,
+          projectSlug: project.slug,
+          rootTs: slackDestination.threadTs,
+        })
+      : MessageBuilder.phaseFail(
+          {
+            ...record,
+            projectSlug: project.slug,
+            rootTs: slackDestination.threadTs,
+          },
+          completion.error ?? "Dispatch failed",
+        );
 
     const outboxId = this.durableOutbox.enqueueProjectNotification({
       project,
@@ -776,7 +780,7 @@ export class DispatchQueue {
   }
 
   getRegistry(): ProjectRegistryPort | undefined {
-    return this.durableRegistry;
+    return this.registry;
   }
 
   accept(
@@ -788,7 +792,7 @@ export class DispatchQueue {
   ): DispatchReceipt | null {
     if (this.closed) throw new Error("Dispatch queue is closed");
     if (!this.durableService) {
-      if (request.projectId) {
+      if (request.projectId && !this.registry) {
         throw new DispatchIntakeError(
           404,
           `Project is not enrolled: ${request.projectId}`,
@@ -796,7 +800,13 @@ export class DispatchQueue {
       }
       return null;
     }
-    const project = this.resolveEnrolledProject(request);
+    const context = this.resolveProjectContext(request);
+    const project = this.resolveEnrolledProject({
+      projectId:
+        request.projectId || request.recipient?.projectId
+          ? context.projectId
+          : undefined,
+    });
     if (!project) return null;
 
     const backend =
@@ -809,7 +819,9 @@ export class DispatchQueue {
         : undefined;
     const recipient: DeliveryRecipient | null =
       request.recipient !== undefined
-        ? request.recipient
+        ? request.recipient === null
+          ? null
+          : (context.recipient ?? request.recipient)
         : options?.defaultRecipientSurface
           ? {
               projectId: project.projectId,
@@ -908,8 +920,122 @@ export class DispatchQueue {
     return `feat/${featureId}-${phaseId}`;
   }
 
+  private resolveProjectContext(request: DispatchRequest): {
+    projectId: string;
+    projectRoot: string;
+    trunkBranch: string;
+    recipient?: DeliveryRecipient;
+  } {
+    if (this.registry) {
+      const requestedProject = request.projectId
+        ? this.registry.getProject(request.projectId)
+        : null;
+      if (request.projectId && !requestedProject) {
+        throw new DispatchIntakeError(
+          404,
+          `Project is not enrolled: ${request.projectId}`,
+        );
+      }
+
+      const recipientProject = request.recipient?.projectId
+        ? this.registry.getProject(request.recipient.projectId)
+        : null;
+      if (request.recipient?.projectId && !recipientProject) {
+        throw new DispatchIntakeError(
+          400,
+          `Recipient project is not enrolled: ${request.recipient.projectId}`,
+        );
+      }
+
+      if (
+        requestedProject &&
+        recipientProject &&
+        requestedProject.projectId !== recipientProject.projectId
+      ) {
+        throw new DispatchIntakeError(
+          400,
+          `Conflicting dispatch projectId (${requestedProject.projectId}) and recipient.projectId (${recipientProject.projectId})`,
+        );
+      }
+
+      const enrolled =
+        requestedProject ??
+        recipientProject ??
+        this.registry.findByLocalRoot(this.projectRoot) ??
+        null;
+
+      if (enrolled && request.recipient) {
+        const storedThread = !request.recipient.opsOnly
+          ? this.registry.getFeatureThread(
+              enrolled.projectId,
+              request.featureId,
+            )
+          : null;
+        const recipientCheck = resolveProjectSlackRecipient({
+          project: enrolled,
+          enrolledProjects: this.registry.listProjects(),
+          storedThread,
+          recipient: request.recipient,
+          opsOnly: Boolean(request.recipient.opsOnly),
+        });
+        if (!recipientCheck.ok) {
+          throw new DispatchIntakeError(403, recipientCheck.message);
+        }
+      }
+
+      const projectId =
+        enrolled?.projectId ??
+        this.ledger?.projectId ??
+        resolveProjectId(this.projectRoot);
+      const projectRoot =
+        enrolled?.mirrorPath ?? enrolled?.localRoot ?? this.projectRoot;
+      const trunkBranch = enrolled?.trunkBranch ?? "develop";
+      const recipient = request.recipient
+        ? { ...request.recipient, projectId }
+        : undefined;
+
+      return { projectId, projectRoot, trunkBranch, recipient };
+    }
+
+    if (
+      request.projectId &&
+      request.recipient?.projectId &&
+      request.projectId !== request.recipient.projectId
+    ) {
+      throw new DispatchIntakeError(
+        400,
+        `Conflicting dispatch projectId (${request.projectId}) and recipient.projectId (${request.recipient.projectId})`,
+      );
+    }
+
+    const projectId =
+      request.projectId ??
+      request.recipient?.projectId ??
+      this.ledger?.projectId ??
+      resolveProjectId(this.projectRoot);
+    const recipient = request.recipient
+      ? { ...request.recipient, projectId }
+      : undefined;
+
+    return {
+      projectId,
+      projectRoot: this.projectRoot,
+      trunkBranch: "develop",
+      recipient,
+    };
+  }
+
+  private matchesProject(record: DispatchRecord, projectId?: string): boolean {
+    if (!projectId) return true;
+    const resolvedId =
+      this.registry?.getProject(projectId)?.projectId ?? projectId;
+    return record.projectId === projectId || record.projectId === resolvedId;
+  }
+
   enqueue(request: DispatchRequest): DispatchRecord {
     if (this.closed) throw new Error("Dispatch queue is closed");
+    const { projectId, projectRoot, trunkBranch, recipient } =
+      this.resolveProjectContext(request);
 
     const durableReceipt = this.accept(request);
     if (durableReceipt) {
@@ -919,7 +1045,10 @@ export class DispatchQueue {
         durableReceipt.phaseId,
       );
       const record = op
-        ? operationToRecord(op)
+        ? operationToRecord(
+            op,
+            this.durableRegistry?.getProject(op.projectId) ?? undefined,
+          )
         : {
             id: durableReceipt.operationId,
             operationId: durableReceipt.operationId,
@@ -932,6 +1061,8 @@ export class DispatchQueue {
               pillarBackend(this.config, "implement", request.backend),
             status: mapOperationStatus(durableReceipt.status),
             branchName: durableReceipt.branchName,
+            projectRoot,
+            trunkBranch,
             attempts: [],
             attemptCount: durableReceipt.attemptCount,
             recipient: durableReceipt.recipient,
@@ -942,7 +1073,12 @@ export class DispatchQueue {
     }
 
     // Idempotency guard: prevent double-dispatch for same feature+phase
-    const existing = this.getDispatch(request.featureId, request.phaseId);
+    const existing = this.getDispatch(
+      request.featureId,
+      request.phaseId,
+      undefined,
+      projectId,
+    );
     if (
       existing &&
       (existing.status === "queued" || this.active.includes(existing))
@@ -974,17 +1110,21 @@ export class DispatchQueue {
 
     const record: DispatchRecord = {
       id: crypto.randomUUID(),
+      projectId,
       featureId: request.featureId,
       phaseId: request.phaseId,
       backend,
       status: "queued",
       branchName: this.shipBranch(request.featureId, request.phaseId),
+      projectRoot,
+      trunkBranch,
+      ...(recipient ? { recipient } : {}),
       attempts: [],
       tasks,
       createdAt: new Date().toISOString(),
     };
 
-    persistDispatch(record, this.projectRoot);
+    persistDispatch(record, record.projectRoot);
     this.queue.push(record);
     this.processNext();
     return record;
@@ -996,7 +1136,6 @@ export class DispatchQueue {
     }
 
     if (this.monitor.isThrottled()) {
-      // Potentially log or wait
       return;
     }
 
@@ -1078,38 +1217,32 @@ export class DispatchQueue {
     let stderr: string;
 
     try {
-      persistDispatch(record, this.projectRoot);
+      persistDispatch(record, record.projectRoot);
       attempt.runId = startRun(
         {
           feature_id: record.featureId,
           phase_id: record.phaseId,
+          project_id: record.projectId,
           command: `gwrk ship ${record.featureId} ${record.phaseId}`,
           agent_backend: record.backend,
           workflow: "work-until-done",
-          project_id: this.ledger?.projectId,
         },
         this.ledger?.db,
       );
-
-      // Isolate the feature-phase in a git worktree and drive the SAME unified
-      // ShipOrchestrator the CLI uses. The orchestrator owns branch setup,
-      // implement, build/test gates, review and the PR (→ develop). The daemon
-      // only supplies the isolated worktree and records the outcome; there is
-      // NO local merge-back — harvest finalizes post-merge from GitHub.
       const worktreeDir = await this.sandbox.createSandbox({
         featureId: record.featureId,
         phaseId: record.phaseId,
         taskId: "ship",
         backend: record.backend,
-        projectRoot: this.projectRoot,
-        baseBranch: "develop",
+        projectRoot: record.projectRoot,
+        baseBranch: record.trunkBranch,
         branchName: shipBranch,
         setup: this.config.worktree?.setup,
       });
       record.workDir = worktreeDir;
       record.branchName = shipBranch;
       try {
-        persistDispatch(record, this.projectRoot);
+        persistDispatch(record, record.projectRoot);
       } catch (error) {
         this.errors.push(error);
         throw error;
@@ -1123,15 +1256,12 @@ export class DispatchQueue {
         ciTimeout: 30,
         cwd: worktreeDir,
         gitEnv: this.gitEnv?.(),
-        // Crash-recovery state lives in the primary checkout so it survives
-        // worktree teardown; ship on the per-feature-phase branch.
-        stateRoot: this.projectRoot,
+        stateRoot: record.projectRoot,
         branchName: shipBranch,
       });
 
       exitCode = await orchestrator.run();
 
-      // Surface PR metadata for the review-ready notification.
       const result = orchestrator.getResult();
       if (result.prNumber) record.prNumber = result.prNumber;
       if (result.prUrl) record.prUrl = result.prUrl;
@@ -1162,7 +1292,6 @@ export class DispatchQueue {
     record.status = exitCode === 0 ? "completed" : "failed";
     record.completedAt = attempt.completedAt;
 
-    // Reflect the ship outcome on any task records (status dashboards read them).
     for (const task of record.tasks) {
       if (task.status === "running" || task.status === "pending") {
         task.status = exitCode === 0 ? "completed" : "failed";
@@ -1204,7 +1333,7 @@ export class DispatchQueue {
       this.active = this.active.filter((r) => r.id !== record.id);
       this.history.push(record);
       try {
-        persistDispatch(record, this.projectRoot);
+        persistDispatch(record, record.projectRoot);
       } catch (error) {
         this.errors.push(error);
         logCliError("Failed to journal dispatch outcome:", error);
@@ -1213,27 +1342,108 @@ export class DispatchQueue {
       }
     }
     try {
-      const reviewReady = exitCode === 0;
-      const message = reviewReady
-        ? MessageBuilder.reviewReady(record)
-        : MessageBuilder.phaseFail(record, stderr);
-      await notifySlack(
-        message,
-        {
-          type: reviewReady ? "review_ready" : "phase_fail",
-          feature: record.featureId,
-          phase: record.phaseId,
-          payload: (reviewReady
-            ? record
-            : { ...record, stderr }) as unknown as Record<string, unknown>,
-          timestamp: new Date().toISOString(),
-        },
-        {
-          projectRoot: this.projectRoot,
-          signal: this.notificationShutdown.signal,
-          transportTimeoutMs: 5_000,
-        },
-      );
+      const enrolled = record.projectId
+        ? (this.registry?.getProject(record.projectId) ?? null)
+        : null;
+      const isOps = Boolean(record.recipient?.opsOnly);
+      let slackRecipient: DeliveryRecipient | undefined;
+      let cardRootTs: string | undefined;
+
+      if (enrolled) {
+        const storedThread = !isOps
+          ? (this.registry?.getFeatureThread(
+              enrolled.projectId,
+              record.featureId,
+            ) ?? null)
+          : null;
+        const enrolledProjects = this.registry?.listProjects();
+        const resolved = resolveProjectSlackRecipient({
+          project: enrolled,
+          enrolledProjects,
+          storedThread,
+          recipient: record.recipient ?? undefined,
+          opsOnly: isOps,
+        });
+        if (resolved.ok) {
+          slackRecipient = resolved.recipient;
+          cardRootTs =
+            resolved.recipient?.threadTs ?? resolved.validStoredThread?.rootTs;
+        } else {
+          const fallback = resolveProjectSlackRecipient({
+            project: enrolled,
+            enrolledProjects,
+            storedThread,
+            opsOnly: isOps,
+          });
+          if (fallback.ok) {
+            slackRecipient = fallback.recipient;
+            cardRootTs =
+              fallback.recipient?.threadTs ??
+              fallback.validStoredThread?.rootTs;
+          }
+        }
+      } else if (record.recipient?.surface === "slack") {
+        slackRecipient = record.recipient;
+        cardRootTs = isOps ? undefined : record.recipient.threadTs;
+      }
+
+      const cardRecord = {
+        ...record,
+        ...(enrolled?.slug ? { projectSlug: enrolled.slug } : {}),
+        ...(cardRootTs ? { rootTs: cardRootTs } : {}),
+      };
+
+      const notificationProjectId =
+        this.registry || record.recipient ? record.projectId : undefined;
+      const notifyOptions = {
+        projectRoot: record.projectRoot,
+        signal: this.notificationShutdown.signal,
+        transportTimeoutMs: 5_000,
+        projectId: notificationProjectId,
+        recipient: slackRecipient,
+        featureId: record.featureId,
+        registry: this.registry,
+        ...(slackRecipient?.opsOnly ? { opsOnly: true } : {}),
+      };
+
+      if (exitCode === 0) {
+        record.status = "completed";
+        record.completedAt = attempt.completedAt;
+
+        await notifySlack(
+          MessageBuilder.reviewReady(cardRecord),
+          {
+            type: "review_ready",
+            feature: record.featureId,
+            phase: record.phaseId,
+            projectId: notificationProjectId,
+            recipient: slackRecipient,
+            ...(slackRecipient?.opsOnly ? { opsOnly: true } : {}),
+            payload: record as unknown as Record<string, unknown>,
+            timestamp: new Date().toISOString(),
+          },
+          notifyOptions,
+        );
+      } else {
+        record.status = "failed";
+        await notifySlack(
+          MessageBuilder.phaseFail(cardRecord, stderr),
+          {
+            type: "phase_fail",
+            feature: record.featureId,
+            phase: record.phaseId,
+            projectId: notificationProjectId,
+            recipient: slackRecipient,
+            ...(slackRecipient?.opsOnly ? { opsOnly: true } : {}),
+            payload: { ...record, stderr } as unknown as Record<
+              string,
+              unknown
+            >,
+            timestamp: new Date().toISOString(),
+          },
+          notifyOptions,
+        );
+      }
     } catch (error) {
       logCliError("Failed to notify dispatch outcome:", error);
     }
@@ -1248,17 +1458,29 @@ export class DispatchQueue {
           op.status === "accepted" &&
           !this.activeDurableOps.has(op.operationId),
       )
-      .map(operationToRecord);
+      .map((op) =>
+        operationToRecord(
+          op,
+          this.durableRegistry?.getProject(op.projectId) ?? undefined,
+        ),
+      );
   }
 
-  getQueue() {
-    const durableActive = [...this.activeDurableOps.values()].map(
-      operationToRecord,
+  getQueue(projectId?: string) {
+    const durableActive = [...this.activeDurableOps.values()].map((op) =>
+      operationToRecord(
+        op,
+        this.durableRegistry?.getProject(op.projectId) ?? undefined,
+      ),
     );
     const durableQueued = this.listDurableQueuedRecords();
     return {
-      active: [...this.active, ...durableActive],
-      queued: [...this.queue, ...durableQueued],
+      active: [...this.active, ...durableActive].filter((record) =>
+        this.matchesProject(record, projectId),
+      ),
+      queued: [...this.queue, ...durableQueued].filter((record) =>
+        this.matchesProject(record, projectId),
+      ),
       throttled: this.monitor.isThrottled(),
       paused: this.paused,
     };
@@ -1275,25 +1497,30 @@ export class DispatchQueue {
         (r) =>
           r.featureId === featureId &&
           r.phaseId === phaseId &&
-          (!taskId || r.tasks.some((t) => t.id === taskId)),
+          (!taskId || r.tasks.some((t) => t.id === taskId)) &&
+          this.matchesProject(r, projectId),
       ) ||
       this.queue.find(
         (r) =>
           r.featureId === featureId &&
           r.phaseId === phaseId &&
-          (!taskId || r.tasks.some((t) => t.id === taskId)),
+          (!taskId || r.tasks.some((t) => t.id === taskId)) &&
+          this.matchesProject(r, projectId),
       ) ||
       this.history.find(
         (r) =>
           r.featureId === featureId &&
           r.phaseId === phaseId &&
-          (!taskId || r.tasks.some((t) => t.id === taskId)),
+          (!taskId || r.tasks.some((t) => t.id === taskId)) &&
+          this.matchesProject(r, projectId),
       );
     if (legacy) return legacy;
 
     if (this.durableService && this.durableRegistry) {
       const resolvedProjectId =
-        projectId ??
+        (projectId
+          ? (this.durableRegistry.getProject(projectId)?.projectId ?? projectId)
+          : undefined) ??
         this.durableRegistry.findByLocalRoot(this.projectRoot)?.projectId ??
         this.ledger?.projectId;
       if (resolvedProjectId) {
@@ -1303,32 +1530,49 @@ export class DispatchQueue {
           phaseId,
         );
         if (op && (!taskId || op.taskIds.includes(taskId))) {
-          return operationToRecord(op);
+          return operationToRecord(
+            op,
+            this.durableRegistry?.getProject(op.projectId) ?? undefined,
+          );
         }
       }
     }
     return null;
   }
 
-  getQueueDepth(): number {
-    return this.queue.length + this.listDurableQueuedRecords().length;
+  getQueueDepth(projectId?: string): number {
+    return this.getQueue(projectId).queued.length;
   }
 
-  getActiveCount(): number {
-    return this.active.length + this.activeDurableOps.size;
+  getActiveCount(projectId?: string): number {
+    return this.getQueue(projectId).active.length;
   }
 
-  getCompletedCount(): number {
+  getCompletedCount(projectId?: string): number {
+    const durable = [...this.completedDurableIds.values()].filter(
+      (completedProjectId) =>
+        !projectId ||
+        completedProjectId ===
+          (this.registry?.getProject(projectId)?.projectId ?? projectId),
+    );
     return (
-      this.history.filter((r) => r.status === "completed").length +
-      this.completedDurableIds.size
+      this.history.filter(
+        (r) => r.status === "completed" && this.matchesProject(r, projectId),
+      ).length + durable.length
     );
   }
 
-  getFailedCount(): number {
+  getFailedCount(projectId?: string): number {
+    const durable = [...this.failedDurableIds.values()].filter(
+      (completedProjectId) =>
+        !projectId ||
+        completedProjectId ===
+          (this.registry?.getProject(projectId)?.projectId ?? projectId),
+    );
     return (
-      this.history.filter((r) => r.status === "failed").length +
-      this.failedDurableIds.size
+      this.history.filter(
+        (r) => r.status === "failed" && this.matchesProject(r, projectId),
+      ).length + durable.length
     );
   }
 }

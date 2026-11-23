@@ -10,6 +10,16 @@ import {
 } from "./test-runner.js";
 
 describe("parseTestOutput — structured {testsRun, passed, failed}", () => {
+  it("uses the terminal summary after a passing sample printed by a fixture", () => {
+    const output = "stdout | fixture\nTests 16 passed (16)\nTests 3 failed | 20 passed (23)";
+    expect(parseTestOutput(output)).toEqual({ testsRun: 23, passed: 20, failed: 3 });
+  });
+
+  it("ignores a failing sample before the real successful summary", () => {
+    const output = "stdout | fixture\nTests 3 failed (3)\nTests 20 passed (20)";
+    expect(parseTestOutput(output)).toEqual({ testsRun: 20, passed: 20, failed: 0 });
+  });
+
   it("parses a vitest summary and ignores the 'Test Files' line", () => {
     const out = [
       " Test Files  1 failed | 3 passed (4)",
@@ -40,6 +50,15 @@ describe("parseTestOutput — structured {testsRun, passed, failed}", () => {
       passed: 3,
       failed: 1,
     });
+  });
+
+  it.each([
+    ["3 passed in 0.42s", { testsRun: 3, passed: 3, failed: 0 }],
+    ["===== 1 failed in 0.42s =====", { testsRun: 1, passed: 0, failed: 1 }],
+    ["2 failed, 8 passed in 0.42s", { testsRun: 10, passed: 8, failed: 2 }],
+  ])("parses completed pytest output %s", (output, counts) => {
+    expect(parseTestOutput(output)).toEqual(counts);
+    expect(hasRecognizedTestSummary(output)).toBe(true);
   });
 
   it("parses node --test TAP summary", () => {

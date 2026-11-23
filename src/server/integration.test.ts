@@ -479,7 +479,10 @@ setInterval(() => {}, 1000);
         .prepare("UPDATE plan_phases SET updated_at = ?")
         .run("2000-01-01T00:00:00Z");
       const config = GwrkConfigSchema.parse({
-        project: { name: "fixture", slack: { channelId: "C1" } },
+        project: {
+          name: "fixture",
+          slack: { channelId: "C1", opsChannelId: "C1-OPS" },
+        },
         server: { host: "127.0.0.1", port: 0 },
       });
       await startServer(config, {

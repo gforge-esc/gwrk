@@ -303,8 +303,7 @@ pnpm exec vitest run src/server/slack-notify.test.ts src/server/slack-presence.t
 #### Done When
 
 ```bash
-pnpm build
-pnpm exec vitest run src/server/dispatch.test.ts src/server/routes/notify.test.ts src/server/routes/health.test.ts src/server/routes/status.test.ts src/server/github.test.ts src/architecture.test.ts
+bash specs/048-project-identity-slack/gates/phase-05.sh
 ```
 
 ### Phase 6: Enrollment CLI and isolation proof
@@ -341,8 +340,7 @@ pnpm exec vitest run src/server/dispatch.test.ts src/server/routes/notify.test.t
 #### Done When
 
 ```bash
-pnpm build
-pnpm exec vitest run src/commands/project.test.ts src/commands/status.test.ts src/commands/init.test.ts src/commands/server.test.ts src/server/routes/dispatch.test.ts src/server/two-repo-isolation.test.ts src/architecture.test.ts
+bash specs/048-project-identity-slack/gates/phase-06.sh
 ```
 
 ## Coverage matrix

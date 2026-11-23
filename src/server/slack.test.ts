@@ -622,4 +622,117 @@ describe("Slack Server Integration", () => {
     expect(registerSlackHomeHandler).not.toHaveBeenCalled();
     expect(boltApp?.start).not.toHaveBeenCalled();
   });
+
+  it("persists /gwrk dispatch receipt before ack() and launches worker only after ack()", async () => {
+    vi.mocked(slackClient.loadSlackConfig).mockReturnValue({
+      botToken: "xoxb-test",
+      appToken: "xapp-test",
+    });
+    const featureId = SYNTHETIC_THREAD_ALPHA.featureId;
+    const root = mkdtempSync(join(tmpdir(), "gwrk-slack-preack-"));
+    onTestFinished(() => rmSync(root, { recursive: true, force: true }));
+    const alpha = initCheckout(
+      SYNTHETIC_PROJECT_ALPHA,
+      join(root, "alpha"),
+      featureId,
+    );
+    const { openDatabase } =
+      await vi.importActual<typeof import("../db/index.js")>("../db/index.js");
+    const sqlite = await vi.importActual<
+      typeof import("../adapters/sqlite/index.js")
+    >("../adapters/sqlite/index.js");
+    const { DispatchQueue } =
+      await vi.importActual<typeof import("./dispatch.js")>("./dispatch.js");
+    const { GwrkConfigSchema } =
+      await vi.importActual<typeof import("../utils/config.js")>(
+        "../utils/config.js",
+      );
+    const db = openDatabase({ dbPath: join(root, "gwrk.db") });
+    onTestFinished(() => db.close());
+    const registry = sqlite.createSqliteProjectRegistryAdapter({ db });
+    const store = sqlite.createSqliteOperationsStoreAdapter({ db });
+    registry.enrollProject({ ...alpha, legacyProjectIds: [] });
+    for (const role of rolesFor(alpha)) {
+      if (role.projectId === alpha.projectId) registry.setRoleBinding(role);
+    }
+    registry.bindFeatureThread({
+      ...SYNTHETIC_THREAD_ALPHA,
+      featureId,
+      projectId: alpha.projectId,
+    });
+
+    const events: string[] = [];
+    const launchPhaseShip = vi.fn(async () => {
+      events.push("worker_launched");
+      return { exitCode: 0, stderr: "" };
+    });
+    const config = GwrkConfigSchema.parse({
+      project: { name: "alpha" },
+      agents: { implement: "agy" },
+    });
+    const queue = new DispatchQueue(
+      config,
+      { isThrottled: () => false } as unknown as SystemMonitor,
+      mockDeps.sandbox,
+      alpha.localRoot,
+      { db, projectId: alpha.projectId },
+      undefined,
+      undefined,
+      {
+        store,
+        registry,
+        worker: {
+          inspectRecoveredWork: vi.fn(),
+          launchPhaseShip,
+          cleanupStaleSandbox: vi.fn(),
+        },
+        heartbeatIntervalMs: null,
+      },
+    );
+    onTestFinished(() => queue.close());
+    await queue.recoverOnStartup();
+    await new Promise((resolve) => setTimeout(resolve, 10));
+
+    await startSlackApp({
+      ...mockDeps,
+      queue,
+      projectRoot: alpha.localRoot,
+      config,
+      registry,
+    });
+    const handler = vi.mocked(getSlackApp()!.command).mock.calls[0][1];
+    let persistedBeforeAck = false;
+    let workerLaunchedBeforeAck = false;
+    const ack = vi.fn(async () => {
+      persistedBeforeAck =
+        store.getDispatchOperation({
+          projectId: alpha.projectId,
+          featureId,
+          phaseId: "phase-02",
+        }) !== null;
+      workerLaunchedBeforeAck = launchPhaseShip.mock.calls.length > 0;
+      events.push("ack");
+    });
+    const respond = vi.fn();
+    await handler({
+      command: {
+        command: "/gwrk",
+        text: `dispatch ${featureId} 2`,
+        channel_id: SYNTHETIC_CHANNEL_ALPHA,
+        user_id: SYNTHETIC_USER_MAINTAINER,
+        team_id: SYNTHETIC_WORKSPACE_ID,
+      },
+      ack,
+      respond,
+      client: { chat: { postEphemeral: vi.fn() } },
+    } as Parameters<typeof handler>[0]);
+
+    expect(ack).toHaveBeenCalledOnce();
+    expect(persistedBeforeAck).toBe(true);
+    expect(workerLaunchedBeforeAck).toBe(false);
+    await vi.waitFor(() => {
+      expect(launchPhaseShip).toHaveBeenCalledOnce();
+    });
+    expect(events).toEqual(["ack", "worker_launched"]);
+  });
 });

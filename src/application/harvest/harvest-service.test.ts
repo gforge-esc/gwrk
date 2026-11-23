@@ -1398,6 +1398,46 @@ describe("DurableHarvestService", () => {
     expect(harness.notify).toHaveBeenCalledTimes(1);
   });
 
+  it("passes a scoped harvest record recipient through the durable compatibility entry point", async () => {
+    const harness = createHarness();
+    const recipient = {
+      projectId: alphaProject.projectId,
+      surface: "slack" as const,
+      workspaceId: "W1",
+      channelId: "C1",
+      actorUserId: "U_RECORD_RECIPIENT",
+    };
+    await harvestFeature(
+      alphaProject.localRoot!,
+      {
+        projectId: alphaProject.projectId,
+        recipient,
+        featureId: "049-durable",
+        phaseId: "phase-01",
+        prNumber: 42,
+        prUrl: "https://github.com/acme/alpha/pull/42",
+        mergeCommitSha: MERGE_SHA,
+        mergedAt: time,
+        mergedBy: "github",
+        status: "merged",
+      },
+      {
+        durableService: harness.service,
+        project: alphaProject,
+        updateLocalTaskState: false,
+      },
+    );
+    expect(harness.notify).toHaveBeenCalledOnce();
+    expect(harness.notify).toHaveBeenCalledWith(
+      expect.objectContaining({
+        projectId: alphaProject.projectId,
+        recipient: expect.objectContaining({
+          actorUserId: "U_RECORD_RECIPIENT",
+        }),
+      }),
+    );
+  });
+
   it("FR-004 harvestFeature falls back to enrolled project default Slack recipient when options.recipient is omitted without a dispatch", async () => {
     const harness = createHarness();
     vi.mocked(harness.github.getPullRequest).mockResolvedValueOnce(

@@ -13,6 +13,8 @@ import type {
   HarvestStageStatus,
 } from "../domain/durable-harvest.js";
 import type { DeliveryRecipient } from "../domain/project-registry.js";
+import type { CompressionReport, PulseReport } from "../domain/types.js";
+import type { SlackDeliveryStatus } from "../ports/notification-port.js";
 import type { DurableOperationsStatus } from "../ports/operations-port.js";
 import type { AgentBackendId } from "../utils/config.js";
 
@@ -56,14 +58,50 @@ interface ComponentHealth {
   message?: string;
 }
 
+export interface ProjectReadinessReport {
+  projectId: string;
+  slug: string;
+  repoSlug: string | null;
+  trunkBranch: string;
+  checkoutPath: string | null;
+  checkoutReady: boolean;
+  runnerAllowed: boolean;
+  slackBound: boolean;
+  status: "ready" | "degraded" | "misconfigured";
+  reason?: string;
+}
+
 export interface HealthResponse {
   status: "ok" | "degraded";
+  daemonLiveness: "alive";
+  projectReadiness: {
+    status: "ready" | "degraded" | "unconfigured";
+    readyCount: number;
+    totalCount: number;
+    projects: ProjectReadinessReport[];
+  };
+  slackDelivery: SlackDeliveryStatus;
+  telegram: {
+    enabled: false;
+    reason: "disabled_in_pilot";
+  };
   components: {
-    server: ComponentHealth;
+    server: { status: "ok" | "degraded"; message?: string };
     git: ComponentHealth;
     network: ComponentHealth;
     slack: ComponentHealth;
   };
+}
+
+export interface DispatchRequest {
+  projectId?: string;
+  featureId: string;
+  phaseId: string;
+  taskId?: string;
+  taskIds?: string[];
+  backend?: AgentBackendId;
+  parallel?: boolean;
+  recipient?: DeliveryRecipient | null;
 }
 
 export interface DispatchAttempt {
@@ -98,6 +136,8 @@ export interface DispatchRecord {
   backend: AgentBackendId;
   status: DispatchStatus;
   branchName: string;
+  projectRoot: string;
+  trunkBranch: string;
   attempts: DispatchAttempt[];
   attemptCount?: number;
   deduplicated?: boolean;
@@ -107,7 +147,7 @@ export interface DispatchRecord {
   completedAt?: string;
   prUrl?: string;
   prNumber?: number;
-  workDir?: string; // Keep workDir for backward compatibility if needed, though data-model doesn't show it for phase record
+  workDir?: string;
 }
 
 export interface SystemResources {
@@ -117,6 +157,7 @@ export interface SystemResources {
 }
 
 export interface SandboxInfo {
+  projectId?: string;
   workDir: string;
   taskId: string;
   featureId: string;
@@ -127,6 +168,7 @@ export interface SandboxInfo {
 }
 
 export interface SystemStatus {
+  projectId?: string;
   server: {
     status: "running" | "stopped";
     lifecycle: ServerLifecycle;
@@ -160,6 +202,8 @@ export interface NotifyPayload {
     | "define_spec_ready"
     | "define_plan_ready"
     | "pulse";
+  projectId?: string;
+  recipient?: DeliveryRecipient;
   feature: string;
   phase?: string;
   prUrl?: string;
@@ -172,8 +216,6 @@ export interface NotifyPayload {
   specPath?: string;
   planPath?: string;
   phaseCount?: number;
-  // biome-ignore lint/suspicious/noExplicitAny: PulseReport payload
-  pulseReport?: any;
-  // biome-ignore lint/suspicious/noExplicitAny: CompressionReport payload
-  compressionReport?: any;
+  pulseReport?: PulseReport;
+  compressionReport?: CompressionReport;
 }
