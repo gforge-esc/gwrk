@@ -424,7 +424,7 @@
           "id": "T039",
           "title": "Modify dispatch.ts",
           "description": "MODIFY src/server/routes/dispatch.ts. Enforce `evaluateHttpProjectAccess` and pass `projectId` and `recipient` to `DispatchQueue`",
-          "status": "completed",
+          "status": "open",
           "gateScript": "gates/phase-06.sh",
           "sp": 1,
           "completedAt": "2026-11-23T20:36:47.867Z"
@@ -433,7 +433,7 @@
           "id": "T040",
           "title": "Modify index.ts",
           "description": "MODIFY src/server/index.ts. Wire `ProjectRegistryPort` and `ProjectRoutingService` plus `VcsPort` and multi-project watchers",
-          "status": "completed",
+          "status": "open",
           "gateScript": "gates/phase-06.sh",
           "sp": 1,
           "completedAt": "2026-11-23T20:36:54.545Z"
@@ -442,7 +442,7 @@
           "id": "T041",
           "title": "Create project-enroll.ts",
           "description": "NEW src/commands/project-enroll.ts. Implement `gwrk project enroll`, `list` and `show` with ADR-004 output",
-          "status": "completed",
+          "status": "open",
           "gateScript": "gates/phase-06.sh",
           "sp": 2,
           "completedAt": "2026-11-23T20:37:01.449Z"
@@ -451,7 +451,7 @@
           "id": "T042",
           "title": "Modify project.ts",
           "description": "MODIFY src/commands/project.ts. Register `enroll`, `list` and `show` subcommands on `gwrk project`. Tests: src/commands/project.test.ts",
-          "status": "completed",
+          "status": "open",
           "gateScript": "gates/phase-06.sh",
           "sp": 1,
           "completedAt": "2026-11-23T20:37:08.399Z"
@@ -460,7 +460,7 @@
           "id": "T043",
           "title": "Modify init.ts",
           "description": "MODIFY src/commands/init.ts. Enroll or update the local repository with legacy alias preservation",
-          "status": "completed",
+          "status": "open",
           "gateScript": "gates/phase-06.sh",
           "sp": 1,
           "completedAt": "2026-11-23T20:37:14.981Z"
@@ -469,7 +469,7 @@
           "id": "T044",
           "title": "Modify status.ts",
           "description": "MODIFY src/commands/status.ts. Surface daemon liveness and server reachability plus project readiness and Slack delivery. Tests: src/commands/status.test.ts",
-          "status": "completed",
+          "status": "open",
           "gateScript": "gates/phase-06.sh",
           "sp": 1,
           "completedAt": "2026-11-23T20:37:22.455Z"
@@ -478,7 +478,7 @@
           "id": "T045",
           "title": "Modify server.ts",
           "description": "MODIFY src/commands/server.ts. Start the server against the project registry while keeping local single-repo defaults. Tests: src/server/two-repo-isolation.test.ts",
-          "status": "completed",
+          "status": "open",
           "gateScript": "gates/phase-06.sh",
           "sp": 1,
           "completedAt": "2026-11-23T20:37:29.040Z"
