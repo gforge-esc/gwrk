@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { join } from "node:path";
+import fastify from "fastify";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   type ServerFixture,
@@ -11,10 +12,23 @@ import {
 } from "../../../tests/helpers/server-fixture.js";
 import * as gwrkPaths from "../../adapters/config/paths.js";
 import * as instanceLocks from "../../adapters/server/instance-lock.js";
+import { createSqliteProjectRegistryAdapter } from "../../adapters/sqlite/index.js";
 import { listRuns } from "../../db/runs.js";
+import { computeProjectId } from "../../domain/project-id.js";
+import type {
+  DeliveryRecipient,
+  EnrolledProject,
+  ProjectRoleBinding,
+  SlackFeatureThread,
+} from "../../domain/project-registry.js";
 import { ShipOrchestrator } from "../../engine/ship-orchestrator.js";
+import type { ProjectRegistryPort } from "../../ports/store-port.js";
+import { GwrkConfigSchema } from "../../utils/config.js";
+import type { DispatchQueue } from "../dispatch.js";
 import { HarvestWatcher } from "../harvest-watcher.js";
+import { startServer } from "../index.js";
 import { SystemMonitor } from "../monitor.js";
+import { dispatchRoutes } from "./dispatch.js";
 
 vi.mock("../slack-notify.js", () => ({
   notifySlack: vi.fn().mockResolvedValue(undefined),
@@ -120,27 +134,128 @@ describe("dispatch routes", () => {
       vi.spyOn(instanceLocks, "acquireInstanceLock").mockReturnValue(lock);
       vi.spyOn(instanceLocks, "acquireLedgerLock").mockReturnValue(lock);
       try {
-        fixture = await createServerFixture("listen");
-        const response = await fixture.app.inject({
-          method: "POST",
-          url: "/api/dispatch",
-          payload: { featureId: "feat-1", phaseId: "phase-1", ...request },
-        });
-        expect(response.statusCode).toBe(201);
         if (hosted) {
-          expect(instanceLocks.acquireLedgerLock).toHaveBeenCalledWith(
-            fixture.db.name,
-            process.pid,
+          const registry = createSqliteProjectRegistryAdapter({
+            db: priorFixture.db,
+          });
+          const enrolledId = computeProjectId({
+            projectRoot: priorFixture.projectRoot,
+            remoteOriginUrl: null,
+            gitCommonDir: join(priorFixture.projectRoot, ".git"),
+          });
+          const nowIso = "2026-11-23T00:00:00.000Z";
+          registry.enrollProject({
+            projectId: enrolledId,
+            slug: "hosted-fixture",
+            name: "Hosted Fixture",
+            repoSlug: null,
+            trunkBranch: "develop",
+            localRoot: priorFixture.projectRoot,
+            mirrorPath: null,
+            runnerPolicy: { allowedKinds: ["local", "hosted"] },
+            slack: null,
+            legacyProjectIds: [],
+            createdAt: nowIso,
+            updatedAt: nowIso,
+          });
+          registry.setRoleBinding({
+            projectId: enrolledId,
+            principalType: "google_sub",
+            principalId: "iss:hosted-op",
+            role: "operator",
+          });
+          const config = GwrkConfigSchema.parse({
+            project: { name: "hosted-fixture" },
+            agents: { implement: "gemini" },
+            server: {
+              host: "127.0.0.1",
+              port: 0,
+              githubWebhookSecret: "fixture-secret",
+              heartbeatIntervalMs: 100,
+              networkCheckIntervalMs: 100,
+            },
+            parallelism: {
+              local: { maxCpu: 100, maxMem: 100, minDiskGb: 1, maxClones: 2 },
+            },
+          });
+          const hostedApp = await startServer(config, {
+            handleSignals: false,
+            projectRoot: priorFixture.projectRoot,
+            ledger: { db: priorFixture.db, projectId: enrolledId },
+            registry,
+            pid: { writePid: vi.fn(), removePid: vi.fn() },
+            resolvePrincipal: (req) => {
+              const sub = req.headers["x-verified-test-sub"];
+              return typeof sub === "string"
+                ? { principalType: "google_sub", principalId: sub }
+                : undefined;
+            },
+          });
+          try {
+            const unauth = await hostedApp.inject({
+              method: "POST",
+              url: "/api/dispatch",
+              payload: {
+                projectId: enrolledId,
+                featureId: "feat-1",
+                phaseId: "phase-1",
+                ...request,
+              },
+            });
+            expect(unauth.statusCode).toBe(401);
+            expect(unauth.json().code).toBe("REMOTE_AUTH_REQUIRED");
+
+            const response = await hostedApp.inject({
+              method: "POST",
+              url: "/api/dispatch",
+              headers: { "x-verified-test-sub": "iss:hosted-op" },
+              payload: {
+                projectId: enrolledId,
+                featureId: "feat-1",
+                phaseId: "phase-1",
+                ...request,
+              },
+            });
+            expect(response.statusCode).toBe(201);
+            expect(instanceLocks.acquireLedgerLock).toHaveBeenCalledWith(
+              priorFixture.db.name,
+              process.pid,
+            );
+            const record = response.json();
+            expect(record.backend).toBe(backend);
+            expect(record.tasks).toMatchObject(
+              taskIds.map((id) => ({ id, backend })),
+            );
+            const queue = await hostedApp.inject({
+              method: "GET",
+              url: `/api/dispatch/queue?projectId=${enrolledId}`,
+              headers: { "x-verified-test-sub": "iss:hosted-op" },
+            });
+            expect(queue.statusCode).toBe(200);
+            expect(queue.json()).toMatchObject({
+              active: [],
+              queued: [record],
+            });
+          } finally {
+            await hostedApp.close();
+          }
+        } else {
+          fixture = await createServerFixture("listen");
+          const response = await fixture.app.inject({
+            method: "POST",
+            url: "/api/dispatch",
+            payload: { featureId: "feat-1", phaseId: "phase-1", ...request },
+          });
+          expect(response.statusCode).toBe(201);
+          const record = response.json();
+          expect(record.backend).toBe(backend);
+          expect(record.tasks).toMatchObject(
+            taskIds.map((id) => ({ id, backend })),
           );
+          const queue = await fixture.app.inject("/api/dispatch/queue");
+          expect(queue.statusCode).toBe(200);
+          expect(queue.json()).toMatchObject({ active: [], queued: [record] });
         }
-        const record = response.json();
-        expect(record.backend).toBe(backend);
-        expect(record.tasks).toMatchObject(
-          taskIds.map((id) => ({ id, backend })),
-        );
-        const queue = await fixture.app.inject("/api/dispatch/queue");
-        expect(queue.statusCode).toBe(200);
-        expect(queue.json()).toMatchObject({ active: [], queued: [record] });
       } finally {
         await priorFixture.close();
       }
@@ -211,4 +326,324 @@ describe("dispatch routes", () => {
       expect(fixtureGit(fixture.projectRoot, "remote")).toBe("");
     },
   );
+});
+
+describe("TR-023: /api/dispatch HTTP project access enforcement", () => {
+  const alphaProject: EnrolledProject = {
+    projectId: "proj-alpha",
+    slug: "alpha",
+    name: "Alpha",
+    repoSlug: "org/alpha",
+    trunkBranch: "main",
+    localRoot: "/repos/alpha",
+    mirrorPath: "/mirrors/alpha",
+    runnerPolicy: { allowedKinds: ["local", "hosted"] },
+    slack: {
+      workspaceId: "W-ALPHA",
+      channelId: "C-ALPHA",
+      opsChannelId: "C-ALPHA-OPS",
+      sharedChannel: false,
+    },
+    legacyProjectIds: [],
+    createdAt: "2026-11-23T00:00:00.000Z",
+    updatedAt: "2026-11-23T00:00:00.000Z",
+  };
+
+  const betaLocalOnlyProject: EnrolledProject = {
+    projectId: "proj-beta",
+    slug: "beta",
+    name: "Beta",
+    repoSlug: "org/beta",
+    trunkBranch: "develop",
+    localRoot: "/repos/beta",
+    mirrorPath: null,
+    runnerPolicy: { allowedKinds: ["local"] },
+    slack: {
+      workspaceId: "W-BETA",
+      channelId: "C-BETA",
+      opsChannelId: "C-BETA-OPS",
+      sharedChannel: false,
+    },
+    legacyProjectIds: [],
+    createdAt: "2026-11-23T00:00:00.000Z",
+    updatedAt: "2026-11-23T00:00:00.000Z",
+  };
+
+  function makeRegistry(
+    projects: EnrolledProject[],
+    roles: ProjectRoleBinding[] = [],
+    threads: Record<string, SlackFeatureThread> = {},
+  ): ProjectRegistryPort {
+    return {
+      enrollProject: (p) => p,
+      getProject: (id) =>
+        projects.find((p) => p.projectId === id || p.slug === id) ?? null,
+      findByRepoSlug: (slug) =>
+        projects.find((p) => p.repoSlug === slug) ?? null,
+      findByLocalRoot: (root) =>
+        projects.find((p) => p.localRoot === root) ?? null,
+      listBySlackChannel: () => [],
+      listProjects: () => projects,
+      setRoleBinding: () => {},
+      listRoleBindings: (projectId) =>
+        roles.filter((r) => r.projectId === projectId),
+      getFeatureThread: (projectId, featureId) =>
+        threads[`${projectId}:${featureId}`] ?? null,
+      bindFeatureThread: (t) => t,
+      getActionReceipt: () => null,
+      claimActionReceipt: () => true,
+      completeActionReceipt: () => true,
+      close: () => {},
+    };
+  }
+
+  it("denies remote /api/dispatch calls without verified principal or sufficient role and permits authorized hosted and local enrolled calls", async () => {
+    const registry = makeRegistry(
+      [alphaProject, betaLocalOnlyProject],
+      [
+        {
+          projectId: "proj-alpha",
+          principalType: "google_sub",
+          principalId: "iss:viewer",
+          role: "viewer",
+        },
+        {
+          projectId: "proj-alpha",
+          principalType: "google_sub",
+          principalId: "iss:operator",
+          role: "operator",
+        },
+        {
+          projectId: "proj-beta",
+          principalType: "google_sub",
+          principalId: "iss:operator",
+          role: "operator",
+        },
+      ],
+    );
+
+    const enqueued: Array<{
+      projectId?: string;
+      featureId: string;
+      phaseId: string;
+      recipient?: DeliveryRecipient;
+    }> = [];
+    const mockQueue = {
+      enqueue: vi.fn((req) => {
+        enqueued.push(req);
+        return {
+          id: `disp-${enqueued.length}`,
+          projectId: req.projectId ?? "unknown",
+          featureId: req.featureId,
+          phaseId: req.phaseId,
+          backend: "claude",
+          status: "queued",
+          branchName: `feat/${req.featureId}-${req.phaseId}`,
+          projectRoot: "/mirrors/alpha",
+          trunkBranch: "main",
+          ...(req.recipient ? { recipient: req.recipient } : {}),
+          attempts: [],
+          tasks: [],
+          createdAt: "2026-11-23T00:00:00.000Z",
+        };
+      }),
+      getQueue: vi.fn((projectId?: string) => ({
+        active: [],
+        queued: enqueued.filter((e) => !projectId || e.projectId === projectId),
+        throttled: false,
+        paused: false,
+      })),
+      getDispatch: vi.fn(
+        (
+          featureId: string,
+          phaseId: string,
+          _taskId?: string,
+          projectId?: string,
+        ) =>
+          enqueued.find(
+            (e) =>
+              e.featureId === featureId &&
+              e.phaseId === phaseId &&
+              (!projectId || e.projectId === projectId),
+          ) ?? null,
+      ),
+    } as unknown as DispatchQueue;
+
+    const hostedServer = fastify();
+    await dispatchRoutes(hostedServer, mockQueue, {
+      registry,
+      transport: "hosted",
+      resolvePrincipal: (req) => {
+        const sub = req.headers["x-verified-test-sub"];
+        return typeof sub === "string"
+          ? { principalType: "google_sub", principalId: sub }
+          : undefined;
+      },
+    });
+
+    const localServer = fastify();
+    await dispatchRoutes(localServer, mockQueue, {
+      registry,
+      transport: "trusted_local",
+      localDefaultProjectId: "proj-beta",
+    });
+
+    try {
+      // Unauthenticated hosted call (even with spoofed headers) -> 401
+      const unauth = await hostedServer.inject({
+        method: "POST",
+        url: "/api/dispatch",
+        headers: {
+          "x-forwarded-user": "iss:operator",
+          "x-forwarded-for": "127.0.0.1",
+        },
+        payload: {
+          projectId: "proj-alpha",
+          featureId: "048-shared",
+          phaseId: "phase-06",
+        },
+      });
+      expect(unauth.statusCode).toBe(401);
+      expect(unauth.json().code).toBe("REMOTE_AUTH_REQUIRED");
+
+      // Viewer role cannot operate -> 403
+      const viewerDenied = await hostedServer.inject({
+        method: "POST",
+        url: "/api/dispatch",
+        headers: { "x-verified-test-sub": "iss:viewer" },
+        payload: {
+          projectId: "proj-alpha",
+          featureId: "048-shared",
+          phaseId: "phase-06",
+        },
+      });
+      expect(viewerDenied.statusCode).toBe(403);
+      expect(viewerDenied.json().code).toBe("INSUFFICIENT_ROLE");
+
+      // Local-only project denies hosted runner -> 403
+      const runnerDenied = await hostedServer.inject({
+        method: "POST",
+        url: "/api/dispatch",
+        headers: { "x-verified-test-sub": "iss:operator" },
+        payload: {
+          projectId: "proj-beta",
+          featureId: "048-shared",
+          phaseId: "phase-06",
+        },
+      });
+      expect(runnerDenied.statusCode).toBe(403);
+      expect(runnerDenied.json().code).toBe("RUNNER_NOT_ALLOWED");
+
+      // Cross-project recipient mismatch -> 403
+      const mismatch = await hostedServer.inject({
+        method: "POST",
+        url: "/api/dispatch",
+        headers: { "x-verified-test-sub": "iss:operator" },
+        payload: {
+          projectId: "proj-alpha",
+          featureId: "048-shared",
+          phaseId: "phase-06",
+          recipient: {
+            projectId: "proj-beta",
+            surface: "slack",
+            workspaceId: "W-BETA",
+            channelId: "C-BETA",
+          },
+        },
+      });
+      expect(mismatch.statusCode).toBe(403);
+      expect(mismatch.json().code).toBe("THREAD_PROJECT_MISMATCH");
+
+      // Authorized hosted operator succeeds and forwards canonical projectId and derived recipient
+      const okHosted = await hostedServer.inject({
+        method: "POST",
+        url: "/api/dispatch",
+        headers: { "x-verified-test-sub": "iss:operator" },
+        payload: {
+          projectId: "alpha",
+          featureId: "048-shared",
+          phaseId: "phase-06",
+        },
+      });
+      expect(okHosted.statusCode).toBe(201);
+      expect(mockQueue.enqueue).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          projectId: "proj-alpha",
+          featureId: "048-shared",
+          phaseId: "phase-06",
+          recipient: {
+            projectId: "proj-alpha",
+            surface: "http",
+          },
+        }),
+      );
+
+      // Explicit null recipient stays distinct from omitted recipient
+      const nullRecipient = await hostedServer.inject({
+        method: "POST",
+        url: "/api/dispatch",
+        headers: { "x-verified-test-sub": "iss:operator" },
+        payload: {
+          projectId: "proj-alpha",
+          featureId: "048-shared",
+          phaseId: "phase-07",
+          recipient: null,
+        },
+      });
+      expect(nullRecipient.statusCode).toBe(201);
+      expect(mockQueue.enqueue).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          projectId: "proj-alpha",
+          featureId: "048-shared",
+          phaseId: "phase-07",
+          recipient: undefined,
+        }),
+      );
+
+      // Viewer can read scoped queue and dispatch records
+      const viewerQueue = await hostedServer.inject({
+        method: "GET",
+        url: "/api/dispatch/queue?projectId=proj-alpha",
+        headers: { "x-verified-test-sub": "iss:viewer" },
+      });
+      expect(viewerQueue.statusCode).toBe(200);
+      expect(mockQueue.getQueue).toHaveBeenCalledWith("proj-alpha");
+
+      const viewerGet = await hostedServer.inject({
+        method: "GET",
+        url: "/api/dispatch/048-shared/phase-06?projectId=proj-alpha",
+        headers: { "x-verified-test-sub": "iss:viewer" },
+      });
+      expect(viewerGet.statusCode).toBe(200);
+      expect(mockQueue.getDispatch).toHaveBeenCalledWith(
+        "048-shared",
+        "phase-06",
+        undefined,
+        "proj-alpha",
+      );
+
+      // Trusted local call resolves localDefaultProjectId without remote principal
+      const localRes = await localServer.inject({
+        method: "POST",
+        url: "/api/dispatch",
+        payload: {
+          featureId: "048-shared",
+          phaseId: "phase-06",
+        },
+      });
+      expect(localRes.statusCode).toBe(201);
+      expect(mockQueue.enqueue).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          projectId: "proj-beta",
+          recipient: {
+            projectId: "proj-beta",
+            surface: "local_cli",
+          },
+        }),
+      );
+    } finally {
+      await hostedServer.close();
+      await localServer.close();
+    }
+  });
 });

@@ -4,6 +4,11 @@
 
 import { Command } from "commander";
 import { createProjectDiscoverCommand } from "./project-discover.js";
+import {
+  createProjectEnrollCommand,
+  createProjectListCommand,
+  createProjectShowCommand,
+} from "./project-enroll.js";
 import { createProjectInfoCommand } from "./project-info.js";
 import {
   createProjectGatesCommand,
@@ -20,6 +25,9 @@ export const createProjectCommand = () =>
     .addCommand(createProjectInfoCommand())
     .addCommand(createProjectDiscoverCommand())
     .addCommand(createProjectSpecsCommand())
-    .addCommand(createProjectGatesCommand());
+    .addCommand(createProjectGatesCommand())
+    .addCommand(createProjectEnrollCommand())
+    .addCommand(createProjectListCommand())
+    .addCommand(createProjectShowCommand());
 
 export const projectCommand = createProjectCommand();
