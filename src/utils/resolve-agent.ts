@@ -282,25 +282,29 @@ export function resolveAgent(
     overrides.qualifiedFallbacks ??
     pin?.fallbackRoutes.flatMap((fallback) => {
       if (!RUNNER_PROFILE_RE.test(fallback.evaluationId)) return [];
-      const bundle = readJsonSafely<unknown>(
-        path.join(
-          projectRoot,
-          ".runs",
-          "models",
-          "evaluations",
-          fallback.evaluationId,
-          "bundle.json",
-        ),
-      );
-      const record = parseStoredFallbackQualification(
-        bundle,
-        fallback,
-        role,
-        scope,
-        snapshot,
-        currentSuiteHashes,
-      );
-      return record ? [record] : [];
+      try {
+        const bundle = readJsonSafely<unknown>(
+          path.join(
+            projectRoot,
+            ".runs",
+            "models",
+            "evaluations",
+            fallback.evaluationId,
+            "bundle.json",
+          ),
+        );
+        const record = parseStoredFallbackQualification(
+          bundle,
+          fallback,
+          role,
+          scope,
+          snapshot,
+          currentSuiteHashes,
+        );
+        return record ? [record] : [];
+      } catch {
+        return [];
+      }
     });
   if (
     pin?.routeMode === "pinned" &&

@@ -319,36 +319,14 @@ export class WorkflowRuntime {
     }
   }
 
-  /**
-   * Executes a workflow by resolving its prompt, invoking an agent,
-   * parsing the JSON intent output, and executing those intents.
-   */
-  async executeWorkflow(
+  async renderWorkflowPrompt(
     name: string,
     input: string,
-    options: WorkflowOptions & { nativeOnly: true },
-  ): Promise<WorkflowResult & { taskResult: TaskResult }>;
-  async executeWorkflow(
-    name: string,
-    input: string,
-    options?: WorkflowOptions,
-  ): Promise<WorkflowResult>;
-  async executeWorkflow(
-    name: string,
-    input: string,
-    options: WorkflowOptions = {},
-  ): Promise<WorkflowResult> {
-    const projectRoot = options.projectRoot || process.cwd();
-
-    if (options.nativeOnly && options.reportOnly) {
-      throw new Error(
-        "Native execution and report-only execution are mutually exclusive.",
-      );
-    }
-    if (options.recordedResult && !options.reportOnly) {
-      throw new Error("Recorded output requires report-only execution.");
-    }
-    const dispatcher = options.dispatcher ?? dispatchToAgent;
+    options: Pick<
+      WorkflowOptions,
+      "projectRoot" | "profile" | "nativeOnly" | "allowMissingPrompt"
+    >,
+  ) {
     const loader = options.projectRoot
       ? new PluginLoader({ projectDir: options.projectRoot })
       : this.loader;
@@ -390,7 +368,9 @@ export class WorkflowRuntime {
       throw new Error(`Workflow '${name}' has no prompt directory.`);
     }
 
-    const profile = options.profile ?? (await detectProfile(projectRoot));
+    const profile =
+      options.profile ??
+      (await detectProfile(options.projectRoot || process.cwd()));
     const conditionedPrompt =
       name === "gwrk-specify" ||
       name === "gwrk-plan" ||
@@ -404,6 +384,49 @@ export class WorkflowRuntime {
     const template = options.nativeOnly
       ? conditionedPrompt
       : `${conditionedPrompt}\n\n<output_contract>\nYour output MUST be a single JSON object matching this schema:\n${JSON.stringify(outputSchema, null, 2)}\n</output_contract>`;
+
+    return {
+      template,
+      userInput,
+      stdin: [template, userInput].filter(Boolean).join("\n\n"),
+      profile,
+      manifest,
+    };
+  }
+
+  /**
+   * Executes a workflow by resolving its prompt, invoking an agent,
+   * parsing the JSON intent output, and executing those intents.
+   */
+  async executeWorkflow(
+    name: string,
+    input: string,
+    options: WorkflowOptions & { nativeOnly: true },
+  ): Promise<WorkflowResult & { taskResult: TaskResult }>;
+  async executeWorkflow(
+    name: string,
+    input: string,
+    options?: WorkflowOptions,
+  ): Promise<WorkflowResult>;
+  async executeWorkflow(
+    name: string,
+    input: string,
+    options: WorkflowOptions = {},
+  ): Promise<WorkflowResult> {
+    const projectRoot = options.projectRoot || process.cwd();
+
+    if (options.nativeOnly && options.reportOnly) {
+      throw new Error(
+        "Native execution and report-only execution are mutually exclusive.",
+      );
+    }
+    if (options.recordedResult && !options.reportOnly) {
+      throw new Error("Recorded output requires report-only execution.");
+    }
+    const dispatcher = options.dispatcher ?? dispatchToAgent;
+    const { template, userInput, stdin, profile, manifest } =
+      await this.renderWorkflowPrompt(name, input, options);
+    const outputSchema = manifest?.outputSchema;
 
     const definitionTask = [
       "gwrk-ontology-construct",
@@ -439,7 +462,7 @@ export class WorkflowRuntime {
       routeMode === "provider-default" ? undefined : selectedModel;
     const task: TaskDispatch = {
       type: options.taskType ?? "workflow",
-      stdin: [template, userInput].filter(Boolean).join("\n\n"),
+      stdin,
       promptParts: { template, userInput },
       profile,
       agent: route?.backend ?? options.agent,

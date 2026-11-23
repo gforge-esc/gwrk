@@ -665,15 +665,15 @@ export class FixtureRunner
               inputs.push(stageInput(fixture, stage, true));
             }
             for (const input of inputs) {
-              await runtime.executeWorkflow(stage, input, {
-                nativeOnly: true,
-                projectRoot,
-                quiet: true,
-                dispatcher: async ({ stdin }) => {
-                  rendered.get(stage)?.push(stdin ?? "");
-                  return { exitCode: 0, stdout: "", stderr: "", durationS: 0 };
+              const { stdin } = await runtime.renderWorkflowPrompt(
+                stage,
+                input,
+                {
+                  nativeOnly: true,
+                  projectRoot,
                 },
-              });
+              );
+              rendered.get(stage)?.push(stdin);
             }
           }
         } finally {
@@ -686,15 +686,25 @@ export class FixtureRunner
         profile,
         { workspaceDir, policyDirs },
       );
-      const roleHashes = stages.map((stage) => {
+      const roleHashes: string[] = [];
+      for (const stage of stages) {
+        const { template } = await runtime.renderWorkflowPrompt(stage, "", {
+          projectRoot: projectDir,
+          profile,
+        });
         const hash = createHash("sha256")
           .update(
-            JSON.stringify([rendered.get(stage), governance, enforcement]),
+            JSON.stringify([
+              template,
+              rendered.get(stage),
+              governance,
+              enforcement,
+            ]),
           )
           .digest("hex");
         workflowPromptHashes[stage] = hash;
-        return hash;
-      });
+        roleHashes.push(hash);
+      }
       workflowPromptHashes[role] =
         roleHashes.length === 1
           ? roleHashes[0]
