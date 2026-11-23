@@ -89,19 +89,20 @@ export async function reconcileGates(
       }
 
       // Record evidence to SQLite (survives tasks.json regeneration)
-      recordGateResult(
-        {
-          feature_id: featureId,
-          phase_id: phase.id,
-          task_id: task.id,
-          gate_script: task.gateScript,
-          passed: gateResult.passed ? 1 : 0,
-          exit_code: gateResult.exitCode,
-          output: gateResult.output.slice(0, 2000), // Truncate for storage
-        },
-        projectId,
-        options.db,
-      );
+      const gateEvidence = {
+        feature_id: featureId,
+        phase_id: phase.id,
+        task_id: task.id,
+        gate_script: task.gateScript,
+        passed: gateResult.passed ? 1 : 0,
+        exit_code: gateResult.exitCode,
+        output: gateResult.output.slice(0, 2000), // Truncate for storage
+      };
+      if (options.db) {
+        recordGateResult(gateEvidence, projectId, options.db);
+      } else {
+        recordGateResult(gateEvidence, projectId);
+      }
 
       if (gateResult.passed) {
         passed++;

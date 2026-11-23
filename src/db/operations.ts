@@ -631,6 +631,7 @@ export function createOperationsStore(
       leaseOwner: string;
       nowIso: string;
       leaseExpiresAt: string;
+      expectedLeaseEpoch?: number;
     }): { fence: LeaseFence; operation: DurableDispatchOperation } | null {
       const transaction = db.transaction(
         (): {
@@ -644,6 +645,14 @@ export function createOperationsStore(
             .get(input.operationId);
           if (!row) return null;
           const op = rowToDispatchOperation(row);
+
+          if (
+            input.expectedLeaseEpoch !== undefined &&
+            (op.status === "accepted" ||
+              op.leaseEpoch !== input.expectedLeaseEpoch)
+          ) {
+            return null;
+          }
 
           if (
             (op.status !== "accepted" &&

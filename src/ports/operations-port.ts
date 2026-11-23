@@ -143,6 +143,12 @@ export interface HarvestExecutionPort {
     summaryText: string;
     blocks?: unknown[];
   }>;
+  markLocalPhaseTasksCompleted?(input: {
+    projectRoot: string;
+    featureId: string;
+    phaseId: string;
+    completedAt: string;
+  }): Promise<void> | void;
 }
 
 interface OperationLeaseRequest {
@@ -268,7 +274,9 @@ export interface DurableOperationsStatus {
 export interface OperationsStorePort {
   /** Select or insert active work in one transaction. */
   acceptDispatch(input: DispatchAcceptanceRequest): DispatchReceipt;
-  claimDispatchLease(input: OperationLeaseRequest): {
+  claimDispatchLease(
+    input: OperationLeaseRequest & { expectedLeaseEpoch?: number },
+  ): {
     fence: LeaseFence;
     operation: DurableDispatchOperation;
   } | null;
