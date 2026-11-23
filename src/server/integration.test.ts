@@ -21,6 +21,9 @@ import {
   createServerFixture,
   fixtureGit,
 } from "../../tests/helpers/server-fixture.js";
+import { resolveProjectId } from "../adapters/git/project-id.js";
+import { createGitHubHarvestAdapter } from "../adapters/github/index.js";
+import { createSqliteProjectRegistryAdapter } from "../adapters/sqlite/index.js";
 import { getCompressionRecord } from "../db/compression.js";
 import { getGateResults } from "../db/gates.js";
 import { getDb } from "../db/index.js";
@@ -404,6 +407,117 @@ setInterval(() => {}, 1000);
           rmSync(bin, { recursive: true, force: true });
         }
       }
+    }
+  }, 10_000);
+
+  it("keeps inherited repository selectors out of the actual durable GitHub port", async () => {
+    const fixture = await createServerFixture("routes", {
+      routes: ["dispatch"],
+    });
+    const bin = join(fixture.projectRoot, ".git", "durable-gh-bin");
+    const marker = join(bin, "observed.json");
+    mkdirSync(bin);
+    writeFileSync(
+      join(bin, "gh"),
+      `#!${process.execPath}
+require("node:fs").writeFileSync(${JSON.stringify(marker)}, JSON.stringify({cwd:process.cwd(), GIT_DIR:process.env.GIT_DIR, GIT_WORK_TREE:process.env.GIT_WORK_TREE, GH_REPO:process.env.GH_REPO}));
+process.stdout.write("[]");
+`,
+      { mode: 0o755 },
+    );
+    try {
+      vi.stubEnv("PATH", `${bin}:${process.env.PATH}`);
+      vi.stubEnv("GIT_DIR", "/synthetic/external/.git");
+      vi.stubEnv("GIT_WORK_TREE", "/synthetic/external");
+      vi.stubEnv("GH_REPO", "external/repo");
+      await createGitHubHarvestAdapter().listTerminalPullRequests({
+        cwd: fixture.projectRoot,
+        repoSlug: "synthetic/fixture",
+        baseBranch: "develop",
+      });
+      const observed = JSON.parse(readFileSync(marker, "utf8"));
+      expect(observed.cwd).toBe(fixture.projectRoot);
+      expect.soft(observed.GIT_DIR).toBeUndefined();
+      expect.soft(observed.GIT_WORK_TREE).toBeUndefined();
+      expect.soft(observed.GH_REPO).toBeUndefined();
+      expect(getDb).not.toHaveBeenCalled();
+    } finally {
+      await fixture.close();
+    }
+  });
+
+  it("drains the actual enrolled durable GitHub poll within the existing shutdown bound", async () => {
+    const fixture = await createServerFixture("routes", {
+      routes: ["dispatch"],
+    });
+    const registry = createSqliteProjectRegistryAdapter({ db: fixture.db });
+    fixtureGit(
+      fixture.projectRoot,
+      "remote",
+      "add",
+      "origin",
+      "https://github.com/synthetic/fixture.git",
+    );
+    registry.enrollProject({
+      projectId: resolveProjectId(fixture.projectRoot),
+      slug: "durable-shutdown",
+      name: "Synthetic poll",
+      repoSlug: "synthetic/fixture",
+      trunkBranch: "develop",
+      localRoot: fixture.projectRoot,
+      mirrorPath: null,
+      runnerPolicy: { allowedKinds: ["local"] },
+      slack: null,
+      legacyProjectIds: [],
+      createdAt: "2026-11-23T00:00:00Z",
+      updatedAt: "2026-11-23T00:00:00Z",
+    });
+    const bin = join(fixture.projectRoot, ".git", "durable-stall-bin");
+    const marker = join(bin, "poll.pid");
+    mkdirSync(bin);
+    writeFileSync(
+      join(bin, "gh"),
+      `#!${process.execPath}
+process.on("SIGTERM", () => {});
+require("node:fs").writeFileSync(${JSON.stringify(marker)}, String(process.pid));
+setInterval(() => {}, 1000);
+`,
+      { mode: 0o755 },
+    );
+    vi.stubEnv("PATH", `${bin}:${process.env.PATH}`);
+    const watcher = new HarvestWatcher(
+      GwrkConfigSchema.parse({ project: { name: fixture.projectId } }),
+      null,
+      fixture.projectRoot,
+      { db: fixture.db, projectId: fixture.projectId },
+      undefined,
+      { registry, github: createGitHubHarvestAdapter() },
+    );
+    let childPid: number | undefined;
+    let stopping: Promise<void> | void;
+    try {
+      watcher.start();
+      childPid = await vi.waitFor(() => Number(readFileSync(marker, "utf8")));
+      expect(childPid).toBeGreaterThan(0);
+      const drained = vi.fn();
+      stopping = Promise.resolve(watcher.stop()).then(drained);
+      await vi.waitFor(() => expect(drained).toHaveBeenCalledOnce(), {
+        timeout: 6500,
+      });
+      await stopping;
+      expect(() => process.kill(childPid as number, 0)).toThrow(/ESRCH/);
+      childPid = undefined;
+    } finally {
+      if (childPid) {
+        try {
+          process.kill(childPid, "SIGKILL");
+        } catch (error) {
+          expect((error as NodeJS.ErrnoException).code).toBe("ESRCH");
+        }
+      }
+      await stopping;
+      await watcher.stop();
+      await fixture.close();
     }
   }, 10_000);
 
