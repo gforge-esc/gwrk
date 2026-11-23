@@ -29,6 +29,26 @@ Record the release digest and private service bind. Record one accepted operatio
 
 The pilot needs separate evidence for backup restoration and rollback. Use the [live pilot record](../../deploy/linux-runner/live-pilot-record.example.md). Keep pending fields pending until observed. Telegram remains disabled.
 
+## Hosted security acceptance
+
+Human login and API credential security are required deployment gates. David confirmed this requirement on November 23. The production authentication adapter remains pilot work. A principal role binding does not verify the caller's credential.
+
+| Boundary | Required behavior | Acceptance evidence |
+|---|---|---|
+| Human login | Verify Google sessions against the approved account allowlist | Allowed account succeeds and denied account fails |
+| API authentication | Verify scoped credentials before producing a `cli_token` principal | Missing or invalid credentials receive an API denial |
+| Project authorization | Enforce project roles after authentication | One project's credential cannot operate another project |
+| Key lifecycle | Support issuance and expiry plus revocation and rotation | Expired and revoked credentials cannot trigger effects |
+| Credential storage | Store inbound key verification material without plaintext keys | Repository and browser exports contain no API secrets |
+| Provider secrets | Keep recoverable provider credentials in protected server storage | Logs and responses reveal no credentials |
+| Network boundary | Keep the gwrk origin private behind HTTPS access controls | Direct origin probes and forged identity headers fail |
+
+Inventory every public route before exposing the service. Deny access by default. Google sign-in and callback routes need explicit handling. Provider webhooks require their own verified signatures and replay controls. API clients must receive machine-readable authentication errors rather than an interactive sign-in page.
+
+Never trust caller-supplied identity headers from the public network. Only the verified gateway or credential adapter may create an authenticated principal. Keep provider tokens distinct from credentials that authorize access to gwrk. Protect session cookies and browser mutations against cross-site request forgery.
+
+Record failed authentication and denied operations without logging secrets. Apply bounded request handling and abuse controls. Verify that anonymous requests and unauthorized project requests produce no dispatch or harvest effect. Record secret rotation and credential revocation results in the live pilot evidence. Passing the read-only sign-in proof does not complete these production API checks.
+
 ## Project rollout 052
 
 The user supplies the intended project roster. Each enrollment needs a repository and trunk. It also needs an approved runner policy and checkout location. Slack enrollment needs the workspace and channel identities. Assign project roles before dispatching work.
