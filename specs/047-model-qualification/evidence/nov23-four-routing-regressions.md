@@ -13,7 +13,7 @@ The parent includes the reviewed workflow hash repairs. It also includes the pas
 
 ## Evidence and gates
 
-All four tests are committed in `src/application/models/resolve-route.test.ts`. They are included by `gates/phase-05.sh`. The coordinator reran their names against the composed parent. All four fail before production changes. The log is `/tmp/gwrk-nov23-model5-four-routing-red.log`.
+All four tests are committed in `src/application/models/resolve-route.test.ts`. The shared gate `gates/phase-05.sh` runs them. The coordinator reran their names against the composed parent. All four fail before production changes. The log is `/tmp/gwrk-nov23-model5-four-routing-red.log`.
 
 The review report is `code-review-phase-05-3d0a8fae.md` in this directory. Preserve its test cases. Run those cases before editing production code. Add a behavioral case for each additional verified root cause before repair. Run the complete Phase 5 gate and full suite after repair. Require independent code and acceptance clearance on the resulting head. Do not treat the four known baseline failures as an allowed final result.
 
