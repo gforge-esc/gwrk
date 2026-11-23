@@ -15,7 +15,7 @@ Core features 044 through 050 prepare the interfaces for hosted pilot 051 and pr
 | Process and credentials | [Supervision contract](../../specs/050-linux-runner-deploy-packaging/contracts/supervision-and-preflight.md) | Supply the dedicated service user and unattended credentials |
 | Release and restore | [Backup and pilot record](../../specs/050-linux-runner-deploy-packaging/contracts/backup-rollback-and-pilot-record.md) | Record the installed digest and observed restore proof |
 
-An interface listed here does not imply its current phase is cleared. Use the latest [implementation checkpoint](checkpoints/2026-11-23-1514-phase-boundary.md) for review status. Final delivery must supply the final PR heads and combined verification receipt.
+An interface listed here does not imply its current phase is cleared. Use the latest [implementation checkpoint](checkpoints/2026-11-23-1558-phase-boundary.md) for review status. Final delivery must supply the final PR heads and combined verification receipt.
 
 ## Hosted pilot 051
 
@@ -28,6 +28,8 @@ Use the reviewed [Linux runner bundle](../../deploy/linux-runner/README.md). Sup
 Record the release digest and private service bind. Record one accepted operation and its project identity. Restart during unfinished work and verify recovery without another external effect. Preserve the merge commit and gate receipt for harvest. Record a delivered notification's workspace and channel. Record its thread and message timestamps. Exercise uncertain-send recovery against the same metadata key.
 
 The pilot needs separate evidence for backup restoration and rollback. Use the [live pilot record](../../deploy/linux-runner/live-pilot-record.example.md). Keep pending fields pending until observed. Telegram remains disabled.
+
+David has an existing Google CLI configuration for skills-connection. Inspect the configured account and project before setup. Preserve that configuration and use a separate gwrk configuration. Run `gcloud init` if needed. Alert David when Google-auth setup is ready. Complete available steps through the CLI or Chrome. Give a manual punch list only for steps those tools cannot complete. Verify the chosen setup's costs before cloud changes.
 
 ## Hosted security acceptance
 
