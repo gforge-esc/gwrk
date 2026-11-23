@@ -46,11 +46,14 @@ export async function dispatchRoutes(
       phase: string;
     };
     const { projectId } = (request.query ?? {}) as { projectId?: string };
-    const operation =
-      projectId && typeof queue.getOperation === "function"
-        ? queue.getOperation(projectId, feature, phase)
-        : null;
-    if (operation) {
+    if (projectId !== undefined) {
+      const operation =
+        typeof queue.getOperation === "function"
+          ? queue.getOperation(projectId, feature, phase)
+          : null;
+      if (!operation) {
+        return reply.status(404).send({ error: "Not found" });
+      }
       return operation;
     }
     const record = queue.getDispatch(feature, phase);

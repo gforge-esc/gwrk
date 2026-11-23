@@ -20,6 +20,7 @@ import {
   SYNTHETIC_USER_MAINTAINER,
   SYNTHETIC_WORKSPACE_ID,
 } from "../../tests/helpers/synthetic-slack.js";
+import { repositoryGitEnv } from "../adapters/git/process-env.js";
 import { resolveProjectId } from "../adapters/git/project-id.js";
 import {
   createSqliteOperationsStoreAdapter,
@@ -31,6 +32,7 @@ import { GwrkConfigSchema } from "../utils/config.js";
 import { DispatchQueue } from "./dispatch.js";
 import { GitManager } from "./git-manager.js";
 import { HarvestWatcher } from "./harvest-watcher.js";
+import { ScopedSandboxManager } from "./index.js";
 import { SystemMonitor } from "./monitor.js";
 import { SandboxManager } from "./sandbox.js";
 import { registerSlackActions } from "./slack-actions.js";
@@ -124,6 +126,13 @@ describe("durable HTTP ingress", () => {
     expect(replay.statusCode).toBe(200);
     expect(replay.json().operationId).toBe(operation?.operationId);
     expect(replay.json().deduplicated).toBe(true);
+
+    // Project-scoped GET must return 404 for another project rather than leaking the default project's record
+    const crossProjectLookup = await fixture.app.inject({
+      method: "GET",
+      url: `/api/dispatch/${payload.featureId}/${payload.phaseId}?projectId=unrelated-project`,
+    });
+    expect(crossProjectLookup.statusCode).toBe(404);
   });
 
   it("rejects unknown explicit projectId and cross-project recipient without persisting", async () => {
@@ -695,6 +704,211 @@ describe("durable HTTP ingress", () => {
           sinceIso: "2026-11-23T12:25:00.000Z",
         }),
       );
+    } finally {
+      db.close();
+    }
+  });
+
+  it("HarvestWatcher flushes pending durable outbox items for enrolled projects without repoSlug instead of falling back to legacy polling", async () => {
+    const tempRoot = mkdtempSync(join(tmpdir(), "gwrk-durable-local-watcher-"));
+    tempDirs.push(tempRoot);
+    const localRoot = initTestRepo(join(tempRoot, "local-only"));
+    const db = openDatabase({ dbPath: join(tempRoot, "gwrk.db") });
+    try {
+      const localId = resolveProjectId(localRoot);
+      const registry = createSqliteProjectRegistryAdapter({ db });
+      const store = createSqliteOperationsStoreAdapter({ db });
+      registry.enrollProject({
+        projectId: localId,
+        slug: "local-only",
+        name: "Local Only",
+        repoSlug: null,
+        trunkBranch: "develop",
+        localRoot,
+        mirrorPath: null,
+        runnerPolicy: { allowedKinds: ["local"] },
+        slack: {
+          workspaceId: "T_LOCAL",
+          channelId: "C_LOCAL",
+          sharedChannel: false,
+        },
+        legacyProjectIds: [],
+        createdAt: "2026-11-23T12:00:00.000Z",
+        updatedAt: "2026-11-23T12:00:00.000Z",
+      });
+      const outboxItem = store.enqueueOutbox({
+        outboxId: "outbox-local-1",
+        projectId: localId,
+        dedupeKey: "local-dispatch-complete-1",
+        ownerKind: "dispatch",
+        ownerOperationId: "op-local-1",
+        eventType: "review_ready",
+        featureId: "049-local",
+        phaseId: "phase-01",
+        recipient: {
+          projectId: localId,
+          surface: "slack",
+          workspaceId: "T_LOCAL",
+          channelId: "C_LOCAL",
+        },
+        payload: { text: "Review ready for local project" },
+        clientMetadataKey: "meta-local-1",
+        nowIso: "2026-11-23T12:00:00.000Z",
+      });
+
+      const notify = vi.fn().mockResolvedValue({
+        delivered: true,
+        channelId: "C_LOCAL",
+        messageTs: "1731320100.000100",
+      });
+      const config = GwrkConfigSchema.parse({
+        project: { name: "local-only" },
+      });
+      const watcher = new HarvestWatcher(
+        config,
+        null,
+        localRoot,
+        { db, projectId: localId },
+        undefined,
+        { notifier: { notify } },
+      );
+
+      await watcher.runCheck();
+
+      expect(notify).toHaveBeenCalledOnce();
+      expect(store.getOutboxItem(outboxItem.outboxId)?.status).toBe(
+        "delivered",
+      );
+    } finally {
+      db.close();
+    }
+  });
+
+  it("TR-001 cleans up a stale worktree in the target project root during recovery for another enrolled project", async () => {
+    const tempRoot = mkdtempSync(join(tmpdir(), "gwrk-durable-multiproj-wt-"));
+    tempDirs.push(tempRoot);
+    const makeCommittedRepo = (name: string) => {
+      const dir = join(tempRoot, name);
+      mkdirSync(dir, { recursive: true });
+      const env = {
+        ...repositoryGitEnv(tempRoot),
+        GIT_AUTHOR_NAME: "Test",
+        GIT_AUTHOR_EMAIL: "test@example.invalid",
+        GIT_COMMITTER_NAME: "Test",
+        GIT_COMMITTER_EMAIL: "test@example.invalid",
+      };
+      execFileSync("git", ["init", "--quiet", "--initial-branch=develop"], {
+        cwd: dir,
+        env,
+        stdio: "ignore",
+      });
+      execFileSync(
+        "git",
+        ["commit", "--no-gpg-sign", "--allow-empty", "-m", "init"],
+        { cwd: dir, env, stdio: "ignore" },
+      );
+      return realpathSync(dir);
+    };
+    const alphaRoot = makeCommittedRepo("alpha");
+    const betaRoot = makeCommittedRepo("beta");
+    const db = openDatabase({ dbPath: join(tempRoot, "gwrk.db") });
+    try {
+      const alphaId = resolveProjectId(alphaRoot);
+      const betaId = resolveProjectId(betaRoot);
+      const registry = createSqliteProjectRegistryAdapter({ db });
+      const store = createSqliteOperationsStoreAdapter({ db });
+      for (const [id, slug, root] of [
+        [alphaId, "alpha", alphaRoot],
+        [betaId, "beta", betaRoot],
+      ] as const) {
+        registry.enrollProject({
+          projectId: id,
+          slug,
+          name: slug,
+          repoSlug: null,
+          trunkBranch: "develop",
+          localRoot: root,
+          mirrorPath: null,
+          runnerPolicy: { allowedKinds: ["local"] },
+          slack: null,
+          legacyProjectIds: [],
+          createdAt: "2026-11-23T10:00:00.000Z",
+          updatedAt: "2026-11-23T10:00:00.000Z",
+        });
+      }
+
+      // Seed an expired leased operation for beta with a real stale worktree in betaRoot
+      const receipt = store.acceptDispatch({
+        projectId: betaId,
+        featureId: "049-beta-stale",
+        phaseId: "phase-01",
+        backend: "agy",
+        trunkBranch: "develop",
+        recipient: { projectId: betaId, surface: "http" },
+        newOperationId: "op-beta-stale",
+        nowIso: "2026-11-23T10:00:00.000Z",
+      });
+      store.claimDispatchLease({
+        operationId: receipt.operationId,
+        leaseOwner: "crashed-daemon",
+        nowIso: "2026-11-23T10:00:01.000Z",
+        leaseExpiresAt: "2026-11-23T10:05:00.000Z",
+      });
+      const betaSandbox = new ScopedSandboxManager(betaRoot, () =>
+        repositoryGitEnv(betaRoot),
+      );
+      await betaSandbox.createSandbox({
+        featureId: "049-beta-stale",
+        phaseId: "phase-01",
+        taskId: "ship",
+        backend: "agy",
+        projectRoot: betaRoot,
+        baseBranch: "develop",
+        branchName: receipt.branchName,
+      });
+
+      const config = GwrkConfigSchema.parse({
+        project: { name: "alpha" },
+        agents: { implement: "agy" },
+      });
+      const monitor = new SystemMonitor(config);
+      const alphaGitEnv = () => repositoryGitEnv(alphaRoot);
+      const alphaSandbox = new ScopedSandboxManager(alphaRoot, alphaGitEnv);
+      const queue = new DispatchQueue(
+        config,
+        monitor,
+        alphaSandbox,
+        alphaRoot,
+        { db, projectId: alphaId },
+        alphaGitEnv,
+        undefined,
+        {
+          clock: {
+            nowIso: () => "2026-11-23T12:00:00.000Z",
+            nowMs: () => Date.parse("2026-11-23T12:00:00.000Z"),
+          },
+          heartbeatIntervalMs: null,
+        },
+      );
+      queue.pause();
+
+      const summary = await queue.recoverOnStartup();
+      await queue.close();
+
+      expect(summary.requeuedCount).toBe(1);
+      expect(
+        store.getDispatchOperation({
+          projectId: betaId,
+          featureId: "049-beta-stale",
+          phaseId: "phase-01",
+        })?.status,
+      ).toBe("accepted");
+      const betaWorktrees = execFileSync(
+        "git",
+        ["worktree", "list", "--porcelain"],
+        { cwd: betaRoot, env: repositoryGitEnv(betaRoot), encoding: "utf8" },
+      ).match(/^worktree /gm);
+      expect(betaWorktrees).toHaveLength(1);
     } finally {
       db.close();
     }

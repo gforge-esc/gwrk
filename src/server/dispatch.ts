@@ -4,8 +4,10 @@
 
 import { execFileSync } from "node:child_process";
 import * as crypto from "node:crypto";
+import { resolve } from "node:path";
 import type Database from "better-sqlite3";
 import { logCliError } from "../adapters/cli/output-scope.js";
+import { repositoryGitEnv } from "../adapters/git/process-env.js";
 import { createGitHubHarvestAdapter } from "../adapters/github/index.js";
 import { createSlackNotificationAdapter } from "../adapters/notifications/index.js";
 import {
@@ -47,7 +49,7 @@ import { notifySlack } from "./slack-notify.js";
 import { pillarBackend } from "../utils/resolve-agent.js";
 import type { SystemMonitor } from "./monitor.js";
 import { persistDispatch } from "./persistence.js";
-import type { SandboxManager } from "./sandbox.js";
+import { SandboxManager } from "./sandbox.js";
 import type {
   DispatchAttempt,
   DispatchRecord,
@@ -279,8 +281,10 @@ export class DispatchQueue {
         completeDispatchAttempt: (input) => {
           const prior = this.activeDurableOps.get(input.fence.operationId);
           const result = rawStore.completeDispatchAttempt(input);
-          if (result.ok) {
+          if (result.ok || prior?.leaseEpoch === input.fence.leaseEpoch) {
             this.activeDurableOps.delete(input.fence.operationId);
+          }
+          if (result.ok) {
             if (input.operationStatus === "completed") {
               this.completedDurableIds.add(input.fence.operationId);
             } else if (input.operationStatus === "failed") {
@@ -319,6 +323,22 @@ export class DispatchQueue {
     }
   }
 
+  private resolveProjectGitEnv(
+    targetRoot: string,
+  ): NodeJS.ProcessEnv | undefined {
+    if (resolve(targetRoot) === resolve(this.projectRoot)) {
+      return this.gitEnv?.();
+    }
+    return repositoryGitEnv(targetRoot);
+  }
+
+  private resolveProjectSandbox(targetRoot: string): SandboxManager {
+    if (resolve(targetRoot) === resolve(this.projectRoot)) {
+      return this.sandbox;
+    }
+    return new SandboxManager(targetRoot, () => repositoryGitEnv(targetRoot));
+  }
+
   private createDefaultWorkerPort(
     injectedGithub?: GitHubHarvestPort,
   ): WorkerExecutionPort {
@@ -335,7 +355,7 @@ export class DispatchQueue {
             const wt = findWorktreeForBranch(
               input.projectRoot,
               input.branchName,
-              this.gitEnv?.(),
+              this.resolveProjectGitEnv(input.projectRoot),
             );
             sandboxDir = wt.worktreeDir;
           } catch {
@@ -356,16 +376,14 @@ export class DispatchQueue {
         }
 
         try {
+          const expectedRepoSlug = input.repoSlug.toLowerCase();
           if (input.persistedPullRequest) {
             const fact = await github.getPullRequest({
               cwd: input.projectRoot,
               repoSlug: input.repoSlug,
               prNumber: input.persistedPullRequest.prNumber,
             });
-            if (
-              fact &&
-              fact.repoSlug.toLowerCase() === input.repoSlug.toLowerCase()
-            ) {
+            if (fact && fact.repoSlug.toLowerCase() === expectedRepoSlug) {
               if (fact.merged && fact.mergeCommitSha) {
                 return {
                   workerState,
@@ -409,37 +427,69 @@ export class DispatchQueue {
           const enrolledForRepo =
             this.durableRegistry?.findByRepoSlug(input.repoSlug) ??
             this.durableRegistry?.findByLocalRoot(input.projectRoot);
+          const baseBranch = enrolledForRepo?.trunkBranch ?? "develop";
           const terminalPrs = await github.listTerminalPullRequests({
             cwd: input.projectRoot,
             repoSlug: input.repoSlug,
-            baseBranch: enrolledForRepo?.trunkBranch ?? "develop",
+            baseBranch,
           });
-          const matched = terminalPrs.find(
+          const matchedMerged = terminalPrs.find(
             (pr) =>
               pr.merged &&
               pr.mergeCommitSha &&
-              pr.repoSlug.toLowerCase() === input.repoSlug?.toLowerCase() &&
+              pr.repoSlug.toLowerCase() === expectedRepoSlug &&
+              pr.headRepoSlug?.toLowerCase() === expectedRepoSlug &&
               pr.headBranch === input.branchName,
           );
-          if (matched?.mergeCommitSha) {
+          if (matchedMerged?.mergeCommitSha) {
             return {
               workerState,
               pullRequestLookup: "complete",
               openPullRequest: null,
               mergedPullRequest: {
                 operationId: input.operationId,
-                prNumber: matched.prNumber,
-                prUrl: matched.prUrl,
-                mergeCommitSha: matched.mergeCommitSha,
+                prNumber: matchedMerged.prNumber,
+                prUrl: matchedMerged.prUrl,
+                mergeCommitSha: matchedMerged.mergeCommitSha,
               },
               completedManifestRunId: null,
               sandboxDir,
             };
           }
-          // Without a persisted PR link and open-PR check, fail closed for remote repos.
+
+          const openPrs = github.listOpenPullRequests
+            ? await github.listOpenPullRequests({
+                cwd: input.projectRoot,
+                repoSlug: input.repoSlug,
+                baseBranch,
+                headBranch: input.branchName,
+              })
+            : [];
+          const matchedOpen = openPrs.find(
+            (pr) =>
+              pr.state === "OPEN" &&
+              pr.repoSlug.toLowerCase() === expectedRepoSlug &&
+              pr.headRepoSlug?.toLowerCase() === expectedRepoSlug &&
+              pr.headBranch === input.branchName,
+          );
+          if (matchedOpen) {
+            return {
+              workerState,
+              pullRequestLookup: "complete",
+              openPullRequest: {
+                operationId: input.operationId,
+                prNumber: matchedOpen.prNumber,
+                prUrl: matchedOpen.prUrl,
+              },
+              mergedPullRequest: null,
+              completedManifestRunId: null,
+              sandboxDir,
+            };
+          }
+
           return {
             workerState,
-            pullRequestLookup: "unavailable",
+            pullRequestLookup: "complete",
             openPullRequest: null,
             mergedPullRequest: null,
             completedManifestRunId: null,
@@ -478,6 +528,8 @@ export class DispatchQueue {
           this.ledger?.db,
         );
 
+        const projectSandbox = this.resolveProjectSandbox(input.projectRoot);
+        const projectGitEnv = this.resolveProjectGitEnv(input.projectRoot);
         let worktreeDir: string | undefined;
         let exitCode = 1;
         let stderr = "";
@@ -485,7 +537,7 @@ export class DispatchQueue {
         let prUrl: string | undefined;
 
         try {
-          worktreeDir = await this.sandbox.createSandbox({
+          worktreeDir = await projectSandbox.createSandbox({
             featureId: input.featureId,
             phaseId: input.phaseId,
             taskId: "ship",
@@ -503,7 +555,7 @@ export class DispatchQueue {
             maxIterations: 3,
             ciTimeout: 30,
             cwd: worktreeDir,
-            gitEnv: this.gitEnv?.(),
+            gitEnv: projectGitEnv,
             stateRoot: input.projectRoot,
             branchName: input.branchName,
           });
@@ -535,9 +587,13 @@ export class DispatchQueue {
           }
           if (worktreeDir) {
             try {
-              await this.sandbox.destroySandbox(worktreeDir, input.featureId, {
-                autoCommitPush: false,
-              });
+              await projectSandbox.destroySandbox(
+                worktreeDir,
+                input.featureId,
+                {
+                  autoCommitPush: false,
+                },
+              );
             } catch (error) {
               this.errors.push(error);
               logCliError("Failed to destroy sandbox:", error);
@@ -555,8 +611,9 @@ export class DispatchQueue {
         };
       },
 
-      cleanupStaleSandbox: async (_projectRoot, workDir, featureId) => {
-        await this.sandbox.destroySandbox(workDir, featureId, {
+      cleanupStaleSandbox: async (projectRoot, workDir, featureId) => {
+        const projectSandbox = this.resolveProjectSandbox(projectRoot);
+        await projectSandbox.destroySandbox(workDir, featureId, {
           autoCommitPush: false,
         });
       },

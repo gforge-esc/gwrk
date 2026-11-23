@@ -25,7 +25,10 @@ import { openDatabase } from "../db/index.js";
 import { finishRun } from "../db/runs.js";
 import { ShipOrchestrator } from "../engine/ship-orchestrator.js";
 import type { NotificationPort } from "../ports/notification-port.js";
-import type { WorkerExecutionPort } from "../ports/operations-port.js";
+import type {
+  GitHubHarvestPort,
+  WorkerExecutionPort,
+} from "../ports/operations-port.js";
 import type { GwrkConfig } from "../utils/config.js";
 import { DispatchQueue } from "./dispatch.js";
 import { SystemMonitor } from "./monitor.js";
@@ -696,6 +699,402 @@ describe("DispatchQueue (durable SQLite backing, recovery & outbox notifications
         phaseId: "phase-01",
       });
       expect(liveOp?.status).toBe("leased");
+    } finally {
+      db.close();
+    }
+  });
+
+  it("TR-001 default WorkerExecutionPort rejects fork merged PRs and recovers stopped GitHub-enrolled leases", async () => {
+    vi.clearAllMocks();
+    const tempRoot = mkdtempSync(
+      join(tmpdir(), "gwrk-durable-default-worker-"),
+    );
+    tempDirs.push(tempRoot);
+    const repoRoot = join(tempRoot, "repo");
+    mkdirSync(repoRoot, { recursive: true });
+    execFileSync("git", ["init", "--quiet", "--initial-branch=develop"], {
+      cwd: repoRoot,
+      stdio: "ignore",
+      timeout: 5_000,
+    });
+    execFileSync(
+      "git",
+      ["remote", "add", "origin", "https://github.com/org/alpha.git"],
+      { cwd: repoRoot, stdio: "ignore", timeout: 5_000 },
+    );
+    const realRoot = realpathSync(repoRoot);
+    const db = openDatabase({ dbPath: join(tempRoot, "gwrk.db") });
+    try {
+      const projectId = resolveProjectId(realRoot);
+      const registry = createSqliteProjectRegistryAdapter({ db });
+      const store = createSqliteOperationsStoreAdapter({ db });
+      registry.enrollProject({
+        projectId,
+        slug: "alpha",
+        name: "Alpha",
+        repoSlug: "org/alpha",
+        trunkBranch: "develop",
+        localRoot: realRoot,
+        mirrorPath: null,
+        runnerPolicy: { allowedKinds: ["local"] },
+        slack: null,
+        legacyProjectIds: [],
+        createdAt: "2026-11-23T10:00:00.000Z",
+        updatedAt: "2026-11-23T10:00:00.000Z",
+      });
+
+      const seedExpiredLease = (featureId: string, operationId: string) => {
+        const receipt = store.acceptDispatch({
+          projectId,
+          featureId,
+          phaseId: "phase-01",
+          backend: "agy",
+          trunkBranch: "develop",
+          recipient: { projectId, surface: "http" },
+          newOperationId: operationId,
+          nowIso: "2026-11-23T10:00:00.000Z",
+        });
+        store.claimDispatchLease({
+          operationId: receipt.operationId,
+          leaseOwner: "crashed-daemon",
+          nowIso: "2026-11-23T10:00:01.000Z",
+          leaseExpiresAt: "2026-11-23T10:05:00.000Z",
+        });
+        return receipt;
+      };
+
+      const forkReceipt = seedExpiredLease("049-fork-head", "op-fork-head");
+      seedExpiredLease("049-no-pr", "op-no-pr");
+
+      const github: GitHubHarvestPort = {
+        verifyWebhookSignature: () => true,
+        listTerminalPullRequests: vi.fn().mockResolvedValue([
+          {
+            repoSlug: "org/alpha",
+            headRepoSlug: "evil-fork/alpha",
+            prNumber: 777,
+            prUrl: "https://github.com/org/alpha/pull/777",
+            state: "MERGED",
+            merged: true,
+            baseBranch: "develop",
+            headBranch: forkReceipt.branchName,
+            headSha: "a".repeat(40),
+            mergeCommitSha: "b".repeat(40),
+            mergedAt: "2026-11-23T10:02:00.000Z",
+            closedAt: "2026-11-23T10:02:00.000Z",
+          },
+        ]),
+        getPullRequest: vi.fn().mockResolvedValue(null),
+      };
+
+      const config: GwrkConfig = {
+        project: { name: "alpha" },
+        agents: { define: "gemini", implement: "agy" },
+        server: {
+          port: 18790,
+          host: "127.0.0.1",
+          heartbeatIntervalMs: 1000,
+          networkCheckIntervalMs: 1000,
+        },
+        parallelism: {
+          local: { maxCpu: 80, maxMem: 80, minDiskGb: 10, maxClones: 2 },
+          cloud: { maxConcurrent: 10 },
+        },
+      };
+      const monitor = new SystemMonitor() as Mocked<SystemMonitor>;
+      monitor.isThrottled.mockReturnValue(false);
+      const sandbox = new SandboxManager(realRoot) as Mocked<SandboxManager>;
+
+      const queue = new DispatchQueue(
+        config,
+        monitor,
+        sandbox,
+        realRoot,
+        { db, projectId },
+        undefined,
+        undefined,
+        {
+          github,
+          clock: {
+            nowIso: () => "2026-11-23T12:00:00.000Z",
+            nowMs: () => Date.parse("2026-11-23T12:00:00.000Z"),
+          },
+          heartbeatIntervalMs: null,
+        },
+      );
+      queue.pause();
+
+      const summary = await queue.recoverOnStartup();
+      await queue.close();
+
+      // Foreign fork head must NEVER complete the operation
+      const forkOp = store.getDispatchOperation({
+        projectId,
+        featureId: "049-fork-head",
+        phaseId: "phase-01",
+      });
+      expect(forkOp?.status).not.toBe("completed");
+      expect(summary.completedFromPrCount).toBe(0);
+
+      // Stopped worker with no PR on GitHub must be requeued rather than wedged forever
+      const noPrOp = store.getDispatchOperation({
+        projectId,
+        featureId: "049-no-pr",
+        phaseId: "phase-01",
+      });
+      expect(noPrOp?.status).toBe("accepted");
+    } finally {
+      db.close();
+    }
+  });
+
+  it("TR-003 clears activeDurableOps when a stale worker is fenced on completion", async () => {
+    vi.clearAllMocks();
+    const { realRoot, db, projectId, store, config, monitor, sandbox } =
+      setupDurableEnv();
+    try {
+      let nowMs = Date.parse("2026-11-23T12:00:00.000Z");
+      const clock = {
+        nowIso: () => new Date(nowMs).toISOString(),
+        nowMs: () => nowMs,
+      };
+      let releaseWorker!: () => void;
+      const workerStarted = new Promise<void>((resolve) => {
+        releaseWorker = resolve;
+      });
+      let finishWorker!: (result: { exitCode: number; stderr: string }) => void;
+      const worker: WorkerExecutionPort = {
+        inspectRecoveredWork: vi.fn(),
+        launchPhaseShip: vi.fn(
+          () =>
+            new Promise<{ exitCode: number; stderr: string }>((resolve) => {
+              releaseWorker();
+              finishWorker = resolve;
+            }),
+        ),
+        cleanupStaleSandbox: vi.fn(),
+      };
+
+      const queue = new DispatchQueue(
+        config,
+        monitor,
+        sandbox,
+        realRoot,
+        { db, projectId },
+        undefined,
+        undefined,
+        {
+          worker,
+          clock,
+          leaseDurationMs: 1_000,
+          heartbeatIntervalMs: null,
+        },
+      );
+
+      const receipt = queue.accept({
+        projectId,
+        featureId: "049-fenced",
+        phaseId: "phase-01",
+      });
+      expect(receipt).not.toBeNull();
+      await workerStarted;
+      expect(queue.getActiveCount()).toBe(1);
+
+      // Advance past lease expiry and let a successor daemon claim the lease
+      nowMs += 5_000;
+      const takeover = store.claimDispatchLease({
+        operationId: receipt!.operationId,
+        leaseOwner: "successor-daemon",
+        nowIso: clock.nowIso(),
+        leaseExpiresAt: new Date(nowMs + 60_000).toISOString(),
+      });
+      expect(takeover).not.toBeNull();
+
+      // Original stale worker finishes and receives LEASE_FENCED
+      finishWorker({ exitCode: 0, stderr: "" });
+      await queue.close();
+
+      expect(queue.getActiveCount()).toBe(0);
+      expect(queue.getQueue().active).toHaveLength(0);
+    } finally {
+      db.close();
+    }
+  });
+
+  it("TR-001 default WorkerExecutionPort attributes same-repo open PRs and ignores fork open PRs when persistedPullRequest is absent", async () => {
+    vi.clearAllMocks();
+    const tempRoot = mkdtempSync(
+      join(tmpdir(), "gwrk-durable-open-pr-worker-"),
+    );
+    tempDirs.push(tempRoot);
+    const repoRoot = join(tempRoot, "repo");
+    mkdirSync(repoRoot, { recursive: true });
+    execFileSync("git", ["init", "--quiet", "--initial-branch=develop"], {
+      cwd: repoRoot,
+      stdio: "ignore",
+      timeout: 5_000,
+    });
+    execFileSync(
+      "git",
+      ["remote", "add", "origin", "https://github.com/org/alpha.git"],
+      { cwd: repoRoot, stdio: "ignore", timeout: 5_000 },
+    );
+    const realRoot = realpathSync(repoRoot);
+    const db = openDatabase({ dbPath: join(tempRoot, "gwrk.db") });
+    try {
+      const projectId = resolveProjectId(realRoot);
+      const registry = createSqliteProjectRegistryAdapter({ db });
+      const store = createSqliteOperationsStoreAdapter({ db });
+      registry.enrollProject({
+        projectId,
+        slug: "alpha",
+        name: "Alpha",
+        repoSlug: "org/alpha",
+        trunkBranch: "develop",
+        localRoot: realRoot,
+        mirrorPath: null,
+        runnerPolicy: { allowedKinds: ["local"] },
+        slack: null,
+        legacyProjectIds: [],
+        createdAt: "2026-11-23T10:00:00.000Z",
+        updatedAt: "2026-11-23T10:00:00.000Z",
+      });
+
+      const seedExpiredLease = (featureId: string, operationId: string) => {
+        const receipt = store.acceptDispatch({
+          projectId,
+          featureId,
+          phaseId: "phase-01",
+          backend: "agy",
+          trunkBranch: "develop",
+          recipient: { projectId, surface: "http" },
+          newOperationId: operationId,
+          nowIso: "2026-11-23T10:00:00.000Z",
+        });
+        store.claimDispatchLease({
+          operationId: receipt.operationId,
+          leaseOwner: "crashed-daemon",
+          nowIso: "2026-11-23T10:00:01.000Z",
+          leaseExpiresAt: "2026-11-23T10:05:00.000Z",
+        });
+        return receipt;
+      };
+
+      const ownOpenReceipt = seedExpiredLease("049-own-open", "op-own-open");
+      const forkOpenReceipt = seedExpiredLease("049-fork-open", "op-fork-open");
+
+      const listOpenPullRequests = vi.fn(
+        async ({ headBranch }: { headBranch?: string }) => {
+          if (headBranch === ownOpenReceipt.branchName) {
+            return [
+              {
+                repoSlug: "org/alpha",
+                headRepoSlug: "Org/Alpha",
+                prNumber: 801,
+                prUrl: "https://github.com/org/alpha/pull/801",
+                state: "OPEN" as const,
+                merged: false,
+                baseBranch: "develop",
+                headBranch: ownOpenReceipt.branchName,
+                headSha: "c".repeat(40),
+                mergeCommitSha: null,
+                mergedAt: null,
+                closedAt: null,
+              },
+            ];
+          }
+          if (headBranch === forkOpenReceipt.branchName) {
+            return [
+              {
+                repoSlug: "org/alpha",
+                headRepoSlug: "evil-fork/alpha",
+                prNumber: 802,
+                prUrl: "https://github.com/org/alpha/pull/802",
+                state: "OPEN" as const,
+                merged: false,
+                baseBranch: "develop",
+                headBranch: forkOpenReceipt.branchName,
+                headSha: "d".repeat(40),
+                mergeCommitSha: null,
+                mergedAt: null,
+                closedAt: null,
+              },
+            ];
+          }
+          return [];
+        },
+      );
+
+      const github: GitHubHarvestPort = {
+        verifyWebhookSignature: () => true,
+        listTerminalPullRequests: vi.fn().mockResolvedValue([]),
+        listOpenPullRequests,
+        getPullRequest: vi.fn().mockResolvedValue(null),
+      };
+
+      const config: GwrkConfig = {
+        project: { name: "alpha" },
+        agents: { define: "gemini", implement: "agy" },
+        server: {
+          port: 18790,
+          host: "127.0.0.1",
+          heartbeatIntervalMs: 1000,
+          networkCheckIntervalMs: 1000,
+        },
+        parallelism: {
+          local: { maxCpu: 80, maxMem: 80, minDiskGb: 10, maxClones: 2 },
+          cloud: { maxConcurrent: 10 },
+        },
+      };
+      const monitor = new SystemMonitor() as Mocked<SystemMonitor>;
+      monitor.isThrottled.mockReturnValue(false);
+      const sandbox = new SandboxManager(realRoot) as Mocked<SandboxManager>;
+
+      const queue = new DispatchQueue(
+        config,
+        monitor,
+        sandbox,
+        realRoot,
+        { db, projectId },
+        undefined,
+        undefined,
+        {
+          github,
+          clock: {
+            nowIso: () => "2026-11-23T12:00:00.000Z",
+            nowMs: () => Date.parse("2026-11-23T12:00:00.000Z"),
+          },
+          heartbeatIntervalMs: null,
+        },
+      );
+      queue.pause();
+
+      const summary = await queue.recoverOnStartup();
+      await queue.close();
+
+      expect(listOpenPullRequests).toHaveBeenCalledWith({
+        cwd: realRoot,
+        repoSlug: "org/alpha",
+        baseBranch: "develop",
+        headBranch: ownOpenReceipt.branchName,
+      });
+      const ownOp = store.getDispatchOperation({
+        projectId,
+        featureId: "049-own-open",
+        phaseId: "phase-01",
+      });
+      expect(ownOp?.status).toBe("completed");
+      expect(ownOp?.prNumber).toBe(801);
+      expect(summary.completedFromPrCount).toBe(1);
+
+      const forkOp = store.getDispatchOperation({
+        projectId,
+        featureId: "049-fork-open",
+        phaseId: "phase-01",
+      });
+      expect(forkOp?.status).toBe("accepted");
+      expect(forkOp?.prNumber).toBeNull();
+      expect(summary.requeuedCount).toBe(1);
     } finally {
       db.close();
     }

@@ -166,16 +166,13 @@ export class HarvestWatcher {
     if (this.stopping) return;
 
     if (this.durableHarvestService && this.durableRegistry) {
-      const enrolledProjects = this.durableRegistry
-        .listProjects()
-        .filter((project) =>
-          Boolean(
-            project.repoSlug && (project.localRoot ?? project.mirrorPath),
-          ),
-        );
+      const allEnrolledProjects = this.durableRegistry.listProjects();
+      const pollableProjects = allEnrolledProjects.filter((project) =>
+        Boolean(project.repoSlug && (project.localRoot ?? project.mirrorPath)),
+      );
 
-      if (this.hasExplicitDurable || enrolledProjects.length > 0) {
-        for (const project of enrolledProjects) {
+      if (this.hasExplicitDurable || allEnrolledProjects.length > 0) {
+        for (const project of pollableProjects) {
           if (this.stopping) break;
           try {
             const summaries = await this.durableHarvestService.pollProject(
@@ -206,7 +203,7 @@ export class HarvestWatcher {
         }
 
         if (!this.stopping && this.durableOutbox) {
-          for (const project of enrolledProjects) {
+          for (const project of allEnrolledProjects) {
             if (this.stopping) break;
             try {
               await this.durableOutbox.flushPendingForProject(
