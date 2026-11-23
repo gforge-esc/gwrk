@@ -350,7 +350,7 @@
           "id": "T033",
           "title": "Modify status.ts",
           "description": "MODIFY src/server/routes/status.ts. Include `DurableOperationsStatus` queue age and last harvest plus outbox lag, gate failures and legacy counts. Tests: src/server/routes/status.test.ts",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/phase-06.sh",
           "sp": 1
         },
@@ -358,14 +358,14 @@
           "id": "T034",
           "title": "Modify health.ts",
           "description": "MODIFY src/server/routes/health.ts. Report outbox degradation, unresolved harvest failures and disabled pilot Telegram state Tests: src/server/routes/health.test.ts",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/phase-06.sh",
           "sp": 1
         },
         {
           "id": "T035",
           "title": "Modify index.ts",
-          "description": "MODIFY src/server/index.ts. Wire `OperationsStorePort` and startup recovery sweeps plus raw-body webhook parsing and outbox flushing Tests: src/server/index.test.ts, src/server/unattended-recovery.test.ts, src/server/two-repo-isolation.test.ts, src/server/github.test.ts, src/application/harvest/harvest-service.test.ts. Reject unconfigured webhook authentication before durable writes. Tests: src/server/integration.test.ts. Repair actual durable GitHub process selector isolation and bounded poll cancellation. Preserve the implementation at 82901eba and the configured webhook authentication guards.",
+          "description": "MODIFY src/server/index.ts. Wire `OperationsStorePort` and startup recovery sweeps plus raw-body webhook parsing and outbox flushing Tests: src/server/index.test.ts, src/server/unattended-recovery.test.ts, src/server/two-repo-isolation.test.ts, src/server/github.test.ts, src/application/harvest/harvest-service.test.ts. Reject unconfigured webhook authentication before durable writes. Tests: src/server/integration.test.ts. Repair actual durable GitHub process selector isolation and bounded poll cancellation. Preserve the implementation at 82901eba and the configured webhook authentication guards.\n\nREVIEW FAIL (code): Durable GitHub transport inherits GH_HOST without explicit public host scoping — FR-002.\n  WHERE: src/adapters/github/index.ts:100-106,269-282\n  EXPECTED: Strip inherited GH_HOST from spawnGh environment (or pass --hostname github.com explicitly to gh api) so public github.com scoping cannot be redirected by an inherited enterprise GH_HOST variable, matching nov23-integration-port-diagnosis.md:57.\n  ACTUAL: spawnGh copies repositoryGitEnv(cwd) which removes Git local env vars and GH_REPO but preserves GH_HOST, and get() invokes `gh api --method GET -H Accept: application/vnd.github+json <path>` without `--hostname github.com`. With GH_HOST=ghe.internal.example stubbed, `keeps inherited repository selectors out of the actual durable GitHub port` failed: `AssertionError: expected false to be true` at src/server/integration.test.ts:639.\n  FIX: Delete GH_HOST in spawnGh env (and/or pass --hostname github.com to gh api in createGitHubHarvestAdapter). Keep the GH_HOST assertion in src/server/integration.test.ts.\n  PATCH: .runs/review-regressions-phase06-nov23-1625.patch\n  GATE: specs/049-durable-dispatch-harvest/gates/phase-06.sh (coverage hole: existing test did not stub GH_HOST)\n  REF: specs/049-durable-dispatch-harvest/evidence/nov23-integration-port-diagnosis.md#L57",
           "status": "open",
           "gateScript": "gates/phase-06.sh",
           "sp": 1
@@ -373,7 +373,7 @@
         {
           "id": "T036",
           "title": "Modify harvest.ts",
-          "description": "MODIFY src/commands/harvest.ts. Route manual CLI harvest through `DurableHarvestService` with `--project`, `--format json` and ADR-004 signals. Tests: src/commands/harvest.test.ts",
+          "description": "MODIFY src/commands/harvest.ts. Route manual CLI harvest through `DurableHarvestService` with `--project`, `--format json` and ADR-004 signals. Tests: src/commands/harvest.test.ts\n\nREVIEW FAIL (code): Root CLI `gwrk harvest --project <slug>` fails when cwd lacks .gwrkrc.json — FR-002, FR-006, ADR-004.\n  WHERE: src/cli.ts:214-246; src/commands/harvest.ts:111-154\n  EXPECTED: `gwrk harvest <feature> [phase] --project <slug> --format json` resolves the enrolled project from the SQLite registry and completes with exit 0 and ADR-004 signal even when invoked from a multi-project host directory without a local `.gwrkrc.json`.\n  ACTUAL: `src/cli.ts` preAction hook does not exempt `harvest` in `resolvesOwnRoot`, so `loadConfig(process.cwd())` throws before `createHarvestCommand` runs. `T036 regression: executes gwrk harvest --project <slug> via root CLI when cwd has no .gwrkrc.json` failed: exitCode 1 with `Configuration file .gwrkrc.json not found` and no `[exit:N | Xs]` signal.\n  FIX: Add `harvest` to `resolvesOwnRoot` in `src/cli.ts` so `createHarvestCommand` resolves `--project` or local enrollment itself and emits ADR-004 signals. Keep the root-CLI regression in `src/commands/harvest.test.ts`.\n  PATCH: .runs/review-regressions-phase06-nov23-1625.patch\n  GATE: specs/049-durable-dispatch-harvest/gates/phase-06.sh (coverage hole: harvest.test.ts bypassed src/cli.ts preAction hook)\n  REF: plan.md Phase 6 > Files; specs/049-durable-dispatch-harvest/contracts/coordinators-routes-and-cli.md#L179",
           "status": "open",
           "gateScript": "gates/phase-06.sh",
           "sp": 1
@@ -381,7 +381,7 @@
         {
           "id": "T037",
           "title": "Modify status.ts",
-          "description": "MODIFY src/commands/status.ts. Render queue age and pending harvest stages plus unresolved deliveries, gate failures and legacy counts. Tests: src/commands/status.test.ts, src/server/routes/status.test.ts",
+          "description": "MODIFY src/commands/status.ts. Render queue age and pending harvest stages plus unresolved deliveries, gate failures and legacy counts. Tests: src/commands/status.test.ts, src/server/routes/status.test.ts\n\nREVIEW FAIL (code): `gwrk status --project <slug>` leaks cwd git/spec metadata and fails without cwd .gwrkrc.json — FR-004, FR-006, ADR-004.\n  WHERE: src/commands/status.ts:152-169,322-346; src/cli.ts:214-246\n  EXPECTED: When `--project <slug>` selects an enrolled project, `gwrk status --project <slug> --format json` loads config and reads `git.branch`, `git.clean`, and `specs` from the selected project's checkout root (or falls back when cwd has no `.gwrkrc.json`), and succeeds via root CLI `runCli` with ADR-004 signal.\n  ACTUAL: (1) `src/commands/status.ts:323-332` reads `getCurrentBranch(projectRoot)`, `isWorkingTreeClean(projectRoot)`, and `specsDir` from `process.cwd()` instead of the selected project's root; running from `betaDir` with `--project alpha-status` returned `{ branch: \"beta-other\", clean: false }` and `specs: 0` under `project.slug: \"alpha-status\"` (expected `{ branch: \"alpha-trunk\", clean: true }` and `specs: 1`). (2) `src/cli.ts:214-246` and `src/commands/status.ts:156` unconditionally call `loadConfig(process.cwd())`; running `runCli([\"status\", \"--project\", \"alpha-status\", \"--format\", \"json\"])` from a directory without `.gwrkrc.json` failed with exitCode 1 (`Configuration file .gwrkrc.json not found`) and no `[exit:N | Xs]` signal.\n  FIX: Add `status` to `resolvesOwnRoot` in `src/cli.ts`; resolve the target project root from `--project` (with fallback config loading from the selected project's root or global defaults when cwd has no `.gwrkrc.json`, matching `src/commands/server.ts`); pass the resolved target root (and `repositoryGitEnv`) to `getCurrentBranch`, `isWorkingTreeClean`, and `specsDir`. Keep the regression in `src/commands/status.test.ts`.\n  PATCH: .runs/review-regressions-phase06-nov23-1625.patch\n  GATE: specs/049-durable-dispatch-harvest/gates/phase-06.sh (coverage hole: status.test.ts only ran inside the enrolled repo with cwd .gwrkrc.json)\n  REF: plan.md Phase 6 > Files; specs/049-durable-dispatch-harvest/contracts/coordinators-routes-and-cli.md#L180",
           "status": "open",
           "gateScript": "gates/phase-06.sh",
           "sp": 1
