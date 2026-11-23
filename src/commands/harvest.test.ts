@@ -14,6 +14,7 @@ import {
   createSqliteOperationsStoreAdapter,
   createSqliteProjectRegistryAdapter,
 } from "../adapters/sqlite/index.js";
+import { runCli } from "../cli.js";
 import { openDatabase } from "../db/index.js";
 import { listRuns } from "../db/runs.js";
 import { computeProjectId } from "../domain/project-id.js";
@@ -554,5 +555,73 @@ describe("T036 / TR-002: manual gwrk harvest through DurableHarvestService", () 
     } finally {
       if (db.open) db.close();
     }
+  });
+
+  it("T036 regression: executes gwrk harvest --project <slug> via root CLI when cwd has no .gwrkrc.json", async () => {
+    const alpha = createFeatureRepo({
+      dir: path.join(workspaceDir, "alpha-cli"),
+      trunk: "main",
+      featureId: "049-cli-proj",
+      phaseId: "phase-01",
+      gateExitCode: 0,
+    });
+    const hostDir = path.join(workspaceDir, "host-no-config");
+    fs.mkdirSync(hostDir, { recursive: true });
+
+    const db = openDatabase();
+    try {
+      const registry = createSqliteProjectRegistryAdapter({ db });
+      registry.enrollProject({
+        projectId: computeProjectId({
+          projectRoot: alpha.root,
+          remoteOriginUrl: null,
+          gitCommonDir: path.join(alpha.root, ".git"),
+        }),
+        slug: "alpha-cli",
+        name: "Alpha CLI",
+        repoSlug: null,
+        trunkBranch: "main",
+        localRoot: alpha.root,
+        mirrorPath: null,
+        runnerPolicy: { allowedKinds: ["local"] },
+        slack: null,
+        legacyProjectIds: [],
+        createdAt: "2026-11-23T00:00:00.000Z",
+        updatedAt: "2026-11-23T00:00:00.000Z",
+      });
+    } finally {
+      if (db.open) db.close();
+    }
+
+    process.chdir(hostDir);
+    let stdout = "";
+    let stderr = "";
+    const exitCode = await runCli(
+      [
+        "harvest",
+        "049-cli-proj",
+        "phase-01",
+        "--project",
+        "alpha-cli",
+        "--commit",
+        alpha.headSha,
+        "--format",
+        "json",
+      ],
+      {
+        stdout: (chunk) => {
+          stdout += chunk;
+        },
+        stderr: (chunk) => {
+          stderr += chunk;
+        },
+      },
+    );
+    expect(exitCode, stderr).toBe(0);
+    expect(stderr).toMatch(/\[exit:0 \| /);
+    const parsed = JSON.parse(stdout);
+    expect(parsed.ok).toBe(true);
+    expect(parsed.projectSlug).toBe("alpha-cli");
+    expect(parsed.operations[0].status).toBe("completed");
   });
 });

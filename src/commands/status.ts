@@ -11,12 +11,14 @@ import {
   writeScopedStderr,
 } from "../adapters/cli/output-scope.js";
 import { gwrkHome, usesHostedRuntime } from "../adapters/config/paths.js";
+import { repositoryGitEnv } from "../adapters/git/process-env.js";
 import { resolveProjectId } from "../adapters/git/project-id.js";
 import {
   createSqliteOperationsStoreAdapter,
   createSqliteProjectRegistryAdapter,
 } from "../adapters/sqlite/index.js";
 import { openDatabase } from "../db/index.js";
+import type { EnrolledProject } from "../domain/project-registry.js";
 import { quotaProbe } from "../engine/quota.js";
 import { AgentBackendRegistry } from "../plugins/agent-registry.js";
 import { PluginLoader } from "../plugins/loader.js";
@@ -24,7 +26,12 @@ import type { SlackDeliveryStatus } from "../ports/notification-port.js";
 import type { DurableOperationsStatus } from "../ports/operations-port.js";
 import { isPidRunning, readPid } from "../server/pid.js";
 import type { HealthResponse, SystemStatus } from "../server/types.js";
-import { type GwrkConfig, loadConfig } from "../utils/config.js";
+import {
+  type GwrkConfig,
+  GwrkConfigSchema,
+  deepMerge,
+  loadConfig,
+} from "../utils/config.js";
 import { color } from "../utils/format.js";
 import { getCurrentBranch, isWorkingTreeClean } from "../utils/git.js";
 import { createOutput, resolveFormat } from "../utils/output.js";
@@ -92,6 +99,46 @@ function computeQueueAgeSeconds(
   return Math.max(0, Math.floor((nowMs - parsed) / 1000));
 }
 
+function loadStatusConfig(
+  targetRoot: string,
+  enrolledProject: EnrolledProject | null,
+  fallbackProjectName?: string,
+): GwrkConfig {
+  try {
+    return loadConfig(targetRoot);
+  } catch (err) {
+    const configPath = path.join(targetRoot, ".gwrkrc.json");
+    if (fs.existsSync(configPath)) {
+      throw err;
+    }
+    const name = enrolledProject?.name ?? fallbackProjectName;
+    if (!name) {
+      throw err;
+    }
+    let raw: Record<string, unknown> = { project: { name } };
+    const globalConfigPath = path.join(gwrkHome(), "config.json");
+    if (fs.existsSync(globalConfigPath)) {
+      try {
+        const overlay = JSON.parse(
+          fs.readFileSync(globalConfigPath, "utf-8"),
+        ) as Record<string, unknown>;
+        raw = deepMerge(raw, overlay);
+      } catch {
+        // Ignore malformed global overlay and fall back to defaults.
+      }
+    }
+    if (process.env.GITHUB_WEBHOOK_SECRET) {
+      raw.server = {
+        ...(typeof raw.server === "object" && raw.server !== null
+          ? (raw.server as Record<string, unknown>)
+          : {}),
+        githubWebhookSecret: process.env.GITHUB_WEBHOOK_SECRET,
+      };
+    }
+    return GwrkConfigSchema.parse(raw);
+  }
+}
+
 export const createStatusCommand = () =>
   new Command("status")
     .description("Show gwrk build server and system status")
@@ -153,23 +200,10 @@ Exit codes:
           const canonicalRoot = fs.existsSync(projectRoot)
             ? fs.realpathSync(projectRoot)
             : projectRoot;
-          const config = loadConfig(projectRoot);
-
-          const pid = readPid();
-          const pidRunning = Boolean(pid && isPidRunning(pid));
-          let daemonLiveness: "alive" | "stopped" = pidRunning
-            ? "alive"
-            : "stopped";
-          const serverConfigured = isServerConfigured(
-            projectRoot,
-            config,
-            pid,
-            options.serverUrl,
-          );
-          const serverUrl = resolveServerBaseUrl(config, options.serverUrl);
 
           let localProjectId = resolveProjectId(canonicalRoot);
-          let enrolledProject = null;
+          let enrolledProject: EnrolledProject | null = null;
+          let fallbackProjectName: string | undefined;
           let localReadiness: HealthResponse["projectReadiness"] = {
             status: "unconfigured",
             readyCount: 0,
@@ -200,9 +234,11 @@ Exit codes:
                 localProjectId = enrolledProject.projectId;
               }
               const runnerKind = usesHostedRuntime() ? "hosted" : "local";
-              const projects = registry
-                .listProjects()
-                .map((p) => evaluateEnrolledProjectReadiness(p, runnerKind));
+              const enrolledProjects = registry.listProjects();
+              fallbackProjectName = enrolledProjects[0]?.name;
+              const projects = enrolledProjects.map((p) =>
+                evaluateEnrolledProjectReadiness(p, runnerKind),
+              );
               const readyCount = projects.filter(
                 (p) => p.status === "ready",
               ).length;
@@ -231,6 +267,29 @@ Exit codes:
             if (err instanceof CommandError) throw err;
             // Local registry or durable operations store unavailable.
           }
+
+          const targetRoot =
+            enrolledProject?.localRoot ??
+            enrolledProject?.mirrorPath ??
+            projectRoot;
+          const config = loadStatusConfig(
+            targetRoot,
+            enrolledProject,
+            fallbackProjectName,
+          );
+
+          const pid = readPid();
+          const pidRunning = Boolean(pid && isPidRunning(pid));
+          let daemonLiveness: "alive" | "stopped" = pidRunning
+            ? "alive"
+            : "stopped";
+          const serverConfigured = isServerConfigured(
+            targetRoot,
+            config,
+            pid,
+            options.serverUrl,
+          );
+          const serverUrl = resolveServerBaseUrl(config, options.serverUrl);
 
           let serverReachable = false;
           let serverError: string | undefined;
@@ -320,9 +379,17 @@ Exit codes:
           };
 
           if (out.isJson) {
-            const branch = getCurrentBranch(projectRoot);
-            const isDirty = !isWorkingTreeClean(projectRoot);
-            const specsDir = path.join(projectRoot, "specs");
+            let gitEnv: NodeJS.ProcessEnv | undefined;
+            if (fs.existsSync(targetRoot)) {
+              try {
+                gitEnv = repositoryGitEnv(targetRoot);
+              } catch {
+                gitEnv = undefined;
+              }
+            }
+            const branch = getCurrentBranch(targetRoot, gitEnv);
+            const isDirty = !isWorkingTreeClean(targetRoot, gitEnv);
+            const specsDir = path.join(targetRoot, "specs");
             const specs = fs.existsSync(specsDir)
               ? fs
                   .readdirSync(specsDir)
@@ -334,10 +401,7 @@ Exit codes:
             const statusData: Record<string, unknown> = {
               project: {
                 name: enrolledProject?.name ?? config.project.name,
-                root:
-                  enrolledProject?.localRoot ??
-                  enrolledProject?.mirrorPath ??
-                  projectRoot,
+                root: targetRoot,
                 projectId: localProjectId,
                 slug: enrolledProject?.slug ?? null,
                 enrolled: Boolean(enrolledProject),

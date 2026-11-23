@@ -99,7 +99,8 @@ function spawnGh(
     const processGroup = process.platform !== "win32";
     let env: NodeJS.ProcessEnv;
     try {
-      env = { ...repositoryGitEnv(cwd), GH_PROMPT_DISABLED: "1" };
+      const { GH_HOST: _ignoredGhHost, ...repoEnv } = repositoryGitEnv(cwd);
+      env = { ...repoEnv, GH_PROMPT_DISABLED: "1" };
     } catch (error) {
       reject(error);
       return;
@@ -270,6 +271,8 @@ export function createGitHubHarvestAdapter(
       await executeGh(
         [
           "api",
+          "--hostname",
+          "github.com",
           "--method",
           "GET",
           "-H",
