@@ -4,7 +4,7 @@ Implement Phase 5 against the cleared promotion code and the current combined fo
 
 The preparation checkout now contains model Phase 4 at `3bd8b2d7`. It also contains the reviewed onboarding and governance context plus unified routing and bounded dispatch. The combined merge passed build and lint with 163 focused checks. Preserve that composition.
 
-Use contracts/evidence-and-lock.md for route selection. Keep the application policy dependent on domain and ports. Put catalog and filesystem effects in adapters. Keep config precedence centralized. Resolve the selected role and backend through one route policy. Preserve local projects that use provider defaults and label that mode explicitly.
+Use `contracts/evidence-and-lock.md` for route selection. Keep the application policy dependent on domain and ports. Put catalog and filesystem effects in adapters. Keep config precedence centralized. Resolve the selected role and backend through one route policy. Preserve local projects that use provider defaults and label that mode explicitly.
 
 Reject stale or unavailable pins. Bind fallbacks to their own passing evidence for the same role and runner. Do not silently substitute an unqualified model. Honor explicit provider-default selection. Record requested identity separately from observed identity. Use unknown when the backend provides no observation.
 
