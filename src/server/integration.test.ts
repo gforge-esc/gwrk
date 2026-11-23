@@ -1731,121 +1731,143 @@ setInterval(() => {}, 1000);
     }
   });
 
-  it("isolates fixture Git setup and worktrees from inherited repository selectors", async () => {
-    const { ShipOrchestrator: RealShipOrchestrator } = await vi.importActual<
-      typeof import("../engine/ship-orchestrator.js")
-    >("../engine/ship-orchestrator.js");
-    const external = await createServerFixture("routes", {
-      routes: ["dispatch"],
-    });
-    let fixture: ServerFixture | undefined;
-    let finishShip!: (exitCode: number) => void;
-    const ship = new Promise<number>((resolve) => {
-      finishShip = resolve;
-    });
-    const branchSetup = vi.fn();
-    const stopAfterBranchSetup = new Error("Branch setup completed");
-    vi.mocked(ShipOrchestrator).mockImplementationOnce((config) => {
-      const orchestrator = new RealShipOrchestrator(config);
-      orchestrator.on("ship:stage", ({ stage }: { stage: ShipStage }) => {
-        if (stage === ShipStage.ACTIVATE_TESTS) {
-          branchSetup();
-          throw stopAfterBranchSetup;
-        }
+  it.each([0, 1_200])(
+    "isolates fixture Git setup and worktrees from inherited repository selectors after %i ms",
+    async (startupDelay) => {
+      const { ShipOrchestrator: RealShipOrchestrator } = await vi.importActual<
+        typeof import("../engine/ship-orchestrator.js")
+      >("../engine/ship-orchestrator.js");
+      const external = await createServerFixture("routes", {
+        routes: ["dispatch"],
       });
-      return {
-        async run() {
-          try {
-            return await orchestrator.run();
-          } catch (error) {
-            if (error !== stopAfterBranchSetup) throw error;
-            return ship;
+      let fixture: ServerFixture | undefined;
+      let finishShip!: (exitCode: number) => void;
+      const ship = new Promise<number>((resolve) => {
+        finishShip = resolve;
+      });
+      const branchSetup = vi.fn();
+      let recordBranchSetup!: (error?: unknown) => void;
+      const branchSetupResult = new Promise<unknown>((resolve) => {
+        recordBranchSetup = resolve;
+      });
+      const stopAfterBranchSetup = new Error("Branch setup completed");
+      vi.mocked(ShipOrchestrator).mockImplementationOnce((config) => {
+        const orchestrator = new RealShipOrchestrator(config);
+        orchestrator.on("ship:stage", ({ stage }: { stage: ShipStage }) => {
+          if (stage === ShipStage.ACTIVATE_TESTS) {
+            branchSetup();
+            recordBranchSetup();
+            throw stopAfterBranchSetup;
           }
-        },
-        getResult: () => ({}),
-      } as ShipOrchestrator;
-    });
-    const snapshot = () => [
-      fixtureGit(external.projectRoot, "rev-parse", "HEAD"),
-      fixtureGit(external.projectRoot, "status", "--porcelain"),
-      fixtureGit(external.projectRoot, "config", "--local", "--list"),
-      fixtureGit(external.projectRoot, "show-ref"),
-      fixtureGit(external.projectRoot, "worktree", "list", "--porcelain"),
-    ];
-    try {
-      writeFileSync(join(external.projectRoot, "untracked.txt"), "dirty");
-      const branch = "feat/probe-phase-01";
-      fixtureGit(external.projectRoot, "branch", branch);
-      const original = snapshot();
-      vi.stubEnv("GIT_DIR", join(external.projectRoot, ".git"));
-      vi.stubEnv("GIT_WORK_TREE", external.projectRoot);
-      vi.stubEnv("GIT_DEFAULT_HASH", "invalid-gwrk-probe");
-      vi.stubEnv("GIT_COMMITTER_DATE", "invalid-fixture-date");
-      vi.stubEnv("GIT_AUTHOR_DATE", "invalid-fixture-date");
-      vi.stubEnv("GIT_AUTHOR_NAME", "Inherited Author");
-      vi.stubEnv("GIT_AUTHOR_EMAIL", "author@example.invalid");
-      vi.stubEnv("GIT_COMMITTER_NAME", "Inherited Committer");
-      vi.stubEnv("GIT_COMMITTER_EMAIL", "inherited@example.invalid");
-      fixture = await createServerFixture("routes", { routes: ["dispatch"] });
-      const { projectRoot } = fixture;
-      fixtureGit(projectRoot, "remote", "add", "origin", external.projectRoot);
-      expect(existsSync(join(projectRoot, ".git"))).toBe(true);
-      expect(fixtureGit(projectRoot, "rev-parse", "--show-object-format")).toBe(
-        "sha1",
-      );
-      expect(fixtureGit(projectRoot, "log", "-1", "--format=%s")).toBe(
-        "Initialize fixture",
-      );
-      expect(
-        fixtureGit(projectRoot, "log", "-1", "--format=%an|%ae|%cn|%ce"),
-      ).toBe(
-        "Gwrk Test|gwrk-test@example.invalid|Gwrk Test|gwrk-test@example.invalid",
-      );
-      expect(fixtureGit(projectRoot, "log", "-1", "--format=%at %ct")).toBe(
-        "946684800 946684800",
-      );
-      const worktrees = () =>
-        fixtureGit(projectRoot, "worktree", "list", "--porcelain").match(
-          /^worktree .+$/gm,
-        );
-      const response = await fixture.app.inject({
-        method: "POST",
-        url: "/api/dispatch",
-        payload: { featureId: "probe", phaseId: "phase-01" },
+        });
+        return {
+          async run() {
+            if (startupDelay > 0)
+              await new Promise((resolve) => setTimeout(resolve, startupDelay));
+            try {
+              const exitCode = await orchestrator.run();
+              recordBranchSetup(
+                new Error(`Ship exited ${exitCode} before branch setup`),
+              );
+              return exitCode;
+            } catch (error) {
+              if (error !== stopAfterBranchSetup) {
+                recordBranchSetup(error);
+                throw error;
+              }
+              return ship;
+            }
+          },
+          getResult: () => ({}),
+        } as ShipOrchestrator;
       });
-      expect(response.statusCode).toBe(201);
-      await vi.waitFor(() => {
-        expect(branchSetup).toHaveBeenCalledOnce();
-      });
-      const workDir = fixture.journal().at(-1)?.workDir;
-      expect(workDir).toBeDefined();
-      expect(worktrees()).toEqual([
-        `worktree ${projectRoot}`,
-        `worktree ${workDir}`,
-      ]);
-      expect(snapshot()).toEqual(original);
-      expect(fixtureGit(projectRoot, "branch", "--list", branch)).toContain(
-        branch,
-      );
-      expect(fixtureGit(projectRoot, "rev-parse", `origin/${branch}`)).toBe(
-        original[0],
-      );
-
-      finishShip(0);
-      await fixture.app.close();
-      expect(fixture.journal().at(-1)?.status).toBe("completed");
-      expect(existsSync(workDir ?? "")).toBe(false);
-      expect(worktrees()).toEqual([`worktree ${projectRoot}`]);
-      expect(snapshot()).toEqual(original);
-    } finally {
-      finishShip(0);
+      const snapshot = () => [
+        fixtureGit(external.projectRoot, "rev-parse", "HEAD"),
+        fixtureGit(external.projectRoot, "status", "--porcelain"),
+        fixtureGit(external.projectRoot, "config", "--local", "--list"),
+        fixtureGit(external.projectRoot, "show-ref"),
+        fixtureGit(external.projectRoot, "worktree", "list", "--porcelain"),
+      ];
       try {
-        await Promise.all([fixture?.close(), external.close()]);
+        writeFileSync(join(external.projectRoot, "untracked.txt"), "dirty");
+        const branch = "feat/probe-phase-01";
+        fixtureGit(external.projectRoot, "branch", branch);
+        const original = snapshot();
+        vi.stubEnv("GIT_DIR", join(external.projectRoot, ".git"));
+        vi.stubEnv("GIT_WORK_TREE", external.projectRoot);
+        vi.stubEnv("GIT_DEFAULT_HASH", "invalid-gwrk-probe");
+        vi.stubEnv("GIT_COMMITTER_DATE", "invalid-fixture-date");
+        vi.stubEnv("GIT_AUTHOR_DATE", "invalid-fixture-date");
+        vi.stubEnv("GIT_AUTHOR_NAME", "Inherited Author");
+        vi.stubEnv("GIT_AUTHOR_EMAIL", "author@example.invalid");
+        vi.stubEnv("GIT_COMMITTER_NAME", "Inherited Committer");
+        vi.stubEnv("GIT_COMMITTER_EMAIL", "inherited@example.invalid");
+        fixture = await createServerFixture("routes", { routes: ["dispatch"] });
+        const { projectRoot } = fixture;
+        fixtureGit(
+          projectRoot,
+          "remote",
+          "add",
+          "origin",
+          external.projectRoot,
+        );
+        expect(existsSync(join(projectRoot, ".git"))).toBe(true);
+        expect(
+          fixtureGit(projectRoot, "rev-parse", "--show-object-format"),
+        ).toBe("sha1");
+        expect(fixtureGit(projectRoot, "log", "-1", "--format=%s")).toBe(
+          "Initialize fixture",
+        );
+        expect(
+          fixtureGit(projectRoot, "log", "-1", "--format=%an|%ae|%cn|%ce"),
+        ).toBe(
+          "Gwrk Test|gwrk-test@example.invalid|Gwrk Test|gwrk-test@example.invalid",
+        );
+        expect(fixtureGit(projectRoot, "log", "-1", "--format=%at %ct")).toBe(
+          "946684800 946684800",
+        );
+        const worktrees = () =>
+          fixtureGit(projectRoot, "worktree", "list", "--porcelain").match(
+            /^worktree .+$/gm,
+          );
+        const response = await fixture.app.inject({
+          method: "POST",
+          url: "/api/dispatch",
+          payload: { featureId: "probe", phaseId: "phase-01" },
+        });
+        expect(response.statusCode).toBe(201);
+        expect(await branchSetupResult).toBeUndefined();
+        expect(branchSetup).toHaveBeenCalledOnce();
+        const workDir = fixture.journal().at(-1)?.workDir;
+        expect(workDir).toBeDefined();
+        expect(worktrees()).toEqual([
+          `worktree ${projectRoot}`,
+          `worktree ${workDir}`,
+        ]);
+        expect(snapshot()).toEqual(original);
+        expect(fixtureGit(projectRoot, "branch", "--list", branch)).toContain(
+          branch,
+        );
+        expect(fixtureGit(projectRoot, "rev-parse", `origin/${branch}`)).toBe(
+          original[0],
+        );
+
+        finishShip(0);
+        await fixture.app.close();
+        expect(fixture.journal().at(-1)?.status).toBe("completed");
+        expect(existsSync(workDir ?? "")).toBe(false);
+        expect(worktrees()).toEqual([`worktree ${projectRoot}`]);
+        expect(snapshot()).toEqual(original);
       } finally {
-        vi.unstubAllEnvs();
+        finishShip(0);
+        try {
+          await Promise.all([fixture?.close(), external.close()]);
+        } finally {
+          vi.unstubAllEnvs();
+        }
       }
-    }
-  });
+    },
+  );
 
   it("pins fixture Git reference storage despite an invalid inherited format", async () => {
     vi.stubEnv("GIT_DEFAULT_REF_FORMAT", "invalid-gwrk-probe");
