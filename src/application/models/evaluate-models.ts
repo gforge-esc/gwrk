@@ -27,10 +27,12 @@ import type {
   StructuredJudgeVerdict,
 } from "../../ports/model-qualification-port.js";
 
+export type PromotionReplayEvidence = Omit<PromotionEvidence, "judges"> & {
+  readonly judges: readonly StructuredJudgeVerdict[];
+};
+
 export function evaluateModelPromotion(
-  evidence: Omit<PromotionEvidence, "judges"> & {
-    readonly judges: readonly StructuredJudgeVerdict[];
-  },
+  evidence: PromotionReplayEvidence,
 ): PromotionDecision {
   const judges = evidence.judges.map(
     ({
@@ -87,6 +89,7 @@ export interface EvaluationResult {
   readonly incumbent: ModelCandidate;
   readonly candidateOption: BlindedOption;
   readonly decision: PromotionDecision;
+  readonly promotionEvidence?: PromotionReplayEvidence;
   readonly repeats: Readonly<ComparisonRepeats>;
   readonly comparisons?: readonly EvaluationComparison[];
   readonly roleScore?: RoleScore;
@@ -620,7 +623,7 @@ export async function evaluateModels(
   if (!(await inputsAreCurrent())) return reject("stale-evaluation-inputs");
 
   const comparisonKeys = comparisons.map((_, index) => String(index));
-  let decision = evaluateModelPromotion({
+  const promotionEvidence: PromotionReplayEvidence = {
     candidateOption,
     requiredFixtures: comparisonKeys,
     repeats: comparisons.flatMap(({ repeats }, index) =>
@@ -636,7 +639,8 @@ export async function evaluateModels(
       output: Object.keys(outputs),
       gate: gateArtifacts.map(({ ref }) => ref),
     },
-  });
+  };
+  let decision = evaluateModelPromotion(promotionEvidence);
 
   if (
     decision.promote &&
@@ -683,6 +687,7 @@ export async function evaluateModels(
     judges: [verdict1, verdict2],
     suiteHashes,
     judgeVerdictHashes,
+    promotionEvidence,
   };
 
   assertNoSecretMaterial(result);
