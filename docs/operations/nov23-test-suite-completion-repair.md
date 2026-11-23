@@ -24,7 +24,7 @@ The deadline also included verification-capacity waiting. The wrapper permits a 
 
 The shared test executor captures process failure separately from assertion results. Timeout and cancellation produce an execution error. Output-buffer exhaustion does too. Nonzero execution without completed failing-test results cannot become a baseline comparison. Shell-encoded signal exits remain execution failures even when captured output contains a passing summary.
 
-The parser accepts recognized runner summaries. It preserves completed results from Vitest and Jest. It also preserves pytest and Node summaries. Go and Cargo parsing remain available. Fixture gate logs no longer supply assertion counts.
+The parser accepts recognized runner summaries. It chooses the terminal Vitest or Jest summary after any sample summaries printed by fixtures. It preserves completed results from Vitest and Jest. It also preserves pytest and Node summaries. Go and Cargo parsing remain available. Fixture gate logs no longer supply assertion counts.
 
 The executor captures successful stderr output because Jest writes its summary there. It merges streams before executing the command. This avoids adding a wrapper subshell. Captured output has a 16 MiB bound. Timeout termination uses SIGKILL.
 
@@ -40,7 +40,7 @@ The ship state retains the complete captured diagnostic output. DIAGNOSE reads t
 |---|---|---|
 | Original controlled regressions | Reproduced, 12 failures | Observed failure before repair |
 | Final related suites | Pass, 243 tests | Zero failures |
-| Independent completion and parser review | Pass, 53 tests | Zero failures |
+| Independent completion and parser review | Pass, 55 tests | Zero failures |
 | Build | Pass | Zero type errors |
 | Lint | Pass | Zero findings |
 
@@ -57,3 +57,5 @@ python3 /Users/gonzo/Code/gwrk/.runs/run-heavy-check.py pnpm exec vitest run src
 ```
 
 `final-green.log` retains the complete result. `build.log` and `lint.log` retain the remaining checks. The repair checkout contains no changes to active worker outputs.
+
+The combined run at `8b0e7134` passes 4,335 tests. Its captured output includes two fixture samples reporting 16 passes before the terminal summary. The old parser reports 16 tests for that complete log. The repaired parser reports all 4,335. Two additional precedence cases fail before repair and pass after it. Evidence is `/tmp/gwrk-nov23-runner-terminal-summary-red.log` and `/tmp/gwrk-nov23-runner-terminal-summary-green.log`.
