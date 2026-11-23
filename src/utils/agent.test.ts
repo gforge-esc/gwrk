@@ -833,7 +833,7 @@ describe('ADR-008: Command Safety Posture', () => {
   });
 });
 
-it('uses the primary checkout throttle for a dispatch in a linked worktree', async () => {
+it.each([0, 1])('uses the primary checkout throttle for a dispatch in a linked worktree when its timer wakes %i ms early', async (earlyMs) => {
   const actualConfig = await vi.importActual<typeof import('./config.js')>('./config.js');
   const fixture = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'gwrk-throttle-')));
   const primary = path.join(fixture, 'primary checkout');
@@ -872,19 +872,40 @@ it('uses the primary checkout throttle for a dispatch in a linked worktree', asy
     fs.writeFileSync(path.join(workDir, '.gwrk', 'architecture.md'), 'Worktree grounding');
     const lastDispatch = Date.now();
     fs.writeFileSync(statePath, String(lastDispatch));
-
-    await dispatchToAgent({
-      workflow: 'gwrk-implement',
-      workDir,
-      agent: 'agy',
-      stdin: 'Implement the task',
+    let now = lastDispatch;
+    const sleeps: number[] = [];
+    const realSetTimeout = globalThis.setTimeout;
+    const clock = vi.spyOn(Date, 'now').mockImplementation(() => now);
+    const timer = vi.spyOn(globalThis, 'setTimeout').mockImplementation((callback, delay, ...args) => {
+      if (typeof delay === 'number' && delay > 0 && delay <= throttleMs) {
+        sleeps.push(delay);
+        const elapsed = delay - (sleeps.length === 1 ? earlyMs : 0);
+        return realSetTimeout(() => {
+          now += elapsed;
+          callback(...args);
+        }, 0);
+      }
+      return realSetTimeout(callback, delay, ...args);
     });
 
-    expect(timestampAtSpawn - lastDispatch).toBeGreaterThanOrEqual(throttleMs);
-    expect(fs.readFileSync(statePath, 'utf8')).toBe(String(timestampAtSpawn));
-    expect(spawn).toHaveBeenLastCalledWith(expect.any(String), expect.any(Array), expect.objectContaining({ cwd: workDir }));
-    expect(capturedStdin()).toContain('Worktree grounding');
-    expect(fs.existsSync(path.join(workDir, '.runs', 'last-dispatch.state'))).toBe(false);
+    try {
+      await dispatchToAgent({
+        workflow: 'gwrk-implement',
+        workDir,
+        agent: 'agy',
+        stdin: 'Implement the task',
+      });
+
+      expect(timestampAtSpawn - lastDispatch).toBeGreaterThanOrEqual(throttleMs);
+      expect(fs.readFileSync(statePath, 'utf8')).toBe(String(timestampAtSpawn));
+      expect(spawn).toHaveBeenLastCalledWith(expect.any(String), expect.any(Array), expect.objectContaining({ cwd: workDir }));
+      expect(capturedStdin()).toContain('Worktree grounding');
+      expect(fs.existsSync(path.join(workDir, '.runs', 'last-dispatch.state'))).toBe(false);
+      expect(sleeps).toEqual(earlyMs === 0 ? [throttleMs] : [throttleMs, earlyMs]);
+    } finally {
+      timer.mockRestore();
+      clock.mockRestore();
+    }
   } finally {
     vi.unstubAllEnvs();
     fs.rmSync(fixture, { recursive: true, force: true });
