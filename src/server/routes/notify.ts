@@ -2,18 +2,65 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import type { FastifyInstance } from "fastify";
+import type { FastifyInstance, FastifyRequest } from "fastify";
+import type {
+  DeliveryRecipient,
+  EnrolledProject,
+} from "../../domain/project-registry.js";
+import { resolveProjectSlackRecipient } from "../../domain/slack-delivery.js";
+import {
+  type RouteDenialCode,
+  evaluateHttpProjectAccess,
+} from "../../domain/slack-routing.js";
+import type { ProjectRegistryPort } from "../../ports/store-port.js";
 import type { AgentBackendId } from "../../utils/config.js";
+import { resolveProjectId } from "../../utils/project-id.js";
 import { MessageBuilder, type SlackMessage } from "../slack-messages.js";
 import { notifySlack } from "../slack-notify.js";
 import type { DispatchRecord, NotifyPayload } from "../types.js";
 
+export interface NotifyRoutesOptions {
+  registry?: ProjectRegistryPort;
+  transport?: "trusted_local" | "hosted";
+  localDefaultProjectId?: string;
+  resolvePrincipal?: (request: FastifyRequest) =>
+    | {
+        principalType: "cli_token" | "google_sub";
+        principalId: string;
+      }
+    | undefined;
+}
+
+function httpStatusForDenial(code: RouteDenialCode): number {
+  switch (code) {
+    case "REMOTE_AUTH_REQUIRED":
+      return 401;
+    case "UNAUTHORIZED_USER":
+    case "INSUFFICIENT_ROLE":
+    case "RUNNER_NOT_ALLOWED":
+      return 403;
+    case "UNKNOWN_PROJECT":
+      return 404;
+    default:
+      return 400;
+  }
+}
+
 export async function notifyRoutes(
   server: FastifyInstance,
-  projectRoot?: string,
+  projectRootOrOptions: string | NotifyRoutesOptions = process.cwd(),
+  routeOptions?: NotifyRoutesOptions,
 ) {
+  const options =
+    typeof projectRootOrOptions === "string"
+      ? routeOptions
+      : projectRootOrOptions;
+  const defaultProjectRoot =
+    typeof projectRootOrOptions === "string"
+      ? projectRootOrOptions
+      : process.cwd();
   const shutdown = new AbortController();
-  const deliveries = new Set<ReturnType<typeof notifySlack>>();
+  const deliveries = new Set<Promise<unknown>>();
   server.addHook("preClose", async () => {
     shutdown.abort();
     await Promise.allSettled(deliveries);
@@ -23,28 +70,137 @@ export async function notifyRoutes(
     async (request, reply) => {
       const payload = request.body;
 
-      if (!payload.type || !payload.feature) {
+      if (!payload || !payload.type || !payload.feature) {
         return reply.status(400).send({
           ok: false,
           error: "Missing required fields: type and feature are required",
         });
       }
 
-      // Map NotifyPayload to a minimal DispatchRecord for MessageBuilder
-      // Many fields are optional or have defaults because agent-run.sh
-      // might not have the full context of a database record.
+      let authorizedProject: EnrolledProject | undefined;
+      if (options?.registry || options?.transport === "hosted") {
+        const projects = options.registry?.listProjects() ?? [];
+        const roles = projects.flatMap(
+          (project) =>
+            options.registry?.listRoleBindings(project.projectId) ?? [],
+        );
+        const decision = evaluateHttpProjectAccess({
+          projects,
+          roles,
+          requestedProject: payload.projectId ?? payload.recipient?.projectId,
+          localDefaultProjectId: options.localDefaultProjectId,
+          transport: options.transport ?? "trusted_local",
+          principal: options.resolvePrincipal?.(request),
+          requiredAccess: "operate",
+        });
+
+        if (!decision.ok) {
+          return reply.status(httpStatusForDenial(decision.code)).send({
+            ok: false,
+            code: decision.code,
+            error: decision.message,
+            ...(decision.candidateSlugs
+              ? { candidateSlugs: decision.candidateSlugs }
+              : {}),
+          });
+        }
+
+        authorizedProject = decision.project;
+        if (
+          payload.recipient?.projectId &&
+          payload.recipient.projectId !== authorizedProject.projectId
+        ) {
+          return reply.status(403).send({
+            ok: false,
+            code: "THREAD_PROJECT_MISMATCH",
+            error: "Recipient project does not match authorized project.",
+          });
+        }
+      }
+
+      const hasConflictingOpsOnly =
+        (payload.opsOnly !== undefined &&
+          payload.recipient?.opsOnly !== undefined &&
+          Boolean(payload.opsOnly) !== Boolean(payload.recipient.opsOnly)) ||
+        (payload.type === "pulse" && payload.recipient?.opsOnly === false);
+      if (authorizedProject && hasConflictingOpsOnly) {
+        return reply.status(403).send({
+          ok: false,
+          code: "THREAD_PROJECT_MISMATCH",
+          error: "Recipient opsOnly flag conflicts with notification scope.",
+        });
+      }
+
+      const isOps =
+        Boolean(payload.opsOnly) ||
+        Boolean(payload.recipient?.opsOnly) ||
+        payload.type === "pulse";
+
+      const notifyProjectId =
+        authorizedProject?.projectId ??
+        payload.projectId ??
+        payload.recipient?.projectId;
+      const projectRoot =
+        authorizedProject?.mirrorPath ??
+        authorizedProject?.localRoot ??
+        defaultProjectRoot;
+      const trunkBranch = authorizedProject?.trunkBranch ?? "develop";
+
+      let resolvedRecipient: DeliveryRecipient | undefined;
+      if (authorizedProject) {
+        const storedThread = !isOps
+          ? (options?.registry?.getFeatureThread(
+              authorizedProject.projectId,
+              payload.feature,
+            ) ?? null)
+          : null;
+        const recipientResult = resolveProjectSlackRecipient({
+          project: authorizedProject,
+          enrolledProjects: options?.registry?.listProjects(),
+          storedThread,
+          recipient: payload.recipient,
+          opsOnly: isOps,
+        });
+        if (!recipientResult.ok) {
+          return reply.status(403).send({
+            ok: false,
+            code: "THREAD_PROJECT_MISMATCH",
+            error: recipientResult.message,
+          });
+        }
+        resolvedRecipient = recipientResult.recipient;
+      } else if (payload.recipient?.surface === "slack") {
+        const { opsOnly: _ignoredOpsOnly, ...slackRecipientRest } =
+          payload.recipient;
+        resolvedRecipient = {
+          ...slackRecipientRest,
+          threadTs: isOps ? undefined : payload.recipient.threadTs,
+          ...(isOps ? { opsOnly: true } : {}),
+        };
+      }
+
       const dispatch: DispatchRecord = {
-        id: "notify-event", // dummy
+        id: "notify-event",
+        projectId: notifyProjectId ?? resolveProjectId(projectRoot),
         featureId: payload.feature,
         phaseId: payload.phase || "unknown",
         backend: (payload.backend as AgentBackendId) || "agy",
-        status: "running", // default
-        branchName: payload.branch || "main",
+        status: "running",
+        branchName: payload.branch || trunkBranch,
+        projectRoot,
+        trunkBranch,
+        ...(resolvedRecipient ? { recipient: resolvedRecipient } : {}),
         attempts: [],
-        tasks: [], // Notification doesn't need task list for minimal message
+        tasks: [],
         createdAt: new Date().toISOString(),
         prUrl: payload.prUrl,
         prNumber: payload.prNumber,
+      };
+
+      const cardRouting = {
+        projectId: notifyProjectId,
+        projectSlug: authorizedProject?.slug,
+        rootTs: resolvedRecipient?.threadTs,
       };
 
       let message: SlackMessage;
@@ -58,7 +214,14 @@ export async function notifyRoutes(
           break;
         case "phase_fail":
           dispatch.status = "failed";
-          message = MessageBuilder.phaseFail(dispatch, payload.error);
+          message = MessageBuilder.phaseFail(
+            {
+              ...dispatch,
+              projectSlug: authorizedProject?.slug,
+              rootTs: resolvedRecipient?.threadTs,
+            },
+            payload.error,
+          );
           break;
         case "ci_result":
           message = MessageBuilder.ciResult(dispatch, {
@@ -67,10 +230,11 @@ export async function notifyRoutes(
           });
           break;
         case "review_ready":
-          // For review_ready, we might want to include the PR URL if provided
-          // MessageBuilder.reviewReady currently doesn't show the URL, but the spec says it should.
-          // We'll use the builder as is for now.
-          message = MessageBuilder.reviewReady(dispatch);
+          message = MessageBuilder.reviewReady({
+            ...dispatch,
+            projectSlug: authorizedProject?.slug,
+            rootTs: resolvedRecipient?.threadTs,
+          });
           break;
         case "done_done":
           message = MessageBuilder.doneDone(
@@ -94,7 +258,11 @@ export async function notifyRoutes(
               error: "Missing required field: specPath",
             });
           }
-          message = MessageBuilder.specReady(payload.feature, payload.specPath);
+          message = MessageBuilder.specReady(
+            payload.feature,
+            payload.specPath,
+            cardRouting,
+          );
           break;
         case "define_plan_ready":
           if (!payload.planPath || !payload.phaseCount) {
@@ -107,6 +275,7 @@ export async function notifyRoutes(
             payload.feature,
             payload.planPath,
             payload.phaseCount,
+            cardRouting,
           );
           break;
         default:
@@ -116,12 +285,6 @@ export async function notifyRoutes(
           });
       }
 
-      // Route to ops if requested or for specific cross-project types
-      const isOps =
-        payload.opsOnly ||
-        payload.type === "done_done" ||
-        payload.type === "pulse";
-
       try {
         const delivery = notifySlack(
           message,
@@ -130,11 +293,17 @@ export async function notifyRoutes(
             feature: payload.feature,
             phase: payload.phase,
             opsOnly: isOps,
+            projectId: notifyProjectId,
+            recipient: resolvedRecipient,
             payload: payload as unknown as Record<string, unknown>,
             timestamp: new Date().toISOString(),
           },
           {
             opsOnly: isOps,
+            projectId: notifyProjectId,
+            recipient: resolvedRecipient,
+            featureId: payload.feature,
+            registry: options?.registry,
             projectRoot,
             signal: shutdown.signal,
             transportTimeoutMs: 5_000,

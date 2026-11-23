@@ -178,6 +178,171 @@ export function validateSlackDeliveryContext(
   };
 }
 
+export interface ResolveProjectSlackRecipientInput {
+  project: EnrolledProject;
+  enrolledProjects?: readonly EnrolledProject[];
+  storedThread?: SlackFeatureThread | null;
+  recipient?: DeliveryRecipient;
+  opsOnly?: boolean;
+}
+
+export type ProjectSlackRecipientRejectionReason =
+  | "WORKSPACE_MISMATCH"
+  | "CHANNEL_MISMATCH"
+  | "THREAD_MISMATCH";
+
+export type ProjectSlackRecipientResult =
+  | {
+      ok: true;
+      recipient?: DeliveryRecipient;
+      validStoredThread?: SlackFeatureThread;
+    }
+  | {
+      ok: false;
+      reason: ProjectSlackRecipientRejectionReason;
+      message: string;
+    };
+
+export function isSharedSlackChannel(
+  project: EnrolledProject,
+  enrolledProjects?: readonly EnrolledProject[],
+): boolean {
+  const slack = project.slack;
+  if (!slack) return false;
+  if (slack.sharedChannel) return true;
+  if (!enrolledProjects) return false;
+  return enrolledProjects.some(
+    (candidate) =>
+      candidate.projectId !== project.projectId &&
+      candidate.slack?.workspaceId === slack.workspaceId &&
+      candidate.slack?.channelId === slack.channelId,
+  );
+}
+
+export function resolveProjectSlackRecipient(
+  input: ResolveProjectSlackRecipientInput,
+): ProjectSlackRecipientResult {
+  const { project, enrolledProjects, storedThread, recipient } = input;
+  const slackBinding = project.slack ?? undefined;
+  const isOps = Boolean(input.opsOnly || recipient?.opsOnly);
+  const validStoredThread =
+    !isOps &&
+    storedThread &&
+    slackBinding &&
+    storedThread.projectId === project.projectId &&
+    storedThread.workspaceId === slackBinding.workspaceId &&
+    storedThread.channelId === slackBinding.channelId
+      ? storedThread
+      : undefined;
+
+  if (recipient) {
+    if (
+      recipient.workspaceId &&
+      (!slackBinding?.workspaceId ||
+        recipient.workspaceId !== slackBinding.workspaceId)
+    ) {
+      return {
+        ok: false,
+        reason: "WORKSPACE_MISMATCH",
+        message: "Recipient workspace does not match authorized project.",
+      };
+    }
+
+    if (recipient.channelId) {
+      const expectedChannelId = isOps
+        ? slackBinding?.opsChannelId
+        : slackBinding?.channelId;
+      if (!expectedChannelId || recipient.channelId !== expectedChannelId) {
+        return {
+          ok: false,
+          reason: "CHANNEL_MISMATCH",
+          message: "Recipient channel does not match authorized project.",
+        };
+      }
+    }
+
+    if (!isOps && recipient.threadTs !== undefined) {
+      if (!slackBinding || !recipient.threadTs.trim()) {
+        return {
+          ok: false,
+          reason: "THREAD_MISMATCH",
+          message: "Recipient thread does not match authorized project.",
+        };
+      }
+      if (validStoredThread) {
+        if (recipient.threadTs !== validStoredThread.rootTs) {
+          return {
+            ok: false,
+            reason: "THREAD_MISMATCH",
+            message: "Recipient thread does not match stored feature thread.",
+          };
+        }
+      } else if (isSharedSlackChannel(project, enrolledProjects)) {
+        return {
+          ok: false,
+          reason: "THREAD_MISMATCH",
+          message:
+            "Unverified thread hint is not allowed in a shared Slack channel.",
+        };
+      }
+    }
+  }
+
+  if (recipient?.surface === "slack") {
+    const workspaceId = recipient.workspaceId ?? slackBinding?.workspaceId;
+    const channelId =
+      recipient.channelId ??
+      (isOps ? slackBinding?.opsChannelId : slackBinding?.channelId);
+    const threadTs = isOps
+      ? undefined
+      : (validStoredThread?.rootTs ?? recipient.threadTs);
+    const {
+      threadTs: _ignoredThreadTs,
+      opsOnly: _ignoredOpsOnly,
+      ...rest
+    } = recipient;
+
+    return {
+      ok: true,
+      validStoredThread,
+      recipient: {
+        ...rest,
+        projectId: project.projectId,
+        surface: "slack",
+        ...(workspaceId ? { workspaceId } : {}),
+        ...(channelId ? { channelId } : {}),
+        ...(threadTs ? { threadTs } : {}),
+        ...(isOps ? { opsOnly: true } : {}),
+      },
+    };
+  }
+
+  if (slackBinding) {
+    const channelId = isOps
+      ? slackBinding.opsChannelId
+      : slackBinding.channelId;
+    const threadTs = isOps ? undefined : validStoredThread?.rootTs;
+    return {
+      ok: true,
+      validStoredThread,
+      recipient: {
+        projectId: project.projectId,
+        surface: "slack",
+        workspaceId: slackBinding.workspaceId,
+        ...(channelId ? { channelId } : {}),
+        ...(threadTs ? { threadTs } : {}),
+        ...(isOps ? { opsOnly: true } : {}),
+      },
+    };
+  }
+
+  return {
+    ok: true,
+    validStoredThread,
+    recipient: undefined,
+  };
+}
+
 export function resolveSlackDeliveryRoute(
   input: ResolveSlackDeliveryRouteInput,
 ): SlackDeliveryRouteResult {

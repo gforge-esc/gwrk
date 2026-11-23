@@ -41,6 +41,7 @@ import type {
   EnrolledProject,
 } from "../domain/project-registry.js";
 import type { NotificationPort } from "../ports/notification-port.js";
+import type { ProjectRegistryPort } from "../ports/store-port.js";
 import { loadConfig } from "../utils/config.js";
 import {
   commitFiles,
@@ -197,7 +198,10 @@ export async function harvestFeature(
   const projectId =
     options?.project?.projectId ??
     options?.projectId ??
+    record.projectId ??
     resolveProjectId(projectPath);
+  const recipient =
+    options?.recipient !== undefined ? options.recipient : record.recipient;
   const connectionArgs: [Database.Database?] = options?.db ? [options.db] : [];
 
   if (options?.durableService) {
@@ -211,7 +215,7 @@ export async function harvestFeature(
       commitSha: FULL_GIT_SHA.test(mergeCommitSha ?? "")
         ? mergeCommitSha
         : undefined,
-      recipient: options.recipient,
+      recipient,
       updateLocalTaskState: options.updateLocalTaskState ?? true,
       ownerId: options.ownerId ?? "local-harvest",
     });
@@ -280,7 +284,7 @@ export async function harvestFeature(
           phaseId,
           prNumber: prNumber > 0 && enrolled.repoSlug ? prNumber : undefined,
           commitSha: mergeCommitSha,
-          recipient: options?.recipient,
+          recipient,
           updateLocalTaskState: options?.updateLocalTaskState ?? true,
           ownerId: options?.ownerId ?? "local-harvest",
         });
@@ -618,8 +622,12 @@ export async function harvestFeature(
   }
 
   // 4. Slack Done-Done (FR-H07)
-  if (report) {
-    await notifyDoneDone(report);
+  if (report && recipient !== null) {
+    await notifyDoneDone(report, undefined, {
+      projectId:
+        options?.project?.projectId ?? options?.projectId ?? record.projectId,
+      recipient,
+    });
   }
 
   // 5. Branch Cleanup (FR-H08)
@@ -644,8 +652,14 @@ export async function harvestFeature(
 export async function notifyDoneDone(
   report: CompressionReport,
   notifier?: NotificationPort,
+  options?: {
+    projectId?: string;
+    recipient?: DeliveryRecipient;
+    opsOnly?: boolean;
+    registry?: ProjectRegistryPort;
+  },
 ): Promise<void> {
-  await notifyHarvestComplete(report, notifier);
+  await notifyHarvestComplete(report, notifier, options);
 }
 
 /**
