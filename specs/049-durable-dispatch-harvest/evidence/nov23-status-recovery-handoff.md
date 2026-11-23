@@ -53,3 +53,7 @@ The first composition run retained six failures in `/tmp/durable-composed-initia
 Preparation does not implement Phase 6. No ship run, deployment or live qualification occurred. Manual composition and preparation edits remain uncommitted for review.
 
 The reviewed source passed both required continuous integration checks in run `45277163353`. The outer evidence head `0ca9cae4` remains a separate metadata merge for the owner. Its final checks remain required before completion.
+
+## Independent composition clearance
+
+Independent review at `07cb062a` is GO. Build and lint pass. Four focused suites pass 27 tests with one existing todo. See `nov23-independent-composition-review.md`. Final ingress head `0ca9cae4` passes both required CI jobs in run `45278013015`. The outer evidence record is now composed into this parent.
