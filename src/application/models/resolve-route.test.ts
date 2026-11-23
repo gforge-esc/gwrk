@@ -903,6 +903,87 @@ describe("TR-014: resolveQualifiedRoute", () => {
     },
   );
 
+  it("fingerprints a selected workflow installed only in the project", async () => {
+    const root = createTempProject({ project: { name: "gwrk" } });
+    const reviews = path.join(root, ".gwrk/plugins/reviews");
+    const strategy = path.join(reviews, "review-cli");
+    const workflowName = "project-code-review";
+    const workflow = path.join(reviews, workflowName);
+    fs.mkdirSync(strategy, { recursive: true });
+    fs.mkdirSync(workflow);
+    const builtin = path.resolve("src/plugins/builtins/reviews");
+    fs.writeFileSync(
+      path.join(strategy, "manifest.yaml"),
+      fs
+        .readFileSync(path.join(builtin, "review-cli/manifest.yaml"), "utf8")
+        .replace(
+          "codeReviewWorkflow: review-code-cli",
+          `codeReviewWorkflow: ${workflowName}`,
+        ),
+    );
+    fs.writeFileSync(
+      path.join(workflow, "manifest.yaml"),
+      fs
+        .readFileSync(
+          path.join(builtin, "review-code-cli/manifest.yaml"),
+          "utf8",
+        )
+        .replace("name: review-code-cli", `name: ${workflowName}`),
+    );
+    const prompt = path.join(workflow, "PROMPT.md");
+    fs.writeFileSync(prompt, "Check the local review contract.");
+    const selected = await resolveReviewPlugin(root);
+    expect(selected.codeReviewWorkflow).toBe(workflowName);
+    const runtime = new WorkflowRuntime();
+    const rendered = await runtime.renderWorkflowPrompt(workflowName, "", {
+      projectRoot: root,
+      nativeOnly: true,
+    });
+    expect(rendered.template).toBe("Check the local review contract.");
+    const before = await projectEvidence(root);
+    fs.writeFileSync(prompt, "Check the revised local review contract.");
+    const after = await projectEvidence(root);
+    expect(after.workflowPromptHashes.review).not.toEqual(
+      before.workflowPromptHashes.review,
+    );
+  });
+
+  it.each([
+    ["code", "Check for lint errors"],
+    ["uat", "Verify CLI commands end-to-end"],
+  ] as const)(
+    "expires the review pin when selected %s instructions change",
+    async (stage, instruction) => {
+      const root = createTempProject({ project: { name: "gwrk" } });
+      const dir = path.join(root, ".gwrk/plugins/reviews/review-cli");
+      fs.mkdirSync(dir, { recursive: true });
+      const manifest = path.join(dir, "manifest.yaml");
+      const original = fs.readFileSync(
+        "src/plugins/builtins/reviews/review-cli/manifest.yaml",
+        "utf8",
+      );
+      fs.writeFileSync(manifest, original);
+      const pin = makePin({
+        role: "review",
+        evidence: await projectEvidence(root),
+      });
+      const lock = path.join(root, ".gwrk/models/route-lock.local.json");
+      fs.mkdirSync(path.dirname(lock), { recursive: true });
+      fs.writeFileSync(
+        lock,
+        JSON.stringify(makeRouteLock({}, { routes: { review: pin } })),
+      );
+      expect(resolveRoleAgent("review", root).model).toBe(pin.modelId);
+      const revised = "Verify the revised release contract";
+      fs.writeFileSync(manifest, original.replace(instruction, revised));
+      const selected = await resolveReviewPlugin(root);
+      expect(selected.steps[stage]).toContainEqual(
+        expect.objectContaining({ description: revised }),
+      );
+      expect(() => resolveRoleAgent("review", root)).toThrow(/stale|requalif/i);
+    },
+  );
+
   it("keeps a qualified primary usable when an unselected fallback bundle is unreadable", async () => {
     const root = createTempProject({ project: { name: "gwrk" } });
     const evidence = await projectEvidence(root);

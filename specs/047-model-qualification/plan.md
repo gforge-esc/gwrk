@@ -60,7 +60,7 @@ Add discovery adapters separate from `dispatch()` (`ADR-006`). Support `agy mode
 - `src/adapters/models/catalog-discovery.ts` (NEW: Collect built-in, external plugin and explicit candidate catalogs with versions)
 - `src/adapters/models/smoke-probe.ts` (NEW: Run bounded exact-model and effort smoke probes in clean temporary directories)
 - `src/adapters/models/catalog-discovery.test.ts` (NEW: Test catalog parsers and unavailable reporting)
-- `src/adapters/models/smoke-probe.test.ts` (NEW: Verify the exact route, clean checkout, response schema and probe evidence)
+- `src/adapters/models/smoke-probe.test.ts` (NEW: Verify the exact route in a clean checkout. Check the response schema and probe evidence.)
 - `src/utils/agent.ts` (MODIFY: Enforce explicit dispatch deadlines and allow synthetic fixtures to exclude external context)
 - `src/utils/agent.test.ts` (MODIFY: Verify deadline expiry terminates the subprocess and reports a timeout)
 
@@ -148,7 +148,8 @@ Persist runner-scoped discovery snapshots, evaluation bundles and temp-rename at
 
 | ID | Type | Target | Expected result |
 |---|---|---|---|
-| TR-011 | integration | `src/adapters/models/route-lock-store.test.ts` | Failed writes and stale incumbent evidence leave the active lock intact. Rollback restores the previous lock. |
+| TR-011 | integration | `src/adapters/models/route-lock-store.test.ts` | Active lock preserved after failed writes or stale incumbent evidence |
+| TR-011 | integration | `src/adapters/models/route-lock-store.test.ts` | Previous lock restored on rollback |
 | TR-012 | application | `src/application/models/evaluate-models.test.ts` | Serialized promotion evidence replays gate and judge checks without retaining the blinding secret |
 | TR-012 | integration | `src/commands/models.test.ts` | Synthetic end-to-end CLI cycle promotes passing candidate and rejects absent, stale or split-judge runs |
 | TR-013 | gate | `src/cli.option-collisions.test.ts` | CLI consistency, help examples and option-collision gates pass |
@@ -198,6 +199,8 @@ The [repair review](evidence/code-review-phase-05-4be1dbc6.md) retains two routi
 
 The CLI review regression dispatches the workflow selected by the project’s review plugin. Editing that workflow’s prompt must expire the review pin before a second dispatch. The [review of c779b492](evidence/code-review-phase-05-c779b492.md) records the reproduction and patch.
 
+The selected workflow tests also cover a review workflow installed only in the project. Changes to active code or acceptance review steps in the strategy manifest must expire the review pin. The [review of a6b4ba07](evidence/code-review-phase-05-a6b4ba07.md) records the failures.
+
 #### Done When
 
 ```bash
@@ -227,7 +230,7 @@ Phase 3 regressions reject candidate and incumbent review route identity failure
 
 Inherited Git selectors are removed from fixture commands and delegated agent environments. The agent environment contract permits undefined entries so the subprocess merge can remove inherited values. The behavioral fixture proves that a delegated Git command leaves another repository configuration unchanged.
 
-TR-023 now guards judge packets, raw dispatch results, transport error messages and assembled verdicts with the known dispatch credentials. Four cases failed before repair. They cover citation claims, reported runtime identity, failed stderr and thrown transport errors. The repaired phase gate passes 669 tests and lint.
+The credential checks in TR-023 cover judge packets and assembled verdicts. They also check raw dispatch results and transport error messages against known dispatch credentials. Four cases failed before repair. Two covered citation claims and reported runtime identity. The others covered failed stderr and thrown transport errors. The repaired phase gate passes 669 tests and lint.
 
 The staged-path and contradictory aggregate regressions remain in the phase 3 gate. Two observed failures preceded the repair. The gate now passes 685 checks and lint. Evidence is `evidence/phase03-handoff-checks-and-staged-paths.md`.
 
