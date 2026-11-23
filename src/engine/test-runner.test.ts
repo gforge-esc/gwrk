@@ -42,6 +42,15 @@ describe("parseTestOutput — structured {testsRun, passed, failed}", () => {
     });
   });
 
+  it.each([
+    ["3 passed in 0.42s", { testsRun: 3, passed: 3, failed: 0 }],
+    ["===== 1 failed in 0.42s =====", { testsRun: 1, passed: 0, failed: 1 }],
+    ["2 failed, 8 passed in 0.42s", { testsRun: 10, passed: 8, failed: 2 }],
+  ])("parses completed pytest output %s", (output, counts) => {
+    expect(parseTestOutput(output)).toEqual(counts);
+    expect(hasRecognizedTestSummary(output)).toBe(true);
+  });
+
   it("parses node --test TAP summary", () => {
     const out = ["# tests 3", "# pass 3", "# fail 0"].join("\n");
     expect(parseTestOutput(out)).toEqual({ testsRun: 3, passed: 3, failed: 0 });
