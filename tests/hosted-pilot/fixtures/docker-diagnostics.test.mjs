@@ -187,3 +187,70 @@ test("lifecycle failure receipt preserves hashes and static cause without reflec
   assert.equal(JSON.stringify(receipt).includes("RAW_SECRET_CANARY"), false);
   assert.equal(JSON.stringify(receipt).includes("/var/lib/docker"), false);
 });
+
+test("watchdog classifier rejects watched root dot aliases as non-transient", () => {
+  for (const stderr of [
+    "du: cannot access '/var/lib/docker/.': No such file or directory\n",
+    "du: cannot access '/var/lib/docker/./': No such file or directory\n",
+    "du: cannot access '/var/lib/docker/./.': No such file or directory\n",
+    "du: cannot access '/var/lib/docker/vfs/./layer': No such file or directory\n",
+    "du: cannot access '/var/lib/docker/vfs/..': No such file or directory\n",
+    "du: cannot access '/var/lib/docker/..': No such file or directory\n",
+    "du: cannot access '/var/lib/docker///': No such file or directory\n",
+  ]) {
+    const result = classifyWatchdogMeasurement({
+      code: 1,
+      stdout: "1024\t/var/lib/docker\n",
+      stderr,
+    });
+    assert.equal(result.transient, false);
+    assert.equal(result.category, "watchdog_measurement_failed");
+  }
+
+  const hiddenDescendant = classifyWatchdogMeasurement({
+    code: 1,
+    stdout: "1024\t/var/lib/docker\n",
+    stderr:
+      "du: cannot access '/var/lib/docker/vfs/dir/.tmp-layer': No such file or directory\n",
+  });
+  assert.equal(hiddenDescendant.transient, true);
+  assert.equal(hiddenDescendant.category, "watchdog_transient_vanished_entry");
+});
+
+test("lifecycle failure receipt never reflects arbitrary detail text on typed errors", () => {
+  const receipt = buildLifecycleFailureReceipt({
+    runId: "a".repeat(24),
+    error: {
+      isFixtureLifecycleError: true,
+      stage: "resource_watchdog",
+      category: "watchdog_measurement_failed",
+      detail: "SECRET_CANARY /var/lib/docker/private/key",
+      exitCode: 1,
+    },
+    fallbackStage: "resource_watchdog",
+  });
+  const serialized = JSON.stringify(receipt);
+  assert.equal(serialized.includes("SECRET_CANARY"), false);
+  assert.equal(serialized.includes("/var/lib/docker"), false);
+  assert.equal(
+    receipt.detail,
+    "Resource watchdog measurement failed without a recognized safe transient cause",
+  );
+
+  const protoReceipt = buildLifecycleFailureReceipt({
+    runId: "a".repeat(24),
+    error: {
+      isFixtureLifecycleError: true,
+      stage: "resource_watchdog",
+      category: "toString",
+      detail: "SECRET_PROTO_CANARY",
+      exitCode: 1,
+    },
+    fallbackStage: "resource_watchdog",
+  });
+  assert.equal(protoReceipt.category, "generic_construction_failed");
+  assert.equal(
+    JSON.stringify(protoReceipt).includes("SECRET_PROTO_CANARY"),
+    false,
+  );
+});

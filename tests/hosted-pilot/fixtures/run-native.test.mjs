@@ -271,3 +271,302 @@ test("emits a durable native-result.json on outer construction failure or cancel
   assert.equal(cancelReceipt.nativeBehavioralRed, false);
   assert.equal(cancelReceipt.fixtureConstructionFailure, true);
 });
+
+async function makeLiveLifecycleHarness(runId, commandOverride) {
+  const { EventEmitter } = await import("node:events");
+  const { withOwnedNestedDaemon } = await import("./nested-lifecycle.mjs");
+  const { DIND_IMAGE, RESOURCE_LIMITS } = await import("./runtime-policy.mjs");
+  const root = `/opt/gwrk-verification/${runId}`;
+  const containerId = "9".repeat(64);
+  const store = new Map();
+  const receipt = {
+    approvedPrivilegedExecution: true,
+    outerImage: DIND_IMAGE,
+    dataBudgetBytes: RESOURCE_LIMITS.dataBytes,
+    estimatedDataBytes: 10 * 1024 ** 3,
+    backingAvailableBytes: 20 * 1024 ** 3,
+    rootAvailableBytes: 10 * 1024 ** 3,
+    nodeImageId: `sha256:${"c".repeat(64)}`,
+    sourceCommit: "d".repeat(40),
+    archiveSha256: "e".repeat(64),
+    purpose: "behavioral-red",
+    daemonImageId: "sha256:daemon-fixture",
+    dataParentDevice: 9,
+    dataParentInode: 2,
+    dataChildIdentity: { device: 9, inode: 3 },
+  };
+  const metadata = (p) => ({
+    isDirectory: () => true,
+    isSymbolicLink: () => false,
+    uid: p === "/var/lib/gwrk" ? 997 : 0,
+    gid: p === "/var/lib/gwrk" ? 988 : 0,
+    mode: p === "/var/lib/gwrk" ? 0o750 : 0o700,
+    dev: 9,
+    ino:
+      p === "/var/lib/gwrk"
+        ? 2
+        : p.endsWith(runId) && p.startsWith("/var")
+          ? 3
+          : 4,
+  });
+  const files = {
+    existsSync: (p) => store.has(p),
+    lstatSync: metadata,
+    statSync: metadata,
+    realpathSync: (v) => v,
+    readlinkSync: (p) => (p === "/proc/self/ns/pid" ? "pid:[1]" : "pid:[2]"),
+    readdirSync: () => [],
+    readFileSync: (p) =>
+      store.has(p) ? store.get(p) : "1 0 9:1 / / rw - ext4 /dev/test rw\n",
+    mkdirSync: () => {},
+    writeFileSync: (p, v) => {
+      store.set(p, v);
+    },
+    rmSync: () => {},
+  };
+  const baseCommand = async (args) => {
+    if (args[0] === "image") {
+      return {
+        code: 0,
+        stdout: JSON.stringify({
+          Id: receipt.daemonImageId,
+          Architecture: "amd64",
+        }),
+        stderr: "",
+      };
+    }
+    if (args[0] === "create" || args[0] === "start") {
+      return { code: 0, stdout: containerId, stderr: "" };
+    }
+    if (args[0] === "inspect") {
+      return {
+        code: 0,
+        stdout: JSON.stringify({
+          Id: containerId,
+          Config: { Labels: { "gwrk.fixture.run": runId } },
+          HostConfig: { PidMode: "", IpcMode: "private" },
+          State: { Pid: 900 },
+        }),
+        stderr: "",
+      };
+    }
+    if (args[0] === "rm") return { code: 0, stdout: "", stderr: "" };
+    if (args.includes("readlink"))
+      return { code: 0, stdout: "pid:[2]\n", stderr: "" };
+    if (args.includes("info")) {
+      return {
+        code: 0,
+        stdout: JSON.stringify({ Driver: "vfs", Architecture: "x86_64" }),
+        stderr: "",
+      };
+    }
+    if (args.includes("du"))
+      return { code: 0, stdout: "1024\t/var/lib/docker\n", stderr: "" };
+    if (args.includes("load"))
+      return { code: 0, stdout: "Loaded\n", stderr: "" };
+    if (
+      args.includes("exec") &&
+      args.includes("image") &&
+      args.includes("inspect")
+    ) {
+      const target = args.at(-1);
+      const key = Object.entries(sampleImages).find(([, v]) => v === target)[0];
+      return {
+        code: 0,
+        stdout: JSON.stringify({
+          Id: target,
+          RootFS: { Layers: sampleImages.rootfs[key] },
+        }),
+        stderr: "",
+      };
+    }
+    if (args.includes("mkdir")) return { code: 0, stdout: "", stderr: "" };
+    throw new Error(`unexpected docker args: ${args.join(" ")}`);
+  };
+  const effects = {
+    files,
+    platform: "linux",
+    uid: 0,
+    processTarget: new EventEmitter(),
+    watchdog: {
+      sampleIntervalMs: 10,
+      maxValidSampleAgeMs: 15_000,
+      commandTimeoutMs: 5_000,
+    },
+    command: (args, options) => commandOverride(args, options, baseCommand),
+  };
+  return {
+    root,
+    receipt,
+    store,
+    files,
+    RESOURCE_LIMITS,
+    withLifecycle: (input) => withOwnedNestedDaemon(input, effects),
+  };
+}
+
+test("watchdog abort during bootstrap-stage read preserves durable watchdog receipt", async () => {
+  const runId = "f".repeat(24);
+  let releaseWatchdog;
+  const watchdogGate = new Promise((resolve) => {
+    releaseWatchdog = resolve;
+  });
+  const h = await makeLiveLifecycleHarness(
+    runId,
+    async (args, options, base) => {
+      if (args.includes("du")) {
+        await watchdogGate;
+        return {
+          code: 0,
+          stdout: `${h.RESOURCE_LIMITS.dataBytes}\t/var/lib/docker\n`,
+          stderr: "",
+        };
+      }
+      if (args.includes("/input/fixtures/bootstrap.mjs")) {
+        return { code: 0, stdout: "ok\n", stderr: "" };
+      }
+      if (args.includes("/fixture/bootstrap-stage.json")) {
+        releaseWatchdog();
+        return options.spawnProcess(
+          process.execPath,
+          ["-e", "setInterval(()=>{}, 1000)"],
+          {
+            timeoutMs: options.timeoutMs,
+          },
+        );
+      }
+      return base(args, options);
+    },
+  );
+
+  await assert.rejects(
+    runNativeFixture({
+      runId,
+      root: h.root,
+      receipt: h.receipt,
+      images: sampleImages,
+      files: h.files,
+      withLifecycle: h.withLifecycle,
+    }),
+  );
+
+  const persisted = JSON.parse(h.store.get(`${h.root}/native-result.json`));
+  assert.equal(persisted.stage, "resource_watchdog");
+  assert.equal(persisted.category, "watchdog_data_budget_exceeded");
+  assert.equal(persisted.fixtureConstructionFailure, true);
+  assert.equal(persisted.nativeBehavioralRed, false);
+});
+
+test("late post-abort executeCases continuation cannot overwrite durable watchdog receipt", async () => {
+  const runId = "1".repeat(24);
+  let releaseWatchdog;
+  const watchdogGate = new Promise((resolve) => {
+    releaseWatchdog = resolve;
+  });
+  let releaseStageRead;
+  const stageReadPending = new Promise((resolve) => {
+    releaseStageRead = resolve;
+  });
+  const h = await makeLiveLifecycleHarness(
+    runId,
+    async (args, options, base) => {
+      if (args.includes("du")) {
+        await watchdogGate;
+        return {
+          code: 0,
+          stdout: `${h.RESOURCE_LIMITS.dataBytes}\t/var/lib/docker\n`,
+          stderr: "",
+        };
+      }
+      if (args.includes("/input/fixtures/bootstrap.mjs")) {
+        return { code: 1, stdout: "", stderr: "red\n" };
+      }
+      if (args.includes("/fixture/bootstrap-stage.json")) {
+        releaseWatchdog();
+        await stageReadPending;
+        return { code: 1, stdout: "", stderr: "late\n" };
+      }
+      return base(args, options);
+    },
+  );
+
+  await assert.rejects(
+    runNativeFixture({
+      runId,
+      root: h.root,
+      receipt: h.receipt,
+      images: sampleImages,
+      files: h.files,
+      withLifecycle: h.withLifecycle,
+    }),
+  );
+
+  releaseStageRead();
+  await new Promise((resolve) => setTimeout(resolve, 25));
+  const persisted = JSON.parse(h.store.get(`${h.root}/native-result.json`));
+  assert.equal(persisted.category, "watchdog_data_budget_exceeded");
+});
+
+test("preload image inspect docker failure preserves stage image_preload", async () => {
+  const runId = "0".repeat(24);
+  const h = await makeLiveLifecycleHarness(
+    runId,
+    async (args, options, base) => {
+      if (
+        args.includes("exec") &&
+        args.includes("image") &&
+        args.includes("inspect")
+      ) {
+        return {
+          code: 1,
+          stdout: "",
+          stderr: "Error: No such image: sha256:node-id\n",
+        };
+      }
+      return base(args, options);
+    },
+  );
+
+  await assert.rejects(
+    runNativeFixture({
+      runId,
+      root: h.root,
+      receipt: h.receipt,
+      images: sampleImages,
+      files: h.files,
+      withLifecycle: h.withLifecycle,
+    }),
+  );
+
+  const persisted = JSON.parse(h.store.get(`${h.root}/native-result.json`));
+  assert.equal(persisted.stage, "image_preload");
+});
+
+test("controller setup docker failure preserves stage controller_setup", async () => {
+  const runId = "2".repeat(24);
+  const h = await makeLiveLifecycleHarness(
+    runId,
+    async (args, options, base) => {
+      if (args.includes("mkdir")) {
+        return { code: 1, stdout: "", stderr: "mkdir: permission denied\n" };
+      }
+      return base(args, options);
+    },
+  );
+
+  await assert.rejects(
+    runNativeFixture({
+      runId,
+      root: h.root,
+      receipt: h.receipt,
+      images: sampleImages,
+      files: h.files,
+      withLifecycle: h.withLifecycle,
+    }),
+  );
+
+  const persisted = JSON.parse(h.store.get(`${h.root}/native-result.json`));
+  assert.equal(persisted.stage, "controller_setup");
+  assert.equal(persisted.fixtureConstructionFailure, true);
+  assert.equal(persisted.nativeBehavioralRed, false);
+});

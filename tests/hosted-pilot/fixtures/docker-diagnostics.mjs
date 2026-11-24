@@ -27,32 +27,49 @@ const STATIC_LIFECYCLE_STAGES = new Set([
   "fixture_lifecycle",
 ]);
 
-const STATIC_LIFECYCLE_CATEGORIES = new Set([
-  "invalid_pid_mode",
-  "unsupported_option",
-  "preload_image_unavailable",
-  "fixture_mount_unavailable",
-  "daemon_unavailable",
-  "docker_command_failed",
-  "outer_daemon_readiness_timeout",
-  "watchdog_data_budget_exceeded",
-  "watchdog_suite_deadline_exceeded",
-  "watchdog_permission_denied",
-  "watchdog_storage_error",
-  "watchdog_transient_vanished_entry",
-  "watchdog_transient_exhausted",
-  "watchdog_measurement_invalid",
-  "watchdog_measurement_timeout",
-  "watchdog_process_failed",
-  "watchdog_measurement_failed",
-  "fixture_cancelled",
-  "fixture_process_timeout",
-  "fixture_output_bound",
-  "fixture_spawn_failed",
-  "fixture_drain_unconfirmed",
-  "lifecycle_assertion_failed",
-  "generic_construction_failed",
-]);
+const STATIC_LIFECYCLE_CATEGORY_DETAILS = Object.freeze({
+  invalid_pid_mode: "Docker rejected the PID namespace option",
+  unsupported_option: "Docker rejected an unsupported command option",
+  preload_image_unavailable: "A required preloaded image is unavailable",
+  fixture_mount_unavailable: "An owned fixture mount is unavailable",
+  daemon_unavailable: "The selected Docker daemon is unavailable",
+  docker_command_failed:
+    "Docker command failed without a recognized safe diagnostic",
+  outer_daemon_readiness_timeout:
+    "Nested Docker daemon did not become ready within startup deadline",
+  watchdog_data_budget_exceeded:
+    "Nested daemon data usage reached or exceeded the 12 GiB budget",
+  watchdog_suite_deadline_exceeded:
+    "Nested fixture exceeded the startup plus suite wall-clock deadline",
+  watchdog_permission_denied:
+    "Resource watchdog encountered a filesystem permission error",
+  watchdog_storage_error:
+    "Resource watchdog encountered a filesystem storage or I/O error",
+  watchdog_transient_vanished_entry:
+    "Resource watchdog observed transient vanished entries under the monitored tree",
+  watchdog_transient_exhausted:
+    "Resource watchdog vanished-entry race persisted beyond bounded retry budget",
+  watchdog_measurement_invalid:
+    "Resource watchdog returned an unparseable byte count",
+  watchdog_measurement_timeout:
+    "Resource watchdog measurement command timed out",
+  watchdog_process_failed:
+    "Resource watchdog measurement command failed to execute",
+  watchdog_measurement_failed:
+    "Resource watchdog measurement failed without a recognized safe transient cause",
+  fixture_cancelled: "Native fixture execution was cancelled before completion",
+  fixture_process_timeout:
+    "An owned fixture child process exceeded its timeout",
+  fixture_output_bound:
+    "An owned fixture child process exceeded its output bound",
+  fixture_spawn_failed: "An owned fixture child process failed to spawn",
+  fixture_drain_unconfirmed:
+    "An owned fixture child process did not confirm exit after escalation",
+  lifecycle_assertion_failed:
+    "A native fixture lifecycle invariant assertion failed",
+  generic_construction_failed:
+    "Native fixture lifecycle failed without a recognized safe diagnostic",
+});
 
 const STATIC_LIFECYCLE_OPERATIONS = new Set([
   "docker_create",
@@ -72,28 +89,13 @@ const WHITELISTED_PROCESS_CODES = new Set([
   "drain_unconfirmed",
 ]);
 
-const PROCESS_ERROR_CATEGORIES = {
-  cancelled: [
-    "fixture_cancelled",
-    "Native fixture execution was cancelled before completion",
-  ],
-  timeout: [
-    "fixture_process_timeout",
-    "An owned fixture child process exceeded its timeout",
-  ],
-  output_bound: [
-    "fixture_output_bound",
-    "An owned fixture child process exceeded its output bound",
-  ],
-  spawn: [
-    "fixture_spawn_failed",
-    "An owned fixture child process failed to spawn",
-  ],
-  drain_unconfirmed: [
-    "fixture_drain_unconfirmed",
-    "An owned fixture child process did not confirm exit after escalation",
-  ],
-};
+const PROCESS_ERROR_CATEGORIES = Object.freeze({
+  cancelled: "fixture_cancelled",
+  timeout: "fixture_process_timeout",
+  output_bound: "fixture_output_bound",
+  spawn: "fixture_spawn_failed",
+  drain_unconfirmed: "fixture_drain_unconfirmed",
+});
 
 const VANISHED_ENTRY_LINE_PATTERN =
   /^(?:(?:\/[^\s:]+\/)?g?du):\s+(?:(?:cannot (?:access|read directory|stat)|can't (?:stat|open)|failed to (?:open|stat))\s+)?(?:'([^']+)'|"([^"]+)"|([^:]+?)):\s*No such file or directory$/;
@@ -168,6 +170,10 @@ function isVanishedDescendantLine(line, watchedPath) {
   if (!base.startsWith("/") || base.length <= 1) {
     return false;
   }
+  const baseSegments = base.split("/");
+  if (baseSegments.includes(".") || baseSegments.includes("..")) {
+    return false;
+  }
   const match = VANISHED_ENTRY_LINE_PATTERN.exec(line);
   if (!match) {
     return false;
@@ -181,11 +187,16 @@ function isVanishedDescendantLine(line, watchedPath) {
     return false;
   }
   const relative = normalizedPath.slice(base.length + 1);
-  const segments = relative.split("/");
-  if (segments.includes("..")) {
+  const nonEmptySegments = relative
+    .split("/")
+    .filter((segment) => segment.length > 0);
+  if (
+    nonEmptySegments.length === 0 ||
+    nonEmptySegments.some((segment) => segment === "." || segment === "..")
+  ) {
     return false;
   }
-  return segments.some((segment) => segment.length > 0);
+  return true;
 }
 
 // Classify one du watchdog sample without reflecting raw paths or stderr text.
@@ -346,9 +357,11 @@ export function buildLifecycleFailureReceipt({
   fallbackStage = "fixture_lifecycle",
 }) {
   if (error?.isFixtureLifecycleError === true) {
-    const category = STATIC_LIFECYCLE_CATEGORIES.has(error.category)
-      ? error.category
-      : "generic_construction_failed";
+    const category =
+      typeof error.category === "string" &&
+      Object.hasOwn(STATIC_LIFECYCLE_CATEGORY_DETAILS, error.category)
+        ? error.category
+        : "generic_construction_failed";
     const operation = STATIC_LIFECYCLE_OPERATIONS.has(error.operation)
       ? error.operation
       : undefined;
@@ -379,10 +392,7 @@ export function buildLifecycleFailureReceipt({
       fixtureConstructionFailure: true,
       positiveAcceptance: false,
       category,
-      detail:
-        typeof error.detail === "string" && error.detail.length <= 200
-          ? error.detail
-          : "Native fixture lifecycle failed without a recognized safe diagnostic",
+      detail: STATIC_LIFECYCLE_CATEGORY_DETAILS[category],
     };
     if (operation !== undefined) {
       receipt.operation = operation;
@@ -405,7 +415,7 @@ export function buildLifecycleFailureReceipt({
       ? error.code
       : null;
   if (processCode) {
-    const [category, detail] = PROCESS_ERROR_CATEGORIES[processCode];
+    const category = PROCESS_ERROR_CATEGORIES[processCode];
     return {
       runId,
       exitCode: 1,
@@ -418,13 +428,16 @@ export function buildLifecycleFailureReceipt({
       fixtureConstructionFailure: true,
       positiveAcceptance: false,
       category,
-      detail,
+      detail: STATIC_LIFECYCLE_CATEGORY_DETAILS[category],
       errorCode: processCode,
     };
   }
 
   const isAssertion =
     error?.code === "ERR_ASSERTION" || error?.name === "AssertionError";
+  const category = isAssertion
+    ? "lifecycle_assertion_failed"
+    : "generic_construction_failed";
   return {
     runId,
     exitCode: 1,
@@ -436,11 +449,7 @@ export function buildLifecycleFailureReceipt({
     stage: sanitizeStage(error?.fixtureStage, fallbackStage),
     fixtureConstructionFailure: true,
     positiveAcceptance: false,
-    category: isAssertion
-      ? "lifecycle_assertion_failed"
-      : "generic_construction_failed",
-    detail: isAssertion
-      ? "A native fixture lifecycle invariant assertion failed"
-      : "Native fixture lifecycle failed without a recognized safe diagnostic",
+    category,
+    detail: STATIC_LIFECYCLE_CATEGORY_DETAILS[category],
   };
 }

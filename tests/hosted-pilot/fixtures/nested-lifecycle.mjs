@@ -31,7 +31,7 @@ export class FixtureLifecycleError extends Error {
     super(message);
     this.name = "FixtureLifecycleError";
     this.isFixtureLifecycleError = true;
-    this.stage = details.stage ?? "fixture_lifecycle";
+    this.stage = details.stage;
     this.category = details.category ?? "generic_construction_failed";
     this.detail =
       details.detail ??
@@ -195,6 +195,7 @@ export async function withOwnedNestedDaemon(
   );
   let containerId;
   let watchdog;
+  let casesPromise;
   let watchdogError;
   let dockerForCleanup;
   let currentStage = "outer_lifecycle";
@@ -204,16 +205,30 @@ export async function withOwnedNestedDaemon(
       const spawnDocker = (args, timeout = 15_000) => {
         if (signal.aborted)
           return Promise.reject(new FixtureProcessError("cancelled", true));
-        return effects.command
-          ? effects.command(args, { signal, timeoutMs: timeout, spawnProcess })
-          : spawnProcess(
-              "/usr/bin/docker",
-              ["--host", "unix:///var/run/docker.sock", ...args],
-              { env, timeoutMs: timeout },
-            );
+        if (effects.command) {
+          let pending;
+          try {
+            pending = effects.command(args, {
+              signal,
+              timeoutMs: timeout,
+              spawnProcess,
+            });
+          } catch (error) {
+            return Promise.reject(error);
+          }
+          return untilCancelled(pending);
+        }
+        return spawnProcess(
+          "/usr/bin/docker",
+          ["--host", "unix:///var/run/docker.sock", ...args],
+          { env, timeoutMs: timeout },
+        );
       };
       const docker = async (args, timeout = 15_000) => {
         const result = await spawnDocker(args, timeout);
+        if (signal.aborted) {
+          throw new FixtureProcessError("cancelled", true);
+        }
         if (result.code !== 0) {
           const diagnostic = classifyDockerFailure(args[0], result);
           const stdoutDigest = digestText(result.stdout);
@@ -351,7 +366,7 @@ export async function withOwnedNestedDaemon(
             exitCode: 1,
           });
         }
-        currentStage = "controller_execution";
+        currentStage = undefined;
       } catch (error) {
         if (error && typeof error === "object" && !error.fixtureStage) {
           error.fixtureStage = currentStage;
@@ -361,7 +376,10 @@ export async function withOwnedNestedDaemon(
 
       const suiteDeadlineMs =
         (RESOURCE_LIMITS.startupSeconds + RESOURCE_LIMITS.suiteSeconds) * 1000;
+      const suiteDeadlineAt = started + suiteDeadlineMs;
+      const watchdogStartedAt = now();
       let lastValidSample = null;
+      let lastTransientMeasurement = null;
       let consecutiveTransientTicks = 0;
       let transientRetries = 0;
       let transientRecoveries = 0;
@@ -371,46 +389,178 @@ export async function withOwnedNestedDaemon(
         consecutiveTransientTicks,
         hasValidSample: lastValidSample !== null,
       });
-      const enforceSuiteDeadline = () => {
-        if (now() - started >= suiteDeadlineMs) {
-          throw new FixtureLifecycleError("nested suite deadline", {
+      const sampleDeadlineAt = () =>
+        (lastValidSample ? lastValidSample.sampledAt : watchdogStartedAt) +
+        watchdogPolicy.maxValidSampleAgeMs;
+      const throwSuiteDeadlineError = () => {
+        throw new FixtureLifecycleError("nested suite deadline", {
+          stage: "resource_watchdog",
+          category: "watchdog_suite_deadline_exceeded",
+          detail:
+            "Nested fixture exceeded the startup plus suite wall-clock deadline",
+          operation: "resource_watchdog_deadline",
+          exitCode: 1,
+          watchdog: watchdogSummary(),
+        });
+      };
+      const throwSampleBudgetExpiredError = (measurement) => {
+        if (measurement) {
+          writeWatchdogFailureReceipt(
+            root,
+            writeFile,
+            measurement,
+            "watchdog_transient_exhausted",
+          );
+          throw new FixtureLifecycleError(
+            "owned Docker watchdog transient race persisted",
+            {
+              stage: "resource_watchdog",
+              category: "watchdog_transient_exhausted",
+              detail:
+                "Resource watchdog vanished-entry race persisted beyond bounded retry budget",
+              operation: "resource_watchdog_du",
+              exitCode: measurement.exitCode ?? 1,
+              stdoutBytes: measurement.stdoutBytes,
+              stderrBytes: measurement.stderrBytes,
+              stdoutSha256: measurement.stdoutSha256,
+              stderrSha256: measurement.stderrSha256,
+              watchdog: watchdogSummary(),
+            },
+          );
+        }
+        throw new FixtureLifecycleError(
+          "owned Docker watchdog measurement timed out",
+          {
             stage: "resource_watchdog",
-            category: "watchdog_suite_deadline_exceeded",
-            detail:
-              "Nested fixture exceeded the startup plus suite wall-clock deadline",
-            operation: "resource_watchdog_deadline",
+            category: "watchdog_measurement_timeout",
+            detail: "Resource watchdog measurement command timed out",
+            operation: "resource_watchdog_du",
             exitCode: 1,
+            errorCode: "timeout",
             watchdog: watchdogSummary(),
-          });
+          },
+        );
+      };
+      const computeRemainingBudget = () => {
+        const currentTime = now();
+        const suiteRemainingMs = suiteDeadlineAt - currentTime;
+        if (suiteRemainingMs <= 0) {
+          throwSuiteDeadlineError();
+        }
+        const sampleRemainingMs = sampleDeadlineAt() - currentTime;
+        if (sampleRemainingMs <= 0) {
+          throwSampleBudgetExpiredError(lastTransientMeasurement);
+        }
+        return { suiteRemainingMs, sampleRemainingMs };
+      };
+      const runBoundedMeasurement = async (attemptTimeoutMs, suiteLimited) => {
+        if (signal.aborted) {
+          throw new FixtureProcessError("cancelled", true);
+        }
+        let timer;
+        const commandPromise = spawnDocker(
+          ["exec", containerId, "du", "-sb", watchdogPolicy.watchedPath],
+          attemptTimeoutMs,
+        );
+        commandPromise.catch(() => {});
+        const deadlinePromise = new Promise((_, reject) => {
+          timer = setTimeout(() => {
+            if (signal.aborted) {
+              reject(new FixtureProcessError("cancelled", true));
+              return;
+            }
+            if (suiteLimited) {
+              reject(
+                new FixtureLifecycleError("nested suite deadline", {
+                  stage: "resource_watchdog",
+                  category: "watchdog_suite_deadline_exceeded",
+                  detail:
+                    "Nested fixture exceeded the startup plus suite wall-clock deadline",
+                  operation: "resource_watchdog_deadline",
+                  exitCode: 1,
+                  watchdog: watchdogSummary(),
+                }),
+              );
+              return;
+            }
+            reject(
+              new FixtureLifecycleError(
+                "owned Docker watchdog measurement timed out",
+                {
+                  stage: "resource_watchdog",
+                  category: "watchdog_measurement_timeout",
+                  detail: "Resource watchdog measurement command timed out",
+                  operation: "resource_watchdog_du",
+                  exitCode: 1,
+                  errorCode: "timeout",
+                  watchdog: watchdogSummary(),
+                },
+              ),
+            );
+          }, attemptTimeoutMs);
+        });
+        try {
+          return await untilCancelled(
+            Promise.race([commandPromise, deadlinePromise]),
+          );
+        } catch (error) {
+          if (error?.code === "timeout" && suiteLimited) {
+            throwSuiteDeadlineError();
+          }
+          throw error;
+        } finally {
+          clearTimeout(timer);
         }
       };
 
       watchdog = (async () => {
         while (!signal.aborted) {
           try {
-            enforceSuiteDeadline();
             let measurement;
             for (
               let attempt = 0;
               attempt <= watchdogPolicy.maxTransientRetriesPerTick;
               attempt += 1
             ) {
-              const raw = await spawnDocker(
-                ["exec", containerId, "du", "-sb", watchdogPolicy.watchedPath],
+              const budget = computeRemainingBudget();
+              const attemptTimeoutMs = Math.min(
                 watchdogPolicy.commandTimeoutMs,
+                budget.suiteRemainingMs,
+                budget.sampleRemainingMs,
               );
+              if (attemptTimeoutMs <= 0) {
+                throwSampleBudgetExpiredError(lastTransientMeasurement);
+              }
+              const suiteLimited =
+                budget.suiteRemainingMs <= budget.sampleRemainingMs &&
+                budget.suiteRemainingMs <= watchdogPolicy.commandTimeoutMs;
+              const raw = await runBoundedMeasurement(
+                attemptTimeoutMs,
+                suiteLimited,
+              );
+              if (signal.aborted) {
+                return;
+              }
               measurement = classifyWatchdogMeasurement(raw, {
                 watchedPath: watchdogPolicy.watchedPath,
                 budgetBytes: RESOURCE_LIMITS.dataBytes,
               });
               if (measurement.ok) {
+                const completedAt = now();
+                if (completedAt >= suiteDeadlineAt) {
+                  throwSuiteDeadlineError();
+                }
+                if (completedAt >= sampleDeadlineAt()) {
+                  throwSampleBudgetExpiredError(lastTransientMeasurement);
+                }
                 if (attempt > 0 || consecutiveTransientTicks > 0) {
                   transientRecoveries += 1;
                 }
                 lastValidSample = {
                   bytes: measurement.bytes,
-                  sampledAt: now(),
+                  sampledAt: completedAt,
                 };
+                lastTransientMeasurement = null;
                 consecutiveTransientTicks = 0;
                 break;
               }
@@ -436,74 +586,69 @@ export async function withOwnedNestedDaemon(
                   },
                 );
               }
+              lastTransientMeasurement = measurement;
+              const afterAttempt = computeRemainingBudget();
               if (attempt < watchdogPolicy.maxTransientRetriesPerTick) {
                 transientRetries += 1;
-                await untilCancelled(
-                  wait(watchdogPolicy.transientRetryDelayMs),
+                const retrySleepMs = Math.min(
+                  watchdogPolicy.transientRetryDelayMs,
+                  afterAttempt.suiteRemainingMs,
+                  afterAttempt.sampleRemainingMs,
                 );
+                await untilCancelled(wait(retrySleepMs));
               }
             }
 
             if (!measurement.ok) {
               consecutiveTransientTicks += 1;
-              const sampleAgeMs = lastValidSample
-                ? now() - lastValidSample.sampledAt
-                : Number.POSITIVE_INFINITY;
+              const remaining = computeRemainingBudget();
               const canPreserveSample =
                 lastValidSample !== null &&
                 lastValidSample.bytes < RESOURCE_LIMITS.dataBytes &&
-                sampleAgeMs <= watchdogPolicy.maxValidSampleAgeMs &&
+                remaining.sampleRemainingMs > 0 &&
                 consecutiveTransientTicks <=
                   watchdogPolicy.maxConsecutiveTransientTicks;
               if (!canPreserveSample) {
-                writeWatchdogFailureReceipt(
-                  root,
-                  writeFile,
-                  measurement,
-                  "watchdog_transient_exhausted",
-                );
-                throw new FixtureLifecycleError(
-                  "owned Docker watchdog transient race persisted",
-                  {
-                    stage: "resource_watchdog",
-                    category: "watchdog_transient_exhausted",
-                    detail:
-                      "Resource watchdog vanished-entry race persisted beyond bounded retry budget",
-                    operation: "resource_watchdog_du",
-                    exitCode: measurement.exitCode ?? 1,
-                    stdoutBytes: measurement.stdoutBytes,
-                    stderrBytes: measurement.stderrBytes,
-                    stdoutSha256: measurement.stdoutSha256,
-                    stderrSha256: measurement.stderrSha256,
-                    watchdog: watchdogSummary(),
-                  },
-                );
+                throwSampleBudgetExpiredError(measurement);
               }
             }
 
-            enforceSuiteDeadline();
-            await untilCancelled(wait(watchdogPolicy.sampleIntervalMs));
+            const remainingBeforeSleep = computeRemainingBudget();
+            const sleepMs = Math.min(
+              watchdogPolicy.sampleIntervalMs,
+              remainingBeforeSleep.suiteRemainingMs,
+              remainingBeforeSleep.sampleRemainingMs,
+            );
+            await untilCancelled(wait(sleepMs));
           } catch (error) {
             if (!signal.aborted) {
+              const suiteTimedOut =
+                error?.code === "timeout" && now() >= suiteDeadlineAt;
               const wrapped =
                 error?.isFixtureLifecycleError === true
                   ? error
                   : new FixtureLifecycleError(
-                      "owned Docker watchdog process failed",
+                      suiteTimedOut
+                        ? "nested suite deadline"
+                        : "owned Docker watchdog process failed",
                       {
                         stage: "resource_watchdog",
-                        category:
-                          error?.code === "timeout"
+                        category: suiteTimedOut
+                          ? "watchdog_suite_deadline_exceeded"
+                          : error?.code === "timeout"
                             ? "watchdog_measurement_timeout"
                             : "watchdog_process_failed",
-                        detail:
-                          error?.code === "timeout"
+                        detail: suiteTimedOut
+                          ? "Nested fixture exceeded the startup plus suite wall-clock deadline"
+                          : error?.code === "timeout"
                             ? "Resource watchdog measurement command timed out"
                             : "Resource watchdog measurement command failed to execute",
-                        operation: "resource_watchdog_du",
+                        operation: suiteTimedOut
+                          ? "resource_watchdog_deadline"
+                          : "resource_watchdog_du",
                         exitCode: 1,
                         errorCode:
-                          typeof error?.code === "string"
+                          !suiteTimedOut && typeof error?.code === "string"
                             ? error.code
                             : undefined,
                         watchdog: watchdogSummary(),
@@ -518,7 +663,7 @@ export async function withOwnedNestedDaemon(
       })();
       watchdog.catch(() => {});
 
-      const casesPromise = Promise.resolve().then(() =>
+      casesPromise = Promise.resolve().then(() =>
         executeCases({
           containerId,
           docker,
@@ -535,6 +680,7 @@ export async function withOwnedNestedDaemon(
     },
     async ({ childrenDrained, interrupted }) => {
       if (watchdog) await watchdog.catch(() => {});
+      if (casesPromise) await casesPromise.catch(() => {});
       let metadata;
       try {
         metadata = JSON.parse(

@@ -18,6 +18,7 @@ import {
   FixtureLifecycleError,
   withOwnedNestedDaemon,
 } from "./nested-lifecycle.mjs";
+import { FixtureProcessError } from "./process-scope.mjs";
 
 async function hashFile(path) {
   const hash = createHash("sha256");
@@ -40,8 +41,14 @@ export async function runNativeFixture({
     await withLifecycle({
       runId,
       receipt,
-      executeCases: async ({ containerId, docker, spawnDocker }) => {
+      executeCases: async ({ containerId, docker, spawnDocker, signal }) => {
+        const ensureActive = () => {
+          if (signal?.aborted) {
+            throw new FixtureProcessError("cancelled", true);
+          }
+        };
         caseStage = "image_preload";
+        ensureActive();
         const load = await spawnDocker(
           [
             "exec",
@@ -55,6 +62,7 @@ export async function runNativeFixture({
           ],
           240_000,
         );
+        ensureActive();
         if (load.code !== 0) {
           const diagnostic = classifyDockerFailure("load", load);
           const stdoutDigest = digestText(load.stdout);
@@ -74,6 +82,7 @@ export async function runNativeFixture({
           );
         }
         for (const name of ["node", "traefik", "proxy"]) {
+          ensureActive();
           const image = JSON.parse(
             await docker([
               "exec",
@@ -86,6 +95,7 @@ export async function runNativeFixture({
               images[name],
             ]),
           );
+          ensureActive();
           assert.equal(
             image.Id,
             images[name],
@@ -98,6 +108,7 @@ export async function runNativeFixture({
           );
         }
         caseStage = "controller_setup";
+        ensureActive();
         await docker([
           "exec",
           containerId,
@@ -106,6 +117,7 @@ export async function runNativeFixture({
           "/fixture",
           "/etc/gwrk",
         ]);
+        ensureActive();
         const controller = `gwrk-051-controller-${runId}`;
         files.writeFileSync(
           `${root}/controller-ownership.json`,
@@ -118,6 +130,7 @@ export async function runNativeFixture({
           { mode: 0o600 },
         );
         caseStage = "controller_execution";
+        ensureActive();
         const result = await spawnDocker(
           [
             "exec",
@@ -168,6 +181,7 @@ export async function runNativeFixture({
           ],
           360_000,
         );
+        ensureActive();
         let stage;
         try {
           stage = JSON.parse(
@@ -178,7 +192,12 @@ export async function runNativeFixture({
               "/fixture/bootstrap-stage.json",
             ]),
           );
-        } catch {}
+        } catch (stageError) {
+          if (signal?.aborted || stageError?.code === "cancelled") {
+            throw stageError;
+          }
+        }
+        ensureActive();
         const safe = {
           runId,
           exitCode: result.code,
@@ -218,6 +237,7 @@ export async function runNativeFixture({
         if (stage?.exitStatus !== undefined) {
           safe.exitStatus = stage.exitStatus;
         }
+        ensureActive();
         files.writeFileSync(resultPath, JSON.stringify(safe, null, 2), {
           mode: 0o600,
         });
