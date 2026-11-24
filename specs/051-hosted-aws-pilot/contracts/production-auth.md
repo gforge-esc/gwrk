@@ -126,6 +126,8 @@ Apply CSRF checks to Google-session requests. Authenticate API-key requests inde
 
 Disable or sanitize default request logging before accepting auth routes. Never log Authorization, Cookie or Set-Cookie values. Remove callback code and state values from URL logs. Do not log request bodies or upstream authentication error payloads. Test the edge and origin logs with canary secrets.
 
+Follow [login-admission-boundary.md](login-admission-boundary.md) for proxy-login admission and strict client-IP handling. Count successful origin checks conservatively when transport retries occur. Preserve one-time API reservation finalization. Keep browser auth-request followed by direct Traefik-to-origin forwarding. No new endpoint or replay store is introduced.
+
 Configure finite login and API rate limits before exposure. Bound headers, request bodies and external validation timeouts. Use trusted client-IP handling only at the configured proxy boundary. Application limits use verified credential IDs rather than raw tokens. Audit authentication denials and key lifecycle changes using public identifiers.
 
 ## Ports and ownership

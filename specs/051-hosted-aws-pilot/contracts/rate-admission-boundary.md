@@ -137,4 +137,4 @@ Use a fake injected clock and explicit verifier barriers. Use real Fastify injec
 
 ## Gateway handoff
 
-The origin limiter does not protect proxy-owned `/oauth2/start` or callback traffic by itself. `consumeLogin` may remain unwired during component preparation. Phase 7 must review and test the actual gateway admission boundary before public acceptance. This contract does not approve a new private endpoint or claim that separate processes share this map. Phase 5 cannot claim proxy-login protection from the origin limiter alone.
+The origin limiter does not protect proxy-owned `/oauth2/start` or callback traffic by itself. Phase 7 must implement and prove [login admission](login-admission-boundary.md) before public acceptance. Count successful origin checks conservatively, including transport retries. Do not promise one charge per public login request. This does not alter one-time API reservation finalization. Reuse this owner without another map or endpoint. Phase 5 cannot claim proxy-login protection from origin-only component tests.
