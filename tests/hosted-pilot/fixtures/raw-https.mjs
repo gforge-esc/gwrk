@@ -968,6 +968,7 @@ export function scanResponsesForLeaks(
     matches: [],
   };
   for (const item of responses) {
+    const responseLabel = (item?.label ?? "unknown").split("?")[0];
     const body = typeof item?.body === "string" ? item.body : "";
     const allowed = new Set(item?.allowLabels ?? []);
     for (const needle of needles) {
@@ -976,7 +977,7 @@ export function scanResponsesForLeaks(
       if (body.includes(needle.value)) {
         summary.leakCount++;
         summary.matches.push({
-          response: item.label ?? "unknown",
+          response: responseLabel,
           kind: needle.kind,
           label: needle.label,
           valueSha256: needle.valueSha256,

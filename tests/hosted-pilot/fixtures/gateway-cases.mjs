@@ -140,7 +140,9 @@ function client(name, command, allowFailure = false, scanOptions = {}) {
   }
   if (!command.operation && typeof result.body === "string") {
     scannedResponses.push({
-      label: scanOptions.label ?? `${command.method ?? "GET"} ${command.path}`,
+      label:
+        scanOptions.label ??
+        `${command.method ?? "GET"} ${(command.path ?? "/").split("?")[0]}`,
       body: result.body,
       allowLabels: scanOptions.allowLabels ?? [],
     });
@@ -408,8 +410,8 @@ try {
   );
   assert.equal(initialAuthDelta[0].path, "/oauth2/auth");
   assert.equal(initialAuthDelta[0].forwardedFor, clientIp(clientA));
-  assert.equal(initialAuthDelta[0].hasForwardedUri, false);
-  assert.equal(initialAuthDelta[0].hasForwardedMethod, false);
+  assert.equal(initialAuthDelta[0].hasForwardedUri, true);
+  assert.equal(initialAuthDelta[0].hasForwardedMethod, true);
   assert.ok(
     observe().googleVerification > 0,
     "origin never performed Google token verification",
@@ -604,8 +606,8 @@ try {
       const delta = assertProxyDelta(beforeSelProxy, afterSelProxy, 1);
       assert.equal(delta[0].path, "/oauth2/auth");
       assert.equal(delta[0].forwardedFor, clientIp(clientA));
-      assert.equal(delta[0].hasForwardedUri, false);
-      assert.equal(delta[0].hasForwardedMethod, false);
+      assert.equal(delta[0].hasForwardedUri, true);
+      assert.equal(delta[0].hasForwardedMethod, true);
     } else {
       assert.ok(
         [400, 401].includes(response.status),

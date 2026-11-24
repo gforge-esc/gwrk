@@ -797,3 +797,66 @@ test("regression (F-12): process log and response scanners fail closed on missin
     ),
   );
 });
+
+test("regression (N-01): /oauth2/auth ForwardAuth assertions must expect ForwardAuth headers rather than false", () => {
+  const source = readFileSync(
+    new URL("./gateway-cases.mjs", import.meta.url),
+    "utf8",
+  );
+  const authBlocks = [
+    ...source.matchAll(
+      /assert\.equal\(\w+\[0\]\.path,\s*"\/oauth2\/auth"\);[\s\S]{0,240}/g,
+    ),
+  ].map((match) => match[0]);
+  assert.ok(authBlocks.length >= 2, "expected /oauth2/auth assertion blocks");
+  for (const block of authBlocks) {
+    assert.equal(
+      /hasForwardedUri,\s*false/.test(block),
+      false,
+      "Traefik ForwardAuth /oauth2/auth sets X-Forwarded-Uri; asserting false breaks native proof",
+    );
+    assert.equal(
+      /hasForwardedMethod,\s*false/.test(block),
+      false,
+      "Traefik ForwardAuth /oauth2/auth sets X-Forwarded-Method; asserting false breaks native proof",
+    );
+  }
+});
+
+test("regression (N-02): response leak summary never emits raw live query secrets from response labels", () => {
+  const liveCode = "live-callback-code-secret-123456";
+  const liveState = "live-callback-state-secret-654321";
+  const canary = "051_ERROR_QUERY_CANARY";
+  let leakError;
+  try {
+    rawHttpsHelpers.scanResponsesForLeaks(
+      [
+        {
+          label: `GET /oauth2/callback?code=${liveCode}&state=${liveState}`,
+          body: `reflected ${canary}`,
+        },
+      ],
+      {
+        canaries: [canary],
+        liveSecrets: [
+          { label: "live_callback_code", value: liveCode },
+          { label: "live_callback_state", value: liveState },
+        ],
+      },
+    );
+  } catch (error) {
+    leakError = error;
+  }
+  assert.ok(leakError, "expected response leak to throw");
+  const serialized = `${leakError.message}\n${JSON.stringify(leakError.leakSummary)}`;
+  assert.equal(
+    serialized.includes(liveCode),
+    false,
+    "response leak summary leaked raw live callback code via label",
+  );
+  assert.equal(
+    serialized.includes(liveState),
+    false,
+    "response leak summary leaked raw live callback state via label",
+  );
+});
