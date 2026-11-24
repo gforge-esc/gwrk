@@ -1,5 +1,10 @@
 import assert from "node:assert/strict";
+import { spawn, spawnSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import { EventEmitter } from "node:events";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import { test } from "vitest";
 import { withOwnedNestedDaemon } from "./nested-lifecycle.mjs";
 import { DIND_IMAGE, RESOURCE_LIMITS } from "./runtime-policy.mjs";
@@ -270,5 +275,795 @@ test("matching host and outer PID namespaces fails despite empty PID mode", asyn
 test("removes the exact owned data child after Docker changes its mode to 0710", async () => {
   const f = fixture({ dockerDataModeAfterStart: 0o710 });
   await withOwnedNestedDaemon(f.input, f.effects);
+  assert.ok(f.events.some((event) => event[0] === "remove-data"));
+});
+
+test("behavioral regression: real du vanished-entry race on a mutating temp tree recovers via bounded retry", async () => {
+  const tempTree = mkdtempSync(path.join(os.tmpdir(), "gwrk-du-watchdog-"));
+  let mutator;
+  try {
+    for (let d = 0; d < 20; d++) {
+      const dir = path.join(tempTree, `d${d}`);
+      mkdirSync(dir);
+      for (let i = 0; i < 40; i++) {
+        writeFileSync(path.join(dir, `base-${i}`), "x".repeat(64));
+      }
+    }
+    mutator = spawn(
+      process.execPath,
+      [
+        "-e",
+        `
+          const fs = require("node:fs");
+          const path = require("node:path");
+          const root = process.argv[1];
+          let round = 0;
+          const end = Date.now() + 8000;
+          while (Date.now() < end) {
+            const sub = path.join(root, "churn-" + (round % 12));
+            try {
+              fs.mkdirSync(sub, { recursive: true });
+              for (let k = 0; k < 25; k++) fs.writeFileSync(path.join(sub, "f" + k), "v");
+              fs.rmSync(sub, { recursive: true, force: true });
+            } catch {}
+            round++;
+          }
+        `,
+        tempTree,
+      ],
+      { stdio: "ignore" },
+    );
+
+    const f = fixture({ dockerDataModeAfterStart: 0o710 });
+    const written = new Map();
+    const origWrite = f.effects.files.writeFileSync;
+    f.effects.files.writeFileSync = (filePath, value) => {
+      written.set(filePath, value);
+      return origWrite(filePath, value);
+    };
+    const baseCommand = f.effects.command;
+    let realRaceObserved = false;
+    let recoveredAfterRace = false;
+    let releaseCases;
+    const done = new Promise((resolve) => {
+      releaseCases = resolve;
+    });
+
+    f.effects.command = async (args, options) => {
+      if (args.includes("du")) {
+        const res = spawnSync("/usr/bin/du", ["-sk", tempTree], {
+          encoding: "utf8",
+          env: { LANG: "C", LC_ALL: "C", PATH: "/usr/bin:/bin" },
+          timeout: 5000,
+        });
+        if (res.status === 1 && /No such file or directory/.test(res.stderr)) {
+          realRaceObserved = true;
+          mutator.kill("SIGKILL");
+        } else if (res.status === 0 && realRaceObserved) {
+          recoveredAfterRace = true;
+          releaseCases();
+        }
+        return {
+          code: res.status ?? 1,
+          stdout: res.stdout ?? "",
+          stderr: res.stderr ?? "",
+        };
+      }
+      return baseCommand(args, options);
+    };
+    f.effects.watchdog = {
+      watchedPath: tempTree,
+      sampleIntervalMs: 5,
+      transientRetryDelayMs: 10,
+      maxTransientRetriesPerTick: 2,
+      maxConsecutiveTransientTicks: 3,
+      maxValidSampleAgeMs: 15_000,
+    };
+    f.input.executeCases = async () => {
+      f.events.push(["cases"]);
+      await Promise.race([
+        done,
+        new Promise((_, reject) =>
+          setTimeout(
+            () => reject(new Error("real du race probe timed out")),
+            7000,
+          ),
+        ),
+      ]);
+    };
+
+    await withOwnedNestedDaemon(f.input, f.effects);
+    assert.equal(
+      realRaceObserved,
+      true,
+      "real du must hit an actual vanished-entry exit-1 race on the mutating tree",
+    );
+    assert.equal(
+      recoveredAfterRace,
+      true,
+      "watchdog must recover with an exit-0 sample after the transient race settles",
+    );
+    assert.equal(
+      [...written.keys()].some((k) =>
+        k.endsWith("docker-command-failure.json"),
+      ),
+      false,
+      "recovered transient race must not leave a stale docker-command-failure receipt",
+    );
+    assert.ok(f.events.some((event) => event[0] === "remove-data"));
+  } finally {
+    mutator?.kill("SIGKILL");
+    rmSync(tempTree, { recursive: true, force: true });
+  }
+});
+
+test("watchdog preserves a recent valid sample across bounded transient ticks and recovers", async () => {
+  const f = fixture();
+  const baseCommand = f.effects.command;
+  let duCalls = 0;
+  let releaseCases;
+  const done = new Promise((resolve) => {
+    releaseCases = resolve;
+  });
+  let clock = 1_000_000;
+  f.effects.now = () => clock;
+  f.effects.sleep = async (ms) => {
+    clock += ms;
+  };
+  f.effects.command = async (args, options) => {
+    if (args.includes("du")) {
+      duCalls += 1;
+      // Call 1: valid sample. Calls 2..7: 2 full ticks (3 attempts each) of vanished entries. Call 8: recovered!
+      if (duCalls === 1) {
+        return { code: 0, stdout: "4096\t/var/lib/docker\n", stderr: "" };
+      }
+      if (duCalls <= 7) {
+        return {
+          code: 1,
+          stdout: "4096\t/var/lib/docker\n",
+          stderr:
+            "du: cannot access '/var/lib/docker/vfs/dir/layer-tmp': No such file or directory\n",
+        };
+      }
+      releaseCases();
+      return { code: 0, stdout: "8192\t/var/lib/docker\n", stderr: "" };
+    }
+    return baseCommand(args, options);
+  };
+  f.input.executeCases = async () => {
+    f.events.push(["cases"]);
+    await done;
+  };
+
+  await withOwnedNestedDaemon(f.input, f.effects);
+  assert.ok(duCalls >= 8);
+  assert.ok(f.events.some((event) => event[0] === "remove-data"));
+});
+
+test("watchdog fails closed when persistent vanished-entry races exceed the bounded retry window", async () => {
+  const f = fixture();
+  const baseCommand = f.effects.command;
+  const written = new Map();
+  const origWrite = f.effects.files.writeFileSync;
+  f.effects.files.writeFileSync = (filePath, value) => {
+    written.set(filePath, value);
+    return origWrite(filePath, value);
+  };
+  let duCalls = 0;
+  let clock = 1_000_000;
+  f.effects.now = () => clock;
+  f.effects.sleep = async (ms) => {
+    clock += ms;
+  };
+  const vanishedStderr =
+    "du: cannot access '/var/lib/docker/vfs/dir/stuck': No such file or directory\n";
+  f.effects.command = async (args, options) => {
+    if (args.includes("du")) {
+      duCalls += 1;
+      if (duCalls === 1) {
+        return { code: 0, stdout: "4096\t/var/lib/docker\n", stderr: "" };
+      }
+      return {
+        code: 1,
+        stdout: "4096\t/var/lib/docker\n",
+        stderr: vanishedStderr,
+      };
+    }
+    return baseCommand(args, options);
+  };
+  f.input.executeCases = async ({ signal }) => {
+    f.events.push(["cases"]);
+    await new Promise((resolve) => signal.addEventListener("abort", resolve));
+  };
+
+  let caught;
+  try {
+    await withOwnedNestedDaemon(f.input, f.effects);
+  } catch (err) {
+    caught = err;
+  }
+  assert.ok(caught, "persistent transient race must fail closed");
+  assert.equal(caught.stage, "resource_watchdog");
+  assert.equal(caught.category, "watchdog_transient_exhausted");
+  assert.equal(caught.stderrBytes, Buffer.byteLength(vanishedStderr));
+  assert.equal(
+    caught.stderrSha256,
+    createHash("sha256").update(vanishedStderr).digest("hex"),
+  );
+  assert.equal(JSON.stringify(caught).includes("/var/lib/docker"), false);
+  assert.ok(
+    f.events.some((event) => event[0] === "docker" && event[1] === "rm"),
+  );
+  assert.ok(f.events.some((event) => event[0] === "remove-data"));
+});
+
+test("watchdog fails closed immediately without retry on permission, storage, unknown, and oversized usage errors", async () => {
+  const cases = [
+    {
+      name: "permission",
+      reply: {
+        code: 1,
+        stdout: "1024\t/var/lib/docker\n",
+        stderr:
+          "du: cannot read directory '/var/lib/docker/vfs/dir/priv': Permission denied\n",
+      },
+      expectedCategory: "watchdog_permission_denied",
+    },
+    {
+      name: "storage",
+      reply: {
+        code: 1,
+        stdout: "1024\t/var/lib/docker\n",
+        stderr: "du: /var/lib/docker/vfs/dir/x: No space left on device\n",
+      },
+      expectedCategory: "watchdog_storage_error",
+    },
+    {
+      name: "unknown_with_secret",
+      reply: {
+        code: 1,
+        stdout: "",
+        stderr:
+          "unrecognized error SECRET_CANARY_WATCHDOG /var/lib/docker/tok\n",
+      },
+      expectedCategory: "watchdog_measurement_failed",
+    },
+    {
+      name: "oversized_12gib",
+      reply: {
+        code: 0,
+        stdout: `${RESOURCE_LIMITS.dataBytes}\t/var/lib/docker\n`,
+        stderr: "",
+      },
+      expectedCategory: "watchdog_data_budget_exceeded",
+    },
+  ];
+
+  for (const tc of cases) {
+    const f = fixture();
+    const baseCommand = f.effects.command;
+    let duCalls = 0;
+    f.effects.command = async (args, options) => {
+      if (args.includes("du")) {
+        duCalls += 1;
+        return tc.reply;
+      }
+      return baseCommand(args, options);
+    };
+    f.input.executeCases = async ({ signal }) => {
+      await new Promise((resolve) => signal.addEventListener("abort", resolve));
+    };
+
+    let caught;
+    try {
+      await withOwnedNestedDaemon(f.input, f.effects);
+    } catch (err) {
+      caught = err;
+    }
+    assert.ok(caught, `${tc.name} must fail closed`);
+    assert.equal(
+      duCalls,
+      1,
+      `${tc.name} must fail closed immediately without retrying`,
+    );
+    assert.equal(caught.stage, "resource_watchdog");
+    assert.equal(caught.category, tc.expectedCategory);
+    assert.equal(
+      JSON.stringify(caught).includes("SECRET_CANARY_WATCHDOG"),
+      false,
+    );
+    assert.equal(
+      caught.stderrSha256,
+      createHash("sha256").update(tc.reply.stderr).digest("hex"),
+    );
+    assert.ok(f.events.some((event) => event[0] === "remove-data"));
+  }
+});
+
+test("watchdog fails closed on first tick when no prior valid sample exists", async () => {
+  const f = fixture();
+  const baseCommand = f.effects.command;
+  let duCalls = 0;
+  let clock = 1_000_000;
+  f.effects.now = () => clock;
+  f.effects.sleep = async (ms) => {
+    clock += ms;
+  };
+  f.effects.command = async (args, options) => {
+    if (args.includes("du")) {
+      duCalls += 1;
+      return {
+        code: 1,
+        stdout: "1024\t/var/lib/docker\n",
+        stderr:
+          "du: cannot access '/var/lib/docker/vfs/dir/never-settles': No such file or directory\n",
+      };
+    }
+    return baseCommand(args, options);
+  };
+  f.input.executeCases = async ({ signal }) => {
+    await new Promise((resolve) => signal.addEventListener("abort", resolve));
+  };
+
+  let caught;
+  try {
+    await withOwnedNestedDaemon(f.input, f.effects);
+  } catch (err) {
+    caught = err;
+  }
+  assert.ok(
+    caught,
+    "first tick exhaustion without prior valid sample must fail",
+  );
+  assert.equal(
+    duCalls,
+    3,
+    "initial tick gets 1 attempt plus 2 bounded retries",
+  );
+  assert.equal(caught.category, "watchdog_transient_exhausted");
+  assert.equal(caught.watchdog?.hasValidSample, false);
+});
+
+test("watchdog fails closed when a recent valid sample exceeds its freshness window", async () => {
+  const f = fixture();
+  const baseCommand = f.effects.command;
+  let duCalls = 0;
+  let clock = 1_000_000;
+  f.effects.now = () => clock;
+  f.effects.sleep = async (ms) => {
+    clock += ms;
+  };
+  f.effects.watchdog = {
+    maxValidSampleAgeMs: 1_500,
+    maxConsecutiveTransientTicks: 10,
+  };
+  f.effects.command = async (args, options) => {
+    if (args.includes("du")) {
+      duCalls += 1;
+      if (duCalls === 1) {
+        return { code: 0, stdout: "4096\t/var/lib/docker\n", stderr: "" };
+      }
+      return {
+        code: 1,
+        stdout: "4096\t/var/lib/docker\n",
+        stderr:
+          "du: cannot access '/var/lib/docker/vfs/dir/stale': No such file or directory\n",
+      };
+    }
+    return baseCommand(args, options);
+  };
+  f.input.executeCases = async ({ signal }) => {
+    await new Promise((resolve) => signal.addEventListener("abort", resolve));
+  };
+
+  let caught;
+  try {
+    await withOwnedNestedDaemon(f.input, f.effects);
+  } catch (err) {
+    caught = err;
+  }
+  assert.ok(caught, "stale valid sample must not bypass fail-closed bound");
+  assert.equal(caught.category, "watchdog_transient_exhausted");
+  assert.ok(caught.watchdog?.consecutiveTransientTicks <= 3);
+});
+
+test("watchdog fails closed when the unchanged startup plus suite wall-clock deadline elapses", async () => {
+  const f = fixture();
+  let clock = 1_000_000;
+  f.effects.now = () => clock;
+  f.effects.sleep = async () => {
+    clock +=
+      (RESOURCE_LIMITS.startupSeconds + RESOURCE_LIMITS.suiteSeconds) * 1000;
+  };
+  f.input.executeCases = async ({ signal }) => {
+    await new Promise((resolve) => signal.addEventListener("abort", resolve));
+  };
+
+  let caught;
+  try {
+    await withOwnedNestedDaemon(f.input, f.effects);
+  } catch (err) {
+    caught = err;
+  }
+  assert.ok(caught, "elapsed suite deadline must fail closed");
+  assert.equal(caught.stage, "resource_watchdog");
+  assert.equal(caught.category, "watchdog_suite_deadline_exceeded");
+});
+
+test("watchdog clamps pending du command timeout to remaining sample freshness window", async () => {
+  const f = fixture();
+  const baseCommand = f.effects.command;
+  const observedTimeouts = [];
+  let duCalls = 0;
+
+  f.effects.watchdog = {
+    sampleIntervalMs: 50,
+    maxValidSampleAgeMs: 250,
+    commandTimeoutMs: 3000,
+    maxTransientRetriesPerTick: 2,
+    transientRetryDelayMs: 20,
+    maxConsecutiveTransientTicks: 3,
+  };
+  f.effects.command = async (args, options) => {
+    if (args.includes("du")) {
+      duCalls += 1;
+      observedTimeouts.push(options.timeoutMs);
+      if (duCalls === 1) {
+        return { code: 0, stdout: "4096\t/var/lib/docker\n", stderr: "" };
+      }
+      return options.spawnProcess(
+        process.execPath,
+        ["-e", "setInterval(()=>{}, 1000)"],
+        { timeoutMs: options.timeoutMs },
+      );
+    }
+    return baseCommand(args, options);
+  };
+  f.input.executeCases = async ({ signal }) => {
+    await new Promise((resolve) => signal.addEventListener("abort", resolve));
+  };
+
+  const startedAt = Date.now();
+  let caught;
+  try {
+    await withOwnedNestedDaemon(f.input, f.effects);
+  } catch (err) {
+    caught = err;
+  }
+  const elapsedMs = Date.now() - startedAt;
+  assert.ok(caught, "pending command exceeding freshness must fail closed");
+  assert.ok(observedTimeouts[1] <= 250);
+  assert.ok(elapsedMs < 1500);
+});
+
+test("watchdog halts stale retry loop and rejects late exit-0 past maxValidSampleAgeMs", async () => {
+  const f = fixture();
+  const baseCommand = f.effects.command;
+  let clock = 1_000_000;
+  let duCalls = 0;
+  const observedTimeouts = [];
+  let releaseCases;
+  const done = new Promise((resolve) => {
+    releaseCases = resolve;
+  });
+
+  f.effects.now = () => clock;
+  f.effects.sleep = async (ms) => {
+    clock += ms;
+  };
+  f.effects.command = async (args, options) => {
+    if (args.includes("du")) {
+      duCalls += 1;
+      observedTimeouts.push(options.timeoutMs);
+      if (duCalls === 1) {
+        return { code: 0, stdout: "4096\t/var/lib/docker\n", stderr: "" };
+      }
+      if (duCalls === 2) {
+        clock += 8_000;
+        return {
+          code: 1,
+          stdout: "4096\t/var/lib/docker\n",
+          stderr:
+            "du: cannot access '/var/lib/docker/vfs/dir/a': No such file or directory\n",
+        };
+      }
+      if (duCalls === 3) {
+        clock += 7_000;
+        return {
+          code: 1,
+          stdout: "4096\t/var/lib/docker\n",
+          stderr:
+            "du: cannot access '/var/lib/docker/vfs/dir/b': No such file or directory\n",
+        };
+      }
+      clock += 3_850;
+      releaseCases();
+      return { code: 0, stdout: "8192\t/var/lib/docker\n", stderr: "" };
+    }
+    return baseCommand(args, options);
+  };
+  f.input.executeCases = async ({ signal }) => {
+    await Promise.race([
+      done,
+      new Promise((resolve) => signal.addEventListener("abort", resolve)),
+    ]);
+  };
+
+  let caught;
+  try {
+    await withOwnedNestedDaemon(f.input, f.effects);
+  } catch (err) {
+    caught = err;
+  }
+  assert.ok(caught, "stale retry window must fail closed");
+  assert.ok(observedTimeouts[2] <= 5_850);
+});
+
+test("watchdog bounds initial sample retries within a single 15s control budget", async () => {
+  const f = fixture();
+  const baseCommand = f.effects.command;
+  let clock = 1_000_000;
+  let duCalls = 0;
+  let releaseCases;
+  const done = new Promise((resolve) => {
+    releaseCases = resolve;
+  });
+
+  f.effects.now = () => clock;
+  f.effects.sleep = async (ms) => {
+    clock += ms;
+  };
+  f.effects.command = async (args, options) => {
+    if (args.includes("du")) {
+      duCalls += 1;
+      if (duCalls <= 2) {
+        clock += 10_000;
+        return {
+          code: 1,
+          stdout: "4096\t/var/lib/docker\n",
+          stderr:
+            "du: cannot access '/var/lib/docker/vfs/dir/init': No such file or directory\n",
+        };
+      }
+      clock += 10_000;
+      releaseCases();
+      return { code: 0, stdout: "8192\t/var/lib/docker\n", stderr: "" };
+    }
+    return baseCommand(args, options);
+  };
+  f.input.executeCases = async ({ signal }) => {
+    await Promise.race([
+      done,
+      new Promise((resolve) => signal.addEventListener("abort", resolve)),
+    ]);
+  };
+
+  let caught;
+  try {
+    await withOwnedNestedDaemon(f.input, f.effects);
+  } catch (err) {
+    caught = err;
+  }
+  assert.ok(caught, "initial sample retries past 15s must fail closed");
+});
+
+test("watchdog clamps pending du timeout to remaining suite deadline and halts retries", async () => {
+  const f = fixture();
+  const baseCommand = f.effects.command;
+  const suiteDeadlineMs =
+    (RESOURCE_LIMITS.startupSeconds + RESOURCE_LIMITS.suiteSeconds) * 1000;
+  let clock = 1_000_000;
+  let duCalls = 0;
+  const observedTimeouts = [];
+
+  f.effects.now = () => clock;
+  f.effects.sleep = async (ms) => {
+    clock += ms;
+  };
+  f.effects.command = async (args, options) => {
+    if (args.includes("info")) {
+      const result = await baseCommand(args, options);
+      // Advance clock right before the watchdog begins so the first du tick has 1000ms left.
+      clock = 1_000_000 + suiteDeadlineMs - 1_000;
+      return result;
+    }
+    if (args.includes("du")) {
+      duCalls += 1;
+      observedTimeouts.push(options.timeoutMs);
+      clock += 10_000;
+      return {
+        code: 1,
+        stdout: "4096\t/var/lib/docker\n",
+        stderr:
+          "du: cannot access '/var/lib/docker/vfs/dir/late': No such file or directory\n",
+      };
+    }
+    return baseCommand(args, options);
+  };
+  f.input.executeCases = async ({ signal }) => {
+    await new Promise((resolve) => signal.addEventListener("abort", resolve));
+  };
+
+  let caught;
+  try {
+    await withOwnedNestedDaemon(f.input, f.effects);
+  } catch (err) {
+    caught = err;
+  }
+  assert.ok(caught);
+  assert.equal(duCalls, 1);
+  assert.equal(caught.category, "watchdog_suite_deadline_exceeded");
+  assert.ok(observedTimeouts[0] <= 1_000);
+});
+
+test("watchdog fails before spawn at zero remaining budget and clamps retry sleep to remaining budget", async () => {
+  const f = fixture();
+  const baseCommand = f.effects.command;
+  let clock = 1_000_000;
+  let duCalls = 0;
+  const observedSleeps = [];
+
+  f.effects.now = () => clock;
+  f.effects.sleep = async (ms) => {
+    observedSleeps.push(ms);
+    clock += ms;
+  };
+  f.effects.command = async (args, options) => {
+    if (args.includes("du")) {
+      duCalls += 1;
+      if (duCalls === 1) {
+        return { code: 0, stdout: "4096\t/var/lib/docker\n", stderr: "" };
+      }
+      // Consume 13,950ms so only 50ms remain before the 15,000ms freshness deadline.
+      clock += 13_950;
+      return {
+        code: 1,
+        stdout: "4096\t/var/lib/docker\n",
+        stderr:
+          "du: cannot access '/var/lib/docker/vfs/dir/edge': No such file or directory\n",
+      };
+    }
+    return baseCommand(args, options);
+  };
+  f.input.executeCases = async ({ signal }) => {
+    await new Promise((resolve) => signal.addEventListener("abort", resolve));
+  };
+
+  let caught;
+  try {
+    await withOwnedNestedDaemon(f.input, f.effects);
+  } catch (err) {
+    caught = err;
+  }
+  assert.ok(caught, "zero remaining freshness budget must fail closed");
+  assert.equal(caught.category, "watchdog_transient_exhausted");
+  assert.equal(duCalls, 2, "must fail before spawning retry at zero budget");
+  assert.equal(observedSleeps[1], 50);
+  assert.equal(clock - 1_000_000, 15_000);
+});
+
+test("watchdog rejects a late exit-0 measurement arriving after freshness expiry", async () => {
+  const f = fixture();
+  const baseCommand = f.effects.command;
+  let clock = 1_000_000;
+  let duCalls = 0;
+
+  f.effects.now = () => clock;
+  f.effects.sleep = async (ms) => {
+    clock += ms;
+  };
+  f.effects.command = async (args, options) => {
+    if (args.includes("du")) {
+      duCalls += 1;
+      if (duCalls === 1) {
+        return { code: 0, stdout: "4096\t/var/lib/docker\n", stderr: "" };
+      }
+      // Late exit-0 arrives past the 15,000ms freshness deadline.
+      clock += 15_000;
+      return { code: 0, stdout: "8192\t/var/lib/docker\n", stderr: "" };
+    }
+    return baseCommand(args, options);
+  };
+  f.input.executeCases = async ({ signal }) => {
+    await new Promise((resolve) => signal.addEventListener("abort", resolve));
+  };
+
+  let caught;
+  try {
+    await withOwnedNestedDaemon(f.input, f.effects);
+  } catch (err) {
+    caught = err;
+  }
+  assert.ok(caught, "late exit-0 past expiry must not refresh sample");
+  assert.equal(caught.category, "watchdog_measurement_timeout");
+  assert.equal(duCalls, 2);
+});
+
+test("watchdog initiates abort within deadline while permitting bounded child drain without allowing more work", async () => {
+  const f = fixture();
+  const baseCommand = f.effects.command;
+  let duCalls = 0;
+  let duPid;
+  let abortInitiatedAt;
+  let postAbortWorkRejected = false;
+  let removedAfterDrain = false;
+  const live = () => {
+    try {
+      process.kill(duPid, 0);
+      return true;
+    } catch {
+      return false;
+    }
+  };
+
+  f.effects.watchdog = {
+    sampleIntervalMs: 40,
+    maxValidSampleAgeMs: 250,
+    commandTimeoutMs: 3000,
+    maxTransientRetriesPerTick: 2,
+    transientRetryDelayMs: 20,
+    maxConsecutiveTransientTicks: 3,
+  };
+  f.effects.command = async (args, options) => {
+    if (args.includes("du")) {
+      duCalls += 1;
+      if (duCalls === 1) {
+        return { code: 0, stdout: "4096\t/var/lib/docker\n", stderr: "" };
+      }
+      return options.spawnProcess(
+        process.execPath,
+        ["-e", 'process.on("SIGTERM",()=>{});setInterval(()=>{},1000)'],
+        {
+          timeoutMs: options.timeoutMs,
+          onSpawn(child) {
+            duPid = child.pid;
+          },
+        },
+      );
+    }
+    if (args[0] === "rm") {
+      assert.equal(live(), false, "cleanup rm raced draining watchdog child");
+      removedAfterDrain = true;
+    }
+    return baseCommand(args, options);
+  };
+
+  const startedAt = Date.now();
+  f.input.executeCases = async ({ signal, spawnDocker }) => {
+    await new Promise((resolve) => {
+      signal.addEventListener(
+        "abort",
+        () => {
+          abortInitiatedAt = Date.now() - startedAt;
+          resolve();
+        },
+        { once: true },
+      );
+    });
+    try {
+      await spawnDocker(["exec", "post-abort-work"], 5000);
+    } catch (error) {
+      postAbortWorkRejected = error?.code === "cancelled";
+    }
+  };
+
+  let caught;
+  try {
+    await withOwnedNestedDaemon(f.input, f.effects);
+  } catch (err) {
+    caught = err;
+  } finally {
+    if (duPid && live()) process.kill(duPid, "SIGKILL");
+  }
+
+  assert.ok(caught, "watchdog must abort on hung SIGTERM-ignoring du child");
+  assert.equal(caught.category, "watchdog_measurement_timeout");
+  assert.ok(
+    abortInitiatedAt !== undefined && abortInitiatedAt < 800,
+    `abort initiation (${abortInitiatedAt}ms) must happen promptly before 1s TERM-to-KILL drain`,
+  );
+  assert.equal(postAbortWorkRejected, true);
+  assert.equal(removedAfterDrain, true);
+  assert.equal(live(), false);
   assert.ok(f.events.some((event) => event[0] === "remove-data"));
 });
