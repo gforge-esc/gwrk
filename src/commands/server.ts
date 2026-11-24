@@ -17,9 +17,9 @@ import {
   createSqliteAuthStoreAdapter,
   createSqliteProjectRegistryAdapter,
 } from "../adapters/sqlite/index.js";
-import { openDatabase } from "../db/index.js";
+import { resolveHostedAuthConfig } from "../domain/hosted-auth-config.js";
 import type { ClockPort } from "../ports/operations-port.js";
-import { type HostedServerAuthOptions, startServer } from "../server/index.js";
+import { isLoopbackListenHost, startServer } from "../server/index.js";
 import { isPidRunning, readPid, removePid } from "../server/pid.js";
 import type { HealthResponse } from "../server/types.js";
 import {
@@ -58,17 +58,20 @@ function loadServerConfig(projectRoot: string): GwrkConfig {
       const globalConfigPath = path.join(gwrkHome(), "config.json");
       if (fs.existsSync(globalConfigPath)) {
         const content = fs.readFileSync(globalConfigPath, "utf-8");
+        let overlay: Record<string, unknown> | undefined;
         try {
-          const overlay = JSON.parse(content) as Record<string, unknown>;
-          validateTypedAuthSource(overlay);
-          raw = deepMerge(raw, overlay);
+          overlay = JSON.parse(content) as Record<string, unknown>;
         } catch {
-          if (content.includes("auth")) {
+          if (content.includes("auth") || /\\u0061uth/i.test(content)) {
             throw new Error(
               "Configuration error: Authentication configuration denied",
             );
           }
           // Ignore malformed global overlay and fall back to defaults.
+        }
+        if (overlay) {
+          validateTypedAuthSource(overlay);
+          raw = deepMerge(raw, overlay);
         }
       }
       if (process.env.GITHUB_WEBHOOK_SECRET) {
@@ -86,63 +89,85 @@ function loadServerConfig(projectRoot: string): GwrkConfig {
   }
 }
 
-interface PreparedHostedAuth {
-  readonly transport: "trusted_local" | "hosted";
-  readonly runnerKind?: "local" | "hosted";
-  readonly hostedAuth?: HostedServerAuthOptions;
-  readonly cleanup?: () => void;
+function validateServerAuth(config: GwrkConfig): {
+  readonly isHosted: boolean;
+  readonly rawAuth: unknown;
+} {
+  const hostedRuntime = usesHostedRuntime();
+  const isLoopback = isLoopbackListenHost(config.server.host);
+  const rawAuth = Reflect.get(config.server, "auth");
+  const pureRes = resolveHostedAuthConfig({
+    auth: rawAuth,
+    environment: process.env,
+  });
+
+  if (!pureRes.ok) {
+    throw new CommandError(
+      `${pureRes.error.message}: ${pureRes.error.field} (${pureRes.error.code})`,
+      1,
+    );
+  }
+
+  const isHosted = pureRes.value.mode === "hosted";
+
+  if (hostedRuntime && !isHosted) {
+    throw new CommandError(
+      "Hosted runner requires hosted authentication mode",
+      1,
+    );
+  }
+
+  if (!isLoopback && !isHosted) {
+    throw new CommandError(
+      "Non-loopback listen address requires hosted authentication mode",
+      1,
+    );
+  }
+
+  return { isHosted, rawAuth };
 }
 
-async function prepareServerAuth(
+async function runServerForeground(
   config: GwrkConfig,
-): Promise<PreparedHostedAuth> {
-  const hostedRuntime = usesHostedRuntime();
-  const db = openDatabase();
-  let dbOwned = true;
-  try {
-    const authStore = createSqliteAuthStoreAdapter({ db });
-    const clock: ClockPort = {
-      nowIso: () => new Date().toISOString(),
-      nowMs: () => Date.now(),
-    };
-    const factory = createHostedAuthFactory({
-      store: authStore,
-      clock,
-    });
-    const authInit = await factory.initialize({
-      auth: Reflect.get(config.server, "auth"),
-      environment: process.env,
-      secretsRoot: process.env.GWRK_SECRETS_DIR,
-    });
-    if (!authInit.ok) {
-      throw new CommandError(authInit.error.message, 1);
-    }
-    if (hostedRuntime && authInit.mode !== "hosted") {
-      throw new CommandError(
-        "Hosted runner requires hosted authentication mode",
-        1,
-      );
-    }
-    if (authInit.mode === "hosted") {
-      dbOwned = false;
-      return {
-        transport: "hosted",
-        runnerKind: "hosted",
-        hostedAuth: authInit.hostedAuth,
-        cleanup: () => {
-          if (db.open) db.close();
-        },
-      };
-    }
-    return {
-      transport: "trusted_local",
-      cleanup: undefined,
-    };
-  } finally {
-    if (dbOwned && db.open) {
-      db.close();
-    }
-  }
+  projectRoot: string,
+): Promise<void> {
+  const authOpts = validateServerAuth(config);
+  await startServer(config, {
+    handleSignals: true,
+    projectRoot,
+    useProjectRegistry: true,
+    ...(authOpts.isHosted
+      ? {
+          transport: "hosted" as const,
+          runnerKind: "hosted" as const,
+          initHostedAuth: async ({ db, clock }) => {
+            const authStore = createSqliteAuthStoreAdapter({ db });
+            const factory = createHostedAuthFactory({
+              store: authStore,
+              clock,
+            });
+            const authInit = await factory.initialize({
+              auth: authOpts.rawAuth,
+              environment: process.env,
+              secretsRoot: process.env.GWRK_SECRETS_DIR,
+            });
+            if (!authInit.ok) {
+              throw new CommandError(
+                `${authInit.error.message}: ${authInit.error.field} (${authInit.error.code})`,
+                1,
+              );
+            }
+            if (authInit.mode !== "hosted") {
+              throw new CommandError(
+                "Hosted runner requires hosted authentication mode",
+                1,
+              );
+            }
+            return authInit.hostedAuth;
+          },
+        }
+      : {}),
+  });
 }
 
 export function createServerCommand(): Command {
@@ -166,6 +191,7 @@ export function createServerCommand(): Command {
 
         const projectRoot = process.cwd();
         const config = loadServerConfig(projectRoot);
+        validateServerAuth(config);
 
         const existingPid = readPid();
         if (!usesHostedRuntime() && existingPid && isPidRunning(existingPid)) {
@@ -176,20 +202,7 @@ export function createServerCommand(): Command {
         }
 
         if (options.foreground) {
-          const auth = await prepareServerAuth(config);
-          const instance = await startServer(config, {
-            handleSignals: true,
-            projectRoot,
-            useProjectRegistry: true,
-            transport: auth.transport,
-            runnerKind: auth.runnerKind,
-            hostedAuth: auth.hostedAuth,
-          });
-          if (auth.cleanup) {
-            instance.server.on("close", () => {
-              auth.cleanup?.();
-            });
-          }
+          await runServerForeground(config, projectRoot);
         } else {
           fs.mkdirSync(gwrkHome(), { recursive: true });
           const out = fs.openSync(logFile(), "a");
@@ -242,20 +255,7 @@ export function createServerCommand(): Command {
       await withSignal("server _run", async () => {
         const projectRoot = process.env.GWRK_PROJECT_ROOT || process.cwd();
         const config = loadServerConfig(projectRoot);
-        const auth = await prepareServerAuth(config);
-        const instance = await startServer(config, {
-          handleSignals: true,
-          projectRoot,
-          useProjectRegistry: true,
-          transport: auth.transport,
-          runnerKind: auth.runnerKind,
-          hostedAuth: auth.hostedAuth,
-        });
-        if (auth.cleanup) {
-          instance.server.on("close", () => {
-            auth.cleanup?.();
-          });
-        }
+        await runServerForeground(config, projectRoot);
       });
     });
 

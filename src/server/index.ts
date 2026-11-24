@@ -63,6 +63,7 @@ import type { InstanceLockHandle } from "../ports/release-ops-port.js";
 import type { ProjectRegistryPort } from "../ports/store-port.js";
 import type { VcsPort } from "../ports/vcs-port.js";
 import type { AgentBackendId, GwrkConfig } from "../utils/config.js";
+import { CommandError } from "../utils/signal.js";
 import { registerHostedAuthBounds } from "./auth-bounds.js";
 import {
   type HostedAuthGuardOptions,
@@ -148,12 +149,16 @@ export interface ServerStartOptions {
       }
     | undefined;
   hostedAuth?: HostedServerAuthOptions;
+  initHostedAuth?: (deps: {
+    db: Database.Database;
+    clock: ClockPort;
+  }) => Promise<HostedServerAuthOptions | undefined>;
   runnerKind?: AllowedRunnerKind;
   useProjectRegistry?: boolean;
   loggerStream?: Writable;
 }
 
-function isLoopbackListenHost(host: string): boolean {
+export function isLoopbackListenHost(host: string): boolean {
   const normalized = host.trim().toLowerCase();
   return (
     normalized === "localhost" ||
@@ -398,7 +403,11 @@ async function startLockedServer(
   if (!registry) {
     if (sharedDb) {
       registry = createSqliteProjectRegistryAdapter({ db: sharedDb });
-    } else if (options.useProjectRegistry || effectiveTransport === "hosted") {
+    } else if (
+      options.useProjectRegistry ||
+      effectiveTransport === "hosted" ||
+      Boolean(options.initHostedAuth)
+    ) {
       ownedDb = openDatabase();
       sharedDb = ownedDb;
       registry = createSqliteProjectRegistryAdapter({ db: ownedDb });
@@ -428,6 +437,15 @@ async function startLockedServer(
     nowIso: () => new Date().toISOString(),
     nowMs: () => Date.now(),
   };
+
+  let hostedAuth = options.hostedAuth;
+  if (!hostedAuth && options.initHostedAuth) {
+    if (!sharedDb) {
+      ownedDb = openDatabase();
+      sharedDb = ownedDb;
+    }
+    hostedAuth = await options.initHostedAuth({ db: sharedDb, clock });
+  }
   const ownerId =
     options.ownerId ??
     `server:${process.pid}:${crypto.randomUUID().slice(0, 8)}`;
@@ -680,12 +698,12 @@ async function startLockedServer(
 
     if (useHostedAuthGuard) {
       registerHostedAuthGuard(server, {
-        authenticate: options.hostedAuth?.authenticate,
-        csrf: options.hostedAuth?.csrf,
-        expectedOrigin: options.hostedAuth?.expectedOrigin,
+        authenticate: hostedAuth?.authenticate,
+        csrf: hostedAuth?.csrf,
+        expectedOrigin: hostedAuth?.expectedOrigin,
       });
       registerHostedAuthBounds(server, {
-        rateAdmission: options.hostedAuth?.rateAdmission,
+        rateAdmission: hostedAuth?.rateAdmission,
         clock: options.clock,
       });
       server.setErrorHandler((error, request, reply) => {
@@ -814,10 +832,10 @@ async function startLockedServer(
           requestId: request.id,
         });
       });
-      if (options.hostedAuth?.sessions && options.hostedAuth?.csrf) {
+      if (hostedAuth?.sessions && hostedAuth?.csrf) {
         registerAuthRoutes(server, {
-          sessions: options.hostedAuth.sessions,
-          csrf: options.hostedAuth.csrf,
+          sessions: hostedAuth.sessions,
+          csrf: hostedAuth.csrf,
         });
       }
     }
@@ -1022,8 +1040,15 @@ async function startLockedServer(
     } catch (cleanupError) {
       server.log.error(cleanupError);
     }
+    if (ownedDb?.open) {
+      try {
+        ownedDb.close();
+      } catch (dbErr) {
+        server.log.error(dbErr);
+      }
+    }
     server.log.error(err);
-    if (options.handleSignals) exitCli(1);
+    if (options.handleSignals && !(err instanceof CommandError)) exitCli(1);
     throw err;
   }
 }
