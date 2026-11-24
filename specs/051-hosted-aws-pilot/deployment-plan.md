@@ -24,7 +24,7 @@ Phase 2 can proceed while phase 1 runs. Phase 3 requires both phases. Phase 4 re
 
 Use profile `gforge-dev` in `us-east-2`. Read-only checks confirm its account owns the gforge.ai hosted zone. Use a dedicated security group in the default VPC. Do not alter existing project resources. Select one `t3a.medium` Linux instance for x86 provider CLI compatibility. Use standard CPU credits. Require IMDSv2 and encrypted gp3 volumes. Keep a 32 GB root volume and a separate 20 GB data volume.
 
-Initial inbound access is SSH from the operator's current IPv4 address only. Do not open HTTP or HTTPS globally during bootstrap. The gwrk origin binds to loopback. Restricted HTTPS tests precede any public gateway ingress. Never expose the application port through EC2 or container publishing. Do not copy local AWS credentials to the host.
+Initial inbound access is SSH from the operator's current IPv4 address only. Do not open HTTP or HTTPS globally during bootstrap. The gwrk origin binds to loopback. After synthetic security gates pass, canonical DNS and trusted TLS support operator-restricted HTTPS tests. Those tests precede worldwide gateway ingress. Never expose the application port through EC2 or container publishing. Do not copy local AWS credentials to the host.
 
 ## Cost receipt
 
@@ -47,3 +47,7 @@ Only sign-in routes may be anonymous. Login completion does not authorize projec
 ## Deployment records
 
 Track public architecture and reproducible deployment scripts in this feature. Keep credentials and account inventory in gitignored private state with restricted permissions. Store recovery resource IDs without secrets. Never record a test as passing before observation. If a security gate fails, close access before repair.
+
+## Compatible rollback
+
+Keep the authoritative auth ledger during code rollback. Check migration compatibility before switching releases. If no compatible release exists, stop the service and close ingress. Test backup restoration on isolated state. Never restore an old database to downgrade live code or recover access.

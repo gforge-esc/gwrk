@@ -213,7 +213,7 @@ Independent test: validate `preflight.sh` with hosted auth secrets and loopback 
 
 Priority is P1. Implements FR-018.
 
-Public HTTPS exposure and DNS records wait until deterministic tests and native Linux checks pass. Restricted live acceptance must also pass with operator-supplied Google inputs. Project enrollment (`052`) and OS-level untrusted-workload isolation remain separate boundaries.
+Canonical DNS and operator-restricted HTTPS may follow deterministic and native Linux gates. Worldwide HTTPS requires restricted live acceptance with operator-supplied Google inputs. Project enrollment (`052`) and OS-level untrusted-workload isolation remain separate boundaries.
 
 Independent test: run rollout gate verification over tracked deployment manifests and checklists. Verify zero assumed operator accounts and fail-closed empty allowlists. Verify private defaults and hexagonal architecture checks and valid ADR citations.
 

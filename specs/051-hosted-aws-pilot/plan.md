@@ -14,6 +14,7 @@ Build Google login verification and scoped API keys plus hosted origin guards an
 flowchart LR
   P1["Phase 1: Ports and policy"] -->|freezes contracts| P2["Phase 2: API keys and CLI"]
   P1 -->|freezes contracts| P3["Phase 3: Google JWT verifier"]
+  P2 -->|supplies store and crypto| P3
   P2 -->|feeds store| P4["Phase 4: Origin guard and health"]
   P3 -->|feeds verifier| P4
   P4 -->|feeds HTTP routes| P5["Phase 5: CSRF, bounds and logs"]
@@ -27,7 +28,7 @@ Phases 2 and 3 may prepare independent adapters in isolated worktrees against Ph
 
 ## Baseline and scope boundaries
 
-Private host preparation on Amazon Web Services (AWS) in profile `gforge-dev` and region `us-east-2` passed audit GO. No application service is running. No application port is public and no Domain Name System (DNS) record points to the host. Public ingress and DNS stay closed until deterministic suites and native Linux checks plus live acceptance pass.
+Private host preparation on Amazon Web Services (AWS) in profile `gforge-dev` and region `us-east-2` passed audit GO. No application service is running. No application port is public and no Domain Name System (DNS) record points to the host. Worldwide application ingress stays closed until live acceptance passes. After deterministic and native Linux gates pass, the coordinator may configure canonical DNS and trusted TLS for operator-restricted HTTPS acceptance.
 
 | Surface | Current repository state | Planned target | Scope owner |
 |---|---|---|---|
@@ -103,13 +104,15 @@ export interface AuthStorePort {
     revokedAt: string;
     reason: string;
   }): boolean;
-  recordGoogleSession(input: {
+  observeGoogleSession(input: {
     tokenDigestSha256: string;
     principalId: string;
     issuedAt: string;
     expiresAt: string;
     sessionCapAt: string;
-  }): StoredGoogleSession;
+  }):
+    | { ok: true; session: StoredGoogleSession; created: boolean }
+    | { ok: false; code: "SESSION_REVOKED" | "SESSION_METADATA_CONFLICT" };
   getGoogleSession(tokenDigestSha256: string): StoredGoogleSession | null;
   revokeGoogleSession(input: {
     tokenDigestSha256: string;
@@ -180,6 +183,20 @@ export interface HttpClientCredentialPort {
   >;
 }
 ```
+
+### Session observation semantics
+
+`observeGoogleSession` performs one atomic insert-if-absent observation. Existing rows retain their revocation marker and original session cap. Later observations never extend that cap. An existing revoked digest returns `SESSION_REVOKED`. A principal or issued-at or token-expiry mismatch returns `SESSION_METADATA_CONFLICT`. A later requested cap does not overwrite the initial cap.
+
+SQLite observation and revocation must serialize in the same authoritative database. Revocation commits before proxy logout. Real two-connection tests must observe races and reopen the database. A request whose observation starts after revocation commits must fail. Requests already authenticated before revocation retain the existing durable acceptance boundary.
+
+### Frozen security policy
+
+[Security policy](contracts/security-policy.md) defines numeric defaults and allowed ranges. Phase 1 freezes their typed representation and pure validation. All adapters consume that policy. No request header may override it.
+
+The gateway classifies provider webhooks first. For other routes, a caller Authorization header selects the API chain before browser forwarding. Invalid bearer input returns JSON denial without cookie fallback. A caller bearer combined with a gwrk browser session cookie returns credential-conflict denial. Unrelated cookies do not establish browser authentication.
+
+Without caller Authorization, browser routes use the verified proxy session and forwarded signed ID token. Missing browser sessions on `/api/*` return JSON denial. Interactive redirects belong only to the browser entry and login routes. Strip caller identity and auth-mode headers before setting internal metadata. Prove valid and invalid bearer behavior with and without browser cookies at the synthetic edge.
 
 ### Contract port mapping
 
@@ -283,7 +300,7 @@ Prepare this phase against Phase 1 frozen ports. Write failing store and crypto 
 - `src/commands/auth.ts` (NEW: Local `gwrk auth key` subcommands writing `0600` non-checkout secret files with `ADR-004` signals)
 - `src/cli.ts` (MODIFY: Register `createAuthCommand` and exempt `gwrk auth key` from cwd config preflight)
 - `src/adapters/auth/credential-crypto.test.ts` (NEW: Test key format and SHA-256 verifiers plus constant-time comparison)
-- `src/adapters/sqlite/auth-store.test.ts` (NEW: Test `AUTH-09` atomic rotation rollback and persisted revocation plus digest-only sessions)
+- `src/adapters/sqlite/auth-store.test.ts` (NEW: Test `AUTH-09` atomic rotation rollback and persisted revocation plus insert-if-absent session races)
 - `src/commands/auth.test.ts` (NEW: Test `AUTH-10` `0600` secret files and delivery-failure revocation plus zero stdout leaks)
 
 #### Governance and Skills
@@ -296,7 +313,7 @@ Prepare this phase against Phase 1 frozen ports. Write failing store and crypto 
 
 | TR-### | Type | Target | Assertion |
 |---|---|---|---|
-| TR-009 | integration | `src/adapters/sqlite/auth-store.test.ts` | Mid-rotation rollback preserves atomic DB state, persisted revocation, and digest-only sessions |
+| TR-009 | integration | `src/adapters/sqlite/auth-store.test.ts` | Rotation and observation races preserve atomic state, revocations and the original session cap |
 | TR-010 | integration | `src/commands/auth.test.ts` | `gwrk auth key` enforces `0600` non-checkout secret file, revokes on write fail, prints zero secrets |
 | TR-007 | unit | `src/adapters/auth/credential-crypto.test.ts` | `CredentialCryptoPort` builds `gwrk_v1.<id>.<secret>` and verifies SHA-256 in constant time |
 
@@ -559,7 +576,13 @@ node tests/linux-runner/container-harness.mjs
 
 ### Phase 9: Operator live security acceptance
 
-Owned solely by root and David Gonzalez after Phases 1 through 8 pass independent review and merge approval. Agents MUST NOT execute this phase or mark it complete or fabricate receipts. Google policy acceptance and account allowlist choice plus skills-connection preservation stay pending operator inputs. Public ingress and DNS for `https://gwrk.gforge.ai` stay closed until every live check passes.
+The explicitly authorized root coordinator owns actual operations after Phases 1 through 8 pass independent review. Live rollout also requires David’s implementation merge approval. Autonomous feature workers must not execute or complete this phase. Only observed operator probes may support completion. Fabricated or synthetic receipts must never claim live acceptance. Google policy acceptance and account allowlist choice plus skills-connection preservation stay pending operator inputs. Worldwide HTTPS ingress stays closed until every live check passes. Canonical DNS and trusted TLS may be configured first for operator-restricted HTTPS acceptance.
+
+Install the reviewed application release and separately verified gateway artifact before real probes. Keep the origin on loopback. Configure canonical DNS and trusted TLS while HTTPS ingress permits only the operator address. Run real Google and API acceptance through that restricted path. Open worldwide HTTPS only after recorded acceptance. HTTP may redirect to HTTPS only after the same gate.
+
+On any failed live security check, close restricted ingress before repair. Roll back only to a migration-compatible reviewed release while retaining the authoritative auth ledger. Run `rollback-check` before switching code. Never restore an older database to downgrade code or recover access. If no compatible release is available, stop the service and keep ingress closed. Test backup restoration on an isolated copy. Unknown revocation freshness requires invalidating restored credentials before reopening access.
+
+The gateway artifact has its own source hash and file digest. Its delivery must not depend on the existing runner archive implicitly including `deploy/hosted-pilot/`. Phase 8 records both installed artifacts. Extend packaging only with explicit tests or transfer a separately verified gateway bundle.
 
 #### Files
 

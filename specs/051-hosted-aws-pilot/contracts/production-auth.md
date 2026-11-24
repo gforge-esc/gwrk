@@ -35,7 +35,7 @@ Normalize Google's documented issuer variants to `https://accounts.google.com`. 
 
 The proxy owns OAuth callback state and nonce validation. Per-request origin verification must not treat a login nonce as single-use across ordinary API requests. The proxy must supply a signed ID token rather than an access token or email header. [Proxy header options](https://oauth2-proxy.github.io/oauth2-proxy/configuration/overview/#header-options)
 
-Store only a digest of each observed Google ID token with its principal and expiry. Include a revocation marker. Browser logout first revokes that token digest at the origin. The origin then calls the fixed internal proxy sign-out endpoint. Forward all cookie-clearing response headers and clear the origin CSRF cookie. Do not publicly route proxy sign-out around origin revocation. A copied old cookie must remain denied by the origin. Allowlist removal must deny the next authenticated request without restarting gwrk.
+Store only a digest of each observed Google ID token with its principal and expiry. Include a revocation marker. Observe sessions atomically with insert-if-absent semantics. Preserve existing revocations and the original cap. Reject conflicting principal or token-lifetime metadata. Browser logout first revokes that token digest at the origin. The origin then calls the fixed internal proxy sign-out endpoint. Forward all cookie-clearing response headers and clear the origin CSRF cookie. Do not publicly route proxy sign-out around origin revocation. A copied old cookie must remain denied by the origin. Allowlist removal must deny the next authenticated request without restarting gwrk.
 
 Cap browser sessions at one hour and at the token's expiry. Retain revoked token digests until token expiry. Do not store raw Google ID tokens or refresh tokens in the core database. A new login with a newly issued token may create a new session record.
 
@@ -181,10 +181,14 @@ Each test must observe behavior before repair. Use a synthetic OIDC issuer and i
 4. Build the production edge configuration and synthetic end-to-end gates. Keep the original read-only proof as a separate regression target.
 5. Run independent review and native Linux checks. Then root may perform live Google and API acceptance before opening public application ingress.
 
-Infrastructure can prepare a private host while these phases run. DNS and public HTTPS exposure must not precede the authentication gates. Capture the live allowlist and credential lifecycle proof without recording secrets. Project rollout remains feature 052.
+Infrastructure can prepare a private host while these phases run. After synthetic authentication and native Linux gates pass, canonical DNS and trusted TLS may support operator-restricted HTTPS acceptance. Worldwide ingress requires all live security checks. Capture the live allowlist and credential lifecycle proof without recording secrets. Project rollout remains feature 052.
 
 ## Residual trust boundary
 
 Application verification prevents a local process from inventing identity headers. It does not isolate a process that can modify the auth database or read daemon memory. Root must establish the worker filesystem and process boundary before claiming untrusted-workload isolation. Workers must not receive inbound credentials or gateway session secrets. Keep this distinct from outbound provider credentials intentionally supplied to an approved job.
 
 No production code or cloud setting has changed under this draft. No secret value was read. The user account allowlist remains an operator input. Until supplied, authentication must deny access.
+
+## Fixed implementation policy
+
+Use [security-policy.md](security-policy.md) for numeric defaults and edge parser selection. Runtime adapters must share that policy. The authorized coordinator may perform actual live probes. Autonomous feature workers must not record synthetic results as live acceptance.
