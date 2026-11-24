@@ -1,6 +1,6 @@
 # Production authentication contract
 
-Draft for review against merged core `980a2577`. Use the existing Google proxy for browser login and verify its Google ID token again inside gwrk. Use separate opaque API credentials for automation. Blocked: implementation and behavioral gates. Root owns infrastructure and live acceptance.
+Implementation contract against merged core `980a2577`. Use the existing Google proxy for browser login and verify its Google ID token again inside gwrk. Use separate opaque API credentials for automation. Blocked: implementation and behavioral gates. Root owns infrastructure and live acceptance.
 
 ## Boundary
 

@@ -10,7 +10,7 @@ Deploy a private `gwrk` pilot on Amazon Web Services (AWS) at `https://gwrk.gfor
 
 ## 1. Overview
 
-The pilot host is privately provisioned in AWS profile `gforge-dev` in `us-east-2`. It uses one `t3a.medium` Linux instance with Instance Metadata Service version 2 (IMDSv2) and encrypted gp3 volumes. Root storage is 32 GB and separate data storage is 20 GB. Inbound access allows Secure Shell (SSH) from the operator IPv4 address only. No application port or Domain Name System (DNS) record is public yet. The `gwrk` origin listens on loopback at `127.0.0.1:18790`.
+The pilot host is privately provisioned in AWS profile `gforge-dev` in `us-east-2`. It uses one `t3a.medium` Linux instance with Instance Metadata Service version 2 (IMDSv2) and encrypted gp3 volumes. Root storage is 32 GB and separate data storage is 20 GB. Inbound access allows Secure Shell (SSH) from the operator IPv4 address only. No application port or Domain Name System (DNS) record is public yet. The planned `gwrk` origin must bind to `127.0.0.1:18790`. No application service is running yet.
 
 ```mermaid
 flowchart LR
@@ -27,7 +27,7 @@ Authentication never grants a project role by itself. New Google users receive n
 
 | Boundary | Current state | Owner | Constraint |
 |---|---|---|---|
-| Private AWS host | Privately provisioned with no public ports or DNS | Coordinator | Loopback origin only until Phase 5 |
+| Private AWS host | Privately provisioned with application ingress closed | Coordinator | Loopback origin until public gateway acceptance |
 | Google policy and allowlist | Pending operator input | David Gonzalez (project owner) | Deny all until supplied and preserve skills-connection config |
 | Read-only proof `041` | Existing regression fixture | Coordinator | Retain unchanged under `deploy/hosted-auth-proof/` |
 | Project rollout `052` | Downstream feature | David Gonzalez (project owner) | Zero live project enrollment during bootstrap |
@@ -488,7 +488,7 @@ Application use cases (`src/application/`) return explicit authenticated or deni
 
 Fulfills: US-010.
 
-Preserve compatibility with `deploy/linux-runner/gwrk-runner.service` and `run.sh` and `preflight.sh`. Also preserve compatibility with `credentials.sh` and `install-release.sh` and `/etc/gwrk/runner.env`. Keep standard paths at `/opt/gwrk` and `/var/lib/gwrk` and `/run/gwrk` and `/etc/gwrk/secrets`. Keep the loopback listener at `127.0.0.1:18790`. Store inbound auth secret files under `/etc/gwrk/secrets` owned by `root:gwrk` with mode `0640`. Keep inbound auth secrets distinct from outbound runner secrets (`pilot-git-credential` and `agent-credential` and `slack-bot-token` and `slack-app-token`). Extend `preflight.sh` to check hosted auth config presence and file permissions and loopback bind and disabled Telegram. Run those checks before `run.sh` launches `node /opt/gwrk/current/dist/cli.js server start --foreground`. Make sure spawned workers never inherit inbound auth credentials or gateway session secrets.
+Preserve compatibility with `deploy/linux-runner/gwrk-runner.service` and `run.sh` and `preflight.sh`. Also preserve compatibility with `credentials.sh` and `install-release.sh` and `/etc/gwrk/runner.env`. Keep standard paths at `/opt/gwrk` and `/var/lib/gwrk` and `/run/gwrk` and `/etc/gwrk/secrets`. Keep the loopback listener at `127.0.0.1:18790`. Store origin auth secret files under `/etc/gwrk/secrets` owned by `root:gwrk` with mode `0640`. Store gateway-only client and cookie secrets in a separate directory that the `gwrk` worker user cannot read. Keep inbound auth secrets distinct from outbound runner secrets (`pilot-git-credential` and `agent-credential` and `slack-bot-token` and `slack-app-token`). Extend `preflight.sh` to check hosted auth config presence and file permissions and loopback bind and disabled Telegram. Run those checks before `run.sh` launches `node /opt/gwrk/current/dist/cli.js server start --foreground`. Make sure spawned workers never inherit inbound auth credentials or gateway session secrets.
 
 #### Error states (FR-016)
 
@@ -566,7 +566,7 @@ Every test MUST observe RED failure before production repair (`ADR-005`, `ADR-01
 | TR-016 | AUTH-16 | `src/adapters/auth/http-client-credential.test.ts` | Overridden `--server-url` origin, non-HTTPS URL, and HTTP redirect never receive stored CLI API credential |
 | TR-017 | AUTH-17 | `src/commands/server.auth-startup.test.ts` | Hosted `server start --foreground` and `server _run` without verifier config bind no operational listener or deny all |
 | TR-018 | AUTH-18 | `src/server/auth-continuity.test.ts` | Valid scoped dispatch and harvest survive restart with stable operation IDs and receipts while post-revocation calls fail |
-| TR-019 | Init guard | `src/commands/init.test.ts` | `gwrk init --non-interactive --server` and command imports make zero agent inference calls, secret reads, or Google requests |
+| TR-019 | Init guard | `src/commands/init.test.ts` | `gwrk init --non-interactive --server` and command imports make zero agent inference calls, auth secret reads, or Google requests |
 | TR-020 | Architecture | `src/architecture.test.ts` | Enforces `ADR-011` hexagonal boundaries, Proposed auth ADR presence, and clean `gwrk define adr --reindex --check` plus `--check` |
 | TR-021 | Runner and rollout | `tests/linux-runner/backup-restore-rollback.test.ts`, `tests/linux-runner/preflight-auth.test.ts`, `tests/hosted-pilot/rollout-gates.test.ts`, `tests/hosted-auth-proof/gateway-proof.mjs` | Checks systemd preflight, backup and restore of auth verifiers and revocations, untouched `041` proof, and private rollout gates |
 
