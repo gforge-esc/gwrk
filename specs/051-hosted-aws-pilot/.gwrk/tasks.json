@@ -375,7 +375,9 @@
         "src/adapters/auth/protected-hosted-auth-files.test.ts",
         "src/adapters/auth/hosted-auth-factory.test.ts",
         "src/commands/status.auth.test.ts",
-        "src/commands/init.auth-purity.test.ts"
+        "src/commands/init.auth-purity.test.ts",
+        "src/utils/config.auth.test.ts",
+        "src/utils/config.test.ts"
       ]
     },
     {
@@ -521,7 +523,9 @@
         "src/adapters/auth/hosted-auth-factory.test.ts",
         "src/commands/status.auth.test.ts",
         "src/commands/init.auth-purity.test.ts",
-        "tests/hosted-pilot/protected-auth-files-native.mjs"
+        "tests/hosted-pilot/protected-auth-files-native.mjs",
+        "src/utils/config.auth.test.ts",
+        "src/utils/config.test.ts"
       ]
     },
     {

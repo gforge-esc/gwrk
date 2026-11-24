@@ -465,7 +465,8 @@ Requires Phase 5. Write failing startup and origin-bound CLI plus restart contin
 
 #### Files
 
-- `src/utils/config.ts` (MODIFY: Add fail-fast hosted auth config fields for origin and Google client plus allowlist and CSRF secret and transport)
+- `src/utils/config.ts` (MODIFY: Preserve typed auth layers and reject invalid input without secret echoes)
+- `src/utils/config.auth.test.ts` (PREPARED: Validate typed auth per layer before merging)
 - `src/adapters/auth/hosted-auth-factory.ts` (NEW: Lazy startup-only auth factory with zero import-time secret reads or network calls)
 - `src/adapters/auth/http-client-credential.ts` (NEW: Implement `HttpClientCredentialPort` reading `0600` origin-bound profiles with HTTPS and redirect-disabled fetch)
 - `src/commands/server.ts` (MODIFY: Wire `hosted-auth-factory.ts` into `server start --foreground` and `_run` and separate local liveness in `server status`)
@@ -498,7 +499,7 @@ Requires Phase 5. Write failing startup and origin-bound CLI plus restart contin
 
 ```bash
 pnpm run build
-pnpm exec vitest run src/domain/hosted-auth-config.test.ts src/adapters/auth/protected-hosted-auth-files.test.ts src/adapters/auth/hosted-auth-factory.test.ts src/commands/status.auth.test.ts src/commands/init.auth-purity.test.ts src/adapters/auth/http-client-credential.test.ts src/commands/server.auth-startup.test.ts src/server/auth-continuity.test.ts src/commands/init.test.ts src/commands/server.test.ts src/commands/status.test.ts src/architecture.test.ts
+pnpm exec vitest run src/utils/config.auth.test.ts src/utils/config.test.ts src/domain/hosted-auth-config.test.ts src/adapters/auth/protected-hosted-auth-files.test.ts src/adapters/auth/hosted-auth-factory.test.ts src/commands/status.auth.test.ts src/commands/init.auth-purity.test.ts src/adapters/auth/http-client-credential.test.ts src/commands/server.auth-startup.test.ts src/server/auth-continuity.test.ts src/commands/init.test.ts src/commands/server.test.ts src/commands/status.test.ts src/architecture.test.ts
 ```
 
 ---
@@ -588,7 +589,7 @@ Requires Phase 7. Write failing backup-restore auth-state and rollout-gate tests
 node tests/hosted-pilot/gate-completeness.test.mjs
 pnpm run build
 pnpm run lint
-pnpm exec vitest run src/domain/hosted-auth-config.test.ts src/adapters/auth/protected-hosted-auth-files.test.ts src/adapters/auth/hosted-auth-factory.test.ts src/commands/status.auth.test.ts src/commands/init.auth-purity.test.ts tests/hosted-pilot/tls-preflight.test.ts tests/hosted-pilot/gateway-startup.test.ts src/adapters/auth/browser-csrf.test.ts src/adapters/auth/proxy-logout.test.ts src/server/auth-guard.account-denial.test.ts src/utils/agent.auth-env.test.ts src/architecture.test.ts src/domain/auth-policy.test.ts src/adapters/auth/credential-crypto.test.ts src/adapters/sqlite/auth-store.test.ts src/commands/auth.test.ts src/adapters/auth/google-id-token.test.ts src/application/auth/authenticate-request.test.ts src/server/auth-prehandler.test.ts src/server/auth-session.test.ts src/server/auth-api-keys.test.ts src/server/auth-csrf.test.ts src/server/routes/health.auth.test.ts src/server/auth-route-policy.test.ts src/domain/auth-rate-policy.test.ts src/adapters/auth/rate-admission.test.ts src/server/auth-bounds.test.ts src/server/auth-logging.test.ts src/server/github.test.ts src/adapters/auth/http-client-credential.test.ts src/commands/server.auth-startup.test.ts src/server/auth-continuity.test.ts src/commands/init.test.ts tests/linux-runner/preflight-auth.test.ts tests/linux-runner/backup-restore-rollback.test.ts tests/hosted-pilot/rollout-gates.test.ts
+pnpm exec vitest run src/utils/config.auth.test.ts src/utils/config.test.ts src/domain/hosted-auth-config.test.ts src/adapters/auth/protected-hosted-auth-files.test.ts src/adapters/auth/hosted-auth-factory.test.ts src/commands/status.auth.test.ts src/commands/init.auth-purity.test.ts tests/hosted-pilot/tls-preflight.test.ts tests/hosted-pilot/gateway-startup.test.ts src/adapters/auth/browser-csrf.test.ts src/adapters/auth/proxy-logout.test.ts src/server/auth-guard.account-denial.test.ts src/utils/agent.auth-env.test.ts src/architecture.test.ts src/domain/auth-policy.test.ts src/adapters/auth/credential-crypto.test.ts src/adapters/sqlite/auth-store.test.ts src/commands/auth.test.ts src/adapters/auth/google-id-token.test.ts src/application/auth/authenticate-request.test.ts src/server/auth-prehandler.test.ts src/server/auth-session.test.ts src/server/auth-api-keys.test.ts src/server/auth-csrf.test.ts src/server/routes/health.auth.test.ts src/server/auth-route-policy.test.ts src/domain/auth-rate-policy.test.ts src/adapters/auth/rate-admission.test.ts src/server/auth-bounds.test.ts src/server/auth-logging.test.ts src/server/github.test.ts src/adapters/auth/http-client-credential.test.ts src/commands/server.auth-startup.test.ts src/server/auth-continuity.test.ts src/commands/init.test.ts tests/linux-runner/preflight-auth.test.ts tests/linux-runner/backup-restore-rollback.test.ts tests/hosted-pilot/rollout-gates.test.ts
 node dist/cli.js define adr --reindex --check
 node dist/cli.js define adr --check
 node tests/hosted-pilot/gateway-production.mjs

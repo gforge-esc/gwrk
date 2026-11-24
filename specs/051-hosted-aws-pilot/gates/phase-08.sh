@@ -7,6 +7,8 @@ required_targets=(
   tests/hosted-pilot/rollout-gates.test.ts
   tests/linux-runner/container-harness.mjs
   src/architecture.test.ts
+  src/utils/config.auth.test.ts
+  src/utils/config.test.ts
   src/domain/hosted-auth-config.test.ts
   src/adapters/auth/protected-hosted-auth-files.test.ts
   src/adapters/auth/hosted-auth-factory.test.ts
@@ -52,6 +54,8 @@ for target in "${required_targets[@]}"; do
   fi
 done
 vitest_targets=(
+  src/utils/config.auth.test.ts
+  src/utils/config.test.ts
   src/domain/hosted-auth-config.test.ts
   src/adapters/auth/protected-hosted-auth-files.test.ts
   src/adapters/auth/hosted-auth-factory.test.ts

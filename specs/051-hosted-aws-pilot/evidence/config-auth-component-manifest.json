@@ -1,0 +1,28 @@
+{
+  "candidateCommit": "3db449bcb22be9df36ef30dd8c2858c0f8f1e093",
+  "candidatePath": "/Users/gonzo/Code/gwrk-worktrees/hosted-config-loader-prep-nov24",
+  "base": "70c5a15620bfe194f9ee118c772dbd24919621bb",
+  "verdict": "GO",
+  "scope": "typed auth loader preparation only",
+  "hashes": {
+    "src/utils/config.ts": "4f51305cf3e7fd51fb55d8363edb1f954805c6c7da64cad0f44c8de99255b6d3",
+    "src/utils/config.auth.test.ts": "826ef224981fa0af71dfb97aa7f6df6d67c0ced7c70df3ecb1fec7b7580bd7cb",
+    ".runs/config-auth-prep/manifest.json": "b5f2b359786e88fe255527ab8a5b557c10eab5bff6dc74f5524207d8dc1cf433",
+    ".runs/config-auth-prep/red.log": "405201fc8e9e5f8f8600b554ae3d6032c330b34bf8a0a00067b904583a2c5b04",
+    ".runs/config-auth-prep/green.log": "39cd19f081330c357bae2eee6360a873f80fef5c70f5382da9a74805a0259bcc",
+    ".runs/config-auth-prep/auth17-caller-green.log": "00101f387093d302ba1fb1ffd67bdd9262133c3e5aad39ae24c48b9ed7f93480",
+    ".runs/config-auth-prep/build.log": "feecf9a5f59d8b90e0ee65a76ba33c3913a698f2744468f5196fed2ddd52941e",
+    ".runs/config-auth-prep/lint.log": "6e7bc93c2753cdf61c45525e643070d107f5b7ddcc6cc2384d221150c896d05a",
+    ".runs/config-auth-prep/commit.log": "71e7cae54084e25190d16097ca09412e35c6c3693ba89cae32219df7b8190b52"
+  },
+  "reviewedComponentsAndCallerTestsUnchanged": true,
+  "heavyChecksRepeated": false,
+  "counts": {
+    "redFailed": 58,
+    "redPassed": 1,
+    "greenPassed": 156,
+    "auth17CallerPassed": 1,
+    "unrelatedStartupSkipped": 8
+  },
+  "malformedOptionalJsonHandlingUnchanged": true
+}
