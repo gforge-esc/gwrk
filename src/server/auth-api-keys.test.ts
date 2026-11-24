@@ -835,6 +835,10 @@ describe("FR-004 FR-007 FR-010 AUTH-08: project-scoped API authorization and fil
       headers: { authorization: `Bearer ${f.operatorAKey}` },
     });
     expect(healthB.statusCode).toBe(403);
+    expect(healthB.json()).toMatchObject({
+      ok: false,
+      requestId: expect.any(String),
+    });
     expect(["UNAUTHORIZED_USER", "PROJECT_ACCESS_DENIED"]).toContain(
       healthB.json().code,
     );
@@ -853,7 +857,10 @@ describe("FR-004 FR-007 FR-010 AUTH-08: project-scoped API authorization and fil
       headers: { authorization: `Bearer ${f.operatorAKey}` },
     });
     expect([400, 403]).toContain(missingProject.statusCode);
-    expect(missingProject.json().ok).toBe(false);
+    expect(missingProject.json()).toMatchObject({
+      ok: false,
+      requestId: expect.any(String),
+    });
     assertNoProjectMetadata(missingProject.body, f.projectA);
     assertNoProjectMetadata(missingProject.body, f.projectB);
 
@@ -863,7 +870,10 @@ describe("FR-004 FR-007 FR-010 AUTH-08: project-scoped API authorization and fil
       headers: { authorization: `Bearer ${f.operatorAKey}` },
     });
     expect([403, 404]).toContain(unknownProject.statusCode);
-    expect(unknownProject.json().ok).toBe(false);
+    expect(unknownProject.json()).toMatchObject({
+      ok: false,
+      requestId: expect.any(String),
+    });
     assertNoProjectMetadata(unknownProject.body, f.projectA);
     assertNoProjectMetadata(unknownProject.body, f.projectB);
   });

@@ -379,6 +379,7 @@ export async function healthRoutes(
             ok: false,
             code: decision.code,
             error: decision.message,
+            requestId: request.id,
           });
         }
 

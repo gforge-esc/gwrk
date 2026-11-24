@@ -77,6 +77,49 @@ function signWebhook(secret: string, body: Buffer): string {
   return `sha256=${createHmac("sha256", secret).update(body).digest("hex")}`;
 }
 
+function createRecoveryHostedAuth() {
+  const tokens: Record<string, { principalId: string; credentialId: string }> =
+    {
+      "Bearer alpha-op-token": {
+        principalId: "iss:alpha-op",
+        credentialId: "cred-alpha-op",
+      },
+      "Bearer beta-op-token": {
+        principalId: "iss:beta-op",
+        credentialId: "cred-beta-op",
+      },
+    };
+  return {
+    authenticate: async ({
+      authorizationHeader,
+    }: {
+      authorizationHeader?: string;
+    }) => {
+      if (!authorizationHeader) {
+        return { ok: true as const, context: null, mechanism: "none" as const };
+      }
+      const match = tokens[authorizationHeader];
+      if (!match) {
+        return {
+          ok: false as const,
+          code: "AUTH_CREDENTIAL_REJECTED" as const,
+          message: "Authentication denied",
+        };
+      }
+      return {
+        ok: true as const,
+        context: {
+          principalType: "google_sub" as const,
+          principalId: match.principalId,
+          credentialId: match.credentialId,
+          expiresAt: "2026-12-31T00:00:00.000Z",
+          authMethod: "api_key" as const,
+        },
+      };
+    },
+  };
+}
+
 describe("TR-005: unattended restart recovery, two-repo PR collisions and synthetic GitHub/Slack faults", () => {
   let workspaceDir: string;
   let dbPath: string;
@@ -255,19 +298,14 @@ describe("TR-005: unattended restart recovery, two-repo PR collisions and synthe
         },
         transport: "hosted",
         runnerKind: "hosted",
-        resolvePrincipal: (req) => {
-          const sub = req.headers["x-verified-test-sub"];
-          return typeof sub === "string"
-            ? { principalType: "google_sub", principalId: sub }
-            : undefined;
-        },
+        hostedAuth: createRecoveryHostedAuth(),
       });
 
       try {
         const acceptRes = await server1.inject({
           method: "POST",
           url: "/api/dispatch",
-          headers: { "x-verified-test-sub": "iss:alpha-op" },
+          headers: { authorization: "Bearer alpha-op-token" },
           payload: {
             projectId: "alpha",
             featureId: "049-shared",
@@ -408,12 +446,7 @@ describe("TR-005: unattended restart recovery, two-repo PR collisions and synthe
         heartbeatIntervalMs: null,
         transport: "hosted",
         runnerKind: "hosted",
-        resolvePrincipal: (req) => {
-          const sub = req.headers["x-verified-test-sub"];
-          return typeof sub === "string"
-            ? { principalType: "google_sub", principalId: sub }
-            : undefined;
-        },
+        hostedAuth: createRecoveryHostedAuth(),
       });
 
       try {
@@ -628,12 +661,7 @@ describe("TR-005: unattended restart recovery, two-repo PR collisions and synthe
         heartbeatIntervalMs: null,
         transport: "hosted",
         runnerKind: "hosted",
-        resolvePrincipal: (req) => {
-          const sub = req.headers["x-verified-test-sub"];
-          return typeof sub === "string"
-            ? { principalType: "google_sub", principalId: sub }
-            : undefined;
-        },
+        hostedAuth: createRecoveryHostedAuth(),
       });
 
       try {
@@ -695,7 +723,7 @@ describe("TR-005: unattended restart recovery, two-repo PR collisions and synthe
         const alphaStatusRes = await server1.inject({
           method: "GET",
           url: `/api/status?projectId=${alphaProject.projectId}`,
-          headers: { "x-verified-test-sub": "iss:alpha-op" },
+          headers: { authorization: "Bearer alpha-op-token" },
         });
         expect(alphaStatusRes.statusCode).toBe(200);
         expect(alphaStatusRes.json().operations.delivery.uncertainCount).toBe(
@@ -711,17 +739,26 @@ describe("TR-005: unattended restart recovery, two-repo PR collisions and synthe
           ]),
         );
 
-        const health1 = (
-          await server1.inject({ method: "GET", url: "/api/health" })
-        ).json();
-        expect(health1.daemonLiveness).toBe("alive");
-        expect(health1.status).toBe("degraded");
-        expect(health1.outbox.status).toBe("degraded");
-        expect(health1.outbox.uncertainCount).toBe(2);
-        expect(health1.telegram).toEqual({
-          enabled: false,
-          reason: "disabled_in_pilot",
-        });
+        for (const [project, token] of [
+          [alphaProject, "Bearer alpha-op-token"],
+          [betaProject, "Bearer beta-op-token"],
+        ] as const) {
+          const healthRes = await server1.inject({
+            method: "GET",
+            url: `/api/health?projectId=${project.projectId}`,
+            headers: { authorization: token },
+          });
+          expect(healthRes.statusCode).toBe(200);
+          const health1 = healthRes.json();
+          expect(health1.daemonLiveness).toBe("alive");
+          expect(health1.status).toBe("degraded");
+          expect(health1.outbox.status).toBe("degraded");
+          expect(health1.outbox.uncertainCount).toBe(1);
+          expect(health1.telegram).toEqual({
+            enabled: false,
+            reason: "disabled_in_pilot",
+          });
+        }
 
         alphaRunId =
           listRuns("049-shared", alphaProject.projectId, db1)[0]?.id ?? null;
@@ -793,12 +830,7 @@ describe("TR-005: unattended restart recovery, two-repo PR collisions and synthe
         heartbeatIntervalMs: null,
         transport: "hosted",
         runnerKind: "hosted",
-        resolvePrincipal: (req) => {
-          const sub = req.headers["x-verified-test-sub"];
-          return typeof sub === "string"
-            ? { principalType: "google_sub", principalId: sub }
-            : undefined;
-        },
+        hostedAuth: createRecoveryHostedAuth(),
       });
 
       try {
@@ -850,13 +882,22 @@ describe("TR-005: unattended restart recovery, two-repo PR collisions and synthe
         );
 
         // Health recovered to ok
-        const health2 = (
-          await server2.inject({ method: "GET", url: "/api/health" })
-        ).json();
-        expect(health2.status).toBe("ok");
-        expect(health2.daemonLiveness).toBe("alive");
-        expect(health2.outbox.status).toBe("ok");
-        expect(health2.harvest.status).toBe("ok");
+        for (const [project, token] of [
+          [alphaProject, "Bearer alpha-op-token"],
+          [betaProject, "Bearer beta-op-token"],
+        ] as const) {
+          const healthRes = await server2.inject({
+            method: "GET",
+            url: `/api/health?projectId=${project.projectId}`,
+            headers: { authorization: token },
+          });
+          expect(healthRes.statusCode).toBe(200);
+          const health2 = healthRes.json();
+          expect(health2.status).toBe("ok");
+          expect(health2.daemonLiveness).toBe("alive");
+          expect(health2.outbox.status).toBe("ok");
+          expect(health2.harvest.status).toBe("ok");
+        }
       } finally {
         await server2.close();
       }

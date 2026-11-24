@@ -75,6 +75,49 @@ function createRepo(root: string, trunk: string, remoteUrl: string): string {
   return realRoot;
 }
 
+function createTwoRepoHostedAuth() {
+  const tokens: Record<string, { principalId: string; credentialId: string }> =
+    {
+      "Bearer alpha-op-token": {
+        principalId: "iss:alpha-op",
+        credentialId: "cred-alpha-op",
+      },
+      "Bearer beta-op-token": {
+        principalId: "iss:beta-op",
+        credentialId: "cred-beta-op",
+      },
+    };
+  return {
+    authenticate: async ({
+      authorizationHeader,
+    }: {
+      authorizationHeader?: string;
+    }) => {
+      if (!authorizationHeader) {
+        return { ok: true as const, context: null, mechanism: "none" as const };
+      }
+      const match = tokens[authorizationHeader];
+      if (!match) {
+        return {
+          ok: false as const,
+          code: "AUTH_CREDENTIAL_REJECTED" as const,
+          message: "Authentication denied",
+        };
+      }
+      return {
+        ok: true as const,
+        context: {
+          principalType: "google_sub" as const,
+          principalId: match.principalId,
+          credentialId: match.credentialId,
+          expiresAt: "2026-12-31T00:00:00.000Z",
+          authMethod: "api_key" as const,
+        },
+      };
+    },
+  };
+}
+
 describe("TR-024: two-repo isolation across identical feature IDs and synthetic Slack faults", () => {
   let workspaceDir: string;
   let alphaRoot: string;
@@ -402,12 +445,7 @@ describe("TR-024: two-repo isolation across identical feature IDs and synthetic 
       notifier,
       transport: "hosted",
       runnerKind: "hosted",
-      resolvePrincipal: (req) => {
-        const sub = req.headers["x-verified-test-sub"];
-        return typeof sub === "string"
-          ? { principalType: "google_sub", principalId: sub }
-          : undefined;
-      },
+      hostedAuth: createTwoRepoHostedAuth(),
     });
 
     try {
@@ -426,13 +464,13 @@ describe("TR-024: two-repo isolation across identical feature IDs and synthetic 
         },
       });
       expect(unauthDispatch.statusCode).toBe(401);
-      expect(unauthDispatch.json().code).toBe("REMOTE_AUTH_REQUIRED");
+      expect(unauthDispatch.json().code).toBe("AUTH_REQUIRED");
 
       // Alpha operator cannot dispatch Beta
       const crossDispatch = await server.inject({
         method: "POST",
         url: "/api/dispatch",
-        headers: { "x-verified-test-sub": "iss:alpha-op" },
+        headers: { authorization: "Bearer alpha-op-token" },
         payload: {
           projectId: betaProject.projectId,
           featureId: "048-shared",
@@ -446,7 +484,7 @@ describe("TR-024: two-repo isolation across identical feature IDs and synthetic 
       const alphaRes = await server.inject({
         method: "POST",
         url: "/api/dispatch",
-        headers: { "x-verified-test-sub": "iss:alpha-op" },
+        headers: { authorization: "Bearer alpha-op-token" },
         payload: {
           projectId: "alpha",
           featureId: "048-shared",
@@ -476,7 +514,7 @@ describe("TR-024: two-repo isolation across identical feature IDs and synthetic 
       const betaRes = await server.inject({
         method: "POST",
         url: "/api/dispatch",
-        headers: { "x-verified-test-sub": "iss:beta-op" },
+        headers: { authorization: "Bearer beta-op-token" },
         payload: {
           projectId: "beta",
           featureId: "048-shared",
@@ -506,7 +544,7 @@ describe("TR-024: two-repo isolation across identical feature IDs and synthetic 
       const alphaStatus = await server.inject({
         method: "GET",
         url: `/api/status?projectId=${alphaProject.projectId}`,
-        headers: { "x-verified-test-sub": "iss:alpha-op" },
+        headers: { authorization: "Bearer alpha-op-token" },
       });
       expect(alphaStatus.statusCode).toBe(200);
       expect(alphaStatus.json().dispatch.queueDepth).toBe(1);
@@ -514,7 +552,7 @@ describe("TR-024: two-repo isolation across identical feature IDs and synthetic 
       const alphaQueue = await server.inject({
         method: "GET",
         url: `/api/dispatch/queue?projectId=${alphaProject.projectId}`,
-        headers: { "x-verified-test-sub": "iss:alpha-op" },
+        headers: { authorization: "Bearer alpha-op-token" },
       });
       expect(alphaQueue.statusCode).toBe(200);
       expect(alphaQueue.json().queued).toHaveLength(1);
@@ -526,7 +564,7 @@ describe("TR-024: two-repo isolation across identical feature IDs and synthetic 
       const badNotify = await server.inject({
         method: "POST",
         url: "/api/notify",
-        headers: { "x-verified-test-sub": "iss:alpha-op" },
+        headers: { authorization: "Bearer alpha-op-token" },
         payload: {
           type: "done_done",
           projectId: alphaProject.projectId,
@@ -542,23 +580,29 @@ describe("TR-024: two-repo isolation across identical feature IDs and synthetic 
       expect(badNotify.statusCode).toBe(403);
       expect(notifySpy).not.toHaveBeenCalled();
 
-      // Health reports both projects ready, Slack connected, Telegram disabled
-      const healthRes = await server.inject({
-        method: "GET",
-        url: "/api/health",
-      });
-      expect(healthRes.statusCode).toBe(200);
-      const health = healthRes.json();
-      expect(health.daemonLiveness).toBe("alive");
-      expect(health.projectReadiness).toMatchObject({
-        status: "ready",
-        readyCount: 2,
-        totalCount: 2,
-      });
-      expect(health.telegram).toEqual({
-        enabled: false,
-        reason: "disabled_in_pilot",
-      });
+      // Health reports each authorized project ready, Slack connected, Telegram disabled
+      for (const [project, token] of [
+        [alphaProject, "Bearer alpha-op-token"],
+        [betaProject, "Bearer beta-op-token"],
+      ] as const) {
+        const healthRes = await server.inject({
+          method: "GET",
+          url: `/api/health?projectId=${project.projectId}`,
+          headers: { authorization: token },
+        });
+        expect(healthRes.statusCode).toBe(200);
+        const health = healthRes.json();
+        expect(health.daemonLiveness).toBe("alive");
+        expect(health.projectReadiness).toMatchObject({
+          status: "ready",
+          readyCount: 1,
+          totalCount: 1,
+        });
+        expect(health.telegram).toEqual({
+          enabled: false,
+          reason: "disabled_in_pilot",
+        });
+      }
     } finally {
       await server.close();
     }
@@ -945,12 +989,7 @@ describe("TR-024: two-repo isolation across identical feature IDs and synthetic 
       notifier,
       transport: "hosted",
       runnerKind: "hosted",
-      resolvePrincipal: (req) => {
-        const sub = req.headers["x-verified-test-sub"];
-        return typeof sub === "string"
-          ? { principalType: "google_sub", principalId: sub }
-          : undefined;
-      },
+      hostedAuth: createTwoRepoHostedAuth(),
     });
 
     let closeError: unknown;
@@ -958,7 +997,7 @@ describe("TR-024: two-repo isolation across identical feature IDs and synthetic 
       const alphaRes = await server.inject({
         method: "POST",
         url: "/api/dispatch",
-        headers: { "x-verified-test-sub": "iss:alpha-op" },
+        headers: { authorization: "Bearer alpha-op-token" },
         payload: {
           projectId: "alpha",
           featureId: "048-shared",
@@ -970,7 +1009,7 @@ describe("TR-024: two-repo isolation across identical feature IDs and synthetic 
       const betaRes = await server.inject({
         method: "POST",
         url: "/api/dispatch",
-        headers: { "x-verified-test-sub": "iss:beta-op" },
+        headers: { authorization: "Bearer beta-op-token" },
         payload: {
           projectId: "beta",
           featureId: "048-shared",
@@ -983,12 +1022,12 @@ describe("TR-024: two-repo isolation across identical feature IDs and synthetic 
         const aStatus = await server.inject({
           method: "GET",
           url: `/api/dispatch/048-shared/phase-01?projectId=${alphaProject.projectId}`,
-          headers: { "x-verified-test-sub": "iss:alpha-op" },
+          headers: { authorization: "Bearer alpha-op-token" },
         });
         const bStatus = await server.inject({
           method: "GET",
           url: `/api/dispatch/048-shared/phase-01?projectId=${betaProject.projectId}`,
-          headers: { "x-verified-test-sub": "iss:beta-op" },
+          headers: { authorization: "Bearer beta-op-token" },
         });
         expect(aStatus.json().status).toBe("completed");
         expect(bStatus.json().status).toBe("completed");

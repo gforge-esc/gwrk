@@ -1240,4 +1240,80 @@ describe("FR-007 FR-010 AUTH-04: full-server hosted auth guard integration via s
     expect(healthRes.body).not.toContain(f.project.slug);
     expect(f.operationCount()).toBe(0);
   });
+
+  it("FR-007 FR-010: caller-supplied resolvePrincipal cannot bypass hosted auth guard or hosted health scoping when hostedAuth is absent", async () => {
+    const f = await createFullServerGuardFixture({
+      transport: "hosted",
+      includeHostedAuth: false,
+      bindPrincipal: {
+        principalType: "cli_token",
+        principalId: "caller-supplied-operator",
+        role: "operator",
+      },
+      resolvePrincipal: () => ({
+        principalType: "cli_token",
+        principalId: "caller-supplied-operator",
+      }),
+    });
+    f.checkGit.mockClear();
+
+    const dispatchRes = await f.server.inject({
+      method: "POST",
+      url: "/api/dispatch",
+      payload: {
+        projectId: f.project.projectId,
+        featureId: "051-pilot",
+        phaseId: "phase-04",
+      },
+    });
+    expect([401, 503]).toContain(dispatchRes.statusCode);
+    expect(dispatchRes.json()).toMatchObject({
+      ok: false,
+      requestId: expect.any(String),
+    });
+    expect(f.operationCount()).toBe(0);
+
+    const statusRes = await f.server.inject({
+      method: "GET",
+      url: `/api/status?projectId=${f.project.projectId}`,
+    });
+    expect([401, 503]).toContain(statusRes.statusCode);
+    expect(statusRes.json()).toMatchObject({
+      ok: false,
+      requestId: expect.any(String),
+    });
+
+    const apiHealthRes = await f.server.inject({
+      method: "GET",
+      url: `/api/health?projectId=${f.project.projectId}`,
+    });
+    expect([401, 503]).toContain(apiHealthRes.statusCode);
+    expect(apiHealthRes.json()).toMatchObject({
+      ok: false,
+      requestId: expect.any(String),
+    });
+    expect(apiHealthRes.body).not.toContain(f.project.slug);
+
+    const privateHealthRes = await f.server.inject({
+      method: "GET",
+      url: "/health",
+    });
+    expect(privateHealthRes.statusCode).toBe(200);
+    expect(privateHealthRes.json()).toEqual({
+      status: "ok",
+      daemonLiveness: "alive",
+    });
+    expect(f.checkGit).not.toHaveBeenCalled();
+
+    const badMethodRes = await f.server.inject({
+      method: "PUT",
+      url: "/api/status",
+    });
+    expect(badMethodRes.statusCode).toBe(405);
+    expect(badMethodRes.json()).toMatchObject({
+      ok: false,
+      code: "METHOD_NOT_ALLOWED",
+      requestId: expect.any(String),
+    });
+  });
 });

@@ -661,9 +661,7 @@ async function startLockedServer(
   });
 
   try {
-    const useHostedAuthGuard =
-      effectiveTransport === "hosted" &&
-      (Boolean(options.hostedAuth) || !options.resolvePrincipal);
+    const useHostedAuthGuard = effectiveTransport === "hosted";
 
     if (useHostedAuthGuard) {
       registerHostedAuthGuard(server, {
