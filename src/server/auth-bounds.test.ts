@@ -165,6 +165,9 @@ function sendLoopbackRequest(input: {
   body: string;
 }> {
   return new Promise((resolve, reject) => {
+    let settled = false;
+    let responseStarted = false;
+    let pendingError: Error | undefined;
     const req = http.request(
       {
         host: "127.0.0.1",
@@ -174,9 +177,12 @@ function sendLoopbackRequest(input: {
         headers: input.headers,
       },
       (res) => {
+        responseStarted = true;
         const chunks: Buffer[] = [];
         res.on("data", (chunk: Buffer) => chunks.push(chunk));
         res.on("end", () => {
+          if (settled) return;
+          settled = true;
           resolve({
             statusCode: res.statusCode ?? 0,
             headers: res.headers,
@@ -185,7 +191,16 @@ function sendLoopbackRequest(input: {
         });
       },
     );
-    req.on("error", reject);
+    req.on("error", (err) => {
+      if (settled) return;
+      pendingError = err;
+    });
+    req.on("close", () => {
+      if (!settled && !responseStarted && pendingError) {
+        settled = true;
+        reject(pendingError);
+      }
+    });
     if (input.body !== undefined) {
       req.write(input.body);
     }
@@ -1804,5 +1819,299 @@ describe("FR-013 US-008 TR-014 AUTH-14: full-server HTTP rate admission, parser 
       ].join("\r\n"),
     );
     expect(blankXffRaw).toMatch(/^HTTP\/1\.1 503 /);
+
+    // IPv6 loopback ::1 is NOT a trusted gateway peer; forged X-Forwarded-For must be ignored.
+    for (let i = 0; i < 60; i++) {
+      const res = await f.server.inject({
+        method: "GET",
+        url: `/api/status?projectId=${f.project.projectId}`,
+        remoteAddress: "::1",
+        headers: {
+          "x-forwarded-for": `198.51.100.${i + 1}`,
+          authorization: "Bearer malformed-key",
+        },
+      });
+      expect(res.statusCode).toBe(401);
+    }
+    const ipv6Loopback61 = await f.server.inject({
+      method: "GET",
+      url: `/api/status?projectId=${f.project.projectId}`,
+      remoteAddress: "::1",
+      headers: {
+        "x-forwarded-for": "198.51.100.250",
+        authorization: `Bearer ${f.operatorKey}`,
+      },
+    });
+    expect(ipv6Loopback61.statusCode).toBe(429);
+  });
+
+  it("AUTH-14: detaches owned socket close listeners on keep-alive reuse and settles unverified reservations on early denials and parser errors before onResponse", async () => {
+    const admission = createRateAdmission({ clock: { nowMs: () => BASE_NOW } });
+    const completeUnverifiedSpy = vi.spyOn(admission, "completeUnverified");
+    const f = await createBoundsServerFixture({ rateAdmission: admission });
+
+    const observedCloseListeners: number[] = [];
+    let trackedSocket: net.Socket | undefined;
+    f.server.server.on("connection", (socket) => {
+      if (!trackedSocket) trackedSocket = socket;
+    });
+
+    const agent = new http.Agent({ keepAlive: true, maxSockets: 1 });
+    try {
+      for (let i = 0; i < 6; i++) {
+        await new Promise<void>((resolve, reject) => {
+          const req = http.request(
+            {
+              host: "127.0.0.1",
+              port: f.port,
+              agent,
+              method: "GET",
+              path: `/api/status?projectId=${f.project.projectId}`,
+              headers: {
+                "x-forwarded-for": "198.51.100.140",
+                authorization: `Bearer ${f.operatorKey}`,
+              },
+            },
+            (res) => {
+              res.resume();
+              res.on("end", () => resolve());
+            },
+          );
+          req.on("error", reject);
+          req.end();
+        });
+        await new Promise<void>((resolve) => setImmediate(resolve));
+        if (trackedSocket) {
+          observedCloseListeners.push(trackedSocket.listenerCount("close"));
+        }
+      }
+    } finally {
+      agent.destroy();
+    }
+
+    expect(observedCloseListeners.length).toBeGreaterThanOrEqual(4);
+    expect(Math.max(...observedCloseListeners)).toBe(
+      Math.min(...observedCloseListeners),
+    );
+
+    // Early 401 auth denial settles unverified reservation once before onResponse.
+    let unverifiedCallsAtOnSend = -1;
+    let unverifiedCallsAtOnResponse = -1;
+    const { registerHostedAuthBounds } = await import("./auth-bounds.js");
+    const app = fastify({ logger: false });
+    cleanup.push(async () => {
+      await app.close();
+    });
+    const isolatedAdmission = createRateAdmission({
+      clock: { nowMs: () => BASE_NOW },
+    });
+    const isolatedUnverifiedSpy = vi.spyOn(
+      isolatedAdmission,
+      "completeUnverified",
+    );
+    registerHostedAuthBounds(app, {
+      rateAdmission: isolatedAdmission,
+      clock: { nowMs: () => BASE_NOW },
+    });
+    app.addHook("onSend", async (_request, _reply, payload) => {
+      unverifiedCallsAtOnSend = isolatedUnverifiedSpy.mock.calls.length;
+      return payload;
+    });
+    app.addHook("onResponse", async () => {
+      unverifiedCallsAtOnResponse = isolatedUnverifiedSpy.mock.calls.length;
+    });
+    app.post("/api/dispatch", async () => ({ ok: true }));
+
+    // Trigger parser 400 error (hits onError before onSend/onResponse).
+    const parseErrRes = await app.inject({
+      method: "POST",
+      url: "/api/dispatch",
+      remoteAddress: "127.0.0.1",
+      headers: {
+        "x-forwarded-for": "198.51.100.141",
+        "content-type": "application/json",
+      },
+      payload: "{not-json",
+    });
+    expect(parseErrRes.statusCode).toBe(400);
+    expect(unverifiedCallsAtOnSend).toBe(1);
+    expect(unverifiedCallsAtOnResponse).toBe(1);
+    expect(isolatedUnverifiedSpy).toHaveBeenCalledTimes(1);
+
+    // Early 401 denial in preHandler settles unverified reservation before onResponse.
+    const appEarlyDeny = fastify({ logger: false });
+    cleanup.push(async () => {
+      await appEarlyDeny.close();
+    });
+    const earlyDenyAdmission = createRateAdmission({
+      clock: { nowMs: () => BASE_NOW },
+    });
+    const earlyDenyUnverifiedSpy = vi.spyOn(
+      earlyDenyAdmission,
+      "completeUnverified",
+    );
+    let settledBeforeOnResponse = false;
+    appEarlyDeny.addHook("preHandler", async (_request, reply) =>
+      reply.code(401).send({ ok: false, code: "AUTH_REQUIRED" }),
+    );
+    registerHostedAuthBounds(appEarlyDeny, {
+      rateAdmission: earlyDenyAdmission,
+      clock: { nowMs: () => BASE_NOW },
+    });
+    appEarlyDeny.addHook("onSend", async (_request, _reply, payload) => {
+      settledBeforeOnResponse = earlyDenyUnverifiedSpy.mock.calls.length === 1;
+      return payload;
+    });
+    appEarlyDeny.get("/api/status", async () => ({ ok: true }));
+
+    const earlyDenyRes = await appEarlyDeny.inject({
+      method: "GET",
+      url: "/api/status",
+      remoteAddress: "127.0.0.1",
+      headers: { "x-forwarded-for": "198.51.100.144" },
+    });
+    expect(earlyDenyRes.statusCode).toBe(401);
+    expect(settledBeforeOnResponse).toBe(true);
+    expect(earlyDenyUnverifiedSpy).toHaveBeenCalledTimes(1);
+    expect(completeUnverifiedSpy).not.toHaveBeenCalled();
+  });
+
+  it("AUTH-14: fails closed in preHandler when a protected API route lacks an unsettled reservation", async () => {
+    const { registerHostedAuthBounds } = await import("./auth-bounds.js");
+    const app = fastify({ logger: false });
+    cleanup.push(async () => {
+      await app.close();
+    });
+
+    const admission = createRateAdmission({ clock: { nowMs: () => BASE_NOW } });
+    const completeVerifiedSpy = vi.spyOn(admission, "completeVerified");
+    registerHostedAuthBounds(app, {
+      rateAdmission: admission,
+      clock: { nowMs: () => BASE_NOW },
+    });
+
+    // Simulate a protected API route reaching preHandler without an onRequest reservation
+    // by rewriting the classified route URL after onRequest ran on exempt /health.
+    let handlerCalls = 0;
+    app.addHook("preValidation", async (request) => {
+      if (request.headers["x-test-missing-reservation"] === "1") {
+        request.raw.url = "/api/status";
+      }
+    });
+    app.get("/health", async () => {
+      handlerCalls++;
+      return { ok: true };
+    });
+
+    const missingRes = await app.inject({
+      method: "GET",
+      url: "/health",
+      remoteAddress: "127.0.0.1",
+      headers: {
+        "x-forwarded-for": "198.51.100.142",
+        "x-test-missing-reservation": "1",
+      },
+    });
+    expect(missingRes.statusCode).toBe(503);
+    expect(missingRes.json()).toMatchObject({
+      ok: false,
+      requestId: expect.any(String),
+    });
+    expect(handlerCalls).toBe(0);
+    expect(completeVerifiedSpy).not.toHaveBeenCalled();
+
+    // Simulate a protected API route without verified auth context reaching auth-bounds preHandler.
+    const app2 = fastify({ logger: false });
+    cleanup.push(async () => {
+      await app2.close();
+    });
+    const baseAdmission = createRateAdmission({
+      clock: { nowMs: () => BASE_NOW },
+    });
+    registerHostedAuthBounds(app2, {
+      rateAdmission: baseAdmission,
+      clock: { nowMs: () => BASE_NOW },
+    });
+    let handler2Calls = 0;
+    app2.get("/api/status", async () => {
+      handler2Calls++;
+      return { ok: true };
+    });
+
+    // Without auth-guard setting verified context, preHandler MUST fail closed instead of falling through to handler.
+    const noAuthRes = await app2.inject({
+      method: "GET",
+      url: "/api/status",
+      remoteAddress: "127.0.0.1",
+      headers: {
+        "x-forwarded-for": "198.51.100.143",
+      },
+    });
+    expect(noAuthRes.statusCode).toBe(401);
+    expect(noAuthRes.json()).toMatchObject({
+      ok: false,
+      code: "AUTH_REQUIRED",
+      requestId: expect.any(String),
+    });
+    expect(handler2Calls).toBe(0);
+
+    // Simulate an already-settled reservation (finalized externally before completeVerified) reaching preHandler with verified auth.
+    let capturedReservation:
+      | Parameters<RateAdmissionPort["completeUnverified"]>[0]["reservation"]
+      | undefined;
+    const settledBase = createRateAdmission({
+      clock: { nowMs: () => BASE_NOW },
+    });
+    const wrappedAdmission: RateAdmissionPort = {
+      consumeLogin: (input) => settledBase.consumeLogin(input),
+      reserveApi: (input) => {
+        const res = settledBase.reserveApi(input);
+        if (res.allowed) capturedReservation = res.reservation;
+        return res;
+      },
+      completeVerified: (input) => settledBase.completeVerified(input),
+      completeUnverified: (input) => settledBase.completeUnverified(input),
+      expire: () => settledBase.expire(),
+      close: () => settledBase.close(),
+    };
+    const fSettled = await createBoundsServerFixture({
+      rateAdmission: wrappedAdmission,
+      customAuthenticate: async () => {
+        if (capturedReservation) {
+          settledBase.completeUnverified({ reservation: capturedReservation });
+        }
+        return {
+          ok: true as const,
+          context: {
+            principalType: "cli_token" as const,
+            principalId: "cred-bounds-op",
+            credentialId: "cred-bounds-op",
+            expiresAt: iso(BASE_NOW + 3600_000),
+            authMethod: "api_key" as const,
+          },
+        };
+      },
+    });
+
+    const settledRes = await fSettled.server.inject({
+      method: "POST",
+      url: "/api/dispatch",
+      remoteAddress: "127.0.0.1",
+      headers: {
+        "x-forwarded-for": "198.51.100.145",
+        authorization: `Bearer ${fSettled.operatorKey}`,
+      },
+      payload: {
+        projectId: fSettled.project.projectId,
+        featureId: "051-settled-reservation",
+        phaseId: "phase-05",
+      },
+    });
+    expect(settledRes.statusCode).toBe(503);
+    expect(settledRes.json()).toMatchObject({
+      ok: false,
+      requestId: expect.any(String),
+    });
+    expect(fSettled.dispatchCount()).toBe(0);
   });
 });

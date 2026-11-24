@@ -794,17 +794,37 @@ describe("FR-013 US-008 TR-015 AUTH-15: sanitized Fastify logger and zero canary
     }
   });
 
-  it("AUTH-15: serializeError handles cyclic error causes without crashing", async () => {
-    const { serializeError } = await import("./auth-logging.js");
+  it("AUTH-15: serializeError handles cyclic error causes and AggregateError cycles without crashing", async () => {
+    const { serializeError, serializeRequest } = await import(
+      "./auth-logging.js"
+    );
     const cyclicErr = new Error(
       `Cyclic failure Bearer ${CANARY_DEP_ERR_BEARER}`,
-    ) as Error & { cause?: unknown };
+    ) as Error & { cause?: unknown; errors?: unknown[] };
     cyclicErr.cause = cyclicErr;
+    cyclicErr.errors = [cyclicErr];
     const serialized = serializeError(cyclicErr);
     expect(serialized.message).not.toContain(CANARY_DEP_ERR_BEARER);
+    expect(serialized.cause).toBeDefined();
+    expect(Array.isArray(serialized.errors)).toBe(true);
+
+    const reqSerialized = serializeRequest({
+      method: "GET",
+      url: `https://alice:${CANARY_DEP_ERR_BEARER}@gwrk.gforge.ai/probe?code=${CANARY_OAUTH_CODE}#token=${CANARY_QUERY_TOKEN}`,
+      headers: {
+        "x-forwarded-user": "CANARY_DIRECT_USER",
+        "x-auth-request-email": "canary-direct@example.test",
+      },
+    });
+    const reqJson = JSON.stringify(reqSerialized);
+    expect(reqJson).not.toContain(CANARY_DEP_ERR_BEARER);
+    expect(reqJson).not.toContain(CANARY_OAUTH_CODE);
+    expect(reqJson).not.toContain(CANARY_QUERY_TOKEN);
+    expect(reqJson).not.toContain("CANARY_DIRECT_USER");
+    expect(reqJson).not.toContain("canary-direct@example.test");
   });
 
-  it("AUTH-15 FR-010: uncaught handler errors and caught 500 dependency errors return static JSON with requestId and leak zero raw error text", async () => {
+  it("AUTH-15 FR-010: uncaught handler errors, caught 500 dependency errors, and hosted 4xx errors return normalized JSON with requestId and zero raw 5xx/parser text", async () => {
     const f = await createLoggingServerFixture();
 
     vi.mocked(slackNotify.notifySlack).mockRejectedValueOnce(
@@ -850,5 +870,36 @@ describe("FR-013 US-008 TR-015 AUTH-15: sanitized Fastify logger and zero canary
     });
     expect(uncaughtRes.body).not.toContain("CANARY_UNCAUGHT_500_RAW");
     expect(uncaughtRes.body).not.toContain(CANARY_DEP_ERR_BEARER);
+
+    // Malformed JSON parser error uses hosted static error handler without echoing secret input.
+    const badJsonRes = await f.server.inject({
+      method: "POST",
+      url: "/api/dispatch",
+      headers: {
+        authorization: `Bearer ${f.apiKey}`,
+        "content-type": "application/json",
+      },
+      payload: "{bad_json CANARY_BAD_JSON_SECRET",
+    });
+    expect(badJsonRes.statusCode).toBe(400);
+    expect(badJsonRes.json()).toMatchObject({
+      ok: false,
+      code: expect.any(String),
+      requestId: expect.any(String),
+    });
+    expect(badJsonRes.body).not.toContain("CANARY_BAD_JSON_SECRET");
+
+    // Hosted 4xx route responses without ok:false are normalized with ok:false and requestId.
+    const missingFieldsRes = await f.server.inject({
+      method: "POST",
+      url: "/api/dispatch",
+      headers: { authorization: `Bearer ${f.apiKey}` },
+      payload: { projectId: f.project.projectId },
+    });
+    expect(missingFieldsRes.statusCode).toBe(400);
+    expect(missingFieldsRes.json()).toMatchObject({
+      ok: false,
+      requestId: expect.any(String),
+    });
   });
 });
