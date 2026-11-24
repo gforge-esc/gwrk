@@ -2,17 +2,25 @@
 set -euo pipefail
 # AUTHORED against the approved production authentication contract.
 # Missing tests deny completion before the behavioral commands run.
-if [[ ! -f src/adapters/sqlite/auth-store.test.ts ]]; then
-  echo 'FAIL: required behavioral test is missing: src/adapters/sqlite/auth-store.test.ts' >&2
-  exit 1
-fi
-if [[ ! -f src/commands/auth.test.ts ]]; then
-  echo 'FAIL: required behavioral test is missing: src/commands/auth.test.ts' >&2
-  exit 1
-fi
-if [[ ! -f src/adapters/auth/credential-crypto.test.ts ]]; then
-  echo 'FAIL: required behavioral test is missing: src/adapters/auth/credential-crypto.test.ts' >&2
-  exit 1
-fi
+required_targets=(
+  src/adapters/sqlite/auth-store.test.ts
+  src/commands/auth.test.ts
+  src/adapters/auth/credential-crypto.test.ts
+  src/db/db.test.ts
+  src/architecture.test.ts
+)
+for target in "${required_targets[@]}"; do
+  if [[ ! -f "$target" ]]; then
+    echo "FAIL: required behavioral test is missing: $target" >&2
+    exit 1
+  fi
+done
+vitest_targets=(
+  src/adapters/auth/credential-crypto.test.ts
+  src/adapters/sqlite/auth-store.test.ts
+  src/commands/auth.test.ts
+  src/db/db.test.ts
+  src/architecture.test.ts
+)
 pnpm run build
-pnpm exec vitest run src/adapters/auth/credential-crypto.test.ts src/adapters/sqlite/auth-store.test.ts src/commands/auth.test.ts src/db/db.test.ts src/architecture.test.ts
+pnpm exec vitest run "${vitest_targets[@]}"
