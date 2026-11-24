@@ -448,7 +448,7 @@ describe("browser authentication HTTP routes", () => {
         url: "/api/auth/logout",
         headers: await f.mutationHeaders(),
       });
-      expect(response.statusCode).toBe(200);
+      expect(response.statusCode).toBe(503);
       expect(response.json()).toEqual({ ok: true, proxyCleared: false });
       expect(f.records.get(digest(TOKEN))?.revokedAt).toBe(iso(NOW));
       expect(cookies(response)).toEqual([

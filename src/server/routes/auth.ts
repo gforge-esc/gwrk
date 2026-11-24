@@ -86,6 +86,7 @@ export function registerAuthRoutes(
         ...result.setCookieHeaders,
         options.csrf.clearCookieHeader(),
       ]);
+      if (!result.proxyCleared) reply.code(503);
       return { ok: true, proxyCleared: result.proxyCleared };
     } catch {
       return deny(request, reply, "AUTH_DEPENDENCY_UNAVAILABLE");
