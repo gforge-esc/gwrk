@@ -10,6 +10,7 @@ import { gwrkHome } from "../adapters/config/paths.js";
 import { AgentBackendConfigSchema } from "../domain/agent-config.js";
 import { DesignSchema } from "../domain/architecture-context.js";
 import { DEFAULT_LOC_RATES, resolveRoleMultipliers } from "../domain/effort.js";
+import { HostedAuthConfigInputSchema } from "../domain/hosted-auth-config.js";
 
 const AgentBackendSchema = z.string();
 export type AgentBackendId = string;
@@ -134,6 +135,7 @@ export const GwrkConfigSchema = z.object({
       port: z.number().int().min(0).max(65535),
       host: z.string().min(1),
       githubWebhookSecret: z.string().optional(),
+      auth: HostedAuthConfigInputSchema.optional(),
       heartbeatIntervalMs: z.number().int().min(100).default(30000),
       networkCheckIntervalMs: z.number().int().min(100).default(60000),
       slack: z
@@ -314,6 +316,22 @@ function tryReadJson(
   }
 }
 
+function validateTypedAuthSource(source: unknown): void {
+  if (source === null || typeof source !== "object") return;
+  const server = Reflect.get(source, "server");
+  if (
+    server === null ||
+    typeof server !== "object" ||
+    !Object.hasOwn(server, "auth")
+  )
+    return;
+  if (
+    !HostedAuthConfigInputSchema.safeParse(Reflect.get(server, "auth")).success
+  ) {
+    throw new Error("Configuration error: Authentication configuration denied");
+  }
+}
+
 /**
  * Three-layer config resolution:
  *
@@ -347,10 +365,13 @@ export function loadConfig(projectRoot: string): GwrkConfig {
     throw new Error("Configuration error: invalid JSON in .gwrkrc.json");
   }
 
+  validateTypedAuthSource(raw);
+
   // Layer 2: Personal per-project overrides (optional)
   const localPath = path.join(projectRoot, ".gwrkrc.local.json");
   const localOverrides = tryReadJson(localPath, ".gwrkrc.local.json");
   if (localOverrides) {
+    validateTypedAuthSource(localOverrides);
     raw = deepMerge(raw, localOverrides);
   }
 
@@ -359,6 +380,7 @@ export function loadConfig(projectRoot: string): GwrkConfig {
   const globalPath = path.join(gwrkHome(), "config.json");
   const globalOverrides = tryReadJson(globalPath, "~/.gwrk/config.json");
   if (globalOverrides) {
+    validateTypedAuthSource(globalOverrides);
     raw = deepMerge(raw, globalOverrides);
   }
 
