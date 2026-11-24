@@ -16,16 +16,20 @@ Freeze these defaults before independent adapter implementation. The coordinator
 | Unknown-key refresh cooldown | 30 seconds | 1 to 60 seconds |
 | Proxy logout timeout | 5 seconds | 1 to 5 seconds |
 | Remote CLI timeout | 10 seconds | 1 to 10 seconds |
+| Gateway login admission timeout | 30 seconds | Fixed for pinned ForwardAuth |
+| Gateway login admission response body | 4096 bytes | Fixed pilot bound |
 | Credential-bearing redirects | Zero | Zero |
 | HTTP header size | 16384 bytes | 1024 to 16384 bytes |
 | HTTP body size | 1048576 bytes | 1024 to 1048576 bytes |
 | Opaque API credential size | 256 bytes | 128 to 256 bytes |
 | Google ID token size | 8192 bytes | 1024 to 8192 bytes |
-| Login requests per trusted client IP | 60 per minute | 1 to 60 per minute |
+| Successful login origin checks per trusted client IP | 60 per minute | 1 to 60 per minute |
 | Unauthenticated API attempts per trusted client IP | 60 per minute | 1 to 60 per minute |
 | API requests per verified credential | 120 per minute | 1 to 120 per minute |
 | Rate-limit bucket count | 1000 entries | 1 to 1000 entries |
 | Idle bucket retention | 120 seconds | 1 to 120 seconds |
+
+Login accounting follows [login-admission-boundary.md](login-admission-boundary.md). Retries can consume extra origin-check allowance and reduce useful logins. They never refund or expand the quota. Bound admissions by the counter generation, not arbitrary downstream completion timestamps. Keep API reservation finalization unchanged.
 
 Expiry is strict. No tolerance extends Google token expiry or API key expiry. The issued-at tolerance applies only to future issuance. The session cap is the earlier of its original deadline and the verified token expiry. Observing the session again never extends that cap.
 

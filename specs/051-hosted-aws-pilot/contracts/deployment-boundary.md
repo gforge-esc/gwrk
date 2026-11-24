@@ -51,6 +51,12 @@ Absent a hint, caller Authorization may enter only the API parser. Missing metad
 
 The origin guard owns browser mutation checks through the existing `BrowserCsrfPort` and pure origin policy. Require configured `expectedOrigin` and the port for Google mutations. Missing dependencies deny those writes. Issuance receives the capped verified `expiresAt` through `BrowserCsrfPort`. Use the maintained public token engine with session HMAC binding. Set absolute cookie expiry no later than that deadline. Omit issuance Max-Age. Read `__Host-gwrk_csrf` and `x-gwrk-csrf-token`. Never accept query CSRF tokens. API and provider signature chains retain their separate protections.
 
+## Gateway login admission
+
+Follow [login-admission-boundary.md](login-admission-boundary.md) for the admission-only header lifecycle and trusted client-IP parser. Use native Linux host networking with literal loopback backend URLs. The origin and proxy peer must be `127.0.0.1`. Keep browser auth-request followed by direct Traefik-to-origin forwarding. Do not add an OAuth2 Proxy HTTP-upstream hop.
+
+Publish only TCP 443 under the [TLS boundary](tls-boundary.md). Keep port 80 closed. Freeze the strict entry-point trust settings and test both admission and backend wires. Native proof must establish the actual peer topology before restricted acceptance.
+
 ## Internal proxy logout
 
 The production proxy listens on `127.0.0.1:4180` for origin sign-out. Use the fixed URL `http://127.0.0.1:4180/oauth2/sign_out`. No request or project configuration may replace that target. The production bundle must keep this listener private. Public gateway routing blocks direct sign-out.

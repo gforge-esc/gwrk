@@ -501,11 +501,11 @@ pnpm exec vitest run src/adapters/auth/http-client-credential.test.ts src/comman
 
 ### Phase 7: Gateway and Linux runner
 
-Requires Phase 6. Follow the hosted TLS boundary for preissued certificates and restricted acceptance. Keep `deploy/hosted-auth-proof/` and `tests/hosted-auth-proof/gateway-proof.mjs` unchanged. Write failing synthetic OIDC edge and runner preflight tests first. Observe RED before creating the production gateway bundle and updating runner scripts.
+Requires Phase 6. Follow the hosted TLS boundary for preissued certificates and restricted acceptance. Follow [login-admission-boundary.md](contracts/login-admission-boundary.md) for conservative origin-check accounting and the admission-only header lifecycle. Preserve browser auth-request followed by direct Traefik-to-origin forwarding. Observe synthetic RED for dual-wire headers and retry accounting before gateway implementation. Require native peer and lost-response proof before restricted acceptance. Keep `deploy/hosted-auth-proof/` and `tests/hosted-auth-proof/gateway-proof.mjs` unchanged. Write failing synthetic OIDC edge and runner preflight tests first. Observe RED before creating the production gateway bundle and updating runner scripts.
 
 #### Files
 
-- `deploy/hosted-pilot/compose.yaml` (NEW: Digest-pinned Traefik and OAuth2 Proxy stack publishing ports `80` and `443` with loopback-only origin and sign-out)
+- `deploy/hosted-pilot/compose.yaml` (NEW: Digest-pinned Traefik and OAuth2 Proxy stack publishing only port `443` with native host networking and loopback-only origin and sign-out)
 - `deploy/hosted-pilot/traefik/dynamic.yaml` (NEW: Isolated browser and API plus webhook chains stripping forged headers and blocking public `/oauth2/sign_out` and `/health`)
 - `deploy/hosted-pilot/oauth2-proxy/oauth2-proxy.cfg` (NEW: Google OIDC PKCE `S256` with `insecure_oidc_skip_nonce = false` and `set_authorization_header = true` plus explicit allowlist)
 - `deploy/hosted-pilot/.env.example` (NEW: Non-secret edge config template with zero assumed Google accounts)
