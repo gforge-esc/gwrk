@@ -81,7 +81,7 @@ await withOwnedNestedDaemon({
     assert.equal(load.code, 0, "offline preloaded image import failed");
     for (const name of ["node", "traefik", "proxy"]) {
       const image = JSON.parse(
-        docker([
+        await docker([
           "exec",
           containerId,
           "docker",
@@ -103,7 +103,7 @@ await withOwnedNestedDaemon({
         "loaded image rootfs differs",
       );
     }
-    docker(["exec", containerId, "mkdir", "-p", "/fixture", "/etc/gwrk"]);
+    await docker(["exec", containerId, "mkdir", "-p", "/fixture", "/etc/gwrk"]);
     const controller = `gwrk-051-controller-${runId}`;
     writeFileSync(
       `${root}/controller-ownership.json`,
@@ -168,7 +168,12 @@ await withOwnedNestedDaemon({
     let stage;
     try {
       stage = JSON.parse(
-        docker(["exec", containerId, "cat", "/fixture/bootstrap-stage.json"]),
+        await docker([
+          "exec",
+          containerId,
+          "cat",
+          "/fixture/bootstrap-stage.json",
+        ]),
       );
     } catch {}
     const safe = {

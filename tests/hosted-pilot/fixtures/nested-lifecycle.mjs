@@ -1,5 +1,4 @@
 import assert from "node:assert/strict";
-import { execFileSync, spawn } from "node:child_process";
 import {
   lstatSync,
   mkdirSync,
@@ -74,53 +73,6 @@ export async function withOwnedNestedDaemon({ runId, receipt, executeCases }) {
     LC_ALL: "C",
     DOCKER_CONFIG: dockerConfig,
   };
-  const docker = (args, options = {}) =>
-    execFileSync(
-      "/usr/bin/docker",
-      ["--host", "unix:///var/run/docker.sock", ...args],
-      {
-        encoding: "utf8",
-        env,
-        timeout: 15_000,
-        maxBuffer: 1048576,
-        ...options,
-      },
-    );
-  const spawnDocker = (args, timeout = 30_000) =>
-    new Promise((resolve, reject) => {
-      const child = spawn(
-        "/usr/bin/docker",
-        ["--host", "unix:///var/run/docker.sock", ...args],
-        { env, stdio: ["ignore", "pipe", "pipe"] },
-      );
-      const chunks = { stdout: [], stderr: [] };
-      let bytes = 0;
-      const timer = setTimeout(() => {
-        child.kill("SIGTERM");
-        reject(new Error("owned Docker command deadline"));
-      }, timeout);
-      for (const stream of ["stdout", "stderr"])
-        child[stream].on("data", (chunk) => {
-          bytes += chunk.length;
-          if (bytes > 1048576) {
-            child.kill("SIGTERM");
-            clearTimeout(timer);
-            reject(new Error("owned Docker output exceeds bound"));
-          } else chunks[stream].push(chunk);
-        });
-      child.once("error", (error) => {
-        clearTimeout(timer);
-        reject(error);
-      });
-      child.once("close", (code) => {
-        clearTimeout(timer);
-        resolve({
-          code,
-          stdout: Buffer.concat(chunks.stdout).toString(),
-          stderr: Buffer.concat(chunks.stderr).toString(),
-        });
-      });
-    });
   const ownership = {
     runId,
     root,
@@ -137,126 +89,180 @@ export async function withOwnedNestedDaemon({ runId, receipt, executeCases }) {
     { mode: 0o600 },
   );
   let containerId;
-  let stopWatchdog = false;
-  let watchdogError;
   let watchdog;
+  let watchdogError;
+  let dockerForCleanup;
   const started = Date.now();
-  try {
-    const image = JSON.parse(
-      docker([
-        "image",
-        "inspect",
-        "--format",
-        "{{json .}}",
-        receipt.outerImage,
-      ]),
-    );
-    assert.equal(
-      image.Id,
-      receipt.daemonImageId,
-      "daemon image config ID differs from checkpoint",
-    );
-    assert.equal(image.Architecture, "amd64");
-    containerId = docker(plan.command).trim();
-    assert.match(containerId, /^[a-f0-9]{64}$/);
-    const deadline = Date.now() + RESOURCE_LIMITS.startupSeconds * 1000;
-    let ready = false;
-    while (Date.now() < deadline) {
-      try {
-        const info = JSON.parse(
-          docker([
-            "exec",
+  return runOwnedProcessScope(
+    async ({ signal, spawnProcess, untilCancelled }) => {
+      const spawnDocker = (args, timeout = 15_000) =>
+        spawnProcess(
+          "/usr/bin/docker",
+          ["--host", "unix:///var/run/docker.sock", ...args],
+          { env, timeoutMs: timeout },
+        );
+      const docker = async (args, timeout = 15_000) => {
+        const result = await spawnDocker(args, timeout);
+        assert.equal(result.code, 0, "owned Docker command failed");
+        return result.stdout;
+      };
+      // Cleanup uses a separate bounded process after this scope's signal is aborted.
+      dockerForCleanup = async (args) => {
+        const { startBoundedProcess } = await import("./process-scope.mjs");
+        const handle = startBoundedProcess(
+          "/usr/bin/docker",
+          ["--host", "unix:///var/run/docker.sock", ...args],
+          { env, timeoutMs: 15_000 },
+        );
+        const result = await handle.completion;
+        assert.equal(result.code, 0, "owned Docker cleanup command failed");
+        return result.stdout;
+      };
+      const image = JSON.parse(
+        await docker([
+          "image",
+          "inspect",
+          "--format",
+          "{{json .}}",
+          receipt.outerImage,
+        ]),
+      );
+      assert.equal(
+        image.Id,
+        receipt.daemonImageId,
+        "daemon image config ID differs from checkpoint",
+      );
+      assert.equal(image.Architecture, "amd64");
+      containerId = (await docker(plan.command)).trim();
+      assert.match(containerId, /^[a-f0-9]{64}$/);
+      const deadline = Date.now() + RESOURCE_LIMITS.startupSeconds * 1000;
+      let ready = false;
+      while (Date.now() < deadline && !signal.aborted) {
+        try {
+          const info = JSON.parse(
+            await docker([
+              "exec",
+              containerId,
+              "docker",
+              "--host",
+              "unix:///var/run/docker.sock",
+              "info",
+              "--format",
+              "{{json .}}",
+            ]),
+          );
+          assert.equal(info.Driver, "vfs");
+          assert.equal(info.Architecture, "x86_64");
+          ready = true;
+          break;
+        } catch {
+          await untilCancelled(sleep(500));
+        }
+      }
+      assert.equal(ready, true, "nested daemon readiness deadline");
+      watchdog = (async () => {
+        while (!signal.aborted) {
+          try {
+            const bytes = Number(
+              (
+                await docker([
+                  "exec",
+                  containerId,
+                  "du",
+                  "-sb",
+                  "/var/lib/docker",
+                ])
+              ).split(/\s/)[0],
+            );
+            assert.ok(
+              Number.isSafeInteger(bytes) && bytes < RESOURCE_LIMITS.dataBytes,
+              "nested data watchdog exceeded",
+            );
+            assert.ok(
+              Date.now() - started <
+                (RESOURCE_LIMITS.startupSeconds +
+                  RESOURCE_LIMITS.suiteSeconds) *
+                  1000,
+              "nested suite deadline",
+            );
+            await untilCancelled(sleep(1000));
+          } catch (error) {
+            if (!signal.aborted) {
+              watchdogError = error;
+              throw error;
+            }
+            return;
+          }
+        }
+      })();
+      // Race command completion, cancellation and the live resource watchdog.
+      await untilCancelled(
+        Promise.race([
+          executeCases({
             containerId,
-            "docker",
-            "--host",
-            "unix:///var/run/docker.sock",
-            "info",
+            docker,
+            spawnDocker,
+            inputDirectory,
+            signal,
+          }),
+          watchdog,
+        ]),
+      );
+      if (watchdogError) throw watchdogError;
+    },
+    async ({ childrenDrained, interrupted }) => {
+      if (watchdog) await watchdog.catch(() => {});
+      let metadata;
+      try {
+        metadata = JSON.parse(
+          await dockerForCleanup([
+            "inspect",
             "--format",
             "{{json .}}",
+            plan.name,
           ]),
         );
-        assert.equal(info.Driver, "vfs");
-        assert.equal(info.Architecture, "x86_64");
-        ready = true;
-        break;
       } catch {
-        await sleep(500);
+        assert.equal(
+          containerId,
+          undefined,
+          "cannot verify the owned outer container before cleanup",
+        );
       }
-    }
-    assert.equal(ready, true, "nested daemon readiness deadline");
-    watchdog = (async () => {
-      while (!stopWatchdog) {
-        try {
-          const bytes = Number(
-            docker(["exec", containerId, "du", "-sb", "/var/lib/docker"]).split(
-              /\s/,
-            )[0],
-          );
-          assert.ok(
-            Number.isSafeInteger(bytes) && bytes < RESOURCE_LIMITS.dataBytes,
-            "nested data watchdog exceeded",
-          );
-          assert.ok(
-            Date.now() - started <
-              (RESOURCE_LIMITS.startupSeconds + RESOURCE_LIMITS.suiteSeconds) *
-                1000,
-            "nested suite deadline",
-          );
-        } catch (error) {
-          watchdogError = error;
-          try {
-            docker(["kill", containerId], { stdio: "ignore" });
-          } catch {}
-          return;
-        }
-        await sleep(1000);
+      if (metadata) {
+        assert.equal(metadata.Config.Labels["gwrk.fixture.run"], runId);
+        containerId = metadata.Id;
+        await dockerForCleanup(["rm", "--force", containerId]);
       }
-    })();
-    await executeCases({ containerId, docker, spawnDocker, inputDirectory });
-    if (watchdogError) throw watchdogError;
-  } finally {
-    stopWatchdog = true;
-    if (watchdog) await watchdog;
-    let metadata;
-    try {
-      metadata = JSON.parse(
-        docker(["inspect", "--format", "{{json .}}", plan.name]),
+      const actual = rootDirectory(dataDirectory);
+      assert.deepEqual(
+        actual,
+        dataIdentity,
+        "owned data identity changed before cleanup",
       );
-    } catch {
+      const actualParent = statSync("/var/lib/gwrk");
+      assert.equal(actualParent.dev, parent.dev);
+      assert.equal(actualParent.ino, parent.ino);
+      if (childrenDrained) rmSync(dataDirectory, { recursive: true });
+      writeFileSync(
+        `${root}/native-cleanup.json`,
+        JSON.stringify({
+          runId,
+          removedContainer: containerId ?? null,
+          removedDataDirectory: childrenDrained ? dataDirectory : null,
+          retainedDataForUnconfirmedChildDrain: !childrenDrained,
+          interrupted: interrupted ?? null,
+          childrenDrained,
+          parentUntouched: true,
+          noSharedPrune: true,
+        }),
+        { mode: 0o600 },
+      );
       assert.equal(
-        containerId,
-        undefined,
-        "cannot verify the owned outer container before cleanup",
+        childrenDrained,
+        true,
+        "owned command closure unconfirmed; data preserved",
       );
-    }
-    if (metadata) {
-      assert.equal(metadata.Config.Labels["gwrk.fixture.run"], runId);
-      containerId = metadata.Id;
-      docker(["rm", "--force", containerId], {
-        timeout: RESOURCE_LIMITS.cleanupSeconds * 1000,
-        stdio: "ignore",
-      });
-    }
-    const actual = rootDirectory(dataDirectory);
-    assert.deepEqual(
-      actual,
-      dataIdentity,
-      "owned data identity changed before cleanup",
-    );
-    const actualParent = statSync("/var/lib/gwrk");
-    assert.equal(actualParent.dev, parent.dev);
-    assert.equal(actualParent.ino, parent.ino);
-    rmSync(dataDirectory, { recursive: true });
-    writeFileSync(
-      `${root}/native-cleanup.json`,
-      JSON.stringify({
-        runId,
-        removedContainer: containerId ?? null,
-        removedDataDirectory: dataDirectory,
-        parentUntouched: true,
-        noSharedPrune: true,
-      }),
-      { mode: 0o600 },
-    );
-  }
+    },
+  );
 }
