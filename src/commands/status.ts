@@ -34,6 +34,7 @@ import {
   GwrkConfigSchema,
   deepMerge,
   loadConfig,
+  validateTypedAuthSource,
 } from "../utils/config.js";
 import { color } from "../utils/format.js";
 import { getCurrentBranch, isWorkingTreeClean } from "../utils/git.js";
@@ -216,13 +217,21 @@ function loadStatusConfig(
     let raw: Record<string, unknown> = { project: { name } };
     const globalConfigPath = path.join(gwrkHome(), "config.json");
     if (fs.existsSync(globalConfigPath)) {
+      const content = fs.readFileSync(globalConfigPath, "utf-8");
+      let overlay: Record<string, unknown> | undefined;
       try {
-        const overlay = JSON.parse(
-          fs.readFileSync(globalConfigPath, "utf-8"),
-        ) as Record<string, unknown>;
-        raw = deepMerge(raw, overlay);
+        overlay = JSON.parse(content) as Record<string, unknown>;
       } catch {
+        if (content.includes("auth") || /\\u0061uth/i.test(content)) {
+          throw new Error(
+            "Configuration error: Authentication configuration denied",
+          );
+        }
         // Ignore malformed global overlay and fall back to defaults.
+      }
+      if (overlay) {
+        validateTypedAuthSource(overlay);
+        raw = deepMerge(raw, overlay);
       }
     }
     if (process.env.GITHUB_WEBHOOK_SECRET) {

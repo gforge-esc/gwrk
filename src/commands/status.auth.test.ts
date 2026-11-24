@@ -573,4 +573,66 @@ describe("explicit status client credentials", () => {
       }
     }
   }, 30_000);
+
+  it("rejects invalid and malformed global auth overlay in registry fallback without echoing secrets", async () => {
+    const canary = "CANARY_STATUS_AUTH_SECRET";
+    const emptyDir = path.join(root, "no-config-cwd");
+    fs.mkdirSync(emptyDir, { recursive: true });
+    const enrolledRoot = process.cwd();
+    execFileSync(
+      "git",
+      ["remote", "add", "origin", "https://github.com/org/fallback.git"],
+      { cwd: enrolledRoot, env: repositoryGitEnv(enrolledRoot) },
+    );
+    const selectedId = resolveProjectId(enrolledRoot);
+    const db = openDatabase();
+    try {
+      createSqliteProjectRegistryAdapter({ db }).enrollProject({
+        projectId: selectedId,
+        slug: "fallback-proj",
+        name: "Fallback Project",
+        repoSlug: "org/fallback",
+        trunkBranch: "main",
+        localRoot: enrolledRoot,
+        mirrorPath: null,
+        runnerPolicy: { allowedKinds: ["local"] },
+        slack: null,
+        legacyProjectIds: [],
+        createdAt: "2026-11-24T00:00:00.000Z",
+        updatedAt: "2026-11-24T00:00:00.000Z",
+      });
+    } finally {
+      db.close();
+    }
+    fs.rmSync(path.join(enrolledRoot, ".gwrkrc.json"));
+    process.chdir(emptyDir);
+
+    const homeDir = path.join(root, "home");
+    fs.mkdirSync(homeDir, { recursive: true });
+
+    // 1. Invalid typed auth in global config must fail without echoing invalid value.
+    fs.writeFileSync(
+      path.join(homeDir, "config.json"),
+      JSON.stringify({
+        server: {
+          host: "127.0.0.1",
+          port: 18790,
+          auth: { mode: canary },
+        },
+      }),
+    );
+    const invalidRes = await runStatus(["--project", "fallback-proj"]);
+    expect(invalidRes.exitCode).toBe(1);
+    expect(invalidRes.stdout + invalidRes.stderr).not.toContain(canary);
+    expect(invalidRes.stderr).toContain("Authentication configuration denied");
+
+    // 2. Malformed JSON containing auth in global config must fail closed instead of falling back.
+    fs.writeFileSync(
+      path.join(homeDir, "config.json"),
+      `{"server":{"auth":{"mode":"hosted","secret":"${canary}"`,
+    );
+    const malformedRes = await runStatus(["--project", "fallback-proj"]);
+    expect(malformedRes.exitCode).toBe(1);
+    expect(malformedRes.stdout + malformedRes.stderr).not.toContain(canary);
+  });
 });

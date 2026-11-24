@@ -63,6 +63,7 @@ import type { InstanceLockHandle } from "../ports/release-ops-port.js";
 import type { ProjectRegistryPort } from "../ports/store-port.js";
 import type { VcsPort } from "../ports/vcs-port.js";
 import type { AgentBackendId, GwrkConfig } from "../utils/config.js";
+import { CommandError } from "../utils/signal.js";
 import { registerHostedAuthBounds } from "./auth-bounds.js";
 import {
   type HostedAuthGuardOptions,
@@ -148,12 +149,16 @@ export interface ServerStartOptions {
       }
     | undefined;
   hostedAuth?: HostedServerAuthOptions;
+  initHostedAuth?: (deps: {
+    db: Database.Database;
+    clock: ClockPort;
+  }) => Promise<HostedServerAuthOptions | undefined>;
   runnerKind?: AllowedRunnerKind;
   useProjectRegistry?: boolean;
   loggerStream?: Writable;
 }
 
-function isLoopbackListenHost(host: string): boolean {
+export function isLoopbackListenHost(host: string): boolean {
   const normalized = host.trim().toLowerCase();
   return (
     normalized === "localhost" ||
@@ -393,299 +398,314 @@ async function startLockedServer(
     (effectiveTransport === "hosted" ? "hosted" : "local");
 
   let ownedDb: Database.Database | undefined;
-  let sharedDb: Database.Database | undefined = options.ledger?.db;
-  let registry: ProjectRegistryPort | undefined = options.registry;
-  if (!registry) {
-    if (sharedDb) {
-      registry = createSqliteProjectRegistryAdapter({ db: sharedDb });
-    } else if (options.useProjectRegistry || effectiveTransport === "hosted") {
-      ownedDb = openDatabase();
-      sharedDb = ownedDb;
-      registry = createSqliteProjectRegistryAdapter({ db: ownedDb });
-    }
-  }
-
-  const operationsStore: OperationsStorePort | undefined =
-    options.operationsStore ??
-    (sharedDb
-      ? createSqliteOperationsStoreAdapter({ db: sharedDb })
-      : undefined);
-
-  const enrolledCount = registry ? registry.listProjects().length : 0;
-  const enforceRegistryScope = Boolean(
-    options.registry || effectiveTransport === "hosted" || enrolledCount > 0,
-  );
-  const activeRegistry = enforceRegistryScope ? registry : undefined;
-  const durableRegistry =
-    activeRegistry ?? (operationsStore ? registry : undefined);
-  const localDefaultProjectId =
-    options.localDefaultProjectId ??
-    activeRegistry?.findByLocalRoot(canonicalRoot)?.projectId ??
-    activeRegistry?.findByLocalRoot(projectRoot)?.projectId;
-
   const serverShutdown = new AbortController();
-  const clock: ClockPort = options.clock ?? {
-    nowIso: () => new Date().toISOString(),
-    nowMs: () => Date.now(),
-  };
-  const ownerId =
-    options.ownerId ??
-    `server:${process.pid}:${crypto.randomUUID().slice(0, 8)}`;
+  try {
+    let sharedDb: Database.Database | undefined = options.ledger?.db;
+    let registry: ProjectRegistryPort | undefined = options.registry;
+    if (!registry) {
+      if (sharedDb) {
+        registry = createSqliteProjectRegistryAdapter({ db: sharedDb });
+      } else if (
+        options.useProjectRegistry ||
+        effectiveTransport === "hosted" ||
+        Boolean(options.initHostedAuth)
+      ) {
+        ownedDb = openDatabase();
+        sharedDb = ownedDb;
+        registry = createSqliteProjectRegistryAdapter({ db: ownedDb });
+      }
+    }
 
-  const baseVcs = createGitVcsAdapter();
-  const vcs: VcsPort = options.vcs ? { ...baseVcs, ...options.vcs } : baseVcs;
-  const githubPort =
-    options.github ??
-    createGitHubHarvestAdapter({ signal: serverShutdown.signal });
-  const notifier =
-    options.notifier ??
-    (durableRegistry
-      ? createSlackNotificationAdapter({
-          registry: durableRegistry,
-          projectRoot,
-          signal: serverShutdown.signal,
-          transportTimeoutMs: 5_000,
-        })
-      : undefined);
-  const routingService =
-    options.routingService ??
-    (activeRegistry
-      ? createProjectRoutingService({
-          registry: activeRegistry,
-          notificationPort:
-            notifier ??
-            createSlackNotificationAdapter({
-              registry: activeRegistry,
-              projectRoot,
-              signal: serverShutdown.signal,
-              transportTimeoutMs: 5_000,
-            }),
-        })
-      : undefined);
-  const outbox: OutboxDeliveryService | undefined =
-    options.outbox ??
-    (operationsStore && durableRegistry && notifier
-      ? createOutboxDeliveryService({
-          store: operationsStore,
-          registry: durableRegistry,
-          notifier,
-          clock,
-          newId: () => crypto.randomUUID(),
-        })
-      : undefined);
-  const harvestExecutor =
-    options.harvestExecutor ??
-    createHarvestExecutionAdapter({
-      ...(sharedDb ? { db: sharedDb } : {}),
-      ...(gitEnv ? { gitEnv } : {}),
-    });
-  const harvestService: DurableHarvestService | undefined =
-    options.harvestService ??
-    (operationsStore && durableRegistry && outbox
-      ? createDurableHarvestService({
-          store: operationsStore,
-          registry: durableRegistry,
-          vcs,
-          github: githubPort,
-          executor: harvestExecutor,
-          outbox,
-          clock,
-          leaseDurationMs: options.leaseDurationMs,
-          heartbeatIntervalMs: options.heartbeatIntervalMs,
-        })
-      : undefined);
+    const operationsStore: OperationsStorePort | undefined =
+      options.operationsStore ??
+      (sharedDb
+        ? createSqliteOperationsStoreAdapter({ db: sharedDb })
+        : undefined);
 
-  // GitHub webhook is optional — plugin handles the missing case gracefully
-  if (!config.server.githubWebhookSecret) {
-    warnCli(
-      "GitHub webhook secret not configured. Webhook endpoint will be disabled. Set GITHUB_WEBHOOK_SECRET to enable.",
+    const enrolledCount = registry ? registry.listProjects().length : 0;
+    const enforceRegistryScope = Boolean(
+      options.registry || effectiveTransport === "hosted" || enrolledCount > 0,
     );
-  }
+    const activeRegistry = enforceRegistryScope ? registry : undefined;
+    const durableRegistry =
+      activeRegistry ?? (operationsStore ? registry : undefined);
+    const localDefaultProjectId =
+      options.localDefaultProjectId ??
+      activeRegistry?.findByLocalRoot(canonicalRoot)?.projectId ??
+      activeRegistry?.findByLocalRoot(projectRoot)?.projectId;
 
-  const monitor = new SystemMonitor(config);
-  const sandbox =
-    options.sandbox ??
-    (options.projectRoot !== undefined || activeRegistry !== undefined
-      ? new ScopedSandboxManager(projectRoot, options.gitEnv, activeRegistry)
-      : new SandboxManager(projectRoot));
+    const clock: ClockPort = options.clock ?? {
+      nowIso: () => new Date().toISOString(),
+      nowMs: () => Date.now(),
+    };
 
-  const sharedLedger: DispatchLedgerScope | undefined =
-    options.ledger ??
-    (sharedDb && localDefaultProjectId
-      ? { db: sharedDb, projectId: localDefaultProjectId }
-      : undefined);
+    let hostedAuth = options.hostedAuth;
+    if (!hostedAuth && options.initHostedAuth) {
+      if (!sharedDb) {
+        ownedDb = openDatabase();
+        sharedDb = ownedDb;
+      }
+      hostedAuth = await options.initHostedAuth({ db: sharedDb, clock });
+    }
+    const ownerId =
+      options.ownerId ??
+      `server:${process.pid}:${crypto.randomUUID().slice(0, 8)}`;
 
-  const git = new GitManager(projectRoot);
-  const queue = new DispatchQueue(
-    config,
-    monitor,
-    sandbox,
-    projectRoot,
-    sharedLedger,
-    gitEnv,
-    approvedBackend,
-    activeRegistry,
-    operationsStore || durableRegistry || options.worker
-      ? {
-          store: operationsStore,
-          registry: durableRegistry,
-          worker: options.worker,
-          outbox,
-          notifier,
-          clock,
-          github: githubPort,
-          ownerId: `${ownerId}:dispatch`,
-          leaseDurationMs: options.leaseDurationMs,
-          heartbeatIntervalMs: options.heartbeatIntervalMs,
-          maxCrashRecoveryAttempts: options.maxCrashRecoveryAttempts,
-          onRecoveredMerge: harvestService
-            ? async ({ project, operation, prNumber, mergeCommitSha }) => {
-                try {
-                  await harvestService.runManualHarvest({
-                    project,
-                    featureId: operation.featureId,
-                    phaseId: operation.phaseId,
-                    prNumber,
-                    commitSha: mergeCommitSha,
-                    recipient: operation.recipient,
-                    updateLocalTaskState: false,
-                    ownerId: `${ownerId}:recovered-merge`,
-                  });
-                } catch (err) {
-                  server.log.warn(
-                    `Recovered merge harvest failed for ${operation.operationId}: ${err instanceof Error ? err.message : String(err)}`,
-                  );
+    const baseVcs = createGitVcsAdapter();
+    const vcs: VcsPort = options.vcs ? { ...baseVcs, ...options.vcs } : baseVcs;
+    const githubPort =
+      options.github ??
+      createGitHubHarvestAdapter({ signal: serverShutdown.signal });
+    const notifier =
+      options.notifier ??
+      (durableRegistry
+        ? createSlackNotificationAdapter({
+            registry: durableRegistry,
+            projectRoot,
+            signal: serverShutdown.signal,
+            transportTimeoutMs: 5_000,
+          })
+        : undefined);
+    const routingService =
+      options.routingService ??
+      (activeRegistry
+        ? createProjectRoutingService({
+            registry: activeRegistry,
+            notificationPort:
+              notifier ??
+              createSlackNotificationAdapter({
+                registry: activeRegistry,
+                projectRoot,
+                signal: serverShutdown.signal,
+                transportTimeoutMs: 5_000,
+              }),
+          })
+        : undefined);
+    const outbox: OutboxDeliveryService | undefined =
+      options.outbox ??
+      (operationsStore && durableRegistry && notifier
+        ? createOutboxDeliveryService({
+            store: operationsStore,
+            registry: durableRegistry,
+            notifier,
+            clock,
+            newId: () => crypto.randomUUID(),
+          })
+        : undefined);
+    const harvestExecutor =
+      options.harvestExecutor ??
+      createHarvestExecutionAdapter({
+        ...(sharedDb ? { db: sharedDb } : {}),
+        ...(gitEnv ? { gitEnv } : {}),
+      });
+    const harvestService: DurableHarvestService | undefined =
+      options.harvestService ??
+      (operationsStore && durableRegistry && outbox
+        ? createDurableHarvestService({
+            store: operationsStore,
+            registry: durableRegistry,
+            vcs,
+            github: githubPort,
+            executor: harvestExecutor,
+            outbox,
+            clock,
+            leaseDurationMs: options.leaseDurationMs,
+            heartbeatIntervalMs: options.heartbeatIntervalMs,
+          })
+        : undefined);
+
+    // GitHub webhook is optional — plugin handles the missing case gracefully
+    if (!config.server.githubWebhookSecret) {
+      warnCli(
+        "GitHub webhook secret not configured. Webhook endpoint will be disabled. Set GITHUB_WEBHOOK_SECRET to enable.",
+      );
+    }
+
+    const monitor = new SystemMonitor(config);
+    const sandbox =
+      options.sandbox ??
+      (options.projectRoot !== undefined || activeRegistry !== undefined
+        ? new ScopedSandboxManager(projectRoot, options.gitEnv, activeRegistry)
+        : new SandboxManager(projectRoot));
+
+    const sharedLedger: DispatchLedgerScope | undefined =
+      options.ledger ??
+      (sharedDb && localDefaultProjectId
+        ? { db: sharedDb, projectId: localDefaultProjectId }
+        : undefined);
+
+    const git = new GitManager(projectRoot);
+    const queue = new DispatchQueue(
+      config,
+      monitor,
+      sandbox,
+      projectRoot,
+      sharedLedger,
+      gitEnv,
+      approvedBackend,
+      activeRegistry,
+      operationsStore || durableRegistry || options.worker
+        ? {
+            store: operationsStore,
+            registry: durableRegistry,
+            worker: options.worker,
+            outbox,
+            notifier,
+            clock,
+            github: githubPort,
+            ownerId: `${ownerId}:dispatch`,
+            leaseDurationMs: options.leaseDurationMs,
+            heartbeatIntervalMs: options.heartbeatIntervalMs,
+            maxCrashRecoveryAttempts: options.maxCrashRecoveryAttempts,
+            onRecoveredMerge: harvestService
+              ? async ({ project, operation, prNumber, mergeCommitSha }) => {
+                  try {
+                    await harvestService.runManualHarvest({
+                      project,
+                      featureId: operation.featureId,
+                      phaseId: operation.phaseId,
+                      prNumber,
+                      commitSha: mergeCommitSha,
+                      recipient: operation.recipient,
+                      updateLocalTaskState: false,
+                      ownerId: `${ownerId}:recovered-merge`,
+                    });
+                  } catch (err) {
+                    server.log.warn(
+                      `Recovered merge harvest failed for ${operation.operationId}: ${err instanceof Error ? err.message : String(err)}`,
+                    );
+                  }
                 }
-              }
-            : undefined,
-        }
-      : undefined,
-  );
-  // Hold new worker launches until startup recovery completes.
-  if (operationsStore && durableRegistry) {
-    queue.pause();
-  }
+              : undefined,
+          }
+        : undefined,
+    );
+    // Hold new worker launches until startup recovery completes.
+    if (operationsStore && durableRegistry) {
+      queue.pause();
+    }
 
-  const lifecycle = new LifecycleMonitor(config);
-  const network = new NetworkMonitor(config);
+    const lifecycle = new LifecycleMonitor(config);
+    const network = new NetworkMonitor(config);
 
-  let closing = false;
-  const reconnect = async () => {
-    if (closing) return;
-    server.log.info("Executing Graceful Reconnect Protocol...");
-    lifecycle.setStatus("degraded");
-
-    // 1. Re-sample system resources
-    monitor.sample();
-
-    // 2. Verify Git availability
-    const gitOk = await sandbox.checkGit();
-
-    if (closing) return;
-
-    // 3. Verify network connectivity
-    const networkOk = network.isOnline();
-
-    if (gitOk && networkOk) {
-      server.log.info("Reconnect successful. Resuming...");
-      lifecycle.setStatus("ready");
-      queue.resume();
-    } else {
-      server.log.warn(`Reconnect failed. Git: ${gitOk}, Network: ${networkOk}`);
+    let closing = false;
+    const reconnect = async () => {
+      if (closing) return;
+      server.log.info("Executing Graceful Reconnect Protocol...");
       lifecycle.setStatus("degraded");
-    }
-  };
 
-  lifecycle.on("server:sleep", async () => {
-    server.log.info("Sleep detected. Pausing...");
-    queue.pause();
-  });
+      // 1. Re-sample system resources
+      monitor.sample();
 
-  lifecycle.on("server:wake", async () => {
-    server.log.info("Wake detected. Waiting for health checks...");
-    await reconnect();
-  });
+      // 2. Verify Git availability
+      const gitOk = await sandbox.checkGit();
 
-  network.on("network:down", () => {
-    server.log.warn("Network down. Pausing dispatch queue.");
-    queue.pause();
-  });
+      if (closing) return;
 
-  network.on("network:up", async () => {
-    server.log.info("Network up. Verifying health...");
-    await reconnect();
-  });
+      // 3. Verify network connectivity
+      const networkOk = network.isOnline();
 
-  let ownsPidRecord = false;
-  const stopPollers: Array<() => void | Promise<void>> = [];
-  const cleanup: Array<() => void | Promise<void>> = [];
-  if (ownedDb) {
-    const dbToClose = ownedDb;
-    cleanup.push(() => {
-      if (dbToClose.open) dbToClose.close();
-    });
-  }
-
-  const shutdown = async () => {
-    server.log.info("Shutting down server...");
-    try {
-      await server.close();
-      server.log.info("Server shut down.");
-      if (options.handleSignals) process.exit(0);
-    } catch (err) {
-      server.log.error(err);
-      if (options.handleSignals) exitCli(1);
-    }
-  };
-
-  server.addHook("onClose", async () => {
-    closing = true;
-    serverShutdown.abort();
-    process.off("SIGTERM", shutdown);
-    process.off("SIGINT", shutdown);
-    const errors: unknown[] = [];
-    const releases = cleanup.splice(0);
-    if (ownsPidRecord) {
-      ownsPidRecord = false;
-      releases.push(() => pid.removePid());
-    }
-    const releaseSafely = async (release: () => void | Promise<void>) => {
-      try {
-        await release();
-      } catch (err) {
-        errors.push(err);
+      if (gitOk && networkOk) {
+        server.log.info("Reconnect successful. Resuming...");
+        lifecycle.setStatus("ready");
+        queue.resume();
+      } else {
+        server.log.warn(
+          `Reconnect failed. Git: ${gitOk}, Network: ${networkOk}`,
+        );
+        lifecycle.setStatus("degraded");
       }
     };
-    const drains = stopPollers.splice(0).map(releaseSafely);
-    drains.push(releaseSafely(() => queue.close()));
-    await Promise.all(drains);
-    for (const release of releases) {
-      await releaseSafely(release);
-    }
-    await releaseSafely(() => {
-      try {
-        if (ledgerLock && !options.ledger) closeDb();
-      } finally {
-        ledgerLock?.release();
-        instanceLock?.release();
-      }
-    });
-    if (errors.length === 1) throw errors[0];
-    if (errors.length > 1)
-      throw new AggregateError(errors, "Server cleanup failed");
-  });
 
-  try {
+    lifecycle.on("server:sleep", async () => {
+      server.log.info("Sleep detected. Pausing...");
+      queue.pause();
+    });
+
+    lifecycle.on("server:wake", async () => {
+      server.log.info("Wake detected. Waiting for health checks...");
+      await reconnect();
+    });
+
+    network.on("network:down", () => {
+      server.log.warn("Network down. Pausing dispatch queue.");
+      queue.pause();
+    });
+
+    network.on("network:up", async () => {
+      server.log.info("Network up. Verifying health...");
+      await reconnect();
+    });
+
+    let ownsPidRecord = false;
+    const stopPollers: Array<() => void | Promise<void>> = [];
+    const cleanup: Array<() => void | Promise<void>> = [];
+    if (ownedDb) {
+      const dbToClose = ownedDb;
+      cleanup.push(() => {
+        if (dbToClose.open) dbToClose.close();
+      });
+    }
+
+    const shutdown = async () => {
+      server.log.info("Shutting down server...");
+      try {
+        await server.close();
+        server.log.info("Server shut down.");
+        if (options.handleSignals) process.exit(0);
+      } catch (err) {
+        server.log.error(err);
+        if (options.handleSignals) exitCli(1);
+      }
+    };
+
+    server.addHook("onClose", async () => {
+      closing = true;
+      serverShutdown.abort();
+      process.off("SIGTERM", shutdown);
+      process.off("SIGINT", shutdown);
+      const errors: unknown[] = [];
+      const releases = cleanup.splice(0);
+      if (ownsPidRecord) {
+        ownsPidRecord = false;
+        releases.push(() => pid.removePid());
+      }
+      const releaseSafely = async (release: () => void | Promise<void>) => {
+        try {
+          await release();
+        } catch (err) {
+          errors.push(err);
+        }
+      };
+      const drains = stopPollers.splice(0).map(releaseSafely);
+      drains.push(releaseSafely(() => queue.close()));
+      await Promise.all(drains);
+      for (const release of releases) {
+        await releaseSafely(release);
+      }
+      await releaseSafely(() => {
+        try {
+          if (ledgerLock && !options.ledger) closeDb();
+        } finally {
+          ledgerLock?.release();
+          instanceLock?.release();
+        }
+      });
+      if (errors.length === 1) throw errors[0];
+      if (errors.length > 1)
+        throw new AggregateError(errors, "Server cleanup failed");
+    });
+
     const useHostedAuthGuard = effectiveTransport === "hosted";
 
     if (useHostedAuthGuard) {
       registerHostedAuthGuard(server, {
-        authenticate: options.hostedAuth?.authenticate,
-        csrf: options.hostedAuth?.csrf,
-        expectedOrigin: options.hostedAuth?.expectedOrigin,
+        authenticate: hostedAuth?.authenticate,
+        csrf: hostedAuth?.csrf,
+        expectedOrigin: hostedAuth?.expectedOrigin,
       });
       registerHostedAuthBounds(server, {
-        rateAdmission: options.hostedAuth?.rateAdmission,
+        rateAdmission: hostedAuth?.rateAdmission,
         clock: options.clock,
       });
       server.setErrorHandler((error, request, reply) => {
@@ -814,10 +834,10 @@ async function startLockedServer(
           requestId: request.id,
         });
       });
-      if (options.hostedAuth?.sessions && options.hostedAuth?.csrf) {
+      if (hostedAuth?.sessions && hostedAuth?.csrf) {
         registerAuthRoutes(server, {
-          sessions: options.hostedAuth.sessions,
-          csrf: options.hostedAuth.csrf,
+          sessions: hostedAuth.sessions,
+          csrf: hostedAuth.csrf,
         });
       }
     }
@@ -1017,13 +1037,21 @@ async function startLockedServer(
 
     return server;
   } catch (err) {
+    serverShutdown.abort();
     try {
       await server.close();
     } catch (cleanupError) {
       server.log.error(cleanupError);
     }
+    if (ownedDb?.open) {
+      try {
+        ownedDb.close();
+      } catch (dbErr) {
+        server.log.error(dbErr);
+      }
+    }
     server.log.error(err);
-    if (options.handleSignals) exitCli(1);
+    if (options.handleSignals && !(err instanceof CommandError)) exitCli(1);
     throw err;
   }
 }

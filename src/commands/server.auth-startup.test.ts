@@ -30,6 +30,7 @@ import * as pidUtils from "../server/pid.js";
 import { SandboxManager } from "../server/sandbox.js";
 import * as slackModule from "../server/slack.js";
 import { loadConfig } from "../utils/config.js";
+import { CommandError } from "../utils/signal.js";
 
 const ORIGIN = "https://gwrk.gforge.ai";
 const SECRETS_ROOT = "/etc/gwrk/secrets";
@@ -605,5 +606,219 @@ describe("FR-008 / TR-017: hosted server startup composition and local liveness 
     expect(requests).toHaveLength(1);
     expect(trapHits).toBe(0);
     expect(redirectResult.stdout + redirectResult.stderr).not.toContain(CANARY);
+  });
+
+  it("AUTH-17 regression: non-loopback bind without hosted auth never falls back to trusted_local", async () => {
+    writeProjectConfig({ host: "0.0.0.0", port: 0 });
+    const projectId = enrollAlphaProject();
+    const listenSpy = vi.spyOn(net.Server.prototype, "listen");
+    wrapRealStartServer();
+
+    for (const args of [["start", "--foreground"], ["_run"]]) {
+      const result = await runServerCli(args);
+      if (result.exitCode === 0 && activeServers.length > 0) {
+        const srv = activeServers[activeServers.length - 1];
+        const unauth = await srv.inject({
+          method: "GET",
+          url: `/api/status?projectId=${encodeURIComponent(projectId)}`,
+        });
+        expect(unauth.statusCode).toBe(401);
+      } else {
+        expect(result.exitCode).toBe(1);
+        expect(listenSpy).not.toHaveBeenCalled();
+      }
+    }
+  });
+
+  it("AUTH-17 regression: incomplete hosted auth config fails before creating gwrk.db", async () => {
+    const dbPath = path.join(gwrkHomeDir, "gwrk.db");
+    writeProjectConfig();
+    const listenSpy = vi.spyOn(net.Server.prototype, "listen");
+    wrapRealStartServer();
+
+    process.env.GWRK_AUTH_MODE = "hosted";
+    const incomplete = await runServerCli(["start", "--foreground"]);
+    expect(incomplete.exitCode).toBe(1);
+    expect(fs.existsSync(dbPath)).toBe(false);
+    expect(listenSpy).not.toHaveBeenCalled();
+  });
+
+  it("AUTH-17 regression: hosted startup failure inside startServer does not leak an open SQLite handle", async () => {
+    const blocker = await listenHttp((_req, res) => {
+      res.writeHead(200);
+      res.end();
+    });
+    activeHttpServers.push(blocker.server);
+    writeProjectConfig({ host: "127.0.0.1", port: blocker.port });
+    for (const [k, v] of Object.entries(HOSTED_ENV)) vi.stubEnv(k, v);
+    vi.spyOn(protectedFiles, "resolveTrustedGwrkGroupId").mockResolvedValue(
+      1479,
+    );
+    vi.spyOn(protectedFiles, "createProtectedHostedAuthFiles").mockReturnValue({
+      readAllowlist: vi.fn(async () => ["operator@example.test"]),
+      readCsrfHmacKey: vi.fn(async () => Buffer.from(HMAC_KEY)),
+    });
+
+    const dbModule = await import("../db/index.js");
+    const realOpen = dbModule.openDatabase;
+    const openedHandles: ReturnType<typeof realOpen>[] = [];
+    vi.spyOn(dbModule, "openDatabase").mockImplementation((opts) => {
+      const handle = realOpen(opts);
+      openedHandles.push(handle);
+      return handle;
+    });
+
+    wrapRealStartServer();
+    try {
+      const failedStart = await runServerCli(["start", "--foreground"]);
+      expect(failedStart.exitCode).toBe(1);
+      for (const handle of openedHandles) {
+        expect(handle.open).toBe(false);
+      }
+    } finally {
+      for (const handle of openedHandles) {
+        if (handle.open) handle.close();
+      }
+    }
+  });
+
+  it("AUTH-17 regression: hosted startup with .restore-pending fails before opening or migrating gwrk.db", async () => {
+    const dbPath = path.join(gwrkHomeDir, "gwrk.db");
+    writeProjectConfig();
+    for (const [k, v] of Object.entries(HOSTED_ENV)) vi.stubEnv(k, v);
+    fs.writeFileSync(path.join(gwrkHomeDir, ".restore-pending"), "pending\n");
+
+    vi.spyOn(protectedFiles, "resolveTrustedGwrkGroupId").mockResolvedValue(
+      1479,
+    );
+    vi.spyOn(protectedFiles, "createProtectedHostedAuthFiles").mockReturnValue({
+      readAllowlist: vi.fn(async () => ["operator@example.test"]),
+      readCsrfHmacKey: vi.fn(async () => Buffer.from(HMAC_KEY)),
+    });
+    vi.spyOn(gwrkPaths, "usesHostedRuntime").mockReturnValue(true);
+    vi.stubEnv("GWRK_RUNTIME_DIR", runtimeDir);
+    vi.spyOn(instanceLock, "acquireInstanceLock").mockReturnValue({
+      pid: process.pid,
+      lockPath: path.join(runtimeDir, "server.lock"),
+      release: vi.fn(),
+    });
+    vi.spyOn(instanceLock, "acquireLedgerLock").mockReturnValue({
+      pid: process.pid,
+      lockPath: path.join(gwrkHomeDir, ".gwrk.db.lock"),
+      release: vi.fn(),
+    });
+
+    const dbModule = await import("../db/index.js");
+    const openSpy = vi.spyOn(dbModule, "openDatabase");
+    wrapRealStartServer();
+
+    const pendingRestore = await runServerCli(["start", "--foreground"]);
+    expect(pendingRestore.exitCode).toBe(1);
+    expect(openSpy).not.toHaveBeenCalled();
+    expect(fs.existsSync(dbPath)).toBe(false);
+  });
+
+  it("AUTH-17 regression: registry fallback does not swallow validateTypedAuthSource denial on unicode-escaped auth key", async () => {
+    enrollAlphaProject();
+    const listenSpy = vi.spyOn(net.Server.prototype, "listen");
+    wrapRealStartServer();
+
+    fs.writeFileSync(
+      path.join(gwrkHomeDir, "config.json"),
+      `{"server":{"host":"127.0.0.1","port":0,"\\u0061uth":{"mode":"${CANARY}"}}}`,
+    );
+
+    const result = await runServerCli(["start", "--foreground"]);
+    expect(result.exitCode).toBe(1);
+    expect(result.stdout + result.stderr).not.toContain(CANARY);
+    expect(activeServers).toHaveLength(0);
+    expect(listenSpy).not.toHaveBeenCalled();
+  });
+
+  it("AUTH-17 regression: startup auth failure names failing setting without echoing secret values", async () => {
+    writeProjectConfig();
+    for (const [k, v] of Object.entries(HOSTED_ENV)) vi.stubEnv(k, v);
+    wrapRealStartServer();
+
+    vi.spyOn(protectedFiles, "resolveTrustedGwrkGroupId").mockResolvedValue(
+      1479,
+    );
+    vi.spyOn(protectedFiles, "createProtectedHostedAuthFiles").mockReturnValue({
+      readAllowlist: vi.fn(async () => ["operator@example.test"]),
+      readCsrfHmacKey: vi.fn().mockRejectedValue(new Error(CANARY)),
+    });
+
+    const result = await runServerCli(["start", "--foreground"]);
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).toContain("csrfHmacKeyFile");
+    expect(result.stdout + result.stderr).not.toContain(CANARY);
+  });
+
+  it("AUTH-17 regression: hosted startup failure during auth factory initialization does not leak an open SQLite handle", async () => {
+    writeProjectConfig();
+    for (const [k, v] of Object.entries(HOSTED_ENV)) vi.stubEnv(k, v);
+    const listenSpy = vi.spyOn(net.Server.prototype, "listen");
+
+    vi.spyOn(protectedFiles, "resolveTrustedGwrkGroupId").mockResolvedValue(
+      1479,
+    );
+    vi.spyOn(protectedFiles, "createProtectedHostedAuthFiles").mockReturnValue({
+      readAllowlist: vi.fn(async () => ["operator@example.test"]),
+      readCsrfHmacKey: vi.fn().mockRejectedValue(new Error(CANARY)),
+    });
+
+    const dbModule = await import("../db/index.js");
+    const realOpen = dbModule.openDatabase;
+    const openedHandles: ReturnType<typeof realOpen>[] = [];
+    vi.spyOn(dbModule, "openDatabase").mockImplementation((opts) => {
+      const handle = realOpen(opts);
+      openedHandles.push(handle);
+      return handle;
+    });
+
+    wrapRealStartServer();
+    try {
+      for (const args of [["start", "--foreground"], ["_run"]]) {
+        const failedStart = await runServerCli(args);
+        expect(failedStart.exitCode).toBe(1);
+        expect(failedStart.stderr).toContain("csrfHmacKeyFile");
+        expect(failedStart.stdout + failedStart.stderr).not.toContain(CANARY);
+        expect(listenSpy).not.toHaveBeenCalled();
+        for (const handle of openedHandles) {
+          expect(handle.open).toBe(false);
+        }
+      }
+    } finally {
+      for (const handle of openedHandles) {
+        if (handle.open) handle.close();
+      }
+    }
+  });
+
+  it("AUTH-17 regression: hosted startup failure during auth factory initialization preserves caller-borrowed database handle", async () => {
+    writeProjectConfig();
+    for (const [k, v] of Object.entries(HOSTED_ENV)) vi.stubEnv(k, v);
+    const listenSpy = vi.spyOn(net.Server.prototype, "listen");
+
+    const dbModule = await import("../db/index.js");
+    const borrowedDb = dbModule.openDatabase({ path: ":memory:" });
+    try {
+      const config = loadConfig(projectDir);
+      await expect(
+        serverModule.startServer(config, {
+          handleSignals: false,
+          projectRoot: projectDir,
+          transport: "hosted",
+          ledger: { db: borrowedDb, projectId: "alpha" },
+          initHostedAuth: async () => {
+            throw new CommandError("simulated initHostedAuth failure", 1);
+          },
+        }),
+      ).rejects.toThrow("simulated initHostedAuth failure");
+      expect(listenSpy).not.toHaveBeenCalled();
+      expect(borrowedDb.open).toBe(true);
+    } finally {
+      if (borrowedDb.open) borrowedDb.close();
+    }
   });
 });
