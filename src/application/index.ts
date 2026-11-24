@@ -4,6 +4,7 @@
 
 export * from "./auth/authenticate-request.js";
 export * from "./auth/browser-session.js";
+export * from "./auth/manage-credentials.js";
 export * from "./delivery/outbox.js";
 export * from "./dispatch/index.js";
 export * from "./harvest/index.js";
