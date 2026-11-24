@@ -422,7 +422,7 @@ Requires Phase 4. Write failing CSRF and cross-project health plus bounds and ca
 - `src/domain/auth-rate-policy.test.ts` (NEW: Test quota and generation decisions without effects)
 - `src/ports/rate-admission-port.ts` (NEW: Declare bounded origin admission and one-time finalization)
 - `src/adapters/auth/rate-admission.ts` (NEW: Own shared bounded state, reservations and cleanup)
-- `src/adapters/auth/rate-admission.test.ts` (NEW: Test concurrency, rollover, fixed expiry and shared capacity)
+- `src/adapters/auth/rate-admission.test.ts` (NEW: Test concurrency and rollover plus fixed expiry and shared capacity)
 - `src/server/index.ts` (MODIFY: Replace default `logger: true` with sanitized logger and register request bounds before auth routes)
 - `src/server/auth-csrf.test.ts` (NEW: Test `AUTH-11` Origin and session-bound CSRF rejections plus zero cookie fallback for bad API keys)
 - `src/server/routes/health.auth.test.ts` (NEW: Test `AUTH-12` cross-project `/api/health` denial and single-project filtering plus zero Git probes on `/health`)
@@ -474,8 +474,8 @@ Requires Phase 5. Write failing startup and origin-bound CLI plus restart contin
 - `src/commands/server.auth-startup.test.ts` (NEW: Test `AUTH-17` fail-closed hosted `start` and `_run` startup plus `FR-014` local liveness split)
 - `src/server/auth-continuity.test.ts` (NEW: Test `AUTH-18` restart continuity for scoped dispatch and harvest plus post-revocation denial)
 - `src/commands/init.auth-purity.test.ts` (NEW: Compact `TR-019` caller proof for imports and initialization without inference or auth reads)
-- `src/domain/hosted-auth-config.ts` and `src/domain/hosted-auth-config.test.ts` (PREPARED: Pure validation with separate typed and environment sources)
-- `src/adapters/auth/protected-hosted-auth-files.ts` and its test (PREPARED: Protected inbound files with live allowlist reads)
+- `src/domain/hosted-auth-config.ts` and `src/domain/hosted-auth-config.test.ts`. Prepared pure validation preserves separate typed and environment sources.
+- `src/adapters/auth/protected-hosted-auth-files.ts` and its test. Prepared protected inbound files preserve live allowlist reads.
 - `src/adapters/auth/hosted-auth-factory.test.ts` (PREPARED: Lazy startup composition with borrowed store and clock)
 - `src/commands/status.auth.test.ts` (PREPARED: Explicit origin-bound credentials and one deadline for protected probes)
 
