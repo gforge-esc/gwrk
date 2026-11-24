@@ -272,6 +272,47 @@ test("regression (F-01): observation barrier fails closed when absent or unackno
       }),
     );
     const obsPath = join(dir, "native-observation.json");
+    const healthPath = join(dir, "native-observer-health.json");
+    writeFileSync(
+      healthPath,
+      JSON.stringify({
+        version: 1,
+        provenance: {
+          ...expected,
+          source: "passive_tcp",
+          namespace: "owned_nested",
+        },
+        barrierSequence: 1,
+        sentinelPort: 49152,
+        startupSelfTestPassed: true,
+        captureStats: {
+          kernelPackets: 4,
+          kernelDrops: 0,
+          truncatedFrames: 0,
+          parserErrors: 0,
+          bufferOverflows: 0,
+          ipv4Fragments: 0,
+          effectiveRcvBufBytes: 1048576,
+          ignoreOutgoingKernelEnabled: true,
+          pkttypeBpfFallbackActive: false,
+          integrityFaultCode: null,
+        },
+        originTcpSummary: {
+          port: 18790,
+          handshakesCompleted: 1,
+          reusedConnections: 0,
+          zeroPriorRequestParkedConnections: 0,
+          zeroPriorRequestReusedConnections: 0,
+          zeroByteClosedConnections: 0,
+          rstClosedConnections: 0,
+          abortedBeforeHeadersConnections: 0,
+          synGateActive: false,
+          unusedDialObserved: false,
+        },
+      }),
+      { mode: 0o600 },
+    );
+    chmodSync(healthPath, 0o600);
     writeFileSync(
       obsPath,
       JSON.stringify({

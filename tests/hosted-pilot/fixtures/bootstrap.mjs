@@ -19,6 +19,10 @@ import {
   classifyBootstrapFailure,
   runFixtureContainer,
 } from "./bootstrap-diagnostics.mjs";
+import {
+  createObserverProcessLifecycle,
+  resolveComposeContainer,
+} from "./bootstrap-observer.mjs";
 import { checkStandardCookieSecret } from "./cookie-format-check.mjs";
 import { CLIENT_ID } from "./issuer.mjs";
 import { OIDC_FIXTURE_ARGUMENTS } from "./oidc-overrides.mjs";
@@ -129,9 +133,12 @@ const beginOperation = (name) => {
 const issuerStderrChunks = [];
 let originName = null;
 let observerProcess = null;
-let observerExited = false;
-let observerExitError = null;
-const observerStderrChunks = [];
+const observerLifecycle = createObserverProcessLifecycle({
+  readyTimeoutMs: 15_000,
+  pollMs: 100,
+  termTimeoutMs: 1000,
+  killTimeoutMs: 1000,
+});
 const recordStage = () =>
   file("/fixture/bootstrap-stage.json", JSON.stringify({ stage }));
 try {
@@ -332,55 +339,31 @@ try {
     process.execPath,
     ["--max-old-space-size=64", "/fixture/fixtures/native-observer.mjs"],
     {
-      stdio: ["ignore", "pipe", "pipe"],
+      stdio: ["ignore", "ignore", "pipe"],
       env: observerEnv,
     },
   );
-  observerProcess.stderr?.on("data", (chunk) =>
-    observerStderrChunks.push(chunk),
-  );
-  observerProcess.once("exit", (code, signal) => {
-    observerExited = true;
-    if (code !== 0 && code !== null) {
-      observerExitError = new Error(
-        `native observer exited early with code ${code}`,
-      );
-    } else if (signal) {
-      observerExitError = new Error(
-        `native observer exited early with signal ${signal}`,
-      );
-    }
-  });
+  observerLifecycle.drainStream(observerProcess.stdout);
+  observerProcess.stderr?.on("error", () => {});
+  observerProcess.stderr?.on("data", observerLifecycle.onStderr);
+  observerProcess.on("error", observerLifecycle.onError);
+  observerProcess.once("exit", observerLifecycle.onExit);
+  observerProcess.once("close", observerLifecycle.onClose);
 
   beginOperation("observer_self_test");
-  const observerReadyDeadline = Date.now() + 15_000;
-  let observerHealth = null;
-  while (Date.now() < observerReadyDeadline) {
-    if (observerExitError) throw observerExitError;
-    if (existsSync("/fixture/observer/native-observer-health.json")) {
-      try {
-        observerHealth = readNativeObserverHealth({
-          observerDir: "/fixture/observer",
-          expected: {
-            runId: run,
-            proxyImageId: images.proxy,
-            traefikImageId: images.traefik,
-            runtimeReceiptSha256,
-          },
-          requireRootOwnership: true,
-        });
-        if (observerHealth?.startupSelfTestPassed) break;
-      } catch {}
-    }
-    await sleep(100);
-  }
-  if (!observerHealth?.startupSelfTestPassed) {
-    if (observerExitError) throw observerExitError;
-    const stderrStr = Buffer.concat(observerStderrChunks).toString("utf8");
-    throw new Error(
-      `observer startup self-test failed or timed out: ${stderrStr || "no stderr"}`,
-    );
-  }
+  await observerLifecycle.waitForReady({
+    readHealth: () =>
+      readNativeObserverHealth({
+        observerDir: "/fixture/observer",
+        expected: {
+          runId: run,
+          proxyImageId: images.proxy,
+          traefikImageId: images.traefik,
+          runtimeReceiptSha256,
+        },
+        requireRootOwnership: true,
+      }),
+  });
   stage = "bundle_preparation";
   beginOperation("bundle_preparation");
   recordStage();
@@ -423,30 +406,8 @@ try {
     stdio: "pipe",
     timeout: 30_000,
   });
-  let traefikContainer = "";
-  let proxyContainer = "";
-  try {
-    traefikContainer = docker([
-      "ps",
-      "--filter",
-      "label=com.docker.compose.service=traefik",
-      "--format",
-      "{{.Names}}",
-    ])
-      .trim()
-      .split("\n")[0];
-  } catch {}
-  try {
-    proxyContainer = docker([
-      "ps",
-      "--filter",
-      "label=com.docker.compose.service=oauth2-proxy",
-      "--format",
-      "{{.Names}}",
-    ])
-      .trim()
-      .split("\n")[0];
-  } catch {}
+  const traefikContainer = resolveComposeContainer(docker, "traefik");
+  const proxyContainer = resolveComposeContainer(docker, "oauth2-proxy");
   stage = "client_network";
   beginOperation("docker_create_client_network");
   recordStage();
@@ -561,22 +522,7 @@ try {
 } finally {
   issuer?.kill("SIGTERM");
   beginOperation("stop_native_observer");
-  if (observerProcess && !observerExited) {
-    try {
-      observerProcess.kill("SIGTERM");
-      const termDeadline = Date.now() + 1000;
-      while (!observerExited && Date.now() < termDeadline) {
-        await sleep(50);
-      }
-      if (!observerExited) {
-        observerProcess.kill("SIGKILL");
-        const killDeadline = Date.now() + 1000;
-        while (!observerExited && Date.now() < killDeadline) {
-          await sleep(50);
-        }
-      }
-    } catch {}
-  }
+  await observerLifecycle.stop(observerProcess);
   try {
     rmSync("/fixture/observer", { recursive: true, force: true });
   } catch {}

@@ -16,6 +16,7 @@ import {
   assertLogoutClearingCookies,
   assertProxyDelta,
   assertProxyWireMatch,
+  assertScenarioBReuseProof,
   assertStrictSniRejection,
   readNativeObservationBarrier,
   readNativeObserverHealth,
@@ -65,7 +66,7 @@ if (!processLogsFile) {
   }
 }
 
-const observerDir = process.env.GWRK_051_OBSERVER_DIR ?? "/fixture/observer";
+const observerDir = process.env.GWRK_051_OBSERVER_DIR;
 assert.equal(
   observerDir,
   "/fixture/observer",
@@ -1212,16 +1213,9 @@ try {
         const health = readNativeObserverHealth({
           observerDir,
           expected: expectedProvenance,
+          minBarrierSequence: barrierSequence,
         });
-        assert.ok(
-          health.originTcpSummary.zeroPriorRequestReusedConnections >= 1,
-          "Scenario B requires real zero-request parked/reused connection proof (zeroPriorRequestReusedConnections >= 1)",
-        );
-        assert.equal(
-          health.originTcpSummary.unusedDialObserved,
-          true,
-          "Scenario B requires unusedDialObserved === true",
-        );
+        assertScenarioBReuseProof(health);
       },
     },
   );

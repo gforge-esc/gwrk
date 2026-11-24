@@ -6,6 +6,7 @@ import {
   readFileSync,
   writeFileSync,
 } from "node:fs";
+import { isAllowedFixtureScriptName } from "./bootstrap-observer.mjs";
 import { withOwnedNestedDaemon } from "./nested-lifecycle.mjs";
 
 const receiptPath = process.argv[2];
@@ -39,7 +40,7 @@ assert.equal(
 const scriptManifest = JSON.parse(readFileSync(scriptManifestPath, "utf8"));
 for (const [name, digest] of Object.entries(scriptManifest)) {
   assert.ok(
-    name === "native-observer-capture.py" || /^[a-z-]+\.mjs$/.test(name),
+    isAllowedFixtureScriptName(name),
     "script manifest entry has invalid filename",
   );
   const path = `${root}/input/fixtures/${name}`;

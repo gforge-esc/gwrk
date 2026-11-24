@@ -1,19 +1,18 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import {
-  chmodSync,
   closeSync,
-  existsSync,
+  fchmodSync,
   constants as fsConstants,
   fstatSync,
   lstatSync,
   openSync,
   readFileSync,
   renameSync,
-  writeFileSync,
+  writeSync,
 } from "node:fs";
 import { createConnection } from "node:net";
-import { dirname, join } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { connect } from "node:tls";
 
 export const CANONICAL_HOST = "gwrk.gforge.ai";
@@ -638,10 +637,55 @@ export function validateNativeObservation(value, expected, options = {}) {
 
 const SLEEP_ARRAY = new Int32Array(new SharedArrayBuffer(4));
 
+function resolveRequireRootOwnership(requireRootOwnership = true) {
+  assert.equal(
+    typeof requireRootOwnership,
+    "boolean",
+    "requireRootOwnership must be a boolean",
+  );
+  if (process.env.GWRK_051_OWNED_CONTROLLER === "1") {
+    assert.equal(
+      requireRootOwnership,
+      true,
+      "production owned controller cannot disable root ownership enforcement",
+    );
+  }
+  return requireRootOwnership;
+}
+
+function assertPathInsideDir(dir, targetPath, label) {
+  assert.ok(
+    typeof targetPath === "string" && targetPath.length > 0,
+    `${label} is required`,
+  );
+  assert.equal(
+    dirname(resolve(targetPath)),
+    resolve(dir),
+    `${label} must reside directly inside verified observerDir`,
+  );
+}
+
+function writeFullBuffer(fd, buffer) {
+  let offset = 0;
+  while (offset < buffer.length) {
+    offset += writeSync(fd, buffer, offset, buffer.length - offset);
+  }
+}
+
+function lstatPresent(targetPath) {
+  try {
+    lstatSync(targetPath);
+    return { present: true, error: null };
+  } catch (err) {
+    return { present: false, error: err };
+  }
+}
+
 export function verifyObserverDirectory(
   observerDir,
   { requireRootOwnership = true } = {},
 ) {
+  const enforceRoot = resolveRequireRootOwnership(requireRootOwnership);
   assert.ok(
     typeof observerDir === "string" && observerDir.length > 0,
     "observerDir is required",
@@ -654,17 +698,55 @@ export function verifyObserverDirectory(
     0o700,
     `observerDir must have mode 0700, got ${(st.mode & 0o777).toString(8)}`,
   );
-  if (requireRootOwnership) {
+  if (enforceRoot) {
     assert.equal(st.uid, 0, "observerDir must be owned by root uid 0");
     assert.equal(st.gid, 0, "observerDir must be owned by root gid 0");
+  }
+  const dirFlags =
+    fsConstants.O_RDONLY |
+    fsConstants.O_NOFOLLOW |
+    (fsConstants.O_DIRECTORY ?? 0);
+  const fd = openSync(observerDir, dirFlags);
+  try {
+    const fst = fstatSync(fd);
+    assert.equal(
+      fst.isDirectory(),
+      true,
+      "observerDir descriptor must be a directory",
+    );
+    assert.equal(
+      fst.mode & 0o777,
+      0o700,
+      `observerDir descriptor must have mode 0700, got ${(fst.mode & 0o777).toString(8)}`,
+    );
+    if (enforceRoot) {
+      assert.equal(
+        fst.uid,
+        0,
+        "observerDir descriptor must be owned by root uid 0",
+      );
+      assert.equal(
+        fst.gid,
+        0,
+        "observerDir descriptor must be owned by root gid 0",
+      );
+    }
+    assert.equal(fst.ino, st.ino, "observerDir identity changed during open");
+    assert.equal(fst.dev, st.dev, "observerDir device changed during open");
+  } finally {
+    closeSync(fd);
   }
   return st;
 }
 
 export function readSafeJson(
   filePath,
-  { requireRootOwnership = true, maxBytes = 2 * 1024 * 1024 } = {},
+  { requireRootOwnership = true, maxBytes = 2 * 1024 * 1024, observerDir } = {},
 ) {
+  const enforceRoot = resolveRequireRootOwnership(requireRootOwnership);
+  if (observerDir !== undefined) {
+    assertPathInsideDir(observerDir, filePath, "filePath");
+  }
   const lst = lstatSync(filePath);
   assert.equal(
     lst.isSymbolicLink(),
@@ -681,7 +763,7 @@ export function readSafeJson(
     lst.size <= maxBytes,
     `file ${filePath} exceeds ${maxBytes} byte bound`,
   );
-  if (requireRootOwnership) {
+  if (enforceRoot) {
     assert.equal(lst.uid, 0, `file ${filePath} must be owned by root uid 0`);
   }
   const fd = openSync(filePath, fsConstants.O_RDONLY | fsConstants.O_NOFOLLOW);
@@ -692,6 +774,18 @@ export function readSafeJson(
       true,
       `file descriptor for ${filePath} must be a regular file`,
     );
+    assert.equal(
+      fst.mode & 0o777,
+      0o600,
+      `file descriptor for ${filePath} must have mode 0600`,
+    );
+    if (enforceRoot) {
+      assert.equal(
+        fst.uid,
+        0,
+        `file descriptor for ${filePath} must be owned by root uid 0`,
+      );
+    }
     assert.equal(
       fst.ino,
       lst.ino,
@@ -834,6 +928,19 @@ export function validateNativeObserverHealth(value, expected, options = {}) {
   return value;
 }
 
+export function assertScenarioBReuseProof(health) {
+  assert.ok(
+    health?.originTcpSummary?.zeroPriorRequestReusedConnections >= 1,
+    "Scenario B requires real zero-request parked/reused connection proof (zeroPriorRequestReusedConnections >= 1)",
+  );
+  assert.equal(
+    health.originTcpSummary.unusedDialObserved,
+    true,
+    "Scenario B requires unusedDialObserved === true",
+  );
+  return health;
+}
+
 export function readNativeObserverHealth({
   healthPath,
   observerDir = process.env.GWRK_051_OBSERVER_DIR ?? "/fixture/observer",
@@ -841,11 +948,16 @@ export function readNativeObserverHealth({
   minBarrierSequence,
   requireRootOwnership = true,
 } = {}) {
+  const enforceRoot = resolveRequireRootOwnership(requireRootOwnership);
   const targetPath =
     healthPath ?? join(observerDir, "native-observer-health.json");
   const dir = observerDir ?? dirname(targetPath);
-  verifyObserverDirectory(dir, { requireRootOwnership });
-  const raw = readSafeJson(targetPath, { requireRootOwnership });
+  verifyObserverDirectory(dir, { requireRootOwnership: enforceRoot });
+  assertPathInsideDir(dir, targetPath, "healthPath");
+  const raw = readSafeJson(targetPath, {
+    requireRootOwnership: enforceRoot,
+    observerDir: dir,
+  });
   return validateNativeObserverHealth(raw, expected, { minBarrierSequence });
 }
 
@@ -861,6 +973,7 @@ export function readNativeObservationBarrier({
   requireRootOwnership = true,
   runId,
 }) {
+  const enforceRoot = resolveRequireRootOwnership(requireRootOwnership);
   const targetBarrierPath =
     barrierPath ?? join(observerDir, "native-observation-barrier.json");
   const targetObsPath =
@@ -877,7 +990,10 @@ export function readNativeObservationBarrier({
     "invalid native observation barrierSequence",
   );
 
-  verifyObserverDirectory(dir, { requireRootOwnership });
+  verifyObserverDirectory(dir, { requireRootOwnership: enforceRoot });
+  assertPathInsideDir(dir, targetBarrierPath, "barrierPath");
+  assertPathInsideDir(dir, targetObsPath, "observationPath");
+  assertPathInsideDir(dir, targetHealthPath, "healthPath");
 
   const payload = {
     version: 1,
@@ -885,18 +1001,47 @@ export function readNativeObservationBarrier({
     ...(runId || expected?.runId ? { runId: runId ?? expected.runId } : {}),
   };
   const nextPath = `${targetBarrierPath}.next`;
-  writeFileSync(nextPath, JSON.stringify(payload, null, 2), {
-    mode: 0o600,
-  });
-  chmodSync(nextPath, 0o600);
+  assertPathInsideDir(dir, nextPath, "barrier nextPath");
+  const nextContent = Buffer.from(JSON.stringify(payload, null, 2), "utf8");
+  const fd = openSync(
+    nextPath,
+    fsConstants.O_WRONLY |
+      fsConstants.O_CREAT |
+      fsConstants.O_TRUNC |
+      fsConstants.O_NOFOLLOW,
+    0o600,
+  );
+  try {
+    const fst = fstatSync(fd);
+    assert.equal(
+      fst.isFile(),
+      true,
+      `file descriptor for ${nextPath} must be a regular file`,
+    );
+    if (enforceRoot) {
+      assert.equal(
+        fst.uid,
+        0,
+        `file descriptor for ${nextPath} must be owned by root uid 0`,
+      );
+    }
+    fchmodSync(fd, 0o600);
+    writeFullBuffer(fd, nextContent);
+  } finally {
+    closeSync(fd);
+  }
   renameSync(nextPath, targetBarrierPath);
 
   const deadline = Date.now() + timeoutMs;
   let lastError = new Error("native observation file absent");
   while (true) {
-    if (existsSync(targetHealthPath)) {
+    const healthProbe = lstatPresent(targetHealthPath);
+    if (healthProbe.present) {
       try {
-        const health = readSafeJson(targetHealthPath, { requireRootOwnership });
+        const health = readSafeJson(targetHealthPath, {
+          requireRootOwnership: enforceRoot,
+          observerDir: dir,
+        });
         if (health?.captureStats?.integrityFaultCode) {
           throw new Error(
             `native observer sticky fault: ${health.captureStats.integrityFaultCode}`,
@@ -906,24 +1051,30 @@ export function readNativeObservationBarrier({
         if (err.message.includes("sticky fault")) {
           throw err;
         }
+        lastError = err;
       }
+    } else if (healthProbe.error?.code !== "ENOENT") {
+      lastError = healthProbe.error;
     }
 
-    if (existsSync(targetObsPath)) {
+    const obsProbe = lstatPresent(targetObsPath);
+    if (obsProbe.present) {
       try {
-        const raw = readSafeJson(targetObsPath, { requireRootOwnership });
+        const raw = readSafeJson(targetObsPath, {
+          requireRootOwnership: enforceRoot,
+          observerDir: dir,
+        });
         if (
           Number.isSafeInteger(raw?.barrierSequence) &&
           raw.barrierSequence >= barrierSequence
         ) {
-          if (existsSync(targetHealthPath)) {
-            const health = readSafeJson(targetHealthPath, {
-              requireRootOwnership,
-            });
-            validateNativeObserverHealth(health, expected, {
-              minBarrierSequence: barrierSequence,
-            });
-          }
+          const health = readSafeJson(targetHealthPath, {
+            requireRootOwnership: enforceRoot,
+            observerDir: dir,
+          });
+          validateNativeObserverHealth(health, expected, {
+            minBarrierSequence: barrierSequence,
+          });
           return validateNativeObservation(raw, expected, {
             minBarrierSequence: barrierSequence,
           });
@@ -934,6 +1085,8 @@ export function readNativeObservationBarrier({
         }
         lastError = error;
       }
+    } else if (obsProbe.error?.code !== "ENOENT") {
+      lastError = obsProbe.error;
     }
     if (Date.now() >= deadline) {
       throw new Error(
