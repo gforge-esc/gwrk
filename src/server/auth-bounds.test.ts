@@ -1653,4 +1653,71 @@ describe("FR-013 US-008 TR-014 AUTH-14: full-server HTTP rate admission, parser 
     });
     expect(okRes.statusCode).toBe(200);
   });
+
+  it("AUTH-14: direct root GET and HEAD share the login/IP owner, deny attempt 61 with 429, exempt private /health, and omit Location, Set-Cookie and managed forwarded response headers", async () => {
+    const f = await createBoundsServerFixture();
+    const testIp = "198.51.100.120";
+
+    for (let i = 0; i < 30; i++) {
+      const getRes = await f.server.inject({
+        method: "GET",
+        url: "/",
+        remoteAddress: "127.0.0.1",
+        headers: {
+          "x-forwarded-for": testIp,
+        },
+      });
+      expect(getRes.statusCode).toBe(200);
+      expect(getRes.headers).not.toHaveProperty("location");
+      expect(getRes.headers).not.toHaveProperty("set-cookie");
+      expect(getRes.headers).not.toHaveProperty("x-forwarded-for");
+      expect(getRes.headers).not.toHaveProperty("x-forwarded-uri");
+      expect(getRes.headers).not.toHaveProperty("x-forwarded-method");
+
+      const headRes = await f.server.inject({
+        method: "HEAD",
+        url: "/",
+        remoteAddress: "127.0.0.1",
+        headers: {
+          "x-forwarded-for": testIp,
+        },
+      });
+      expect(headRes.statusCode).toBe(200);
+      expect(headRes.body).toBe("");
+      expect(headRes.headers).not.toHaveProperty("location");
+      expect(headRes.headers).not.toHaveProperty("set-cookie");
+      expect(headRes.headers).not.toHaveProperty("x-forwarded-for");
+      expect(headRes.headers).not.toHaveProperty("x-forwarded-uri");
+      expect(headRes.headers).not.toHaveProperty("x-forwarded-method");
+    }
+
+    const denied61 = await f.server.inject({
+      method: "GET",
+      url: "/",
+      remoteAddress: "127.0.0.1",
+      headers: {
+        "x-forwarded-for": testIp,
+      },
+    });
+    expect(denied61.statusCode).toBe(429);
+    expect(denied61.json()).toMatchObject({
+      ok: false,
+      requestId: expect.any(String),
+    });
+    expect(denied61.headers).not.toHaveProperty("location");
+    expect(denied61.headers).not.toHaveProperty("set-cookie");
+    expect(denied61.headers).not.toHaveProperty("x-forwarded-for");
+    expect(denied61.headers).not.toHaveProperty("x-forwarded-uri");
+    expect(denied61.headers).not.toHaveProperty("x-forwarded-method");
+
+    const healthRes = await f.server.inject({
+      method: "GET",
+      url: "/health",
+      remoteAddress: "127.0.0.1",
+      headers: {
+        "x-forwarded-for": testIp,
+      },
+    });
+    expect(healthRes.statusCode).toBe(200);
+  });
 });

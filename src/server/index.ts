@@ -6,6 +6,7 @@ import { execFileSync } from "node:child_process";
 import * as crypto from "node:crypto";
 import { existsSync, realpathSync } from "node:fs";
 import { basename, dirname, join, resolve } from "node:path";
+import type { Writable } from "node:stream";
 import type Database from "better-sqlite3";
 import fastify, { type FastifyRequest } from "fastify";
 import { QuotaProber } from "../adapters/agents/quota-prober.js";
@@ -42,7 +43,10 @@ import {
   createProjectRoutingService,
 } from "../application/project-routing/index.js";
 import { closeDb, getDbPath, openDatabase } from "../db/index.js";
-import { classifyHostedRoute } from "../domain/auth-policy.js";
+import {
+  DEFAULT_HOSTED_SECURITY_POLICY,
+  classifyHostedRoute,
+} from "../domain/auth-policy.js";
 import { PENDING_LEDGER_RESTORE } from "../domain/ledger-backup.js";
 import type { AllowedRunnerKind } from "../domain/project-registry.js";
 import { isPrivateRunnerBind } from "../domain/release-packaging.js";
@@ -54,15 +58,18 @@ import type {
   OperationsStorePort,
   WorkerExecutionPort,
 } from "../ports/operations-port.js";
+import type { RateAdmissionPort } from "../ports/rate-admission-port.js";
 import type { InstanceLockHandle } from "../ports/release-ops-port.js";
 import type { ProjectRegistryPort } from "../ports/store-port.js";
 import type { VcsPort } from "../ports/vcs-port.js";
 import type { AgentBackendId, GwrkConfig } from "../utils/config.js";
+import { registerHostedAuthBounds } from "./auth-bounds.js";
 import {
   type HostedAuthGuardOptions,
   registerHostedAuthGuard,
   resolveVerifiedPrincipal,
 } from "./auth-guard.js";
+import { createSanitizedLoggerOptions, sanitizeText } from "./auth-logging.js";
 import { BackendSelector } from "./backend-selector.js";
 import { type DispatchLedgerScope, DispatchQueue } from "./dispatch.js";
 import { GitManager } from "./git-manager.js";
@@ -106,6 +113,7 @@ export interface ServerPidScope {
 
 export interface HostedServerAuthOptions extends HostedAuthGuardOptions {
   readonly sessions?: AuthRoutesOptions["sessions"];
+  readonly rateAdmission?: RateAdmissionPort;
 }
 
 export interface ServerStartOptions {
@@ -142,6 +150,7 @@ export interface ServerStartOptions {
   hostedAuth?: HostedServerAuthOptions;
   runnerKind?: AllowedRunnerKind;
   useProjectRegistry?: boolean;
+  loggerStream?: Writable;
 }
 
 function isLoopbackListenHost(host: string): boolean {
@@ -364,7 +373,10 @@ async function startLockedServer(
       : undefined);
   const pid = options.pid ?? { writePid, removePid };
   const server = fastify({
-    logger: true,
+    logger: createSanitizedLoggerOptions({
+      stream: options.loggerStream,
+    }),
+    bodyLimit: DEFAULT_HOSTED_SECURITY_POLICY.httpBodyMaxBytes,
   });
 
   // Derive transport mode from hosted runtime or listener bind address unless explicitly overridden.
@@ -668,6 +680,35 @@ async function startLockedServer(
         authenticate: options.hostedAuth?.authenticate,
         csrf: options.hostedAuth?.csrf,
         expectedOrigin: options.hostedAuth?.expectedOrigin,
+      });
+      registerHostedAuthBounds(server, {
+        rateAdmission: options.hostedAuth?.rateAdmission,
+        clock: options.clock,
+      });
+      server.addHook("onSend", async (request, reply, payload) => {
+        if (
+          reply.statusCode >= 400 &&
+          typeof payload === "string" &&
+          payload.startsWith("{")
+        ) {
+          try {
+            const parsed = JSON.parse(payload);
+            if (parsed.ok === false) {
+              parsed.requestId = request.id;
+              parsed.candidateSlugs = undefined;
+              if (typeof parsed.error === "string") {
+                parsed.error = sanitizeText(parsed.error);
+              }
+              if (typeof parsed.message === "string") {
+                parsed.message = sanitizeText(parsed.message);
+              }
+              return JSON.stringify(parsed);
+            }
+          } catch {
+            // ignore JSON parse errors
+          }
+        }
+        return payload;
       });
       server.setNotFoundHandler((request, reply) => {
         const route = classifyHostedRoute({
