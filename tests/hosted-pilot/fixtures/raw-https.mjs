@@ -63,6 +63,8 @@ export async function rawHttps({
   headers = [],
   body = "",
   timeoutMs = 5000,
+  cancelAfterMs,
+  servername = CANONICAL_HOST,
 }) {
   assert.ok(
     ["172.31.51.1", "127.0.0.1"].includes(target),
@@ -73,11 +75,25 @@ export async function rawHttps({
     ["GET", "HEAD", "POST"].includes(method),
     "unsupported fixture request method",
   );
+  assert.ok(
+    Number.isInteger(timeoutMs) && timeoutMs >= 1 && timeoutMs <= 35000,
+  );
+  assert.ok(
+    cancelAfterMs === undefined ||
+      (Number.isInteger(cancelAfterMs) &&
+        cancelAfterMs >= 1 &&
+        cancelAfterMs <= 1000),
+  );
+  assert.ok(
+    [CANONICAL_HOST, "unknown.example.invalid", null].includes(servername),
+  );
   return new Promise((resolve, reject) => {
+    let cancelled = false;
+    let cancellation;
     const socket = connect({
       host: target,
       port: 443,
-      servername: CANONICAL_HOST,
+      ...(servername === null ? {} : { servername }),
       ca,
       rejectUnauthorized: true,
       minVersion: "TLSv1.2",
@@ -100,6 +116,13 @@ export async function rawHttps({
         body,
       ];
       socket.write(lines.join("\r\n"));
+      if (cancelAfterMs !== undefined)
+        cancellation = setTimeout(() => {
+          cancelled = true;
+          clearTimeout(timer);
+          socket.destroy();
+          resolve({ cancelled: true });
+        }, cancelAfterMs);
     });
     socket.on("data", (chunk) => {
       length += chunk.length;
@@ -109,10 +132,12 @@ export async function rawHttps({
     });
     socket.once("error", (error) => {
       clearTimeout(timer);
-      reject(error);
+      clearTimeout(cancellation);
+      if (!cancelled) reject(error);
     });
     socket.once("end", () => {
       clearTimeout(timer);
+      clearTimeout(cancellation);
       try {
         resolve(parseResponse(Buffer.concat(chunks)));
       } catch (error) {
@@ -155,3 +180,115 @@ export const AUTHORIZATION_SELECTION_CASES = Object.freeze([
     browserEligible: false,
   },
 ]);
+
+export function assertAdmissionWire(events) {
+  assert.ok(
+    Array.isArray(events) && events.length > 0,
+    "no actual admission wire observed",
+  );
+  for (const event of events) {
+    assert.equal(event.path, "/");
+    assert.ok(["GET", "HEAD"].includes(event.method));
+    assert.equal(event.peer, "127.0.0.1");
+    for (const field of [
+      "hasQuery",
+      "hasBody",
+      "hasAuthorization",
+      "hasCookie",
+    ])
+      assert.equal(event[field], false, `admission wire leaked ${field}`);
+    assert.equal(event.forwardedUriIsRoot, true);
+    assert.equal(event.forwardedMethodIsGet, true);
+    assert.equal(event.forwardedForCount, 1);
+    assert.ok(["172.31.51.11", "172.31.51.12"].includes(event.forwardedFor));
+  }
+}
+
+export function parseFixtureControl(value) {
+  assert.ok(value && typeof value === "object" && !Array.isArray(value));
+  const fields = new Set([
+    "sequence",
+    "advanceRateMs",
+    "prefillLoginBuckets",
+    "loginFault",
+    "logoutFault",
+    "dropNextCommitted",
+  ]);
+  for (const key of Object.keys(value))
+    assert.ok(fields.has(key), "unknown private fixture control");
+  assert.ok(
+    Number.isSafeInteger(value.sequence) &&
+      value.sequence > 0 &&
+      value.sequence <= 1000,
+  );
+  if (value.advanceRateMs !== undefined)
+    assert.equal(value.advanceRateMs, 120001);
+  if (value.prefillLoginBuckets !== undefined)
+    assert.ok(
+      Number.isInteger(value.prefillLoginBuckets) &&
+        value.prefillLoginBuckets >= 0 &&
+        value.prefillLoginBuckets <= 1000,
+    );
+  if (value.loginFault !== undefined)
+    assert.ok(
+      ["none", "dependency", "connection", "timeout", "oversized"].includes(
+        value.loginFault,
+      ),
+    );
+  for (const field of ["logoutFault", "dropNextCommitted"])
+    if (value[field] !== undefined)
+      assert.equal(typeof value[field], "boolean");
+  return { ...value };
+}
+
+export function validateNativeObservation(value, expected) {
+  assert.equal(value?.version, 1, "native observation is missing");
+  assert.deepEqual(
+    value.provenance,
+    { ...expected, source: "passive_tcp", namespace: "owned_nested" },
+    "native observation provenance differs",
+  );
+  assert.ok(Number.isSafeInteger(value.sequence) && value.sequence > 0);
+  assert.ok(
+    Array.isArray(value.proxyRequests) && value.proxyRequests.length <= 4096,
+  );
+  const allowed = new Set([
+    "sequence",
+    "method",
+    "path",
+    "querySha256",
+    "cookieSha256",
+    "peer",
+    "forwardedFor",
+    "forwardedForCount",
+    "hasForwardedUri",
+    "hasForwardedMethod",
+  ]);
+  let last = 0;
+  for (const event of value.proxyRequests) {
+    for (const key of Object.keys(event))
+      assert.ok(
+        allowed.has(key),
+        "native observation contains unexpected data",
+      );
+    assert.ok(Number.isSafeInteger(event.sequence) && event.sequence > last);
+    last = event.sequence;
+    assert.ok(["GET", "HEAD", "POST"].includes(event.method));
+    assert.ok(
+      [
+        "/oauth2/start",
+        "/oauth2/callback",
+        "/oauth2/auth",
+        "/oauth2/sign_out",
+      ].includes(event.path),
+    );
+    for (const key of ["querySha256", "cookieSha256"])
+      assert.match(event[key], /^[a-f0-9]{64}$/);
+    assert.equal(event.peer, "127.0.0.1");
+    assert.equal(event.forwardedForCount, 1);
+    assert.ok(["172.31.51.11", "172.31.51.12"].includes(event.forwardedFor));
+    assert.equal(typeof event.hasForwardedUri, "boolean");
+    assert.equal(typeof event.hasForwardedMethod, "boolean");
+  }
+  return value;
+}

@@ -5,7 +5,7 @@ import {
   sign,
   timingSafeEqual,
 } from "node:crypto";
-import { readFileSync } from "node:fs";
+import { chownSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { createServer } from "node:https";
 import { pathToFileURL } from "node:url";
 
@@ -22,6 +22,7 @@ const cases = new Set([
   "expired",
   "unverified",
   "unlisted",
+  "token-error",
 ]);
 const equal = (a, b) => {
   const left = Buffer.from(a);
@@ -34,6 +35,7 @@ export function createFixtureIssuer({
   clientSecret,
   now = Date.now,
   maxCodes = 1000,
+  onIssuedToken = () => {},
 }) {
   if (!clientSecret) throw new Error("fixture client secret required");
   const signing = generateKeyPairSync("rsa", { modulusLength: 2048 });
@@ -138,6 +140,10 @@ export function createFixtureIssuer({
           return deny(res);
         const seconds = Math.floor(now() / 1000);
         const selected = grant.selected;
+        if (selected === "token-error") {
+          counts.denied++;
+          return json(res, 400, { error: "051_UPSTREAM_ERROR_CANARY" });
+        }
         const idToken = token(
           {
             iss:
@@ -162,6 +168,12 @@ export function createFixtureIssuer({
           },
           selected === "wrong-signature",
         );
+        onIssuedToken({
+          idTokenSha256: createHash("sha256").update(idToken).digest("hex"),
+          accessTokenSha256: createHash("sha256")
+            .update("synthetic-access")
+            .digest("hex"),
+        });
         counts.issued++;
         return json(res, 200, {
           access_token: "synthetic-access",
@@ -182,7 +194,23 @@ if (
   process.argv[1] &&
   import.meta.url === pathToFileURL(process.argv[1]).href
 ) {
+  const issued = [];
   const fixture = createFixtureIssuer({
+    onIssuedToken(value) {
+      if (issued.length >= 1000)
+        throw new Error("fixture token observation bound exceeded");
+      issued.push(value);
+      writeFileSync(
+        "/fixture/service/issuer-tokens.next",
+        JSON.stringify({ issued }),
+        { mode: 0o600 },
+      );
+      chownSync("/fixture/service/issuer-tokens.next", 10001, 10001);
+      renameSync(
+        "/fixture/service/issuer-tokens.next",
+        "/fixture/service/issuer-tokens.json",
+      );
+    },
     clientSecret: readFileSync("/fixture/secrets/client-secret", "utf8").trim(),
   });
   const server = createServer(

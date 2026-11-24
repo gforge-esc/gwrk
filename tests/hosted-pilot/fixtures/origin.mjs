@@ -1,8 +1,10 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 import { execFileSync } from "node:child_process";
-import { createHmac, timingSafeEqual } from "node:crypto";
+import { createHash, createHmac, timingSafeEqual } from "node:crypto";
 import {
+  constants,
   existsSync,
+  lstatSync,
   mkdirSync,
   readFileSync,
   renameSync,
@@ -32,6 +34,7 @@ import { computeProjectId } from "/app/dist/domain/project-id.js";
 import { startServer } from "/app/dist/server/index.js";
 import { GwrkConfigSchema } from "/app/dist/utils/config.js";
 import { CLIENT_ID } from "./issuer.mjs";
+import { parseFixtureControl } from "./raw-https.mjs";
 
 const directory = "/fixture/service";
 const expectedOrigin = "https://gwrk.gforge.ai";
@@ -40,8 +43,18 @@ const clock = {
   nowIso: () => new Date().toISOString(),
 };
 const requestScope = new AsyncLocalStorage();
+let rateNowMs = Date.now();
+let control = { sequence: 0, loginFault: "none", logoutFault: false };
+let dropNextCommitted = false;
 const counters = {
   loginAttempts: 0,
+  controlSequence: 0,
+  prefillAccepted: 0,
+  apiCrypto: 0,
+  forwardedIssuedIdToken: 0,
+  forwardedAccessToken: 0,
+  proxyLogout: 0,
+  originRevokedBeforeProxy: 0,
   loginAllowed: 0,
   apiReservations: 0,
   apiVerified: 0,
@@ -55,6 +68,17 @@ const counters = {
   effects: 0,
 };
 const persist = () => {
+  counters.rows = Object.fromEntries(
+    [
+      "dispatch_operations",
+      "harvest_deliveries",
+      "harvest_operations",
+      "notification_outbox",
+    ].map((table) => [
+      table,
+      db.prepare(`SELECT COUNT(*) AS count FROM ${table}`).get().count,
+    ]),
+  );
   writeFileSync(`${directory}/observations.next`, JSON.stringify(counters), {
     mode: 0o600,
   });
@@ -95,7 +119,15 @@ const db = openDatabase({ dbPath: `${directory}/auth.db` });
 const registry = createSqliteProjectRegistryAdapter({ db });
 const operationsStore = createSqliteOperationsStoreAdapter({ db });
 const store = createSqliteAuthStoreAdapter({ db });
-const crypto = createCredentialCryptoAdapter();
+const rawCrypto = createCredentialCryptoAdapter();
+const crypto = {
+  ...rawCrypto,
+  verifySha256Equal(...args) {
+    counters.apiCrypto++;
+    persist();
+    return rawCrypto.verifySha256Equal(...args);
+  },
+};
 registry.enrollProject({
   projectId,
   slug: "gateway-fixture",
@@ -196,6 +228,19 @@ const verifier = createGoogleIdentityVerifier({
 });
 const google = {
   verifyIdToken: async (input) => {
+    const digest = createHash("sha256").update(input.token).digest("hex");
+    try {
+      if (existsSync(`${directory}/issuer-tokens.json`)) {
+        const parsed = JSON.parse(
+          readFileSync(`${directory}/issuer-tokens.json`, "utf8"),
+        );
+        const issued = Array.isArray(parsed?.issued) ? parsed.issued : [];
+        if (issued.some((value) => value.idTokenSha256 === digest))
+          counters.forwardedIssuedIdToken++;
+        if (issued.some((value) => value.accessTokenSha256 === digest))
+          counters.forwardedAccessToken++;
+      }
+    } catch {}
     counters.googleVerification++;
     persist();
     return verifier.verifyIdToken(input);
@@ -210,23 +255,95 @@ const authenticate = createRequestAuthenticator({
 });
 const sessions = createBrowserSessionService({
   store,
-  proxy: createProxySessionLogout(),
+  proxy: createProxySessionLogout({
+    fetch: async (url, options) => {
+      counters.proxyLogout++;
+      const incoming = requestScope.getStore();
+      const bearer = incoming?.headers.authorization;
+      if (typeof bearer === "string" && bearer.startsWith("Bearer ")) {
+        const digest = crypto.hashTokenDigest(bearer.slice(7));
+        if (store.getGoogleSession(digest)?.revokedAt)
+          counters.originRevokedBeforeProxy++;
+      }
+      persist();
+      if (control.logoutFault) throw new Error("fixture logout unavailable");
+      return fetch(url, options);
+    },
+  }),
   clock,
 });
 const csrf = createBrowserCsrfAdapter({
   hmacKey: await protectedFiles.readCsrfHmacKey(),
   clock,
 });
-const ownedAdmission = createRateAdmission({ clock });
+const ownedAdmission = createRateAdmission({
+  clock: { nowMs: () => rateNowMs },
+});
+function applyControl() {
+  const file = `${directory}/control.json`;
+  if (!existsSync(file)) return;
+  const metadata = lstatSync(file);
+  if (
+    !metadata.isFile() ||
+    metadata.isSymbolicLink() ||
+    metadata.size > 4096 ||
+    metadata.uid !== 10001 ||
+    (metadata.mode & 0o777) !== 0o600
+  )
+    throw new Error("fixture control metadata denied");
+  const next = parseFixtureControl(
+    JSON.parse(
+      readFileSync(file, {
+        encoding: "utf8",
+        flag: constants.O_RDONLY | constants.O_NOFOLLOW,
+      }),
+    ),
+  );
+  if (next.sequence <= control.sequence) return;
+  if (next.advanceRateMs !== undefined) {
+    rateNowMs += next.advanceRateMs;
+    ownedAdmission.expire();
+  }
+  if (next.prefillLoginBuckets !== undefined) {
+    counters.prefillAccepted = 0;
+    for (let index = 0; index < next.prefillLoginBuckets; index++) {
+      if (
+        !ownedAdmission.consumeLogin({
+          trustedIp: `198.18.${index >>> 8}.${index & 255}`,
+        }).allowed
+      )
+        throw new Error("fixture prefill denied");
+      counters.prefillAccepted++;
+    }
+  }
+  control = { ...control, ...next };
+  if (next.dropNextCommitted) dropNextCommitted = true;
+  counters.controlSequence = next.sequence;
+  persist();
+}
 const admission = {
   consumeLogin(input) {
     counters.loginAttempts++;
+    if (counters.controlError || control.loginFault === "dependency") {
+      persist();
+      return { allowed: false, reason: "store_error" };
+    }
+    if (control.loginFault === "connection") {
+      requestScope.getStore()?.socket.destroy();
+      persist();
+      return { allowed: false, reason: "store_error" };
+    }
     const result = ownedAdmission.consumeLogin(input);
     if (result.allowed) {
       counters.loginAllowed++;
       const incoming = requestScope.getStore();
-      if (incoming && existsSync(`${directory}/drop-next-committed`)) {
-        unlinkSync(`${directory}/drop-next-committed`);
+      if (
+        incoming &&
+        (dropNextCommitted || existsSync(`${directory}/drop-next-committed`))
+      ) {
+        dropNextCommitted = false;
+        if (existsSync(`${directory}/drop-next-committed`))
+          unlinkSync(`${directory}/drop-next-committed`);
         counters.droppedCommittedResponses++;
         persist();
         incoming.socket.destroy();
@@ -315,6 +432,7 @@ const config = GwrkConfigSchema.parse({
 });
 const server = await startServer(config, {
   handleSignals: false,
+  autoResumeWebhook: false,
   transport: "hosted",
   projectRoot: repo,
   ledger: { db, projectId },
@@ -335,10 +453,24 @@ const server = await startServer(config, {
     rateAdmission: admission,
   },
 });
-server.server.prependListener("request", (incoming) => {
+server.server.prependListener("request", (incoming, outgoing) => {
   requestScope.enterWith(incoming);
   if (counters.requests.length < 4096) {
     const root = (incoming.url ?? "").split("?")[0] === "/";
+    if (root && ["timeout", "oversized"].includes(control.loginFault)) {
+      const end = outgoing.end.bind(outgoing);
+      outgoing.end = (...args) => {
+        if (control.loginFault === "oversized") {
+          outgoing.statusCode = 200;
+          outgoing.setHeader("Content-Length", "4097");
+          return end("F".repeat(4097));
+        }
+        setTimeout(() => {
+          if (!outgoing.destroyed) end(...args);
+        }, 31000).unref();
+        return outgoing;
+      };
+    }
     counters.requests.push({
       method: incoming.method,
       path: (incoming.url ?? "").split("?")[0],
@@ -346,6 +478,13 @@ server.server.prependListener("request", (incoming) => {
       ...(root
         ? {
             hasQuery: incoming.url.includes("?"),
+            hasBody:
+              Number(incoming.headers["content-length"] ?? 0) > 0 ||
+              incoming.headers["transfer-encoding"] !== undefined,
+            forwardedForCount: incoming.rawHeaders.filter(
+              (value, index) =>
+                index % 2 === 0 && value.toLowerCase() === "x-forwarded-for",
+            ).length,
             hasAuthorization: incoming.headers.authorization !== undefined,
             hasCookie: incoming.headers.cookie !== undefined,
             forwardedFor:
@@ -362,10 +501,20 @@ server.server.prependListener("request", (incoming) => {
   }
   persist();
 });
+const controlTimer = setInterval(() => {
+  try {
+    applyControl();
+  } catch {
+    counters.controlError = true;
+    persist();
+  }
+}, 25);
+controlTimer.unref();
 persist();
 console.log(JSON.stringify({ event: "fixture_origin_ready", port: 18790 }));
 for (const signal of ["SIGTERM", "SIGINT"])
   process.once(signal, async () => {
+    clearInterval(controlTimer);
     await server.close();
     if (db.open) db.close();
     process.exitCode = 0;
