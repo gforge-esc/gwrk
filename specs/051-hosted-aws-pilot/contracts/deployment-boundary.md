@@ -41,6 +41,16 @@ Store gateway-only files under `/etc/gwrk/gateway-secrets`. Keep that directory 
 
 The production gateway implementation must prove its pinned container identity can consume the mounted files. It must preserve the worker access denial. This contract does not require an unverified container user configuration.
 
+## Internal proxy logout
+
+The production proxy listens on `127.0.0.1:4180` for origin sign-out. Use the fixed URL `http://127.0.0.1:4180/oauth2/sign_out`. No request or project configuration may replace that target. The production bundle must keep this listener private. Public gateway routing blocks direct sign-out.
+
+Use `__Host-gwrk_session` as the production proxy cookie name. Supply that same name to origin credential selection. Keep host-only secure cookies with HttpOnly protection. Preserve the proxy's one-hour expiry and disabled refresh. The proof bundle retains its existing cookie name.
+
+The logout adapter forwards Cookie only. It follows no redirect and returns no Location header. Bound the operation by the shared proxy logout timeout. Cancel unused response bodies. Return a static typed failure on timeout or transport error.
+
+Success requires cookie-clearing response headers from the fixed endpoint. Preserve separate Set-Cookie header values for chunked proxy cookies. Never report proxy clearing merely because a fetch resolved. The origin must already have committed revocation before invoking this adapter.
+
 ## Worker environment
 
 The origin receives its startup mapping. Strip inbound auth settings at the actual agent-child spawn boundary after combining inherited and explicit adapter environments. Clearing them in `run.sh` would also clear settings needed by the origin.
