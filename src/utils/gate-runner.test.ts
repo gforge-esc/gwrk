@@ -90,5 +90,88 @@ describe("gate-runner", () => {
       expect(result.passed).toBe(true);
       expect(seenOpts).toMatchObject({ cwd: "/sandbox/worktree" });
     });
+
+    it("configures default maxBuffer to 16 MiB (16777216 bytes)", async () => {
+      let seenOpts: any;
+      vi.mocked(child_process.execFile).mockImplementation((..._args: any[]) => {
+        seenOpts = _args[2];
+        const _callback = _args[_args.length - 1] as any;
+        _callback(null, { stdout: "PASS", stderr: "" });
+        return {} as any;
+      });
+
+      const result = await runGate("test-gate.sh");
+      expect(result.passed).toBe(true);
+      expect(seenOpts).toMatchObject({ maxBuffer: 16 * 1024 * 1024 });
+    });
+
+    it("allows caller to override maxBuffer", async () => {
+      let seenOpts: any;
+      vi.mocked(child_process.execFile).mockImplementation((..._args: any[]) => {
+        seenOpts = _args[2];
+        const _callback = _args[_args.length - 1] as any;
+        _callback(null, { stdout: "PASS", stderr: "" });
+        return {} as any;
+      });
+
+      const result = await runGate("test-gate.sh", { maxBuffer: 32 * 1024 * 1024 });
+      expect(result.passed).toBe(true);
+      expect(seenOpts).toMatchObject({ maxBuffer: 32 * 1024 * 1024 });
+    });
+
+    it("classifies ERR_CHILD_PROCESS_STDIO_MAXBUFFER explicitly at start of output", async () => {
+      vi.mocked(child_process.execFile).mockImplementation((..._args: any[]) => {
+        const _callback = _args[_args.length - 1] as any;
+        const error = new Error("stdout maxBuffer length exceeded");
+        (error as any).code = "ERR_CHILD_PROCESS_STDIO_MAXBUFFER";
+        (error as any).stdout = "truncated output";
+        (error as any).stderr = "";
+        _callback(error, { stdout: "truncated output", stderr: "" });
+        return {} as any;
+      });
+
+      const result = await runGate("test-gate.sh");
+      expect(result.passed).toBe(false);
+      expect(result.exitCode).toBe(1);
+      expect(result.output).toMatch(
+        /^Gate output exceeded maximum buffer limit \(16777216 bytes\)\ntruncated output/,
+      );
+    });
+
+    it("classifies ENOBUFS explicitly at start of output", async () => {
+      vi.mocked(child_process.execFile).mockImplementation((..._args: any[]) => {
+        const _callback = _args[_args.length - 1] as any;
+        const error = new Error("spawnSync ENOBUFS");
+        (error as any).code = "ENOBUFS";
+        (error as any).stdout = "partial stdout";
+        (error as any).stderr = "partial stderr";
+        _callback(error, { stdout: "partial stdout", stderr: "partial stderr" });
+        return {} as any;
+      });
+
+      const result = await runGate("test-gate.sh");
+      expect(result.passed).toBe(false);
+      expect(result.exitCode).toBe(1);
+      expect(result.output).toMatch(
+        /^Gate output exceeded maximum buffer limit \(16777216 bytes\)/,
+      );
+    });
+
+    it("preserves timeout output without maxBuffer classification", async () => {
+      vi.mocked(child_process.execFile).mockImplementation((..._args: any[]) => {
+        const _callback = _args[_args.length - 1] as any;
+        const error = new Error("timed out");
+        (error as any).killed = true;
+        (error as any).signal = "SIGKILL";
+        (error as any).stdout = "partial output";
+        _callback(error, { stdout: "partial output", stderr: "" });
+        return {} as any;
+      });
+
+      const result = await runGate("test-gate.sh", { timeoutMs: 5000 });
+      expect(result.passed).toBe(false);
+      expect(result.output).toContain("Gate timed out after 5000 ms");
+      expect(result.output).not.toContain("Gate output exceeded maximum buffer limit");
+    });
   });
 });

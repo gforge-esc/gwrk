@@ -11,7 +11,13 @@ import {
   parseTestOutput,
 } from "../engine/test-runner.js";
 import { isHollowGate, isUnauthoredGate } from "./gate-quality.js";
-import { runGate } from "./gate-runner.js";
+import {
+  GATE_MAX_BUFFER_BYTES,
+  isMaxBufferError,
+  runGate,
+} from "./gate-runner.js";
+
+export { GATE_MAX_BUFFER_BYTES } from "./gate-runner.js";
 
 /**
  * 026 — the ONE gate execution port. Every driver (`gwrk gate`, ship pre-flight /
@@ -61,16 +67,22 @@ export async function runTaskGate(
     cwd: string;
     timeoutMs?: number;
     env?: NodeJS.ProcessEnv;
+    maxBuffer?: number;
   },
 ): Promise<TaskGateResult> {
-  const { featureDir, cwd, env, timeoutMs = GATE_TIMEOUT_MS } = opts;
+  const { featureDir, cwd, env, timeoutMs = GATE_TIMEOUT_MS, maxBuffer } = opts;
 
   // Strategy 1 — convention gate file.
   const conventionPath = task.id
     ? path.join(featureDir, "gates", `${task.id}-gate.sh`)
     : undefined;
   if (conventionPath && fs.existsSync(conventionPath)) {
-    const r = await runGate(conventionPath, { cwd, env, timeoutMs });
+    const r = await runGate(conventionPath, {
+      cwd,
+      env,
+      timeoutMs,
+      ...(maxBuffer !== undefined ? { maxBuffer } : {}),
+    });
     return {
       passed: r.passed,
       exitCode: r.exitCode,
@@ -94,7 +106,12 @@ export async function runTaskGate(
   // Strategy 2 — gateScript as a file path.
   const scriptPath = path.join(featureDir, gateScript);
   if (fs.existsSync(scriptPath)) {
-    const r = await runGate(scriptPath, { cwd, env, timeoutMs });
+    const r = await runGate(scriptPath, {
+      cwd,
+      env,
+      timeoutMs,
+      ...(maxBuffer !== undefined ? { maxBuffer } : {}),
+    });
     return {
       passed: r.passed,
       exitCode: r.exitCode,
@@ -126,7 +143,7 @@ export async function runTaskGate(
       gatePath: label,
     };
   }
-  return runInlineGate(gateScript, cwd, timeoutMs, label, env);
+  return runInlineGate(gateScript, cwd, timeoutMs, label, env, maxBuffer);
 }
 
 /**
@@ -139,15 +156,17 @@ export function runInlineGate(
   timeoutMs: number = GATE_TIMEOUT_MS,
   label?: string,
   env?: NodeJS.ProcessEnv,
+  maxBuffer: number = GATE_MAX_BUFFER_BYTES,
 ): TaskGateResult {
   const gatePath = label ?? `(inline) ${script.substring(0, 60)}`;
   try {
     const output = String(
-      execSync(`set -e\n${script}`, {
+      execSync(`set -e\nexec 2>&1\n${script}`, {
         cwd,
         env,
         stdio: "pipe",
         timeout: timeoutMs,
+        maxBuffer,
         encoding: "utf-8",
         shell: "/bin/bash",
       }) ?? "",
@@ -186,12 +205,22 @@ export function runInlineGate(
   } catch (err: unknown) {
     const e = err as {
       status?: number;
+      code?: string;
       stdout?: Buffer | string;
       stderr?: Buffer | string;
+      message?: string;
     };
-    const output =
+    const rawOutput =
       `${e.stdout?.toString() ?? ""}\n${e.stderr?.toString() ?? ""}`.trim();
     const exitCode = typeof e.status === "number" ? e.status : 1;
+    const output = isMaxBufferError(e)
+      ? [
+          `Gate output exceeded maximum buffer limit (${maxBuffer} bytes)`,
+          rawOutput,
+        ]
+          .filter(Boolean)
+          .join("\n")
+      : rawOutput;
     return {
       passed: false,
       exitCode,
