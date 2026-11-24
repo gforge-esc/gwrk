@@ -2,27 +2,65 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import { execFileSync } from "node:child_process";
 import { createHash, timingSafeEqual } from "node:crypto";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import Database from "better-sqlite3";
 import fastify from "fastify";
 import { SignJWT, exportJWK, generateKeyPair } from "jose";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
+import { createBrowserCsrfAdapter } from "../adapters/auth/browser-csrf.js";
+import { createCredentialCryptoAdapter } from "../adapters/auth/credential-crypto.js";
 import { createGoogleIdentityVerifier } from "../adapters/auth/google-id-token.js";
+import * as gwrkPaths from "../adapters/config/paths.js";
+import { repositoryGitEnv } from "../adapters/git/process-env.js";
+import {
+  createSqliteAuthStoreAdapter,
+  createSqliteOperationsStoreAdapter,
+  createSqliteProjectRegistryAdapter,
+} from "../adapters/sqlite/index.js";
 import { createRequestAuthenticator } from "../application/auth/authenticate-request.js";
+import { createBrowserSessionService } from "../application/auth/browser-session.js";
+import { openDatabase } from "../db/index.js";
 import type {
   StoredApiCredential,
   StoredGoogleSession,
 } from "../domain/auth-policy.js";
+import { computeProjectId } from "../domain/project-id.js";
 import type {
   AuthStorePort,
   BrowserCsrfPort,
   CredentialCryptoPort,
+  ProxySessionLogoutPort,
 } from "../ports/auth-port.js";
+import type { NotificationPort } from "../ports/notification-port.js";
+import type {
+  GitHubHarvestPort,
+  WorkerExecutionPort,
+} from "../ports/operations-port.js";
+import { GwrkConfigSchema } from "../utils/config.js";
 import {
   readVerifiedAuthContext,
   registerHostedAuthGuard,
   resolveVerifiedPrincipal,
 } from "./auth-guard.js";
+import { HarvestWatcher } from "./harvest-watcher.js";
+import { startServer } from "./index.js";
+import { SystemMonitor } from "./monitor.js";
+import type { SandboxManager } from "./sandbox.js";
+
+vi.mock("./slack.js", () => ({
+  getSlackApp: vi.fn().mockReturnValue(null),
+  isSlackConnected: vi.fn().mockResolvedValue(false),
+  startSlackApp: vi.fn().mockResolvedValue(undefined),
+  stopSlackApp: vi.fn().mockResolvedValue(undefined),
+}));
+
+vi.mock("./slack-notify.js", () => ({
+  notifySlack: vi.fn().mockResolvedValue(undefined),
+}));
 
 const ORIGIN = "https://gwrk.gforge.ai";
 const NOW = Date.parse("2026-11-23T18:00:00Z");
@@ -619,5 +657,518 @@ describe("hosted asynchronous authentication guard", () => {
     });
     expect(response.statusCode).toBe(200);
     expect(response.json()).toEqual({ context: null, principal: null });
+  });
+});
+
+function initHostedGuardRepo(repoDir: string, remoteUrl: string): string {
+  fs.mkdirSync(repoDir, { recursive: true });
+  const gitEnv = {
+    ...repositoryGitEnv(repoDir),
+    GIT_CONFIG_GLOBAL: os.devNull,
+    GIT_CONFIG_NOSYSTEM: "1",
+    GIT_AUTHOR_NAME: "Gwrk Test",
+    GIT_AUTHOR_EMAIL: "gwrk-test@example.invalid",
+    GIT_COMMITTER_NAME: "Gwrk Test",
+    GIT_COMMITTER_EMAIL: "gwrk-test@example.invalid",
+    GIT_TERMINAL_PROMPT: "0",
+  };
+  execFileSync("git", ["init", "--template=", "--initial-branch=main"], {
+    cwd: repoDir,
+    env: gitEnv,
+    stdio: "ignore",
+  });
+  execFileSync("git", ["remote", "add", "origin", remoteUrl], {
+    cwd: repoDir,
+    env: gitEnv,
+    stdio: "ignore",
+  });
+  return computeProjectId({
+    projectRoot: repoDir,
+    remoteOriginUrl: remoteUrl,
+    gitCommonDir: path.join(repoDir, ".git"),
+  });
+}
+
+async function createFullServerGuardFixture(
+  options: {
+    transport?: "hosted" | "trusted_local";
+    includeHostedAuth?: boolean;
+    bindGoogleRole?: "viewer" | "operator" | "maintainer";
+  } = {},
+) {
+  const transport = options.transport ?? "hosted";
+  const includeHostedAuth = options.includeHostedAuth ?? transport === "hosted";
+  vi.spyOn(gwrkPaths, "usesHostedRuntime").mockReturnValue(false);
+  vi.spyOn(HarvestWatcher.prototype, "start").mockImplementation(() => {});
+  vi.spyOn(SystemMonitor.prototype, "isThrottled").mockReturnValue(true);
+
+  const tmpDir = fs.realpathSync(
+    fs.mkdtempSync(path.join(os.tmpdir(), "gwrk-full-guard-")),
+  );
+  const repoDir = path.join(tmpDir, "pilot-repo");
+  const projectId = initHostedGuardRepo(
+    repoDir,
+    "git@github.com:org/guard-pilot.git",
+  );
+  const db = openDatabase({ dbPath: path.join(tmpDir, "gwrk.db") });
+  const registry = createSqliteProjectRegistryAdapter({ db });
+  const operationsStore = createSqliteOperationsStoreAdapter({ db });
+  const authStore = createSqliteAuthStoreAdapter({ db });
+  const crypto = createCredentialCryptoAdapter();
+
+  const project = registry.enrollProject({
+    projectId,
+    slug: "guard-pilot-slug",
+    name: "Guard Pilot Project",
+    repoSlug: "org/guard-pilot",
+    trunkBranch: "main",
+    localRoot: repoDir,
+    mirrorPath: null,
+    runnerPolicy: { allowedKinds: ["local", "hosted"] },
+    slack: {
+      workspaceId: "W_GUARD",
+      channelId: "C_GUARD",
+      sharedChannel: false,
+    },
+    legacyProjectIds: [],
+    createdAt: iso(NOW - 10_000),
+    updatedAt: iso(NOW - 10_000),
+  });
+
+  if (options.bindGoogleRole) {
+    registry.setRoleBinding({
+      projectId: project.projectId,
+      principalType: "google_sub",
+      principalId: "https://accounts.google.com:operator",
+      role: options.bindGoogleRole,
+    });
+  }
+
+  const clock = { nowMs: () => NOW, nowIso: () => iso(NOW) };
+  const google = createGoogleIdentityVerifier({
+    clientId: "synthetic-client",
+    readAllowlist: async () => ["operator@example.test"],
+    fetch: async () => Response.json(jwks),
+  });
+  const proxy: ProxySessionLogoutPort = {
+    clearProxySession: vi.fn(async () => ({
+      ok: true as const,
+      setCookieHeaders: [],
+    })),
+  };
+  const authenticate = createRequestAuthenticator({
+    store: authStore,
+    crypto,
+    google,
+    clock,
+    expectedOrigin: ORIGIN,
+  });
+  const sessions = createBrowserSessionService({
+    store: authStore,
+    proxy,
+    clock,
+  });
+  const csrf = createBrowserCsrfAdapter({
+    hmacKey: Buffer.alloc(32, 13),
+    clock,
+  });
+
+  const checkGit = vi.fn().mockResolvedValue(true);
+  const fakeSandbox = {
+    checkGit,
+    checkDocker: vi.fn().mockResolvedValue(true),
+    listSandboxes: vi.fn().mockResolvedValue([]),
+    pruneSandboxes: vi.fn().mockResolvedValue(undefined),
+    pauseAll: vi.fn().mockResolvedValue(undefined),
+    unpauseAll: vi.fn().mockResolvedValue(undefined),
+  } as unknown as SandboxManager;
+
+  const fakeNotifier: NotificationPort = {
+    notify: vi.fn().mockResolvedValue({ ok: true, deliveryId: "guard-notify" }),
+    getDeliveryStatus: vi.fn().mockResolvedValue({
+      mode: "socket_connected" as const,
+      workspaceId: "W_GUARD",
+      connected: true,
+    }),
+  };
+
+  const fakeWorker: WorkerExecutionPort = {
+    inspectRecoveredWork: vi.fn(async () => ({
+      workerState: "stopped" as const,
+      pullRequestLookup: "complete" as const,
+      openPullRequest: null,
+      mergedPullRequest: null,
+      completedManifestRunId: null,
+      sandboxDir: null,
+    })),
+    launchPhaseShip: vi.fn(async () => ({ exitCode: 0, stderr: "" })),
+    cleanupStaleSandbox: vi.fn(async () => {}),
+  };
+
+  const fakeGithub: GitHubHarvestPort = {
+    verifyWebhookSignature: vi.fn(() => false),
+    listTerminalPullRequests: vi.fn(async () => []),
+    getPullRequest: vi.fn(async () => null),
+  };
+
+  const config = GwrkConfigSchema.parse({
+    project: { name: "guard-pilot-fixture" },
+    agents: { define: "gemini", implement: "claude" },
+    server: {
+      host: "127.0.0.1",
+      port: 0,
+      githubWebhookSecret: "synthetic-webhook-secret",
+      heartbeatIntervalMs: 60_000,
+      networkCheckIntervalMs: 60_000,
+    },
+    parallelism: {
+      local: { maxCpu: 90, maxMem: 90, minDiskGb: 1, maxClones: 2 },
+    },
+  });
+
+  const server = await startServer(config, {
+    handleSignals: false,
+    transport,
+    projectRoot: repoDir,
+    ledger: { db, projectId: project.projectId },
+    registry,
+    operationsStore,
+    sandbox: fakeSandbox,
+    worker: fakeWorker,
+    notifier: fakeNotifier,
+    github: fakeGithub,
+    clock,
+    pid: { writePid: vi.fn(), removePid: vi.fn() },
+    heartbeatIntervalMs: null,
+    ...(includeHostedAuth
+      ? {
+          hostedAuth: {
+            authenticate,
+            sessions,
+            csrf,
+            expectedOrigin: ORIGIN,
+          },
+        }
+      : {}),
+  });
+
+  cleanup.push(async () => {
+    await server.close();
+    if (db.open) db.close();
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+    vi.restoreAllMocks();
+  });
+
+  const operationCount = (): number =>
+    (
+      db.prepare("SELECT COUNT(*) AS count FROM dispatch_operations").get() as {
+        count: number;
+      }
+    ).count;
+
+  const googleSessionCount = (): number =>
+    (
+      db.prepare("SELECT COUNT(*) AS count FROM google_sessions").get() as {
+        count: number;
+      }
+    ).count;
+
+  return {
+    server,
+    project,
+    checkGit,
+    operationCount,
+    googleSessionCount,
+  };
+}
+
+describe("FR-007 FR-010 AUTH-04: full-server hosted auth guard integration via startServer", () => {
+  it("AUTH-04: forged identity and auth-mode headers fail closed across full-server API routes with zero operation rows", async () => {
+    const f = await createFullServerGuardFixture({
+      bindGoogleRole: "operator",
+    });
+    const forgedHeaders = {
+      "x-forwarded-user": "admin",
+      "x-forwarded-email": "operator@example.test",
+      "x-forwarded-groups": "maintainer",
+      "x-forwarded-preferred-username": "admin",
+      "x-forwarded-access-token": "forged",
+      "x-auth-request-email": "operator@example.test",
+      "x-auth-request-user": "admin",
+      "x-gwrk-auth-mode": "trusted_local",
+      "x-gwrk-role": "maintainer",
+    };
+
+    const dispatchRes = await f.server.inject({
+      method: "POST",
+      url: "/api/dispatch",
+      headers: forgedHeaders,
+      payload: {
+        projectId: f.project.projectId,
+        featureId: "051-pilot",
+        phaseId: "phase-04",
+      },
+    });
+    expect(dispatchRes.statusCode).toBe(401);
+    expect(dispatchRes.json()).toMatchObject({
+      ok: false,
+      requestId: expect.any(String),
+    });
+
+    const healthRes = await f.server.inject({
+      method: "GET",
+      url: `/api/health?projectId=${f.project.projectId}`,
+      headers: forgedHeaders,
+    });
+    expect(healthRes.statusCode).toBe(401);
+    expect(healthRes.body).not.toContain(f.project.slug);
+    expect(healthRes.body).not.toContain(f.project.localRoot ?? "");
+
+    expect(f.operationCount()).toBe(0);
+    expect(f.googleSessionCount()).toBe(0);
+  });
+
+  it("AUTH-04: forged Google ID token signature yields HTTP 401 with zero operations and zero Google sessions", async () => {
+    const f = await createFullServerGuardFixture({
+      bindGoogleRole: "operator",
+    });
+    const response = await f.server.inject({
+      method: "POST",
+      url: "/api/dispatch",
+      headers: {
+        authorization: `Bearer ${forgedToken}`,
+        "x-gwrk-auth-mode": "google_id_token",
+        origin: ORIGIN,
+        "x-gwrk-csrf-token": "forged-csrf",
+      },
+      payload: {
+        projectId: f.project.projectId,
+        featureId: "051-pilot",
+        phaseId: "phase-04",
+      },
+    });
+    expect(response.statusCode).toBe(401);
+    expect(response.json()).toMatchObject({
+      ok: false,
+      code: "AUTH_TOKEN_INVALID",
+      requestId: expect.any(String),
+    });
+    expect(f.operationCount()).toBe(0);
+    expect(f.googleSessionCount()).toBe(0);
+  });
+
+  it("FR-002 US-001: verified Google principal receives zero automatic project roles and gets HTTP 403 until bound", async () => {
+    const f = await createFullServerGuardFixture();
+    const statusRes = await f.server.inject({
+      method: "GET",
+      url: `/api/status?projectId=${f.project.projectId}`,
+      headers: {
+        authorization: `Bearer ${googleToken}`,
+        "x-gwrk-auth-mode": "google_id_token",
+      },
+    });
+    expect(statusRes.statusCode).toBe(403);
+    expect(statusRes.json()).toMatchObject({
+      ok: false,
+      code: "UNAUTHORIZED_USER",
+    });
+
+    const healthRes = await f.server.inject({
+      method: "GET",
+      url: `/api/health?projectId=${f.project.projectId}`,
+      headers: {
+        authorization: `Bearer ${googleToken}`,
+        "x-gwrk-auth-mode": "google_id_token",
+      },
+    });
+    expect(healthRes.statusCode).toBe(403);
+    expect(healthRes.body).not.toContain(f.project.slug);
+    expect(f.operationCount()).toBe(0);
+  });
+
+  it("FR-007 FR-009: verified Google operator executes POST /api/dispatch only with same-origin Origin and session-bound CSRF", async () => {
+    const f = await createFullServerGuardFixture({
+      bindGoogleRole: "operator",
+    });
+    const sessionRes = await f.server.inject({
+      method: "GET",
+      url: "/api/auth/session",
+      headers: {
+        authorization: `Bearer ${googleToken}`,
+        "x-gwrk-auth-mode": "google_id_token",
+      },
+    });
+    expect(sessionRes.statusCode).toBe(200);
+    const csrfToken = sessionRes.json().csrfToken as string;
+    const rawSetCookie = sessionRes.headers["set-cookie"];
+    const csrfCookieHeader = (
+      Array.isArray(rawSetCookie) ? rawSetCookie[0] : String(rawSetCookie)
+    ).split(";", 1)[0];
+
+    const badOriginRes = await f.server.inject({
+      method: "POST",
+      url: "/api/dispatch",
+      headers: {
+        authorization: `Bearer ${googleToken}`,
+        "x-gwrk-auth-mode": "google_id_token",
+        origin: "https://evil.example.test",
+        "x-gwrk-csrf-token": csrfToken,
+        cookie: csrfCookieHeader,
+      },
+      payload: {
+        projectId: f.project.projectId,
+        featureId: "051-pilot",
+        phaseId: "phase-04",
+      },
+    });
+    expect(badOriginRes.statusCode).toBe(403);
+    expect(badOriginRes.json().code).toBe("AUTH_ORIGIN_MISMATCH");
+    expect(f.operationCount()).toBe(0);
+
+    const queryCsrfRes = await f.server.inject({
+      method: "POST",
+      url: `/api/dispatch?csrf_token=${encodeURIComponent(csrfToken)}`,
+      headers: {
+        authorization: `Bearer ${googleToken}`,
+        "x-gwrk-auth-mode": "google_id_token",
+        origin: ORIGIN,
+        "x-gwrk-csrf-token": csrfToken,
+        cookie: csrfCookieHeader,
+      },
+      payload: {
+        projectId: f.project.projectId,
+        featureId: "051-pilot",
+        phaseId: "phase-04",
+      },
+    });
+    expect(queryCsrfRes.statusCode).toBe(403);
+    expect(queryCsrfRes.json().code).toBe("AUTH_CSRF_INVALID");
+    expect(f.operationCount()).toBe(0);
+
+    const validRes = await f.server.inject({
+      method: "POST",
+      url: "/api/dispatch",
+      headers: {
+        authorization: `Bearer ${googleToken}`,
+        "x-gwrk-auth-mode": "google_id_token",
+        origin: ORIGIN,
+        "x-gwrk-csrf-token": csrfToken,
+        cookie: csrfCookieHeader,
+      },
+      payload: {
+        projectId: f.project.projectId,
+        featureId: "051-pilot",
+        phaseId: "phase-04",
+      },
+    });
+    expect(validRes.statusCode).toBe(201);
+    expect(validRes.json().operationId).toBeTruthy();
+    expect(f.operationCount()).toBe(1);
+  });
+
+  it("FR-010: full hosted server default-denies unclassified routes, disallowed methods, and internal /oauth2/sign_out", async () => {
+    const f = await createFullServerGuardFixture({
+      bindGoogleRole: "operator",
+    });
+    const headers = {
+      authorization: `Bearer ${googleToken}`,
+      "x-gwrk-auth-mode": "google_id_token",
+    };
+
+    const unclassified = await f.server.inject({
+      method: "GET",
+      url: "/api/not-declared",
+      headers,
+    });
+    expect(unclassified.statusCode).toBe(404);
+    expect(unclassified.json()).toMatchObject({
+      ok: false,
+      code: "ROUTE_NOT_FOUND",
+      requestId: expect.any(String),
+    });
+
+    const badMethod = await f.server.inject({
+      method: "PUT",
+      url: "/api/status",
+      headers,
+    });
+    expect(badMethod.statusCode).toBe(405);
+    expect(badMethod.json()).toMatchObject({
+      ok: false,
+      code: "METHOD_NOT_ALLOWED",
+      requestId: expect.any(String),
+    });
+
+    const proxySignOut = await f.server.inject({
+      method: "GET",
+      url: "/oauth2/sign_out",
+      headers,
+    });
+    expect(proxySignOut.statusCode).toBe(404);
+    expect(proxySignOut.json()).toMatchObject({
+      ok: false,
+      code: "ROUTE_NOT_PUBLIC",
+      requestId: expect.any(String),
+    });
+  });
+
+  it("FR-007 TC-002: hosted startServer without hostedAuth or custom resolvePrincipal fails closed without falling back to trusted_local", async () => {
+    const f = await createFullServerGuardFixture({
+      transport: "hosted",
+      includeHostedAuth: false,
+    });
+
+    const statusRes = await f.server.inject({
+      method: "GET",
+      url: `/api/status?projectId=${f.project.projectId}`,
+    });
+    expect([401, 503]).toContain(statusRes.statusCode);
+    expect(statusRes.json().ok).toBe(false);
+
+    const healthRes = await f.server.inject({
+      method: "GET",
+      url: `/api/health?projectId=${f.project.projectId}`,
+    });
+    expect([401, 503]).toContain(healthRes.statusCode);
+    expect(healthRes.json().ok).toBe(false);
+    expect(healthRes.body).not.toContain(f.project.slug);
+
+    const dispatchRes = await f.server.inject({
+      method: "POST",
+      url: "/api/dispatch",
+      payload: {
+        projectId: f.project.projectId,
+        featureId: "051-pilot",
+        phaseId: "phase-04",
+      },
+    });
+    expect([401, 503]).toContain(dispatchRes.statusCode);
+    expect(f.operationCount()).toBe(0);
+  });
+
+  it("FR-007 FR-010: trusted_local loopback startServer stays independent from hosted auth guard and preserves local health", async () => {
+    const f = await createFullServerGuardFixture({
+      transport: "trusted_local",
+      includeHostedAuth: false,
+    });
+
+    const healthRes = await f.server.inject({
+      method: "GET",
+      url: "/health",
+    });
+    expect(healthRes.statusCode).toBe(200);
+    expect(healthRes.json().daemonLiveness).toBe("alive");
+    expect(healthRes.json().projectReadiness).toMatchObject({
+      totalCount: 1,
+      readyCount: 1,
+      status: "ready",
+    });
+
+    const statusRes = await f.server.inject({
+      method: "GET",
+      url: `/api/status?projectId=${f.project.projectId}`,
+    });
+    expect(statusRes.statusCode).toBe(200);
+    expect(statusRes.json().projectId).toBe(f.project.projectId);
   });
 });
