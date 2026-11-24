@@ -226,20 +226,20 @@ Every error emits a corrective navigation hint on stderr and preserves `ADR-004`
 
 ---
 
-### Phase 1: Frozen auth ports and domain policies
+### Phase 1: Auth ports and policy
 
 Write failing domain-law and AST boundary tests first. Observe RED before creating the pure auth policy and frozen ports plus Proposed `ADR-014`.
 
 #### Files
 
-- `src/domain/auth-policy.ts` — **create** — Pure route table and credential grammar plus issuer normalization and session cap and log redaction
-- `src/domain/index.ts` — **amend** — Export pure auth policy functions and schemas from domain barrel
-- `src/ports/auth-port.ts` — **create** — Freeze `VerifiedAuthContext` and seven auth ports with type-only domain imports
-- `src/ports/index.ts` — **amend** — Re-export `auth-port.js` from ports barrel
-- `docs/decisions/ADR-014-hosted-production-auth.md` — **create** — Proposed ADR for hosted Google login and opaque API credentials
-- `.gwrk/decisions/index.md` — **amend** — Regenerate derived decision index with `gwrk define adr --reindex`
-- `src/domain/auth-policy.test.ts` — **create** — Domain-law tests for routes and key grammar plus issuer mapping and redaction
-- `src/architecture.test.ts` — **amend** — Assert domain purity and frozen port signatures plus Proposed `ADR-014` status
+- `src/domain/auth-policy.ts` (NEW: Pure route table and credential grammar plus issuer normalization and session cap and log redaction)
+- `src/domain/index.ts` (MODIFY: Export pure auth policy functions and schemas from domain barrel)
+- `src/ports/auth-port.ts` (NEW: Freeze `VerifiedAuthContext` and seven auth ports with type-only domain imports)
+- `src/ports/index.ts` (MODIFY: Re-export `auth-port.js` from ports barrel)
+- `docs/decisions/ADR-014-hosted-production-auth.md` (NEW: Proposed ADR for hosted Google login and opaque API credentials)
+- `.gwrk/decisions/index.md` (MODIFY: Regenerate derived decision index with `gwrk define adr --reindex`)
+- `src/domain/auth-policy.test.ts` (NEW: Domain-law tests for routes and key grammar plus issuer mapping and redaction)
+- `src/architecture.test.ts` (MODIFY: Assert domain purity and frozen port signatures plus Proposed `ADR-014` status)
 
 #### Governance and Skills
 
@@ -269,22 +269,22 @@ node dist/cli.js define adr --check
 
 ---
 
-### Phase 2: API credential store and local CLI
+### Phase 2: API credentials and local CLI
 
 Prepare this phase against Phase 1 frozen ports. Write failing store and crypto plus CLI tests first. Observe RED before implementing SQLite tables and crypto helpers plus `gwrk auth key`.
 
 #### Files
 
-- `src/db/migrations/020-production-auth.sql` — **create** — Add `api_credentials` and `google_sessions` plus `auth_audit_events` tables to `gwrk.db`
-- `src/adapters/auth/credential-crypto.ts` — **create** — Implement `CredentialCryptoPort` with 32-byte secrets and constant-time SHA-256 checks
-- `src/adapters/sqlite/auth-store.ts` — **create** — Implement `AuthStorePort` and atomic `CredentialGrantAdminPort` with `project_role_bindings`
-- `src/adapters/sqlite/index.ts` — **amend** — Export SQLite auth store and grant admin adapter factories
-- `src/application/auth/manage-credentials.ts` — **create** — Use cases for key create and list plus revoke and atomic rotate
-- `src/commands/auth.ts` — **create** — Local `gwrk auth key` subcommands writing `0600` non-checkout secret files with `ADR-004` signals
-- `src/cli.ts` — **amend** — Register `createAuthCommand` and exempt `gwrk auth key` from cwd config preflight
-- `src/adapters/auth/credential-crypto.test.ts` — **create** — Test key format and SHA-256 verifiers plus constant-time comparison
-- `src/adapters/sqlite/auth-store.test.ts` — **create** — Test `AUTH-09` atomic rotation rollback and persisted revocation plus digest-only sessions
-- `src/commands/auth.test.ts` — **create** — Test `AUTH-10` `0600` secret files and delivery-failure revocation plus zero stdout leaks
+- `src/db/migrations/020-production-auth.sql` (NEW: Add `api_credentials` and `google_sessions` plus `auth_audit_events` tables to `gwrk.db`)
+- `src/adapters/auth/credential-crypto.ts` (NEW: Implement `CredentialCryptoPort` with 32-byte secrets and constant-time SHA-256 checks)
+- `src/adapters/sqlite/auth-store.ts` (NEW: Implement `AuthStorePort` and atomic `CredentialGrantAdminPort` with `project_role_bindings`)
+- `src/adapters/sqlite/index.ts` (MODIFY: Export SQLite auth store and grant admin adapter factories)
+- `src/application/auth/manage-credentials.ts` (NEW: Use cases for key create and list plus revoke and atomic rotate)
+- `src/commands/auth.ts` (NEW: Local `gwrk auth key` subcommands writing `0600` non-checkout secret files with `ADR-004` signals)
+- `src/cli.ts` (MODIFY: Register `createAuthCommand` and exempt `gwrk auth key` from cwd config preflight)
+- `src/adapters/auth/credential-crypto.test.ts` (NEW: Test key format and SHA-256 verifiers plus constant-time comparison)
+- `src/adapters/sqlite/auth-store.test.ts` (NEW: Test `AUTH-09` atomic rotation rollback and persisted revocation plus digest-only sessions)
+- `src/commands/auth.test.ts` (NEW: Test `AUTH-10` `0600` secret files and delivery-failure revocation plus zero stdout leaks)
 
 #### Governance and Skills
 
@@ -309,21 +309,21 @@ pnpm exec vitest run src/adapters/auth/credential-crypto.test.ts src/adapters/sq
 
 ---
 
-### Phase 3: Google JWT verifier and session revocation
+### Phase 3: Google JWT and sessions
 
 Prepare this phase against Phase 1 frozen ports. Compose it after Phase 2 on the single feature branch. Write failing synthetic OpenID Connect (OIDC) verifier and session tests first. Observe RED before implementing.
 
 #### Files
 
-- `package.json` — **amend** — Pin exact `jose` release for Node.js 22
-- `pnpm-lock.yaml` — **amend** — Record pinned `jose` lockfile entry
-- `src/adapters/auth/google-id-token.ts` — **create** — Implement `GoogleIdentityVerifierPort` with pinned `jose` and bounded JWKS cache plus live allowlist reload
-- `src/adapters/auth/proxy-logout.ts` — **create** — Implement `ProxySessionLogoutPort` against fixed internal `/oauth2/sign_out` endpoint
-- `src/application/auth/authenticate-request.ts` — **create** — Orchestrate API key and Google ID token checks plus audience and session cap denials
-- `src/application/auth/browser-session.ts` — **create** — Orchestrate session reads and origin-first digest revocation before proxy sign-out
-- `src/application/index.ts` — **amend** — Export authentication and session plus credential-management services
-- `src/adapters/auth/google-id-token.test.ts` — **create** — Synthetic OIDC tests for `AUTH-01` through `AUTH-03` plus live allowlist removal
-- `src/application/auth/authenticate-request.test.ts` — **create** — Application tests for logout order and 1-hour session cap plus outage fail-closed
+- `package.json` (MODIFY: Pin exact `jose` release for Node.js 22)
+- `pnpm-lock.yaml` (MODIFY: Record pinned `jose` lockfile entry)
+- `src/adapters/auth/google-id-token.ts` (NEW: Implement `GoogleIdentityVerifierPort` with pinned `jose` and bounded JWKS cache plus live allowlist reload)
+- `src/adapters/auth/proxy-logout.ts` (NEW: Implement `ProxySessionLogoutPort` against fixed internal `/oauth2/sign_out` endpoint)
+- `src/application/auth/authenticate-request.ts` (NEW: Orchestrate API key and Google ID token checks plus audience and session cap denials)
+- `src/application/auth/browser-session.ts` (NEW: Orchestrate session reads and origin-first digest revocation before proxy sign-out)
+- `src/application/index.ts` (MODIFY: Export authentication and session plus credential-management services)
+- `src/adapters/auth/google-id-token.test.ts` (NEW: Synthetic OIDC tests for `AUTH-01` through `AUTH-03` plus live allowlist removal)
+- `src/application/auth/authenticate-request.test.ts` (NEW: Application tests for logout order and 1-hour session cap plus outage fail-closed)
 
 #### Governance and Skills
 
@@ -349,22 +349,22 @@ pnpm exec vitest run src/adapters/auth/google-id-token.test.ts src/application/a
 
 ---
 
-### Phase 4: Async origin guard and scoped health
+### Phase 4: Origin guard and health
 
 Requires Phases 2 and 3. Write failing HTTP pre-handler and logout replay plus API key scope tests first. Observe RED before wiring Fastify guards and auth routes plus scoped health.
 
 #### Files
 
-- `package.json` — **amend** — Pin `@fastify/cookie` and `@fastify/csrf-protection` plus `@fastify/rate-limit` for Fastify 5
-- `pnpm-lock.yaml` — **amend** — Lock pinned Fastify security plugin releases
-- `src/adapters/auth/browser-csrf.ts` — **create** — Implement `BrowserCsrfPort` with `@fastify/csrf-protection` and `__Host-gwrk_csrf` cookie plus `x-gwrk-csrf-token` header
-- `src/server/auth-guard.ts` — **create** — Fastify async auth pre-handler and request decoration plus synchronous `resolvePrincipal` reader and default-deny guard
-- `src/server/routes/auth.ts` — **create** — Register `GET /` and `GET /api/auth/session` plus `POST /api/auth/logout` routes
-- `src/server/routes/health.ts` — **amend** — Filter hosted `GET /api/health` to one authorized project and serve minimal private `GET /health`
-- `src/server/index.ts` — **amend** — Register auth pre-handler and CSRF plus auth routes and scoped health while keeping `trusted_local` separate
-- `src/server/auth-prehandler.test.ts` — **create** — Test `AUTH-04` local and remote forged identity headers yield zero principal and zero rows
-- `src/server/auth-session.test.ts` — **create** — Test `AUTH-06` origin-first logout clears proxy and CSRF cookies and denies copied replay
-- `src/server/auth-api-keys.test.ts` — **create** — Test `AUTH-07` HTTP `401` key denials and `AUTH-08` HTTP `403` cross-project and role denials
+- `package.json` (MODIFY: Pin `@fastify/cookie` and `@fastify/csrf-protection` plus `@fastify/rate-limit` for Fastify 5)
+- `pnpm-lock.yaml` (MODIFY: Lock pinned Fastify security plugin releases)
+- `src/adapters/auth/browser-csrf.ts` (NEW: Implement `BrowserCsrfPort` with `@fastify/csrf-protection` and `__Host-gwrk_csrf` cookie plus `x-gwrk-csrf-token` header)
+- `src/server/auth-guard.ts` (NEW: Fastify async auth pre-handler and request decoration plus synchronous `resolvePrincipal` reader and default-deny guard)
+- `src/server/routes/auth.ts` (NEW: Register `GET /` and `GET /api/auth/session` plus `POST /api/auth/logout` routes)
+- `src/server/routes/health.ts` (MODIFY: Filter hosted `GET /api/health` to one authorized project and serve minimal private `GET /health`)
+- `src/server/index.ts` (MODIFY: Register auth pre-handler and CSRF plus auth routes and scoped health while keeping `trusted_local` separate)
+- `src/server/auth-prehandler.test.ts` (NEW: Test `AUTH-04` local and remote forged identity headers yield zero principal and zero rows)
+- `src/server/auth-session.test.ts` (NEW: Test `AUTH-06` origin-first logout clears proxy and CSRF cookies and denies copied replay)
+- `src/server/auth-api-keys.test.ts` (NEW: Test `AUTH-07` HTTP `401` key denials and `AUTH-08` HTTP `403` cross-project and role denials)
 
 #### Governance and Skills
 
@@ -390,21 +390,21 @@ pnpm exec vitest run src/server/auth-prehandler.test.ts src/server/auth-session.
 
 ---
 
-### Phase 5: CSRF checks and bounds plus redaction
+### Phase 5: CSRF, bounds and redaction
 
 Requires Phase 4. Write failing CSRF and cross-project health plus bounds and canary-log tests first. Observe RED before implementing sanitized logging and abuse bounds.
 
 #### Files
 
-- `src/server/auth-logging.ts` — **create** — Sanitized Fastify logger removing auth headers and cookies plus OAuth query params and error secrets
-- `src/server/auth-bounds.ts` — **create** — Finite login and per-credential API rate limits plus header and body bounds with fail-closed denials
-- `src/server/index.ts` — **amend** — Replace default `logger: true` with sanitized logger and register request bounds before auth routes
-- `src/server/auth-csrf.test.ts` — **create** — Test `AUTH-11` Origin and session-bound CSRF rejections plus zero cookie fallback for bad API keys
-- `src/server/routes/health.auth.test.ts` — **create** — Test `AUTH-12` cross-project `/api/health` denial and single-project filtering plus zero Git probes on `/health`
-- `src/server/auth-route-policy.test.ts` — **create** — Test `FR-010` default-deny routes and `HEAD` parity plus disabled CORS and JSON API `401` denials
-- `src/server/auth-bounds.test.ts` — **create** — Test `AUTH-14` rate limit `429` and oversized `413` or `431` plus JWKS outage `503`
-- `src/server/auth-logging.test.ts` — **create** — Test `AUTH-15` canary keys and cookies plus `Set-Cookie` and OAuth codes never match logs or responses
-- `src/server/github.test.ts` — **amend** — Retain and tag `AUTH-13` webhook HMAC secret and `DELIVERY_ID_CONFLICT` regressions
+- `src/server/auth-logging.ts` (NEW: Sanitized Fastify logger removing auth headers and cookies plus OAuth query params and error secrets)
+- `src/server/auth-bounds.ts` (NEW: Finite login and per-credential API rate limits plus header and body bounds with fail-closed denials)
+- `src/server/index.ts` (MODIFY: Replace default `logger: true` with sanitized logger and register request bounds before auth routes)
+- `src/server/auth-csrf.test.ts` (NEW: Test `AUTH-11` Origin and session-bound CSRF rejections plus zero cookie fallback for bad API keys)
+- `src/server/routes/health.auth.test.ts` (NEW: Test `AUTH-12` cross-project `/api/health` denial and single-project filtering plus zero Git probes on `/health`)
+- `src/server/auth-route-policy.test.ts` (NEW: Test `FR-010` default-deny routes and `HEAD` parity plus disabled CORS and JSON API `401` denials)
+- `src/server/auth-bounds.test.ts` (NEW: Test `AUTH-14` rate limit `429` and oversized `413` or `431` plus JWKS outage `503`)
+- `src/server/auth-logging.test.ts` (NEW: Test `AUTH-15` canary keys and cookies plus `Set-Cookie` and OAuth codes never match logs or responses)
+- `src/server/github.test.ts` (MODIFY: Retain and tag `AUTH-13` webhook HMAC secret and `DELIVERY_ID_CONFLICT` regressions)
 
 #### Governance and Skills
 
@@ -432,21 +432,21 @@ pnpm exec vitest run src/server/auth-csrf.test.ts src/server/routes/health.auth.
 
 ---
 
-### Phase 6: Hosted startup wiring and CLI probes
+### Phase 6: Hosted startup and CLI probes
 
 Requires Phase 5. Write failing startup and origin-bound CLI plus restart continuity and init tests first. Observe RED before wiring lazy startup factories and remote CLI probes.
 
 #### Files
 
-- `src/utils/config.ts` — **amend** — Add fail-fast hosted auth config fields for origin and Google client plus allowlist and CSRF secret and transport
-- `src/adapters/auth/hosted-auth-factory.ts` — **create** — Lazy startup-only auth factory with zero import-time secret reads or network calls
-- `src/adapters/auth/http-client-credential.ts` — **create** — Implement `HttpClientCredentialPort` reading `0600` origin-bound profiles with HTTPS and redirect-disabled fetch
-- `src/commands/server.ts` — **amend** — Wire `hosted-auth-factory.ts` into `server start --foreground` and `_run` and separate local liveness in `server status`
-- `src/commands/status.ts` — **amend** — Attach origin-bound `HttpClientCredentialPort` on remote probes and drop keys on origin mismatch or redirect
-- `src/adapters/auth/http-client-credential.test.ts` — **create** — Test `AUTH-16` origin match and mismatched `--server-url` plus plain HTTP and `302` redirect stripping
-- `src/commands/server.auth-startup.test.ts` — **create** — Test `AUTH-17` fail-closed hosted `start` and `_run` startup plus `FR-014` local liveness split
-- `src/server/auth-continuity.test.ts` — **create** — Test `AUTH-18` restart continuity for scoped dispatch and harvest plus post-revocation denial
-- `src/commands/init.test.ts` — **amend** — Add `TR-019` proving CLI imports and `gwrk init --non-interactive --server` make zero inference or auth reads
+- `src/utils/config.ts` (MODIFY: Add fail-fast hosted auth config fields for origin and Google client plus allowlist and CSRF secret and transport)
+- `src/adapters/auth/hosted-auth-factory.ts` (NEW: Lazy startup-only auth factory with zero import-time secret reads or network calls)
+- `src/adapters/auth/http-client-credential.ts` (NEW: Implement `HttpClientCredentialPort` reading `0600` origin-bound profiles with HTTPS and redirect-disabled fetch)
+- `src/commands/server.ts` (MODIFY: Wire `hosted-auth-factory.ts` into `server start --foreground` and `_run` and separate local liveness in `server status`)
+- `src/commands/status.ts` (MODIFY: Attach origin-bound `HttpClientCredentialPort` on remote probes and drop keys on origin mismatch or redirect)
+- `src/adapters/auth/http-client-credential.test.ts` (NEW: Test `AUTH-16` origin match and mismatched `--server-url` plus plain HTTP and `302` redirect stripping)
+- `src/commands/server.auth-startup.test.ts` (NEW: Test `AUTH-17` fail-closed hosted `start` and `_run` startup plus `FR-014` local liveness split)
+- `src/server/auth-continuity.test.ts` (NEW: Test `AUTH-18` restart continuity for scoped dispatch and harvest plus post-revocation denial)
+- `src/commands/init.test.ts` (MODIFY: Add `TR-019` proving CLI imports and `gwrk init --non-interactive --server` make zero inference or auth reads)
 
 #### Governance and Skills
 
@@ -472,22 +472,22 @@ pnpm exec vitest run src/adapters/auth/http-client-credential.test.ts src/comman
 
 ---
 
-### Phase 7: Production edge gateway and Linux runner
+### Phase 7: Gateway and Linux runner
 
 Requires Phase 6. Keep `deploy/hosted-auth-proof/` and `tests/hosted-auth-proof/gateway-proof.mjs` unchanged. Write failing synthetic OIDC edge and runner preflight tests first. Observe RED before creating the production gateway bundle and updating runner scripts.
 
 #### Files
 
-- `deploy/hosted-pilot/compose.yaml` — **create** — Digest-pinned Traefik and OAuth2 Proxy stack publishing ports `80` and `443` with loopback-only origin and sign-out
-- `deploy/hosted-pilot/traefik/dynamic.yaml` — **create** — Isolated browser and API plus webhook chains stripping forged headers and blocking public `/oauth2/sign_out` and `/health`
-- `deploy/hosted-pilot/oauth2-proxy/oauth2-proxy.cfg` — **create** — Google OIDC PKCE `S256` with `insecure_oidc_skip_nonce = false` and `set_authorization_header = true` plus explicit allowlist
-- `deploy/hosted-pilot/.env.example` — **create** — Non-secret edge config template with zero assumed Google accounts
-- `deploy/linux-runner/credentials.sh` — **amend** — Load origin auth secrets from `/etc/gwrk/secrets` `0640 root:gwrk` and scrub inbound auth env from workers
-- `deploy/linux-runner/preflight.sh` — **amend** — Fail closed on missing hosted auth secrets or loose modes or non-loopback bind or Telegram vars
-- `deploy/linux-runner/.env.example` — **amend** — Document hosted origin auth paths and loopback bind without secrets
-- `tests/hosted-pilot/compose.test.yaml` — **create** — Loopback synthetic OIDC overlay connecting pinned Traefik and OAuth2 Proxy to a real `gwrk` origin
-- `tests/hosted-pilot/gateway-production.mjs` — **create** — Synthetic OIDC edge suite for `AUTH-05` and ID-token proof plus API non-redirect and header forgery and canary logs
-- `tests/linux-runner/preflight-auth.test.ts` — **create** — Test `FR-016` fail-closed preflight checks and worker secret isolation
+- `deploy/hosted-pilot/compose.yaml` (NEW: Digest-pinned Traefik and OAuth2 Proxy stack publishing ports `80` and `443` with loopback-only origin and sign-out)
+- `deploy/hosted-pilot/traefik/dynamic.yaml` (NEW: Isolated browser and API plus webhook chains stripping forged headers and blocking public `/oauth2/sign_out` and `/health`)
+- `deploy/hosted-pilot/oauth2-proxy/oauth2-proxy.cfg` (NEW: Google OIDC PKCE `S256` with `insecure_oidc_skip_nonce = false` and `set_authorization_header = true` plus explicit allowlist)
+- `deploy/hosted-pilot/.env.example` (NEW: Non-secret edge config template with zero assumed Google accounts)
+- `deploy/linux-runner/credentials.sh` (MODIFY: Load origin auth secrets from `/etc/gwrk/secrets` `0640 root:gwrk` and scrub inbound auth env from workers)
+- `deploy/linux-runner/preflight.sh` (MODIFY: Fail closed on missing hosted auth secrets or loose modes or non-loopback bind or Telegram vars)
+- `deploy/linux-runner/.env.example` (MODIFY: Document hosted origin auth paths and loopback bind without secrets)
+- `tests/hosted-pilot/compose.test.yaml` (NEW: Loopback synthetic OIDC overlay connecting pinned Traefik and OAuth2 Proxy to a real `gwrk` origin)
+- `tests/hosted-pilot/gateway-production.mjs` (NEW: Synthetic OIDC edge suite for `AUTH-05` and ID-token proof plus API non-redirect and header forgery and canary logs)
+- `tests/linux-runner/preflight-auth.test.ts` (NEW: Test `FR-016` fail-closed preflight checks and worker secret isolation)
 
 #### Governance and Skills
 
@@ -520,12 +520,12 @@ Requires Phase 7. Write failing backup-restore auth-state and rollout-gate tests
 
 #### Files
 
-- `tests/linux-runner/backup-restore-rollback.test.ts` — **amend** — Add `FR-017` test proving backup and restore preserve verifiers and revocations plus roles and receipts
-- `tests/hosted-pilot/rollout-gates.test.ts` — **create** — Check private defaults and zero assumed accounts plus preserved `041` proof and Phase 9 auto-complete block
-- `deploy/hosted-pilot/README.md` — **create** — Operator runbook for secret separation and key rotation plus allowlist updates and restore and ingress closure
-- `deploy/hosted-pilot/live-acceptance.example.md` — **create** — Pending operator live acceptance template keeping live probes separate from synthetic tests
-- `tests/hosted-pilot/live-acceptance-gate.mjs` — **create** — Operator-only live verifier exiting `1` without `GWRK_OPERATOR_LIVE_ACCEPTANCE=1` and real non-synthetic HTTPS probes
-- `tests/linux-runner/container-proof.sh` — **amend** — Add hosted auth preflight and migration `020` restore plus rollback-check proofs to native Linux container run
+- `tests/linux-runner/backup-restore-rollback.test.ts` (MODIFY: Add `FR-017` test proving backup and restore preserve verifiers and revocations plus roles and receipts)
+- `tests/hosted-pilot/rollout-gates.test.ts` (NEW: Check private defaults and zero assumed accounts plus preserved `041` proof and Phase 9 auto-complete block)
+- `deploy/hosted-pilot/README.md` (NEW: Operator runbook for secret separation and key rotation plus allowlist updates and restore and ingress closure)
+- `deploy/hosted-pilot/live-acceptance.example.md` (NEW: Pending operator live acceptance template keeping live probes separate from synthetic tests)
+- `tests/hosted-pilot/live-acceptance-gate.mjs` (NEW: Operator-only live verifier exiting `1` without `GWRK_OPERATOR_LIVE_ACCEPTANCE=1` and real non-synthetic HTTPS probes)
+- `tests/linux-runner/container-proof.sh` (MODIFY: Add hosted auth preflight and migration `020` restore plus rollback-check proofs to native Linux container run)
 
 #### Governance and Skills
 
@@ -557,13 +557,13 @@ node tests/linux-runner/container-harness.mjs
 
 ---
 
-### Phase 9: Operator live acceptance and public exposure
+### Phase 9: Operator live security acceptance
 
 Owned solely by root and David Gonzalez after Phases 1 through 8 pass independent review and merge approval. Agents MUST NOT execute this phase or mark it complete or fabricate receipts. Google policy acceptance and account allowlist choice plus skills-connection preservation stay pending operator inputs. Public ingress and DNS for `https://gwrk.gforge.ai` stay closed until every live check passes.
 
 #### Files
 
-- `specs/051-hosted-aws-pilot/evidence/live-acceptance.md` — **create** — Sanitized operator live acceptance record with zero secrets written after real probes pass
+- `specs/051-hosted-aws-pilot/evidence/live-acceptance.md` (NEW: Sanitized operator live acceptance record with zero secrets written after real probes pass)
 
 #### Governance and Skills
 
