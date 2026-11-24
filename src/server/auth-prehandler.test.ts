@@ -694,6 +694,15 @@ async function createFullServerGuardFixture(
     transport?: "hosted" | "trusted_local";
     includeHostedAuth?: boolean;
     bindGoogleRole?: "viewer" | "operator" | "maintainer";
+    bindPrincipal?: {
+      principalType: "cli_token" | "google_sub";
+      principalId: string;
+      role: "viewer" | "operator" | "maintainer";
+    };
+    resolvePrincipal?: () => {
+      principalType: "cli_token" | "google_sub";
+      principalId: string;
+    };
   } = {},
 ) {
   const transport = options.transport ?? "hosted";
@@ -741,6 +750,14 @@ async function createFullServerGuardFixture(
       principalType: "google_sub",
       principalId: "https://accounts.google.com:operator",
       role: options.bindGoogleRole,
+    });
+  }
+  if (options.bindPrincipal) {
+    registry.setRoleBinding({
+      projectId: project.projectId,
+      principalType: options.bindPrincipal.principalType,
+      principalId: options.bindPrincipal.principalId,
+      role: options.bindPrincipal.role,
     });
   }
 
@@ -840,6 +857,9 @@ async function createFullServerGuardFixture(
     clock,
     pid: { writePid: vi.fn(), removePid: vi.fn() },
     heartbeatIntervalMs: null,
+    ...(options.resolvePrincipal
+      ? { resolvePrincipal: options.resolvePrincipal }
+      : {}),
     ...(includeHostedAuth
       ? {
           hostedAuth: {
@@ -1170,5 +1190,130 @@ describe("FR-007 FR-010 AUTH-04: full-server hosted auth guard integration via s
     });
     expect(statusRes.statusCode).toBe(200);
     expect(statusRes.json().projectId).toBe(f.project.projectId);
+  });
+
+  it("FR-007: caller-supplied resolvePrincipal cannot replace guard-established context when hostedAuth is active", async () => {
+    const f = await createFullServerGuardFixture({
+      bindPrincipal: {
+        principalType: "cli_token",
+        principalId: "caller-supplied-operator",
+        role: "operator",
+      },
+      resolvePrincipal: () => ({
+        principalType: "cli_token",
+        principalId: "caller-supplied-operator",
+      }),
+    });
+
+    const unauthRes = await f.server.inject({
+      method: "GET",
+      url: `/api/status?projectId=${f.project.projectId}`,
+    });
+    expect(unauthRes.statusCode).toBe(401);
+    expect(unauthRes.json()).toMatchObject({
+      ok: false,
+      code: "AUTH_REQUIRED",
+      requestId: expect.any(String),
+    });
+
+    const statusRes = await f.server.inject({
+      method: "GET",
+      url: `/api/status?projectId=${f.project.projectId}`,
+      headers: {
+        authorization: `Bearer ${googleToken}`,
+        "x-gwrk-auth-mode": "google_id_token",
+      },
+    });
+    expect(statusRes.statusCode).toBe(403);
+    expect(statusRes.json().code).toBe("UNAUTHORIZED_USER");
+
+    const healthRes = await f.server.inject({
+      method: "GET",
+      url: `/api/health?projectId=${f.project.projectId}`,
+      headers: {
+        authorization: `Bearer ${googleToken}`,
+        "x-gwrk-auth-mode": "google_id_token",
+      },
+    });
+    expect(healthRes.statusCode).toBe(403);
+    expect(healthRes.json().code).toBe("UNAUTHORIZED_USER");
+    expect(healthRes.body).not.toContain(f.project.slug);
+    expect(f.operationCount()).toBe(0);
+  });
+
+  it("FR-007 FR-010: caller-supplied resolvePrincipal cannot bypass hosted auth guard or hosted health scoping when hostedAuth is absent", async () => {
+    const f = await createFullServerGuardFixture({
+      transport: "hosted",
+      includeHostedAuth: false,
+      bindPrincipal: {
+        principalType: "cli_token",
+        principalId: "caller-supplied-operator",
+        role: "operator",
+      },
+      resolvePrincipal: () => ({
+        principalType: "cli_token",
+        principalId: "caller-supplied-operator",
+      }),
+    });
+    f.checkGit.mockClear();
+
+    const dispatchRes = await f.server.inject({
+      method: "POST",
+      url: "/api/dispatch",
+      payload: {
+        projectId: f.project.projectId,
+        featureId: "051-pilot",
+        phaseId: "phase-04",
+      },
+    });
+    expect([401, 503]).toContain(dispatchRes.statusCode);
+    expect(dispatchRes.json()).toMatchObject({
+      ok: false,
+      requestId: expect.any(String),
+    });
+    expect(f.operationCount()).toBe(0);
+
+    const statusRes = await f.server.inject({
+      method: "GET",
+      url: `/api/status?projectId=${f.project.projectId}`,
+    });
+    expect([401, 503]).toContain(statusRes.statusCode);
+    expect(statusRes.json()).toMatchObject({
+      ok: false,
+      requestId: expect.any(String),
+    });
+
+    const apiHealthRes = await f.server.inject({
+      method: "GET",
+      url: `/api/health?projectId=${f.project.projectId}`,
+    });
+    expect([401, 503]).toContain(apiHealthRes.statusCode);
+    expect(apiHealthRes.json()).toMatchObject({
+      ok: false,
+      requestId: expect.any(String),
+    });
+    expect(apiHealthRes.body).not.toContain(f.project.slug);
+
+    const privateHealthRes = await f.server.inject({
+      method: "GET",
+      url: "/health",
+    });
+    expect(privateHealthRes.statusCode).toBe(200);
+    expect(privateHealthRes.json()).toEqual({
+      status: "ok",
+      daemonLiveness: "alive",
+    });
+    expect(f.checkGit).not.toHaveBeenCalled();
+
+    const badMethodRes = await f.server.inject({
+      method: "PUT",
+      url: "/api/status",
+    });
+    expect(badMethodRes.statusCode).toBe(405);
+    expect(badMethodRes.json()).toMatchObject({
+      ok: false,
+      code: "METHOD_NOT_ALLOWED",
+      requestId: expect.any(String),
+    });
   });
 });

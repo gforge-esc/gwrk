@@ -2,12 +2,16 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import type { FastifyInstance } from "fastify";
+import type { FastifyInstance, FastifyRequest } from "fastify";
 import { verifyEnrolledCheckout } from "../../adapters/git/project-id.js";
 import type {
   AllowedRunnerKind,
   EnrolledProject,
 } from "../../domain/project-registry.js";
+import {
+  type RouteDenialCode,
+  evaluateHttpProjectAccess,
+} from "../../domain/slack-routing.js";
 import type {
   NotificationPort,
   SlackDeliveryStatus,
@@ -29,6 +33,34 @@ export interface HealthRoutesOptions {
   operationsStore?: Pick<OperationsStorePort, "getOperationsStatus">;
   notifier?: NotificationPort;
   runnerKind?: AllowedRunnerKind;
+  transport?: "trusted_local" | "hosted";
+  localDefaultProjectId?: string;
+  resolvePrincipal?: (request: FastifyRequest) =>
+    | {
+        principalType: "cli_token" | "google_sub";
+        principalId: string;
+      }
+    | undefined;
+}
+
+export interface MinimalLivenessResponse {
+  status: "ok" | "degraded";
+  daemonLiveness: "alive";
+}
+
+function httpStatusForDenial(code: RouteDenialCode): number {
+  switch (code) {
+    case "REMOTE_AUTH_REQUIRED":
+      return 401;
+    case "UNAUTHORIZED_USER":
+    case "INSUFFICIENT_ROLE":
+    case "RUNNER_NOT_ALLOWED":
+      return 403;
+    case "UNKNOWN_PROJECT":
+      return 404;
+    default:
+      return 400;
+  }
 }
 
 export interface OutboxHealthSummary {
@@ -181,7 +213,9 @@ export async function healthRoutes(
   sandbox: SandboxManager,
   options?: HealthRoutesOptions,
 ) {
-  const handler = async (): Promise<DurableHealthResponse> => {
+  const buildHealthResponse = async (
+    scopedProjects?: readonly EnrolledProject[],
+  ): Promise<DurableHealthResponse> => {
     const gitOk = await sandbox.checkGit();
     const networkOk = network.isOnline();
     const lifecycleStatus = lifecycle.getStatus();
@@ -197,7 +231,8 @@ export async function healthRoutes(
     }
 
     const runnerKind: AllowedRunnerKind = options?.runnerKind ?? "local";
-    const enrolledProjects = options?.registry?.listProjects() ?? [];
+    const enrolledProjects =
+      scopedProjects ?? options?.registry?.listProjects() ?? [];
     const projectOperations = options?.operationsStore
       ? enrolledProjects.map((project) =>
           options.operationsStore?.getOperationsStatus(project.projectId),
@@ -310,6 +345,53 @@ export async function healthRoutes(
     };
   };
 
-  server.get("/health", handler);
-  server.get("/api/health", handler);
+  if (options?.transport === "hosted") {
+    server.get("/health", async (): Promise<MinimalLivenessResponse> => {
+      const lifecycleStatus = lifecycle.getStatus();
+      return {
+        status: lifecycleStatus === "degraded" ? "degraded" : "ok",
+        daemonLiveness: "alive",
+      };
+    });
+
+    server.get<{ Querystring: { projectId?: string; project?: string } }>(
+      "/api/health",
+      async (request, reply) => {
+        const requestedProject =
+          request.query?.projectId ?? request.query?.project;
+        const projects = options.registry?.listProjects() ?? [];
+        const roles = projects.flatMap(
+          (project) =>
+            options.registry?.listRoleBindings(project.projectId) ?? [],
+        );
+        const decision = evaluateHttpProjectAccess({
+          projects,
+          roles,
+          requestedProject,
+          localDefaultProjectId: options.localDefaultProjectId,
+          transport: "hosted",
+          principal: options.resolvePrincipal?.(request),
+          requiredAccess: "read",
+        });
+
+        if (!decision.ok) {
+          return reply.status(httpStatusForDenial(decision.code)).send({
+            ok: false,
+            code: decision.code,
+            error: decision.message,
+            requestId: request.id,
+          });
+        }
+
+        return buildHealthResponse([decision.project]);
+      },
+    );
+    return;
+  }
+
+  const localHandler = async (): Promise<DurableHealthResponse> =>
+    buildHealthResponse();
+
+  server.get("/health", localHandler);
+  server.get("/api/health", localHandler);
 }
