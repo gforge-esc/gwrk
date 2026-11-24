@@ -1,0 +1,19 @@
+{
+  "runId": "2026-11-24T19:21:05.130Z_ship_p05",
+  "feature": "051-hosted-aws-pilot",
+  "phase": "phase-05",
+  "command": "ship",
+  "agent": "agy",
+  "model": "unknown",
+  "startedAt": "2026-11-24T19:21:05.130Z",
+  "finishedAt": "2026-11-24T19:26:15.363Z",
+  "durationS": 310,
+  "exitCode": 1,
+  "attempt": 1,
+  "filesChanged": 5,
+  "linesAdded": 273,
+  "linesDeleted": 0,
+  "gitCommit": "9e3bf605ee24c90e1ae2c578f10de15b5ed1051d",
+  "gitBranch": "feat/051-hosted-aws-pilot",
+  "digest": []
+}
