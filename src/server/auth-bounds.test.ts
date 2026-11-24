@@ -447,15 +447,10 @@ describe("FR-013 US-008 TR-014 AUTH-14: full-server HTTP rate admission, parser 
       releaseBarrier = resolve;
     });
     let entered = 0;
-    let notifySixty!: () => void;
-    const sixtyEntered = new Promise<void>((resolve) => {
-      notifySixty = resolve;
-    });
 
     const verifyIdToken = vi.fn(async () => {
       entered++;
-      if (entered === 60) notifySixty();
-      await barrier;
+      if (entered <= 60) await barrier;
       return {
         ok: false as const,
         code: "AUTH_TOKEN_INVALID" as const,
@@ -468,13 +463,37 @@ describe("FR-013 US-008 TR-014 AUTH-14: full-server HTTP rate admission, parser 
     });
 
     const inflight = Array.from({ length: 60 }, (_, idx) =>
-      f.server.inject({
+      f.server
+        .inject({
+          method: "POST",
+          url: "/api/dispatch",
+          remoteAddress: "127.0.0.1",
+          headers: {
+            "x-forwarded-for": "198.51.100.10",
+            authorization: `Bearer bad-google-${idx}`,
+            "x-gwrk-auth-mode": "google_id_token",
+          },
+          payload: {
+            projectId: f.project.projectId,
+            featureId: "051-barrier",
+            phaseId: "phase-05",
+          },
+        })
+        .then((response) => response),
+    );
+
+    try {
+      await vi.waitFor(() => expect(entered).toBe(60), { timeout: 1000 });
+      expect(verifyIdToken).toHaveBeenCalledTimes(60);
+      expect(f.dispatchCount()).toBe(0);
+
+      const attempt61 = await f.server.inject({
         method: "POST",
         url: "/api/dispatch",
         remoteAddress: "127.0.0.1",
         headers: {
           "x-forwarded-for": "198.51.100.10",
-          authorization: `Bearer bad-google-${idx}`,
+          authorization: "Bearer bad-google-61",
           "x-gwrk-auth-mode": "google_id_token",
         },
         payload: {
@@ -482,52 +501,38 @@ describe("FR-013 US-008 TR-014 AUTH-14: full-server HTTP rate admission, parser 
           featureId: "051-barrier",
           phaseId: "phase-05",
         },
-      }),
-    );
+      });
 
-    await sixtyEntered;
-    expect(verifyIdToken).toHaveBeenCalledTimes(60);
-    expect(f.dispatchCount()).toBe(0);
+      expect(attempt61.statusCode).toBe(429);
+      expect(attempt61.json()).toMatchObject({
+        ok: false,
+        code: "RATE_LIMIT_EXCEEDED",
+        requestId: expect.any(String),
+      });
+      expect(verifyIdToken).toHaveBeenCalledTimes(60);
+      expect(f.dispatchCount()).toBe(0);
 
-    const attempt61 = await f.server.inject({
-      method: "POST",
-      url: "/api/dispatch",
-      remoteAddress: "127.0.0.1",
-      headers: {
-        "x-forwarded-for": "198.51.100.10",
-        authorization: "Bearer bad-google-61",
-        "x-gwrk-auth-mode": "google_id_token",
-      },
-      payload: {
-        projectId: f.project.projectId,
-        featureId: "051-barrier",
-        phaseId: "phase-05",
-      },
-    });
+      // Minimal private liveness stays independent of API rate admission.
+      const liveness = await f.server.inject({
+        method: "GET",
+        url: "/health",
+        remoteAddress: "127.0.0.1",
+        headers: { "x-forwarded-for": "198.51.100.10" },
+      });
+      expect(liveness.statusCode).toBe(200);
+      expect(liveness.json()).toEqual({
+        status: "ok",
+        daemonLiveness: "alive",
+      });
 
-    expect(attempt61.statusCode).toBe(429);
-    expect(attempt61.json()).toMatchObject({
-      ok: false,
-      code: "RATE_LIMIT_EXCEEDED",
-      requestId: expect.any(String),
-    });
-    expect(verifyIdToken).toHaveBeenCalledTimes(60);
-    expect(f.dispatchCount()).toBe(0);
-
-    // Minimal private liveness stays independent of API rate admission.
-    const liveness = await f.server.inject({
-      method: "GET",
-      url: "/health",
-      remoteAddress: "127.0.0.1",
-      headers: { "x-forwarded-for": "198.51.100.10" },
-    });
-    expect(liveness.statusCode).toBe(200);
-    expect(liveness.json()).toEqual({ status: "ok", daemonLiveness: "alive" });
-
-    releaseBarrier();
-    const responses = await Promise.all(inflight);
-    expect(responses.every((res) => res.statusCode === 401)).toBe(true);
-    expect(f.dispatchCount()).toBe(0);
+      releaseBarrier();
+      const responses = await Promise.all(inflight);
+      expect(responses.every((res) => res.statusCode === 401)).toBe(true);
+      expect(f.dispatchCount()).toBe(0);
+    } finally {
+      releaseBarrier();
+      await Promise.allSettled(inflight);
+    }
   });
 
   it("AUTH-14: permits 120 sequential verified requests from one IP and denies request 121 by credential quota", async () => {
@@ -702,10 +707,8 @@ describe("FR-013 US-008 TR-014 AUTH-14: full-server HTTP rate admission, parser 
 
   it("AUTH-14: real loopback client disconnect during blocked verification prevents handler effects and preserves single IP charge", async () => {
     let blockNext = true;
-    let verifierEntered!: () => void;
-    const enteredPromise = new Promise<void>((resolve) => {
-      verifierEntered = resolve;
-    });
+    let verifierEntered = false;
+    let verifierFinished = false;
     let releaseVerifier!: () => void;
     const verifierGate = new Promise<void>((resolve) => {
       releaseVerifier = resolve;
@@ -721,8 +724,9 @@ describe("FR-013 US-008 TR-014 AUTH-14: full-server HTTP rate admission, parser 
             `Bearer gwrk_v1.abort-op.${"a".repeat(43)}`
         ) {
           blockNext = false;
-          verifierEntered();
+          verifierEntered = true;
           await verifierGate;
+          verifierFinished = true;
           return {
             ok: true as const,
             context: {
@@ -752,6 +756,12 @@ describe("FR-013 US-008 TR-014 AUTH-14: full-server HTTP rate admission, parser 
       phaseId: "phase-05",
     });
 
+    let serverSocketClosed = false;
+    f.server.server.once("connection", (socket) => {
+      socket.once("close", () => {
+        serverSocketClosed = true;
+      });
+    });
     const abortReq = http.request({
       host: "127.0.0.1",
       port: f.port,
@@ -768,44 +778,57 @@ describe("FR-013 US-008 TR-014 AUTH-14: full-server HTTP rate admission, parser 
     abortReq.write(payload);
     abortReq.end();
 
-    await enteredPromise;
-    abortReq.destroy();
-    // Allow socket close/abort hook on the server to settle the unverified reservation.
-    await new Promise((resolve) => setTimeout(resolve, 60));
+    try {
+      await vi.waitFor(() => expect(verifierEntered).toBe(true), {
+        timeout: 1000,
+      });
+      abortReq.destroy();
+      await vi.waitFor(() => expect(serverSocketClosed).toBe(true), {
+        timeout: 1000,
+      });
 
-    releaseVerifier();
-    await new Promise((resolve) => setTimeout(resolve, 60));
+      releaseVerifier();
+      await vi.waitFor(() => expect(verifierFinished).toBe(true), {
+        timeout: 1000,
+      });
+      await new Promise<void>((resolve) => setImmediate(resolve));
 
-    // Late verifier resolution after abort MUST NOT execute the dispatch handler.
-    expect(f.dispatchCount()).toBe(0);
+      // Late verifier resolution after abort MUST NOT execute the dispatch handler.
+      expect(f.dispatchCount()).toBe(0);
 
-    // Remaining IP allowance on 198.51.100.40 is exactly 59 (abort kept 1 charge, no refund and no double charge).
-    for (let i = 0; i < 59; i++) {
-      const res = await f.server.inject({
+      // Remaining IP allowance on 198.51.100.40 is exactly 59 (abort kept 1 charge, no refund and no double charge).
+      for (let i = 0; i < 59; i++) {
+        const res = await f.server.inject({
+          method: "GET",
+          url: `/api/status?projectId=${f.project.projectId}`,
+          remoteAddress: "127.0.0.1",
+          headers: {
+            "x-forwarded-for": "198.51.100.40",
+            authorization: `Bearer gwrk_v1.invalid.${"c".repeat(43)}`,
+          },
+        });
+        expect(res.statusCode, `remaining attempt #${i + 1}`).toBe(401);
+      }
+
+      const callsBeforeLimit = verifyCalls;
+      const attempt61 = await f.server.inject({
         method: "GET",
         url: `/api/status?projectId=${f.project.projectId}`,
         remoteAddress: "127.0.0.1",
         headers: {
           "x-forwarded-for": "198.51.100.40",
-          authorization: `Bearer gwrk_v1.invalid.${"c".repeat(43)}`,
+          authorization: `Bearer gwrk_v1.invalid.${"d".repeat(43)}`,
         },
       });
-      expect(res.statusCode, `remaining attempt #${i + 1}`).toBe(401);
+      expect(attempt61.statusCode).toBe(429);
+      expect(attempt61.json().code).toBe("RATE_LIMIT_EXCEEDED");
+      expect(verifyCalls).toBe(callsBeforeLimit);
+      expect(f.dispatchCount()).toBe(0);
+    } finally {
+      abortReq.destroy();
+      releaseVerifier();
+      await new Promise<void>((resolve) => setImmediate(resolve));
     }
-
-    const callsBeforeLimit = verifyCalls;
-    const attempt61 = await f.server.inject({
-      method: "GET",
-      url: `/api/status?projectId=${f.project.projectId}`,
-      remoteAddress: "127.0.0.1",
-      headers: {
-        "x-forwarded-for": "198.51.100.40",
-        authorization: `Bearer gwrk_v1.invalid.${"d".repeat(43)}`,
-      },
-    });
-    expect(attempt61.statusCode).toBe(429);
-    expect(attempt61.json().code).toBe("RATE_LIMIT_EXCEEDED");
-    expect(verifyCalls).toBe(callsBeforeLimit);
   });
 
   it("AUTH-14: error or 403/500 response cleanup after verified completion neither double-charges nor refunds credential quota", async () => {
@@ -901,33 +924,24 @@ describe("FR-013 US-008 TR-014 AUTH-14: full-server HTTP rate admission, parser 
 
   it("AUTH-14: preserves new IP generation across rollover, enforces 60 pending across rollover, and denies expired handles at 120s", async () => {
     let blockToken: string | null = "BLOCK_ROLLOVER";
-    const enteredMap = new Map<string, () => void>();
+    const enteredTokens = new Set<string>();
     const gateMap = new Map<string, Promise<void>>();
     const releaseMap = new Map<string, () => void>();
 
     const armGate = (tag: string) => {
-      let entered!: () => void;
-      const enteredPromise = new Promise<void>((resolve) => {
-        entered = resolve;
-      });
       let release!: () => void;
       const gate = new Promise<void>((resolve) => {
         release = resolve;
       });
-      enteredMap.set(tag, entered);
       gateMap.set(tag, gate);
       releaseMap.set(tag, release);
-      return { enteredPromise, release };
+      return { release };
     };
 
     const rolloverGate = armGate("BLOCK_ROLLOVER");
     const expiryGate = armGate("BLOCK_EXPIRY");
 
     let pendingBatchEntered = 0;
-    let notifySixtyPending!: () => void;
-    const sixtyPendingEntered = new Promise<void>((resolve) => {
-      notifySixtyPending = resolve;
-    });
     let releaseSixtyPending!: () => void;
     const sixtyPendingGate = new Promise<void>((resolve) => {
       releaseSixtyPending = resolve;
@@ -939,7 +953,7 @@ describe("FR-013 US-008 TR-014 AUTH-14: full-server HTTP rate admission, parser 
         token === "BLOCK_ROLLOVER" ||
         token === "BLOCK_EXPIRY"
       ) {
-        enteredMap.get(token)?.();
+        enteredTokens.add(token);
         await gateMap.get(token);
         return {
           ok: true as const,
@@ -957,7 +971,6 @@ describe("FR-013 US-008 TR-014 AUTH-14: full-server HTTP rate admission, parser 
       }
       if (token.startsWith("PENDING_BATCH_")) {
         pendingBatchEntered++;
-        if (pendingBatchEntered === 60) notifySixtyPending();
         await sixtyPendingGate;
         return {
           ok: false as const,
@@ -976,113 +989,138 @@ describe("FR-013 US-008 TR-014 AUTH-14: full-server HTTP rate admission, parser 
       googleVerifier: { verifyIdToken },
     });
 
-    // (a) Rollover while blocked: old verified completion MUST NOT refund the new IP generation.
-    const oldReq = f.server.inject({
-      method: "GET",
-      url: `/api/status?projectId=${f.project.projectId}`,
-      remoteAddress: "127.0.0.1",
-      headers: {
-        "x-forwarded-for": "198.51.100.60",
-        authorization: "Bearer BLOCK_ROLLOVER",
-        "x-gwrk-auth-mode": "google_id_token",
-      },
-    });
-    await rolloverGate.enteredPromise;
+    const requests: Promise<unknown>[] = [];
+    try {
+      // (a) Rollover while blocked: old verified completion MUST NOT refund the new IP generation.
+      const oldReq = f.server
+        .inject({
+          method: "GET",
+          url: `/api/status?projectId=${f.project.projectId}`,
+          remoteAddress: "127.0.0.1",
+          headers: {
+            "x-forwarded-for": "198.51.100.60",
+            authorization: "Bearer BLOCK_ROLLOVER",
+            "x-gwrk-auth-mode": "google_id_token",
+          },
+        })
+        .then((response) => response);
+      requests.push(oldReq);
+      await vi.waitFor(
+        () => expect(enteredTokens.has("BLOCK_ROLLOVER")).toBe(true),
+        { timeout: 1000 },
+      );
 
-    f.advanceMs(60_000);
-    const newGenFirstFailure = await f.server.inject({
-      method: "GET",
-      url: `/api/status?projectId=${f.project.projectId}`,
-      remoteAddress: "127.0.0.1",
-      headers: {
-        "x-forwarded-for": "198.51.100.60",
-        authorization: "Bearer invalid-new-gen-0",
-        "x-gwrk-auth-mode": "google_id_token",
-      },
-    });
-    expect(newGenFirstFailure.statusCode).toBe(401);
-
-    rolloverGate.release();
-    expect((await oldReq).statusCode).toBe(200);
-
-    for (let i = 1; i < 60; i++) {
-      const failRes = await f.server.inject({
+      f.advanceMs(60_000);
+      const newGenFirstFailure = await f.server.inject({
         method: "GET",
         url: `/api/status?projectId=${f.project.projectId}`,
         remoteAddress: "127.0.0.1",
         headers: {
           "x-forwarded-for": "198.51.100.60",
-          authorization: `Bearer invalid-new-gen-${i}`,
+          authorization: "Bearer invalid-new-gen-0",
           "x-gwrk-auth-mode": "google_id_token",
         },
       });
-      expect(failRes.statusCode).toBe(401);
-    }
+      expect(newGenFirstFailure.statusCode).toBe(401);
 
-    const newGenAttempt61 = await f.server.inject({
-      method: "GET",
-      url: `/api/status?projectId=${f.project.projectId}`,
-      remoteAddress: "127.0.0.1",
-      headers: {
-        "x-forwarded-for": "198.51.100.60",
-        authorization: "Bearer invalid-new-gen-60",
-        "x-gwrk-auth-mode": "google_id_token",
-      },
-    });
-    expect(newGenAttempt61.statusCode).toBe(429);
+      rolloverGate.release();
+      expect((await oldReq).statusCode).toBe(200);
 
-    // (b) 60 pending reservations stay capped across window rollover.
-    const pendingBatch = Array.from({ length: 60 }, (_, idx) =>
-      f.server.inject({
+      for (let i = 1; i < 60; i++) {
+        const failRes = await f.server.inject({
+          method: "GET",
+          url: `/api/status?projectId=${f.project.projectId}`,
+          remoteAddress: "127.0.0.1",
+          headers: {
+            "x-forwarded-for": "198.51.100.60",
+            authorization: `Bearer invalid-new-gen-${i}`,
+            "x-gwrk-auth-mode": "google_id_token",
+          },
+        });
+        expect(failRes.statusCode).toBe(401);
+      }
+
+      const newGenAttempt61 = await f.server.inject({
+        method: "GET",
+        url: `/api/status?projectId=${f.project.projectId}`,
+        remoteAddress: "127.0.0.1",
+        headers: {
+          "x-forwarded-for": "198.51.100.60",
+          authorization: "Bearer invalid-new-gen-60",
+          "x-gwrk-auth-mode": "google_id_token",
+        },
+      });
+      expect(newGenAttempt61.statusCode).toBe(429);
+
+      // (b) 60 pending reservations stay capped across window rollover.
+      const pendingBatch = Array.from({ length: 60 }, (_, idx) =>
+        f.server
+          .inject({
+            method: "GET",
+            url: `/api/status?projectId=${f.project.projectId}`,
+            remoteAddress: "127.0.0.1",
+            headers: {
+              "x-forwarded-for": "198.51.100.61",
+              authorization: `Bearer PENDING_BATCH_${idx}`,
+              "x-gwrk-auth-mode": "google_id_token",
+            },
+          })
+          .then((response) => response),
+      );
+      requests.push(...pendingBatch);
+      await vi.waitFor(() => expect(pendingBatchEntered).toBe(60), {
+        timeout: 1000,
+      });
+      f.advanceMs(60_000);
+      const callsBeforeCrossGen61 = verifyIdToken.mock.calls.length;
+      const crossGen61 = await f.server.inject({
         method: "GET",
         url: `/api/status?projectId=${f.project.projectId}`,
         remoteAddress: "127.0.0.1",
         headers: {
           "x-forwarded-for": "198.51.100.61",
-          authorization: `Bearer PENDING_BATCH_${idx}`,
+          authorization: "Bearer cross-gen-61",
           "x-gwrk-auth-mode": "google_id_token",
         },
-      }),
-    );
-    await sixtyPendingEntered;
-    f.advanceMs(60_000);
-    const callsBeforeCrossGen61 = verifyIdToken.mock.calls.length;
-    const crossGen61 = await f.server.inject({
-      method: "GET",
-      url: `/api/status?projectId=${f.project.projectId}`,
-      remoteAddress: "127.0.0.1",
-      headers: {
-        "x-forwarded-for": "198.51.100.61",
-        authorization: "Bearer cross-gen-61",
-        "x-gwrk-auth-mode": "google_id_token",
-      },
-    });
-    expect(crossGen61.statusCode).toBe(429);
-    expect(verifyIdToken.mock.calls.length).toBe(callsBeforeCrossGen61);
-    releaseSixtyPending();
-    await Promise.all(pendingBatch);
+      });
+      expect(crossGen61.statusCode).toBe(429);
+      expect(verifyIdToken.mock.calls.length).toBe(callsBeforeCrossGen61);
+      releaseSixtyPending();
+      await Promise.all(pendingBatch);
 
-    // (c) Fixed 120s reservation expiry while verification is blocked denies work.
-    blockToken = "BLOCK_EXPIRY";
-    const expiredReq = f.server.inject({
-      method: "GET",
-      url: `/api/status?projectId=${f.project.projectId}`,
-      remoteAddress: "127.0.0.1",
-      headers: {
-        "x-forwarded-for": "198.51.100.62",
-        authorization: "Bearer BLOCK_EXPIRY",
-        "x-gwrk-auth-mode": "google_id_token",
-      },
-    });
-    await expiryGate.enteredPromise;
-    f.advanceMs(120_000);
-    expiryGate.release();
-    const expiredRes = await expiredReq;
-    expect([429, 503]).toContain(expiredRes.statusCode);
-    expect(expiredRes.json()).toMatchObject({
-      ok: false,
-      requestId: expect.any(String),
-    });
+      // (c) Fixed 120s reservation expiry while verification is blocked denies work.
+      blockToken = "BLOCK_EXPIRY";
+      const expiredReq = f.server
+        .inject({
+          method: "GET",
+          url: `/api/status?projectId=${f.project.projectId}`,
+          remoteAddress: "127.0.0.1",
+          headers: {
+            "x-forwarded-for": "198.51.100.62",
+            authorization: "Bearer BLOCK_EXPIRY",
+            "x-gwrk-auth-mode": "google_id_token",
+          },
+        })
+        .then((response) => response);
+      requests.push(expiredReq);
+      await vi.waitFor(
+        () => expect(enteredTokens.has("BLOCK_EXPIRY")).toBe(true),
+        { timeout: 1000 },
+      );
+      f.advanceMs(120_000);
+      expiryGate.release();
+      const expiredRes = await expiredReq;
+      expect([429, 503]).toContain(expiredRes.statusCode);
+      expect(expiredRes.json()).toMatchObject({
+        ok: false,
+        requestId: expect.any(String),
+      });
+      expect(f.dispatchCount()).toBe(0);
+    } finally {
+      for (const release of releaseMap.values()) release();
+      releaseSixtyPending();
+      await Promise.allSettled(requests);
+    }
   });
 
   it("AUTH-14: ignores forged forwarding headers from untrusted peers and normalizes IPv6 variants from trusted proxy", async () => {
@@ -1389,7 +1427,9 @@ describe("FR-013 US-008 TR-014 AUTH-14: full-server HTTP rate admission, parser 
     await app.ready();
     await app.close();
     expect(appCloseSpy).toHaveBeenCalledTimes(1);
-    expect(closeSpy).toHaveBeenCalled();
+    const closesBeforeShutdown = closeSpy.mock.calls.length;
+    await closedFixture.server.close();
+    expect(closeSpy).toHaveBeenCalledTimes(closesBeforeShutdown + 1);
   });
 
   it("AUTH-14: enforces real loopback parser limits for >16384 header bytes (431) and >1048576 body bytes (413)", async () => {
