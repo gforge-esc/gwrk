@@ -1,12 +1,12 @@
 # Hosted AWS pilot implementation plan
 
-Build Google login verification and scoped API keys plus hosted origin guards and edge routing for `051-hosted-aws-pilot`. Blocked: implementation waits for plan review and task generation. Public exposure at `https://gwrk.gforge.ai` waits for Google policy acceptance and the explicit account allowlist plus passing security gates. The coordinator owns code and synthetic checks. Root owns host setup and worker isolation. David Gonzalez (project owner) owns Google inputs and Architecture Decision Record (ADR) ratification plus pull request merge approval.
+Build Google login verification and scoped API keys plus hosted origin guards and edge routing for `051-hosted-aws-pilot`. Blocked: task generation and implementation remain pending. Public exposure at `https://gwrk.gforge.ai` waits for Google policy acceptance and the explicit account allowlist plus passing security gates. The coordinator owns code and synthetic checks. Root owns host setup and worker isolation. David Gonzalez (project owner) owns Google inputs and Architecture Decision Record (ADR) ratification plus pull request merge approval.
 
 > Feature: `051-hosted-aws-pilot`
 > Specification: [spec.md](spec.md)
 > Authoritative contract: [production-auth.md](contracts/production-auth.md)
 > Separate operator references: [deployment-plan.md](deployment-plan.md) and [deployment-plan-stress-test.md](deployment-plan-stress-test.md)
-> Review notice: [plan-stress-test.md](plan-stress-test.md) covers the earlier deployment outline only. It does not approve this implementation plan. Root will replace it after review.
+> Independent assessment: [plan-stress-test.md](plan-stress-test.md) approves the corrected implementation sequence. The first-pass findings remain in [plan-review-first-pass.md](evidence/plan-review-first-pass.md).
 
 ## Architecture and phase dependency flow
 
