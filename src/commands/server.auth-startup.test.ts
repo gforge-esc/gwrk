@@ -752,4 +752,45 @@ describe("FR-008 / TR-017: hosted server startup composition and local liveness 
     expect(result.stderr).toContain("csrfHmacKeyFile");
     expect(result.stdout + result.stderr).not.toContain(CANARY);
   });
+
+  it("AUTH-17 regression: hosted startup failure during auth factory initialization does not leak an open SQLite handle", async () => {
+    writeProjectConfig();
+    for (const [k, v] of Object.entries(HOSTED_ENV)) vi.stubEnv(k, v);
+    const listenSpy = vi.spyOn(net.Server.prototype, "listen");
+
+    vi.spyOn(protectedFiles, "resolveTrustedGwrkGroupId").mockResolvedValue(
+      1479,
+    );
+    vi.spyOn(protectedFiles, "createProtectedHostedAuthFiles").mockReturnValue({
+      readAllowlist: vi.fn(async () => ["operator@example.test"]),
+      readCsrfHmacKey: vi.fn().mockRejectedValue(new Error(CANARY)),
+    });
+
+    const dbModule = await import("../db/index.js");
+    const realOpen = dbModule.openDatabase;
+    const openedHandles: ReturnType<typeof realOpen>[] = [];
+    vi.spyOn(dbModule, "openDatabase").mockImplementation((opts) => {
+      const handle = realOpen(opts);
+      openedHandles.push(handle);
+      return handle;
+    });
+
+    wrapRealStartServer();
+    try {
+      for (const args of [["start", "--foreground"], ["_run"]]) {
+        const failedStart = await runServerCli(args);
+        expect(failedStart.exitCode).toBe(1);
+        expect(failedStart.stderr).toContain("csrfHmacKeyFile");
+        expect(failedStart.stdout + failedStart.stderr).not.toContain(CANARY);
+        expect(listenSpy).not.toHaveBeenCalled();
+        for (const handle of openedHandles) {
+          expect(handle.open).toBe(false);
+        }
+      }
+    } finally {
+      for (const handle of openedHandles) {
+        if (handle.open) handle.close();
+      }
+    }
+  });
 });
