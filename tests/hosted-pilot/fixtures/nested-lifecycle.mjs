@@ -2,11 +2,11 @@ import assert from "node:assert/strict";
 import {
   lstatSync,
   mkdirSync,
+  readFileSync,
   readdirSync,
   readlinkSync,
   realpathSync,
   rmSync,
-  statSync,
   writeFileSync,
 } from "node:fs";
 import { setTimeout as sleep } from "node:timers/promises";
@@ -18,7 +18,11 @@ import {
 } from "./process-scope.mjs";
 import { RESOURCE_LIMITS, ownedRuntimePlan } from "./runtime-policy.mjs";
 
-function rootDirectory(path, files = { lstatSync, realpathSync }) {
+function rootDirectory(
+  path,
+  files = { lstatSync, realpathSync },
+  modes = [0o700],
+) {
   const metadata = files.lstatSync(path);
   assert.equal(metadata.isDirectory(), true, "fixture directory is missing");
   assert.equal(
@@ -28,7 +32,10 @@ function rootDirectory(path, files = { lstatSync, realpathSync }) {
   );
   assert.equal(metadata.uid, 0, "fixture directory owner differs");
   assert.equal(metadata.gid, 0, "fixture directory group differs");
-  assert.equal(metadata.mode & 0o777, 0o700, "fixture directory mode differs");
+  assert.ok(
+    modes.includes(metadata.mode & 0o777),
+    "fixture directory mode differs",
+  );
   assert.equal(
     files.realpathSync(path),
     path,
@@ -47,20 +54,20 @@ export async function withOwnedNestedDaemon(
     lstatSync,
     mkdirSync,
     readdirSync,
+    readFileSync,
     readlinkSync,
     realpathSync,
     rmSync,
-    statSync,
     writeFileSync,
   };
   const {
     lstatSync: inspectPath,
     mkdirSync: createDirectory,
     readdirSync: listDirectory,
+    readFileSync: readMetadataFile,
     readlinkSync: readNamespaceLink,
     realpathSync: canonicalPath,
     rmSync: removeDirectory,
-    statSync: inspectFollowedPath,
     writeFileSync: writeFile,
   } = files;
   assert.equal(effects.platform ?? process.platform, "linux");
@@ -85,7 +92,10 @@ export async function withOwnedNestedDaemon(
   assert.equal(parent.dev, receipt.dataParentDevice);
   assert.equal(parent.ino, receipt.dataParentInode);
   assert.equal(canonicalPath("/var/lib/gwrk"), "/var/lib/gwrk");
-  rootDirectory("/var/lib/gwrk/verification-fixtures", files);
+  const namespaceIdentity = rootDirectory(
+    "/var/lib/gwrk/verification-fixtures",
+    files,
+  );
   const dataIdentity = rootDirectory(dataDirectory, files);
   assert.equal(
     listDirectory(dataDirectory).length,
@@ -323,35 +333,80 @@ export async function withOwnedNestedDaemon(
         containerId = metadata.Id;
         await dockerForCleanup(["rm", "--force", containerId]);
       }
-      const actual = rootDirectory(dataDirectory, files);
-      assert.deepEqual(
-        actual,
-        dataIdentity,
-        "owned data identity changed before cleanup",
-      );
-      const actualParent = inspectFollowedPath("/var/lib/gwrk");
-      assert.equal(actualParent.dev, parent.dev);
-      assert.equal(actualParent.ino, parent.ino);
-      if (childrenDrained) removeDirectory(dataDirectory, { recursive: true });
-      writeFile(
-        `${root}/native-cleanup.json`,
-        JSON.stringify({
-          runId,
-          removedContainer: containerId ?? null,
-          removedDataDirectory: childrenDrained ? dataDirectory : null,
-          retainedDataForUnconfirmedChildDrain: !childrenDrained,
-          interrupted: interrupted ?? null,
-          childrenDrained,
-          parentUntouched: true,
-          noSharedPrune: true,
-        }),
-        { mode: 0o600 },
-      );
-      assert.equal(
+      const cleanup = {
+        runId,
+        removedContainer: containerId ?? null,
+        removedDataDirectory: null,
+        interrupted: interrupted ?? null,
         childrenDrained,
-        true,
-        "owned command closure unconfirmed; data preserved",
-      );
+        parentUntouched: false,
+        noSharedPrune: true,
+        cleanupComplete: false,
+        retainedDataDirectory: dataDirectory,
+        stage: "child_identity",
+      };
+      try {
+        // Docker legitimately adds root-group traversal to its data root. This
+        // allowance applies only after shutdown, never to initial or auth paths.
+        const actual = rootDirectory(dataDirectory, files, [0o700, 0o710]);
+        assert.deepEqual(
+          actual,
+          dataIdentity,
+          "owned data identity changed before cleanup",
+        );
+        cleanup.observedDataMode = `0o${(inspectPath(dataDirectory).mode & 0o777).toString(8)}`;
+        cleanup.stage = "parent_identity";
+        const actualParent = inspectPath("/var/lib/gwrk");
+        assert.equal(actualParent.isDirectory(), true);
+        assert.equal(actualParent.isSymbolicLink(), false);
+        assert.equal(actualParent.uid, parent.uid);
+        assert.equal(actualParent.gid, parent.gid);
+        assert.equal(actualParent.mode & 0o777, parent.mode & 0o777);
+        assert.equal(actualParent.dev, parent.dev);
+        assert.equal(actualParent.ino, parent.ino);
+        assert.deepEqual(
+          rootDirectory("/var/lib/gwrk/verification-fixtures", files),
+          namespaceIdentity,
+        );
+        cleanup.parentUntouched = true;
+        cleanup.stage = "mount_check";
+        const mountTargets = readMetadataFile("/proc/self/mountinfo", "utf8")
+          .trim()
+          .split("\n")
+          .filter(Boolean)
+          .map((line) =>
+            line
+              .split(" ")[4]
+              .replace(/\\([0-7]{3})/g, (_, octal) =>
+                String.fromCharCode(Number.parseInt(octal, 8)),
+              ),
+          );
+        assert.equal(
+          mountTargets.some(
+            (target) =>
+              target === dataDirectory ||
+              target.startsWith(`${dataDirectory}/`),
+          ),
+          false,
+          "host mount remains under owned data child",
+        );
+        cleanup.hostMountsUnderChild = false;
+        assert.equal(
+          childrenDrained,
+          true,
+          "owned command closure unconfirmed; data preserved",
+        );
+        cleanup.stage = "remove_data";
+        removeDirectory(dataDirectory, { recursive: true });
+        cleanup.removedDataDirectory = dataDirectory;
+        cleanup.retainedDataDirectory = null;
+        cleanup.cleanupComplete = true;
+        cleanup.stage = "complete";
+      } finally {
+        writeFile(`${root}/native-cleanup.json`, JSON.stringify(cleanup), {
+          mode: 0o600,
+        });
+      }
     },
     { processTarget: effects.processTarget ?? process },
   );

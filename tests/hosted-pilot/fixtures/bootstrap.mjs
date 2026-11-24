@@ -12,6 +12,7 @@ import {
 } from "node:fs";
 import { setTimeout as sleep } from "node:timers/promises";
 import { parse, stringify } from "/app/node_modules/yaml/dist/index.js";
+import { classifyBootstrapFailure } from "./bootstrap-diagnostics.mjs";
 import { checkStandardCookieSecret } from "./cookie-format-check.mjs";
 import { CLIENT_ID } from "./issuer.mjs";
 import { OIDC_FIXTURE_ARGUMENTS } from "./oidc-overrides.mjs";
@@ -108,10 +109,13 @@ function runContainer(name, args) {
 }
 let issuer;
 let networkCreated = false;
-let stage = "fixture_setup";
+let stage = "init";
+const issuerStderrChunks = [];
+let originName = null;
 const recordStage = () =>
   file("/fixture/bootstrap-stage.json", JSON.stringify({ stage }));
 try {
+  stage = "staging_directories";
   directory("/fixture", 0o755);
   recordStage();
   directory("/fixture/secrets");
@@ -124,6 +128,8 @@ try {
   directory("/etc/gwrk/gateway-secrets");
   directory("/etc/gwrk/gateway-secrets/tls");
   directory("/etc/gwrk/secrets", 0o750, 0, 10001);
+  stage = "secrets_setup";
+  recordStage();
   file(
     "/etc/gwrk/secrets/google-account-allowlist",
     "allowed@example.invalid\n",
@@ -153,6 +159,8 @@ try {
     "/etc/gwrk/gateway-secrets/oauth-cookie-secret",
     `${Buffer.alloc(32, 0xfb).toString("base64")}\n`,
   );
+  stage = "certificate_generation";
+  recordStage();
   openssl([
     "req",
     "-x509",
@@ -199,6 +207,8 @@ try {
     "/etc/gwrk/gateway-secrets/tls/privkey.pem",
     readFileSync("/fixture/secrets/gateway-key.pem"),
   );
+  stage = "trust_store_update";
+  recordStage();
   file(
     "/usr/local/share/ca-certificates/gwrk-051-fixture.crt",
     readFileSync("/fixture/public/ca.pem"),
@@ -208,6 +218,8 @@ try {
     stdio: "pipe",
     timeout: 20_000,
   });
+  stage = "issuer_start";
+  recordStage();
   issuer = spawn(process.execPath, ["/fixture/fixtures/issuer.mjs"], {
     stdio: ["ignore", "pipe", "pipe"],
   });
@@ -215,8 +227,12 @@ try {
   issuer.stdout.on("data", (chunk) => {
     if (chunk.toString().includes("fixture_issuer_ready")) issuerReady = true;
   });
-  issuer.stderr.on("data", () => {});
-  const originName = `gwrk-051-origin-${run}`;
+  issuer.stderr.on("data", (chunk) => {
+    issuerStderrChunks.push(chunk);
+  });
+  stage = "origin_start";
+  recordStage();
+  originName = `gwrk-051-origin-${run}`;
   runContainer(originName, [
     "--network",
     "host",
@@ -242,6 +258,8 @@ try {
     "node",
     "/fixture/fixtures/origin.mjs",
   ]);
+  stage = "dependencies_wait";
+  recordStage();
   let originReady = false;
   const readyDeadline = Date.now() + 20_000;
   while (Date.now() < readyDeadline) {
@@ -267,6 +285,8 @@ try {
     issuerArguments: OIDC_FIXTURE_ARGUMENTS,
   });
   file("/fixture/cookie-format-result.json", JSON.stringify(cookieFormat));
+  stage = "bundle_preparation";
+  recordStage();
   directory("/fixture/bundle");
   cpSync("/input/bundle", "/fixture/bundle", { recursive: true });
   file("/fixture/bundle/.env", `GWRK_AUTH_GOOGLE_CLIENT_ID=${CLIENT_ID}\n`);
@@ -305,6 +325,8 @@ try {
     stdio: "pipe",
     timeout: 30_000,
   });
+  stage = "client_network";
+  recordStage();
   const network = "gwrk-051-clients";
   docker([
     "network",
@@ -365,18 +387,27 @@ try {
   process.stdout.write(
     "Native gateway initial cases passed. Full acceptance remains pending.\n",
   );
-} catch {
+} catch (error) {
+  let originLogs = "";
+  if (originName) {
+    try {
+      originLogs = docker(["logs", originName]);
+    } catch {}
+  }
+  const diagnostic = classifyBootstrapFailure(stage, error, {
+    issuerStderr: Buffer.concat(issuerStderrChunks).toString("utf8"),
+    originLogs,
+  });
   file(
     "/fixture/bootstrap-stage.json",
     JSON.stringify({
-      stage,
-      failureClassification: ["gateway_startup", "gateway_cases"].includes(
-        stage,
-      )
-        ? "behavioral"
-        : stage === "cookie_format"
-          ? "fixture_input_format"
-          : "fixture_construction",
+      stage: diagnostic.stage,
+      failureClassification: diagnostic.failureClassification,
+      category: diagnostic.category,
+      detail: diagnostic.detail,
+      stderrSha256: diagnostic.stderrSha256,
+      stderrBytes: diagnostic.stderrBytes,
+      exitCode: diagnostic.exitCode,
     }),
   );
   process.stderr.write(

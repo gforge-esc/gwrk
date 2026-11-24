@@ -6,7 +6,11 @@ import { DIND_IMAGE, RESOURCE_LIMITS } from "./runtime-policy.mjs";
 
 // These injected metadata replies test orchestration. Native ownership proof remains
 // the separate Linux checkpoint receipt, never these simulated ownership values.
-function fixture({ cancelWhenRecorded = false } = {}) {
+function fixture({
+  cancelWhenRecorded = false,
+  dockerDataModeAfterStart,
+} = {}) {
+  let dataMode = 0o700;
   const events = [];
   const processTarget = new EventEmitter();
   const runId = "a".repeat(24);
@@ -32,7 +36,12 @@ function fixture({ cancelWhenRecorded = false } = {}) {
     isSymbolicLink: () => false,
     uid: path === "/var/lib/gwrk" ? 997 : 0,
     gid: path === "/var/lib/gwrk" ? 988 : 0,
-    mode: path === "/var/lib/gwrk" ? 0o750 : 0o700,
+    mode:
+      path === "/var/lib/gwrk"
+        ? 0o750
+        : path === `/var/lib/gwrk/verification-fixtures/${runId}`
+          ? dataMode
+          : 0o700,
     dev: 9,
     ino:
       path === "/var/lib/gwrk"
@@ -48,6 +57,7 @@ function fixture({ cancelWhenRecorded = false } = {}) {
     readlinkSync: (path) =>
       path === "/proc/self/ns/pid" ? "pid:[1]" : "pid:[2]",
     readdirSync: () => [],
+    readFileSync: () => "1 0 9:1 / / rw - ext4 /dev/test rw\n",
     mkdirSync: (path) => events.push(["mkdir", path]),
     writeFileSync(path, value) {
       if (path.endsWith("native-ownership.json")) {
@@ -70,7 +80,10 @@ function fixture({ cancelWhenRecorded = false } = {}) {
         }),
       };
     if (["create", "run"].includes(args[0])) return { code: 0, stdout: id };
-    if (args[0] === "start") return { code: 0, stdout: id };
+    if (args[0] === "start") {
+      dataMode = dockerDataModeAfterStart ?? dataMode;
+      return { code: 0, stdout: id };
+    }
     if (args[0] === "inspect")
       return {
         code: 0,
@@ -252,4 +265,10 @@ test("matching host and outer PID namespaces fails despite empty PID mode", asyn
   assert.ok(
     f.events.some((event) => event[0] === "docker" && event[1] === "rm"),
   );
+});
+
+test("removes the exact owned data child after Docker changes its mode to 0710", async () => {
+  const f = fixture({ dockerDataModeAfterStart: 0o710 });
+  await withOwnedNestedDaemon(f.input, f.effects);
+  assert.ok(f.events.some((event) => event[0] === "remove-data"));
 });

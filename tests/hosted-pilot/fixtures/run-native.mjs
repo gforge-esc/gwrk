@@ -190,6 +190,12 @@ await withOwnedNestedDaemon({
         stage?.failureClassification === "fixture_construction",
       positiveAcceptance: false,
     };
+    if (stage?.category) {
+      safe.category = stage.category;
+    }
+    if (stage?.detail) {
+      safe.detail = stage.detail;
+    }
     writeFileSync(`${root}/native-result.json`, JSON.stringify(safe, null, 2), {
       mode: 0o600,
     });
