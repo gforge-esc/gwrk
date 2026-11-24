@@ -7,6 +7,20 @@ import { promisify } from "node:util";
 
 const execFilePromise = promisify(execFile);
 
+/**
+ * Shared gate execution output capture buffer limit (16 MiB).
+ * Aligned with test runner execution buffer (src/engine/test-runner.ts).
+ */
+export const GATE_MAX_BUFFER_BYTES = 16 * 1024 * 1024;
+
+export function isMaxBufferError(error: unknown): boolean {
+  if (!error || typeof error !== "object") return false;
+  const err = error as { code?: unknown; name?: unknown; message?: unknown };
+  return (
+    err.code === "ERR_CHILD_PROCESS_STDIO_MAXBUFFER" || err.code === "ENOBUFS"
+  );
+}
+
 interface GateResult {
   passed: boolean;
   exitCode: number;
@@ -27,12 +41,19 @@ interface GateResult {
  */
 export async function runGate(
   scriptPath: string,
-  opts?: { cwd?: string; env?: NodeJS.ProcessEnv; timeoutMs?: number },
+  opts?: {
+    cwd?: string;
+    env?: NodeJS.ProcessEnv;
+    timeoutMs?: number;
+    maxBuffer?: number;
+  },
 ): Promise<GateResult> {
+  const maxBuffer = opts?.maxBuffer ?? GATE_MAX_BUFFER_BYTES;
   try {
     const { stdout, stderr } = await execFilePromise(scriptPath, [], {
       cwd: opts?.cwd,
       env: opts?.env,
+      maxBuffer,
       ...(opts?.timeoutMs === undefined
         ? {}
         : { timeout: opts.timeoutMs, killSignal: "SIGKILL" as const }),
@@ -66,6 +87,19 @@ export async function runGate(
         passed: false,
         exitCode,
         output: [`Gate timed out after ${opts.timeoutMs} ms`, output]
+          .filter(Boolean)
+          .join("\n"),
+      };
+    }
+
+    if (isMaxBufferError(err)) {
+      return {
+        passed: false,
+        exitCode,
+        output: [
+          `Gate output exceeded maximum buffer limit (${maxBuffer} bytes)`,
+          output,
+        ]
           .filter(Boolean)
           .join("\n"),
       };
