@@ -1173,7 +1173,7 @@ describe("Track B passive observer wiring and diagnostics", () => {
     );
   });
 
-  test("REVIEW-B-04: run-native.mjs script manifest allowlist uses real wired helper and preserves zero capability additions", () => {
+  test("REVIEW-NR-03: run-native.mjs script manifest allowlist uses real wired helper and enforces literal approved capabilities", () => {
     assert.equal(
       isAllowedFixtureScriptName("native-observer-capture.py"),
       true,
@@ -1198,13 +1198,18 @@ describe("Track B passive observer wiring and diagnostics", () => {
       /isAllowedFixtureScriptName/,
       "run-native.mjs must call shared isAllowedFixtureScriptName helper",
     );
-    const capAdds = [
-      ...runNativeSrc.matchAll(/"--cap-add",\s*\n?\s*"([^"]+)"/g),
-    ].map((m) => m[1]);
+    const capAddExprs = [
+      ...runNativeSrc.matchAll(/"--cap-add",\s*\n?\s*([^,)\]]+)/g),
+    ].map((m) => m[1].trim());
     assert.deepEqual(
-      capAdds,
-      ["CHOWN", "DAC_OVERRIDE", "FOWNER"],
-      "run-native.mjs must keep zero new capability additions",
+      capAddExprs,
+      ['"CHOWN"', '"DAC_OVERRIDE"', '"FOWNER"', '"NET_RAW"'],
+      "run-native.mjs must declare only literal CHOWN, DAC_OVERRIDE, FOWNER, and checkpoint-gated NET_RAW",
+    );
+    assert.doesNotMatch(
+      runNativeSrc,
+      /NET_ADMIN/,
+      "run-native.mjs must never grant NET_ADMIN",
     );
   });
 
@@ -1628,6 +1633,61 @@ describe("Track B passive observer wiring and diagnostics", () => {
       await lifecycle.stop(mockProc);
       assert.equal(lifecycle.isClosed(), true);
       rmSync(dir, { recursive: true, force: true });
+    });
+
+    test("REVIEW-NR-02: executeObserverSelftest stops observer and fails closed if close is never observed, and bootstrap.mjs wires it", async () => {
+      const filesWritten = new Map();
+      const lifecycle = createObserverProcessLifecycle({
+        readyTimeoutMs: 500,
+        pollMs: 10,
+        termTimeoutMs: 30,
+        killTimeoutMs: 30,
+      });
+      const hungProc = new EventEmitter();
+      hungProc.stdout = new PassThrough();
+      hungProc.stderr = new PassThrough();
+      hungProc.kill = () => {};
+
+      await assert.rejects(
+        () =>
+          executeObserverSelftest({
+            runId: VALID_RUN_ID,
+            observerDir: "/tmp/selftest-hung-obs",
+            proxyImageId: VALID_PROVENANCE.proxyImageId,
+            traefikImageId: VALID_PROVENANCE.traefikImageId,
+            runtimeReceiptSha256: VALID_PROVENANCE.runtimeReceiptSha256,
+            observerLifecycle: lifecycle,
+            spawnProcess: () => hungProc,
+            readHealth: () => createValidHealth({ barrierSequence: 0 }),
+            writeFile: (p, content) => filesWritten.set(p, content),
+            resultPath: "/tmp/selftest-hung-result.json",
+          }),
+        /close|drain|stop/i,
+      );
+      assert.equal(
+        filesWritten.has("/tmp/selftest-hung-result.json"),
+        false,
+        "must never write passed:true before clean observer close is confirmed",
+      );
+
+      const bootSrc = readFileSync(
+        resolve(FIXTURES_DIR, "bootstrap.mjs"),
+        "utf8",
+      );
+      assert.match(
+        bootSrc,
+        /executeObserverSelftest\s*\(/,
+        "bootstrap.mjs must invoke executeObserverSelftest in observer-selftest mode",
+      );
+      const selftestBranch = bootSrc.match(
+        /if\s*\(\s*process\.env\.GWRK_051_OBSERVER_SELFTEST_ONLY\s*===\s*["']1["']\s*\)\s*\{[\s\S]*?\n\s*\}\s*else\s*\{/,
+      );
+      assert.ok(selftestBranch, "observer selftest branch must exist");
+      assert.match(
+        selftestBranch[0],
+        /executeObserverSelftest/,
+        "observer selftest branch must delegate to executeObserverSelftest",
+      );
     });
   });
 });

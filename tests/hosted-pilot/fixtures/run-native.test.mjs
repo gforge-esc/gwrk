@@ -1035,6 +1035,7 @@ test("observer-selftest emits diagnostic-only typed result and never grants posi
               effectiveRcvBufBytes: 1048576,
               ignoreOutgoingKernelEnabled: true,
               pkttypeBpfFallbackActive: false,
+              cleanStopObserved: true,
             });
           }
           throw new Error(`unexpected docker args: ${args.join(" ")}`);
@@ -1072,6 +1073,7 @@ test("observer-selftest emits diagnostic-only typed result and never grants posi
     effectiveRcvBufBytes: 1048576,
     ignoreOutgoingKernelEnabled: true,
     pkttypeBpfFallbackActive: false,
+    cleanStopObserved: true,
   });
 
   // Failed selftest run (exitCode 1 without NET_RAW reaches observer_startup_failed)
@@ -1145,4 +1147,115 @@ test("observer-selftest emits diagnostic-only typed result and never grants posi
   assert.equal(resultFail.stage, "observer_start");
   assert.equal(resultFail.category, "observer_startup_failed");
   assert.equal(resultFail.fixtureConstructionFailure, true);
+});
+
+test("REVIEW-NR-01: observer-selftest fails closed on secret-bearing, invalid, or missing selftest receipts", async () => {
+  const runId = "9".repeat(24);
+  const root = `/opt/gwrk-verification/${runId}`;
+  const canary = "SECRET_SELFTEST_CANARY_XYZ987";
+  const invalidCase = makeFiles();
+
+  await assert.rejects(
+    runNativeFixture({
+      runId,
+      root,
+      receipt: {
+        verificationMode: "observer-selftest",
+        purpose: "behavioral-red",
+        approvedPassiveNetRaw: true,
+      },
+      images: sampleImages,
+      files: invalidCase.files,
+      withLifecycle: async ({ executeCases }) => {
+        await executeCases({
+          containerId: "c".repeat(64),
+          docker: async (args) => {
+            if (args.includes("inspect")) {
+              const target = args.at(-1);
+              const key = Object.entries(sampleImages).find(
+                ([, value]) => value === target,
+              )[0];
+              return JSON.stringify({
+                Id: target,
+                RootFS: { Layers: sampleImages.rootfs[key] },
+              });
+            }
+            if (args.includes("mkdir")) return "";
+            if (args.includes("/fixture/bootstrap-stage.json")) {
+              return JSON.stringify({ stage: "completed_observer_selftest" });
+            }
+            if (args.includes("/fixture/observer-selftest-result.json")) {
+              return JSON.stringify({
+                runId: "b".repeat(24),
+                passed: false,
+                effectiveRcvBufBytes: 128,
+                ignoreOutgoingKernelEnabled: false,
+                pkttypeBpfFallbackActive: false,
+                leakedSecret: canary,
+              });
+            }
+            throw new Error(`unexpected docker args: ${args.join(" ")}`);
+          },
+          spawnDocker: async (args) => {
+            if (args.includes("load")) {
+              return { code: 0, stdout: "Loaded\n", stderr: "" };
+            }
+            return { code: 0, stdout: "ok\n", stderr: "" };
+          },
+        });
+      },
+    }),
+  );
+  const leakedRaw = invalidCase.store.get(`${root}/native-result.json`) ?? "";
+  assert.equal(leakedRaw.includes(canary), false);
+
+  const missingCase = makeFiles();
+  await assert.rejects(
+    runNativeFixture({
+      runId,
+      root,
+      receipt: {
+        verificationMode: "observer-selftest",
+        purpose: "behavioral-red",
+        approvedPassiveNetRaw: true,
+      },
+      images: sampleImages,
+      files: missingCase.files,
+      withLifecycle: async ({ executeCases }) => {
+        await executeCases({
+          containerId: "c".repeat(64),
+          docker: async (args) => {
+            if (args.includes("inspect")) {
+              const target = args.at(-1);
+              const key = Object.entries(sampleImages).find(
+                ([, value]) => value === target,
+              )[0];
+              return JSON.stringify({
+                Id: target,
+                RootFS: { Layers: sampleImages.rootfs[key] },
+              });
+            }
+            if (args.includes("mkdir")) return "";
+            if (args.includes("/fixture/bootstrap-stage.json")) {
+              return JSON.stringify({ stage: "staging_directories" });
+            }
+            if (args.includes("/fixture/observer-selftest-result.json")) {
+              throw new Error("missing selftest receipt");
+            }
+            throw new Error(`unexpected docker args: ${args.join(" ")}`);
+          },
+          spawnDocker: async (args) => {
+            if (args.includes("load")) {
+              return { code: 0, stdout: "Loaded\n", stderr: "" };
+            }
+            return { code: 0, stdout: "ok\n", stderr: "" };
+          },
+        });
+      },
+    }),
+  );
+  const missingResult = JSON.parse(
+    missingCase.store.get(`${root}/native-result.json`),
+  );
+  assert.equal(missingResult.positiveAcceptance, false);
 });

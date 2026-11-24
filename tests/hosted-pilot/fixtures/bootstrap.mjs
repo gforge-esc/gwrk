@@ -22,6 +22,7 @@ import {
 } from "./bootstrap-diagnostics.mjs";
 import {
   createObserverProcessLifecycle,
+  executeObserverSelftest,
   resolveComposeContainer,
 } from "./bootstrap-observer.mjs";
 import { checkStandardCookieSecret } from "./cookie-format-check.mjs";
@@ -116,7 +117,9 @@ function remember(name) {
     }),
   );
 }
+let activeContainerName = null;
 function runContainer(name, args, options = {}) {
+  activeContainerName = name;
   remember(name);
   return createAndStartFixtureContainer(name, args, {
     runId: run,
@@ -207,19 +210,35 @@ try {
   }
 
   if (process.env.GWRK_051_OBSERVER_SELFTEST_ONLY === "1") {
-    const health = await startNativeObserver();
-    file(
-      "/fixture/observer-selftest-result.json",
-      JSON.stringify({
-        runId: run,
-        passed: true,
-        effectiveRcvBufBytes:
-          health?.captureStats?.effectiveRcvBufBytes ?? null,
-        ignoreOutgoingKernelEnabled:
-          health?.captureStats?.ignoreOutgoingKernelEnabled ?? null,
-        pkttypeBpfFallbackActive:
-          health?.captureStats?.pkttypeBpfFallbackActive ?? null,
-      }),
+    if (existsSync("/input/runtime-receipt.json")) {
+      const receipt = JSON.parse(
+        readFileSync("/input/runtime-receipt.json", "utf8"),
+      );
+      assert.notEqual(
+        receipt?.purpose,
+        "acceptance",
+        "observer-selftest cannot be used under acceptance purpose",
+      );
+    }
+    stage = "observer_start";
+    recordStage();
+    const selftestResult = await executeObserverSelftest({
+      runId: run,
+      observerDir: "/fixture/observer",
+      proxyImageId: images.proxy,
+      traefikImageId: images.traefik,
+      runtimeReceiptSha256,
+      observerLifecycle,
+      writeFile: file,
+      resultPath: "/fixture/observer-selftest-result.json",
+      beginOperation,
+    });
+    observerProcess = selftestResult.observerProcess;
+    await observerLifecycle.stop(observerProcess);
+    assert.equal(
+      observerLifecycle.isClosed(),
+      true,
+      "observer must be cleanly closed before completing selftest",
     );
     stage = "completed_observer_selftest";
     recordStage();
@@ -553,10 +572,13 @@ try {
   const elapsedMs = operationStartedAt ? Date.now() - operationStartedAt : 0;
   let originLogs = "";
   let containerState = null;
-  if (originName) {
+  const inspectTarget = activeContainerName ?? originName;
+  if (inspectTarget) {
     try {
-      containerState = inspectFixtureContainerState(originName);
+      containerState = inspectFixtureContainerState(inspectTarget);
     } catch {}
+  }
+  if (originName) {
     try {
       originLogs = captureDockerLogs(originName);
     } catch {}

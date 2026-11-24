@@ -579,6 +579,23 @@ test("inspectFixtureContainerState projects only safe whitelisted fields and nev
   });
   assert.equal(JSON.stringify(missingState).includes(canary), false);
 
+  const timeoutState = inspectFixtureContainerState("gwrk-051-origin-timeout", {
+    runner: () => ({
+      status: null,
+      signal: "SIGTERM",
+      error: { code: "ETIMEDOUT" },
+      stdout: "",
+      stderr: "",
+    }),
+  });
+  assert.deepEqual(timeoutState, {
+    containerExists: false,
+    containerStatus: "unknown",
+    oomKilled: null,
+    containerExitCode: null,
+    containerPid: null,
+  });
+
   const classified = classifyBootstrapFailure(
     "origin_start",
     { code: "ETIMEDOUT", status: 143, message: `boom ${canary}` },

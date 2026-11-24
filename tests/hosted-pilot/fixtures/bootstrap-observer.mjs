@@ -57,7 +57,6 @@ function raceWithTimeout(promise, timeoutMs) {
       resolvePromise();
     };
     const timer = setTimeout(done, timeoutMs);
-    timer.unref?.();
     promise.then(done, done);
   });
 }
@@ -252,6 +251,13 @@ export async function executeObserverSelftest({
       }),
   });
 
+  await observerLifecycle.stop(observerProcess);
+  if (!observerLifecycle.isClosed()) {
+    throw new Error(
+      "native observer failed to close cleanly within drain timeout",
+    );
+  }
+
   const result = {
     runId,
     passed: true,
@@ -260,6 +266,7 @@ export async function executeObserverSelftest({
       health?.captureStats?.ignoreOutgoingKernelEnabled ?? null,
     pkttypeBpfFallbackActive:
       health?.captureStats?.pkttypeBpfFallbackActive ?? null,
+    cleanStopObserved: true,
   };
   const targetResultPath =
     resultPath ?? join(observerDir, "../observer-selftest-result.json");

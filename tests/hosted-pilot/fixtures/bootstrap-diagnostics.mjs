@@ -154,9 +154,13 @@ export function inspectFixtureContainerState(name, options = {}) {
     maxBuffer,
   });
   if (result?.status !== 0 || typeof result?.stdout !== "string") {
+    const isTimeout =
+      result?.error?.code === "ETIMEDOUT" ||
+      result?.signal === "SIGTERM" ||
+      (result?.status === null && result?.signal !== null);
     return {
       containerExists: false,
-      containerStatus: "missing",
+      containerStatus: isTimeout ? "unknown" : "missing",
       oomKilled: null,
       containerExitCode: null,
       containerPid: null,

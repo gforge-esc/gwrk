@@ -27,6 +27,73 @@ async function hashFile(path) {
   for await (const chunk of createReadStream(path)) hash.update(chunk);
   return hash.digest("hex");
 }
+export function sanitizeObserverSelftestResult(raw, expectedRunId) {
+  if (!raw || typeof raw !== "object") {
+    throw new FixtureLifecycleError(
+      "observer selftest result is not an object",
+      { category: "observer_startup_failed" },
+    );
+  }
+  if (raw.runId !== expectedRunId) {
+    throw new FixtureLifecycleError(
+      `observer selftest runId mismatch: ${raw.runId} !== ${expectedRunId}`,
+      { category: "observer_startup_failed" },
+    );
+  }
+  if (raw.passed !== true) {
+    throw new FixtureLifecycleError(
+      "observer selftest result passed flag is not true",
+      { category: "observer_startup_failed" },
+    );
+  }
+  if (
+    typeof raw.effectiveRcvBufBytes !== "number" ||
+    raw.effectiveRcvBufBytes < 524288
+  ) {
+    throw new FixtureLifecycleError(
+      `observer selftest effectiveRcvBufBytes insufficient: ${raw.effectiveRcvBufBytes}`,
+      { category: "observer_startup_failed" },
+    );
+  }
+  const kernelIgnore =
+    raw.kernelIgnoreObserved === true ||
+    raw.ignoreOutgoingKernelEnabled === true;
+  const bpfFallback =
+    raw.bpfFallbackObserved === true || raw.pkttypeBpfFallbackActive === true;
+  if (!kernelIgnore && !bpfFallback) {
+    throw new FixtureLifecycleError(
+      "observer selftest requires kernel ignore or BPF fallback active",
+      { category: "observer_startup_failed" },
+    );
+  }
+  if (raw.cleanStopObserved !== true) {
+    throw new FixtureLifecycleError(
+      "observer selftest clean stop was not observed",
+      { category: "observer_startup_failed" },
+    );
+  }
+  const sanitized = {
+    runId: expectedRunId,
+    passed: true,
+    effectiveRcvBufBytes: raw.effectiveRcvBufBytes,
+    cleanStopObserved: true,
+  };
+  if (raw.kernelIgnoreObserved !== undefined) {
+    sanitized.kernelIgnoreObserved = raw.kernelIgnoreObserved === true;
+  }
+  if (raw.ignoreOutgoingKernelEnabled !== undefined) {
+    sanitized.ignoreOutgoingKernelEnabled =
+      raw.ignoreOutgoingKernelEnabled === true;
+  }
+  if (raw.bpfFallbackObserved !== undefined) {
+    sanitized.bpfFallbackObserved = raw.bpfFallbackObserved === true;
+  }
+  if (raw.pkttypeBpfFallbackActive !== undefined) {
+    sanitized.pkttypeBpfFallbackActive = raw.pkttypeBpfFallbackActive === true;
+  }
+  return sanitized;
+}
+
 export async function runNativeFixture({
   runId,
   root,
@@ -171,8 +238,7 @@ export async function runNativeFixture({
           "FOWNER",
         ];
         if (receipt?.approvedPassiveNetRaw === true) {
-          const passiveNetRawCap = "NET_RAW";
-          controllerArgs.push("--cap-add", passiveNetRawCap);
+          controllerArgs.push("--cap-add", "NET_RAW");
         }
         controllerArgs.push(
           "--security-opt",
@@ -285,20 +351,95 @@ export async function runNativeFixture({
         if (safeContainerState !== null) {
           safe.containerState = safeContainerState;
         }
+        if (
+          safe.createElapsedMs === undefined ||
+          safe.startElapsedMs === undefined
+        ) {
+          try {
+            const timingRaw = await docker([
+              "exec",
+              containerId,
+              "cat",
+              "/fixture/origin-timing.json",
+            ]);
+            const timing = JSON.parse(timingRaw);
+            if (
+              safe.createElapsedMs === undefined &&
+              (timing.createElapsedMs === null ||
+                (Number.isFinite(timing.createElapsedMs) &&
+                  timing.createElapsedMs >= 0))
+            ) {
+              safe.createElapsedMs =
+                timing.createElapsedMs === null
+                  ? null
+                  : Math.round(timing.createElapsedMs);
+            }
+            if (
+              safe.startElapsedMs === undefined &&
+              (timing.startElapsedMs === null ||
+                (Number.isFinite(timing.startElapsedMs) &&
+                  timing.startElapsedMs >= 0))
+            ) {
+              safe.startElapsedMs =
+                timing.startElapsedMs === null
+                  ? null
+                  : Math.round(timing.startElapsedMs);
+            }
+          } catch {}
+        }
         if (isObserverSelftest) {
           safe.verificationMode = "observer-selftest";
           safe.diagnosticOnly = true;
           safe.positiveAcceptance = false;
           if (result.code === 0) {
+            if (stage?.stage !== "completed_observer_selftest") {
+              throw new FixtureLifecycleError(
+                "observer selftest completed with invalid bootstrap stage",
+                {
+                  stage: stage?.stage ?? "unavailable",
+                  category: "observer_startup_failed",
+                  detail: `Expected stage completed_observer_selftest but observed ${stage?.stage ?? "unavailable"}`,
+                },
+              );
+            }
+            let selftestRaw;
             try {
-              const selftestRaw = await docker([
+              selftestRaw = await docker([
                 "exec",
                 containerId,
                 "cat",
                 "/fixture/observer-selftest-result.json",
               ]);
-              safe.observerSelftest = JSON.parse(selftestRaw);
-            } catch {}
+            } catch (readError) {
+              if (signal?.aborted || readError?.code === "cancelled") {
+                throw readError;
+              }
+              throw new FixtureLifecycleError(
+                "observer selftest result missing or unreadable",
+                {
+                  stage: stage?.stage ?? "completed_observer_selftest",
+                  category: "observer_startup_failed",
+                  detail: "Observer selftest result missing or unreadable",
+                },
+              );
+            }
+            let selftestParsed;
+            try {
+              selftestParsed = JSON.parse(selftestRaw);
+            } catch {
+              throw new FixtureLifecycleError(
+                "observer selftest result malformed",
+                {
+                  stage: stage?.stage ?? "completed_observer_selftest",
+                  category: "observer_startup_failed",
+                  detail: "Observer selftest result is not valid JSON",
+                },
+              );
+            }
+            safe.observerSelftest = sanitizeObserverSelftestResult(
+              selftestParsed,
+              runId,
+            );
           }
         }
         ensureActive();
