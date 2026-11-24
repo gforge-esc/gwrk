@@ -16,16 +16,9 @@ export const GATE_MAX_BUFFER_BYTES = 16 * 1024 * 1024;
 export function isMaxBufferError(error: unknown): boolean {
   if (!error || typeof error !== "object") return false;
   const err = error as { code?: unknown; name?: unknown; message?: unknown };
-  if (
-    err.code === "ERR_CHILD_PROCESS_STDIO_MAXBUFFER" ||
-    err.code === "ENOBUFS"
-  ) {
-    return true;
-  }
-  if (typeof err.message === "string") {
-    return err.message.includes("maxBuffer") || err.message.includes("ENOBUFS");
-  }
-  return false;
+  return (
+    err.code === "ERR_CHILD_PROCESS_STDIO_MAXBUFFER" || err.code === "ENOBUFS"
+  );
 }
 
 interface GateResult {
