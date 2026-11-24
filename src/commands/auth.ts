@@ -511,14 +511,19 @@ Exit codes:
               return;
             }
 
+            const idHeader = "Credential ID";
+            const idWidth = credentials.reduce(
+              (max, cred) => Math.max(max, cred.credentialId.length),
+              idHeader.length,
+            );
             const lines = [
-              "Credential ID                 Label                 Expires At                Status",
-              "────────────────────────────  ────────────────────  ────────────────────────  ────────",
+              `${idHeader.padEnd(idWidth)}  Label                 Expires At                Status`,
+              `${"─".repeat(idWidth)}  ────────────────────  ────────────────────────  ────────`,
             ];
             for (const cred of credentials) {
               const status = cred.revokedAt ? "revoked" : "active";
               lines.push(
-                `${cred.credentialId.slice(0, 28).padEnd(28)}  ${cred.label.slice(0, 20).padEnd(20)}  ${cred.expiresAt.slice(0, 24).padEnd(24)}  ${status}`,
+                `${cred.credentialId.padEnd(idWidth)}  ${cred.label.slice(0, 20).padEnd(20)}  ${cred.expiresAt.slice(0, 24).padEnd(24)}  ${status}`,
               );
             }
             lines.push(`\n${credentials.length} API credential(s)\n`);
