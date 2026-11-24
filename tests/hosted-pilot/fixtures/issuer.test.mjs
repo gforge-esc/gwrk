@@ -167,3 +167,32 @@ test("negative token controls change only their selected verification boundary",
     );
   }
 });
+
+test("token observation exposes digests rather than raw token material", async () => {
+  const observed = [];
+  const fixture = createFixtureIssuer({
+    clientSecret: "fixture-secret",
+    onIssuedToken: (value) => observed.push(value),
+  });
+  const result = await request(fixture, "POST", "/token", await grant(fixture));
+  assert.equal(result.status, 200);
+  assert.equal(observed.length, 1);
+  assert.match(observed[0].idTokenSha256, /^[a-f0-9]{64}$/);
+  assert.match(observed[0].accessTokenSha256, /^[a-f0-9]{64}$/);
+  assert.equal(
+    JSON.stringify(observed).includes(JSON.parse(result.body).id_token),
+    false,
+  );
+});
+
+test("token-error control preserves its synthetic upstream canary for gateway logging tests", async () => {
+  const fixture = createFixtureIssuer({ clientSecret: "fixture-secret" });
+  const result = await request(
+    fixture,
+    "POST",
+    "/token",
+    await grant(fixture, "token-error"),
+  );
+  assert.equal(result.status, 400);
+  assert.ok(result.body.includes("051_UPSTREAM_ERROR_CANARY"));
+});
