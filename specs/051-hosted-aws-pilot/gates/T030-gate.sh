@@ -1,0 +1,12 @@
+#!/bin/bash
+set -euo pipefail
+# AUTHORED
+# Gate: T030 — Modify index.ts
+# Generated from filesystem convention (deterministic test gate)
+
+test -f src/server/index.ts || { echo "FAIL: T030 — file not found: src/server/index.ts" >&2; exit 1; }
+
+pnpm vitest run src/server/index.test.ts --reporter=verbose \
+  || { echo "FAIL: T030 — test failed for src/server/index.test.ts" >&2; exit 1; }
+
+echo "PASS: T030 — Modify index.ts"
