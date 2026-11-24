@@ -655,3 +655,223 @@ describe("durable GitHub webhook ingress (FR-002, FR-005, TR-002, TR-004)", () =
     }
   });
 });
+
+describe("FR-011 US-006 TR-013 AUTH-13: hosted webhook HMAC and replay preservation", () => {
+  const tempDirs: string[] = [];
+
+  afterEach(() => {
+    for (const dir of tempDirs.splice(0)) {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  function setupAuth13Fixture() {
+    const tempRoot = mkdtempSync(join(tmpdir(), "gwrk-gh-auth13-"));
+    tempDirs.push(tempRoot);
+    const alphaRoot = initRepo(join(tempRoot, "alpha"), "org/alpha");
+    const db = openDatabase({ dbPath: join(tempRoot, "gwrk.db") });
+    const registry = createSqliteProjectRegistryAdapter({ db });
+    const alphaId = resolveProjectId(alphaRoot);
+
+    registry.enrollProject({
+      projectId: alphaId,
+      slug: "alpha",
+      name: "Alpha",
+      repoSlug: "org/alpha",
+      trunkBranch: "develop",
+      localRoot: alphaRoot,
+      mirrorPath: null,
+      runnerPolicy: { allowedKinds: ["local", "hosted"] },
+      slack: null,
+      legacyProjectIds: [],
+      createdAt: "2026-11-23T12:00:00.000Z",
+      updatedAt: "2026-11-23T12:00:00.000Z",
+    });
+
+    return { alphaRoot, alphaId, db, registry };
+  }
+
+  it.each([
+    { label: "missing", secret: undefined },
+    { label: "empty", secret: "" },
+    { label: "whitespace", secret: "   \t  " },
+  ])(
+    "AUTH-13: rejects $label webhook secret with zero harvest operation or delivery rows",
+    async ({ secret }) => {
+      const { alphaRoot, alphaId, db, registry } = setupAuth13Fixture();
+      const server = fastify();
+      const rawBody = Buffer.from(
+        JSON.stringify({
+          action: "closed",
+          repository: { full_name: "org/alpha" },
+          pull_request: {
+            number: 91,
+            html_url: "https://github.com/org/alpha/pull/91",
+            merged: true,
+            merged_at: "2026-11-23T13:00:00Z",
+            merge_commit_sha: "1".repeat(40),
+            head: {
+              ref: "feat/051-pilot-phase-05",
+              sha: "2".repeat(40),
+              repo: { full_name: "org/alpha" },
+            },
+            base: { ref: "develop", repo: { full_name: "org/alpha" } },
+          },
+        }),
+      );
+      try {
+        await githubWebhookPlugin(server, {
+          config: { server: { githubWebhookSecret: secret } } as GwrkConfig,
+          projectRoot: alphaRoot,
+          registry,
+          ledger: { db, projectId: alphaId },
+          autoResume: false,
+        });
+        const response = await server.inject({
+          method: "POST",
+          url: "/webhook/github",
+          headers: {
+            "content-type": "application/json",
+            "x-github-event": "pull_request",
+            "x-github-delivery": "auth13-missing-secret",
+            ...(secret
+              ? { "x-hub-signature-256": signRaw(rawBody, secret) }
+              : {}),
+          },
+          payload: rawBody,
+        });
+        expect(response.statusCode).toBe(401);
+        expect(
+          db.prepare("SELECT COUNT(*) AS count FROM harvest_operations").get(),
+        ).toEqual({ count: 0 });
+        expect(
+          db.prepare("SELECT COUNT(*) AS count FROM harvest_deliveries").get(),
+        ).toEqual({ count: 0 });
+      } finally {
+        await server.close();
+        db.close();
+      }
+    },
+  );
+
+  it("AUTH-13: rejects invalid HMAC without API credential fallback and returns DELIVERY_ID_CONFLICT on changed replay payload", async () => {
+    const { alphaRoot, alphaId, db, registry } = setupAuth13Fixture();
+    const secret = "auth13-webhook-secret";
+    const server = fastify();
+    const payloadObj = {
+      action: "closed",
+      repository: { full_name: "org/alpha" },
+      pull_request: {
+        number: 92,
+        html_url: "https://github.com/org/alpha/pull/92",
+        merged: true,
+        merged_at: "2026-11-23T13:05:00Z",
+        merge_commit_sha: "3".repeat(40),
+        head: {
+          ref: "feat/051-pilot-phase-05",
+          sha: "4".repeat(40),
+          repo: { full_name: "org/alpha" },
+        },
+        base: { ref: "develop", repo: { full_name: "org/alpha" } },
+      },
+    };
+    const rawBody = Buffer.from(JSON.stringify(payloadObj), "utf8");
+
+    try {
+      await githubWebhookPlugin(server, {
+        config: { server: { githubWebhookSecret: secret } } as GwrkConfig,
+        projectRoot: alphaRoot,
+        registry,
+        ledger: { db, projectId: alphaId },
+        autoResume: false,
+      });
+
+      // Invalid HMAC accompanied by Authorization Bearer MUST still fail (no API credential fallback).
+      const badHmac = await server.inject({
+        method: "POST",
+        url: "/webhook/github",
+        headers: {
+          "content-type": "application/json",
+          authorization: `Bearer gwrk_v1.ignored-key.${"a".repeat(43)}`,
+          "x-github-event": "pull_request",
+          "x-github-delivery": "auth13-bad-hmac",
+          "x-hub-signature-256": "sha256=deadbeef",
+        },
+        payload: rawBody,
+      });
+      expect(badHmac.statusCode).toBe(401);
+      expect(
+        db.prepare("SELECT COUNT(*) AS count FROM harvest_operations").get(),
+      ).toEqual({ count: 0 });
+      expect(
+        db.prepare("SELECT COUNT(*) AS count FROM harvest_deliveries").get(),
+      ).toEqual({ count: 0 });
+
+      // Valid signed delivery persists once.
+      const validSig = signRaw(rawBody, secret);
+      const first = await server.inject({
+        method: "POST",
+        url: "/webhook/github",
+        headers: {
+          "content-type": "application/json",
+          "x-github-event": "pull_request",
+          "x-github-delivery": "auth13-delivery-1",
+          "x-hub-signature-256": validSig,
+        },
+        payload: rawBody,
+      });
+      expect(first.statusCode).toBe(200);
+      expect(first.json().status).toBe("accepted");
+
+      // Identical signed replay reuses operation receipt.
+      const replay = await server.inject({
+        method: "POST",
+        url: "/webhook/github",
+        headers: {
+          "content-type": "application/json",
+          "x-github-event": "pull_request",
+          "x-github-delivery": "auth13-delivery-1",
+          "x-hub-signature-256": validSig,
+        },
+        payload: rawBody,
+      });
+      expect(replay.statusCode).toBe(200);
+      expect(replay.json().operationId).toBe(first.json().operationId);
+      expect(replay.json().deduplicatedTransport).toBe(true);
+
+      // Reused delivery ID with changed payload digest fails with DELIVERY_ID_CONFLICT and zero new rows.
+      const tampered = Buffer.from(
+        JSON.stringify({
+          ...payloadObj,
+          pull_request: {
+            ...payloadObj.pull_request,
+            merge_commit_sha: "5".repeat(40),
+          },
+        }),
+        "utf8",
+      );
+      const conflict = await server.inject({
+        method: "POST",
+        url: "/webhook/github",
+        headers: {
+          "content-type": "application/json",
+          "x-github-event": "pull_request",
+          "x-github-delivery": "auth13-delivery-1",
+          "x-hub-signature-256": signRaw(tampered, secret),
+        },
+        payload: tampered,
+      });
+      expect([400, 409]).toContain(conflict.statusCode);
+      expect(conflict.json().reason).toBe("DELIVERY_ID_CONFLICT");
+      expect(
+        db.prepare("SELECT COUNT(*) AS count FROM harvest_operations").get(),
+      ).toEqual({ count: 1 });
+      expect(
+        db.prepare("SELECT COUNT(*) AS count FROM harvest_deliveries").get(),
+      ).toEqual({ count: 1 });
+    } finally {
+      await server.close();
+      db.close();
+    }
+  });
+});

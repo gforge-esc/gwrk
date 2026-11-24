@@ -1,6 +1,6 @@
-# Gap Matrix: 051 Hosted AWS Pilot (Phases 1 to 4)
+# Gap Matrix: 051 Hosted AWS Pilot (Phases 1 to 5)
 
-Coverage matrix mapping Phases 1 through 4 requirements of `051-hosted-aws-pilot` to behavioral unit and integration tests.
+Coverage matrix mapping Phases 1 through 5 requirements of `051-hosted-aws-pilot` to behavioral unit and integration tests.
 
 | AC | Acceptance Criterion | Test Type | Test File | Test Exists | Gate |
 |---|---|---|---|---|---|
@@ -67,3 +67,25 @@ Coverage matrix mapping Phases 1 through 4 requirements of `051-hosted-aws-pilot
 | TC-006 | Agent-native gwrk auth key JSON output, non-interactive flags, and ADR-004 signals | integration | src/commands/auth.test.ts | ✅ | |
 | TC-008 | Constant-time SHA-256 verifiers and digest-only session persistence without raw secrets | unit | src/adapters/auth/credential-crypto.test.ts | ✅ | |
 | TC-011 | ADR-014 remains Proposed until human ratification while ADR-001..ADR-012 remain Decided | unit | src/architecture.test.ts | ✅ | |
+| FR-009 | Full-server browser same-origin Origin, query-only CSRF denial, wrong-session CSRF denial, and zero cookie fallback for invalid API keys via startServer | integration | src/server/auth-csrf.test.ts | ✅ | |
+| FR-010 | Full-server cross-project GET /api/health denial, single-project filtering, and minimal private GET/HEAD /health with zero Git or provider probes | integration | src/server/routes/health.auth.test.ts | ✅ | |
+| FR-010 | Full-server default-deny unclassified routes, disallowed methods, HEAD read parity, disabled CORS, and JSON API 401 denials without 302 redirects | integration | src/server/auth-route-policy.test.ts | ✅ | |
+| FR-011 | Provider webhook missing, empty, whitespace secret and invalid HMAC rejections without API key fallback plus identical replay reuse and DELIVERY_ID_CONFLICT | integration | src/server/github.test.ts | ✅ | |
+| FR-013 | Pure rate admission counter transitions, generation non-refund, and fixed 120s reservation expiry | unit | src/domain/auth-rate-policy.test.ts | ✅ | |
+| FR-013 | Bounded rate admission adapter shared 1000-bucket capacity, 60-pending limit, rollover, fixed 120s expiry, IPv6 normalization, and plugin facade | integration | src/adapters/auth/rate-admission.test.ts | ✅ | |
+| FR-013 | Full-server HTTP pre-verifier reservation, 120 sequential verified quotas, abort/error cleanup, capacity refusal, trusted proxy/IPv6, real loopback 431/413 parser bounds, and JWKS 503 outage | integration | src/server/auth-bounds.test.ts | ✅ | |
+| FR-013 | Full-server sanitized Fastify logger stream and response body verification with zero canary secret leaks across headers, chunked cookies, separate Set-Cookie, OAuth/CSRF query params, malformed URLs, and thrown errors | integration | src/server/auth-logging.test.ts | ✅ | |
+| TR-011 | AUTH-11 wrong Origin, query-only CSRF, wrong-session CSRF, and invalid API key non-fallback return HTTP 403/401 JSON with zero effects | integration | src/server/auth-csrf.test.ts | ✅ | |
+| TR-012 | AUTH-12 cross-project /api/health denial, single-project filtering, and minimal private /health with zero Git or provider probes | integration | src/server/routes/health.auth.test.ts | ✅ | |
+| TR-012 | FR-010 default-deny unclassified routes, unsupported methods, HEAD read parity, disabled CORS, and JSON API denials | integration | src/server/auth-route-policy.test.ts | ✅ | |
+| TR-013 | AUTH-13 missing, blank, or bad webhook HMAC and changed-payload replay create zero harvest rows | integration | src/server/github.test.ts | ✅ | |
+| TR-014 | Pure rate-admission counter limits and explicit generation transitions preserve quotas | unit | src/domain/auth-rate-policy.test.ts | ✅ | |
+| TR-014 | Rate admission reservations, shared capacity, fixed expiry, and duplicate completion stay bounded | integration | src/adapters/auth/rate-admission.test.ts | ✅ | |
+| TR-014 | AUTH-14 full-server rate limits (429), real parser header/body bounds (431/413), and JWKS outage (503) fail closed with zero accepted work | integration | src/server/auth-bounds.test.ts | ✅ | |
+| TR-015 | AUTH-15 canary API keys, canonical and chunked cookies, separate Set-Cookie headers, OAuth/CSRF query params, malformed URLs, and error canaries produce zero log or response matches | integration | src/server/auth-logging.test.ts | ✅ | |
+| US-002 | Full-server browser CSRF and same-origin mutation protection with session-bound tokens via startServer | integration | src/server/auth-csrf.test.ts | ✅ | |
+| US-006 | Full-server default-deny route policy, scoped health, minimal private /health, and webhook HMAC preservation | integration | src/server/routes/health.auth.test.ts | ✅ | |
+| US-006 | Full-server default-deny route policy, HEAD parity, disabled CORS, and JSON API 401 denials | integration | src/server/auth-route-policy.test.ts | ✅ | |
+| US-006 | Provider webhook HMAC and durable DELIVERY_ID_CONFLICT preservation | integration | src/server/github.test.ts | ✅ | |
+| US-008 | Full-server bounded denials, rate admission, real parser limits, and JWKS outages | integration | src/server/auth-bounds.test.ts | ✅ | |
+| US-008 | Full-server sanitized Fastify logger stream with zero canary secret leaks | integration | src/server/auth-logging.test.ts | ✅ | |
