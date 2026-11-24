@@ -5,6 +5,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { Command } from "commander";
+import { createHttpClientCredentialProvider } from "../adapters/auth/http-client-credential.js";
 import {
   logCliOutput,
   setCliExitCode,
@@ -18,10 +19,12 @@ import {
   createSqliteProjectRegistryAdapter,
 } from "../adapters/sqlite/index.js";
 import { openDatabase } from "../db/index.js";
+import { DEFAULT_HOSTED_SECURITY_POLICY } from "../domain/auth-policy.js";
 import type { EnrolledProject } from "../domain/project-registry.js";
 import { quotaProbe } from "../engine/quota.js";
 import { AgentBackendRegistry } from "../plugins/agent-registry.js";
 import { PluginLoader } from "../plugins/loader.js";
+import type { HttpClientCredentialPort } from "../ports/auth-port.js";
 import type { SlackDeliveryStatus } from "../ports/notification-port.js";
 import type { DurableOperationsStatus } from "../ports/operations-port.js";
 import { isPidRunning, readPid } from "../server/pid.js";
@@ -40,7 +43,102 @@ import { evaluateEnrolledProjectReadiness } from "./project-enroll.js";
 
 const { BOLD, DIM, CYAN, GREEN, YELLOW, RED, RESET } = color;
 
-const SERVER_PROBE_TIMEOUT_MS = 5_000;
+const SERVER_PROBE_TIMEOUT_MS =
+  DEFAULT_HOSTED_SECURITY_POLICY.remoteCliTimeoutSeconds * 1000;
+
+class StatusProbeError extends Error {}
+
+function safeServerOrigin(value: string): string {
+  try {
+    const url = new URL(value);
+    if (url.protocol === "https:" || url.protocol === "http:")
+      return url.origin;
+  } catch {
+    /* Invalid endpoint input has no printable URL. */
+  }
+  return "[configured endpoint]";
+}
+
+function statusProbeUrl(
+  base: string,
+  resource: string,
+  projectId?: string,
+): string {
+  const url = new URL(base);
+  url.pathname = `${url.pathname.replace(/\/+$/, "")}/api/${resource}`;
+  url.search = "";
+  url.hash = "";
+  if (projectId) url.searchParams.set("projectId", projectId);
+  return url.href;
+}
+
+function beforeDeadline<T>(
+  operation: Promise<T>,
+  signal: AbortSignal,
+): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const abort = () =>
+      reject(new StatusProbeError("Server probe deadline exceeded"));
+    if (signal.aborted) {
+      void operation.catch(() => {});
+      abort();
+      return;
+    }
+    signal.addEventListener("abort", abort, { once: true });
+    operation
+      .then(resolve, reject)
+      .finally(() => signal.removeEventListener("abort", abort));
+  });
+}
+
+function cancelProbeBody(response: Response): void {
+  try {
+    void response.body?.cancel().catch(() => {});
+  } catch {
+    /* Cleanup cannot reveal transport errors. */
+  }
+}
+
+async function fetchStatusProbe<T>(
+  url: string,
+  credentials: HttpClientCredentialPort,
+  signal: AbortSignal,
+): Promise<T> {
+  const credential = await beforeDeadline(
+    credentials.resolveBearerForUrl({ targetUrl: url }),
+    signal,
+  );
+  if (!credential.ok) throw new StatusProbeError(credential.message);
+  if (signal.aborted)
+    throw new StatusProbeError("Server probe deadline exceeded");
+  const pending = fetch(url, {
+    signal,
+    redirect: "manual",
+    ...(credential.bearerToken
+      ? { headers: { Authorization: `Bearer ${credential.bearerToken}` } }
+      : {}),
+  });
+  void pending.then(
+    (response) => {
+      if (signal.aborted) cancelProbeBody(response);
+    },
+    () => {},
+  );
+  const response = await beforeDeadline(pending, signal);
+  if (response.status >= 300 && response.status < 400) {
+    cancelProbeBody(response);
+    throw new StatusProbeError("Server probe redirects are not allowed");
+  }
+  if (!response.ok) {
+    cancelProbeBody(response);
+    throw new StatusProbeError(`Server probe returned HTTP ${response.status}`);
+  }
+  try {
+    return await beforeDeadline(response.json() as Promise<T>, signal);
+  } finally {
+    cancelProbeBody(response);
+  }
+}
 
 function hasExplicitServerBlock(filePath: string): boolean {
   if (!fs.existsSync(filePath)) return false;
@@ -149,6 +247,14 @@ export const createStatusCommand = () =>
     .option("--json", "Output status as JSON")
     .option("--format <type>", "Output format (text, json)")
     .option("--server-url <url>", "Override configured server base URL")
+    .option(
+      "--credential-file <path>",
+      "Read an explicit private API credential file",
+    )
+    .option(
+      "--credential-origin <origin>",
+      "Bind the credential to this HTTPS origin",
+    )
     .addHelpText(
       "after",
       `
@@ -167,6 +273,8 @@ Exit codes:
           json?: boolean;
           format?: string;
           serverUrl?: string;
+          credentialFile?: string;
+          credentialOrigin?: string;
         },
         command: Command,
       ) => {
@@ -289,46 +397,53 @@ Exit codes:
             pid,
             options.serverUrl,
           );
-          const serverUrl = resolveServerBaseUrl(config, options.serverUrl);
+          const endpoint = resolveServerBaseUrl(config, options.serverUrl);
+          const serverUrl = safeServerOrigin(endpoint);
+          const credentialRequested =
+            options.credentialFile !== undefined ||
+            options.credentialOrigin !== undefined;
+          const shouldProbe = serverConfigured || credentialRequested;
+          const credentials = createHttpClientCredentialProvider({
+            credentialFile: options.credentialFile,
+            boundOrigin: options.credentialOrigin,
+          });
 
           let serverReachable = false;
           let serverError: string | undefined;
           let healthData: HealthResponse | undefined;
           let serverStatus: SystemStatus | undefined;
 
-          if (serverConfigured) {
-            const signal = AbortSignal.timeout(SERVER_PROBE_TIMEOUT_MS);
+          if (shouldProbe) {
+            const controller = new AbortController();
+            const timer = setTimeout(
+              () => controller.abort(),
+              SERVER_PROBE_TIMEOUT_MS,
+            );
             try {
-              const healthResp = await fetch(`${serverUrl}/api/health`, {
-                signal,
-              });
-              if (!healthResp.ok) {
-                throw new Error(
-                  `Health check returned HTTP ${healthResp.status}`,
-                );
-              }
-              healthData = (await healthResp.json()) as HealthResponse;
-              if (healthData.daemonLiveness === "alive") {
-                daemonLiveness = "alive";
-              }
-
-              const statusQuery = enrolledProject
-                ? `?projectId=${encodeURIComponent(enrolledProject.projectId)}`
-                : "";
-              const statusResp = await fetch(
-                `${serverUrl}/api/status${statusQuery}`,
-                { signal },
+              const projectId =
+                enrolledProject || credentialRequested
+                  ? localProjectId
+                  : undefined;
+              healthData = await fetchStatusProbe<HealthResponse>(
+                statusProbeUrl(endpoint, "health", projectId),
+                credentials,
+                controller.signal,
               );
-              if (!statusResp.ok) {
-                throw new Error(
-                  `Status check returned HTTP ${statusResp.status}`,
-                );
-              }
-              serverStatus = (await statusResp.json()) as SystemStatus;
+              if (healthData.daemonLiveness === "alive")
+                daemonLiveness = "alive";
+              serverStatus = await fetchStatusProbe<SystemStatus>(
+                statusProbeUrl(endpoint, "status", projectId),
+                credentials,
+                controller.signal,
+              );
               serverReachable = true;
             } catch (err) {
-              serverReachable = false;
-              serverError = err instanceof Error ? err.message : String(err);
+              serverError =
+                err instanceof StatusProbeError
+                  ? err.message
+                  : "Server probe failed";
+            } finally {
+              clearTimeout(timer);
             }
           }
 
@@ -350,7 +465,7 @@ Exit codes:
             reason: "disabled_in_pilot" as const,
           };
 
-          const serverUnreachable = serverConfigured && !serverReachable;
+          const serverUnreachable = shouldProbe && !serverReachable;
           const unresolvedGateFailures =
             effectiveOperations?.harvest.unresolvedGateFailures ?? 0;
           const failedDeliveries =
@@ -363,7 +478,7 @@ Exit codes:
           const writeFailureHints = () => {
             if (serverUnreachable) {
               writeScopedStderr(
-                `hint: Server at ${serverUrl} is unreachable (${serverError}). Run 'gwrk server start' or verify the configured server URL.\n`,
+                `hint: Server probe failed. Run 'gwrk server start' or verify the configured server URL and credential profile.\n`,
               );
             }
             if (unresolvedGateFailures > 0) {
@@ -437,7 +552,7 @@ Exit codes:
             return;
           }
 
-          if (!serverConfigured) {
+          if (!shouldProbe) {
             logCliOutput(
               `\n  ${RED}●${RESET} ${BOLD}gwrk server is stopped${RESET} (${DIM}daemonLiveness: ${daemonLiveness}${RESET})`,
             );
@@ -474,7 +589,7 @@ Exit codes:
             if (effectiveOperations) {
               printDurableOperations(effectiveOperations, queueAgeSeconds);
             }
-            await printAgents();
+            if (!credentialRequested) await printAgents();
             writeFailureHints();
             setCliExitCode(1);
             return;
