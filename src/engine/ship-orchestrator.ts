@@ -1415,7 +1415,10 @@ export class ShipOrchestrator extends EventEmitter {
    *  When phaseTestFiles are available, runs only those files instead of
    *  the full suite. This prevents cross-phase RED test contamination.
    */
-  private async runTestSuite(phaseTestFiles?: string[]): Promise<{
+  private async runTestSuite(
+    phaseTestFiles?: string[],
+    initialBaseline = false,
+  ): Promise<{
     failCount: number;
     testsRun: number;
     passed: number;
@@ -1448,13 +1451,17 @@ export class ShipOrchestrator extends EventEmitter {
       else if (command.includes("jest")) command = "npx jest";
     }
 
-    const result = executeTestCommand(command, {
-      ...this.childOptions(),
-      // Include the verification wrapper's bounded 300-second capacity wait.
-      timeout: scoped ? 360_000 : 600_000,
-    });
+    const result = executeTestCommand(
+      command,
+      {
+        ...this.childOptions(),
+        // Include the verification wrapper's bounded 300-second capacity wait.
+        timeout: scoped ? 360_000 : 600_000,
+      },
+      initialBaseline ? { purpose: "initial-baseline" } : undefined,
+    );
     return {
-      failCount: result.failed,
+      failCount: result.failed + (result.failedSuites ?? 0),
       testsRun: result.testsRun,
       passed: result.passed,
       output: result.output,
@@ -1536,7 +1543,7 @@ export class ShipOrchestrator extends EventEmitter {
     }
     this.state.testBaseline = undefined;
     this.state.fullSuiteBaseline = undefined;
-    const scoped = await this.runTestSuite(phaseTestFiles);
+    const scoped = await this.runTestSuite(phaseTestFiles, true);
     if (scoped.executionError) {
       this.state.testExecutionFailure = scoped.output;
       throw new Error(scoped.output);
@@ -1552,7 +1559,7 @@ export class ShipOrchestrator extends EventEmitter {
       this.state.fullSuiteBaseline = failCount;
       return;
     }
-    const whole = await this.runTestSuite([]);
+    const whole = await this.runTestSuite([], true);
     if (whole.executionError) {
       this.state.testBaseline = undefined;
       this.state.testExecutionFailure = whole.output;

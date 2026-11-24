@@ -169,3 +169,46 @@ describe("suite execution completion", () => {
     expect(scoped).toBeLessThan(whole!);
   });
 });
+
+const completedLoadFailure = [
+  " RUN v3.2.4 /suite-fixture", "⎯⎯ Failed Suites 3 ⎯⎯", "Error: module missing",
+  " Test Files 3 failed | 1 passed (4)", " Tests 2 passed (2)",
+  " Start at 19:04:22", " Duration 1.06s (tests 725ms)",
+].join("\n");
+function loadFailure(output = completedLoadFailure) {
+  return failure({ status: 1, signal: null, code: undefined, stdout: Buffer.from(output), stderr: Buffer.from("") });
+}
+
+describe("initial baseline suite-load evidence", () => {
+  it("records three completed failed suites before implementation without inventing failed assertions", async () => {
+    const runner = orchestrator();
+    runner.getPhaseTestFiles = vi.fn().mockResolvedValue(["new.test.ts"]);
+    vi.mocked(execSync).mockImplementation(() => { throw loadFailure(); });
+    await runner.captureTestBaseline();
+    expect(runner.state.testBaseline).toBe(3);
+    expect(runner.state.fullSuiteBaseline).toBe(3);
+    expect(runner.state.testExecutionFailure).toBeUndefined();
+  });
+  it.each([false, true])("never grandfathers failed suites at verification, scoped=%s", async (scoped) => {
+    const runner = orchestrator();
+    runner.state.testBaseline = 99; runner.state.fullSuiteBaseline = 99;
+    runner.getPhaseTestFiles = vi.fn().mockResolvedValue(scoped ? ["new.test.ts"] : []);
+    vi.mocked(execSync).mockImplementationOnce(() => { throw loadFailure(); });
+    expect((await runner.stageTestGate()).nextStage).toBe(ShipStage.DIAGNOSE);
+    expect(runner.state.testExecutionFailure).toContain("Failed Suites 3");
+  });
+  it("blocks repo-wide failed suites even under a larger baseline", async () => {
+    const runner = orchestrator(); runner.state.fullSuiteBaseline = 99;
+    vi.mocked(execSync).mockImplementationOnce(() => { throw loadFailure(); });
+    expect((await runner.checkFullSuiteRegression())?.nextStage).toBe(ShipStage.DIAGNOSE);
+  });
+  it("clears both baselines when a complete scoped load failure is followed by truncated whole-suite output", async () => {
+    const runner = orchestrator();
+    runner.getPhaseTestFiles = vi.fn().mockResolvedValue(["new.test.ts"]);
+    vi.mocked(execSync).mockImplementationOnce(() => { throw loadFailure(); });
+    vi.mocked(execSync).mockImplementationOnce(() => { throw loadFailure(completedLoadFailure.split(" Duration")[0]); });
+    await expect(runner.captureTestBaseline()).rejects.toThrow();
+    expect(runner.state.testBaseline).toBeUndefined();
+    expect(runner.state.fullSuiteBaseline).toBeUndefined();
+  });
+});

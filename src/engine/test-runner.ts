@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { type ExecSyncOptions, execSync } from "node:child_process";
+import { stripVTControlCharacters } from "node:util";
 import { getTestCommand } from "../utils/toolchain-mapper.js";
 import { detectProfile } from "./profile-detector.js";
 
@@ -19,6 +20,8 @@ export interface TestRunResult {
    * — the caller treats this as a skip, not a `testsRun == 0` failure. */
   skipped?: boolean;
   executionError?: string;
+  /** Completed Vitest suite-load failures, separate from executed assertions. */
+  failedSuites?: number;
 }
 
 function pytestSummary(output: string): string | undefined {
@@ -201,10 +204,67 @@ export async function runTests(
   return executeTestCommand(command, { cwd, timeout: 300_000 });
 }
 
+/** A baseline may record finished load failures without claiming assertions ran. */
+export interface TestExecutionPurpose {
+  purpose: "initial-baseline";
+}
+
+const vitestRunBanner = /^[ \t]*RUN[ \t]+v\d+\.\d+\.\d+[^\n]*$/m;
+const failedVitestSuites =
+  /^[ \t]*[⎯─━-]*[ \t]*Failed Suites[ \t]+([1-9]\d*)[ \t]*[⎯─━-]*[ \t]*$/m;
+
+function summaryTotal(
+  text: string,
+): { failed: number; total: number } | undefined {
+  const match = text.match(/^(.+?)\s+\((\d+)\)$/);
+  if (!match) return undefined;
+  let total = 0;
+  let failed = 0;
+  const seen = new Set<string>();
+  for (const part of match[1].split(/\s*\|\s*/)) {
+    const count = part.match(/^(\d+) (failed|passed|skipped|todo)$/);
+    if (!count || seen.has(count[2])) return undefined;
+    seen.add(count[2]);
+    total += Number(count[1]);
+    if (count[2] === "failed") failed = Number(count[1]);
+  }
+  return total === Number(match[2]) ? { failed, total } : undefined;
+}
+
+function completedVitestLoadReport(
+  output: string,
+):
+  | { failedSuites: number; counts: ReturnType<typeof parseTestOutput> }
+  | undefined {
+  const clean = stripVTControlCharacters(output).trim();
+  if (!vitestRunBanner.test(clean)) return undefined;
+  const failed = clean.match(failedVitestSuites);
+  if (!failed) return undefined;
+  // Only the observed terminal Vitest frame and known wrapper cleanup may end it.
+  const terminal = clean.match(
+    /^[ \t]*Test Files[ \t]+([^\n]+)\n[ \t]*Tests[ \t]+([^\n]+)\n[ \t]*Start at[ \t]+\d{2}:\d{2}:\d{2}\n[ \t]*Duration[ \t]+\d+(?:\.\d+)?(?:ms|s)[ \t]+\([^()\n]*\)\s*(?:\[gwrk heavy\] slot \d+ released\s*)?$(?![\s\S])/m,
+  );
+  if (
+    !terminal ||
+    terminal.index === undefined ||
+    terminal.index < (failed.index ?? 0)
+  )
+    return undefined;
+  const files = summaryTotal(terminal[1].trim());
+  const tests =
+    terminal[2].trim() === "no tests"
+      ? { failed: 0, total: 0 }
+      : summaryTotal(terminal[2].trim());
+  const failedSuites = Number(failed[1]);
+  if (!files || !tests || failedSuites > files.failed) return undefined;
+  return { failedSuites, counts: parseTestOutput(`Tests ${terminal[2]}`) };
+}
+
 /** Capture process failure separately from completed assertion results. */
 export function executeTestCommand(
   command: string,
   options: ExecSyncOptions,
+  purpose?: TestExecutionPurpose,
 ): TestRunResult {
   let output: string;
   let exitCode = 0;
@@ -236,7 +296,12 @@ export function executeTestCommand(
     exitCode = processError.status ?? 1;
   }
 
-  const counts = parseTestOutput(output);
+  let counts = parseTestOutput(output);
+  let failedSuites: number | undefined;
+  const completedLoadReport = completedVitestLoadReport(output);
+  const cleanOutput = stripVTControlCharacters(output);
+  const hasLoadFailures =
+    vitestRunBanner.test(cleanOutput) && failedVitestSuites.test(cleanOutput);
   const noTests = /No test files found|no tests (?:ran|collected)/i.test(
     output,
   );
@@ -248,6 +313,20 @@ export function executeTestCommand(
       exitCode >= 128)
   ) {
     executionError = `Test runner interrupted: ${processError.code ?? processError.message ?? `exit ${exitCode}`}${processError.signal ? ` (${processError.signal})` : ""}`;
+  } else if (/^#\s*cancelled\s+[1-9]\d*/m.test(output)) {
+    executionError = "Test runner cancelled tests before completion";
+  } else if (hasLoadFailures) {
+    if (
+      purpose?.purpose === "initial-baseline" &&
+      exitCode === 1 &&
+      completedLoadReport
+    ) {
+      failedSuites = completedLoadReport.failedSuites;
+      counts = completedLoadReport.counts;
+    } else {
+      executionError =
+        "Test runner has suite-load failures; verification requires executable tests";
+    }
   } else if (
     exitCode !== 0 &&
     (!hasRecognizedTestSummary(output) || counts.failed === 0) &&
@@ -256,8 +335,6 @@ export function executeTestCommand(
     executionError = `Test runner exited ${exitCode} without completed failing-test results`;
   } else if (!hasRecognizedTestSummary(output) && !noTests) {
     executionError = "Test runner produced no recognized terminal summary";
-  } else if (/^#\s*cancelled\s+[1-9]\d*/m.test(output)) {
-    executionError = "Test runner cancelled tests before completion";
   }
 
   if (executionError) {
@@ -273,5 +350,12 @@ export function executeTestCommand(
       executionError,
     };
   }
-  return { ...counts, ran: counts.testsRun > 0, exitCode, command, output };
+  return {
+    ...counts,
+    ran: counts.testsRun > 0,
+    exitCode,
+    command,
+    output,
+    ...(failedSuites === undefined ? {} : { failedSuites }),
+  };
 }
