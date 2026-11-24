@@ -3,12 +3,14 @@ import {
   lstatSync,
   mkdirSync,
   readdirSync,
+  readlinkSync,
   realpathSync,
   rmSync,
   statSync,
   writeFileSync,
 } from "node:fs";
 import { setTimeout as sleep } from "node:timers/promises";
+import { classifyDockerFailure } from "./docker-diagnostics.mjs";
 import {
   FixtureProcessError,
   runOwnedProcessScope,
@@ -45,6 +47,7 @@ export async function withOwnedNestedDaemon(
     lstatSync,
     mkdirSync,
     readdirSync,
+    readlinkSync,
     realpathSync,
     rmSync,
     statSync,
@@ -54,6 +57,7 @@ export async function withOwnedNestedDaemon(
     lstatSync: inspectPath,
     mkdirSync: createDirectory,
     readdirSync: listDirectory,
+    readlinkSync: readNamespaceLink,
     realpathSync: canonicalPath,
     rmSync: removeDirectory,
     statSync: inspectFollowedPath,
@@ -138,6 +142,13 @@ export async function withOwnedNestedDaemon(
       };
       const docker = async (args, timeout = 15_000) => {
         const result = await spawnDocker(args, timeout);
+        if (result.code !== 0) {
+          writeFile(
+            `${root}/docker-command-failure.json`,
+            JSON.stringify(classifyDockerFailure(args[0], result)),
+            { mode: 0o600 },
+          );
+        }
         assert.equal(result.code, 0, "owned Docker command failed");
         return result.stdout;
       };
@@ -180,6 +191,39 @@ export async function withOwnedNestedDaemon(
         { mode: 0o600 },
       );
       await docker(["start", containerId]);
+      const running = JSON.parse(
+        await docker(["inspect", "--format", "{{json .}}", containerId]),
+      );
+      assert.equal(running.HostConfig.PidMode, "");
+      assert.equal(running.HostConfig.IpcMode, "private");
+      assert.ok(
+        Number.isSafeInteger(running.State.Pid) && running.State.Pid > 0,
+      );
+      const hostPidNamespace = readNamespaceLink("/proc/self/ns/pid");
+      const outerPidNamespace = readNamespaceLink(
+        `/proc/${running.State.Pid}/ns/pid`,
+      );
+      assert.notEqual(
+        outerPidNamespace,
+        hostPidNamespace,
+        "outer PID namespace is shared with the host",
+      );
+      const actualNamespace = (
+        await docker(["exec", containerId, "readlink", "/proc/self/ns/pid"])
+      ).trim();
+      assert.equal(actualNamespace, outerPidNamespace);
+      writeFile(
+        `${root}/namespace-proof.json`,
+        JSON.stringify({
+          pidMode: running.HostConfig.PidMode,
+          ipcMode: running.HostConfig.IpcMode,
+          hostPidNamespace,
+          outerPidNamespace,
+          actualNamespace,
+          isolated: true,
+        }),
+        { mode: 0o600 },
+      );
       const deadline = Date.now() + RESOURCE_LIMITS.startupSeconds * 1000;
       let ready = false;
       while (Date.now() < deadline && !signal.aborted) {

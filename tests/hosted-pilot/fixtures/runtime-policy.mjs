@@ -125,8 +125,6 @@ export function ownedRuntimePlan({
     "1024",
     "--network",
     "none",
-    "--pid",
-    "private",
     "--ipc",
     "private",
     "--mount",

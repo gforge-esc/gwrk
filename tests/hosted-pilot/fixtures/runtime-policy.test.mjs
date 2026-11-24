@@ -89,3 +89,19 @@ test("keeps Unix-only daemon and bounded owned cleanup without host socket or po
   );
   assert.equal(plan.command[plan.command.indexOf("--cpus") + 1], "2");
 });
+
+test("uses Docker's supported default private PID namespace without an invalid private flag", () => {
+  const runId = "1".repeat(24);
+  const plan = ownedRuntimePlan({
+    runId,
+    inputDirectory: `/opt/gwrk-verification/${runId}/input`,
+    dataDirectory: `/var/lib/gwrk/verification-fixtures/${runId}`,
+    receipt: receipt(),
+  });
+  assert.equal(
+    plan.command.includes("--pid"),
+    false,
+    "Docker PID private isolation uses its default empty mode",
+  );
+  assert.equal(plan.command[plan.command.indexOf("--ipc") + 1], "private");
+});

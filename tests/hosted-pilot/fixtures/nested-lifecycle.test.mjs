@@ -45,6 +45,8 @@ function fixture({ cancelWhenRecorded = false } = {}) {
     lstatSync: metadata,
     statSync: metadata,
     realpathSync: (value) => value,
+    readlinkSync: (path) =>
+      path === "/proc/self/ns/pid" ? "pid:[1]" : "pid:[2]",
     readdirSync: () => [],
     mkdirSync: (path) => events.push(["mkdir", path]),
     writeFileSync(path, value) {
@@ -75,9 +77,12 @@ function fixture({ cancelWhenRecorded = false } = {}) {
         stdout: JSON.stringify({
           Id: id,
           Config: { Labels: { "gwrk.fixture.run": runId } },
+          HostConfig: { PidMode: "", IpcMode: "private" },
+          State: { Pid: 900 },
         }),
       };
     if (args[0] === "rm") return { code: 0, stdout: "" };
+    if (args.includes("readlink")) return { code: 0, stdout: "pid:[2]\n" };
     if (args.includes("info"))
       return {
         code: 0,
@@ -209,4 +214,42 @@ test("actual lifecycle drains an active injected CLI process before container re
   } finally {
     if (pid && live()) process.kill(pid, "SIGKILL");
   }
+});
+
+test("reported host PID mode fails before case execution and still cleans owned resources", async () => {
+  const f = fixture();
+  const baseCommand = f.effects.command;
+  f.effects.command = async (args, options) => {
+    const result = await baseCommand(args, options);
+    if (args[0] === "inspect") {
+      const metadata = JSON.parse(result.stdout);
+      metadata.HostConfig.PidMode = "host";
+      return { ...result, stdout: JSON.stringify(metadata) };
+    }
+    return result;
+  };
+  await assert.rejects(withOwnedNestedDaemon(f.input, f.effects));
+  assert.equal(
+    f.events.some((event) => event[0] === "cases"),
+    false,
+  );
+  assert.ok(
+    f.events.some((event) => event[0] === "docker" && event[1] === "rm"),
+  );
+});
+
+test("matching host and outer PID namespaces fails despite empty PID mode", async () => {
+  const f = fixture();
+  f.effects.files.readlinkSync = () => "pid:[same]";
+  await assert.rejects(
+    withOwnedNestedDaemon(f.input, f.effects),
+    /shared with the host/,
+  );
+  assert.equal(
+    f.events.some((event) => event[0] === "cases"),
+    false,
+  );
+  assert.ok(
+    f.events.some((event) => event[0] === "docker" && event[1] === "rm"),
+  );
 });
