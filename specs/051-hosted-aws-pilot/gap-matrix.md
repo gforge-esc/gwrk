@@ -1,6 +1,6 @@
-# Gap Matrix: 051 Hosted AWS Pilot (Phases 1 to 5)
+# Gap Matrix: 051 Hosted AWS Pilot (Phases 1 to 6)
 
-Coverage matrix mapping Phases 1 through 5 requirements of `051-hosted-aws-pilot` to behavioral unit and integration tests.
+Coverage matrix mapping Phases 1 through 6 requirements of `051-hosted-aws-pilot` to behavioral unit and integration tests.
 
 | AC | Acceptance Criterion | Test Type | Test File | Test Exists | Gate |
 |---|---|---|---|---|---|
@@ -89,3 +89,26 @@ Coverage matrix mapping Phases 1 through 5 requirements of `051-hosted-aws-pilot
 | US-006 | Provider webhook HMAC and durable DELIVERY_ID_CONFLICT preservation | integration | src/server/github.test.ts | ✅ | |
 | US-008 | Full-server bounded denials, rate admission, real parser limits, and JWKS outages | integration | src/server/auth-bounds.test.ts | ✅ | |
 | US-008 | Full-server sanitized Fastify logger stream with zero canary secret leaks | integration | src/server/auth-logging.test.ts | ✅ | |
+| FR-008 | Pure hosted auth config resolution preserving separate typed and environment sources, conflict denials, and no silent local fallback | unit | src/domain/hosted-auth-config.test.ts | ✅ | |
+| FR-008 | Protected inbound allowlist and 32-byte base64url CSRF HMAC file validation with containment, no-symlink, 0640 descriptor checks, and live reload | integration | src/adapters/auth/protected-hosted-auth-files.test.ts | ✅ | |
+| FR-008 | Lazy startup-only hosted auth factory composing Google verifier, request authenticator, session logout, and CSRF with borrowed ledger and clock | integration | src/adapters/auth/hosted-auth-factory.test.ts | ✅ | |
+| FR-008 | Fail-closed hosted startup in server start --foreground and server _run across project and registry loaders, loopback hosted transport, and live allowlist | integration | src/commands/server.auth-startup.test.ts | ✅ | |
+| FR-008 | Zero auth I/O, zero Google calls, and zero agent inference during CLI imports and gwrk init --non-interactive --server | integration | src/commands/init.auth-purity.test.ts | ✅ | |
+| FR-014 | Explicit 0600 origin-bound outbound CLI credential provider rejecting mismatches, plain HTTP, symlinks, and env autodiscovery | integration | src/adapters/auth/http-client-credential.test.ts | ✅ | |
+| FR-014 | Explicit --credential-file and --credential-origin flags on gwrk status with scoped health/status, manual redirects, shared 10s deadline, and secret redaction | integration | src/commands/status.auth.test.ts | ✅ | |
+| FR-014 | Local gwrk server status probes private minimal /health only with manual redirects and no project-readiness claim | integration | src/commands/server.auth-startup.test.ts | ✅ | |
+| FR-017 | Real hosted server restart preserves accepted scoped dispatch and harvest operation IDs and recipient receipts while denying revoked keys and logged-out sessions | integration | src/server/auth-continuity.test.ts | ✅ | |
+| TR-016 | AUTH-16 origin-bound CLI credential attaches only to matching HTTPS origin and drops on override, plain HTTP, or 3xx redirect | integration | src/adapters/auth/http-client-credential.test.ts | ✅ | |
+| TR-016 | AUTH-16 status caller enforces explicit flags, per-URL origin checks, manual redirects, combined 10s deadline, and secret redaction | integration | src/commands/status.auth.test.ts | ✅ | |
+| TR-017 | AUTH-17 hosted server start --foreground and server _run fail closed before listening on missing, partial, conflicting, or unreadable auth config and isolate server status liveness | integration | src/commands/server.auth-startup.test.ts | ✅ | |
+| TR-018 | AUTH-18 scoped dispatch and signed webhook harvest retain stable operation IDs and recipient receipts across real restart while revoked keys and sessions remain denied | integration | src/server/auth-continuity.test.ts | ✅ | |
+| TR-019 | CLI module imports and gwrk init --non-interactive --server run zero agent inference, zero auth file reads, and zero Google calls | integration | src/commands/init.auth-purity.test.ts | ✅ | |
+| US-005 | Fail-closed hosted startup in server start and _run plus import and init zero-inference purity | integration | src/commands/server.auth-startup.test.ts | ✅ | |
+| US-005 | Non-interactive server init retains inference-free and secret-free behavior | integration | src/commands/init.auth-purity.test.ts | ✅ | |
+| US-009 | Remote gwrk status explicit origin-bound credentials and local gwrk server status minimal liveness separation | integration | src/commands/status.auth.test.ts | ✅ | |
+| US-009 | Local gwrk server status checks private minimal /health without claiming authenticated project readiness | integration | src/commands/server.auth-startup.test.ts | ✅ | |
+| US-010 | Hosted server restart continuity for scoped dispatch, signed harvest, recipient receipts, and persisted revocations | integration | src/server/auth-continuity.test.ts | ✅ | |
+| TC-001 | Deterministic synthetic OIDC and local SQLite startup, continuity, and init purity proofs with zero live network calls | integration | src/server/auth-continuity.test.ts | ✅ | |
+| TC-002 | Fail-fast hosted config layering, hosted-runner missing-mode denial, and startup refusal before listening | integration | src/commands/server.auth-startup.test.ts | ✅ | |
+| TC-007 | Zero agent CLI spawning during CLI module imports and gwrk init --non-interactive --server | integration | src/commands/init.auth-purity.test.ts | ✅ | |
+| TC-010 | Loopback 127.0.0.1 hosted startup explicitly selects hosted transport while preserving private liveness | integration | src/commands/server.auth-startup.test.ts | ✅ | |
