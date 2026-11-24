@@ -1203,7 +1203,7 @@ describe("FR-013 US-008 TR-014 AUTH-14: full-server HTTP rate admission, parser 
     });
     expect(ipv6Neighbor.statusCode).toBe(200);
 
-    // Trusted loopback proxy: IPv4-mapped IPv6 shares quota with IPv4, and spoofed leftmost XFF is ignored.
+    // A single mapped IPv6 address shares its quota with the equivalent IPv4 address.
     for (let i = 0; i < 30; i++) {
       expect(
         (
@@ -1212,7 +1212,7 @@ describe("FR-013 US-008 TR-014 AUTH-14: full-server HTTP rate admission, parser 
             url: `/api/status?projectId=${f.project.projectId}`,
             remoteAddress: "127.0.0.1",
             headers: {
-              "x-forwarded-for": `203.0.113.${i + 1}, ::ffff:198.51.100.88`,
+              "x-forwarded-for": "::ffff:198.51.100.88",
               authorization: "Bearer malformed-key",
             },
           })
@@ -1227,7 +1227,7 @@ describe("FR-013 US-008 TR-014 AUTH-14: full-server HTTP rate admission, parser 
             url: `/api/status?projectId=${f.project.projectId}`,
             remoteAddress: "127.0.0.1",
             headers: {
-              "x-forwarded-for": `203.0.113.${i + 50}, 198.51.100.88`,
+              "x-forwarded-for": "198.51.100.88",
               authorization: "Bearer malformed-key",
             },
           })
@@ -1239,7 +1239,7 @@ describe("FR-013 US-008 TR-014 AUTH-14: full-server HTTP rate admission, parser 
       url: `/api/status?projectId=${f.project.projectId}`,
       remoteAddress: "127.0.0.1",
       headers: {
-        "x-forwarded-for": "203.0.113.200, 198.51.100.88",
+        "x-forwarded-for": "198.51.100.88",
         authorization: `Bearer ${f.operatorKey}`,
       },
     });
@@ -1324,6 +1324,78 @@ describe("FR-013 US-008 TR-014 AUTH-14: full-server HTTP rate admission, parser 
         })
       ).statusCode,
     ).toBe(429);
+  });
+
+  it.each([
+    ["comma list", ["X-Forwarded-For: 198.51.100.88, 203.0.113.1"]],
+    [
+      "duplicate",
+      ["X-Forwarded-For: 198.51.100.88", "X-Forwarded-For: 203.0.113.1"],
+    ],
+    ["malformed", ["X-Forwarded-For: not-an-ip"]],
+  ])(
+    "AUTH-14: denies trusted forwarding %s before authentication or effects",
+    async (_label, forwardingHeaders) => {
+      const authenticate = vi.fn(async () => ({
+        ok: false as const,
+        code: "AUTH_CREDENTIAL_INVALID" as const,
+        message: "Denied",
+      }));
+      const f = await createBoundsServerFixture({
+        customAuthenticate: authenticate,
+      });
+      const response = await sendRawLoopbackHttp(
+        f.port,
+        [
+          `GET /api/status?projectId=${f.project.projectId} HTTP/1.1`,
+          "Host: localhost",
+          "Connection: close",
+          ...forwardingHeaders,
+          `Authorization: Bearer ${f.operatorKey}`,
+          "",
+          "",
+        ].join("\r\n"),
+      );
+      expect(response).toMatch(/^HTTP\/1\.1 503 /);
+      expect(authenticate).not.toHaveBeenCalled();
+      expect(f.dispatchCount()).toBe(0);
+    },
+  );
+
+  it("AUTH-14: shares injected owner capacity with HTTP admission before authentication", async () => {
+    const owner = createRateAdmission({ clock: { nowMs: () => BASE_NOW } });
+    try {
+      for (let i = 1; i <= 1000; i++) {
+        expect(
+          owner.consumeLogin({ trustedIp: `2001:db8::${i.toString(16)}` })
+            .allowed,
+        ).toBe(true);
+      }
+      const authenticate = vi.fn(async () => ({
+        ok: false as const,
+        code: "AUTH_CREDENTIAL_INVALID" as const,
+        message: "Denied",
+      }));
+      const f = await createBoundsServerFixture({
+        rateAdmission: owner,
+        customAuthenticate: authenticate,
+      });
+      const response = await f.server.inject({
+        method: "GET",
+        url: `/api/status?projectId=${f.project.projectId}`,
+        remoteAddress: "127.0.0.1",
+        headers: {
+          "x-forwarded-for": "198.51.100.99",
+          authorization: `Bearer ${f.operatorKey}`,
+        },
+      });
+      expect(response.statusCode).toBe(429);
+      expect(response.json().code).toBe("RATE_LIMIT_EXCEEDED");
+      expect(authenticate).not.toHaveBeenCalled();
+      expect(f.dispatchCount()).toBe(0);
+    } finally {
+      owner.close();
+    }
   });
 
   it("AUTH-14: fails closed on closed rate admission store or clock failure without calling verifier or running work", async () => {
