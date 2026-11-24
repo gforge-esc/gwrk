@@ -2,8 +2,9 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { execFileSync } from "node:child_process";
+import { type ChildProcess, execFileSync, spawn } from "node:child_process";
 import fs from "node:fs";
+import { createRequire } from "node:module";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -24,6 +25,96 @@ import {
   createSqliteAuthStoreAdapter as createSqliteAuthStoreFromBarrel,
   createSqliteProjectRegistryAdapter,
 } from "./index.js";
+
+// The parent controls SQLite commit boundaries. The child never retries an operation.
+const SQLITE_CONTENDER_SOURCE = String.raw`
+import { createRequire } from "node:module";
+import { pathToFileURL } from "node:url";
+const require = createRequire(process.env.FIXTURE_PACKAGE);
+const Database = require("better-sqlite3");
+const db = new Database(process.env.FIXTURE_DB);
+let store;
+if (process.env.FIXTURE_ADAPTER) {
+  const module = await import(pathToFileURL(process.env.FIXTURE_ADAPTER).href);
+  store = module.createSqliteAuthStoreAdapter({ db });
+} else {
+  // Independent harness proof uses the same database, IPC and lock protocol.
+  store = { observeGoogleSession(input) {
+    return db.transaction(() => {
+      const old = db.prepare("SELECT * FROM google_sessions WHERE token_digest_sha256 = ?").get(input.tokenDigestSha256);
+      if (old) return { ok: !old.revoked_at, created: false, cap: old.session_cap_at };
+      db.prepare("INSERT INTO google_sessions (token_digest_sha256, principal_id, issued_at, expires_at, session_cap_at) VALUES (?, ?, ?, ?, ?)").run(input.tokenDigestSha256, input.principalId, input.issuedAt, input.expiresAt, input.sessionCapAt);
+      return { ok: true, created: true };
+    })();
+  } };
+}
+db.pragma("busy_timeout = 100");
+process.on("message", (message) => {
+  if (message.kind === "close") { db.close(); process.disconnect(); return; }
+  if (message.kind !== "observe") return;
+  try {
+    process.send({ kind: "result", id: message.id, value: store.observeGoogleSession(message.input) });
+  } catch (error) {
+    process.send({ kind: "result", id: message.id, errorCode: error.code ?? "UNEXPECTED_ERROR" });
+  }
+});
+process.send({ kind: "ready" });
+`;
+
+interface ContenderReply {
+  kind: string;
+  id?: number;
+  value?: ReturnType<AuthStorePort["observeGoogleSession"]>;
+  errorCode?: string;
+}
+function childReply(
+  child: ChildProcess,
+  predicate: (message: ContenderReply) => boolean,
+): Promise<ContenderReply> {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      cleanup();
+      reject(new Error("SQLite contender IPC deadline exceeded"));
+    }, 5000);
+    const receive = (value: unknown) => {
+      if (
+        typeof value !== "object" ||
+        value === null ||
+        !predicate(value as ContenderReply)
+      )
+        return;
+      cleanup();
+      resolve(value as ContenderReply);
+    };
+    const exited = () => {
+      cleanup();
+      reject(new Error("SQLite contender exited before its reply"));
+    };
+    const cleanup = () => {
+      clearTimeout(timer);
+      child.off("message", receive);
+      child.off("exit", exited);
+      child.off("error", exited);
+    };
+    child.on("message", receive);
+    child.once("exit", exited);
+    child.once("error", exited);
+  });
+}
+async function stopContender(child: ChildProcess): Promise<void> {
+  if (child.exitCode !== null || child.signalCode !== null) return;
+  await new Promise<void>((resolve) => {
+    const deadline = setTimeout(() => {
+      child.kill("SIGKILL");
+    }, 1000);
+    child.once("exit", () => {
+      clearTimeout(deadline);
+      resolve();
+    });
+    if (child.connected) child.send({ kind: "close" });
+    else child.kill("SIGKILL");
+  });
+}
 
 const ORIGIN = "https://gwrk.gforge.ai";
 const CREATED_AT = "2026-11-23T18:00:00.000Z";
@@ -216,7 +307,7 @@ describe("FR-003 FR-004 FR-005 SQLite production auth store and migration 020", 
     }
   });
 
-  it("FR-003: stores digest only without raw Google tokens and serializes insert-if-absent observation races across two SQLite connections", () => {
+  it("FR-003: stores digest only without raw Google tokens and preserves sequential two-connection observations and revocations", () => {
     const conn1 = openDatabase({ dbPath });
     const conn2 = openDatabase({ dbPath });
     const store1: AuthStorePort = createSqliteAuthStoreAdapter({ db: conn1 });
@@ -523,6 +614,176 @@ describe("FR-003 FR-004 FR-005 SQLite production auth store and migration 020", 
       db.close();
     }
   });
+
+  it("TR-009 AUTH-09 rolls back creation when a valid enrolled grant insert fails after a prior grant write", () => {
+    const id = "cred_creation_fault";
+    const db = openDatabase({ dbPath });
+    try {
+      const registry = createSqliteProjectRegistryAdapter({ db });
+      registry.enrollProject(projectA);
+      registry.enrollProject(projectB);
+      const store = createSqliteAuthStoreAdapter({ db });
+      // Reject whichever grant is second, without requiring a particular insertion order.
+      db.exec(`CREATE TRIGGER fail_second_creation_grant
+        BEFORE INSERT ON project_role_bindings
+        WHEN NEW.principal_id = 'cred_creation_fault'
+          AND EXISTS (SELECT 1 FROM project_role_bindings WHERE principal_id = NEW.principal_id AND principal_type = 'cli_token')
+        BEGIN SELECT RAISE(ABORT, 'injected_creation_grant_failure'); END;`);
+      expect(() =>
+        store.createCredentialWithGrants({
+          credentialId: id,
+          verifierSha256: VERIFIER_A,
+          label: "Faulted creation",
+          issuer: "local-admin",
+          audienceOrigin: ORIGIN,
+          createdAt: CREATED_AT,
+          expiresAt: EXPIRES_AT,
+          grants: [
+            { projectId: projectA.projectId, role: "operator" },
+            { projectId: projectB.projectId, role: "viewer" },
+          ],
+        }),
+      ).toThrow(/injected_creation_grant_failure/);
+    } finally {
+      db.close();
+    }
+    const reopened = openDatabase({ dbPath });
+    try {
+      const store = createSqliteAuthStoreAdapter({ db: reopened });
+      expect(store.findApiCredentialById(id)).toBeNull();
+      expect(
+        reopened
+          .prepare(
+            "SELECT * FROM project_role_bindings WHERE principal_type = 'cli_token' AND principal_id = ?",
+          )
+          .all(id),
+      ).toEqual([]);
+      expect(
+        reopened
+          .prepare("SELECT * FROM api_credentials WHERE credential_id = ?")
+          .all(id),
+      ).toEqual([]);
+      const registry = createSqliteProjectRegistryAdapter({ db: reopened });
+      expect(registry.getProject(projectA.projectId)).not.toBeNull();
+      expect(registry.getProject(projectB.projectId)).not.toBeNull();
+    } finally {
+      reopened.close();
+    }
+  });
+
+  it("TR-009 serializes independently scheduled session observation with uncommitted insert and revocation writers", async () => {
+    const db = openDatabase({ dbPath });
+    const script = path.join(tempRoot, "sqlite-contender.mjs");
+    fs.writeFileSync(script, SQLITE_CONTENDER_SOURCE);
+    const child = spawn(
+      process.execPath,
+      ["--import", createRequire(import.meta.url).resolve("tsx"), script],
+      {
+        stdio: ["ignore", "ignore", "pipe", "ipc"],
+        env: {
+          ...process.env,
+          NODE_OPTIONS: "",
+          FIXTURE_PACKAGE: path.resolve("package.json"),
+          FIXTURE_DB: dbPath,
+          FIXTURE_ADAPTER: fileURLToPath(
+            new URL("./auth-store.ts", import.meta.url),
+          ),
+        },
+      },
+    );
+    let requestId = 0;
+    const input = {
+      tokenDigestSha256: "d".repeat(64),
+      principalId: "https://accounts.google.com:contended",
+      issuedAt: CREATED_AT,
+      expiresAt: "2026-11-23T20:00:00.000Z",
+      sessionCapAt: "2026-11-23T19:00:00.000Z",
+    };
+    const observe = () => {
+      const id = ++requestId;
+      const result = childReply(
+        child,
+        (message) => message.kind === "result" && message.id === id,
+      );
+      child.send({
+        kind: "observe",
+        id,
+        input: { ...input, sessionCapAt: "2026-11-23T19:45:00.000Z" },
+      });
+      return result;
+    };
+    try {
+      await childReply(child, (message) => message.kind === "ready");
+      db.exec("BEGIN IMMEDIATE");
+      db.prepare(
+        "INSERT INTO google_sessions (token_digest_sha256, principal_id, issued_at, expires_at, session_cap_at) VALUES (?, ?, ?, ?, ?)",
+      ).run(
+        input.tokenDigestSha256,
+        input.principalId,
+        input.issuedAt,
+        input.expiresAt,
+        input.sessionCapAt,
+      );
+      // Child is ready before this write. The transaction stays open until its reply.
+      const insertionContention = await observe();
+      expect(insertionContention.errorCode).toMatch(/^SQLITE_(BUSY|LOCKED)/);
+      db.exec("COMMIT");
+      // A new operation after commit must observe the original cap, without requiring an automatic retry.
+      expect((await observe()).value).toMatchObject({
+        ok: true,
+        created: false,
+        session: { sessionCapAt: input.sessionCapAt },
+      });
+      db.exec("BEGIN IMMEDIATE");
+      db.prepare(
+        "UPDATE google_sessions SET revoked_at = ?, revoked_reason = ? WHERE token_digest_sha256 = ?",
+      ).run(
+        "2026-11-23T18:10:00.000Z",
+        "controlled_logout",
+        input.tokenDigestSha256,
+      );
+      const revocationContention = await observe();
+      if (revocationContention.errorCode)
+        expect(revocationContention.errorCode).toMatch(/^SQLITE_(BUSY|LOCKED)/);
+      else
+        expect(revocationContention.value).toMatchObject({
+          ok: true,
+          created: false,
+          session: { sessionCapAt: input.sessionCapAt, revokedAt: null },
+        });
+      // Authentication completed before this commit may remain valid under the frozen boundary.
+      db.exec("COMMIT");
+      expect((await observe()).value).toEqual({
+        ok: false,
+        code: "SESSION_REVOKED",
+      });
+    } finally {
+      if (db.inTransaction) db.exec("ROLLBACK");
+      await stopContender(child);
+      db.close();
+    }
+    const reopened = openDatabase({ dbPath });
+    try {
+      const store = createSqliteAuthStoreAdapter({ db: reopened });
+      expect(store.getGoogleSession(input.tokenDigestSha256)).toMatchObject({
+        sessionCapAt: input.sessionCapAt,
+        revokedAt: "2026-11-23T18:10:00.000Z",
+      });
+      expect(store.observeGoogleSession(input)).toEqual({
+        ok: false,
+        code: "SESSION_REVOKED",
+      });
+      expect(
+        reopened
+          .prepare(
+            "SELECT COUNT(*) AS count FROM google_sessions WHERE token_digest_sha256 = ?",
+          )
+          .get(input.tokenDigestSha256),
+      ).toEqual({ count: 1 });
+    } finally {
+      reopened.close();
+    }
+  }, 15000);
 
   it("TR-009 AUTH-09 rolls back failed mid-rotation grant copy and old-key revocation atomically and persists committed rotation across reopen", () => {
     const db = openDatabase({ dbPath });
