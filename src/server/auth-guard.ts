@@ -158,7 +158,9 @@ export function registerHostedAuthGuard(
         const unavailable =
           result.code === "AUTH_VERIFIER_UNAVAILABLE" ||
           result.code === "AUTH_DEPENDENCY_UNAVAILABLE";
-        return deny(request, reply, unavailable ? 503 : 401, result.code);
+        const statusCode =
+          result.code === "AUTH_ACCOUNT_DENIED" ? 403 : unavailable ? 503 : 401;
+        return deny(request, reply, statusCode, result.code);
       }
       if (!result.context) return deny(request, reply, 401, "AUTH_REQUIRED");
       const context = result.context;
