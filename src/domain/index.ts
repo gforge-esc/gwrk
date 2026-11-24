@@ -18,3 +18,4 @@ export * from "./architecture-context.js";
 export * from "./policy-selection.js";
 export * from "./durable-dispatch.js";
 export * from "./durable-harvest.js";
+export * from "./auth-policy.js";
