@@ -25,6 +25,7 @@ import {
   resolveWorkflowPolicyScope,
 } from "../domain/policy-selection.js";
 import type { ProjectProfile } from "../domain/types.js";
+import { filterWorkerAuthEnvironment } from "../domain/worker-auth-environment.js";
 import {
   detectProfile,
   resolveWorkspacePolicyRoots,
@@ -260,14 +261,15 @@ async function dispatchAgent(opts: DispatchOptions): Promise<{
     // ADR-008 Layer 2: Hardened environment for agent sub-processes
     const bounded = opts.timeoutMs !== undefined;
     const ownProcessGroup = bounded && process.platform !== "win32";
+    const childEnv = filterWorkerAuthEnvironment({
+      ...process.env,
+      ...SAFE_AGENT_ENV,
+      ...(opts.env ?? {}),
+      ...(opts.contextPath ? { GWRK_CONTEXT: opts.contextPath } : {}),
+    });
     const child = spawn(command, args, {
       cwd: executionRoot,
-      env: {
-        ...process.env,
-        ...SAFE_AGENT_ENV,
-        ...(opts.env ?? {}),
-        ...(opts.contextPath ? { GWRK_CONTEXT: opts.contextPath } : {}),
-      },
+      env: childEnv,
       stdio: ["pipe", "pipe", "pipe"],
       ...(ownProcessGroup ? { detached: true } : {}),
     });

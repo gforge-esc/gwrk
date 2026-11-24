@@ -22,6 +22,20 @@ probe=${GWRK_AGENT_PROBE:?Set GWRK_AGENT_PROBE.}
 probe_mode=$(stat -c '%a' -- "$probe")
 (( (8#$probe_mode & 8#022) == 0 )) || fail "The headless agent probe must be read-only to the service user."
 
+[[ -z "${TELEGRAM_BOT_TOKEN+x}${TELEGRAM_CHAT_ID+x}" ]] ||
+  fail "Remove Telegram variables from the hosted service."
+[[ -n "${GWRK_AUTH_MODE:-}" ]] || fail "Set GWRK_AUTH_MODE."
+[[ "${GWRK_AUTH_MODE}" == "hosted" ]] || fail "GWRK_AUTH_MODE must be hosted."
+[[ -n "${GWRK_AUTH_PUBLIC_ORIGIN:-}" ]] || fail "Set GWRK_AUTH_PUBLIC_ORIGIN."
+[[ "${GWRK_AUTH_PUBLIC_ORIGIN}" =~ ^https:// ]] || fail "GWRK_AUTH_PUBLIC_ORIGIN must use HTTPS."
+[[ -n "${GWRK_AUTH_GOOGLE_CLIENT_ID:-}" ]] || fail "Set GWRK_AUTH_GOOGLE_CLIENT_ID."
+[[ -n "${GWRK_AUTH_GOOGLE_ALLOWLIST_FILE:-}" ]] || fail "Set GWRK_AUTH_GOOGLE_ALLOWLIST_FILE."
+[[ -n "${GWRK_AUTH_CSRF_HMAC_FILE:-}" ]] || fail "Set GWRK_AUTH_CSRF_HMAC_FILE."
+[[ "${GWRK_LISTEN_HOST:-}" == "127.0.0.1" ]] || fail "Hosted runner requires loopback bind GWRK_LISTEN_HOST=127.0.0.1."
+
+validate_origin_allowlist
+validate_origin_csrf_hmac
+
 for command in node git gh flock timeout; do
   command -v "$command" >/dev/null || fail "Install $command before starting the runner."
 done
