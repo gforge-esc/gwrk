@@ -216,7 +216,7 @@
           "id": "T021",
           "title": "Modify package.json",
           "description": "MODIFY package.json. Pin `@fastify/cookie` and `@fastify/csrf` plus `@fastify/rate-limit` for Fastify 5",
-          "status": "open",
+          "status": "completed",
           "gateScript": "bash specs/051-hosted-aws-pilot/gates/phase-04.sh",
           "sp": 1
         },
@@ -224,7 +224,7 @@
           "id": "T022",
           "title": "Modify pnpm-lock.yaml",
           "description": "MODIFY pnpm-lock.yaml. Lock pinned Fastify security plugin releases",
-          "status": "open",
+          "status": "completed",
           "gateScript": "bash specs/051-hosted-aws-pilot/gates/phase-04.sh",
           "sp": 1
         },
@@ -232,7 +232,7 @@
           "id": "T023",
           "title": "Create browser-csrf.ts",
           "description": "NEW src/adapters/auth/browser-csrf.ts. Implement `BrowserCsrfPort` with `@fastify/csrf` and `__Host-gwrk_csrf` cookie plus `x-gwrk-csrf-token` header Issue with required capped expiresAt and absolute Expires only. Use session-digest userInfo with the startup HMAC key. Tests: src/adapters/auth/browser-csrf.test.ts.",
-          "status": "open",
+          "status": "completed",
           "gateScript": "bash specs/051-hosted-aws-pilot/gates/phase-04.sh",
           "sp": 2
         },
@@ -240,7 +240,7 @@
           "id": "T024",
           "title": "Create auth-guard.ts",
           "description": "NEW src/server/auth-guard.ts. Fastify async auth pre-handler and request decoration plus synchronous `resolvePrincipal` reader and default-deny guard Preserve src/server/auth-guard.account-denial.test.ts and its AUTH_ACCOUNT_DENIED HTTP 403 assertion.",
-          "status": "open",
+          "status": "completed",
           "gateScript": "bash specs/051-hosted-aws-pilot/gates/phase-04.sh",
           "sp": 2
         },
@@ -248,14 +248,14 @@
           "id": "T025",
           "title": "Create auth.ts",
           "description": "NEW src/server/routes/auth.ts. Register `GET /` and `GET /api/auth/session` plus `POST /api/auth/logout` routes. Tests: src/server/auth-prehandler.test.ts",
-          "status": "open",
+          "status": "completed",
           "gateScript": "bash specs/051-hosted-aws-pilot/gates/phase-04.sh",
           "sp": 2
         },
         {
           "id": "T026",
           "title": "Modify health.ts",
-          "description": "MODIFY src/server/routes/health.ts. Filter hosted `GET /api/health` to one authorized project and serve minimal private `GET /health`",
+          "description": "MODIFY src/server/routes/health.ts. Filter hosted `GET /api/health` to one authorized project and serve minimal private `GET /health`\n\nREVIEW FAIL (code): hosted-health-denial-request-id — FR-010.\n  WHERE: src/server/routes/health.ts:377-383\n  EXPECTED: Hosted GET /api/health JSON denials (HTTP 400/401/403/404) include `requestId: request.id` alongside `ok: false`, `code`, and `error` without credential values (per FR-010 and contracts/production-auth.md).\n  ACTUAL: `reply.status(httpStatusForDenial(decision.code)).send({ ok: false, code: decision.code, error: decision.message })` omits `requestId`. Observed RED in `src/server/auth-api-keys.test.ts` lines 838 and 860 (`expected { ok: false, ...(2) } to match object { ok: false, requestId: Any<String> }`).\n  FIX: Restore behavioral regression patch `.runs/review-regressions-phase-04-code-review.patch` first and observe RED; add `requestId: request.id` to the hosted `/api/health` denial payload in `src/server/routes/health.ts:378-382`; preserve all existing tests and pass `bash specs/051-hosted-aws-pilot/gates/phase-04.sh`.\n  GATE: specs/051-hosted-aws-pilot/gates/phase-04.sh (coverage hole: passed while requestId was missing on hosted /api/health denials)\n  REF: plan.md Phase 4 > src/server/routes/health.ts; spec.md > FR-010; contracts/production-auth.md > Route policy",
           "status": "open",
           "gateScript": "bash specs/051-hosted-aws-pilot/gates/phase-04.sh",
           "sp": 1
@@ -263,7 +263,7 @@
         {
           "id": "T027",
           "title": "Modify index.ts",
-          "description": "MODIFY src/server/index.ts. Register auth pre-handler and CSRF plus auth routes and scoped health while keeping `trusted_local` separate",
+          "description": "MODIFY src/server/index.ts. Register auth pre-handler and CSRF plus auth routes and scoped health while keeping `trusted_local` separate\n\nREVIEW FAIL (code): hosted-auth-guard-bypass-via-resolvePrincipal — FR-007, FR-010.\n  WHERE: src/server/index.ts:664-738\n  EXPECTED: Whenever `effectiveTransport === \"hosted\"`, `startServer` MUST unconditionally register `registerHostedAuthGuard` and default-deny `setNotFoundHandler`, wire `resolveVerifiedPrincipal` as the sole principal reader for all operational routes (`healthRoutes`, `statusRoutes`, `dispatchRoutes`, `notifyRoutes`) so a caller-supplied `options.resolvePrincipal` can NEVER bypass the guard or replace guard-established context, and unconditionally pass `transport: \"hosted\"` to `healthRoutes` so `/health` serves minimal private liveness and `/api/health` requires project authorization.\n  ACTUAL: `const useHostedAuthGuard = effectiveTransport === \"hosted\" && (Boolean(options.hostedAuth) || !options.resolvePrincipal)` disables `registerHostedAuthGuard`, `setNotFoundHandler`, `resolveVerifiedPrincipal`, and hosted `healthRoutes` scoping whenever `options.resolvePrincipal` is supplied without `options.hostedAuth`. Observed RED in `src/server/auth-prehandler.test.ts:1269`: an unauthenticated `POST /api/dispatch` returned HTTP 201 (`AssertionError: expected [ 401, 503 ] to include 201`) and created an operation row, `GET /api/health` served unfiltered multi-project readiness without auth, and `GET /health` ran Git/provider probes and exposed project metadata.\n  FIX: Restore behavioral regression patch `.runs/review-regressions-phase-04-code-review.patch` first and observe RED; set `useHostedAuthGuard = effectiveTransport === \"hosted\"` unconditionally in `src/server/index.ts:664-666` (never allowing `options.resolvePrincipal` to disable the hosted guard, hosted health scoping, or guard-established context); update obsolete pre-051 hosted `startServer` test mocks in `src/server/routes/dispatch.test.ts`, `src/server/two-repo-isolation.test.ts`, and `src/server/unattended-recovery.test.ts` to inject `hostedAuth` and authenticated scoped `/api/health?projectId=...` calls while preserving their behavioral assertions; rebuild and verify `bash specs/051-hosted-aws-pilot/gates/phase-04.sh` plus those updated server test files pass.\n  GATE: specs/051-hosted-aws-pilot/gates/phase-04.sh (coverage hole: passed while caller-supplied resolvePrincipal bypassed hosted guard and hosted health)\n  REF: plan.md Phase 4 > src/server/index.ts; phase4-composition-plan.md; spec.md > FR-007, FR-010",
           "status": "open",
           "gateScript": "bash specs/051-hosted-aws-pilot/gates/phase-04.sh",
           "sp": 1
