@@ -16,6 +16,7 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { stripVTControlCharacters } from "node:util";
 import { z } from "zod";
 import { getTestCommand } from "../utils/toolchain-mapper.js";
@@ -381,6 +382,7 @@ import { createRequire } from "node:module";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 const request = JSON.parse(readFileSync(process.argv[2], "utf8"));
+process.chdir(request.cwd);
 let context;
 let closed = false;
 let completion;
@@ -485,6 +487,10 @@ export function executeTestCommand(
       request,
       JSON.stringify({
         ...invocation,
+        cwd:
+          typeof options.cwd === "object"
+            ? fileURLToPath(options.cwd)
+            : path.resolve(options.cwd ?? process.cwd()),
         reportFile: artifact,
         completionFile: completion,
       }),
