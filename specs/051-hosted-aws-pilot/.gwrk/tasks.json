@@ -78,7 +78,7 @@
           "id": "T007",
           "title": "Create 020-production-auth.sql",
           "description": "NEW src/db/migrations/020-production-auth.sql. Add `api_credentials` and `google_sessions` plus `auth_audit_events` tables to `gwrk.db`\n\nDIAGNOSIS (iteration 2):\nFIX: src/db/operations.test.ts — In the `preserves execution and Slack receipt data across both migration 018 files` test (lines 194-201), add `\"020-production-auth.sql\"` after `\"019-outbox-metadata-uniqueness.sql\"` in the `.toEqual([...])` array for `SELECT name FROM _migrations WHERE name >= '015' ORDER BY id`.\nFIX: vitest.config.ts — Add `\"tests/hosted-pilot/gate-completeness.test.mjs\"` to the `test.exclude` array (lines 20-27) so Vitest does not collect the `node:test` script invoked directly by `node tests/hosted-pilot/gate-completeness.test.mjs` in `specs/051-hosted-aws-pilot/gates/phase-08.sh`.",
-          "status": "open",
+          "status": "completed",
           "gateScript": "bash specs/051-hosted-aws-pilot/gates/phase-02.sh",
           "sp": 2
         },
@@ -86,7 +86,7 @@
           "id": "T008",
           "title": "Create credential-crypto.ts",
           "description": "NEW src/adapters/auth/credential-crypto.ts. Implement `CredentialCryptoPort` with 32-byte secrets and constant-time SHA-256 checks. Tests: src/adapters/auth/credential-crypto.test.ts\n\nDIAGNOSIS (iteration 2):\nFIX: src/db/operations.test.ts — In the `preserves execution and Slack receipt data across both migration 018 files` test (lines 194-201), add `\"020-production-auth.sql\"` after `\"019-outbox-metadata-uniqueness.sql\"` in the `.toEqual([...])` array for `SELECT name FROM _migrations WHERE name >= '015' ORDER BY id`.\nFIX: vitest.config.ts — Add `\"tests/hosted-pilot/gate-completeness.test.mjs\"` to the `test.exclude` array (lines 20-27) so Vitest does not collect the `node:test` script invoked directly by `node tests/hosted-pilot/gate-completeness.test.mjs` in `specs/051-hosted-aws-pilot/gates/phase-08.sh`.",
-          "status": "open",
+          "status": "completed",
           "gateScript": "bash specs/051-hosted-aws-pilot/gates/phase-02.sh",
           "sp": 2
         },
@@ -94,7 +94,7 @@
           "id": "T009",
           "title": "Create auth-store.ts",
           "description": "NEW src/adapters/sqlite/auth-store.ts. Implement `AuthStorePort` and atomic `CredentialGrantAdminPort` with `project_role_bindings`. Tests: src/adapters/sqlite/auth-store.test.ts\n\nDIAGNOSIS (iteration 2):\nFIX: src/db/operations.test.ts — In the `preserves execution and Slack receipt data across both migration 018 files` test (lines 194-201), add `\"020-production-auth.sql\"` after `\"019-outbox-metadata-uniqueness.sql\"` in the `.toEqual([...])` array for `SELECT name FROM _migrations WHERE name >= '015' ORDER BY id`.\nFIX: vitest.config.ts — Add `\"tests/hosted-pilot/gate-completeness.test.mjs\"` to the `test.exclude` array (lines 20-27) so Vitest does not collect the `node:test` script invoked directly by `node tests/hosted-pilot/gate-completeness.test.mjs` in `specs/051-hosted-aws-pilot/gates/phase-08.sh`.",
-          "status": "open",
+          "status": "completed",
           "gateScript": "bash specs/051-hosted-aws-pilot/gates/phase-02.sh",
           "sp": 2
         },
@@ -102,7 +102,7 @@
           "id": "T010",
           "title": "Modify index.ts",
           "description": "MODIFY src/adapters/sqlite/index.ts. Export SQLite auth store and grant admin adapter factories\n\nDIAGNOSIS (iteration 2):\nFIX: src/db/operations.test.ts — In the `preserves execution and Slack receipt data across both migration 018 files` test (lines 194-201), add `\"020-production-auth.sql\"` after `\"019-outbox-metadata-uniqueness.sql\"` in the `.toEqual([...])` array for `SELECT name FROM _migrations WHERE name >= '015' ORDER BY id`.\nFIX: vitest.config.ts — Add `\"tests/hosted-pilot/gate-completeness.test.mjs\"` to the `test.exclude` array (lines 20-27) so Vitest does not collect the `node:test` script invoked directly by `node tests/hosted-pilot/gate-completeness.test.mjs` in `specs/051-hosted-aws-pilot/gates/phase-08.sh`.",
-          "status": "open",
+          "status": "completed",
           "gateScript": "bash specs/051-hosted-aws-pilot/gates/phase-02.sh",
           "sp": 1
         },
@@ -110,7 +110,7 @@
           "id": "T011",
           "title": "Create manage-credentials.ts",
           "description": "NEW src/application/auth/manage-credentials.ts. Use cases for key create and list plus revoke and atomic rotate\n\nDIAGNOSIS (iteration 2):\nFIX: src/db/operations.test.ts — In the `preserves execution and Slack receipt data across both migration 018 files` test (lines 194-201), add `\"020-production-auth.sql\"` after `\"019-outbox-metadata-uniqueness.sql\"` in the `.toEqual([...])` array for `SELECT name FROM _migrations WHERE name >= '015' ORDER BY id`.\nFIX: vitest.config.ts — Add `\"tests/hosted-pilot/gate-completeness.test.mjs\"` to the `test.exclude` array (lines 20-27) so Vitest does not collect the `node:test` script invoked directly by `node tests/hosted-pilot/gate-completeness.test.mjs` in `specs/051-hosted-aws-pilot/gates/phase-08.sh`.",
-          "status": "open",
+          "status": "completed",
           "gateScript": "bash specs/051-hosted-aws-pilot/gates/phase-02.sh",
           "sp": 2
         },
@@ -118,7 +118,7 @@
           "id": "T012",
           "title": "Create auth.ts",
           "description": "NEW src/commands/auth.ts. Local `gwrk auth key` subcommands writing `0600` non-checkout secret files with `ADR-004` signals. Tests: src/adapters/auth/credential-crypto.test.ts\n\nDIAGNOSIS (iteration 2):\nFIX: src/db/operations.test.ts — In the `preserves execution and Slack receipt data across both migration 018 files` test (lines 194-201), add `\"020-production-auth.sql\"` after `\"019-outbox-metadata-uniqueness.sql\"` in the `.toEqual([...])` array for `SELECT name FROM _migrations WHERE name >= '015' ORDER BY id`.\nFIX: vitest.config.ts — Add `\"tests/hosted-pilot/gate-completeness.test.mjs\"` to the `test.exclude` array (lines 20-27) so Vitest does not collect the `node:test` script invoked directly by `node tests/hosted-pilot/gate-completeness.test.mjs` in `specs/051-hosted-aws-pilot/gates/phase-08.sh`.",
-          "status": "open",
+          "status": "completed",
           "gateScript": "bash specs/051-hosted-aws-pilot/gates/phase-02.sh",
           "sp": 2
         },
@@ -126,7 +126,7 @@
           "id": "T013",
           "title": "Modify cli.ts",
           "description": "MODIFY src/cli.ts. Register `createAuthCommand` and exempt `gwrk auth key` from cwd config preflight\n\nDIAGNOSIS (iteration 2):\nFIX: src/db/operations.test.ts — In the `preserves execution and Slack receipt data across both migration 018 files` test (lines 194-201), add `\"020-production-auth.sql\"` after `\"019-outbox-metadata-uniqueness.sql\"` in the `.toEqual([...])` array for `SELECT name FROM _migrations WHERE name >= '015' ORDER BY id`.\nFIX: vitest.config.ts — Add `\"tests/hosted-pilot/gate-completeness.test.mjs\"` to the `test.exclude` array (lines 20-27) so Vitest does not collect the `node:test` script invoked directly by `node tests/hosted-pilot/gate-completeness.test.mjs` in `specs/051-hosted-aws-pilot/gates/phase-08.sh`.",
-          "status": "open",
+          "status": "completed",
           "gateScript": "bash specs/051-hosted-aws-pilot/gates/phase-02.sh",
           "sp": 1
         }
