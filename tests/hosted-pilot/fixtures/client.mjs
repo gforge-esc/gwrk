@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { readFileSync, writeFileSync } from "node:fs";
-import { rawHttps } from "./raw-https.mjs";
+import { classifyTlsError, probeTcpClosed, rawHttps } from "./raw-https.mjs";
 
 // This process is an IPC endpoint inside an owned client container. Its JSON output
 // returns to the controller in memory and must never be copied into evidence logs.
@@ -23,6 +23,13 @@ try {
   } else if (command.operation === "reset") {
     writeFileSync(jarPath, "{}", { mode: 0o600 });
     process.stdout.write(JSON.stringify({ reset: true }));
+  } else if (command.operation === "probePort80") {
+    const probe = await probeTcpClosed({
+      target: "172.31.51.1",
+      port: 80,
+      timeoutMs: command.timeoutMs ?? 3000,
+    });
+    process.stdout.write(JSON.stringify(probe));
   } else {
     if (command.restoreCookies !== undefined) {
       assert.ok(
@@ -60,12 +67,16 @@ try {
     for (const value of response.cancelled
       ? []
       : response.values("set-cookie")) {
-      const pair = value.split(";")[0];
+      const parts = value.split(";");
+      const pair = parts[0];
       const equals = pair.indexOf("=");
       if (equals > 0) {
-        const name = pair.slice(0, equals);
-        const cookie = pair.slice(equals + 1);
-        if (cookie) jar[name] = cookie;
+        const name = pair.slice(0, equals).trim();
+        const cookie = pair.slice(equals + 1).trim();
+        const zeroMaxAge = parts
+          .slice(1)
+          .some((attr) => /^max-age\s*=\s*-?0+$/i.test(attr.trim()));
+        if (cookie && !zeroMaxAge) jar[name] = cookie;
         else delete jar[name];
       }
     }
@@ -98,7 +109,7 @@ try {
       }),
     );
   }
-} catch {
-  process.stdout.write(JSON.stringify({ failed: true }));
+} catch (error) {
+  process.stdout.write(JSON.stringify(classifyTlsError(error)));
   process.exitCode = 1;
 }

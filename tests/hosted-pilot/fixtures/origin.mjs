@@ -34,7 +34,7 @@ import { computeProjectId } from "/app/dist/domain/project-id.js";
 import { startServer } from "/app/dist/server/index.js";
 import { GwrkConfigSchema } from "/app/dist/utils/config.js";
 import { CLIENT_ID } from "./issuer.mjs";
-import { parseFixtureControl } from "./raw-https.mjs";
+import { parseFixtureControl, wrapLoginFaultResponse } from "./raw-https.mjs";
 
 const directory = "/fixture/service";
 const expectedOrigin = "https://gwrk.gforge.ai";
@@ -60,6 +60,8 @@ const counters = {
   apiVerified: 0,
   apiUnverified: 0,
   droppedCommittedResponses: 0,
+  cancelledInFlightResponses: 0,
+  webhookVerify: 0,
   googleVerification: 0,
   jwksFetches: 0,
   worker: 0,
@@ -317,7 +319,8 @@ function applyControl() {
     }
   }
   control = { ...control, ...next };
-  if (next.dropNextCommitted) dropNextCommitted = true;
+  if (next.dropNextCommitted !== undefined)
+    dropNextCommitted = next.dropNextCommitted;
   counters.controlSequence = next.sequence;
   persist();
 }
@@ -406,6 +409,8 @@ const notifier = {
 };
 const github = {
   verifyWebhookSignature(body, signature, secret) {
+    counters.webhookVerify++;
+    persist();
     const expected = `sha256=${createHmac("sha256", secret).update(body).digest("hex")}`;
     return (
       typeof signature === "string" &&
@@ -455,43 +460,39 @@ const server = await startServer(config, {
 });
 server.server.prependListener("request", (incoming, outgoing) => {
   requestScope.enterWith(incoming);
+  const path = (incoming.url ?? "").split("?")[0];
+  const root = path === "/";
+  if (root && ["timeout", "oversized"].includes(control.loginFault)) {
+    wrapLoginFaultResponse(incoming, outgoing, control.loginFault, {
+      timeoutMs: 31_000,
+      onCancelled: () => {
+        counters.cancelledInFlightResponses++;
+        persist();
+      },
+    });
+  }
   if (counters.requests.length < 4096) {
-    const root = (incoming.url ?? "").split("?")[0] === "/";
-    if (root && ["timeout", "oversized"].includes(control.loginFault)) {
-      const end = outgoing.end.bind(outgoing);
-      outgoing.end = (...args) => {
-        if (control.loginFault === "oversized") {
-          outgoing.statusCode = 200;
-          outgoing.setHeader("Content-Length", "4097");
-          return end("F".repeat(4097));
-        }
-        setTimeout(() => {
-          if (!outgoing.destroyed) end(...args);
-        }, 31000).unref();
-        return outgoing;
-      };
-    }
     counters.requests.push({
       method: incoming.method,
-      path: (incoming.url ?? "").split("?")[0],
+      path,
       peer: incoming.socket.remoteAddress,
+      forwardedForCount: incoming.rawHeaders.filter(
+        (value, index) =>
+          index % 2 === 0 && value.toLowerCase() === "x-forwarded-for",
+      ).length,
+      forwardedFor:
+        typeof incoming.headers["x-forwarded-for"] === "string" &&
+        isIP(incoming.headers["x-forwarded-for"])
+          ? incoming.headers["x-forwarded-for"]
+          : "INVALID",
       ...(root
         ? {
-            hasQuery: incoming.url.includes("?"),
+            hasQuery: (incoming.url ?? "").includes("?"),
             hasBody:
               Number(incoming.headers["content-length"] ?? 0) > 0 ||
               incoming.headers["transfer-encoding"] !== undefined,
-            forwardedForCount: incoming.rawHeaders.filter(
-              (value, index) =>
-                index % 2 === 0 && value.toLowerCase() === "x-forwarded-for",
-            ).length,
             hasAuthorization: incoming.headers.authorization !== undefined,
             hasCookie: incoming.headers.cookie !== undefined,
-            forwardedFor:
-              typeof incoming.headers["x-forwarded-for"] === "string" &&
-              isIP(incoming.headers["x-forwarded-for"])
-                ? incoming.headers["x-forwarded-for"]
-                : "INVALID",
             forwardedMethodIsGet:
               incoming.headers["x-forwarded-method"] === "GET",
             forwardedUriIsRoot: incoming.headers["x-forwarded-uri"] === "/",
