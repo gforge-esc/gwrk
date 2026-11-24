@@ -16,7 +16,7 @@
           "id": "T001",
           "title": "Create auth-policy.ts",
           "description": "NEW src/domain/auth-policy.ts. Pure route table and credential grammar plus issuer normalization and session cap and log redaction. Tests: src/domain/auth-policy.test.ts",
-          "status": "open",
+          "status": "completed",
           "gateScript": "bash specs/051-hosted-aws-pilot/gates/phase-01.sh",
           "sp": 2
         },
@@ -24,7 +24,7 @@
           "id": "T002",
           "title": "Modify index.ts",
           "description": "MODIFY src/domain/index.ts. Export pure auth policy functions and schemas from domain barrel",
-          "status": "open",
+          "status": "completed",
           "gateScript": "bash specs/051-hosted-aws-pilot/gates/phase-01.sh",
           "sp": 1
         },
@@ -32,7 +32,7 @@
           "id": "T003",
           "title": "Create auth-port.ts",
           "description": "NEW src/ports/auth-port.ts. Freeze `VerifiedAuthContext` and seven auth ports with type-only domain imports",
-          "status": "open",
+          "status": "completed",
           "gateScript": "bash specs/051-hosted-aws-pilot/gates/phase-01.sh",
           "sp": 2
         },
@@ -40,7 +40,7 @@
           "id": "T004",
           "title": "Modify index.ts",
           "description": "MODIFY src/ports/index.ts. Re-export `auth-port.js` from ports barrel",
-          "status": "open",
+          "status": "completed",
           "gateScript": "bash specs/051-hosted-aws-pilot/gates/phase-01.sh",
           "sp": 1
         },
@@ -48,7 +48,7 @@
           "id": "T005",
           "title": "Create ADR-014-hosted-production-auth.md",
           "description": "NEW docs/decisions/ADR-014-hosted-production-auth.md. Proposed ADR for hosted Google login and opaque API credentials",
-          "status": "open",
+          "status": "completed",
           "gateScript": "bash specs/051-hosted-aws-pilot/gates/phase-01.sh",
           "sp": 2
         },
@@ -56,7 +56,7 @@
           "id": "T006",
           "title": "Modify index.md",
           "description": "MODIFY .gwrk/decisions/index.md. Regenerate derived decision index with `gwrk define adr --reindex`",
-          "status": "open",
+          "status": "completed",
           "gateScript": "bash specs/051-hosted-aws-pilot/gates/phase-01.sh",
           "sp": 1
         }
