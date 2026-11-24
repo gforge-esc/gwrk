@@ -62,6 +62,7 @@ export interface RequestAuthenticationDependencies {
   readonly google: GoogleIdentityVerifierPort;
   readonly clock: ClockPort;
   readonly expectedOrigin: string;
+  readonly sessionCookieName?: string;
   readonly policy?: HostedSecurityPolicy;
 }
 
@@ -75,7 +76,12 @@ export function createRequestAuthenticator(
     input: SelectRequestCredentialMechanismInput,
   ): Promise<AuthenticationResult> => {
     try {
-      const selection = selectRequestCredentialMechanism(input);
+      const selection = selectRequestCredentialMechanism(
+        deps.sessionCookieName !== undefined &&
+          input.sessionCookieName === undefined
+          ? { ...input, sessionCookieName: deps.sessionCookieName }
+          : input,
+      );
       if (!selection.ok) return denyAuthentication(selection.code);
       if (selection.mechanism === "none" || selection.mechanism === "webhook")
         return { ok: true, context: null, mechanism: selection.mechanism };

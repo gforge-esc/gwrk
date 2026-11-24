@@ -2,11 +2,30 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import { execFileSync } from "node:child_process";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import { SignJWT, exportJWK, generateKeyPair } from "jose";
 import { describe, expect, it, vi } from "vitest";
+import { createCredentialCryptoAdapter } from "../../adapters/auth/credential-crypto.js";
+import { createGoogleIdentityVerifier } from "../../adapters/auth/google-id-token.js";
+import {
+  PROXY_LOGOUT_URL,
+  createProxySessionLogout,
+} from "../../adapters/auth/proxy-logout.js";
+import { repositoryGitEnv } from "../../adapters/git/process-env.js";
+import {
+  createSqliteAuthStoreAdapter,
+  createSqliteProjectRegistryAdapter,
+} from "../../adapters/sqlite/index.js";
+import { openDatabase } from "../../db/index.js";
 import type {
   StoredApiCredential,
   StoredGoogleSession,
 } from "../../domain/auth-policy.js";
+import { computeProjectId } from "../../domain/project-id.js";
+import type { EnrolledProject } from "../../domain/project-registry.js";
 import type {
   AuthStorePort,
   CredentialCryptoPort,
@@ -14,6 +33,7 @@ import type {
   ProxySessionLogoutPort,
   VerifiedAuthContext,
 } from "../../ports/auth-port.js";
+import * as applicationBarrel from "../index.js";
 import { createRequestAuthenticator } from "./authenticate-request.js";
 import { createBrowserSessionService } from "./browser-session.js";
 
@@ -524,6 +544,32 @@ describe("immutable browser session observation and logout", () => {
     expect(await f.browser.logout(context)).toMatchObject({ ok: false });
     expect(f.proxy.clearProxySession).not.toHaveBeenCalled();
   });
+  it("rejects API/browser conflicts using configured production __Host-gwrk_session cookie name", async () => {
+    const f = fixture();
+    const authenticate = createRequestAuthenticator({
+      store: f.store,
+      crypto: f.crypto,
+      google: f.google,
+      clock: { nowMs: () => NOW, nowIso: () => iso(NOW) },
+      expectedOrigin: ORIGIN,
+      sessionCookieName: "__Host-gwrk_session",
+    });
+    for (const cookieHeader of [
+      "__Host-gwrk_session=synthetic",
+      "__Host-gwrk_session_0=part0; __Host-gwrk_session_1=part1",
+    ]) {
+      expect(
+        await authenticate({
+          routeAuthPolicy: "google_or_api_key",
+          authorizationHeader: `Bearer ${TOKEN}`,
+          cookieHeader,
+        }),
+      ).toMatchObject({ ok: false, code: "AUTH_CONFLICTING_CREDENTIALS" });
+    }
+    expect(f.store.findApiCredentialById).not.toHaveBeenCalled();
+    expect(f.google.verifyIdToken).not.toHaveBeenCalled();
+  });
+
   it("rejects API contexts and mismatched Google owners before logout effects", async () => {
     const f = fixture();
     const context = await googleContext(f);
@@ -538,5 +584,272 @@ describe("immutable browser session observation and logout", () => {
       expect(await f.browser.logout(invalid)).toMatchObject({ ok: false });
     expect(f.store.revokeGoogleSession).not.toHaveBeenCalled();
     expect(f.proxy.clearProxySession).not.toHaveBeenCalled();
+  });
+});
+
+describe("Phase 3 composed auth, session, and credential barrel integration", () => {
+  it("exports authentication, session, credential-management, and existing application services from src/application/index.ts", () => {
+    expect(Object.keys(applicationBarrel)).toEqual(
+      expect.arrayContaining([
+        "createRequestAuthenticator",
+        "denyAuthentication",
+        "createBrowserSessionService",
+        "createApiCredential",
+        "listApiCredentials",
+        "revokeApiCredential",
+        "rotateApiCredential",
+        "CredentialPolicyError",
+        "CredentialNotFoundError",
+        "CredentialDeliveryError",
+        "createOutboxDeliveryService",
+        "createDurableDispatchService",
+        "createDurableHarvestService",
+        "extractOpenTaskErrors",
+        "buildDiagnosisPrompt",
+        "extractFixLines",
+        "evaluateReviewVerdict",
+        "evaluateScopedTestOutcome",
+      ]),
+    );
+  });
+
+  it("TR-006 AUTH-06 composes SQLite auth store, crypto, Google verifier, and proxy logout without granting project roles", async () => {
+    const tempDir = fs.mkdtempSync(
+      path.join(os.tmpdir(), "gwrk-phase3-compose-"),
+    );
+    const dbPath = path.join(tempDir, "gwrk.db");
+    const now = NOW;
+    const clock = { nowMs: () => now, nowIso: () => iso(now) };
+    const audience = "pilot-client.apps.googleusercontent.com";
+    let allowlist = ["operator@example.com"];
+
+    const pair = await generateKeyPair("RS256", { extractable: true });
+    const publicJwk = {
+      ...(await exportJWK(pair.publicKey)),
+      kid: "compose-key",
+      alg: "RS256",
+      use: "sig",
+    };
+    const idToken = await new SignJWT({
+      iss: "accounts.google.com",
+      aud: audience,
+      sub: "google-user-99",
+      email: "operator@example.com",
+      email_verified: true,
+      iat: NOW / 1000 - 10,
+      exp: NOW / 1000 + 7200,
+    })
+      .setProtectedHeader({ alg: "RS256", kid: "compose-key" })
+      .sign(pair.privateKey);
+
+    const db = openDatabase({ dbPath });
+    try {
+      const store = createSqliteAuthStoreAdapter({ db });
+      const registry = createSqliteProjectRegistryAdapter({ db });
+      const crypto = createCredentialCryptoAdapter();
+      const repoDir = path.join(tempDir, "alpha-repo");
+      fs.mkdirSync(repoDir, { recursive: true });
+      const gitEnv = {
+        ...repositoryGitEnv(repoDir),
+        GIT_CONFIG_GLOBAL: os.devNull,
+        GIT_CONFIG_NOSYSTEM: "1",
+        GIT_AUTHOR_NAME: "Gwrk Test",
+        GIT_AUTHOR_EMAIL: "gwrk-test@example.invalid",
+        GIT_COMMITTER_NAME: "Gwrk Test",
+        GIT_COMMITTER_EMAIL: "gwrk-test@example.invalid",
+        GIT_TERMINAL_PROMPT: "0",
+      };
+      execFileSync("git", ["init", "--template=", "--initial-branch=main"], {
+        cwd: repoDir,
+        env: gitEnv,
+        stdio: "ignore",
+      });
+      execFileSync(
+        "git",
+        ["remote", "add", "origin", "git@github.com:org/alpha.git"],
+        { cwd: repoDir, env: gitEnv, stdio: "ignore" },
+      );
+      const projectId = computeProjectId({
+        projectRoot: repoDir,
+        remoteOriginUrl: "git@github.com:org/alpha.git",
+        gitCommonDir: path.join(repoDir, ".git"),
+      });
+      const project: EnrolledProject = {
+        projectId,
+        slug: "alpha",
+        name: "Alpha",
+        repoSlug: "org/alpha",
+        trunkBranch: "main",
+        localRoot: repoDir,
+        mirrorPath: null,
+        runnerPolicy: { allowedKinds: ["hosted"] },
+        slack: null,
+        legacyProjectIds: [],
+        createdAt: iso(NOW),
+        updatedAt: iso(NOW),
+      };
+      registry.enrollProject(project);
+
+      let deliveredSecret = "";
+      const created = await applicationBarrel.createApiCredential(
+        {
+          authStore: store,
+          grantAdmin: store,
+          crypto,
+          clock,
+          projectRegistry: registry,
+          deliverSecret: async (raw) => {
+            deliveredSecret = raw;
+          },
+        },
+        {
+          credentialId: "cred-alpha",
+          label: "pilot-cli",
+          issuer: "local-admin",
+          audienceOrigin: ORIGIN,
+          expiresAt: iso(NOW + 86_400_000),
+          grants: [{ projectId, role: "viewer" }],
+        },
+      );
+
+      const google = createGoogleIdentityVerifier({
+        clientId: audience,
+        readAllowlist: async () => allowlist,
+        fetch: async () => Response.json({ keys: [publicJwk] }),
+      });
+      const proxyFetch = vi.fn(async () => {
+        // Origin revocation must already be persisted in SQLite before proxy logout runs.
+        const row = db
+          .prepare(
+            "SELECT revoked_at FROM google_sessions WHERE principal_id = ?",
+          )
+          .get("https://accounts.google.com:google-user-99") as
+          | { revoked_at: string | null }
+          | undefined;
+        expect(row?.revoked_at).toBe(iso(now));
+        const headers = new Headers();
+        headers.append(
+          "set-cookie",
+          "__Host-gwrk_session_0=; Path=/; Expires=Thu, 01 Jan 1970 00:00:00 GMT; Secure; HttpOnly; SameSite=Lax",
+        );
+        headers.append(
+          "set-cookie",
+          "__Host-gwrk_session_1=; Path=/; Expires=Thu, 01 Jan 1970 00:00:00 GMT; Secure; HttpOnly; SameSite=Lax",
+        );
+        headers.set("location", "https://attacker.invalid/redirect");
+        return new Response(null, { status: 302, headers });
+      });
+      const proxy = createProxySessionLogout({ fetch: proxyFetch, clock });
+      const authenticate = applicationBarrel.createRequestAuthenticator({
+        store,
+        crypto,
+        google,
+        clock,
+        expectedOrigin: ORIGIN,
+        sessionCookieName: "__Host-gwrk_session",
+      });
+      const browser = applicationBarrel.createBrowserSessionService({
+        store,
+        proxy,
+        clock,
+      });
+
+      // 1. Valid API credential authenticates without adding any new role bindings.
+      const bindingsBefore = db
+        .prepare("SELECT COUNT(*) AS n FROM project_role_bindings")
+        .get() as { n: number };
+      expect(bindingsBefore.n).toBe(1);
+      const apiAuth = await authenticate({
+        routeAuthPolicy: "google_or_api_key",
+        authorizationHeader: `Bearer ${deliveredSecret}`,
+      });
+      expect(apiAuth).toEqual({
+        ok: true,
+        context: {
+          principalType: "cli_token",
+          principalId: created.credential.credentialId,
+          credentialId: created.credential.credentialId,
+          authMethod: "api_key",
+          expiresAt: iso(NOW + 86_400_000),
+        },
+      });
+      // Revoking API credential denies subsequent authentication.
+      applicationBarrel.revokeApiCredential(
+        { authStore: store, clock },
+        { credentialId: created.credential.credentialId, reason: "test" },
+      );
+      expect(
+        await authenticate({
+          routeAuthPolicy: "google_or_api_key",
+          authorizationHeader: `Bearer ${deliveredSecret}`,
+        }),
+      ).toMatchObject({ ok: false, code: "AUTH_CREDENTIAL_REJECTED" });
+
+      // 2. Valid Google ID token authenticates, stores digest only, and grants zero project roles.
+      const googleAuth = await authenticate({
+        routeAuthPolicy: "google_or_api_key",
+        forwardedGoogleIdToken: idToken,
+      });
+      expect(googleAuth.ok).toBe(true);
+      if (!googleAuth.ok || !googleAuth.context) {
+        throw new Error("expected verified google auth context");
+      }
+      expect(googleAuth.context.principalType).toBe("google_sub");
+      expect(googleAuth.context.principalId).toBe(
+        "https://accounts.google.com:google-user-99",
+      );
+      expect(googleAuth.context.expiresAt).toBe(iso(NOW + 3_600_000));
+
+      const bindingsAfter = db
+        .prepare("SELECT COUNT(*) AS n FROM project_role_bindings")
+        .get() as { n: number };
+      expect(bindingsAfter.n).toBe(1);
+      const storedSession = db
+        .prepare("SELECT * FROM google_sessions")
+        .all() as Record<string, unknown>[];
+      expect(storedSession).toHaveLength(1);
+      expect(JSON.stringify(storedSession)).not.toContain(idToken);
+
+      // 3. Live allowlist removal denies the next authenticated request without restart.
+      allowlist = [];
+      expect(
+        await authenticate({
+          routeAuthPolicy: "google_or_api_key",
+          forwardedGoogleIdToken: idToken,
+        }),
+      ).toMatchObject({ ok: false, code: "AUTH_ACCOUNT_DENIED" });
+      allowlist = ["operator@example.com"];
+
+      // 4. Origin-first logout revokes digest in SQLite before calling fixed internal proxy logout,
+      //    preserves separate chunk clearing headers without following redirects, and denies replay.
+      const logoutResult = await browser.logout(googleAuth.context, {
+        cookieHeader:
+          "__Host-gwrk_session_0=part0; __Host-gwrk_session_1=part1",
+      });
+      expect(logoutResult).toEqual({
+        ok: true,
+        proxyCleared: true,
+        setCookieHeaders: [
+          "__Host-gwrk_session_0=; Path=/; Expires=Thu, 01 Jan 1970 00:00:00 GMT; Secure; HttpOnly; SameSite=Lax",
+          "__Host-gwrk_session_1=; Path=/; Expires=Thu, 01 Jan 1970 00:00:00 GMT; Secure; HttpOnly; SameSite=Lax",
+        ],
+      });
+      expect(proxyFetch).toHaveBeenCalledWith(
+        PROXY_LOGOUT_URL,
+        expect.objectContaining({
+          method: "GET",
+          redirect: "manual",
+        }),
+      );
+      expect(
+        await authenticate({
+          routeAuthPolicy: "google_or_api_key",
+          forwardedGoogleIdToken: idToken,
+        }),
+      ).toMatchObject({ ok: false, code: "AUTH_SESSION_REVOKED" });
+    } finally {
+      db.close();
+      fs.rmSync(tempDir, { recursive: true, force: true });
+    }
   });
 });

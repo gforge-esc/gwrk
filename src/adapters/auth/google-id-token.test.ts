@@ -69,7 +69,7 @@ function fixture() {
 
 describe("Google verifier signed fixtures", () => {
   it.each(["accounts.google.com", "https://accounts.google.com"])(
-    "AUTH-01 normalizes signed issuer %s and hashes original token",
+    "AUTH-01 FR-002: normalizes issuer and maps google_sub for %s and hashes original token",
     async (iss) => {
       const f = fixture();
       const token = await signed({ iss });
@@ -204,8 +204,9 @@ describe("Google verifier signed fixtures", () => {
     );
     expect(f.readAllowlist).toHaveBeenCalledTimes(2);
   });
-  it("AUTH-03 denies unreadable and wildcard allowlists", async () => {
+  it("AUTH-03 denies empty, unreadable, and wildcard allowlists", async () => {
     for (const readAllowlist of [
+      async () => [],
       async () => {
         throw new Error("CANARY_ALLOWLIST");
       },

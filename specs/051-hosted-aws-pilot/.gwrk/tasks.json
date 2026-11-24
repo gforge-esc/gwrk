@@ -146,7 +146,7 @@
           "id": "T014",
           "title": "Modify package.json",
           "description": "MODIFY package.json. Pin exact `jose` release for Node.js 22",
-          "status": "open",
+          "status": "completed",
           "gateScript": "bash specs/051-hosted-aws-pilot/gates/phase-03.sh",
           "sp": 1
         },
@@ -154,7 +154,7 @@
           "id": "T015",
           "title": "Modify pnpm-lock.yaml",
           "description": "MODIFY pnpm-lock.yaml. Record pinned `jose` lockfile entry",
-          "status": "open",
+          "status": "completed",
           "gateScript": "bash specs/051-hosted-aws-pilot/gates/phase-03.sh",
           "sp": 1
         },
@@ -162,7 +162,7 @@
           "id": "T016",
           "title": "Create google-id-token.ts",
           "description": "NEW src/adapters/auth/google-id-token.ts. Implement `GoogleIdentityVerifierPort` with pinned `jose` and bounded JWKS cache plus live allowlist reload. Tests: src/adapters/auth/google-id-token.test.ts",
-          "status": "open",
+          "status": "completed",
           "gateScript": "bash specs/051-hosted-aws-pilot/gates/phase-03.sh",
           "sp": 2
         },
@@ -170,7 +170,7 @@
           "id": "T017",
           "title": "Create proxy-logout.ts",
           "description": "NEW src/adapters/auth/proxy-logout.ts. Implement `ProxySessionLogoutPort` against fixed internal `/oauth2/sign_out` endpoint Tests: src/adapters/auth/proxy-logout.test.ts. Follow the frozen private logout contract and preserve multiple cookie-clearing headers without following redirects.",
-          "status": "open",
+          "status": "completed",
           "gateScript": "bash specs/051-hosted-aws-pilot/gates/phase-03.sh",
           "sp": 2
         },
@@ -178,7 +178,7 @@
           "id": "T018",
           "title": "Create authenticate-request.ts",
           "description": "NEW src/application/auth/authenticate-request.ts. Orchestrate API key and Google ID token checks plus audience and session cap denials. Tests: src/application/auth/authenticate-request.test.ts",
-          "status": "open",
+          "status": "completed",
           "gateScript": "bash specs/051-hosted-aws-pilot/gates/phase-03.sh",
           "sp": 2
         },
@@ -186,7 +186,7 @@
           "id": "T019",
           "title": "Create browser-session.ts",
           "description": "NEW src/application/auth/browser-session.ts. Orchestrate session reads and origin-first digest revocation before proxy sign-out",
-          "status": "open",
+          "status": "completed",
           "gateScript": "bash specs/051-hosted-aws-pilot/gates/phase-03.sh",
           "sp": 2
         },
@@ -194,7 +194,7 @@
           "id": "T020",
           "title": "Modify index.ts",
           "description": "MODIFY src/application/index.ts. Export authentication and session plus credential-management services",
-          "status": "open",
+          "status": "completed",
           "gateScript": "bash specs/051-hosted-aws-pilot/gates/phase-03.sh",
           "sp": 1
         }
