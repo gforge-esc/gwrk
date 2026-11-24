@@ -709,4 +709,53 @@ describe("FR-006 local private-host key administration CLI (gwrk auth key)", () 
       reopened.close();
     }
   });
+
+  it("TR-010 US-004: gwrk auth key list text output displays full untruncated credential IDs usable with revoke", async () => {
+    process.chdir(nonProjectDir);
+
+    const secretPath = path.join(outsideSecretsDir, "text-list.key");
+    const createRes = await execRootCli([
+      "auth",
+      "key",
+      "create",
+      "--grant",
+      `${alphaProject.slug}=operator`,
+      "--expires-at",
+      validExpiresAt,
+      "--label",
+      "Text List Key",
+      "--secret-out",
+      secretPath,
+      "--format",
+      "json",
+    ]);
+    expect(createRes.exitCode, createRes.stderr).toBe(0);
+
+    const created = JSON.parse(createRes.stdout) as {
+      credential: { credentialId: string };
+    };
+    const fullCredentialId = created.credential.credentialId;
+    expect(fullCredentialId.length).toBeGreaterThan(28);
+
+    const listTextRes = await execRootCli(["auth", "key", "list"]);
+    expect(listTextRes.exitCode, listTextRes.stderr).toBe(0);
+    expect(listTextRes.stderr).toMatch(/\[exit:0 \| /);
+    expect(listTextRes.stdout).toContain(fullCredentialId);
+
+    const idRow = listTextRes.stdout
+      .split("\n")
+      .find((line) => line.startsWith("cred_"));
+    expect(idRow).toBeDefined();
+    const displayedId = idRow?.trim().split(/\s+/)[0] ?? "";
+    expect(displayedId).toBe(fullCredentialId);
+
+    const revokeUsingListedId = await execRootCli([
+      "auth",
+      "key",
+      "revoke",
+      displayedId,
+    ]);
+    expect(revokeUsingListedId.exitCode, revokeUsingListedId.stderr).toBe(0);
+    expect(revokeUsingListedId.stderr).toMatch(/\[exit:0 \| /);
+  });
 });
