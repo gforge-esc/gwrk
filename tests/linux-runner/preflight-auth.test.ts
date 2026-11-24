@@ -415,4 +415,250 @@ printf 'provider-probe\\n' >> "$TRACE"`,
     symlinkSync(target, original);
     expect(readAgentCredential().status).toBe(1);
   });
+
+  describe("review regression: hosted runner preflight parity and bypass checks", () => {
+    it("rejects conflicting server.auth in project config vs runner environment", () => {
+      const configPath = join(env.GWRK_PILOT_REPO as string, ".gwrkrc.json");
+      const config = JSON.parse(readFileSync(configPath, "utf8"));
+      config.server.auth = {
+        mode: "hosted",
+        publicOrigin: "https://gwrk.gforge.ai",
+        googleClientId: "conflicting-client.apps.googleusercontent.com",
+        googleAllowlistFile: env.GWRK_AUTH_GOOGLE_ALLOWLIST_FILE,
+        csrfHmacKeyFile: env.GWRK_AUTH_CSRF_HMAC_FILE,
+      };
+      writeFileSync(configPath, JSON.stringify(config));
+      const result = preflight();
+      expect(result.status, result.stdout + result.stderr).toBe(1);
+    });
+
+    it("rejects server.auth.mode=trusted_local when runner environment sets hosted", () => {
+      const configPath = join(env.GWRK_PILOT_REPO as string, ".gwrkrc.json");
+      const config = JSON.parse(readFileSync(configPath, "utf8"));
+      config.server.auth = { mode: "trusted_local" };
+      writeFileSync(configPath, JSON.stringify(config));
+      const result = preflight();
+      expect(result.status, result.stdout + result.stderr).toBe(1);
+    });
+
+    it.each([
+      "https://",
+      "https://gwrk.gforge.ai/",
+      "https://gwrk.gforge.ai/path",
+      "https://user:pass@gwrk.gforge.ai",
+      "https://GWRK.GFORGE.AI",
+    ])("rejects non-canonical public origin %s", (origin) => {
+      const result = preflight({ GWRK_AUTH_PUBLIC_ORIGIN: origin });
+      expect(result.status, result.stdout + result.stderr).toBe(1);
+    });
+
+    it.each(["   ", "client id"])(
+      "rejects whitespace Google client ID %j",
+      (clientId) => {
+        const result = preflight({ GWRK_AUTH_GOOGLE_CLIENT_ID: clientId });
+        expect(result.status, result.stdout + result.stderr).toBe(1);
+      },
+    );
+
+    it.each([
+      ["GWRK_AUTH_JWKS_URL", "https://attacker.invalid"],
+      ["gwrk_auth_mode", "trusted_local"],
+    ])("rejects unknown or mistyped auth env var %s", (key, value) => {
+      const result = preflight({ [key]: value });
+      expect(result.status, result.stdout + result.stderr).toBe(1);
+    });
+
+    it("rejects auth file referenced through a symlinked parent directory outside secrets root", () => {
+      const outsideLink = join(root, "outside-link");
+      symlinkSync(secrets, outsideLink);
+      const result = preflight({
+        GWRK_AUTH_CSRF_HMAC_FILE: join(outsideLink, "csrf-hmac-key"),
+      });
+      expect(result.status, result.stdout + result.stderr).toBe(1);
+    });
+
+    it("rejects non-canonical auth file path containing dot-dot traversal", () => {
+      const result = preflight({
+        GWRK_AUTH_GOOGLE_ALLOWLIST_FILE: `${secrets}/../secrets/google-account-allowlist`,
+      });
+      expect(result.status, result.stdout + result.stderr).toBe(1);
+    });
+
+    it("rejects non-canonical 43-char base64url CSRF HMAC with non-zero unused bits", () => {
+      const nonCanonical = `${"A".repeat(42)}B`;
+      writeFileSync(join(secrets, "csrf-hmac-key"), nonCanonical);
+      const result = preflight();
+      expect.soft(result.status, result.stdout + result.stderr).toBe(1);
+      expect(result.stdout + result.stderr).not.toContain(nonCanonical);
+    });
+
+    it("rejects CSRF HMAC with multiple trailing newlines", () => {
+      writeFileSync(join(secrets, "csrf-hmac-key"), `${csrf}\n\n`);
+      const result = preflight();
+      expect.soft(result.status, result.stdout + result.stderr).toBe(1);
+      expect(result.stdout + result.stderr).not.toContain(csrf);
+    });
+
+    it("rejects CSRF HMAC containing an embedded NUL byte", () => {
+      const withNul = `${csrf.slice(0, 20)}\0${csrf.slice(20)}`;
+      writeFileSync(join(secrets, "csrf-hmac-key"), withNul);
+      const result = preflight();
+      expect.soft(result.status, result.stdout + result.stderr).toBe(1);
+      expect(result.stdout + result.stderr).not.toContain(csrf.slice(0, 20));
+    });
+
+    it("accepts valid CSRF HMAC terminated by a single CRLF newline", () => {
+      writeFileSync(join(secrets, "csrf-hmac-key"), `${csrf}\r\n`);
+      const result = preflight();
+      expect(result.status, result.stderr).toBe(0);
+    });
+
+    it("rejects allowlist containing an embedded NUL byte", () => {
+      writeFileSync(
+        join(secrets, "google-account-allowlist"),
+        "oper\0ator@gwrk.test\n",
+      );
+      const result = preflight();
+      expect(result.status, result.stdout + result.stderr).toBe(1);
+    });
+  });
+
+  describe("repair invariants: layered config parity, fail-closed errors, and standalone helpers", () => {
+    it("rejects conflicting server.auth in .gwrkrc.local.json and global config.json", () => {
+      const localPath = join(
+        env.GWRK_PILOT_REPO as string,
+        ".gwrkrc.local.json",
+      );
+      writeFileSync(
+        localPath,
+        JSON.stringify({
+          server: {
+            auth: {
+              googleClientId: "local-conflict.apps.googleusercontent.com",
+            },
+          },
+        }),
+      );
+      expect(preflight().status).toBe(1);
+      rmSync(localPath);
+
+      const globalPath = join(env.GWRK_HOME as string, "config.json");
+      writeFileSync(
+        globalPath,
+        JSON.stringify({
+          server: {
+            auth: { publicOrigin: "https://other.gforge.ai" },
+          },
+        }),
+      );
+      expect(preflight().status).toBe(1);
+    });
+
+    it("fails closed without echoing canary secrets on malformed config or invalid server.auth", () => {
+      const canary = "CONFIG_CANARY_NEVER_ECHO_9482";
+      const configPath = join(env.GWRK_PILOT_REPO as string, ".gwrkrc.json");
+      const original = readFileSync(configPath, "utf8");
+
+      writeFileSync(configPath, `{ "broken": "${canary}"`);
+      const malformedProject = preflight();
+      expect.soft(malformedProject.status).toBe(1);
+      expect(malformedProject.stdout + malformedProject.stderr).not.toContain(
+        canary,
+      );
+
+      writeFileSync(configPath, original);
+      const localPath = join(
+        env.GWRK_PILOT_REPO as string,
+        ".gwrkrc.local.json",
+      );
+      writeFileSync(localPath, `{ "broken": "${canary}"`);
+      const malformedLocal = preflight();
+      expect.soft(malformedLocal.status).toBe(1);
+      expect(malformedLocal.stdout + malformedLocal.stderr).not.toContain(
+        canary,
+      );
+      rmSync(localPath);
+
+      const parsed = JSON.parse(original);
+      parsed.server.auth = { publicOrigin: `https://${canary}@gwrk.gforge.ai` };
+      writeFileSync(configPath, JSON.stringify(parsed));
+      const invalidAuth = preflight();
+      expect.soft(invalidAuth.status).toBe(1);
+      expect(invalidAuth.stdout + invalidAuth.stderr).not.toContain(canary);
+    });
+
+    it("accepts valid CSRF HMAC terminated by a single LF newline and rejects extra newlines or padding", () => {
+      writeFileSync(join(secrets, "csrf-hmac-key"), `${csrf}\n`);
+      const validLf = preflight();
+      expect(validLf.status, validLf.stderr).toBe(0);
+
+      for (const bad of [`${csrf}\r\n\r\n`, `${csrf}\r`, `${csrf}=`]) {
+        writeFileSync(join(secrets, "csrf-hmac-key"), bad);
+        const result = preflight();
+        expect.soft(result.status, result.stdout + result.stderr).toBe(1);
+        expect(result.stdout + result.stderr).not.toContain(csrf);
+      }
+    });
+
+    it("rejects symlinked subdirectories inside secrets and symlinked secrets root", () => {
+      const realSub = join(secrets, "real-sub");
+      mkdirSync(realSub);
+      const subFile = join(realSub, "csrf-hmac-key");
+      writeFileSync(subFile, `${csrf}\n`, { mode: 0o640 });
+      const subLink = join(secrets, "sub-link");
+      symlinkSync(realSub, subLink);
+
+      expect(
+        preflight({
+          GWRK_AUTH_CSRF_HMAC_FILE: join(subLink, "csrf-hmac-key"),
+        }).status,
+      ).toBe(1);
+
+      const secretsLink = join(root, "secrets-link");
+      symlinkSync(secrets, secretsLink);
+      expect(
+        preflight({
+          GWRK_SECRETS_DIR: secretsLink,
+          GWRK_AUTH_GOOGLE_ALLOWLIST_FILE: join(
+            secretsLink,
+            "google-account-allowlist",
+          ),
+          GWRK_AUTH_CSRF_HMAC_FILE: join(secretsLink, "csrf-hmac-key"),
+        }).status,
+      ).toBe(1);
+    });
+
+    it("fails closed when compiled auth policy modules are absent from the installed release", () => {
+      const emptyDist = join(root, "empty-dist");
+      mkdirSync(emptyDist, { recursive: true });
+      const releaseDist = join(
+        env.GWRK_RELEASE_ROOT as string,
+        "releases/candidate/dist",
+      );
+      rmSync(releaseDist);
+      symlinkSync(emptyDist, releaseDist);
+      const result = preflight();
+      expect(result.status, result.stdout + result.stderr).toBe(1);
+      expect(calls()).toEqual([]);
+    });
+
+    it("enforces byte and path checks when credentials.sh helpers are sourced directly", () => {
+      writeFileSync(join(secrets, "csrf-hmac-key"), `${csrf}\r\n`);
+      const validDirect = execute(
+        'source "$FIXTURE_SCRIPTS/credentials.sh"; validate_origin_allowlist; validate_origin_csrf_hmac',
+      );
+      expect(validDirect.status, validDirect.stderr).toBe(0);
+      expect(validDirect.stdout + validDirect.stderr).not.toContain(csrf);
+
+      const nonCanonical = `${"A".repeat(42)}B`;
+      writeFileSync(join(secrets, "csrf-hmac-key"), nonCanonical);
+      const invalidDirect = execute(
+        'source "$FIXTURE_SCRIPTS/credentials.sh"; validate_origin_csrf_hmac',
+      );
+      expect(invalidDirect.status).toBe(1);
+      expect(invalidDirect.stdout + invalidDirect.stderr).not.toContain(
+        nonCanonical,
+      );
+    });
+  });
 });
