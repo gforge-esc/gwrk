@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { execFileSync, spawn } from "node:child_process";
-import { randomBytes } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 import {
   chmodSync,
   chownSync,
@@ -8,6 +8,7 @@ import {
   existsSync,
   mkdirSync,
   readFileSync,
+  rmSync,
   writeFileSync,
 } from "node:fs";
 import { setTimeout as sleep } from "node:timers/promises";
@@ -18,15 +19,26 @@ import {
   classifyBootstrapFailure,
   runFixtureContainer,
 } from "./bootstrap-diagnostics.mjs";
+import {
+  createObserverProcessLifecycle,
+  resolveComposeContainer,
+} from "./bootstrap-observer.mjs";
 import { checkStandardCookieSecret } from "./cookie-format-check.mjs";
 import { CLIENT_ID } from "./issuer.mjs";
 import { OIDC_FIXTURE_ARGUMENTS } from "./oidc-overrides.mjs";
+import { readNativeObserverHealth } from "./raw-https.mjs";
 
 assert.equal(process.env.GWRK_051_OWNED_CONTROLLER, "1");
 assert.equal(process.env.DOCKER_HOST, "unix:///var/run/docker.sock");
 const run = process.env.GWRK_051_RUN_ID;
 assert.match(run ?? "", /^[a-f0-9]{24}$/);
 const images = JSON.parse(readFileSync("/input/loaded-images.json", "utf8"));
+let runtimeReceiptSha256 = process.env.GWRK_051_RUNTIME_RECEIPT_SHA256 ?? "";
+if (existsSync("/input/runtime-receipt.json")) {
+  runtimeReceiptSha256 = createHash("sha256")
+    .update(readFileSync("/input/runtime-receipt.json"))
+    .digest("hex");
+}
 const owned = [];
 function docker(args, options = {}) {
   return execFileSync(
@@ -120,6 +132,13 @@ const beginOperation = (name) => {
 };
 const issuerStderrChunks = [];
 let originName = null;
+let observerProcess = null;
+const observerLifecycle = createObserverProcessLifecycle({
+  readyTimeoutMs: 15_000,
+  pollMs: 100,
+  termTimeoutMs: 1000,
+  killTimeoutMs: 1000,
+});
 const recordStage = () =>
   file("/fixture/bootstrap-stage.json", JSON.stringify({ stage }));
 try {
@@ -133,6 +152,7 @@ try {
   cpSync("/input/fixtures", "/fixture/fixtures", { recursive: true });
   directory("/fixture/service", 0o700, 10001, 10001);
   directory("/fixture/service-home", 0o700, 10001, 10001);
+  directory("/fixture/observer", 0o700, 0, 0);
   directory("/etc/gwrk", 0o755);
   directory("/etc/gwrk/gateway-secrets");
   directory("/etc/gwrk/gateway-secrets/tls");
@@ -303,6 +323,47 @@ try {
     issuerArguments: OIDC_FIXTURE_ARGUMENTS,
   });
   file("/fixture/cookie-format-result.json", JSON.stringify(cookieFormat));
+  stage = "observer_start";
+  beginOperation("start_native_observer");
+  recordStage();
+  const observerEnv = {
+    ...process.env,
+    GWRK_051_OWNED_CONTROLLER: "1",
+    GWRK_051_OBSERVER_DIR: "/fixture/observer",
+    GWRK_051_RUN_ID: run,
+    GWRK_051_PROXY_IMAGE_ID: images.proxy,
+    GWRK_051_TRAEFIK_IMAGE_ID: images.traefik,
+    GWRK_051_RUNTIME_RECEIPT_SHA256: runtimeReceiptSha256,
+  };
+  observerProcess = spawn(
+    process.execPath,
+    ["--max-old-space-size=64", "/fixture/fixtures/native-observer.mjs"],
+    {
+      stdio: ["ignore", "ignore", "pipe"],
+      env: observerEnv,
+    },
+  );
+  observerLifecycle.drainStream(observerProcess.stdout);
+  observerProcess.stderr?.on("error", () => {});
+  observerProcess.stderr?.on("data", observerLifecycle.onStderr);
+  observerProcess.on("error", observerLifecycle.onError);
+  observerProcess.once("exit", observerLifecycle.onExit);
+  observerProcess.once("close", observerLifecycle.onClose);
+
+  beginOperation("observer_self_test");
+  await observerLifecycle.waitForReady({
+    readHealth: () =>
+      readNativeObserverHealth({
+        observerDir: "/fixture/observer",
+        expected: {
+          runId: run,
+          proxyImageId: images.proxy,
+          traefikImageId: images.traefik,
+          runtimeReceiptSha256,
+        },
+        requireRootOwnership: true,
+      }),
+  });
   stage = "bundle_preparation";
   beginOperation("bundle_preparation");
   recordStage();
@@ -345,6 +406,8 @@ try {
     stdio: "pipe",
     timeout: 30_000,
   });
+  const traefikContainer = resolveComposeContainer(docker, "traefik");
+  const proxyContainer = resolveComposeContainer(docker, "oauth2-proxy");
   stage = "client_network";
   beginOperation("docker_create_client_network");
   recordStage();
@@ -404,6 +467,14 @@ try {
       GWRK_051_OWNED_CONTROLLER: "1",
       GWRK_051_CLIENT_A: `gwrk-051-client-a-${run}`,
       GWRK_051_CLIENT_B: `gwrk-051-client-b-${run}`,
+      GWRK_051_RUN_ID: run,
+      GWRK_051_PROXY_IMAGE_ID: images.proxy,
+      GWRK_051_TRAEFIK_IMAGE_ID: images.traefik,
+      GWRK_051_RUNTIME_RECEIPT_SHA256: runtimeReceiptSha256,
+      GWRK_051_TRAEFIK_CONTAINER: traefikContainer,
+      GWRK_051_PROXY_CONTAINER: proxyContainer,
+      GWRK_051_ORIGIN_CONTAINER: originName,
+      GWRK_051_OBSERVER_DIR: "/fixture/observer",
     },
   });
   stage = "completed_initial_cases";
@@ -450,6 +521,11 @@ try {
   process.exitCode = 1;
 } finally {
   issuer?.kill("SIGTERM");
+  beginOperation("stop_native_observer");
+  await observerLifecycle.stop(observerProcess);
+  try {
+    rmSync("/fixture/observer", { recursive: true, force: true });
+  } catch {}
   for (const name of owned.reverse()) {
     let labels;
     try {

@@ -9,6 +9,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { fileURLToPath } from "node:url";
+import { isAllowedFixtureScriptName } from "./bootstrap-observer.mjs";
 import {
   buildLifecycleFailureReceipt,
   classifyDockerFailure,
@@ -25,7 +26,6 @@ async function hashFile(path) {
   for await (const chunk of createReadStream(path)) hash.update(chunk);
   return hash.digest("hex");
 }
-
 export async function runNativeFixture({
   runId,
   root,
@@ -290,7 +290,10 @@ async function main() {
   );
   const scriptManifest = JSON.parse(readFileSync(scriptManifestPath, "utf8"));
   for (const [name, digest] of Object.entries(scriptManifest)) {
-    assert.match(name, /^[a-z-]+\.mjs$/);
+    assert.ok(
+      isAllowedFixtureScriptName(name),
+      "script manifest entry has invalid filename",
+    );
     const path = `${root}/input/fixtures/${name}`;
     const entryMetadata = lstatSync(path);
     assert.ok(

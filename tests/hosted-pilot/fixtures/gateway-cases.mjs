@@ -16,12 +16,15 @@ import {
   assertLogoutClearingCookies,
   assertProxyDelta,
   assertProxyWireMatch,
+  assertScenarioBReuseProof,
   assertStrictSniRejection,
   readNativeObservationBarrier,
+  readNativeObserverHealth,
   scanResponsesForLeaks,
   selectForwardAuthRootEvents,
   validateExpectedProvenance,
   validateProcessLogs,
+  verifyObserverDirectory,
 } from "./raw-https.mjs";
 
 // Run only inside the isolated controller after the owned native lifecycle is approved.
@@ -63,6 +66,14 @@ if (!processLogsFile) {
   }
 }
 
+const observerDir = process.env.GWRK_051_OBSERVER_DIR;
+assert.equal(
+  observerDir,
+  "/fixture/observer",
+  "GWRK_051_OBSERVER_DIR must equal /fixture/observer",
+);
+verifyObserverDirectory(observerDir, { requireRootOwnership: true });
+
 const origin = "https://gwrk.gforge.ai";
 const clientIp = (name) => (name === clientA ? "172.31.51.11" : "172.31.51.12");
 const canaries = [
@@ -99,8 +110,10 @@ let barrierSequence = 0;
 function barrier() {
   barrierSequence++;
   return readNativeObservationBarrier({
-    observationPath: "/fixture/service/native-observation.json",
-    barrierPath: "/fixture/service/native-observation-barrier.json",
+    observerDir,
+    observationPath: `${observerDir}/native-observation.json`,
+    barrierPath: `${observerDir}/native-observation-barrier.json`,
+    healthPath: `${observerDir}/native-observer-health.json`,
     expected: expectedProvenance,
     barrierSequence,
     timeoutMs: 5000,
@@ -1081,7 +1094,7 @@ try {
   sendControl({ advanceRateMs: 120001 });
 
   // 10. Lost committed responses, warmed transport, 60-check conservative cap, and cancelled unused-dial scenario
-  function runLostResponseGenerationScenario(prepareTransport) {
+  function runLostResponseGenerationScenario(prepareTransport, options = {}) {
     const genStart = observe();
     const genStartProxy = barrier();
     prepareTransport();
@@ -1133,6 +1146,10 @@ try {
     }
     sendControl({ dropNextCommitted: false });
 
+    if (options.afterDrop) {
+      options.afterDrop();
+    }
+
     let exhausted = false;
     for (let i = 0; i < 65; i++) {
       const res = client(clientA, {
@@ -1177,19 +1194,31 @@ try {
   sendControl({ advanceRateMs: 120001 });
 
   // Scenario B: Cancelled unused-dial followed by lost committed response
-  runLostResponseGenerationScenario(() => {
-    sendControl({ loginFault: "timeout" });
-    const beforeUnusedProxy = barrier();
-    for (let i = 0; i < 2; i++) {
-      const cancelledDial = client(clientA, {
-        path: "/oauth2/start?rd=%2Fapi%2Fauth%2Fsession",
-        cancelAfterMs: 80,
-      });
-      assert.equal(cancelledDial.cancelled, true);
-    }
-    assertProxyDelta(beforeUnusedProxy, barrier(), 0);
-    sendControl({ loginFault: "none" });
-  });
+  runLostResponseGenerationScenario(
+    () => {
+      sendControl({ loginFault: "timeout" });
+      const beforeUnusedProxy = barrier();
+      for (let i = 0; i < 2; i++) {
+        const cancelledDial = client(clientA, {
+          path: "/oauth2/start?rd=%2Fapi%2Fauth%2Fsession",
+          cancelAfterMs: 80,
+        });
+        assert.equal(cancelledDial.cancelled, true);
+      }
+      assertProxyDelta(beforeUnusedProxy, barrier(), 0);
+      sendControl({ loginFault: "none" });
+    },
+    {
+      afterDrop: () => {
+        const health = readNativeObserverHealth({
+          observerDir,
+          expected: expectedProvenance,
+          minBarrierSequence: barrierSequence,
+        });
+        assertScenarioBReuseProof(health);
+      },
+    },
+  );
 
   sendControl({ advanceRateMs: 120001 });
 
