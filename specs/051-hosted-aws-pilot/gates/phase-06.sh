@@ -6,6 +6,11 @@ required_targets=(
   src/adapters/auth/http-client-credential.test.ts
   src/commands/server.auth-startup.test.ts
   src/server/auth-continuity.test.ts
+  src/commands/init.auth-purity.test.ts
+  src/domain/hosted-auth-config.test.ts
+  src/adapters/auth/protected-hosted-auth-files.test.ts
+  src/adapters/auth/hosted-auth-factory.test.ts
+  src/commands/status.auth.test.ts
   src/commands/init.test.ts
   src/commands/server.test.ts
   src/commands/status.test.ts
@@ -18,6 +23,11 @@ for target in "${required_targets[@]}"; do
   fi
 done
 vitest_targets=(
+  src/domain/hosted-auth-config.test.ts
+  src/adapters/auth/protected-hosted-auth-files.test.ts
+  src/adapters/auth/hosted-auth-factory.test.ts
+  src/commands/status.auth.test.ts
+  src/commands/init.auth-purity.test.ts
   src/adapters/auth/http-client-credential.test.ts
   src/commands/server.auth-startup.test.ts
   src/server/auth-continuity.test.ts

@@ -7,6 +7,11 @@ required_targets=(
   tests/hosted-pilot/rollout-gates.test.ts
   tests/linux-runner/container-harness.mjs
   src/architecture.test.ts
+  src/domain/hosted-auth-config.test.ts
+  src/adapters/auth/protected-hosted-auth-files.test.ts
+  src/adapters/auth/hosted-auth-factory.test.ts
+  src/commands/status.auth.test.ts
+  src/commands/init.auth-purity.test.ts
   tests/hosted-pilot/tls-preflight.test.ts
   tests/hosted-pilot/gateway-startup.test.ts
   src/adapters/auth/browser-csrf.test.ts
@@ -38,6 +43,7 @@ required_targets=(
   tests/hosted-pilot/gate-completeness.test.mjs
   tests/hosted-pilot/gateway-production.mjs
   tests/hosted-auth-proof/gateway-proof.mjs
+  tests/hosted-pilot/protected-auth-files-native.mjs
 )
 for target in "${required_targets[@]}"; do
   if [[ ! -f "$target" ]]; then
@@ -46,6 +52,11 @@ for target in "${required_targets[@]}"; do
   fi
 done
 vitest_targets=(
+  src/domain/hosted-auth-config.test.ts
+  src/adapters/auth/protected-hosted-auth-files.test.ts
+  src/adapters/auth/hosted-auth-factory.test.ts
+  src/commands/status.auth.test.ts
+  src/commands/init.auth-purity.test.ts
   tests/hosted-pilot/tls-preflight.test.ts
   tests/hosted-pilot/gateway-startup.test.ts
   src/adapters/auth/browser-csrf.test.ts
@@ -86,4 +97,5 @@ node dist/cli.js define adr --reindex --check
 node dist/cli.js define adr --check
 node tests/hosted-pilot/gateway-production.mjs
 node tests/hosted-auth-proof/gateway-proof.mjs
+node tests/hosted-pilot/protected-auth-files-native.mjs
 node tests/linux-runner/container-harness.mjs

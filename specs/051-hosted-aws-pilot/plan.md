@@ -473,7 +473,11 @@ Requires Phase 5. Write failing startup and origin-bound CLI plus restart contin
 - `src/adapters/auth/http-client-credential.test.ts` (NEW: Test `AUTH-16` origin match and mismatched `--server-url` plus plain HTTP and `302` redirect stripping)
 - `src/commands/server.auth-startup.test.ts` (NEW: Test `AUTH-17` fail-closed hosted `start` and `_run` startup plus `FR-014` local liveness split)
 - `src/server/auth-continuity.test.ts` (NEW: Test `AUTH-18` restart continuity for scoped dispatch and harvest plus post-revocation denial)
-- `src/commands/init.test.ts` (MODIFY: Add `TR-019` proving CLI imports and `gwrk init --non-interactive --server` make zero inference or auth reads)
+- `src/commands/init.auth-purity.test.ts` (NEW: Compact `TR-019` caller proof for imports and initialization without inference or auth reads)
+- `src/domain/hosted-auth-config.ts` and `src/domain/hosted-auth-config.test.ts` (PREPARED: Pure validation with separate typed and environment sources)
+- `src/adapters/auth/protected-hosted-auth-files.ts` and its test (PREPARED: Protected inbound files with live allowlist reads)
+- `src/adapters/auth/hosted-auth-factory.test.ts` (PREPARED: Lazy startup composition with borrowed store and clock)
+- `src/commands/status.auth.test.ts` (PREPARED: Explicit origin-bound credentials and one deadline for protected probes)
 
 #### Governance and Skills
 
@@ -488,13 +492,13 @@ Requires Phase 5. Write failing startup and origin-bound CLI plus restart contin
 | TR-016 | integration | `src/adapters/auth/http-client-credential.test.ts` | Stored bearer attaches to matching HTTPS origin only and never crosses `--server-url` or redirects |
 | TR-017 | integration | `src/commands/server.auth-startup.test.ts` | Hosted `start` and `_run` fail closed without verifier config and `server status` isolates local liveness |
 | TR-018 | integration | `src/server/auth-continuity.test.ts` | Scoped dispatch and harvest keep stable operation IDs and receipts across restart while revoked calls fail |
-| TR-019 | integration | `src/commands/init.test.ts` | Module imports and `gwrk init --non-interactive --server` run zero agent, secret, or Google calls |
+| TR-019 | integration | `src/commands/init.auth-purity.test.ts` | Module imports and `gwrk init --non-interactive --server` run zero agent, secret, or Google calls |
 
 #### Done When
 
 ```bash
 pnpm run build
-pnpm exec vitest run src/adapters/auth/http-client-credential.test.ts src/commands/server.auth-startup.test.ts src/server/auth-continuity.test.ts src/commands/init.test.ts src/commands/server.test.ts src/commands/status.test.ts src/architecture.test.ts
+pnpm exec vitest run src/domain/hosted-auth-config.test.ts src/adapters/auth/protected-hosted-auth-files.test.ts src/adapters/auth/hosted-auth-factory.test.ts src/commands/status.auth.test.ts src/commands/init.auth-purity.test.ts src/adapters/auth/http-client-credential.test.ts src/commands/server.auth-startup.test.ts src/server/auth-continuity.test.ts src/commands/init.test.ts src/commands/server.test.ts src/commands/status.test.ts src/architecture.test.ts
 ```
 
 ---
@@ -584,11 +588,12 @@ Requires Phase 7. Write failing backup-restore auth-state and rollout-gate tests
 node tests/hosted-pilot/gate-completeness.test.mjs
 pnpm run build
 pnpm run lint
-pnpm exec vitest run tests/hosted-pilot/tls-preflight.test.ts tests/hosted-pilot/gateway-startup.test.ts src/adapters/auth/browser-csrf.test.ts src/adapters/auth/proxy-logout.test.ts src/server/auth-guard.account-denial.test.ts src/utils/agent.auth-env.test.ts src/architecture.test.ts src/domain/auth-policy.test.ts src/adapters/auth/credential-crypto.test.ts src/adapters/sqlite/auth-store.test.ts src/commands/auth.test.ts src/adapters/auth/google-id-token.test.ts src/application/auth/authenticate-request.test.ts src/server/auth-prehandler.test.ts src/server/auth-session.test.ts src/server/auth-api-keys.test.ts src/server/auth-csrf.test.ts src/server/routes/health.auth.test.ts src/server/auth-route-policy.test.ts src/domain/auth-rate-policy.test.ts src/adapters/auth/rate-admission.test.ts src/server/auth-bounds.test.ts src/server/auth-logging.test.ts src/server/github.test.ts src/adapters/auth/http-client-credential.test.ts src/commands/server.auth-startup.test.ts src/server/auth-continuity.test.ts src/commands/init.test.ts tests/linux-runner/preflight-auth.test.ts tests/linux-runner/backup-restore-rollback.test.ts tests/hosted-pilot/rollout-gates.test.ts
+pnpm exec vitest run src/domain/hosted-auth-config.test.ts src/adapters/auth/protected-hosted-auth-files.test.ts src/adapters/auth/hosted-auth-factory.test.ts src/commands/status.auth.test.ts src/commands/init.auth-purity.test.ts tests/hosted-pilot/tls-preflight.test.ts tests/hosted-pilot/gateway-startup.test.ts src/adapters/auth/browser-csrf.test.ts src/adapters/auth/proxy-logout.test.ts src/server/auth-guard.account-denial.test.ts src/utils/agent.auth-env.test.ts src/architecture.test.ts src/domain/auth-policy.test.ts src/adapters/auth/credential-crypto.test.ts src/adapters/sqlite/auth-store.test.ts src/commands/auth.test.ts src/adapters/auth/google-id-token.test.ts src/application/auth/authenticate-request.test.ts src/server/auth-prehandler.test.ts src/server/auth-session.test.ts src/server/auth-api-keys.test.ts src/server/auth-csrf.test.ts src/server/routes/health.auth.test.ts src/server/auth-route-policy.test.ts src/domain/auth-rate-policy.test.ts src/adapters/auth/rate-admission.test.ts src/server/auth-bounds.test.ts src/server/auth-logging.test.ts src/server/github.test.ts src/adapters/auth/http-client-credential.test.ts src/commands/server.auth-startup.test.ts src/server/auth-continuity.test.ts src/commands/init.test.ts tests/linux-runner/preflight-auth.test.ts tests/linux-runner/backup-restore-rollback.test.ts tests/hosted-pilot/rollout-gates.test.ts
 node dist/cli.js define adr --reindex --check
 node dist/cli.js define adr --check
 node tests/hosted-pilot/gateway-production.mjs
 node tests/hosted-auth-proof/gateway-proof.mjs
+node tests/hosted-pilot/protected-auth-files-native.mjs
 node tests/linux-runner/container-harness.mjs
 ```
 

@@ -370,7 +370,12 @@
         "src/adapters/auth/http-client-credential.test.ts",
         "src/commands/server.auth-startup.test.ts",
         "src/server/auth-continuity.test.ts",
-        "src/commands/init.test.ts"
+        "src/commands/init.test.ts",
+        "src/domain/hosted-auth-config.test.ts",
+        "src/adapters/auth/protected-hosted-auth-files.test.ts",
+        "src/adapters/auth/hosted-auth-factory.test.ts",
+        "src/commands/status.auth.test.ts",
+        "src/commands/init.auth-purity.test.ts"
       ]
     },
     {
@@ -510,7 +515,13 @@
         "tests/hosted-pilot/tls-preflight.test.ts",
         "tests/hosted-pilot/gateway-startup.test.ts",
         "src/domain/auth-rate-policy.test.ts",
-        "src/adapters/auth/rate-admission.test.ts"
+        "src/adapters/auth/rate-admission.test.ts",
+        "src/domain/hosted-auth-config.test.ts",
+        "src/adapters/auth/protected-hosted-auth-files.test.ts",
+        "src/adapters/auth/hosted-auth-factory.test.ts",
+        "src/commands/status.auth.test.ts",
+        "src/commands/init.auth-purity.test.ts",
+        "tests/hosted-pilot/protected-auth-files-native.mjs"
       ]
     },
     {
