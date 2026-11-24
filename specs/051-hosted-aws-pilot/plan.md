@@ -412,12 +412,17 @@ pnpm exec vitest run src/adapters/auth/browser-csrf.test.ts src/server/auth-guar
 
 ### Phase 5: CSRF, bounds and redaction
 
-Requires Phase 4. Write failing CSRF and cross-project health plus bounds and canary-log tests first. Observe RED before implementing sanitized logging and abuse bounds.
+Requires Phase 4. Write failing CSRF and cross-project health plus bounds and canary-log tests first. Observe RED before implementing sanitized logging and abuse bounds. Follow [rate-admission-boundary.md](contracts/rate-admission-boundary.md). Reuse independently prepared components and their regressions. Proxy-login wiring remains a Phase 7 acceptance dependency.
 
 #### Files
 
 - `src/server/auth-logging.ts` (NEW: Sanitized Fastify logger removing auth headers and cookies plus OAuth query params and error secrets)
 - `src/server/auth-bounds.ts` (NEW: Finite login and per-credential API rate limits plus header and body bounds with fail-closed denials)
+- `src/domain/auth-rate-policy.ts` (NEW: Pure rate decisions using central security policy and explicit time)
+- `src/domain/auth-rate-policy.test.ts` (NEW: Test quota and generation decisions without effects)
+- `src/ports/rate-admission-port.ts` (NEW: Declare bounded origin admission and one-time finalization)
+- `src/adapters/auth/rate-admission.ts` (NEW: Own shared bounded state, reservations and cleanup)
+- `src/adapters/auth/rate-admission.test.ts` (NEW: Test concurrency, rollover, fixed expiry and shared capacity)
 - `src/server/index.ts` (MODIFY: Replace default `logger: true` with sanitized logger and register request bounds before auth routes)
 - `src/server/auth-csrf.test.ts` (NEW: Test `AUTH-11` Origin and session-bound CSRF rejections plus zero cookie fallback for bad API keys)
 - `src/server/routes/health.auth.test.ts` (NEW: Test `AUTH-12` cross-project `/api/health` denial and single-project filtering plus zero Git probes on `/health`)
@@ -440,6 +445,8 @@ Requires Phase 4. Write failing CSRF and cross-project health plus bounds and ca
 | TR-012 | integration | `src/server/routes/health.auth.test.ts` | Cross-project `/api/health` fails closed and private `/health` runs zero Git or provider probes |
 | TR-013 | integration | `src/server/github.test.ts` | Missing, blank, or bad webhook HMAC and changed-payload replay create zero harvest rows |
 | TR-014 | integration | `src/server/auth-bounds.test.ts` | Rate limits, oversized inputs, and JWKS outages fail closed with zero accepted work |
+| TR-014 | unit | `src/domain/auth-rate-policy.test.ts` | Central limits and explicit generation transitions preserve quotas |
+| TR-014 | integration | `src/adapters/auth/rate-admission.test.ts` | Reservations, shared capacity, expiry and duplicate completion stay bounded |
 | TR-015 | integration | `src/server/auth-logging.test.ts` | Canary API key, cookie, `Set-Cookie`, and OAuth code produce zero log or response matches |
 | TR-012 | integration | `src/server/auth-route-policy.test.ts` | Unclassified routes fail closed, CORS stays disabled, and API paths return JSON denials |
 
@@ -447,7 +454,7 @@ Requires Phase 4. Write failing CSRF and cross-project health plus bounds and ca
 
 ```bash
 pnpm run build
-pnpm exec vitest run src/server/auth-csrf.test.ts src/server/routes/health.auth.test.ts src/server/auth-route-policy.test.ts src/server/auth-bounds.test.ts src/server/auth-logging.test.ts src/server/github.test.ts src/architecture.test.ts
+pnpm exec vitest run src/server/auth-csrf.test.ts src/server/routes/health.auth.test.ts src/server/auth-route-policy.test.ts src/domain/auth-rate-policy.test.ts src/adapters/auth/rate-admission.test.ts src/server/auth-bounds.test.ts src/server/auth-logging.test.ts src/server/github.test.ts src/architecture.test.ts
 ```
 
 ---
@@ -577,7 +584,7 @@ Requires Phase 7. Write failing backup-restore auth-state and rollout-gate tests
 node tests/hosted-pilot/gate-completeness.test.mjs
 pnpm run build
 pnpm run lint
-pnpm exec vitest run tests/hosted-pilot/tls-preflight.test.ts tests/hosted-pilot/gateway-startup.test.ts src/adapters/auth/browser-csrf.test.ts src/adapters/auth/proxy-logout.test.ts src/server/auth-guard.account-denial.test.ts src/utils/agent.auth-env.test.ts src/architecture.test.ts src/domain/auth-policy.test.ts src/adapters/auth/credential-crypto.test.ts src/adapters/sqlite/auth-store.test.ts src/commands/auth.test.ts src/adapters/auth/google-id-token.test.ts src/application/auth/authenticate-request.test.ts src/server/auth-prehandler.test.ts src/server/auth-session.test.ts src/server/auth-api-keys.test.ts src/server/auth-csrf.test.ts src/server/routes/health.auth.test.ts src/server/auth-route-policy.test.ts src/server/auth-bounds.test.ts src/server/auth-logging.test.ts src/server/github.test.ts src/adapters/auth/http-client-credential.test.ts src/commands/server.auth-startup.test.ts src/server/auth-continuity.test.ts src/commands/init.test.ts tests/linux-runner/preflight-auth.test.ts tests/linux-runner/backup-restore-rollback.test.ts tests/hosted-pilot/rollout-gates.test.ts
+pnpm exec vitest run tests/hosted-pilot/tls-preflight.test.ts tests/hosted-pilot/gateway-startup.test.ts src/adapters/auth/browser-csrf.test.ts src/adapters/auth/proxy-logout.test.ts src/server/auth-guard.account-denial.test.ts src/utils/agent.auth-env.test.ts src/architecture.test.ts src/domain/auth-policy.test.ts src/adapters/auth/credential-crypto.test.ts src/adapters/sqlite/auth-store.test.ts src/commands/auth.test.ts src/adapters/auth/google-id-token.test.ts src/application/auth/authenticate-request.test.ts src/server/auth-prehandler.test.ts src/server/auth-session.test.ts src/server/auth-api-keys.test.ts src/server/auth-csrf.test.ts src/server/routes/health.auth.test.ts src/server/auth-route-policy.test.ts src/domain/auth-rate-policy.test.ts src/adapters/auth/rate-admission.test.ts src/server/auth-bounds.test.ts src/server/auth-logging.test.ts src/server/github.test.ts src/adapters/auth/http-client-credential.test.ts src/commands/server.auth-startup.test.ts src/server/auth-continuity.test.ts src/commands/init.test.ts tests/linux-runner/preflight-auth.test.ts tests/linux-runner/backup-restore-rollback.test.ts tests/hosted-pilot/rollout-gates.test.ts
 node dist/cli.js define adr --reindex --check
 node dist/cli.js define adr --check
 node tests/hosted-pilot/gateway-production.mjs

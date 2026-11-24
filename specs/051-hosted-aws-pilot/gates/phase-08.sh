@@ -25,6 +25,8 @@ required_targets=(
   src/server/auth-csrf.test.ts
   src/server/routes/health.auth.test.ts
   src/server/auth-route-policy.test.ts
+  src/domain/auth-rate-policy.test.ts
+  src/adapters/auth/rate-admission.test.ts
   src/server/auth-bounds.test.ts
   src/server/auth-logging.test.ts
   src/server/github.test.ts
@@ -63,6 +65,8 @@ vitest_targets=(
   src/server/auth-csrf.test.ts
   src/server/routes/health.auth.test.ts
   src/server/auth-route-policy.test.ts
+  src/domain/auth-rate-policy.test.ts
+  src/adapters/auth/rate-admission.test.ts
   src/server/auth-bounds.test.ts
   src/server/auth-logging.test.ts
   src/server/github.test.ts

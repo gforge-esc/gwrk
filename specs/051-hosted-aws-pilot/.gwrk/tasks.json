@@ -294,7 +294,7 @@
         {
           "id": "T029",
           "title": "Create auth-bounds.ts",
-          "description": "NEW src/server/auth-bounds.ts. Finite login and per-credential API rate limits plus header and body bounds with fail-closed denials. Tests: src/server/auth-bounds.test.ts",
+          "description": "NEW src/server/auth-bounds.ts. Finite login and per-credential API rate limits plus header and body bounds with fail-closed denials. Tests: src/server/auth-bounds.test.ts Reuse the approved pure auth-rate-policy, rate-admission port and bounded adapter. Preserve generation, duplicate-finalization, capacity and fixed-expiry regressions.",
           "status": "open",
           "gateScript": "bash specs/051-hosted-aws-pilot/gates/phase-05.sh",
           "sp": 2
@@ -315,7 +315,9 @@
         "src/server/github.test.ts",
         "src/server/auth-bounds.test.ts",
         "src/server/auth-logging.test.ts",
-        "src/server/auth-route-policy.test.ts"
+        "src/server/auth-route-policy.test.ts",
+        "src/domain/auth-rate-policy.test.ts",
+        "src/adapters/auth/rate-admission.test.ts"
       ]
     },
     {
@@ -506,7 +508,9 @@
         "src/server/auth-guard.account-denial.test.ts",
         "src/adapters/auth/browser-csrf.test.ts",
         "tests/hosted-pilot/tls-preflight.test.ts",
-        "tests/hosted-pilot/gateway-startup.test.ts"
+        "tests/hosted-pilot/gateway-startup.test.ts",
+        "src/domain/auth-rate-policy.test.ts",
+        "src/adapters/auth/rate-admission.test.ts"
       ]
     },
     {
