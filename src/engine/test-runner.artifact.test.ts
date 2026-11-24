@@ -7,6 +7,7 @@ import { mkdtempSync, rmSync, writeFileSync, existsSync,
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
+import { setImmediate } from "node:timers/promises";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { executeTestCommand, getTestResultFormat, runTests } from "./test-runner.js";
 import { detectProfile } from "./profile-detector.js";
@@ -23,7 +24,11 @@ const report = () => ({ numTotalTestSuites: 1, numPassedTestSuites: 1, numFailed
 
 let root: string;
 beforeEach(() => { root = mkdtempSync(join(tmpdir(), "gwrk-json-artifact-test-")); });
-afterEach(() => { vi.restoreAllMocks(); vi.unstubAllEnvs(); rmSync(root, { recursive: true, force: true }); });
+afterEach(async () => {
+  vi.restoreAllMocks(); vi.unstubAllEnvs(); rmSync(root, { recursive: true, force: true });
+  // Let worker RPC replies run between synchronous subprocess cases.
+  await setImmediate();
+});
 function fakeRunner(script: string) {
   const packageRoot = join(root, "node_modules/vitest");
   mkdirSync(packageRoot,{recursive:true});
