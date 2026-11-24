@@ -41,6 +41,16 @@ Store gateway-only files under `/etc/gwrk/gateway-secrets`. Keep that directory 
 
 The production gateway implementation must prove its pinned container identity can consume the mounted files. It must preserve the worker access denial. This contract does not require an unverified container user configuration.
 
+## Gateway header bridge
+
+The gateway strips public identity and auth-mode headers before setting `X-Gwrk-Auth-Mode`. Use `google_id_token` for its browser chain. Use `api_key` for its API chain and `webhook` for its provider chain.
+
+The origin treats this value only as a parser hint. It never creates identity or project grants from it. The Google hint extracts the controlled Authorization bearer value as `forwardedGoogleIdToken`. It does not also supply caller Authorization to credential selection. The API hint preserves caller Authorization and supplies no forwarded Google token.
+
+Absent a hint, caller Authorization may enter only the API parser. Missing metadata never selects browser authentication or trusted-local authorization. An invalid hint denies protected requests. The webhook hint cannot bypass classification of a non-webhook route. Every Google or API credential still requires cryptographic verification and current lifecycle checks. Direct local header forgery must fail with invalid credentials.
+
+The origin guard owns browser mutation checks through the existing `BrowserCsrfPort` and pure origin policy. Require configured `expectedOrigin` and the port for Google mutations. Missing dependencies deny those writes. Read `__Host-gwrk_csrf` and `x-gwrk-csrf-token`. Never accept query CSRF tokens. API and provider signature chains retain their separate protections.
+
 ## Internal proxy logout
 
 The production proxy listens on `127.0.0.1:4180` for origin sign-out. Use the fixed URL `http://127.0.0.1:4180/oauth2/sign_out`. No request or project configuration may replace that target. The production bundle must keep this listener private. Public gateway routing blocks direct sign-out.
