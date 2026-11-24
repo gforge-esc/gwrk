@@ -17,6 +17,7 @@ import {
   writeScopedStdout,
 } from "./adapters/cli/output-scope.js";
 import { createAssessCommand } from "./commands/assess.js";
+import { createAuthCommand } from "./commands/auth.js";
 import { createDbCommand } from "./commands/db.js";
 import { createDefineCommand } from "./commands/define.js";
 import { createDeviceCommand } from "./commands/device.js";
@@ -104,6 +105,7 @@ export function createCliProgram(): Command {
           const ops = [
             "init",
             "assess",
+            "auth",
             "tasks",
             "plan",
             "db",
@@ -156,6 +158,7 @@ export function createCliProgram(): Command {
 
   program.addCommand(createInitCommand());
   program.addCommand(createAssessCommand());
+  program.addCommand(createAuthCommand());
   program.addCommand(createProjectCommand());
 
   // The Foxtrot Charlie Pillars
@@ -212,11 +215,24 @@ export function createCliProgram(): Command {
     const commandPath = [actionCommand.parent?.name(), actionCommand.name()]
       .filter(Boolean)
       .join(" ");
+    const fullCommandPath: string[] = [];
+    for (
+      let current: Command | null = actionCommand;
+      current?.parent;
+      current = current.parent
+    ) {
+      fullCommandPath.unshift(current.name());
+    }
+    const isAuthKeyCommand =
+      fullCommandPath[0] === "auth" &&
+      fullCommandPath[1] === "key" &&
+      ["create", "list", "revoke", "rotate"].includes(fullCommandPath[2] ?? "");
     const resolvesOwnRoot =
       actionCommand.name() === "init" ||
       actionCommand.name() === "assess" ||
       actionCommand.name() === "harvest" ||
       actionCommand.name() === "status" ||
+      isAuthKeyCommand ||
       commandPath === "define adr" ||
       [
         "db backup",

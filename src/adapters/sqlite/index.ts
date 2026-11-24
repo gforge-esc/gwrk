@@ -76,3 +76,10 @@ export {
   type SqliteOperationsStoreOptions,
   createSqliteOperationsStoreAdapter,
 } from "./operations.js";
+
+export {
+  type SqliteAuthStoreAdapter,
+  type SqliteAuthStoreOptions,
+  createSqliteAuthStoreAdapter,
+  createSqliteCredentialGrantAdminAdapter,
+} from "./auth-store.js";
