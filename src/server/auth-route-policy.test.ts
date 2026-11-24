@@ -293,6 +293,9 @@ async function createRoutePolicyFixture() {
 
   return {
     server,
+    db,
+    registry,
+    notifier: fakeNotifier,
     project,
     operatorKey: operatorKey.rawCredential,
     issueCsrfSpy,
@@ -301,6 +304,159 @@ async function createRoutePolicyFixture() {
 }
 
 describe("FR-010 US-006 TR-012: hosted default-deny route policy, HEAD parity, disabled CORS, and JSON API denials", () => {
+  it.each(["status", "dispatch", "notify"] as const)(
+    "FR-010: scoped %s 403 has a nonempty request ID and zero accepted effects",
+    async (route) => {
+      const f = await createRoutePolicyFixture();
+      const hiddenRoot = `${f.project.localRoot}-hidden`;
+      const hiddenId = initFixtureRepo(
+        hiddenRoot,
+        "git@github.com:private/hidden-policy.git",
+      );
+      const hidden = f.registry.enrollProject({
+        ...f.project,
+        projectId: hiddenId,
+        slug: "hidden-policy-slug",
+        name: "Hidden Policy Project",
+        repoSlug: "private/hidden-policy",
+        localRoot: hiddenRoot,
+        legacyProjectIds: [],
+      });
+      const payload =
+        route === "notify"
+          ? {
+              projectId: hidden.projectId,
+              type: "phase_completed",
+              feature: { id: "051-policy-denied", name: "Denied" },
+            }
+          : {
+              projectId: hidden.projectId,
+              featureId: "051-policy-denied",
+              phaseId: "phase-05",
+            };
+      const response = await f.server.inject({
+        method: route === "status" ? "GET" : "POST",
+        url:
+          route === "status"
+            ? `/api/status?projectId=${hidden.projectId}`
+            : `/api/${route}`,
+        headers: { authorization: `Bearer ${f.operatorKey}` },
+        ...(route === "status" ? {} : { payload }),
+      });
+      expect(response.statusCode).toBe(403);
+      expect(f.dispatchCount()).toBe(0);
+      expect(f.notifier.notify).not.toHaveBeenCalled();
+      expect(slackNotify.notifySlack).not.toHaveBeenCalled();
+      for (const table of [
+        "dispatch_operations",
+        "harvest_operations",
+        "harvest_deliveries",
+      ]) {
+        expect(
+          (
+            f.db.prepare(`SELECT COUNT(*) AS count FROM ${table}`).get() as {
+              count: number;
+            }
+          ).count,
+        ).toBe(0);
+      }
+      expect(response.json()).toMatchObject({
+        ok: false,
+        requestId: expect.any(String),
+      });
+      expect(response.json().requestId.trim().length).toBeGreaterThan(0);
+    },
+  );
+
+  it("FR-010: ambiguous project denial omits candidateSlugs and unauthorized project metadata", async () => {
+    const f = await createRoutePolicyFixture();
+    const hiddenRoot = `${f.project.localRoot}-hidden`;
+    const hiddenId = initFixtureRepo(
+      hiddenRoot,
+      "git@github.com:private/hidden-policy.git",
+    );
+    const hidden = f.registry.enrollProject({
+      ...f.project,
+      projectId: hiddenId,
+      slug: "hidden-policy-slug",
+      name: "Hidden Policy Project",
+      repoSlug: "private/hidden-policy",
+      localRoot: hiddenRoot,
+      legacyProjectIds: [],
+    });
+    const response = await f.server.inject({
+      method: "GET",
+      url: "/api/status",
+      headers: { authorization: `Bearer ${f.operatorKey}` },
+    });
+    expect(f.dispatchCount()).toBe(0);
+    expect(f.notifier.notify).not.toHaveBeenCalled();
+    expect(slackNotify.notifySlack).not.toHaveBeenCalled();
+    expect(response.statusCode).toBe(400);
+    expect(response.json()).toMatchObject({
+      ok: false,
+      code: "AMBIGUOUS_PROJECT_SELECTION",
+    });
+    expect(response.json()).not.toHaveProperty("candidateSlugs");
+    for (const metadata of [
+      hidden.projectId,
+      hidden.slug,
+      hidden.name,
+      hidden.repoSlug,
+      hidden.localRoot,
+    ]) {
+      expect(response.body).not.toContain(metadata);
+    }
+  });
+
+  it.each([undefined, `sha256=${"0".repeat(64)}`])(
+    "AUTH-13: valid enrolled API key cannot replace missing or invalid webhook HMAC %s",
+    async (signature) => {
+      const f = await createRoutePolicyFixture();
+      const control = await f.server.inject({
+        method: "GET",
+        url: `/api/status?projectId=${f.project.projectId}`,
+        headers: { authorization: `Bearer ${f.operatorKey}` },
+      });
+      expect(control.statusCode).toBe(200);
+      const response = await f.server.inject({
+        method: "POST",
+        url: "/webhook/github",
+        headers: {
+          authorization: `Bearer ${f.operatorKey}`,
+          "x-github-event": "pull_request",
+          "x-github-delivery": "policy-no-api-fallback",
+          ...(signature === undefined
+            ? {}
+            : { "x-hub-signature-256": signature }),
+        },
+        payload: {
+          action: "closed",
+          repository: { full_name: f.project.repoSlug },
+          pull_request: {
+            merged: true,
+            number: 1,
+            head: { ref: "feature/051-policy" },
+            base: { ref: "main" },
+          },
+        },
+      });
+      expect(response.statusCode).toBe(401);
+      expect(f.dispatchCount()).toBe(0);
+      expect(f.notifier.notify).not.toHaveBeenCalled();
+      expect(slackNotify.notifySlack).not.toHaveBeenCalled();
+      for (const table of ["harvest_operations", "harvest_deliveries"]) {
+        expect(
+          (
+            f.db.prepare(`SELECT COUNT(*) AS count FROM ${table}`).get() as {
+              count: number;
+            }
+          ).count,
+        ).toBe(0);
+      }
+    },
+  );
+
   it("FR-010: denies unclassified routes and returns JSON on API paths", async () => {
     const f = await createRoutePolicyFixture();
 

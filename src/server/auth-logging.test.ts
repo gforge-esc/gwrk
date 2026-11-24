@@ -615,6 +615,65 @@ describe("FR-013 US-008 TR-015 AUTH-15: sanitized Fastify logger and zero canary
     }
   });
 
+  it("AUTH-15: thrown proxy logout errors stay private after committed revocation", async () => {
+    const f = await createLoggingServerFixture({ throwOnLogout: true });
+    const headers = {
+      authorization: `Bearer ${CANARY_GOOGLE_JWT}`,
+      "x-gwrk-auth-mode": "google_id_token",
+      cookie: `__Host-gwrk_session=${CANARY_SESSION_COOKIE}; __Host-gwrk_session_0=${CANARY_CHUNK0_COOKIE}`,
+    };
+    const session = await f.server.inject({
+      method: "GET",
+      url: "/api/auth/session",
+      headers,
+    });
+    expect(session.statusCode).toBe(200);
+    const csrfToken = session.json().csrfToken as string;
+    const cookiePair = setCookieList(session)[0].split(";", 1)[0];
+    const response = await f.server.inject({
+      method: "POST",
+      url: "/api/auth/logout",
+      headers: {
+        ...headers,
+        origin: ORIGIN,
+        "x-gwrk-csrf-token": csrfToken,
+        cookie: `${headers.cookie}; ${cookiePair}`,
+      },
+    });
+    expect(response.statusCode).toBe(503);
+    expect(response.json()).toEqual({ ok: true, proxyCleared: false });
+    expect(
+      setCookieList(response).some(
+        (cookie) =>
+          cookie.startsWith("__Host-gwrk_csrf=") &&
+          cookie.includes("Max-Age=0"),
+      ),
+    ).toBe(true);
+    const replay = await f.server.inject({
+      method: "GET",
+      url: `/api/status?projectId=${f.project.projectId}`,
+      headers,
+    });
+    expect(replay.statusCode).toBe(401);
+    expect(replay.json().code).toBe("AUTH_SESSION_REVOKED");
+    expect(f.logSink.lines().length).toBeGreaterThan(0);
+    const output = f.logSink.readAll();
+    for (const canary of [
+      CANARY_GOOGLE_JWT,
+      CANARY_SESSION_COOKIE,
+      CANARY_CHUNK0_COOKIE,
+      CANARY_DEP_ERR_BEARER,
+      CANARY_DEP_ERR_SESSION,
+      CANARY_DEP_ERR_CHUNK,
+      csrfToken,
+      cookiePair.split("=", 2)[1],
+    ]) {
+      expect(output).not.toContain(canary);
+      expect(response.body).not.toContain(canary);
+      expect(replay.body).not.toContain(canary);
+    }
+  });
+
   it("AUTH-15: createSanitizedLoggerOptions redacts req, res separate Set-Cookie headers, and nested err objects directly", async () => {
     const { createSanitizedLoggerOptions } = await import("./auth-logging.js");
     const sink = createLogSink();
