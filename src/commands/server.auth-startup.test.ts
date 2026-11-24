@@ -403,9 +403,8 @@ describe("FR-008 / TR-017: hosted server startup composition and local liveness 
     vi.spyOn(protectedFiles, "resolveTrustedGwrkGroupId").mockResolvedValue(
       1479,
     );
-    // Do not mock createProtectedHostedAuthFiles here: nonexistent or malformed
-    // protected inbound files must deny startup before listening. Native Linux
-    // root:gwrk 0640 ownership is verified separately in protected-auth-files-native.mjs.
+    // Inject a reader failure to test caller denial before listening.
+    // Native Linux file ownership is verified in protected-auth-files-native.mjs.
     const readAllowlist = vi.fn().mockRejectedValue(new Error(CANARY));
     const readCsrfHmacKey = vi.fn().mockResolvedValue(Buffer.from(HMAC_KEY));
     vi.spyOn(protectedFiles, "createProtectedHostedAuthFiles").mockReturnValue({
