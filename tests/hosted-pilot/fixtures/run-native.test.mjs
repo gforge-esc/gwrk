@@ -570,3 +570,70 @@ test("controller setup docker failure preserves stage controller_setup", async (
   assert.equal(persisted.fixtureConstructionFailure, true);
   assert.equal(persisted.nativeBehavioralRed, false);
 });
+
+test("observer startup controller failure preserves stage observer_start with construction failure", async () => {
+  const runId = "3".repeat(24);
+  const root = `/opt/gwrk-verification/${runId}`;
+  const { store, files } = makeFiles();
+  const controllerOut = "observer startup failed\n";
+  const controllerErr = "Error: native observer exited early with code 1\n";
+
+  await assert.rejects(
+    runNativeFixture({
+      runId,
+      root,
+      receipt: {},
+      images: sampleImages,
+      files,
+      withLifecycle: async ({ executeCases }) => {
+        await executeCases({
+          containerId: "e".repeat(64),
+          docker: async (args) => {
+            if (args.includes("inspect")) {
+              const target = args.at(-1);
+              const key = Object.entries(sampleImages).find(
+                ([, value]) => value === target,
+              )[0];
+              return JSON.stringify({
+                Id: target,
+                RootFS: { Layers: sampleImages.rootfs[key] },
+              });
+            }
+            if (args.includes("mkdir")) return "";
+            if (args.includes("/fixture/bootstrap-stage.json")) {
+              return JSON.stringify({
+                stage: "observer_start",
+                failureClassification: "fixture_construction",
+                category: "observer_startup_failed",
+                detail:
+                  "Native passive observer failed to start or pass self test",
+                operation: "start_native_observer",
+                elapsedMs: 85,
+              });
+            }
+            throw new Error(`unexpected docker args: ${args.join(" ")}`);
+          },
+          spawnDocker: async (args) => {
+            if (args.includes("load")) {
+              return { code: 0, stdout: "Loaded\n", stderr: "" };
+            }
+            if (args.includes("/input/fixtures/bootstrap.mjs")) {
+              return { code: 1, stdout: controllerOut, stderr: controllerErr };
+            }
+            throw new Error(`unexpected spawnDocker args: ${args.join(" ")}`);
+          },
+        });
+      },
+    }),
+    /native gateway behavioral assertions failed/,
+  );
+
+  const raw = store.get(`${root}/native-result.json`);
+  assert.ok(raw, "controller observer_start result must exist");
+  const result = JSON.parse(raw);
+  assert.equal(result.nativeBehavioralRed, false);
+  assert.equal(result.fixtureConstructionFailure, true);
+  assert.equal(result.stage, "observer_start");
+  assert.equal(result.category, "observer_startup_failed");
+  assert.equal(result.operation, "start_native_observer");
+});
