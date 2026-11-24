@@ -377,6 +377,9 @@ async function startLockedServer(
       stream: options.loggerStream,
     }),
     bodyLimit: DEFAULT_HOSTED_SECURITY_POLICY.httpBodyMaxBytes,
+    http: {
+      maxHeaderSize: DEFAULT_HOSTED_SECURITY_POLICY.httpHeaderMaxBytes,
+    },
   });
 
   // Derive transport mode from hosted runtime or listener bind address unless explicitly overridden.
@@ -685,6 +688,63 @@ async function startLockedServer(
         rateAdmission: options.hostedAuth?.rateAdmission,
         clock: options.clock,
       });
+      server.setErrorHandler((error, request, reply) => {
+        request.log.error({ err: error }, "request error");
+        const err = error as { statusCode?: unknown; code?: unknown };
+        const rawStatus =
+          typeof err?.statusCode === "number" &&
+          Number.isInteger(err.statusCode)
+            ? err.statusCode
+            : 500;
+        if (err?.code === "FST_ERR_CTP_BODY_TOO_LARGE" || rawStatus === 413) {
+          return reply.code(413).send({
+            ok: false,
+            code: "PAYLOAD_TOO_LARGE",
+            error: "Payload too large",
+            requestId: request.id,
+          });
+        }
+        if (rawStatus === 415) {
+          return reply.code(415).send({
+            ok: false,
+            code: "UNSUPPORTED_MEDIA_TYPE",
+            error: "Unsupported media type",
+            requestId: request.id,
+          });
+        }
+        if (rawStatus >= 400 && rawStatus < 500) {
+          const code =
+            rawStatus === 400
+              ? "INVALID_REQUEST"
+              : rawStatus === 401
+                ? "AUTH_REQUIRED"
+                : rawStatus === 403
+                  ? "REQUEST_DENIED"
+                  : rawStatus === 404
+                    ? "ROUTE_NOT_FOUND"
+                    : rawStatus === 405
+                      ? "METHOD_NOT_ALLOWED"
+                      : rawStatus === 408
+                        ? "REQUEST_ABORTED"
+                        : rawStatus === 429
+                          ? "RATE_LIMIT_EXCEEDED"
+                          : "INVALID_REQUEST";
+          return reply.code(rawStatus).send({
+            ok: false,
+            code,
+            error: rawStatus === 400 ? "Invalid request" : "Request denied",
+            requestId: request.id,
+          });
+        }
+        const status = rawStatus === 503 ? 503 : 500;
+        return reply.code(status).send({
+          ok: false,
+          code: status === 503 ? "SERVICE_UNAVAILABLE" : "INTERNAL_ERROR",
+          error:
+            status === 503 ? "Service unavailable" : "Internal server error",
+          requestId: request.id,
+        });
+      });
       server.addHook("onSend", async (request, reply, payload) => {
         if (
           reply.statusCode >= 400 &&
@@ -692,15 +752,39 @@ async function startLockedServer(
           payload.startsWith("{")
         ) {
           try {
-            const parsed = JSON.parse(payload);
-            if (parsed.ok === false) {
+            const parsed = JSON.parse(payload) as Record<string, unknown>;
+            if (
+              parsed &&
+              typeof parsed === "object" &&
+              !Array.isArray(parsed)
+            ) {
+              if (parsed.ok === true) {
+                return payload;
+              }
+              parsed.ok = false;
               parsed.requestId = request.id;
               parsed.candidateSlugs = undefined;
-              if (typeof parsed.error === "string") {
-                parsed.error = sanitizeText(parsed.error);
-              }
-              if (typeof parsed.message === "string") {
-                parsed.message = sanitizeText(parsed.message);
+              if (reply.statusCode >= 500) {
+                const isUnavailable = reply.statusCode === 503;
+                if (
+                  typeof parsed.code !== "string" ||
+                  parsed.code.length === 0
+                ) {
+                  parsed.code = isUnavailable
+                    ? "SERVICE_UNAVAILABLE"
+                    : "INTERNAL_ERROR";
+                }
+                parsed.error = isUnavailable
+                  ? "Service unavailable"
+                  : "Internal server error";
+                parsed.message = undefined;
+              } else {
+                if (typeof parsed.error === "string") {
+                  parsed.error = sanitizeText(parsed.error);
+                }
+                if (typeof parsed.message === "string") {
+                  parsed.message = sanitizeText(parsed.message);
+                }
               }
               return JSON.stringify(parsed);
             }

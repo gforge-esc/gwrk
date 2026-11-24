@@ -9,6 +9,7 @@ import {
   createRateAdmission,
 } from "../adapters/auth/rate-admission.js";
 import {
+  type HostedRouteClassification,
   type HostedSecurityPolicy,
   classifyHostedRoute,
 } from "../domain/auth-policy.js";
@@ -31,6 +32,7 @@ interface RequestRateState {
   readonly reservation: Reservation;
   settled: boolean;
   aborted: boolean;
+  cleanup: () => void;
 }
 
 const requestRateStates = new WeakMap<FastifyRequest, RequestRateState>();
@@ -38,10 +40,22 @@ const requestRateStates = new WeakMap<FastifyRequest, RequestRateState>();
 function isTrustedLoopback(ip: string | undefined): boolean {
   if (!ip) return false;
   const normalized = ip.trim().toLowerCase();
+  return normalized === "127.0.0.1" || normalized === "::ffff:127.0.0.1";
+}
+
+function isExemptRoute(route: HostedRouteClassification): boolean {
   return (
-    normalized === "127.0.0.1" ||
-    normalized === "::1" ||
-    normalized === "::ffff:127.0.0.1"
+    route.allowed &&
+    (route.routeId === "private_health" ||
+      route.routeId === "webhook_github" ||
+      route.routeId === "oauth_start" ||
+      route.routeId === "oauth_callback")
+  );
+}
+
+function requiresApiReservation(route: HostedRouteClassification): boolean {
+  return (
+    route.allowed && !isExemptRoute(route) && route.routeId !== "browser_entry"
   );
 }
 
@@ -90,8 +104,11 @@ function extractTrustedClientIp(
   if (Array.isArray(rawXff)) {
     return { ok: false, code: "TRUSTED_FORWARDING_INVALID" };
   }
-  if (rawXff === undefined || rawXff.trim() === "") {
+  if (xffCount === 0 && rawXff === undefined) {
     return { ok: true, ip: "127.0.0.1" };
+  }
+  if (typeof rawXff !== "string" || rawXff.trim() === "") {
+    return { ok: false, code: "TRUSTED_FORWARDING_INVALID" };
   }
   if (rawXff.includes(",")) {
     return { ok: false, code: "TRUSTED_FORWARDING_INVALID" };
@@ -130,6 +147,19 @@ function cleanRootHeaders(reply: FastifyReply) {
   reply.removeHeader("x-forwarded-method");
 }
 
+function isClientAborted(
+  request: FastifyRequest,
+  reply: FastifyReply,
+  state: RequestRateState,
+): boolean {
+  return (
+    state.aborted ||
+    (request.raw.destroyed && !request.raw.complete) ||
+    (reply.raw.destroyed && !reply.raw.writableEnded) ||
+    Boolean(request.raw.socket?.destroyed)
+  );
+}
+
 export function registerHostedAuthBounds(
   server: FastifyInstance,
   options?: HostedAuthBoundsOptions,
@@ -141,6 +171,26 @@ export function registerHostedAuthBounds(
       clock: options?.clock ?? { nowMs: () => Date.now() },
     });
 
+  const settleUnverified = (
+    state: RequestRateState,
+    aborted: boolean,
+  ): void => {
+    if (aborted) {
+      state.aborted = true;
+    }
+    if (!state.settled) {
+      state.settled = true;
+      state.cleanup();
+      try {
+        admission.completeUnverified({ reservation: state.reservation });
+      } catch {
+        // ignore store errors on unverified cleanup
+      }
+      return;
+    }
+    state.cleanup();
+  };
+
   server.addHook("onClose", async () => {
     admission.close();
   });
@@ -150,23 +200,34 @@ export function registerHostedAuthBounds(
     if (pathname === "/") {
       cleanRootHeaders(reply);
     }
+    const state = requestRateStates.get(request);
+    if (state && !state.settled) {
+      settleUnverified(state, false);
+    }
     return payload;
   });
 
+  server.addHook("onError", async (request) => {
+    const state = requestRateStates.get(request);
+    if (state) {
+      settleUnverified(state, false);
+    }
+  });
+
+  server.addHook("onRequestAbort", async (request) => {
+    const state = requestRateStates.get(request);
+    if (state) {
+      settleUnverified(state, true);
+    }
+  });
+
   server.addHook("onRequest", async (request, reply) => {
-    const pathname = (request.raw.url ?? request.url).split(/[?#]/, 1)[0] ?? "";
     const route = classifyHostedRoute({
       method: request.method,
       path: request.raw.url ?? request.url,
     });
 
-    if (
-      route.allowed &&
-      (route.routeId === "private_health" ||
-        route.routeId === "webhook_github" ||
-        route.routeId === "oauth_start" ||
-        route.routeId === "oauth_callback")
-    ) {
+    if (isExemptRoute(route)) {
       return;
     }
 
@@ -195,7 +256,7 @@ export function registerHostedAuthBounds(
     }
 
     // Protected API routes: reserve capacity synchronously before verification
-    if (route.allowed) {
+    if (requiresApiReservation(route)) {
       let reserved: Reserved;
       try {
         reserved = admission.reserveApi({ trustedIp: clientIp.ip });
@@ -211,38 +272,66 @@ export function registerHostedAuthBounds(
         return denyRate(request, reply, status, "RATE_LIMIT_EXCEEDED");
       }
 
+      const socket = request.raw.socket;
+      let cleaned = false;
       const state: RequestRateState = {
         reservation: reserved.reservation,
         settled: false,
         aborted: false,
+        cleanup: () => {
+          if (cleaned) return;
+          cleaned = true;
+          request.raw.off("close", onRequestClose);
+          reply.raw.off("close", onReplyClose);
+          socket?.off("close", onSocketClose);
+        },
       };
-      requestRateStates.set(request, state);
 
-      const onSocketClose = () => {
-        if (!state.settled) {
-          state.aborted = true;
-          state.settled = true;
-          try {
-            admission.completeUnverified({ reservation: state.reservation });
-          } catch {
-            // ignore
-          }
+      const onRequestClose = () => {
+        if (!request.raw.complete) {
+          settleUnverified(state, true);
         }
       };
-      request.raw.once("close", onSocketClose);
-      request.raw.socket?.once("close", onSocketClose);
+
+      const onReplyClose = () => {
+        if (!reply.raw.writableEnded) {
+          settleUnverified(state, true);
+        } else {
+          state.cleanup();
+        }
+      };
+
+      const onSocketClose = () => {
+        if (!reply.raw.writableEnded) {
+          settleUnverified(state, true);
+        } else {
+          state.cleanup();
+        }
+      };
+
+      requestRateStates.set(request, state);
+      request.raw.on("close", onRequestClose);
+      reply.raw.on("close", onReplyClose);
+      socket?.on("close", onSocketClose);
     }
   });
 
   server.addHook("preHandler", async (request, reply) => {
-    const state = requestRateStates.get(request);
-    if (!state) return;
+    const route = classifyHostedRoute({
+      method: request.method,
+      path: request.raw.url ?? request.url,
+    });
+    if (!requiresApiReservation(route)) {
+      return;
+    }
 
-    if (
-      state.aborted ||
-      request.raw.destroyed ||
-      request.raw.socket?.destroyed
-    ) {
+    const state = requestRateStates.get(request);
+    if (!state) {
+      return denyRate(request, reply, 503, "RATE_ADMISSION_REQUIRED");
+    }
+
+    if (isClientAborted(request, reply, state)) {
+      settleUnverified(state, true);
       return reply.code(408).send({
         ok: false,
         code: "REQUEST_ABORTED",
@@ -251,41 +340,46 @@ export function registerHostedAuthBounds(
       });
     }
 
-    const authContext = readVerifiedAuthContext(request);
-    if (!authContext) {
-      if (!state.settled) {
-        state.settled = true;
-        try {
-          admission.completeUnverified({ reservation: state.reservation });
-        } catch {
-          // ignore
-        }
-      }
-      return;
+    if (state.settled) {
+      state.cleanup();
+      return denyRate(request, reply, 503, "RATE_RESERVATION_INVALID");
     }
 
-    if (!state.settled) {
-      state.settled = true;
-      let decision: Decision;
-      try {
-        decision = admission.completeVerified({
-          reservation: state.reservation,
-          credential: {
-            authMethod: authContext.authMethod,
-            credentialId: authContext.credentialId,
-          },
-        });
-      } catch {
-        return denyRate(request, reply, 503, "RATE_STORE_UNAVAILABLE");
-      }
+    const authContext = readVerifiedAuthContext(request);
+    if (!authContext) {
+      settleUnverified(state, false);
+      return denyRate(request, reply, 401, "AUTH_REQUIRED");
+    }
 
-      if (!decision.allowed) {
-        const status =
-          decision.reason === "closed" || decision.reason === "store_error"
-            ? 503
-            : 429;
-        return denyRate(request, reply, status, "RATE_LIMIT_EXCEEDED");
-      }
+    state.settled = true;
+    state.cleanup();
+    let decision: Decision;
+    try {
+      decision = admission.completeVerified({
+        reservation: state.reservation,
+        credential: {
+          authMethod: authContext.authMethod,
+          credentialId: authContext.credentialId,
+        },
+      });
+    } catch {
+      return denyRate(request, reply, 503, "RATE_STORE_UNAVAILABLE");
+    }
+
+    if (!decision.allowed) {
+      const status =
+        decision.reason === "closed" ||
+        decision.reason === "store_error" ||
+        decision.reason === "reservation_invalid"
+          ? 503
+          : 429;
+      const code =
+        decision.reason === "closed" || decision.reason === "store_error"
+          ? "RATE_STORE_UNAVAILABLE"
+          : decision.reason === "reservation_invalid"
+            ? "RATE_RESERVATION_INVALID"
+            : "RATE_LIMIT_EXCEEDED";
+      return denyRate(request, reply, status, code);
     }
   });
 
@@ -293,14 +387,7 @@ export function registerHostedAuthBounds(
     const state = requestRateStates.get(request);
     if (!state) return;
     requestRateStates.delete(request);
-    if (!state.settled) {
-      state.settled = true;
-      try {
-        admission.completeUnverified({ reservation: state.reservation });
-      } catch {
-        // ignore
-      }
-    }
+    settleUnverified(state, false);
   });
 
   return admission;
