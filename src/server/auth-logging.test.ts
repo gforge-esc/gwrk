@@ -740,4 +740,115 @@ describe("FR-013 US-008 TR-015 AUTH-15: sanitized Fastify logger and zero canary
       expect(output, `serializer leaked ${canary}`).not.toContain(canary);
     }
   });
+
+  it("AUTH-15: keeps valid JSON log lines when secrets end a field and redacts forbidden identity headers and URL fragments", async () => {
+    const { createSanitizedLoggerOptions } = await import("./auth-logging.js");
+    const sink = createLogSink();
+    const app = fastify({
+      logger: createSanitizedLoggerOptions({ stream: sink.stream }),
+    });
+    cleanup.push(async () => {
+      await app.close();
+    });
+
+    app.get("/edge-log-probe", async (request) => {
+      request.log.error(
+        { err: new Error(`Auth failed with Bearer ${CANARY_DEP_ERR_BEARER}`) },
+        "bearer end",
+      );
+      request.log.error(
+        { err: new Error(`Callback failed ?code=${CANARY_OAUTH_CODE}`) },
+        "query code end",
+      );
+      return { ok: true };
+    });
+
+    const res = await app.inject({
+      method: "GET",
+      url: `/edge-log-probe#code=${CANARY_OAUTH_CODE}&token=${CANARY_QUERY_TOKEN}`,
+      headers: {
+        "x-forwarded-user": "CANARY_FORGED_USER_999",
+        "x-forwarded-email": "canary-forged@example.test",
+        "x-forwarded-groups": "CANARY_FORGED_GROUP_999",
+        "x-forwarded-preferred-username": "CANARY_FORGED_PREF_999",
+      },
+    });
+    expect(res.statusCode).toBe(200);
+
+    const lines = sink.lines();
+    expect(lines.length).toBeGreaterThan(0);
+    for (const line of lines) {
+      expect(() => JSON.parse(line)).not.toThrow();
+    }
+    const output = sink.readAll();
+    for (const canary of [
+      CANARY_DEP_ERR_BEARER,
+      CANARY_OAUTH_CODE,
+      CANARY_QUERY_TOKEN,
+      "CANARY_FORGED_USER_999",
+      "canary-forged@example.test",
+      "CANARY_FORGED_GROUP_999",
+      "CANARY_FORGED_PREF_999",
+    ]) {
+      expect(output, `log leaked ${canary}`).not.toContain(canary);
+    }
+  });
+
+  it("AUTH-15: serializeError handles cyclic error causes without crashing", async () => {
+    const { serializeError } = await import("./auth-logging.js");
+    const cyclicErr = new Error(
+      `Cyclic failure Bearer ${CANARY_DEP_ERR_BEARER}`,
+    ) as Error & { cause?: unknown };
+    cyclicErr.cause = cyclicErr;
+    const serialized = serializeError(cyclicErr);
+    expect(serialized.message).not.toContain(CANARY_DEP_ERR_BEARER);
+  });
+
+  it("AUTH-15 FR-010: uncaught handler errors and caught 500 dependency errors return static JSON with requestId and leak zero raw error text", async () => {
+    const f = await createLoggingServerFixture();
+
+    vi.mocked(slackNotify.notifySlack).mockRejectedValueOnce(
+      new Error("CANARY_RAW_UPSTREAM_NOTIFY_ERROR_XYZ"),
+    );
+    const notifyErrRes = await f.server.inject({
+      method: "POST",
+      url: "/api/notify",
+      headers: { authorization: `Bearer ${f.apiKey}` },
+      payload: {
+        projectId: f.project.projectId,
+        type: "phase_start",
+        feature: "051-raw-err-check",
+        phase: "phase-05",
+      },
+    });
+    expect(notifyErrRes.statusCode).toBe(500);
+    expect(notifyErrRes.json()).toMatchObject({
+      ok: false,
+      requestId: expect.any(String),
+    });
+    expect(notifyErrRes.body).not.toContain(
+      "CANARY_RAW_UPSTREAM_NOTIFY_ERROR_XYZ",
+    );
+
+    const statusSpy = vi
+      .spyOn(SystemMonitor.prototype, "getResources")
+      .mockImplementationOnce(() => {
+        throw new Error(
+          `CANARY_UNCAUGHT_500_RAW Bearer ${CANARY_DEP_ERR_BEARER}`,
+        );
+      });
+    const uncaughtRes = await f.server.inject({
+      method: "GET",
+      url: `/api/status?projectId=${f.project.projectId}`,
+      headers: { authorization: `Bearer ${f.apiKey}` },
+    });
+    statusSpy.mockRestore();
+    expect(uncaughtRes.statusCode).toBe(500);
+    expect(uncaughtRes.json()).toMatchObject({
+      ok: false,
+      requestId: expect.any(String),
+    });
+    expect(uncaughtRes.body).not.toContain("CANARY_UNCAUGHT_500_RAW");
+    expect(uncaughtRes.body).not.toContain(CANARY_DEP_ERR_BEARER);
+  });
 });

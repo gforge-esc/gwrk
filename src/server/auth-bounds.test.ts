@@ -1720,4 +1720,89 @@ describe("FR-013 US-008 TR-014 AUTH-14: full-server HTTP rate admission, parser 
     });
     expect(healthRes.statusCode).toBe(200);
   });
+
+  it("AUTH-14: real loopback TCP POST /api/dispatch succeeds without premature 408 abort and does not leak keep-alive socket listeners", async () => {
+    const f = await createBoundsServerFixture();
+    const payload = JSON.stringify({
+      projectId: f.project.projectId,
+      featureId: "051-real-tcp-post",
+      phaseId: "phase-05",
+    });
+
+    const postRes = await sendLoopbackRequest({
+      port: f.port,
+      method: "POST",
+      path: "/api/dispatch",
+      headers: {
+        "content-type": "application/json",
+        "content-length": String(Buffer.byteLength(payload)),
+        "x-forwarded-for": "198.51.100.130",
+        authorization: `Bearer ${f.operatorKey}`,
+      },
+      body: payload,
+    });
+    expect(postRes.statusCode).toBe(201);
+    expect(f.dispatchCount()).toBe(1);
+
+    const warnings: string[] = [];
+    const onWarning = (warning: Error) => {
+      warnings.push(`${warning.name}: ${warning.message}`);
+    };
+    process.on("warning", onWarning);
+    const agent = new http.Agent({ keepAlive: true, maxSockets: 1 });
+    try {
+      for (let i = 0; i < 15; i++) {
+        await new Promise<void>((resolve, reject) => {
+          const req = http.request(
+            {
+              host: "127.0.0.1",
+              port: f.port,
+              agent,
+              method: "GET",
+              path: `/api/status?projectId=${f.project.projectId}`,
+              headers: {
+                "x-forwarded-for": "198.51.100.131",
+                authorization: `Bearer ${f.operatorKey}`,
+              },
+            },
+            (res) => {
+              res.resume();
+              res.on("end", () => resolve());
+            },
+          );
+          req.on("error", reject);
+          req.end();
+        });
+      }
+      await new Promise<void>((resolve) => setImmediate(resolve));
+    } finally {
+      agent.destroy();
+      process.off("warning", onWarning);
+    }
+    expect(
+      warnings.filter((w) => w.includes("MaxListenersExceededWarning")),
+    ).toEqual([]);
+  });
+
+  it("AUTH-14: configures explicit http.Server maxHeaderSize from security policy and rejects explicit blank X-Forwarded-For with HTTP 503", async () => {
+    const f = await createBoundsServerFixture();
+
+    expect(f.server.server.maxHeaderSize).toBe(
+      DEFAULT_HOSTED_SECURITY_POLICY.httpHeaderMaxBytes,
+    );
+
+    const blankXffRaw = await sendRawLoopbackHttp(
+      f.port,
+      [
+        `GET /api/status?projectId=${f.project.projectId} HTTP/1.1`,
+        "Host: 127.0.0.1",
+        "Connection: close",
+        "X-Forwarded-For:   ",
+        `Authorization: Bearer ${f.operatorKey}`,
+        "",
+        "",
+      ].join("\r\n"),
+    );
+    expect(blankXffRaw).toMatch(/^HTTP\/1\.1 503 /);
+  });
 });
