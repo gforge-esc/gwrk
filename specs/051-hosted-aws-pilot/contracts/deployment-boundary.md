@@ -65,7 +65,7 @@ Success requires cookie-clearing response headers from the fixed endpoint. Prese
 
 The origin receives its startup mapping. Strip inbound auth settings at the actual agent-child spawn boundary after combining inherited and explicit adapter environments. Clearing them in `run.sh` would also clear settings needed by the origin.
 
-Remove keys with case-insensitive prefixes `GWRK_AUTH_` and `OAUTH2_PROXY_`. Also remove `GWRK_API_KEY` and `GWRK_SERVER_API_KEY`. Also remove these header-shaped keys:
+Remove keys with case-insensitive prefixes `GWRK_AUTH_` and `OAUTH2_PROXY_`. Also remove `GWRK_API_KEY` and `GWRK_SERVER_API_KEY`. Remove the inbound `GITHUB_WEBHOOK_SECRET` too. Also remove these header-shaped keys:
 
 - `AUTHORIZATION`
 - `HTTP_AUTHORIZATION`
