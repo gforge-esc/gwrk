@@ -3,12 +3,15 @@ import { execFileSync, spawnSync } from "node:child_process";
 import { test } from "vitest";
 import {
   BOOTSTRAP_STAGES,
+  CONTAINER_CONSTRUCTION_TIMEOUT_MS,
+  DEFAULT_DOCKER_TIMEOUT_MS,
   STATIC_CONSTRUCTION_CATEGORIES,
   STATIC_OPERATION_NAMES,
   WHITELISTED_ERROR_CODES,
   WHITELISTED_SIGNALS,
   captureDockerLogs,
   classifyBootstrapFailure,
+  runFixtureContainer,
 } from "./bootstrap-diagnostics.mjs";
 
 test("declares ordered granular bootstrap stages", () => {
@@ -318,4 +321,97 @@ test("sanitizes non-whitelisted error codes, signals, and operations to safe def
   assert.equal(result.errorSignal, null);
   assert.equal(result.exitStatus, 125);
   assert.equal(result.exitCode, 125);
+});
+
+test("declares bounded container construction allowance and generic docker defaults", () => {
+  assert.equal(DEFAULT_DOCKER_TIMEOUT_MS, 30_000);
+  assert.equal(CONTAINER_CONSTRUCTION_TIMEOUT_MS, 60_000);
+  assert.ok(CONTAINER_CONSTRUCTION_TIMEOUT_MS > DEFAULT_DOCKER_TIMEOUT_MS);
+  assert.ok(CONTAINER_CONSTRUCTION_TIMEOUT_MS <= 360_000);
+  assert.ok(CONTAINER_CONSTRUCTION_TIMEOUT_MS <= 600_000);
+});
+
+test("behavioral regression: delayed container creation fails under short deadline and succeeds with container construction allowance", () => {
+  const runId = "a".repeat(24);
+  const containerName = `gwrk-051-origin-${runId}`;
+  const script =
+    'setTimeout(() => { process.stdout.write("1122334455667788\\n"); }, 120);';
+
+  let creationError;
+  try {
+    runFixtureContainer(containerName, ["node", "-e", script], {
+      command: process.execPath,
+      args: ["-e", script],
+      timeout: 40,
+      runId,
+    });
+  } catch (err) {
+    creationError = err;
+  }
+
+  assert.ok(creationError, "must time out under short deadline");
+  assert.equal(creationError.code, "ETIMEDOUT");
+
+  const result = classifyBootstrapFailure("origin_start", creationError, {
+    operation: "docker_run_origin",
+    elapsedMs: 45,
+  });
+  assert.equal(result.stage, "origin_start");
+  assert.equal(result.category, "origin_launch_failed");
+  assert.equal(result.detail, "Origin service container failed to launch");
+  assert.equal(result.operation, "docker_run_origin");
+  assert.equal(result.errorCode, "ETIMEDOUT");
+  assert.equal(result.exitCode, 1);
+  assert.equal(result.failureClassification, "fixture_construction");
+
+  const containerId = runFixtureContainer(
+    containerName,
+    ["node", "-e", script],
+    {
+      command: process.execPath,
+      args: ["-e", script],
+      timeout: 300,
+      runId,
+    },
+  );
+  assert.equal(containerId, "1122334455667788");
+});
+
+test("applies identical container construction allowance and labeling to origin and client containers", () => {
+  const runId = "b".repeat(24);
+  const operations = [];
+  const fakeRunner = (cmd, args, options) => {
+    operations.push({ cmd, args, options });
+    return "fake-container-id-1234\n";
+  };
+
+  const originId = runFixtureContainer(
+    `gwrk-051-origin-${runId}`,
+    ["images.node", "node", "/fixture/fixtures/origin.mjs"],
+    { runner: fakeRunner, runId },
+  );
+  assert.equal(originId, "fake-container-id-1234");
+
+  const clientAId = runFixtureContainer(
+    `gwrk-051-client-a-${runId}`,
+    ["images.node", "node", "-e", "setInterval(()=>{},1000)"],
+    { runner: fakeRunner, runId },
+  );
+  assert.equal(clientAId, "fake-container-id-1234");
+
+  const clientBId = runFixtureContainer(
+    `gwrk-051-client-b-${runId}`,
+    ["images.node", "node", "-e", "setInterval(()=>{},1000)"],
+    { runner: fakeRunner, runId },
+  );
+  assert.equal(clientBId, "fake-container-id-1234");
+
+  assert.equal(operations.length, 3);
+  for (const op of operations) {
+    assert.equal(op.options.timeout, CONTAINER_CONSTRUCTION_TIMEOUT_MS);
+    assert.ok(op.args.includes("--label"));
+    assert.ok(op.args.includes(`gwrk.fixture.run=${runId}`));
+    assert.ok(op.args.includes("--pull"));
+    assert.ok(op.args.includes("never"));
+  }
 });

@@ -1,5 +1,8 @@
-import { spawnSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
+
+export const DEFAULT_DOCKER_TIMEOUT_MS = 30_000;
+export const CONTAINER_CONSTRUCTION_TIMEOUT_MS = 60_000;
 
 export const BOOTSTRAP_STAGES = [
   "init",
@@ -93,7 +96,7 @@ export function captureDockerLogs(name, options = {}) {
     "logs",
     name,
   ];
-  const timeout = options.timeout ?? 30_000;
+  const timeout = options.timeout ?? DEFAULT_DOCKER_TIMEOUT_MS;
   const maxBuffer = options.maxBuffer ?? 1048576;
   const result = runner(cmd, args, {
     stdio: "pipe",
@@ -104,6 +107,40 @@ export function captureDockerLogs(name, options = {}) {
   const stdout = typeof result?.stdout === "string" ? result.stdout : "";
   const stderr = typeof result?.stderr === "string" ? result.stderr : "";
   return [stdout, stderr].filter(Boolean).join("\n");
+}
+
+// Execute container creation under the operation-specific construction allowance.
+// Preserves bounded timeouts, exact container labeling, and typed child process errors.
+export function runFixtureContainer(name, containerArgs, options = {}) {
+  const runner = options.runner ?? execFileSync;
+  const cmd =
+    options.command ??
+    options.dockerBinary ??
+    options.dockerPath ??
+    "/usr/bin/docker";
+  const dockerHost = options.dockerHost ?? "unix:///var/run/docker.sock";
+  const timeout = options.timeout ?? CONTAINER_CONSTRUCTION_TIMEOUT_MS;
+  const maxBuffer = options.maxBuffer ?? 1048576;
+  const runId = options.runId;
+  const args = options.args ?? [
+    "--host",
+    dockerHost,
+    "run",
+    "--detach",
+    "--name",
+    name,
+    ...(runId ? ["--label", `gwrk.fixture.run=${runId}`] : []),
+    "--pull",
+    "never",
+    ...containerArgs,
+  ];
+  const result = runner(cmd, args, {
+    stdio: options.stdio ?? "pipe",
+    encoding: "utf8",
+    timeout,
+    maxBuffer,
+  });
+  return typeof result === "string" ? result.trim() : "";
 }
 
 // CLI and runtime logs can contain reflected secrets or tokens. Persist only

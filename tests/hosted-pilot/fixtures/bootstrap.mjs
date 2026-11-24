@@ -13,8 +13,10 @@ import {
 import { setTimeout as sleep } from "node:timers/promises";
 import { parse, stringify } from "/app/node_modules/yaml/dist/index.js";
 import {
+  DEFAULT_DOCKER_TIMEOUT_MS,
   captureDockerLogs,
   classifyBootstrapFailure,
+  runFixtureContainer,
 } from "./bootstrap-diagnostics.mjs";
 import { checkStandardCookieSecret } from "./cookie-format-check.mjs";
 import { CLIENT_ID } from "./issuer.mjs";
@@ -26,11 +28,16 @@ const run = process.env.GWRK_051_RUN_ID;
 assert.match(run ?? "", /^[a-f0-9]{24}$/);
 const images = JSON.parse(readFileSync("/input/loaded-images.json", "utf8"));
 const owned = [];
-function docker(args) {
+function docker(args, options = {}) {
   return execFileSync(
     "/usr/bin/docker",
     ["--host", "unix:///var/run/docker.sock", ...args],
-    { encoding: "utf8", timeout: 30_000, maxBuffer: 1048576, stdio: "pipe" },
+    {
+      encoding: "utf8",
+      timeout: options.timeout ?? DEFAULT_DOCKER_TIMEOUT_MS,
+      maxBuffer: 1048576,
+      stdio: options.stdio ?? "pipe",
+    },
   );
 }
 function directory(path, mode = 0o700, uid = 0, gid = 0) {
@@ -96,19 +103,9 @@ function remember(name) {
     }),
   );
 }
-function runContainer(name, args) {
+function runContainer(name, args, options = {}) {
   remember(name);
-  return docker([
-    "run",
-    "--detach",
-    "--name",
-    name,
-    "--label",
-    `gwrk.fixture.run=${run}`,
-    "--pull",
-    "never",
-    ...args,
-  ]).trim();
+  return runFixtureContainer(name, args, { runId: run, ...options });
 }
 let issuer;
 let issuerReady = false;
