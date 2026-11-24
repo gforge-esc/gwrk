@@ -1227,4 +1227,260 @@ describe("native-observer-parser pure behavioral contract", () => {
     );
     assert.equal(buildHealthSidecar(state).startupSelfTestPassed, false);
   });
+
+  test("REVIEW-REG-03: deduplicates retransmitted client SYN during SYN_ACK_SEEN on port 18790", () => {
+    const state = makeState();
+    const srcPort = 44100;
+    const clientIsn = 1000;
+    const serverIsn = 5000;
+
+    feed(
+      state,
+      tcpPacket({ srcPort, dstPort: 18790, seq: clientIsn, flags: TCP_SYN }),
+    );
+    feed(
+      state,
+      tcpPacket({
+        srcPort: 18790,
+        dstPort: srcPort,
+        seq: serverIsn,
+        ack: (clientIsn + 1) >>> 0,
+        flags: TCP_SYN | TCP_ACK,
+      }),
+    );
+    // Retransmitted client SYN with identical ISN arriving after SYN+ACK
+    feed(
+      state,
+      tcpPacket({ srcPort, dstPort: 18790, seq: clientIsn, flags: TCP_SYN }),
+    );
+    // Client completing ACK finishes 3-way handshake
+    feed(
+      state,
+      tcpPacket({
+        srcPort,
+        dstPort: 18790,
+        seq: (clientIsn + 1) >>> 0,
+        ack: (serverIsn + 1) >>> 0,
+        flags: TCP_ACK,
+      }),
+    );
+
+    assert.equal(emitSentinelAndMatch(state, 1).matched, true);
+    const health = buildHealthSidecar(state);
+    assert.equal(health.originTcpSummary.handshakesCompleted, 1);
+    assert.equal(health.originTcpSummary.zeroPriorRequestParkedConnections, 1);
+  });
+
+  test("REVIEW-REG-04: latches MID_HEADER_CLOSE on port 4180 when RST drops queued OOO bytes or fresh SYN evicts partial header", () => {
+    // Case A: RST arrives while out-of-order request bytes sit in oooQueue (http.phase still IDLE)
+    const oooRst = makeState();
+    feed(
+      oooRst,
+      tcpPacket({ srcPort: 44101, dstPort: 4180, seq: 100, flags: TCP_SYN }),
+    );
+    feed(
+      oooRst,
+      tcpPacket({
+        srcPort: 44101,
+        dstPort: 4180,
+        seq: 120,
+        flags: TCP_ACK,
+        payload: "Host: 127.0.0.1:4180\r\n\r\n",
+      }),
+    );
+    feed(
+      oooRst,
+      tcpPacket({ srcPort: 44101, dstPort: 4180, seq: 101, flags: TCP_RST }),
+    );
+    assert.equal(
+      buildHealthSidecar(oooRst).captureStats.integrityFaultCode,
+      "MID_HEADER_CLOSE",
+    );
+    assert.equal(emitSentinelAndMatch(oooRst, 1).matched, false);
+
+    // Case B: Fresh SYN on same 5-tuple evicts an open port 4180 flow mid-header
+    const synEvict = makeState();
+    feed(
+      synEvict,
+      tcpPacket({ srcPort: 44102, dstPort: 4180, seq: 100, flags: TCP_SYN }),
+    );
+    feed(
+      synEvict,
+      tcpPacket({
+        srcPort: 44102,
+        dstPort: 4180,
+        seq: 101,
+        flags: TCP_ACK,
+        payload: "GET /oauth2/start HTTP/1.1\r\nHost: 127.0.0.1:4180\r\n",
+      }),
+    );
+    feed(
+      synEvict,
+      tcpPacket({ srcPort: 44102, dstPort: 4180, seq: 9000, flags: TCP_SYN }),
+    );
+    assert.equal(
+      buildHealthSidecar(synEvict).captureStats.integrityFaultCode,
+      "MID_HEADER_CLOSE",
+    );
+    assert.equal(emitSentinelAndMatch(synEvict, 1).matched, false);
+  });
+
+  test("controls distinguish fresh-ISN SYN during SYN_ACK_SEEN, valid 0-byte or idle close, and queued OOO close", () => {
+    // Different-ISN fresh SYN during SYN_ACK_SEEN aborts prior origin handshake and starts a new epoch
+    const freshSyn = makeState();
+    const srcPort = 44110;
+    feed(
+      freshSyn,
+      tcpPacket({ srcPort, dstPort: 18790, seq: 1000, flags: TCP_SYN }),
+    );
+    feed(
+      freshSyn,
+      tcpPacket({
+        srcPort: 18790,
+        dstPort: srcPort,
+        seq: 5000,
+        ack: 1001,
+        flags: TCP_SYN | TCP_ACK,
+      }),
+    );
+    feed(
+      freshSyn,
+      tcpPacket({ srcPort, dstPort: 18790, seq: 7000, flags: TCP_SYN }),
+    );
+    feed(
+      freshSyn,
+      tcpPacket({
+        srcPort: 18790,
+        dstPort: srcPort,
+        seq: 9000,
+        ack: 7001,
+        flags: TCP_SYN | TCP_ACK,
+      }),
+    );
+    feed(
+      freshSyn,
+      tcpPacket({
+        srcPort,
+        dstPort: 18790,
+        seq: 7001,
+        ack: 9001,
+        flags: TCP_ACK,
+      }),
+    );
+    assert.equal(emitSentinelAndMatch(freshSyn, 1).matched, true);
+    const freshSynHealth = buildHealthSidecar(freshSyn);
+    assert.equal(
+      freshSynHealth.originTcpSummary.abortedBeforeHeadersConnections,
+      1,
+    );
+    assert.equal(freshSynHealth.originTcpSummary.handshakesCompleted, 1);
+    assert.equal(
+      freshSynHealth.originTcpSummary.zeroPriorRequestParkedConnections,
+      1,
+    );
+
+    // Valid 0-byte RST and fresh-SYN eviction after completed idle proxy request do NOT latch MID_HEADER_CLOSE
+    const validClose = makeState();
+    feed(
+      validClose,
+      tcpPacket({ srcPort: 44111, dstPort: 4180, seq: 100, flags: TCP_SYN }),
+    );
+    feed(
+      validClose,
+      tcpPacket({ srcPort: 44111, dstPort: 4180, seq: 101, flags: TCP_RST }),
+    );
+    feed(
+      validClose,
+      tcpPacket({ srcPort: 44112, dstPort: 4180, seq: 200, flags: TCP_SYN }),
+    );
+    feed(
+      validClose,
+      tcpPacket({
+        srcPort: 44112,
+        dstPort: 4180,
+        seq: 201,
+        flags: TCP_ACK,
+        payload: "GET /oauth2/start HTTP/1.1\r\nHost: 127.0.0.1:4180\r\n\r\n",
+      }),
+    );
+    // Fresh SYN on same tuple while prior request is cleanly IDLE
+    feed(
+      validClose,
+      tcpPacket({ srcPort: 44112, dstPort: 4180, seq: 8000, flags: TCP_SYN }),
+    );
+    feed(
+      validClose,
+      tcpPacket({
+        srcPort: 44112,
+        dstPort: 4180,
+        seq: 8001,
+        flags: TCP_ACK,
+        payload:
+          "GET /oauth2/sign_out HTTP/1.1\r\nHost: 127.0.0.1:4180\r\n\r\n",
+      }),
+    );
+    assert.equal(emitSentinelAndMatch(validClose, 1).matched, true);
+    assert.equal(
+      buildHealthSidecar(validClose).captureStats.integrityFaultCode,
+      null,
+    );
+    assert.equal(buildV1Snapshot(validClose).proxyRequests.length, 2);
+
+    // Fresh SYN evicting port 4180 flow with queued OOO bytes latches MID_HEADER_CLOSE
+    const oooSynEvict = makeState();
+    feed(
+      oooSynEvict,
+      tcpPacket({ srcPort: 44113, dstPort: 4180, seq: 300, flags: TCP_SYN }),
+    );
+    feed(
+      oooSynEvict,
+      tcpPacket({
+        srcPort: 44113,
+        dstPort: 4180,
+        seq: 320,
+        flags: TCP_ACK,
+        payload: "Host: 127.0.0.1:4180\r\n\r\n",
+      }),
+    );
+    feed(
+      oooSynEvict,
+      tcpPacket({ srcPort: 44113, dstPort: 4180, seq: 9500, flags: TCP_SYN }),
+    );
+    assert.equal(
+      buildHealthSidecar(oooSynEvict).captureStats.integrityFaultCode,
+      "MID_HEADER_CLOSE",
+    );
+
+    // Origin flow with queued OOO bytes on RST counts as abortedBeforeHeaders, not zeroByteClosed
+    const originOooRst = makeState();
+    completeOriginHandshake(originOooRst, 44114, 400, 800);
+    feed(
+      originOooRst,
+      tcpPacket({
+        srcPort: 44114,
+        dstPort: 18790,
+        seq: 420,
+        ack: 801,
+        flags: TCP_ACK,
+        payload: "Host: 127.0.0.1:18790\r\n\r\n",
+      }),
+    );
+    feed(
+      originOooRst,
+      tcpPacket({
+        srcPort: 44114,
+        dstPort: 18790,
+        seq: 401,
+        ack: 801,
+        flags: TCP_RST,
+      }),
+    );
+    const originOooHealth = buildHealthSidecar(originOooRst);
+    assert.equal(originOooHealth.originTcpSummary.zeroByteClosedConnections, 0);
+    assert.equal(
+      originOooHealth.originTcpSummary.abortedBeforeHeadersConnections,
+      1,
+    );
+    assert.equal(originOooHealth.originTcpSummary.rstClosedConnections, 1);
+  });
 });

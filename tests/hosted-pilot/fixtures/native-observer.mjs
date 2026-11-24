@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { spawn } from "node:child_process";
+import { ChildProcess, spawn } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import dgram from "node:dgram";
 import {
@@ -298,6 +298,11 @@ export function createNativeObserverSupervisor({
   let sentinelPort = null;
   let pollTimer = null;
   let stopped = false;
+  let expectingHelperStop = false;
+  let helperExited = true;
+  let helperClosed = true;
+  let helperClosePromise = Promise.resolve();
+  let resolveHelperClose = null;
   let barrierInFlight = false;
   let lastHandledBarrier = 0;
 
@@ -309,6 +314,108 @@ export function createNativeObserverSupervisor({
   const healthFileName = "native-observer-health.json";
   const snapshotFileName = "native-observation.json";
   const barrierFileName = "native-observation-barrier.json";
+
+  function raceWithTimeout(promise, timeoutMs) {
+    return new Promise((resolvePromise) => {
+      let settled = false;
+      const done = () => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        resolvePromise();
+      };
+      const timer = setTimeout(done, timeoutMs);
+      timer.unref?.();
+      promise.then(done, done);
+    });
+  }
+
+  function isProcessAlive(proc) {
+    return (
+      !helperExited &&
+      !helperClosed &&
+      proc.exitCode == null &&
+      proc.signalCode == null
+    );
+  }
+
+  function rejectPendingWaiters(error) {
+    if (readyReject) {
+      const rej = readyReject;
+      readyResolve = null;
+      readyReject = null;
+      rej(error);
+    }
+    if (pendingSentinel) {
+      const waiter = pendingSentinel;
+      pendingSentinel = null;
+      waiter.reject(error);
+    }
+    if (pendingStats) {
+      const waiter = pendingStats;
+      pendingStats = null;
+      waiter.reject(error);
+    }
+  }
+
+  function failUnexpectedHelper(message) {
+    if (stopped || expectingHelperStop) return;
+    const error = new Error(message);
+    const wasWaitingReady = readyReject !== null;
+    rejectPendingWaiters(error);
+    if (!wasWaitingReady && state) {
+      recordStats(state, { integrityFaultCode: "BARRIER_TIMEOUT" });
+      try {
+        writeHealth();
+      } catch {}
+    }
+  }
+
+  async function drainHelper(proc) {
+    if (!proc) return;
+    if (!helperClosed && isProcessAlive(proc)) {
+      if (proc.stdin && !proc.stdin.destroyed && !proc.stdin.writableEnded) {
+        try {
+          proc.stdin.write(CMD_QUIT);
+          proc.stdin.end();
+        } catch {}
+      }
+      await raceWithTimeout(helperClosePromise, drainTimeoutMs);
+    }
+    if (!helperClosed && isProcessAlive(proc)) {
+      try {
+        proc.kill("SIGTERM");
+      } catch {}
+      await raceWithTimeout(helperClosePromise, drainTimeoutMs);
+    }
+    if (!helperClosed && isProcessAlive(proc)) {
+      try {
+        proc.kill("SIGKILL");
+      } catch {}
+      await raceWithTimeout(helperClosePromise, Math.max(drainTimeoutMs, 500));
+    }
+    if (!helperClosed) {
+      await raceWithTimeout(helperClosePromise, drainTimeoutMs);
+    }
+  }
+
+  async function closeUdpSocket() {
+    if (!udpSocket) return;
+    const sock = udpSocket;
+    udpSocket = null;
+    try {
+      await new Promise((res) => sock.close(() => res()));
+    } catch {}
+  }
+
+  async function cleanupResources() {
+    expectingHelperStop = true;
+    rejectPendingWaiters(new Error("observer supervisor stopped"));
+    const proc = helper;
+    helper = null;
+    await drainHelper(proc);
+    await closeUdpSocket();
+  }
 
   function writeHealth() {
     if (!state) return;
@@ -425,6 +532,9 @@ export function createNativeObserverSupervisor({
     const startMs = Date.now();
 
     try {
+      if (!isProcessAlive(helper)) {
+        throw new Error("capture helper is not running");
+      }
       // Wait for passive capture of the loopback UDP sentinel
       const sentinelPromise = awaitWithTimeout(
         (res, rej) => {
@@ -433,6 +543,7 @@ export function createNativeObserverSupervisor({
         barrierTimeoutMs,
         "BARRIER_TIMEOUT: sentinel not observed",
       );
+      sentinelPromise.catch(() => {});
 
       await new Promise((res, rej) => {
         udpSocket.send(
@@ -444,6 +555,16 @@ export function createNativeObserverSupervisor({
       });
 
       await sentinelPromise;
+
+      if (
+        !helper ||
+        !isProcessAlive(helper) ||
+        !helper.stdin ||
+        helper.stdin.destroyed ||
+        helper.stdin.writableEnded
+      ) {
+        throw new Error("capture helper is not running");
+      }
 
       // Send 'S' (0x53) to drain non-blocking frames and read PACKET_STATISTICS
       const remainingMs = Math.max(
@@ -457,6 +578,7 @@ export function createNativeObserverSupervisor({
         remainingMs,
         "BARRIER_TIMEOUT: STATS_REPLY not received",
       );
+      statsPromise.catch(() => {});
 
       helper.stdin.write(CMD_STATS);
       await statsPromise;
@@ -497,74 +619,134 @@ export function createNativeObserverSupervisor({
 
   async function start() {
     verifyObserverDirectory(observerDir, { requireRootOwnership });
+    expectingHelperStop = false;
     udpSocket = createUdpSocket();
-    // Drain matched datagrams so the kernel does not emit ICMP port-unreachable
-    udpSocket.on("message", () => {});
+    try {
+      // Drain matched datagrams so the kernel does not emit ICMP port-unreachable
+      udpSocket.on("message", () => {});
 
-    await new Promise((res, rej) => {
-      const onBindError = (err) => rej(err);
-      udpSocket.once?.("error", onBindError);
-      if (!udpSocket.once) udpSocket.on("error", onBindError);
-      udpSocket.bind(0, "127.0.0.1", () => {
-        udpSocket.off?.("error", onBindError);
-        res();
+      await new Promise((res, rej) => {
+        const onBindError = (err) => rej(err);
+        udpSocket.once?.("error", onBindError);
+        if (!udpSocket.once) udpSocket.on("error", onBindError);
+        udpSocket.bind(0, "127.0.0.1", () => {
+          udpSocket.off?.("error", onBindError);
+          res();
+        });
       });
-    });
-    udpSocket.on("error", () => {});
-    const addr = udpSocket.address();
-    sentinelPort = addr.port;
-    state = createObserverState({ provenance, sentinelPort, limits });
+      udpSocket.on("error", () => {});
+      const addr = udpSocket.address();
+      sentinelPort = addr.port;
+      state = createObserverState({ provenance, sentinelPort, limits });
 
-    const decoder = createFrameDecoder(onDecodedFrame, {
-      maxCapLen: state.limits.maxFrameBytes,
-    });
+      const decoder = createFrameDecoder(onDecodedFrame, {
+        maxCapLen: state.limits.maxFrameBytes,
+      });
 
-    helper = spawnHelper(sentinelPort);
-    const readyPromise = awaitWithTimeout(
-      (res, rej) => {
-        readyResolve = res;
-        readyReject = rej;
-      },
-      barrierTimeoutMs,
-      "BARRIER_TIMEOUT: capture helper READY not received",
-    );
+      const readyPromise = awaitWithTimeout(
+        (res, rej) => {
+          readyResolve = res;
+          readyReject = rej;
+        },
+        barrierTimeoutMs,
+        "BARRIER_TIMEOUT: capture helper READY not received",
+      );
+      readyPromise.catch(() => {});
 
-    helper.stdout.on("data", (chunk) => {
-      try {
-        decoder.push(chunk);
-      } catch {
-        recordStats(state, { integrityFaultCode: "TRUNCATED_FRAME_OBSERVED" });
-        writeHealth();
-      }
-    });
+      const proc = spawnHelper(sentinelPort);
+      helper = proc;
+      const isRealChild = proc instanceof ChildProcess;
+      helperExited = false;
+      helperClosed = false;
+      helperClosePromise = new Promise((res) => {
+        resolveHelperClose = res;
+      });
+      const markClosed = () => {
+        helperExited = true;
+        helperClosed = true;
+        const done = resolveHelperClose;
+        resolveHelperClose = null;
+        done?.();
+      };
 
-    helper.on("exit", (code, signal) => {
-      if (readyReject) {
-        const rej = readyReject;
-        readyResolve = null;
-        readyReject = null;
-        rej(
-          new Error(
+      proc.on("error", (err) => {
+        if (proc.pid == null) {
+          markClosed();
+        }
+        failUnexpectedHelper(
+          `capture helper spawn error: ${err?.code ?? err?.message ?? "unknown"}`,
+        );
+      });
+
+      proc.stdin?.on("error", (err) => {
+        failUnexpectedHelper(
+          `capture helper stdin error: ${err?.code ?? err?.message ?? "unknown"}`,
+        );
+      });
+
+      proc.stdout?.on("error", (err) => {
+        failUnexpectedHelper(
+          `capture helper stdout error: ${err?.code ?? err?.message ?? "unknown"}`,
+        );
+      });
+
+      proc.stderr?.on("error", () => {});
+      proc.stderr?.on("data", () => {});
+
+      proc.stdout.on("data", (chunk) => {
+        try {
+          decoder.push(chunk);
+        } catch {
+          recordStats(state, {
+            integrityFaultCode: "TRUNCATED_FRAME_OBSERVED",
+          });
+          writeHealth();
+        }
+      });
+
+      proc.on("exit", (code, signal) => {
+        helperExited = true;
+        if (!isRealChild) {
+          markClosed();
+        }
+        if (readyReject) {
+          failUnexpectedHelper(
             `capture helper exited before READY (code=${code}, signal=${signal})`,
-          ),
+          );
+          return;
+        }
+        failUnexpectedHelper(
+          `capture helper exited unexpectedly (code=${code}, signal=${signal})`,
+        );
+      });
+
+      proc.on("close", (code, signal) => {
+        markClosed();
+        if (!stopped && !expectingHelperStop) {
+          failUnexpectedHelper(
+            `capture helper closed unexpectedly (code=${code}, signal=${signal})`,
+          );
+        }
+      });
+
+      const ready = await readyPromise;
+      if (ready.effectiveRcvBufBytes < state.limits.minRcvBufBytes) {
+        throw new Error(
+          `effective SO_RCVBUF ${ready.effectiveRcvBufBytes} below required ${state.limits.minRcvBufBytes}`,
         );
       }
-    });
 
-    const ready = await readyPromise;
-    if (ready.effectiveRcvBufBytes < state.limits.minRcvBufBytes) {
-      throw new Error(
-        `effective SO_RCVBUF ${ready.effectiveRcvBufBytes} below required ${state.limits.minRcvBufBytes}`,
-      );
+      const selfTest = await runBarrier(0);
+      if (!selfTest.advanced) {
+        throw new Error(
+          `observer startup self-test failed: ${selfTest.faultCode ?? "unknown"}`,
+        );
+      }
+      return buildHealthSidecar(state);
+    } catch (error) {
+      await cleanupResources();
+      throw error;
     }
-
-    const selfTest = await runBarrier(0);
-    if (!selfTest.advanced) {
-      throw new Error(
-        `observer startup self-test failed: ${selfTest.faultCode ?? "unknown"}`,
-      );
-    }
-    return buildHealthSidecar(state);
   }
 
   async function processBarrierFile() {
@@ -628,42 +810,7 @@ export function createNativeObserverSupervisor({
       clearInterval(pollTimer);
       pollTimer = null;
     }
-    if (helper) {
-      const proc = helper;
-      helper = null;
-      if (proc.exitCode === null && !proc.killed) {
-        const exited = new Promise((res) => {
-          proc.once("exit", () => res());
-        });
-        try {
-          proc.stdin.write(CMD_QUIT);
-          proc.stdin.end();
-        } catch {}
-        await Promise.race([
-          exited,
-          new Promise((res) => setTimeout(res, drainTimeoutMs)),
-        ]);
-        if (proc.exitCode === null && !proc.killed) {
-          try {
-            proc.kill("SIGTERM");
-          } catch {}
-          await Promise.race([
-            exited,
-            new Promise((res) => setTimeout(res, drainTimeoutMs)),
-          ]);
-        }
-        if (proc.exitCode === null && !proc.killed) {
-          try {
-            proc.kill("SIGKILL");
-          } catch {}
-        }
-      }
-    }
-    if (udpSocket) {
-      const sock = udpSocket;
-      udpSocket = null;
-      await new Promise((res) => sock.close(() => res()));
-    }
+    await cleanupResources();
   }
 
   return {

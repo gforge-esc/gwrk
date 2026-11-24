@@ -727,13 +727,23 @@ function finalizeFlowClose(state, flow, isRst) {
     }
     if (flow.handshakeState !== "ESTABLISHED") {
       state.originTcpSummary.abortedBeforeHeadersConnections += 1;
-    } else if (flow.totalClientPayloadBytes === 0) {
+    } else if (
+      flow.totalClientPayloadBytes === 0 &&
+      flow.oooQueue.length === 0
+    ) {
       state.originTcpSummary.zeroByteClosedConnections += 1;
-    } else if (flow.http.phase !== "IDLE" && flow.requestsOnConn === 0) {
+    } else if (
+      (flow.http.phase !== "IDLE" || flow.oooQueue.length > 0) &&
+      flow.requestsOnConn === 0
+    ) {
       state.originTcpSummary.abortedBeforeHeadersConnections += 1;
     }
   } else if (isProxy) {
-    if (flow.http.phase !== "IDLE") {
+    if (
+      flow.http.phase !== "IDLE" ||
+      flow.oooQueue.length > 0 ||
+      flow.oooBytes > 0
+    ) {
       latchFault(state, "MID_HEADER_CLOSE", "parserErrors");
     }
   }
@@ -789,15 +799,14 @@ function handleTcpPacket(state, { srcIp, dstIp, l4 }) {
   if ((flags & TCP_SYN) !== 0 && (flags & TCP_ACK) === 0) {
     if (
       flow &&
-      flow.handshakeState === "SYN_SENT" &&
+      (flow.handshakeState === "SYN_SENT" ||
+        flow.handshakeState === "SYN_ACK_SEEN") &&
       flow.clientIsn === u32(seq)
     ) {
       return;
     }
     if (flow) {
-      clearFlowMemory(flow);
-      flow.closed = true;
-      state.activeFlows.delete(tupleKey);
+      finalizeFlowClose(state, flow, false);
     }
     if (state.activeFlows.size >= state.limits.maxFlows) {
       latchFault(state, "BUFFER_OVERFLOW", "bufferOverflows");

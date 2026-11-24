@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawn } from "node:child_process";
 import { EventEmitter } from "node:events";
 import {
   chmodSync,
@@ -527,6 +527,413 @@ describe("native-observer binary framing and supervisor", () => {
       void realDir;
     } finally {
       rmSync(parent, { recursive: true, force: true });
+    }
+  });
+
+  test("REVIEW-REG-01: stop() escalates SIGTERM to SIGKILL on a real SIGTERM-ignoring child and waits for exit", async () => {
+    const observerDir = makeTempObserverDir();
+    let childProc = null;
+    try {
+      const sentinelPort = 49210;
+      const nonce = "aabbccddeeff0011";
+      const selfTestPayload = `GWRK051:${PROVENANCE.runId}:0:${nonce}`;
+      const readyBytes = packReadyFrame({ effectiveRcvBufBytes: 1048576 });
+      const sentinelBytes = packFrame({
+        kind: CAPTURE_FRAME_KIND.PACKET,
+        payload: buildUdpLoopback(sentinelPort, selfTestPayload),
+      });
+      const statsBytes = packStatsFrame(5, 0);
+
+      const childScript = `
+        process.on("SIGTERM", () => {});
+        const ready = Buffer.from(${JSON.stringify(readyBytes.toString("base64"))}, "base64");
+        const sentinel = Buffer.from(${JSON.stringify(sentinelBytes.toString("base64"))}, "base64");
+        const stats = Buffer.from(${JSON.stringify(statsBytes.toString("base64"))}, "base64");
+        process.stdout.write(ready);
+        process.stdin.on("data", (chunk) => {
+          for (const b of chunk) {
+            if (b === 0x53) process.stdout.write(stats);
+            // Ignore 0x51 ('Q') and SIGTERM to force SIGKILL escalation
+          }
+        });
+        setTimeout(() => process.stdout.write(sentinel), 20);
+        setInterval(() => {}, 1000);
+      `;
+
+      const udpSocket = {
+        boundPort: null,
+        closed: false,
+        bind(_port, _host, cb) {
+          this.boundPort = sentinelPort;
+          queueMicrotask(() => cb?.());
+        },
+        address() {
+          return { address: "127.0.0.1", port: this.boundPort };
+        },
+        send(_msg, _port, _host, cb) {
+          cb?.(null);
+        },
+        on() {},
+        close(cb) {
+          this.closed = true;
+          cb?.();
+        },
+      };
+
+      const sup = createNativeObserverSupervisor({
+        provenance: PROVENANCE,
+        observerDir,
+        requireRootOwnership: false,
+        barrierTimeoutMs: 1000,
+        drainTimeoutMs: 80,
+        createUdpSocket: () => udpSocket,
+        spawnHelper: () => {
+          childProc = spawn(process.execPath, ["-e", childScript], {
+            stdio: ["pipe", "pipe", "pipe"],
+          });
+          return childProc;
+        },
+        randomNonceHex: () => nonce,
+      });
+
+      await sup.start();
+      assert.ok(childProc && childProc.pid > 0);
+      await sup.stop();
+
+      assert.ok(
+        childProc.exitCode !== null || childProc.signalCode !== null,
+        `expected SIGTERM-ignoring helper pid ${childProc.pid} to be terminated by SIGKILL before stop() resolved (killed=${childProc.killed}, exitCode=${childProc.exitCode}, signalCode=${childProc.signalCode})`,
+      );
+    } finally {
+      if (
+        childProc &&
+        childProc.exitCode === null &&
+        childProc.signalCode === null
+      ) {
+        try {
+          childProc.kill("SIGKILL");
+        } catch {}
+      }
+      rmSync(observerDir, { recursive: true, force: true });
+    }
+  });
+
+  test("REVIEW-REG-02: handles helper spawn ENOENT error and post-READY helper death without unhandled error events", async () => {
+    const observerDir = makeTempObserverDir();
+    try {
+      // Case A: Real spawn ENOENT with default real UDP socket rejects start() cleanly
+      const enoentSup = createNativeObserverSupervisor({
+        provenance: PROVENANCE,
+        observerDir,
+        requireRootOwnership: false,
+        barrierTimeoutMs: 500,
+        spawnHelper: () =>
+          spawn("/nonexistent-gwrk-observer-python3", [], {
+            stdio: ["pipe", "pipe", "pipe"],
+          }),
+      });
+      await assert.rejects(() => enoentSup.start(), /ENOENT|exited|spawn/i);
+      await enoentSup.stop();
+
+      // Case B: Post-READY helper crash must latch fault and handle stdin EPIPE without throwing unhandled error
+      const sentinelPort = 49211;
+      const nonce = "1122334455667788";
+      const selfTestPayload = `GWRK051:${PROVENANCE.runId}:0:${nonce}`;
+      const readyBytes = packReadyFrame({ effectiveRcvBufBytes: 1048576 });
+      const sentinelBytes = packFrame({
+        kind: CAPTURE_FRAME_KIND.PACKET,
+        payload: buildUdpLoopback(sentinelPort, selfTestPayload),
+      });
+      const statsBytes = packStatsFrame(3, 0);
+
+      let crashingChild = null;
+      const crashScript = `
+        const ready = Buffer.from(${JSON.stringify(readyBytes.toString("base64"))}, "base64");
+        const sentinel = Buffer.from(${JSON.stringify(sentinelBytes.toString("base64"))}, "base64");
+        const stats = Buffer.from(${JSON.stringify(statsBytes.toString("base64"))}, "base64");
+        process.stdout.write(ready);
+        process.stdin.on("data", (chunk) => {
+          for (const b of chunk) {
+            if (b === 0x53) {
+              process.stdout.write(stats, () => process.exit(3));
+            }
+          }
+        });
+        setTimeout(() => process.stdout.write(sentinel), 15);
+      `;
+
+      const udpSocket = {
+        boundPort: null,
+        closed: false,
+        bind(_port, _host, cb) {
+          this.boundPort = sentinelPort;
+          queueMicrotask(() => cb?.());
+        },
+        address() {
+          return { address: "127.0.0.1", port: this.boundPort };
+        },
+        send(_msg, _port, _host, cb) {
+          cb?.(null);
+        },
+        on() {},
+        close(cb) {
+          this.closed = true;
+          cb?.();
+        },
+      };
+
+      const crashSup = createNativeObserverSupervisor({
+        provenance: PROVENANCE,
+        observerDir,
+        requireRootOwnership: false,
+        barrierTimeoutMs: 300,
+        createUdpSocket: () => udpSocket,
+        spawnHelper: () => {
+          crashingChild = spawn(process.execPath, ["-e", crashScript], {
+            stdio: ["pipe", "pipe", "pipe"],
+          });
+          return crashingChild;
+        },
+        randomNonceHex: () => nonce,
+      });
+
+      await crashSup.start();
+      // Wait for helper to exit after startup self-test
+      await new Promise((res) => {
+        if (crashingChild.exitCode !== null) res();
+        else crashingChild.once("exit", res);
+      });
+      // Post-READY helper death should immediately latch a fault in health sidecar
+      const healthAfterCrash = JSON.parse(
+        readFileSync(join(observerDir, "native-observer-health.json"), "utf8"),
+      );
+      assert.notEqual(
+        healthAfterCrash.captureStats.integrityFaultCode,
+        null,
+        "expected post-READY helper exit to latch an integrity fault immediately",
+      );
+      await crashSup.stop();
+    } finally {
+      rmSync(observerDir, { recursive: true, force: true });
+    }
+  });
+
+  test("controls distinguish expected shutdown, startup udpSocket cleanup, and unexpected helper death during barrier", async () => {
+    const observerDir = makeTempObserverDir();
+    let qChild = null;
+    let termChild = null;
+    let barrierCrashChild = null;
+    try {
+      const makeStubUdp = (port) => ({
+        boundPort: null,
+        closed: false,
+        bind(_p, _h, cb) {
+          this.boundPort = port;
+          queueMicrotask(() => cb?.());
+        },
+        address() {
+          return { address: "127.0.0.1", port: this.boundPort };
+        },
+        send(_m, _p, _h, cb) {
+          cb?.(null);
+        },
+        on() {},
+        close(cb) {
+          this.closed = true;
+          cb?.();
+        },
+      });
+
+      // 1. Startup ENOENT closes udpSocket immediately before stop() is called
+      const enoentUdp = makeStubUdp(49220);
+      const enoentSup = createNativeObserverSupervisor({
+        provenance: PROVENANCE,
+        observerDir,
+        requireRootOwnership: false,
+        barrierTimeoutMs: 500,
+        createUdpSocket: () => enoentUdp,
+        spawnHelper: () =>
+          spawn("/nonexistent-gwrk-observer-python3", [], {
+            stdio: ["pipe", "pipe", "pipe"],
+          }),
+      });
+      await assert.rejects(() => enoentSup.start(), /ENOENT|spawn/i);
+      assert.equal(
+        enoentUdp.closed,
+        true,
+        "udpSocket must close on startup failure before stop() is called",
+      );
+      await enoentSup.stop();
+
+      // 2. Expected shutdown via Q and via SIGTERM keeps health fault-free and drains real child
+      const nonceQ = "2233445566778899";
+      const readyBytes = packReadyFrame({ effectiveRcvBufBytes: 1048576 });
+      const statsBytes = packStatsFrame(4, 0);
+      const sentinelQ = packFrame({
+        kind: CAPTURE_FRAME_KIND.PACKET,
+        payload: buildUdpLoopback(
+          49221,
+          `GWRK051:${PROVENANCE.runId}:0:${nonceQ}`,
+        ),
+      });
+      const qScript = `
+        const ready = Buffer.from(${JSON.stringify(readyBytes.toString("base64"))}, "base64");
+        const sentinel = Buffer.from(${JSON.stringify(sentinelQ.toString("base64"))}, "base64");
+        const stats = Buffer.from(${JSON.stringify(statsBytes.toString("base64"))}, "base64");
+        process.stdout.write(ready);
+        process.stdin.on("data", (chunk) => {
+          for (const b of chunk) {
+            if (b === 0x53) process.stdout.write(stats);
+            if (b === 0x51) process.exit(0);
+          }
+        });
+        setTimeout(() => process.stdout.write(sentinel), 15);
+        setInterval(() => {}, 1000);
+      `;
+      const qSup = createNativeObserverSupervisor({
+        provenance: PROVENANCE,
+        observerDir,
+        requireRootOwnership: false,
+        barrierTimeoutMs: 1000,
+        drainTimeoutMs: 200,
+        createUdpSocket: () => makeStubUdp(49221),
+        spawnHelper: () => {
+          qChild = spawn(process.execPath, ["-e", qScript], {
+            stdio: ["pipe", "pipe", "pipe"],
+          });
+          return qChild;
+        },
+        randomNonceHex: () => nonceQ,
+      });
+      await qSup.start();
+      await qSup.stop();
+      assert.ok(qChild.exitCode === 0);
+      const healthAfterQ = JSON.parse(
+        readFileSync(join(observerDir, "native-observer-health.json"), "utf8"),
+      );
+      assert.equal(healthAfterQ.captureStats.integrityFaultCode, null);
+
+      const nonceTerm = "33445566778899aa";
+      const sentinelTerm = packFrame({
+        kind: CAPTURE_FRAME_KIND.PACKET,
+        payload: buildUdpLoopback(
+          49222,
+          `GWRK051:${PROVENANCE.runId}:0:${nonceTerm}`,
+        ),
+      });
+      const termScript = `
+        const ready = Buffer.from(${JSON.stringify(readyBytes.toString("base64"))}, "base64");
+        const sentinel = Buffer.from(${JSON.stringify(sentinelTerm.toString("base64"))}, "base64");
+        const stats = Buffer.from(${JSON.stringify(statsBytes.toString("base64"))}, "base64");
+        process.stdout.write(ready);
+        process.stdin.on("data", (chunk) => {
+          for (const b of chunk) {
+            if (b === 0x53) process.stdout.write(stats);
+            // Ignore Q so stop() escalates to SIGTERM
+          }
+        });
+        setTimeout(() => process.stdout.write(sentinel), 15);
+        setInterval(() => {}, 1000);
+      `;
+      const termSup = createNativeObserverSupervisor({
+        provenance: PROVENANCE,
+        observerDir,
+        requireRootOwnership: false,
+        barrierTimeoutMs: 1000,
+        drainTimeoutMs: 80,
+        createUdpSocket: () => makeStubUdp(49222),
+        spawnHelper: () => {
+          termChild = spawn(process.execPath, ["-e", termScript], {
+            stdio: ["pipe", "pipe", "pipe"],
+          });
+          return termChild;
+        },
+        randomNonceHex: () => nonceTerm,
+      });
+      await termSup.start();
+      await termSup.stop();
+      assert.ok(termChild.exitCode !== null || termChild.signalCode !== null);
+      const healthAfterTerm = JSON.parse(
+        readFileSync(join(observerDir, "native-observer-health.json"), "utf8"),
+      );
+      assert.equal(healthAfterTerm.captureStats.integrityFaultCode, null);
+
+      // 3. Unexpected helper exit during barrier 1 fails closed without waiting full timeout or unhandled EPIPE
+      const nonceCrash = "445566778899aabb";
+      const sentinel0 = packFrame({
+        kind: CAPTURE_FRAME_KIND.PACKET,
+        payload: buildUdpLoopback(
+          49223,
+          `GWRK051:${PROVENANCE.runId}:0:${nonceCrash}`,
+        ),
+      });
+      const sentinel1 = packFrame({
+        kind: CAPTURE_FRAME_KIND.PACKET,
+        payload: buildUdpLoopback(
+          49223,
+          `GWRK051:${PROVENANCE.runId}:1:${nonceCrash}`,
+        ),
+      });
+      const crashOnSecondStats = `
+        const ready = Buffer.from(${JSON.stringify(readyBytes.toString("base64"))}, "base64");
+        const s0 = Buffer.from(${JSON.stringify(sentinel0.toString("base64"))}, "base64");
+        const s1 = Buffer.from(${JSON.stringify(sentinel1.toString("base64"))}, "base64");
+        const stats = Buffer.from(${JSON.stringify(statsBytes.toString("base64"))}, "base64");
+        let statsCalls = 0;
+        process.stdout.write(ready);
+        process.stdin.on("data", (chunk) => {
+          for (const b of chunk) {
+            if (b === 0x53) {
+              statsCalls += 1;
+              if (statsCalls === 1) {
+                process.stdout.write(stats);
+                setTimeout(() => process.stdout.write(s1), 20);
+              } else {
+                process.exit(9);
+              }
+            }
+          }
+        });
+        setTimeout(() => process.stdout.write(s0), 15);
+        setInterval(() => {}, 1000);
+      `;
+      const crashBarrierSup = createNativeObserverSupervisor({
+        provenance: PROVENANCE,
+        observerDir,
+        requireRootOwnership: false,
+        barrierTimeoutMs: 2000,
+        drainTimeoutMs: 100,
+        createUdpSocket: () => makeStubUdp(49223),
+        spawnHelper: () => {
+          barrierCrashChild = spawn(
+            process.execPath,
+            ["-e", crashOnSecondStats],
+            { stdio: ["pipe", "pipe", "pipe"] },
+          );
+          return barrierCrashChild;
+        },
+        randomNonceHex: () => nonceCrash,
+      });
+      await crashBarrierSup.start();
+      const startedAt = Date.now();
+      const b1 = await crashBarrierSup.runBarrier(1);
+      const elapsedMs = Date.now() - startedAt;
+      assert.equal(b1.advanced, false);
+      assert.equal(b1.faultCode, "BARRIER_TIMEOUT");
+      assert.ok(
+        elapsedMs < 1000,
+        `expected immediate fail-closed on helper exit instead of waiting barrierTimeoutMs (took ${elapsedMs}ms)`,
+      );
+      await crashBarrierSup.stop();
+    } finally {
+      for (const proc of [qChild, termChild, barrierCrashChild]) {
+        if (proc && proc.exitCode === null && proc.signalCode === null) {
+          try {
+            proc.kill("SIGKILL");
+          } catch {}
+        }
+      }
+      rmSync(observerDir, { recursive: true, force: true });
     }
   });
 });
