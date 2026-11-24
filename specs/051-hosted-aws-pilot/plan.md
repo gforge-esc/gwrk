@@ -494,7 +494,7 @@ pnpm exec vitest run src/adapters/auth/http-client-credential.test.ts src/comman
 
 ### Phase 7: Gateway and Linux runner
 
-Requires Phase 6. Keep `deploy/hosted-auth-proof/` and `tests/hosted-auth-proof/gateway-proof.mjs` unchanged. Write failing synthetic OIDC edge and runner preflight tests first. Observe RED before creating the production gateway bundle and updating runner scripts.
+Requires Phase 6. Follow the hosted TLS boundary for preissued certificates and restricted acceptance. Keep `deploy/hosted-auth-proof/` and `tests/hosted-auth-proof/gateway-proof.mjs` unchanged. Write failing synthetic OIDC edge and runner preflight tests first. Observe RED before creating the production gateway bundle and updating runner scripts.
 
 #### Files
 
@@ -512,6 +512,11 @@ Requires Phase 6. Keep `deploy/hosted-auth-proof/` and `tests/hosted-auth-proof/
 - `src/domain/worker-auth-environment.ts` (NEW: Pure inbound auth environment filter from the deployment boundary contract)
 - `src/utils/agent.ts` (MODIFY: Apply inbound auth filtering after merging the agent child environment)
 - `src/utils/agent.auth-env.test.ts` (NEW: Actual hermetic child verifies inbound removal and outbound credential preservation)
+
+- `deploy/hosted-pilot/preflight-tls.sh` (NEW: Validate protected preissued TLS before gateway startup)
+- `deploy/hosted-pilot/run.sh` (NEW: Require TLS preflight before launching the reviewed gateway)
+- `tests/hosted-pilot/tls-preflight.test.ts` (NEW: Real certificate and key fixtures plus native Linux ownership denials)
+- `tests/hosted-pilot/gateway-startup.test.ts` (NEW: Invalid TLS prevents gateway listener startup)
 
 #### Governance and Skills
 
@@ -531,7 +536,7 @@ Requires Phase 6. Keep `deploy/hosted-auth-proof/` and `tests/hosted-auth-proof/
 
 ```bash
 pnpm run build
-pnpm exec vitest run src/utils/agent.auth-env.test.ts tests/linux-runner/preflight-auth.test.ts tests/hosted-auth-proof/preflight.test.ts tests/hosted-auth-proof/production-bundle.test.ts
+pnpm exec vitest run tests/hosted-pilot/tls-preflight.test.ts tests/hosted-pilot/gateway-startup.test.ts src/utils/agent.auth-env.test.ts tests/linux-runner/preflight-auth.test.ts tests/hosted-auth-proof/preflight.test.ts tests/hosted-auth-proof/production-bundle.test.ts
 node tests/hosted-pilot/gateway-production.mjs
 node tests/hosted-auth-proof/gateway-proof.mjs
 ```
@@ -572,7 +577,7 @@ Requires Phase 7. Write failing backup-restore auth-state and rollout-gate tests
 node tests/hosted-pilot/gate-completeness.test.mjs
 pnpm run build
 pnpm run lint
-pnpm exec vitest run src/adapters/auth/browser-csrf.test.ts src/adapters/auth/proxy-logout.test.ts src/server/auth-guard.account-denial.test.ts src/utils/agent.auth-env.test.ts src/architecture.test.ts src/domain/auth-policy.test.ts src/adapters/auth/credential-crypto.test.ts src/adapters/sqlite/auth-store.test.ts src/commands/auth.test.ts src/adapters/auth/google-id-token.test.ts src/application/auth/authenticate-request.test.ts src/server/auth-prehandler.test.ts src/server/auth-session.test.ts src/server/auth-api-keys.test.ts src/server/auth-csrf.test.ts src/server/routes/health.auth.test.ts src/server/auth-route-policy.test.ts src/server/auth-bounds.test.ts src/server/auth-logging.test.ts src/server/github.test.ts src/adapters/auth/http-client-credential.test.ts src/commands/server.auth-startup.test.ts src/server/auth-continuity.test.ts src/commands/init.test.ts tests/linux-runner/preflight-auth.test.ts tests/linux-runner/backup-restore-rollback.test.ts tests/hosted-pilot/rollout-gates.test.ts
+pnpm exec vitest run tests/hosted-pilot/tls-preflight.test.ts tests/hosted-pilot/gateway-startup.test.ts src/adapters/auth/browser-csrf.test.ts src/adapters/auth/proxy-logout.test.ts src/server/auth-guard.account-denial.test.ts src/utils/agent.auth-env.test.ts src/architecture.test.ts src/domain/auth-policy.test.ts src/adapters/auth/credential-crypto.test.ts src/adapters/sqlite/auth-store.test.ts src/commands/auth.test.ts src/adapters/auth/google-id-token.test.ts src/application/auth/authenticate-request.test.ts src/server/auth-prehandler.test.ts src/server/auth-session.test.ts src/server/auth-api-keys.test.ts src/server/auth-csrf.test.ts src/server/routes/health.auth.test.ts src/server/auth-route-policy.test.ts src/server/auth-bounds.test.ts src/server/auth-logging.test.ts src/server/github.test.ts src/adapters/auth/http-client-credential.test.ts src/commands/server.auth-startup.test.ts src/server/auth-continuity.test.ts src/commands/init.test.ts tests/linux-runner/preflight-auth.test.ts tests/linux-runner/backup-restore-rollback.test.ts tests/hosted-pilot/rollout-gates.test.ts
 node dist/cli.js define adr --reindex --check
 node dist/cli.js define adr --check
 node tests/hosted-pilot/gateway-production.mjs

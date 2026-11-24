@@ -378,7 +378,7 @@
         {
           "id": "T036",
           "title": "Create compose.yaml",
-          "description": "NEW deploy/hosted-pilot/compose.yaml. Digest-pinned Traefik and OAuth2 Proxy stack publishing ports `80` and `443` with loopback-only origin and sign-out",
+          "description": "NEW deploy/hosted-pilot/compose.yaml. Digest-pinned Traefik and OAuth2 Proxy stack publishing ports `80` and `443` with loopback-only origin and sign-out Follow contracts/tls-boundary.md. NEW deploy/hosted-pilot/preflight-tls.sh and run.sh enforce protected preissued TLS before gateway startup. Tests: tests/hosted-pilot/tls-preflight.test.ts and gateway-startup.test.ts. No world-ingress ACME bootstrap or fallback certificate acceptance.",
           "status": "open",
           "gateScript": "bash specs/051-hosted-aws-pilot/gates/phase-07.sh",
           "sp": 2
@@ -386,7 +386,7 @@
         {
           "id": "T037",
           "title": "Create dynamic.yaml",
-          "description": "NEW deploy/hosted-pilot/traefik/dynamic.yaml. Isolated browser and API plus webhook chains stripping forged headers and blocking public `/oauth2/sign_out` and `/health`",
+          "description": "NEW deploy/hosted-pilot/traefik/dynamic.yaml. Isolated browser and API plus webhook chains stripping forged headers and blocking public `/oauth2/sign_out` and `/health` Use strict default SNI and TLS 1.2 minimum with preissued certificate files. No production ACME resolver. Preserve the proof bundle.",
           "status": "open",
           "gateScript": "bash specs/051-hosted-aws-pilot/gates/phase-07.sh",
           "sp": 2
@@ -453,7 +453,9 @@
         "tests/hosted-pilot/gateway-production.mjs",
         "tests/linux-runner/preflight-auth.test.ts",
         "tests/hosted-auth-proof/gateway-proof.mjs",
-        "src/utils/agent.auth-env.test.ts"
+        "src/utils/agent.auth-env.test.ts",
+        "tests/hosted-pilot/tls-preflight.test.ts",
+        "tests/hosted-pilot/gateway-startup.test.ts"
       ]
     },
     {
@@ -502,7 +504,9 @@
         "src/utils/agent.auth-env.test.ts",
         "src/adapters/auth/proxy-logout.test.ts",
         "src/server/auth-guard.account-denial.test.ts",
-        "src/adapters/auth/browser-csrf.test.ts"
+        "src/adapters/auth/browser-csrf.test.ts",
+        "tests/hosted-pilot/tls-preflight.test.ts",
+        "tests/hosted-pilot/gateway-startup.test.ts"
       ]
     },
     {
