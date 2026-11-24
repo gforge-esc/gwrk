@@ -9,10 +9,15 @@ import {
   writeFileSync,
 } from "node:fs";
 import { setTimeout as sleep } from "node:timers/promises";
+import {
+  FixtureProcessError,
+  runOwnedProcessScope,
+  startBoundedProcess,
+} from "./process-scope.mjs";
 import { RESOURCE_LIMITS, ownedRuntimePlan } from "./runtime-policy.mjs";
 
-function rootDirectory(path) {
-  const metadata = lstatSync(path);
+function rootDirectory(path, files = { lstatSync, realpathSync }) {
+  const metadata = files.lstatSync(path);
   assert.equal(metadata.isDirectory(), true, "fixture directory is missing");
   assert.equal(
     metadata.isSymbolicLink(),
@@ -22,15 +27,40 @@ function rootDirectory(path) {
   assert.equal(metadata.uid, 0, "fixture directory owner differs");
   assert.equal(metadata.gid, 0, "fixture directory group differs");
   assert.equal(metadata.mode & 0o777, 0o700, "fixture directory mode differs");
-  assert.equal(realpathSync(path), path, "fixture directory is not canonical");
+  assert.equal(
+    files.realpathSync(path),
+    path,
+    "fixture directory is not canonical",
+  );
   return { device: metadata.dev, inode: metadata.ino };
 }
 
 // No effect runs until the coordinator's measured checkpoint passes. This lifecycle
 // uses the approved host daemon only to create the owned offline nested fixture.
-export async function withOwnedNestedDaemon({ runId, receipt, executeCases }) {
-  assert.equal(process.platform, "linux");
-  assert.equal(process.getuid(), 0);
+export async function withOwnedNestedDaemon(
+  { runId, receipt, executeCases },
+  effects = {},
+) {
+  const files = effects.files ?? {
+    lstatSync,
+    mkdirSync,
+    readdirSync,
+    realpathSync,
+    rmSync,
+    statSync,
+    writeFileSync,
+  };
+  const {
+    lstatSync: inspectPath,
+    mkdirSync: createDirectory,
+    readdirSync: listDirectory,
+    realpathSync: canonicalPath,
+    rmSync: removeDirectory,
+    statSync: inspectFollowedPath,
+    writeFileSync: writeFile,
+  } = files;
+  assert.equal(effects.platform ?? process.platform, "linux");
+  assert.equal(effects.uid ?? process.getuid(), 0);
   const root = `/opt/gwrk-verification/${runId}`;
   const inputDirectory = `${root}/input`;
   const dataDirectory = `/var/lib/gwrk/verification-fixtures/${runId}`;
@@ -40,9 +70,9 @@ export async function withOwnedNestedDaemon({ runId, receipt, executeCases }) {
     dataDirectory,
     receipt,
   });
-  rootDirectory(root);
-  rootDirectory(inputDirectory);
-  const parent = lstatSync("/var/lib/gwrk");
+  rootDirectory(root, files);
+  rootDirectory(inputDirectory, files);
+  const parent = inspectPath("/var/lib/gwrk");
   assert.equal(parent.isDirectory(), true);
   assert.equal(parent.isSymbolicLink(), false);
   assert.equal(parent.uid, 997);
@@ -50,11 +80,11 @@ export async function withOwnedNestedDaemon({ runId, receipt, executeCases }) {
   assert.equal(parent.mode & 0o777, 0o750);
   assert.equal(parent.dev, receipt.dataParentDevice);
   assert.equal(parent.ino, receipt.dataParentInode);
-  assert.equal(realpathSync("/var/lib/gwrk"), "/var/lib/gwrk");
-  rootDirectory("/var/lib/gwrk/verification-fixtures");
-  const dataIdentity = rootDirectory(dataDirectory);
+  assert.equal(canonicalPath("/var/lib/gwrk"), "/var/lib/gwrk");
+  rootDirectory("/var/lib/gwrk/verification-fixtures", files);
+  const dataIdentity = rootDirectory(dataDirectory, files);
   assert.equal(
-    readdirSync(dataDirectory).length,
+    listDirectory(dataDirectory).length,
     0,
     "owned data child must start empty",
   );
@@ -64,8 +94,8 @@ export async function withOwnedNestedDaemon({ runId, receipt, executeCases }) {
     "preapproved data child identity differs",
   );
   const dockerConfig = `${root}/docker-config`;
-  mkdirSync(dockerConfig, { mode: 0o700 });
-  writeFileSync(`${dockerConfig}/config.json`, "{}\n", { mode: 0o600 });
+  createDirectory(dockerConfig, { mode: 0o700 });
+  writeFile(`${dockerConfig}/config.json`, "{}\n", { mode: 0o600 });
   const env = {
     PATH: "/usr/sbin:/usr/bin:/sbin:/bin",
     HOME: "/root",
@@ -83,7 +113,7 @@ export async function withOwnedNestedDaemon({ runId, receipt, executeCases }) {
     cleanup: plan.cleanup,
     destructiveCleanupScope: dataDirectory,
   };
-  writeFileSync(
+  writeFile(
     `${root}/native-ownership.json`,
     JSON.stringify(ownership, null, 2),
     { mode: 0o600 },
@@ -95,12 +125,17 @@ export async function withOwnedNestedDaemon({ runId, receipt, executeCases }) {
   const started = Date.now();
   return runOwnedProcessScope(
     async ({ signal, spawnProcess, untilCancelled }) => {
-      const spawnDocker = (args, timeout = 15_000) =>
-        spawnProcess(
-          "/usr/bin/docker",
-          ["--host", "unix:///var/run/docker.sock", ...args],
-          { env, timeoutMs: timeout },
-        );
+      const spawnDocker = (args, timeout = 15_000) => {
+        if (signal.aborted)
+          return Promise.reject(new FixtureProcessError("cancelled", true));
+        return effects.command
+          ? effects.command(args, { signal, timeoutMs: timeout, spawnProcess })
+          : spawnProcess(
+              "/usr/bin/docker",
+              ["--host", "unix:///var/run/docker.sock", ...args],
+              { env, timeoutMs: timeout },
+            );
+      };
       const docker = async (args, timeout = 15_000) => {
         const result = await spawnDocker(args, timeout);
         assert.equal(result.code, 0, "owned Docker command failed");
@@ -108,7 +143,11 @@ export async function withOwnedNestedDaemon({ runId, receipt, executeCases }) {
       };
       // Cleanup uses a separate bounded process after this scope's signal is aborted.
       dockerForCleanup = async (args) => {
-        const { startBoundedProcess } = await import("./process-scope.mjs");
+        if (effects.command) {
+          const result = await effects.command(args, { cleanup: true });
+          assert.equal(result.code, 0);
+          return result.stdout;
+        }
         const handle = startBoundedProcess(
           "/usr/bin/docker",
           ["--host", "unix:///var/run/docker.sock", ...args],
@@ -135,6 +174,12 @@ export async function withOwnedNestedDaemon({ runId, receipt, executeCases }) {
       assert.equal(image.Architecture, "amd64");
       containerId = (await docker(plan.command)).trim();
       assert.match(containerId, /^[a-f0-9]{64}$/);
+      writeFile(
+        `${root}/native-ownership.json`,
+        JSON.stringify({ ...ownership, containerId }, null, 2),
+        { mode: 0o600 },
+      );
+      await docker(["start", containerId]);
       const deadline = Date.now() + RESOURCE_LIMITS.startupSeconds * 1000;
       let ready = false;
       while (Date.now() < deadline && !signal.aborted) {
@@ -234,17 +279,17 @@ export async function withOwnedNestedDaemon({ runId, receipt, executeCases }) {
         containerId = metadata.Id;
         await dockerForCleanup(["rm", "--force", containerId]);
       }
-      const actual = rootDirectory(dataDirectory);
+      const actual = rootDirectory(dataDirectory, files);
       assert.deepEqual(
         actual,
         dataIdentity,
         "owned data identity changed before cleanup",
       );
-      const actualParent = statSync("/var/lib/gwrk");
+      const actualParent = inspectFollowedPath("/var/lib/gwrk");
       assert.equal(actualParent.dev, parent.dev);
       assert.equal(actualParent.ino, parent.ino);
-      if (childrenDrained) rmSync(dataDirectory, { recursive: true });
-      writeFileSync(
+      if (childrenDrained) removeDirectory(dataDirectory, { recursive: true });
+      writeFile(
         `${root}/native-cleanup.json`,
         JSON.stringify({
           runId,
@@ -264,5 +309,6 @@ export async function withOwnedNestedDaemon({ runId, receipt, executeCases }) {
         "owned command closure unconfirmed; data preserved",
       );
     },
+    { processTarget: effects.processTarget ?? process },
   );
 }

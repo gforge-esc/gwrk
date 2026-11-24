@@ -103,8 +103,7 @@ export function ownedRuntimePlan({
   );
   const label = `gwrk.fixture.run=${runId}`;
   const command = [
-    "run",
-    "--detach",
+    "create",
     "--name",
     name,
     "--label",
