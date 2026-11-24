@@ -1,0 +1,171 @@
+tls:
+  certificates:
+    - certFile: /run/gwrk-gateway-tls/fullchain.pem
+      keyFile: /run/gwrk-gateway-tls/privkey.pem
+  options:
+    default:
+      minVersion: VersionTLS12
+      sniStrict: true
+
+http:
+  routers:
+    webhook:
+      entryPoints:
+        - websecure
+      rule: 'Host(`gwrk.gforge.ai`) && PathPrefix(`/webhook`)'
+      priority: 100
+      middlewares:
+        - strip-public-identity
+        - webhook-auth-mode
+      service: origin
+      tls: {}
+
+    login-admission:
+      entryPoints:
+        - websecure
+      rule: 'Host(`gwrk.gforge.ai`) && (Method(`GET`) || Method(`HEAD`)) && (Path(`/oauth2/start`) || Path(`/oauth2/callback`))'
+      priority: 90
+      middlewares:
+        - login-admission-prep
+        - login-forward-auth
+      service: oauth2-proxy
+      tls: {}
+
+    public-root:
+      entryPoints:
+        - websecure
+      rule: 'Host(`gwrk.gforge.ai`) && Path(`/`) && (Method(`GET`) || Method(`HEAD`))'
+      priority: 80
+      middlewares:
+        - strip-public-identity
+      service: origin
+      tls: {}
+
+    api:
+      entryPoints:
+        - websecure
+      rule: 'Host(`gwrk.gforge.ai`) && PathPrefix(`/api`) && HeaderRegexp(`Authorization`, `.*`)'
+      priority: 70
+      middlewares:
+        - strip-public-identity
+        - api-auth-mode
+      service: origin
+      tls: {}
+
+    browser:
+      entryPoints:
+        - websecure
+      rule: 'Host(`gwrk.gforge.ai`) && PathPrefix(`/api`)'
+      priority: 60
+      middlewares:
+        - strip-browser-identity
+        - browser-forward-auth
+        - browser-auth-mode
+      service: origin
+      tls: {}
+
+  middlewares:
+    strip-public-identity:
+      headers:
+        customRequestHeaders:
+          X-Forwarded-User: ""
+          X-Forwarded-Email: ""
+          X-Forwarded-Groups: ""
+          X-Forwarded-Preferred-Username: ""
+          X-Forwarded-Access-Token: ""
+          X-Auth-Request-User: ""
+          X-Auth-Request-Email: ""
+          X-Auth-Request-Groups: ""
+          X-Auth-Request-Preferred-Username: ""
+          X-Auth-Request-Access-Token: ""
+          X-Auth-Request-Redirect: ""
+          X-Gwrk-Auth-Mode: ""
+
+    strip-browser-identity:
+      headers:
+        customRequestHeaders:
+          Authorization: ""
+          X-Forwarded-User: ""
+          X-Forwarded-Email: ""
+          X-Forwarded-Groups: ""
+          X-Forwarded-Preferred-Username: ""
+          X-Forwarded-Access-Token: ""
+          X-Auth-Request-User: ""
+          X-Auth-Request-Email: ""
+          X-Auth-Request-Groups: ""
+          X-Auth-Request-Preferred-Username: ""
+          X-Auth-Request-Access-Token: ""
+          X-Auth-Request-Redirect: ""
+          X-Gwrk-Auth-Mode: ""
+
+    webhook-auth-mode:
+      headers:
+        customRequestHeaders:
+          X-Gwrk-Auth-Mode: "webhook"
+
+    api-auth-mode:
+      headers:
+        customRequestHeaders:
+          X-Gwrk-Auth-Mode: "api_key"
+
+    browser-auth-mode:
+      headers:
+        customRequestHeaders:
+          X-Gwrk-Auth-Mode: "google_id_token"
+
+    login-admission-prep:
+      headers:
+        customRequestHeaders:
+          X-Forwarded-Uri: "/"
+          X-Forwarded-Method: "GET"
+          X-Forwarded-Host: "gwrk.gforge.ai"
+          X-Forwarded-Proto: "https"
+          X-Forwarded-Port: "443"
+          X-Forwarded-For: ""
+          X-Forwarded-User: ""
+          X-Forwarded-Email: ""
+          X-Forwarded-Groups: ""
+          X-Forwarded-Preferred-Username: ""
+          X-Forwarded-Access-Token: ""
+          X-Auth-Request-User: ""
+          X-Auth-Request-Email: ""
+          X-Auth-Request-Groups: ""
+          X-Auth-Request-Preferred-Username: ""
+          X-Auth-Request-Access-Token: ""
+          X-Auth-Request-Redirect: ""
+          X-Gwrk-Auth-Mode: ""
+
+    login-forward-auth:
+      forwardAuth:
+        address: http://127.0.0.1:18790/
+        preserveRequestMethod: false
+        forwardBody: false
+        trustForwardHeader: true
+        authRequestHeaders:
+          - X-Forwarded-Uri
+        authResponseHeaders:
+          - X-Forwarded-For
+          - X-Forwarded-Uri
+          - X-Forwarded-Method
+        maxResponseBodySize: 4096
+
+    browser-forward-auth:
+      forwardAuth:
+        address: http://127.0.0.1:4180/oauth2/auth
+        trustForwardHeader: true
+        authRequestHeaders:
+          - Cookie
+          - X-Forwarded-Uri
+          - X-Forwarded-Method
+        authResponseHeaders:
+          - Authorization
+
+  services:
+    origin:
+      loadBalancer:
+        servers:
+          - url: http://127.0.0.1:18790
+    oauth2-proxy:
+      loadBalancer:
+        servers:
+          - url: http://127.0.0.1:4180

@@ -1,0 +1,76 @@
+services:
+  traefik:
+    image: traefik:v3.7.18@sha256:9c437ac4f09ce6f4980a8544902d3475fdf70a1a7c578729581d2535dfa7d635
+    restart: unless-stopped
+    network_mode: host
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - NET_BIND_SERVICE
+    command:
+      - --entrypoints.websecure.address=:443
+      - --entrypoints.websecure.http.aliasheadersstrategy=reject
+      - --entrypoints.websecure.forwardedheaders.insecure=false
+      - --providers.file.directory=/etc/traefik/dynamic
+      - --providers.file.watch=false
+    volumes:
+      - type: bind
+        source: /etc/gwrk/gateway-secrets/tls
+        target: /run/gwrk-gateway-tls
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ./traefik
+        target: /etc/traefik/dynamic
+        read_only: true
+        bind:
+          create_host_path: false
+
+  oauth2-proxy:
+    image: quay.io/oauth2-proxy/oauth2-proxy:v7.15.6@sha256:c3415e8660af553f5e18f5d90db050614c02493c0ac6260ac59442f6d9b12048
+    restart: unless-stopped
+    network_mode: host
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    command:
+      - --config=/etc/oauth2-proxy/oauth2-proxy.cfg
+      - --standard-logging=true
+      - --auth-logging=true
+      - --request-logging=true
+      - --standard-logging-format={{.Timestamp}} runtime {{.File}}
+      - --auth-logging-format={{.Timestamp}} auth {{.Status}}
+      - --request-logging-format={{.Timestamp}} request {{.StatusCode}} {{.ResponseSize}} {{.RequestDuration}}
+    environment:
+      OAUTH2_PROXY_CLIENT_ID: ${GWRK_AUTH_GOOGLE_CLIENT_ID:?Set GWRK_AUTH_GOOGLE_CLIENT_ID}
+    volumes:
+      - type: bind
+        source: /etc/gwrk/gateway-secrets/oauth-client-secret
+        target: /etc/gwrk/gateway-secrets/oauth-client-secret
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: /etc/gwrk/gateway-secrets/oauth-cookie-secret
+        target: /etc/gwrk/gateway-secrets/oauth-cookie-secret
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: /etc/gwrk/secrets/google-account-allowlist
+        target: /etc/gwrk/secrets/google-account-allowlist
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ./oauth2-proxy/oauth2-proxy.cfg
+        target: /etc/oauth2-proxy/oauth2-proxy.cfg
+        read_only: true
+        bind:
+          create_host_path: false
