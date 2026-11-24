@@ -6,14 +6,20 @@ import { spawn } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { Command } from "commander";
+import { createHostedAuthFactory } from "../adapters/auth/hosted-auth-factory.js";
 import {
   logCliOutput,
   setCliExitCode,
   warnCli,
 } from "../adapters/cli/output-scope.js";
 import { gwrkHome, usesHostedRuntime } from "../adapters/config/paths.js";
-import { createSqliteProjectRegistryAdapter } from "../adapters/sqlite/index.js";
-import { startServer } from "../server/index.js";
+import {
+  createSqliteAuthStoreAdapter,
+  createSqliteProjectRegistryAdapter,
+} from "../adapters/sqlite/index.js";
+import { openDatabase } from "../db/index.js";
+import type { ClockPort } from "../ports/operations-port.js";
+import { type HostedServerAuthOptions, startServer } from "../server/index.js";
 import { isPidRunning, readPid, removePid } from "../server/pid.js";
 import type { HealthResponse } from "../server/types.js";
 import {
@@ -21,6 +27,7 @@ import {
   GwrkConfigSchema,
   deepMerge,
   loadConfig,
+  validateTypedAuthSource,
 } from "../utils/config.js";
 import { isRemote } from "../utils/device.js";
 import { getLogs, installServer, uninstallServer } from "./server-install.js";
@@ -50,12 +57,17 @@ function loadServerConfig(projectRoot: string): GwrkConfig {
       };
       const globalConfigPath = path.join(gwrkHome(), "config.json");
       if (fs.existsSync(globalConfigPath)) {
+        const content = fs.readFileSync(globalConfigPath, "utf-8");
         try {
-          const overlay = JSON.parse(
-            fs.readFileSync(globalConfigPath, "utf-8"),
-          ) as Record<string, unknown>;
+          const overlay = JSON.parse(content) as Record<string, unknown>;
+          validateTypedAuthSource(overlay);
           raw = deepMerge(raw, overlay);
         } catch {
+          if (content.includes("auth")) {
+            throw new Error(
+              "Configuration error: Authentication configuration denied",
+            );
+          }
           // Ignore malformed global overlay and fall back to defaults.
         }
       }
@@ -70,6 +82,65 @@ function loadServerConfig(projectRoot: string): GwrkConfig {
       return GwrkConfigSchema.parse(raw);
     } finally {
       registry.close();
+    }
+  }
+}
+
+interface PreparedHostedAuth {
+  readonly transport: "trusted_local" | "hosted";
+  readonly runnerKind?: "local" | "hosted";
+  readonly hostedAuth?: HostedServerAuthOptions;
+  readonly cleanup?: () => void;
+}
+
+async function prepareServerAuth(
+  config: GwrkConfig,
+): Promise<PreparedHostedAuth> {
+  const hostedRuntime = usesHostedRuntime();
+  const db = openDatabase();
+  let dbOwned = true;
+  try {
+    const authStore = createSqliteAuthStoreAdapter({ db });
+    const clock: ClockPort = {
+      nowIso: () => new Date().toISOString(),
+      nowMs: () => Date.now(),
+    };
+    const factory = createHostedAuthFactory({
+      store: authStore,
+      clock,
+    });
+    const authInit = await factory.initialize({
+      auth: Reflect.get(config.server, "auth"),
+      environment: process.env,
+      secretsRoot: process.env.GWRK_SECRETS_DIR,
+    });
+    if (!authInit.ok) {
+      throw new CommandError(authInit.error.message, 1);
+    }
+    if (hostedRuntime && authInit.mode !== "hosted") {
+      throw new CommandError(
+        "Hosted runner requires hosted authentication mode",
+        1,
+      );
+    }
+    if (authInit.mode === "hosted") {
+      dbOwned = false;
+      return {
+        transport: "hosted",
+        runnerKind: "hosted",
+        hostedAuth: authInit.hostedAuth,
+        cleanup: () => {
+          if (db.open) db.close();
+        },
+      };
+    }
+    return {
+      transport: "trusted_local",
+      cleanup: undefined,
+    };
+  } finally {
+    if (dbOwned && db.open) {
+      db.close();
     }
   }
 }
@@ -105,11 +176,20 @@ export function createServerCommand(): Command {
         }
 
         if (options.foreground) {
-          await startServer(config, {
+          const auth = await prepareServerAuth(config);
+          const instance = await startServer(config, {
             handleSignals: true,
             projectRoot,
             useProjectRegistry: true,
+            transport: auth.transport,
+            runnerKind: auth.runnerKind,
+            hostedAuth: auth.hostedAuth,
           });
+          if (auth.cleanup) {
+            instance.server.on("close", () => {
+              auth.cleanup?.();
+            });
+          }
         } else {
           fs.mkdirSync(gwrkHome(), { recursive: true });
           const out = fs.openSync(logFile(), "a");
@@ -162,11 +242,20 @@ export function createServerCommand(): Command {
       await withSignal("server _run", async () => {
         const projectRoot = process.env.GWRK_PROJECT_ROOT || process.cwd();
         const config = loadServerConfig(projectRoot);
-        await startServer(config, {
+        const auth = await prepareServerAuth(config);
+        const instance = await startServer(config, {
           handleSignals: true,
           projectRoot,
           useProjectRegistry: true,
+          transport: auth.transport,
+          runnerKind: auth.runnerKind,
+          hostedAuth: auth.hostedAuth,
         });
+        if (auth.cleanup) {
+          instance.server.on("close", () => {
+            auth.cleanup?.();
+          });
+        }
       });
     });
 
@@ -230,32 +319,24 @@ export function createServerCommand(): Command {
 
         // Health check
         try {
-          const resp = await fetch(`${url}/api/health`, {
+          const resp = await fetch(`${url}/health`, {
             signal: AbortSignal.timeout(5_000),
+            redirect: "manual",
           });
+          if (resp.status >= 300 && resp.status < 400) {
+            void resp.body?.cancel().catch(() => {});
+            logCliOutput("Health: unreachable (redirect not allowed)");
+            setCliExitCode(1);
+            return;
+          }
           if (!resp.ok) {
+            void resp.body?.cancel().catch(() => {});
             throw new Error(`HTTP ${resp.status}`);
           }
           const data = (await resp.json()) as Partial<HealthResponse>;
           logCliOutput(`Health: ${data.status || "unknown"}`);
           if (data.daemonLiveness) {
             logCliOutput(`Daemon: ${data.daemonLiveness}`);
-          }
-          if (data.projectReadiness) {
-            logCliOutput(
-              `Projects: ${data.projectReadiness.status} (${data.projectReadiness.readyCount}/${data.projectReadiness.totalCount} ready)`,
-            );
-          }
-          if (data.slackDelivery) {
-            logCliOutput(
-              `Slack:  ${data.slackDelivery.mode} (connected: ${data.slackDelivery.connected})`,
-            );
-          }
-          if (data.components) {
-            for (const [name, info] of Object.entries(data.components)) {
-              const icon = info.status === "ok" ? "✓" : "✗";
-              logCliOutput(`  ${icon} ${name}: ${info.status}`);
-            }
           }
         } catch {
           logCliOutput("Health: unreachable (port bound but not responding)");

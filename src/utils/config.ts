@@ -306,9 +306,15 @@ function tryReadJson(
   // biome-ignore lint/suspicious/noExplicitAny: JSON config parsing
 ): Record<string, any> | null {
   if (!fs.existsSync(filePath)) return null;
+  const content = fs.readFileSync(filePath, "utf-8");
   try {
-    return JSON.parse(fs.readFileSync(filePath, "utf-8"));
+    return JSON.parse(content);
   } catch (error) {
+    if (content.includes("auth")) {
+      throw new Error(
+        "Configuration error: Authentication configuration denied",
+      );
+    }
     logCliError(
       `Warning: invalid JSON in ${label} at ${filePath}, skipping overlay`,
     );
@@ -316,7 +322,7 @@ function tryReadJson(
   }
 }
 
-function validateTypedAuthSource(source: unknown): void {
+export function validateTypedAuthSource(source: unknown): void {
   if (source === null || typeof source !== "object") return;
   const server = Reflect.get(source, "server");
   if (
