@@ -44,7 +44,7 @@ Add `deploy/hosted-pilot/preflight-tls.sh` or an equivalent bounded gateway star
 1. Validate ownership and modes for the directory and both files. Reject missing files and symlinks.
 2. Parse the leaf certificate and complete chain. Parse its private key without printing material.
 3. Compare derived public keys. Require a matching pair.
-4. Require certificate coverage for `gwrk.gforge.ai` and a current validity interval. Verify its server-auth chain against the trusted runtime roots.
+4. Require certificate coverage for `gwrk.gforge.ai` and a current validity interval. Verify its server-auth chain against the trusted runtime roots. Verify that chain again at the seven-day acceptance deadline.
 5. Reject expired or untrusted certificates. Return only the failed condition and file basename.
 6. Verify the pinned container identity can read the mounted files. Stop before listener creation if it cannot.
 7. Load the complete reviewed dynamic configuration with strict default TLS options. Do not launch a partial configuration after preflight failure.
@@ -86,7 +86,7 @@ Use a test-only CA trusted explicitly by the synthetic client. Never use insecur
 
 ## Renewal handoff
 
-The operator owns pilot renewal. Record issuer and leaf fingerprint plus serial and expiration. Record the next renewal deadline without key material. Require at least seven days of remaining certificate validity at pilot acceptance.
+The operator owns pilot renewal. Record issuer and leaf fingerprint plus serial and expiration. Record the next renewal deadline without key material. Require the complete server-auth chain to remain valid for at least seven days at pilot acceptance.
 
 Before replacement, close application ingress and stop the gateway. Stage and validate the new pair in a root-only directory. Replace the pair while stopped. Run preflight and restart. Verify the served fingerprint and trusted canonical HTTPS before restoring the previously approved ingress stage. Keep the auth ledger unchanged.
 
