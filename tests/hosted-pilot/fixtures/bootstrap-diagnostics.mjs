@@ -34,6 +34,54 @@ export const STATIC_CONSTRUCTION_CATEGORIES = [
   "generic_construction_failed",
 ];
 
+export const WHITELISTED_ERROR_CODES = [
+  "ETIMEDOUT",
+  "ENOENT",
+  "EACCES",
+  "EPERM",
+  "ENOSPC",
+  "EDQUOT",
+  "ECONNREFUSED",
+  "ECONNRESET",
+  "EEXIST",
+  "EINVAL",
+  "EBUSY",
+  "EPIPE",
+  "ERR_CHILD_PROCESS_STDIO_MAXBUFFER",
+];
+
+export const WHITELISTED_SIGNALS = [
+  "SIGTERM",
+  "SIGKILL",
+  "SIGINT",
+  "SIGHUP",
+  "SIGABRT",
+  "SIGQUIT",
+  "SIGALRM",
+  "SIGSEGV",
+];
+
+export const STATIC_OPERATION_NAMES = [
+  "init",
+  "staging_directories",
+  "staging_services",
+  "secrets_setup",
+  "openssl_generate_certificates",
+  "update_ca_certificates",
+  "spawn_issuer",
+  "docker_run_origin",
+  "poll_dependencies_ready",
+  "cookie_format_check",
+  "bundle_preparation",
+  "run_gateway_startup",
+  "docker_create_client_network",
+  "docker_run_client_a",
+  "docker_run_client_b",
+  "execute_gateway_cases",
+  "docker_command",
+  "unknown_operation",
+];
+
 // Origin container stdout and stderr are captured in memory via piped spawnSync
 // for safe static classification without inheriting raw stderr onto process.stderr.
 export function captureDockerLogs(name, options = {}) {
@@ -198,7 +246,31 @@ export function classifyBootstrapFailure(stage, error, context = {}) {
     detail = "Fixture construction failed without a recognized safe diagnostic";
   }
 
-  return {
+  const rawCode = typeof error?.code === "string" ? error.code : null;
+  const errorCode =
+    rawCode && WHITELISTED_ERROR_CODES.includes(rawCode) ? rawCode : null;
+
+  const rawSignal = typeof error?.signal === "string" ? error.signal : null;
+  const errorSignal =
+    rawSignal && WHITELISTED_SIGNALS.includes(rawSignal) ? rawSignal : null;
+
+  const exitStatus = Number.isInteger(error?.status) ? error.status : null;
+
+  const rawOperation =
+    typeof context.operation === "string" ? context.operation : null;
+  const operation =
+    rawOperation && STATIC_OPERATION_NAMES.includes(rawOperation)
+      ? rawOperation
+      : rawOperation
+        ? "unknown_operation"
+        : undefined;
+
+  const elapsedMs =
+    Number.isFinite(context.elapsedMs) && context.elapsedMs >= 0
+      ? Math.round(context.elapsedMs)
+      : undefined;
+
+  const result = {
     stage,
     failureClassification,
     category,
@@ -210,5 +282,15 @@ export function classifyBootstrapFailure(stage, error, context = {}) {
       : Number.isInteger(error?.code)
         ? error.code
         : 1,
+    exitStatus,
+    errorCode,
+    errorSignal,
   };
+  if (operation !== undefined) {
+    result.operation = operation;
+  }
+  if (elapsedMs !== undefined) {
+    result.elapsedMs = elapsedMs;
+  }
+  return result;
 }

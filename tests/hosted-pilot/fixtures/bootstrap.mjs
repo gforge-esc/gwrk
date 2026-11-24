@@ -115,12 +115,19 @@ let issuerReady = false;
 let originReady = false;
 let networkCreated = false;
 let stage = "init";
+let currentOperation = "init";
+let operationStartedAt = Date.now();
+const beginOperation = (name) => {
+  currentOperation = name;
+  operationStartedAt = Date.now();
+};
 const issuerStderrChunks = [];
 let originName = null;
 const recordStage = () =>
   file("/fixture/bootstrap-stage.json", JSON.stringify({ stage }));
 try {
   stage = "staging_directories";
+  beginOperation("staging_directories");
   directory("/fixture", 0o755);
   recordStage();
   directory("/fixture/secrets");
@@ -134,6 +141,7 @@ try {
   directory("/etc/gwrk/gateway-secrets/tls");
   directory("/etc/gwrk/secrets", 0o750, 0, 10001);
   stage = "secrets_setup";
+  beginOperation("secrets_setup");
   recordStage();
   file(
     "/etc/gwrk/secrets/google-account-allowlist",
@@ -165,6 +173,7 @@ try {
     `${Buffer.alloc(32, 0xfb).toString("base64")}\n`,
   );
   stage = "certificate_generation";
+  beginOperation("openssl_generate_certificates");
   recordStage();
   openssl([
     "req",
@@ -213,6 +222,7 @@ try {
     readFileSync("/fixture/secrets/gateway-key.pem"),
   );
   stage = "trust_store_update";
+  beginOperation("update_ca_certificates");
   recordStage();
   file(
     "/usr/local/share/ca-certificates/gwrk-051-fixture.crt",
@@ -224,6 +234,7 @@ try {
     timeout: 20_000,
   });
   stage = "issuer_start";
+  beginOperation("spawn_issuer");
   recordStage();
   issuer = spawn(process.execPath, ["/fixture/fixtures/issuer.mjs"], {
     stdio: ["ignore", "pipe", "pipe"],
@@ -236,6 +247,7 @@ try {
     issuerStderrChunks.push(chunk);
   });
   stage = "origin_start";
+  beginOperation("docker_run_origin");
   recordStage();
   originName = `gwrk-051-origin-${run}`;
   runContainer(originName, [
@@ -264,6 +276,7 @@ try {
     "/fixture/fixtures/origin.mjs",
   ]);
   stage = "dependencies_wait";
+  beginOperation("poll_dependencies_ready");
   recordStage();
   originReady = false;
   const readyDeadline = Date.now() + 20_000;
@@ -281,6 +294,7 @@ try {
   stage = "dependencies_ready";
   recordStage();
   stage = "cookie_format";
+  beginOperation("cookie_format_check");
   recordStage();
   directory(`/fixture/cookie-format-${run}`);
   const cookieFormat = await checkStandardCookieSecret({
@@ -293,6 +307,7 @@ try {
   });
   file("/fixture/cookie-format-result.json", JSON.stringify(cookieFormat));
   stage = "bundle_preparation";
+  beginOperation("bundle_preparation");
   recordStage();
   directory("/fixture/bundle");
   cpSync("/input/bundle", "/fixture/bundle", { recursive: true });
@@ -327,12 +342,14 @@ try {
   // This real startup invocation must fail the test while the production bundle is absent.
   // No file-existence assertion substitutes for the native launch and readiness behavior.
   stage = "gateway_startup";
+  beginOperation("run_gateway_startup");
   recordStage();
   execFileSync("bash", ["/fixture/bundle/run.sh"], {
     stdio: "pipe",
     timeout: 30_000,
   });
   stage = "client_network";
+  beginOperation("docker_create_client_network");
   recordStage();
   const network = "gwrk-051-clients";
   docker([
@@ -351,7 +368,8 @@ try {
   for (const [letter, address] of [
     ["a", "172.31.51.11"],
     ["b", "172.31.51.12"],
-  ])
+  ]) {
+    beginOperation(`docker_run_client_${letter}`);
     runContainer(`gwrk-051-client-${letter}-${run}`, [
       "--network",
       network,
@@ -375,7 +393,9 @@ try {
       "-e",
       "setInterval(()=>{},1000)",
     ]);
+  }
   stage = "gateway_cases";
+  beginOperation("execute_gateway_cases");
   recordStage();
   execFileSync(process.execPath, ["/fixture/fixtures/gateway-cases.mjs"], {
     stdio: "pipe",
@@ -395,6 +415,7 @@ try {
     "Native gateway initial cases passed. Full acceptance remains pending.\n",
   );
 } catch (error) {
+  const elapsedMs = operationStartedAt ? Date.now() - operationStartedAt : 0;
   let originLogs = "";
   if (originName) {
     try {
@@ -406,6 +427,8 @@ try {
     originLogs,
     originReady,
     issuerReady,
+    operation: currentOperation,
+    elapsedMs,
   });
   file(
     "/fixture/bootstrap-stage.json",
@@ -417,6 +440,11 @@ try {
       stderrSha256: diagnostic.stderrSha256,
       stderrBytes: diagnostic.stderrBytes,
       exitCode: diagnostic.exitCode,
+      exitStatus: diagnostic.exitStatus,
+      errorCode: diagnostic.errorCode,
+      errorSignal: diagnostic.errorSignal,
+      operation: diagnostic.operation,
+      elapsedMs: diagnostic.elapsedMs,
     }),
   );
   process.stderr.write(

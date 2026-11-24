@@ -1,9 +1,12 @@
 import assert from "node:assert/strict";
-import { spawnSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import { test } from "vitest";
 import {
   BOOTSTRAP_STAGES,
   STATIC_CONSTRUCTION_CATEGORIES,
+  STATIC_OPERATION_NAMES,
+  WHITELISTED_ERROR_CODES,
+  WHITELISTED_SIGNALS,
   captureDockerLogs,
   classifyBootstrapFailure,
 } from "./bootstrap-diagnostics.mjs";
@@ -21,6 +24,15 @@ test("declares ordered granular bootstrap stages", () => {
   assert.ok(BOOTSTRAP_STAGES.includes("bundle_preparation"));
   assert.ok(BOOTSTRAP_STAGES.includes("gateway_startup"));
   assert.ok(BOOTSTRAP_STAGES.includes("gateway_cases"));
+});
+
+test("declares whitelisted error codes, signals, and static operation names", () => {
+  assert.ok(WHITELISTED_ERROR_CODES.includes("ETIMEDOUT"));
+  assert.ok(WHITELISTED_ERROR_CODES.includes("ENOENT"));
+  assert.ok(WHITELISTED_SIGNALS.includes("SIGTERM"));
+  assert.ok(WHITELISTED_SIGNALS.includes("SIGKILL"));
+  assert.ok(STATIC_OPERATION_NAMES.includes("docker_run_origin"));
+  assert.ok(STATIC_OPERATION_NAMES.includes("poll_dependencies_ready"));
 });
 
 test("classifies certificate generation failure as fixture_construction", () => {
@@ -258,4 +270,52 @@ test("captures container logs in memory via bounded piped spawnSync without inhe
     "raw container stderr must not be inherited to process.stderr",
   );
   assert.equal(probeResult.stderr, "");
+});
+
+test("captures whitelisted error code, signal, exit status, operation, and elapsedMs for child process timeout", () => {
+  let timeoutError;
+  try {
+    execFileSync(process.execPath, ["-e", "setTimeout(() => {}, 5000)"], {
+      timeout: 50,
+      stdio: "pipe",
+    });
+  } catch (err) {
+    timeoutError = err;
+  }
+  assert.ok(timeoutError, "must produce actual timeout error");
+  assert.equal(timeoutError.code, "ETIMEDOUT");
+
+  const result = classifyBootstrapFailure("origin_start", timeoutError, {
+    operation: "docker_run_origin",
+    elapsedMs: 52,
+  });
+
+  assert.equal(result.operation, "docker_run_origin");
+  assert.equal(result.elapsedMs, 52);
+  assert.equal(result.errorCode, "ETIMEDOUT");
+  assert.equal(result.errorSignal, "SIGTERM");
+  assert.equal(result.exitStatus, null);
+  assert.equal(result.exitCode, 1);
+});
+
+test("sanitizes non-whitelisted error codes, signals, and operations to safe defaults", () => {
+  const result = classifyBootstrapFailure(
+    "origin_start",
+    {
+      code: "SENSITIVE_SECRET_ERR_XYZ",
+      signal: "SIGUNEXPECTED_CUSTOM",
+      status: 125,
+      message: "docker failed with secret token",
+    },
+    {
+      operation: "UNREGISTERED_ARBITRARY_CMD",
+      elapsedMs: 12.8,
+    },
+  );
+  assert.equal(result.operation, "unknown_operation");
+  assert.equal(result.elapsedMs, 13);
+  assert.equal(result.errorCode, null);
+  assert.equal(result.errorSignal, null);
+  assert.equal(result.exitStatus, 125);
+  assert.equal(result.exitCode, 125);
 });

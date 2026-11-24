@@ -196,6 +196,21 @@ await withOwnedNestedDaemon({
     if (stage?.detail) {
       safe.detail = stage.detail;
     }
+    if (stage?.operation) {
+      safe.operation = stage.operation;
+    }
+    if (Number.isFinite(stage?.elapsedMs)) {
+      safe.elapsedMs = stage.elapsedMs;
+    }
+    if (stage?.errorCode !== undefined) {
+      safe.errorCode = stage.errorCode;
+    }
+    if (stage?.errorSignal !== undefined) {
+      safe.errorSignal = stage.errorSignal;
+    }
+    if (stage?.exitStatus !== undefined) {
+      safe.exitStatus = stage.exitStatus;
+    }
     writeFileSync(`${root}/native-result.json`, JSON.stringify(safe, null, 2), {
       mode: 0o600,
     });
