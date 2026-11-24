@@ -1,0 +1,11 @@
+{
+  "passed": true,
+  "exitCode": 0,
+  "strategy": "convention",
+  "outputBytes": 1433809,
+  "outputSha256": "aa72fbbc6ade8282c6e6facb76744e8afd2a49b84efcfe663045787c8a3ae0bd",
+  "sourceHead": "8e7b14864c6a6fd07178498f569c4cdef8925f9b",
+  "operatorSource": "4f62d403b21992e3923220f4315a5d74e3165c23",
+  "originalFailure": "ERR_CHILD_PROCESS_STDIO_MAXBUFFER at1048576stdoutbytes",
+  "phaseCleared": false
+}
