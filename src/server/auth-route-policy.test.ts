@@ -326,8 +326,8 @@ describe("FR-010 US-006 TR-012: hosted default-deny route policy, HEAD parity, d
         route === "notify"
           ? {
               projectId: hidden.projectId,
-              type: "phase_completed",
-              feature: { id: "051-policy-denied", name: "Denied" },
+              type: "phase_start",
+              feature: "051-policy-denied",
             }
           : {
               projectId: hidden.projectId,
@@ -368,46 +368,59 @@ describe("FR-010 US-006 TR-012: hosted default-deny route policy, HEAD parity, d
     },
   );
 
-  it("FR-010: ambiguous project denial omits candidateSlugs and unauthorized project metadata", async () => {
-    const f = await createRoutePolicyFixture();
-    const hiddenRoot = `${f.project.localRoot}-hidden`;
-    const hiddenId = initFixtureRepo(
-      hiddenRoot,
-      "git@github.com:private/hidden-policy.git",
-    );
-    const hidden = f.registry.enrollProject({
-      ...f.project,
-      projectId: hiddenId,
-      slug: "hidden-policy-slug",
-      name: "Hidden Policy Project",
-      repoSlug: "private/hidden-policy",
-      localRoot: hiddenRoot,
-      legacyProjectIds: [],
-    });
-    const response = await f.server.inject({
-      method: "GET",
-      url: "/api/status",
-      headers: { authorization: `Bearer ${f.operatorKey}` },
-    });
-    expect(f.dispatchCount()).toBe(0);
-    expect(f.notifier.notify).not.toHaveBeenCalled();
-    expect(slackNotify.notifySlack).not.toHaveBeenCalled();
-    expect(response.statusCode).toBe(400);
-    expect(response.json()).toMatchObject({
-      ok: false,
-      code: "AMBIGUOUS_PROJECT_SELECTION",
-    });
-    expect(response.json()).not.toHaveProperty("candidateSlugs");
-    for (const metadata of [
-      hidden.projectId,
-      hidden.slug,
-      hidden.name,
-      hidden.repoSlug,
-      hidden.localRoot,
-    ]) {
-      expect(response.body).not.toContain(metadata);
-    }
-  });
+  it.each(["status", "dispatch", "notify"] as const)(
+    "FR-010: ambiguous %s denial omits candidateSlugs and unauthorized project metadata",
+    async (route) => {
+      const f = await createRoutePolicyFixture();
+      const hiddenRoot = `${f.project.localRoot}-hidden`;
+      const hiddenId = initFixtureRepo(
+        hiddenRoot,
+        "git@github.com:private/hidden-policy.git",
+      );
+      const hidden = f.registry.enrollProject({
+        ...f.project,
+        projectId: hiddenId,
+        slug: "hidden-policy-slug",
+        name: "Hidden Policy Project",
+        repoSlug: "private/hidden-policy",
+        localRoot: hiddenRoot,
+        legacyProjectIds: [],
+      });
+      const response = await f.server.inject({
+        method: route === "status" ? "GET" : "POST",
+        url: `/api/${route}`,
+        ...(route === "status"
+          ? {}
+          : {
+              payload:
+                route === "notify"
+                  ? { type: "phase_start", feature: "051-policy-ambiguous" }
+                  : { featureId: "051-policy-ambiguous", phaseId: "phase-05" },
+            }),
+        headers: { authorization: `Bearer ${f.operatorKey}` },
+      });
+      expect(f.dispatchCount()).toBe(0);
+      expect(f.notifier.notify).not.toHaveBeenCalled();
+      expect(slackNotify.notifySlack).not.toHaveBeenCalled();
+      expect(response.statusCode).toBe(400);
+      expect(response.json()).toMatchObject({
+        ok: false,
+        code: "AMBIGUOUS_PROJECT_SELECTION",
+      });
+      expect(response.json()).not.toHaveProperty("candidateSlugs");
+      expect(response.json()).toHaveProperty("requestId", expect.any(String));
+      expect(response.json().requestId.trim().length).toBeGreaterThan(0);
+      for (const metadata of [
+        hidden.projectId,
+        hidden.slug,
+        hidden.name,
+        hidden.repoSlug,
+        hidden.localRoot,
+      ]) {
+        expect(response.body).not.toContain(metadata);
+      }
+    },
+  );
 
   it.each([undefined, `sha256=${"0".repeat(64)}`])(
     "AUTH-13: valid enrolled API key cannot replace missing or invalid webhook HMAC %s",
@@ -436,8 +449,16 @@ describe("FR-010 US-006 TR-012: hosted default-deny route policy, HEAD parity, d
           pull_request: {
             merged: true,
             number: 1,
-            head: { ref: "feature/051-policy" },
-            base: { ref: "main" },
+            html_url: `https://github.com/${f.project.repoSlug}/pull/1`,
+            title: "feat: Phase 5 webhook boundary",
+            state: "closed",
+            merge_commit_sha: "3".repeat(40),
+            head: {
+              ref: "feature/051-policy",
+              sha: "4".repeat(40),
+              repo: { full_name: f.project.repoSlug },
+            },
+            base: { ref: "main", repo: { full_name: f.project.repoSlug } },
           },
         },
       });
