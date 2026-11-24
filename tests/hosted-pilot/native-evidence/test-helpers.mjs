@@ -4,33 +4,17 @@
 
 import { execFileSync } from "node:child_process";
 import { createHash, generateKeyPairSync, sign } from "node:crypto";
-import {
-  chmodSync,
-  mkdirSync,
-  mkdtempSync,
-  rmSync,
-  writeFileSync,
-} from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { canonicalJsonSha256, toCanonicalJson } from "./canonical-json.ts";
+import { canonicalJsonSha256, toCanonicalJson } from "./canonical-json.mjs";
 import {
-  type DetachedSignature,
-  type ImagePayloadEntry,
-  type NativeEvidenceEnvelope,
   REQUIRED_IMAGE_ROLES,
   REQUIRED_PILOT_CASES,
-} from "./evidence-schema.ts";
-import { CLOSED_RUNTIME_ROOTS } from "./runtime-manifest.ts";
-import type { NativeEvidenceTrustAnchor } from "./trust-anchor.ts";
+} from "./evidence-schema.mjs";
+import { CLOSED_RUNTIME_ROOTS } from "./runtime-manifest.mjs";
 
-export interface TestKeyPair {
-  publicKeyPem: string;
-  privateKeyPem: string;
-  keyId: string;
-}
-
-export function createTestKeyPair(): TestKeyPair {
+export function createTestKeyPair() {
   const { publicKey, privateKey } = generateKeyPairSync("ed25519", {
     publicKeyEncoding: { type: "spki", format: "pem" },
     privateKeyEncoding: { type: "pkcs8", format: "pem" },
@@ -43,9 +27,7 @@ export function createTestKeyPair(): TestKeyPair {
   };
 }
 
-export function createTestAnchor(
-  keyPair: TestKeyPair,
-): NativeEvidenceTrustAnchor {
+export function createTestAnchor(keyPair) {
   return {
     schemaVersion: "1.0.0",
     algorithm: "ed25519",
@@ -55,11 +37,7 @@ export function createTestAnchor(
   };
 }
 
-export function signEnvelope(
-  envelope: NativeEvidenceEnvelope,
-  privateKeyPem: string,
-  keyId: string,
-): DetachedSignature {
+export function signEnvelope(envelope, privateKeyPem, keyId) {
   const canonicalBytes = Buffer.from(toCanonicalJson(envelope), "utf8");
   const signatureBytes = sign(undefined, canonicalBytes, privateKeyPem);
   return {
@@ -69,14 +47,8 @@ export function signEnvelope(
   };
 }
 
-export function createValidImagePayloadMap(): Record<
-  (typeof REQUIRED_IMAGE_ROLES)[number],
-  ImagePayloadEntry
-> {
-  const result = {} as Record<
-    (typeof REQUIRED_IMAGE_ROLES)[number],
-    ImagePayloadEntry
-  >;
+export function createValidImagePayloadMap() {
+  const result = {};
   for (const role of REQUIRED_IMAGE_ROLES) {
     result[role] = {
       role,
@@ -87,12 +59,7 @@ export function createValidImagePayloadMap(): Record<
   return result;
 }
 
-export function createValidEnvelope(params: {
-  reviewedCommitSha: string;
-  runtimeManifestSha256: string;
-  legacy041ScriptSha256: string;
-  trustAnchorSha256: string;
-}): NativeEvidenceEnvelope {
+export function createValidEnvelope(params) {
   const pilotReceipt = JSON.stringify({
     event: "gateway_acceptance_passed",
     cases: [...REQUIRED_PILOT_CASES],
@@ -154,20 +121,12 @@ export function createValidEnvelope(params: {
   };
 }
 
-export interface TestRepoContext {
-  repoDir: string;
-  commitSha: string;
-  legacyScriptPath: string;
-  legacyScriptSha256: string;
-  cleanup: () => void;
-}
-
-export function setupHermeticTestRepo(): TestRepoContext {
+export function setupHermeticTestRepo() {
   const repoDir = mkdtempSync(
     path.join(os.tmpdir(), "gwrk-native-evidence-test-"),
   );
 
-  const git = (...args: string[]) => {
+  const git = (...args) => {
     return execFileSync("git", args, {
       cwd: repoDir,
       encoding: "utf8",

@@ -4,33 +4,55 @@
 
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { mkdirSync, symlinkSync, unlinkSync, writeFileSync } from "node:fs";
+import {
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  symlinkSync,
+  unlinkSync,
+  writeFileSync,
+} from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   parseAndVerifyCanonicalJson,
   toCanonicalJson,
-} from "./native-evidence/canonical-json.ts";
+} from "./native-evidence/canonical-json.mjs";
 import {
   REQUIRED_IMAGE_ROLES,
   REQUIRED_PILOT_CASES,
-} from "./native-evidence/evidence-schema.ts";
+} from "./native-evidence/evidence-schema.mjs";
 import {
   CLOSED_RUNTIME_ROOTS,
   computeRuntimeManifest,
-} from "./native-evidence/runtime-manifest.ts";
+  isUnderClosedRoot,
+} from "./native-evidence/runtime-manifest.mjs";
 import {
-  type TestKeyPair,
-  type TestRepoContext,
   createTestAnchor,
   createTestKeyPair,
   createValidEnvelope,
   setupHermeticTestRepo,
   signEnvelope,
-} from "./native-evidence/test-helpers.ts";
-import { loadTrustAnchor } from "./native-evidence/trust-anchor.ts";
-import { verifyNativeEvidence } from "./native-evidence/verifier.ts";
+} from "./native-evidence/test-helpers.mjs";
+import { loadTrustAnchor } from "./native-evidence/trust-anchor.mjs";
+import { verifyNativeEvidence } from "./native-evidence/verifier.mjs";
+
+interface TestKeyPair {
+  publicKeyPem: string;
+  privateKeyPem: string;
+  keyId: string;
+}
+
+interface TestRepoContext {
+  repoDir: string;
+  commitSha: string;
+  legacyScriptPath: string;
+  legacyScriptSha256: string;
+  cleanup: () => void;
+}
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const gatewayProductionEntrypoint = path.join(
@@ -554,6 +576,258 @@ describe("native-evidence adapter regression controls", () => {
         },
       );
       expect(output).toMatch(/verified.*direct_root/i);
+    });
+
+    it("fails closed when unknown flags are passed (O-01)", () => {
+      let failed = false;
+      try {
+        execFileSync(
+          "node",
+          [gatewayProductionEntrypoint, "--execute-native=true"],
+          {
+            cwd: repo.repoDir,
+            encoding: "utf8",
+            stdio: ["ignore", "pipe", "pipe"],
+          },
+        );
+      } catch (error: unknown) {
+        failed = true;
+        const procError = error as { status?: number; stderr?: string };
+        expect(procError.status).not.toBe(0);
+        expect(String(procError.stderr)).toMatch(/unknown or malformed flag/i);
+      }
+      expect(failed).toBe(true);
+    });
+
+    it("fails closed when --grep matches zero cases (O-01)", async () => {
+      await prepareValidFixtures();
+      let failed = false;
+      try {
+        execFileSync(
+          "node",
+          [
+            gatewayProductionEntrypoint,
+            "--grep",
+            "AUTH-05",
+            "--repo-root",
+            repo.repoDir,
+            "--anchor",
+            trustAnchorPath,
+            "--envelope",
+            envelopePath,
+            "--signature",
+            signaturePath,
+          ],
+          {
+            cwd: repo.repoDir,
+            encoding: "utf8",
+            stdio: ["ignore", "pipe", "pipe"],
+          },
+        );
+      } catch (error: unknown) {
+        failed = true;
+        const procError = error as { status?: number; stderr?: string };
+        expect(procError.status).not.toBe(0);
+        expect(String(procError.stderr)).toMatch(/no pilot cases matched/i);
+      }
+      expect(failed).toBe(true);
+    });
+
+    it("regression (B-02): rejects omitted or false ownedNamespaceProof", async () => {
+      const { envelope } = await prepareValidFixtures();
+      const missingNs = structuredClone(envelope) as Record<string, unknown>;
+      const execObj = missingNs.executionProof as Record<string, unknown>;
+      const { ownedNamespaceProof: _, ...execWithoutNs } = execObj;
+      missingNs.executionProof = execWithoutNs;
+      writeFileSync(envelopePath, `${toCanonicalJson(missingNs)}\n`, "utf8");
+      writeFileSync(
+        signaturePath,
+        `${toCanonicalJson(signEnvelope(missingNs as typeof envelope, keyPair.privateKeyPem, keyPair.keyId))}\n`,
+        "utf8",
+      );
+      await expect(
+        verifyNativeEvidence({
+          repoRoot: repo.repoDir,
+          trustAnchorPath,
+          envelopePath,
+          signaturePath,
+        }),
+      ).rejects.toThrow(/ownedNamespaceProof/i);
+
+      const falseNs = structuredClone(envelope);
+      falseNs.executionProof.ownedNamespaceProof = {
+        controllerContainer: "",
+        nestedDaemonOnly: false,
+      };
+      writeFileSync(envelopePath, `${toCanonicalJson(falseNs)}\n`, "utf8");
+      writeFileSync(
+        signaturePath,
+        `${toCanonicalJson(signEnvelope(falseNs, keyPair.privateKeyPem, keyPair.keyId))}\n`,
+        "utf8",
+      );
+      await expect(
+        verifyNativeEvidence({
+          repoRoot: repo.repoDir,
+          trustAnchorPath,
+          envelopePath,
+          signaturePath,
+        }),
+      ).rejects.toThrow(
+        /ownedNamespaceProof|nestedDaemonOnly|controllerContainer/i,
+      );
+    });
+
+    it("regression (B-03): rejects symlinked closed directory root", async () => {
+      const extDir = mkdtempSync(path.join(os.tmpdir(), "gwrk-ext-root-"));
+      try {
+        writeFileSync(path.join(extDir, "placeholder.txt"), "external\n");
+        rmSync(path.join(repo.repoDir, "src"), {
+          recursive: true,
+          force: true,
+        });
+        symlinkSync(extDir, path.join(repo.repoDir, "src"));
+        await expect(computeRuntimeManifest(repo.repoDir)).rejects.toThrow(
+          /symlink/i,
+        );
+      } finally {
+        rmSync(extDir, { recursive: true, force: true });
+      }
+    });
+
+    it("regression (B-04): rejects non-ASCII untracked and staged rename-out files", async () => {
+      writeFileSync(path.join(repo.repoDir, "src/café.ts"), "// untracked\n");
+      await expect(computeRuntimeManifest(repo.repoDir)).rejects.toThrow(
+        /untracked|dirty/i,
+      );
+      rmSync(path.join(repo.repoDir, "src/café.ts"));
+
+      execFileSync("git", ["mv", "src/placeholder.txt", "specs/moved.txt"], {
+        cwd: repo.repoDir,
+      });
+      await expect(computeRuntimeManifest(repo.repoDir)).rejects.toThrow(
+        /dirty/i,
+      );
+    });
+
+    it("regression (B-05): rejects extra schema fields and malleable base64 signatures", async () => {
+      const { sig } = await prepareValidFixtures();
+      writeFileSync(
+        signaturePath,
+        `${toCanonicalJson({ ...sig, extra: "injected" })}\n`,
+        "utf8",
+      );
+      await expect(
+        verifyNativeEvidence({
+          repoRoot: repo.repoDir,
+          trustAnchorPath,
+          envelopePath,
+          signaturePath,
+        }),
+      ).rejects.toThrow(/unknown|extra|field|schema/i);
+
+      writeFileSync(
+        signaturePath,
+        `${toCanonicalJson({ ...sig, signature: `${sig.signature}!!!` })}\n`,
+        "utf8",
+      );
+      await expect(
+        verifyNativeEvidence({
+          repoRoot: repo.repoDir,
+          trustAnchorPath,
+          envelopePath,
+          signaturePath,
+        }),
+      ).rejects.toThrow(/base64|signature/i);
+    });
+
+    it("regression (B-06): rejects prototype keys, non-finite numbers, and invalid UTF-8", () => {
+      expect(() =>
+        parseAndVerifyCanonicalJson('{"__proto__":{"polluted":true}}'),
+      ).toThrow(/forbidden|proto/i);
+      expect(() => toCanonicalJson({ a: Number.NaN })).toThrow(
+        /finite|nan|number/i,
+      );
+      expect(() => toCanonicalJson([1, undefined, 2])).toThrow(/undefined/i);
+      expect(() =>
+        parseAndVerifyCanonicalJson(
+          Buffer.from([0x7b, 0x22, 0x61, 0x22, 0x3a, 0x22, 0xff, 0x22, 0x7d]),
+        ),
+      ).toThrow(/utf-?8/i);
+    });
+
+    it("regression (B-07): rejects invented cases, malformed image digests, and empty receipts", async () => {
+      const { envelope } = await prepareValidFixtures();
+      const badCases = structuredClone(envelope);
+      badCases.executionProof.pilotProof.cases = [
+        ...REQUIRED_PILOT_CASES,
+        "invented_case",
+      ];
+      writeFileSync(envelopePath, `${toCanonicalJson(badCases)}\n`, "utf8");
+      writeFileSync(
+        signaturePath,
+        `${toCanonicalJson(signEnvelope(badCases, keyPair.privateKeyPem, keyPair.keyId))}\n`,
+        "utf8",
+      );
+      await expect(
+        verifyNativeEvidence({
+          repoRoot: repo.repoDir,
+          trustAnchorPath,
+          envelopePath,
+          signaturePath,
+        }),
+      ).rejects.toThrow(/case|unexpected|unknown/i);
+
+      const badImg = structuredClone(envelope);
+      badImg.buildProvenance.imagePayloadMap.dind.sourceDigest = "sha256:";
+      writeFileSync(envelopePath, `${toCanonicalJson(badImg)}\n`, "utf8");
+      writeFileSync(
+        signaturePath,
+        `${toCanonicalJson(signEnvelope(badImg, keyPair.privateKeyPem, keyPair.keyId))}\n`,
+        "utf8",
+      );
+      await expect(
+        verifyNativeEvidence({
+          repoRoot: repo.repoDir,
+          trustAnchorPath,
+          envelopePath,
+          signaturePath,
+        }),
+      ).rejects.toThrow(/sourceDigest|sha256/i);
+    });
+
+    it("coverage (O-03): CLOSED_RUNTIME_ROOTS covers all build inputs in package.json, tsconfig.json, and NodeArtifact.Dockerfile", () => {
+      const rootDir = path.resolve(__dirname, "../..");
+
+      expect(isUnderClosedRoot("package.json")).toBe(true);
+      expect(isUnderClosedRoot("pnpm-lock.yaml")).toBe(true);
+      expect(isUnderClosedRoot("pnpm-workspace.yaml")).toBe(true);
+      expect(isUnderClosedRoot("tsconfig.json")).toBe(true);
+
+      const tsconfig = JSON.parse(
+        readFileSync(path.join(rootDir, "tsconfig.json"), "utf8"),
+      );
+      for (const inc of tsconfig.include) {
+        const baseDir = inc.replace(/\/\*\*.*$/, "").replace(/\/\*.*$/, "");
+        expect(isUnderClosedRoot(baseDir)).toBe(true);
+      }
+
+      const dockerfilePath = path.join(
+        rootDir,
+        "tests/hosted-pilot/fixtures/NodeArtifact.Dockerfile",
+      );
+      const dockerfileContent = readFileSync(dockerfilePath, "utf8");
+      const copyLines = dockerfileContent
+        .split("\n")
+        .filter(
+          (line) => line.startsWith("COPY ") && !line.includes("--from="),
+        );
+
+      for (const line of copyLines) {
+        const parts = line.trim().split(/\s+/).slice(1, -1);
+        for (const part of parts) {
+          expect(isUnderClosedRoot(part)).toBe(true);
+        }
+      }
     });
   });
 });

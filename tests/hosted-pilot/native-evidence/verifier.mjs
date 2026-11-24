@@ -9,35 +9,23 @@ import path from "node:path";
 import {
   parseAndVerifyCanonicalJson,
   toCanonicalJson,
-} from "./canonical-json.ts";
+} from "./canonical-json.mjs";
 import {
-  type DetachedSignature,
-  type NativeEvidenceEnvelope,
+  validateDetachedSignature,
   validateEvidenceEnvelope,
-} from "./evidence-schema.ts";
-import { computeRuntimeManifest } from "./runtime-manifest.ts";
-import {
-  type NativeEvidenceTrustAnchor,
-  loadTrustAnchor,
-} from "./trust-anchor.ts";
+} from "./evidence-schema.mjs";
+import { computeRuntimeManifest } from "./runtime-manifest.mjs";
+import { loadTrustAnchor } from "./trust-anchor.mjs";
 
-export interface VerifyNativeEvidenceOptions {
-  repoRoot?: string;
-  trustAnchorPath?: string;
-  envelopePath?: string;
-  signaturePath?: string;
+function getSanitizedGitEnv() {
+  const gitEnv = Object.fromEntries(
+    Object.entries(process.env).filter(([key]) => !key.startsWith("GIT_")),
+  );
+  gitEnv.GIT_TERMINAL_PROMPT = "0";
+  return gitEnv;
 }
 
-export interface VerificationResult {
-  ok: boolean;
-  envelope: NativeEvidenceEnvelope;
-  trustAnchor: NativeEvidenceTrustAnchor;
-  runtimeManifestSha256: string;
-}
-
-export async function verifyNativeEvidence(
-  options: VerifyNativeEvidenceOptions = {},
-): Promise<VerificationResult> {
+export async function verifyNativeEvidence(options = {}) {
   const repoRoot = options.repoRoot ?? process.cwd();
   const trustAnchorPath =
     options.trustAnchorPath ??
@@ -76,8 +64,7 @@ export async function verifyNativeEvidence(
 
   // 3. Parse and verify canonical JSON encoding of envelope
   const envelopeRaw = readFileSync(envelopePath, "utf8");
-  const parsedEnvelope =
-    parseAndVerifyCanonicalJson<NativeEvidenceEnvelope>(envelopeRaw);
+  const parsedEnvelope = parseAndVerifyCanonicalJson(envelopeRaw);
   const envelope = validateEvidenceEnvelope(parsedEnvelope);
 
   // 4. Verify trust anchor hash binding
@@ -93,31 +80,11 @@ export async function verifyNativeEvidence(
 
   // 5. Parse and verify canonical JSON encoding of detached signature
   const signatureRaw = readFileSync(signaturePath, "utf8");
-  const signature =
-    parseAndVerifyCanonicalJson<DetachedSignature>(signatureRaw);
-
-  if (signature.schemaVersion !== "1.0.0") {
-    throw new Error(
-      `Unsupported signature schemaVersion: ${String(signature.schemaVersion)}`,
-    );
-  }
-
-  if (signature.keyId !== trustAnchor.keyId) {
-    throw new Error(
-      `Signature keyId mismatch with trust anchor (untrusted key): expected ${trustAnchor.keyId}, got ${signature.keyId}`,
-    );
-  }
+  const signature = parseAndVerifyCanonicalJson(signatureRaw);
+  const { sigBytes } = validateDetachedSignature(signature, trustAnchor);
 
   // 6. Verify Ed25519 signature against canonical envelope bytes
   const canonicalEnvelopeBytes = Buffer.from(toCanonicalJson(envelope), "utf8");
-  let sigBytes: Buffer;
-  try {
-    sigBytes = Buffer.from(signature.signature, "base64");
-  } catch (error) {
-    throw new Error(
-      `Invalid base64 signature encoding: ${(error as Error).message}`,
-    );
-  }
 
   let signatureValid = false;
   try {
@@ -128,9 +95,7 @@ export async function verifyNativeEvidence(
       sigBytes,
     );
   } catch (error) {
-    throw new Error(
-      `Ed25519 signature verification error: ${(error as Error).message}`,
-    );
+    throw new Error(`Ed25519 signature verification error: ${error.message}`);
   }
 
   if (!signatureValid) {
@@ -161,7 +126,8 @@ export async function verifyNativeEvidence(
     );
   }
 
-  // 9. Verify Git commit ancestry
+  // 9. Verify Git commit ancestry using sanitized gitEnv
+  const gitEnv = getSanitizedGitEnv();
   try {
     execFileSync(
       "git",
@@ -169,10 +135,7 @@ export async function verifyNativeEvidence(
       {
         cwd: repoRoot,
         stdio: "ignore",
-        env: {
-          ...process.env,
-          GIT_TERMINAL_PROMPT: "0",
-        },
+        env: gitEnv,
       },
     );
   } catch {
