@@ -2,15 +2,20 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { spawn } from "node:child_process";
+import { execFileSync, spawn } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { repositoryGitEnv } from "../adapters/git/process-env.js";
+import { createSqliteProjectRegistryAdapter } from "../adapters/sqlite/index.js";
+import { runCli } from "../cli.js";
+import { computeProjectId } from "../domain/project-id.js";
 import * as server from "../server/index.js";
 import * as pidUtils from "../server/pid.js";
 import * as configUtils from "../utils/config.js";
 import * as deviceUtils from "../utils/device.js";
+import * as serverInstall from "./server-install.js";
 import { serverCommand } from "./server.js";
 
 vi.mock("../server/index.js", async (importOriginal) => {
@@ -18,6 +23,14 @@ vi.mock("../server/index.js", async (importOriginal) => {
   return {
     ...actual,
     startServer: vi.fn(),
+  };
+});
+
+vi.mock("./server-install.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("./server-install.js")>();
+  return {
+    ...actual,
+    getLogs: vi.fn().mockResolvedValue(undefined),
   };
 });
 
@@ -154,6 +167,204 @@ describe("serverCommand", () => {
       expect(process.exitCode).toBe(1);
       const stderr = stderrSpy.mock.calls.map(c => String(c[0])).join("");
       expect(stderr).toContain("No server running");
+    });
+  });
+
+  describe("UAT regression (T045): root CLI registry-backed server commands without .gwrkrc.json", () => {
+    afterEach(() => {
+      vi.unstubAllEnvs();
+    });
+
+    it.each([
+      { command: ["start", "-f"] },
+      { command: ["_run"] },
+    ])("allows gwrk server $command and status via root CLI when projects are enrolled and .gwrkrc.json is absent", async ({ command }) => {
+      const gwrkHome = fs.mkdtempSync(path.join(os.tmpdir(), "gwrk-srv-home-"));
+      try {
+        vi.stubEnv("GWRK_HOME", gwrkHome);
+        vi.stubEnv("GWRK_DIR", "");
+        vi.stubEnv("GWRK_DB_PATH", "");
+        vi.stubEnv("GWRK_RUNTIME_DIR", "");
+        vi.mocked(configUtils.loadConfig).mockRestore();
+        vi.mocked(server.startServer).mockClear();
+
+        const alphaCheckout = fs.realpathSync(
+          fs.mkdtempSync(path.join(gwrkHome, "alpha-checkout-")),
+        );
+        const gitEnv = {
+          ...repositoryGitEnv(alphaCheckout),
+          GIT_CONFIG_GLOBAL: os.devNull,
+          GIT_CONFIG_NOSYSTEM: "1",
+          GIT_TERMINAL_PROMPT: "0",
+        };
+        execFileSync(
+          "git",
+          ["init", "--template=", "--initial-branch=main"],
+          { cwd: alphaCheckout, env: gitEnv, stdio: "ignore" },
+        );
+        execFileSync(
+          "git",
+          ["remote", "add", "origin", "git@github.com:org/alpha.git"],
+          { cwd: alphaCheckout, env: gitEnv, stdio: "ignore" },
+        );
+        const projectId = computeProjectId({
+          projectRoot: alphaCheckout,
+          remoteOriginUrl: "git@github.com:org/alpha.git",
+          gitCommonDir: path.join(alphaCheckout, ".git"),
+        });
+        const registry = createSqliteProjectRegistryAdapter();
+        try {
+          registry.enrollProject({
+            projectId,
+            slug: "alpha",
+            name: "Alpha Enrolled",
+            repoSlug: "org/alpha",
+            trunkBranch: "main",
+            localRoot: alphaCheckout,
+            mirrorPath: null,
+            runnerPolicy: { allowedKinds: ["local"] },
+            slack: null,
+            legacyProjectIds: [],
+            createdAt: "2026-11-23T00:00:00.000Z",
+            updatedAt: "2026-11-23T00:00:00.000Z",
+          });
+        } finally {
+          registry.close();
+        }
+
+        let startStderr = "";
+        const startExit = await runCli(["server", ...command], {
+          stderr: (chunk) => {
+            startStderr += chunk;
+          },
+        });
+        expect(startExit, startStderr).toBe(0);
+        expect(vi.mocked(server.startServer)).toHaveBeenCalledWith(
+          expect.objectContaining({
+            project: expect.objectContaining({ name: "Alpha Enrolled" }),
+          }),
+          expect.objectContaining({
+            handleSignals: true,
+            projectRoot: tempDir,
+            useProjectRegistry: true,
+          }),
+        );
+
+        let statusStdout = "";
+        let statusStderr = "";
+        const statusExit = await runCli(["server", "status"], {
+          stdout: (chunk) => {
+            statusStdout += chunk;
+          },
+          stderr: (chunk) => {
+            statusStderr += chunk;
+          },
+        });
+        expect(statusExit).toBe(1);
+        expect(statusStdout).toContain("Server: not running");
+        expect(statusStderr).toMatch(/\[exit:1 \| /);
+      } finally {
+        fs.rmSync(gwrkHome, { recursive: true, force: true });
+      }
+    });
+
+    it("routes server stop and server logs to their handlers via root CLI without .gwrkrc.json", async () => {
+      vi.mocked(configUtils.loadConfig).mockRestore();
+      vi.mocked(serverInstall.getLogs).mockClear();
+
+      let stopStderr = "";
+      const stopExit = await runCli(["server", "stop"], {
+        stderr: (chunk) => {
+          stopStderr += chunk;
+        },
+      });
+      expect(stopExit).toBe(1);
+      expect(stopStderr).toContain("No server running");
+      expect(stopStderr).toMatch(/\[exit:1 \| /);
+
+      let logsStderr = "";
+      const logsExit = await runCli(["server", "logs"], {
+        stderr: (chunk) => {
+          logsStderr += chunk;
+        },
+      });
+      expect(logsExit, logsStderr).toBe(0);
+      expect(vi.mocked(serverInstall.getLogs)).toHaveBeenCalledTimes(1);
+      expect(logsStderr).toMatch(/\[exit:0 \| /);
+    });
+
+    it("still fails fast on a malformed local .gwrkrc.json even when projects are enrolled", async () => {
+      const gwrkHome = fs.mkdtempSync(path.join(os.tmpdir(), "gwrk-srv-bad-"));
+      try {
+        vi.stubEnv("GWRK_HOME", gwrkHome);
+        vi.stubEnv("GWRK_DIR", "");
+        vi.stubEnv("GWRK_DB_PATH", "");
+        vi.stubEnv("GWRK_RUNTIME_DIR", "");
+        vi.mocked(configUtils.loadConfig).mockRestore();
+        vi.mocked(server.startServer).mockClear();
+
+        fs.writeFileSync(
+          path.join(tempDir, ".gwrkrc.json"),
+          "{ invalid json",
+          "utf-8",
+        );
+
+        const alphaCheckout = fs.realpathSync(
+          fs.mkdtempSync(path.join(gwrkHome, "alpha-checkout-")),
+        );
+        const gitEnv = {
+          ...repositoryGitEnv(alphaCheckout),
+          GIT_CONFIG_GLOBAL: os.devNull,
+          GIT_CONFIG_NOSYSTEM: "1",
+          GIT_TERMINAL_PROMPT: "0",
+        };
+        execFileSync(
+          "git",
+          ["init", "--template=", "--initial-branch=main"],
+          { cwd: alphaCheckout, env: gitEnv, stdio: "ignore" },
+        );
+        execFileSync(
+          "git",
+          ["remote", "add", "origin", "git@github.com:org/alpha.git"],
+          { cwd: alphaCheckout, env: gitEnv, stdio: "ignore" },
+        );
+        const projectId = computeProjectId({
+          projectRoot: alphaCheckout,
+          remoteOriginUrl: "git@github.com:org/alpha.git",
+          gitCommonDir: path.join(alphaCheckout, ".git"),
+        });
+        const registry = createSqliteProjectRegistryAdapter();
+        try {
+          registry.enrollProject({
+            projectId,
+            slug: "alpha",
+            name: "Alpha Enrolled",
+            repoSlug: "org/alpha",
+            trunkBranch: "main",
+            localRoot: alphaCheckout,
+            mirrorPath: null,
+            runnerPolicy: { allowedKinds: ["local"] },
+            slack: null,
+            legacyProjectIds: [],
+            createdAt: "2026-11-23T00:00:00.000Z",
+            updatedAt: "2026-11-23T00:00:00.000Z",
+          });
+        } finally {
+          registry.close();
+        }
+
+        let startStderr = "";
+        const startExit = await runCli(["server", "start", "-f"], {
+          stderr: (chunk) => {
+            startStderr += chunk;
+          },
+        });
+        expect(startExit).toBe(1);
+        expect(vi.mocked(server.startServer)).not.toHaveBeenCalled();
+        expect(startStderr).toMatch(/\[exit:1 \| /);
+      } finally {
+        fs.rmSync(gwrkHome, { recursive: true, force: true });
+      }
     });
   });
 });

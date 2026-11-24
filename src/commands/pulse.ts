@@ -5,6 +5,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import type { Command } from "commander";
+import { logCliOutput } from "../adapters/cli/output-scope.js";
 import { generatePulseReport, scanRepository } from "../engine/pulse.js";
 import type { PulseReport, PulseSnapshot } from "../engine/types.js";
 import { loadConfig } from "../utils/config.js";
@@ -66,9 +67,9 @@ Examples:
         const report = generatePulseReport(config);
 
         if (options.json) {
-          console.log(JSON.stringify(report, null, 2));
+          logCliOutput(JSON.stringify(report, null, 2));
         } else {
-          console.log(renderPulseTable(report));
+          logCliOutput(renderPulseTable(report));
         }
       });
     });
@@ -101,9 +102,9 @@ Examples:
         const snapshot = scanRepository(absolutePath, options.branch);
 
         if (options.json) {
-          console.log(JSON.stringify(snapshot, null, 2));
+          logCliOutput(JSON.stringify(snapshot, null, 2));
         } else {
-          console.log(renderSnapshotTable(snapshot));
+          logCliOutput(renderSnapshotTable(snapshot));
         }
       });
     });

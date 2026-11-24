@@ -1,0 +1,167 @@
+{
+  "featureId": "045-workflow-governance",
+  "createdAt": "2026-11-11T20:01:14.074Z",
+  "generatedFrom": {
+    "plan": {
+      "hash": "7f807fea167adccef76cbabe536a2ffe385440a94b66e1f5dcd627d5ce7a7026",
+      "modifiedAt": "2026-11-11T20:01:11.244Z"
+    }
+  },
+  "phases": [
+    {
+      "id": "phase-01",
+      "title": "Workflow guidance and decision authority",
+      "tasks": [
+        {
+          "id": "T001",
+          "title": "Modify PROMPT.md",
+          "description": "MODIFY src/plugins/builtins/workflows/gwrk-specify/PROMPT.md. Use selected architecture and the current project layout. FR-001.\nReview and diagnosis remain in .gwrk/review-history/phase-01-through-2026-11-18T2313Z.json and findings.jsonl. Three retained reviewer regressions failed before repair. Definition workflows now select define policy scope. Built-in review strategies retain required host-native type verification. The phase gate passes 200 tests and the full suite passes 2247 tests. Decision authority assertions remain green. See evidence/phase01-definition-scope-and-shipping-review.md. Independent clearance remains required.\n\nREVIEW FAIL (code): Specification project identity — FR-001.\n  WHERE: src/domain/prompt-conditioner.ts:18-24\n  EXPECTED: Render the gwrk-native specification sections only for the verified GWRK profile.\n  ACTUAL: A Python host configured as gwrk-native or gwrk-cli receives docs/grounding/architecture.md, specs/000-build-plan.md and GWRK source paths.\n  FIX: Require verified GWRK identity to render the native guard. Keep the host dependency guidance and pass the TR-012 profile regression.\n\nPOST-FLIGHT GATE FAIL (T001, gate: gates/phase-01.sh):\nexit: 1\nRUN  v3.2.4 /Users/gonzo/Code/gwrk-worktrees/workflow-governance-plan/.runs/sandboxes/045-workflow-governance-ship-6509748b\n\n ✓ src/plugins/builtins/workflows/gwrk-plan/prompt-contract.test.ts (4 tests) 3ms\n ✓ src/engine/review-prompts.test.ts (117 tests) 8ms\n ✓ src/plugins/workflow-governance.test.ts (9 tests) 3ms\n ✓ src/commands/define-plan.test.ts (12 tests) 8ms\n ✓ src/architecture.test.ts (26 tests) 188ms\n ✓ src/utils/agent.grounding-decisions.test.ts (10 tests) 295ms\nstdout | src/plugins/wo\n\nDIAGNOSIS (iteration 2):\nFIX: src/domain/prompt-conditioner.ts — In `conditionPrompt`, admit `gwrk-native` and `gwrk-cli` as guard matches only when `ProjectProfile._isGwrk === true`. Remove the `profile.type === \"gwrk-cli\"` shortcut. Keep `generic` enabled for host dependency guidance.\nFIX: src/domain/prompt-conditioner.ts — For either unverified GWRK label, match the `python` guard when `profile.stack?.language?.toLowerCase() === \"python\"`. Preserve the detected layout and the fenced `python -m pytest tests/test_phase.py` Done When example.\nFIX: src/plugins/workflow-governance.delivery.test.ts — Extend both TR-012 alias cases to assert host dependency guidance in `gwrk-specify`, host verification and the fenced pytest example in `gwrk-plan`, and `hostReviewGuidance` plus Principal Engineer attribution and project lead escalation in both reviews. Keep the native path and command exclusions and the `@gwrk/cli` positive checks.\nFIX: specs/045-workflow-governance/gates/phase-01.sh — Require exit zero from the existing gate with all decision authority assertions intact. Update the label-only positive fixtures in `src/engine/prompt-conditioner.test.ts` (TR-031.2) and `src/engine/profile-detector.test.ts` (TR-034) to use verified GWRK profiles. Record the test updates in `specs/045-workflow-governance/plan.md`.",
+          "status": "completed",
+          "gateScript": "gates/phase-01.sh",
+          "sp": 1,
+          "completedAt": "2026-11-18T23:33:51.012Z"
+        },
+        {
+          "id": "T002",
+          "title": "Modify PROMPT.md",
+          "description": "MODIFY src/plugins/builtins/workflows/gwrk-plan/PROMPT.md. Use current hexagonal boundaries and preserve the parser contract. FR-001.\nReview and diagnosis remain in .gwrk/review-history/phase-01-through-2026-11-18T2313Z.json and findings.jsonl. Three retained reviewer regressions failed before repair. Definition workflows now select define policy scope. Built-in review strategies retain required host-native type verification. The phase gate passes 200 tests and the full suite passes 2247 tests. Decision authority assertions remain green. See evidence/phase01-definition-scope-and-shipping-review.md. Independent clearance remains required.\n\nREVIEW FAIL (code): Planning project identity — FR-001.\n  WHERE: src/domain/prompt-conditioner.ts:18-24\n  EXPECTED: Use the Python host layout and verification guidance. Require verified GWRK identity for the native gate examples.\n  ACTUAL: Both configured type labels expose GWRK source paths, pnpm run build and pnpm vitest in the Python planning prompt.\n  FIX: Apply the verified identity check to planning. Preserve the fenced Done When format and pass the TR-012 profile regression.\n\nPOST-FLIGHT GATE FAIL (T002, gate: gates/phase-01.sh):\nexit: 1\nRUN  v3.2.4 /Users/gonzo/Code/gwrk-worktrees/workflow-governance-plan/.runs/sandboxes/045-workflow-governance-ship-6509748b\n\n ✓ src/plugins/builtins/workflows/gwrk-plan/prompt-contract.test.ts (4 tests) 3ms\n ✓ src/engine/review-prompts.test.ts (117 tests) 8ms\n ✓ src/plugins/workflow-governance.test.ts (9 tests) 3ms\n ✓ src/commands/define-plan.test.ts (12 tests) 8ms\n ✓ src/architecture.test.ts (26 tests) 188ms\n ✓ src/utils/agent.grounding-decisions.test.ts (10 tests) 295ms\nstdout | src/plugins/wo\n\nDIAGNOSIS (iteration 2):\nFIX: src/domain/prompt-conditioner.ts — In `conditionPrompt`, admit `gwrk-native` and `gwrk-cli` as guard matches only when `ProjectProfile._isGwrk === true`. Remove the `profile.type === \"gwrk-cli\"` shortcut. Keep `generic` enabled for host dependency guidance.\nFIX: src/domain/prompt-conditioner.ts — For either unverified GWRK label, match the `python` guard when `profile.stack?.language?.toLowerCase() === \"python\"`. Preserve the detected layout and the fenced `python -m pytest tests/test_phase.py` Done When example.\nFIX: src/plugins/workflow-governance.delivery.test.ts — Extend both TR-012 alias cases to assert host dependency guidance in `gwrk-specify`, host verification and the fenced pytest example in `gwrk-plan`, and `hostReviewGuidance` plus Principal Engineer attribution and project lead escalation in both reviews. Keep the native path and command exclusions and the `@gwrk/cli` positive checks.\nFIX: specs/045-workflow-governance/gates/phase-01.sh — Require exit zero from the existing gate with all decision authority assertions intact. Update the label-only positive fixtures in `src/engine/prompt-conditioner.test.ts` (TR-031.2) and `src/engine/profile-detector.test.ts` (TR-034) to use verified GWRK profiles. Record the test updates in `specs/045-workflow-governance/plan.md`.",
+          "status": "completed",
+          "gateScript": "gates/phase-01.sh",
+          "sp": 1,
+          "completedAt": "2026-11-18T23:33:55.913Z"
+        },
+        {
+          "id": "T003",
+          "title": "Modify principal-engineer.md",
+          "description": "MODIFY src/plugins/builtins/personas/principal-engineer.md. Use the project's verification commands and schema standards. FR-001.\nReview and diagnosis remain in .gwrk/review-history/phase-01-through-2026-11-18T2313Z.json and findings.jsonl. Three retained reviewer regressions failed before repair. Definition workflows now select define policy scope. Built-in review strategies retain required host-native type verification. The phase gate passes 200 tests and the full suite passes 2247 tests. Decision authority assertions remain green. See evidence/phase01-definition-scope-and-shipping-review.md. Independent clearance remains required.\n\nREVIEW FAIL (code): Code review project identity — FR-001.\n  WHERE: src/domain/prompt-conditioner.ts:18-24\n  EXPECTED: Both review prompts use host verification. Only verified GWRK profiles receive GWRK build, lint, autofix and test commands.\n  ACTUAL: Python hosts configured as gwrk-native or gwrk-cli receive pnpm build, pnpm lint, biome lint --write and pnpm vitest in both review prompts.\n  FIX: Apply the verified identity check to both review prompts. Keep the Principal Engineer reporting rules and pass the TR-012 profile regression.\n\nPOST-FLIGHT GATE FAIL (T003, gate: gates/phase-01.sh):\nexit: 1\nRUN  v3.2.4 /Users/gonzo/Code/gwrk-worktrees/workflow-governance-plan/.runs/sandboxes/045-workflow-governance-ship-6509748b\n\n ✓ src/plugins/builtins/workflows/gwrk-plan/prompt-contract.test.ts (4 tests) 3ms\n ✓ src/engine/review-prompts.test.ts (117 tests) 8ms\n ✓ src/plugins/workflow-governance.test.ts (9 tests) 3ms\n ✓ src/commands/define-plan.test.ts (12 tests) 8ms\n ✓ src/architecture.test.ts (26 tests) 188ms\n ✓ src/utils/agent.grounding-decisions.test.ts (10 tests) 295ms\nstdout | src/plugins/wo\n\nDIAGNOSIS (iteration 2):\nFIX: src/domain/prompt-conditioner.ts — In `conditionPrompt`, admit `gwrk-native` and `gwrk-cli` as guard matches only when `ProjectProfile._isGwrk === true`. Remove the `profile.type === \"gwrk-cli\"` shortcut. Keep `generic` enabled for host dependency guidance.\nFIX: src/domain/prompt-conditioner.ts — For either unverified GWRK label, match the `python` guard when `profile.stack?.language?.toLowerCase() === \"python\"`. Preserve the detected layout and the fenced `python -m pytest tests/test_phase.py` Done When example.\nFIX: src/plugins/workflow-governance.delivery.test.ts — Extend both TR-012 alias cases to assert host dependency guidance in `gwrk-specify`, host verification and the fenced pytest example in `gwrk-plan`, and `hostReviewGuidance` plus Principal Engineer attribution and project lead escalation in both reviews. Keep the native path and command exclusions and the `@gwrk/cli` positive checks.\nFIX: specs/045-workflow-governance/gates/phase-01.sh — Require exit zero from the existing gate with all decision authority assertions intact. Update the label-only positive fixtures in `src/engine/prompt-conditioner.test.ts` (TR-031.2) and `src/engine/profile-detector.test.ts` (TR-034) to use verified GWRK profiles. Record the test updates in `specs/045-workflow-governance/plan.md`.",
+          "status": "completed",
+          "gateScript": "gates/phase-01.sh",
+          "sp": 1,
+          "completedAt": "2026-11-18T23:34:01.426Z"
+        },
+        {
+          "id": "T004",
+          "title": "Modify agent.ts",
+          "description": "MODIFY src/utils/agent.ts. Add shared conflict guidance beside the intact decision index. FR-002.. Tests: src/utils/agent.grounding-decisions.test.ts\nReview and diagnosis remain in .gwrk/review-history/phase-01-through-2026-11-18T2313Z.json and findings.jsonl. Three retained reviewer regressions failed before repair. Definition workflows now select define policy scope. Built-in review strategies retain required host-native type verification. The phase gate passes 200 tests and the full suite passes 2247 tests. Decision authority assertions remain green. See evidence/phase01-definition-scope-and-shipping-review.md. Independent clearance remains required.\n\nREVIEW FAIL (code): Shared phase gate — FR-001.\n  WHERE: src/plugins/workflow-governance.delivery.test.ts:313-347\n  EXPECTED: The assigned phase-01 gate exits zero, including the host profile regressions and the decision authority checks.\n  ACTUAL: The shared gate exits one on two host profile regressions. All decision authority checks pass.\n  FIX: Clear the shared gate by repairing native prompt selection under T001 through T003. Preserve decision authority behavior.\n\nPOST-FLIGHT GATE FAIL (T004, gate: gates/phase-01.sh):\nexit: 1\nRUN  v3.2.4 /Users/gonzo/Code/gwrk-worktrees/workflow-governance-plan/.runs/sandboxes/045-workflow-governance-ship-6509748b\n\n ✓ src/plugins/builtins/workflows/gwrk-plan/prompt-contract.test.ts (4 tests) 3ms\n ✓ src/engine/review-prompts.test.ts (117 tests) 8ms\n ✓ src/plugins/workflow-governance.test.ts (9 tests) 3ms\n ✓ src/commands/define-plan.test.ts (12 tests) 8ms\n ✓ src/architecture.test.ts (26 tests) 188ms\n ✓ src/utils/agent.grounding-decisions.test.ts (10 tests) 295ms\nstdout | src/plugins/wo\n\nDIAGNOSIS (iteration 2):\nFIX: src/domain/prompt-conditioner.ts — In `conditionPrompt`, admit `gwrk-native` and `gwrk-cli` as guard matches only when `ProjectProfile._isGwrk === true`. Remove the `profile.type === \"gwrk-cli\"` shortcut. Keep `generic` enabled for host dependency guidance.\nFIX: src/domain/prompt-conditioner.ts — For either unverified GWRK label, match the `python` guard when `profile.stack?.language?.toLowerCase() === \"python\"`. Preserve the detected layout and the fenced `python -m pytest tests/test_phase.py` Done When example.\nFIX: src/plugins/workflow-governance.delivery.test.ts — Extend both TR-012 alias cases to assert host dependency guidance in `gwrk-specify`, host verification and the fenced pytest example in `gwrk-plan`, and `hostReviewGuidance` plus Principal Engineer attribution and project lead escalation in both reviews. Keep the native path and command exclusions and the `@gwrk/cli` positive checks.\nFIX: specs/045-workflow-governance/gates/phase-01.sh — Require exit zero from the existing gate with all decision authority assertions intact. Update the label-only positive fixtures in `src/engine/prompt-conditioner.test.ts` (TR-031.2) and `src/engine/profile-detector.test.ts` (TR-034) to use verified GWRK profiles. Record the test updates in `specs/045-workflow-governance/plan.md`.",
+          "status": "completed",
+          "gateScript": "gates/phase-01.sh",
+          "sp": 1,
+          "completedAt": "2026-11-18T23:34:06.497Z"
+        }
+      ],
+      "sp_estimate": 4,
+      "testTargets": [
+        "src/plugins/workflow-governance.test.ts",
+        "src/utils/agent.grounding-decisions.test.ts",
+        "src/plugins/builtins/workflows/gwrk-plan/prompt-contract.test.ts",
+        "src/engine/review-prompts.test.ts"
+      ]
+    },
+    {
+      "id": "phase-02",
+      "title": "Architecture context and assessment discovery",
+      "tasks": [
+        {
+          "id": "T005",
+          "title": "Create readiness.ts",
+          "description": "NEW src/adapters/architecture/readiness.ts. Inspect project-local context and select the latest readable assessment. FR-003.. Tests: src/adapters/architecture/readiness.test.ts\n\nRepair evidence: evidence/phase02-managed-manifest-validation.md. Earlier findings and failed gates remain in review-history/phase-02-through-2026-11-18T2357Z.json. Independent clearance remains required.\n\nRepair evidence: evidence/phase02-deterministic-git-inventory.md. Earlier findings remain in review-history/phase-02-through-2026-11-19T0034Z.json. Independent clearance remains required.\n\nRepair evidence: evidence/phase02-strict-utf8-readability.md. Earlier findings remain in review-history/phase-02-through-2026-11-19T0055Z.json. Independent clearance remains required.\n\nReview integrity: the first Antigravity attempt lacked expanded task instructions because the older operator runner used plain stdin. That review was stopped and cannot establish clearance. Native passing evidence remains preserved. Re-review through the verified task-file handoff is required.",
+          "status": "completed",
+          "gateScript": "gates/phase-02.sh",
+          "sp": 2,
+          "completedAt": "2026-11-19T01:32:57.134Z"
+        },
+        {
+          "id": "T006",
+          "title": "Modify discover.ts",
+          "description": "MODIFY src/engine/discover.ts. Attach additive readiness data to the existing discovery result. FR-003.. Tests: src/engine/discover.test.ts\n\nRepair evidence: evidence/phase02-managed-manifest-validation.md. Earlier findings and failed gates remain in review-history/phase-02-through-2026-11-18T2357Z.json. Independent clearance remains required.\n\nRepair evidence: evidence/phase02-strict-utf8-readability.md. Earlier findings remain in review-history/phase-02-through-2026-11-19T0055Z.json. Independent clearance remains required.\n\nReview integrity: the first Antigravity attempt lacked expanded task instructions because the older operator runner used plain stdin. That review was stopped and cannot establish clearance. Native passing evidence remains preserved. Re-review through the verified task-file handoff is required.",
+          "status": "completed",
+          "gateScript": "gates/phase-02.sh",
+          "sp": 1,
+          "completedAt": "2026-11-19T01:33:04.475Z"
+        },
+        {
+          "id": "T007",
+          "title": "Modify project-discover.ts",
+          "description": "MODIFY src/commands/project-discover.ts. Render target, context and latest assessment in text and JSON. FR-003.\n\nRepair evidence: evidence/phase02-managed-manifest-validation.md. Earlier findings and failed gates remain in review-history/phase-02-through-2026-11-18T2357Z.json. Independent clearance remains required.\n\nRepair evidence: evidence/phase02-unreadable-context-guidance.md. Earlier findings remain in review-history/phase-02-through-2026-11-19T0009Z.json. Independent clearance remains required.\n\nRepair evidence: evidence/phase02-strict-utf8-readability.md. Earlier findings remain in review-history/phase-02-through-2026-11-19T0055Z.json. Independent clearance remains required.\n\nReview integrity: the first Antigravity attempt lacked expanded task instructions because the older operator runner used plain stdin. That review was stopped and cannot establish clearance. Native passing evidence remains preserved. Re-review through the verified task-file handoff is required.",
+          "status": "completed",
+          "gateScript": "gates/phase-02.sh",
+          "sp": 1,
+          "completedAt": "2026-11-19T01:33:11.336Z"
+        }
+      ],
+      "sp_estimate": 4,
+      "testTargets": [
+        "src/adapters/architecture/readiness.test.ts",
+        "src/engine/discover.test.ts",
+        "src/commands/project.test.ts"
+      ]
+    },
+    {
+      "id": "phase-03",
+      "title": "Project policy versions",
+      "tasks": [
+        {
+          "id": "T008",
+          "title": "Create policy-lock.ts",
+          "description": "NEW src/plugins/policy-lock.ts. Parse and validate tracked pins and verify the supplied policy candidates. FR-004.. Tests: src/plugins/policy-lock.test.ts\n\nREVIEW FAIL (code): Policy lock unreadable/non-directory probe handling — FR-004.\n  WHERE: src/plugins/policy-lock.ts:55-57\n  EXPECTED: Return undefined only when .gwrk/policy-lock.json is absent (ENOENT) without calling fs/promises readFile; wrap non-absence stat/read errors (EACCES, ENOTDIR, dangling symlink) in CommandError naming the tracked lock path and corrective repair guidance.\n  ACTUAL: lstatSync(file, { throwIfNoEntry: false }) executes outside try/catch and throws raw Error (ENOTDIR when .gwrk is a file; EACCES when .gwrk has mode 000) instead of CommandError with repair guidance.\n  FIX: Guard the lstatSync call in try/catch (returning undefined only on undefined/ENOENT and throwing CommandError(`Cannot read ${file}. Review the tracked lock and restore a readable file.`) on any other error). Apply and pass the preserved regression test in .runs/review-regressions-phase03-20261118T1921Z.patch.\n  GATE: specs/045-workflow-governance/gates/phase-03.sh (coverage hole: green gate missed ENOTDIR/EACCES lock probe regression)\n  REF: plan.md Phase 3 > Files & Test Strategy (TR-007); contracts/governance.md#policy-versions\n\nREVIEW/GATE DIVERGENCE (T008, gate: gates/phase-03.sh, REVIEW FAIL block appended, status left unchanged):\nThe review agent raised a finding on this task and its gate still passes, so the gate does not cover what review found. Add a test that fails on it, then fix, before completing.\n\nDIAGNOSIS (iteration 2):\nFIX: src/plugins/policy-lock.ts — Wrap `lstatSync` in `readProjectPolicyLock` in try/catch to return `undefined` on `ENOENT` or `stat === undefined` and throw `CommandError` on non-absence errors\nFIX: src/plugins/policy-lock.test.ts — Add regression test verifying `readProjectPolicyLock` wraps non-directory and unreadable `.gwrk` probe failures in `CommandError`\nFIX: src/plugins/loader.ts — Add `sourceManifest?: EnforcementSkillManifest` to `LoadedEnforcementCandidate` and set `sourceManifest: manifest` in `PluginLoader.listEnforcementCandidates` before attaching computed `disabled`\nFIX: src/plugins/skill-runtime.ts — Remove unused `CommandError` import and remove dual-hash fallback mapping in `resolveEffectivePolicy` to pass candidates directly to `verifyProjectPolicyLock`\nFIX: src/plugins/skill-runtime.test.ts — Import `pkg` from `../../package.json` and replace hardcoded `\"1.6.0-beta.1\"` with `pkg.version`\nFIX: src/plugins/policy-lock.dispatch.test.ts — Add regression tests for mismatched `disabled:false` manifest digest rejection and isolated two-home policy resolution",
+          "status": "completed",
+          "gateScript": "gates/phase-03.sh",
+          "sp": 2
+        },
+        {
+          "id": "T009",
+          "title": "Modify skill-runtime.ts",
+          "description": "MODIFY src/plugins/skill-runtime.ts. Apply pins at feature 044's policy resolution boundary. FR-004.. Tests: src/plugins/skill-runtime.test.ts\n\nREVIEW FAIL (code): Exact parsed manifest digest verification — FR-004.\n  WHERE: src/plugins/skill-runtime.ts:245-263; src/plugins/loader.ts:83-86,301-307\n  EXPECTED: PluginLoader.listEnforcementCandidates preserves the original parsed manifest in sourceManifest separately from computed enablement metadata (disabled), and resolveEffectivePolicy passes candidates directly to verifyProjectPolicyLock so exact manifest digests are enforced.\n  ACTUAL: PluginLoader overwrites manifest with { ...manifest, disabled } without attaching sourceManifest, and skill-runtime.ts works around it by checking both computePolicySkillDigest(c.manifest, c.content) and withoutDisabled. As reproduced on disk, resolveEffectivePolicy silently accepts a pin hashed with disabled:false against a manifest.yaml omitting disabled, and silently accepts a pin hashed without disabled against a manifest.yaml explicitly declaring disabled:false. Also leaves unused CommandError import at src/plugins/skill-runtime.ts:20.\n  FIX: Add sourceManifest?: EnforcementSkillManifest to LoadedEnforcementCandidate and set sourceManifest: manifest in PluginLoader.listEnforcementCandidates before attaching computed disabled. Remove the dual-hash workaround in src/plugins/skill-runtime.ts:245-263 (and unused CommandError import at line 20) and pass candidates directly to verifyProjectPolicyLock. Apply and pass the preserved regression tests in .runs/review-regressions-phase03-20261118T1921Z.patch.\n  GATE: specs/045-workflow-governance/gates/phase-03.sh (coverage hole: green gate missed real-disk disabled:false digest bypass)\n  REF: plan.md Phase 3 > Files & Test Strategy (TR-008, TR-009); data-model.md#project-policy-lock; evidence/phase03-lock-reader-preparation.md\n\nREVIEW FAIL (code): TR-008 real two-home coverage and hardcoded package version — FR-004.\n  WHERE: src/plugins/skill-runtime.test.ts:26-32,273-359\n  EXPECTED: Use pkg.version from package.json instead of a magic version literal, and verify equal effective rules across two real isolated plugin home directories (with unrelated global skills, unpinned global shadows of pinned builtins, and legacy opt-in without a lock) without mocking PluginLoader and readProjectPolicyLock.\n  ACTUAL: src/plugins/skill-runtime.test.ts hardcodes gwrkVersion: \"1.6.0-beta.1\" and mocks PluginLoader, readProjectPolicyLock, node:fs, and node:fs/promises; no test in gates/phase-03.sh exercises real-filesystem two-home globalDir resolution.\n  FIX: Replace hardcoded \"1.6.0-beta.1\" with pkg.version in src/plugins/skill-runtime.test.ts and include the real two-home isolated plugin directory integration test from .runs/review-regressions-phase03-20261118T1921Z.patch in the phase-03 test suite.\n  GATE: specs/045-workflow-governance/gates/phase-03.sh (coverage hole: TR-008 mocked away filesystem loader and lock reader)\n  REF: plan.md Phase 3 > Files & Test Strategy (TR-008); spec.md Acceptance criterion 3\n\nREVIEW/GATE DIVERGENCE (T009, gate: gates/phase-03.sh, REVIEW FAIL block appended, status left unchanged):\nThe review agent raised a finding on this task and its gate still passes, so the gate does not cover what review found. Add a test that fails on it, then fix, before completing.\n\nDIAGNOSIS (iteration 2):\nFIX: src/plugins/policy-lock.ts — Wrap `lstatSync` in `readProjectPolicyLock` in try/catch to return `undefined` on `ENOENT` or `stat === undefined` and throw `CommandError` on non-absence errors\nFIX: src/plugins/policy-lock.test.ts — Add regression test verifying `readProjectPolicyLock` wraps non-directory and unreadable `.gwrk` probe failures in `CommandError`\nFIX: src/plugins/loader.ts — Add `sourceManifest?: EnforcementSkillManifest` to `LoadedEnforcementCandidate` and set `sourceManifest: manifest` in `PluginLoader.listEnforcementCandidates` before attaching computed `disabled`\nFIX: src/plugins/skill-runtime.ts — Remove unused `CommandError` import and remove dual-hash fallback mapping in `resolveEffectivePolicy` to pass candidates directly to `verifyProjectPolicyLock`\nFIX: src/plugins/skill-runtime.test.ts — Import `pkg` from `../../package.json` and replace hardcoded `\"1.6.0-beta.1\"` with `pkg.version`\nFIX: src/plugins/policy-lock.dispatch.test.ts — Add regression tests for mismatched `disabled:false` manifest digest rejection and isolated two-home policy resolution",
+          "status": "completed",
+          "gateScript": "gates/phase-03.sh",
+          "sp": 1
+        },
+        {
+          "id": "T010",
+          "title": "Modify architecture.md",
+          "description": "MODIFY docs/grounding/architecture.md. Document the project lock format, digest procedure and provisioning steps. FR-004.",
+          "status": "completed",
+          "gateScript": "gates/phase-03.sh",
+          "sp": 1
+        }
+      ],
+      "sp_estimate": 4,
+      "testTargets": [
+        "src/plugins/policy-lock.test.ts",
+        "src/plugins/skill-runtime.test.ts",
+        "src/plugins/policy-lock.dispatch.test.ts"
+      ]
+    },
+    {
+      "id": "phase-04",
+      "title": "Plugin seed input and failure",
+      "tasks": [
+        {
+          "id": "T011",
+          "title": "Modify seed.ts",
+          "description": "MODIFY src/plugins/seed.ts. Validate the taxonomy and propagate read, parse and write failures. FR-005.. Tests: src/plugins/seed.test.ts\n\nREVIEW FAIL (code): Default taxonomy apostrophe skill name rejection — FR-005.\n  WHERE: src/domain/seed-taxonomy.ts:42-44\n  EXPECTED: Normalize apostrophes when deriving kebab-case skill names so the repository default taxonomy at docs/archive/reference/reasoning-modes.md validates all 45 skills across all 7 categories (mapping \"Devil's Advocate\" to \"devils-advocate\" while continuing to reject path traversal, unsafe characters, and duplicate normalized names).\n  ACTUAL: parseSeedTaxonomy computes entry[1].trim().toLowerCase().replace(/\\s+/g, \"-\"), yielding \"devil's-advocate\", which fails /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/ and throws \"Invalid taxonomy skill name: Devil's Advocate\". Running gwrk plugin seed --dry-run (default path) or seedSkills() exits 1 on docs/archive/reference/reasoning-modes.md:140.\n  FIX: Strip ASCII and curly apostrophes before whitespace-to-hyphen conversion in parseSeedTaxonomy (e.g. .replace(/['\\u2019]/g, \"\").replace(/\\s+/g, \"-\")), apply and pass the preserved regression tests in .runs/review-regressions-phase04-20261119T0303Z.patch.\n  GATE: specs/045-workflow-governance/gates/phase-04.sh (coverage hole: green gate only tested a 2-skill synthetic fixture and never exercised docs/archive/reference/reasoning-modes.md)\n  REF: plan.md Phase 4 > Files & Test Strategy (TR-010, TR-011); contracts/governance.md#plugin-seed\n\nREVIEW FAIL (code): Empty explicit --taxonomy fallback to default path — FR-005.\n  WHERE: src/plugins/seed.ts:41-43\n  EXPECTED: Treat any supplied taxonomyPath (options.taxonomyPath !== undefined) as an explicit input and reject empty or whitespace-only values with CommandError (naming --taxonomy <path>) before reading the default taxonomy or writing skills.\n  ACTUAL: options.taxonomyPath ? path.resolve(options.taxonomyPath) : path.join(cliRoot, \"docs\", \"archive\", \"reference\", \"reasoning-modes.md\") treats \"\" as falsy, so seedSkills({ taxonomyPath: \"\" }) and gwrk plugin seed --taxonomy \"\" --dry-run silently fall back to docs/archive/reference/reasoning-modes.md.\n  FIX: Check options.taxonomyPath !== undefined in seedSkills; throw CommandError before reads or writes when options.taxonomyPath.trim() === \"\". Apply and pass the preserved regression tests in .runs/review-regressions-phase04-20261119T0303Z.patch.\n  GATE: specs/045-workflow-governance/gates/phase-04.sh (coverage hole: green gate did not test empty --taxonomy input)\n  REF: plan.md Phase 4 > Files & Test Strategy (TR-010, TR-011); contracts/governance.md#plugin-seed\n\nREVIEW/GATE DIVERGENCE (T011, gate: gates/phase-04.sh, re-opened by review):\nThe review agent raised a finding on this task and its gate still passes, so the gate does not cover what review found. Add a test that fails on it, then fix, before completing.\n\nDIAGNOSIS (iteration 2):\nFIX: src/domain/seed-taxonomy.ts — Strip ASCII and curly apostrophes before whitespace replacement with `.replace(/['\\u2019]/g, \"\").replace(/\\s+/g, \"-\")` in `parseSeedTaxonomy`\nFIX: src/plugins/seed.ts — Check `options.taxonomyPath !== undefined` in `seedSkills` and throw `CommandError` naming `--taxonomy <path>` when `options.taxonomyPath.trim() === \"\"` before reading or writing skills\nFIX: src/plugins/seed.test.ts — Apply regression tests from `.runs/review-regressions-phase04-20261119T0303Z.patch` to assert default repository taxonomy seeding with apostrophe skill names and empty explicit `taxonomyPath` rejection\nFIX: src/commands/plugin.seed.test.ts — Apply regression tests from `.runs/review-regressions-phase04-20261119T0303Z.patch` to assert dry-run default taxonomy validation with `devils-advocate` and rejection of empty `--taxonomy \"\"` arguments",
+          "status": "completed",
+          "gateScript": "gates/phase-04.sh",
+          "sp": 1,
+          "completedAt": "2026-11-19T03:08:50.688Z"
+        },
+        {
+          "id": "T012",
+          "title": "Modify plugin.ts",
+          "description": "MODIFY src/commands/plugin.ts. Accept an explicit taxonomy path and report actionable failure. FR-005.. Tests: src/plugins/seed.test.ts",
+          "status": "completed",
+          "gateScript": "gates/phase-04.sh",
+          "sp": 1,
+          "completedAt": "2026-11-19T02:55:23.161Z"
+        }
+      ],
+      "sp_estimate": 2,
+      "testTargets": [
+        "src/plugins/seed.test.ts",
+        "src/commands/plugin.test.ts",
+        "src/commands/plugin.seed.test.ts",
+        "src/architecture.test.ts"
+      ]
+    }
+  ]
+}

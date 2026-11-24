@@ -1,0 +1,25 @@
+{
+  "runId": "2026-11-18T17:43:44.787Z_ship_p02",
+  "feature": "049-durable-dispatch-harvest",
+  "phase": "phase-02",
+  "command": "ship",
+  "agent": "agy",
+  "model": "unknown",
+  "usage": {
+    "inputTokens": 1030011,
+    "outputTokens": 221033,
+    "totalTokens": 1251044
+  },
+  "startedAt": "2026-11-18T17:43:44.787Z",
+  "finishedAt": "2026-11-18T18:27:20.731Z",
+  "durationS": 2616,
+  "exitCode": 1,
+  "attempt": 1,
+  "reviewVerdict": "NO-GO",
+  "filesChanged": 9,
+  "linesAdded": 2362,
+  "linesDeleted": 13,
+  "gitCommit": "cf02ec0dba594b74dc6c19e89f2273b4f0efc092",
+  "gitBranch": "feat/049-durable-dispatch-harvest",
+  "digest": []
+}

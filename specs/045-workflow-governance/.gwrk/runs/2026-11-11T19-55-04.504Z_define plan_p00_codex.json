@@ -1,0 +1,19 @@
+{
+  "runId": "2026-11-11T19:55:04.504Z_define_p00",
+  "feature": "045-workflow-governance",
+  "phase": "p00",
+  "command": "define plan",
+  "agent": "codex",
+  "model": "gpt-6.1-sol",
+  "startedAt": "2026-11-11T19:55:04.504Z",
+  "finishedAt": "2026-11-11T20:00:24.123Z",
+  "durationS": 320,
+  "exitCode": 0,
+  "attempt": 1,
+  "filesChanged": 5,
+  "linesAdded": 640,
+  "linesDeleted": 0,
+  "gitCommit": "4148a0c624f1353c2bbaa91eb1995dc099aa20eb",
+  "gitBranch": "codex/workflow-governance-plan",
+  "digest": []
+}

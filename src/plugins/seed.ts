@@ -3,129 +3,115 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import fs from "node:fs/promises";
-import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { stringify } from "yaml";
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+import { parse, stringify } from "yaml";
+import { logCliOutput } from "../adapters/cli/output-scope.js";
+import { gwrkHome } from "../adapters/config/paths.js";
+import { type SeedSkill, parseSeedTaxonomy } from "../domain/seed-taxonomy.js";
+import { CommandError } from "../utils/signal.js";
+import { AnyManifestSchema } from "./manifest.js";
 
 interface SeedOptions {
   dryRun?: boolean;
+  taxonomyPath?: string;
 }
-
+async function hasCompleteSkill(directory: string): Promise<boolean> {
+  try {
+    await fs.stat(directory);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return false;
+    throw error;
+  }
+  const [manifest, markdown] = await Promise.all([
+    fs.readFile(path.join(directory, "manifest.yaml"), "utf8"),
+    fs.readFile(path.join(directory, "SKILL.md"), "utf8"),
+  ]);
+  AnyManifestSchema.parse(parse(manifest));
+  if (!markdown.trim())
+    throw new Error(`Existing skill is incomplete: ${directory}`);
+  return true;
+}
 export async function seedSkills(options: SeedOptions = {}): Promise<void> {
-  const globalDir = path.join(os.homedir(), ".gwrk", "plugins");
-
-  // Resolve taxonomy file relative to CLI installation, fallback to cwd()
-  const cliRoot = path.resolve(__dirname, "..", "..");
-  const taxonomyFile = path.join(
-    cliRoot,
-    "docs",
-    "archive",
-    "reference",
-    "reasoning-modes.md",
+  const cliRoot = path.resolve(
+    path.dirname(fileURLToPath(import.meta.url)),
+    "..",
+    "..",
   );
-
-  try {
-    const content = await fs.readFile(taxonomyFile, "utf-8");
-    const sections = content.split(/\n---\n/);
-
-    for (const section of sections) {
-      const lines = section.trim().split("\n");
-      if (lines.length === 0) continue;
-
-      const categoryLine = lines[0].trim().toLowerCase();
-      // Map "Reasoning Modes" -> "reasoning", "Evaluative Modes" -> "evaluative", etc.
-      const category = categoryLine.split(" ")[0];
-      if (!category || category === "how") continue; // Skip "How to Use These" section
-
-      // Match: 1. **Name** - Description.
-      // Followed by: > "Prompt" (with potential multiple newlines and spaces)
-      const modeRegex = /(\d+)\. \*\*([^*]+)\*\* - ([^\n]+)\s+> "([^"]+)"/g;
-
-      for (const execResult of section.matchAll(modeRegex)) {
-        const name = execResult[2].toLowerCase().replace(/\s+/g, "-");
-        const description = execResult[3];
-        const prompt = execResult[4];
-
-        await createAtomicSkill(
-          name,
-          category,
-          description,
-          prompt,
-          globalDir,
-          options,
+  if (
+    options.taxonomyPath !== undefined &&
+    options.taxonomyPath.trim() === ""
+  ) {
+    throw new CommandError(
+      "Supply a valid Markdown taxonomy with gwrk plugin seed --taxonomy <path>.",
+    );
+  }
+  const taxonomyFile =
+    options.taxonomyPath !== undefined
+      ? path.resolve(options.taxonomyPath)
+      : path.join(
+          cliRoot,
+          "docs",
+          "archive",
+          "reference",
+          "reasoning-modes.md",
         );
-      }
+  let skills: SeedSkill[];
+  try {
+    skills = parseSeedTaxonomy(await fs.readFile(taxonomyFile, "utf8"));
+  } catch (error) {
+    throw new CommandError(
+      `Cannot read valid taxonomy at ${taxonomyFile}: ${error instanceof Error ? error.message : String(error)}. Supply a valid Markdown taxonomy with gwrk plugin seed --taxonomy <path>.`,
+    );
+  }
+  const skillsRoot = path.join(gwrkHome(), "plugins", "skills");
+  for (const skill of skills) {
+    const directory = path.join(skillsRoot, skill.name);
+    if (options.dryRun) {
+      logCliOutput(
+        `[DRY RUN] Would seed skill '${skill.name}' (${skill.category}) to ${directory}`,
+      );
+      continue;
     }
-  } catch (e) {
-    console.error("Failed to seed skills:", e);
-  }
-}
-
-async function createAtomicSkill(
-  name: string,
-  category: string,
-  description: string,
-  prompt: string,
-  globalDir: string,
-  options: SeedOptions,
-): Promise<void> {
-  const skillDestDir = path.join(globalDir, "skills", name);
-
-  const manifest = {
-    type: "skill",
-    name,
-    version: "1.0.0",
-    description,
-    tier: "atomic",
-    category: category,
-    prompt,
-    interface: {
-      input: "stdin",
-      output: "stdout",
-    },
-    runtime: {
-      preferredAgent: "agy",
-      preferredModel: "default",
-    },
-  };
-
-  const skillMarkdown = `# ${name.charAt(0).toUpperCase() + name.slice(1)}
-
-${description}
-
-## Prompt
-> "${prompt}"
-`;
-
-  if (options.dryRun) {
-    console.log(
-      `[DRY RUN] Would seed skill '${name}' (${category}) to ${skillDestDir}`,
-    );
-    return;
-  }
-
-  // Check if destination exists
-  try {
-    await fs.stat(skillDestDir);
-    // console.log(`Skipping existing skill '${name}'`);
-    return;
-  } catch {
-    // Proceed
-  }
-
-  try {
-    await fs.mkdir(skillDestDir, { recursive: true });
-    await fs.writeFile(
-      path.join(skillDestDir, "manifest.yaml"),
-      stringify(manifest),
-    );
-    await fs.writeFile(path.join(skillDestDir, "SKILL.md"), skillMarkdown);
-    console.log(`Seeded skill '${name}' (${category}).`);
-  } catch (e) {
-    console.error(`Failed to seed skill '${name}':`, e);
+    let temporary: string | undefined;
+    try {
+      if (await hasCompleteSkill(directory)) continue;
+      await fs.mkdir(skillsRoot, { recursive: true });
+      temporary = await fs.mkdtemp(path.join(skillsRoot, `.${skill.name}-`));
+      const manifest = {
+        type: "skill",
+        name: skill.name,
+        version: "1.0.0",
+        description: skill.description,
+        tier: "atomic",
+        category: skill.category,
+        prompt: skill.prompt,
+        interface: { input: "stdin", output: "stdout" },
+        runtime: { preferredAgent: "agy", preferredModel: "default" },
+      };
+      AnyManifestSchema.parse(manifest);
+      await fs.writeFile(
+        path.join(temporary, "manifest.yaml"),
+        stringify(manifest),
+        { flag: "wx" },
+      );
+      await fs.writeFile(
+        path.join(temporary, "SKILL.md"),
+        `# ${skill.name}\n\n${skill.description}\n\n## Prompt\n> "${skill.prompt}"\n`,
+        { flag: "wx" },
+      );
+      try {
+        await fs.rename(temporary, directory);
+      } catch (error) {
+        if (!(await hasCompleteSkill(directory))) throw error;
+      }
+      logCliOutput(`Seeded skill '${skill.name}' (${skill.category}).`);
+    } catch (error) {
+      throw new CommandError(
+        `Cannot seed skill '${skill.name}' at ${directory}: ${error instanceof Error ? error.message : String(error)}. Inspect the destination and retry gwrk plugin seed --taxonomy ${taxonomyFile}.`,
+      );
+    } finally {
+      if (temporary) await fs.rm(temporary, { recursive: true, force: true });
+    }
   }
 }

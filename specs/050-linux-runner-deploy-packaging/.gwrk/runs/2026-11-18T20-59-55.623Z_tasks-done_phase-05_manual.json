@@ -1,0 +1,19 @@
+{
+  "runId": "2026-11-18T20:59:55.623Z_tasks-done_T022",
+  "feature": "050-linux-runner-deploy-packaging",
+  "phase": "phase-05",
+  "command": "tasks-done",
+  "agent": "manual",
+  "model": "none",
+  "startedAt": "2026-11-18T20:59:55.623Z",
+  "finishedAt": "2026-11-18T21:00:26.600Z",
+  "durationS": 31,
+  "exitCode": 0,
+  "attempt": 1,
+  "filesChanged": 1,
+  "linesAdded": 3,
+  "linesDeleted": 2,
+  "gitCommit": "e54642a8f7fe4bc8cdd794f3403c8cfdeca32819",
+  "gitBranch": "codex/linux-restore-device-path",
+  "digest": []
+}

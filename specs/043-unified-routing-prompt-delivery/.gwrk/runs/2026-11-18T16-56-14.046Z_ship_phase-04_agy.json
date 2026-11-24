@@ -1,0 +1,26 @@
+{
+  "runId": "2026-11-18T16:56:14.046Z_ship_p04",
+  "feature": "043-unified-routing-prompt-delivery",
+  "phase": "phase-04",
+  "command": "ship",
+  "agent": "agy",
+  "model": "unknown",
+  "usage": {
+    "inputTokens": 1299958,
+    "outputTokens": 155908,
+    "totalTokens": 1455866
+  },
+  "startedAt": "2026-11-18T16:56:14.046Z",
+  "finishedAt": "2026-11-18T17:58:14.016Z",
+  "durationS": 3720,
+  "exitCode": 0,
+  "attempt": 2,
+  "gateResult": "PASS",
+  "reviewVerdict": "GO",
+  "filesChanged": 4,
+  "linesAdded": 169,
+  "linesDeleted": 12,
+  "gitCommit": "a2545b776c3baa85154b672736ee95d9624c9276",
+  "gitBranch": "feat/043-unified-routing-prompt-delivery",
+  "digest": []
+}

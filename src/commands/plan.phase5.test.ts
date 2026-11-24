@@ -9,6 +9,11 @@ import { PlanHeartbeat } from "../server/heartbeat.js";
 import { generatePlanVizHtml } from "../server/plan-viz.js";
 import { PlanStore } from "../engine/plan-store.js";
 import * as db from "../db/plan.js";
+import { postSlackMessageWithSignal } from "../server/slack-channel.js";
+
+vi.mock("../server/slack-channel.js", () => ({
+  postSlackMessageWithSignal: vi.fn().mockResolvedValue(undefined),
+}));
 
 // Mock PlanStore
 vi.mock("../engine/plan-store.js", () => {
@@ -112,10 +117,11 @@ describe("Phase 5: Visualization & Monitoring", () => {
   describe("PlanHeartbeat", () => {
     it("should detect stale phases and update health", async () => {
       const mockConfig = {
-        project: { name: "test", slack: { channelId: "C123" } },
+        project: { name: "test", slack: { opsChannelId: "C123" } },
       } as any;
       const mockSlack = {
         client: {
+          token: "fixture-bot-token",
           chat: {
             postMessage: vi.fn().mockResolvedValue({ ok: true }),
           },
@@ -127,7 +133,11 @@ describe("Phase 5: Visualization & Monitoring", () => {
       
       const store = (heartbeat as any).store;
       expect(store.updatePhase).toHaveBeenCalledWith("P001", { health: "YELLOW" });
-      expect(mockSlack.client.chat.postMessage).toHaveBeenCalled();
+      expect(postSlackMessageWithSignal).toHaveBeenCalledWith(
+        "fixture-bot-token",
+        expect.objectContaining({ channel: "C123", text: expect.stringContaining("Stale Items") }),
+        expect.any(AbortSignal),
+      );
     });
   });
 

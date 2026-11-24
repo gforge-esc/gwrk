@@ -1,0 +1,21 @@
+{
+  "runId": "2026-11-18T20:23:06.121Z_ship_p03",
+  "feature": "048-project-identity-slack",
+  "phase": "phase-03",
+  "command": "ship",
+  "agent": "codex",
+  "model": "unknown",
+  "startedAt": "2026-11-18T20:23:06.121Z",
+  "finishedAt": "2026-11-18T20:42:35.152Z",
+  "durationS": 1169,
+  "exitCode": 1,
+  "attempt": 1,
+  "gateResult": "FAIL",
+  "reviewVerdict": "NO-GO",
+  "filesChanged": 15,
+  "linesAdded": 721,
+  "linesDeleted": 186,
+  "gitCommit": "5cba249f22fdc7f7fb5bea5ef9787cca03ed65db",
+  "gitBranch": "feat/048-project-identity-slack",
+  "digest": []
+}

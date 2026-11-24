@@ -3,7 +3,13 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import fs from "node:fs/promises";
+import { join } from "node:path";
 import { Command } from "commander";
+import { logCliOutput } from "../adapters/cli/output-scope.js";
+import {
+  resolveAdrPathInCheckout,
+  resolveIndexDestination,
+} from "../adapters/filesystem/adr-checkout.js";
 import { amendAtSection, appendSection, decide } from "../engine/adr-amend.js";
 import { checkCitations } from "../engine/adr-check.js";
 import { checkIndex, writeIndex } from "../engine/adr-index.js";
@@ -12,6 +18,7 @@ import {
   allocateNumber,
   findProjectRoot,
   renderTemplate,
+  resolveAdrAuthoringScope,
   resolveDecisionsDir,
   scaffold,
   todayLocal,
@@ -75,6 +82,8 @@ export interface AdrArgs {
   body?: string;
   /** Where the project-root walk starts. Defaults to the working directory. */
   cwd?: string;
+  /** Restrict reads and writes to this canonical checkout. */
+  verifiedCheckoutRoot?: string;
 }
 
 /** Stands in for the title in a `--print` dump, which names no record. */
@@ -86,9 +95,10 @@ const RECORD_WORKFLOW = "gwrk-adr-record";
 /** Shipped builtin workflow wired behind `--audit` (FR-027). */
 const AUDIT_WORKFLOW = "gwrk-constitution";
 
-async function reindexProject(cwd: string): Promise<string> {
+async function reindexProject(cwd: string, checkout?: string): Promise<string> {
   const projectRoot = await findProjectRoot(cwd);
   const decisionsDir = await resolveDecisionsDir(projectRoot);
+  if (checkout) await resolveAdrAuthoringScope(cwd, checkout);
   const records = await parseCorpus(decisionsDir);
   return writeIndex(projectRoot, records);
 }
@@ -103,9 +113,23 @@ function normalizeAdrId(raw: string): string {
 async function resolveTargetRecord(
   cwd: string,
   target: string | undefined,
+  checkout?: string,
 ): Promise<{ projectRoot: string; decisionsDir: string; record: AdrRecord }> {
-  const projectRoot = await findProjectRoot(cwd);
-  const decisionsDir = await resolveDecisionsDir(projectRoot);
+  const discoveredRoot = await findProjectRoot(cwd);
+  const projectRoot = checkout
+    ? await resolveAdrPathInCheckout(checkout, discoveredRoot)
+    : discoveredRoot;
+  const configuredDir = await resolveDecisionsDir(projectRoot);
+  const decisionsDir = checkout
+    ? await resolveAdrPathInCheckout(checkout, configuredDir)
+    : configuredDir;
+  if (checkout) {
+    await resolveAdrPathInCheckout(
+      checkout,
+      join(projectRoot, ".gwrk", "decisions", "index.md"),
+      resolveIndexDestination,
+    );
+  }
   const records = await parseCorpus(decisionsDir);
   const id = normalizeAdrId(target ?? "");
   const record = records.find(
@@ -117,8 +141,16 @@ async function resolveTargetRecord(
   return { projectRoot, decisionsDir, record };
 }
 
-export async function adrCommandHandler(args: AdrArgs): Promise<string> {
-  const cwd = args.cwd ?? process.cwd();
+export async function adrCommandHandler(input: AdrArgs): Promise<string> {
+  const cwd = input.cwd ?? process.cwd();
+  const carriedCheckout =
+    input.verifiedCheckoutRoot ?? process.env.GWRK_ADR_CHECKOUT_ROOT;
+  const scope = carriedCheckout
+    ? await resolveAdrAuthoringScope(cwd, carriedCheckout)
+    : undefined;
+  const args = scope
+    ? { ...input, verifiedCheckoutRoot: scope.verifiedCheckoutRoot }
+    : input;
 
   if (args.reindex && args.check) {
     const projectRoot = await findProjectRoot(cwd);
@@ -155,7 +187,7 @@ export async function adrCommandHandler(args: AdrArgs): Promise<string> {
   }
 
   if (args.reindex) {
-    return reindexProject(cwd);
+    return reindexProject(cwd, args.verifiedCheckoutRoot);
   }
 
   if (args.audit) {
@@ -166,7 +198,9 @@ export async function adrCommandHandler(args: AdrArgs): Promise<string> {
     const projectRoot = await findProjectRoot(cwd);
     const decisionsDir = await resolveDecisionsDir(projectRoot);
     const records = await parseCorpus(decisionsDir);
-    const findings = await checkCitations(projectRoot, records);
+    const findings = args.verifiedCheckoutRoot
+      ? await checkCitations(projectRoot, records, args.verifiedCheckoutRoot)
+      : await checkCitations(projectRoot, records);
     if (findings.length > 0) {
       if (args.format === "json") {
         throw new CommandError(JSON.stringify({ ok: false, findings }), 1);
@@ -183,7 +217,15 @@ export async function adrCommandHandler(args: AdrArgs): Promise<string> {
   }
 
   if (args.decide) {
-    const { record } = await resolveTargetRecord(cwd, args.target);
+    const { verifiedCheckoutRoot } = args;
+    const { projectRoot, decisionsDir, record } = await resolveTargetRecord(
+      cwd,
+      args.target,
+      verifiedCheckoutRoot,
+    );
+    const filePath = verifiedCheckoutRoot
+      ? await resolveAdrPathInCheckout(verifiedCheckoutRoot, record.filePath)
+      : record.filePath;
     let result: ReturnType<typeof decide>;
     try {
       result = decide(record, todayLocal());
@@ -191,9 +233,13 @@ export async function adrCommandHandler(args: AdrArgs): Promise<string> {
       const message = error instanceof Error ? error.message : String(error);
       throw new CommandError(message, 1);
     }
-    await fs.writeFile(result.filePath, result.content, "utf-8");
-    await reindexProject(cwd);
-    return result.filePath;
+    await fs.writeFile(filePath, result.content, "utf-8");
+    if (verifiedCheckoutRoot) {
+      await writeIndex(projectRoot, await parseCorpus(decisionsDir));
+    } else {
+      await reindexProject(cwd, args.verifiedCheckoutRoot);
+    }
+    return filePath;
   }
 
   if (args.amend || args.appendSection) {
@@ -203,7 +249,11 @@ export async function adrCommandHandler(args: AdrArgs): Promise<string> {
         1,
       );
     }
-    const { record } = await resolveTargetRecord(cwd, args.target);
+    const { record } = await resolveTargetRecord(
+      cwd,
+      args.target,
+      args.verifiedCheckoutRoot,
+    );
     let result: ReturnType<typeof amendAtSection>;
     try {
       if (args.appendSection) {
@@ -223,7 +273,7 @@ export async function adrCommandHandler(args: AdrArgs): Promise<string> {
       throw new CommandError(message, 1);
     }
     await fs.writeFile(result.filePath, result.content, "utf-8");
-    await reindexProject(cwd);
+    await reindexProject(cwd, args.verifiedCheckoutRoot);
     return result.filePath;
   }
 
@@ -244,8 +294,13 @@ export async function adrCommandHandler(args: AdrArgs): Promise<string> {
     });
   }
 
-  const result = await scaffold(args.target ?? "", { cwd });
-  await reindexProject(cwd);
+  const result = await scaffold(args.target ?? "", {
+    cwd,
+    ...(args.verifiedCheckoutRoot
+      ? { verifiedCheckoutRoot: args.verifiedCheckoutRoot }
+      : {}),
+  });
+  await reindexProject(cwd, args.verifiedCheckoutRoot);
 
   // Without `--run` the record stands as scaffolded and no runtime is
   // constructed (contract §3).
@@ -255,7 +310,7 @@ export async function adrCommandHandler(args: AdrArgs): Promise<string> {
 
   const title = (args.target ?? "").trim();
   const summary = await draftRecord(result, title, cwd);
-  await reindexProject(cwd);
+  await reindexProject(cwd, args.verifiedCheckoutRoot);
   return `${result.filePath}\n${summary}`;
 }
 
@@ -409,14 +464,15 @@ async function auditCorpus(cwd: string, args: AdrArgs): Promise<string> {
 /**
  * commander definition for `gwrk define adr`.
  */
-export const adrCommand = new Command("adr")
-  // The `Examples:` block lives in the description, not in an
-  // `addHelpText("after", …)` hook as `research.ts` uses, because TR-009 reads
-  // it back through `helpInformation()` — and Commander renders after-hooks in
-  // `outputHelp()` only, so a hook is invisible there. `summary()` keeps the
-  // parent `define --help` subcommand list to one line.
-  .summary("Author an architecture decision record (ADR-NNN)")
-  .description(`Author an architecture decision record (ADR-NNN)
+export const createAdrCommand = () =>
+  new Command("adr")
+    // The `Examples:` block lives in the description, not in an
+    // `addHelpText("after", …)` hook as `research.ts` uses, because TR-009 reads
+    // it back through `helpInformation()` — and Commander renders after-hooks in
+    // `outputHelp()` only, so a hook is invisible there. `summary()` keeps the
+    // parent `define --help` subcommand list to one line.
+    .summary("Author an architecture decision record (ADR-NNN)")
+    .description(`Author an architecture decision record (ADR-NNN)
 
 The number is allocated max+1 over docs/decisions/, and the command works from
 any subdirectory of the project. Records are written with Status: Proposed for
@@ -433,63 +489,65 @@ Examples:
   Scaffold the record and draft it with an agent:
     gwrk define adr "Decision Records" --run
 `)
-  .argument("[title]", "Title of the decision (e.g. 'Decision Records')")
-  .option("--print", "Print the template to stdout without writing a record")
-  .option(
-    "--run",
-    "Draft the scaffolded record with the gwrk-adr-record workflow",
-  )
-  .option(
-    "--reindex",
-    "Regenerate .gwrk/decisions/index.md from docs/decisions/",
-  )
-  .option("--check", "Verify the decision index and corpus citations")
-  .option("--amend", "Amend an existing architecture decision record")
-  .option("--at <section>", "Dotted section address for --amend (e.g. '2.1')")
-  .option(
-    "--append-section",
-    "Append a new numbered top-level section before ## Amendments",
-  )
-  .option("--decide", "Flip a Proposed record to Decided and stamp the date")
-  .option(
-    "--audit",
-    "Audit the decision corpus with the gwrk-constitution workflow",
-  )
-  .option(
-    "--format <format>",
-    "Output format for verifier invocations (text or json)",
-  )
-  .action(
-    async (
-      title: string | undefined,
-      opts: {
-        print?: boolean;
-        run?: boolean;
-        reindex?: boolean;
-        check?: boolean;
-        amend?: boolean;
-        at?: string;
-        appendSection?: boolean;
-        decide?: boolean;
-        audit?: boolean;
-        format?: "text" | "json";
-      },
-    ) => {
-      await withSignal("define adr", async () => {
-        const output = await adrCommandHandler({
-          target: title,
-          print: opts.print,
-          run: opts.run,
-          reindex: opts.reindex,
-          check: opts.check,
-          amend: opts.amend,
-          at: opts.at,
-          appendSection: opts.appendSection,
-          decide: opts.decide,
-          audit: opts.audit,
-          format: opts.format,
+    .argument("[title]", "Title of the decision (e.g. 'Decision Records')")
+    .option("--print", "Print the template to stdout without writing a record")
+    .option(
+      "--run",
+      "Draft the scaffolded record with the gwrk-adr-record workflow",
+    )
+    .option(
+      "--reindex",
+      "Regenerate .gwrk/decisions/index.md from docs/decisions/",
+    )
+    .option("--check", "Verify the decision index and corpus citations")
+    .option("--amend", "Amend an existing architecture decision record")
+    .option("--at <section>", "Dotted section address for --amend (e.g. '2.1')")
+    .option(
+      "--append-section",
+      "Append a new numbered top-level section before ## Amendments",
+    )
+    .option("--decide", "Flip a Proposed record to Decided and stamp the date")
+    .option(
+      "--audit",
+      "Audit the decision corpus with the gwrk-constitution workflow",
+    )
+    .option(
+      "--format <format>",
+      "Output format for verifier invocations (text or json)",
+    )
+    .action(
+      async (
+        title: string | undefined,
+        opts: {
+          print?: boolean;
+          run?: boolean;
+          reindex?: boolean;
+          check?: boolean;
+          amend?: boolean;
+          at?: string;
+          appendSection?: boolean;
+          decide?: boolean;
+          audit?: boolean;
+          format?: "text" | "json";
+        },
+      ) => {
+        await withSignal("define adr", async () => {
+          const output = await adrCommandHandler({
+            target: title,
+            print: opts.print,
+            run: opts.run,
+            reindex: opts.reindex,
+            check: opts.check,
+            amend: opts.amend,
+            at: opts.at,
+            appendSection: opts.appendSection,
+            decide: opts.decide,
+            audit: opts.audit,
+            format: opts.format,
+          });
+          logCliOutput(output);
         });
-        console.log(output);
-      });
-    },
-  );
+      },
+    );
+
+export const adrCommand = createAdrCommand();

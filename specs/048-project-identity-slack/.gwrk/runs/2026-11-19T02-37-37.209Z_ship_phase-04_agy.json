@@ -1,0 +1,26 @@
+{
+  "runId": "2026-11-19T02:37:37.209Z_ship_p04",
+  "feature": "048-project-identity-slack",
+  "phase": "phase-04",
+  "command": "ship",
+  "agent": "agy",
+  "model": "unknown",
+  "usage": {
+    "inputTokens": 875303,
+    "outputTokens": 175271,
+    "totalTokens": 1050574
+  },
+  "startedAt": "2026-11-19T02:37:37.209Z",
+  "finishedAt": "2026-11-19T03:13:00.357Z",
+  "durationS": 2123,
+  "exitCode": 0,
+  "attempt": 2,
+  "gateResult": "PASS",
+  "reviewVerdict": "GO",
+  "filesChanged": 1,
+  "linesAdded": 1,
+  "linesDeleted": 1,
+  "gitCommit": "cc67a09d702bc8fedff42b469ba2291014c723f7",
+  "gitBranch": "feat/048-project-identity-slack",
+  "digest": []
+}

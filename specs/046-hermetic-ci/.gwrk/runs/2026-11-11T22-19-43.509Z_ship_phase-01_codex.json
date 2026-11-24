@@ -1,0 +1,20 @@
+{
+  "runId": "2026-11-11T22:19:43.509Z_ship_p01",
+  "feature": "046-hermetic-ci",
+  "phase": "phase-01",
+  "command": "ship",
+  "agent": "codex",
+  "model": "unknown",
+  "startedAt": "2026-11-11T22:19:43.509Z",
+  "finishedAt": "2026-11-11T22:41:30.703Z",
+  "durationS": 1307,
+  "exitCode": 1,
+  "attempt": 1,
+  "reviewVerdict": "NO-GO",
+  "filesChanged": 11,
+  "linesAdded": 126,
+  "linesDeleted": 23,
+  "gitCommit": "755d7a6ddb81ad6a8e2201af6b19d45fdc682a44",
+  "gitBranch": "feat/046-hermetic-ci",
+  "digest": []
+}

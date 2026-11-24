@@ -4,6 +4,10 @@
 
 import fs from "node:fs";
 import path from "node:path";
+import {
+  type ArchitectureReadiness,
+  readArchitectureReadiness,
+} from "../adapters/architecture/readiness.js";
 import { type GwrkConfig, GwrkConfigSchema } from "../utils/config.js";
 import { execCommand } from "../utils/exec.js";
 import { TaskStateSchema } from "../utils/state.js";
@@ -28,6 +32,7 @@ interface SpecSummary {
 }
 
 interface ProjectDiscovery {
+  architecture?: ArchitectureReadiness;
   project: {
     name: string;
     root: string;
@@ -57,10 +62,15 @@ export async function discoverProject(
   const config = loadRawConfig(projectRoot);
   const specs = await discoverSpecs(projectRoot);
   const gates = await discoverGates(projectRoot, specs);
+  const architecture = await readArchitectureReadiness(
+    projectRoot,
+    profile.design,
+  );
 
   const projectName = config?.project?.name || path.basename(projectRoot);
 
   return {
+    ...(architecture ? { architecture } : {}),
     project: {
       name: projectName,
       root: projectRoot,

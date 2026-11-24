@@ -1,0 +1,20 @@
+{
+  "runId": "2026-11-23T21:15:55.036Z_ship_p05",
+  "feature": "049-durable-dispatch-harvest",
+  "phase": "phase-05",
+  "command": "ship",
+  "agent": "codex",
+  "model": "gpt-6.2-astra",
+  "startedAt": "2026-11-23T21:15:55.036Z",
+  "finishedAt": "2026-11-23T21:45:23.988Z",
+  "durationS": 1769,
+  "exitCode": 1,
+  "attempt": 1,
+  "reviewVerdict": "NO-GO",
+  "filesChanged": 2,
+  "linesAdded": 4,
+  "linesDeleted": 2,
+  "gitCommit": "c84817bbab2c43dc6a5a9dab5a85d979d657fdc8",
+  "gitBranch": "feat/049-durable-dispatch-harvest",
+  "digest": []
+}

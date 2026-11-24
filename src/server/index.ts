@@ -2,9 +2,63 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import fastify from "fastify";
-import type { GwrkConfig } from "../utils/config.js";
-import { DispatchQueue } from "./dispatch.js";
+import { execFileSync } from "node:child_process";
+import * as crypto from "node:crypto";
+import { existsSync, realpathSync } from "node:fs";
+import { basename, dirname, join, resolve } from "node:path";
+import type Database from "better-sqlite3";
+import fastify, { type FastifyRequest } from "fastify";
+import { QuotaProber } from "../adapters/agents/quota-prober.js";
+import { loadRegistry } from "../adapters/agents/registry-loader.js";
+import {
+  exitCli,
+  logCliOutput,
+  warnCli,
+} from "../adapters/cli/output-scope.js";
+import { gwrkRuntimeDir, usesHostedRuntime } from "../adapters/config/paths.js";
+import { createGitVcsAdapter } from "../adapters/git/index.js";
+import { repositoryGitEnv } from "../adapters/git/process-env.js";
+import { createGitHubHarvestAdapter } from "../adapters/github/index.js";
+import { createHarvestExecutionAdapter } from "../adapters/harvest/index.js";
+import { createSlackNotificationAdapter } from "../adapters/notifications/index.js";
+import {
+  acquireInstanceLock,
+  acquireLedgerLock,
+} from "../adapters/server/instance-lock.js";
+import {
+  createSqliteOperationsStoreAdapter,
+  createSqliteProjectRegistryAdapter,
+} from "../adapters/sqlite/index.js";
+import {
+  type OutboxDeliveryService,
+  createOutboxDeliveryService,
+} from "../application/delivery/outbox.js";
+import {
+  type DurableHarvestService,
+  createDurableHarvestService,
+} from "../application/harvest/index.js";
+import {
+  type ProjectRoutingService,
+  createProjectRoutingService,
+} from "../application/project-routing/index.js";
+import { closeDb, getDbPath, openDatabase } from "../db/index.js";
+import { PENDING_LEDGER_RESTORE } from "../domain/ledger-backup.js";
+import type { AllowedRunnerKind } from "../domain/project-registry.js";
+import { isPrivateRunnerBind } from "../domain/release-packaging.js";
+import type { NotificationPort } from "../ports/notification-port.js";
+import type {
+  ClockPort,
+  GitHubHarvestPort,
+  HarvestExecutionPort,
+  OperationsStorePort,
+  WorkerExecutionPort,
+} from "../ports/operations-port.js";
+import type { InstanceLockHandle } from "../ports/release-ops-port.js";
+import type { ProjectRegistryPort } from "../ports/store-port.js";
+import type { VcsPort } from "../ports/vcs-port.js";
+import type { AgentBackendId, GwrkConfig } from "../utils/config.js";
+import { BackendSelector } from "./backend-selector.js";
+import { type DispatchLedgerScope, DispatchQueue } from "./dispatch.js";
 import { GitManager } from "./git-manager.js";
 import { githubWebhookPlugin } from "./github.js";
 import { HarvestWatcher } from "./harvest-watcher.js";
@@ -19,15 +73,12 @@ import { notifyRoutes } from "./routes/notify.js";
 import { statusRoutes } from "./routes/status.js";
 import { SandboxManager } from "./sandbox.js";
 import { getSlackApp, startSlackApp, stopSlackApp } from "./slack.js";
-import { startTelegramBot, stopTelegramBot } from "./telegram.js";
-
-import { loadRegistry } from "./agent-registry.js";
-import { BackendSelector } from "./backend-selector.js";
-import { QuotaProber } from "./quota-prober.js";
+import { startTelegramBot } from "./telegram.js";
+import type { SandboxInfo } from "./types.js";
 
 export { BackendSelector } from "./backend-selector.js";
-export { QuotaProber } from "./quota-prober.js";
-export { loadRegistry } from "./agent-registry.js";
+export { QuotaProber } from "../adapters/agents/quota-prober.js";
+export { loadRegistry } from "../adapters/agents/registry-loader.js";
 
 let backendSelector: BackendSelector | undefined;
 export function getBackendSelector(
@@ -41,33 +92,459 @@ export function getBackendSelector(
   return backendSelector;
 }
 
+export interface ServerPidScope {
+  writePid(pid: number): void;
+  removePid(): void;
+}
+
+export interface ServerStartOptions {
+  handleSignals?: boolean;
+  projectRoot?: string;
+  pid?: ServerPidScope;
+  ledger?: DispatchLedgerScope;
+  sandbox?: SandboxManager;
+  gitEnv?: () => NodeJS.ProcessEnv;
+  registry?: ProjectRegistryPort;
+  operationsStore?: OperationsStorePort;
+  routingService?: ProjectRoutingService;
+  vcs?: VcsPort;
+  github?: GitHubHarvestPort;
+  worker?: WorkerExecutionPort;
+  harvestExecutor?: HarvestExecutionPort;
+  outbox?: OutboxDeliveryService;
+  harvestService?: DurableHarvestService;
+  notifier?: NotificationPort;
+  clock?: ClockPort;
+  ownerId?: string;
+  leaseDurationMs?: number;
+  heartbeatIntervalMs?: number | null;
+  maxCrashRecoveryAttempts?: number;
+  autoResumeWebhook?: boolean;
+  transport?: "trusted_local" | "hosted";
+  localDefaultProjectId?: string;
+  resolvePrincipal?: (request: FastifyRequest) =>
+    | {
+        principalType: "cli_token" | "google_sub";
+        principalId: string;
+      }
+    | undefined;
+  runnerKind?: AllowedRunnerKind;
+  useProjectRegistry?: boolean;
+}
+
+function isLoopbackListenHost(host: string): boolean {
+  const normalized = host.trim().toLowerCase();
+  return (
+    normalized === "localhost" ||
+    normalized === "127.0.0.1" ||
+    normalized === "::1" ||
+    normalized === "[::1]"
+  );
+}
+
+export class ScopedSandboxManager extends SandboxManager {
+  private readonly root: string;
+  private readonly gitEnv: () => NodeJS.ProcessEnv;
+  private readonly childManagers = new Map<string, ScopedSandboxManager>();
+  private readonly workDirRoots = new Map<string, string>();
+
+  constructor(
+    root: string,
+    private readonly scopedGitEnv?: () => NodeJS.ProcessEnv,
+    private readonly registry?: ProjectRegistryPort,
+  ) {
+    const normalizedRoot = resolve(root);
+    super(normalizedRoot);
+    this.root = normalizedRoot;
+    this.gitEnv = scopedGitEnv ?? (() => repositoryGitEnv(normalizedRoot));
+  }
+
+  protected override gitOptions() {
+    return { env: this.gitEnv() };
+  }
+
+  private managerForRoot(targetRoot: string): ScopedSandboxManager {
+    const normalized = resolve(targetRoot);
+    if (normalized === this.root) return this;
+    let manager = this.childManagers.get(normalized);
+    if (!manager) {
+      manager = new ScopedSandboxManager(normalized, this.scopedGitEnv);
+      this.childManagers.set(normalized, manager);
+    }
+    return manager;
+  }
+
+  private knownRoots(): string[] {
+    const roots = new Set<string>([this.root, ...this.childManagers.keys()]);
+    if (this.registry) {
+      for (const project of this.registry.listProjects()) {
+        const checkoutRoot = project.mirrorPath ?? project.localRoot;
+        if (checkoutRoot) {
+          roots.add(resolve(checkoutRoot));
+        }
+      }
+    }
+    return Array.from(roots);
+  }
+
+  private resolveWorkDirRoot(workDir: string): string {
+    const normalizedWorkDir = resolve(workDir);
+    const tracked = this.workDirRoots.get(normalizedWorkDir);
+    if (tracked) return tracked;
+    const sandboxesDir = dirname(normalizedWorkDir);
+    const runsDir = dirname(sandboxesDir);
+    if (
+      basename(sandboxesDir) === "sandboxes" &&
+      basename(runsDir) === ".runs"
+    ) {
+      return dirname(runsDir);
+    }
+    return this.root;
+  }
+
+  private pruneOwnRoot(): void {
+    const hasGitRepo =
+      existsSync(join(this.root, ".git")) ||
+      (existsSync(join(this.root, "HEAD")) &&
+        existsSync(join(this.root, "objects")));
+    if (!hasGitRepo) return;
+    execFileSync("git", ["worktree", "prune"], {
+      cwd: this.root,
+      ...this.gitOptions(),
+      stdio: ["ignore", "pipe", "pipe"],
+      timeout: 5_000,
+    });
+  }
+
+  private listOwnSandboxes(): SandboxInfo[] {
+    return this.listRecords()
+      .filter(({ orphaned }) => !orphaned)
+      .map(
+        ({ workDir, featureId, createdAt }) =>
+          ({
+            workDir,
+            featureId,
+            taskId: basename(workDir).split("-").at(-2) ?? "",
+            status: "running",
+            startedAt: createdAt,
+          }) as SandboxInfo,
+      );
+  }
+
+  override async createSandbox(
+    opts: Parameters<SandboxManager["createSandbox"]>[0],
+  ): Promise<string> {
+    const targetRoot = resolve(opts.projectRoot || this.root);
+    const manager = this.managerForRoot(targetRoot);
+    const workDir =
+      manager === this
+        ? await super.createSandbox({ ...opts, projectRoot: targetRoot })
+        : await manager.createSandbox({ ...opts, projectRoot: targetRoot });
+    this.workDirRoots.set(resolve(workDir), targetRoot);
+    return workDir;
+  }
+
+  override async destroySandbox(
+    workDir: string,
+    featureId: string,
+    options?: Parameters<SandboxManager["destroySandbox"]>[2],
+  ): Promise<void> {
+    const normalizedWorkDir = resolve(workDir);
+    const targetRoot = this.resolveWorkDirRoot(normalizedWorkDir);
+    const manager = this.managerForRoot(targetRoot);
+    try {
+      if (manager === this) {
+        await super.destroySandbox(workDir, featureId, options);
+      } else {
+        await manager.destroySandbox(workDir, featureId, options);
+      }
+    } finally {
+      this.workDirRoots.delete(normalizedWorkDir);
+    }
+  }
+
+  override async pruneSandboxes(): Promise<void> {
+    for (const targetRoot of this.knownRoots()) {
+      const manager = this.managerForRoot(targetRoot);
+      if (manager === this) {
+        this.pruneOwnRoot();
+      } else {
+        await manager.pruneSandboxes();
+      }
+    }
+  }
+
+  override async listSandboxes(): Promise<SandboxInfo[]> {
+    const results: SandboxInfo[] = [];
+    const seen = new Set<string>();
+    for (const targetRoot of this.knownRoots()) {
+      const manager = this.managerForRoot(targetRoot);
+      const items =
+        manager === this
+          ? this.listOwnSandboxes()
+          : await manager.listSandboxes();
+      for (const item of items) {
+        const key = resolve(item.workDir);
+        if (seen.has(key)) continue;
+        seen.add(key);
+        results.push(item);
+      }
+    }
+    return results;
+  }
+}
+
+let slackInUse = false;
+
 export async function startServer(
   config: GwrkConfig,
-  options: { handleSignals?: boolean } = { handleSignals: true },
+  options: ServerStartOptions = { handleSignals: true },
 ) {
-  const projectRoot = process.cwd();
+  const hosted = usesHostedRuntime();
+  if (hosted && !isPrivateRunnerBind(config.server.host)) {
+    throw new Error("The hosted runner requires a private listen address.");
+  }
+  const instanceLock = hosted
+    ? acquireInstanceLock(gwrkRuntimeDir(), process.pid)
+    : undefined;
+  let ledgerLock: InstanceLockHandle | undefined;
+  try {
+    if (instanceLock) {
+      const ledgerPath = options.ledger?.db.name ?? getDbPath();
+      ledgerLock = acquireLedgerLock(ledgerPath, process.pid);
+      if (existsSync(join(dirname(ledgerPath), PENDING_LEDGER_RESTORE))) {
+        throw new Error(
+          "An unfinished ledger restore blocks startup. Retry 'gwrk db restore' with the original backup.",
+        );
+      }
+    }
+    return await startLockedServer(
+      config,
+      options,
+      instanceLock,
+      ledgerLock,
+      hosted,
+      hosted ? process.env.GWRK_APPROVED_AGENT : undefined,
+    );
+  } catch (error) {
+    ledgerLock?.release();
+    instanceLock?.release();
+    throw error;
+  }
+}
+
+async function startLockedServer(
+  config: GwrkConfig,
+  options: ServerStartOptions,
+  instanceLock: InstanceLockHandle | undefined,
+  ledgerLock: InstanceLockHandle | undefined,
+  hosted: boolean,
+  approvedBackend: AgentBackendId | undefined,
+) {
+  const projectRoot = resolve(options.projectRoot ?? process.cwd());
+  const canonicalRoot = existsSync(projectRoot)
+    ? realpathSync(projectRoot)
+    : projectRoot;
+  const gitEnv =
+    options.gitEnv ??
+    (options.projectRoot !== undefined || options.ledger
+      ? () => repositoryGitEnv(projectRoot)
+      : undefined);
+  const pid = options.pid ?? { writePid, removePid };
   const server = fastify({
     logger: true,
   });
 
+  // Derive transport mode from hosted runtime or listener bind address unless explicitly overridden.
+  const effectiveTransport: "trusted_local" | "hosted" =
+    options.transport ??
+    (hosted || !isLoopbackListenHost(config.server.host)
+      ? "hosted"
+      : "trusted_local");
+  const runnerKind: AllowedRunnerKind =
+    options.runnerKind ??
+    (effectiveTransport === "hosted" ? "hosted" : "local");
+
+  let ownedDb: Database.Database | undefined;
+  let sharedDb: Database.Database | undefined = options.ledger?.db;
+  let registry: ProjectRegistryPort | undefined = options.registry;
+  if (!registry) {
+    if (sharedDb) {
+      registry = createSqliteProjectRegistryAdapter({ db: sharedDb });
+    } else if (options.useProjectRegistry || effectiveTransport === "hosted") {
+      ownedDb = openDatabase();
+      sharedDb = ownedDb;
+      registry = createSqliteProjectRegistryAdapter({ db: ownedDb });
+    }
+  }
+
+  const operationsStore: OperationsStorePort | undefined =
+    options.operationsStore ??
+    (sharedDb
+      ? createSqliteOperationsStoreAdapter({ db: sharedDb })
+      : undefined);
+
+  const enrolledCount = registry ? registry.listProjects().length : 0;
+  const enforceRegistryScope = Boolean(
+    options.registry || effectiveTransport === "hosted" || enrolledCount > 0,
+  );
+  const activeRegistry = enforceRegistryScope ? registry : undefined;
+  const durableRegistry =
+    activeRegistry ?? (operationsStore ? registry : undefined);
+  const localDefaultProjectId =
+    options.localDefaultProjectId ??
+    activeRegistry?.findByLocalRoot(canonicalRoot)?.projectId ??
+    activeRegistry?.findByLocalRoot(projectRoot)?.projectId;
+
+  const serverShutdown = new AbortController();
+  const clock: ClockPort = options.clock ?? {
+    nowIso: () => new Date().toISOString(),
+    nowMs: () => Date.now(),
+  };
+  const ownerId =
+    options.ownerId ??
+    `server:${process.pid}:${crypto.randomUUID().slice(0, 8)}`;
+
+  const baseVcs = createGitVcsAdapter();
+  const vcs: VcsPort = options.vcs ? { ...baseVcs, ...options.vcs } : baseVcs;
+  const githubPort =
+    options.github ??
+    createGitHubHarvestAdapter({ signal: serverShutdown.signal });
+  const notifier =
+    options.notifier ??
+    (durableRegistry
+      ? createSlackNotificationAdapter({
+          registry: durableRegistry,
+          projectRoot,
+          signal: serverShutdown.signal,
+          transportTimeoutMs: 5_000,
+        })
+      : undefined);
+  const routingService =
+    options.routingService ??
+    (activeRegistry
+      ? createProjectRoutingService({
+          registry: activeRegistry,
+          notificationPort:
+            notifier ??
+            createSlackNotificationAdapter({
+              registry: activeRegistry,
+              projectRoot,
+              signal: serverShutdown.signal,
+              transportTimeoutMs: 5_000,
+            }),
+        })
+      : undefined);
+  const outbox: OutboxDeliveryService | undefined =
+    options.outbox ??
+    (operationsStore && durableRegistry && notifier
+      ? createOutboxDeliveryService({
+          store: operationsStore,
+          registry: durableRegistry,
+          notifier,
+          clock,
+          newId: () => crypto.randomUUID(),
+        })
+      : undefined);
+  const harvestExecutor =
+    options.harvestExecutor ??
+    createHarvestExecutionAdapter({
+      ...(sharedDb ? { db: sharedDb } : {}),
+      ...(gitEnv ? { gitEnv } : {}),
+    });
+  const harvestService: DurableHarvestService | undefined =
+    options.harvestService ??
+    (operationsStore && durableRegistry && outbox
+      ? createDurableHarvestService({
+          store: operationsStore,
+          registry: durableRegistry,
+          vcs,
+          github: githubPort,
+          executor: harvestExecutor,
+          outbox,
+          clock,
+          leaseDurationMs: options.leaseDurationMs,
+          heartbeatIntervalMs: options.heartbeatIntervalMs,
+        })
+      : undefined);
+
   // GitHub webhook is optional — plugin handles the missing case gracefully
   if (!config.server.githubWebhookSecret) {
-    console.warn(
+    warnCli(
       "GitHub webhook secret not configured. Webhook endpoint will be disabled. Set GITHUB_WEBHOOK_SECRET to enable.",
     );
   }
 
   const monitor = new SystemMonitor(config);
-  monitor.startPolling();
-  const sandbox = new SandboxManager();
+  const sandbox =
+    options.sandbox ??
+    (options.projectRoot !== undefined || activeRegistry !== undefined
+      ? new ScopedSandboxManager(projectRoot, options.gitEnv, activeRegistry)
+      : new SandboxManager(projectRoot));
+
+  const sharedLedger: DispatchLedgerScope | undefined =
+    options.ledger ??
+    (sharedDb && localDefaultProjectId
+      ? { db: sharedDb, projectId: localDefaultProjectId }
+      : undefined);
 
   const git = new GitManager(projectRoot);
-  const queue = new DispatchQueue(config, monitor, sandbox, projectRoot);
+  const queue = new DispatchQueue(
+    config,
+    monitor,
+    sandbox,
+    projectRoot,
+    sharedLedger,
+    gitEnv,
+    approvedBackend,
+    activeRegistry,
+    operationsStore || durableRegistry || options.worker
+      ? {
+          store: operationsStore,
+          registry: durableRegistry,
+          worker: options.worker,
+          outbox,
+          notifier,
+          clock,
+          github: githubPort,
+          ownerId: `${ownerId}:dispatch`,
+          leaseDurationMs: options.leaseDurationMs,
+          heartbeatIntervalMs: options.heartbeatIntervalMs,
+          maxCrashRecoveryAttempts: options.maxCrashRecoveryAttempts,
+          onRecoveredMerge: harvestService
+            ? async ({ project, operation, prNumber, mergeCommitSha }) => {
+                try {
+                  await harvestService.runManualHarvest({
+                    project,
+                    featureId: operation.featureId,
+                    phaseId: operation.phaseId,
+                    prNumber,
+                    commitSha: mergeCommitSha,
+                    recipient: operation.recipient,
+                    updateLocalTaskState: false,
+                    ownerId: `${ownerId}:recovered-merge`,
+                  });
+                } catch (err) {
+                  server.log.warn(
+                    `Recovered merge harvest failed for ${operation.operationId}: ${err instanceof Error ? err.message : String(err)}`,
+                  );
+                }
+              }
+            : undefined,
+        }
+      : undefined,
+  );
+  // Hold new worker launches until startup recovery completes.
+  if (operationsStore && durableRegistry) {
+    queue.pause();
+  }
 
   const lifecycle = new LifecycleMonitor(config);
   const network = new NetworkMonitor(config);
 
+  let closing = false;
   const reconnect = async () => {
+    if (closing) return;
     server.log.info("Executing Graceful Reconnect Protocol...");
     lifecycle.setStatus("degraded");
 
@@ -76,6 +553,8 @@ export async function startServer(
 
     // 2. Verify Git availability
     const gitOk = await sandbox.checkGit();
+
+    if (closing) return;
 
     // 3. Verify network connectivity
     const networkOk = network.isOnline();
@@ -110,81 +589,257 @@ export async function startServer(
     await reconnect();
   });
 
-  lifecycle.start();
-  network.start();
-
-  // FR-015: Build Plan Heartbeat
-  const slackApp = getSlackApp();
-  const planHeartbeat = new PlanHeartbeat(config, slackApp, projectRoot);
-  planHeartbeat.start();
-
-  // Poll-based HarvestWatcher
-  const harvestWatcher = new HarvestWatcher(config, slackApp, projectRoot);
-  harvestWatcher.start();
-
-  await healthRoutes(server, lifecycle, network, sandbox);
-  await statusRoutes(server, monitor, queue, sandbox, lifecycle, network);
-  await dispatchRoutes(server, queue);
-  await githubWebhookPlugin(server, { config, projectRoot });
-  await notifyRoutes(server);
+  let ownsPidRecord = false;
+  const stopPollers: Array<() => void | Promise<void>> = [];
+  const cleanup: Array<() => void | Promise<void>> = [];
+  if (ownedDb) {
+    const dbToClose = ownedDb;
+    cleanup.push(() => {
+      if (dbToClose.open) dbToClose.close();
+    });
+  }
 
   const shutdown = async () => {
     server.log.info("Shutting down server...");
-    planHeartbeat.stop();
-    harvestWatcher.stop();
-    await stopSlackApp();
-    await stopTelegramBot();
-    lifecycle.stop();
-    network.stop();
-    monitor.stopPolling();
-    await server.close();
-    removePid();
-    server.log.info("Server shut down.");
-    if (options.handleSignals) {
-      process.exit(0);
+    try {
+      await server.close();
+      server.log.info("Server shut down.");
+      if (options.handleSignals) process.exit(0);
+    } catch (err) {
+      server.log.error(err);
+      if (options.handleSignals) exitCli(1);
     }
   };
 
-  if (options.handleSignals) {
-    process.on("SIGTERM", shutdown);
-    process.on("SIGINT", shutdown);
-  }
+  server.addHook("onClose", async () => {
+    closing = true;
+    serverShutdown.abort();
+    process.off("SIGTERM", shutdown);
+    process.off("SIGINT", shutdown);
+    const errors: unknown[] = [];
+    const releases = cleanup.splice(0);
+    if (ownsPidRecord) {
+      ownsPidRecord = false;
+      releases.push(() => pid.removePid());
+    }
+    const releaseSafely = async (release: () => void | Promise<void>) => {
+      try {
+        await release();
+      } catch (err) {
+        errors.push(err);
+      }
+    };
+    const drains = stopPollers.splice(0).map(releaseSafely);
+    drains.push(releaseSafely(() => queue.close()));
+    await Promise.all(drains);
+    for (const release of releases) {
+      await releaseSafely(release);
+    }
+    await releaseSafely(() => {
+      try {
+        if (ledgerLock && !options.ledger) closeDb();
+      } finally {
+        ledgerLock?.release();
+        instanceLock?.release();
+      }
+    });
+    if (errors.length === 1) throw errors[0];
+    if (errors.length > 1)
+      throw new AggregateError(errors, "Server cleanup failed");
+  });
 
   try {
+    const routeAuthOptions = enforceRegistryScope
+      ? {
+          registry: activeRegistry,
+          transport: effectiveTransport,
+          localDefaultProjectId,
+          resolvePrincipal: options.resolvePrincipal,
+        }
+      : undefined;
+
+    const statusRouteOptions =
+      routeAuthOptions || operationsStore
+        ? {
+            ...routeAuthOptions,
+            ...(operationsStore ? { operationsStore, clock } : {}),
+            ...(!routeAuthOptions && localDefaultProjectId
+              ? { localDefaultProjectId }
+              : {}),
+          }
+        : undefined;
+
+    await healthRoutes(server, lifecycle, network, sandbox, {
+      registry,
+      operationsStore,
+      notifier,
+      runnerKind,
+    });
+    await statusRoutes(
+      server,
+      monitor,
+      queue,
+      sandbox,
+      lifecycle,
+      network,
+      statusRouteOptions,
+    );
+    await dispatchRoutes(server, queue, routeAuthOptions);
+    await githubWebhookPlugin(server, {
+      config,
+      projectRoot,
+      registry: activeRegistry,
+      vcs,
+      ledger: sharedLedger,
+      gitEnv,
+      ...(harvestService ? { harvestService } : {}),
+      ...(operationsStore ? { store: operationsStore } : {}),
+      github: githubPort,
+      executor: harvestExecutor,
+      ...(outbox ? { outbox } : {}),
+      clock,
+      ownerId: `${ownerId}:webhook`,
+      ...(options.autoResumeWebhook !== undefined
+        ? { autoResume: options.autoResumeWebhook }
+        : {}),
+    });
+    await notifyRoutes(server, projectRoot, routeAuthOptions);
+
     const address = await server.listen({
       port: config.server.port,
       host: config.server.host,
     });
-    console.log(`gwrk server listening on ${address}`);
-    writePid(process.pid);
+    logCliOutput(`gwrk server listening on ${address}`);
+
+    // Register cleanup before any service can start.
+    const stopPolling = () => monitor.stopPolling();
+    const stopLifecycle = () => lifecycle.stop();
+    const stopNetwork = () => network.stop();
+    stopPollers.push(stopPolling, stopLifecycle, stopNetwork);
+
+    pid.writePid(process.pid);
+    ownsPidRecord = true;
 
     // FR-002: Prune worktrees on startup
     await sandbox.pruneSandboxes();
 
-    // Start Slack if configured
-    await startSlackApp({
-      queue,
-      monitor,
-      sandbox,
-      lifecycle,
-      network,
-      git,
-      projectRoot,
-      config,
-    });
+    // T035: Run startup recovery before draining dispatches or starting pollers.
+    if (operationsStore && durableRegistry) {
+      await queue.recoverOnStartup();
+      if (harvestService) {
+        try {
+          await harvestService.resumeIncomplete(`${ownerId}:startup`);
+        } catch (err) {
+          server.log.warn(
+            `Startup harvest resume failed: ${err instanceof Error ? err.message : String(err)}`,
+          );
+        }
+      }
+      if (outbox) {
+        for (const project of durableRegistry.listProjects()) {
+          if (closing) break;
+          try {
+            await outbox.flushPendingForProject(project.projectId);
+          } catch (err) {
+            server.log.warn(
+              `Startup outbox flush failed for ${project.slug}: ${err instanceof Error ? err.message : String(err)}`,
+            );
+          }
+        }
+      }
+      queue.resume();
+    }
 
-    // Start Telegram if configured
-    await startTelegramBot({
+    monitor.startPolling();
+    lifecycle.start();
+    network.start();
+
+    const slackApp = slackInUse ? null : getSlackApp();
+    const planHeartbeat = new PlanHeartbeat(
+      config,
+      slackApp,
+      projectRoot,
+      sharedLedger,
+      activeRegistry || options.notifier
+        ? { registry: activeRegistry, notifier: options.notifier }
+        : undefined,
+    );
+    stopPollers.push(() => planHeartbeat.stop());
+    planHeartbeat.start();
+
+    const harvestWatcher = new HarvestWatcher(
+      config,
+      slackApp,
+      projectRoot,
+      sharedLedger,
+      gitEnv,
+      durableRegistry || harvestService || operationsStore
+        ? {
+            registry: durableRegistry,
+            ...(harvestService ? { harvestService } : {}),
+            ...(operationsStore ? { store: operationsStore } : {}),
+            github: githubPort,
+            vcs,
+            executor: harvestExecutor,
+            ...(outbox ? { outbox } : {}),
+            ...(notifier ? { notifier } : {}),
+            clock,
+            ownerId: `${ownerId}:watcher`,
+          }
+        : undefined,
+    );
+    stopPollers.push(() => harvestWatcher.stop());
+    harvestWatcher.start();
+
+    if (!slackInUse) {
+      if (slackApp) {
+        slackInUse = true;
+        cleanup.push(async () => {
+          try {
+            await stopSlackApp();
+          } finally {
+            slackInUse = false;
+          }
+        });
+      }
+      await startSlackApp({
+        queue,
+        monitor,
+        sandbox,
+        lifecycle,
+        network,
+        git,
+        projectRoot,
+        config,
+        ...(registry ? { registry } : {}),
+        ...(routingService ? { routingService } : {}),
+        ...(options.vcs || activeRegistry ? { vcs } : {}),
+      });
+    }
+
+    const stopTelegram = await startTelegramBot({
       queue,
       monitor,
       git,
       projectRoot,
       config,
     });
+    if (typeof stopTelegram === "function") stopPollers.push(stopTelegram);
+
+    if (options.handleSignals) {
+      process.on("SIGTERM", shutdown);
+      process.on("SIGINT", shutdown);
+    }
 
     return server;
   } catch (err) {
+    try {
+      await server.close();
+    } catch (cleanupError) {
+      server.log.error(cleanupError);
+    }
     server.log.error(err);
-    process.exit(1);
+    if (options.handleSignals) exitCli(1);
+    throw err;
   }
 }

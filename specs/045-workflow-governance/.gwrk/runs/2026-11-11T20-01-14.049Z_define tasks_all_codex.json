@@ -1,0 +1,19 @@
+{
+  "runId": "2026-11-11T20:01:14.049Z_define_all",
+  "feature": "045-workflow-governance",
+  "phase": "all",
+  "command": "define tasks",
+  "agent": "codex",
+  "model": "unknown",
+  "startedAt": "2026-11-11T20:01:14.049Z",
+  "finishedAt": "2026-11-11T20:01:14.351Z",
+  "durationS": 0,
+  "exitCode": 0,
+  "attempt": 1,
+  "filesChanged": 12,
+  "linesAdded": 313,
+  "linesDeleted": 0,
+  "gitCommit": "7512bf389ab1fdb355b88336612fa5f0ab4f2a69",
+  "gitBranch": "codex/workflow-governance-plan",
+  "digest": []
+}

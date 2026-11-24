@@ -27,6 +27,8 @@ jobs:
       - name: Checkout
         if: ${{ steps.release.outputs.release_created }}
         uses: actions/checkout@v4
+        with:
+          ref: refs/tags/${{ steps.release.outputs.tag_name }}
 
       - name: Setup Node.js
         if: ${{ steps.release.outputs.release_created }}
@@ -38,31 +40,26 @@ jobs:
         if: ${{ steps.release.outputs.release_created }}
         uses: pnpm/action-setup@v4
         with:
-          version: 9
+          version: 9.15.9
 
-      - name: Install dependencies
+      - name: Build Linux release assets
         if: ${{ steps.release.outputs.release_created }}
-        run: pnpm install --frozen-lockfile
-
-      - name: Build
-        if: ${{ steps.release.outputs.release_created }}
-        run: pnpm build
-
-      - name: Package tarball
-        if: ${{ steps.release.outputs.release_created }}
+        env:
+          RELEASE_TAG: ${{ steps.release.outputs.tag_name }}
         run: |
-          # npm pack respects the "files" array in package.json
-          npm pack
-          # Rename to a predictable name without the @scope prefix
-          mv gwrk-cli-*.tgz gwrk-${{ steps.release.outputs.tag_name }}.tgz
+          mkdir -p "$RUNNER_TEMP/gwrk-release"
+          node scripts/release/build-linux-release.mjs "$RUNNER_TEMP/gwrk-release" "$RELEASE_TAG"
+          cp deploy/linux-runner/install-release.sh "$RUNNER_TEMP/gwrk-release/"
 
-      - name: Upload Tarball to Release
+      - name: Upload Linux release assets
         if: ${{ steps.release.outputs.release_created }}
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ steps.release.outputs.tag_name }}
         run: |
-          tag='${{ steps.release.outputs.tag_name }}'
+          cd "$RUNNER_TEMP/gwrk-release"
+          tag="$RELEASE_TAG"
           file="gwrk-${tag}.tgz"
           # release-please creates the GitHub Release moments before this step;
           # the REST lookup `gh` uses can lag, which surfaced as a consistent
@@ -70,7 +67,7 @@ jobs:
           # then upload idempotently so re-runs don't fail on an existing asset.
           for attempt in $(seq 1 6); do
             if gh release view "$tag" >/dev/null 2>&1; then
-              gh release upload "$tag" "$file" --clobber
+              gh release upload "$tag" "$file" "${file}.sha256" release-manifest.json install-release.sh --clobber
               echo "Uploaded ${file} to release ${tag}"
               exit 0
             fi

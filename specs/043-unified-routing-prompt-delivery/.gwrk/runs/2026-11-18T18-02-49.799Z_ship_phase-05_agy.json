@@ -1,0 +1,28 @@
+{
+  "runId": "2026-11-18T18:02:49.799Z_ship_p05",
+  "feature": "043-unified-routing-prompt-delivery",
+  "phase": "phase-05",
+  "command": "ship",
+  "agent": "agy",
+  "model": "unknown",
+  "deviceId": "e3553322-9e95-4ef0-a217-0deb4b95b4bc",
+  "hostname": "mbp.local",
+  "usage": {
+    "inputTokens": 486064,
+    "outputTokens": 53551,
+    "totalTokens": 539615
+  },
+  "startedAt": "2026-11-18T18:02:49.799Z",
+  "finishedAt": "2026-11-18T18:25:48.655Z",
+  "durationS": 1379,
+  "exitCode": 0,
+  "attempt": 1,
+  "gateResult": "PASS",
+  "reviewVerdict": "GO",
+  "filesChanged": 8,
+  "linesAdded": 286,
+  "linesDeleted": 32,
+  "gitCommit": "5d18b9adcf1b763c900247387eaa87780247ab00",
+  "gitBranch": "feat/043-unified-routing-prompt-delivery",
+  "digest": []
+}

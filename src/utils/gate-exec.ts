@@ -55,15 +55,22 @@ export interface TaskGateResult {
 export const GATE_TIMEOUT_MS = 120_000;
 
 export async function runTaskGate(
-  task: { id: string; gateScript?: string },
-  opts: { featureDir: string; cwd: string; timeoutMs?: number },
+  task: { id?: string; gateScript?: string },
+  opts: {
+    featureDir: string;
+    cwd: string;
+    timeoutMs?: number;
+    env?: NodeJS.ProcessEnv;
+  },
 ): Promise<TaskGateResult> {
-  const { featureDir, cwd } = opts;
+  const { featureDir, cwd, env, timeoutMs = GATE_TIMEOUT_MS } = opts;
 
   // Strategy 1 — convention gate file.
-  const conventionPath = path.join(featureDir, "gates", `${task.id}-gate.sh`);
-  if (fs.existsSync(conventionPath)) {
-    const r = await runGate(conventionPath, { cwd });
+  const conventionPath = task.id
+    ? path.join(featureDir, "gates", `${task.id}-gate.sh`)
+    : undefined;
+  if (conventionPath && fs.existsSync(conventionPath)) {
+    const r = await runGate(conventionPath, { cwd, env, timeoutMs });
     return {
       passed: r.passed,
       exitCode: r.exitCode,
@@ -78,7 +85,7 @@ export async function runTaskGate(
     return {
       passed: false,
       exitCode: 1,
-      output: `No gate defined for ${task.id}`,
+      output: `No gate defined for ${task.id ?? "phase verification"}`,
       strategy: "missing",
       gatePath: "(none)",
     };
@@ -87,7 +94,7 @@ export async function runTaskGate(
   // Strategy 2 — gateScript as a file path.
   const scriptPath = path.join(featureDir, gateScript);
   if (fs.existsSync(scriptPath)) {
-    const r = await runGate(scriptPath, { cwd });
+    const r = await runGate(scriptPath, { cwd, env, timeoutMs });
     return {
       passed: r.passed,
       exitCode: r.exitCode,
@@ -119,12 +126,7 @@ export async function runTaskGate(
       gatePath: label,
     };
   }
-  return runInlineGate(
-    gateScript,
-    cwd,
-    opts.timeoutMs ?? GATE_TIMEOUT_MS,
-    label,
-  );
+  return runInlineGate(gateScript, cwd, timeoutMs, label, env);
 }
 
 /**
@@ -136,12 +138,14 @@ export function runInlineGate(
   cwd: string,
   timeoutMs: number = GATE_TIMEOUT_MS,
   label?: string,
+  env?: NodeJS.ProcessEnv,
 ): TaskGateResult {
   const gatePath = label ?? `(inline) ${script.substring(0, 60)}`;
   try {
     const output = String(
       execSync(`set -e\n${script}`, {
         cwd,
+        env,
         stdio: "pipe",
         timeout: timeoutMs,
         encoding: "utf-8",

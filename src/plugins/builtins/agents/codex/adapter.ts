@@ -4,6 +4,7 @@
 
 import fs from "node:fs/promises";
 import path from "node:path";
+import { readCodexModelCatalog } from "../../../../adapters/models/codex-catalog.js";
 import type {
   AgentTaskRequest as TaskDispatch,
   AgentTaskResult as TaskResult,
@@ -27,14 +28,22 @@ export class CodexAdapter implements AgentBackend {
   readonly displayName = "Codex CLI";
   readonly emitsStreamJson = false;
   readonly nativeWriter = true;
+  readonly supportsModelForwarding = true;
 
-  async isAvailable(): Promise<boolean> {
+  async isAvailable(signal?: AbortSignal): Promise<boolean> {
     try {
-      const { exitCode } = await execCommand("which", ["codex"]);
+      const args = ["codex"];
+      const { exitCode } = signal
+        ? await execCommand("which", args, undefined, { signal })
+        : await execCommand("which", args);
       return exitCode === 0;
     } catch {
       return false;
     }
+  }
+
+  discoverModels() {
+    return readCodexModelCatalog();
   }
 
   async checkQuota(): Promise<QuotaStatus> {
@@ -80,13 +89,30 @@ export class CodexAdapter implements AgentBackend {
     }
   }
 
-  async dispatch(task: TaskDispatch): Promise<AgentDispatch> {
-    const args: string[] = ["exec", "--full-auto"];
+  resolveModel(
+    task: Pick<TaskDispatch, "model" | "env">,
+    ambientEnv?: Readonly<NodeJS.ProcessEnv>,
+  ): string | undefined {
+    const model =
+      task.model || (task.env?.CODEX_MODEL ?? ambientEnv?.CODEX_MODEL);
+    return model && model !== "default" ? model : undefined;
+  }
 
-    const rawModel = task.model || task.env?.CODEX_MODEL;
-    if (rawModel && rawModel !== "default") {
-      args.push("--model", rawModel);
-    }
+  async dispatch(task: TaskDispatch): Promise<AgentDispatch> {
+    const args = [
+      "--ask-for-approval",
+      "never",
+      "exec",
+      "--sandbox",
+      "workspace-write",
+    ];
+
+    const model = this.resolveModel(task);
+    if (model) args.push("--model", model);
+
+    const effort = task.effort || task.env?.GWRK_EFFORT;
+    if (effort)
+      args.push("-c", `model_reasoning_effort=${JSON.stringify(effort)}`);
 
     const rawPrompt = task.prompt ?? "";
     const isExpandedPrompt =
@@ -148,9 +174,40 @@ export class CodexAdapter implements AgentBackend {
 
   parseResult(stdout: string, stderr: string, rawExitCode: number): TaskResult {
     let errorType: TaskResult["errorType"];
-    let exitCode = rawExitCode;
+    let unwrappedStdout = stdout;
+    let terminalStatus: TaskResult["terminalStatus"];
+    for (const line of stdout.split("\n")) {
+      try {
+        const event = JSON.parse(line);
+        if (event?.type === "turn.failed") terminalStatus = "failure";
+        if (event?.type === "turn.completed" && terminalStatus !== "failure") {
+          terminalStatus = "success";
+        }
+        if (
+          event?.type === "item.completed" &&
+          event.item?.type === "agent_message" &&
+          typeof event.item.text === "string"
+        ) {
+          unwrappedStdout = event.item.text;
+        }
+      } catch {
+        // Plain text remains a supported output.
+      }
+    }
 
-    if (rawExitCode !== 0) {
+    let structuredOutput: TaskResult["structuredOutput"];
+    try {
+      const payload = JSON.parse(unwrappedStdout);
+      if (payload && typeof payload === "object" && !Array.isArray(payload)) {
+        structuredOutput = payload;
+      }
+    } catch {
+      // Structured output is optional.
+    }
+
+    let exitCode =
+      terminalStatus === "failure" ? rawExitCode || 1 : rawExitCode;
+    if (exitCode !== 0) {
       if (rawExitCode === 127 || stderr.includes("command not found")) {
         errorType = "command_not_found";
         exitCode = 127;
@@ -176,8 +233,12 @@ export class CodexAdapter implements AgentBackend {
     return {
       exitCode,
       rawExitCode,
+      status: exitCode === 0 ? "success" : "failure",
+      ...(terminalStatus ? { terminalStatus } : {}),
       stdout,
-      unwrappedStdout: stdout,
+      unwrappedStdout,
+      observedModel: "unknown",
+      ...(structuredOutput ? { structuredOutput } : {}),
       stderr,
       errorType,
       durationS: 0,

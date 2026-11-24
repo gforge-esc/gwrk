@@ -2,14 +2,17 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import { execFile } from "node:child_process";
 import fs from "node:fs/promises";
 import path from "node:path";
+import { promisify } from "node:util";
 import {
   type AgentTaskRequest as TaskDispatch,
   type AgentTaskResult as TaskResult,
   unwrapStreamJson,
 } from "../../../../ports/agent-port.js";
 import { execCommand } from "../../../../utils/exec.js";
+import { ModelDiscoveryError } from "../../../agent-backend.js";
 import type {
   AgentBackend,
   AgentDispatch,
@@ -28,14 +31,51 @@ export class ClaudeAdapter implements AgentBackend {
   readonly displayName = "Claude Code";
   readonly emitsStreamJson = true;
   readonly nativeWriter = true;
+  readonly supportsModelForwarding = true;
 
-  async isAvailable(): Promise<boolean> {
+  async isAvailable(signal?: AbortSignal): Promise<boolean> {
     try {
-      const { exitCode } = await execCommand("which", ["claude"]);
+      const args = ["claude"];
+      const { exitCode } = signal
+        ? await execCommand("which", args, undefined, { signal })
+        : await execCommand("which", args);
       return exitCode === 0;
     } catch {
       return false;
     }
+  }
+
+  async discoverModels() {
+    let stdout: string;
+    try {
+      ({ stdout } = await promisify(execFile)(
+        "claude",
+        ["auth", "status", "--json"],
+        {
+          timeout: 5_000,
+        },
+      ));
+    } catch (error) {
+      const output = (error as { stdout?: unknown }).stdout;
+      if (typeof output !== "string" || !output.trim()) throw error;
+      stdout = output;
+    }
+    const status: unknown = JSON.parse(stdout);
+    if (
+      typeof status !== "object" ||
+      status === null ||
+      !("loggedIn" in status)
+    ) {
+      throw new Error("Claude CLI returned an invalid authentication status.");
+    }
+    if (status.loggedIn !== true) {
+      throw new ModelDiscoveryError(
+        "auth_error",
+        "Authenticate the Claude CLI.",
+      );
+    }
+    // A successful auth probe permits explicit candidates from this runner.
+    return [];
   }
 
   async checkQuota(): Promise<QuotaStatus> {
@@ -120,7 +160,8 @@ export class ClaudeAdapter implements AgentBackend {
       args.push("--model", rawModel);
     }
 
-    const effort = task.env?.CLAUDE_EFFORT || task.env?.GWRK_EFFORT;
+    const effort =
+      task.effort || task.env?.CLAUDE_EFFORT || task.env?.GWRK_EFFORT;
     if (effort) {
       args.push("--effort", effort);
     }
@@ -169,9 +210,10 @@ export class ClaudeAdapter implements AgentBackend {
   parseResult(stdout: string, stderr: string, rawExitCode: number): TaskResult {
     const unwrapped = unwrapStreamJson(stdout);
     let errorType: TaskResult["errorType"];
-    let exitCode = rawExitCode;
+    let exitCode =
+      unwrapped.terminalStatus === "failure" ? rawExitCode || 1 : rawExitCode;
 
-    if (rawExitCode !== 0) {
+    if (exitCode !== 0) {
       if (rawExitCode === 127 || stderr.includes("command not found")) {
         errorType = "command_not_found";
         exitCode = 127;
@@ -191,7 +233,9 @@ export class ClaudeAdapter implements AgentBackend {
       } else if (
         stderr.includes("401") ||
         stderr.includes("403") ||
-        stderr.includes("auth")
+        stderr.includes("auth") ||
+        (unwrapped.terminalStatus === "failure" &&
+          /failed to authenticate|oauth session expired/i.test(unwrapped.text))
       ) {
         errorType = "auth_failure";
         exitCode = 1;
@@ -204,8 +248,13 @@ export class ClaudeAdapter implements AgentBackend {
     return {
       exitCode,
       rawExitCode,
+      status: exitCode === 0 ? "success" : "failure",
+      ...(unwrapped.terminalStatus
+        ? { terminalStatus: unwrapped.terminalStatus }
+        : {}),
       stdout,
       unwrappedStdout: unwrapped.text,
+      observedModel: unwrapped.observedModel ?? "unknown",
       ...(unwrapped.structuredOutput
         ? { structuredOutput: unwrapped.structuredOutput }
         : {}),

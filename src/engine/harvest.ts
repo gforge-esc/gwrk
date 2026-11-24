@@ -2,17 +2,52 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import { randomUUID } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
-import { getCompressionRecord, recordCompression } from "../db/compression.js";
+import type Database from "better-sqlite3";
+import {
+  logCliError,
+  logCliOutput,
+  warnCli,
+} from "../adapters/cli/output-scope.js";
+import { createGitVcsAdapter } from "../adapters/git/index.js";
+import { createGitHubHarvestAdapter } from "../adapters/github/index.js";
+import { createHarvestExecutionAdapter } from "../adapters/harvest/index.js";
+import {
+  createSlackNotificationAdapter,
+  notifyHarvestComplete,
+} from "../adapters/notifications/index.js";
+import {
+  createSqliteOperationsStoreAdapter,
+  createSqliteProjectRegistryAdapter,
+  createSqliteRunStoreAdapter,
+} from "../adapters/sqlite/index.js";
+import { createOutboxDeliveryService } from "../application/delivery/outbox.js";
+import {
+  type DurableHarvestService,
+  createDurableHarvestService,
+} from "../application/harvest/index.js";
+import { getCompressionRecord } from "../db/compression.js";
+import { openDatabase } from "../db/index.js";
 import {
   finishRun,
   getFeatureRunTelemetry,
   listRuns,
   recordRun,
 } from "../db/runs.js";
+import type {
+  DeliveryRecipient,
+  EnrolledProject,
+} from "../domain/project-registry.js";
+import type { NotificationPort } from "../ports/notification-port.js";
+import type { ProjectRegistryPort } from "../ports/store-port.js";
 import { loadConfig } from "../utils/config.js";
-import { commitFiles, deleteRemoteBranch } from "../utils/git.js";
+import {
+  commitFiles,
+  deleteRemoteBranch,
+  detectDefaultBranch,
+} from "../utils/git.js";
 import { loadManifests } from "../utils/manifest.js";
 import { parsePlan } from "../utils/parser.js";
 import { resolveProjectId } from "../utils/project-id.js";
@@ -51,6 +86,7 @@ export interface LogIndex {
 export async function finalizeLogs(
   featureId: string,
   projectPath: string,
+  env?: NodeJS.ProcessEnv,
 ): Promise<void> {
   const runsDir = path.join("specs", featureId, ".gwrk", "runs");
   const fullRunsDir = path.join(projectPath, runsDir);
@@ -104,26 +140,178 @@ export async function finalizeLogs(
     projectPath,
     stagedFiles,
     `harvest: finalize logs for ${featureId}`,
-    { skipHooks: true },
+    { skipHooks: true, ...(env && { env }) },
   );
+}
+
+export interface HarvestFeatureOptions {
+  projectId?: string;
+  durableService?: DurableHarvestService;
+  project?: EnrolledProject;
+  db?: Database.Database;
+  ownerId?: string;
+  recipient?: DeliveryRecipient | null;
+  updateLocalTaskState?: boolean;
+}
+
+const FULL_GIT_SHA = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/i;
+
+function buildFallbackLocalProject(
+  projectPath: string,
+  projectId: string,
+): EnrolledProject {
+  const now = new Date().toISOString();
+  const trunkBranch = detectDefaultBranch(projectPath, "main");
+  const slug = path.basename(projectPath) || projectId;
+  return {
+    projectId,
+    slug,
+    name: slug,
+    repoSlug: null,
+    trunkBranch,
+    localRoot: projectPath,
+    mirrorPath: null,
+    runnerPolicy: { allowedKinds: ["local"] },
+    slack: null,
+    legacyProjectIds: [],
+    createdAt: now,
+    updatedAt: now,
+  };
 }
 
 /**
  * Orchestrate the post-merge harvest for a feature phase.
+ * Routes through DurableHarvestService when a durable service or enrolled
+ * repository checkout is available, while preserving single-project local
+ * compatibility for legacy callers.
  * (FR-H01, FR-H03, FR-H04, FR-H05, FR-H06, FR-H07, FR-H08)
  */
 export async function harvestFeature(
   projectPath: string,
   record: HarvestRecord,
+  options?: HarvestFeatureOptions,
+  env?: NodeJS.ProcessEnv,
 ): Promise<CompressionReport | undefined> {
   const { featureId, phaseId, mergeCommitSha, prNumber, mergedAt, status } =
     record;
 
-  const projectId = resolveProjectId(projectPath);
+  const projectId =
+    options?.project?.projectId ??
+    options?.projectId ??
+    record.projectId ??
+    resolveProjectId(projectPath);
+  const recipient =
+    options?.recipient !== undefined ? options.recipient : record.recipient;
+  const connectionArgs: [Database.Database?] = options?.db ? [options.db] : [];
+
+  if (options?.durableService) {
+    const project =
+      options.project ?? buildFallbackLocalProject(projectPath, projectId);
+    await options.durableService.runManualHarvest({
+      project,
+      featureId,
+      phaseId,
+      prNumber: prNumber > 0 ? prNumber : undefined,
+      commitSha: FULL_GIT_SHA.test(mergeCommitSha ?? "")
+        ? mergeCommitSha
+        : undefined,
+      recipient,
+      updateLocalTaskState: options.updateLocalTaskState ?? true,
+      ownerId: options.ownerId ?? "local-harvest",
+    });
+    if (options.updateLocalTaskState !== false) {
+      try {
+        await finalizeLogs(featureId, projectPath, env);
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        warnCli(`Log finalization failed (non-fatal): ${msg}`);
+      }
+    }
+    return undefined;
+  }
+
+  if (
+    status === "merged" &&
+    FULL_GIT_SHA.test(mergeCommitSha ?? "") &&
+    fs.existsSync(path.join(projectPath, ".git"))
+  ) {
+    let ownedDb: Database.Database | null = null;
+    try {
+      let db: Database.Database;
+      if (options?.db) {
+        db = options.db;
+      } else {
+        ownedDb = openDatabase();
+        db = ownedDb;
+      }
+      const registry = createSqliteProjectRegistryAdapter({ db });
+      const enrolled =
+        options?.project ??
+        registry.findByLocalRoot(projectPath) ??
+        registry.getProject(projectId);
+      if (enrolled) {
+        let capturedReport: CompressionReport | undefined;
+        const store = createSqliteOperationsStoreAdapter({ db });
+        const clock = {
+          nowIso: () => new Date().toISOString(),
+          nowMs: () => Date.now(),
+        };
+        const outbox = createOutboxDeliveryService({
+          store,
+          registry,
+          notifier: createSlackNotificationAdapter(),
+          clock,
+          newId: () => randomUUID(),
+        });
+        const durableService = createDurableHarvestService({
+          store,
+          registry,
+          vcs: createGitVcsAdapter(),
+          github: createGitHubHarvestAdapter(),
+          executor: createHarvestExecutionAdapter({
+            db,
+            onCompressionReport: (report) => {
+              capturedReport = report;
+            },
+          }),
+          outbox,
+          clock,
+          newId: () => randomUUID(),
+        });
+        await durableService.runManualHarvest({
+          project: enrolled,
+          featureId,
+          phaseId,
+          prNumber: prNumber > 0 && enrolled.repoSlug ? prNumber : undefined,
+          commitSha: mergeCommitSha,
+          recipient,
+          updateLocalTaskState: options?.updateLocalTaskState ?? true,
+          ownerId: options?.ownerId ?? "local-harvest",
+        });
+        if (options?.updateLocalTaskState !== false) {
+          try {
+            await finalizeLogs(featureId, projectPath, env);
+          } catch (err) {
+            const msg = err instanceof Error ? err.message : String(err);
+            warnCli(`Log finalization failed (non-fatal): ${msg}`);
+          }
+        }
+        return capturedReport;
+      }
+    } catch (err) {
+      if (options?.project || options?.db) throw err;
+      const msg = err instanceof Error ? err.message : String(err);
+      warnCli(
+        `Durable harvest unavailable for local checkout; falling back to local compatibility mode: ${msg}`,
+      );
+    } finally {
+      if (ownedDb?.open) ownedDb.close();
+    }
+  }
 
   // If no phaseId is specified, discover all phases from plan.md and run harvest for each
   if (!phaseId) {
-    console.log(
+    logCliOutput(
       `No phaseId provided for harvest on ${featureId}. Attempting to discover all phases from plan.md...`,
     );
     const featureDir = path.join(projectPath, "specs", featureId);
@@ -131,24 +319,24 @@ export async function harvestFeature(
     if (fs.existsSync(planPath)) {
       try {
         const parsedPlan = parsePlan(planPath);
-        console.log(
+        logCliOutput(
           `Discovered ${parsedPlan.phases.length} phases for feature ${featureId}: ${parsedPlan.phases.map((p) => p.id).join(", ")}`,
         );
         for (const phase of parsedPlan.phases) {
           const subRecord = { ...record, phaseId: phase.id };
-          console.log(
+          logCliOutput(
             `Reconciling/Harvesting phase ${phase.id} for feature ${featureId}...`,
           );
-          await harvestFeature(projectPath, subRecord);
+          await harvestFeature(projectPath, subRecord, options, env);
         }
       } catch (err) {
-        console.error(
+        logCliError(
           `Failed to process phase-less harvest for ${featureId}:`,
           err,
         );
       }
     } else {
-      console.warn(
+      warnCli(
         `No plan.md found for ${featureId} at ${planPath}, cannot process phase-less harvest.`,
       );
     }
@@ -157,16 +345,21 @@ export async function harvestFeature(
 
   // 0. Idempotency Guard (FR-H10)
   if (phaseId) {
-    const existing = getCompressionRecord(featureId, phaseId, projectId);
+    const existing = getCompressionRecord(
+      featureId,
+      phaseId,
+      projectId,
+      ...connectionArgs,
+    );
     if (existing) {
-      console.log(
+      logCliOutput(
         `Harvest already completed for ${featureId} ${phaseId}, skipping.`,
       );
       return;
     }
 
     // Fallback: Use the run record itself as an idempotency token if compression is disabled/unimplemented
-    const runs = listRuns(featureId, projectId);
+    const runs = listRuns(featureId, projectId, ...connectionArgs);
     const alreadyProcessedRun = runs.find(
       (r) =>
         r.phase_id === phaseId &&
@@ -174,7 +367,7 @@ export async function harvestFeature(
         r.status === status,
     );
     if (alreadyProcessedRun) {
-      console.log(
+      logCliOutput(
         `Run for PR ${prNumber} already marked as ${status}. Skipping harvest idempotently.`,
       );
       return;
@@ -182,15 +375,17 @@ export async function harvestFeature(
   }
 
   // 1. Finalize Logs (FR-H02)
-  try {
-    await finalizeLogs(featureId, projectPath);
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    console.warn(`Log finalization failed (non-fatal): ${msg}`);
+  if (options?.updateLocalTaskState !== false) {
+    try {
+      await finalizeLogs(featureId, projectPath, env);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      warnCli(`Log finalization failed (non-fatal): ${msg}`);
+    }
   }
 
   // 2. Finalize DB Run Records (FR-H03)
-  const runs = listRuns(featureId, projectId);
+  const runs = listRuns(featureId, projectId, ...connectionArgs);
 
   const alreadyProcessedRun = runs.find(
     (r) =>
@@ -206,17 +401,21 @@ export async function harvestFeature(
   );
 
   if (alreadyProcessedRun) {
-    console.log(
+    logCliOutput(
       `Run record for PR ${prNumber} is already ${status}. Skipping DB update.`,
     );
   } else if (targetRun?.id) {
-    finishRun(targetRun.id, {
-      status: status,
-      merge_commit_sha: mergeCommitSha,
-      finished_at: mergedAt,
-    });
+    finishRun(
+      targetRun.id,
+      {
+        status: status,
+        merge_commit_sha: mergeCommitSha,
+        finished_at: mergedAt,
+      },
+      ...connectionArgs,
+    );
   } else if (status === "merged") {
-    console.warn(
+    warnCli(
       `No matching pending run found for harvest: feature=${featureId}, phase=${phaseId}, PR=${prNumber}. Backfilling run record.`,
     );
     try {
@@ -227,41 +426,44 @@ export async function harvestFeature(
         )
         .sort((a, b) => b.startedAt.localeCompare(a.startedAt))[0];
 
-      const backfillId = recordRun({
-        feature_id: featureId,
-        phase_id: phaseId || latestManifest?.phase || undefined,
-        project_id: projectId,
-        command: "ship",
-        agent_backend: latestManifest?.agent,
-        model: latestManifest?.model,
-        status: "merged",
-        exit_code: latestManifest?.exitCode ?? 0,
-        started_at: latestManifest?.startedAt,
-        finished_at: mergedAt || latestManifest?.finishedAt,
-        duration_s: latestManifest?.durationS,
-        attempt: latestManifest?.attempt ?? 1,
-        gate_result: latestManifest?.gateResult,
-        review_verdict: latestManifest?.reviewVerdict,
-        files_changed: latestManifest?.filesChanged,
-        lines_added: latestManifest?.linesAdded,
-        lines_deleted: latestManifest?.linesDeleted,
-        merge_commit_sha: mergeCommitSha,
-        pr_number: prNumber || undefined,
-        pr_url: record.prUrl || undefined,
-        device_id: latestManifest?.deviceId,
-        hostname: latestManifest?.hostname,
-        tokens_in: latestManifest?.usage?.inputTokens,
-        tokens_out: latestManifest?.usage?.outputTokens,
-        cost_usd: latestManifest?.usage?.costUsd,
-      });
-      console.log(
+      const backfillId = recordRun(
+        {
+          feature_id: featureId,
+          phase_id: phaseId || latestManifest?.phase || undefined,
+          project_id: projectId,
+          command: "ship",
+          agent_backend: latestManifest?.agent,
+          model: latestManifest?.model,
+          status: "merged",
+          exit_code: latestManifest?.exitCode ?? 0,
+          started_at: latestManifest?.startedAt,
+          finished_at: mergedAt || latestManifest?.finishedAt,
+          duration_s: latestManifest?.durationS,
+          attempt: latestManifest?.attempt ?? 1,
+          gate_result: latestManifest?.gateResult,
+          review_verdict: latestManifest?.reviewVerdict,
+          files_changed: latestManifest?.filesChanged,
+          lines_added: latestManifest?.linesAdded,
+          lines_deleted: latestManifest?.linesDeleted,
+          merge_commit_sha: mergeCommitSha,
+          pr_number: prNumber || undefined,
+          pr_url: record.prUrl || undefined,
+          device_id: latestManifest?.deviceId,
+          hostname: latestManifest?.hostname,
+          tokens_in: latestManifest?.usage?.inputTokens,
+          tokens_out: latestManifest?.usage?.outputTokens,
+          cost_usd: latestManifest?.usage?.costUsd,
+        },
+        ...connectionArgs,
+      );
+      logCliOutput(
         `Backfilled run record for ${featureId} ${phaseId} (Run ID: ${backfillId})`,
       );
     } catch (dbErr) {
-      console.warn(`Failed to backfill run record (non-fatal): ${dbErr}`);
+      warnCli(`Failed to backfill run record (non-fatal): ${dbErr}`);
     }
   } else {
-    console.log(
+    logCliOutput(
       `No pending run found for closed PR ${prNumber}. Skipping backfill.`,
     );
   }
@@ -269,7 +471,7 @@ export async function harvestFeature(
   // If this PR was closed (not merged), we just wanted to clean up the run record and logs.
   // We do not finalize the phase, compute compression, or reconcile gates.
   if (status === "closed") {
-    console.log(
+    logCliOutput(
       `PR ${prNumber} was closed. Run record updated. Skipping phase finalization.`,
     );
     return;
@@ -288,18 +490,22 @@ export async function harvestFeature(
     );
 
     if (pendingRuns.length > 0) {
-      console.log(
+      logCliOutput(
         `Phase ${phaseId} has ${pendingRuns.length} other pending runs. Marking them as closed since phase was merged.`,
       );
       for (const r of pendingRuns) {
         if (r.id === undefined) continue;
         try {
-          finishRun(r.id, {
-            status: "closed",
-            finished_at: new Date().toISOString(),
-          });
+          finishRun(
+            r.id,
+            {
+              status: "closed",
+              finished_at: new Date().toISOString(),
+            },
+            ...connectionArgs,
+          );
         } catch (e) {
-          console.warn(`Failed to close pending run ${r.id}: ${e}`);
+          warnCli(`Failed to close pending run ${r.id}: ${e}`);
         }
       }
     }
@@ -308,13 +514,23 @@ export async function harvestFeature(
   // 2.5 Gate Reconciliation — run gates, persist evidence, update tasks.json
   if (phaseId) {
     try {
-      const result = await reconcileGates(projectPath, featureId, phaseId);
-      console.log(
+      const result = await reconcileGates(
+        projectPath,
+        featureId,
+        phaseId,
+        {
+          projectId,
+          db: options?.db,
+          updateLocalTaskState: options?.updateLocalTaskState,
+        },
+        env,
+      );
+      logCliOutput(
         `Gate reconciliation: ${result.passed}/${result.total} passed${result.failed > 0 ? ` (${result.failed} failed)` : ""}`,
       );
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
-      console.warn(`Gate reconciliation failed (non-fatal): ${msg}`);
+      warnCli(`Gate reconciliation failed (non-fatal): ${msg}`);
     }
   }
 
@@ -350,12 +566,15 @@ export async function harvestFeature(
             estimatedDays,
           };
 
-          const actuals = gatherDeliveryActuals(featureDir, 30, prNumber);
+          const actuals = gatherDeliveryActuals(featureDir, 30, prNumber, env);
           const compression = computeCompression(forecast, actuals);
           const indicators = computeLeadingIndicators(
             featureId,
             forecast,
             projectId,
+            options?.db ? projectPath : undefined,
+            options?.db,
+            env,
           );
           let telemetry: CompressionReport["telemetry"];
           try {
@@ -363,6 +582,7 @@ export async function harvestFeature(
               featureId,
               projectId,
               phaseId,
+              ...connectionArgs,
             );
             if (
               rawTelemetry &&
@@ -387,30 +607,36 @@ export async function harvestFeature(
             ...(telemetry ? { telemetry } : {}),
           };
 
-          recordCompression(report, projectId);
-          console.log(
+          createSqliteRunStoreAdapter(
+            options?.db ? { db: options.db } : undefined,
+          ).recordCompression(report, projectId);
+          logCliOutput(
             `Recorded compression for ${featureId} ${phaseId}: point=${compression.pointCompression.toFixed(1)}x`,
           );
         }
       }
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
-      console.warn(`Failed to calculate compression for ${featureId}: ${msg}`);
+      warnCli(`Failed to calculate compression for ${featureId}: ${msg}`);
     }
   }
 
   // 4. Slack Done-Done (FR-H07)
-  if (report) {
-    await notifyDoneDone(report);
+  if (report && recipient !== null) {
+    await notifyDoneDone(report, undefined, {
+      projectId:
+        options?.project?.projectId ?? options?.projectId ?? record.projectId,
+      recipient,
+    });
   }
 
   // 5. Branch Cleanup (FR-H08)
   if (status === "merged" && record.headBranch) {
     try {
-      await cleanupBranch(record.headBranch, projectPath);
+      await cleanupBranch(record.headBranch, projectPath, env);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
-      console.warn(
+      warnCli(
         `Failed to cleanup branch ${record.headBranch} (non-fatal): ${msg}`,
       );
     }
@@ -423,11 +649,17 @@ export async function harvestFeature(
  * Posts the "🏆 Done, Done!" notification to Slack.
  * (FR-H07)
  */
-export async function notifyDoneDone(report: CompressionReport): Promise<void> {
-  const { MessageBuilder } = await import("../server/slack-messages.js");
-  const { notifySlack } = await import("../server/slack-notify.js");
-  const message = MessageBuilder.doneDone(report.featureId, report);
-  await notifySlack(message, undefined, { opsOnly: true });
+export async function notifyDoneDone(
+  report: CompressionReport,
+  notifier?: NotificationPort,
+  options?: {
+    projectId?: string;
+    recipient?: DeliveryRecipient;
+    opsOnly?: boolean;
+    registry?: ProjectRegistryPort;
+  },
+): Promise<void> {
+  await notifyHarvestComplete(report, notifier, options);
 }
 
 /**
@@ -437,6 +669,11 @@ export async function notifyDoneDone(report: CompressionReport): Promise<void> {
 export async function cleanupBranch(
   branchName: string,
   projectPath: string,
+  env?: NodeJS.ProcessEnv,
 ): Promise<void> {
-  deleteRemoteBranch(projectPath, branchName);
+  if (env) {
+    deleteRemoteBranch(projectPath, branchName, undefined, env);
+  } else {
+    deleteRemoteBranch(projectPath, branchName);
+  }
 }

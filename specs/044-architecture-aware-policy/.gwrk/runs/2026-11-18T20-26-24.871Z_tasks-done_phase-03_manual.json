@@ -1,0 +1,19 @@
+{
+  "runId": "2026-11-18T20:26:24.871Z_tasks-done_T011",
+  "feature": "044-architecture-aware-policy",
+  "phase": "phase-03",
+  "command": "tasks-done",
+  "agent": "manual",
+  "model": "none",
+  "startedAt": "2026-11-18T20:26:24.871Z",
+  "finishedAt": "2026-11-18T20:26:28.746Z",
+  "durationS": 4,
+  "exitCode": 0,
+  "attempt": 1,
+  "filesChanged": 4,
+  "linesAdded": 91,
+  "linesDeleted": 145,
+  "gitCommit": "8a3d71767aafd898581fd371c725d2b0e740aaf1",
+  "gitBranch": "codex/onboarding-phase3-current",
+  "digest": []
+}
