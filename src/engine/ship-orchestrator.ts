@@ -81,7 +81,11 @@ import {
   type ShipState,
 } from "./ship-types.js";
 import { activatePhaseTests } from "./test-activator.js";
-import { executeTestCommand, isIntegrationTestCommand } from "./test-runner.js";
+import {
+  executeTestCommand,
+  getTestResultFormat,
+  isIntegrationTestCommand,
+} from "./test-runner.js";
 
 /**
  * Start the progress indicator shared by both spinner wrappers. Animates on a
@@ -1461,7 +1465,11 @@ export class ShipOrchestrator extends EventEmitter {
         // Include the verification wrapper's bounded 300-second capacity wait.
         timeout: scoped ? 360_000 : 600_000,
       },
-      initialBaseline ? { purpose: "initial-baseline" } : undefined,
+      {
+        purpose: initialBaseline ? "initial-baseline" : undefined,
+        format: getTestResultFormat(profile),
+        vitest: { filters: phaseTestFiles ?? [] },
+      },
     );
     return {
       failCount: result.failed + (result.failedSuites ?? 0),
