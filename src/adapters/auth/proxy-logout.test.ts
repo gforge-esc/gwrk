@@ -31,7 +31,7 @@ function fixture() {
 afterEach(() => vi.useRealTimers());
 
 describe("fixed internal proxy logout", () => {
-  it.each([200, 302])(
+  it.each([200, 302, 303])(
     "accepts HTTP %s with genuine clearing headers without following redirects",
     async (status) => {
       const f = fixture();
