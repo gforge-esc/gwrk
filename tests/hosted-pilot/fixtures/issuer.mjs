@@ -36,6 +36,7 @@ export function createFixtureIssuer({
   now = Date.now,
   maxCodes = 1000,
   onIssuedToken = () => {},
+  onCounterUpdate = () => {},
 }) {
   if (!clientSecret) throw new Error("fixture client secret required");
   const signing = generateKeyPairSync("rsa", { modulusLength: 2048 });
@@ -55,8 +56,11 @@ export function createFixtureIssuer({
     });
     res.end(JSON.stringify(body));
   };
+  const notifyCounters = () =>
+    onCounterUpdate({ ...counts, pendingCodes: codes.size });
   const deny = (res) => {
     counts.denied++;
+    notifyCounters();
     json(res, 400, { error: "invalid_request" });
   };
   const token = (claims, badSignature) => {
@@ -70,6 +74,7 @@ export function createFixtureIssuer({
       const url = new URL(req.url, "https://127.0.0.1:18443");
       if (req.method === "GET" && url.pathname === "/jwks") {
         counts.jwks++;
+        notifyCounters();
         return json(res, 200, { keys: [jwk] });
       }
       if (req.method === "GET" && url.pathname === "/authorize") {
@@ -106,6 +111,7 @@ export function createFixtureIssuer({
             "Cache-Control": "no-store",
           })
           .end();
+        notifyCounters();
         return;
       }
       if (req.method === "POST" && url.pathname === "/token") {
@@ -142,6 +148,7 @@ export function createFixtureIssuer({
         const selected = grant.selected;
         if (selected === "token-error") {
           counts.denied++;
+          notifyCounters();
           return json(res, 400, { error: "051_UPSTREAM_ERROR_CANARY" });
         }
         const idToken = token(
@@ -175,6 +182,7 @@ export function createFixtureIssuer({
             .digest("hex"),
         });
         counts.issued++;
+        notifyCounters();
         return json(res, 200, {
           access_token: "synthetic-access",
           token_type: "Bearer",
@@ -209,6 +217,18 @@ if (
       renameSync(
         "/fixture/service/issuer-tokens.next",
         "/fixture/service/issuer-tokens.json",
+      );
+    },
+    onCounterUpdate(snapshot) {
+      writeFileSync(
+        "/fixture/service/issuer-observations.next",
+        JSON.stringify(snapshot),
+        { mode: 0o600 },
+      );
+      chownSync("/fixture/service/issuer-observations.next", 10001, 10001);
+      renameSync(
+        "/fixture/service/issuer-observations.next",
+        "/fixture/service/issuer-observations.json",
       );
     },
     clientSecret: readFileSync("/fixture/secrets/client-secret", "utf8").trim(),

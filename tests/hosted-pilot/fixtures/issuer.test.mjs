@@ -196,3 +196,20 @@ test("token-error control preserves its synthetic upstream canary for gateway lo
   assert.equal(result.status, 400);
   assert.ok(result.body.includes("051_UPSTREAM_ERROR_CANARY"));
 });
+
+test("regression (F-11): onCounterUpdate reports single-use code reuse denial at /token without exposing secrets", async () => {
+  const snapshots = [];
+  const fixture = createFixtureIssuer({
+    clientSecret: "fixture-secret",
+    onCounterUpdate: (counts) => snapshots.push(counts),
+  });
+  const body = await grant(fixture);
+  assert.equal((await request(fixture, "POST", "/token", body)).status, 200);
+  assert.equal((await request(fixture, "POST", "/token", body)).status, 400);
+  assert.ok(snapshots.length >= 2, "expected onCounterUpdate snapshots");
+  const last = snapshots.at(-1);
+  assert.equal(last.token, 2);
+  assert.equal(last.issued, 1);
+  assert.equal(last.denied, 1);
+  assert.equal(JSON.stringify(snapshots).includes("fixture-secret"), false);
+});
