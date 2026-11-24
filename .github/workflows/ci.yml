@@ -60,6 +60,8 @@ jobs:
         run: pnpm test:ci
         env:
           CI: "true"
+          VITEST_MAX_FORKS: "2"
+          VITEST_MIN_FORKS: "1"
 
       - name: Hosted sign-in container proof
         if: matrix.node-version == 22
