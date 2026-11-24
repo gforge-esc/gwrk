@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, you can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import { spawnSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
@@ -43,6 +44,8 @@ describe("Production hosted gateway bundle", () => {
       "quay.io/oauth2-proxy/oauth2-proxy:v7.15.6@sha256:c3415e8660af553f5e18f5d90db050614c02493c0ac6260ac59442f6d9b12048",
     );
 
+    expect(traefik.user).toBe("0:0");
+    expect(proxy.user).toBe("0:0");
     expect(traefik.read_only).toBe(true);
     expect(proxy.read_only).toBe(true);
     expect(traefik.security_opt).toContain("no-new-privileges:true");
@@ -65,6 +68,10 @@ describe("Production hosted gateway bundle", () => {
       "--providers.file.directory=/etc/traefik/dynamic",
     );
     expect(traefik.command).toContain("--providers.file.watch=false");
+    expect(traefik.command).toContain("--log.level=INFO");
+    expect(traefik.command).not.toEqual(
+      expect.arrayContaining([expect.stringMatching(/--accesslog/i)]),
+    );
     expect(traefik.command).toContain(
       "--entrypoints.websecure.forwardedheaders.insecure=false",
     );
@@ -234,6 +241,12 @@ describe("Production hosted gateway bundle", () => {
         "X-Forwarded-Proto": "https",
         "X-Forwarded-Port": "443",
         "X-Forwarded-For": "",
+        "X-Forwarded-Prefix": "",
+        "X-Forwarded-Server": "",
+        "X-Real-Ip": "",
+        Forwarded: "",
+        "X-Forwarded-Tls-Client-Cert": "",
+        "X-Forwarded-Tls-Client-Cert-Info": "",
         "X-Forwarded-User": "",
         "X-Forwarded-Email": "",
         "X-Forwarded-Groups": "",
@@ -286,6 +299,11 @@ describe("Production hosted gateway bundle", () => {
         .customRequestHeaders;
     expect(apiPrep.Authorization).toBeUndefined();
     expect(apiPrep.Cookie).toBeUndefined();
+    expect(apiPrep["X-Forwarded-For"]).toBeUndefined();
+    expect(
+      dynamic.http.middlewares["strip-browser-identity"].headers
+        .customRequestHeaders["X-Forwarded-For"],
+    ).toBeUndefined();
     expect(apiPrep["X-Forwarded-User"]).toBe("");
     expect(apiPrep["X-Auth-Request-User"]).toBe("");
 
@@ -376,18 +394,35 @@ describe("Production hosted gateway bundle", () => {
     expect(cfg).toMatch(/^cookie_refresh\s*=\s*"0s"$/m);
     expect(cfg).toMatch(/^cookie_csrf_per_request\s*=\s*true$/m);
     expect(cfg).toMatch(/^cookie_csrf_expire\s*=\s*"5m"$/m);
+
+    expect(cfg).toMatch(/^oidc_enabled_signing_algs\s*=\s*\[\s*"RS256"\s*\]$/m);
+    expect(cfg).toMatch(/^ssl_insecure_skip_verify\s*=\s*false$/m);
   });
 
   it("verifies deploy/hosted-pilot/.env.example has zero secrets and assumed accounts", () => {
     expect(existsSync(path.join(bundle, ".env.example"))).toBe(true);
     const envExample = read(".env.example");
 
-    expect(envExample).toMatch(/^GWRK_AUTH_GOOGLE_CLIENT_ID=$/m);
+    expect(envExample).toBe("GWRK_AUTH_GOOGLE_CLIENT_ID=\n");
     expect(envExample).not.toMatch(/@/);
     expect(envExample).not.toMatch(/[a-f0-9]{32,}/i);
     expect(envExample).not.toMatch(
       /[A-Za-z0-9_-]{20,}\.apps\.googleusercontent\.com/,
     );
+
+    const filled = envExample.replace(
+      /^GWRK_AUTH_GOOGLE_CLIENT_ID=$/m,
+      "GWRK_AUTH_GOOGLE_CLIENT_ID=105105105105-fixture.apps.googleusercontent.com",
+    );
+    const runSh = read("run.sh");
+    const awkMatch = /awk '([\s\S]*?)' "\$public_config"/.exec(runSh);
+    expect(awkMatch).not.toBeNull();
+    const check = spawnSync("awk", [awkMatch![1]], {
+      input: filled,
+      encoding: "utf8",
+      timeout: 5000,
+    });
+    expect(check.status).toBe(0);
   });
 
   it("verifies tests/hosted-pilot/compose.test.yaml overlays synthetic OIDC without mutating production URLs", () => {
@@ -397,6 +432,12 @@ describe("Production hosted gateway bundle", () => {
     const proxy = testCompose.services["oauth2-proxy"];
     expect(proxy).toBeDefined();
     expect(Array.isArray(proxy.command)).toBe(true);
+    expect(proxy.command[0]).toBe(
+      "--config=/etc/oauth2-proxy/oauth2-proxy.cfg",
+    );
+    for (const logArg of SAFE_PROXY_LOGGING_ARGUMENTS) {
+      expect(proxy.command).toContain(logArg);
+    }
     for (const oidcArg of OIDC_FIXTURE_ARGUMENTS) {
       expect(proxy.command).toContain(oidcArg);
     }

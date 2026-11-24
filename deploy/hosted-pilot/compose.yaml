@@ -3,6 +3,7 @@ services:
     image: traefik:v3.7.18@sha256:9c437ac4f09ce6f4980a8544902d3475fdf70a1a7c578729581d2535dfa7d635
     restart: unless-stopped
     network_mode: host
+    user: "0:0"
     read_only: true
     security_opt:
       - no-new-privileges:true
@@ -16,6 +17,7 @@ services:
       - --entrypoints.websecure.forwardedheaders.insecure=false
       - --providers.file.directory=/etc/traefik/dynamic
       - --providers.file.watch=false
+      - --log.level=INFO
     volumes:
       - type: bind
         source: /etc/gwrk/gateway-secrets/tls
@@ -34,6 +36,7 @@ services:
     image: quay.io/oauth2-proxy/oauth2-proxy:v7.15.6@sha256:c3415e8660af553f5e18f5d90db050614c02493c0ac6260ac59442f6d9b12048
     restart: unless-stopped
     network_mode: host
+    user: "0:0"
     read_only: true
     security_opt:
       - no-new-privileges:true
