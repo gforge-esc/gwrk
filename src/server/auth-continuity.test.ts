@@ -399,6 +399,12 @@ describe("FR-017 / TR-018: hosted auth restart continuity and post-revocation de
           projectId: alphaProject.projectId,
           featureId: "051-hosted-aws-pilot",
           phaseId: "phase-06",
+          recipient: {
+            projectId: alphaProject.projectId,
+            surface: "slack",
+            workspaceId: "W_PILOT",
+            channelId: "C_ALPHA",
+          },
         },
       });
       expect(dispatchRes.statusCode).toBe(201);
@@ -408,6 +414,7 @@ describe("FR-017 / TR-018: hosted auth restart continuity and post-revocation de
       expect(dispatchReceipt.recipient).toMatchObject({
         projectId: alphaProject.projectId,
         surface: "slack",
+        workspaceId: "W_PILOT",
         channelId: "C_ALPHA",
       });
 
@@ -490,6 +497,7 @@ describe("FR-017 / TR-018: hosted auth restart continuity and post-revocation de
       expect(dispatchRow?.recipient).toMatchObject({
         projectId: alphaProject.projectId,
         surface: "slack",
+        workspaceId: "W_PILOT",
         channelId: "C_ALPHA",
       });
 
