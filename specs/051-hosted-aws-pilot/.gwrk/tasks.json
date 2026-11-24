@@ -215,7 +215,7 @@
         {
           "id": "T021",
           "title": "Modify package.json",
-          "description": "MODIFY package.json. Pin `@fastify/cookie` and `@fastify/csrf-protection` plus `@fastify/rate-limit` for Fastify 5",
+          "description": "MODIFY package.json. Pin `@fastify/cookie` and `@fastify/csrf` plus `@fastify/rate-limit` for Fastify 5",
           "status": "open",
           "gateScript": "bash specs/051-hosted-aws-pilot/gates/phase-04.sh",
           "sp": 1
@@ -231,7 +231,7 @@
         {
           "id": "T023",
           "title": "Create browser-csrf.ts",
-          "description": "NEW src/adapters/auth/browser-csrf.ts. Implement `BrowserCsrfPort` with `@fastify/csrf-protection` and `__Host-gwrk_csrf` cookie plus `x-gwrk-csrf-token` header",
+          "description": "NEW src/adapters/auth/browser-csrf.ts. Implement `BrowserCsrfPort` with `@fastify/csrf` and `__Host-gwrk_csrf` cookie plus `x-gwrk-csrf-token` header Issue with required capped expiresAt and absolute Expires only. Use session-digest userInfo with the startup HMAC key. Tests: src/adapters/auth/browser-csrf.test.ts.",
           "status": "open",
           "gateScript": "bash specs/051-hosted-aws-pilot/gates/phase-04.sh",
           "sp": 2
@@ -275,7 +275,8 @@
         "src/server/auth-session.test.ts",
         "src/server/auth-api-keys.test.ts",
         "src/server/auth-api-keys.test.ts",
-        "src/server/auth-guard.account-denial.test.ts"
+        "src/server/auth-guard.account-denial.test.ts",
+        "src/adapters/auth/browser-csrf.test.ts"
       ]
     },
     {
@@ -500,7 +501,8 @@
         "src/architecture.test.ts",
         "src/utils/agent.auth-env.test.ts",
         "src/adapters/auth/proxy-logout.test.ts",
-        "src/server/auth-guard.account-denial.test.ts"
+        "src/server/auth-guard.account-denial.test.ts",
+        "src/adapters/auth/browser-csrf.test.ts"
       ]
     },
     {

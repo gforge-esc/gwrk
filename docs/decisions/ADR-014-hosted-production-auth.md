@@ -38,6 +38,8 @@ Seven boundary ports and `VerifiedAuthContext` freeze in `src/ports/auth-port.ts
 | `ProxySessionLogoutPort` | Clear proxy cookies after origin digest revocation | `src/adapters/auth/proxy-logout.ts` |
 | `HttpClientCredentialPort` | Attach origin-bound HTTPS credentials on remote CLI probes | `src/adapters/auth/http-client-credential.ts` |
 
+Application orchestration supplies the capped verified session deadline to the CSRF port. The maintained token engine receives the session digest and protected HMAC key.
+
 ### 2.3 Operational SQLite State
 
 Operational authentication tables (`api_credentials`, `google_sessions` and `auth_audit_events`) reside in `gwrk.db` alongside project role bindings and durable operations. The store persists SHA-256 verifiers and token digests only. It stores zero raw API credentials and zero raw Google tokens. Git-native task state authority under `ADR-002` and `ADR-003` stays unchanged.

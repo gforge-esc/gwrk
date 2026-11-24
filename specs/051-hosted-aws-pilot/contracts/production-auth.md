@@ -120,7 +120,7 @@ Missing or invalid API authentication returns HTTP 401 JSON. Insufficient projec
 
 Require the configured same-origin Origin on browser mutations. Use maintained CSRF protection with a server-managed secret. Bind tokens to the verified Google session digest. Accept the token from a dedicated header only. Never accept it from a query parameter.
 
-The session endpoint may issue a CSRF token. Use secure host-only cookies with HttpOnly protection for the CSRF secret. Do not use the raw Google token as a CSRF token. Keep responses no-store. Fastify's CSRF plugin supports a user binding and requires a configured HMAC key for its cookie mode. [CSRF adapter documentation](https://github.com/fastify/csrf-protection#api)
+The session endpoint may issue a CSRF token. Use secure host-only cookies with HttpOnly protection for the CSRF secret. Do not use the raw Google token as a CSRF token. Keep responses no-store. Use the maintained public `@fastify/csrf` token engine with a protected HMAC key and `userInfo=sessionDigest`. Token issuance receives the capped verified session expiry. Its cookie uses an absolute expiry at or before that deadline without issuance Max-Age. [Token engine documentation](https://github.com/fastify/csrf)
 
 Apply CSRF checks to Google-session requests. Authenticate API-key requests independently. An invalid key must not fall back to cookie authentication. Provider webhooks retain their own signature boundary. OAuth callback state protection does not replace API mutation protection.
 
@@ -138,7 +138,7 @@ Domain policy owns route classification and credential lifecycle decisions. It r
 | `CredentialCryptoPort` | Generate entropy and hash or compare verifiers | `src/adapters/auth/credential-crypto.ts` |
 | `AuthStorePort` | Persist credentials and session revocations | SQLite auth adapter |
 | `CredentialGrantAdminPort` | Atomically issue or rotate credentials with existing role bindings | Same SQLite transaction |
-| `BrowserCsrfPort` | Issue and verify tokens bound to verified session | Fastify CSRF adapter |
+| `BrowserCsrfPort` | Issue and verify tokens bound to verified session | Maintained token engine adapter |
 | `ProxySessionLogoutPort` | Clear proxy cookies after origin revocation | Fixed internal proxy client |
 | `HttpClientCredentialPort` | Provide an origin-bound CLI credential | Private client credential adapter |
 | Existing `ClockPort` | Supply testable time | Existing clock boundary |

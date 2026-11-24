@@ -135,7 +135,7 @@ export interface CredentialGrantAdminPort {
 }
 
 export interface BrowserCsrfPort {
-  issueToken(input: { sessionDigest: string }): Promise<{
+  issueToken(input: { sessionDigest: string; expiresAt: string }): Promise<{
     token: string;
     cookieHeader: string;
   }>;

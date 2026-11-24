@@ -6,6 +6,7 @@ required_targets=(
   src/server/auth-prehandler.test.ts
   src/server/auth-session.test.ts
   src/server/auth-api-keys.test.ts
+  src/adapters/auth/browser-csrf.test.ts
   src/server/auth-guard.account-denial.test.ts
   src/server/routes/status.test.ts
   src/server/routes/dispatch.test.ts
@@ -20,6 +21,7 @@ for target in "${required_targets[@]}"; do
   fi
 done
 vitest_targets=(
+  src/adapters/auth/browser-csrf.test.ts
   src/server/auth-guard.account-denial.test.ts
   src/server/auth-prehandler.test.ts
   src/server/auth-session.test.ts

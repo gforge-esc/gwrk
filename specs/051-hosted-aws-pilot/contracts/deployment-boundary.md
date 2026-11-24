@@ -49,7 +49,7 @@ The origin treats this value only as a parser hint. It never creates identity or
 
 Absent a hint, caller Authorization may enter only the API parser. Missing metadata never selects browser authentication or trusted-local authorization. An invalid hint denies protected requests. The webhook hint cannot bypass classification of a non-webhook route. Every Google or API credential still requires cryptographic verification and current lifecycle checks. Direct local header forgery must fail with invalid credentials.
 
-The origin guard owns browser mutation checks through the existing `BrowserCsrfPort` and pure origin policy. Require configured `expectedOrigin` and the port for Google mutations. Missing dependencies deny those writes. Read `__Host-gwrk_csrf` and `x-gwrk-csrf-token`. Never accept query CSRF tokens. API and provider signature chains retain their separate protections.
+The origin guard owns browser mutation checks through the existing `BrowserCsrfPort` and pure origin policy. Require configured `expectedOrigin` and the port for Google mutations. Missing dependencies deny those writes. Issuance receives the capped verified `expiresAt` through `BrowserCsrfPort`. Use the maintained public token engine with session HMAC binding. Set absolute cookie expiry no later than that deadline. Omit issuance Max-Age. Read `__Host-gwrk_csrf` and `x-gwrk-csrf-token`. Never accept query CSRF tokens. API and provider signature chains retain their separate protections.
 
 ## Internal proxy logout
 

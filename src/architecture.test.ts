@@ -670,6 +670,7 @@ describe("FR-015 hosted production auth boundaries", () => {
         "expiresAt",
         "reason",
       ],
+      "BrowserCsrfPort.issueToken": ["sessionDigest", "expiresAt"],
       "BrowserCsrfPort.verifyToken": [
         "sessionDigest",
         "headerToken",

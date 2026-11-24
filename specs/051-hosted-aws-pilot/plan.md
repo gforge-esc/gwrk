@@ -153,7 +153,7 @@ export interface CredentialGrantAdminPort {
 }
 
 export interface BrowserCsrfPort {
-  issueToken(input: { sessionDigest: string }): Promise<{
+  issueToken(input: { sessionDigest: string; expiresAt: string }): Promise<{
     token: string;
     cookieHeader: string;
   }>;
@@ -373,9 +373,10 @@ Requires Phases 2 and 3. Write failing HTTP pre-handler and logout replay plus A
 
 #### Files
 
-- `package.json` (MODIFY: Pin `@fastify/cookie` and `@fastify/csrf-protection` plus `@fastify/rate-limit` for Fastify 5)
+- `package.json` (MODIFY: Pin `@fastify/cookie` 11.1.0 and `@fastify/csrf` 8.1.1 plus compatible `@fastify/rate-limit` for Fastify 5)
 - `pnpm-lock.yaml` (MODIFY: Lock pinned Fastify security plugin releases)
-- `src/adapters/auth/browser-csrf.ts` (NEW: Implement `BrowserCsrfPort` with `@fastify/csrf-protection` and `__Host-gwrk_csrf` cookie plus `x-gwrk-csrf-token` header)
+- `src/adapters/auth/browser-csrf.test.ts` (NEW: Verify maintained-library session binding and expiry plus strict cookie flags and malformed-input denials)
+- `src/adapters/auth/browser-csrf.ts` (NEW: Implement `BrowserCsrfPort` with the maintained public token engine and capped absolute cookie expiry plus session HMAC binding)
 - `src/server/auth-guard.ts` (NEW: Fastify async auth pre-handler and request decoration plus synchronous `resolvePrincipal` reader and default-deny guard)
 - `src/server/routes/auth.ts` (NEW: Register `GET /` and `GET /api/auth/session` plus `POST /api/auth/logout` routes)
 - `src/server/routes/health.ts` (MODIFY: Filter hosted `GET /api/health` to one authorized project and serve minimal private `GET /health`)
@@ -404,7 +405,7 @@ Requires Phases 2 and 3. Write failing HTTP pre-handler and logout replay plus A
 
 ```bash
 pnpm run build
-pnpm exec vitest run src/server/auth-guard.account-denial.test.ts src/server/auth-prehandler.test.ts src/server/auth-session.test.ts src/server/auth-api-keys.test.ts src/server/routes/status.test.ts src/server/routes/dispatch.test.ts src/server/routes/notify.test.ts src/server/routes/health.test.ts src/architecture.test.ts
+pnpm exec vitest run src/adapters/auth/browser-csrf.test.ts src/server/auth-guard.account-denial.test.ts src/server/auth-prehandler.test.ts src/server/auth-session.test.ts src/server/auth-api-keys.test.ts src/server/routes/status.test.ts src/server/routes/dispatch.test.ts src/server/routes/notify.test.ts src/server/routes/health.test.ts src/architecture.test.ts
 ```
 
 ---
@@ -571,7 +572,7 @@ Requires Phase 7. Write failing backup-restore auth-state and rollout-gate tests
 node tests/hosted-pilot/gate-completeness.test.mjs
 pnpm run build
 pnpm run lint
-pnpm exec vitest run src/adapters/auth/proxy-logout.test.ts src/server/auth-guard.account-denial.test.ts src/utils/agent.auth-env.test.ts src/architecture.test.ts src/domain/auth-policy.test.ts src/adapters/auth/credential-crypto.test.ts src/adapters/sqlite/auth-store.test.ts src/commands/auth.test.ts src/adapters/auth/google-id-token.test.ts src/application/auth/authenticate-request.test.ts src/server/auth-prehandler.test.ts src/server/auth-session.test.ts src/server/auth-api-keys.test.ts src/server/auth-csrf.test.ts src/server/routes/health.auth.test.ts src/server/auth-route-policy.test.ts src/server/auth-bounds.test.ts src/server/auth-logging.test.ts src/server/github.test.ts src/adapters/auth/http-client-credential.test.ts src/commands/server.auth-startup.test.ts src/server/auth-continuity.test.ts src/commands/init.test.ts tests/linux-runner/preflight-auth.test.ts tests/linux-runner/backup-restore-rollback.test.ts tests/hosted-pilot/rollout-gates.test.ts
+pnpm exec vitest run src/adapters/auth/browser-csrf.test.ts src/adapters/auth/proxy-logout.test.ts src/server/auth-guard.account-denial.test.ts src/utils/agent.auth-env.test.ts src/architecture.test.ts src/domain/auth-policy.test.ts src/adapters/auth/credential-crypto.test.ts src/adapters/sqlite/auth-store.test.ts src/commands/auth.test.ts src/adapters/auth/google-id-token.test.ts src/application/auth/authenticate-request.test.ts src/server/auth-prehandler.test.ts src/server/auth-session.test.ts src/server/auth-api-keys.test.ts src/server/auth-csrf.test.ts src/server/routes/health.auth.test.ts src/server/auth-route-policy.test.ts src/server/auth-bounds.test.ts src/server/auth-logging.test.ts src/server/github.test.ts src/adapters/auth/http-client-credential.test.ts src/commands/server.auth-startup.test.ts src/server/auth-continuity.test.ts src/commands/init.test.ts tests/linux-runner/preflight-auth.test.ts tests/linux-runner/backup-restore-rollback.test.ts tests/hosted-pilot/rollout-gates.test.ts
 node dist/cli.js define adr --reindex --check
 node dist/cli.js define adr --check
 node tests/hosted-pilot/gateway-production.mjs
