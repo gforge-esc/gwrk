@@ -18,7 +18,6 @@ import {
   createSqliteProjectRegistryAdapter,
 } from "../adapters/sqlite/index.js";
 import { resolveHostedAuthConfig } from "../domain/hosted-auth-config.js";
-import type { ClockPort } from "../ports/operations-port.js";
 import { isLoopbackListenHost, startServer } from "../server/index.js";
 import { isPidRunning, readPid, removePid } from "../server/pid.js";
 import type { HealthResponse } from "../server/types.js";

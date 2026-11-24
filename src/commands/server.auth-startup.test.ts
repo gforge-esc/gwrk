@@ -30,6 +30,7 @@ import * as pidUtils from "../server/pid.js";
 import { SandboxManager } from "../server/sandbox.js";
 import * as slackModule from "../server/slack.js";
 import { loadConfig } from "../utils/config.js";
+import { CommandError } from "../utils/signal.js";
 
 const ORIGIN = "https://gwrk.gforge.ai";
 const SECRETS_ROOT = "/etc/gwrk/secrets";
@@ -791,6 +792,33 @@ describe("FR-008 / TR-017: hosted server startup composition and local liveness 
       for (const handle of openedHandles) {
         if (handle.open) handle.close();
       }
+    }
+  });
+
+  it("AUTH-17 regression: hosted startup failure during auth factory initialization preserves caller-borrowed database handle", async () => {
+    writeProjectConfig();
+    for (const [k, v] of Object.entries(HOSTED_ENV)) vi.stubEnv(k, v);
+    const listenSpy = vi.spyOn(net.Server.prototype, "listen");
+
+    const dbModule = await import("../db/index.js");
+    const borrowedDb = dbModule.openDatabase({ path: ":memory:" });
+    try {
+      const config = loadConfig(projectDir);
+      await expect(
+        serverModule.startServer(config, {
+          handleSignals: false,
+          projectRoot: projectDir,
+          transport: "hosted",
+          ledger: { db: borrowedDb, projectId: "alpha" },
+          initHostedAuth: async () => {
+            throw new CommandError("simulated initHostedAuth failure", 1);
+          },
+        }),
+      ).rejects.toThrow("simulated initHostedAuth failure");
+      expect(listenSpy).not.toHaveBeenCalled();
+      expect(borrowedDb.open).toBe(true);
+    } finally {
+      if (borrowedDb.open) borrowedDb.close();
     }
   });
 });
