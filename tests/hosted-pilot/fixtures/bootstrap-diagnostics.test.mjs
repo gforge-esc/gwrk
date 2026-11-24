@@ -7,10 +7,13 @@ import {
   DEFAULT_DOCKER_TIMEOUT_MS,
   STATIC_CONSTRUCTION_CATEGORIES,
   STATIC_OPERATION_NAMES,
+  WHITELISTED_CONTAINER_STATUSES,
   WHITELISTED_ERROR_CODES,
   WHITELISTED_SIGNALS,
   captureDockerLogs,
   classifyBootstrapFailure,
+  createAndStartFixtureContainer,
+  inspectFixtureContainerState,
   runFixtureContainer,
 } from "./bootstrap-diagnostics.mjs";
 
@@ -414,4 +417,185 @@ test("applies identical container construction allowance and labeling to origin 
     assert.ok(op.args.includes("--pull"));
     assert.ok(op.args.includes("never"));
   }
+});
+
+test("distinguishes docker create from docker start inside the frozen 60s construction budget", () => {
+  assert.ok(STATIC_OPERATION_NAMES.includes("docker_create_origin"));
+  assert.ok(STATIC_OPERATION_NAMES.includes("docker_start_origin"));
+  assert.ok(WHITELISTED_CONTAINER_STATUSES.includes("created"));
+  assert.ok(WHITELISTED_CONTAINER_STATUSES.includes("running"));
+  assert.ok(WHITELISTED_CONTAINER_STATUSES.includes("missing"));
+
+  const runId = "c".repeat(24);
+  const calls = [];
+  const phases = [];
+  let clock = 1000;
+  const fakeRunner = (_cmd, args, options) => {
+    calls.push({ args, timeout: options.timeout });
+    if (args.includes("create")) {
+      clock += 1200;
+      return "abcdef123456\n";
+    }
+    if (args.includes("start")) {
+      clock += 350;
+      return "abcdef123456\n";
+    }
+    throw new Error(`unexpected args: ${args.join(" ")}`);
+  };
+
+  const result = createAndStartFixtureContainer(
+    `gwrk-051-origin-${runId}`,
+    ["sha256:node", "node", "/fixture/fixtures/origin.mjs"],
+    {
+      runner: fakeRunner,
+      runId,
+      now: () => clock,
+      onPhase: (phase) => phases.push(phase),
+    },
+  );
+
+  assert.equal(result.containerId, "abcdef123456");
+  assert.equal(result.createElapsedMs, 1200);
+  assert.equal(result.startElapsedMs, 350);
+  assert.deepEqual(phases, ["create", "start"]);
+  assert.equal(calls.length, 2);
+  assert.equal(calls[0].args[2], "create");
+  assert.equal(calls[0].timeout, CONTAINER_CONSTRUCTION_TIMEOUT_MS);
+  assert.equal(calls[1].args[2], "start");
+  assert.equal(calls[1].timeout, CONTAINER_CONSTRUCTION_TIMEOUT_MS - 1200);
+  assert.equal(calls[0].args.includes("run"), false);
+  assert.ok(calls[0].args.includes("--pull"));
+  assert.ok(calls[0].args.includes("never"));
+  assert.ok(calls[0].args.includes(`gwrk.fixture.run=${runId}`));
+});
+
+test("records create timeout separately and skips docker start when create exhausts budget", () => {
+  const runId = "d".repeat(24);
+  const calls = [];
+  let clock = 5000;
+  const fakeRunner = (_cmd, args) => {
+    calls.push(args[2]);
+    clock += CONTAINER_CONSTRUCTION_TIMEOUT_MS;
+    const err = new Error("create timed out");
+    err.code = "ETIMEDOUT";
+    err.status = 143;
+    throw err;
+  };
+
+  let caught;
+  try {
+    createAndStartFixtureContainer(
+      `gwrk-051-origin-${runId}`,
+      ["sha256:node", "node", "/fixture/fixtures/origin.mjs"],
+      { runner: fakeRunner, runId, now: () => clock },
+    );
+  } catch (err) {
+    caught = err;
+  }
+
+  assert.ok(caught);
+  assert.equal(caught.code, "ETIMEDOUT");
+  assert.equal(caught.containerPhase, "create");
+  assert.equal(caught.createElapsedMs, CONTAINER_CONSTRUCTION_TIMEOUT_MS);
+  assert.equal(caught.startElapsedMs, null);
+  assert.deepEqual(calls, ["create"]);
+});
+
+test("records start timeout separately with measured create and start elapsed times", () => {
+  const runId = "e".repeat(24);
+  let clock = 10_000;
+  let seenStartTimeout = null;
+  const fakeRunner = (_cmd, args, options) => {
+    if (args[2] === "create") {
+      clock += 42_000;
+      return "cid-999\n";
+    }
+    seenStartTimeout = options.timeout;
+    clock += 18_000;
+    const err = new Error("start timed out");
+    err.code = "ETIMEDOUT";
+    err.status = 143;
+    throw err;
+  };
+
+  let caught;
+  try {
+    createAndStartFixtureContainer(
+      `gwrk-051-origin-${runId}`,
+      ["sha256:node", "node", "/fixture/fixtures/origin.mjs"],
+      { runner: fakeRunner, runId, now: () => clock },
+    );
+  } catch (err) {
+    caught = err;
+  }
+
+  assert.ok(caught);
+  assert.equal(seenStartTimeout, CONTAINER_CONSTRUCTION_TIMEOUT_MS - 42_000);
+  assert.equal(caught.containerPhase, "start");
+  assert.equal(caught.createElapsedMs, 42_000);
+  assert.equal(caught.startElapsedMs, 18_000);
+});
+
+test("inspectFixtureContainerState projects only safe whitelisted fields and never leaks secrets", () => {
+  const canary = "SECRET_INSPECT_ERROR_CANARY_999";
+  const createdState = inspectFixtureContainerState("gwrk-051-origin-test", {
+    runner: () => ({
+      status: 0,
+      stdout: JSON.stringify({
+        Status: "created",
+        Running: false,
+        OOMKilled: false,
+        ExitCode: 0,
+        Pid: 0,
+        Error: `leak ${canary}`,
+      }),
+      stderr: "",
+    }),
+  });
+  assert.deepEqual(createdState, {
+    containerExists: true,
+    containerStatus: "created",
+    oomKilled: false,
+    containerExitCode: 0,
+    containerPid: 0,
+  });
+  assert.equal(JSON.stringify(createdState).includes(canary), false);
+
+  const missingState = inspectFixtureContainerState("gwrk-051-origin-missing", {
+    runner: () => ({
+      status: 1,
+      stdout: "",
+      stderr: `No such object: ${canary}`,
+    }),
+  });
+  assert.deepEqual(missingState, {
+    containerExists: false,
+    containerStatus: "missing",
+    oomKilled: null,
+    containerExitCode: null,
+    containerPid: null,
+  });
+  assert.equal(JSON.stringify(missingState).includes(canary), false);
+
+  const classified = classifyBootstrapFailure(
+    "origin_start",
+    { code: "ETIMEDOUT", status: 143, message: `boom ${canary}` },
+    {
+      operation: "docker_create_origin",
+      elapsedMs: 60010,
+      createElapsedMs: 60010,
+      startElapsedMs: null,
+      containerState: {
+        ...createdState,
+        containerStatus: `evil_${canary}`,
+        extraSecret: canary,
+      },
+    },
+  );
+  assert.equal(classified.operation, "docker_create_origin");
+  assert.equal(classified.createElapsedMs, 60010);
+  assert.equal(classified.startElapsedMs, null);
+  assert.equal(classified.containerState.containerStatus, "unknown");
+  assert.equal(classified.containerState.extraSecret, undefined);
+  assert.equal(JSON.stringify(classified).includes(canary), false);
 });

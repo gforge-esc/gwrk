@@ -75,6 +75,8 @@ export const STATIC_OPERATION_NAMES = [
   "update_ca_certificates",
   "spawn_issuer",
   "docker_run_origin",
+  "docker_create_origin",
+  "docker_start_origin",
   "poll_dependencies_ready",
   "cookie_format_check",
   "start_native_observer",
@@ -84,11 +86,116 @@ export const STATIC_OPERATION_NAMES = [
   "run_gateway_startup",
   "docker_create_client_network",
   "docker_run_client_a",
+  "docker_create_client_a",
+  "docker_start_client_a",
   "docker_run_client_b",
+  "docker_create_client_b",
+  "docker_start_client_b",
   "execute_gateway_cases",
   "docker_command",
   "unknown_operation",
 ];
+
+export const WHITELISTED_CONTAINER_STATUSES = [
+  "created",
+  "running",
+  "paused",
+  "restarting",
+  "removing",
+  "exited",
+  "dead",
+  "missing",
+  "unknown",
+];
+
+export const INSPECT_STATE_TIMEOUT_MS = 5_000;
+
+export function sanitizeContainerState(raw) {
+  if (!raw || typeof raw !== "object") {
+    return null;
+  }
+  const containerExists = raw.containerExists === true;
+  const statusInput =
+    typeof raw.containerStatus === "string" ? raw.containerStatus : "";
+  const containerStatus = WHITELISTED_CONTAINER_STATUSES.includes(statusInput)
+    ? statusInput
+    : "unknown";
+  return {
+    containerExists,
+    containerStatus,
+    oomKilled: typeof raw.oomKilled === "boolean" ? raw.oomKilled : null,
+    containerExitCode: Number.isInteger(raw.containerExitCode)
+      ? raw.containerExitCode
+      : null,
+    containerPid: Number.isInteger(raw.containerPid) ? raw.containerPid : null,
+  };
+}
+
+// Inspect a single named container's Docker state before teardown and project
+// only static enum, boolean, and integer fields with zero arbitrary strings.
+export function inspectFixtureContainerState(name, options = {}) {
+  const runner = options.runner ?? spawnSync;
+  const cmd = options.command ?? options.dockerPath ?? "/usr/bin/docker";
+  const args = options.args ?? [
+    "--host",
+    options.dockerHost ?? "unix:///var/run/docker.sock",
+    "inspect",
+    "--format",
+    "{{json .State}}",
+    name,
+  ];
+  const timeout = options.timeout ?? INSPECT_STATE_TIMEOUT_MS;
+  const maxBuffer = options.maxBuffer ?? 65536;
+  const result = runner(cmd, args, {
+    stdio: "pipe",
+    encoding: "utf8",
+    timeout,
+    maxBuffer,
+  });
+  if (result?.status !== 0 || typeof result?.stdout !== "string") {
+    return {
+      containerExists: false,
+      containerStatus: "missing",
+      oomKilled: null,
+      containerExitCode: null,
+      containerPid: null,
+    };
+  }
+  try {
+    const parsed = JSON.parse(result.stdout.trim());
+    if (!parsed || typeof parsed !== "object") {
+      return {
+        containerExists: false,
+        containerStatus: "missing",
+        oomKilled: null,
+        containerExitCode: null,
+        containerPid: null,
+      };
+    }
+    const rawStatus =
+      typeof parsed.Status === "string" ? parsed.Status.toLowerCase() : "";
+    return sanitizeContainerState({
+      containerExists: true,
+      containerStatus: WHITELISTED_CONTAINER_STATUSES.includes(rawStatus)
+        ? rawStatus
+        : "unknown",
+      oomKilled:
+        typeof parsed.OOMKilled === "boolean" ? parsed.OOMKilled : null,
+      containerExitCode: Number.isInteger(parsed.ExitCode)
+        ? parsed.ExitCode
+        : null,
+      containerPid: Number.isInteger(parsed.Pid) ? parsed.Pid : null,
+    });
+  } catch {
+    return {
+      containerExists: false,
+      containerStatus: "unknown",
+      oomKilled: null,
+      containerExitCode: null,
+      containerPid: null,
+    };
+  }
+}
 
 // Origin container stdout and stderr are captured in memory via piped spawnSync
 // for safe static classification without inheriting raw stderr onto process.stderr.
@@ -146,6 +253,102 @@ export function runFixtureContainer(name, containerArgs, options = {}) {
     maxBuffer,
   });
   return typeof result === "string" ? result.trim() : "";
+}
+
+// Split docker create and docker start inside the single frozen construction
+// timeout budget so failures distinguish layer copy latency from start failure.
+export function createAndStartFixtureContainer(
+  name,
+  containerArgs,
+  options = {},
+) {
+  const runner = options.runner ?? execFileSync;
+  const cmd =
+    options.command ??
+    options.dockerBinary ??
+    options.dockerPath ??
+    "/usr/bin/docker";
+  const dockerHost = options.dockerHost ?? "unix:///var/run/docker.sock";
+  const timeout = options.timeout ?? CONTAINER_CONSTRUCTION_TIMEOUT_MS;
+  const maxBuffer = options.maxBuffer ?? 1048576;
+  const runId = options.runId;
+  const now = options.now ?? Date.now;
+  const onPhase = options.onPhase;
+
+  const createArgs = [
+    "--host",
+    dockerHost,
+    "create",
+    "--name",
+    name,
+    ...(runId ? ["--label", `gwrk.fixture.run=${runId}`] : []),
+    "--pull",
+    "never",
+    ...containerArgs,
+  ];
+  const createStartedAt = now();
+  if (typeof onPhase === "function") {
+    onPhase("create");
+  }
+  let containerId;
+  let createElapsedMs;
+  try {
+    const rawId = runner(cmd, createArgs, {
+      stdio: options.stdio ?? "pipe",
+      encoding: "utf8",
+      timeout,
+      maxBuffer,
+    });
+    createElapsedMs = Math.max(0, Math.round(now() - createStartedAt));
+    containerId = typeof rawId === "string" ? rawId.trim() : "";
+  } catch (error) {
+    createElapsedMs = Math.max(0, Math.round(now() - createStartedAt));
+    if (error && typeof error === "object") {
+      error.containerPhase = "create";
+      error.createElapsedMs = createElapsedMs;
+      error.startElapsedMs = null;
+    }
+    throw error;
+  }
+
+  const remainingMs = timeout - createElapsedMs;
+  if (remainingMs <= 0) {
+    const budgetError = new Error(
+      "Container construction budget exhausted during docker create",
+    );
+    budgetError.code = "ETIMEDOUT";
+    budgetError.status = null;
+    budgetError.containerPhase = "create";
+    budgetError.createElapsedMs = createElapsedMs;
+    budgetError.startElapsedMs = null;
+    throw budgetError;
+  }
+
+  const startArgs = ["--host", dockerHost, "start", name];
+  const startStartedAt = now();
+  if (typeof onPhase === "function") {
+    onPhase("start");
+  }
+  let startElapsedMs;
+  try {
+    runner(cmd, startArgs, {
+      stdio: options.stdio ?? "pipe",
+      encoding: "utf8",
+      timeout: remainingMs,
+      maxBuffer,
+    });
+    startElapsedMs = Math.max(0, Math.round(now() - startStartedAt));
+  } catch (error) {
+    startElapsedMs = Math.max(0, Math.round(now() - startStartedAt));
+    if (error && typeof error === "object") {
+      error.containerPhase = "start";
+      error.createElapsedMs = createElapsedMs;
+      error.startElapsedMs = startElapsedMs;
+    }
+    throw error;
+  }
+
+  return { containerId, createElapsedMs, startElapsedMs };
 }
 
 // CLI and runtime logs can contain reflected secrets or tokens. Persist only
@@ -336,6 +539,28 @@ export function classifyBootstrapFailure(stage, error, context = {}) {
   }
   if (elapsedMs !== undefined) {
     result.elapsedMs = elapsedMs;
+  }
+  const createElapsed =
+    context.createElapsedMs !== undefined
+      ? context.createElapsedMs
+      : error?.createElapsedMs;
+  if (createElapsed === null) {
+    result.createElapsedMs = null;
+  } else if (Number.isFinite(createElapsed) && createElapsed >= 0) {
+    result.createElapsedMs = Math.round(createElapsed);
+  }
+  const startElapsed =
+    context.startElapsedMs !== undefined
+      ? context.startElapsedMs
+      : error?.startElapsedMs;
+  if (startElapsed === null) {
+    result.startElapsedMs = null;
+  } else if (Number.isFinite(startElapsed) && startElapsed >= 0) {
+    result.startElapsedMs = Math.round(startElapsed);
+  }
+  const safeContainerState = sanitizeContainerState(context.containerState);
+  if (safeContainerState !== null) {
+    result.containerState = safeContainerState;
   }
   return result;
 }

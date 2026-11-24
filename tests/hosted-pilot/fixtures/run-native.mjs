@@ -9,6 +9,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { fileURLToPath } from "node:url";
+import { sanitizeContainerState } from "./bootstrap-diagnostics.mjs";
 import { isAllowedFixtureScriptName } from "./bootstrap-observer.mjs";
 import {
   buildLifecycleFailureReceipt,
@@ -236,6 +237,31 @@ export async function runNativeFixture({
         }
         if (stage?.exitStatus !== undefined) {
           safe.exitStatus = stage.exitStatus;
+        }
+        if (
+          stage?.createElapsedMs === null ||
+          (Number.isFinite(stage?.createElapsedMs) &&
+            stage.createElapsedMs >= 0)
+        ) {
+          safe.createElapsedMs =
+            stage.createElapsedMs === null
+              ? null
+              : Math.round(stage.createElapsedMs);
+        }
+        if (
+          stage?.startElapsedMs === null ||
+          (Number.isFinite(stage?.startElapsedMs) && stage.startElapsedMs >= 0)
+        ) {
+          safe.startElapsedMs =
+            stage.startElapsedMs === null
+              ? null
+              : Math.round(stage.startElapsedMs);
+        }
+        const safeContainerState = sanitizeContainerState(
+          stage?.containerState,
+        );
+        if (safeContainerState !== null) {
+          safe.containerState = safeContainerState;
         }
         ensureActive();
         files.writeFileSync(resultPath, JSON.stringify(safe, null, 2), {

@@ -17,7 +17,8 @@ import {
   DEFAULT_DOCKER_TIMEOUT_MS,
   captureDockerLogs,
   classifyBootstrapFailure,
-  runFixtureContainer,
+  createAndStartFixtureContainer,
+  inspectFixtureContainerState,
 } from "./bootstrap-diagnostics.mjs";
 import {
   createObserverProcessLifecycle,
@@ -117,7 +118,10 @@ function remember(name) {
 }
 function runContainer(name, args, options = {}) {
   remember(name);
-  return runFixtureContainer(name, args, { runId: run, ...options });
+  return createAndStartFixtureContainer(name, args, {
+    runId: run,
+    ...options,
+  });
 }
 let issuer;
 let issuerReady = false;
@@ -264,34 +268,54 @@ try {
     issuerStderrChunks.push(chunk);
   });
   stage = "origin_start";
-  beginOperation("docker_run_origin");
+  beginOperation("docker_create_origin");
   recordStage();
   originName = `gwrk-051-origin-${run}`;
-  runContainer(originName, [
-    "--network",
-    "host",
-    "--user",
-    "10001:10001",
-    "--cap-drop",
-    "ALL",
-    "--security-opt",
-    "no-new-privileges",
-    "--read-only",
-    "--tmpfs",
-    "/tmp:rw,noexec,nosuid,size=32m",
-    "--env",
-    "HOME=/fixture/service-home",
-    ...["/fixture/service", "/fixture/service-home"].flatMap((path) => [
-      "--mount",
-      `type=bind,source=${path},target=${path}`,
-    ]),
-    ...["/fixture/fixtures", "/fixture/public", "/etc/gwrk/secrets"].flatMap(
-      (path) => ["--mount", `type=bind,source=${path},target=${path},readonly`],
-    ),
-    images.node,
-    "node",
-    "/fixture/fixtures/origin.mjs",
-  ]);
+  const originTiming = runContainer(
+    originName,
+    [
+      "--network",
+      "host",
+      "--user",
+      "10001:10001",
+      "--cap-drop",
+      "ALL",
+      "--security-opt",
+      "no-new-privileges",
+      "--read-only",
+      "--tmpfs",
+      "/tmp:rw,noexec,nosuid,size=32m",
+      "--env",
+      "HOME=/fixture/service-home",
+      ...["/fixture/service", "/fixture/service-home"].flatMap((path) => [
+        "--mount",
+        `type=bind,source=${path},target=${path}`,
+      ]),
+      ...["/fixture/fixtures", "/fixture/public", "/etc/gwrk/secrets"].flatMap(
+        (path) => [
+          "--mount",
+          `type=bind,source=${path},target=${path},readonly`,
+        ],
+      ),
+      images.node,
+      "node",
+      "/fixture/fixtures/origin.mjs",
+    ],
+    {
+      onPhase: (phase) => {
+        beginOperation(
+          phase === "start" ? "docker_start_origin" : "docker_create_origin",
+        );
+      },
+    },
+  );
+  file(
+    "/fixture/origin-timing.json",
+    JSON.stringify({
+      createElapsedMs: originTiming.createElapsedMs,
+      startElapsedMs: originTiming.startElapsedMs,
+    }),
+  );
   stage = "dependencies_wait";
   beginOperation("poll_dependencies_ready");
   recordStage();
@@ -429,30 +453,42 @@ try {
     ["a", "172.31.51.11"],
     ["b", "172.31.51.12"],
   ]) {
-    beginOperation(`docker_run_client_${letter}`);
-    runContainer(`gwrk-051-client-${letter}-${run}`, [
-      "--network",
-      network,
-      "--ip",
-      address,
-      "--user",
-      "10002:10002",
-      "--cap-drop",
-      "ALL",
-      "--security-opt",
-      "no-new-privileges",
-      "--read-only",
-      "--tmpfs",
-      "/tmp:rw,noexec,nosuid,size=16m",
-      ...["/fixture/fixtures", "/fixture/public"].flatMap((path) => [
-        "--mount",
-        `type=bind,source=${path},target=${path},readonly`,
-      ]),
-      images.node,
-      "node",
-      "-e",
-      "setInterval(()=>{},1000)",
-    ]);
+    beginOperation(`docker_create_client_${letter}`);
+    runContainer(
+      `gwrk-051-client-${letter}-${run}`,
+      [
+        "--network",
+        network,
+        "--ip",
+        address,
+        "--user",
+        "10002:10002",
+        "--cap-drop",
+        "ALL",
+        "--security-opt",
+        "no-new-privileges",
+        "--read-only",
+        "--tmpfs",
+        "/tmp:rw,noexec,nosuid,size=16m",
+        ...["/fixture/fixtures", "/fixture/public"].flatMap((path) => [
+          "--mount",
+          `type=bind,source=${path},target=${path},readonly`,
+        ]),
+        images.node,
+        "node",
+        "-e",
+        "setInterval(()=>{},1000)",
+      ],
+      {
+        onPhase: (phase) => {
+          beginOperation(
+            phase === "start"
+              ? `docker_start_client_${letter}`
+              : `docker_create_client_${letter}`,
+          );
+        },
+      },
+    );
   }
   stage = "gateway_cases";
   beginOperation("execute_gateway_cases");
@@ -485,7 +521,11 @@ try {
 } catch (error) {
   const elapsedMs = operationStartedAt ? Date.now() - operationStartedAt : 0;
   let originLogs = "";
+  let containerState = null;
   if (originName) {
+    try {
+      containerState = inspectFixtureContainerState(originName);
+    } catch {}
     try {
       originLogs = captureDockerLogs(originName);
     } catch {}
@@ -497,6 +537,7 @@ try {
     issuerReady,
     operation: currentOperation,
     elapsedMs,
+    containerState,
   });
   file(
     "/fixture/bootstrap-stage.json",
@@ -513,6 +554,15 @@ try {
       errorSignal: diagnostic.errorSignal,
       operation: diagnostic.operation,
       elapsedMs: diagnostic.elapsedMs,
+      ...(diagnostic.createElapsedMs !== undefined
+        ? { createElapsedMs: diagnostic.createElapsedMs }
+        : {}),
+      ...(diagnostic.startElapsedMs !== undefined
+        ? { startElapsedMs: diagnostic.startElapsedMs }
+        : {}),
+      ...(diagnostic.containerState !== undefined
+        ? { containerState: diagnostic.containerState }
+        : {}),
     }),
   );
   process.stderr.write(

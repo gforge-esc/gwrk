@@ -637,3 +637,84 @@ test("observer startup controller failure preserves stage observer_start with co
   assert.equal(result.category, "observer_startup_failed");
   assert.equal(result.operation, "start_native_observer");
 });
+
+test("projects origin create-versus-start timing and safe containerState into native-result.json", async () => {
+  const runId = "4".repeat(24);
+  const root = `/opt/gwrk-verification/${runId}`;
+  const { store, files } = makeFiles();
+
+  await assert.rejects(
+    runNativeFixture({
+      runId,
+      root,
+      receipt: {},
+      images: sampleImages,
+      files,
+      withLifecycle: async ({ executeCases }) => {
+        await executeCases({
+          containerId: "f".repeat(64),
+          docker: async (args) => {
+            if (args.includes("inspect")) {
+              const target = args.at(-1);
+              const key = Object.entries(sampleImages).find(
+                ([, value]) => value === target,
+              )[0];
+              return JSON.stringify({
+                Id: target,
+                RootFS: { Layers: sampleImages.rootfs[key] },
+              });
+            }
+            if (args.includes("mkdir")) return "";
+            if (args.includes("/fixture/bootstrap-stage.json")) {
+              return JSON.stringify({
+                stage: "origin_start",
+                failureClassification: "fixture_construction",
+                category: "origin_launch_failed",
+                detail: "Origin service container failed to launch",
+                operation: "docker_create_origin",
+                elapsedMs: 60012,
+                createElapsedMs: 60012,
+                startElapsedMs: null,
+                containerState: {
+                  containerExists: true,
+                  containerStatus: "created",
+                  oomKilled: false,
+                  containerExitCode: 0,
+                  containerPid: 0,
+                },
+                errorCode: "ETIMEDOUT",
+                errorSignal: null,
+                exitStatus: 143,
+              });
+            }
+            throw new Error(`unexpected docker args: ${args.join(" ")}`);
+          },
+          spawnDocker: async (args) => {
+            if (args.includes("load")) {
+              return { code: 0, stdout: "Loaded\n", stderr: "" };
+            }
+            if (args.includes("/input/fixtures/bootstrap.mjs")) {
+              return { code: 1, stdout: "", stderr: "RED\n" };
+            }
+            throw new Error(`unexpected spawnDocker args: ${args.join(" ")}`);
+          },
+        });
+      },
+    }),
+  );
+
+  const persisted = JSON.parse(store.get(`${root}/native-result.json`));
+  assert.equal(persisted.stage, "origin_start");
+  assert.equal(persisted.operation, "docker_create_origin");
+  assert.equal(persisted.createElapsedMs, 60012);
+  assert.equal(persisted.startElapsedMs, null);
+  assert.deepEqual(persisted.containerState, {
+    containerExists: true,
+    containerStatus: "created",
+    oomKilled: false,
+    containerExitCode: 0,
+    containerPid: 0,
+  });
+  assert.equal(persisted.fixtureConstructionFailure, true);
+  assert.equal(persisted.nativeBehavioralRed, false);
+});
