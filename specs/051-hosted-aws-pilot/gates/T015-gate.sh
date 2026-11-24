@@ -1,9 +1,5 @@
-#!/bin/bash
+#!/usr/bin/env bash
 set -euo pipefail
-# AUTHORED
-# Gate: T015 — Modify pnpm-lock.yaml
-# Generated from filesystem convention (no test file found)
-
-test -f pnpm-lock.yaml || { echo "FAIL: T015 — file not found: pnpm-lock.yaml" >&2; exit 1; }
-
-echo "PASS: T015 — Modify pnpm-lock.yaml"
+# AUTHORED: delegate to the shared behavioral phase gate.
+gate_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+exec bash "${gate_dir}/phase-03.sh"

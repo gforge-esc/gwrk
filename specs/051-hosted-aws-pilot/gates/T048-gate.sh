@@ -1,9 +1,5 @@
-#!/bin/bash
+#!/usr/bin/env bash
 set -euo pipefail
-# AUTHORED
-# Gate: T048 — Modify container-proof.sh
-# Generated from filesystem convention (no test file found)
-
-test -f tests/linux-runner/container-proof.sh || { echo "FAIL: T048 — file not found: tests/linux-runner/container-proof.sh" >&2; exit 1; }
-
-echo "PASS: T048 — Modify container-proof.sh"
+# AUTHORED: delegate to the shared behavioral phase gate.
+gate_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+exec bash "${gate_dir}/phase-08.sh"

@@ -1,9 +1,5 @@
-#!/bin/bash
+#!/usr/bin/env bash
 set -euo pipefail
-# AUTHORED
-# Gate: T045 — Create README.md
-# Generated from filesystem convention (no test file found)
-
-test -f README.md || { echo "FAIL: T045 — file not found: README.md" >&2; exit 1; }
-
-echo "PASS: T045 — Create README.md"
+# AUTHORED: delegate to the shared behavioral phase gate.
+gate_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+exec bash "${gate_dir}/phase-08.sh"

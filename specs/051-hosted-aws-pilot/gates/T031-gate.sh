@@ -1,12 +1,5 @@
-#!/bin/bash
+#!/usr/bin/env bash
 set -euo pipefail
-# AUTHORED
-# Gate: T031 — Modify config.ts
-# Generated from filesystem convention (deterministic test gate)
-
-test -f src/utils/config.ts || { echo "FAIL: T031 — file not found: src/utils/config.ts" >&2; exit 1; }
-
-pnpm vitest run src/utils/config.test.ts --reporter=verbose \
-  || { echo "FAIL: T031 — test failed for src/utils/config.test.ts" >&2; exit 1; }
-
-echo "PASS: T031 — Modify config.ts"
+# AUTHORED: delegate to the shared behavioral phase gate.
+gate_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+exec bash "${gate_dir}/phase-06.sh"

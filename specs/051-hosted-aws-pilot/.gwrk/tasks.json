@@ -17,7 +17,7 @@
           "title": "Create auth-policy.ts",
           "description": "NEW src/domain/auth-policy.ts. Pure route table and credential grammar plus issuer normalization and session cap and log redaction. Tests: src/domain/auth-policy.test.ts",
           "status": "open",
-          "gateScript": "pnpm run build\npnpm exec vitest run src/domain/auth-policy.test.ts src/architecture.test.ts\nnode dist/cli.js define adr --reindex --check\nnode dist/cli.js define adr --check",
+          "gateScript": "bash specs/051-hosted-aws-pilot/gates/phase-01.sh",
           "sp": 2
         },
         {
@@ -25,7 +25,7 @@
           "title": "Modify index.ts",
           "description": "MODIFY src/domain/index.ts. Export pure auth policy functions and schemas from domain barrel",
           "status": "open",
-          "gateScript": "pnpm run build\npnpm exec vitest run src/domain/auth-policy.test.ts src/architecture.test.ts\nnode dist/cli.js define adr --reindex --check\nnode dist/cli.js define adr --check",
+          "gateScript": "bash specs/051-hosted-aws-pilot/gates/phase-01.sh",
           "sp": 1
         },
         {
@@ -33,7 +33,7 @@
           "title": "Create auth-port.ts",
           "description": "NEW src/ports/auth-port.ts. Freeze `VerifiedAuthContext` and seven auth ports with type-only domain imports",
           "status": "open",
-          "gateScript": "pnpm run build\npnpm exec vitest run src/domain/auth-policy.test.ts src/architecture.test.ts\nnode dist/cli.js define adr --reindex --check\nnode dist/cli.js define adr --check",
+          "gateScript": "bash specs/051-hosted-aws-pilot/gates/phase-01.sh",
           "sp": 2
         },
         {
@@ -41,7 +41,7 @@
           "title": "Modify index.ts",
           "description": "MODIFY src/ports/index.ts. Re-export `auth-port.js` from ports barrel",
           "status": "open",
-          "gateScript": "pnpm run build\npnpm exec vitest run src/domain/auth-policy.test.ts src/architecture.test.ts\nnode dist/cli.js define adr --reindex --check\nnode dist/cli.js define adr --check",
+          "gateScript": "bash specs/051-hosted-aws-pilot/gates/phase-01.sh",
           "sp": 1
         },
         {
@@ -49,7 +49,7 @@
           "title": "Create ADR-014-hosted-production-auth.md",
           "description": "NEW docs/decisions/ADR-014-hosted-production-auth.md. Proposed ADR for hosted Google login and opaque API credentials",
           "status": "open",
-          "gateScript": "pnpm run build\npnpm exec vitest run src/domain/auth-policy.test.ts src/architecture.test.ts\nnode dist/cli.js define adr --reindex --check\nnode dist/cli.js define adr --check",
+          "gateScript": "bash specs/051-hosted-aws-pilot/gates/phase-01.sh",
           "sp": 2
         },
         {
@@ -57,7 +57,7 @@
           "title": "Modify index.md",
           "description": "MODIFY .gwrk/decisions/index.md. Regenerate derived decision index with `gwrk define adr --reindex`",
           "status": "open",
-          "gateScript": "pnpm run build\npnpm exec vitest run src/domain/auth-policy.test.ts src/architecture.test.ts\nnode dist/cli.js define adr --reindex --check\nnode dist/cli.js define adr --check",
+          "gateScript": "bash specs/051-hosted-aws-pilot/gates/phase-01.sh",
           "sp": 1
         }
       ],
@@ -79,7 +79,7 @@
           "title": "Create 020-production-auth.sql",
           "description": "NEW src/db/migrations/020-production-auth.sql. Add `api_credentials` and `google_sessions` plus `auth_audit_events` tables to `gwrk.db`",
           "status": "open",
-          "gateScript": "pnpm run build\npnpm exec vitest run src/adapters/auth/credential-crypto.test.ts src/adapters/sqlite/auth-store.test.ts src/commands/auth.test.ts src/db/db.test.ts src/architecture.test.ts",
+          "gateScript": "bash specs/051-hosted-aws-pilot/gates/phase-02.sh",
           "sp": 2
         },
         {
@@ -87,7 +87,7 @@
           "title": "Create credential-crypto.ts",
           "description": "NEW src/adapters/auth/credential-crypto.ts. Implement `CredentialCryptoPort` with 32-byte secrets and constant-time SHA-256 checks. Tests: src/adapters/auth/credential-crypto.test.ts",
           "status": "open",
-          "gateScript": "pnpm run build\npnpm exec vitest run src/adapters/auth/credential-crypto.test.ts src/adapters/sqlite/auth-store.test.ts src/commands/auth.test.ts src/db/db.test.ts src/architecture.test.ts",
+          "gateScript": "bash specs/051-hosted-aws-pilot/gates/phase-02.sh",
           "sp": 2
         },
         {
@@ -95,7 +95,7 @@
           "title": "Create auth-store.ts",
           "description": "NEW src/adapters/sqlite/auth-store.ts. Implement `AuthStorePort` and atomic `CredentialGrantAdminPort` with `project_role_bindings`. Tests: src/adapters/sqlite/auth-store.test.ts",
           "status": "open",
-          "gateScript": "pnpm run build\npnpm exec vitest run src/adapters/auth/credential-crypto.test.ts src/adapters/sqlite/auth-store.test.ts src/commands/auth.test.ts src/db/db.test.ts src/architecture.test.ts",
+          "gateScript": "bash specs/051-hosted-aws-pilot/gates/phase-02.sh",
           "sp": 2
         },
         {
@@ -103,7 +103,7 @@
           "title": "Modify index.ts",
           "description": "MODIFY src/adapters/sqlite/index.ts. Export SQLite auth store and grant admin adapter factories",
           "status": "open",
-          "gateScript": "pnpm run build\npnpm exec vitest run src/adapters/auth/credential-crypto.test.ts src/adapters/sqlite/auth-store.test.ts src/commands/auth.test.ts src/db/db.test.ts src/architecture.test.ts",
+          "gateScript": "bash specs/051-hosted-aws-pilot/gates/phase-02.sh",
           "sp": 1
         },
         {
@@ -111,7 +111,7 @@
           "title": "Create manage-credentials.ts",
           "description": "NEW src/application/auth/manage-credentials.ts. Use cases for key create and list plus revoke and atomic rotate",
           "status": "open",
-          "gateScript": "pnpm run build\npnpm exec vitest run src/adapters/auth/credential-crypto.test.ts src/adapters/sqlite/auth-store.test.ts src/commands/auth.test.ts src/db/db.test.ts src/architecture.test.ts",
+          "gateScript": "bash specs/051-hosted-aws-pilot/gates/phase-02.sh",
           "sp": 2
         },
         {
@@ -119,7 +119,7 @@
           "title": "Create auth.ts",
           "description": "NEW src/commands/auth.ts. Local `gwrk auth key` subcommands writing `0600` non-checkout secret files with `ADR-004` signals. Tests: src/adapters/auth/credential-crypto.test.ts",
           "status": "open",
-          "gateScript": "pnpm run build\npnpm exec vitest run src/adapters/auth/credential-crypto.test.ts src/adapters/sqlite/auth-store.test.ts src/commands/auth.test.ts src/db/db.test.ts src/architecture.test.ts",
+          "gateScript": "bash specs/051-hosted-aws-pilot/gates/phase-02.sh",
           "sp": 2
         },
         {
@@ -127,7 +127,7 @@
           "title": "Modify cli.ts",
           "description": "MODIFY src/cli.ts. Register `createAuthCommand` and exempt `gwrk auth key` from cwd config preflight",
           "status": "open",
-          "gateScript": "pnpm run build\npnpm exec vitest run src/adapters/auth/credential-crypto.test.ts src/adapters/sqlite/auth-store.test.ts src/commands/auth.test.ts src/db/db.test.ts src/architecture.test.ts",
+          "gateScript": "bash specs/051-hosted-aws-pilot/gates/phase-02.sh",
           "sp": 1
         }
       ],
@@ -147,7 +147,7 @@
           "title": "Modify package.json",
           "description": "MODIFY package.json. Pin exact `jose` release for Node.js 22",
           "status": "open",
-          "gateScript": "pnpm run build\npnpm exec vitest run src/adapters/auth/google-id-token.test.ts src/application/auth/authenticate-request.test.ts src/architecture.test.ts",
+          "gateScript": "bash specs/051-hosted-aws-pilot/gates/phase-03.sh",
           "sp": 1
         },
         {
@@ -155,7 +155,7 @@
           "title": "Modify pnpm-lock.yaml",
           "description": "MODIFY pnpm-lock.yaml. Record pinned `jose` lockfile entry",
           "status": "open",
-          "gateScript": "pnpm run build\npnpm exec vitest run src/adapters/auth/google-id-token.test.ts src/application/auth/authenticate-request.test.ts src/architecture.test.ts",
+          "gateScript": "bash specs/051-hosted-aws-pilot/gates/phase-03.sh",
           "sp": 1
         },
         {
@@ -163,7 +163,7 @@
           "title": "Create google-id-token.ts",
           "description": "NEW src/adapters/auth/google-id-token.ts. Implement `GoogleIdentityVerifierPort` with pinned `jose` and bounded JWKS cache plus live allowlist reload. Tests: src/adapters/auth/google-id-token.test.ts",
           "status": "open",
-          "gateScript": "pnpm run build\npnpm exec vitest run src/adapters/auth/google-id-token.test.ts src/application/auth/authenticate-request.test.ts src/architecture.test.ts",
+          "gateScript": "bash specs/051-hosted-aws-pilot/gates/phase-03.sh",
           "sp": 2
         },
         {
@@ -171,7 +171,7 @@
           "title": "Create proxy-logout.ts",
           "description": "NEW src/adapters/auth/proxy-logout.ts. Implement `ProxySessionLogoutPort` against fixed internal `/oauth2/sign_out` endpoint",
           "status": "open",
-          "gateScript": "pnpm run build\npnpm exec vitest run src/adapters/auth/google-id-token.test.ts src/application/auth/authenticate-request.test.ts src/architecture.test.ts",
+          "gateScript": "bash specs/051-hosted-aws-pilot/gates/phase-03.sh",
           "sp": 2
         },
         {
@@ -179,7 +179,7 @@
           "title": "Create authenticate-request.ts",
           "description": "NEW src/application/auth/authenticate-request.ts. Orchestrate API key and Google ID token checks plus audience and session cap denials. Tests: src/application/auth/authenticate-request.test.ts",
           "status": "open",
-          "gateScript": "pnpm run build\npnpm exec vitest run src/adapters/auth/google-id-token.test.ts src/application/auth/authenticate-request.test.ts src/architecture.test.ts",
+          "gateScript": "bash specs/051-hosted-aws-pilot/gates/phase-03.sh",
           "sp": 2
         },
         {
@@ -187,7 +187,7 @@
           "title": "Create browser-session.ts",
           "description": "NEW src/application/auth/browser-session.ts. Orchestrate session reads and origin-first digest revocation before proxy sign-out",
           "status": "open",
-          "gateScript": "pnpm run build\npnpm exec vitest run src/adapters/auth/google-id-token.test.ts src/application/auth/authenticate-request.test.ts src/architecture.test.ts",
+          "gateScript": "bash specs/051-hosted-aws-pilot/gates/phase-03.sh",
           "sp": 2
         },
         {
@@ -195,7 +195,7 @@
           "title": "Modify index.ts",
           "description": "MODIFY src/application/index.ts. Export authentication and session plus credential-management services",
           "status": "open",
-          "gateScript": "pnpm run build\npnpm exec vitest run src/adapters/auth/google-id-token.test.ts src/application/auth/authenticate-request.test.ts src/architecture.test.ts",
+          "gateScript": "bash specs/051-hosted-aws-pilot/gates/phase-03.sh",
           "sp": 1
         }
       ],
@@ -216,7 +216,7 @@
           "title": "Modify package.json",
           "description": "MODIFY package.json. Pin `@fastify/cookie` and `@fastify/csrf-protection` plus `@fastify/rate-limit` for Fastify 5",
           "status": "open",
-          "gateScript": "pnpm run build\npnpm exec vitest run src/server/auth-prehandler.test.ts src/server/auth-session.test.ts src/server/auth-api-keys.test.ts src/server/routes/status.test.ts src/server/routes/dispatch.test.ts src/server/routes/notify.test.ts src/server/routes/health.test.ts src/architecture.test.ts",
+          "gateScript": "bash specs/051-hosted-aws-pilot/gates/phase-04.sh",
           "sp": 1
         },
         {
@@ -224,7 +224,7 @@
           "title": "Modify pnpm-lock.yaml",
           "description": "MODIFY pnpm-lock.yaml. Lock pinned Fastify security plugin releases",
           "status": "open",
-          "gateScript": "pnpm run build\npnpm exec vitest run src/server/auth-prehandler.test.ts src/server/auth-session.test.ts src/server/auth-api-keys.test.ts src/server/routes/status.test.ts src/server/routes/dispatch.test.ts src/server/routes/notify.test.ts src/server/routes/health.test.ts src/architecture.test.ts",
+          "gateScript": "bash specs/051-hosted-aws-pilot/gates/phase-04.sh",
           "sp": 1
         },
         {
@@ -232,7 +232,7 @@
           "title": "Create browser-csrf.ts",
           "description": "NEW src/adapters/auth/browser-csrf.ts. Implement `BrowserCsrfPort` with `@fastify/csrf-protection` and `__Host-gwrk_csrf` cookie plus `x-gwrk-csrf-token` header",
           "status": "open",
-          "gateScript": "pnpm run build\npnpm exec vitest run src/server/auth-prehandler.test.ts src/server/auth-session.test.ts src/server/auth-api-keys.test.ts src/server/routes/status.test.ts src/server/routes/dispatch.test.ts src/server/routes/notify.test.ts src/server/routes/health.test.ts src/architecture.test.ts",
+          "gateScript": "bash specs/051-hosted-aws-pilot/gates/phase-04.sh",
           "sp": 2
         },
         {
@@ -240,7 +240,7 @@
           "title": "Create auth-guard.ts",
           "description": "NEW src/server/auth-guard.ts. Fastify async auth pre-handler and request decoration plus synchronous `resolvePrincipal` reader and default-deny guard",
           "status": "open",
-          "gateScript": "pnpm run build\npnpm exec vitest run src/server/auth-prehandler.test.ts src/server/auth-session.test.ts src/server/auth-api-keys.test.ts src/server/routes/status.test.ts src/server/routes/dispatch.test.ts src/server/routes/notify.test.ts src/server/routes/health.test.ts src/architecture.test.ts",
+          "gateScript": "bash specs/051-hosted-aws-pilot/gates/phase-04.sh",
           "sp": 2
         },
         {
@@ -248,7 +248,7 @@
           "title": "Create auth.ts",
           "description": "NEW src/server/routes/auth.ts. Register `GET /` and `GET /api/auth/session` plus `POST /api/auth/logout` routes. Tests: src/server/auth-prehandler.test.ts",
           "status": "open",
-          "gateScript": "pnpm run build\npnpm exec vitest run src/server/auth-prehandler.test.ts src/server/auth-session.test.ts src/server/auth-api-keys.test.ts src/server/routes/status.test.ts src/server/routes/dispatch.test.ts src/server/routes/notify.test.ts src/server/routes/health.test.ts src/architecture.test.ts",
+          "gateScript": "bash specs/051-hosted-aws-pilot/gates/phase-04.sh",
           "sp": 2
         },
         {
@@ -256,7 +256,7 @@
           "title": "Modify health.ts",
           "description": "MODIFY src/server/routes/health.ts. Filter hosted `GET /api/health` to one authorized project and serve minimal private `GET /health`",
           "status": "open",
-          "gateScript": "pnpm run build\npnpm exec vitest run src/server/auth-prehandler.test.ts src/server/auth-session.test.ts src/server/auth-api-keys.test.ts src/server/routes/status.test.ts src/server/routes/dispatch.test.ts src/server/routes/notify.test.ts src/server/routes/health.test.ts src/architecture.test.ts",
+          "gateScript": "bash specs/051-hosted-aws-pilot/gates/phase-04.sh",
           "sp": 1
         },
         {
@@ -264,7 +264,7 @@
           "title": "Modify index.ts",
           "description": "MODIFY src/server/index.ts. Register auth pre-handler and CSRF plus auth routes and scoped health while keeping `trusted_local` separate",
           "status": "open",
-          "gateScript": "pnpm run build\npnpm exec vitest run src/server/auth-prehandler.test.ts src/server/auth-session.test.ts src/server/auth-api-keys.test.ts src/server/routes/status.test.ts src/server/routes/dispatch.test.ts src/server/routes/notify.test.ts src/server/routes/health.test.ts src/architecture.test.ts",
+          "gateScript": "bash specs/051-hosted-aws-pilot/gates/phase-04.sh",
           "sp": 1
         }
       ],
@@ -285,7 +285,7 @@
           "title": "Create auth-logging.ts",
           "description": "NEW src/server/auth-logging.ts. Sanitized Fastify logger removing auth headers and cookies plus OAuth query params and error secrets. Tests: src/server/auth-logging.test.ts",
           "status": "open",
-          "gateScript": "pnpm run build\npnpm exec vitest run src/server/auth-csrf.test.ts src/server/routes/health.auth.test.ts src/server/auth-route-policy.test.ts src/server/auth-bounds.test.ts src/server/auth-logging.test.ts src/server/github.test.ts src/architecture.test.ts",
+          "gateScript": "bash specs/051-hosted-aws-pilot/gates/phase-05.sh",
           "sp": 2
         },
         {
@@ -293,7 +293,7 @@
           "title": "Create auth-bounds.ts",
           "description": "NEW src/server/auth-bounds.ts. Finite login and per-credential API rate limits plus header and body bounds with fail-closed denials. Tests: src/server/auth-bounds.test.ts",
           "status": "open",
-          "gateScript": "pnpm run build\npnpm exec vitest run src/server/auth-csrf.test.ts src/server/routes/health.auth.test.ts src/server/auth-route-policy.test.ts src/server/auth-bounds.test.ts src/server/auth-logging.test.ts src/server/github.test.ts src/architecture.test.ts",
+          "gateScript": "bash specs/051-hosted-aws-pilot/gates/phase-05.sh",
           "sp": 2
         },
         {
@@ -301,7 +301,7 @@
           "title": "Modify index.ts",
           "description": "MODIFY src/server/index.ts. Replace default `logger: true` with sanitized logger and register request bounds before auth routes",
           "status": "open",
-          "gateScript": "pnpm run build\npnpm exec vitest run src/server/auth-csrf.test.ts src/server/routes/health.auth.test.ts src/server/auth-route-policy.test.ts src/server/auth-bounds.test.ts src/server/auth-logging.test.ts src/server/github.test.ts src/architecture.test.ts",
+          "gateScript": "bash specs/051-hosted-aws-pilot/gates/phase-05.sh",
           "sp": 1
         }
       ],
@@ -324,7 +324,7 @@
           "title": "Modify config.ts",
           "description": "MODIFY src/utils/config.ts. Add fail-fast hosted auth config fields for origin and Google client plus allowlist and CSRF secret and transport",
           "status": "open",
-          "gateScript": "pnpm run build\npnpm exec vitest run src/adapters/auth/http-client-credential.test.ts src/commands/server.auth-startup.test.ts src/server/auth-continuity.test.ts src/commands/init.test.ts src/commands/server.test.ts src/commands/status.test.ts src/architecture.test.ts",
+          "gateScript": "bash specs/051-hosted-aws-pilot/gates/phase-06.sh",
           "sp": 1
         },
         {
@@ -332,7 +332,7 @@
           "title": "Create hosted-auth-factory.ts",
           "description": "NEW src/adapters/auth/hosted-auth-factory.ts. Lazy startup-only auth factory with zero import-time secret reads or network calls",
           "status": "open",
-          "gateScript": "pnpm run build\npnpm exec vitest run src/adapters/auth/http-client-credential.test.ts src/commands/server.auth-startup.test.ts src/server/auth-continuity.test.ts src/commands/init.test.ts src/commands/server.test.ts src/commands/status.test.ts src/architecture.test.ts",
+          "gateScript": "bash specs/051-hosted-aws-pilot/gates/phase-06.sh",
           "sp": 2
         },
         {
@@ -340,7 +340,7 @@
           "title": "Create http-client-credential.ts",
           "description": "NEW src/adapters/auth/http-client-credential.ts. Implement `HttpClientCredentialPort` reading `0600` origin-bound profiles with HTTPS and redirect-disabled fetch. Tests: src/adapters/auth/http-client-credential.test.ts",
           "status": "open",
-          "gateScript": "pnpm run build\npnpm exec vitest run src/adapters/auth/http-client-credential.test.ts src/commands/server.auth-startup.test.ts src/server/auth-continuity.test.ts src/commands/init.test.ts src/commands/server.test.ts src/commands/status.test.ts src/architecture.test.ts",
+          "gateScript": "bash specs/051-hosted-aws-pilot/gates/phase-06.sh",
           "sp": 2
         },
         {
@@ -348,7 +348,7 @@
           "title": "Modify server.ts",
           "description": "MODIFY src/commands/server.ts. Wire `hosted-auth-factory.ts` into `server start --foreground` and `_run` and separate local liveness in `server status`. Tests: src/commands/server.auth-startup.test.ts",
           "status": "open",
-          "gateScript": "pnpm run build\npnpm exec vitest run src/adapters/auth/http-client-credential.test.ts src/commands/server.auth-startup.test.ts src/server/auth-continuity.test.ts src/commands/init.test.ts src/commands/server.test.ts src/commands/status.test.ts src/architecture.test.ts",
+          "gateScript": "bash specs/051-hosted-aws-pilot/gates/phase-06.sh",
           "sp": 1
         },
         {
@@ -356,7 +356,7 @@
           "title": "Modify status.ts",
           "description": "MODIFY src/commands/status.ts. Attach origin-bound `HttpClientCredentialPort` on remote probes and drop keys on origin mismatch or redirect",
           "status": "open",
-          "gateScript": "pnpm run build\npnpm exec vitest run src/adapters/auth/http-client-credential.test.ts src/commands/server.auth-startup.test.ts src/server/auth-continuity.test.ts src/commands/init.test.ts src/commands/server.test.ts src/commands/status.test.ts src/architecture.test.ts",
+          "gateScript": "bash specs/051-hosted-aws-pilot/gates/phase-06.sh",
           "sp": 1
         }
       ],
@@ -377,7 +377,7 @@
           "title": "Create compose.yaml",
           "description": "NEW deploy/hosted-pilot/compose.yaml. Digest-pinned Traefik and OAuth2 Proxy stack publishing ports `80` and `443` with loopback-only origin and sign-out",
           "status": "open",
-          "gateScript": "pnpm run build\npnpm exec vitest run tests/linux-runner/preflight-auth.test.ts tests/hosted-auth-proof/preflight.test.ts tests/hosted-auth-proof/production-bundle.test.ts\nnode tests/hosted-pilot/gateway-production.mjs\nnode tests/hosted-auth-proof/gateway-proof.mjs",
+          "gateScript": "bash specs/051-hosted-aws-pilot/gates/phase-07.sh",
           "sp": 2
         },
         {
@@ -385,7 +385,7 @@
           "title": "Create dynamic.yaml",
           "description": "NEW deploy/hosted-pilot/traefik/dynamic.yaml. Isolated browser and API plus webhook chains stripping forged headers and blocking public `/oauth2/sign_out` and `/health`",
           "status": "open",
-          "gateScript": "pnpm run build\npnpm exec vitest run tests/linux-runner/preflight-auth.test.ts tests/hosted-auth-proof/preflight.test.ts tests/hosted-auth-proof/production-bundle.test.ts\nnode tests/hosted-pilot/gateway-production.mjs\nnode tests/hosted-auth-proof/gateway-proof.mjs",
+          "gateScript": "bash specs/051-hosted-aws-pilot/gates/phase-07.sh",
           "sp": 2
         },
         {
@@ -393,7 +393,7 @@
           "title": "Create oauth2-proxy.cfg",
           "description": "NEW deploy/hosted-pilot/oauth2-proxy/oauth2-proxy.cfg. Google OIDC PKCE `S256` with `insecure_oidc_skip_nonce = false` and `set_authorization_header = true` plus explicit allowlist",
           "status": "open",
-          "gateScript": "pnpm run build\npnpm exec vitest run tests/linux-runner/preflight-auth.test.ts tests/hosted-auth-proof/preflight.test.ts tests/hosted-auth-proof/production-bundle.test.ts\nnode tests/hosted-pilot/gateway-production.mjs\nnode tests/hosted-auth-proof/gateway-proof.mjs",
+          "gateScript": "bash specs/051-hosted-aws-pilot/gates/phase-07.sh",
           "sp": 2
         },
         {
@@ -401,7 +401,7 @@
           "title": "Create .env.example",
           "description": "NEW deploy/hosted-pilot/.env.example. Non-secret edge config template with zero assumed Google accounts",
           "status": "open",
-          "gateScript": "pnpm run build\npnpm exec vitest run tests/linux-runner/preflight-auth.test.ts tests/hosted-auth-proof/preflight.test.ts tests/hosted-auth-proof/production-bundle.test.ts\nnode tests/hosted-pilot/gateway-production.mjs\nnode tests/hosted-auth-proof/gateway-proof.mjs",
+          "gateScript": "bash specs/051-hosted-aws-pilot/gates/phase-07.sh",
           "sp": 2
         },
         {
@@ -409,7 +409,7 @@
           "title": "Modify credentials.sh",
           "description": "MODIFY deploy/linux-runner/credentials.sh. Load origin auth secrets from `/etc/gwrk/secrets` `0640 root:gwrk` and scrub inbound auth env from workers",
           "status": "open",
-          "gateScript": "pnpm run build\npnpm exec vitest run tests/linux-runner/preflight-auth.test.ts tests/hosted-auth-proof/preflight.test.ts tests/hosted-auth-proof/production-bundle.test.ts\nnode tests/hosted-pilot/gateway-production.mjs\nnode tests/hosted-auth-proof/gateway-proof.mjs",
+          "gateScript": "bash specs/051-hosted-aws-pilot/gates/phase-07.sh",
           "sp": 1
         },
         {
@@ -417,7 +417,7 @@
           "title": "Modify preflight.sh",
           "description": "MODIFY deploy/linux-runner/preflight.sh. Fail closed on missing hosted auth secrets or loose modes or non-loopback bind or Telegram vars. Tests: tests/linux-runner/preflight-auth.test.ts",
           "status": "open",
-          "gateScript": "pnpm run build\npnpm exec vitest run tests/linux-runner/preflight-auth.test.ts tests/hosted-auth-proof/preflight.test.ts tests/hosted-auth-proof/production-bundle.test.ts\nnode tests/hosted-pilot/gateway-production.mjs\nnode tests/hosted-auth-proof/gateway-proof.mjs",
+          "gateScript": "bash specs/051-hosted-aws-pilot/gates/phase-07.sh",
           "sp": 1
         },
         {
@@ -425,7 +425,7 @@
           "title": "Modify .env.example",
           "description": "MODIFY deploy/linux-runner/.env.example. Document hosted origin auth paths and loopback bind without secrets",
           "status": "open",
-          "gateScript": "pnpm run build\npnpm exec vitest run tests/linux-runner/preflight-auth.test.ts tests/hosted-auth-proof/preflight.test.ts tests/hosted-auth-proof/production-bundle.test.ts\nnode tests/hosted-pilot/gateway-production.mjs\nnode tests/hosted-auth-proof/gateway-proof.mjs",
+          "gateScript": "bash specs/051-hosted-aws-pilot/gates/phase-07.sh",
           "sp": 1
         },
         {
@@ -433,7 +433,7 @@
           "title": "Create compose.test.yaml",
           "description": "NEW tests/hosted-pilot/compose.test.yaml. Loopback synthetic OIDC overlay connecting pinned Traefik and OAuth2 Proxy to a real `gwrk` origin",
           "status": "open",
-          "gateScript": "pnpm run build\npnpm exec vitest run tests/linux-runner/preflight-auth.test.ts tests/hosted-auth-proof/preflight.test.ts tests/hosted-auth-proof/production-bundle.test.ts\nnode tests/hosted-pilot/gateway-production.mjs\nnode tests/hosted-auth-proof/gateway-proof.mjs",
+          "gateScript": "bash specs/051-hosted-aws-pilot/gates/phase-07.sh",
           "sp": 2
         },
         {
@@ -441,7 +441,7 @@
           "title": "Create gateway-production.mjs",
           "description": "NEW tests/hosted-pilot/gateway-production.mjs. Synthetic OIDC edge suite for `AUTH-05` and ID-token proof plus API non-redirect and header forgery and canary logs",
           "status": "open",
-          "gateScript": "pnpm run build\npnpm exec vitest run tests/linux-runner/preflight-auth.test.ts tests/hosted-auth-proof/preflight.test.ts tests/hosted-auth-proof/production-bundle.test.ts\nnode tests/hosted-pilot/gateway-production.mjs\nnode tests/hosted-auth-proof/gateway-proof.mjs",
+          "gateScript": "bash specs/051-hosted-aws-pilot/gates/phase-07.sh",
           "sp": 2
         }
       ],
@@ -461,7 +461,7 @@
           "title": "Create README.md",
           "description": "NEW deploy/hosted-pilot/README.md. Operator runbook for secret separation and key rotation plus allowlist updates and restore and ingress closure",
           "status": "open",
-          "gateScript": "pnpm run build\npnpm run lint\npnpm exec vitest run src/architecture.test.ts src/domain/auth-policy.test.ts src/adapters/auth/credential-crypto.test.ts src/adapters/sqlite/auth-store.test.ts src/commands/auth.test.ts src/adapters/auth/google-id-token.test.ts src/application/auth/authenticate-request.test.ts src/server/auth-prehandler.test.ts src/server/auth-session.test.ts src/server/auth-api-keys.test.ts src/server/auth-csrf.test.ts src/server/routes/health.auth.test.ts src/server/auth-route-policy.test.ts src/server/auth-bounds.test.ts src/server/auth-logging.test.ts src/server/github.test.ts src/adapters/auth/http-client-credential.test.ts src/commands/server.auth-startup.test.ts src/server/auth-continuity.test.ts src/commands/init.test.ts tests/linux-runner/preflight-auth.test.ts tests/linux-runner/backup-restore-rollback.test.ts tests/hosted-pilot/rollout-gates.test.ts\nnode dist/cli.js define adr --reindex --check\nnode dist/cli.js define adr --check\nnode tests/hosted-pilot/gateway-production.mjs\nnode tests/hosted-auth-proof/gateway-proof.mjs\nnode tests/linux-runner/container-harness.mjs",
+          "gateScript": "bash specs/051-hosted-aws-pilot/gates/phase-08.sh",
           "sp": 2
         },
         {
@@ -469,7 +469,7 @@
           "title": "Create live-acceptance.example.md",
           "description": "NEW deploy/hosted-pilot/live-acceptance.example.md. Pending operator live acceptance template keeping live probes separate from synthetic tests",
           "status": "open",
-          "gateScript": "pnpm run build\npnpm run lint\npnpm exec vitest run src/architecture.test.ts src/domain/auth-policy.test.ts src/adapters/auth/credential-crypto.test.ts src/adapters/sqlite/auth-store.test.ts src/commands/auth.test.ts src/adapters/auth/google-id-token.test.ts src/application/auth/authenticate-request.test.ts src/server/auth-prehandler.test.ts src/server/auth-session.test.ts src/server/auth-api-keys.test.ts src/server/auth-csrf.test.ts src/server/routes/health.auth.test.ts src/server/auth-route-policy.test.ts src/server/auth-bounds.test.ts src/server/auth-logging.test.ts src/server/github.test.ts src/adapters/auth/http-client-credential.test.ts src/commands/server.auth-startup.test.ts src/server/auth-continuity.test.ts src/commands/init.test.ts tests/linux-runner/preflight-auth.test.ts tests/linux-runner/backup-restore-rollback.test.ts tests/hosted-pilot/rollout-gates.test.ts\nnode dist/cli.js define adr --reindex --check\nnode dist/cli.js define adr --check\nnode tests/hosted-pilot/gateway-production.mjs\nnode tests/hosted-auth-proof/gateway-proof.mjs\nnode tests/linux-runner/container-harness.mjs",
+          "gateScript": "bash specs/051-hosted-aws-pilot/gates/phase-08.sh",
           "sp": 2
         },
         {
@@ -477,7 +477,7 @@
           "title": "Create live-acceptance-gate.mjs",
           "description": "NEW tests/hosted-pilot/live-acceptance-gate.mjs. Operator-only live verifier exiting `1` without `GWRK_OPERATOR_LIVE_ACCEPTANCE=1` and real non-synthetic HTTPS probes",
           "status": "open",
-          "gateScript": "pnpm run build\npnpm run lint\npnpm exec vitest run src/architecture.test.ts src/domain/auth-policy.test.ts src/adapters/auth/credential-crypto.test.ts src/adapters/sqlite/auth-store.test.ts src/commands/auth.test.ts src/adapters/auth/google-id-token.test.ts src/application/auth/authenticate-request.test.ts src/server/auth-prehandler.test.ts src/server/auth-session.test.ts src/server/auth-api-keys.test.ts src/server/auth-csrf.test.ts src/server/routes/health.auth.test.ts src/server/auth-route-policy.test.ts src/server/auth-bounds.test.ts src/server/auth-logging.test.ts src/server/github.test.ts src/adapters/auth/http-client-credential.test.ts src/commands/server.auth-startup.test.ts src/server/auth-continuity.test.ts src/commands/init.test.ts tests/linux-runner/preflight-auth.test.ts tests/linux-runner/backup-restore-rollback.test.ts tests/hosted-pilot/rollout-gates.test.ts\nnode dist/cli.js define adr --reindex --check\nnode dist/cli.js define adr --check\nnode tests/hosted-pilot/gateway-production.mjs\nnode tests/hosted-auth-proof/gateway-proof.mjs\nnode tests/linux-runner/container-harness.mjs",
+          "gateScript": "bash specs/051-hosted-aws-pilot/gates/phase-08.sh",
           "sp": 2
         },
         {
@@ -485,7 +485,7 @@
           "title": "Modify container-proof.sh",
           "description": "MODIFY tests/linux-runner/container-proof.sh. Add hosted auth preflight and migration `020` restore plus rollback-check proofs to native Linux container run",
           "status": "open",
-          "gateScript": "pnpm run build\npnpm run lint\npnpm exec vitest run src/architecture.test.ts src/domain/auth-policy.test.ts src/adapters/auth/credential-crypto.test.ts src/adapters/sqlite/auth-store.test.ts src/commands/auth.test.ts src/adapters/auth/google-id-token.test.ts src/application/auth/authenticate-request.test.ts src/server/auth-prehandler.test.ts src/server/auth-session.test.ts src/server/auth-api-keys.test.ts src/server/auth-csrf.test.ts src/server/routes/health.auth.test.ts src/server/auth-route-policy.test.ts src/server/auth-bounds.test.ts src/server/auth-logging.test.ts src/server/github.test.ts src/adapters/auth/http-client-credential.test.ts src/commands/server.auth-startup.test.ts src/server/auth-continuity.test.ts src/commands/init.test.ts tests/linux-runner/preflight-auth.test.ts tests/linux-runner/backup-restore-rollback.test.ts tests/hosted-pilot/rollout-gates.test.ts\nnode dist/cli.js define adr --reindex --check\nnode dist/cli.js define adr --check\nnode tests/hosted-pilot/gateway-production.mjs\nnode tests/hosted-auth-proof/gateway-proof.mjs\nnode tests/linux-runner/container-harness.mjs",
+          "gateScript": "bash specs/051-hosted-aws-pilot/gates/phase-08.sh",
           "sp": 1
         }
       ],
@@ -506,7 +506,7 @@
           "title": "Create live-acceptance.md",
           "description": "NEW specs/051-hosted-aws-pilot/evidence/live-acceptance.md. Sanitized operator live acceptance record with zero secrets written after real probes pass",
           "status": "open",
-          "gateScript": "node tests/hosted-pilot/live-acceptance-gate.mjs --mode=live --record specs/051-hosted-aws-pilot/evidence/live-acceptance.md",
+          "gateScript": "bash specs/051-hosted-aws-pilot/gates/phase-09.sh",
           "sp": 2
         }
       ],

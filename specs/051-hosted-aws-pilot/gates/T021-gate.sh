@@ -1,9 +1,5 @@
-#!/bin/bash
+#!/usr/bin/env bash
 set -euo pipefail
-# AUTHORED
-# Gate: T021 — Modify package.json
-# Generated from filesystem convention (no test file found)
-
-test -f package.json || { echo "FAIL: T021 — file not found: package.json" >&2; exit 1; }
-
-echo "PASS: T021 — Modify package.json"
+# AUTHORED: delegate to the shared behavioral phase gate.
+gate_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+exec bash "${gate_dir}/phase-04.sh"
