@@ -13,6 +13,7 @@ const blockedKeys = [
   "oauth2_proxy_cookie_secret",
   "OAUTH2_PROXY_",
   "GWRK_API_KEY",
+  "GITHUB_WEBHOOK_SECRET",
   "gwrk_server_api_key",
   "AUTHORIZATION",
   "Http_Authorization",
@@ -80,6 +81,31 @@ describe("pure worker authentication environment filter", () => {
       for (const key of blockedKeys) expect(result).not.toHaveProperty(key);
       expect(inherited.GWRK_AUTH_MODE).toBe("synthetic-inherited-inbound");
       expect(explicit.GWRK_AUTH_MODE).toBe("synthetic-explicit-inbound");
+    },
+  );
+  it.each([
+    "GITHUB_WEBHOOK_SECRET",
+    "github_webhook_secret",
+    "GitHub_Webhook_Secret",
+  ])(
+    "strips inbound webhook HMAC key %s after explicit overrides while retaining outbound Git keys",
+    (key) => {
+      const inherited = Object.freeze({
+        GH_TOKEN: "synthetic-outbound-gh",
+        GITHUB_TOKEN: "synthetic-outbound-github",
+        GITHUB_WEBHOOK_SECRET: "synthetic-inbound-webhook",
+      });
+      const explicit = Object.freeze({ [key]: "synthetic-explicit-webhook" });
+      const merged = Object.freeze({ ...inherited, ...explicit });
+      const filtered = filterWorkerAuthEnvironment(merged);
+      expect(filtered).toEqual({
+        GH_TOKEN: inherited.GH_TOKEN,
+        GITHUB_TOKEN: inherited.GITHUB_TOKEN,
+      });
+      expect(filtered).not.toHaveProperty("GITHUB_WEBHOOK_SECRET");
+      expect(filtered).not.toHaveProperty(key);
+      expect(inherited.GITHUB_WEBHOOK_SECRET).toBe("synthetic-inbound-webhook");
+      expect(explicit[key]).toBe("synthetic-explicit-webhook");
     },
   );
   it("preserves ordinary environment names and values without normalizing their case", () => {
