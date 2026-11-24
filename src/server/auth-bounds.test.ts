@@ -164,47 +164,146 @@ function sendLoopbackRequest(input: {
   headers: http.IncomingHttpHeaders;
   body: string;
 }> {
+  const CHUNK_SIZE = 65_536;
   return new Promise((resolve, reject) => {
     let settled = false;
     let responseStarted = false;
+    let reqClosed = false;
     let pendingError: Error | undefined;
+    let bodyTimer: ReturnType<typeof setTimeout> | undefined;
+    let writeNextRef: (() => void) | undefined;
+
+    const clearWriteSchedule = () => {
+      if (bodyTimer !== undefined) {
+        clearTimeout(bodyTimer);
+        bodyTimer = undefined;
+      }
+      if (writeNextRef) {
+        req.off("drain", writeNextRef);
+        writeNextRef = undefined;
+      }
+    };
+
+    const finishResolve = (result: {
+      statusCode: number;
+      headers: http.IncomingHttpHeaders;
+      body: string;
+    }) => {
+      if (settled) return;
+      settled = true;
+      clearWriteSchedule();
+      resolve(result);
+    };
+
+    const finishReject = (err: Error) => {
+      if (settled) return;
+      settled = true;
+      clearWriteSchedule();
+      reject(err);
+    };
+
     const req = http.request(
       {
         host: "127.0.0.1",
         port: input.port,
+        agent: false,
         method: input.method,
         path: input.path,
         headers: input.headers,
       },
       (res) => {
         responseStarted = true;
+        clearWriteSchedule();
         const chunks: Buffer[] = [];
         res.on("data", (chunk: Buffer) => chunks.push(chunk));
         res.on("end", () => {
-          if (settled) return;
-          settled = true;
-          resolve({
+          finishResolve({
             statusCode: res.statusCode ?? 0,
             headers: res.headers,
             body: Buffer.concat(chunks).toString("utf8"),
           });
         });
+        res.on("error", (err) => {
+          finishReject(err);
+        });
+        res.on("close", () => {
+          if (!settled) {
+            if (res.complete) {
+              finishResolve({
+                statusCode: res.statusCode ?? 0,
+                headers: res.headers,
+                body: Buffer.concat(chunks).toString("utf8"),
+              });
+            } else {
+              finishReject(
+                pendingError ?? new Error("Response closed before completion"),
+              );
+            }
+          }
+        });
       },
     );
+
     req.on("error", (err) => {
+      clearWriteSchedule();
       if (settled) return;
       pendingError = err;
-    });
-    req.on("close", () => {
-      if (!settled && !responseStarted && pendingError) {
-        settled = true;
-        reject(pendingError);
+      if (reqClosed && !responseStarted) {
+        finishReject(err);
       }
     });
-    if (input.body !== undefined) {
-      req.write(input.body);
+
+    req.on("close", () => {
+      reqClosed = true;
+      clearWriteSchedule();
+      if (!settled && !responseStarted) {
+        finishReject(
+          pendingError ?? new Error("Request closed without response"),
+        );
+      }
+    });
+
+    if (input.body === undefined) {
+      req.end();
+      return;
     }
-    req.end();
+
+    const bodyBuf = Buffer.isBuffer(input.body)
+      ? input.body
+      : Buffer.from(input.body, "utf8");
+    if (bodyBuf.length <= CHUNK_SIZE) {
+      req.end(bodyBuf);
+      return;
+    }
+
+    req.flushHeaders();
+    let offset = 0;
+    const writeNext = () => {
+      while (offset < bodyBuf.length) {
+        if (responseStarted || settled || req.destroyed || req.writableEnded) {
+          return;
+        }
+        const chunk = bodyBuf.subarray(offset, offset + CHUNK_SIZE);
+        offset += chunk.length;
+        if (!req.write(chunk)) {
+          req.once("drain", writeNext);
+          return;
+        }
+      }
+      if (
+        !responseStarted &&
+        !settled &&
+        !req.destroyed &&
+        !req.writableEnded
+      ) {
+        req.end();
+      }
+    };
+    writeNextRef = writeNext;
+    bodyTimer = setTimeout(() => {
+      bodyTimer = undefined;
+      writeNext();
+    }, 50);
   });
 }
 
@@ -2113,5 +2212,106 @@ describe("FR-013 US-008 TR-014 AUTH-14: full-server HTTP rate admission, parser 
       requestId: expect.any(String),
     });
     expect(fSettled.dispatchCount()).toBe(0);
+  });
+
+  it("AUTH-14: retains exact HTTP 413/431 responses across repeated real loopback TCP requests, completes >65KB valid bodies, and rejects bare TCP resets", async () => {
+    const f = await createBoundsServerFixture();
+
+    const oversizedBody = JSON.stringify({
+      projectId: f.project.projectId,
+      featureId: "051-body-limit-repeat",
+      phaseId: "phase-05",
+      padding: "p".repeat(
+        DEFAULT_HOSTED_SECURITY_POLICY.httpBodyMaxBytes + 1024,
+      ),
+    });
+    for (let i = 0; i < 5; i++) {
+      const res = await sendLoopbackRequest({
+        port: f.port,
+        method: "POST",
+        path: "/api/dispatch",
+        headers: {
+          "content-type": "application/json",
+          "content-length": String(Buffer.byteLength(oversizedBody)),
+          "x-forwarded-for": `198.51.100.${160 + i}`,
+          authorization: `Bearer ${f.operatorKey}`,
+        },
+        body: oversizedBody,
+      });
+      expect(res.statusCode).toBe(413);
+      expect(res.body.length).toBeLessThan(4096);
+      expect(res.body).not.toContain(f.operatorKey);
+      expect(JSON.parse(res.body)).toMatchObject({
+        ok: false,
+        code: "PAYLOAD_TOO_LARGE",
+        requestId: expect.any(String),
+      });
+    }
+    expect(f.dispatchCount()).toBe(0);
+
+    const oversizedHeader = "x".repeat(
+      DEFAULT_HOSTED_SECURITY_POLICY.httpHeaderMaxBytes + 512,
+    );
+    for (let i = 0; i < 3; i++) {
+      const rawResponse = await sendRawLoopbackHttp(
+        f.port,
+        `GET /api/status?projectId=${f.project.projectId} HTTP/1.1\r\nHost: 127.0.0.1\r\nAuthorization: Bearer ${f.operatorKey}\r\nX-Oversized-Header: ${oversizedHeader}\r\nConnection: close\r\n\r\n`,
+      );
+      expect(rawResponse).toMatch(/^HTTP\/1\.1 431\b/);
+      expect(rawResponse).not.toContain(f.operatorKey);
+    }
+    expect(f.dispatchCount()).toBe(0);
+
+    // Multi-chunk valid body (> 65536 bytes and <= 1048576 bytes) completes cleanly over loopback TCP.
+    const validLargeBody = JSON.stringify({
+      projectId: f.project.projectId,
+      featureId: "051-valid-large-body",
+      phaseId: "phase-05",
+      padding: "a".repeat(90_000),
+    });
+    const validLargeRes = await sendLoopbackRequest({
+      port: f.port,
+      method: "POST",
+      path: "/api/dispatch",
+      headers: {
+        "content-type": "application/json",
+        "content-length": String(Buffer.byteLength(validLargeBody)),
+        "x-forwarded-for": "198.51.100.170",
+        authorization: `Bearer ${f.operatorKey}`,
+      },
+      body: validLargeBody,
+    });
+    expect(validLargeRes.statusCode).toBe(201);
+    expect(f.dispatchCount()).toBe(1);
+
+    // Bare TCP reset without an HTTP response must reject rather than being masked as a passing status.
+    const resetServer = net.createServer((socket) => {
+      socket.destroy();
+    });
+    await new Promise<void>((resolve) => {
+      resetServer.listen(0, "127.0.0.1", () => resolve());
+    });
+    cleanup.push(
+      () =>
+        new Promise<void>((resolve) => {
+          resetServer.close(() => resolve());
+        }),
+    );
+    const resetAddress = resetServer.address();
+    if (!resetAddress || typeof resetAddress === "string") {
+      throw new Error("Expected TCP address for reset server");
+    }
+    await expect(
+      sendLoopbackRequest({
+        port: resetAddress.port,
+        method: "POST",
+        path: "/api/dispatch",
+        headers: {
+          "content-type": "application/json",
+          "content-length": "2",
+        },
+        body: "{}",
+      }),
+    ).rejects.toThrow();
   });
 });
