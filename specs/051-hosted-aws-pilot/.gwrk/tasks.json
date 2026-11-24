@@ -406,8 +406,8 @@
         },
         {
           "id": "T040",
-          "title": "Modify credentials.sh",
-          "description": "MODIFY deploy/linux-runner/credentials.sh. Load origin auth secrets from `/etc/gwrk/secrets` `0640 root:gwrk` and scrub inbound auth env from workers",
+          "title": "Validate runner auth files and filter worker credentials",
+          "description": "MODIFY deploy/linux-runner/credentials.sh to validate origin auth files without exporting secret values. NEW src/domain/worker-auth-environment.ts pure inbound auth environment filter. MODIFY src/utils/agent.ts to apply filtering after inherited and explicit environments merge. NEW src/utils/agent.auth-env.test.ts proves an actual hermetic child receives outbound canaries and no inbound auth canaries. Follow contracts/deployment-boundary.md. Preserve existing command safety and provider discovery.",
           "status": "open",
           "gateScript": "bash specs/051-hosted-aws-pilot/gates/phase-07.sh",
           "sp": 1
@@ -449,7 +449,8 @@
       "testTargets": [
         "tests/hosted-pilot/gateway-production.mjs",
         "tests/linux-runner/preflight-auth.test.ts",
-        "tests/hosted-auth-proof/gateway-proof.mjs"
+        "tests/hosted-auth-proof/gateway-proof.mjs",
+        "src/utils/agent.auth-env.test.ts"
       ]
     },
     {
@@ -494,7 +495,8 @@
         "tests/linux-runner/backup-restore-rollback.test.ts",
         "tests/hosted-pilot/rollout-gates.test.ts",
         "tests/linux-runner/container-harness.mjs",
-        "src/architecture.test.ts"
+        "src/architecture.test.ts",
+        "src/utils/agent.auth-env.test.ts"
       ]
     },
     {

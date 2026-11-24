@@ -6,6 +6,7 @@ required_targets=(
   tests/hosted-pilot/gateway-production.mjs
   tests/linux-runner/preflight-auth.test.ts
   tests/hosted-auth-proof/gateway-proof.mjs
+  src/utils/agent.auth-env.test.ts
   tests/hosted-auth-proof/preflight.test.ts
   tests/hosted-auth-proof/production-bundle.test.ts
 )
@@ -16,6 +17,7 @@ for target in "${required_targets[@]}"; do
   fi
 done
 vitest_targets=(
+  src/utils/agent.auth-env.test.ts
   tests/linux-runner/preflight-auth.test.ts
   tests/hosted-auth-proof/preflight.test.ts
   tests/hosted-auth-proof/production-bundle.test.ts

@@ -499,12 +499,16 @@ Requires Phase 6. Keep `deploy/hosted-auth-proof/` and `tests/hosted-auth-proof/
 - `deploy/hosted-pilot/traefik/dynamic.yaml` (NEW: Isolated browser and API plus webhook chains stripping forged headers and blocking public `/oauth2/sign_out` and `/health`)
 - `deploy/hosted-pilot/oauth2-proxy/oauth2-proxy.cfg` (NEW: Google OIDC PKCE `S256` with `insecure_oidc_skip_nonce = false` and `set_authorization_header = true` plus explicit allowlist)
 - `deploy/hosted-pilot/.env.example` (NEW: Non-secret edge config template with zero assumed Google accounts)
-- `deploy/linux-runner/credentials.sh` (MODIFY: Load origin auth secrets from `/etc/gwrk/secrets` `0640 root:gwrk` and scrub inbound auth env from workers)
+- `deploy/linux-runner/credentials.sh` (MODIFY: Validate origin auth file paths and permissions without exporting secret values)
 - `deploy/linux-runner/preflight.sh` (MODIFY: Fail closed on missing hosted auth secrets or loose modes or non-loopback bind or Telegram vars)
 - `deploy/linux-runner/.env.example` (MODIFY: Document hosted origin auth paths and loopback bind without secrets)
 - `tests/hosted-pilot/compose.test.yaml` (NEW: Loopback synthetic OIDC overlay connecting pinned Traefik and OAuth2 Proxy to a real `gwrk` origin)
 - `tests/hosted-pilot/gateway-production.mjs` (NEW: Synthetic OIDC edge suite for `AUTH-05` and ID-token proof plus API non-redirect and header forgery and canary logs)
 - `tests/linux-runner/preflight-auth.test.ts` (NEW: Test `FR-016` fail-closed preflight checks and worker secret isolation)
+
+- `src/domain/worker-auth-environment.ts` (NEW: Pure inbound auth environment filter from the deployment boundary contract)
+- `src/utils/agent.ts` (MODIFY: Apply inbound auth filtering after merging the agent child environment)
+- `src/utils/agent.auth-env.test.ts` (NEW: Actual hermetic child verifies inbound removal and outbound credential preservation)
 
 #### Governance and Skills
 
@@ -524,7 +528,7 @@ Requires Phase 6. Keep `deploy/hosted-auth-proof/` and `tests/hosted-auth-proof/
 
 ```bash
 pnpm run build
-pnpm exec vitest run tests/linux-runner/preflight-auth.test.ts tests/hosted-auth-proof/preflight.test.ts tests/hosted-auth-proof/production-bundle.test.ts
+pnpm exec vitest run src/utils/agent.auth-env.test.ts tests/linux-runner/preflight-auth.test.ts tests/hosted-auth-proof/preflight.test.ts tests/hosted-auth-proof/production-bundle.test.ts
 node tests/hosted-pilot/gateway-production.mjs
 node tests/hosted-auth-proof/gateway-proof.mjs
 ```
@@ -565,7 +569,7 @@ Requires Phase 7. Write failing backup-restore auth-state and rollout-gate tests
 node tests/hosted-pilot/gate-completeness.test.mjs
 pnpm run build
 pnpm run lint
-pnpm exec vitest run src/architecture.test.ts src/domain/auth-policy.test.ts src/adapters/auth/credential-crypto.test.ts src/adapters/sqlite/auth-store.test.ts src/commands/auth.test.ts src/adapters/auth/google-id-token.test.ts src/application/auth/authenticate-request.test.ts src/server/auth-prehandler.test.ts src/server/auth-session.test.ts src/server/auth-api-keys.test.ts src/server/auth-csrf.test.ts src/server/routes/health.auth.test.ts src/server/auth-route-policy.test.ts src/server/auth-bounds.test.ts src/server/auth-logging.test.ts src/server/github.test.ts src/adapters/auth/http-client-credential.test.ts src/commands/server.auth-startup.test.ts src/server/auth-continuity.test.ts src/commands/init.test.ts tests/linux-runner/preflight-auth.test.ts tests/linux-runner/backup-restore-rollback.test.ts tests/hosted-pilot/rollout-gates.test.ts
+pnpm exec vitest run src/utils/agent.auth-env.test.ts src/architecture.test.ts src/domain/auth-policy.test.ts src/adapters/auth/credential-crypto.test.ts src/adapters/sqlite/auth-store.test.ts src/commands/auth.test.ts src/adapters/auth/google-id-token.test.ts src/application/auth/authenticate-request.test.ts src/server/auth-prehandler.test.ts src/server/auth-session.test.ts src/server/auth-api-keys.test.ts src/server/auth-csrf.test.ts src/server/routes/health.auth.test.ts src/server/auth-route-policy.test.ts src/server/auth-bounds.test.ts src/server/auth-logging.test.ts src/server/github.test.ts src/adapters/auth/http-client-credential.test.ts src/commands/server.auth-startup.test.ts src/server/auth-continuity.test.ts src/commands/init.test.ts tests/linux-runner/preflight-auth.test.ts tests/linux-runner/backup-restore-rollback.test.ts tests/hosted-pilot/rollout-gates.test.ts
 node dist/cli.js define adr --reindex --check
 node dist/cli.js define adr --check
 node tests/hosted-pilot/gateway-production.mjs
