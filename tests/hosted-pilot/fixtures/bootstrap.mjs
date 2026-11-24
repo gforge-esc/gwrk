@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { execFileSync, spawn } from "node:child_process";
-import { randomBytes } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 import {
   chmodSync,
   chownSync,
@@ -8,6 +8,7 @@ import {
   existsSync,
   mkdirSync,
   readFileSync,
+  rmSync,
   writeFileSync,
 } from "node:fs";
 import { setTimeout as sleep } from "node:timers/promises";
@@ -21,12 +22,19 @@ import {
 import { checkStandardCookieSecret } from "./cookie-format-check.mjs";
 import { CLIENT_ID } from "./issuer.mjs";
 import { OIDC_FIXTURE_ARGUMENTS } from "./oidc-overrides.mjs";
+import { readNativeObserverHealth } from "./raw-https.mjs";
 
 assert.equal(process.env.GWRK_051_OWNED_CONTROLLER, "1");
 assert.equal(process.env.DOCKER_HOST, "unix:///var/run/docker.sock");
 const run = process.env.GWRK_051_RUN_ID;
 assert.match(run ?? "", /^[a-f0-9]{24}$/);
 const images = JSON.parse(readFileSync("/input/loaded-images.json", "utf8"));
+let runtimeReceiptSha256 = process.env.GWRK_051_RUNTIME_RECEIPT_SHA256 ?? "";
+if (existsSync("/input/runtime-receipt.json")) {
+  runtimeReceiptSha256 = createHash("sha256")
+    .update(readFileSync("/input/runtime-receipt.json"))
+    .digest("hex");
+}
 const owned = [];
 function docker(args, options = {}) {
   return execFileSync(
@@ -120,6 +128,10 @@ const beginOperation = (name) => {
 };
 const issuerStderrChunks = [];
 let originName = null;
+let observerProcess = null;
+let observerExited = false;
+let observerExitError = null;
+const observerStderrChunks = [];
 const recordStage = () =>
   file("/fixture/bootstrap-stage.json", JSON.stringify({ stage }));
 try {
@@ -133,6 +145,7 @@ try {
   cpSync("/input/fixtures", "/fixture/fixtures", { recursive: true });
   directory("/fixture/service", 0o700, 10001, 10001);
   directory("/fixture/service-home", 0o700, 10001, 10001);
+  directory("/fixture/observer", 0o700, 0, 0);
   directory("/etc/gwrk", 0o755);
   directory("/etc/gwrk/gateway-secrets");
   directory("/etc/gwrk/gateway-secrets/tls");
@@ -303,6 +316,71 @@ try {
     issuerArguments: OIDC_FIXTURE_ARGUMENTS,
   });
   file("/fixture/cookie-format-result.json", JSON.stringify(cookieFormat));
+  stage = "observer_start";
+  beginOperation("start_native_observer");
+  recordStage();
+  const observerEnv = {
+    ...process.env,
+    GWRK_051_OWNED_CONTROLLER: "1",
+    GWRK_051_OBSERVER_DIR: "/fixture/observer",
+    GWRK_051_RUN_ID: run,
+    GWRK_051_PROXY_IMAGE_ID: images.proxy,
+    GWRK_051_TRAEFIK_IMAGE_ID: images.traefik,
+    GWRK_051_RUNTIME_RECEIPT_SHA256: runtimeReceiptSha256,
+  };
+  observerProcess = spawn(
+    process.execPath,
+    ["--max-old-space-size=64", "/fixture/fixtures/native-observer.mjs"],
+    {
+      stdio: ["ignore", "pipe", "pipe"],
+      env: observerEnv,
+    },
+  );
+  observerProcess.stderr?.on("data", (chunk) =>
+    observerStderrChunks.push(chunk),
+  );
+  observerProcess.once("exit", (code, signal) => {
+    observerExited = true;
+    if (code !== 0 && code !== null) {
+      observerExitError = new Error(
+        `native observer exited early with code ${code}`,
+      );
+    } else if (signal) {
+      observerExitError = new Error(
+        `native observer exited early with signal ${signal}`,
+      );
+    }
+  });
+
+  beginOperation("observer_self_test");
+  const observerReadyDeadline = Date.now() + 15_000;
+  let observerHealth = null;
+  while (Date.now() < observerReadyDeadline) {
+    if (observerExitError) throw observerExitError;
+    if (existsSync("/fixture/observer/native-observer-health.json")) {
+      try {
+        observerHealth = readNativeObserverHealth({
+          observerDir: "/fixture/observer",
+          expected: {
+            runId: run,
+            proxyImageId: images.proxy,
+            traefikImageId: images.traefik,
+            runtimeReceiptSha256,
+          },
+          requireRootOwnership: true,
+        });
+        if (observerHealth?.startupSelfTestPassed) break;
+      } catch {}
+    }
+    await sleep(100);
+  }
+  if (!observerHealth?.startupSelfTestPassed) {
+    if (observerExitError) throw observerExitError;
+    const stderrStr = Buffer.concat(observerStderrChunks).toString("utf8");
+    throw new Error(
+      `observer startup self-test failed or timed out: ${stderrStr || "no stderr"}`,
+    );
+  }
   stage = "bundle_preparation";
   beginOperation("bundle_preparation");
   recordStage();
@@ -345,6 +423,30 @@ try {
     stdio: "pipe",
     timeout: 30_000,
   });
+  let traefikContainer = "";
+  let proxyContainer = "";
+  try {
+    traefikContainer = docker([
+      "ps",
+      "--filter",
+      "label=com.docker.compose.service=traefik",
+      "--format",
+      "{{.Names}}",
+    ])
+      .trim()
+      .split("\n")[0];
+  } catch {}
+  try {
+    proxyContainer = docker([
+      "ps",
+      "--filter",
+      "label=com.docker.compose.service=oauth2-proxy",
+      "--format",
+      "{{.Names}}",
+    ])
+      .trim()
+      .split("\n")[0];
+  } catch {}
   stage = "client_network";
   beginOperation("docker_create_client_network");
   recordStage();
@@ -404,6 +506,14 @@ try {
       GWRK_051_OWNED_CONTROLLER: "1",
       GWRK_051_CLIENT_A: `gwrk-051-client-a-${run}`,
       GWRK_051_CLIENT_B: `gwrk-051-client-b-${run}`,
+      GWRK_051_RUN_ID: run,
+      GWRK_051_PROXY_IMAGE_ID: images.proxy,
+      GWRK_051_TRAEFIK_IMAGE_ID: images.traefik,
+      GWRK_051_RUNTIME_RECEIPT_SHA256: runtimeReceiptSha256,
+      GWRK_051_TRAEFIK_CONTAINER: traefikContainer,
+      GWRK_051_PROXY_CONTAINER: proxyContainer,
+      GWRK_051_ORIGIN_CONTAINER: originName,
+      GWRK_051_OBSERVER_DIR: "/fixture/observer",
     },
   });
   stage = "completed_initial_cases";
@@ -450,6 +560,26 @@ try {
   process.exitCode = 1;
 } finally {
   issuer?.kill("SIGTERM");
+  beginOperation("stop_native_observer");
+  if (observerProcess && !observerExited) {
+    try {
+      observerProcess.kill("SIGTERM");
+      const termDeadline = Date.now() + 1000;
+      while (!observerExited && Date.now() < termDeadline) {
+        await sleep(50);
+      }
+      if (!observerExited) {
+        observerProcess.kill("SIGKILL");
+        const killDeadline = Date.now() + 1000;
+        while (!observerExited && Date.now() < killDeadline) {
+          await sleep(50);
+        }
+      }
+    } catch {}
+  }
+  try {
+    rmSync("/fixture/observer", { recursive: true, force: true });
+  } catch {}
   for (const name of owned.reverse()) {
     let labels;
     try {

@@ -1,7 +1,13 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+  chmodSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { createServer as createNetServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -247,6 +253,7 @@ const validProxyEvent = {
 
 test("regression (F-01): observation barrier fails closed when absent or unacknowledged and validates requestProof plus deltas", () => {
   const dir = mkdtempSync(join(tmpdir(), "gwrk-obs-"));
+  chmodSync(dir, 0o700);
   try {
     assert.equal(
       typeof rawHttpsHelpers.readNativeObservationBarrier,
@@ -254,12 +261,14 @@ test("regression (F-01): observation barrier fails closed when absent or unackno
     );
     assert.throws(() =>
       rawHttpsHelpers.readNativeObservationBarrier({
+        observerDir: dir,
         observationPath: join(dir, "native-observation.json"),
         barrierPath: join(dir, "native-observation-barrier.json"),
         expected,
         barrierSequence: 1,
         timeoutMs: 100,
         pollMs: 10,
+        requireRootOwnership: false,
       }),
     );
     const obsPath = join(dir, "native-observation.json");
@@ -276,24 +285,30 @@ test("regression (F-01): observation barrier fails closed when absent or unackno
         sequence: 1,
         barrierSequence: 1,
       }),
+      { mode: 0o600 },
     );
+    chmodSync(obsPath, 0o600);
     const read = rawHttpsHelpers.readNativeObservationBarrier({
+      observerDir: dir,
       observationPath: obsPath,
       barrierPath: join(dir, "native-observation-barrier.json"),
       expected,
       barrierSequence: 1,
       timeoutMs: 100,
       pollMs: 10,
+      requireRootOwnership: false,
     });
     assert.equal(read.proxyRequests.length, 1);
     assert.throws(() =>
       rawHttpsHelpers.readNativeObservationBarrier({
+        observerDir: dir,
         observationPath: obsPath,
         barrierPath: join(dir, "native-observation-barrier.json"),
         expected,
         barrierSequence: 2,
         timeoutMs: 50,
         pollMs: 10,
+        requireRootOwnership: false,
       }),
     );
     assert.doesNotThrow(() =>

@@ -38,7 +38,10 @@ assert.equal(
 );
 const scriptManifest = JSON.parse(readFileSync(scriptManifestPath, "utf8"));
 for (const [name, digest] of Object.entries(scriptManifest)) {
-  assert.match(name, /^[a-z-]+\.mjs$/);
+  assert.ok(
+    name === "native-observer-capture.py" || /^[a-z-]+\.mjs$/.test(name),
+    "script manifest entry has invalid filename",
+  );
   const path = `${root}/input/fixtures/${name}`;
   const metadata = lstatSync(path);
   assert.ok(

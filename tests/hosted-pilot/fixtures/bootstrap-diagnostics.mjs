@@ -16,6 +16,7 @@ export const BOOTSTRAP_STAGES = [
   "dependencies_ready",
   "cookie_format",
   "bundle_preparation",
+  "observer_start",
   "gateway_startup",
   "client_network",
   "gateway_cases",
@@ -32,6 +33,7 @@ export const STATIC_CONSTRUCTION_CATEGORIES = [
   "origin_launch_failed",
   "dependency_timeout",
   "bundle_preparation_failed",
+  "observer_startup_failed",
   "docker_command_failed",
   "assertion_failed",
   "generic_construction_failed",
@@ -75,6 +77,9 @@ export const STATIC_OPERATION_NAMES = [
   "docker_run_origin",
   "poll_dependencies_ready",
   "cookie_format_check",
+  "start_native_observer",
+  "observer_self_test",
+  "stop_native_observer",
   "bundle_preparation",
   "run_gateway_startup",
   "docker_create_client_network",
@@ -198,6 +203,9 @@ export function classifyBootstrapFailure(stage, error, context = {}) {
   } else if (isFormat) {
     category = "fixture_cookie_format_invalid";
     detail = "Operator cookie secret format validation failed";
+  } else if (stage === "observer_start") {
+    category = "observer_startup_failed";
+    detail = "Native passive observer failed to start or pass self test";
   } else if (
     error?.code === "EACCES" ||
     error?.code === "EPERM" ||

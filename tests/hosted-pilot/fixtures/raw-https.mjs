@@ -1,7 +1,19 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import { existsSync, readFileSync, renameSync, writeFileSync } from "node:fs";
+import {
+  chmodSync,
+  closeSync,
+  existsSync,
+  constants as fsConstants,
+  fstatSync,
+  lstatSync,
+  openSync,
+  readFileSync,
+  renameSync,
+  writeFileSync,
+} from "node:fs";
 import { createConnection } from "node:net";
+import { dirname, join } from "node:path";
 import { connect } from "node:tls";
 
 export const CANONICAL_HOST = "gwrk.gforge.ai";
@@ -626,14 +638,237 @@ export function validateNativeObservation(value, expected, options = {}) {
 
 const SLEEP_ARRAY = new Int32Array(new SharedArrayBuffer(4));
 
+export function verifyObserverDirectory(
+  observerDir,
+  { requireRootOwnership = true } = {},
+) {
+  assert.ok(
+    typeof observerDir === "string" && observerDir.length > 0,
+    "observerDir is required",
+  );
+  const st = lstatSync(observerDir);
+  assert.equal(st.isSymbolicLink(), false, "observerDir must not be a symlink");
+  assert.equal(st.isDirectory(), true, "observerDir must be a directory");
+  assert.equal(
+    st.mode & 0o777,
+    0o700,
+    `observerDir must have mode 0700, got ${(st.mode & 0o777).toString(8)}`,
+  );
+  if (requireRootOwnership) {
+    assert.equal(st.uid, 0, "observerDir must be owned by root uid 0");
+    assert.equal(st.gid, 0, "observerDir must be owned by root gid 0");
+  }
+  return st;
+}
+
+export function readSafeJson(
+  filePath,
+  { requireRootOwnership = true, maxBytes = 2 * 1024 * 1024 } = {},
+) {
+  const lst = lstatSync(filePath);
+  assert.equal(
+    lst.isSymbolicLink(),
+    false,
+    `file ${filePath} must not be a symlink`,
+  );
+  assert.equal(lst.isFile(), true, `file ${filePath} must be a regular file`);
+  assert.equal(
+    lst.mode & 0o777,
+    0o600,
+    `file ${filePath} must have mode 0600, got ${(lst.mode & 0o777).toString(8)}`,
+  );
+  assert.ok(
+    lst.size <= maxBytes,
+    `file ${filePath} exceeds ${maxBytes} byte bound`,
+  );
+  if (requireRootOwnership) {
+    assert.equal(lst.uid, 0, `file ${filePath} must be owned by root uid 0`);
+  }
+  const fd = openSync(filePath, fsConstants.O_RDONLY | fsConstants.O_NOFOLLOW);
+  try {
+    const fst = fstatSync(fd);
+    assert.equal(
+      fst.isFile(),
+      true,
+      `file descriptor for ${filePath} must be a regular file`,
+    );
+    assert.equal(
+      fst.ino,
+      lst.ino,
+      `file identity for ${filePath} changed during open`,
+    );
+    assert.equal(
+      fst.dev,
+      lst.dev,
+      `device for ${filePath} changed during open`,
+    );
+    assert.ok(
+      fst.size <= maxBytes,
+      `file ${filePath} exceeds ${maxBytes} byte bound`,
+    );
+    const raw = readFileSync(fd, "utf8");
+    return JSON.parse(raw);
+  } finally {
+    closeSync(fd);
+  }
+}
+
+export function validateNativeObserverHealth(value, expected, options = {}) {
+  const validExpected = validateExpectedProvenance(expected);
+  assert.equal(
+    value?.version,
+    1,
+    "native observer health is missing or invalid version",
+  );
+  const topAllowed = new Set([
+    "version",
+    "provenance",
+    "barrierSequence",
+    "sentinelPort",
+    "startupSelfTestPassed",
+    "captureStats",
+    "originTcpSummary",
+  ]);
+  for (const key of Object.keys(value)) {
+    assert.ok(
+      topAllowed.has(key),
+      `native observer health contains unexpected top-level field ${key}`,
+    );
+  }
+  for (const key of topAllowed) {
+    assert.ok(
+      key in value,
+      `native observer health missing required top-level field ${key}`,
+    );
+  }
+  assert.deepEqual(
+    value.provenance,
+    { ...validExpected, source: "passive_tcp", namespace: "owned_nested" },
+    "native observer health provenance differs",
+  );
+  assert.ok(
+    Number.isSafeInteger(value.barrierSequence) && value.barrierSequence >= 0,
+    "native observer health barrierSequence is invalid",
+  );
+  if (options.minBarrierSequence !== undefined) {
+    assert.ok(
+      value.barrierSequence >= options.minBarrierSequence,
+      `native observer health barrierSequence ${value.barrierSequence} < expected ${options.minBarrierSequence}`,
+    );
+  }
+  assert.equal(
+    value.startupSelfTestPassed,
+    true,
+    "native observer startup self test did not pass",
+  );
+  assert.ok(
+    Number.isInteger(value.sentinelPort) &&
+      value.sentinelPort >= 1024 &&
+      value.sentinelPort <= 65535,
+    "native observer sentinelPort is invalid",
+  );
+
+  // captureStats
+  const stats = value.captureStats;
+  assert.ok(
+    stats && typeof stats === "object" && !Array.isArray(stats),
+    "captureStats required",
+  );
+  assert.ok(
+    Number.isSafeInteger(stats.kernelPackets) && stats.kernelPackets > 0,
+    "captureStats.kernelPackets must be > 0",
+  );
+  assert.equal(stats.kernelDrops, 0, "captureStats.kernelDrops must be 0");
+  assert.equal(
+    stats.truncatedFrames,
+    0,
+    "captureStats.truncatedFrames must be 0",
+  );
+  assert.equal(stats.parserErrors, 0, "captureStats.parserErrors must be 0");
+  assert.equal(
+    stats.bufferOverflows,
+    0,
+    "captureStats.bufferOverflows must be 0",
+  );
+  assert.equal(stats.ipv4Fragments, 0, "captureStats.ipv4Fragments must be 0");
+  assert.ok(
+    Number.isSafeInteger(stats.effectiveRcvBufBytes) &&
+      stats.effectiveRcvBufBytes >= 524288,
+    "captureStats.effectiveRcvBufBytes must be >= 512 KiB",
+  );
+  assert.equal(typeof stats.ignoreOutgoingKernelEnabled, "boolean");
+  assert.equal(typeof stats.pkttypeBpfFallbackActive, "boolean");
+  assert.equal(
+    stats.integrityFaultCode,
+    null,
+    `captureStats has sticky fault: ${stats.integrityFaultCode}`,
+  );
+
+  // originTcpSummary
+  const tcp = value.originTcpSummary;
+  assert.ok(
+    tcp && typeof tcp === "object" && !Array.isArray(tcp),
+    "originTcpSummary required",
+  );
+  assert.equal(tcp.port, 18790, "originTcpSummary.port must be 18790");
+  for (const counter of [
+    "handshakesCompleted",
+    "reusedConnections",
+    "zeroPriorRequestParkedConnections",
+    "zeroPriorRequestReusedConnections",
+    "zeroByteClosedConnections",
+    "rstClosedConnections",
+    "abortedBeforeHeadersConnections",
+  ]) {
+    assert.ok(
+      Number.isSafeInteger(tcp[counter]) && tcp[counter] >= 0,
+      `originTcpSummary.${counter} must be non-negative safe integer`,
+    );
+  }
+  assert.equal(typeof tcp.synGateActive, "boolean");
+  assert.equal(
+    tcp.unusedDialObserved,
+    tcp.zeroPriorRequestReusedConnections > 0,
+    "originTcpSummary.unusedDialObserved must equal zeroPriorRequestReusedConnections > 0",
+  );
+  return value;
+}
+
+export function readNativeObserverHealth({
+  healthPath,
+  observerDir = process.env.GWRK_051_OBSERVER_DIR ?? "/fixture/observer",
+  expected,
+  minBarrierSequence,
+  requireRootOwnership = true,
+} = {}) {
+  const targetPath =
+    healthPath ?? join(observerDir, "native-observer-health.json");
+  const dir = observerDir ?? dirname(targetPath);
+  verifyObserverDirectory(dir, { requireRootOwnership });
+  const raw = readSafeJson(targetPath, { requireRootOwnership });
+  return validateNativeObserverHealth(raw, expected, { minBarrierSequence });
+}
+
 export function readNativeObservationBarrier({
-  observationPath = "/fixture/service/native-observation.json",
-  barrierPath = "/fixture/service/native-observation-barrier.json",
+  observationPath,
+  barrierPath,
+  healthPath,
+  observerDir = process.env.GWRK_051_OBSERVER_DIR ?? "/fixture/observer",
   expected,
   barrierSequence,
   timeoutMs = 5000,
   pollMs = 25,
+  requireRootOwnership = true,
+  runId,
 }) {
+  const targetBarrierPath =
+    barrierPath ?? join(observerDir, "native-observation-barrier.json");
+  const targetObsPath =
+    observationPath ?? join(observerDir, "native-observation.json");
+  const targetHealthPath =
+    healthPath ?? join(observerDir, "native-observer-health.json");
+  const dir = observerDir ?? dirname(targetBarrierPath);
+
   validateExpectedProvenance(expected);
   assert.ok(
     Number.isSafeInteger(barrierSequence) &&
@@ -641,22 +876,62 @@ export function readNativeObservationBarrier({
       barrierSequence <= 100_000,
     "invalid native observation barrierSequence",
   );
-  const nextPath = `${barrierPath}.next`;
-  writeFileSync(nextPath, JSON.stringify({ version: 1, barrierSequence }), {
+
+  verifyObserverDirectory(dir, { requireRootOwnership });
+
+  const payload = {
+    version: 1,
+    barrierSequence,
+    ...(runId || expected?.runId ? { runId: runId ?? expected.runId } : {}),
+  };
+  const nextPath = `${targetBarrierPath}.next`;
+  writeFileSync(nextPath, JSON.stringify(payload, null, 2), {
     mode: 0o600,
   });
-  renameSync(nextPath, barrierPath);
+  chmodSync(nextPath, 0o600);
+  renameSync(nextPath, targetBarrierPath);
 
   const deadline = Date.now() + timeoutMs;
   let lastError = new Error("native observation file absent");
   while (true) {
-    if (existsSync(observationPath)) {
+    if (existsSync(targetHealthPath)) {
       try {
-        const raw = JSON.parse(readFileSync(observationPath, "utf8"));
-        return validateNativeObservation(raw, expected, {
-          minBarrierSequence: barrierSequence,
-        });
+        const health = readSafeJson(targetHealthPath, { requireRootOwnership });
+        if (health?.captureStats?.integrityFaultCode) {
+          throw new Error(
+            `native observer sticky fault: ${health.captureStats.integrityFaultCode}`,
+          );
+        }
+      } catch (err) {
+        if (err.message.includes("sticky fault")) {
+          throw err;
+        }
+      }
+    }
+
+    if (existsSync(targetObsPath)) {
+      try {
+        const raw = readSafeJson(targetObsPath, { requireRootOwnership });
+        if (
+          Number.isSafeInteger(raw?.barrierSequence) &&
+          raw.barrierSequence >= barrierSequence
+        ) {
+          if (existsSync(targetHealthPath)) {
+            const health = readSafeJson(targetHealthPath, {
+              requireRootOwnership,
+            });
+            validateNativeObserverHealth(health, expected, {
+              minBarrierSequence: barrierSequence,
+            });
+          }
+          return validateNativeObservation(raw, expected, {
+            minBarrierSequence: barrierSequence,
+          });
+        }
       } catch (error) {
+        if (error.message.includes("sticky fault")) {
+          throw error;
+        }
         lastError = error;
       }
     }
