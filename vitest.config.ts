@@ -24,6 +24,7 @@ export default defineConfig({
       "**/specs/**",
       "**/.test-mocks-*/**",
       "**/e2e/**",
+      "tests/hosted-pilot/gate-completeness.test.mjs",
     ],
     coverage: {
       provider: "v8",
