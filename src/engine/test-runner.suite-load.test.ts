@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { mkdtempSync, writeFileSync, rmSync } from "node:fs";
+import { mkdtempSync, writeFileSync, rmSync, cpSync, copyFileSync, constants } from "node:fs";
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
@@ -27,12 +27,15 @@ describe("completed Vitest suite-load failures", () => {
   it("records an actual completed Vitest run with three missing-module suites and two passing assertions", () => {
     const root = mkdtempSync(join(tmpdir(), "gwrk-vitest-load-baseline-"));
     try {
+      copyFileSync(join(process.cwd(), "package.json"), join(root, "package.json"));
+      copyFileSync(join(process.cwd(), "pnpm-lock.yaml"), join(root, "pnpm-lock.yaml"));
+      cpSync(join(process.cwd(), "node_modules"), join(root, "node_modules"), { recursive: true, mode: constants.COPYFILE_FICLONE, verbatimSymlinks: true });
       const config = join(root, "vitest.config.mjs");
       writeFileSync(config, `export default { test: { globals: true, include: ["*.test.js"], maxWorkers: 1, minWorkers: 1 } };`);
       for (let n = 0; n < 3; n++) writeFileSync(join(root, `missing-${n}.test.js`), 'import "./absent-implementation.js";');
       writeFileSync(join(root, "existing.test.js"), 'test("existing one", () => expect(1).toBe(1)); test("existing two", () => expect(2).toBe(2));');
       const entry = join(dirname(createRequire(import.meta.url).resolve("vitest/package.json")), "vitest.mjs");
-      const result = executeTestCommand(`${quote(process.execPath)} ${quote(entry)} run --config ${quote(config)}`, { cwd: root, timeout: 15000, env: { ...process.env, NODE_OPTIONS: "" } }, baseline);
+      const result = executeTestCommand(`${quote(process.execPath)} ${quote(entry)} run --config ${quote(config)}`, { cwd: root, timeout: 15000, env: { ...process.env, NODE_OPTIONS: "" } }, { ...baseline, format: "vitest-json", vitest: { filters: [] } });
       expect(result.output).toContain("Failed Suites 3");
       expect(result.executionError, result.output).toBeUndefined();
       expect(result).toMatchObject({ exitCode: 1, testsRun: 2, passed: 2, failed: 0, failedSuites: 3, ran: true });
