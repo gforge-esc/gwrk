@@ -1,5 +1,9 @@
 import assert from "node:assert/strict";
+import { spawn } from "node:child_process";
+import { writeFileSync } from "node:fs";
+import { join } from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
+import { readNativeObserverHealth } from "./raw-https.mjs";
 
 const CONTAINER_NAME_RE = /^[A-Za-z0-9][A-Za-z0-9_.-]{1,127}$/;
 const FIXTURE_MJS_RE = /^[a-z-]+\.mjs$/;
@@ -191,4 +195,74 @@ export function createObserverProcessLifecycle({
     isClosed: () => closed,
     getStderrText,
   };
+}
+
+export async function executeObserverSelftest({
+  runId,
+  observerDir = "/fixture/observer",
+  proxyImageId,
+  traefikImageId,
+  runtimeReceiptSha256,
+  observerLifecycle,
+  spawnProcess = spawn,
+  readHealth = readNativeObserverHealth,
+  writeFile = writeFileSync,
+  resultPath,
+  beginOperation = () => {},
+}) {
+  assert.ok(runId, "runId is required");
+  assert.ok(observerLifecycle, "observerLifecycle is required");
+  beginOperation("start_native_observer");
+  const observerEnv = {
+    ...process.env,
+    GWRK_051_OWNED_CONTROLLER: "1",
+    GWRK_051_OBSERVER_DIR: observerDir,
+    GWRK_051_RUN_ID: runId,
+    GWRK_051_PROXY_IMAGE_ID: proxyImageId,
+    GWRK_051_TRAEFIK_IMAGE_ID: traefikImageId,
+    GWRK_051_RUNTIME_RECEIPT_SHA256: runtimeReceiptSha256,
+  };
+  const observerProcess = spawnProcess(
+    process.execPath,
+    ["--max-old-space-size=64", "/fixture/fixtures/native-observer.mjs"],
+    {
+      stdio: ["ignore", "ignore", "pipe"],
+      env: observerEnv,
+    },
+  );
+  observerLifecycle.drainStream(observerProcess.stdout);
+  observerProcess.stderr?.on("error", () => {});
+  observerProcess.stderr?.on("data", observerLifecycle.onStderr);
+  observerProcess.on("error", observerLifecycle.onError);
+  observerProcess.once("exit", observerLifecycle.onExit);
+  observerProcess.once("close", observerLifecycle.onClose);
+
+  beginOperation("observer_self_test");
+  const health = await observerLifecycle.waitForReady({
+    readHealth: () =>
+      readHealth({
+        observerDir,
+        expected: {
+          runId,
+          proxyImageId,
+          traefikImageId,
+          runtimeReceiptSha256,
+        },
+        requireRootOwnership: true,
+      }),
+  });
+
+  const result = {
+    runId,
+    passed: true,
+    effectiveRcvBufBytes: health?.captureStats?.effectiveRcvBufBytes ?? null,
+    ignoreOutgoingKernelEnabled:
+      health?.captureStats?.ignoreOutgoingKernelEnabled ?? null,
+    pkttypeBpfFallbackActive:
+      health?.captureStats?.pkttypeBpfFallbackActive ?? null,
+  };
+  const targetResultPath =
+    resultPath ?? join(observerDir, "../observer-selftest-result.json");
+  writeFile(targetResultPath, JSON.stringify(result, null, 2), { mode: 0o600 });
+  return { observerProcess, health, result };
 }

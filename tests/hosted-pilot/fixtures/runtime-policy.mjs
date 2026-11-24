@@ -64,6 +64,35 @@ export function requireExecutionCheckpoint(receipt) {
     /^[a-f0-9]{64}$/,
     "missing preload archive hash",
   );
+  assert.ok(
+    receipt.approvedPassiveNetRaw === undefined ||
+      typeof receipt.approvedPassiveNetRaw === "boolean",
+    "approvedPassiveNetRaw must be a boolean",
+  );
+  assert.ok(
+    receipt.approvedScenarioBSynGate === undefined ||
+      typeof receipt.approvedScenarioBSynGate === "boolean",
+    "approvedScenarioBSynGate must be a boolean",
+  );
+  if (receipt.verificationMode !== undefined) {
+    assert.ok(
+      receipt.verificationMode === "observer-selftest" ||
+        receipt.verificationMode === "gateway-matrix",
+      "unsupported verificationMode",
+    );
+  }
+  if (receipt.verificationMode === "observer-selftest") {
+    assert.notEqual(
+      receipt.purpose,
+      "acceptance",
+      "observer-selftest cannot be used under acceptance purpose",
+    );
+    assert.equal(
+      receipt.purpose,
+      "behavioral-red",
+      "observer-selftest requires behavioral-red purpose",
+    );
+  }
   if (receipt.purpose === "acceptance")
     assert.equal(
       receipt.reviewedSource,

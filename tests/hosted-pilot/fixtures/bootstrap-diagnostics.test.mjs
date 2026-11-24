@@ -28,6 +28,8 @@ test("declares ordered granular bootstrap stages", () => {
   assert.ok(BOOTSTRAP_STAGES.includes("dependencies_ready"));
   assert.ok(BOOTSTRAP_STAGES.includes("cookie_format"));
   assert.ok(BOOTSTRAP_STAGES.includes("bundle_preparation"));
+  assert.ok(BOOTSTRAP_STAGES.includes("observer_start"));
+  assert.ok(BOOTSTRAP_STAGES.includes("completed_observer_selftest"));
   assert.ok(BOOTSTRAP_STAGES.includes("gateway_startup"));
   assert.ok(BOOTSTRAP_STAGES.includes("gateway_cases"));
 });

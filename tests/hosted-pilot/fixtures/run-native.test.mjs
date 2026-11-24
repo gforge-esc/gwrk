@@ -718,3 +718,431 @@ test("projects origin create-versus-start timing and safe containerState into na
   assert.equal(persisted.fixtureConstructionFailure, true);
   assert.equal(persisted.nativeBehavioralRed, false);
 });
+
+test("wires NET_RAW to main controller only when approvedPassiveNetRaw is true, preserving caps and rejecting NET_ADMIN", async () => {
+  const runId = "5".repeat(24);
+  const root = `/opt/gwrk-verification/${runId}`;
+  const capturedArgs = [];
+  const { files } = makeFiles();
+
+  // Test approvedPassiveNetRaw: true
+  await assert.rejects(
+    runNativeFixture({
+      runId,
+      root,
+      receipt: {
+        approvedPassiveNetRaw: true,
+        approvedScenarioBSynGate: true,
+      },
+      images: sampleImages,
+      files,
+      withLifecycle: async ({ executeCases }) => {
+        await executeCases({
+          containerId: "c".repeat(64),
+          docker: async (args) => {
+            if (args.includes("inspect")) {
+              const target = args.at(-1);
+              const key = Object.entries(sampleImages).find(
+                ([, value]) => value === target,
+              )[0];
+              return JSON.stringify({
+                Id: target,
+                RootFS: { Layers: sampleImages.rootfs[key] },
+              });
+            }
+            if (args.includes("mkdir")) return "";
+            if (args.includes("/fixture/bootstrap-stage.json")) {
+              return JSON.stringify({
+                stage: "gateway_startup",
+                failureClassification: "behavioral",
+              });
+            }
+            throw new Error(`unexpected docker args: ${args.join(" ")}`);
+          },
+          spawnDocker: async (args) => {
+            if (args.includes("load")) {
+              return { code: 0, stdout: "Loaded\n", stderr: "" };
+            }
+            if (args.includes("/input/fixtures/bootstrap.mjs")) {
+              capturedArgs.push(args);
+              return { code: 1, stdout: "", stderr: "fail\n" };
+            }
+            throw new Error(`unexpected spawnDocker args: ${args.join(" ")}`);
+          },
+        });
+      },
+    }),
+  );
+
+  assert.equal(capturedArgs.length, 1);
+  const argsWithNetRaw = capturedArgs[0];
+  assert.ok(argsWithNetRaw.includes("--cap-drop"));
+  assert.equal(argsWithNetRaw[argsWithNetRaw.indexOf("--cap-drop") + 1], "ALL");
+  assert.ok(argsWithNetRaw.includes("--security-opt"));
+  assert.equal(
+    argsWithNetRaw[argsWithNetRaw.indexOf("--security-opt") + 1],
+    "no-new-privileges",
+  );
+  assert.ok(argsWithNetRaw.includes("CHOWN"));
+  assert.ok(argsWithNetRaw.includes("DAC_OVERRIDE"));
+  assert.ok(argsWithNetRaw.includes("FOWNER"));
+  assert.ok(argsWithNetRaw.includes("NET_RAW"));
+  assert.equal(argsWithNetRaw.includes("NET_ADMIN"), false);
+
+  // Test approvedPassiveNetRaw: false / omitted
+  capturedArgs.length = 0;
+  const store2 = makeFiles();
+  await assert.rejects(
+    runNativeFixture({
+      runId,
+      root,
+      receipt: {
+        approvedPassiveNetRaw: false,
+      },
+      images: sampleImages,
+      files: store2.files,
+      withLifecycle: async ({ executeCases }) => {
+        await executeCases({
+          containerId: "c".repeat(64),
+          docker: async (args) => {
+            if (args.includes("inspect")) {
+              const target = args.at(-1);
+              const key = Object.entries(sampleImages).find(
+                ([, value]) => value === target,
+              )[0];
+              return JSON.stringify({
+                Id: target,
+                RootFS: { Layers: sampleImages.rootfs[key] },
+              });
+            }
+            if (args.includes("mkdir")) return "";
+            if (args.includes("/fixture/bootstrap-stage.json")) {
+              return JSON.stringify({
+                stage: "gateway_startup",
+                failureClassification: "behavioral",
+              });
+            }
+            throw new Error(`unexpected docker args: ${args.join(" ")}`);
+          },
+          spawnDocker: async (args) => {
+            if (args.includes("load")) {
+              return { code: 0, stdout: "Loaded\n", stderr: "" };
+            }
+            if (args.includes("/input/fixtures/bootstrap.mjs")) {
+              capturedArgs.push(args);
+              return { code: 1, stdout: "", stderr: "fail\n" };
+            }
+            throw new Error(`unexpected spawnDocker args: ${args.join(" ")}`);
+          },
+        });
+      },
+    }),
+  );
+
+  assert.equal(capturedArgs.length, 1);
+  const argsWithoutNetRaw = capturedArgs[0];
+  assert.equal(argsWithoutNetRaw.includes("NET_RAW"), false);
+  assert.equal(argsWithoutNetRaw.includes("NET_ADMIN"), false);
+});
+
+test("derives GWRK_051_OBSERVER_SELFTEST_ONLY strictly from validated checkpoint verificationMode without ambient env shortcut", async () => {
+  const runId = "6".repeat(24);
+  const root = `/opt/gwrk-verification/${runId}`;
+  const capturedArgs = [];
+  const { files } = makeFiles();
+
+  // Test verificationMode: observer-selftest
+  await assert.rejects(
+    runNativeFixture({
+      runId,
+      root,
+      receipt: {
+        verificationMode: "observer-selftest",
+        purpose: "behavioral-red",
+        approvedPassiveNetRaw: true,
+      },
+      images: sampleImages,
+      files,
+      withLifecycle: async ({ executeCases }) => {
+        await executeCases({
+          containerId: "c".repeat(64),
+          docker: async (args) => {
+            if (args.includes("inspect")) {
+              const target = args.at(-1);
+              const key = Object.entries(sampleImages).find(
+                ([, value]) => value === target,
+              )[0];
+              return JSON.stringify({
+                Id: target,
+                RootFS: { Layers: sampleImages.rootfs[key] },
+              });
+            }
+            if (args.includes("mkdir")) return "";
+            if (args.includes("/fixture/bootstrap-stage.json")) {
+              return JSON.stringify({
+                stage: "observer_start",
+                failureClassification: "fixture_construction",
+                category: "observer_startup_failed",
+              });
+            }
+            throw new Error(`unexpected docker args: ${args.join(" ")}`);
+          },
+          spawnDocker: async (args) => {
+            if (args.includes("load")) {
+              return { code: 0, stdout: "Loaded\n", stderr: "" };
+            }
+            if (args.includes("/input/fixtures/bootstrap.mjs")) {
+              capturedArgs.push(args);
+              return { code: 1, stdout: "", stderr: "observer failed\n" };
+            }
+            throw new Error(`unexpected spawnDocker args: ${args.join(" ")}`);
+          },
+        });
+      },
+    }),
+  );
+
+  assert.equal(capturedArgs.length, 1);
+  assert.ok(
+    capturedArgs[0].includes("GWRK_051_OBSERVER_SELFTEST_ONLY=1"),
+    "must pass GWRK_051_OBSERVER_SELFTEST_ONLY=1 when verificationMode is observer-selftest",
+  );
+
+  // Test ambient env is ignored when verificationMode is omitted
+  capturedArgs.length = 0;
+  const originalEnv = process.env.GWRK_051_OBSERVER_SELFTEST_ONLY;
+  process.env.GWRK_051_OBSERVER_SELFTEST_ONLY = "1";
+  try {
+    const store2 = makeFiles();
+    await assert.rejects(
+      runNativeFixture({
+        runId,
+        root,
+        receipt: {},
+        images: sampleImages,
+        files: store2.files,
+        withLifecycle: async ({ executeCases }) => {
+          await executeCases({
+            containerId: "c".repeat(64),
+            docker: async (args) => {
+              if (args.includes("inspect")) {
+                const target = args.at(-1);
+                const key = Object.entries(sampleImages).find(
+                  ([, value]) => value === target,
+                )[0];
+                return JSON.stringify({
+                  Id: target,
+                  RootFS: { Layers: sampleImages.rootfs[key] },
+                });
+              }
+              if (args.includes("mkdir")) return "";
+              if (args.includes("/fixture/bootstrap-stage.json")) {
+                return JSON.stringify({
+                  stage: "gateway_startup",
+                  failureClassification: "behavioral",
+                });
+              }
+              throw new Error(`unexpected docker args: ${args.join(" ")}`);
+            },
+            spawnDocker: async (args) => {
+              if (args.includes("load")) {
+                return { code: 0, stdout: "Loaded\n", stderr: "" };
+              }
+              if (args.includes("/input/fixtures/bootstrap.mjs")) {
+                capturedArgs.push(args);
+                return { code: 1, stdout: "", stderr: "fail\n" };
+              }
+              throw new Error(`unexpected spawnDocker args: ${args.join(" ")}`);
+            },
+          });
+        },
+      }),
+    );
+    assert.equal(capturedArgs.length, 1);
+    assert.equal(
+      capturedArgs[0].some((a) =>
+        a.includes("GWRK_051_OBSERVER_SELFTEST_ONLY"),
+      ),
+      false,
+      "ambient env must not activate selftest mode without validated checkpoint verificationMode",
+    );
+  } finally {
+    if (originalEnv === undefined) {
+      Reflect.deleteProperty(process.env, "GWRK_051_OBSERVER_SELFTEST_ONLY");
+    } else {
+      process.env.GWRK_051_OBSERVER_SELFTEST_ONLY = originalEnv;
+    }
+  }
+
+  // Test observer-selftest rejects acceptance purpose
+  const store3 = makeFiles();
+  await assert.rejects(
+    runNativeFixture({
+      runId,
+      root,
+      receipt: {
+        verificationMode: "observer-selftest",
+        purpose: "acceptance",
+      },
+      images: sampleImages,
+      files: store3.files,
+      withLifecycle: async () => {},
+    }),
+    /selftest mode not allowed under acceptance purpose|observer-selftest cannot be used under acceptance purpose/,
+  );
+});
+
+test("observer-selftest emits diagnostic-only typed result and never grants positiveAcceptance", async () => {
+  const runId = "7".repeat(24);
+  const root = `/opt/gwrk-verification/${runId}`;
+  const { store, files } = makeFiles();
+
+  // Successful selftest run (exitCode 0)
+  await runNativeFixture({
+    runId,
+    root,
+    receipt: {
+      verificationMode: "observer-selftest",
+      purpose: "behavioral-red",
+      approvedPassiveNetRaw: true,
+    },
+    images: sampleImages,
+    files,
+    withLifecycle: async ({ executeCases }) => {
+      await executeCases({
+        containerId: "c".repeat(64),
+        docker: async (args) => {
+          if (args.includes("inspect")) {
+            const target = args.at(-1);
+            const key = Object.entries(sampleImages).find(
+              ([, value]) => value === target,
+            )[0];
+            return JSON.stringify({
+              Id: target,
+              RootFS: { Layers: sampleImages.rootfs[key] },
+            });
+          }
+          if (args.includes("mkdir")) return "";
+          if (args.includes("/fixture/bootstrap-stage.json")) {
+            return JSON.stringify({
+              stage: "completed_observer_selftest",
+            });
+          }
+          if (args.includes("/fixture/observer-selftest-result.json")) {
+            return JSON.stringify({
+              runId,
+              passed: true,
+              effectiveRcvBufBytes: 1048576,
+              ignoreOutgoingKernelEnabled: true,
+              pkttypeBpfFallbackActive: false,
+            });
+          }
+          throw new Error(`unexpected docker args: ${args.join(" ")}`);
+        },
+        spawnDocker: async (args) => {
+          if (args.includes("load")) {
+            return { code: 0, stdout: "Loaded\n", stderr: "" };
+          }
+          if (args.includes("/input/fixtures/bootstrap.mjs")) {
+            return {
+              code: 0,
+              stdout:
+                "Native observer selftest passed. Diagnostic only; full acceptance remains pending.\n",
+              stderr: "",
+            };
+          }
+          throw new Error(`unexpected spawnDocker args: ${args.join(" ")}`);
+        },
+      });
+    },
+  });
+
+  const raw = store.get(`${root}/native-result.json`);
+  assert.ok(raw);
+  const result = JSON.parse(raw);
+  assert.equal(result.exitCode, 0);
+  assert.equal(result.verificationMode, "observer-selftest");
+  assert.equal(result.diagnosticOnly, true);
+  assert.equal(result.positiveAcceptance, false);
+  assert.equal(result.nativeBehavioralRed, false);
+  assert.equal(result.stage, "completed_observer_selftest");
+  assert.deepEqual(result.observerSelftest, {
+    runId,
+    passed: true,
+    effectiveRcvBufBytes: 1048576,
+    ignoreOutgoingKernelEnabled: true,
+    pkttypeBpfFallbackActive: false,
+  });
+
+  // Failed selftest run (exitCode 1 without NET_RAW reaches observer_startup_failed)
+  const runIdFail = "8".repeat(24);
+  const rootFail = `/opt/gwrk-verification/${runIdFail}`;
+  const storeFail = makeFiles();
+  await assert.rejects(
+    runNativeFixture({
+      runId: runIdFail,
+      root: rootFail,
+      receipt: {
+        verificationMode: "observer-selftest",
+        purpose: "behavioral-red",
+        approvedPassiveNetRaw: false,
+      },
+      images: sampleImages,
+      files: storeFail.files,
+      withLifecycle: async ({ executeCases }) => {
+        await executeCases({
+          containerId: "c".repeat(64),
+          docker: async (args) => {
+            if (args.includes("inspect")) {
+              const target = args.at(-1);
+              const key = Object.entries(sampleImages).find(
+                ([, value]) => value === target,
+              )[0];
+              return JSON.stringify({
+                Id: target,
+                RootFS: { Layers: sampleImages.rootfs[key] },
+              });
+            }
+            if (args.includes("mkdir")) return "";
+            if (args.includes("/fixture/bootstrap-stage.json")) {
+              return JSON.stringify({
+                stage: "observer_start",
+                failureClassification: "fixture_construction",
+                category: "observer_startup_failed",
+                detail:
+                  "Native passive observer failed to start or pass self test",
+                operation: "start_native_observer",
+                elapsedMs: 80,
+              });
+            }
+            throw new Error(`unexpected docker args: ${args.join(" ")}`);
+          },
+          spawnDocker: async (args) => {
+            if (args.includes("load")) {
+              return { code: 0, stdout: "Loaded\n", stderr: "" };
+            }
+            if (args.includes("/input/fixtures/bootstrap.mjs")) {
+              return {
+                code: 1,
+                stdout: "",
+                stderr: "Native gateway behavior is RED.\n",
+              };
+            }
+            throw new Error(`unexpected spawnDocker args: ${args.join(" ")}`);
+          },
+        });
+      },
+    }),
+  );
+
+  const rawFail = storeFail.store.get(`${rootFail}/native-result.json`);
+  assert.ok(rawFail);
+  const resultFail = JSON.parse(rawFail);
+  assert.equal(resultFail.exitCode, 1);
+  assert.equal(resultFail.verificationMode, "observer-selftest");
+  assert.equal(resultFail.diagnosticOnly, true);
+  assert.equal(resultFail.positiveAcceptance, false);
+  assert.equal(resultFail.stage, "observer_start");
+  assert.equal(resultFail.category, "observer_startup_failed");
+  assert.equal(resultFail.fixtureConstructionFailure, true);
+});

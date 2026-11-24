@@ -23,6 +23,7 @@ import {
 } from "./bootstrap-diagnostics.mjs";
 import {
   createObserverProcessLifecycle,
+  executeObserverSelftest,
   isAllowedFixtureScriptName,
   resolveComposeContainer,
 } from "./bootstrap-observer.mjs";
@@ -1474,5 +1475,159 @@ describe("Track B passive observer wiring and diagnostics", () => {
       await supervisor.stop();
       rmSync(dir, { recursive: true, force: true });
     }
+  });
+
+  describe("observer selftest adapter isolation and lifecycle", () => {
+    test("runs observer selftest before origin/issuer effects, writes typed result, and stops cleanly", async () => {
+      const dir = mkdtempSync(join(tmpdir(), "selftest-pass-"));
+      const observerDir = join(dir, "observer");
+      const resultPath = join(dir, "observer-selftest-result.json");
+      const filesWritten = new Map();
+      const ops = [];
+
+      const lifecycle = createObserverProcessLifecycle({
+        readyTimeoutMs: 2000,
+        pollMs: 10,
+      });
+
+      const mockProc = new EventEmitter();
+      mockProc.stdout = new PassThrough();
+      mockProc.stderr = new PassThrough();
+      mockProc.kill = (sig) => {
+        mockProc.emit("exit", 0, sig);
+        mockProc.emit("close", 0, sig);
+      };
+
+      let spawnedArgs = null;
+      let spawnedEnv = null;
+      const fakeSpawn = (_cmd, args, opts) => {
+        spawnedArgs = args;
+        spawnedEnv = opts.env;
+        return mockProc;
+      };
+
+      const validHealth = createValidHealth({
+        startupSelfTestPassed: true,
+        captureStats: {
+          kernelPackets: 1,
+          kernelDrops: 0,
+          truncatedFrames: 0,
+          parserErrors: 0,
+          bufferOverflows: 0,
+          ipv4Fragments: 0,
+          effectiveRcvBufBytes: 1048576,
+          ignoreOutgoingKernelEnabled: true,
+          pkttypeBpfFallbackActive: false,
+          integrityFaultCode: null,
+        },
+      });
+
+      const selftest = await executeObserverSelftest({
+        runId: VALID_RUN_ID,
+        observerDir,
+        proxyImageId: VALID_PROVENANCE.proxyImageId,
+        traefikImageId: VALID_PROVENANCE.traefikImageId,
+        runtimeReceiptSha256: VALID_PROVENANCE.runtimeReceiptSha256,
+        observerLifecycle: lifecycle,
+        spawnProcess: fakeSpawn,
+        readHealth: () => validHealth,
+        writeFile: (p, content) => filesWritten.set(p, content),
+        resultPath,
+        beginOperation: (op) => ops.push(op),
+      });
+
+      assert.equal(selftest.result.passed, true);
+      assert.equal(selftest.result.runId, VALID_RUN_ID);
+      assert.equal(selftest.result.effectiveRcvBufBytes, 1048576);
+      assert.equal(selftest.result.ignoreOutgoingKernelEnabled, true);
+      assert.deepEqual(ops, ["start_native_observer", "observer_self_test"]);
+      assert.ok(spawnedArgs.includes("--max-old-space-size=64"));
+      assert.equal(spawnedEnv.GWRK_051_RUN_ID, VALID_RUN_ID);
+      assert.equal(spawnedEnv.GWRK_051_OBSERVER_DIR, observerDir);
+      assert.ok(filesWritten.has(resultPath));
+
+      await lifecycle.stop(mockProc);
+      assert.equal(lifecycle.isClosed(), true);
+      assert.equal(lifecycle.isExited(), true);
+      rmSync(dir, { recursive: true, force: true });
+    });
+
+    test("startup failure without NET_RAW classifies as observer_startup_failed with clean stop", async () => {
+      const dir = mkdtempSync(join(tmpdir(), "selftest-fail-"));
+      const observerDir = join(dir, "observer");
+      const resultPath = join(dir, "observer-selftest-result.json");
+      const filesWritten = new Map();
+
+      const lifecycle = createObserverProcessLifecycle({
+        readyTimeoutMs: 2000,
+        pollMs: 10,
+      });
+
+      const mockProc = new EventEmitter();
+      mockProc.stdout = new PassThrough();
+      mockProc.stderr = new PassThrough();
+      mockProc.kill = (sig) => {
+        mockProc.emit("exit", 1, sig);
+        mockProc.emit("close", 1, sig);
+      };
+
+      const fakeSpawn = () => {
+        queueMicrotask(() => {
+          mockProc.stderr.write(
+            "PermissionError: [Errno 1] Operation not permitted\n",
+          );
+          mockProc.emit("exit", 1, null);
+          mockProc.emit("close", 1, null);
+        });
+        return mockProc;
+      };
+
+      let caughtError = null;
+      try {
+        await executeObserverSelftest({
+          runId: VALID_RUN_ID,
+          observerDir,
+          proxyImageId: VALID_PROVENANCE.proxyImageId,
+          traefikImageId: VALID_PROVENANCE.traefikImageId,
+          runtimeReceiptSha256: VALID_PROVENANCE.runtimeReceiptSha256,
+          observerLifecycle: lifecycle,
+          spawnProcess: fakeSpawn,
+          readHealth: () => {
+            throw new Error("health not ready");
+          },
+          writeFile: (p, content) => filesWritten.set(p, content),
+          resultPath,
+        });
+      } catch (err) {
+        caughtError = err;
+      }
+
+      assert.ok(caughtError);
+      assert.match(
+        caughtError.message,
+        /native observer exited early with code 1/,
+      );
+      assert.equal(filesWritten.has(resultPath), false);
+
+      const diagnostic = classifyBootstrapFailure(
+        "observer_start",
+        caughtError,
+        {
+          operation: "observer_self_test",
+          elapsedMs: 45,
+        },
+      );
+      assert.equal(diagnostic.stage, "observer_start");
+      assert.equal(diagnostic.category, "observer_startup_failed");
+      assert.equal(diagnostic.failureClassification, "fixture_construction");
+      assert.equal(
+        diagnostic.detail,
+        "Native passive observer failed to start or pass self test",
+      );
+
+      await lifecycle.stop(mockProc);
+      assert.equal(lifecycle.isClosed(), true);
+      rmSync(dir, { recursive: true, force: true });
+    });
   });
 });

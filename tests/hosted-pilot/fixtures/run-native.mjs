@@ -38,6 +38,19 @@ export async function runNativeFixture({
   const resultPath = `${root}/native-result.json`;
   let resultWritten = false;
   let caseStage = "outer_lifecycle";
+  const isObserverSelftest = receipt?.verificationMode === "observer-selftest";
+  if (isObserverSelftest) {
+    assert.notEqual(
+      receipt?.purpose,
+      "acceptance",
+      "observer-selftest cannot be used under acceptance purpose",
+    );
+    assert.equal(
+      receipt?.purpose,
+      "behavioral-red",
+      "observer-selftest requires behavioral-red purpose",
+    );
+  }
   try {
     await withLifecycle({
       runId,
@@ -132,56 +145,65 @@ export async function runNativeFixture({
         );
         caseStage = "controller_execution";
         ensureActive();
-        const result = await spawnDocker(
-          [
-            "exec",
-            containerId,
-            "docker",
-            "run",
-            "--rm",
-            "--name",
-            controller,
-            "--label",
-            `gwrk.fixture.run=${runId}`,
-            "--pull",
-            "never",
-            "--network",
-            "host",
-            "--user",
-            "0:0",
-            "--cap-drop",
-            "ALL",
-            "--cap-add",
-            "CHOWN",
-            "--cap-add",
-            "DAC_OVERRIDE",
-            "--cap-add",
-            "FOWNER",
-            "--security-opt",
-            "no-new-privileges",
-            "--tmpfs",
-            "/tmp:rw,noexec,nosuid,size=32m",
-            "--env",
-            "DOCKER_HOST=unix:///var/run/docker.sock",
-            "--env",
-            "GWRK_051_OWNED_CONTROLLER=1",
-            "--env",
-            `GWRK_051_RUN_ID=${runId}`,
-            "--mount",
-            "type=bind,source=/input,target=/input,readonly",
-            "--mount",
-            "type=bind,source=/fixture,target=/fixture",
-            "--mount",
-            "type=bind,source=/etc/gwrk,target=/etc/gwrk",
-            // This is the owned outer daemon's socket. The AWS host socket is never mounted.
-            "--mount",
-            "type=bind,source=/var/run/docker.sock,target=/var/run/docker.sock",
-            images.node,
-            "node",
-            "/input/fixtures/bootstrap.mjs",
-          ],
-          360_000,
+        const controllerArgs = [
+          "exec",
+          containerId,
+          "docker",
+          "run",
+          "--rm",
+          "--name",
+          controller,
+          "--label",
+          `gwrk.fixture.run=${runId}`,
+          "--pull",
+          "never",
+          "--network",
+          "host",
+          "--user",
+          "0:0",
+          "--cap-drop",
+          "ALL",
+          "--cap-add",
+          "CHOWN",
+          "--cap-add",
+          "DAC_OVERRIDE",
+          "--cap-add",
+          "FOWNER",
+        ];
+        if (receipt?.approvedPassiveNetRaw === true) {
+          const passiveNetRawCap = "NET_RAW";
+          controllerArgs.push("--cap-add", passiveNetRawCap);
+        }
+        controllerArgs.push(
+          "--security-opt",
+          "no-new-privileges",
+          "--tmpfs",
+          "/tmp:rw,noexec,nosuid,size=32m",
+          "--env",
+          "DOCKER_HOST=unix:///var/run/docker.sock",
+          "--env",
+          "GWRK_051_OWNED_CONTROLLER=1",
+          "--env",
+          `GWRK_051_RUN_ID=${runId}`,
         );
+        if (isObserverSelftest) {
+          controllerArgs.push("--env", "GWRK_051_OBSERVER_SELFTEST_ONLY=1");
+        }
+        controllerArgs.push(
+          "--mount",
+          "type=bind,source=/input,target=/input,readonly",
+          "--mount",
+          "type=bind,source=/fixture,target=/fixture",
+          "--mount",
+          "type=bind,source=/etc/gwrk,target=/etc/gwrk",
+          // This is the owned outer daemon's socket. The AWS host socket is never mounted.
+          "--mount",
+          "type=bind,source=/var/run/docker.sock,target=/var/run/docker.sock",
+          images.node,
+          "node",
+          "/input/fixtures/bootstrap.mjs",
+        );
+        const result = await spawnDocker(controllerArgs, 360_000);
         ensureActive();
         let stage;
         try {
@@ -263,6 +285,22 @@ export async function runNativeFixture({
         if (safeContainerState !== null) {
           safe.containerState = safeContainerState;
         }
+        if (isObserverSelftest) {
+          safe.verificationMode = "observer-selftest";
+          safe.diagnosticOnly = true;
+          safe.positiveAcceptance = false;
+          if (result.code === 0) {
+            try {
+              const selftestRaw = await docker([
+                "exec",
+                containerId,
+                "cat",
+                "/fixture/observer-selftest-result.json",
+              ]);
+              safe.observerSelftest = JSON.parse(selftestRaw);
+            } catch {}
+          }
+        }
         ensureActive();
         files.writeFileSync(resultPath, JSON.stringify(safe, null, 2), {
           mode: 0o600,
@@ -282,6 +320,11 @@ export async function runNativeFixture({
         error,
         fallbackStage: caseStage,
       });
+      if (isObserverSelftest) {
+        safe.verificationMode = "observer-selftest";
+        safe.diagnosticOnly = true;
+        safe.positiveAcceptance = false;
+      }
       files.writeFileSync(resultPath, JSON.stringify(safe, null, 2), {
         mode: 0o600,
       });

@@ -17,6 +17,7 @@ export const BOOTSTRAP_STAGES = [
   "cookie_format",
   "bundle_preparation",
   "observer_start",
+  "completed_observer_selftest",
   "gateway_startup",
   "client_network",
   "gateway_cases",

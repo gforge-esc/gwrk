@@ -105,3 +105,82 @@ test("uses Docker's supported default private PID namespace without an invalid p
   );
   assert.equal(plan.command[plan.command.indexOf("--ipc") + 1], "private");
 });
+
+test("strict owned checkpoint enforces approvedPassiveNetRaw and approvedScenarioBSynGate as booleans", () => {
+  assert.throws(
+    () =>
+      requireExecutionCheckpoint({
+        ...receipt(),
+        approvedPassiveNetRaw: "true",
+      }),
+    /approvedPassiveNetRaw must be a boolean/,
+  );
+  assert.throws(
+    () =>
+      requireExecutionCheckpoint({
+        ...receipt(),
+        approvedScenarioBSynGate: 1,
+      }),
+    /approvedScenarioBSynGate must be a boolean/,
+  );
+  assert.doesNotThrow(() =>
+    requireExecutionCheckpoint({
+      ...receipt(),
+      approvedPassiveNetRaw: false,
+      approvedScenarioBSynGate: false,
+    }),
+  );
+  assert.doesNotThrow(() =>
+    requireExecutionCheckpoint({
+      ...receipt(),
+      approvedPassiveNetRaw: true,
+      approvedScenarioBSynGate: true,
+    }),
+  );
+});
+
+test("verificationMode observer-selftest requires behavioral-red and rejects acceptance purpose", () => {
+  assert.throws(
+    () =>
+      requireExecutionCheckpoint({
+        ...receipt(),
+        verificationMode: "invalid-mode",
+      }),
+    /unsupported verificationMode/,
+  );
+  assert.throws(
+    () =>
+      requireExecutionCheckpoint({
+        ...receipt(),
+        verificationMode: "observer-selftest",
+        purpose: "acceptance",
+        reviewedSource: true,
+      }),
+    /observer-selftest cannot be used under acceptance purpose/,
+  );
+  assert.doesNotThrow(() =>
+    requireExecutionCheckpoint({
+      ...receipt(),
+      verificationMode: "observer-selftest",
+      purpose: "behavioral-red",
+    }),
+  );
+});
+
+test("reserved approvedScenarioBSynGate flag does not alter ownedRuntimePlan command", () => {
+  const runId = "2".repeat(24);
+  const planDefault = ownedRuntimePlan({
+    runId,
+    inputDirectory: `/opt/gwrk-verification/${runId}/input`,
+    dataDirectory: `/var/lib/gwrk/verification-fixtures/${runId}`,
+    receipt: receipt(),
+  });
+  const planSyn = ownedRuntimePlan({
+    runId,
+    inputDirectory: `/opt/gwrk-verification/${runId}/input`,
+    dataDirectory: `/var/lib/gwrk/verification-fixtures/${runId}`,
+    receipt: { ...receipt(), approvedScenarioBSynGate: true },
+  });
+  assert.deepEqual(planSyn.command, planDefault.command);
+  assert.equal(planSyn.command.includes("NET_ADMIN"), false);
+});
