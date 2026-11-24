@@ -1,8 +1,10 @@
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
 import { test } from "vitest";
 import {
   BOOTSTRAP_STAGES,
   STATIC_CONSTRUCTION_CATEGORIES,
+  captureDockerLogs,
   classifyBootstrapFailure,
 } from "./bootstrap-diagnostics.mjs";
 
@@ -169,4 +171,91 @@ test("never reflects secrets, tokens, or private keys into diagnostic receipt", 
   assert.equal(serialized.includes("PRIVATE KEY"), false);
   assert.ok(serialized.length < 512);
   assert.ok(STATIC_CONSTRUCTION_CATEGORIES.includes(result.category));
+});
+
+test("classifies origin crash during dependencies_wait as origin_launch_failed rather than issuer_startup_failed", () => {
+  const result = classifyBootstrapFailure(
+    "dependencies_wait",
+    new Error("real origin or synthetic issuer did not become ready"),
+    {
+      issuerStderr: "",
+      originLogs: "Error: fixture origin service identity differs\n",
+    },
+  );
+  assert.equal(result.stage, "dependencies_wait");
+  assert.equal(result.failureClassification, "fixture_construction");
+  assert.equal(result.category, "origin_launch_failed");
+});
+
+test("classifies bundle_preparation failure as bundle_preparation_failed despite healthy origin readiness logs", () => {
+  const result = classifyBootstrapFailure(
+    "bundle_preparation",
+    new Error("YAMLParseError: unexpected end of stream"),
+    {
+      issuerStderr: "",
+      originLogs: '{"event":"fixture_origin_ready","port":18790}\n',
+    },
+  );
+  assert.equal(result.stage, "bundle_preparation");
+  assert.equal(result.failureClassification, "fixture_construction");
+  assert.equal(result.category, "bundle_preparation_failed");
+});
+
+test("classifies client_network docker failure as docker_command_failed despite healthy origin readiness logs", () => {
+  const result = classifyBootstrapFailure(
+    "client_network",
+    {
+      message: "Command failed: /usr/bin/docker network create",
+      stderr: "Error response from daemon: Pool overlaps with other one",
+      status: 1,
+    },
+    {
+      issuerStderr: "",
+      originLogs: '{"event":"fixture_origin_ready","port":18790}\n',
+    },
+  );
+  assert.equal(result.stage, "client_network");
+  assert.equal(result.failureClassification, "fixture_construction");
+  assert.equal(result.category, "docker_command_failed");
+});
+
+test("captures container logs in memory via bounded piped spawnSync without inheriting stderr", () => {
+  const canary = "SYNTHETIC_CANARY_CONTAINER_STDERR_secret123";
+  const direct = captureDockerLogs("origin-test", {
+    command: process.execPath,
+    args: [
+      "-e",
+      `process.stderr.write("uncaught container exception: ${canary}\\n"); process.stdout.write("fixture_origin_ready\\n");`,
+    ],
+  });
+  assert.ok(direct.includes("fixture_origin_ready"), "must capture stdout");
+  assert.ok(direct.includes(canary), "must capture stderr in memory");
+
+  const probeScript = `
+    import assert from "node:assert/strict";
+    import { captureDockerLogs } from "./bootstrap-diagnostics.mjs";
+    const logs = captureDockerLogs("probe", {
+      command: process.execPath,
+      args: ["-e", "process.stderr.write('${canary}\\\\n'); process.stdout.write('ready\\\\n');"],
+    });
+    assert.ok(logs.includes("${canary}"));
+    process.stdout.write("PROBE_OK");
+  `;
+  const probeResult = spawnSync(
+    process.execPath,
+    ["--input-type=module", "-e", probeScript],
+    {
+      cwd: new URL(".", import.meta.url).pathname,
+      stdio: "pipe",
+      encoding: "utf8",
+    },
+  );
+  assert.equal(probeResult.status, 0);
+  assert.equal(probeResult.stdout, "PROBE_OK");
+  assert.equal(
+    probeResult.stderr.includes(canary),
+    false,
+    "raw container stderr must not be inherited to process.stderr",
+  );
+  assert.equal(probeResult.stderr, "");
 });

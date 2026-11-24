@@ -12,7 +12,10 @@ import {
 } from "node:fs";
 import { setTimeout as sleep } from "node:timers/promises";
 import { parse, stringify } from "/app/node_modules/yaml/dist/index.js";
-import { classifyBootstrapFailure } from "./bootstrap-diagnostics.mjs";
+import {
+  captureDockerLogs,
+  classifyBootstrapFailure,
+} from "./bootstrap-diagnostics.mjs";
 import { checkStandardCookieSecret } from "./cookie-format-check.mjs";
 import { CLIENT_ID } from "./issuer.mjs";
 import { OIDC_FIXTURE_ARGUMENTS } from "./oidc-overrides.mjs";
@@ -27,7 +30,7 @@ function docker(args) {
   return execFileSync(
     "/usr/bin/docker",
     ["--host", "unix:///var/run/docker.sock", ...args],
-    { encoding: "utf8", timeout: 30_000, maxBuffer: 1048576 },
+    { encoding: "utf8", timeout: 30_000, maxBuffer: 1048576, stdio: "pipe" },
   );
 }
 function directory(path, mode = 0o700, uid = 0, gid = 0) {
@@ -108,6 +111,8 @@ function runContainer(name, args) {
   ]).trim();
 }
 let issuer;
+let issuerReady = false;
+let originReady = false;
 let networkCreated = false;
 let stage = "init";
 const issuerStderrChunks = [];
@@ -223,7 +228,7 @@ try {
   issuer = spawn(process.execPath, ["/fixture/fixtures/issuer.mjs"], {
     stdio: ["ignore", "pipe", "pipe"],
   });
-  let issuerReady = false;
+  issuerReady = false;
   issuer.stdout.on("data", (chunk) => {
     if (chunk.toString().includes("fixture_issuer_ready")) issuerReady = true;
   });
@@ -260,10 +265,12 @@ try {
   ]);
   stage = "dependencies_wait";
   recordStage();
-  let originReady = false;
+  originReady = false;
   const readyDeadline = Date.now() + 20_000;
   while (Date.now() < readyDeadline) {
-    originReady = docker(["logs", originName]).includes("fixture_origin_ready");
+    originReady = captureDockerLogs(originName).includes(
+      "fixture_origin_ready",
+    );
     if (originReady && issuerReady) break;
     await sleep(200);
   }
@@ -391,12 +398,14 @@ try {
   let originLogs = "";
   if (originName) {
     try {
-      originLogs = docker(["logs", originName]);
+      originLogs = captureDockerLogs(originName);
     } catch {}
   }
   const diagnostic = classifyBootstrapFailure(stage, error, {
     issuerStderr: Buffer.concat(issuerStderrChunks).toString("utf8"),
     originLogs,
+    originReady,
+    issuerReady,
   });
   file(
     "/fixture/bootstrap-stage.json",
