@@ -42,6 +42,7 @@ import {
   createProjectRoutingService,
 } from "../application/project-routing/index.js";
 import { closeDb, getDbPath, openDatabase } from "../db/index.js";
+import { classifyHostedRoute } from "../domain/auth-policy.js";
 import { PENDING_LEDGER_RESTORE } from "../domain/ledger-backup.js";
 import type { AllowedRunnerKind } from "../domain/project-registry.js";
 import { isPrivateRunnerBind } from "../domain/release-packaging.js";
@@ -57,6 +58,11 @@ import type { InstanceLockHandle } from "../ports/release-ops-port.js";
 import type { ProjectRegistryPort } from "../ports/store-port.js";
 import type { VcsPort } from "../ports/vcs-port.js";
 import type { AgentBackendId, GwrkConfig } from "../utils/config.js";
+import {
+  type HostedAuthGuardOptions,
+  registerHostedAuthGuard,
+  resolveVerifiedPrincipal,
+} from "./auth-guard.js";
 import { BackendSelector } from "./backend-selector.js";
 import { type DispatchLedgerScope, DispatchQueue } from "./dispatch.js";
 import { GitManager } from "./git-manager.js";
@@ -67,6 +73,7 @@ import { LifecycleMonitor } from "./lifecycle.js";
 import { SystemMonitor } from "./monitor.js";
 import { NetworkMonitor } from "./network.js";
 import { removePid, writePid } from "./pid.js";
+import { type AuthRoutesOptions, registerAuthRoutes } from "./routes/auth.js";
 import { dispatchRoutes } from "./routes/dispatch.js";
 import { healthRoutes } from "./routes/health.js";
 import { notifyRoutes } from "./routes/notify.js";
@@ -95,6 +102,10 @@ export function getBackendSelector(
 export interface ServerPidScope {
   writePid(pid: number): void;
   removePid(): void;
+}
+
+export interface HostedServerAuthOptions extends HostedAuthGuardOptions {
+  readonly sessions?: AuthRoutesOptions["sessions"];
 }
 
 export interface ServerStartOptions {
@@ -128,6 +139,7 @@ export interface ServerStartOptions {
         principalId: string;
       }
     | undefined;
+  hostedAuth?: HostedServerAuthOptions;
   runnerKind?: AllowedRunnerKind;
   useProjectRegistry?: boolean;
 }
@@ -649,12 +661,54 @@ async function startLockedServer(
   });
 
   try {
+    const useHostedAuthGuard =
+      effectiveTransport === "hosted" &&
+      (Boolean(options.hostedAuth) || !options.resolvePrincipal);
+
+    if (useHostedAuthGuard) {
+      registerHostedAuthGuard(server, {
+        authenticate: options.hostedAuth?.authenticate,
+        csrf: options.hostedAuth?.csrf,
+        expectedOrigin: options.hostedAuth?.expectedOrigin,
+      });
+      server.setNotFoundHandler((request, reply) => {
+        const route = classifyHostedRoute({
+          method: request.method,
+          path: request.raw.url ?? request.url,
+        });
+        if (!route.allowed) {
+          return reply.code(route.statusCode).send({
+            ok: false,
+            code: route.code,
+            error: "Request denied",
+            requestId: request.id,
+          });
+        }
+        return reply.code(404).send({
+          ok: false,
+          code: "ROUTE_NOT_FOUND",
+          error: "Request denied",
+          requestId: request.id,
+        });
+      });
+      if (options.hostedAuth?.sessions && options.hostedAuth?.csrf) {
+        registerAuthRoutes(server, {
+          sessions: options.hostedAuth.sessions,
+          csrf: options.hostedAuth.csrf,
+        });
+      }
+    }
+
+    const effectiveResolvePrincipal = useHostedAuthGuard
+      ? resolveVerifiedPrincipal
+      : options.resolvePrincipal;
+
     const routeAuthOptions = enforceRegistryScope
       ? {
           registry: activeRegistry,
           transport: effectiveTransport,
           localDefaultProjectId,
-          resolvePrincipal: options.resolvePrincipal,
+          resolvePrincipal: effectiveResolvePrincipal,
         }
       : undefined;
 
@@ -674,6 +728,13 @@ async function startLockedServer(
       operationsStore,
       notifier,
       runnerKind,
+      ...(useHostedAuthGuard
+        ? {
+            transport: "hosted" as const,
+            localDefaultProjectId,
+            resolvePrincipal: resolveVerifiedPrincipal,
+          }
+        : {}),
     });
     await statusRoutes(
       server,

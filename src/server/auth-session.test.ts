@@ -666,8 +666,8 @@ async function createFullServerSessionFixture(
     }),
   };
 
-  const revokeSpy = vi.spyOn(authStore, "revokeGoogleSession");
   const origRevoke = authStore.revokeGoogleSession.bind(authStore);
+  const revokeSpy = vi.spyOn(authStore, "revokeGoogleSession");
   revokeSpy.mockImplementation((input) => {
     const revoked = origRevoke(input);
     if (revoked) events.push("revoke");

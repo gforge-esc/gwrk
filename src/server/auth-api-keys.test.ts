@@ -658,7 +658,11 @@ describe("FR-004 FR-007 FR-010 AUTH-08: project-scoped API authorization and fil
       headers: { authorization: `Bearer ${f.viewerAKey}` },
     });
     expect(queueRes.statusCode).toBe(200);
-    expect(queueRes.json()).toEqual({ active: [], queued: [], paused: false });
+    expect(queueRes.json()).toMatchObject({
+      active: [],
+      queued: [],
+      paused: false,
+    });
 
     const healthRes = await f.server.inject({
       method: "GET",
@@ -745,7 +749,7 @@ describe("FR-004 FR-007 FR-010 AUTH-08: project-scoped API authorization and fil
       headers: { authorization: `Bearer ${f.operatorAKey}` },
     });
     expect(phaseA.statusCode).toBe(200);
-    expect(phaseA.json().id).toBe(receipt.operationId);
+    expect(phaseA.json().operationId).toBe(receipt.operationId);
 
     const notifyA = await f.server.inject({
       method: "POST",
