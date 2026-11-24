@@ -5,6 +5,7 @@ set -euo pipefail
 required_targets=(
   src/adapters/auth/google-id-token.test.ts
   src/application/auth/authenticate-request.test.ts
+  src/adapters/auth/proxy-logout.test.ts
   src/architecture.test.ts
 )
 for target in "${required_targets[@]}"; do
@@ -14,6 +15,7 @@ for target in "${required_targets[@]}"; do
   fi
 done
 vitest_targets=(
+  src/adapters/auth/proxy-logout.test.ts
   src/adapters/auth/google-id-token.test.ts
   src/application/auth/authenticate-request.test.ts
   src/architecture.test.ts

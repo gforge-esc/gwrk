@@ -45,6 +45,9 @@ jobs:
       - name: Build
         run: pnpm build
 
+      - name: Check hosted task gates
+        run: node tests/hosted-pilot/gate-completeness.test.mjs
+
       - name: Check ADR citations and index
         run: node dist/cli.js define adr --check
 

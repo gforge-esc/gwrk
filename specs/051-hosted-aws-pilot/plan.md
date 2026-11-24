@@ -335,6 +335,7 @@ Prepare this phase against Phase 1 frozen ports. Compose it after Phase 2 on the
 - `package.json` (MODIFY: Pin exact `jose` release for Node.js 22)
 - `pnpm-lock.yaml` (MODIFY: Record pinned `jose` lockfile entry)
 - `src/adapters/auth/google-id-token.ts` (NEW: Implement `GoogleIdentityVerifierPort` with pinned `jose` and bounded JWKS cache plus live allowlist reload)
+- `src/adapters/auth/proxy-logout.test.ts` (NEW: Test fixed-target bounded logout and separate cookie-clearing headers)
 - `src/adapters/auth/proxy-logout.ts` (NEW: Implement `ProxySessionLogoutPort` against fixed internal `/oauth2/sign_out` endpoint)
 - `src/application/auth/authenticate-request.ts` (NEW: Orchestrate API key and Google ID token checks plus audience and session cap denials)
 - `src/application/auth/browser-session.ts` (NEW: Orchestrate session reads and origin-first digest revocation before proxy sign-out)
@@ -361,7 +362,7 @@ Prepare this phase against Phase 1 frozen ports. Compose it after Phase 2 on the
 
 ```bash
 pnpm run build
-pnpm exec vitest run src/adapters/auth/google-id-token.test.ts src/application/auth/authenticate-request.test.ts src/architecture.test.ts
+pnpm exec vitest run src/adapters/auth/proxy-logout.test.ts src/adapters/auth/google-id-token.test.ts src/application/auth/authenticate-request.test.ts src/architecture.test.ts
 ```
 
 ---
@@ -379,6 +380,7 @@ Requires Phases 2 and 3. Write failing HTTP pre-handler and logout replay plus A
 - `src/server/routes/auth.ts` (NEW: Register `GET /` and `GET /api/auth/session` plus `POST /api/auth/logout` routes)
 - `src/server/routes/health.ts` (MODIFY: Filter hosted `GET /api/health` to one authorized project and serve minimal private `GET /health`)
 - `src/server/index.ts` (MODIFY: Register auth pre-handler and CSRF plus auth routes and scoped health while keeping `trusted_local` separate)
+- `src/server/auth-guard.account-denial.test.ts` (NEW: Preserve the independent Google account denial HTTP 403 regression)
 - `src/server/auth-prehandler.test.ts` (NEW: Test `AUTH-04` local and remote forged identity headers yield zero principal and zero rows)
 - `src/server/auth-session.test.ts` (NEW: Test `AUTH-06` origin-first logout clears proxy and CSRF cookies and denies copied replay)
 - `src/server/auth-api-keys.test.ts` (NEW: Test `AUTH-07` HTTP `401` key denials and `AUTH-08` HTTP `403` cross-project and role denials)
@@ -402,7 +404,7 @@ Requires Phases 2 and 3. Write failing HTTP pre-handler and logout replay plus A
 
 ```bash
 pnpm run build
-pnpm exec vitest run src/server/auth-prehandler.test.ts src/server/auth-session.test.ts src/server/auth-api-keys.test.ts src/server/routes/status.test.ts src/server/routes/dispatch.test.ts src/server/routes/notify.test.ts src/server/routes/health.test.ts src/architecture.test.ts
+pnpm exec vitest run src/server/auth-guard.account-denial.test.ts src/server/auth-prehandler.test.ts src/server/auth-session.test.ts src/server/auth-api-keys.test.ts src/server/routes/status.test.ts src/server/routes/dispatch.test.ts src/server/routes/notify.test.ts src/server/routes/health.test.ts src/architecture.test.ts
 ```
 
 ---
@@ -569,7 +571,7 @@ Requires Phase 7. Write failing backup-restore auth-state and rollout-gate tests
 node tests/hosted-pilot/gate-completeness.test.mjs
 pnpm run build
 pnpm run lint
-pnpm exec vitest run src/utils/agent.auth-env.test.ts src/architecture.test.ts src/domain/auth-policy.test.ts src/adapters/auth/credential-crypto.test.ts src/adapters/sqlite/auth-store.test.ts src/commands/auth.test.ts src/adapters/auth/google-id-token.test.ts src/application/auth/authenticate-request.test.ts src/server/auth-prehandler.test.ts src/server/auth-session.test.ts src/server/auth-api-keys.test.ts src/server/auth-csrf.test.ts src/server/routes/health.auth.test.ts src/server/auth-route-policy.test.ts src/server/auth-bounds.test.ts src/server/auth-logging.test.ts src/server/github.test.ts src/adapters/auth/http-client-credential.test.ts src/commands/server.auth-startup.test.ts src/server/auth-continuity.test.ts src/commands/init.test.ts tests/linux-runner/preflight-auth.test.ts tests/linux-runner/backup-restore-rollback.test.ts tests/hosted-pilot/rollout-gates.test.ts
+pnpm exec vitest run src/adapters/auth/proxy-logout.test.ts src/server/auth-guard.account-denial.test.ts src/utils/agent.auth-env.test.ts src/architecture.test.ts src/domain/auth-policy.test.ts src/adapters/auth/credential-crypto.test.ts src/adapters/sqlite/auth-store.test.ts src/commands/auth.test.ts src/adapters/auth/google-id-token.test.ts src/application/auth/authenticate-request.test.ts src/server/auth-prehandler.test.ts src/server/auth-session.test.ts src/server/auth-api-keys.test.ts src/server/auth-csrf.test.ts src/server/routes/health.auth.test.ts src/server/auth-route-policy.test.ts src/server/auth-bounds.test.ts src/server/auth-logging.test.ts src/server/github.test.ts src/adapters/auth/http-client-credential.test.ts src/commands/server.auth-startup.test.ts src/server/auth-continuity.test.ts src/commands/init.test.ts tests/linux-runner/preflight-auth.test.ts tests/linux-runner/backup-restore-rollback.test.ts tests/hosted-pilot/rollout-gates.test.ts
 node dist/cli.js define adr --reindex --check
 node dist/cli.js define adr --check
 node tests/hosted-pilot/gateway-production.mjs

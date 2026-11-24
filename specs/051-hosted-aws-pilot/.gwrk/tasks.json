@@ -169,7 +169,7 @@
         {
           "id": "T017",
           "title": "Create proxy-logout.ts",
-          "description": "NEW src/adapters/auth/proxy-logout.ts. Implement `ProxySessionLogoutPort` against fixed internal `/oauth2/sign_out` endpoint",
+          "description": "NEW src/adapters/auth/proxy-logout.ts. Implement `ProxySessionLogoutPort` against fixed internal `/oauth2/sign_out` endpoint Tests: src/adapters/auth/proxy-logout.test.ts. Follow the frozen private logout contract and preserve multiple cookie-clearing headers without following redirects.",
           "status": "open",
           "gateScript": "bash specs/051-hosted-aws-pilot/gates/phase-03.sh",
           "sp": 2
@@ -204,7 +204,8 @@
         "src/adapters/auth/google-id-token.test.ts",
         "src/adapters/auth/google-id-token.test.ts",
         "src/adapters/auth/google-id-token.test.ts",
-        "src/application/auth/authenticate-request.test.ts"
+        "src/application/auth/authenticate-request.test.ts",
+        "src/adapters/auth/proxy-logout.test.ts"
       ]
     },
     {
@@ -238,7 +239,7 @@
         {
           "id": "T024",
           "title": "Create auth-guard.ts",
-          "description": "NEW src/server/auth-guard.ts. Fastify async auth pre-handler and request decoration plus synchronous `resolvePrincipal` reader and default-deny guard",
+          "description": "NEW src/server/auth-guard.ts. Fastify async auth pre-handler and request decoration plus synchronous `resolvePrincipal` reader and default-deny guard Preserve src/server/auth-guard.account-denial.test.ts and its AUTH_ACCOUNT_DENIED HTTP 403 assertion.",
           "status": "open",
           "gateScript": "bash specs/051-hosted-aws-pilot/gates/phase-04.sh",
           "sp": 2
@@ -273,7 +274,8 @@
         "src/server/auth-prehandler.test.ts",
         "src/server/auth-session.test.ts",
         "src/server/auth-api-keys.test.ts",
-        "src/server/auth-api-keys.test.ts"
+        "src/server/auth-api-keys.test.ts",
+        "src/server/auth-guard.account-denial.test.ts"
       ]
     },
     {
@@ -496,7 +498,9 @@
         "tests/hosted-pilot/rollout-gates.test.ts",
         "tests/linux-runner/container-harness.mjs",
         "src/architecture.test.ts",
-        "src/utils/agent.auth-env.test.ts"
+        "src/utils/agent.auth-env.test.ts",
+        "src/adapters/auth/proxy-logout.test.ts",
+        "src/server/auth-guard.account-denial.test.ts"
       ]
     },
     {
