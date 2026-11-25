@@ -741,7 +741,7 @@ describe("FR-015 hosted production auth boundaries", () => {
     }
   });
 
-  it("TR-020 TC-011 records ADR-014 as Proposed and keeps .gwrk/decisions/index.md synchronized", async () => {
+  it("TR-020 TC-011 records ratified ADR-014 as Decided and keeps .gwrk/decisions/index.md synchronized", async () => {
     const adrPath = path.resolve(
       "docs/decisions/ADR-014-hosted-production-auth.md",
     );
@@ -750,9 +750,13 @@ describe("FR-015 hosted production auth boundaries", () => {
       "docs/decisions/ADR-014-hosted-production-auth.md must exist",
     ).toBe(true);
 
-    const record = parseRecord(fs.readFileSync(adrPath, "utf-8"), adrPath);
+    const adrRaw = fs.readFileSync(adrPath, "utf-8");
+    const record = parseRecord(adrRaw, adrPath);
     expect(record.id).toBe("ADR-014");
-    expect(record.header.status).toBe("Proposed");
+    expect(record.header.status).toBe("Decided");
+    expect(adrRaw).toMatch(
+      /^>\s*\*\*Approved by:\*\*\s*David Gonzo Gonzalez on 2026-11-25$/m,
+    );
     expect(record.header.decision.trim().length).toBeGreaterThan(0);
     expect(record.header.scope?.trim().length ?? 0).toBeGreaterThan(0);
     expect(record.header.constraint ?? "").toMatch(/\bMUST(?:\s+NOT)?\b/);
@@ -779,6 +783,6 @@ describe("FR-015 hosted production auth boundaries", () => {
       path.resolve(".gwrk/decisions/index.md"),
       "utf-8",
     );
-    expect(indexContent).toMatch(/^\|\s*ADR-014\s*\|[^|]+\|\s*Proposed\s*\|/m);
+    expect(indexContent).toMatch(/^\|\s*ADR-014\s*\|[^|]+\|\s*Decided\s*\|/m);
   });
 });

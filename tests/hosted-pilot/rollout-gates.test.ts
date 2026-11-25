@@ -114,7 +114,7 @@ describe("Hosted pilot rollout gates (TR-020, TR-021, TC-010, TC-011, TC-012)", 
     expect(gitDiff.stdout.trim()).toBe("");
   });
 
-  it("preserves Proposed status for ADR-013 and ADR-014 without autonomous drift", async () => {
+  it("preserves Proposed status for ADR-013 and verified human ratification for Decided ADR-014", async () => {
     const corpus = await parseCorpus(path.join(root, "docs/decisions"));
 
     for (let i = 1; i <= 12; i++) {
@@ -132,14 +132,22 @@ describe("Hosted pilot rollout gates (TR-020, TR-021, TC-010, TC-011, TC-012)", 
 
     const adr014 = corpus.find((entry) => entry.id === "ADR-014");
     expect(adr014, "ADR-014 must exist").toBeDefined();
-    expect(adr014?.header.status).toBe("Proposed");
+    expect(adr014?.header.status).toBe("Decided");
+
+    const adr014Content = fs.readFileSync(
+      path.join(root, "docs/decisions/ADR-014-hosted-production-auth.md"),
+      "utf8",
+    );
+    expect(adr014Content).toMatch(
+      /^>\s*\*\*Approved by:\*\*\s*David Gonzo Gonzalez on 2026-11-25$/m,
+    );
 
     const indexContent = fs.readFileSync(
       path.join(root, ".gwrk/decisions/index.md"),
       "utf8",
     );
     expect(indexContent).toMatch(/^\|\s*ADR-013\s*\|[^|]+\|\s*Proposed\s*\|/m);
-    expect(indexContent).toMatch(/^\|\s*ADR-014\s*\|[^|]+\|\s*Proposed\s*\|/m);
+    expect(indexContent).toMatch(/^\|\s*ADR-014\s*\|[^|]+\|\s*Decided\s*\|/m);
   });
 
   it("blocks Phase 9 auto-completion fail-closed", () => {

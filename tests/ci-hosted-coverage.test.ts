@@ -60,22 +60,40 @@ describe("CI hosted fixture coverage selection policy", () => {
   it("selects all portable fixture suites when CI=true", () => {
     const result = runVitest(["list", "--filesOnly"]);
     expect(result.status, result.output).toBe(0);
+    const selectedFiles = new Set(
+      result.output
+        .split(/\r?\n/)
+        .map((line) => line.trim())
+        .filter(Boolean),
+    );
 
     for (const suite of portableFixtureSuites) {
       expect
-        .soft(result.output, `CI must select portable suite: ${suite}`)
-        .toContain(suite);
+        .soft(
+          selectedFiles.has(suite),
+          `CI must select portable suite: ${suite}`,
+        )
+        .toBe(true);
     }
   });
 
   it("excludes Docker and kernel-mount dependent suites when CI=true", () => {
     const result = runVitest(["list", "--filesOnly"]);
     expect(result.status, result.output).toBe(0);
+    const selectedFiles = new Set(
+      result.output
+        .split(/\r?\n/)
+        .map((line) => line.trim())
+        .filter(Boolean),
+    );
 
     for (const suite of nativeExcludedSuites) {
       expect
-        .soft(result.output, `CI must exclude native-dependent suite: ${suite}`)
-        .not.toContain(suite);
+        .soft(
+          selectedFiles.has(suite),
+          `CI must exclude native-dependent suite: ${suite}`,
+        )
+        .toBe(false);
     }
   });
 
