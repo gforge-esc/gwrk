@@ -26,8 +26,15 @@ export GWRK_RELEASE_ROOT=/opt/gwrk GWRK_SECRETS_DIR=/etc/gwrk/secrets
 export GWRK_LISTEN_HOST=127.0.0.1 GWRK_LISTEN_PORT=18790 GWRK_SLACK_ENABLED=0
 export GWRK_PILOT_REPO=/var/lib/gwrk/repos/pilot GWRK_PILOT_REPO_URL=https://github.com/fixture/pilot.git
 export GWRK_APPROVED_AGENT=fixture GWRK_AGENT_PROBE=/fixture-bin/agent-probe
+export GWRK_AUTH_MODE=hosted
+export GWRK_AUTH_PUBLIC_ORIGIN=https://gwrk.gforge.ai
+export GWRK_AUTH_GOOGLE_CLIENT_ID=pilot-client-id.apps.googleusercontent.com
+export GWRK_AUTH_GOOGLE_ALLOWLIST_FILE=/etc/gwrk/secrets/google-account-allowlist
+export GWRK_AUTH_CSRF_HMAC_FILE=/etc/gwrk/secrets/csrf-hmac-key
 printf '%s\n' fixture-git-token > /etc/gwrk/secrets/pilot-git-credential
 printf '%s\n' fixture-agent-token > /etc/gwrk/secrets/agent-credential
+printf '%s\n' runner-fixture@example.invalid > /etc/gwrk/secrets/google-account-allowlist
+node -e 'process.stdout.write(require("node:crypto").randomBytes(32).toString("base64url"))' > /etc/gwrk/secrets/csrf-hmac-key
 chgrp gwrk /etc/gwrk/secrets/*
 chmod 0640 /etc/gwrk/secrets/*
 
@@ -160,7 +167,19 @@ runuser -u gwrk -- git push --quiet --set-upstream origin develop
 runuser -u gwrk -- node --input-type=module <<'NODE'
 import { closeDb, getDb } from "/opt/gwrk/current/dist/db/index.js";
 const db = getDb();
-db.prepare("INSERT INTO projects (id, name, path) VALUES (?, ?, ?)").run("pilot", "pilot", process.env.GWRK_PILOT_REPO);
+db.prepare(`
+  INSERT INTO projects (
+    id, name, path, slug, local_root, allowed_runners, updated_at
+  ) VALUES (?, ?, ?, ?, ?, ?, ?)
+`).run(
+  "pilot",
+  "pilot",
+  process.env.GWRK_PILOT_REPO,
+  "pilot",
+  process.env.GWRK_PILOT_REPO,
+  '["local","hosted"]',
+  "2026-11-24T00:00:00.000Z"
+);
 db.prepare("INSERT INTO runs (id, feature_id, project_id, command, finished_at) VALUES (?, ?, ?, ?, ?)").run(42, "fixture", "pilot", "ship", "2026-11-11T12:00:00Z");
 closeDb();
 NODE
@@ -179,6 +198,14 @@ expect_rejection() {
   fi
 }
 expect_rejection 'Telegram variables' runuser -u gwrk -- env TELEGRAM_BOT_TOKEN=fixture bash "$preflight"
+expect_rejection 'Set GWRK_AUTH_MODE' runuser -u gwrk -- env -u GWRK_AUTH_MODE bash "$preflight"
+expect_rejection 'GWRK_AUTH_MODE must be hosted' runuser -u gwrk -- env GWRK_AUTH_MODE=invalid bash "$preflight"
+chmod 0644 /etc/gwrk/secrets/google-account-allowlist
+expect_rejection 'Auth file must have mode 0640' runuser -u gwrk -- bash "$preflight"
+chmod 0640 /etc/gwrk/secrets/google-account-allowlist
+chmod 0644 /etc/gwrk/secrets/csrf-hmac-key
+expect_rejection 'Auth file must have mode 0640' runuser -u gwrk -- bash "$preflight"
+chmod 0640 /etc/gwrk/secrets/csrf-hmac-key
 chmod 0644 /etc/gwrk/secrets/agent-credential
 expect_rejection 'mode 0640' runuser -u gwrk -- bash "$preflight"
 chmod 0640 /etc/gwrk/secrets/agent-credential
@@ -260,33 +287,80 @@ kill -0 "$server_pid"
 kill -KILL "$server_pid"
 wait "$launcher" || true
 server_pid=""
+
+pilot_secret=$(node -e 'process.stdout.write(require("node:crypto").randomBytes(32).toString("base64url"))')
+pilot_token="gwrk_v1.cred-pilot-key-01.$pilot_secret"
+pilot_verifier=$(node -e 'process.stdout.write(require("node:crypto").createHash("sha256").update(process.argv[1]).digest("hex"))' "$pilot_token")
+
+runuser -u gwrk -g gwrk -- node --input-type=module - "$pilot_verifier" <<'NODE'
+import Database from "/opt/gwrk/current/node_modules/better-sqlite3/lib/index.js";
+const db = new Database("/var/lib/gwrk/gwrk.db", { fileMustExist: true });
+db.prepare(`
+  INSERT OR REPLACE INTO project_role_bindings (project_id, principal_type, principal_id, role, created_at)
+  VALUES ('pilot', 'cli_token', 'cred-pilot-key-01', 'operator', '2026-11-11T12:00:00Z')
+`).run();
+db.prepare(`
+  INSERT OR REPLACE INTO api_credentials (
+    credential_id, verifier_sha256, label, issuer, audience_origin,
+    created_at, expires_at, revoked_at, revoked_reason, rotated_from_id, overlap_until
+  ) VALUES (
+    'cred-pilot-key-01',
+    ?,
+    'pilot-key',
+    'local-admin',
+    'https://gwrk.gforge.ai',
+    '2026-11-11T12:00:00Z',
+    '2029-12-11T12:00:00Z',
+    null, null, null, null
+  )
+`).run(process.argv[2]);
+db.close();
+NODE
+
 launch
 printf 'Dispatching the committed pilot feature after SIGKILL restart.\n'
-dispatch_run_id=$(node --input-type=module <<'NODE'
+dispatch_run_id=$(node --input-type=module - "$pilot_token" <<'NODE'
 import assert from "node:assert/strict";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { setTimeout as delay } from "node:timers/promises";
 
+const token = process.argv[2];
 const base = "http://127.0.0.1:18790/api/dispatch";
 const featureId = "001-pilot-restart";
 const phaseId = "phase-01";
 const worker = `${process.env.GWRK_RUNTIME_DIR}/fixture-worker`;
-const statusUrl = `${base}/${featureId}/${phaseId}`;
+const statusUrl = `${base}/${featureId}/${phaseId}?projectId=pilot`;
 const request = (url, options) => fetch(url, { ...options, signal: AbortSignal.timeout(3000) });
+
+// Assert unauthenticated request to /api/dispatch or /api/dispatch/queue returns HTTP 401 in hosted mode
+const unauthDispatch = await request(base, {
+  method: "POST",
+  headers: { "content-type": "application/json" },
+  body: JSON.stringify({ projectId: "pilot", featureId, phaseId }),
+});
+assert.equal(unauthDispatch.status, 401, "Unauthenticated /api/dispatch must return HTTP 401 in hosted mode");
+
+const unauthQueue = await request(`${base}/queue?projectId=pilot`);
+assert.equal(unauthQueue.status, 401, "Unauthenticated /api/dispatch/queue must return HTTP 401 in hosted mode");
+
+const authHeaders = {
+  authorization: `Bearer ${token}`,
+};
+
 async function read(url) {
-  const response = await request(url);
+  const response = await request(url, { headers: authHeaders });
   assert.equal(response.status, 200);
   return response.json();
 }
 
 const dispatch = (backend) => request(base, {
   method: "POST",
-  headers: { "content-type": "application/json" },
-  body: JSON.stringify({ featureId, phaseId, backend }),
+  headers: { "content-type": "application/json", ...authHeaders },
+  body: JSON.stringify({ projectId: "pilot", featureId, phaseId, backend }),
 });
 let response = await dispatch("unapproved-fixture");
 if (response.status >= 400 && response.status < 500) {
-  const { active, queued } = await read(`${base}/queue`);
+  const { active, queued } = await read(`${base}/queue?projectId=pilot`);
   assert.deepEqual(active, []);
   assert.deepEqual(queued, []);
   response = await dispatch();
@@ -303,7 +377,7 @@ while (!existsSync(`${worker}/started`)) {
   assert(Date.now() < startDeadline, "The restarted runner did not launch the fixture worker.");
   await delay(50);
 }
-const { active, queued } = await read(`${base}/queue`);
+const { active, queued } = await read(`${base}/queue?projectId=pilot`);
 assert.deepEqual(active.map((record) => record.id), [id]);
 assert.equal(active[0].status, "running");
 assert.equal(active[0].backend, "fixture");
@@ -329,7 +403,7 @@ while (record.status === "running") {
 assert.equal(record.id, id);
 assert.equal(record.status, "completed", JSON.stringify(record));
 assert.deepEqual(record.attempts.map(({ runId, exitCode }) => ({ runId, exitCode })), [{ runId, exitCode: 0 }]);
-assert.deepEqual((await read(`${base}/queue`)).active, []);
+assert.deepEqual((await read(`${base}/queue?projectId=pilot`)).active, []);
 assert.equal(readFileSync(`${worker}/started`, "utf8"), started);
 assert.equal(readFileSync(`${worker}/completed`, "utf8"), started);
 console.log(runId);
@@ -341,6 +415,59 @@ wait "$launcher" || { cat /tmp/server.log >&2; exit 1; }
 server_pid=""
 test ! -e /run/gwrk/server.pid
 
+runuser -u gwrk -g gwrk -- node --input-type=module <<'NODE'
+import Database from "/opt/gwrk/current/node_modules/better-sqlite3/lib/index.js";
+const db = new Database("/var/lib/gwrk/gwrk.db", { fileMustExist: true });
+db.prepare(`
+  INSERT INTO project_role_bindings (project_id, principal_type, principal_id, role, created_at)
+  VALUES (?, ?, ?, ?, ?)
+`).run("pilot", "google_sub", "google-sub-pilot-01", "operator", "2026-11-11T12:00:00Z");
+db.prepare(`
+  INSERT INTO api_credentials (
+    credential_id, verifier_sha256, label, issuer, audience_origin,
+    created_at, expires_at, revoked_at, revoked_reason, rotated_from_id, overlap_until
+  ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+`).run(
+  "cred-pilot-restore-02",
+  "1111222233334444555566667777888899990000aaaabbbbccccddddeeeeffff",
+  "pilot-key",
+  "https://accounts.google.com:google-sub-pilot-01",
+  "https://gwrk.gforge.ai",
+  "2026-11-11T12:00:00Z",
+  "2026-12-11T12:00:00Z",
+  null, null, null, null
+);
+db.prepare(`
+  INSERT INTO google_sessions (
+    token_digest_sha256, principal_id, issued_at, expires_at, session_cap_at, revoked_at, revoked_reason
+  ) VALUES (?, ?, ?, ?, ?, ?, ?)
+`).run(
+  "aaaabbbbccccddddeeeeffff1111222233334444555566667777888899990000",
+  "google-sub-pilot-01",
+  "2026-11-11T12:00:00Z",
+  "2026-11-11T13:00:00Z",
+  "2026-11-11T13:00:00Z",
+  "2026-11-11T12:30:00Z",
+  "user_logout"
+);
+db.prepare(`
+  INSERT INTO auth_audit_events (
+    occurred_at, event_type, outcome, principal_type, principal_id,
+    credential_id, request_id, detail_code, metadata_json
+  ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+`).run(
+  "2026-11-11T12:30:00Z",
+  "session_revoked",
+  "allowed",
+  "google_sub",
+  "google-sub-pilot-01",
+  null,
+  "req-pilot-01",
+  "user_logout",
+  '{"reason":"logout"}'
+);
+db.close();
+NODE
 runuser -u gwrk -- node "$release/dist/cli.js" db backup --out /var/lib/gwrk/backup
 runuser -u gwrk -- node "$release/dist/cli.js" db restore --from /var/lib/gwrk/backup --state-dir /var/lib/gwrk/restored
 cmp /var/lib/gwrk/backup/gwrk.db /var/lib/gwrk/restored/gwrk.db
@@ -371,8 +498,24 @@ assert.deepEqual(db.prepare("SELECT feature_id, phase_id, exit_code FROM runs WH
   phase_id: "phase-01",
   exit_code: 0,
 });
+assert.equal(
+  db.prepare("SELECT verifier_sha256 FROM api_credentials WHERE credential_id = ?").pluck().get("cred-pilot-restore-02"),
+  "1111222233334444555566667777888899990000aaaabbbbccccddddeeeeffff"
+);
+assert.equal(
+  db.prepare("SELECT revoked_reason FROM google_sessions WHERE token_digest_sha256 = ?").pluck().get("aaaabbbbccccddddeeeeffff1111222233334444555566667777888899990000"),
+  "user_logout"
+);
+assert.equal(
+  db.prepare("SELECT event_type FROM auth_audit_events WHERE request_id = ?").pluck().get("req-pilot-01"),
+  "session_revoked"
+);
+assert.equal(
+  db.prepare("SELECT role FROM project_role_bindings WHERE principal_id = ?").pluck().get("google-sub-pilot-01"),
+  "operator"
+);
 db.close();
-console.log("Clean restore preserved project pilot and both completed runs.");
+console.log("Clean restore preserved project pilot, completed runs, and migration 020 auth tables.");
 NODE
 
 prior=/opt/gwrk/releases/1.0.0-fixture
@@ -570,6 +713,20 @@ test "$(readlink /opt/gwrk/current)" = "$current_before"
 test "$(readlink /opt/gwrk/previous)" = "$previous_before"
 printf 'Rejected migration 999-fixture.sql before changing either release pointer.\n'
 rm "$prior/dist/db/migrations/999-fixture.sql"
+write_prior_manifest
+
+rm "$prior/dist/db/migrations/020-production-auth.sql"
+write_prior_manifest
+: > /tmp/supervisor.calls
+expect_rejection 'Target release is missing applied migration: 020-production-auth.sql' bash "$rollback" /opt/gwrk /var/lib/gwrk
+if grep -Eq '^(stop|start)$' /tmp/supervisor.calls; then
+  printf 'Incompatible rollback missing migration 020 changed the service state.\n' >&2
+  exit 1
+fi
+test "$(readlink /opt/gwrk/current)" = "$current_before"
+test "$(readlink /opt/gwrk/previous)" = "$previous_before"
+printf 'Rejected rollback missing migration 020 before changing either release pointer.\n'
+cp "$active/dist/db/migrations/020-production-auth.sql" "$prior/dist/db/migrations/020-production-auth.sql"
 write_prior_manifest
 mkdir -m 0700 /var/lib/gwrk/backups
 runuser -u gwrk -g gwrk -- node --input-type=module <<'NODE'
