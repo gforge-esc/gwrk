@@ -63,7 +63,7 @@ export async function verifyNativeEvidence(options = {}) {
   }
 
   // 3. Parse and verify canonical JSON encoding of envelope
-  const envelopeRaw = readFileSync(envelopePath, "utf8");
+  const envelopeRaw = readFileSync(envelopePath);
   const parsedEnvelope = parseAndVerifyCanonicalJson(envelopeRaw);
   const envelope = validateEvidenceEnvelope(parsedEnvelope);
 
@@ -79,7 +79,7 @@ export async function verifyNativeEvidence(options = {}) {
   }
 
   // 5. Parse and verify canonical JSON encoding of detached signature
-  const signatureRaw = readFileSync(signaturePath, "utf8");
+  const signatureRaw = readFileSync(signaturePath);
   const signature = parseAndVerifyCanonicalJson(signatureRaw);
   const { sigBytes } = validateDetachedSignature(signature, trustAnchor);
 

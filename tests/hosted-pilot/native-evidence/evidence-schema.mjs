@@ -320,7 +320,8 @@ export function validateEvidenceEnvelope(envelope) {
       typeof parsedPilot === "object" &&
       (parsedPilot.diagnostic === true ||
         parsedPilot.behavioralRed === true ||
-        parsedPilot.behavioral_red === true)
+        parsedPilot.behavioral_red === true ||
+        parsedPilot["behavioral-red"] === true)
     ) {
       throw new Error(
         "pilotReceipt must not contain diagnostic or behavioral-red flags",
@@ -330,7 +331,7 @@ export function validateEvidenceEnvelope(envelope) {
     if (e.message.includes("diagnostic or behavioral-red")) throw e;
   }
   if (
-    /"(diagnostic|behavioralRed|behavioral_red)"\s*:\s*true/i.test(
+    /"(diagnostic|behavioralRed|behavioral_red|behavioral-red)"\s*:\s*true/i.test(
       raw.pilotReceipt,
     )
   ) {

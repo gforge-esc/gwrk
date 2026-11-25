@@ -80,7 +80,7 @@ export function loadTrustAnchor(filePath) {
   if (!existsSync(filePath)) {
     throw new Error(`Pinned reviewed trust anchor not found: ${filePath}`);
   }
-  const content = readFileSync(filePath, "utf8");
+  const content = readFileSync(filePath);
   const parsed = parseAndVerifyCanonicalJson(content);
   return validateTrustAnchor(parsed);
 }

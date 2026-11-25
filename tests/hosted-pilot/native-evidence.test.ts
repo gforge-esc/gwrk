@@ -755,6 +755,113 @@ describe("native-evidence adapter regression controls", () => {
       ).toThrow(/utf-?8/i);
     });
 
+    it("regression (B-06 / R2-01A, R2-01B): rejects invalid UTF-8 bytes on disk in envelope.json, signature.json, and trust-anchor.json", async () => {
+      const { envelope, sig } = await prepareValidFixtures();
+
+      // 1. R2-01A: Corrupt envelope.json on disk with invalid UTF-8 byte 0xff
+      const envUtf8 = structuredClone(envelope);
+      envUtf8.buildProvenance.applicationArtifact.identity =
+        "gwrk-app-\uFFFD-id";
+      const canonicalBuf = Buffer.from(`${toCanonicalJson(envUtf8)}\n`, "utf8");
+      const replacementBytes = Buffer.from([0xef, 0xbf, 0xbd]);
+      const idx = canonicalBuf.indexOf(replacementBytes);
+      const corruptedEnvBuf = Buffer.concat([
+        canonicalBuf.subarray(0, idx),
+        Buffer.from([0xff]),
+        canonicalBuf.subarray(idx + 3),
+      ]);
+      writeFileSync(envelopePath, corruptedEnvBuf);
+      writeFileSync(
+        signaturePath,
+        `${toCanonicalJson(signEnvelope(envUtf8, keyPair.privateKeyPem, keyPair.keyId))}\n`,
+        "utf8",
+      );
+
+      await expect(
+        verifyNativeEvidence({
+          repoRoot: repo.repoDir,
+          trustAnchorPath,
+          envelopePath,
+          signaturePath,
+        }),
+      ).rejects.toThrow(/utf-?8/i);
+
+      // 2. Corrupt signature.json on disk with invalid UTF-8 byte 0xff
+      writeFileSync(envelopePath, `${toCanonicalJson(envelope)}\n`, "utf8");
+      const sigBuf = Buffer.from(`${toCanonicalJson(sig)}\n`, "utf8");
+      const corruptedSigBuf = Buffer.concat([
+        sigBuf.subarray(0, 5),
+        Buffer.from([0xff]),
+        sigBuf.subarray(6),
+      ]);
+      writeFileSync(signaturePath, corruptedSigBuf);
+
+      await expect(
+        verifyNativeEvidence({
+          repoRoot: repo.repoDir,
+          trustAnchorPath,
+          envelopePath,
+          signaturePath,
+        }),
+      ).rejects.toThrow(/utf-?8/i);
+
+      // 3. R2-01B: Corrupt trust-anchor.json on disk with invalid UTF-8 byte 0xff
+      writeFileSync(signaturePath, `${toCanonicalJson(sig)}\n`, "utf8");
+      const anchor = createTestAnchor(keyPair);
+      anchor.publicKeySpki = `comment-\uFFFD\n${keyPair.publicKeyPem}`;
+      anchor.keyId = createHash("sha256")
+        .update(anchor.publicKeySpki, "utf8")
+        .digest("hex");
+      const anchorBuf = Buffer.from(`${toCanonicalJson(anchor)}\n`, "utf8");
+      const aIdx = anchorBuf.indexOf(replacementBytes);
+      const corruptedAnchorBuf = Buffer.concat([
+        anchorBuf.subarray(0, aIdx),
+        Buffer.from([0xff]),
+        anchorBuf.subarray(aIdx + 3),
+      ]);
+      writeFileSync(trustAnchorPath, corruptedAnchorBuf);
+
+      expect(() => loadTrustAnchor(trustAnchorPath)).toThrow(/utf-?8/i);
+      await expect(
+        verifyNativeEvidence({
+          repoRoot: repo.repoDir,
+          trustAnchorPath,
+          envelopePath,
+          signaturePath,
+        }),
+      ).rejects.toThrow(/utf-?8/i);
+    });
+
+    it("regression (O-05 / R2-03E): rejects hyphenated behavioral-red in pilotReceipt", async () => {
+      const { envelope } = await prepareValidFixtures();
+      const envTest = structuredClone(envelope);
+      const payload = JSON.stringify({ event: "done", "behavioral-red": true });
+      envTest.rawReceipts.pilotReceipt = payload;
+      envTest.executionProof.pilotProof.rawReceiptSha256 = createHash("sha256")
+        .update(payload)
+        .digest("hex");
+      writeFileSync(envelopePath, `${toCanonicalJson(envTest)}\n`, "utf8");
+      writeFileSync(
+        signaturePath,
+        `${toCanonicalJson(signEnvelope(envTest, keyPair.privateKeyPem, keyPair.keyId))}\n`,
+        "utf8",
+      );
+      await expect(
+        verifyNativeEvidence({
+          repoRoot: repo.repoDir,
+          trustAnchorPath,
+          envelopePath,
+          signaturePath,
+        }),
+      ).rejects.toThrow(/diagnostic|behavioral-red/i);
+    });
+
+    it("regression (O-06 / R2-05A): rejects sparse arrays in toCanonicalJson", () => {
+      const sparse: unknown[] = [1];
+      sparse[2] = 2;
+      expect(() => toCanonicalJson(sparse)).toThrow(/sparse|undefined/i);
+    });
+
     it("regression (B-07): rejects invented cases, malformed image digests, and empty receipts", async () => {
       const { envelope } = await prepareValidFixtures();
       const badCases = structuredClone(envelope);

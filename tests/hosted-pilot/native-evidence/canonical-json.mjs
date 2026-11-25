@@ -38,14 +38,21 @@ export function toCanonicalJson(value) {
   }
 
   if (Array.isArray(value)) {
-    const elements = value.map((item) => {
+    const elements = [];
+    for (let i = 0; i < value.length; i++) {
+      if (!Object.hasOwn(value, i)) {
+        throw new Error(
+          `Sparse array with missing element at index ${i} is not allowed in canonical JSON`,
+        );
+      }
+      const item = value[i];
       if (item === undefined) {
         throw new Error(
           "undefined elements are not allowed in arrays in canonical JSON",
         );
       }
-      return toCanonicalJson(item);
-    });
+      elements.push(toCanonicalJson(item));
+    }
     return `[${elements.join(",")}]`;
   }
 
