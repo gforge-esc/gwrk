@@ -303,6 +303,16 @@ export async function withOwnedNestedDaemon(
         currentStage = "outer_namespace_verify";
         assert.equal(running.HostConfig.PidMode, "");
         assert.equal(running.HostConfig.IpcMode, "private");
+        assert.equal(
+          running.HostConfig?.NetworkMode,
+          "none",
+          "outer network mode must be 'none'",
+        );
+        assert.equal(
+          running.Config?.Labels?.["gwrk.fixture.run"],
+          runId,
+          "container label gwrk.fixture.run must match runId",
+        );
         assert.ok(
           Number.isSafeInteger(running.State.Pid) && running.State.Pid > 0,
         );
@@ -319,6 +329,31 @@ export async function withOwnedNestedDaemon(
           await docker(["exec", containerId, "readlink", "/proc/self/ns/pid"])
         ).trim();
         assert.equal(actualNamespace, outerPidNamespace);
+
+        const hostNetNamespace = readNamespaceLink("/proc/self/ns/net");
+        const outerNetNamespace = readNamespaceLink(
+          `/proc/${running.State.Pid}/ns/net`,
+        );
+        assert.ok(
+          typeof hostNetNamespace === "string" &&
+            /^net:\[[^\]]+\]$/.test(hostNetNamespace),
+          "host network namespace is not a valid net:[inode] link",
+        );
+        assert.ok(
+          typeof outerNetNamespace === "string" &&
+            /^net:\[[^\]]+\]$/.test(outerNetNamespace),
+          "outer network namespace is not a valid net:[inode] link",
+        );
+        assert.notEqual(
+          outerNetNamespace,
+          hostNetNamespace,
+          "outer network namespace is shared with the host",
+        );
+        const actualNetNamespace = (
+          await docker(["exec", containerId, "readlink", "/proc/self/ns/net"])
+        ).trim();
+        assert.equal(actualNetNamespace, outerNetNamespace);
+
         writeFile(
           `${root}/namespace-proof.json`,
           JSON.stringify({
@@ -327,6 +362,9 @@ export async function withOwnedNestedDaemon(
             hostPidNamespace,
             outerPidNamespace,
             actualNamespace,
+            hostNetNamespace,
+            outerNetNamespace,
+            actualNetNamespace,
             isolated: true,
           }),
           { mode: 0o600 },
