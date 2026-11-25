@@ -19,10 +19,10 @@ export async function checkStandardCookieSecret({
   assert.match(proxyImageId, /^sha256:[a-f0-9]{64}$/);
   assert.match(runId, /^[a-f0-9]{24}$/);
   const directory = `/fixture/cookie-format-${runId}`;
-  const cookie = Buffer.alloc(32, 0xfb).toString("base64");
-  assert.equal(Buffer.from(cookie, "base64").length, 32);
-  assert.equal(/[+/]/.test(cookie), true);
-  assert.equal(cookie.endsWith("="), true);
+  const cookie = Buffer.alloc(32, 0xfb).toString("base64url");
+  assert.equal(Buffer.from(cookie, "base64url").length, 32);
+  assert.equal(cookie.length, 43);
+  assert.equal(/^[A-Za-z0-9_-]{43}$/.test(cookie), true);
   // The controller creates this owned root-only directory before invoking this check.
   writeFileSync(`${directory}/cookie-secret`, `${cookie}\n`, { mode: 0o600 });
   const name = `gwrk-051-cookie-format-${runId}`;

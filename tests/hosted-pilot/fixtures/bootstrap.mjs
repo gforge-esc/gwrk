@@ -275,10 +275,10 @@ try {
     const secret = randomBytes(32).toString("base64url");
     file("/fixture/secrets/client-secret", `${secret}\n`);
     file("/etc/gwrk/gateway-secrets/oauth-client-secret", `${secret}\n`);
-    // Exercise the installed operator's selected syntax, including standard +/ characters.
+    // Exercise the pinned proxy's accepted 32-byte base64url cookie-secret file format with trailing newline.
     file(
       "/etc/gwrk/gateway-secrets/oauth-cookie-secret",
-      `${Buffer.alloc(32, 0xfb).toString("base64")}\n`,
+      `${Buffer.alloc(32, 0xfb).toString("base64url")}\n`,
     );
     stage = "certificate_generation";
     beginOperation("openssl_generate_certificates");
