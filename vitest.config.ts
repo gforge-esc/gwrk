@@ -25,6 +25,13 @@ export default defineConfig({
       "**/.test-mocks-*/**",
       "**/e2e/**",
       "tests/hosted-pilot/gate-completeness.test.mjs",
+      ...(process.env.CI === "true"
+        ? [
+            "tests/hosted-pilot/fixtures/**",
+            "tests/hosted-pilot/gateway-startup.test.ts",
+            "tests/hosted-pilot/tls-preflight.test.ts",
+          ]
+        : []),
     ],
     coverage: {
       provider: "v8",
