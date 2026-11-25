@@ -167,7 +167,19 @@ runuser -u gwrk -- git push --quiet --set-upstream origin develop
 runuser -u gwrk -- node --input-type=module <<'NODE'
 import { closeDb, getDb } from "/opt/gwrk/current/dist/db/index.js";
 const db = getDb();
-db.prepare("INSERT INTO projects (id, name, path) VALUES (?, ?, ?)").run("pilot", "pilot", process.env.GWRK_PILOT_REPO);
+db.prepare(`
+  INSERT INTO projects (
+    id, name, path, slug, local_root, allowed_runners, updated_at
+  ) VALUES (?, ?, ?, ?, ?, ?, ?)
+`).run(
+  "pilot",
+  "pilot",
+  process.env.GWRK_PILOT_REPO,
+  "pilot",
+  process.env.GWRK_PILOT_REPO,
+  '["local","hosted"]',
+  "2026-11-24T00:00:00.000Z"
+);
 db.prepare("INSERT INTO runs (id, feature_id, project_id, command, finished_at) VALUES (?, ?, ?, ?, ?)").run(42, "fixture", "pilot", "ship", "2026-11-11T12:00:00Z");
 closeDb();
 NODE
@@ -317,18 +329,18 @@ const base = "http://127.0.0.1:18790/api/dispatch";
 const featureId = "001-pilot-restart";
 const phaseId = "phase-01";
 const worker = `${process.env.GWRK_RUNTIME_DIR}/fixture-worker`;
-const statusUrl = `${base}/${featureId}/${phaseId}`;
+const statusUrl = `${base}/${featureId}/${phaseId}?projectId=pilot`;
 const request = (url, options) => fetch(url, { ...options, signal: AbortSignal.timeout(3000) });
 
 // Assert unauthenticated request to /api/dispatch or /api/dispatch/queue returns HTTP 401 in hosted mode
 const unauthDispatch = await request(base, {
   method: "POST",
   headers: { "content-type": "application/json" },
-  body: JSON.stringify({ featureId, phaseId }),
+  body: JSON.stringify({ projectId: "pilot", featureId, phaseId }),
 });
 assert.equal(unauthDispatch.status, 401, "Unauthenticated /api/dispatch must return HTTP 401 in hosted mode");
 
-const unauthQueue = await request(`${base}/queue`);
+const unauthQueue = await request(`${base}/queue?projectId=pilot`);
 assert.equal(unauthQueue.status, 401, "Unauthenticated /api/dispatch/queue must return HTTP 401 in hosted mode");
 
 const authHeaders = {
@@ -344,11 +356,11 @@ async function read(url) {
 const dispatch = (backend) => request(base, {
   method: "POST",
   headers: { "content-type": "application/json", ...authHeaders },
-  body: JSON.stringify({ featureId, phaseId, backend }),
+  body: JSON.stringify({ projectId: "pilot", featureId, phaseId, backend }),
 });
 let response = await dispatch("unapproved-fixture");
 if (response.status >= 400 && response.status < 500) {
-  const { active, queued } = await read(`${base}/queue`);
+  const { active, queued } = await read(`${base}/queue?projectId=pilot`);
   assert.deepEqual(active, []);
   assert.deepEqual(queued, []);
   response = await dispatch();
@@ -365,7 +377,7 @@ while (!existsSync(`${worker}/started`)) {
   assert(Date.now() < startDeadline, "The restarted runner did not launch the fixture worker.");
   await delay(50);
 }
-const { active, queued } = await read(`${base}/queue`);
+const { active, queued } = await read(`${base}/queue?projectId=pilot`);
 assert.deepEqual(active.map((record) => record.id), [id]);
 assert.equal(active[0].status, "running");
 assert.equal(active[0].backend, "fixture");
@@ -391,7 +403,7 @@ while (record.status === "running") {
 assert.equal(record.id, id);
 assert.equal(record.status, "completed", JSON.stringify(record));
 assert.deepEqual(record.attempts.map(({ runId, exitCode }) => ({ runId, exitCode })), [{ runId, exitCode: 0 }]);
-assert.deepEqual((await read(`${base}/queue`)).active, []);
+assert.deepEqual((await read(`${base}/queue?projectId=pilot`)).active, []);
 assert.equal(readFileSync(`${worker}/started`, "utf8"), started);
 assert.equal(readFileSync(`${worker}/completed`, "utf8"), started);
 console.log(runId);
@@ -416,7 +428,7 @@ db.prepare(`
     created_at, expires_at, revoked_at, revoked_reason, rotated_from_id, overlap_until
   ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 `).run(
-  "cred-pilot-key-01",
+  "cred-pilot-restore-02",
   "1111222233334444555566667777888899990000aaaabbbbccccddddeeeeffff",
   "pilot-key",
   "https://accounts.google.com:google-sub-pilot-01",
@@ -487,7 +499,7 @@ assert.deepEqual(db.prepare("SELECT feature_id, phase_id, exit_code FROM runs WH
   exit_code: 0,
 });
 assert.equal(
-  db.prepare("SELECT verifier_sha256 FROM api_credentials WHERE credential_id = ?").pluck().get("cred-pilot-key-01"),
+  db.prepare("SELECT verifier_sha256 FROM api_credentials WHERE credential_id = ?").pluck().get("cred-pilot-restore-02"),
   "1111222233334444555566667777888899990000aaaabbbbccccddddeeeeffff"
 );
 assert.equal(

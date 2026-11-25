@@ -47,7 +47,8 @@ To create an offline backup:
 
 ```bash
 systemctl stop gwrk-runner
-runuser -u gwrk -- env GWRK_RUNTIME_DIR=/var/lib/gwrk gwrk db backup --out /var/lib/gwrk/backups/manual-$(date +%Y%m%d)
+runuser -u gwrk -- env GWRK_HOME=/var/lib/gwrk GWRK_RUNTIME_DIR=/run/gwrk \
+  node /opt/gwrk/current/dist/cli.js db backup --out /var/lib/gwrk/backups/manual-$(date +%Y%m%d)
 systemctl start gwrk-runner
 ```
 
@@ -55,11 +56,19 @@ To restore from a backup:
 
 ```bash
 systemctl stop gwrk-runner
-runuser -u gwrk -- env GWRK_RUNTIME_DIR=/var/lib/gwrk gwrk db restore --from /var/lib/gwrk/backups/manual-<date> --state-dir /var/lib/gwrk --force
+runuser -u gwrk -- env GWRK_HOME=/var/lib/gwrk GWRK_RUNTIME_DIR=/run/gwrk \
+  node /opt/gwrk/current/dist/cli.js db restore --from /var/lib/gwrk/backups/manual-<date> --state-dir /var/lib/gwrk --force
 systemctl start gwrk-runner
 ```
 
-To roll back a release, run `deploy/linux-runner/rollback-release.sh`. That script runs `gwrk db rollback-check`. Rolling back across migration 020 (`020-production-auth.sql`) is blocked because older releases lack required auth tables.
+To verify rollback compatibility manually:
+
+```bash
+runuser -u gwrk -- env GWRK_HOME=/var/lib/gwrk GWRK_RUNTIME_DIR=/run/gwrk \
+  node /opt/gwrk/current/dist/cli.js db rollback-check --current /opt/gwrk/current --target /opt/gwrk/releases/<previous>
+```
+
+To roll back a release, run `deploy/linux-runner/rollback-release.sh`. That script runs `db rollback-check` before switching releases. Rolling back across migration 020 (`020-production-auth.sql`) is blocked because older releases lack required auth tables.
 
 ## TLS renewal
 
@@ -67,13 +76,15 @@ The operator provisions certificates under `/etc/gwrk/gateway-secrets/tls`. Stor
 
 Follow the TLS boundary contract for certificate replacement:
 
-1. Close public ingress or keep it restricted.
+1. Close public ingress or keep it restricted to the operator IP address.
 2. Stop the gateway container.
-3. Stage renewed certificate files in `/etc/gwrk/gateway-secrets/tls`.
+3. Stage and validate renewed certificate files in a root-only directory before replacing `/etc/gwrk/gateway-secrets/tls`.
 4. Run `deploy/hosted-pilot/run.sh` to execute preflight checks and restart the gateway.
+5. Verify the served certificate fingerprint and canonical HTTPS endpoint from the operator host.
+6. Confirm the auth ledger remains preserved before reopening public ingress.
 
 ```bash
-docker compose -f deploy/hosted-pilot/compose.yaml down
+docker compose -f deploy/hosted-pilot/compose.yaml --project-name gwrk-hosted-pilot down
 bash deploy/hosted-pilot/run.sh
 ```
 

@@ -2414,8 +2414,8 @@ describe("ledger backup", () => {
         return targetManifestWithout020;
       });
 
+    const savedDbPath = process.env.GWRK_DB_PATH;
     try {
-      const savedDbPath = process.env.GWRK_DB_PATH;
       process.env.GWRK_DB_PATH = restoredLedger;
       setCliExitCode(0);
       const cmd = createDbCommand();
@@ -2429,13 +2429,15 @@ describe("ledger backup", () => {
         targetDir,
       ]);
       expect(getCliExitCode()).toBe(1);
+    } finally {
+      verifySpy.mockRestore();
       if (savedDbPath !== undefined) {
         process.env.GWRK_DB_PATH = savedDbPath;
       } else {
-        process.env.GWRK_DB_PATH = undefined;
+        // biome-ignore lint/performance/noDelete: env cleanup in test
+        delete process.env.GWRK_DB_PATH;
       }
-    } finally {
-      verifySpy.mockRestore();
+      setCliExitCode(0);
     }
   });
 });
