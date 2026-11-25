@@ -31,5 +31,6 @@ vitest_targets=(
   tests/hosted-pilot/native-evidence.test.ts
 )
 pnpm run build
+pnpm run lint
 pnpm exec vitest run "${vitest_targets[@]}"
 node tests/hosted-pilot/gateway-production.mjs

@@ -548,6 +548,7 @@ Requires Phase 6. Follow the hosted TLS boundary for preissued certificates and 
 
 ```bash
 pnpm run build
+pnpm run lint
 pnpm exec vitest run tests/hosted-pilot/tls-preflight.test.ts tests/hosted-pilot/gateway-startup.test.ts src/utils/agent.auth-env.test.ts tests/linux-runner/preflight-auth.test.ts tests/hosted-auth-proof/preflight.test.ts tests/hosted-auth-proof/production-bundle.test.ts tests/hosted-pilot/production-bundle.test.ts tests/hosted-pilot/native-evidence.test.ts
 node tests/hosted-pilot/gateway-production.mjs
 ```
