@@ -1,5 +1,6 @@
-#!/usr/bin/env bash
-set -efuo pipefail
+#!/bin/sh
+set -efu
+(set -o pipefail) 2>/dev/null && set -o pipefail || true
 umask 077
 
 RUN_ID="${RUN_ID:-${1:-}}"
@@ -13,7 +14,13 @@ if [ -z "$RUN_ID" ]; then
   exit 1
 fi
 
-if ! [[ "$RUN_ID" =~ ^[a-f0-9]{24}$ ]]; then
+case "$RUN_ID" in
+  *[!0-9a-f]*|"")
+    echo "RUN_ID must be a 24-character lowercase hex string" >&2
+    exit 1
+    ;;
+esac
+if [ "${#RUN_ID}" -ne 24 ]; then
   echo "RUN_ID must be a 24-character lowercase hex string" >&2
   exit 1
 fi
@@ -56,10 +63,18 @@ if [ -z "$OUTER_INODE" ]; then
   OUTER_INODE="$OUTER_NETNS"
 fi
 
-if ! [[ "$HOST_INODE" =~ ^[0-9]+$ ]] || ! [[ "$OUTER_INODE" =~ ^[0-9]+$ ]]; then
-  echo "invalid network namespace inode format: host=$HOST_NETNS, outer=$OUTER_NETNS" >&2
-  exit 1
-fi
+case "$HOST_INODE" in
+  *[!0-9]*|"")
+    echo "invalid network namespace inode format: host=$HOST_NETNS, outer=$OUTER_NETNS" >&2
+    exit 1
+    ;;
+esac
+case "$OUTER_INODE" in
+  *[!0-9]*|"")
+    echo "invalid network namespace inode format: host=$HOST_NETNS, outer=$OUTER_NETNS" >&2
+    exit 1
+    ;;
+esac
 
 if [ "$HOST_INODE" = "$OUTER_INODE" ]; then
   echo "outer network namespace is shared with the host (netns inode $OUTER_INODE)" >&2
@@ -97,7 +112,6 @@ get_monotonic_ms() {
     echo "monotonic clock missing or unreadable: $PROC_UPTIME_PATH" >&2
     exit 1
   fi
-  local uptime_sec
   uptime_sec="$(awk '{print $1}' "$PROC_UPTIME_PATH" 2>/dev/null || true)"
   if [ -z "$uptime_sec" ]; then
     echo "unable to read monotonic clock from $PROC_UPTIME_PATH" >&2
@@ -107,9 +121,9 @@ get_monotonic_ms() {
 }
 
 write_json_atomic() {
-  local target_path="$1"
-  local content="$2"
-  local temp_path="${target_path}.next"
+  target_path="$1"
+  content="$2"
+  temp_path="${target_path}.next"
   if [ -L "$temp_path" ]; then
     echo "temporary file must not be a symlink: $temp_path" >&2
     rm -f "$temp_path" 2>/dev/null || true
@@ -128,7 +142,7 @@ write_json_atomic() {
 }
 
 validate_request_file() {
-  local file_path="$1"
+  file_path="$1"
   if [ -L "$file_path" ]; then
     echo "request file must not be a symlink: $file_path" >&2
     exit 1
@@ -136,14 +150,12 @@ validate_request_file() {
   if [ ! -f "$file_path" ]; then
     return 1
   fi
-  local f_mode
   f_mode="$(stat -c %a "$file_path" 2>/dev/null || stat -f %Lp "$file_path" 2>/dev/null || true)"
   if [ "$f_mode" != "600" ]; then
     echo "request file must have mode 0600, got $f_mode" >&2
     exit 1
   fi
   if [ "$(id -u)" -eq 0 ]; then
-    local f_uid f_gid
     f_uid="$(stat -c %u "$file_path" 2>/dev/null || stat -f %u "$file_path" 2>/dev/null || true)"
     f_gid="$(stat -c %g "$file_path" 2>/dev/null || stat -f %g "$file_path" 2>/dev/null || true)"
     if [ "$f_uid" != "0" ] || [ "$f_gid" != "0" ]; then
@@ -155,7 +167,29 @@ validate_request_file() {
 }
 
 # Exact hardcoded iptables rule arguments (no -w, no custom chains, no flush)
-RULE_ARGS=(-i lo -p tcp -s 127.0.0.1 -d 127.0.0.1 --dport 18790 --tcp-flags SYN,RST,ACK,FIN SYN -j DROP)
+run_iptables_install() {
+  "$IPTABLES_CMD" -I INPUT 1 -i lo -p tcp -s 127.0.0.1 -d 127.0.0.1 --dport 18790 --tcp-flags SYN,RST,ACK,FIN SYN -j DROP 2>/dev/null
+}
+
+run_iptables_install_with_timeout() {
+  timeout "$1" "$IPTABLES_CMD" -I INPUT 1 -i lo -p tcp -s 127.0.0.1 -d 127.0.0.1 --dport 18790 --tcp-flags SYN,RST,ACK,FIN SYN -j DROP 2>/dev/null
+}
+
+run_iptables_remove() {
+  "$IPTABLES_CMD" -D INPUT -i lo -p tcp -s 127.0.0.1 -d 127.0.0.1 --dport 18790 --tcp-flags SYN,RST,ACK,FIN SYN -j DROP 2>/dev/null
+}
+
+run_iptables_remove_with_timeout() {
+  timeout "$1" "$IPTABLES_CMD" -D INPUT -i lo -p tcp -s 127.0.0.1 -d 127.0.0.1 --dport 18790 --tcp-flags SYN,RST,ACK,FIN SYN -j DROP 2>/dev/null
+}
+
+run_iptables_check() {
+  "$IPTABLES_CMD" -C INPUT -i lo -p tcp -s 127.0.0.1 -d 127.0.0.1 --dport 18790 --tcp-flags SYN,RST,ACK,FIN SYN -j DROP 2>/dev/null
+}
+
+run_iptables_check_with_timeout() {
+  timeout "$1" "$IPTABLES_CMD" -C INPUT -i lo -p tcp -s 127.0.0.1 -d 127.0.0.1 --dport 18790 --tcp-flags SYN,RST,ACK,FIN SYN -j DROP 2>/dev/null
+}
 
 RULE_INSTALLED=0
 RULE_REMOVED_VERIFIED=0
@@ -169,20 +203,20 @@ REQ_TTL_MS=1000
 STATE="IDLE"
 
 cleanup() {
-  local exit_code=$?
+  exit_code=$?
   trap - EXIT TERM INT
   if [ "$RULE_INSTALLED" -eq 1 ] && [ "$RULE_REMOVED_VERIFIED" -ne 1 ]; then
     if command -v timeout >/dev/null 2>&1; then
-      timeout 1 "$IPTABLES_CMD" -D INPUT "${RULE_ARGS[@]}" 2>/dev/null || true
+      run_iptables_remove_with_timeout 1 || true
       set +e
-      timeout 1 "$IPTABLES_CMD" -C INPUT "${RULE_ARGS[@]}" 2>/dev/null
-      local c_status=$?
+      run_iptables_check_with_timeout 1
+      c_status=$?
       set -e
     else
-      "$IPTABLES_CMD" -D INPUT "${RULE_ARGS[@]}" 2>/dev/null || true
+      run_iptables_remove || true
       set +e
-      "$IPTABLES_CMD" -C INPUT "${RULE_ARGS[@]}" 2>/dev/null
-      local c_status=$?
+      run_iptables_check
+      c_status=$?
       set -e
     fi
     if [ "$c_status" -eq 1 ]; then
@@ -208,15 +242,14 @@ while true; do
     break
   fi
 
-  # Check stdin non-blocking: EOF or STOP causes clean exit
-  if read -r -t 0.05 line; then
-    if [ "$line" = "STOP" ]; then
-      break
-    fi
-  else
-    read_status=$?
-    if [ "$read_status" -ne 0 ] && [ "$read_status" -le 128 ]; then
-      # EOF on stdin: controller closed stdin
+  # Check stdin non-blocking: EOF or STOP causes clean exit in both bash and busybox ash
+  if read -r -t 0; then
+    if read -r -t 0.05 line; then
+      if [ "$line" = "STOP" ]; then
+        break
+      fi
+    else
+      # read -t 0 reported ready, so non-zero read status indicates EOF
       break
     fi
   fi
@@ -278,7 +311,7 @@ END {
         echo "invalid arm request format, keys, or values" >&2
         exit 1
       fi
-      REQ_TTL_MS=$((10#$REQ_TTL_RAW))
+      REQ_TTL_MS="$(awk -v v="$REQ_TTL_RAW" 'BEGIN { printf "%d\n", v + 0 }')"
 
       # Bound iptables -I with timeout against REQ_TTL_MS
       INSTALL_TIMEOUT_MS="$REQ_TTL_MS"
@@ -290,10 +323,10 @@ END {
       INSTALL_T0="$(get_monotonic_ms)"
       set +e
       if command -v timeout >/dev/null 2>&1; then
-        timeout "$INSTALL_TIMEOUT_SEC" "$IPTABLES_CMD" -I INPUT 1 "${RULE_ARGS[@]}" 2>/dev/null
+        run_iptables_install_with_timeout "$INSTALL_TIMEOUT_SEC"
         INSTALL_STATUS=$?
       else
-        "$IPTABLES_CMD" -I INPUT 1 "${RULE_ARGS[@]}" 2>/dev/null
+        run_iptables_install
         INSTALL_STATUS=$?
       fi
       set -e
@@ -412,12 +445,12 @@ END {
 
       REMOVE_T0="$(get_monotonic_ms)"
       if command -v timeout >/dev/null 2>&1; then
-        if ! timeout "$TIMEOUT_SEC" "$IPTABLES_CMD" -D INPUT "${RULE_ARGS[@]}" 2>/dev/null; then
+        if ! run_iptables_remove_with_timeout "$TIMEOUT_SEC"; then
           echo "iptables removal failed" >&2
           exit 1
         fi
       else
-        if ! "$IPTABLES_CMD" -D INPUT "${RULE_ARGS[@]}" 2>/dev/null; then
+        if ! run_iptables_remove; then
           echo "iptables removal failed" >&2
           exit 1
         fi
@@ -430,10 +463,10 @@ END {
       # Absence check with -C: ONLY exit status 1 confirms rule absence
       set +e
       if command -v timeout >/dev/null 2>&1; then
-        timeout 1 "$IPTABLES_CMD" -C INPUT "${RULE_ARGS[@]}" 2>/dev/null
+        run_iptables_check_with_timeout 1
         C_STATUS=$?
       else
-        "$IPTABLES_CMD" -C INPUT "${RULE_ARGS[@]}" 2>/dev/null
+        run_iptables_check
         C_STATUS=$?
       fi
       set -e

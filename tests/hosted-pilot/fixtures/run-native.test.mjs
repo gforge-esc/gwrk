@@ -1634,6 +1634,7 @@ test("stopAndDrainSynGateHelper handles async EPIPE and child error events witho
 
 test("defaultSpawnSynGateHelper uses isolated DOCKER_CONFIG and attaches error listeners", () => {
   const root = "/opt/gwrk-verification/test-run-root";
+  let capturedArgs = null;
   let capturedOptions = null;
   const fakeChild = new EventEmitter();
   fakeChild.stdin = new EventEmitter();
@@ -1644,13 +1645,20 @@ test("defaultSpawnSynGateHelper uses isolated DOCKER_CONFIG and attaches error l
     hostNetNamespace: "net:[100]",
     outerNetNamespace: "net:[200]",
     root,
-    spawnProcess: (_file, _args, options) => {
+    spawnProcess: (_file, args, options) => {
+      capturedArgs = args;
       capturedOptions = options;
       return fakeChild;
     },
   });
 
   assert.ok(proc, "helper process must be returned");
+  assert.ok(Array.isArray(capturedArgs), "docker exec args must be passed");
+  assert.deepEqual(
+    capturedArgs.slice(-2),
+    ["sh", "/input/fixtures/syn-gate-helper.sh"],
+    "helper must execute via POSIX sh inside Alpine DinD",
+  );
   assert.ok(capturedOptions?.env, "isolated env must be passed");
   assert.equal(
     capturedOptions.env.DOCKER_CONFIG,

@@ -131,7 +131,7 @@ export function defaultSpawnSynGateHelper({
       "-e",
       `OUTER_NETNS_INODE=${outerNetNamespace}`,
       containerId,
-      "bash",
+      "sh",
       "/input/fixtures/syn-gate-helper.sh",
     ],
     {
