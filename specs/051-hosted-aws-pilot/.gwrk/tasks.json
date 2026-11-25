@@ -388,7 +388,7 @@
           "id": "T036",
           "title": "Create compose.yaml",
           "description": "NEW deploy/hosted-pilot/compose.yaml. Digest-pinned Traefik and OAuth2 Proxy stack publishing ports `80` and `443` with loopback-only origin and sign-out Follow contracts/tls-boundary.md. NEW deploy/hosted-pilot/preflight-tls.sh and run.sh enforce protected preissued TLS before gateway startup. Tests: tests/hosted-pilot/tls-preflight.test.ts and gateway-startup.test.ts. No world-ingress ACME bootstrap or fallback certificate acceptance.",
-          "status": "open",
+          "status": "completed",
           "gateScript": "bash specs/051-hosted-aws-pilot/gates/phase-07.sh",
           "sp": 2
         },
@@ -396,7 +396,7 @@
           "id": "T037",
           "title": "Create dynamic.yaml",
           "description": "NEW deploy/hosted-pilot/traefik/dynamic.yaml. Isolated browser and API plus webhook chains stripping forged headers and blocking public `/oauth2/sign_out` and `/health` Use strict default SNI and TLS 1.2 minimum with preissued certificate files. No production ACME resolver. Preserve the proof bundle.",
-          "status": "open",
+          "status": "completed",
           "gateScript": "bash specs/051-hosted-aws-pilot/gates/phase-07.sh",
           "sp": 2
         },
@@ -404,7 +404,7 @@
           "id": "T038",
           "title": "Create oauth2-proxy.cfg",
           "description": "NEW deploy/hosted-pilot/oauth2-proxy/oauth2-proxy.cfg. Google OIDC PKCE `S256` with `insecure_oidc_skip_nonce = false` and `set_authorization_header = true` plus explicit allowlist",
-          "status": "open",
+          "status": "completed",
           "gateScript": "bash specs/051-hosted-aws-pilot/gates/phase-07.sh",
           "sp": 2
         },
@@ -412,7 +412,7 @@
           "id": "T039",
           "title": "Create .env.example",
           "description": "NEW deploy/hosted-pilot/.env.example. Non-secret edge config template with zero assumed Google accounts",
-          "status": "open",
+          "status": "completed",
           "gateScript": "bash specs/051-hosted-aws-pilot/gates/phase-07.sh",
           "sp": 2
         },
@@ -420,7 +420,7 @@
           "id": "T040",
           "title": "Validate runner auth files and filter worker credentials",
           "description": "MODIFY deploy/linux-runner/credentials.sh to validate origin auth files without exporting secret values. NEW src/domain/worker-auth-environment.ts pure inbound auth environment filter. MODIFY src/utils/agent.ts to apply filtering after inherited and explicit environments merge. NEW src/utils/agent.auth-env.test.ts proves an actual hermetic child receives outbound canaries and no inbound auth canaries. Follow contracts/deployment-boundary.md. Preserve existing command safety and provider discovery.",
-          "status": "open",
+          "status": "completed",
           "gateScript": "bash specs/051-hosted-aws-pilot/gates/phase-07.sh",
           "sp": 1
         },
@@ -428,7 +428,7 @@
           "id": "T041",
           "title": "Modify preflight.sh",
           "description": "MODIFY deploy/linux-runner/preflight.sh. Fail closed on missing hosted auth secrets or loose modes or non-loopback bind or Telegram vars. Tests: tests/linux-runner/preflight-auth.test.ts",
-          "status": "open",
+          "status": "completed",
           "gateScript": "bash specs/051-hosted-aws-pilot/gates/phase-07.sh",
           "sp": 1
         },
@@ -436,7 +436,7 @@
           "id": "T042",
           "title": "Modify .env.example",
           "description": "MODIFY deploy/linux-runner/.env.example. Document hosted origin auth paths and loopback bind without secrets",
-          "status": "open",
+          "status": "completed",
           "gateScript": "bash specs/051-hosted-aws-pilot/gates/phase-07.sh",
           "sp": 1
         },
@@ -444,14 +444,14 @@
           "id": "T043",
           "title": "Create compose.test.yaml",
           "description": "NEW tests/hosted-pilot/compose.test.yaml. Loopback synthetic OIDC overlay connecting pinned Traefik and OAuth2 Proxy to a real `gwrk` origin",
-          "status": "open",
+          "status": "completed",
           "gateScript": "bash specs/051-hosted-aws-pilot/gates/phase-07.sh",
           "sp": 2
         },
         {
           "id": "T044",
           "title": "Create gateway-production.mjs",
-          "description": "NEW tests/hosted-pilot/gateway-production.mjs. Synthetic OIDC edge suite for `AUTH-05` and ID-token proof plus API non-redirect and header forgery and canary logs",
+          "description": "NEW tests/hosted-pilot/gateway-production.mjs. Synthetic OIDC edge suite for `AUTH-05` and ID-token proof plus API non-redirect and header forgery and canary logs\n\nREVIEW FAIL (code): biome-check-fails-on-canonical-native-evidence-json — TR-020, FR-012.\n  WHERE: biome.json:4-14 (flagging specs/051-hosted-aws-pilot/contracts/native-evidence-trust-anchor.json, specs/051-hosted-aws-pilot/evidence/native-evidence-envelope.json, specs/051-hosted-aws-pilot/evidence/native-evidence-envelope.sig.json)\n  EXPECTED: `pnpm lint` (`node scripts/lint.mjs`, running `biome check --files-ignore-unknown=true`) exits 0 with 0 errors while the three signed native-evidence attestation files remain exact single-line canonical JSON required by `parseAndVerifyCanonicalJson` in `tests/hosted-pilot/native-evidence/canonical-json.mjs`.\n  ACTUAL: `pnpm lint` exits 1 with 3 Biome format errors on `specs/051-hosted-aws-pilot/contracts/native-evidence-trust-anchor.json`, `specs/051-hosted-aws-pilot/evidence/native-evidence-envelope.json`, and `specs/051-hosted-aws-pilot/evidence/native-evidence-envelope.sig.json` introduced in commit `eb3dbfe2` (`Checked 566 files in 232ms. No fixes applied. Found 3 errors.`). No separate regression patch was created because `pnpm lint` directly reproduces RED without modifying any file under `CLOSED_RUNTIME_ROOTS`.\n  FIX: Do NOT format or modify the three canonical JSON files and do NOT modify or create any file under `CLOSED_RUNTIME_ROOTS` (doing so breaks `parseAndVerifyCanonicalJson`, `runtimeManifestSha256`, and the operator Ed25519 signature). Add the three exact paths (`\"specs/051-hosted-aws-pilot/contracts/native-evidence-trust-anchor.json\"`, `\"specs/051-hosted-aws-pilot/evidence/native-evidence-envelope.json\"`, `\"specs/051-hosted-aws-pilot/evidence/native-evidence-envelope.sig.json\"`) to `files.ignore` in `biome.json` (outside `CLOSED_RUNTIME_ROOTS`, alongside `\"specs/**/.gwrk/runs/*.json\"`), then confirm `pnpm lint` exits 0 and `bash specs/051-hosted-aws-pilot/gates/phase-07.sh` exits 0.\n  GATE: specs/051-hosted-aws-pilot/gates/phase-07.sh (coverage hole: passed because phase-07.sh does not run `pnpm lint`, whereas Code Review Step 4, phase-08.sh:102, and develop/main pre-commit require `pnpm lint` with 0 errors)\n  REF: plan.md Phase 7 > tests/hosted-pilot/gateway-production.mjs; biome.json; scripts/lint.mjs",
           "status": "open",
           "gateScript": "bash specs/051-hosted-aws-pilot/gates/phase-07.sh",
           "sp": 2
