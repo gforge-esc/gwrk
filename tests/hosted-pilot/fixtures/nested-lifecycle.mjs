@@ -303,6 +303,18 @@ export async function withOwnedNestedDaemon(
         currentStage = "outer_namespace_verify";
         assert.equal(running.HostConfig.PidMode, "");
         assert.equal(running.HostConfig.IpcMode, "private");
+        if (running.HostConfig.NetworkMode !== undefined) {
+          assert.equal(
+            running.HostConfig.NetworkMode,
+            "none",
+            "outer network mode must be 'none'",
+          );
+        }
+        assert.equal(
+          running.Config?.Labels?.["gwrk.fixture.run"],
+          runId,
+          "container label gwrk.fixture.run must match runId",
+        );
         assert.ok(
           Number.isSafeInteger(running.State.Pid) && running.State.Pid > 0,
         );
@@ -320,33 +332,29 @@ export async function withOwnedNestedDaemon(
         ).trim();
         assert.equal(actualNamespace, outerPidNamespace);
 
-        let hostNetNamespace;
-        let outerNetNamespace;
-        let actualNetNamespace;
-        try {
-          hostNetNamespace = readNamespaceLink("/proc/self/ns/net");
-          outerNetNamespace = readNamespaceLink(
-            `/proc/${running.State.Pid}/ns/net`,
-          );
-        } catch {
-          // If readlink for network namespace fails or is unsupported
-        }
-        if (
-          hostNetNamespace &&
-          outerNetNamespace &&
-          (hostNetNamespace.startsWith("net:") ||
-            outerNetNamespace.startsWith("net:"))
-        ) {
-          assert.notEqual(
-            outerNetNamespace,
-            hostNetNamespace,
-            "outer network namespace is shared with the host",
-          );
-          actualNetNamespace = (
-            await docker(["exec", containerId, "readlink", "/proc/self/ns/net"])
-          ).trim();
-          assert.equal(actualNetNamespace, outerNetNamespace);
-        }
+        const hostNetNamespace = readNamespaceLink("/proc/self/ns/net");
+        const outerNetNamespace = readNamespaceLink(
+          `/proc/${running.State.Pid}/ns/net`,
+        );
+        assert.ok(
+          typeof hostNetNamespace === "string" &&
+            /^net:\[[^\]]+\]$/.test(hostNetNamespace),
+          "host network namespace is not a valid net:[inode] link",
+        );
+        assert.ok(
+          typeof outerNetNamespace === "string" &&
+            /^net:\[[^\]]+\]$/.test(outerNetNamespace),
+          "outer network namespace is not a valid net:[inode] link",
+        );
+        assert.notEqual(
+          outerNetNamespace,
+          hostNetNamespace,
+          "outer network namespace is shared with the host",
+        );
+        const actualNetNamespace = (
+          await docker(["exec", containerId, "readlink", "/proc/self/ns/net"])
+        ).trim();
+        assert.equal(actualNetNamespace, outerNetNamespace);
 
         writeFile(
           `${root}/namespace-proof.json`,
@@ -356,9 +364,9 @@ export async function withOwnedNestedDaemon(
             hostPidNamespace,
             outerPidNamespace,
             actualNamespace,
-            ...(hostNetNamespace ? { hostNetNamespace } : {}),
-            ...(outerNetNamespace ? { outerNetNamespace } : {}),
-            ...(actualNetNamespace ? { actualNetNamespace } : {}),
+            hostNetNamespace,
+            outerNetNamespace,
+            actualNetNamespace,
             isolated: true,
           }),
           { mode: 0o600 },

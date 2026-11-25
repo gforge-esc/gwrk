@@ -163,7 +163,11 @@ describe("CAP-02: Network Namespace Isolation", () => {
           stdout: JSON.stringify({
             Id: id,
             Config: { Labels: { "gwrk.fixture.run": runId } },
-            HostConfig: { PidMode: "", IpcMode: "private" },
+            HostConfig: {
+              PidMode: "",
+              IpcMode: "private",
+              NetworkMode: "none",
+            },
             State: { Pid: 900 },
           }),
         };
@@ -932,6 +936,184 @@ describe("CAP-05: Scenario B Causality Verification", () => {
           unusedDialObserved: false,
         }),
       /unusedDialObserved must be true/,
+    );
+  });
+});
+
+describe("Independent Review Regressions (SYN-B01..SYN-B05)", () => {
+  test("SYN-B01: helper fails closed when iptables -C exits 4 (busy lock) instead of 1", async () => {
+    const tempDir = createTempDir("syn-gate-c-lock-");
+    const binDir = join(tempDir, "bin");
+    mkdirSync(binDir, { recursive: true });
+    const fakeCmd = join(binDir, "iptables");
+    writeFileSync(
+      fakeCmd,
+      '#!/usr/bin/env bash\nif [ "$1" = "-C" ]; then exit 4; fi\nexit 0\n',
+      { mode: 0o755 },
+    );
+    const uptime = join(tempDir, "proc-uptime");
+    writeFileSync(uptime, "100.00 0.00\n", "utf8");
+    try {
+      const proc = spawn("bash", [HELPER_SCRIPT_PATH], {
+        env: {
+          ...process.env,
+          RUN_ID: VALID_RUN_ID,
+          SYN_GATE_DIR: tempDir,
+          IPTABLES_CMD: fakeCmd,
+          PROC_UPTIME_PATH: uptime,
+          HOST_NETNS_INODE: "1",
+          OUTER_NETNS_INODE: "2",
+        },
+        stdio: ["pipe", "pipe", "pipe"],
+      });
+      const client = createSynGateClient({
+        synGateDir: tempDir,
+        runId: VALID_RUN_ID,
+        requireRootOwnership: false,
+      });
+      client.writeArmRequest({ ttlMs: 1000 });
+      for (let i = 0; i < 50; i++) {
+        if (client.readStatusSafe()?.state === SYN_GATE_STATE.ARMED) break;
+        await new Promise((r) => setTimeout(r, 20));
+      }
+      writeFileSync(uptime, "100.05 0.00\n", "utf8");
+      client.writeReleaseRequest();
+      const code = await new Promise((r) => proc.on("exit", r));
+      assert.notEqual(code, 0, "-C exit 4 must fail closed");
+      const receipt = client.readReceiptSafe();
+      assert.ok(!receipt || receipt.ruleRemovedVerified !== true);
+    } finally {
+      rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  test("SYN-B02: helper never reports ruleRemovedVerified: true when armedDurationMs > 1000", async () => {
+    const tempDir = createTempDir("syn-gate-over1000-");
+    const binDir = join(tempDir, "bin");
+    mkdirSync(binDir, { recursive: true });
+    const fakeCmd = join(binDir, "iptables");
+    const uptime = join(tempDir, "proc-uptime");
+    writeFileSync(uptime, "100.00 0.00\n", "utf8");
+    writeFileSync(
+      fakeCmd,
+      `#!/usr/bin/env bash\nif [ "$1" = "-D" ]; then printf "101.05 0.00\\n" > "${uptime}"; exit 0; fi\nif [ "$1" = "-C" ]; then exit 1; fi\nexit 0\n`,
+      { mode: 0o755 },
+    );
+    try {
+      const proc = spawn("bash", [HELPER_SCRIPT_PATH], {
+        env: {
+          ...process.env,
+          RUN_ID: VALID_RUN_ID,
+          SYN_GATE_DIR: tempDir,
+          IPTABLES_CMD: fakeCmd,
+          PROC_UPTIME_PATH: uptime,
+          HOST_NETNS_INODE: "1",
+          OUTER_NETNS_INODE: "2",
+        },
+        stdio: ["pipe", "pipe", "pipe"],
+      });
+      const client = createSynGateClient({
+        synGateDir: tempDir,
+        runId: VALID_RUN_ID,
+        requireRootOwnership: false,
+      });
+      client.writeArmRequest({ ttlMs: 1000 });
+      for (let i = 0; i < 50; i++) {
+        if (client.readStatusSafe()?.state === SYN_GATE_STATE.ARMED) break;
+        await new Promise((r) => setTimeout(r, 20));
+      }
+      writeFileSync(uptime, "101.00 0.00\n", "utf8");
+      const code = await new Promise((r) => proc.on("exit", r));
+      assert.notEqual(code, 0, "armedDurationMs > 1000 must fail closed");
+      const receipt = client.readReceiptSafe();
+      assert.ok(!receipt || receipt.ruleRemovedVerified !== true);
+    } finally {
+      rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  test("SYN-B03: helper fails closed when HOST_NETNS_INODE is omitted", () => {
+    const tempDir = createTempDir("syn-gate-nonetns-");
+    try {
+      const {
+        HOST_NETNS_INODE: _unusedHost,
+        OUTER_NETNS_INODE: _unusedOuter,
+        ...env
+      } = {
+        ...process.env,
+        RUN_ID: VALID_RUN_ID,
+        SYN_GATE_DIR: tempDir,
+      };
+      assert.throws(() =>
+        execFileSync("bash", [HELPER_SCRIPT_PATH], { env, stdio: "pipe" }),
+      );
+    } finally {
+      rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  test("SYN-B04: helper rejects symlinks and client fails closed on dangling symlink", async () => {
+    const tempDir = createTempDir("syn-gate-symlink-");
+    const outsideDir = createTempDir("syn-gate-outside-");
+    try {
+      // Client must reject dangling symlink instead of returning null
+      symlinkSync("/nonexistent/dangling", join(tempDir, "status.json"));
+      const client = createSynGateClient({
+        synGateDir: tempDir,
+        runId: VALID_RUN_ID,
+        requireRootOwnership: false,
+      });
+      assert.throws(() => client.readStatusSafe(), /symlink/i);
+      rmSync(join(tempDir, "status.json"));
+
+      // Helper must not follow status.json.next symlink
+      const victim = join(outsideDir, "victim.txt");
+      writeFileSync(victim, "ORIGINAL", "utf8");
+      symlinkSync(victim, join(tempDir, "status.json.next"));
+      const fake = createFakeIptables(tempDir);
+      const uptime = join(tempDir, "proc-uptime");
+      writeFileSync(uptime, "100.00 0.00\n", "utf8");
+      const proc = spawn("bash", [HELPER_SCRIPT_PATH], {
+        env: {
+          ...process.env,
+          RUN_ID: VALID_RUN_ID,
+          SYN_GATE_DIR: tempDir,
+          IPTABLES_CMD: fake.scriptPath,
+          PROC_UPTIME_PATH: uptime,
+          HOST_NETNS_INODE: "1",
+          OUTER_NETNS_INODE: "2",
+        },
+        stdio: ["pipe", "pipe", "pipe"],
+      });
+      client.writeArmRequest({ ttlMs: 1000 });
+      const code = await new Promise((r) => {
+        const t = setTimeout(() => {
+          proc.stdin.end("STOP\n");
+        }, 300);
+        proc.on("exit", (c) => {
+          clearTimeout(t);
+          r(c);
+        });
+      });
+      assert.notEqual(code, 0);
+      assert.equal(readFileSync(victim, "utf8"), "ORIGINAL");
+    } finally {
+      rmSync(tempDir, { recursive: true, force: true });
+      rmSync(outsideDir, { recursive: true, force: true });
+    }
+  });
+
+  test("SYN-B05: validateScenarioBCausality rejects parked flow differing from synSentOriginFlowId", () => {
+    assert.throws(() =>
+      validateScenarioBCausality({
+        synSentOriginFlowId: "flow-syn-A",
+        zeroPriorParkedFlowId: "flow-parked-B",
+        lastZeroPriorReusedFlowId: "flow-parked-B",
+        zeroPriorRequestReusedConnections: 1,
+        unusedDialObserved: true,
+        armedOriginHttpAttempts: 0,
+        armedProxyDelta: 0,
+      }),
     );
   });
 });

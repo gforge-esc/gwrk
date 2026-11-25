@@ -314,7 +314,13 @@ async function makeLiveLifecycleHarness(runId, commandOverride) {
     lstatSync: metadata,
     statSync: metadata,
     realpathSync: (v) => v,
-    readlinkSync: (p) => (p === "/proc/self/ns/pid" ? "pid:[1]" : "pid:[2]"),
+    readlinkSync: (p) => {
+      if (p === "/proc/self/ns/pid") return "pid:[1]";
+      if (p.endsWith("/ns/pid")) return "pid:[2]";
+      if (p === "/proc/self/ns/net") return "net:[10]";
+      if (p.endsWith("/ns/net")) return "net:[20]";
+      return "unknown";
+    },
     readdirSync: () => [],
     readFileSync: (p) =>
       store.has(p) ? store.get(p) : "1 0 9:1 / / rw - ext4 /dev/test rw\n",
@@ -344,15 +350,25 @@ async function makeLiveLifecycleHarness(runId, commandOverride) {
         stdout: JSON.stringify({
           Id: containerId,
           Config: { Labels: { "gwrk.fixture.run": runId } },
-          HostConfig: { PidMode: "", IpcMode: "private" },
+          HostConfig: {
+            PidMode: "",
+            IpcMode: "private",
+            NetworkMode: "none",
+          },
           State: { Pid: 900 },
         }),
         stderr: "",
       };
     }
     if (args[0] === "rm") return { code: 0, stdout: "", stderr: "" };
-    if (args.includes("readlink"))
-      return { code: 0, stdout: "pid:[2]\n", stderr: "" };
+    if (args.includes("readlink")) {
+      const target = args[args.indexOf("readlink") + 1];
+      return {
+        code: 0,
+        stdout: target?.includes("/ns/net") ? "net:[20]\n" : "pid:[2]\n",
+        stderr: "",
+      };
+    }
     if (args.includes("info")) {
       return {
         code: 0,

@@ -220,6 +220,11 @@ export function validateScenarioBCausality(observation) {
     "zeroPriorParkedFlowId is required and must be non-empty",
   );
   assert.equal(
+    observation.zeroPriorParkedFlowId,
+    observation.synSentOriginFlowId,
+    "parked flow does not match synSentOriginFlowId",
+  );
+  assert.equal(
     observation.lastZeroPriorReusedFlowId,
     observation.zeroPriorParkedFlowId,
     "reused flow does not match parked flow",
@@ -229,6 +234,20 @@ export function validateScenarioBCausality(observation) {
       observation.zeroPriorRequestReusedConnections >= 1,
     "zeroPriorRequestReusedConnections must be at least 1",
   );
+  if (observation.zeroPriorRequestParkedConnections !== undefined) {
+    assert.ok(
+      Number.isInteger(observation.zeroPriorRequestParkedConnections) &&
+        observation.zeroPriorRequestParkedConnections >= 1,
+      "zeroPriorRequestParkedConnections must be at least 1",
+    );
+  }
+  if (observation.armedHandshakeDelta !== undefined) {
+    assert.equal(
+      observation.armedHandshakeDelta,
+      0,
+      "armed handshake delta must be 0",
+    );
+  }
   assert.equal(
     observation.unusedDialObserved,
     true,

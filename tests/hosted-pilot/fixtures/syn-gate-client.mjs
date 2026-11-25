@@ -1,7 +1,6 @@
 import assert from "node:assert/strict";
 import {
   closeSync,
-  existsSync,
   fchmodSync,
   constants as fsConstants,
   fstatSync,
@@ -9,7 +8,6 @@ import {
   openSync,
   readFileSync,
   renameSync,
-  unlinkSync,
   writeSync,
 } from "node:fs";
 import { join } from "node:path";
@@ -86,11 +84,16 @@ export function readSynGateJsonSafe(
 ) {
   verifySynGateDirectory(synGateDir, { requireRootOwnership });
   const filePath = join(synGateDir, filename);
-  if (!existsSync(filePath)) {
-    return null;
+  let lst;
+  try {
+    lst = lstatSync(filePath);
+  } catch (err) {
+    if (err && err.code === "ENOENT") {
+      return null;
+    }
+    throw err;
   }
 
-  const lst = lstatSync(filePath);
   assert.equal(
     lst.isSymbolicLink(),
     false,
@@ -108,6 +111,7 @@ export function readSynGateJsonSafe(
   );
   if (requireRootOwnership) {
     assert.equal(lst.uid, 0, `${filename} must be owned by root uid 0`);
+    assert.equal(lst.gid, 0, `${filename} must be owned by root gid 0`);
   }
 
   const fd = openSync(filePath, fsConstants.O_RDONLY | fsConstants.O_NOFOLLOW);
@@ -119,9 +123,26 @@ export function readSynGateJsonSafe(
       true,
       `${filename} descriptor must be a regular file`,
     );
+    assert.equal(
+      fst.mode & 0o777,
+      0o600,
+      `${filename} descriptor must have mode 0600, got ${(fst.mode & 0o777).toString(8)}`,
+    );
     assert.equal(fst.ino, lst.ino, `${filename} identity changed during open`);
     assert.equal(fst.dev, lst.dev, `${filename} device changed during open`);
     assert.ok(fst.size <= MAX_JSON_FILE_BYTES, `${filename} exceeds bound`);
+    if (requireRootOwnership) {
+      assert.equal(
+        fst.uid,
+        0,
+        `${filename} descriptor must be owned by root uid 0`,
+      );
+      assert.equal(
+        fst.gid,
+        0,
+        `${filename} descriptor must be owned by root gid 0`,
+      );
+    }
     rawText = readFileSync(fd, "utf8");
   } finally {
     closeSync(fd);
@@ -135,7 +156,7 @@ export function createSynGateClient({
   runId,
   requireRootOwnership = true,
   wait = sleep,
-  now = Date.now,
+  now = () => performance.now(),
 }) {
   validateRunId(runId);
   verifySynGateDirectory(synGateDir, { requireRootOwnership });
@@ -151,10 +172,15 @@ export function createSynGateClient({
     return req;
   }
 
-  async function arm({ ttlMs = 1000, opId = 1, timeoutMs = 2000 } = {}) {
+  async function arm({ ttlMs = 1000, opId = 1, timeoutMs = 1000 } = {}) {
+    assert.ok(
+      timeoutMs <= 1000,
+      `timeoutMs must not exceed 1000 ms, got ${timeoutMs}`,
+    );
     writeArmRequest({ ttlMs, opId });
     const deadline = now() + timeoutMs;
     while (now() < deadline) {
+      const remaining = deadline - now();
       const status = readStatusSafe();
       if (
         status &&
@@ -163,7 +189,8 @@ export function createSynGateClient({
       ) {
         return status;
       }
-      await wait(20);
+      if (remaining <= 0) break;
+      await wait(Math.min(20, Math.max(1, remaining)));
     }
     throw new Error(`syn-gate arm timed out after ${timeoutMs} ms`);
   }
@@ -179,19 +206,29 @@ export function createSynGateClient({
     return req;
   }
 
-  async function release({ opId = 1, timeoutMs = 2000 } = {}) {
+  async function release({ opId = 1, timeoutMs = 1000 } = {}) {
+    assert.ok(
+      timeoutMs <= 1000,
+      `timeoutMs must not exceed 1000 ms, got ${timeoutMs}`,
+    );
     writeReleaseRequest({ opId });
     return pollReceipt({ timeoutMs });
   }
 
-  async function pollReceipt({ timeoutMs = 2000 } = {}) {
+  async function pollReceipt({ timeoutMs = 1000 } = {}) {
+    assert.ok(
+      timeoutMs <= 1000,
+      `timeoutMs must not exceed 1000 ms, got ${timeoutMs}`,
+    );
     const deadline = now() + timeoutMs;
     while (now() < deadline) {
+      const remaining = deadline - now();
       const receipt = readReceiptSafe();
       if (receipt) {
         return validateTimingReceipt(receipt, { expectedRunId: runId });
       }
-      await wait(20);
+      if (remaining <= 0) break;
+      await wait(Math.min(20, Math.max(1, remaining)));
     }
     throw new Error(`syn-gate receipt polling timed out after ${timeoutMs} ms`);
   }

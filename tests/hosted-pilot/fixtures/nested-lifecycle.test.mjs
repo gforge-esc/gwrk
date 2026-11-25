@@ -59,8 +59,13 @@ function fixture({
     lstatSync: metadata,
     statSync: metadata,
     realpathSync: (value) => value,
-    readlinkSync: (path) =>
-      path === "/proc/self/ns/pid" ? "pid:[1]" : "pid:[2]",
+    readlinkSync: (path) => {
+      if (path === "/proc/self/ns/pid") return "pid:[1]";
+      if (path.endsWith("/ns/pid")) return "pid:[2]";
+      if (path === "/proc/self/ns/net") return "net:[10]";
+      if (path.endsWith("/ns/net")) return "net:[20]";
+      return "ns:[unknown]";
+    },
     readdirSync: () => [],
     readFileSync: () => "1 0 9:1 / / rw - ext4 /dev/test rw\n",
     mkdirSync: (path) => events.push(["mkdir", path]),
@@ -95,12 +100,22 @@ function fixture({
         stdout: JSON.stringify({
           Id: id,
           Config: { Labels: { "gwrk.fixture.run": runId } },
-          HostConfig: { PidMode: "", IpcMode: "private" },
+          HostConfig: {
+            PidMode: "",
+            IpcMode: "private",
+            NetworkMode: "none",
+          },
           State: { Pid: 900 },
         }),
       };
     if (args[0] === "rm") return { code: 0, stdout: "" };
-    if (args.includes("readlink")) return { code: 0, stdout: "pid:[2]\n" };
+    if (args.includes("readlink"))
+      return {
+        code: 0,
+        stdout: args[args.indexOf("readlink") + 1]?.includes("/ns/net")
+          ? "net:[20]\n"
+          : "pid:[2]\n",
+      };
     if (args.includes("info"))
       return {
         code: 0,
