@@ -319,6 +319,35 @@ export async function withOwnedNestedDaemon(
           await docker(["exec", containerId, "readlink", "/proc/self/ns/pid"])
         ).trim();
         assert.equal(actualNamespace, outerPidNamespace);
+
+        let hostNetNamespace;
+        let outerNetNamespace;
+        let actualNetNamespace;
+        try {
+          hostNetNamespace = readNamespaceLink("/proc/self/ns/net");
+          outerNetNamespace = readNamespaceLink(
+            `/proc/${running.State.Pid}/ns/net`,
+          );
+        } catch {
+          // If readlink for network namespace fails or is unsupported
+        }
+        if (
+          hostNetNamespace &&
+          outerNetNamespace &&
+          (hostNetNamespace.startsWith("net:") ||
+            outerNetNamespace.startsWith("net:"))
+        ) {
+          assert.notEqual(
+            outerNetNamespace,
+            hostNetNamespace,
+            "outer network namespace is shared with the host",
+          );
+          actualNetNamespace = (
+            await docker(["exec", containerId, "readlink", "/proc/self/ns/net"])
+          ).trim();
+          assert.equal(actualNetNamespace, outerNetNamespace);
+        }
+
         writeFile(
           `${root}/namespace-proof.json`,
           JSON.stringify({
@@ -327,6 +356,9 @@ export async function withOwnedNestedDaemon(
             hostPidNamespace,
             outerPidNamespace,
             actualNamespace,
+            ...(hostNetNamespace ? { hostNetNamespace } : {}),
+            ...(outerNetNamespace ? { outerNetNamespace } : {}),
+            ...(actualNetNamespace ? { actualNetNamespace } : {}),
             isolated: true,
           }),
           { mode: 0o600 },
