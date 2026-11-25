@@ -1,6 +1,15 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
+import { EventEmitter } from "node:events";
+import { mkdtempSync, readFileSync, rmSync, statSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { PassThrough } from "node:stream";
 import { test } from "vitest";
+import {
+  createObserverProcessLifecycle,
+  executeObserverSelftest,
+} from "./bootstrap-observer.mjs";
 import { FixtureLifecycleError } from "./nested-lifecycle.mjs";
 import { FixtureProcessError } from "./process-scope.mjs";
 import {
@@ -1413,4 +1422,53 @@ test("REVIEW-NR2-03b: runNativeFixture rethrows cancellation error during timing
     }),
     (err) => err === cancelError || err.code === "cancelled",
   );
+});
+
+test("REVIEW-NR3-01: executeObserverSelftest with default writeFile writes result with mode 0o600", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "gwrk-nr3-default-writefile-test-"));
+  try {
+    const resultPath = join(dir, "observer-selftest-result.json");
+    const lifecycle = createObserverProcessLifecycle({
+      readyTimeoutMs: 500,
+      pollMs: 10,
+      termTimeoutMs: 50,
+      killTimeoutMs: 50,
+    });
+    const proc = new EventEmitter();
+    proc.stdout = new PassThrough();
+    proc.stderr = new PassThrough();
+    proc.kill = (sig) => {
+      proc.emit("exit", 0, sig);
+      proc.emit("close", 0, sig);
+    };
+
+    const { result } = await executeObserverSelftest({
+      runId: "b".repeat(24),
+      observerDir: dir,
+      proxyImageId: "sha256:proxy-id",
+      traefikImageId: "sha256:traefik-id",
+      runtimeReceiptSha256: "3".repeat(64),
+      observerLifecycle: lifecycle,
+      spawnProcess: () => proc,
+      readHealth: () => ({
+        startupSelfTestPassed: true,
+        captureStats: {
+          effectiveRcvBufBytes: 1048576,
+          ignoreOutgoingKernelEnabled: true,
+          pkttypeBpfFallbackActive: false,
+        },
+      }),
+      resultPath,
+    });
+
+    assert.equal(result.passed, true);
+    assert.equal(result.cleanStopObserved, true);
+    const written = JSON.parse(readFileSync(resultPath, "utf8"));
+    assert.equal(written.passed, true);
+    assert.equal(written.cleanStopObserved, true);
+    const stat = statSync(resultPath);
+    assert.equal(stat.mode & 0o777, 0o600);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 });

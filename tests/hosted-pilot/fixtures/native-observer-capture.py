@@ -300,9 +300,12 @@ def open_capture_socket(
     *,
     proxy_port: int = PROXY_PORT,
     origin_port: int = ORIGIN_PORT,
+    interface: str = "lo",
     socket_factory=socket.socket,
 ):
     """Open and harden AF_PACKET SOCK_DGRAM in exact Appendix 3.1 order."""
+    if not interface:
+        raise OSError(errno.ENODEV, "No such device")
     # 1. Protocol 0 queues zero packets during setup
     sock = socket_factory(AF_PACKET, SOCK_DGRAM, 0)
     try:
@@ -334,8 +337,8 @@ def open_capture_socket(
         _keepalive_arr, fprog = pack_sock_fprog(bpf_insns)
         sock.setsockopt(SOL_SOCKET, SO_ATTACH_FILTER, bytes(fprog))
 
-        # 9. Bind ETH_P_ALL on ifindex 0 ("") inside owned --network none namespace
-        sock.bind(("", ETH_P_ALL))
+        # 9. Bind ETH_P_ALL on loopback interface ("lo") inside owned --network none namespace
+        sock.bind((interface, ETH_P_ALL))
 
         # 10. Non-blocking capture mode
         sock.setblocking(False)

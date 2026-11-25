@@ -1097,6 +1097,8 @@ class FakeSocket:
         calls.append(("getsockopt", level, optname))
         return self.rcvbuf
     def bind(self, addr):
+        if not addr or not addr[0]:
+            raise OSError(errno.ENODEV, "No such device")
         calls.append(("bind", addr))
     def setblocking(self, flag):
         calls.append(("setblocking", flag))
@@ -1114,8 +1116,15 @@ assert calls[1] == ("setsockopt", mod.SOL_SOCKET, mod.SO_RCVBUF)
 assert calls[2] == ("getsockopt", mod.SOL_SOCKET, mod.SO_RCVBUF)
 assert calls[3] == ("setsockopt", mod.SOL_PACKET, mod.PACKET_IGNORE_OUTGOING)
 assert calls[4] == ("setsockopt", mod.SOL_SOCKET, mod.SO_ATTACH_FILTER)
-assert calls[5] == ("bind", ("", mod.ETH_P_ALL))
+assert calls[5] == ("bind", ("lo", mod.ETH_P_ALL))
 assert calls[6] == ("setblocking", False)
+
+# Empty interface is rejected with ENODEV
+try:
+    mod.open_capture_socket(sentinel_port, interface="", socket_factory=FakeSocket)
+    raise AssertionError("expected ENODEV on empty interface")
+except OSError as exc:
+    assert exc.errno == errno.ENODEV
 
 # Fail-closed when effective SO_RCVBUF < 524288
 class SmallBufSocket(FakeSocket):

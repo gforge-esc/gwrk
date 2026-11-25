@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
-import { writeFileSync } from "node:fs";
+import { chmodSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 import { readNativeObserverHealth } from "./raw-https.mjs";
@@ -196,6 +196,17 @@ export function createObserverProcessLifecycle({
   };
 }
 
+function defaultWriteFile(path, content, options) {
+  const normalizedOptions =
+    typeof options === "number" ? { mode: options } : options;
+  writeFileSync(path, content, normalizedOptions);
+  const targetMode =
+    typeof options === "number" ? options : (options?.mode ?? null);
+  if (typeof targetMode === "number") {
+    chmodSync(path, targetMode);
+  }
+}
+
 export async function executeObserverSelftest({
   runId,
   observerDir = "/fixture/observer",
@@ -205,7 +216,7 @@ export async function executeObserverSelftest({
   observerLifecycle,
   spawnProcess = spawn,
   readHealth = readNativeObserverHealth,
-  writeFile = writeFileSync,
+  writeFile = defaultWriteFile,
   resultPath,
   beginOperation = () => {},
 }) {
