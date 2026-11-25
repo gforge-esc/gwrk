@@ -241,6 +241,7 @@ cleanup() {
 trap cleanup EXIT TERM INT
 
 PARENT_PID="$$"
+exec 3<&0
 (
   trap 'exit 0' TERM INT
   while IFS= read -r line; do
@@ -249,8 +250,9 @@ PARENT_PID="$$"
     fi
   done
   kill -USR1 "$PARENT_PID" 2>/dev/null || true
-) <&0 >/dev/null 2>&1 &
+) <&3 3<&- >/dev/null 2>&1 &
 STDIN_WATCHER_PID=$!
+exec 3<&-
 
 START_WALL_SEC="$(date +%s)"
 

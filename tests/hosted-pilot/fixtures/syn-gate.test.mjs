@@ -1995,53 +1995,97 @@ describe("Scenario B Driver-to-Helper and Controller Integration", () => {
     assert.equal(nativeResult.synGateReceipt.ruleRemovedVerified, true);
   });
 
-  test("helper under POSIX sh drains cleanly on stdin STOP and on stdin EOF while idle or after arming on open pipe", async () => {
-    for (const drainMode of ["STOP", "EOF"]) {
-      const tempDir = createTempDir(`syn-gate-sh-drain-${drainMode}-`);
-      const fake = createFakeIptables(tempDir);
-      const uptime = join(tempDir, "proc-uptime");
-      writeFileSync(uptime, "100.00 0.00\n", "utf8");
-      try {
-        const helperProc = spawn("sh", [HELPER_SCRIPT_PATH], {
-          env: {
-            ...process.env,
-            RUN_ID: VALID_RUN_ID,
-            CONTAINER_LABEL: `gwrk.fixture.run=${VALID_RUN_ID}`,
-            SYN_GATE_DIR: tempDir,
-            IPTABLES_CMD: fake.scriptPath,
-            PROC_UPTIME_PATH: uptime,
-            HOST_NETNS_INODE: "1",
-            OUTER_NETNS_INODE: "2",
-          },
-          stdio: ["pipe", "pipe", "pipe"],
-        });
-        const readStderr = attachStderrCapture(helperProc);
-        const exitPromise = new Promise((resolve) => {
-          helperProc.once("exit", (code) => resolve(code));
-        });
+  test("helper under POSIX sh and dash drains cleanly on stdin STOP and on stdin EOF while idle or after arming on open pipe", async () => {
+    const shells = ["sh"];
+    if (existsSync("/bin/dash")) {
+      shells.push("/bin/dash");
+    }
+    for (const shellBin of shells) {
+      for (const drainMode of ["STOP", "EOF"]) {
+        const tempDir = createTempDir(`syn-gate-sh-drain-${drainMode}-`);
+        const fake = createFakeIptables(tempDir);
+        const uptime = join(tempDir, "proc-uptime");
+        writeFileSync(uptime, "100.00 0.00\n", "utf8");
+        try {
+          const helperProc = spawn(shellBin, [HELPER_SCRIPT_PATH], {
+            env: {
+              ...process.env,
+              RUN_ID: VALID_RUN_ID,
+              CONTAINER_LABEL: `gwrk.fixture.run=${VALID_RUN_ID}`,
+              SYN_GATE_DIR: tempDir,
+              IPTABLES_CMD: fake.scriptPath,
+              PROC_UPTIME_PATH: uptime,
+              HOST_NETNS_INODE: "1",
+              OUTER_NETNS_INODE: "2",
+            },
+            stdio: ["pipe", "pipe", "pipe"],
+          });
+          const readStderr = attachStderrCapture(helperProc);
+          const exitPromise = new Promise((resolve) => {
+            helperProc.once("exit", (code) => resolve(code));
+          });
 
-        await new Promise((r) => setTimeout(r, 80));
-        if (drainMode === "STOP") {
-          helperProc.stdin.write("STOP\n");
-          helperProc.stdin.end();
-        } else {
-          helperProc.stdin.end();
-        }
+          await new Promise((r) => setTimeout(r, 80));
+          assert.equal(
+            helperProc.exitCode,
+            null,
+            `helper under ${shellBin} must stay alive while stdin pipe is open and idle`,
+          );
 
-        const exitCode = await Promise.race([
-          exitPromise,
-          new Promise((resolve) => setTimeout(() => resolve("timeout"), 1500)),
-        ]);
-        if (exitCode === "timeout") {
-          helperProc.kill("SIGKILL");
+          const client = createSynGateClient({
+            synGateDir: tempDir,
+            runId: VALID_RUN_ID,
+            requireRootOwnership: false,
+          });
+          client.writeArmRequest({ ttlMs: 1000 });
+          let armed = false;
+          for (let i = 0; i < 40; i++) {
+            if (client.readStatusSafe()?.state === SYN_GATE_STATE.ARMED) {
+              armed = true;
+              break;
+            }
+            await new Promise((r) => setTimeout(r, 15));
+          }
+          assert.equal(
+            armed,
+            true,
+            `helper under ${shellBin} must arm while stdin pipe remains open (stderr=${readStderr()})`,
+          );
+          assert.equal(
+            helperProc.exitCode,
+            null,
+            `helper under ${shellBin} must remain running while armed before ${drainMode}`,
+          );
+
+          if (drainMode === "STOP") {
+            helperProc.stdin.write("STOP\n");
+          } else {
+            helperProc.stdin.end();
+          }
+
+          const exitCode = await Promise.race([
+            exitPromise,
+            new Promise((resolve) =>
+              setTimeout(() => resolve("timeout"), 1500),
+            ),
+          ]);
+          if (exitCode === "timeout") {
+            helperProc.kill("SIGKILL");
+          }
+          assert.equal(
+            exitCode,
+            0,
+            `${shellBin} helper must drain cleanly on ${drainMode} (stderr=${readStderr()})`,
+          );
+          const log = readFileSync(fake.logPath, "utf8");
+          assert.match(
+            log,
+            /-D INPUT/,
+            `${shellBin} helper must remove installed rule during ${drainMode} cleanup`,
+          );
+        } finally {
+          rmSync(tempDir, { recursive: true, force: true });
         }
-        assert.equal(
-          exitCode,
-          0,
-          `POSIX sh helper must drain cleanly on ${drainMode} (stderr=${readStderr()})`,
-        );
-      } finally {
-        rmSync(tempDir, { recursive: true, force: true });
       }
     }
   });
