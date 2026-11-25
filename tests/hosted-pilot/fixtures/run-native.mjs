@@ -22,6 +22,7 @@ import {
   withOwnedNestedDaemon,
 } from "./nested-lifecycle.mjs";
 import { FixtureProcessError } from "./process-scope.mjs";
+import { RESOURCE_LIMITS } from "./runtime-policy.mjs";
 import { PILOT_CASE_INVENTORY } from "./scenario-b-driver.mjs";
 import { validateTimingReceipt } from "./syn-gate-policy.mjs";
 
@@ -464,7 +465,10 @@ export async function runNativeFixture({
             "node",
             "/input/fixtures/bootstrap.mjs",
           );
-          result = await spawnDocker(controllerArgs, 360_000);
+          result = await spawnDocker(
+            controllerArgs,
+            RESOURCE_LIMITS.suiteSeconds * 1000,
+          );
         } finally {
           if (helperAbortHandler && signal) {
             signal.removeEventListener?.("abort", helperAbortHandler);
