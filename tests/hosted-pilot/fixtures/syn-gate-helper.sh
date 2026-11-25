@@ -234,30 +234,39 @@ while true; do
 
       # Validate arm.json with strict anchored full-string validator
       REQ_TTL_RAW="$(awk -v expected_run_id="$RUN_ID" '
-BEGIN { content = "" }
-{ content = content $0 "\n" }
+BEGIN { raw = "" }
+{ raw = raw (NR > 1 ? "\n" : "") $0 }
 END {
-  raw = content
-  gsub(/^[[:space:]]+|[[:space:]]+$/, "", raw)
-  if (raw !~ /^\{.*\}$/) { exit 1 }
-  stripped = raw
-  gsub(/[[:space:]]+/, "", stripped)
-  if (stripped !~ /^\{.*\}$/) { exit 1 }
-  inner = substr(stripped, 2, length(stripped) - 2)
-  n = split(inner, pairs, ",")
+  if (raw !~ /^[[:space:]]*\{/ || raw !~ /\}[[:space:]]*$/) { exit 1 }
+  body = raw
+  sub(/^[[:space:]]*\{[[:space:]]*/, "", body)
+  sub(/[[:space:]]*\}[[:space:]]*$/, "", body)
+  n = split(body, parts, /,/)
   if (n != 4) { exit 1 }
   has_version = 0; has_run_id = 0; has_op_id = 0; has_ttl = 0; ttl_val = 0
   for (i = 1; i <= n; i++) {
-    pair = pairs[i]
-    if (pair == "\"version\":1") has_version++
-    else if (pair == ("\"runId\":\"" expected_run_id "\"")) has_run_id++
-    else if (pair == "\"opId\":1") has_op_id++
-    else if (pair ~ /^"ttlMs":[1-9][0-9]*$/) {
-      has_ttl++
-      split(pair, p, ":")
-      ttl_val = p[2] + 0
+    p = parts[i]
+    sub(/^[[:space:]]+/, "", p)
+    sub(/[[:space:]]+$/, "", p)
+    if (p ~ /^"version"[[:space:]]*:[[:space:]]*1$/) {
+      if (has_version++ != 0) exit 1
+    } else if (p ~ /^"opId"[[:space:]]*:[[:space:]]*1$/) {
+      if (has_op_id++ != 0) exit 1
+    } else if (p ~ /^"runId"[[:space:]]*:[[:space:]]*"[^"[:space:]\\]+"$/) {
+      if (has_run_id++ != 0) exit 1
+      val = p
+      sub(/^"runId"[[:space:]]*:[[:space:]]*"/, "", val)
+      sub(/"$/, "", val)
+      if (val != expected_run_id) exit 1
+    } else if (p ~ /^"ttlMs"[[:space:]]*:[[:space:]]*[1-9][0-9]*$/) {
+      if (has_ttl++ != 0) exit 1
+      val = p
+      sub(/^"ttlMs"[[:space:]]*:[[:space:]]*/, "", val)
+      ttl_val = val + 0
       if (ttl_val < 1 || ttl_val > 1000) exit 1
-    } else exit 1
+    } else {
+      exit 1
+    }
   }
   if (has_version != 1 || has_run_id != 1 || has_op_id != 1 || has_ttl != 1) exit 1
   print ttl_val
@@ -340,26 +349,35 @@ EOF
 
       # Validate release.json with strict anchored full-string validator
       if ! awk -v expected_run_id="$RUN_ID" '
-BEGIN { content = "" }
-{ content = content $0 "\n" }
+BEGIN { raw = "" }
+{ raw = raw (NR > 1 ? "\n" : "") $0 }
 END {
-  raw = content
-  gsub(/^[[:space:]]+|[[:space:]]+$/, "", raw)
-  if (raw !~ /^\{.*\}$/) { exit 1 }
-  stripped = raw
-  gsub(/[[:space:]]+/, "", stripped)
-  if (stripped !~ /^\{.*\}$/) { exit 1 }
-  inner = substr(stripped, 2, length(stripped) - 2)
-  n = split(inner, pairs, ",")
+  if (raw !~ /^[[:space:]]*\{/ || raw !~ /\}[[:space:]]*$/) { exit 1 }
+  body = raw
+  sub(/^[[:space:]]*\{[[:space:]]*/, "", body)
+  sub(/[[:space:]]*\}[[:space:]]*$/, "", body)
+  n = split(body, parts, /,/)
   if (n != 4) { exit 1 }
   has_version = 0; has_run_id = 0; has_op_id = 0; has_action = 0
   for (i = 1; i <= n; i++) {
-    pair = pairs[i]
-    if (pair == "\"version\":1") has_version++
-    else if (pair == ("\"runId\":\"" expected_run_id "\"")) has_run_id++
-    else if (pair == "\"opId\":1") has_op_id++
-    else if (pair == "\"action\":\"release\"") has_action++
-    else exit 1
+    p = parts[i]
+    sub(/^[[:space:]]+/, "", p)
+    sub(/[[:space:]]+$/, "", p)
+    if (p ~ /^"version"[[:space:]]*:[[:space:]]*1$/) {
+      if (has_version++ != 0) exit 1
+    } else if (p ~ /^"opId"[[:space:]]*:[[:space:]]*1$/) {
+      if (has_op_id++ != 0) exit 1
+    } else if (p ~ /^"runId"[[:space:]]*:[[:space:]]*"[^"[:space:]\\]+"$/) {
+      if (has_run_id++ != 0) exit 1
+      val = p
+      sub(/^"runId"[[:space:]]*:[[:space:]]*"/, "", val)
+      sub(/"$/, "", val)
+      if (val != expected_run_id) exit 1
+    } else if (p ~ /^"action"[[:space:]]*:[[:space:]]*"release"$/) {
+      if (has_action++ != 0) exit 1
+    } else {
+      exit 1
+    }
   }
   if (has_version != 1 || has_run_id != 1 || has_op_id != 1 || has_action != 1) exit 1
   exit 0

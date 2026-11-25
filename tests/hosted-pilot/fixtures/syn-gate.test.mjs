@@ -1349,4 +1349,244 @@ describe("Independent Review 2 Regressions (SYN-R2-01..SYN-R2-04)", () => {
       rmSync(tempDir, { recursive: true, force: true });
     }
   });
+
+  test("SYN-R3-01: helper rejects arm.json with embedded spaces inside keys or values and never arms", async () => {
+    const tempDir = createTempDir("syn-gate-arm-spaces-");
+    const fake = createFakeIptables(tempDir);
+    const uptime = join(tempDir, "proc-uptime");
+    writeFileSync(uptime, "100.00 0.00\n", "utf8");
+    try {
+      const proc = spawn("bash", [HELPER_SCRIPT_PATH], {
+        env: {
+          ...process.env,
+          RUN_ID: VALID_RUN_ID,
+          CONTAINER_LABEL: `gwrk.fixture.run=${VALID_RUN_ID}`,
+          SYN_GATE_DIR: tempDir,
+          IPTABLES_CMD: fake.scriptPath,
+          PROC_UPTIME_PATH: uptime,
+          HOST_NETNS_INODE: "1",
+          OUTER_NETNS_INODE: "2",
+        },
+        stdio: ["pipe", "pipe", "pipe"],
+      });
+      const invalidArm = `{"ver sion": 1, "run Id": "0123 456789abcdef01234567", "op Id": 1, "ttl Ms": 5 0 0}\n`;
+      writeFileSync(join(tempDir, "arm.json"), invalidArm, { mode: 0o600 });
+
+      const code = await new Promise((r) => {
+        const timer = setTimeout(() => {
+          proc.stdin.end("STOP\n");
+        }, 500);
+        proc.on("exit", (c) => {
+          clearTimeout(timer);
+          r(c);
+        });
+      });
+      assert.notEqual(
+        code,
+        0,
+        "arm.json with embedded spaces must exit non-zero",
+      );
+      const client = createSynGateClient({
+        synGateDir: tempDir,
+        runId: VALID_RUN_ID,
+        requireRootOwnership: false,
+      });
+      const status = client.readStatusSafe();
+      assert.ok(
+        !status || status.state !== SYN_GATE_STATE.ARMED,
+        "must not arm on arm.json with embedded spaces",
+      );
+    } finally {
+      rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  test("SYN-R3-01: helper rejects arm.json with embedded newline inside string or number and never arms", async () => {
+    const tempDir = createTempDir("syn-gate-arm-newline-");
+    const fake = createFakeIptables(tempDir);
+    const uptime = join(tempDir, "proc-uptime");
+    writeFileSync(uptime, "100.00 0.00\n", "utf8");
+    try {
+      const proc = spawn("bash", [HELPER_SCRIPT_PATH], {
+        env: {
+          ...process.env,
+          RUN_ID: VALID_RUN_ID,
+          CONTAINER_LABEL: `gwrk.fixture.run=${VALID_RUN_ID}`,
+          SYN_GATE_DIR: tempDir,
+          IPTABLES_CMD: fake.scriptPath,
+          PROC_UPTIME_PATH: uptime,
+          HOST_NETNS_INODE: "1",
+          OUTER_NETNS_INODE: "2",
+        },
+        stdio: ["pipe", "pipe", "pipe"],
+      });
+      const invalidArm = `{"version": 1, "runId": "0123\n456789abcdef01234567", "opId": 1, "ttlMs": 5\n00}\n`;
+      writeFileSync(join(tempDir, "arm.json"), invalidArm, { mode: 0o600 });
+
+      const code = await new Promise((r) => {
+        const timer = setTimeout(() => {
+          proc.stdin.end("STOP\n");
+        }, 500);
+        proc.on("exit", (c) => {
+          clearTimeout(timer);
+          r(c);
+        });
+      });
+      assert.notEqual(
+        code,
+        0,
+        "arm.json with embedded newline must exit non-zero",
+      );
+      const client = createSynGateClient({
+        synGateDir: tempDir,
+        runId: VALID_RUN_ID,
+        requireRootOwnership: false,
+      });
+      const status = client.readStatusSafe();
+      assert.ok(
+        !status || status.state !== SYN_GATE_STATE.ARMED,
+        "must not arm on arm.json with embedded newline",
+      );
+    } finally {
+      rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  test("SYN-R3-01: helper rejects release.json with malformed text or embedded spaces fail-closed", async () => {
+    // Subcase A: embedded spaces in release.json
+    {
+      const tempDir = createTempDir("syn-gate-rel-spaces-");
+      const fake = createFakeIptables(tempDir);
+      const uptime = join(tempDir, "proc-uptime");
+      writeFileSync(uptime, "100.00 0.00\n", "utf8");
+      try {
+        const proc = spawn("bash", [HELPER_SCRIPT_PATH], {
+          env: {
+            ...process.env,
+            RUN_ID: VALID_RUN_ID,
+            CONTAINER_LABEL: `gwrk.fixture.run=${VALID_RUN_ID}`,
+            SYN_GATE_DIR: tempDir,
+            IPTABLES_CMD: fake.scriptPath,
+            PROC_UPTIME_PATH: uptime,
+            HOST_NETNS_INODE: "1",
+            OUTER_NETNS_INODE: "2",
+          },
+          stdio: ["pipe", "pipe", "pipe"],
+        });
+        const client = createSynGateClient({
+          synGateDir: tempDir,
+          runId: VALID_RUN_ID,
+          requireRootOwnership: false,
+        });
+        client.writeArmRequest({ ttlMs: 1000 });
+        let armed = false;
+        for (let i = 0; i < 50; i++) {
+          const st = client.readStatusSafe();
+          if (st && st.state === SYN_GATE_STATE.ARMED) {
+            armed = true;
+            break;
+          }
+          await new Promise((r) => setTimeout(r, 20));
+        }
+        assert.ok(armed, "helper failed to reach ARMED state");
+
+        // Write release.json with embedded spaces
+        writeFileSync(
+          join(tempDir, "release.json"),
+          `{"ver sion": 1, "runId": "0123 456789abcdef01234567", "opId": 1, "ac tion": "re lease"}\n`,
+          { mode: 0o600 },
+        );
+
+        const code = await new Promise((r) => {
+          const timer = setTimeout(() => {
+            proc.stdin.end("STOP\n");
+          }, 500);
+          proc.on("exit", (c) => {
+            clearTimeout(timer);
+            r(c);
+          });
+        });
+        assert.notEqual(
+          code,
+          0,
+          "release.json with embedded spaces must exit non-zero fail-closed",
+        );
+        const receipt = client.readReceiptSafe();
+        assert.ok(
+          !receipt || receipt.state !== SYN_GATE_STATE.RELEASED,
+          "must not release on release.json with embedded spaces",
+        );
+      } finally {
+        rmSync(tempDir, { recursive: true, force: true });
+      }
+    }
+
+    // Subcase B: malformed text wrapper NOT_JSON {...} GARBAGE in release.json
+    {
+      const tempDir = createTempDir("syn-gate-rel-garbage-");
+      const fake = createFakeIptables(tempDir);
+      const uptime = join(tempDir, "proc-uptime");
+      writeFileSync(uptime, "100.00 0.00\n", "utf8");
+      try {
+        const proc = spawn("bash", [HELPER_SCRIPT_PATH], {
+          env: {
+            ...process.env,
+            RUN_ID: VALID_RUN_ID,
+            CONTAINER_LABEL: `gwrk.fixture.run=${VALID_RUN_ID}`,
+            SYN_GATE_DIR: tempDir,
+            IPTABLES_CMD: fake.scriptPath,
+            PROC_UPTIME_PATH: uptime,
+            HOST_NETNS_INODE: "1",
+            OUTER_NETNS_INODE: "2",
+          },
+          stdio: ["pipe", "pipe", "pipe"],
+        });
+        const client = createSynGateClient({
+          synGateDir: tempDir,
+          runId: VALID_RUN_ID,
+          requireRootOwnership: false,
+        });
+        client.writeArmRequest({ ttlMs: 1000 });
+        let armed = false;
+        for (let i = 0; i < 50; i++) {
+          const st = client.readStatusSafe();
+          if (st && st.state === SYN_GATE_STATE.ARMED) {
+            armed = true;
+            break;
+          }
+          await new Promise((r) => setTimeout(r, 20));
+        }
+        assert.ok(armed, "helper failed to reach ARMED state");
+
+        // Write release.json with NOT_JSON wrapper
+        writeFileSync(
+          join(tempDir, "release.json"),
+          `NOT_JSON {"version": 1, "runId": "${VALID_RUN_ID}", "opId": 1, "action": "release"} GARBAGE\n`,
+          { mode: 0o600 },
+        );
+
+        const code = await new Promise((r) => {
+          const timer = setTimeout(() => {
+            proc.stdin.end("STOP\n");
+          }, 500);
+          proc.on("exit", (c) => {
+            clearTimeout(timer);
+            r(c);
+          });
+        });
+        assert.notEqual(
+          code,
+          0,
+          "release.json with malformed wrapper must exit non-zero fail-closed",
+        );
+        const receipt = client.readReceiptSafe();
+        assert.ok(
+          !receipt || receipt.state !== SYN_GATE_STATE.RELEASED,
+          "must not release on release.json with malformed wrapper",
+        );
+      } finally {
+        rmSync(tempDir, { recursive: true, force: true });
+      }
+    }
+  });
 });
