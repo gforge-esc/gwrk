@@ -29,6 +29,7 @@ import {
 } from "../../src/adapters/server/instance-lock.js";
 import {
   createLedgerBackup,
+  readAppliedMigrations,
   resolveRestoreTarget,
   restoreLedgerBackup,
   verifyLedgerAgainstBackup,
@@ -37,6 +38,8 @@ import {
 
 import { readRepositoryEvidence } from "../../src/adapters/release/repository-evidence.js";
 import { restoreOfflineLedger } from "../../src/application/release/backup-restore.js";
+import { openDatabase } from "../../src/db/index.js";
+import { evaluateRollbackCompatibility } from "../../src/domain/release-packaging.js";
 import { writePid } from "../../src/server/pid.js";
 
 vi.mock("node:fs/promises", async (importOriginal) => {
@@ -2107,5 +2110,236 @@ describe("ledger backup", () => {
     } finally {
       db.close();
     }
+  });
+
+  it("FR-017: backup and clean restore preserve migration 020 tables while rollback-check blocks downgrade", async () => {
+    const activeDir = join(root, "fr017-state");
+    await mkdir(activeDir, { recursive: true });
+    const ledgerPath = join(activeDir, "gwrk.db");
+
+    const db = openDatabase({ dbPath: ledgerPath });
+    try {
+      db.prepare("INSERT INTO projects (id, name, path) VALUES (?, ?, ?)").run(
+        "pilot-project",
+        "pilot-project",
+        root,
+      );
+      db.prepare(
+        "INSERT INTO runs (id, project_id, feature_id, command, finished_at, exit_code) VALUES (?, ?, ?, ?, ?, ?)",
+      ).run(
+        101,
+        "pilot-project",
+        "051-hosted-aws-pilot",
+        "ship",
+        "2026-11-24T12:00:00.000Z",
+        0,
+      );
+      db.prepare(
+        "INSERT INTO history (id, project_id, feature_id, metadata) VALUES (?, ?, ?, ?)",
+      ).run(
+        101,
+        "pilot-project",
+        "051-hosted-aws-pilot",
+        '{"status":"completed"}',
+      );
+
+      db.prepare(
+        `INSERT INTO project_role_bindings (project_id, principal_type, principal_id, role, created_at)
+         VALUES (?, ?, ?, ?, ?)`,
+      ).run(
+        "pilot-project",
+        "google_sub",
+        "google-user-sub-001",
+        "operator",
+        "2026-11-24T12:00:00.000Z",
+      );
+
+      db.prepare(
+        `INSERT INTO api_credentials (
+           credential_id, verifier_sha256, label, issuer, audience_origin,
+           created_at, expires_at, revoked_at, revoked_reason, rotated_from_id, overlap_until
+         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      ).run(
+        "gwrk_v1.cred-pilot-01",
+        "1111222233334444555566667777888899990000aaaabbbbccccddddeeeeffff",
+        "pilot-service-key",
+        "https://accounts.google.com:google-user-sub-001",
+        "https://gwrk.gforge.ai",
+        "2026-11-24T12:00:00.000Z",
+        "2026-12-24T12:00:00.000Z",
+        null,
+        null,
+        null,
+        null,
+      );
+
+      db.prepare(
+        `INSERT INTO google_sessions (
+           token_digest_sha256, principal_id, issued_at, expires_at, session_cap_at, revoked_at, revoked_reason
+         ) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      ).run(
+        "aaaabbbbccccddddeeeeffff1111222233334444555566667777888899990000",
+        "google-user-sub-001",
+        "2026-11-24T12:00:00.000Z",
+        "2026-11-24T13:00:00.000Z",
+        "2026-11-24T13:00:00.000Z",
+        "2026-11-24T12:30:00.000Z",
+        "user_logout",
+      );
+
+      db.prepare(
+        `INSERT INTO auth_audit_events (
+           occurred_at, event_type, outcome, principal_type, principal_id,
+           credential_id, request_id, detail_code, metadata_json
+         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      ).run(
+        "2026-11-24T12:30:00.000Z",
+        "session_revoked",
+        "allowed",
+        "google_sub",
+        "google-user-sub-001",
+        null,
+        "req-auth-audit-001",
+        "user_logout",
+        '{"reason":"operator sign-out"}',
+      );
+
+      db.prepare(
+        `INSERT INTO dispatch_operations (
+           operation_id, project_id, work_key, feature_id, phase_id,
+           task_ids_json, backend, branch_name, trunk_branch, recipient_json,
+           status, created_at, updated_at, completed_at
+         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      ).run(
+        "op-dispatch-receipt-001",
+        "pilot-project",
+        "wk-phase-08",
+        "051-hosted-aws-pilot",
+        "phase-08",
+        '["T021"]',
+        "fixture",
+        "feat/051-pilot",
+        "main",
+        '{"channel":"#pilot","ts":"1700000000.000100"}',
+        "completed",
+        "2026-11-24T12:00:00.000Z",
+        "2026-11-24T12:10:00.000Z",
+        "2026-11-24T12:10:00.000Z",
+      );
+    } finally {
+      db.close();
+    }
+
+    const backupDir = join(root, "fr017-backup");
+    await createLedgerBackup({
+      dbPath: ledgerPath,
+      destination: backupDir,
+      createdAt: "2026-11-24T12:15:00.000Z",
+      gwrkVersion: "1.6.0-beta.1",
+      collectDevice: () => null,
+      collectRepositories: () => [],
+    });
+
+    const restoredDir = join(root, "fr017-restored");
+    await mkdir(restoredDir);
+    await restoreLedgerBackup({
+      source: backupDir,
+      stateDirectory: restoredDir,
+      force: false,
+    });
+
+    const restoredLedger = join(restoredDir, "gwrk.db");
+    const restored = new Database(restoredLedger, { readonly: true });
+    try {
+      const creds = restored
+        .prepare("SELECT * FROM api_credentials WHERE credential_id = ?")
+        .get("gwrk_v1.cred-pilot-01") as Record<string, unknown>;
+      expect(creds).toBeDefined();
+      expect(creds.verifier_sha256).toBe(
+        "1111222233334444555566667777888899990000aaaabbbbccccddddeeeeffff",
+      );
+      expect(creds.label).toBe("pilot-service-key");
+      expect(creds.audience_origin).toBe("https://gwrk.gforge.ai");
+      expect(creds.revoked_at).toBeNull();
+
+      const session = restored
+        .prepare("SELECT * FROM google_sessions WHERE token_digest_sha256 = ?")
+        .get(
+          "aaaabbbbccccddddeeeeffff1111222233334444555566667777888899990000",
+        ) as Record<string, unknown>;
+      expect(session).toBeDefined();
+      expect(session.principal_id).toBe("google-user-sub-001");
+      expect(session.revoked_at).toBe("2026-11-24T12:30:00.000Z");
+      expect(session.revoked_reason).toBe("user_logout");
+
+      const audit = restored
+        .prepare("SELECT * FROM auth_audit_events WHERE request_id = ?")
+        .get("req-auth-audit-001") as Record<string, unknown>;
+      expect(audit).toBeDefined();
+      expect(audit.event_type).toBe("session_revoked");
+      expect(audit.outcome).toBe("allowed");
+      expect(audit.principal_id).toBe("google-user-sub-001");
+
+      const role = restored
+        .prepare(
+          "SELECT * FROM project_role_bindings WHERE project_id = ? AND principal_id = ?",
+        )
+        .get("pilot-project", "google-user-sub-001") as Record<string, unknown>;
+      expect(role).toBeDefined();
+      expect(role.role).toBe("operator");
+
+      const op = restored
+        .prepare("SELECT * FROM dispatch_operations WHERE operation_id = ?")
+        .get("op-dispatch-receipt-001") as Record<string, unknown>;
+      expect(op).toBeDefined();
+      expect(op.status).toBe("completed");
+      expect(op.recipient_json).toBe(
+        '{"channel":"#pilot","ts":"1700000000.000100"}',
+      );
+    } finally {
+      restored.close();
+    }
+
+    const applied = readAppliedMigrations(restoredLedger);
+    expect(applied.some((m) => m.name === "020-production-auth.sql")).toBe(
+      true,
+    );
+
+    const currentManifest = {
+      version: "1.6.0",
+      lockfileSha256: "test-lockfile-digest",
+      plugins: [],
+      migrations: applied.map(({ name, sha256 }) => ({
+        name,
+        sha256: sha256 ?? "legacy-digest",
+      })),
+      cli: { entrypoint: "dist/cli.js", sha256: "cli-sha" },
+      runtime: { node: "22", platform: process.platform, arch: process.arch },
+    };
+
+    const targetManifestWithout020 = {
+      version: "1.5.0",
+      lockfileSha256: "test-lockfile-digest",
+      plugins: [],
+      migrations: applied
+        .filter(({ name }) => name !== "020-production-auth.sql")
+        .map(({ name, sha256 }) => ({
+          name,
+          sha256: sha256 ?? "legacy-digest",
+        })),
+      cli: { entrypoint: "dist/cli.js", sha256: "cli-sha" },
+      runtime: { node: "22", platform: process.platform, arch: process.arch },
+    };
+
+    const rollbackCheck = evaluateRollbackCompatibility(
+      applied.map((m) => m.name),
+      currentManifest as any,
+      targetManifestWithout020 as any,
+      { migrations: applied },
+    );
+    expect(rollbackCheck.allowed).toBe(false);
+    expect(rollbackCheck.blockingMigrations).toContain(
+      "020-production-auth.sql",
+    );
   });
 });

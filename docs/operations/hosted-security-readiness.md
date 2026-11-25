@@ -70,6 +70,25 @@ Inbound API credentials need issuance and project scope. They also need expiry a
 
 The server enables request logging. This source does not configure a gateway-level rate limiter or explicit credential redaction policy. The pilot must test its complete logging path with synthetic secret values. It must also test bounded requests and per-credential abuse controls. [Server construction](https://github.com/gforge-esc/gwrk/blob/07cb062a4101fb0004be499ee51766693addca22/src/server/index.ts#L320)
 
+## Implemented feature 051 security controls
+
+Feature 051 replaces baseline gaps with explicit authentication and gateway controls.
+
+| Control area | Baseline behavior at 07cb062a | Implemented feature 051 behavior |
+|---|---|---|
+| Liveness endpoint | Unprotected detailed `/health` | Private minimal `GET /health` with zero project leaks |
+| Readiness endpoint | Unprotected detailed `/api/health` | Authenticated scoped `GET /api/health` filtered to project |
+| Remote status probes | Unprotected remote status checks | Origin-bound HTTPS status flags rejecting redirects |
+| Browser authentication | Nginx proof only | Google OIDC with PKCE and session cap |
+| Account allowlist | Static proof configuration | Live allowlist reload on every browser authentication |
+| Revocation | Absent | Immediate token digest and API key revocation |
+| API credentials | Local CLI token binding only | Opaque project-scoped keys with SHA-256 verifiers |
+| Key rotation | Absent | Atomic key rotation with overlap interval |
+| Gateway TLS | ACME proof bootstrap | Preissued certificates with preflight validation |
+| Local compatibility | Ambient dev environment | Preserved local workflows without auth configuration |
+| Initialization | Ambient config discovery | Zero inference calls and zero secret reads on init |
+| Live acceptance | Unspecified | Operator-only live gate with restricted ingress |
+
 ## Required exposure acceptance
 
 | Test group | Required evidence | Owner |

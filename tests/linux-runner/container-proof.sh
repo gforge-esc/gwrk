@@ -26,8 +26,15 @@ export GWRK_RELEASE_ROOT=/opt/gwrk GWRK_SECRETS_DIR=/etc/gwrk/secrets
 export GWRK_LISTEN_HOST=127.0.0.1 GWRK_LISTEN_PORT=18790 GWRK_SLACK_ENABLED=0
 export GWRK_PILOT_REPO=/var/lib/gwrk/repos/pilot GWRK_PILOT_REPO_URL=https://github.com/fixture/pilot.git
 export GWRK_APPROVED_AGENT=fixture GWRK_AGENT_PROBE=/fixture-bin/agent-probe
+export GWRK_AUTH_MODE=hosted
+export GWRK_AUTH_PUBLIC_ORIGIN=https://gwrk.gforge.ai
+export GWRK_AUTH_GOOGLE_CLIENT_ID=pilot-client-id.apps.googleusercontent.com
+export GWRK_AUTH_GOOGLE_ALLOWLIST_FILE=/etc/gwrk/secrets/google-account-allowlist
+export GWRK_AUTH_CSRF_HMAC_FILE=/etc/gwrk/secrets/csrf-hmac-key
 printf '%s\n' fixture-git-token > /etc/gwrk/secrets/pilot-git-credential
 printf '%s\n' fixture-agent-token > /etc/gwrk/secrets/agent-credential
+printf '%s\n' runner-fixture@example.invalid > /etc/gwrk/secrets/google-account-allowlist
+node -e 'process.stdout.write(require("node:crypto").randomBytes(32).toString("base64url"))' > /etc/gwrk/secrets/csrf-hmac-key
 chgrp gwrk /etc/gwrk/secrets/*
 chmod 0640 /etc/gwrk/secrets/*
 
@@ -179,6 +186,14 @@ expect_rejection() {
   fi
 }
 expect_rejection 'Telegram variables' runuser -u gwrk -- env TELEGRAM_BOT_TOKEN=fixture bash "$preflight"
+expect_rejection 'Set GWRK_AUTH_MODE' runuser -u gwrk -- env -u GWRK_AUTH_MODE bash "$preflight"
+expect_rejection 'GWRK_AUTH_MODE must be hosted' runuser -u gwrk -- env GWRK_AUTH_MODE=invalid bash "$preflight"
+chmod 0644 /etc/gwrk/secrets/google-account-allowlist
+expect_rejection 'Auth file must have mode 0640' runuser -u gwrk -- bash "$preflight"
+chmod 0640 /etc/gwrk/secrets/google-account-allowlist
+chmod 0644 /etc/gwrk/secrets/csrf-hmac-key
+expect_rejection 'Auth file must have mode 0640' runuser -u gwrk -- bash "$preflight"
+chmod 0640 /etc/gwrk/secrets/csrf-hmac-key
 chmod 0644 /etc/gwrk/secrets/agent-credential
 expect_rejection 'mode 0640' runuser -u gwrk -- bash "$preflight"
 chmod 0640 /etc/gwrk/secrets/agent-credential
@@ -341,6 +356,59 @@ wait "$launcher" || { cat /tmp/server.log >&2; exit 1; }
 server_pid=""
 test ! -e /run/gwrk/server.pid
 
+runuser -u gwrk -g gwrk -- node --input-type=module <<'NODE'
+import Database from "/opt/gwrk/current/node_modules/better-sqlite3/lib/index.js";
+const db = new Database("/var/lib/gwrk/gwrk.db", { fileMustExist: true });
+db.prepare(`
+  INSERT INTO project_role_bindings (project_id, principal_type, principal_id, role, created_at)
+  VALUES (?, ?, ?, ?, ?)
+`).run("pilot", "google_sub", "google-sub-pilot-01", "operator", "2026-11-11T12:00:00Z");
+db.prepare(`
+  INSERT INTO api_credentials (
+    credential_id, verifier_sha256, label, issuer, audience_origin,
+    created_at, expires_at, revoked_at, revoked_reason, rotated_from_id, overlap_until
+  ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+`).run(
+  "gwrk_v1.pilot-key-01",
+  "1111222233334444555566667777888899990000aaaabbbbccccddddeeeeffff",
+  "pilot-key",
+  "https://accounts.google.com:google-sub-pilot-01",
+  "https://gwrk.gforge.ai",
+  "2026-11-11T12:00:00Z",
+  "2026-12-11T12:00:00Z",
+  null, null, null, null
+);
+db.prepare(`
+  INSERT INTO google_sessions (
+    token_digest_sha256, principal_id, issued_at, expires_at, session_cap_at, revoked_at, revoked_reason
+  ) VALUES (?, ?, ?, ?, ?, ?, ?)
+`).run(
+  "aaaabbbbccccddddeeeeffff1111222233334444555566667777888899990000",
+  "google-sub-pilot-01",
+  "2026-11-11T12:00:00Z",
+  "2026-11-11T13:00:00Z",
+  "2026-11-11T13:00:00Z",
+  "2026-11-11T12:30:00Z",
+  "user_logout"
+);
+db.prepare(`
+  INSERT INTO auth_audit_events (
+    occurred_at, event_type, outcome, principal_type, principal_id,
+    credential_id, request_id, detail_code, metadata_json
+  ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+`).run(
+  "2026-11-11T12:30:00Z",
+  "session_revoked",
+  "allowed",
+  "google_sub",
+  "google-sub-pilot-01",
+  null,
+  "req-pilot-01",
+  "user_logout",
+  '{"reason":"logout"}'
+);
+db.close();
+NODE
 runuser -u gwrk -- node "$release/dist/cli.js" db backup --out /var/lib/gwrk/backup
 runuser -u gwrk -- node "$release/dist/cli.js" db restore --from /var/lib/gwrk/backup --state-dir /var/lib/gwrk/restored
 cmp /var/lib/gwrk/backup/gwrk.db /var/lib/gwrk/restored/gwrk.db
@@ -371,8 +439,24 @@ assert.deepEqual(db.prepare("SELECT feature_id, phase_id, exit_code FROM runs WH
   phase_id: "phase-01",
   exit_code: 0,
 });
+assert.equal(
+  db.prepare("SELECT verifier_sha256 FROM api_credentials WHERE credential_id = ?").pluck().get("gwrk_v1.pilot-key-01"),
+  "1111222233334444555566667777888899990000aaaabbbbccccddddeeeeffff"
+);
+assert.equal(
+  db.prepare("SELECT revoked_reason FROM google_sessions WHERE token_digest_sha256 = ?").pluck().get("aaaabbbbccccddddeeeeffff1111222233334444555566667777888899990000"),
+  "user_logout"
+);
+assert.equal(
+  db.prepare("SELECT event_type FROM auth_audit_events WHERE request_id = ?").pluck().get("req-pilot-01"),
+  "session_revoked"
+);
+assert.equal(
+  db.prepare("SELECT role FROM project_role_bindings WHERE principal_id = ?").pluck().get("google-sub-pilot-01"),
+  "operator"
+);
 db.close();
-console.log("Clean restore preserved project pilot and both completed runs.");
+console.log("Clean restore preserved project pilot, completed runs, and migration 020 auth tables.");
 NODE
 
 prior=/opt/gwrk/releases/1.0.0-fixture
@@ -570,6 +654,20 @@ test "$(readlink /opt/gwrk/current)" = "$current_before"
 test "$(readlink /opt/gwrk/previous)" = "$previous_before"
 printf 'Rejected migration 999-fixture.sql before changing either release pointer.\n'
 rm "$prior/dist/db/migrations/999-fixture.sql"
+write_prior_manifest
+
+rm "$prior/dist/db/migrations/020-production-auth.sql"
+write_prior_manifest
+: > /tmp/supervisor.calls
+expect_rejection 'Target release is missing applied migration: 020-production-auth.sql' bash "$rollback" /opt/gwrk /var/lib/gwrk
+if grep -Eq '^(stop|start)$' /tmp/supervisor.calls; then
+  printf 'Incompatible rollback missing migration 020 changed the service state.\n' >&2
+  exit 1
+fi
+test "$(readlink /opt/gwrk/current)" = "$current_before"
+test "$(readlink /opt/gwrk/previous)" = "$previous_before"
+printf 'Rejected rollback missing migration 020 before changing either release pointer.\n'
+cp "$active/dist/db/migrations/020-production-auth.sql" "$prior/dist/db/migrations/020-production-auth.sql"
 write_prior_manifest
 mkdir -m 0700 /var/lib/gwrk/backups
 runuser -u gwrk -g gwrk -- node --input-type=module <<'NODE'
