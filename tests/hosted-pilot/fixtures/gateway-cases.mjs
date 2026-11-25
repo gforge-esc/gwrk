@@ -26,6 +26,11 @@ import {
   validateProcessLogs,
   verifyObserverDirectory,
 } from "./raw-https.mjs";
+import {
+  PILOT_CASE_INVENTORY,
+  prepareScenarioBWithSynGate,
+  verifyScenarioBAfterDrop,
+} from "./scenario-b-driver.mjs";
 
 // Run only inside the isolated controller after the owned native lifecycle is approved.
 assert.equal(
@@ -73,6 +78,15 @@ assert.equal(
   "GWRK_051_OBSERVER_DIR must equal /fixture/observer",
 );
 verifyObserverDirectory(observerDir, { requireRootOwnership: true });
+
+const synGateDir = process.env.GWRK_051_SYN_GATE_DIR;
+assert.equal(
+  synGateDir,
+  "/fixture/syn-gate",
+  "GWRK_051_SYN_GATE_DIR must equal /fixture/syn-gate",
+);
+const pilotResultPath =
+  process.env.GWRK_051_PILOT_RESULT_PATH ?? "/fixture/pilot-proof-result.json";
 
 const origin = "https://gwrk.gforge.ai";
 const clientIp = (name) => (name === clientA ? "172.31.51.11" : "172.31.51.12");
@@ -1094,10 +1108,13 @@ try {
   sendControl({ advanceRateMs: 120001 });
 
   // 10. Lost committed responses, warmed transport, 60-check conservative cap, and cancelled unused-dial scenario
-  function runLostResponseGenerationScenario(prepareTransport, options = {}) {
+  async function runLostResponseGenerationScenario(
+    prepareTransport,
+    options = {},
+  ) {
     const genStart = observe();
     const genStartProxy = barrier();
-    prepareTransport();
+    const prepared = await prepareTransport();
     sendControl({ dropNextCommitted: true });
     const beforeDrop = observe();
     const beforeDropProxy = barrier();
@@ -1147,7 +1164,7 @@ try {
     sendControl({ dropNextCommitted: false });
 
     if (options.afterDrop) {
-      options.afterDrop();
+      await options.afterDrop(prepared);
     }
 
     let exhausted = false;
@@ -1182,7 +1199,7 @@ try {
   }
 
   // Scenario A: Warmed ForwardAuth transport loses committed response
-  runLostResponseGenerationScenario(() => {
+  await runLostResponseGenerationScenario(() => {
     const beforeWarmProxy = barrier();
     const warm = client(clientA, {
       path: "/oauth2/start?rd=%2Fapi%2Fauth%2Fsession",
@@ -1193,20 +1210,31 @@ try {
 
   sendControl({ advanceRateMs: 120001 });
 
-  // Scenario B: Cancelled unused-dial followed by lost committed response
-  runLostResponseGenerationScenario(
-    () => {
-      sendControl({ loginFault: "timeout" });
-      const beforeUnusedProxy = barrier();
-      for (let i = 0; i < 2; i++) {
-        const cancelledDial = client(clientA, {
-          path: "/oauth2/start?rd=%2Fapi%2Fauth%2Fsession",
-          cancelAfterMs: 80,
-        });
-        assert.equal(cancelledDial.cancelled, true);
-      }
-      assertProxyDelta(beforeUnusedProxy, barrier(), 0);
-      sendControl({ loginFault: "none" });
+  // Scenario B: Cancelled unused-dial gated by bounded outer SYN helper, followed by lost committed response
+  let scenarioBPreparation = null;
+  let scenarioBCausality = null;
+  await runLostResponseGenerationScenario(
+    async () => {
+      scenarioBPreparation = await prepareScenarioBWithSynGate({
+        runId: expectedProvenance.runId,
+        synGateDir,
+        requireRootOwnership: true,
+        sendControl,
+        observe,
+        barrier,
+        readHealth: () =>
+          readNativeObserverHealth({
+            observerDir,
+            expected: expectedProvenance,
+            minBarrierSequence: barrierSequence,
+          }),
+        sendCancelledDial: () =>
+          client(clientA, {
+            path: "/oauth2/start?rd=%2Fapi%2Fauth%2Fsession",
+            cancelAfterMs: 80,
+          }),
+      });
+      return scenarioBPreparation;
     },
     {
       afterDrop: () => {
@@ -1216,6 +1244,10 @@ try {
           minBarrierSequence: barrierSequence,
         });
         assertScenarioBReuseProof(health);
+        scenarioBCausality = verifyScenarioBAfterDrop({
+          preparation: scenarioBPreparation,
+          afterDropHealth: health,
+        });
       },
     },
   );
@@ -1638,23 +1670,47 @@ try {
 
   // 15. Final fail-closed native observation barrier verification
   const finalObservation = barrier();
+  const finalHealth = readNativeObserverHealth({
+    observerDir,
+    expected: expectedProvenance,
+    minBarrierSequence: barrierSequence,
+  });
+  assert.equal(
+    finalHealth.captureStats.kernelDrops,
+    0,
+    "native observer reported non-zero kernelDrops",
+  );
+  assert.equal(
+    finalHealth.captureStats.integrityFaultCode,
+    null,
+    "native observer reported capture integrity fault",
+  );
   assertZeroOperationTables(observe());
 
-  process.stdout.write(
-    `${JSON.stringify({
-      event: "gateway_partial_native_assertions_passed",
-      acceptanceComplete: false,
-      scannedResponses: responseScan.scannedResponses,
-      observedProxyRequests: finalObservation.proxyRequests.length,
-      processLogLines: Object.fromEntries(
-        Object.entries(processLogScan.processes).map(([k, v]) => [
-          k,
-          v.nonEmptyLines,
-        ]),
-      ),
-      leakCount: 0,
-    })}\n`,
-  );
+  const pilotSummary = {
+    event: "gateway_native_suite_passed",
+    nativeSuiteStatus: "passed",
+    livePilotAcceptance: false,
+    runId: expectedProvenance.runId,
+    cases: [...PILOT_CASE_INVENTORY],
+    captureDrops: finalHealth.captureStats.kernelDrops,
+    captureFaults: finalHealth.captureStats.integrityFaultCode === null ? 0 : 1,
+    leakedSecrets: 0,
+    scannedResponses: responseScan.scannedResponses,
+    observedProxyRequests: finalObservation.proxyRequests.length,
+    processLogLines: Object.fromEntries(
+      Object.entries(processLogScan.processes).map(([k, v]) => [
+        k,
+        v.nonEmptyLines,
+      ]),
+    ),
+    leakCount: 0,
+    synGateReceipt: scenarioBPreparation?.releaseReceipt ?? null,
+    scenarioBCausality: scenarioBCausality ?? null,
+  };
+  const serializedSummary = `${JSON.stringify(pilotSummary)}\n`;
+  writeFileSync(pilotResultPath, serializedSummary, { mode: 0o600 });
+  process.stdout.write(serializedSummary);
 } catch (error) {
   // Raw IPC includes synthetic credentials and callbacks. Never dump it or raw secrets.
   if (error?.leakSummary) {

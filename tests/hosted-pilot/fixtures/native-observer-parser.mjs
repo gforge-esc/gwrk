@@ -252,6 +252,9 @@ export function createObserverState({ provenance, sentinelPort, limits } = {}) {
       abortedBeforeHeadersConnections: 0,
       synGateActive: false,
       unusedDialObserved: false,
+      lastSynSentOriginFlowId: null,
+      lastZeroPriorParkedFlowId: null,
+      lastZeroPriorReusedFlowId: null,
     },
   };
 }
@@ -442,6 +445,7 @@ function parseHeaderBlock(state, flow, headerBytes) {
       flow.countedAsZeroPriorRequestReused = true;
       state.originTcpSummary.zeroPriorRequestReusedConnections += 1;
       state.originTcpSummary.unusedDialObserved = true;
+      state.originTcpSummary.lastZeroPriorReusedFlowId = `${flow.tupleKey}#${flow.synEpoch}`;
     }
     if (flow.requestsOnConn === 2 && !flow.countedAsReused) {
       flow.countedAsReused = true;
@@ -827,6 +831,9 @@ function handleTcpPacket(state, { srcIp, dstIp, l4 }) {
       synSeq: seq,
     });
     state.activeFlows.set(tupleKey, flow);
+    if (dstPort === originPort) {
+      state.originTcpSummary.lastSynSentOriginFlowId = `${flow.tupleKey}#${flow.synEpoch}`;
+    }
     return;
   }
 
@@ -1126,6 +1133,7 @@ export function matchBarrier(state, { barrierSequence, expectedPayload }) {
     ) {
       flow.parkedZeroRequest = true;
       state.originTcpSummary.zeroPriorRequestParkedConnections += 1;
+      state.originTcpSummary.lastZeroPriorParkedFlowId = `${flow.tupleKey}#${flow.synEpoch}`;
     }
   }
 

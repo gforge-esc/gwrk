@@ -26,6 +26,10 @@ import {
   REQUIRED_PILOT_CASES,
 } from "./native-evidence/evidence-schema.mjs";
 import {
+  buildUnsignedEvidenceEnvelope,
+  executeOperatorNativeProof,
+} from "./native-evidence/operator-execution.mjs";
+import {
   CLOSED_RUNTIME_ROOTS,
   computeRuntimeManifest,
   isUnderClosedRoot,
@@ -526,7 +530,7 @@ describe("native-evidence adapter regression controls", () => {
       expect(failed).toBe(true);
     });
 
-    it("fails closed when --execute-native flag is passed", () => {
+    it("fails closed when --execute-native flag is passed without isolated Linux root checkpoint", () => {
       let failed = false;
       try {
         execFileSync(
@@ -547,7 +551,7 @@ describe("native-evidence adapter regression controls", () => {
         };
         expect(procError.status).not.toBe(0);
         expect(String(procError.stderr || procError.stdout)).toMatch(
-          /unavailable in this component/i,
+          /requires isolated Linux|requires root operator|requires --checkpoint/i,
         );
       }
       expect(failed).toBe(true);
@@ -935,6 +939,231 @@ describe("native-evidence adapter regression controls", () => {
           expect(isUnderClosedRoot(part)).toBe(true);
         }
       }
+    });
+
+    it("operator execution adapter connects both proofs and emits canonical unsigned envelope for external signing", async () => {
+      const runId = "0123456789abcdef01234567";
+      const root = `/opt/gwrk-verification/${runId}`;
+      const checkpointPath = `${root}/execution-checkpoint.json`;
+      const { manifestSha256 } = await computeRuntimeManifest(repo.repoDir);
+      const anchor = createTestAnchor(keyPair);
+      writeFileSync(trustAnchorPath, `${toCanonicalJson(anchor)}\n`, "utf8");
+
+      const store = new Map<string, string>();
+      const scriptContent = "console.log('fixture');\n";
+      const scriptSha = createHash("sha256")
+        .update(scriptContent)
+        .digest("hex");
+      const scriptManifestJson = JSON.stringify({ "bootstrap.mjs": scriptSha });
+      const scriptManifestSha = createHash("sha256")
+        .update(scriptManifestJson)
+        .digest("hex");
+      const archiveSha = "a".repeat(64);
+      const images = {
+        node: `sha256:${"1".repeat(64)}`,
+        traefik: `sha256:${"2".repeat(64)}`,
+        proxy: `sha256:${"3".repeat(64)}`,
+        nginx: `sha256:${"4".repeat(64)}`,
+        issuerNode: `sha256:${"5".repeat(64)}`,
+        rootfs: {
+          node: [`sha256:${"a".repeat(64)}`],
+          traefik: [`sha256:${"b".repeat(64)}`],
+          proxy: [`sha256:${"c".repeat(64)}`],
+          nginx: [`sha256:${"d".repeat(64)}`],
+          issuerNode: [`sha256:${"e".repeat(64)}`],
+        },
+      };
+      const checkpoint = {
+        runId,
+        approvedPrivilegedExecution: true,
+        purpose: "acceptance",
+        reviewedSource: true,
+        approvedPassiveNetRaw: true,
+        approvedScenarioBSynGate: true,
+        outerImage: `docker.io/library/docker:29.10.0-dind@sha256:${"6".repeat(64)}`,
+        daemonImageId: `sha256:${"7".repeat(64)}`,
+        nodeImageId: images.node,
+        sourceCommit: repo.commitSha,
+        runtimeManifestSha256: manifestSha256,
+        archiveSha256: archiveSha,
+        scriptManifestSha256: scriptManifestSha,
+      };
+      store.set(checkpointPath, JSON.stringify(checkpoint));
+      store.set(`${root}/input/script-manifest.json`, scriptManifestJson);
+      store.set(`${root}/input/fixtures/bootstrap.mjs`, scriptContent);
+      store.set(`${root}/input/loaded-images.json`, JSON.stringify(images));
+      store.set(
+        repo.legacyScriptPath,
+        readFileSync(repo.legacyScriptPath, "utf8"),
+      );
+
+      const mockFiles = {
+        existsSync: (p: string) => store.has(p) || p === trustAnchorPath,
+        lstatSync: () => ({
+          isFile: () => true,
+          isSymbolicLink: () => false,
+          uid: 0,
+          mode: 0o100600,
+        }),
+        readFileSync: (p: string, enc?: string) => {
+          if (store.has(p)) {
+            const val = store.get(p) ?? "";
+            return enc ? val : Buffer.from(val, "utf8");
+          }
+          return enc ? readFileSync(p, enc as BufferEncoding) : readFileSync(p);
+        },
+        writeFileSync: (p: string, val: string) => {
+          store.set(p, val);
+        },
+      };
+
+      const pilotReceiptRaw = JSON.stringify({
+        event: "gateway_native_suite_passed",
+        nativeSuiteStatus: "passed",
+        livePilotAcceptance: false,
+        runId,
+        cases: [...REQUIRED_PILOT_CASES],
+        captureDrops: 0,
+        captureFaults: 0,
+        leakedSecrets: 0,
+      });
+      const legacyReceiptRaw = "Hosted sign-in fixture passed\n";
+
+      let executedRunId = "";
+      const outcome = await executeOperatorNativeProof({
+        checkpointPath,
+        repoRoot: repo.repoDir,
+        trustAnchorPath,
+        platform: "linux",
+        getuid: () => 0,
+        files: mockFiles as never,
+        hashFile: async (p: string) => {
+          if (p === `${root}/input/preload-images.tar`) return archiveSha;
+          return createHash("sha256")
+            .update(store.get(p) ?? "")
+            .digest("hex");
+        },
+        runNative: async ({ runId: id, root: runRoot }) => {
+          executedRunId = id;
+          store.set(
+            `${runRoot}/controller-ownership.json`,
+            JSON.stringify({
+              runId: id,
+              name: `gwrk-051-controller-${id}`,
+              nestedDaemonOnly: true,
+            }),
+          );
+          store.set(
+            `${runRoot}/native-cleanup.json`,
+            JSON.stringify({
+              runId: id,
+              cleanupComplete: true,
+              childrenDrained: true,
+            }),
+          );
+          store.set(`${runRoot}/pilot-proof-result.json`, pilotReceiptRaw);
+          store.set(
+            `${runRoot}/legacy-proof-result.json`,
+            JSON.stringify({
+              exitCode: 0,
+              scriptSha256: repo.legacyScriptSha256,
+              successMarker: "Hosted sign-in fixture passed",
+              cleanupComplete: true,
+              rawReceipt: legacyReceiptRaw,
+            }),
+          );
+          store.set(
+            `${runRoot}/native-result.json`,
+            JSON.stringify({
+              runId: id,
+              nativeSuiteStatus: "passed",
+              livePilotAcceptance: false,
+              pilotProof: {
+                exitCode: 0,
+                cases: [...REQUIRED_PILOT_CASES],
+                captureDrops: 0,
+                captureFaults: 0,
+                leakedSecrets: 0,
+                rawReceiptSha256: createHash("sha256")
+                  .update(pilotReceiptRaw, "utf8")
+                  .digest("hex"),
+              },
+              legacyProof: {
+                exitCode: 0,
+                scriptSha256: repo.legacyScriptSha256,
+                successMarker: "Hosted sign-in fixture passed",
+                cleanupComplete: true,
+                rawReceiptSha256: createHash("sha256")
+                  .update(legacyReceiptRaw, "utf8")
+                  .digest("hex"),
+              },
+            }),
+          );
+        },
+      });
+
+      expect(executedRunId).toBe(runId);
+      expect(outcome.nativeSuiteStatus).toBe("passed");
+      expect(outcome.livePilotAcceptance).toBe(false);
+      expect(outcome.canonicalEnvelopePath).toBe(
+        `${root}/unsigned-evidence-envelope.json`,
+      );
+      expect(outcome.envelope).toBeTruthy();
+
+      // External authority signs the emitted unsigned canonical envelope and portable verifier passes
+      const canonicalJson = store.get(
+        `${root}/unsigned-evidence-envelope.json`,
+      );
+      expect(canonicalJson).toBeTruthy();
+      writeFileSync(envelopePath, canonicalJson ?? "", "utf8");
+      const sig = signEnvelope(
+        outcome.envelope as never,
+        keyPair.privateKeyPem,
+        keyPair.keyId,
+      );
+      writeFileSync(signaturePath, `${toCanonicalJson(sig)}\n`, "utf8");
+
+      const verified = await verifyNativeEvidence({
+        repoRoot: repo.repoDir,
+        trustAnchorPath,
+        envelopePath,
+        signaturePath,
+      });
+      expect(verified.ok).toBe(true);
+      expect(verified.envelope.nativeSuiteStatus).toBe("passed");
+      expect(verified.envelope.livePilotAcceptance).toBe(false);
+    });
+
+    it("operator execution rejects non-Linux, non-root, and behavioral-red checkpoints fail-closed", async () => {
+      await expect(
+        executeOperatorNativeProof({
+          checkpointPath:
+            "/opt/gwrk-verification/0123456789abcdef01234567/execution-checkpoint.json",
+          platform: "darwin",
+          getuid: () => 0,
+        }),
+      ).rejects.toThrow(/requires isolated Linux/i);
+
+      await expect(
+        executeOperatorNativeProof({
+          checkpointPath:
+            "/opt/gwrk-verification/0123456789abcdef01234567/execution-checkpoint.json",
+          platform: "linux",
+          getuid: () => 1000,
+        }),
+      ).rejects.toThrow(/requires root operator/i);
+
+      expect(() =>
+        buildUnsignedEvidenceEnvelope({
+          reviewedCommitSha: repo.commitSha,
+          runtimeManifestSha256: "a".repeat(64),
+          legacy041ScriptSha256: repo.legacyScriptSha256,
+          trustAnchorSha256: "b".repeat(64),
+          buildProvenance: {} as never,
+          executionProof: {} as never,
+          rawReceipts: {} as never,
+        }),
+      ).toThrow();
     });
   });
 });

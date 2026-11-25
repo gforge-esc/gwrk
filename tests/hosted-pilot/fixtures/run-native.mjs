@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
 import {
   createReadStream,
@@ -21,6 +22,8 @@ import {
   withOwnedNestedDaemon,
 } from "./nested-lifecycle.mjs";
 import { FixtureProcessError } from "./process-scope.mjs";
+import { PILOT_CASE_INVENTORY } from "./scenario-b-driver.mjs";
+import { validateTimingReceipt } from "./syn-gate-policy.mjs";
 
 async function hashFile(path) {
   const hash = createHash("sha256");
@@ -94,6 +97,88 @@ export function sanitizeObserverSelftestResult(raw, expectedRunId) {
   return sanitized;
 }
 
+function defaultSpawnSynGateHelper({
+  containerId,
+  runId,
+  hostNetNamespace,
+  outerNetNamespace,
+}) {
+  return spawn(
+    "/usr/bin/docker",
+    [
+      "--host",
+      "unix:///var/run/docker.sock",
+      "exec",
+      "-i",
+      "-e",
+      `RUN_ID=${runId}`,
+      "-e",
+      `CONTAINER_LABEL=gwrk.fixture.run=${runId}`,
+      "-e",
+      "SYN_GATE_DIR=/fixture/syn-gate",
+      "-e",
+      `HOST_NETNS_INODE=${hostNetNamespace}`,
+      "-e",
+      `OUTER_NETNS_INODE=${outerNetNamespace}`,
+      containerId,
+      "bash",
+      "/input/fixtures/syn-gate-helper.sh",
+    ],
+    {
+      stdio: ["pipe", "pipe", "pipe"],
+    },
+  );
+}
+
+async function stopAndDrainSynGateHelper(helperProc, timeoutMs = 3000) {
+  if (!helperProc) return { drained: true, exitCode: 0 };
+  let exited = helperProc.exitCode !== null || helperProc.signalCode !== null;
+  let exitCode = helperProc.exitCode;
+  const exitPromise = exited
+    ? Promise.resolve(exitCode)
+    : new Promise((resolve) => {
+        helperProc.once("close", (code, signal) => {
+          exited = true;
+          exitCode = code ?? (signal ? 128 : 1);
+          resolve(exitCode);
+        });
+      });
+
+  if (!exited && helperProc.stdin && !helperProc.stdin.destroyed) {
+    try {
+      helperProc.stdin.write("STOP\n");
+      helperProc.stdin.end();
+    } catch {}
+  }
+
+  const waitWithLimit = (ms) =>
+    Promise.race([
+      exitPromise,
+      new Promise((resolve) => {
+        const t = setTimeout(() => resolve("timeout"), ms);
+        t.unref?.();
+      }),
+    ]);
+
+  let outcome = await waitWithLimit(timeoutMs);
+  if (outcome === "timeout" && !exited) {
+    try {
+      helperProc.kill("SIGTERM");
+    } catch {}
+    outcome = await waitWithLimit(1000);
+  }
+  if (outcome === "timeout" && !exited) {
+    try {
+      helperProc.kill("SIGKILL");
+    } catch {}
+    outcome = await waitWithLimit(1000);
+  }
+  return {
+    drained: exited,
+    exitCode: exited ? (exitCode ?? 1) : 124,
+  };
+}
+
 export async function runNativeFixture({
   runId,
   root,
@@ -101,11 +186,17 @@ export async function runNativeFixture({
   images,
   withLifecycle = withOwnedNestedDaemon,
   files = { existsSync, readFileSync, writeFileSync },
+  spawnSynGateHelper = defaultSpawnSynGateHelper,
 }) {
   const resultPath = `${root}/native-result.json`;
   let resultWritten = false;
   let caseStage = "outer_lifecycle";
   const isObserverSelftest = receipt?.verificationMode === "observer-selftest";
+  const runLegacyProof =
+    !isObserverSelftest &&
+    (receipt?.purpose === "acceptance" || receipt?.includeLegacyProof === true);
+  const enableSynGate =
+    !isObserverSelftest && receipt?.approvedScenarioBSynGate === true;
   if (isObserverSelftest) {
     assert.notEqual(
       receipt?.purpose,
@@ -122,7 +213,14 @@ export async function runNativeFixture({
     await withLifecycle({
       runId,
       receipt,
-      executeCases: async ({ containerId, docker, spawnDocker, signal }) => {
+      executeCases: async ({
+        containerId,
+        docker,
+        spawnDocker,
+        signal,
+        hostNetNamespace,
+        outerNetNamespace,
+      }) => {
         const ensureActive = () => {
           if (signal?.aborted) {
             throw new FixtureProcessError("cancelled", true);
@@ -162,8 +260,15 @@ export async function runNativeFixture({
             },
           );
         }
-        for (const name of ["node", "traefik", "proxy"]) {
+        const imageRoles = runLegacyProof
+          ? ["node", "traefik", "proxy", "nginx", "issuerNode"]
+          : ["node", "traefik", "proxy"];
+        for (const name of imageRoles) {
           ensureActive();
+          assert.ok(
+            typeof images?.[name] === "string" && images[name].length > 0,
+            `missing loaded image identity for role ${name}`,
+          );
           const image = JSON.parse(
             await docker([
               "exec",
@@ -198,6 +303,55 @@ export async function runNativeFixture({
           "/fixture",
           "/etc/gwrk",
         ]);
+        let synGateHelper = null;
+        if (enableSynGate) {
+          ensureActive();
+          await docker([
+            "exec",
+            containerId,
+            "mkdir",
+            "-p",
+            "-m",
+            "700",
+            "/fixture/syn-gate",
+          ]);
+          await docker([
+            "exec",
+            containerId,
+            "chmod",
+            "700",
+            "/fixture/syn-gate",
+          ]);
+          let resolvedHostNetns = hostNetNamespace;
+          let resolvedOuterNetns = outerNetNamespace;
+          if (
+            (!resolvedHostNetns || !resolvedOuterNetns) &&
+            files.existsSync(`${root}/namespace-proof.json`)
+          ) {
+            const nsProof = JSON.parse(
+              files.readFileSync(`${root}/namespace-proof.json`, "utf8"),
+            );
+            resolvedHostNetns ??= nsProof.hostNetNamespace;
+            resolvedOuterNetns ??= nsProof.outerNetNamespace;
+          }
+          assert.ok(
+            resolvedHostNetns && resolvedOuterNetns,
+            "SYN-gate helper requires verified host and outer network namespace identities",
+          );
+          assert.notEqual(
+            resolvedHostNetns,
+            resolvedOuterNetns,
+            "SYN-gate helper refuses shared host and outer network namespace",
+          );
+          synGateHelper = spawnSynGateHelper({
+            containerId,
+            runId,
+            hostNetNamespace: resolvedHostNetns,
+            outerNetNamespace: resolvedOuterNetns,
+          });
+          synGateHelper.stdout?.resume?.();
+          synGateHelper.stderr?.resume?.();
+        }
         ensureActive();
         const controller = `gwrk-051-controller-${runId}`;
         files.writeFileSync(
@@ -255,6 +409,15 @@ export async function runNativeFixture({
         if (isObserverSelftest) {
           controllerArgs.push("--env", "GWRK_051_OBSERVER_SELFTEST_ONLY=1");
         }
+        if (enableSynGate) {
+          controllerArgs.push(
+            "--env",
+            "GWRK_051_SYN_GATE_DIR=/fixture/syn-gate",
+          );
+        }
+        if (runLegacyProof) {
+          controllerArgs.push("--env", "GWRK_051_RUN_LEGACY_PROOF=1");
+        }
         controllerArgs.push(
           "--mount",
           "type=bind,source=/input,target=/input,readonly",
@@ -269,8 +432,67 @@ export async function runNativeFixture({
           "node",
           "/input/fixtures/bootstrap.mjs",
         );
-        const result = await spawnDocker(controllerArgs, 360_000);
+        let result;
+        let synGateDrain = { drained: true, exitCode: 0 };
+        try {
+          result = await spawnDocker(controllerArgs, 360_000);
+        } finally {
+          if (synGateHelper) {
+            synGateDrain = await stopAndDrainSynGateHelper(synGateHelper);
+          }
+        }
         ensureActive();
+        let synGateReceipt = null;
+        if (enableSynGate) {
+          try {
+            const rawSynReceipt = await docker([
+              "exec",
+              containerId,
+              "cat",
+              "/fixture/syn-gate/receipt.json",
+            ]);
+            synGateReceipt = validateTimingReceipt(JSON.parse(rawSynReceipt), {
+              expectedRunId: runId,
+            });
+            files.writeFileSync(
+              `${root}/syn-gate-receipt.json`,
+              JSON.stringify(synGateReceipt, null, 2),
+              { mode: 0o600 },
+            );
+          } catch (synReceiptError) {
+            if (signal?.aborted || synReceiptError?.code === "cancelled") {
+              throw synReceiptError;
+            }
+            if (result.code === 0) {
+              throw new FixtureLifecycleError(
+                "SYN-gate helper receipt missing or invalid after run",
+                {
+                  stage: "gateway_cases",
+                  category: "gateway_cases_failed",
+                  detail:
+                    "Bounded SYN-gate helper did not produce a verified rule removal receipt",
+                },
+              );
+            }
+          }
+          if (result.code === 0) {
+            assert.equal(
+              synGateDrain.drained,
+              true,
+              "SYN-gate helper did not drain cleanly before teardown",
+            );
+            assert.equal(
+              synGateDrain.exitCode,
+              0,
+              `SYN-gate helper exited non-zero: ${synGateDrain.exitCode}`,
+            );
+            assert.equal(
+              synGateReceipt?.ruleRemovedVerified,
+              true,
+              "SYN-gate rule removal was not verified",
+            );
+          }
+        }
         let stage;
         try {
           stage = JSON.parse(
@@ -304,7 +526,12 @@ export async function runNativeFixture({
           fixtureConstructionFailure:
             stage?.failureClassification === "fixture_construction",
           positiveAcceptance: false,
+          livePilotAcceptance: false,
+          nativeSuiteStatus: "failed",
         };
+        if (synGateReceipt) {
+          safe.synGateReceipt = synGateReceipt;
+        }
         if (stage?.category) {
           safe.category = stage.category;
         }
@@ -396,6 +623,8 @@ export async function runNativeFixture({
           safe.verificationMode = "observer-selftest";
           safe.diagnosticOnly = true;
           safe.positiveAcceptance = false;
+          safe.livePilotAcceptance = false;
+          safe.nativeSuiteStatus = "diagnostic_only";
           if (result.code === 0) {
             if (stage?.stage !== "completed_observer_selftest") {
               throw new FixtureLifecycleError(
@@ -445,6 +674,179 @@ export async function runNativeFixture({
               selftestParsed,
               runId,
             );
+          }
+        } else if (result.code === 0) {
+          try {
+            const traefikVersionRaw = await docker([
+              "exec",
+              containerId,
+              "cat",
+              "/fixture/traefik-version.json",
+            ]);
+            safe.traefikVersion = JSON.parse(traefikVersionRaw);
+            files.writeFileSync(
+              `${root}/traefik-version.json`,
+              traefikVersionRaw,
+              { mode: 0o600 },
+            );
+          } catch (verError) {
+            if (signal?.aborted || verError?.code === "cancelled") {
+              throw verError;
+            }
+          }
+
+          let pilotRaw = null;
+          let pilotParsed = null;
+          try {
+            pilotRaw = await docker([
+              "exec",
+              containerId,
+              "cat",
+              "/fixture/pilot-proof-result.json",
+            ]);
+            pilotParsed = JSON.parse(pilotRaw);
+            files.writeFileSync(`${root}/pilot-proof-result.json`, pilotRaw, {
+              mode: 0o600,
+            });
+          } catch (pilotErr) {
+            if (signal?.aborted || pilotErr?.code === "cancelled") {
+              throw pilotErr;
+            }
+            if (receipt?.purpose === "acceptance") {
+              throw new FixtureLifecycleError(
+                "pilot proof receipt missing or invalid",
+                {
+                  stage: stage?.stage ?? "gateway_cases",
+                  category: "gateway_cases_failed",
+                  detail:
+                    "Pilot gateway suite did not emit pilot-proof-result.json",
+                },
+              );
+            }
+          }
+
+          let legacyRaw = null;
+          let legacyParsed = null;
+          if (runLegacyProof) {
+            try {
+              legacyRaw = await docker([
+                "exec",
+                containerId,
+                "cat",
+                "/fixture/legacy-proof-result.json",
+              ]);
+              legacyParsed = JSON.parse(legacyRaw);
+              files.writeFileSync(
+                `${root}/legacy-proof-result.json`,
+                legacyRaw,
+                { mode: 0o600 },
+              );
+            } catch (legacyErr) {
+              if (signal?.aborted || legacyErr?.code === "cancelled") {
+                throw legacyErr;
+              }
+              throw new FixtureLifecycleError(
+                "legacy proof receipt missing or invalid",
+                {
+                  stage: stage?.stage ?? "legacy_proof_execution",
+                  category: "gateway_cases_failed",
+                  detail:
+                    "Legacy 041 proof did not emit legacy-proof-result.json",
+                },
+              );
+            }
+            assert.equal(
+              legacyParsed.exitCode,
+              0,
+              "legacy proof exitCode must be 0",
+            );
+            assert.equal(
+              legacyParsed.cleanupComplete,
+              true,
+              "legacy proof cleanupComplete must be true",
+            );
+            assert.equal(
+              legacyParsed.successMarker,
+              "Hosted sign-in fixture passed",
+              "legacy proof successMarker invalid",
+            );
+            assert.ok(
+              typeof legacyParsed.rawReceipt === "string" &&
+                legacyParsed.rawReceipt.includes(
+                  "Hosted sign-in fixture passed",
+                ),
+              "legacy proof rawReceipt missing required success marker",
+            );
+            safe.legacyProof = {
+              exitCode: 0,
+              scriptSha256: legacyParsed.scriptSha256,
+              successMarker: legacyParsed.successMarker,
+              cleanupComplete: true,
+              rawReceiptSha256: createHash("sha256")
+                .update(legacyParsed.rawReceipt, "utf8")
+                .digest("hex"),
+            };
+          }
+
+          if (pilotParsed) {
+            const pilotCases = Array.isArray(pilotParsed.cases)
+              ? pilotParsed.cases
+              : [];
+            assert.equal(
+              pilotParsed.nativeSuiteStatus,
+              "passed",
+              "pilot proof nativeSuiteStatus must be passed",
+            );
+            assert.equal(
+              pilotParsed.livePilotAcceptance,
+              false,
+              "pilot proof livePilotAcceptance must be false",
+            );
+            assert.equal(
+              pilotParsed.captureDrops,
+              0,
+              "pilot captureDrops must be 0",
+            );
+            assert.equal(
+              pilotParsed.captureFaults,
+              0,
+              "pilot captureFaults must be 0",
+            );
+            assert.equal(
+              pilotParsed.leakedSecrets,
+              0,
+              "pilot leakedSecrets must be 0",
+            );
+            assert.deepEqual(
+              [...pilotCases].sort(),
+              [...PILOT_CASE_INVENTORY].sort(),
+              "pilot proof cases must match full required case inventory",
+            );
+            safe.pilotProof = {
+              exitCode: 0,
+              cases: pilotCases,
+              captureDrops: pilotParsed.captureDrops,
+              captureFaults: pilotParsed.captureFaults,
+              leakedSecrets: pilotParsed.leakedSecrets,
+              rawReceiptSha256: createHash("sha256")
+                .update(pilotRaw, "utf8")
+                .digest("hex"),
+            };
+          }
+
+          if (
+            receipt?.purpose === "acceptance" &&
+            receipt?.reviewedSource === true &&
+            safe.pilotProof &&
+            safe.legacyProof
+          ) {
+            safe.nativeSuiteStatus = "passed";
+            safe.livePilotAcceptance = false;
+            safe.positiveAcceptance = false;
+          } else {
+            safe.nativeSuiteStatus = "diagnostic_only";
+            safe.livePilotAcceptance = false;
+            safe.positiveAcceptance = false;
           }
         }
         ensureActive();

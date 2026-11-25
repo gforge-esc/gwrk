@@ -392,6 +392,7 @@ export function parseFixtureControl(value) {
     "loginFault",
     "logoutFault",
     "dropNextCommitted",
+    "closeIdleConnections",
   ]);
   for (const key of Object.keys(value))
     assert.ok(fields.has(key), "unknown private fixture control");
@@ -414,7 +415,11 @@ export function parseFixtureControl(value) {
         value.loginFault,
       ),
     );
-  for (const field of ["logoutFault", "dropNextCommitted"])
+  for (const field of [
+    "logoutFault",
+    "dropNextCommitted",
+    "closeIdleConnections",
+  ])
     if (value[field] !== undefined)
       assert.equal(typeof value[field], "boolean");
   return { ...value };
@@ -920,6 +925,18 @@ export function validateNativeObserverHealth(value, expected, options = {}) {
     );
   }
   assert.equal(typeof tcp.synGateActive, "boolean");
+  for (const flowField of [
+    "lastSynSentOriginFlowId",
+    "lastZeroPriorParkedFlowId",
+    "lastZeroPriorReusedFlowId",
+  ]) {
+    if (tcp[flowField] !== undefined && tcp[flowField] !== null) {
+      assert.ok(
+        typeof tcp[flowField] === "string" && tcp[flowField].length > 0,
+        `originTcpSummary.${flowField} must be null or a non-empty string`,
+      );
+    }
+  }
   assert.equal(
     tcp.unusedDialObserved,
     tcp.zeroPriorRequestReusedConnections > 0,

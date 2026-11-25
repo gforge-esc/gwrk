@@ -288,16 +288,22 @@ END {
       INSTALL_TIMEOUT_SEC="$(awk -v ms="$INSTALL_TIMEOUT_MS" 'BEGIN { printf "%.3f", ms / 1000 }')"
 
       INSTALL_T0="$(get_monotonic_ms)"
+      set +e
       if command -v timeout >/dev/null 2>&1; then
-        if ! timeout "$INSTALL_TIMEOUT_SEC" "$IPTABLES_CMD" -I INPUT 1 "${RULE_ARGS[@]}" 2>/dev/null; then
-          echo "iptables installation failed (busy lock or rule error or timeout)" >&2
-          exit 1
-        fi
+        timeout "$INSTALL_TIMEOUT_SEC" "$IPTABLES_CMD" -I INPUT 1 "${RULE_ARGS[@]}" 2>/dev/null
+        INSTALL_STATUS=$?
       else
-        if ! "$IPTABLES_CMD" -I INPUT 1 "${RULE_ARGS[@]}" 2>/dev/null; then
-          echo "iptables installation failed (busy lock or rule error)" >&2
-          exit 1
+        "$IPTABLES_CMD" -I INPUT 1 "${RULE_ARGS[@]}" 2>/dev/null
+        INSTALL_STATUS=$?
+      fi
+      set -e
+      if [ "$INSTALL_STATUS" -ne 0 ]; then
+        if [ "$INSTALL_STATUS" -eq 124 ]; then
+          # Bounded install timed out: rule insertion may have raced with timeout, so trigger bounded cleanup.
+          RULE_INSTALLED=1
         fi
+        echo "iptables installation failed with status $INSTALL_STATUS (busy lock or rule error or timeout)" >&2
+        exit 1
       fi
       RULE_INSTALLED=1
 

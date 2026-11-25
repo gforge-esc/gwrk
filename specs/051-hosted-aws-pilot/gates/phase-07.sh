@@ -11,6 +11,8 @@ required_targets=(
   src/utils/agent.auth-env.test.ts
   tests/hosted-auth-proof/preflight.test.ts
   tests/hosted-auth-proof/production-bundle.test.ts
+  tests/hosted-pilot/production-bundle.test.ts
+  tests/hosted-pilot/native-evidence.test.ts
 )
 for target in "${required_targets[@]}"; do
   if [[ ! -f "$target" ]]; then
@@ -25,8 +27,9 @@ vitest_targets=(
   tests/linux-runner/preflight-auth.test.ts
   tests/hosted-auth-proof/preflight.test.ts
   tests/hosted-auth-proof/production-bundle.test.ts
+  tests/hosted-pilot/production-bundle.test.ts
+  tests/hosted-pilot/native-evidence.test.ts
 )
 pnpm run build
 pnpm exec vitest run "${vitest_targets[@]}"
 node tests/hosted-pilot/gateway-production.mjs
-node tests/hosted-auth-proof/gateway-proof.mjs

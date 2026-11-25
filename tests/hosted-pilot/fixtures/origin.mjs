@@ -321,6 +321,9 @@ function applyControl() {
   control = { ...control, ...next };
   if (next.dropNextCommitted !== undefined)
     dropNextCommitted = next.dropNextCommitted;
+  if (next.closeIdleConnections === true) {
+    server?.server?.closeIdleConnections?.();
+  }
   counters.controlSequence = next.sequence;
   persist();
 }

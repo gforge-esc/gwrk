@@ -17,8 +17,15 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, test } from "vitest";
+import { REQUIRED_PILOT_CASES } from "../native-evidence/evidence-schema.mjs";
 import { withOwnedNestedDaemon } from "./nested-lifecycle.mjs";
+import { runNativeFixture } from "./run-native.mjs";
 import { DIND_IMAGE, RESOURCE_LIMITS } from "./runtime-policy.mjs";
+import {
+  PILOT_CASE_INVENTORY,
+  prepareScenarioBWithSynGate,
+  verifyScenarioBAfterDrop,
+} from "./scenario-b-driver.mjs";
 import {
   createSynGateClient,
   verifySynGateDirectory,
@@ -58,6 +65,9 @@ function createFakeIptables(
 
   const script = `#!/usr/bin/env bash
 set -e
+if [ "$1" = "--warmup" ]; then
+  exit 0
+fi
 LOG="${logPath}"
 STATE="${statePath}"
 echo "$@" >> "$LOG"
@@ -84,7 +94,17 @@ fi
 exit 0
 `;
   writeFileSync(scriptPath, script, { mode: 0o755 });
+  // Warm freshly created wrapper once so macOS cold-exec scanning does not trip tight 200ms ttlMs bounds.
+  execFileSync(scriptPath, ["--warmup"], { stdio: "ignore", timeout: 5000 });
   return { scriptPath, logPath, statePath };
+}
+
+function attachStderrCapture(proc) {
+  const chunks = [];
+  proc.stderr?.on("data", (chunk) => {
+    chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+  });
+  return () => Buffer.concat(chunks).toString("utf8").trim();
 }
 
 describe("CAP-02: Network Namespace Isolation", () => {
@@ -585,6 +605,8 @@ describe("CAP-04: Helper Lifecycle, Locks, Deadline Expiry, and Clean Drain", ()
   test("helper fails closed on busy lock without waiting or retrying", async () => {
     const tempDir = createTempDir("syn-gate-lock-");
     const fake = createFakeIptables(tempDir, { failInstallCode: 4 }); // 4 = resource temporarily unavailable
+    const mockUptimeFile = join(tempDir, "proc-uptime");
+    writeFileSync(mockUptimeFile, "100.00 200.00\n", "utf8");
     try {
       const helperProc = spawn("bash", [HELPER_SCRIPT_PATH], {
         env: {
@@ -593,11 +615,13 @@ describe("CAP-04: Helper Lifecycle, Locks, Deadline Expiry, and Clean Drain", ()
           CONTAINER_LABEL: `gwrk.fixture.run=${VALID_RUN_ID}`,
           SYN_GATE_DIR: tempDir,
           IPTABLES_CMD: fake.scriptPath,
+          PROC_UPTIME_PATH: mockUptimeFile,
           HOST_NETNS_INODE: "1",
           OUTER_NETNS_INODE: "2",
         },
         stdio: ["pipe", "pipe", "pipe"],
       });
+      const readStderr = attachStderrCapture(helperProc);
 
       // Write arm.json
       const client = createSynGateClient({
@@ -614,7 +638,17 @@ describe("CAP-04: Helper Lifecycle, Locks, Deadline Expiry, and Clean Drain", ()
       assert.notEqual(
         exitCode,
         0,
-        "busy lock must cause helper to exit non-zero",
+        `busy lock must cause helper to exit non-zero (stderr: ${readStderr()})`,
+      );
+      assert.match(
+        readStderr(),
+        /status 4/,
+        `busy lock stderr must report exit status 4 (stderr: ${readStderr()})`,
+      );
+      assert.match(
+        readFileSync(fake.logPath, "utf8"),
+        /-I INPUT 1/,
+        "busy lock test must actually invoke iptables -I",
       );
 
       // Verify ruleInstalled is never true
@@ -648,6 +682,7 @@ describe("CAP-04: Helper Lifecycle, Locks, Deadline Expiry, and Clean Drain", ()
         },
         stdio: ["pipe", "pipe", "pipe"],
       });
+      const readStderr = attachStderrCapture(helperProc);
 
       const client = createSynGateClient({
         synGateDir: tempDir,
@@ -670,9 +705,15 @@ describe("CAP-04: Helper Lifecycle, Locks, Deadline Expiry, and Clean Drain", ()
           armed = true;
           break;
         }
+        if (helperProc.exitCode !== null) {
+          break;
+        }
         await new Promise((r) => setTimeout(r, 20));
       }
-      assert.ok(armed, "helper failed to arm");
+      assert.ok(
+        armed,
+        `helper failed to arm (exitCode=${helperProc.exitCode}, stderr=${readStderr()})`,
+      );
 
       // Advance mock uptime by 300ms (> 200ms ttl)
       writeFileSync(mockUptimeFile, "100.30 200.00\n", "utf8");
@@ -684,7 +725,7 @@ describe("CAP-04: Helper Lifecycle, Locks, Deadline Expiry, and Clean Drain", ()
       assert.equal(
         exitCode,
         0,
-        "helper should exit cleanly on single op completion",
+        `helper should exit cleanly on single op completion (stderr=${readStderr()})`,
       );
 
       const receipt = client.readReceiptSafe();
@@ -1312,9 +1353,10 @@ describe("Independent Review 2 Regressions (SYN-R2-01..SYN-R2-04)", () => {
     writeFileSync(uptime, "100.00 0.00\n", "utf8");
     writeFileSync(
       fakeCmd,
-      `#!/usr/bin/env bash\necho "$@" >> "${logFile}"\nif [ "$1" = "-I" ]; then printf "100.60 0.00\\n" > "${uptime}"; exit 0; fi\nif [ "$1" = "-D" ]; then exit 4; fi\nif [ "$1" = "-C" ]; then exit 4; fi\nexit 0\n`,
+      `#!/usr/bin/env bash\nif [ "$1" = "--warmup" ]; then exit 0; fi\necho "$@" >> "${logFile}"\nif [ "$1" = "-I" ]; then printf "100.60 0.00\\n" > "${uptime}"; exit 0; fi\nif [ "$1" = "-D" ]; then exit 4; fi\nif [ "$1" = "-C" ]; then exit 4; fi\nexit 0\n`,
       { mode: 0o755 },
     );
+    execFileSync(fakeCmd, ["--warmup"], { stdio: "ignore", timeout: 5000 });
     try {
       const proc = spawn("bash", [HELPER_SCRIPT_PATH], {
         env: {
@@ -1329,6 +1371,7 @@ describe("Independent Review 2 Regressions (SYN-R2-01..SYN-R2-04)", () => {
         },
         stdio: ["pipe", "pipe", "pipe"],
       });
+      const readStderr = attachStderrCapture(proc);
       const client = createSynGateClient({
         synGateDir: tempDir,
         runId: VALID_RUN_ID,
@@ -1336,15 +1379,60 @@ describe("Independent Review 2 Regressions (SYN-R2-01..SYN-R2-04)", () => {
       });
       client.writeArmRequest({ ttlMs: 200 });
       const code = await new Promise((r) => proc.on("exit", r));
-      assert.notEqual(code, 0, "slow install abort must exit non-zero");
+      assert.notEqual(
+        code,
+        0,
+        `slow install abort must exit non-zero (stderr=${readStderr()})`,
+      );
 
       const logContent = existsSync(logFile)
         ? readFileSync(logFile, "utf8")
         : "";
       assert.ok(
         logContent.includes("-C INPUT"),
-        "slow install abort must trigger cleanup() to verify rule removal with -C",
+        `slow install abort must trigger cleanup() to verify rule removal with -C (stderr=${readStderr()}, log=${logContent})`,
       );
+    } finally {
+      rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  test("SYN-R2-04B: helper install timeout (exit 124) triggers bounded cleanup() to remove raced rule", async () => {
+    const tempDir = createTempDir("syn-gate-install-timeout-");
+    const fake = createFakeIptables(tempDir, { failInstallCode: 124 });
+    const uptime = join(tempDir, "proc-uptime");
+    writeFileSync(uptime, "100.00 0.00\n", "utf8");
+    try {
+      const proc = spawn("bash", [HELPER_SCRIPT_PATH], {
+        env: {
+          ...process.env,
+          RUN_ID: VALID_RUN_ID,
+          CONTAINER_LABEL: `gwrk.fixture.run=${VALID_RUN_ID}`,
+          SYN_GATE_DIR: tempDir,
+          IPTABLES_CMD: fake.scriptPath,
+          PROC_UPTIME_PATH: uptime,
+          HOST_NETNS_INODE: "1",
+          OUTER_NETNS_INODE: "2",
+        },
+        stdio: ["pipe", "pipe", "pipe"],
+      });
+      const readStderr = attachStderrCapture(proc);
+      const client = createSynGateClient({
+        synGateDir: tempDir,
+        runId: VALID_RUN_ID,
+        requireRootOwnership: false,
+      });
+      client.writeArmRequest({ ttlMs: 200 });
+      const code = await new Promise((r) => proc.on("exit", r));
+      assert.notEqual(
+        code,
+        0,
+        `install timeout must exit non-zero (stderr=${readStderr()})`,
+      );
+      assert.match(readStderr(), /status 124/);
+      const logContent = readFileSync(fake.logPath, "utf8");
+      assert.match(logContent, /-D INPUT/);
+      assert.match(logContent, /-C INPUT/);
     } finally {
       rmSync(tempDir, { recursive: true, force: true });
     }
@@ -1588,5 +1676,311 @@ describe("Independent Review 2 Regressions (SYN-R2-01..SYN-R2-04)", () => {
         rmSync(tempDir, { recursive: true, force: true });
       }
     }
+  });
+});
+
+describe("Scenario B Driver-to-Helper and Controller Integration", () => {
+  test("PILOT_CASE_INVENTORY matches REQUIRED_PILOT_CASES exactly", () => {
+    assert.deepEqual([...PILOT_CASE_INVENTORY], [...REQUIRED_PILOT_CASES]);
+  });
+
+  test("Scenario B driver wires real syn-gate-helper.sh arm/release and proves same-flow causality", async () => {
+    const tempDir = createTempDir("syn-gate-driver-e2e-");
+    const fake = createFakeIptables(tempDir);
+    const uptime = join(tempDir, "proc-uptime");
+    writeFileSync(uptime, "100.00 0.00\n", "utf8");
+    const controls = [];
+    const flowId = "127.0.0.1:42424->127.0.0.1:18790#1";
+    let phase = "baseline";
+
+    try {
+      const helperProc = spawn("bash", [HELPER_SCRIPT_PATH], {
+        env: {
+          ...process.env,
+          RUN_ID: VALID_RUN_ID,
+          CONTAINER_LABEL: `gwrk.fixture.run=${VALID_RUN_ID}`,
+          SYN_GATE_DIR: tempDir,
+          IPTABLES_CMD: fake.scriptPath,
+          PROC_UPTIME_PATH: uptime,
+          HOST_NETNS_INODE: "1001",
+          OUTER_NETNS_INODE: "2002",
+        },
+        stdio: ["pipe", "pipe", "pipe"],
+      });
+      const readStderr = attachStderrCapture(helperProc);
+      const exitPromise = new Promise((resolve) => {
+        helperProc.once("exit", resolve);
+      });
+
+      const prep = await prepareScenarioBWithSynGate({
+        runId: VALID_RUN_ID,
+        synGateDir: tempDir,
+        requireRootOwnership: false,
+        sendControl: (cmd) => {
+          controls.push(cmd);
+        },
+        observe: () => ({ loginAttempts: 10 }),
+        barrier: () => {
+          if (phase === "armed" && existsSync(join(tempDir, "release.json"))) {
+            phase = "parked";
+          }
+          return { proxyRequests: [] };
+        },
+        readHealth: () => {
+          if (phase === "baseline") {
+            return {
+              originTcpSummary: {
+                handshakesCompleted: 2,
+                zeroPriorRequestParkedConnections: 0,
+                zeroPriorRequestReusedConnections: 0,
+                unusedDialObserved: false,
+                lastSynSentOriginFlowId: "127.0.0.1:40000->127.0.0.1:18790#1",
+                lastZeroPriorParkedFlowId: null,
+                lastZeroPriorReusedFlowId: null,
+              },
+            };
+          }
+          if (phase === "armed") {
+            return {
+              originTcpSummary: {
+                handshakesCompleted: 2,
+                zeroPriorRequestParkedConnections: 0,
+                zeroPriorRequestReusedConnections: 0,
+                unusedDialObserved: false,
+                lastSynSentOriginFlowId: flowId,
+                lastZeroPriorParkedFlowId: null,
+                lastZeroPriorReusedFlowId: null,
+              },
+            };
+          }
+          return {
+            originTcpSummary: {
+              handshakesCompleted: 3,
+              zeroPriorRequestParkedConnections: 1,
+              zeroPriorRequestReusedConnections: 0,
+              unusedDialObserved: false,
+              lastSynSentOriginFlowId: flowId,
+              lastZeroPriorParkedFlowId: flowId,
+              lastZeroPriorReusedFlowId: null,
+            },
+          };
+        },
+        sendCancelledDial: async () => {
+          phase = "armed";
+          writeFileSync(uptime, "100.12 0.00\n", "utf8");
+          return { cancelled: true };
+        },
+        parkPollTimeoutMs: 500,
+        parkPollIntervalMs: 10,
+      });
+
+      const exitCode = await exitPromise;
+      assert.equal(
+        exitCode,
+        0,
+        `helper must exit cleanly after single op release (stderr=${readStderr()})`,
+      );
+      assert.deepEqual(controls, [{ closeIdleConnections: true }]);
+      assert.equal(prep.synSentOriginFlowId, flowId);
+      assert.equal(prep.zeroPriorParkedFlowId, flowId);
+      assert.equal(prep.releaseReceipt.ruleRemovedVerified, true);
+      assert.ok(prep.releaseReceipt.armedDurationMs <= 1000);
+
+      const causality = verifyScenarioBAfterDrop({
+        preparation: prep,
+        afterDropHealth: {
+          originTcpSummary: {
+            zeroPriorRequestParkedConnections: 1,
+            zeroPriorRequestReusedConnections: 1,
+            unusedDialObserved: true,
+            lastZeroPriorReusedFlowId: flowId,
+          },
+        },
+      });
+      assert.equal(causality.lastZeroPriorReusedFlowId, flowId);
+
+      // Negative control: reused flow differing from parked/SYN flow fails closed
+      assert.throws(
+        () =>
+          verifyScenarioBAfterDrop({
+            preparation: prep,
+            afterDropHealth: {
+              originTcpSummary: {
+                zeroPriorRequestParkedConnections: 1,
+                zeroPriorRequestReusedConnections: 1,
+                unusedDialObserved: true,
+                lastZeroPriorReusedFlowId: "127.0.0.1:59999->127.0.0.1:18790#1",
+              },
+            },
+          }),
+        /reused flow does not match parked flow/,
+      );
+    } finally {
+      rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  test("runNativeFixture starts outer SYN-gate helper without granting controller NET_ADMIN and drains it in finally", async () => {
+    const runId = VALID_RUN_ID;
+    const root = `/opt/gwrk-verification/${runId}`;
+    const store = new Map();
+    const files = {
+      existsSync: (p) => store.has(p),
+      readFileSync: (p) => store.get(p),
+      writeFileSync: (p, value) => store.set(p, value),
+    };
+    const images = {
+      node: `sha256:${"1".repeat(64)}`,
+      traefik: `sha256:${"2".repeat(64)}`,
+      proxy: `sha256:${"3".repeat(64)}`,
+      nginx: `sha256:${"4".repeat(64)}`,
+      issuerNode: `sha256:${"5".repeat(64)}`,
+      rootfs: {
+        node: [`sha256:${"a".repeat(64)}`],
+        traefik: [`sha256:${"b".repeat(64)}`],
+        proxy: [`sha256:${"c".repeat(64)}`],
+        nginx: [`sha256:${"d".repeat(64)}`],
+        issuerNode: [`sha256:${"e".repeat(64)}`],
+      },
+    };
+    let helperSpawned = null;
+    let helperStopped = false;
+    let capturedControllerArgs = null;
+
+    await runNativeFixture({
+      runId,
+      root,
+      receipt: {
+        purpose: "acceptance",
+        reviewedSource: true,
+        approvedPassiveNetRaw: true,
+        approvedScenarioBSynGate: true,
+      },
+      images,
+      files,
+      spawnSynGateHelper: (opts) => {
+        helperSpawned = opts;
+        const listeners = new Map();
+        const fakeProc = {
+          exitCode: null,
+          signalCode: null,
+          stdin: {
+            destroyed: false,
+            write: (chunk) => {
+              if (String(chunk).includes("STOP")) helperStopped = true;
+            },
+            end: () => {
+              fakeProc.exitCode = 0;
+              const cb = listeners.get("close");
+              if (cb) cb(0, null);
+            },
+          },
+          stdout: { resume: () => {} },
+          stderr: { resume: () => {} },
+          once: (ev, cb) => listeners.set(ev, cb),
+          kill: () => {},
+        };
+        return fakeProc;
+      },
+      withLifecycle: async ({ executeCases }) => {
+        await executeCases({
+          containerId: "f".repeat(64),
+          hostNetNamespace: "net:[4026531840]",
+          outerNetNamespace: "net:[4026532999]",
+          docker: async (args) => {
+            if (args.includes("inspect")) {
+              const target = args.at(-1);
+              const key = Object.entries(images).find(
+                ([, value]) => value === target,
+              )[0];
+              return JSON.stringify({
+                Id: target,
+                RootFS: { Layers: images.rootfs[key] },
+              });
+            }
+            if (args.includes("mkdir") || args.includes("chmod")) return "";
+            if (args.includes("/fixture/syn-gate/receipt.json")) {
+              return JSON.stringify({
+                version: 1,
+                runId,
+                opId: 1,
+                state: "RELEASED",
+                installDurationMs: 4,
+                armedDurationMs: 120,
+                removeDurationMs: 5,
+                ruleRemovedVerified: true,
+              });
+            }
+            if (args.includes("/fixture/bootstrap-stage.json")) {
+              return JSON.stringify({ stage: "completed_combined_proofs" });
+            }
+            if (args.includes("/fixture/traefik-version.json")) {
+              return JSON.stringify({
+                traefikVersion: "3.7.18",
+                goVersion: "go1.25.0",
+              });
+            }
+            if (args.includes("/fixture/pilot-proof-result.json")) {
+              return JSON.stringify({
+                event: "gateway_native_suite_passed",
+                nativeSuiteStatus: "passed",
+                livePilotAcceptance: false,
+                runId,
+                cases: [...REQUIRED_PILOT_CASES],
+                captureDrops: 0,
+                captureFaults: 0,
+                leakedSecrets: 0,
+              });
+            }
+            if (args.includes("/fixture/legacy-proof-result.json")) {
+              return JSON.stringify({
+                exitCode: 0,
+                scriptSha256: "9".repeat(64),
+                successMarker: "Hosted sign-in fixture passed",
+                cleanupComplete: true,
+                rawReceipt: "Hosted sign-in fixture passed\n",
+              });
+            }
+            throw new Error(`unexpected docker args: ${args.join(" ")}`);
+          },
+          spawnDocker: async (args) => {
+            if (args.includes("load")) {
+              return { code: 0, stdout: "Loaded\n", stderr: "" };
+            }
+            if (args.includes("/input/fixtures/bootstrap.mjs")) {
+              capturedControllerArgs = args;
+              return { code: 0, stdout: "ok\n", stderr: "" };
+            }
+            throw new Error(`unexpected spawnDocker args: ${args.join(" ")}`);
+          },
+        });
+      },
+    });
+
+    assert.ok(helperSpawned, "outer SYN-gate helper must be started");
+    assert.equal(helperStopped, true, "outer SYN-gate helper must be drained");
+    assert.equal(
+      capturedControllerArgs.includes("NET_ADMIN"),
+      false,
+      "controller container must NEVER gain NET_ADMIN",
+    );
+    assert.equal(
+      capturedControllerArgs.includes(
+        "GWRK_051_SYN_GATE_DIR=/fixture/syn-gate",
+      ),
+      true,
+      "controller must receive GWRK_051_SYN_GATE_DIR",
+    );
+    assert.equal(
+      capturedControllerArgs.includes("GWRK_051_RUN_LEGACY_PROOF=1"),
+      true,
+      "acceptance run must execute unchanged legacy proof",
+    );
+    const nativeResult = JSON.parse(store.get(`${root}/native-result.json`));
+    assert.equal(nativeResult.nativeSuiteStatus, "passed");
+    assert.equal(nativeResult.livePilotAcceptance, false);
+    assert.equal(nativeResult.pilotProof.cases.length, 15);
+    assert.equal(nativeResult.legacyProof.cleanupComplete, true);
+    assert.equal(nativeResult.synGateReceipt.ruleRemovedVerified, true);
   });
 });

@@ -194,6 +194,8 @@ export async function withOwnedNestedDaemon(
     { mode: 0o600 },
   );
   let containerId;
+  let hostNetNamespace;
+  let outerNetNamespace;
   let watchdog;
   let casesPromise;
   let watchdogError;
@@ -330,8 +332,8 @@ export async function withOwnedNestedDaemon(
         ).trim();
         assert.equal(actualNamespace, outerPidNamespace);
 
-        const hostNetNamespace = readNamespaceLink("/proc/self/ns/net");
-        const outerNetNamespace = readNamespaceLink(
+        hostNetNamespace = readNamespaceLink("/proc/self/ns/net");
+        outerNetNamespace = readNamespaceLink(
           `/proc/${running.State.Pid}/ns/net`,
         );
         assert.ok(
@@ -708,6 +710,8 @@ export async function withOwnedNestedDaemon(
           spawnDocker,
           inputDirectory,
           signal,
+          hostNetNamespace,
+          outerNetNamespace,
         }),
       );
       casesPromise.catch(() => {});

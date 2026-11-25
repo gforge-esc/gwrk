@@ -7,3 +7,4 @@ export * from "./trust-anchor.mjs";
 export * from "./runtime-manifest.mjs";
 export * from "./evidence-schema.mjs";
 export * from "./verifier.mjs";
+export * from "./operator-execution.mjs";

@@ -45,6 +45,8 @@ required_targets=(
   tests/hosted-pilot/gate-completeness.test.mjs
   tests/hosted-pilot/gateway-production.mjs
   tests/hosted-auth-proof/gateway-proof.mjs
+  tests/hosted-pilot/production-bundle.test.ts
+  tests/hosted-pilot/native-evidence.test.ts
   tests/hosted-pilot/protected-auth-files-native.mjs
 )
 for target in "${required_targets[@]}"; do
@@ -92,6 +94,8 @@ vitest_targets=(
   tests/linux-runner/preflight-auth.test.ts
   tests/linux-runner/backup-restore-rollback.test.ts
   tests/hosted-pilot/rollout-gates.test.ts
+  tests/hosted-pilot/production-bundle.test.ts
+  tests/hosted-pilot/native-evidence.test.ts
 )
 node tests/hosted-pilot/gate-completeness.test.mjs
 pnpm run build
@@ -100,6 +104,5 @@ pnpm exec vitest run "${vitest_targets[@]}"
 node dist/cli.js define adr --reindex --check
 node dist/cli.js define adr --check
 node tests/hosted-pilot/gateway-production.mjs
-node tests/hosted-auth-proof/gateway-proof.mjs
 node tests/hosted-pilot/protected-auth-files-native.mjs
 node tests/linux-runner/container-harness.mjs

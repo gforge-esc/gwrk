@@ -11,7 +11,9 @@ const FIXTURE_MJS_RE = /^[a-z-]+\.mjs$/;
 export function isAllowedFixtureScriptName(name) {
   return (
     typeof name === "string" &&
-    (name === "native-observer-capture.py" || FIXTURE_MJS_RE.test(name))
+    (name === "native-observer-capture.py" ||
+      name === "syn-gate-helper.sh" ||
+      FIXTURE_MJS_RE.test(name))
   );
 }
 

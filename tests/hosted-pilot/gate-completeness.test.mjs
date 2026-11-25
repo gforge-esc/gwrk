@@ -169,3 +169,83 @@ test("phase 9 denies absent operator authority before any child executes", () =>
   );
   assert.deepEqual(result.children, []);
 });
+
+for (const phase of [7, 8]) {
+  test(`phase ${phase} portable gate verifies evidence without directly launching legacy Docker proof`, () => {
+    const commands = approvedCommands(phase);
+    const result = runFixture(phase, commands);
+    assert.equal(result.status, 0, result.stderr);
+    const invokedLegacyDirectly = result.children.some(
+      (child) =>
+        child.command === "node" &&
+        child.args[0] === "tests/hosted-auth-proof/gateway-proof.mjs",
+    );
+    assert.equal(
+      invokedLegacyDirectly,
+      false,
+      `phase ${phase} portable gate must not directly start legacy Docker proof`,
+    );
+    const invokedPortableVerifier = result.children.some(
+      (child) =>
+        child.command === "node" &&
+        child.args[0] === "tests/hosted-pilot/gateway-production.mjs",
+    );
+    assert.equal(
+      invokedPortableVerifier,
+      true,
+      `phase ${phase} portable gate must invoke gateway-production.mjs`,
+    );
+    const vitestCommand = result.children.find(
+      (child) =>
+        child.command === "pnpm" &&
+        child.args[0] === "exec" &&
+        child.args[1] === "vitest",
+    );
+    assert.ok(
+      vitestCommand?.args.includes(
+        "tests/hosted-pilot/native-evidence.test.ts",
+      ),
+      `phase ${phase} portable gate must run native-evidence.test.ts negative controls`,
+    );
+  });
+
+  test(`phase ${phase} denies missing unchanged legacy proof target before any child executes`, () => {
+    const commands = approvedCommands(phase);
+    const result = runFixture(
+      phase,
+      commands,
+      "tests/hosted-auth-proof/gateway-proof.mjs",
+    );
+    assert.notEqual(
+      result.status,
+      0,
+      `phase ${phase} must keep tests/hosted-auth-proof/gateway-proof.mjs in required_targets`,
+    );
+    assert.deepEqual(
+      result.children,
+      [],
+      "missing legacy target must fail before any child runs",
+    );
+  });
+}
+
+test("all nine Phase 7 task gates delegate to phase-07.sh", () => {
+  for (let taskNum = 36; taskNum <= 44; taskNum++) {
+    const gatePath = path.join(
+      feature,
+      "gates",
+      `T${String(taskNum).padStart(3, "0")}-gate.sh`,
+    );
+    assert.equal(
+      fs.existsSync(gatePath),
+      true,
+      `Missing Phase 7 task delegate ${gatePath}`,
+    );
+    const content = fs.readFileSync(gatePath, "utf8");
+    assert.match(
+      content,
+      /exec bash "\$\{gate_dir\}\/phase-07\.sh"/,
+      `${gatePath} must delegate to phase-07.sh`,
+    );
+  }
+});

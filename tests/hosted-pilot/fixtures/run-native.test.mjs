@@ -764,9 +764,31 @@ test("wires NET_RAW to main controller only when approvedPassiveNetRaw is true, 
       },
       images: sampleImages,
       files,
+      spawnSynGateHelper: () => {
+        const listeners = new Map();
+        const fakeProc = {
+          exitCode: null,
+          signalCode: null,
+          stdin: {
+            destroyed: false,
+            write: () => {},
+            end: () => {
+              fakeProc.exitCode = 0;
+              listeners.get("close")?.(0, null);
+            },
+          },
+          stdout: { resume: () => {} },
+          stderr: { resume: () => {} },
+          once: (ev, cb) => listeners.set(ev, cb),
+          kill: () => {},
+        };
+        return fakeProc;
+      },
       withLifecycle: async ({ executeCases }) => {
         await executeCases({
           containerId: "c".repeat(64),
+          hostNetNamespace: "net:[10]",
+          outerNetNamespace: "net:[20]",
           docker: async (args) => {
             if (args.includes("inspect")) {
               const target = args.at(-1);
@@ -778,7 +800,10 @@ test("wires NET_RAW to main controller only when approvedPassiveNetRaw is true, 
                 RootFS: { Layers: sampleImages.rootfs[key] },
               });
             }
-            if (args.includes("mkdir")) return "";
+            if (args.includes("mkdir") || args.includes("chmod")) return "";
+            if (args.includes("/fixture/syn-gate/receipt.json")) {
+              throw new Error("not armed yet");
+            }
             if (args.includes("/fixture/bootstrap-stage.json")) {
               return JSON.stringify({
                 stage: "gateway_startup",
@@ -891,9 +916,31 @@ test("derives GWRK_051_OBSERVER_SELFTEST_ONLY strictly from validated checkpoint
       },
       images: sampleImages,
       files,
+      spawnSynGateHelper: () => {
+        const listeners = new Map();
+        const fakeProc = {
+          exitCode: null,
+          signalCode: null,
+          stdin: {
+            destroyed: false,
+            write: () => {},
+            end: () => {
+              fakeProc.exitCode = 0;
+              listeners.get("close")?.(0, null);
+            },
+          },
+          stdout: { resume: () => {} },
+          stderr: { resume: () => {} },
+          once: (ev, cb) => listeners.set(ev, cb),
+          kill: () => {},
+        };
+        return fakeProc;
+      },
       withLifecycle: async ({ executeCases }) => {
         await executeCases({
           containerId: "c".repeat(64),
+          hostNetNamespace: "net:[10]",
+          outerNetNamespace: "net:[20]",
           docker: async (args) => {
             if (args.includes("inspect")) {
               const target = args.at(-1);
@@ -905,7 +952,10 @@ test("derives GWRK_051_OBSERVER_SELFTEST_ONLY strictly from validated checkpoint
                 RootFS: { Layers: sampleImages.rootfs[key] },
               });
             }
-            if (args.includes("mkdir")) return "";
+            if (args.includes("mkdir") || args.includes("chmod")) return "";
+            if (args.includes("/fixture/syn-gate/receipt.json")) {
+              throw new Error("not armed yet");
+            }
             if (args.includes("/fixture/bootstrap-stage.json")) {
               return JSON.stringify({
                 stage: "observer_start",

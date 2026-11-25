@@ -21,7 +21,10 @@ export const BOOTSTRAP_STAGES = [
   "gateway_startup",
   "client_network",
   "gateway_cases",
+  "legacy_proof_staging",
+  "legacy_proof_execution",
   "completed_initial_cases",
+  "completed_combined_proofs",
 ];
 
 export const STATIC_CONSTRUCTION_CATEGORIES = [
@@ -93,6 +96,8 @@ export const STATIC_OPERATION_NAMES = [
   "docker_create_client_b",
   "docker_start_client_b",
   "execute_gateway_cases",
+  "stage_legacy_proof",
+  "execute_legacy_proof",
   "docker_command",
   "unknown_operation",
 ];
@@ -359,7 +364,11 @@ export function createAndStartFixtureContainer(
 // CLI and runtime logs can contain reflected secrets or tokens. Persist only
 // bounded static details, category codes, and a digest of in-memory logs.
 export function classifyBootstrapFailure(stage, error, context = {}) {
-  const isBehavioral = ["gateway_startup", "gateway_cases"].includes(stage);
+  const isBehavioral = [
+    "gateway_startup",
+    "gateway_cases",
+    "legacy_proof_execution",
+  ].includes(stage);
   const isFormat = stage === "cookie_format";
   const failureClassification = isBehavioral
     ? "behavioral"

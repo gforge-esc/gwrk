@@ -27,6 +27,7 @@ import {
 } from "./bootstrap-observer.mjs";
 import { checkStandardCookieSecret } from "./cookie-format-check.mjs";
 import { CLIENT_ID } from "./issuer.mjs";
+import { stageLegacyOffline } from "./legacy-offline-stage.mjs";
 import { OIDC_FIXTURE_ARGUMENTS } from "./oidc-overrides.mjs";
 import { readNativeObserverHealth } from "./raw-https.mjs";
 
@@ -476,6 +477,30 @@ try {
     stage = "gateway_startup";
     beginOperation("run_gateway_startup");
     recordStage();
+    try {
+      const traefikVersionOut = docker(
+        [
+          "run",
+          "--rm",
+          "--pull",
+          "never",
+          "--network",
+          "none",
+          images.traefik,
+          "version",
+        ],
+        { timeout: 15_000 },
+      );
+      const goMatch = /Go version:\s*(\S+)/i.exec(traefikVersionOut);
+      const verMatch = /Version:\s*(\S+)/i.exec(traefikVersionOut);
+      file(
+        "/fixture/traefik-version.json",
+        JSON.stringify({
+          traefikVersion: verMatch?.[1] ?? "unknown",
+          goVersion: goMatch?.[1] ?? "unknown",
+        }),
+      );
+    } catch {}
     execFileSync("bash", ["/fixture/bundle/run.sh"], {
       stdio: "pipe",
       timeout: 30_000,
@@ -543,31 +568,168 @@ try {
     stage = "gateway_cases";
     beginOperation("execute_gateway_cases");
     recordStage();
+    const casesEnv = {
+      PATH: process.env.PATH,
+      HOME: "/root",
+      DOCKER_HOST: "unix:///var/run/docker.sock",
+      GWRK_051_OWNED_CONTROLLER: "1",
+      GWRK_051_CLIENT_A: `gwrk-051-client-a-${run}`,
+      GWRK_051_CLIENT_B: `gwrk-051-client-b-${run}`,
+      GWRK_051_RUN_ID: run,
+      GWRK_051_PROXY_IMAGE_ID: images.proxy,
+      GWRK_051_TRAEFIK_IMAGE_ID: images.traefik,
+      GWRK_051_RUNTIME_RECEIPT_SHA256: runtimeReceiptSha256,
+      GWRK_051_TRAEFIK_CONTAINER: traefikContainer,
+      GWRK_051_PROXY_CONTAINER: proxyContainer,
+      GWRK_051_ORIGIN_CONTAINER: originName,
+      GWRK_051_OBSERVER_DIR: "/fixture/observer",
+      GWRK_051_PILOT_RESULT_PATH: "/fixture/pilot-proof-result.json",
+    };
+    if (process.env.GWRK_051_SYN_GATE_DIR) {
+      casesEnv.GWRK_051_SYN_GATE_DIR = process.env.GWRK_051_SYN_GATE_DIR;
+    }
     execFileSync(process.execPath, ["/fixture/fixtures/gateway-cases.mjs"], {
       stdio: "pipe",
       timeout: 300_000,
-      env: {
-        PATH: process.env.PATH,
-        HOME: "/root",
-        DOCKER_HOST: "unix:///var/run/docker.sock",
-        GWRK_051_OWNED_CONTROLLER: "1",
-        GWRK_051_CLIENT_A: `gwrk-051-client-a-${run}`,
-        GWRK_051_CLIENT_B: `gwrk-051-client-b-${run}`,
-        GWRK_051_RUN_ID: run,
-        GWRK_051_PROXY_IMAGE_ID: images.proxy,
-        GWRK_051_TRAEFIK_IMAGE_ID: images.traefik,
-        GWRK_051_RUNTIME_RECEIPT_SHA256: runtimeReceiptSha256,
-        GWRK_051_TRAEFIK_CONTAINER: traefikContainer,
-        GWRK_051_PROXY_CONTAINER: proxyContainer,
-        GWRK_051_ORIGIN_CONTAINER: originName,
-        GWRK_051_OBSERVER_DIR: "/fixture/observer",
-      },
+      env: casesEnv,
     });
-    stage = "completed_initial_cases";
-    recordStage();
-    process.stdout.write(
-      "Native gateway initial cases passed. Full acceptance remains pending.\n",
-    );
+
+    if (process.env.GWRK_051_RUN_LEGACY_PROOF === "1") {
+      // Tear down pilot services cleanly before running unchanged legacy 041 proof on shared ports.
+      issuer?.kill("SIGTERM");
+      issuer = null;
+      beginOperation("stop_native_observer");
+      await observerLifecycle.stop(observerProcess);
+      observerProcess = null;
+      try {
+        docker(
+          [
+            "compose",
+            "-p",
+            "gwrk-hosted-pilot",
+            "-f",
+            "/fixture/bundle/compose.yaml",
+            "down",
+            "--remove-orphans",
+          ],
+          { timeout: 30_000 },
+        );
+      } catch {}
+      for (const name of owned.splice(0).reverse()) {
+        let labels;
+        try {
+          labels = JSON.parse(
+            docker(["inspect", "--format", "{{json .Config.Labels}}", name]),
+          );
+        } catch {}
+        if (labels?.["gwrk.fixture.run"] === run) {
+          docker(["rm", "--force", name]);
+        }
+      }
+      if (networkCreated) {
+        docker(["network", "rm", "gwrk-051-clients"]);
+        networkCreated = false;
+      }
+
+      stage = "legacy_proof_staging";
+      beginOperation("stage_legacy_proof");
+      recordStage();
+      const stageResult = await stageLegacyOffline({
+        sourceRoot: "/input/legacy-source",
+        destinationRoot: "/fixture/legacy-source",
+        loadedImages: {
+          traefik: {
+            imageId: images.traefik,
+            rootfsLayers: images.rootfs.traefik,
+          },
+          proxy: {
+            imageId: images.proxy,
+            rootfsLayers: images.rootfs.proxy,
+          },
+          nginx: {
+            imageId: images.nginx,
+            rootfsLayers: images.rootfs.nginx,
+          },
+          issuerNode: {
+            imageId: images.issuerNode,
+            rootfsLayers: images.rootfs.issuerNode,
+          },
+        },
+        inspectPort: (imageId) =>
+          JSON.parse(
+            docker(["image", "inspect", "--format", "{{json .}}", imageId]),
+          ),
+        tmpdir: "/fixture/legacy-tmp",
+        sharedMountPath: "/fixture",
+      });
+
+      stage = "legacy_proof_execution";
+      beginOperation("execute_legacy_proof");
+      recordStage();
+      const legacyOutput = execFileSync(
+        process.execPath,
+        [stageResult.stagedScriptPath],
+        {
+          cwd: stageResult.stagedSourceRoot,
+          encoding: "utf8",
+          stdio: "pipe",
+          timeout: 180_000,
+          maxBuffer: 4 * 1024 * 1024,
+          env: {
+            PATH: process.env.PATH,
+            HOME: "/root",
+            DOCKER_HOST: "unix:///var/run/docker.sock",
+            TMPDIR: stageResult.env.TMPDIR,
+          },
+        },
+      );
+      assert.ok(
+        legacyOutput.includes("Hosted sign-in fixture passed"),
+        "unchanged legacy gateway-proof.mjs output missing required success marker",
+      );
+      const controllerName = `gwrk-051-controller-${run}`;
+      const remainingAfterLegacy = docker([
+        "ps",
+        "-a",
+        "--format",
+        "{{.Names}}",
+      ])
+        .split("\n")
+        .map((line) => line.trim())
+        .filter((name) => name.length > 0 && name !== controllerName);
+      assert.deepEqual(
+        remainingAfterLegacy,
+        [],
+        `legacy 041 proof left behind uncleaned containers: ${remainingAfterLegacy.join(", ")}`,
+      );
+      file(
+        "/fixture/legacy-proof-result.json",
+        JSON.stringify({
+          exitCode: 0,
+          scriptSha256:
+            stageResult.originalHashes[
+              "tests/hosted-auth-proof/gateway-proof.mjs"
+            ],
+          originalHashes: stageResult.originalHashes,
+          stagedHashes: stageResult.stagedHashes,
+          locatorMap: stageResult.locatorMap,
+          successMarker: "Hosted sign-in fixture passed",
+          cleanupComplete: true,
+          rawReceipt: legacyOutput,
+        }),
+      );
+      stage = "completed_combined_proofs";
+      recordStage();
+      process.stdout.write(
+        "Native combined pilot and legacy proofs passed. Live pilot acceptance remains false.\n",
+      );
+    } else {
+      stage = "completed_initial_cases";
+      recordStage();
+      process.stdout.write(
+        "Native gateway initial cases passed. Full acceptance remains pending.\n",
+      );
+    }
   }
 } catch (error) {
   const elapsedMs = operationStartedAt ? Date.now() - operationStartedAt : 0;
@@ -629,6 +791,20 @@ try {
   await observerLifecycle.stop(observerProcess);
   try {
     rmSync("/fixture/observer", { recursive: true, force: true });
+  } catch {}
+  try {
+    docker(
+      [
+        "compose",
+        "-p",
+        "gwrk-hosted-pilot",
+        "-f",
+        "/fixture/bundle/compose.yaml",
+        "down",
+        "--remove-orphans",
+      ],
+      { timeout: 30_000 },
+    );
   } catch {}
   for (const name of owned.reverse()) {
     let labels;
