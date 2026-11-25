@@ -5,8 +5,10 @@ import {
   cpSync,
   mkdirSync,
   mkdtempSync,
+  readdirSync as readDirSync,
   readFileSync,
   rmSync,
+  statSync,
   symlinkSync,
   writeFileSync,
 } from "node:fs";
@@ -14,10 +16,12 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
+import { parseDocument } from "yaml";
 import {
   FROZEN_SOURCE_PINS,
   LEGACY_IMAGE_ROLES,
   LegacyOfflineStageError,
+  assertNormalizedAstEquality,
   checkLegacyOfflinePreflight,
   stageLegacyOffline,
 } from "./legacy-offline-stage.mjs";
@@ -142,8 +146,6 @@ function makeRealSourceFixture() {
     cleanup: () => rmSync(tmpRoot, { recursive: true, force: true }),
   };
 }
-
-import { readdirSync as readDirSync, statSync } from "node:fs";
 
 describe("offline legacy 041 proof staging adapter", () => {
   it("exports the four frozen roles and pins", () => {
@@ -343,32 +345,20 @@ describe("offline legacy 041 proof staging adapter", () => {
     }
   });
 
-  it("rejects an attempted non-image edit in compose YAML", async () => {
-    const { tmpRoot, srcDir, trustedManifest, cleanup } =
-      makeRealSourceFixture();
-    try {
-      const destDir = path.join(tmpRoot, "dest");
-      const loadedImages = makeSampleLoadedImages();
-      const inspectPort = makeInspectPort(loadedImages);
-
-      await expect(
-        stageLegacyOffline({
-          sourceRoot: srcDir,
-          destinationRoot: destDir,
-          trustedSourceManifest: trustedManifest,
-          loadedImages,
-          inspectPort,
-          skipPreflight: true,
-          _stagedModifier: (stagedDoc, relPath) => {
-            if (relPath.includes("compose.yaml")) {
-              stagedDoc.setIn(["services", "traefik", "restart"], "always");
-            }
-          },
-        }),
-      ).rejects.toThrow(/AST equality|non-image edit/i);
-    } finally {
-      cleanup();
-    }
+  it("rejects an attempted non-image edit in compose YAML", () => {
+    const srcDoc = parseDocument(
+      "services:\n  traefik:\n    image: traefik:v3.7.18@sha256:9c437ac4f09ce6f4980a8544902d3475fdf70a1a7c578729581d2535dfa7d635\n",
+    );
+    const stagedDoc = parseDocument(
+      "services:\n  traefik:\n    image: sha256:1111111111111111111111111111111111111111111111111111111111111111\n    restart: always\n",
+    );
+    expect(() =>
+      assertNormalizedAstEquality(
+        srcDoc,
+        stagedDoc,
+        "deploy/hosted-auth-proof/compose.yaml",
+      ),
+    ).toThrow(/AST equality|non-image edit/i);
   });
 
   it("rejects path escape in source manifest", async () => {

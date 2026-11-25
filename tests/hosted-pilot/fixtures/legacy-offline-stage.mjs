@@ -3,7 +3,46 @@ import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import * as defaultFs from "node:fs";
 import path from "node:path";
-import { isMap, isScalar, isSeq, parseDocument } from "yaml";
+
+async function loadYamlModule() {
+  try {
+    return await import("yaml");
+  } catch (err) {
+    if (err?.code !== "ERR_MODULE_NOT_FOUND") {
+      throw err;
+    }
+  }
+  try {
+    return await import("/app/node_modules/yaml/dist/index.js");
+  } catch (err) {
+    if (err?.code !== "ERR_MODULE_NOT_FOUND") {
+      throw err;
+    }
+  }
+  return await import(
+    path.join(process.cwd(), "node_modules/yaml/dist/index.js")
+  );
+}
+
+const { isAlias, isMap, isScalar, isSeq, parseDocument } =
+  await loadYamlModule();
+
+const SHA256_DIGEST_RE = /^sha256:[a-f0-9]{64}$/;
+
+const COMPOSE_YAML_REL = "deploy/hosted-auth-proof/compose.yaml";
+const COMPOSE_TEST_YAML_REL = "tests/hosted-auth-proof/compose.test.yaml";
+const GATEWAY_PROOF_REL = "tests/hosted-auth-proof/gateway-proof.mjs";
+
+const REQUIRED_MANIFEST_ENTRIES = Object.freeze([
+  COMPOSE_YAML_REL,
+  COMPOSE_TEST_YAML_REL,
+  GATEWAY_PROOF_REL,
+]);
+
+const ALLOWED_IMAGE_SERVICES_BY_FILE = Object.freeze({
+  [COMPOSE_YAML_REL]: new Set(["traefik", "oauth2-proxy", "status"]),
+  [COMPOSE_TEST_YAML_REL]: new Set(["issuer"]),
+});
 
 export const LEGACY_IMAGE_ROLES = Object.freeze([
   "traefik",
@@ -75,29 +114,127 @@ export function assertSafeRelativePath(relPath) {
   if (typeof relPath !== "string" || !relPath.trim()) {
     throw new LegacyOfflineStageError("Path must be a non-empty string");
   }
-  if (relPath.startsWith("/") || relPath.startsWith("\\")) {
+  if (relPath.includes("\0")) {
     throw new LegacyOfflineStageError(
-      `path escape: absolute path rejected: ${relPath}`,
+      `path escape: null byte rejected in path: ${relPath}`,
     );
   }
-  const segments = relPath.split(/[/\\]/);
-  if (segments.includes("..")) {
+  if (relPath.includes("\\")) {
     throw new LegacyOfflineStageError(
-      `path escape: '..' rejected in path: ${relPath}`,
+      `path escape: backslash rejected in path: ${relPath}`,
+    );
+  }
+  if (relPath.startsWith("/") || relPath.endsWith("/")) {
+    throw new LegacyOfflineStageError(
+      `path escape: leading or trailing slash rejected: ${relPath}`,
+    );
+  }
+  const segments = relPath.split("/");
+  if (
+    segments.includes("..") ||
+    segments.includes(".") ||
+    segments.includes("")
+  ) {
+    throw new LegacyOfflineStageError(
+      `path escape: non-canonical segment rejected in path: ${relPath}`,
     );
   }
 }
 
-export function normalizeAst(node, pathArr = []) {
+function lstatIfExists(fs, targetPath) {
+  try {
+    return fs.lstatSync(targetPath);
+  } catch (err) {
+    if (err?.code === "ENOENT") return null;
+    throw new LegacyOfflineStageError(
+      `Failed to inspect path ${targetPath}: ${err.message}`,
+      { targetPath, originalError: err.message },
+    );
+  }
+}
+
+function isDarwinSystemSymlink(p) {
+  if (process.platform !== "darwin") return false;
+  return p === "/var" || p === "/tmp" || p === "/etc";
+}
+
+function assertNoSymlinkPath(fs, targetPath, label) {
+  const resolved = path.resolve(targetPath);
+  const parts = resolved.split(path.sep).filter(Boolean);
+  let current = path.parse(resolved).root;
+  for (const part of parts) {
+    current = path.join(current, part);
+    const stat = lstatIfExists(fs, current);
+    if (!stat) break;
+    if (stat.isSymbolicLink()) {
+      if (isDarwinSystemSymlink(current)) {
+        continue;
+      }
+      throw new LegacyOfflineStageError(
+        `symlink rejected in ${label}: ${current}`,
+        { label, symlinkPath: current, targetPath },
+      );
+    }
+  }
+}
+
+function assertNoSymlinkRelativeChain(fs, baseDir, relPath, label) {
+  const segments = relPath.split("/");
+  let current = baseDir;
+  for (const segment of segments) {
+    current = path.join(current, segment);
+    const stat = lstatIfExists(fs, current);
+    if (!stat) {
+      throw new LegacyOfflineStageError(
+        `Source file missing from source tree: ${relPath}`,
+        { relPath, missingPath: current },
+      );
+    }
+    if (stat.isSymbolicLink()) {
+      throw new LegacyOfflineStageError(
+        `symlink rejected in ${label}: ${relPath}`,
+        { label, relPath, symlinkPath: current },
+      );
+    }
+  }
+}
+
+function isStrictDescendant(parentPath, childPath) {
+  const rel = path.relative(parentPath, childPath);
+  return Boolean(rel) && !rel.startsWith("..") && !path.isAbsolute(rel);
+}
+
+function assertDocumentHasNoErrors(doc, fileName) {
+  if (Array.isArray(doc?.errors) && doc.errors.length > 0) {
+    throw new LegacyOfflineStageError(
+      `YAML parse error in ${fileName}: ${doc.errors[0].message}`,
+      { fileName, errors: doc.errors.map((e) => e.message) },
+    );
+  }
+}
+
+export function normalizeAst(node, pathArr = [], allowedServices = null) {
+  if (isAlias(node)) {
+    return {
+      type: "alias",
+      tag: node.tag ?? null,
+      source: node.source,
+    };
+  }
   if (isMap(node)) {
     return {
       type: "map",
       tag: node.tag ?? null,
+      anchor: node.anchor ?? null,
       items: node.items.map((pair) => {
         const keyStr = String(pair.key?.value ?? pair.key);
         return {
-          key: normalizeAst(pair.key, pathArr),
-          value: normalizeAst(pair.value, [...pathArr, keyStr]),
+          key: normalizeAst(pair.key, pathArr, allowedServices),
+          value: normalizeAst(
+            pair.value,
+            [...pathArr, keyStr],
+            allowedServices,
+          ),
         };
       }),
     };
@@ -106,8 +243,9 @@ export function normalizeAst(node, pathArr = []) {
     return {
       type: "seq",
       tag: node.tag ?? null,
+      anchor: node.anchor ?? null,
       items: node.items.map((item, idx) =>
-        normalizeAst(item, [...pathArr, String(idx)]),
+        normalizeAst(item, [...pathArr, String(idx)], allowedServices),
       ),
     };
   }
@@ -115,16 +253,19 @@ export function normalizeAst(node, pathArr = []) {
     const isImageField =
       pathArr.length === 3 &&
       pathArr[0] === "services" &&
-      pathArr[2] === "image";
+      pathArr[2] === "image" &&
+      (allowedServices ? allowedServices.has(pathArr[1]) : false);
     return {
       type: "scalar",
       tag: node.tag ?? null,
+      anchor: node.anchor ?? null,
       value: isImageField ? "__PERMITTED_IMAGE_SCALAR__" : node.value,
     };
   }
   return {
     type: "primitive",
     tag: node?.tag ?? null,
+    anchor: node?.anchor ?? null,
     value: node?.value ?? node,
   };
 }
@@ -137,53 +278,19 @@ export function verifyRequiredComposeTags(doc, fileName = "") {
       `Missing services.traefik in ${fileName}`,
     );
   }
-  const ports = traefik.get?.("ports", true);
-  if (ports?.tag !== "!override") {
-    throw new LegacyOfflineStageError(
-      `Changed custom tag: expected !override on services.traefik.ports in ${fileName}, got ${ports?.tag}`,
-      {
-        service: "traefik",
-        field: "ports",
-        expectedTag: "!override",
-        actualTag: ports?.tag,
-      },
-    );
-  }
-  const command = traefik.get?.("command", true);
-  if (command?.tag !== "!override") {
-    throw new LegacyOfflineStageError(
-      `Changed custom tag: expected !override on services.traefik.command in ${fileName}, got ${command?.tag}`,
-      {
-        service: "traefik",
-        field: "command",
-        expectedTag: "!override",
-        actualTag: command?.tag,
-      },
-    );
-  }
-  const volumes = traefik.get?.("volumes", true);
-  if (volumes?.tag !== "!override") {
-    throw new LegacyOfflineStageError(
-      `Changed custom tag: expected !override on services.traefik.volumes in ${fileName}, got ${volumes?.tag}`,
-      {
-        service: "traefik",
-        field: "volumes",
-        expectedTag: "!override",
-        actualTag: volumes?.tag,
-      },
-    );
-  }
-  const networks = traefik.get?.("networks", true);
-  if (networks?.tag !== "!override") {
-    throw new LegacyOfflineStageError(
-      `Changed custom tag: expected !override on services.traefik.networks in ${fileName}, got ${networks?.tag}`,
-      {
-        service: "traefik",
-        field: "networks",
-        expectedTag: "!override",
-        actualTag: networks?.tag,
-      },
-    );
+  for (const field of ["ports", "command", "volumes", "networks"]) {
+    const node = traefik.get?.(field, true);
+    if (node?.tag !== "!override") {
+      throw new LegacyOfflineStageError(
+        `Changed custom tag: expected !override on services.traefik.${field} in ${fileName}, got ${node?.tag}`,
+        {
+          service: "traefik",
+          field,
+          expectedTag: "!override",
+          actualTag: node?.tag,
+        },
+      );
+    }
   }
   const auth = doc.getIn(["networks", "auth"]);
   const ipam = auth?.get?.("ipam", true);
@@ -205,8 +312,17 @@ export function assertNormalizedAstEquality(
   stagedDoc,
   fileName = "",
 ) {
-  const normSource = normalizeAst(sourceDoc.contents);
-  const normStaged = normalizeAst(stagedDoc.contents);
+  assertDocumentHasNoErrors(sourceDoc, fileName);
+  assertDocumentHasNoErrors(stagedDoc, fileName);
+  const allowedServices =
+    ALLOWED_IMAGE_SERVICES_BY_FILE[fileName] ??
+    (fileName.endsWith("compose.test.yaml")
+      ? ALLOWED_IMAGE_SERVICES_BY_FILE[COMPOSE_TEST_YAML_REL]
+      : fileName.endsWith("compose.yaml")
+        ? ALLOWED_IMAGE_SERVICES_BY_FILE[COMPOSE_YAML_REL]
+        : new Set());
+  const normSource = normalizeAst(sourceDoc.contents, [], allowedServices);
+  const normStaged = normalizeAst(stagedDoc.contents, [], allowedServices);
   try {
     assert.deepEqual(normSource, normStaged);
   } catch (err) {
@@ -218,12 +334,16 @@ export function assertNormalizedAstEquality(
 }
 
 export function validateLoadedImages(loadedImages) {
-  if (!loadedImages || typeof loadedImages !== "object") {
+  if (
+    !loadedImages ||
+    typeof loadedImages !== "object" ||
+    Array.isArray(loadedImages)
+  ) {
     throw new LegacyOfflineStageError("Missing loaded images map");
   }
   const keys = Object.keys(loadedImages);
   for (const role of LEGACY_IMAGE_ROLES) {
-    if (!loadedImages[role]) {
+    if (!Object.hasOwn(loadedImages, role) || !loadedImages[role]) {
       throw new LegacyOfflineStageError(
         `missing required legacy image role: ${role}`,
         { role },
@@ -248,23 +368,46 @@ export async function verifyLoadedImageIdentities(loadedImages, inspectPort) {
     );
   }
 
+  const seenIds = new Set();
   for (const role of LEGACY_IMAGE_ROLES) {
     const item = loadedImages[role];
-    const imageId = typeof item === "string" ? item : item.imageId;
-    const expectedLayers = Array.isArray(item?.rootfsLayers)
+    if (!item || typeof item !== "object" || Array.isArray(item)) {
+      throw new LegacyOfflineStageError(
+        `Loaded image metadata for role ${role} must include imageId and rootfsLayers`,
+        { role },
+      );
+    }
+    const imageId = item.imageId;
+    const expectedLayers = Array.isArray(item.rootfsLayers)
       ? item.rootfsLayers
-      : Array.isArray(item?.rootfsDiffIds)
+      : Array.isArray(item.rootfsDiffIds)
         ? item.rootfsDiffIds
         : null;
 
-    if (
-      !imageId ||
-      typeof imageId !== "string" ||
-      !imageId.startsWith("sha256:")
-    ) {
+    if (typeof imageId !== "string" || !SHA256_DIGEST_RE.test(imageId)) {
       throw new LegacyOfflineStageError(
         `Invalid loaded image ID for role ${role}: ${imageId}`,
         { role, imageId },
+      );
+    }
+    if (seenIds.has(imageId)) {
+      throw new LegacyOfflineStageError(
+        `Duplicate loaded image ID reused for role ${role}: ${imageId}`,
+        { role, imageId },
+      );
+    }
+    seenIds.add(imageId);
+
+    if (
+      !Array.isArray(expectedLayers) ||
+      expectedLayers.length === 0 ||
+      !expectedLayers.every(
+        (layer) => typeof layer === "string" && SHA256_DIGEST_RE.test(layer),
+      )
+    ) {
+      throw new LegacyOfflineStageError(
+        `Missing or invalid rootfs layers metadata for role ${role}`,
+        { role, expectedLayers },
       );
     }
 
@@ -299,31 +442,29 @@ export async function verifyLoadedImageIdentities(loadedImages, inspectPort) {
       );
     }
 
-    if (expectedLayers) {
-      const actualLayers =
-        inspected.RootFS?.Layers ??
-        inspected.rootfsLayers ??
-        inspected.rootfsDiffIds;
-      if (!Array.isArray(actualLayers)) {
-        throw new LegacyOfflineStageError(
-          `Missing rootfs layers in inspect result for role ${role}`,
-          { role, inspected },
-        );
-      }
-      try {
-        assert.deepEqual(actualLayers, expectedLayers);
-      } catch (err) {
-        throw new LegacyOfflineStageError(
-          `payload identity rootfs layer mismatch for role ${role}`,
-          { role, expectedLayers, actualLayers },
-        );
-      }
+    const actualLayers =
+      inspected.RootFS?.Layers ??
+      inspected.rootfsLayers ??
+      inspected.rootfsDiffIds;
+    if (!Array.isArray(actualLayers) || actualLayers.length === 0) {
+      throw new LegacyOfflineStageError(
+        `Missing rootfs layers in inspect result for role ${role}`,
+        { role, inspected },
+      );
+    }
+    try {
+      assert.deepEqual(actualLayers, expectedLayers);
+    } catch {
+      throw new LegacyOfflineStageError(
+        `payload identity rootfs layer mismatch for role ${role}`,
+        { role, expectedLayers, actualLayers },
+      );
     }
   }
 }
 
 export async function checkLegacyOfflinePreflight({
-  tmpdir = process.env.TMPDIR || "/fixture/legacy-tmp",
+  tmpdir = "/fixture/legacy-tmp",
   sharedMountPath = "/fixture",
   mountChecker,
   commandRunner,
@@ -331,9 +472,22 @@ export async function checkLegacyOfflinePreflight({
 } = {}) {
   const fs = filesystem ?? defaultFs;
 
-  if (!tmpdir || typeof tmpdir !== "string") {
-    throw new LegacyOfflineStageError("TMPDIR must be a non-empty path string");
+  if (!tmpdir || typeof tmpdir !== "string" || !path.isAbsolute(tmpdir)) {
+    throw new LegacyOfflineStageError(
+      "TMPDIR must be a non-empty absolute path string",
+    );
   }
+  if (
+    !sharedMountPath ||
+    typeof sharedMountPath !== "string" ||
+    !path.isAbsolute(sharedMountPath)
+  ) {
+    throw new LegacyOfflineStageError(
+      "sharedMountPath must be a non-empty absolute path string",
+    );
+  }
+
+  const normalizedShared = path.resolve(sharedMountPath);
   const normalizedTmp = path.resolve(tmpdir);
   if (
     normalizedTmp === "/tmp" ||
@@ -342,51 +496,80 @@ export async function checkLegacyOfflinePreflight({
     normalizedTmp.startsWith("/var/tmp/")
   ) {
     throw new LegacyOfflineStageError(
-      `private /tmp location rejected for legacy proof: TMPDIR must be under shared ${sharedMountPath}, got ${tmpdir}`,
+      `private /tmp location rejected for legacy proof: TMPDIR must be under shared ${normalizedShared}, got ${tmpdir}`,
       { tmpdir },
     );
   }
 
-  try {
-    fs.mkdirSync(tmpdir, { recursive: true, mode: 0o755 });
-    fs.chmodSync(tmpdir, 0o755);
-  } catch (err) {
+  if (!isStrictDescendant(normalizedShared, normalizedTmp)) {
     throw new LegacyOfflineStageError(
-      `Failed to create or set mode 0755 on TMPDIR ${tmpdir}: ${err.message}`,
-      { tmpdir, originalError: err.message },
+      `TMPDIR must be strictly inside shared mount ${normalizedShared}, got ${tmpdir}`,
+      { tmpdir, sharedMountPath: normalizedShared },
     );
   }
 
+  assertNoSymlinkPath(fs, normalizedShared, "sharedMountPath");
+  assertNoSymlinkPath(fs, normalizedTmp, "tmpdir");
+
   if (typeof mountChecker === "function") {
     try {
-      const ok = await mountChecker({ sharedMountPath, tmpdir });
-      if (ok === false) {
+      const ok = await mountChecker({
+        sharedMountPath: normalizedShared,
+        tmpdir: normalizedTmp,
+      });
+      if (ok !== true) {
         throw new Error("mountChecker returned false");
       }
     } catch (err) {
       throw new LegacyOfflineStageError(
-        `wrong mount identity for shared path ${sharedMountPath}: ${err.message}`,
-        { sharedMountPath, originalError: err.message },
+        `wrong mount identity for shared path ${normalizedShared}: ${err.message}`,
+        { sharedMountPath: normalizedShared, originalError: err.message },
       );
     }
   } else {
     const mountinfoPath = "/proc/self/mountinfo";
-    if (fs.existsSync(mountinfoPath)) {
-      const lines = fs.readFileSync(mountinfoPath, "utf8").trim().split("\n");
-      const isMounted = lines.some((line) => {
-        const parts = line.split(" ");
-        return (
-          parts[4] === sharedMountPath ||
-          parts[4] === path.resolve(sharedMountPath)
-        );
-      });
-      if (!isMounted) {
-        throw new LegacyOfflineStageError(
-          `wrong mount identity: ${sharedMountPath} is not a mounted target in ${mountinfoPath}`,
-          { sharedMountPath },
-        );
-      }
+    if (!fs.existsSync(mountinfoPath)) {
+      throw new LegacyOfflineStageError(
+        `wrong mount identity: cannot verify ${normalizedShared} because ${mountinfoPath} is unavailable`,
+        { sharedMountPath: normalizedShared, mountinfoPath },
+      );
     }
+    const lines = fs.readFileSync(mountinfoPath, "utf8").trim().split("\n");
+    const mountPoints = new Set(
+      lines.map((line) => line.split(" ")[4]).filter(Boolean),
+    );
+    if (!mountPoints.has(normalizedShared)) {
+      throw new LegacyOfflineStageError(
+        `wrong mount identity: ${normalizedShared} is not a mounted target in ${mountinfoPath}`,
+        { sharedMountPath: normalizedShared },
+      );
+    }
+    if (mountPoints.has(normalizedTmp)) {
+      throw new LegacyOfflineStageError(
+        `wrong mount identity: ${normalizedTmp} is a separate mount overriding ${normalizedShared}`,
+        { sharedMountPath: normalizedShared, tmpdir: normalizedTmp },
+      );
+    }
+  }
+
+  try {
+    fs.mkdirSync(normalizedTmp, { recursive: true, mode: 0o755 });
+    fs.chmodSync(normalizedTmp, 0o755);
+  } catch (err) {
+    throw new LegacyOfflineStageError(
+      `Failed to create or set mode 0755 on TMPDIR ${normalizedTmp}: ${err.message}`,
+      { tmpdir: normalizedTmp, originalError: err.message },
+    );
+  }
+
+  assertNoSymlinkPath(fs, normalizedTmp, "tmpdir");
+  const sharedStat = fs.lstatSync(normalizedShared);
+  const tmpStat = fs.lstatSync(normalizedTmp);
+  if (!tmpStat.isDirectory() || tmpStat.dev !== sharedStat.dev) {
+    throw new LegacyOfflineStageError(
+      `wrong mount identity: ${normalizedTmp} does not share device with ${normalizedShared}`,
+      { sharedMountPath: normalizedShared, tmpdir: normalizedTmp },
+    );
   }
 
   const runner =
@@ -427,8 +610,8 @@ export async function checkLegacyOfflinePreflight({
   }
 
   return {
-    tmpdir,
-    sharedMountPath,
+    tmpdir: normalizedTmp,
+    sharedMountPath: normalizedShared,
     mode: 0o755,
   };
 }
@@ -445,7 +628,6 @@ export async function stageLegacyOffline({
   mountChecker,
   commandRunner,
   skipPreflight = false,
-  _stagedModifier,
 }) {
   const fs = filesystem ?? defaultFs;
 
@@ -461,18 +643,56 @@ export async function stageLegacyOffline({
 
   await verifyLoadedImageIdentities(loadedImages, inspectPort);
 
-  if (!sourceRoot || !fs.existsSync(sourceRoot)) {
+  if (!sourceRoot || typeof sourceRoot !== "string") {
+    throw new LegacyOfflineStageError(
+      `Source root directory does not exist: ${sourceRoot}`,
+      { sourceRoot },
+    );
+  }
+  assertNoSymlinkPath(fs, sourceRoot, "sourceRoot");
+  const sourceRootStat = lstatIfExists(fs, sourceRoot);
+  if (!sourceRootStat || !sourceRootStat.isDirectory()) {
     throw new LegacyOfflineStageError(
       `Source root directory does not exist: ${sourceRoot}`,
       { sourceRoot },
     );
   }
 
-  if (fs.existsSync(destinationRoot)) {
-    const destStat = fs.lstatSync(destinationRoot);
+  if (!destinationRoot || typeof destinationRoot !== "string") {
+    throw new LegacyOfflineStageError(
+      `Destination root must be a non-empty path: ${destinationRoot}`,
+      { destinationRoot },
+    );
+  }
+  assertNoSymlinkPath(fs, destinationRoot, "destinationRoot");
+
+  if (
+    !trustedSourceManifest ||
+    typeof trustedSourceManifest !== "object" ||
+    Array.isArray(trustedSourceManifest)
+  ) {
+    throw new LegacyOfflineStageError("Missing trustedSourceManifest");
+  }
+  for (const requiredRel of REQUIRED_MANIFEST_ENTRIES) {
+    if (!Object.hasOwn(trustedSourceManifest, requiredRel)) {
+      throw new LegacyOfflineStageError(
+        `trustedSourceManifest missing required legacy entry: ${requiredRel}`,
+        { requiredRel },
+      );
+    }
+  }
+
+  const destStat = lstatIfExists(fs, destinationRoot);
+  if (destStat) {
     if (destStat.isSymbolicLink()) {
       throw new LegacyOfflineStageError(
         `symlink rejected: destination directory is a symbolic link: ${destinationRoot}`,
+        { destinationRoot },
+      );
+    }
+    if (!destStat.isDirectory()) {
+      throw new LegacyOfflineStageError(
+        `destination path already exists and is not a directory: ${destinationRoot}`,
         { destinationRoot },
       );
     }
@@ -489,19 +709,19 @@ export async function stageLegacyOffline({
 
   const originalHashes = {};
   const stagedHashes = {};
+  const verifiedFiles = new Map();
 
   for (const [relPath, expectedHash] of Object.entries(trustedSourceManifest)) {
     assertSafeRelativePath(relPath);
+    assertNoSymlinkRelativeChain(fs, sourceRoot, relPath, "source tree");
     const fullSourcePath = path.join(sourceRoot, relPath);
-
-    if (!fs.existsSync(fullSourcePath)) {
+    const lstat = lstatIfExists(fs, fullSourcePath);
+    if (!lstat) {
       throw new LegacyOfflineStageError(
         `Source file missing from source tree: ${relPath}`,
         { relPath, fullSourcePath },
       );
     }
-
-    const lstat = fs.lstatSync(fullSourcePath);
     if (lstat.isSymbolicLink()) {
       throw new LegacyOfflineStageError(
         `symlink rejected in source tree: ${relPath}`,
@@ -524,36 +744,31 @@ export async function stageLegacyOffline({
       );
     }
     originalHashes[relPath] = actualHash;
+    verifiedFiles.set(relPath, { raw, mode: lstat.mode & 0o777 });
   }
 
-  const composeYamlRel = "deploy/hosted-auth-proof/compose.yaml";
-  const composeTestYamlRel = "tests/hosted-auth-proof/compose.test.yaml";
-
-  for (const relPath of Object.keys(trustedSourceManifest)) {
-    const fullSourcePath = path.join(sourceRoot, relPath);
+  for (const [relPath, { raw, mode }] of verifiedFiles.entries()) {
     const fullDestPath = path.join(destinationRoot, relPath);
-    const srcStat = fs.statSync(fullSourcePath);
-
     const parentDir = path.dirname(fullDestPath);
     if (!fs.existsSync(parentDir)) {
       fs.mkdirSync(parentDir, { recursive: true, mode: 0o755 });
     }
-
-    if (fs.existsSync(fullDestPath)) {
+    if (lstatIfExists(fs, fullDestPath)) {
       throw new LegacyOfflineStageError(
         `destination file already exists: ${fullDestPath}`,
         { fullDestPath },
       );
     }
 
-    if (relPath === composeYamlRel) {
-      const sourceContent = fs.readFileSync(fullSourcePath, "utf8");
+    if (relPath === COMPOSE_YAML_REL) {
+      const sourceContent = raw.toString("utf8");
       const sourceDoc = parseDocument(sourceContent, {
         customTags: YAML_CUSTOM_TAGS,
       });
       const stagedDoc = parseDocument(sourceContent, {
         customTags: YAML_CUSTOM_TAGS,
       });
+      assertDocumentHasNoErrors(sourceDoc, relPath);
 
       const traefikSrc = sourceDoc.getIn(["services", "traefik", "image"]);
       if (traefikSrc !== FROZEN_SOURCE_PINS.traefik) {
@@ -589,42 +804,43 @@ export async function stageLegacyOffline({
         );
       }
 
-      const traefikId = loadedImages.traefik.imageId ?? loadedImages.traefik;
-      const proxyId = loadedImages.proxy.imageId ?? loadedImages.proxy;
-      const nginxId = loadedImages.nginx.imageId ?? loadedImages.nginx;
-
-      stagedDoc.setIn(["services", "traefik", "image"], traefikId);
-      stagedDoc.setIn(["services", "oauth2-proxy", "image"], proxyId);
-      stagedDoc.setIn(["services", "status", "image"], nginxId);
-
-      if (typeof _stagedModifier === "function") {
-        _stagedModifier(stagedDoc, relPath);
-      }
+      stagedDoc.setIn(
+        ["services", "traefik", "image"],
+        loadedImages.traefik.imageId,
+      );
+      stagedDoc.setIn(
+        ["services", "oauth2-proxy", "image"],
+        loadedImages.proxy.imageId,
+      );
+      stagedDoc.setIn(
+        ["services", "status", "image"],
+        loadedImages.nginx.imageId,
+      );
 
       assertNormalizedAstEquality(sourceDoc, stagedDoc, relPath);
 
       const stagedYamlStr = stagedDoc.toString();
-      fs.writeFileSync(fullDestPath, stagedYamlStr, {
-        mode: srcStat.mode & 0o777,
-      });
-      fs.chmodSync(fullDestPath, srcStat.mode & 0o777);
+      fs.writeFileSync(fullDestPath, stagedYamlStr, { mode });
+      fs.chmodSync(fullDestPath, mode);
 
-      const reReadDoc = parseDocument(stagedYamlStr, {
+      const diskYaml = fs.readFileSync(fullDestPath, "utf8");
+      const reReadDoc = parseDocument(diskYaml, {
         customTags: YAML_CUSTOM_TAGS,
       });
       assertNormalizedAstEquality(sourceDoc, reReadDoc, relPath);
 
       stagedHashes[relPath] = createHash("sha256")
-        .update(stagedYamlStr)
+        .update(diskYaml)
         .digest("hex");
-    } else if (relPath === composeTestYamlRel) {
-      const sourceContent = fs.readFileSync(fullSourcePath, "utf8");
+    } else if (relPath === COMPOSE_TEST_YAML_REL) {
+      const sourceContent = raw.toString("utf8");
       const sourceDoc = parseDocument(sourceContent, {
         customTags: YAML_CUSTOM_TAGS,
       });
       const stagedDoc = parseDocument(sourceContent, {
         customTags: YAML_CUSTOM_TAGS,
       });
+      assertDocumentHasNoErrors(sourceDoc, relPath);
 
       verifyRequiredComposeTags(sourceDoc, relPath);
 
@@ -640,59 +856,51 @@ export async function stageLegacyOffline({
         );
       }
 
-      const issuerId =
-        loadedImages.issuerNode.imageId ?? loadedImages.issuerNode;
-      stagedDoc.setIn(["services", "issuer", "image"], issuerId);
-
-      if (typeof _stagedModifier === "function") {
-        _stagedModifier(stagedDoc, relPath);
-      }
+      stagedDoc.setIn(
+        ["services", "issuer", "image"],
+        loadedImages.issuerNode.imageId,
+      );
 
       verifyRequiredComposeTags(stagedDoc, relPath);
       assertNormalizedAstEquality(sourceDoc, stagedDoc, relPath);
 
       const stagedYamlStr = stagedDoc.toString();
-      fs.writeFileSync(fullDestPath, stagedYamlStr, {
-        mode: srcStat.mode & 0o777,
-      });
-      fs.chmodSync(fullDestPath, srcStat.mode & 0o777);
+      fs.writeFileSync(fullDestPath, stagedYamlStr, { mode });
+      fs.chmodSync(fullDestPath, mode);
 
-      const reReadDoc = parseDocument(stagedYamlStr, {
+      const diskYaml = fs.readFileSync(fullDestPath, "utf8");
+      const reReadDoc = parseDocument(diskYaml, {
         customTags: YAML_CUSTOM_TAGS,
       });
+      verifyRequiredComposeTags(reReadDoc, relPath);
       assertNormalizedAstEquality(sourceDoc, reReadDoc, relPath);
 
       stagedHashes[relPath] = createHash("sha256")
-        .update(stagedYamlStr)
+        .update(diskYaml)
         .digest("hex");
     } else {
-      const content = fs.readFileSync(fullSourcePath);
-      fs.writeFileSync(fullDestPath, content, {
-        mode: srcStat.mode & 0o777,
-      });
-      fs.chmodSync(fullDestPath, srcStat.mode & 0o777);
-      stagedHashes[relPath] = createHash("sha256")
-        .update(content)
-        .digest("hex");
+      fs.writeFileSync(fullDestPath, raw, { mode });
+      fs.chmodSync(fullDestPath, mode);
+      stagedHashes[relPath] = createHash("sha256").update(raw).digest("hex");
     }
   }
 
   const locatorMap = {
     traefik: {
       sourcePin: FROZEN_SOURCE_PINS.traefik,
-      stagedImageId: loadedImages.traefik.imageId ?? loadedImages.traefik,
+      stagedImageId: loadedImages.traefik.imageId,
     },
     proxy: {
       sourcePin: FROZEN_SOURCE_PINS.proxy,
-      stagedImageId: loadedImages.proxy.imageId ?? loadedImages.proxy,
+      stagedImageId: loadedImages.proxy.imageId,
     },
     nginx: {
       sourcePin: FROZEN_SOURCE_PINS.nginx,
-      stagedImageId: loadedImages.nginx.imageId ?? loadedImages.nginx,
+      stagedImageId: loadedImages.nginx.imageId,
     },
     issuerNode: {
       sourcePin: FROZEN_SOURCE_PINS.issuerNode,
-      stagedImageId: loadedImages.issuerNode.imageId ?? loadedImages.issuerNode,
+      stagedImageId: loadedImages.issuerNode.imageId,
     },
   };
 
@@ -704,9 +912,6 @@ export async function stageLegacyOffline({
       TMPDIR: tmpdir,
     },
     stagedSourceRoot: destinationRoot,
-    stagedScriptPath: path.join(
-      destinationRoot,
-      "tests/hosted-auth-proof/gateway-proof.mjs",
-    ),
+    stagedScriptPath: path.join(destinationRoot, GATEWAY_PROOF_REL),
   };
 }
