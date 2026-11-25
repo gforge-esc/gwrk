@@ -475,7 +475,7 @@
           "id": "T045",
           "title": "Create README.md",
           "description": "NEW deploy/hosted-pilot/README.md. Operator runbook for secret separation and key rotation plus allowlist updates and restore and ingress closure",
-          "status": "open",
+          "status": "completed",
           "gateScript": "bash specs/051-hosted-aws-pilot/gates/phase-08.sh",
           "sp": 2
         },
@@ -483,7 +483,7 @@
           "id": "T046",
           "title": "Create live-acceptance.example.md",
           "description": "NEW deploy/hosted-pilot/live-acceptance.example.md. Pending operator live acceptance template keeping live probes separate from synthetic tests",
-          "status": "open",
+          "status": "completed",
           "gateScript": "bash specs/051-hosted-aws-pilot/gates/phase-08.sh",
           "sp": 2
         },
@@ -491,7 +491,7 @@
           "id": "T047",
           "title": "Create live-acceptance-gate.mjs",
           "description": "NEW tests/hosted-pilot/live-acceptance-gate.mjs. Operator-only live verifier exiting `1` without `GWRK_OPERATOR_LIVE_ACCEPTANCE=1` and real non-synthetic HTTPS probes",
-          "status": "open",
+          "status": "completed",
           "gateScript": "bash specs/051-hosted-aws-pilot/gates/phase-08.sh",
           "sp": 2
         },
@@ -499,7 +499,7 @@
           "id": "T048",
           "title": "Modify container-proof.sh",
           "description": "MODIFY tests/linux-runner/container-proof.sh. Add hosted auth preflight and migration `020` restore plus rollback-check proofs to native Linux container run",
-          "status": "open",
+          "status": "completed",
           "gateScript": "bash specs/051-hosted-aws-pilot/gates/phase-08.sh",
           "sp": 1
         }
