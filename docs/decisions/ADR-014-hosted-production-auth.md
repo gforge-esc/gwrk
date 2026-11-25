@@ -1,12 +1,13 @@
 # ADR-014: Hosted Production Authentication Architecture
 
-> **Status:** Proposed
+> **Status:** Decided
 > **Date:** 2026-11-23
+> **Approved by:** David Gonzo Gonzalez on 2026-11-25
 > **Decision:** Authenticate hosted browsers through origin-verified Google OpenID Connect (OIDC) ID tokens with digest-only sessions and authenticate automation through finite-expiry opaque API credentials bound to existing project role bindings.
 > **Constraint:** Hosted HTTP origins MUST verify Google ID tokens or opaque API credential verifiers before executing operational handlers, and MUST NOT trust public identity headers, store raw credentials or Google tokens, or grant project roles automatically on login.
 > **Depends on:** ADR-002 (SQLite Execution Ledger), ADR-003 (State Contract), ADR-010 (Decision Records), ADR-011 (Hexagonal Layering), ADR-013 (Desired Project Architecture)
 > **Supersedes:**
-> **Author:** Coordinator (pending project owner ratification) · **Decision Scope:** Hosted origin authentication, API credential lifecycle, browser CSRF protection, edge gateway isolation
+> **Author:** Coordinator · **Decision Scope:** Hosted origin authentication, API credential lifecycle, browser CSRF protection, edge gateway isolation
 
 ## 1. Context
 
