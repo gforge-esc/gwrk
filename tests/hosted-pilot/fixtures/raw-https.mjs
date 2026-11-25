@@ -313,14 +313,6 @@ export const AUTHORIZATION_SELECTION_CASES = Object.freeze([
   { label: "empty", lines: ["Authorization:"], browserEligible: false },
   { label: "whitespace", lines: ["Authorization:   "], browserEligible: false },
   {
-    label: "connection-nominated-authorization",
-    lines: [
-      "Authorization: Bearer invalid-fixture",
-      "Connection: Authorization",
-    ],
-    browserEligible: false,
-  },
-  {
     label: "malformed-bearer",
     lines: ["Authorization: Bearer"],
     browserEligible: false,

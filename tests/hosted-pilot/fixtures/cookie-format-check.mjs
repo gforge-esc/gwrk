@@ -24,7 +24,7 @@ export async function checkStandardCookieSecret({
   assert.equal(cookie.length, 43);
   assert.equal(/^[A-Za-z0-9_-]{43}$/.test(cookie), true);
   // The controller creates this owned root-only directory before invoking this check.
-  writeFileSync(`${directory}/cookie-secret`, `${cookie}\n`, { mode: 0o600 });
+  writeFileSync(`${directory}/cookie-secret`, cookie, { mode: 0o600 });
   const name = `gwrk-051-cookie-format-${runId}`;
   const args = [
     "run",

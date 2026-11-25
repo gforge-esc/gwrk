@@ -758,10 +758,22 @@ export function createNativeObserverSupervisor({
       return { advanced: false, skipped: true };
     }
     verifyObserverDirectory(observerDir, { requireRootOwnership });
-    const req = readBarrierRequest(barrierPath, {
-      expectedRunId: state.provenance.runId,
-      requireRootOwnership,
-    });
+    let req;
+    try {
+      req = readBarrierRequest(barrierPath, {
+        expectedRunId: state.provenance.runId,
+        requireRootOwnership,
+      });
+    } catch (error) {
+      if (
+        error &&
+        (error.code === "ENOENT" ||
+          /identity changed during open/.test(String(error.message)))
+      ) {
+        return { advanced: false, skipped: true };
+      }
+      throw error;
+    }
     if (req.barrierSequence <= lastHandledBarrier) {
       return {
         advanced: false,

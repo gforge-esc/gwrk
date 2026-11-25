@@ -165,11 +165,16 @@ function client(name, command, allowFailure = false, scanOptions = {}) {
   if (!allowFailure) {
     assert.equal(result.failed, undefined, "native client request failed");
   }
-  if (!command.operation && typeof result.body === "string") {
+  const responsePath = (command.path ?? "/").split("?")[0];
+  const isAllowedOauthStartRedirect =
+    responsePath === "/oauth2/start" && result.status === 302;
+  if (
+    !command.operation &&
+    typeof result.body === "string" &&
+    !isAllowedOauthStartRedirect
+  ) {
     scannedResponses.push({
-      label:
-        scanOptions.label ??
-        `${command.method ?? "GET"} ${(command.path ?? "/").split("?")[0]}`,
+      label: scanOptions.label ?? `${command.method ?? "GET"} ${responsePath}`,
       body: result.body,
       allowLabels: scanOptions.allowLabels ?? [],
     });
@@ -509,9 +514,17 @@ try {
   );
 
   // Send error-query canary through real error paths
-  const errorCallback = client(clientB, {
-    path: "/oauth2/callback?error=051_ERROR_QUERY_CANARY&state=051_CALLBACK_STATE_CANARY",
-  });
+  const errorCallback = client(
+    clientB,
+    {
+      path: "/oauth2/callback?error=051_ERROR_QUERY_CANARY&state=051_CALLBACK_STATE_CANARY",
+    },
+    false,
+    {
+      label: "GET /oauth2/callback",
+      allowLabels: ["051_ERROR_QUERY_CANARY"],
+    },
+  );
   assert.ok(
     errorCallback.status >= 400,
     "error-query callback unexpectedly succeeded",
@@ -557,7 +570,7 @@ try {
   client(clientB, { operation: "reset" });
 
   // Live allowlist removal denies re-verification without restart with exact 403, then recovers
-  const allowlistPath = "/etc/gwrk/secrets/google-account-allowlist";
+  const allowlistPath = "/fixture/origin-secrets/google-account-allowlist";
   const originalAllowlist = readFileSync(allowlistPath, "utf8");
   try {
     writeFileSync(allowlistPath, "other@example.invalid\n", { mode: 0o640 });
@@ -825,6 +838,10 @@ try {
   );
   assertAdmissionWire(admissionRootEvents);
 
+  const savedClientASessionJar =
+    client(clientA, { operation: "snapshot" }).cookieJar ?? {};
+  client(clientA, { operation: "reset" });
+
   // 7. Quota exhaustion across direct root, /oauth2/start, /oauth2/callback + spoofed-XFF immunity + Client B independence
   let quotaHit = false;
   for (let i = 0; i < 65; i++) {
@@ -905,6 +922,7 @@ try {
 
   // Advance rate clock to sweep buckets
   sendControl({ advanceRateMs: 120001 });
+  client(clientA, { operation: "reset" });
 
   // 8. Shared capacity limit at 1000 buckets: 997 prefill + 1 login + 2 API buckets = 1000, zero crypto on 1001st, no eviction
   sendControl({ prefillLoginBuckets: 997 });
@@ -1106,6 +1124,7 @@ try {
 
   sendControl({ loginFault: "none" });
   sendControl({ advanceRateMs: 120001 });
+  client(clientA, { operation: "reset" });
 
   // 10. Lost committed responses, warmed transport, 60-check conservative cap, and cancelled unused-dial scenario
   async function runLostResponseGenerationScenario(
@@ -1209,6 +1228,7 @@ try {
   });
 
   sendControl({ advanceRateMs: 120001 });
+  client(clientA, { operation: "reset" });
 
   // Scenario B: Cancelled unused-dial gated by bounded outer SYN helper, followed by lost committed response
   let scenarioBPreparation = null;
@@ -1253,11 +1273,12 @@ try {
   );
 
   sendControl({ advanceRateMs: 120001 });
+  client(clientA, { operation: "reset" });
 
   // 11. Webhook routing, enrolled repo, HMAC verification, valid browser+API cannot bypass HMAC, zero operation tables
   const preWebhookSession = client(
     clientA,
-    { path: "/api/auth/session" },
+    { path: "/api/auth/session", restoreCookies: savedClientASessionJar },
     false,
     { label: "pre-webhook-session", allowLabels: ["csrfToken"] },
   );

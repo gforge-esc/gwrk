@@ -166,6 +166,7 @@ try {
   directory("/etc/gwrk/gateway-secrets");
   directory("/etc/gwrk/gateway-secrets/tls");
   directory("/etc/gwrk/secrets", 0o750, 0, 10001);
+  directory("/fixture/origin-secrets", 0o750, 0, 10001);
 
   async function startNativeObserver() {
     stage = "observer_start";
@@ -251,6 +252,7 @@ try {
     stage = "secrets_setup";
     beginOperation("secrets_setup");
     recordStage();
+    const csrfHmacKey = `${randomBytes(32).toString("base64url")}\n`;
     file(
       "/etc/gwrk/secrets/google-account-allowlist",
       "allowed@example.invalid\n",
@@ -258,13 +260,15 @@ try {
       0,
       10001,
     );
+    file("/etc/gwrk/secrets/csrf-hmac-key", csrfHmacKey, 0o640, 0, 10001);
     file(
-      "/etc/gwrk/secrets/csrf-hmac-key",
-      `${randomBytes(32).toString("base64url")}\n`,
+      "/fixture/origin-secrets/google-account-allowlist",
+      "allowed@example.invalid\n",
       0o640,
       0,
       10001,
     );
+    file("/fixture/origin-secrets/csrf-hmac-key", csrfHmacKey, 0o640, 0, 10001);
     file(
       "/fixture/service/webhook-secret",
       randomBytes(32).toString("base64url"),
@@ -273,12 +277,12 @@ try {
       10001,
     );
     const secret = randomBytes(32).toString("base64url");
-    file("/fixture/secrets/client-secret", `${secret}\n`);
-    file("/etc/gwrk/gateway-secrets/oauth-client-secret", `${secret}\n`);
-    // Exercise the pinned proxy's accepted 32-byte base64url cookie-secret file format with trailing newline.
+    file("/fixture/secrets/client-secret", secret);
+    file("/etc/gwrk/gateway-secrets/oauth-client-secret", secret);
+    // Exercise the pinned proxy's accepted 32-byte base64url cookie-secret file format without trailing newline.
     file(
       "/etc/gwrk/gateway-secrets/oauth-cookie-secret",
-      `${Buffer.alloc(32, 0xfb).toString("base64url")}\n`,
+      Buffer.alloc(32, 0xfb).toString("base64url"),
     );
     stage = "certificate_generation";
     beginOperation("openssl_generate_certificates");
@@ -378,14 +382,12 @@ try {
           "--mount",
           `type=bind,source=${path},target=${path}`,
         ]),
-        ...[
-          "/fixture/fixtures",
-          "/fixture/public",
-          "/etc/gwrk/secrets",
-        ].flatMap((path) => [
+        ...["/fixture/fixtures", "/fixture/public"].flatMap((path) => [
           "--mount",
           `type=bind,source=${path},target=${path},readonly`,
         ]),
+        "--mount",
+        "type=bind,source=/fixture/origin-secrets,target=/etc/gwrk/secrets,readonly",
         images.node,
         "node",
         "/fixture/fixtures/origin.mjs",
