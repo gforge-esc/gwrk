@@ -3,7 +3,10 @@ import { createHash } from "node:crypto";
 import { test } from "vitest";
 import { FixtureLifecycleError } from "./nested-lifecycle.mjs";
 import { FixtureProcessError } from "./process-scope.mjs";
-import { runNativeFixture } from "./run-native.mjs";
+import {
+  runNativeFixture,
+  sanitizeObserverSelftestResult,
+} from "./run-native.mjs";
 
 function makeFiles() {
   const store = new Map();
@@ -1258,4 +1261,140 @@ test("REVIEW-NR-01: observer-selftest fails closed on secret-bearing, invalid, o
     missingCase.store.get(`${root}/native-result.json`),
   );
   assert.equal(missingResult.positiveAcceptance, false);
+});
+
+test("REVIEW-NR2-03a: sanitizeObserverSelftestResult must reject NaN, Infinity, and fractional effectiveRcvBufBytes", () => {
+  const runId = "9".repeat(24);
+  for (const badValue of [Number.NaN, Number.POSITIVE_INFINITY, 524288.5]) {
+    assert.throws(
+      () =>
+        sanitizeObserverSelftestResult(
+          {
+            runId,
+            passed: true,
+            effectiveRcvBufBytes: badValue,
+            ignoreOutgoingKernelEnabled: true,
+            cleanStopObserved: true,
+          },
+          runId,
+        ),
+      /effectiveRcvBufBytes/,
+      `sanitizeObserverSelftestResult accepted invalid effectiveRcvBufBytes=${String(badValue)}`,
+    );
+  }
+});
+
+test("REVIEW-NR2-03b: runNativeFixture selftest failure receipt must preserve observer_startup_failed category", async () => {
+  const runId = "9".repeat(24);
+  const root = `/opt/gwrk-verification/${runId}`;
+  const { store, files } = makeFiles();
+  let timingLookupAttempted = false;
+  await assert.rejects(
+    runNativeFixture({
+      runId,
+      root,
+      receipt: {
+        verificationMode: "observer-selftest",
+        purpose: "behavioral-red",
+        approvedPassiveNetRaw: true,
+      },
+      images: sampleImages,
+      files,
+      withLifecycle: async ({ executeCases }) => {
+        await executeCases({
+          containerId: "c".repeat(64),
+          docker: async (args) => {
+            if (args.includes("inspect")) {
+              const target = args.at(-1);
+              const key = Object.entries(sampleImages).find(
+                ([, v]) => v === target,
+              )[0];
+              return JSON.stringify({
+                Id: target,
+                RootFS: { Layers: sampleImages.rootfs[key] },
+              });
+            }
+            if (args.includes("mkdir")) return "";
+            if (args.includes("/fixture/bootstrap-stage.json")) {
+              return JSON.stringify({ stage: "completed_observer_selftest" });
+            }
+            if (args.includes("/fixture/origin-timing.json")) {
+              timingLookupAttempted = true;
+              return JSON.stringify({
+                createElapsedMs: 10,
+                startElapsedMs: 20,
+              });
+            }
+            if (args.includes("/fixture/observer-selftest-result.json")) {
+              throw new Error("ENOENT");
+            }
+            throw new Error(`unexpected docker args: ${args.join(" ")}`);
+          },
+          spawnDocker: async (args) => {
+            if (args.includes("load"))
+              return { code: 0, stdout: "Loaded\n", stderr: "" };
+            return { code: 0, stdout: "ok\n", stderr: "" };
+          },
+        });
+      },
+    }),
+  );
+  const persisted = JSON.parse(store.get(`${root}/native-result.json`));
+  assert.equal(
+    persisted.category,
+    "observer_startup_failed",
+    `expected observer_startup_failed in failure receipt, got ${persisted.category}`,
+  );
+  assert.equal(
+    timingLookupAttempted,
+    false,
+    "origin timing lookup must not run in observer-selftest mode",
+  );
+});
+
+test("REVIEW-NR2-03b: runNativeFixture rethrows cancellation error during timing lookup", async () => {
+  const runId = "9".repeat(24);
+  const root = `/opt/gwrk-verification/${runId}`;
+  const { files } = makeFiles();
+  const cancelError = new FixtureProcessError("cancelled", true);
+  await assert.rejects(
+    runNativeFixture({
+      runId,
+      root,
+      receipt: {},
+      images: sampleImages,
+      files,
+      withLifecycle: async ({ executeCases }) => {
+        await executeCases({
+          containerId: "c".repeat(64),
+          docker: async (args) => {
+            if (args.includes("inspect")) {
+              const target = args.at(-1);
+              const key = Object.entries(sampleImages).find(
+                ([, v]) => v === target,
+              )[0];
+              return JSON.stringify({
+                Id: target,
+                RootFS: { Layers: sampleImages.rootfs[key] },
+              });
+            }
+            if (args.includes("mkdir")) return "";
+            if (args.includes("/fixture/bootstrap-stage.json")) {
+              return JSON.stringify({ stage: "completed_initial_cases" });
+            }
+            if (args.includes("/fixture/origin-timing.json")) {
+              throw cancelError;
+            }
+            throw new Error(`unexpected docker args: ${args.join(" ")}`);
+          },
+          spawnDocker: async (args) => {
+            if (args.includes("load"))
+              return { code: 0, stdout: "Loaded\n", stderr: "" };
+            return { code: 0, stdout: "ok\n", stderr: "" };
+          },
+        });
+      },
+    }),
+    (err) => err === cancelError || err.code === "cancelled",
+  );
 });

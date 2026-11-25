@@ -60,9 +60,10 @@ function directory(path, mode = 0o700, uid = 0, gid = 0) {
   chmodSync(path, mode);
 }
 function file(path, content, mode = 0o600, uid = 0, gid = 0) {
-  writeFileSync(path, content, { mode });
+  const numericMode = typeof mode === "number" ? mode : (mode?.mode ?? 0o600);
+  writeFileSync(path, content, { mode: numericMode });
   chownSync(path, uid, gid);
-  chmodSync(path, mode);
+  chmodSync(path, numericMode);
 }
 function openssl(args) {
   execFileSync("openssl", args, { stdio: "pipe", timeout: 20_000 });

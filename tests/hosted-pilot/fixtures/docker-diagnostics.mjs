@@ -65,6 +65,8 @@ const STATIC_LIFECYCLE_CATEGORY_DETAILS = Object.freeze({
   fixture_spawn_failed: "An owned fixture child process failed to spawn",
   fixture_drain_unconfirmed:
     "An owned fixture child process did not confirm exit after escalation",
+  observer_startup_failed:
+    "Native passive observer failed to start or pass self test",
   lifecycle_assertion_failed:
     "A native fixture lifecycle invariant assertion failed",
   generic_construction_failed:

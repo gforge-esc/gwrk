@@ -236,40 +236,45 @@ export async function executeObserverSelftest({
   observerProcess.once("exit", observerLifecycle.onExit);
   observerProcess.once("close", observerLifecycle.onClose);
 
-  beginOperation("observer_self_test");
-  const health = await observerLifecycle.waitForReady({
-    readHealth: () =>
-      readHealth({
-        observerDir,
-        expected: {
-          runId,
-          proxyImageId,
-          traefikImageId,
-          runtimeReceiptSha256,
-        },
-        requireRootOwnership: true,
-      }),
-  });
+  try {
+    beginOperation("observer_self_test");
+    const health = await observerLifecycle.waitForReady({
+      readHealth: () =>
+        readHealth({
+          observerDir,
+          expected: {
+            runId,
+            proxyImageId,
+            traefikImageId,
+            runtimeReceiptSha256,
+          },
+          requireRootOwnership: true,
+        }),
+    });
 
-  await observerLifecycle.stop(observerProcess);
-  if (!observerLifecycle.isClosed()) {
-    throw new Error(
-      "native observer failed to close cleanly within drain timeout",
-    );
+    await observerLifecycle.stop(observerProcess);
+    if (!observerLifecycle.isClosed()) {
+      throw new Error(
+        "native observer failed to close cleanly within drain timeout",
+      );
+    }
+
+    const result = {
+      runId,
+      passed: true,
+      effectiveRcvBufBytes: health?.captureStats?.effectiveRcvBufBytes ?? null,
+      ignoreOutgoingKernelEnabled:
+        health?.captureStats?.ignoreOutgoingKernelEnabled ?? null,
+      pkttypeBpfFallbackActive:
+        health?.captureStats?.pkttypeBpfFallbackActive ?? null,
+      cleanStopObserved: true,
+    };
+    const targetResultPath =
+      resultPath ?? join(observerDir, "../observer-selftest-result.json");
+    writeFile(targetResultPath, JSON.stringify(result, null, 2), 0o600);
+    return { observerProcess, health, result };
+  } catch (error) {
+    await observerLifecycle.stop(observerProcess);
+    throw error;
   }
-
-  const result = {
-    runId,
-    passed: true,
-    effectiveRcvBufBytes: health?.captureStats?.effectiveRcvBufBytes ?? null,
-    ignoreOutgoingKernelEnabled:
-      health?.captureStats?.ignoreOutgoingKernelEnabled ?? null,
-    pkttypeBpfFallbackActive:
-      health?.captureStats?.pkttypeBpfFallbackActive ?? null,
-    cleanStopObserved: true,
-  };
-  const targetResultPath =
-    resultPath ?? join(observerDir, "../observer-selftest-result.json");
-  writeFile(targetResultPath, JSON.stringify(result, null, 2), { mode: 0o600 });
-  return { observerProcess, health, result };
 }

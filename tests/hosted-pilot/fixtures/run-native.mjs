@@ -47,7 +47,7 @@ export function sanitizeObserverSelftestResult(raw, expectedRunId) {
     );
   }
   if (
-    typeof raw.effectiveRcvBufBytes !== "number" ||
+    !Number.isSafeInteger(raw.effectiveRcvBufBytes) ||
     raw.effectiveRcvBufBytes < 524288
   ) {
     throw new FixtureLifecycleError(
@@ -352,8 +352,9 @@ export async function runNativeFixture({
           safe.containerState = safeContainerState;
         }
         if (
-          safe.createElapsedMs === undefined ||
-          safe.startElapsedMs === undefined
+          !isObserverSelftest &&
+          (safe.createElapsedMs === undefined ||
+            safe.startElapsedMs === undefined)
         ) {
           try {
             const timingRaw = await docker([
@@ -385,7 +386,11 @@ export async function runNativeFixture({
                   ? null
                   : Math.round(timing.startElapsedMs);
             }
-          } catch {}
+          } catch (timingError) {
+            if (signal?.aborted || timingError?.code === "cancelled") {
+              throw timingError;
+            }
+          }
         }
         if (isObserverSelftest) {
           safe.verificationMode = "observer-selftest";

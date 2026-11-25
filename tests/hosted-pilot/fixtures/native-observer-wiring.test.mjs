@@ -1689,5 +1689,102 @@ describe("Track B passive observer wiring and diagnostics", () => {
         "observer selftest branch must delegate to executeObserverSelftest",
       );
     });
+
+    test("REVIEW-NR2-01: executeObserverSelftest wired with file() helper must write result without ERR_INVALID_ARG_TYPE", async () => {
+      const dir = mkdtempSync(join(tmpdir(), "gwrk-nr2-writefile-test-"));
+      try {
+        const resultPath = join(dir, "observer-selftest-result.json");
+        function fileHelper(path, content, mode = 0o600) {
+          writeFileSync(path, content, { mode });
+          chmodSync(path, mode);
+        }
+
+        const lifecycle = createObserverProcessLifecycle({
+          readyTimeoutMs: 500,
+          pollMs: 10,
+          termTimeoutMs: 50,
+          killTimeoutMs: 50,
+        });
+        const proc = new EventEmitter();
+        proc.stdout = new PassThrough();
+        proc.stderr = new PassThrough();
+        proc.kill = (sig) => {
+          proc.emit("exit", 0, sig);
+          proc.emit("close", 0, sig);
+        };
+
+        const { result } = await executeObserverSelftest({
+          runId: VALID_RUN_ID,
+          observerDir: dir,
+          proxyImageId: VALID_PROVENANCE.proxyImageId,
+          traefikImageId: VALID_PROVENANCE.traefikImageId,
+          runtimeReceiptSha256: VALID_PROVENANCE.runtimeReceiptSha256,
+          observerLifecycle: lifecycle,
+          spawnProcess: () => proc,
+          readHealth: () => ({
+            startupSelfTestPassed: true,
+            captureStats: {
+              effectiveRcvBufBytes: 1048576,
+              ignoreOutgoingKernelEnabled: true,
+              pkttypeBpfFallbackActive: false,
+            },
+          }),
+          writeFile: fileHelper,
+          resultPath,
+        });
+
+        assert.equal(result.passed, true);
+        assert.equal(result.cleanStopObserved, true);
+        const written = JSON.parse(readFileSync(resultPath, "utf8"));
+        assert.equal(written.passed, true);
+        assert.equal(written.cleanStopObserved, true);
+      } finally {
+        rmSync(dir, { recursive: true, force: true });
+      }
+    });
+
+    test("REVIEW-NR2-02: executeObserverSelftest must stop spawned observer child when waitForReady times out", async () => {
+      const kills = [];
+      const lifecycle = createObserverProcessLifecycle({
+        readyTimeoutMs: 40,
+        pollMs: 10,
+        termTimeoutMs: 50,
+        killTimeoutMs: 50,
+      });
+      const stuckProc = new EventEmitter();
+      stuckProc.stdout = new PassThrough();
+      stuckProc.stderr = new PassThrough();
+      stuckProc.kill = (sig) => {
+        kills.push(sig);
+        stuckProc.emit("exit", null, sig);
+        stuckProc.emit("close", null, sig);
+      };
+
+      await assert.rejects(
+        () =>
+          executeObserverSelftest({
+            runId: VALID_RUN_ID,
+            observerDir: "/tmp/fake-obs",
+            proxyImageId: VALID_PROVENANCE.proxyImageId,
+            traefikImageId: VALID_PROVENANCE.traefikImageId,
+            runtimeReceiptSha256: VALID_PROVENANCE.runtimeReceiptSha256,
+            observerLifecycle: lifecycle,
+            spawnProcess: () => stuckProc,
+            readHealth: () => {
+              throw new Error("health check not ready");
+            },
+            writeFile: () => {},
+            resultPath: "/tmp/fake-res.json",
+          }),
+        /failed or timed out|health check not ready|timeout/i,
+      );
+
+      assert.equal(
+        lifecycle.isClosed(),
+        true,
+        `spawned observer child was never stopped on waitForReady timeout (kills=${JSON.stringify(kills)}, isClosed=${lifecycle.isClosed()})`,
+      );
+      assert.ok(kills.length > 0, "kill must be called on child process");
+    });
   });
 });
