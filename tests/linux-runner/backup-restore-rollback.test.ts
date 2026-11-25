@@ -10,6 +10,7 @@ import {
   mkdir,
   mkdtemp,
   readFile,
+  readdir,
   realpath,
   rename,
   rm,
@@ -36,10 +37,20 @@ import {
   verifyLedgerBackup,
 } from "../../src/adapters/sqlite/ledger-backup.js";
 
+import {
+  getCliExitCode,
+  setCliExitCode,
+} from "../../src/adapters/cli/output-scope.js";
+import * as inventoryAdapter from "../../src/adapters/release/inventory.js";
 import { readRepositoryEvidence } from "../../src/adapters/release/repository-evidence.js";
+import { createSqliteAuthStoreAdapter } from "../../src/adapters/sqlite/auth-store.js";
 import { restoreOfflineLedger } from "../../src/application/release/backup-restore.js";
+import { createDbCommand } from "../../src/commands/db.js";
 import { openDatabase } from "../../src/db/index.js";
-import { evaluateRollbackCompatibility } from "../../src/domain/release-packaging.js";
+import {
+  type ReleaseManifest,
+  evaluateRollbackCompatibility,
+} from "../../src/domain/release-packaging.js";
 import { writePid } from "../../src/server/pid.js";
 
 vi.mock("node:fs/promises", async (importOriginal) => {
@@ -2160,7 +2171,7 @@ describe("ledger backup", () => {
            created_at, expires_at, revoked_at, revoked_reason, rotated_from_id, overlap_until
          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       ).run(
-        "gwrk_v1.cred-pilot-01",
+        "cred-pilot-01",
         "1111222233334444555566667777888899990000aaaabbbbccccddddeeeeffff",
         "pilot-service-key",
         "https://accounts.google.com:google-user-sub-001",
@@ -2253,7 +2264,7 @@ describe("ledger backup", () => {
     try {
       const creds = restored
         .prepare("SELECT * FROM api_credentials WHERE credential_id = ?")
-        .get("gwrk_v1.cred-pilot-01") as Record<string, unknown>;
+        .get("cred-pilot-01") as Record<string, unknown>;
       expect(creds).toBeDefined();
       expect(creds.verifier_sha256).toBe(
         "1111222233334444555566667777888899990000aaaabbbbccccddddeeeeffff",
@@ -2300,46 +2311,131 @@ describe("ledger backup", () => {
       restored.close();
     }
 
+    // Verify reading restored credential and session state through AuthStorePort
+    const authStore = createSqliteAuthStoreAdapter({ dbPath: restoredLedger });
+    try {
+      const cred = authStore.findApiCredentialById("cred-pilot-01");
+      expect(cred).not.toBeNull();
+      expect(cred?.credentialId).toBe("cred-pilot-01");
+      expect(cred?.verifierSha256).toBe(
+        "1111222233334444555566667777888899990000aaaabbbbccccddddeeeeffff",
+      );
+      expect(cred?.label).toBe("pilot-service-key");
+      expect(cred?.audienceOrigin).toBe("https://gwrk.gforge.ai");
+      expect(cred?.revokedAt).toBeNull();
+
+      const session = authStore.getGoogleSession(
+        "aaaabbbbccccddddeeeeffff1111222233334444555566667777888899990000",
+      );
+      expect(session).not.toBeNull();
+      expect(session?.principalId).toBe("google-user-sub-001");
+      expect(session?.revokedReason).toBe("user_logout");
+    } finally {
+      authStore.close?.();
+    }
+
+    // Assert that the backup archive/files contain zero raw API key secrets or tokens
+    const backupEntries = await readdir(backupDir, { recursive: true });
+    for (const entry of backupEntries) {
+      const fullPath = join(backupDir, entry);
+      const fileStat = await stat(fullPath);
+      if (fileStat.isFile()) {
+        const fileContent = await readFile(fullPath);
+        const text = fileContent.toString("utf8");
+        expect(text).not.toMatch(/gwrk_v1\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+/);
+        expect(text).not.toMatch(/eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}/);
+      }
+    }
+
     const applied = readAppliedMigrations(restoredLedger);
     expect(applied.some((m) => m.name === "020-production-auth.sql")).toBe(
       true,
     );
 
-    const currentManifest = {
+    const dummySha256 =
+      "1111222233334444555566667777888899990000aaaabbbbccccddddeeeeffff";
+    const currentManifest: ReleaseManifest = {
       version: "1.6.0",
-      lockfileSha256: "test-lockfile-digest",
+      commitSha: "0123456789abcdef0123456789abcdef01234567",
+      builtAt: "2026-11-24T12:00:00.000Z",
+      nodeVersion: "22.0.0",
+      nodeAbi: "127",
+      platform: "linux",
+      arch: "x64",
+      tarballSha256: dummySha256,
+      lockfileSha256: dummySha256,
       plugins: [],
       migrations: applied.map(({ name, sha256 }) => ({
         name,
-        sha256: sha256 ?? "legacy-digest",
+        sha256: sha256 ?? dummySha256,
       })),
-      cli: { entrypoint: "dist/cli.js", sha256: "cli-sha" },
-      runtime: { node: "22", platform: process.platform, arch: process.arch },
     };
 
-    const targetManifestWithout020 = {
+    const targetManifestWithout020: ReleaseManifest = {
       version: "1.5.0",
-      lockfileSha256: "test-lockfile-digest",
+      commitSha: "0123456789abcdef0123456789abcdef01234567",
+      builtAt: "2026-11-24T12:00:00.000Z",
+      nodeVersion: "22.0.0",
+      nodeAbi: "127",
+      platform: "linux",
+      arch: "x64",
+      tarballSha256: dummySha256,
+      lockfileSha256: dummySha256,
       plugins: [],
       migrations: applied
         .filter(({ name }) => name !== "020-production-auth.sql")
         .map(({ name, sha256 }) => ({
           name,
-          sha256: sha256 ?? "legacy-digest",
+          sha256: sha256 ?? dummySha256,
         })),
-      cli: { entrypoint: "dist/cli.js", sha256: "cli-sha" },
-      runtime: { node: "22", platform: process.platform, arch: process.arch },
     };
 
     const rollbackCheck = evaluateRollbackCompatibility(
       applied.map((m) => m.name),
-      currentManifest as any,
-      targetManifestWithout020 as any,
+      currentManifest,
+      targetManifestWithout020,
       { migrations: applied },
     );
     expect(rollbackCheck.allowed).toBe(false);
     expect(rollbackCheck.blockingMigrations).toContain(
       "020-production-auth.sql",
     );
+
+    // Exercise gwrk db rollback-check command handler confirming exit code 1
+    const currentDir = join(root, "fr017-current-release");
+    const targetDir = join(root, "fr017-target-release");
+    await mkdir(currentDir, { recursive: true });
+    await mkdir(targetDir, { recursive: true });
+
+    const verifySpy = vi
+      .spyOn(inventoryAdapter, "verifyInstalledRelease")
+      .mockImplementation(async (dir: string) => {
+        if (dir.includes("current")) return currentManifest;
+        return targetManifestWithout020;
+      });
+
+    try {
+      const savedDbPath = process.env.GWRK_DB_PATH;
+      process.env.GWRK_DB_PATH = restoredLedger;
+      setCliExitCode(0);
+      const cmd = createDbCommand();
+      await cmd.parseAsync([
+        "node",
+        "test",
+        "rollback-check",
+        "--current",
+        currentDir,
+        "--target",
+        targetDir,
+      ]);
+      expect(getCliExitCode()).toBe(1);
+      if (savedDbPath !== undefined) {
+        process.env.GWRK_DB_PATH = savedDbPath;
+      } else {
+        process.env.GWRK_DB_PATH = undefined;
+      }
+    } finally {
+      verifySpy.mockRestore();
+    }
   });
 });

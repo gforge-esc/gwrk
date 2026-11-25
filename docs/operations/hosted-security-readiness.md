@@ -1,6 +1,6 @@
 # Hosted security readiness
 
-Do not expose this server publicly yet. Production login and API credential verification remain pilot work. The core webhook finding has a reviewed repair at `89ac728b`. Combined platform checks retain the repair and pass. Final PR-head CI controls merge readiness. The pilot owner owns exposure clearance.
+Do not expose this server publicly yet. The `07cb062a` audit baseline predates feature 051 implementation. Feature 051 implements the hosted authentication and gateway controls in source. Blocked: public exposure remains blocked pending native Linux proof and operator live acceptance. The pilot owner owns exposure clearance.
 
 Audit source is `07cb062a` on November 23. The intended deployment target is David's AWS account at `gwrk.gforge.ai`. Account and region selection remain pending. This audit made no deployment or external authentication change.
 
@@ -87,7 +87,7 @@ Feature 051 replaces baseline gaps with explicit authentication and gateway cont
 | Gateway TLS | ACME proof bootstrap | Preissued certificates with preflight validation |
 | Local compatibility | Ambient dev environment | Preserved local workflows without auth configuration |
 | Initialization | Ambient config discovery | Zero inference calls and zero secret reads on init |
-| Live acceptance | Unspecified | Operator-only live gate with restricted ingress |
+| Live acceptance | Unspecified | Pending operator live acceptance |
 
 ## Required exposure acceptance
 

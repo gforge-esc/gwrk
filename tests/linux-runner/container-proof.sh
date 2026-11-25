@@ -275,28 +275,75 @@ kill -0 "$server_pid"
 kill -KILL "$server_pid"
 wait "$launcher" || true
 server_pid=""
+
+pilot_secret=$(node -e 'process.stdout.write(require("node:crypto").randomBytes(32).toString("base64url"))')
+pilot_token="gwrk_v1.cred-pilot-key-01.$pilot_secret"
+pilot_verifier=$(node -e 'process.stdout.write(require("node:crypto").createHash("sha256").update(process.argv[1]).digest("hex"))' "$pilot_token")
+
+runuser -u gwrk -g gwrk -- node --input-type=module - "$pilot_verifier" <<'NODE'
+import Database from "/opt/gwrk/current/node_modules/better-sqlite3/lib/index.js";
+const db = new Database("/var/lib/gwrk/gwrk.db", { fileMustExist: true });
+db.prepare(`
+  INSERT OR REPLACE INTO project_role_bindings (project_id, principal_type, principal_id, role, created_at)
+  VALUES ('pilot', 'cli_token', 'cred-pilot-key-01', 'operator', '2026-11-11T12:00:00Z')
+`).run();
+db.prepare(`
+  INSERT OR REPLACE INTO api_credentials (
+    credential_id, verifier_sha256, label, issuer, audience_origin,
+    created_at, expires_at, revoked_at, revoked_reason, rotated_from_id, overlap_until
+  ) VALUES (
+    'cred-pilot-key-01',
+    ?,
+    'pilot-key',
+    'local-admin',
+    'https://gwrk.gforge.ai',
+    '2026-11-11T12:00:00Z',
+    '2029-12-11T12:00:00Z',
+    null, null, null, null
+  )
+`).run(process.argv[2]);
+db.close();
+NODE
+
 launch
 printf 'Dispatching the committed pilot feature after SIGKILL restart.\n'
-dispatch_run_id=$(node --input-type=module <<'NODE'
+dispatch_run_id=$(node --input-type=module - "$pilot_token" <<'NODE'
 import assert from "node:assert/strict";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { setTimeout as delay } from "node:timers/promises";
 
+const token = process.argv[2];
 const base = "http://127.0.0.1:18790/api/dispatch";
 const featureId = "001-pilot-restart";
 const phaseId = "phase-01";
 const worker = `${process.env.GWRK_RUNTIME_DIR}/fixture-worker`;
 const statusUrl = `${base}/${featureId}/${phaseId}`;
 const request = (url, options) => fetch(url, { ...options, signal: AbortSignal.timeout(3000) });
+
+// Assert unauthenticated request to /api/dispatch or /api/dispatch/queue returns HTTP 401 in hosted mode
+const unauthDispatch = await request(base, {
+  method: "POST",
+  headers: { "content-type": "application/json" },
+  body: JSON.stringify({ featureId, phaseId }),
+});
+assert.equal(unauthDispatch.status, 401, "Unauthenticated /api/dispatch must return HTTP 401 in hosted mode");
+
+const unauthQueue = await request(`${base}/queue`);
+assert.equal(unauthQueue.status, 401, "Unauthenticated /api/dispatch/queue must return HTTP 401 in hosted mode");
+
+const authHeaders = {
+  authorization: `Bearer ${token}`,
+};
+
 async function read(url) {
-  const response = await request(url);
+  const response = await request(url, { headers: authHeaders });
   assert.equal(response.status, 200);
   return response.json();
 }
 
 const dispatch = (backend) => request(base, {
   method: "POST",
-  headers: { "content-type": "application/json" },
+  headers: { "content-type": "application/json", ...authHeaders },
   body: JSON.stringify({ featureId, phaseId, backend }),
 });
 let response = await dispatch("unapproved-fixture");
@@ -369,7 +416,7 @@ db.prepare(`
     created_at, expires_at, revoked_at, revoked_reason, rotated_from_id, overlap_until
   ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 `).run(
-  "gwrk_v1.pilot-key-01",
+  "cred-pilot-key-01",
   "1111222233334444555566667777888899990000aaaabbbbccccddddeeeeffff",
   "pilot-key",
   "https://accounts.google.com:google-sub-pilot-01",
@@ -440,7 +487,7 @@ assert.deepEqual(db.prepare("SELECT feature_id, phase_id, exit_code FROM runs WH
   exit_code: 0,
 });
 assert.equal(
-  db.prepare("SELECT verifier_sha256 FROM api_credentials WHERE credential_id = ?").pluck().get("gwrk_v1.pilot-key-01"),
+  db.prepare("SELECT verifier_sha256 FROM api_credentials WHERE credential_id = ?").pluck().get("cred-pilot-key-01"),
   "1111222233334444555566667777888899990000aaaabbbbccccddddeeeeffff"
 );
 assert.equal(

@@ -18,10 +18,13 @@ Origin secrets reside in `/etc/gwrk/secrets`. Root owns each file with group gwr
 
 ## Key rotation
 
-Rotate API keys with `gwrk auth key rotate`. This creates a replacement key with an overlap interval. The old key remains valid until the overlap interval elapses.
+Rotate API keys with `gwrk auth key rotate`. Rotation revokes the old key immediately unless `--overlap-until` is provided.
 
 ```bash
-gwrk auth key rotate <credential-id> --overlap-hours 24
+gwrk auth key rotate <credential-id> \
+  --expires-at 2026-12-31T23:59:59Z \
+  --secret-out /etc/gwrk/secrets/rotated-key.secret \
+  --overlap-until 2026-11-25T12:00:00Z
 ```
 
 To revoke a key immediately, use `gwrk auth key revoke`:
@@ -43,30 +46,35 @@ Stop the gwrk runner service before taking or restoring offline database snapsho
 To create an offline backup:
 
 ```bash
-gwrk server stop
-gwrk db backup --out /var/lib/gwrk/backups/manual-$(date +%Y%m%d)
-gwrk server start
+systemctl stop gwrk-runner
+runuser -u gwrk -- env GWRK_RUNTIME_DIR=/var/lib/gwrk gwrk db backup --out /var/lib/gwrk/backups/manual-$(date +%Y%m%d)
+systemctl start gwrk-runner
 ```
 
 To restore from a backup:
 
 ```bash
-gwrk server stop
-gwrk db restore --from /var/lib/gwrk/backups/manual-<date> --state-dir /var/lib/gwrk --force
-gwrk server start
+systemctl stop gwrk-runner
+runuser -u gwrk -- env GWRK_RUNTIME_DIR=/var/lib/gwrk gwrk db restore --from /var/lib/gwrk/backups/manual-<date> --state-dir /var/lib/gwrk --force
+systemctl start gwrk-runner
 ```
 
-To roll back a release, run `deploy/linux-runner/rollback-release.sh`. That script runs `gwrk db rollback-check`. The check blocks incompatible releases that lack applied migrations.
+To roll back a release, run `deploy/linux-runner/rollback-release.sh`. That script runs `gwrk db rollback-check`. Rolling back across migration 020 (`020-production-auth.sql`) is blocked because older releases lack required auth tables.
 
 ## TLS renewal
 
 The operator provisions certificates under `/etc/gwrk/gateway-secrets/tls`. Store `fullchain.pem` and `privkey.pem` with mode 0600.
 
-Run preflight checks before restarting the gateway:
+Follow the TLS boundary contract for certificate replacement:
+
+1. Close public ingress or keep it restricted.
+2. Stop the gateway container.
+3. Stage renewed certificate files in `/etc/gwrk/gateway-secrets/tls`.
+4. Run `deploy/hosted-pilot/run.sh` to execute preflight checks and restart the gateway.
 
 ```bash
-bash deploy/hosted-pilot/preflight-tls.sh
-docker compose -f deploy/hosted-pilot/compose.yaml restart traefik
+docker compose -f deploy/hosted-pilot/compose.yaml down
+bash deploy/hosted-pilot/run.sh
 ```
 
 ## Ingress closure
@@ -83,7 +91,7 @@ The downstream feature 052 owns public rollout and project enrollment.
 
 | Area | Pilot state | Phase 052 ownership |
 |---|---|---|
-| Project enrollment | Single pilot project | Multi-project registry |
+| Project enrollment | 0 enrolled projects in 051; project enrollment deferred to 052 | Multi-project registry |
 | Role bindings | Manual SQL or script setup | Management endpoints |
 | Slack transport | Socket Mode | Scoped project routing |
 | Telemetry | Offline SQLite ledger | Remote reporting |
