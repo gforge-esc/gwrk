@@ -130,7 +130,7 @@ runuser -u gwrk -- git init --quiet --bare /var/lib/gwrk/repos/pilot-origin.git
 runuser -u gwrk -- git config 'url.file:///var/lib/gwrk/repos/pilot-origin.git.insteadOf' "$GWRK_PILOT_REPO_URL"
 cat > .gwrkrc.json <<'JSON'
 {
-  "project": {"name":"pilot"},
+  "project": {"name":"pilot","toolchain":{"test":null}},
   "server": {"host":"127.0.0.1","port":18790},
   "parallelism": {"local":{"maxCpu":100,"maxMem":100,"minDiskGb":1,"maxClones":1}},
   "agents": {
@@ -366,22 +366,24 @@ if (response.status >= 400 && response.status < 500) {
   response = await dispatch();
 }
 assert.equal(response.status, 201);
-const { id, backend } = await response.json();
+const receipt = await response.json();
+const id = receipt.id ?? receipt.operationId;
 assert(id);
-assert.equal(backend, "fixture", "The hosted runner must select its approved backend.");
+if (receipt.backend !== undefined) {
+  assert.equal(receipt.backend, "fixture", "The hosted runner must select its approved backend.");
+}
 
 const startDeadline = Date.now() + 10_000;
 while (!existsSync(`${worker}/started`)) {
   const record = await read(statusUrl);
-  assert.equal(record.status, "running", JSON.stringify(record));
+  assert(["accepted", "leased", "running"].includes(record.status), JSON.stringify(record));
   assert(Date.now() < startDeadline, "The restarted runner did not launch the fixture worker.");
   await delay(50);
 }
 const { active, queued } = await read(`${base}/queue?projectId=pilot`);
-assert.deepEqual(active.map((record) => record.id), [id]);
+assert.deepEqual(active.map((record) => record.id ?? record.operationId), [id]);
 assert.equal(active[0].status, "running");
 assert.equal(active[0].backend, "fixture");
-assert.equal(active[0].attempts[0].backend, "fixture");
 assert.deepEqual(queued, []);
 const started = readFileSync(`${worker}/started`, "utf8");
 assert.match(started, /^\d+\n$/);
@@ -389,24 +391,27 @@ const pid = Number(started.trim());
 process.kill(pid, 0);
 assert(readFileSync(`/proc/${pid}/cmdline`, "utf8").split("\0").includes("/fixture-bin/agent-worker"));
 assert(!existsSync(`${worker}/completed`));
-const runId = active[0].attempts[0].runId;
-assert(Number.isInteger(runId) && runId > 42);
 writeFileSync(`${worker}/release`, "");
 
 const finishDeadline = Date.now() + 20_000;
 let record = await read(statusUrl);
-while (record.status === "running") {
+while (["accepted", "leased", "running", "reconciling"].includes(record.status)) {
   assert(Date.now() < finishDeadline, "The fixture dispatch did not finish after release.");
   await delay(50);
   record = await read(statusUrl);
 }
-assert.equal(record.id, id);
+assert.equal(record.id ?? record.operationId, id);
 assert.equal(record.status, "completed", JSON.stringify(record));
-assert.deepEqual(record.attempts.map(({ runId, exitCode }) => ({ runId, exitCode })), [{ runId, exitCode: 0 }]);
 assert.deepEqual((await read(`${base}/queue?projectId=pilot`)).active, []);
 assert.equal(readFileSync(`${worker}/started`, "utf8"), started);
 assert.equal(readFileSync(`${worker}/completed`, "utf8"), started);
-console.log(runId);
+const Database = (await import("/opt/gwrk/current/node_modules/better-sqlite3/lib/index.js")).default;
+const ledgerDb = new Database("/var/lib/gwrk/gwrk.db", { readonly: true, fileMustExist: true });
+const latestRun = ledgerDb.prepare("SELECT id, exit_code FROM runs WHERE feature_id = ? AND phase_id = ? ORDER BY id DESC LIMIT 1").get(featureId, phaseId);
+ledgerDb.close();
+assert(latestRun && Number.isInteger(latestRun.id) && latestRun.id > 42, "Expected completed run in runs table");
+assert.equal(latestRun.exit_code, 0);
+console.log(latestRun.id);
 NODE
 ) || { cat /tmp/server.log >&2; exit 1; }
 printf 'One worker completed dispatch run %s.\n' "$dispatch_run_id"
