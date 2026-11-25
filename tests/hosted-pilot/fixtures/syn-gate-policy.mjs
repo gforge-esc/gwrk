@@ -234,20 +234,16 @@ export function validateScenarioBCausality(observation) {
       observation.zeroPriorRequestReusedConnections >= 1,
     "zeroPriorRequestReusedConnections must be at least 1",
   );
-  if (observation.zeroPriorRequestParkedConnections !== undefined) {
-    assert.ok(
-      Number.isInteger(observation.zeroPriorRequestParkedConnections) &&
-        observation.zeroPriorRequestParkedConnections >= 1,
-      "zeroPriorRequestParkedConnections must be at least 1",
-    );
-  }
-  if (observation.armedHandshakeDelta !== undefined) {
-    assert.equal(
-      observation.armedHandshakeDelta,
-      0,
-      "armed handshake delta must be 0",
-    );
-  }
+  assert.ok(
+    Number.isInteger(observation.zeroPriorRequestParkedConnections) &&
+      observation.zeroPriorRequestParkedConnections >= 1,
+    "zeroPriorRequestParkedConnections must be at least 1",
+  );
+  assert.ok(
+    Number.isInteger(observation.armedHandshakeDelta) &&
+      observation.armedHandshakeDelta === 0,
+    "armed handshake delta must be 0",
+  );
   assert.equal(
     observation.unusedDialObserved,
     true,

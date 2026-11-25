@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-set -euo pipefail
+set -efuo pipefail
 umask 077
 
 RUN_ID="${RUN_ID:-${1:-}}"
@@ -18,14 +18,12 @@ if ! [[ "$RUN_ID" =~ ^[a-f0-9]{24}$ ]]; then
   exit 1
 fi
 
-# Verify container label / runId binding at startup if specified
-CONTAINER_LABEL="${CONTAINER_LABEL:-${FIXTURE_LABEL:-${GWRK_FIXTURE_RUN:-}}}"
-if [ -n "$CONTAINER_LABEL" ]; then
-  EXPECTED_LABEL="gwrk.fixture.run=${RUN_ID}"
-  if [ "$CONTAINER_LABEL" != "$EXPECTED_LABEL" ] && [ "$CONTAINER_LABEL" != "$RUN_ID" ]; then
-    echo "container label mismatch: $CONTAINER_LABEL != $EXPECTED_LABEL" >&2
-    exit 1
-  fi
+# Verify container label / runId binding at startup (required)
+CONTAINER_LABEL="${CONTAINER_LABEL:-${GWRK_CONTAINER_LABEL:-${FIXTURE_LABEL:-${GWRK_FIXTURE_RUN:-}}}}"
+EXPECTED_LABEL="gwrk.fixture.run=${RUN_ID}"
+if [ -z "$CONTAINER_LABEL" ] || [ "$CONTAINER_LABEL" != "$EXPECTED_LABEL" ]; then
+  echo "container label mismatch: expected $EXPECTED_LABEL, got '$CONTAINER_LABEL'" >&2
+  exit 1
 fi
 
 # Network namespace isolation check (CAP-02)
@@ -234,40 +232,44 @@ while true; do
     if [ -f "$ARM_FILE" ]; then
       validate_request_file "$ARM_FILE"
 
-      # Check for duplicate or unknown keys in arm.json
-      KEY_LIST=$(grep -o '"[^"]*"[[:space:]]*:' "$ARM_FILE" | tr -d "\": ")
-      TOTAL_KEYS=$(echo "$KEY_LIST" | wc -w | tr -d " ")
-      UNIQ_KEYS=$(echo "$KEY_LIST" | tr " " "\n" | sort -u | wc -l | tr -d " ")
-      if [ "$TOTAL_KEYS" -ne 4 ] || [ "$UNIQ_KEYS" -ne 4 ]; then
-        echo "arm.json contains duplicate or invalid number of keys" >&2
-        exit 1
-      fi
-      for k in $KEY_LIST; do
-        case "$k" in
-          version|runId|opId|ttlMs) ;;
-          *) echo "unknown key in arm.json: $k" >&2; exit 1 ;;
-        esac
-      done
+      # Validate arm.json with strict anchored full-string validator
+      REQ_TTL_RAW="$(awk -v expected_run_id="$RUN_ID" '
+BEGIN { content = "" }
+{ content = content $0 "\n" }
+END {
+  raw = content
+  gsub(/^[[:space:]]+|[[:space:]]+$/, "", raw)
+  if (raw !~ /^\{.*\}$/) { exit 1 }
+  stripped = raw
+  gsub(/[[:space:]]+/, "", stripped)
+  if (stripped !~ /^\{.*\}$/) { exit 1 }
+  inner = substr(stripped, 2, length(stripped) - 2)
+  n = split(inner, pairs, ",")
+  if (n != 4) { exit 1 }
+  has_version = 0; has_run_id = 0; has_op_id = 0; has_ttl = 0; ttl_val = 0
+  for (i = 1; i <= n; i++) {
+    pair = pairs[i]
+    if (pair == "\"version\":1") has_version++
+    else if (pair == ("\"runId\":\"" expected_run_id "\"")) has_run_id++
+    else if (pair == "\"opId\":1") has_op_id++
+    else if (pair ~ /^"ttlMs":[1-9][0-9]*$/) {
+      has_ttl++
+      split(pair, p, ":")
+      ttl_val = p[2] + 0
+      if (ttl_val < 1 || ttl_val > 1000) exit 1
+    } else exit 1
+  }
+  if (has_version != 1 || has_run_id != 1 || has_op_id != 1 || has_ttl != 1) exit 1
+  print ttl_val
+  exit 0
+}
+' "$ARM_FILE" 2>/dev/null || true)"
 
-      REQ_VERSION="$(grep -o '"version"[[:space:]]*:[[:space:]]*[0-9]*' "$ARM_FILE" 2>/dev/null | head -n 1 | sed 's/.*:[[:space:]]*//' || true)"
-      REQ_RUN_ID="$(grep -o '"runId"[[:space:]]*:[[:space:]]*"[^"]*"' "$ARM_FILE" 2>/dev/null | head -n 1 | sed 's/.*"runId"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/' || true)"
-      REQ_OP_ID="$(grep -o '"opId"[[:space:]]*:[[:space:]]*[0-9]*' "$ARM_FILE" 2>/dev/null | head -n 1 | sed 's/.*:[[:space:]]*//' || true)"
-      REQ_TTL_RAW="$(grep -o '"ttlMs"[[:space:]]*:[[:space:]]*[0-9]*' "$ARM_FILE" 2>/dev/null | head -n 1 | sed 's/.*:[[:space:]]*//' || true)"
-
-      if [ "$REQ_VERSION" != "1" ] || [ "$REQ_RUN_ID" != "$RUN_ID" ] || [ "$REQ_OP_ID" != "1" ]; then
-        echo "invalid arm request version, runId, or opId" >&2
-        exit 1
-      fi
-
-      if ! [[ "$REQ_TTL_RAW" =~ ^[1-9][0-9]*$ ]]; then
-        echo "invalid ttlMs format in arm request (must match ^[1-9][0-9]*$)" >&2
+      if [ -z "$REQ_TTL_RAW" ]; then
+        echo "invalid arm request format, keys, or values" >&2
         exit 1
       fi
       REQ_TTL_MS=$((10#$REQ_TTL_RAW))
-      if [ "$REQ_TTL_MS" -lt 1 ] || [ "$REQ_TTL_MS" -gt 1000 ]; then
-        echo "invalid ttlMs in arm request (must be 1..1000)" >&2
-        exit 1
-      fi
 
       # Bound iptables -I with timeout against REQ_TTL_MS
       INSTALL_TIMEOUT_MS="$REQ_TTL_MS"
@@ -294,8 +296,6 @@ while true; do
       INSTALL_DURATION_MS=$((INSTALL_T1 - INSTALL_T0))
       if [ "$INSTALL_DURATION_MS" -ge "$REQ_TTL_MS" ] || [ "$INSTALL_DURATION_MS" -gt 1000 ]; then
         echo "iptables installation duration ($INSTALL_DURATION_MS ms) exceeded ttlMs ($REQ_TTL_MS ms)" >&2
-        "$IPTABLES_CMD" -D INPUT "${RULE_ARGS[@]}" 2>/dev/null || true
-        RULE_INSTALLED=0
         exit 1
       fi
 
@@ -338,26 +338,33 @@ EOF
     if [ -f "$RELEASE_FILE" ]; then
       validate_request_file "$RELEASE_FILE"
 
-      REL_KEYS=$(grep -o '"[^"]*"[[:space:]]*:' "$RELEASE_FILE" | tr -d "\": ")
-      REL_TOTAL_KEYS=$(echo "$REL_KEYS" | wc -w | tr -d " ")
-      REL_UNIQ_KEYS=$(echo "$REL_KEYS" | tr " " "\n" | sort -u | wc -l | tr -d " ")
-      if [ "$REL_TOTAL_KEYS" -ne 4 ] || [ "$REL_UNIQ_KEYS" -ne 4 ]; then
-        echo "release.json contains duplicate or invalid number of keys" >&2
-        exit 1
-      fi
-      for k in $REL_KEYS; do
-        case "$k" in
-          version|runId|opId|action) ;;
-          *) echo "unknown key in release.json: $k" >&2; exit 1 ;;
-        esac
-      done
-
-      REL_VERSION="$(grep -o '"version"[[:space:]]*:[[:space:]]*[0-9]*' "$RELEASE_FILE" 2>/dev/null | head -n 1 | sed 's/.*:[[:space:]]*//' || true)"
-      REL_RUN_ID="$(grep -o '"runId"[[:space:]]*:[[:space:]]*"[^"]*"' "$RELEASE_FILE" 2>/dev/null | head -n 1 | sed 's/.*"runId"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/' || true)"
-      REL_OP_ID="$(grep -o '"opId"[[:space:]]*:[[:space:]]*[0-9]*' "$RELEASE_FILE" 2>/dev/null | head -n 1 | sed 's/.*:[[:space:]]*//' || true)"
-      REL_ACTION="$(grep -o '"action"[[:space:]]*:[[:space:]]*"[^"]*"' "$RELEASE_FILE" 2>/dev/null | head -n 1 | sed 's/.*"action"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/' || true)"
-
-      if [ "$REL_VERSION" != "1" ] || [ "$REL_RUN_ID" != "$RUN_ID" ] || [ "$REL_OP_ID" != "1" ] || [ "$REL_ACTION" != "release" ]; then
+      # Validate release.json with strict anchored full-string validator
+      if ! awk -v expected_run_id="$RUN_ID" '
+BEGIN { content = "" }
+{ content = content $0 "\n" }
+END {
+  raw = content
+  gsub(/^[[:space:]]+|[[:space:]]+$/, "", raw)
+  if (raw !~ /^\{.*\}$/) { exit 1 }
+  stripped = raw
+  gsub(/[[:space:]]+/, "", stripped)
+  if (stripped !~ /^\{.*\}$/) { exit 1 }
+  inner = substr(stripped, 2, length(stripped) - 2)
+  n = split(inner, pairs, ",")
+  if (n != 4) { exit 1 }
+  has_version = 0; has_run_id = 0; has_op_id = 0; has_action = 0
+  for (i = 1; i <= n; i++) {
+    pair = pairs[i]
+    if (pair == "\"version\":1") has_version++
+    else if (pair == ("\"runId\":\"" expected_run_id "\"")) has_run_id++
+    else if (pair == "\"opId\":1") has_op_id++
+    else if (pair == "\"action\":\"release\"") has_action++
+    else exit 1
+  }
+  if (has_version != 1 || has_run_id != 1 || has_op_id != 1 || has_action != 1) exit 1
+  exit 0
+}
+' "$RELEASE_FILE" 2>/dev/null; then
         echo "invalid release.json keys/values" >&2
         exit 1
       fi

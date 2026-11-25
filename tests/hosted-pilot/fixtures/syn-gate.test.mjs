@@ -3,6 +3,7 @@ import { execFileSync, spawn } from "node:child_process";
 import {
   chmodSync,
   closeSync,
+  existsSync,
   constants as fsConstants,
   mkdirSync,
   mkdtempSync,
@@ -206,6 +207,7 @@ describe("CAP-02: Network Namespace Isolation", () => {
         env: {
           ...process.env,
           RUN_ID: VALID_RUN_ID,
+          CONTAINER_LABEL: `gwrk.fixture.run=${VALID_RUN_ID}`,
           SYN_GATE_DIR: tempDir,
           HOST_NETNS_INODE: "4026531992",
           OUTER_NETNS_INODE: "4026531992",
@@ -588,6 +590,7 @@ describe("CAP-04: Helper Lifecycle, Locks, Deadline Expiry, and Clean Drain", ()
         env: {
           ...process.env,
           RUN_ID: VALID_RUN_ID,
+          CONTAINER_LABEL: `gwrk.fixture.run=${VALID_RUN_ID}`,
           SYN_GATE_DIR: tempDir,
           IPTABLES_CMD: fake.scriptPath,
           HOST_NETNS_INODE: "1",
@@ -636,6 +639,7 @@ describe("CAP-04: Helper Lifecycle, Locks, Deadline Expiry, and Clean Drain", ()
         env: {
           ...process.env,
           RUN_ID: VALID_RUN_ID,
+          CONTAINER_LABEL: `gwrk.fixture.run=${VALID_RUN_ID}`,
           SYN_GATE_DIR: tempDir,
           IPTABLES_CMD: fake.scriptPath,
           PROC_UPTIME_PATH: mockUptimeFile,
@@ -709,6 +713,7 @@ describe("CAP-04: Helper Lifecycle, Locks, Deadline Expiry, and Clean Drain", ()
         env: {
           ...process.env,
           RUN_ID: VALID_RUN_ID,
+          CONTAINER_LABEL: `gwrk.fixture.run=${VALID_RUN_ID}`,
           SYN_GATE_DIR: tempDir,
           IPTABLES_CMD: fake.scriptPath,
           PROC_UPTIME_PATH: mockUptimeFile,
@@ -771,6 +776,7 @@ describe("CAP-04: Helper Lifecycle, Locks, Deadline Expiry, and Clean Drain", ()
         env: {
           ...process.env,
           RUN_ID: VALID_RUN_ID,
+          CONTAINER_LABEL: `gwrk.fixture.run=${VALID_RUN_ID}`,
           SYN_GATE_DIR: tempDir,
           IPTABLES_CMD: fake.scriptPath,
           PROC_UPTIME_PATH: mockUptimeFile,
@@ -822,6 +828,7 @@ describe("CAP-04: Helper Lifecycle, Locks, Deadline Expiry, and Clean Drain", ()
         env: {
           ...process.env,
           RUN_ID: VALID_RUN_ID,
+          CONTAINER_LABEL: `gwrk.fixture.run=${VALID_RUN_ID}`,
           SYN_GATE_DIR: tempDir,
           IPTABLES_CMD: fake.scriptPath,
           PROC_UPTIME_PATH: mockUptimeFile,
@@ -870,6 +877,8 @@ describe("CAP-05: Scenario B Causality Verification", () => {
     zeroPriorParkedFlowId: "flow-1234-syn",
     lastZeroPriorReusedFlowId: "flow-1234-syn",
     zeroPriorRequestReusedConnections: 1,
+    zeroPriorRequestParkedConnections: 1,
+    armedHandshakeDelta: 0,
     unusedDialObserved: true,
     armedOriginHttpAttempts: 0,
     armedProxyDelta: 0,
@@ -938,6 +947,60 @@ describe("CAP-05: Scenario B Causality Verification", () => {
       /unusedDialObserved must be true/,
     );
   });
+
+  test("SYN-R2-01: validateScenarioBCausality rejects missing or invalid zeroPriorRequestParkedConnections", () => {
+    assert.throws(
+      () =>
+        validateScenarioBCausality({
+          ...validScenarioB,
+          zeroPriorRequestParkedConnections: undefined,
+        }),
+      /zeroPriorRequestParkedConnections must be at least 1/,
+    );
+    assert.throws(
+      () =>
+        validateScenarioBCausality({
+          ...validScenarioB,
+          zeroPriorRequestParkedConnections: 0,
+        }),
+      /zeroPriorRequestParkedConnections must be at least 1/,
+    );
+    assert.throws(
+      () =>
+        validateScenarioBCausality({
+          ...validScenarioB,
+          zeroPriorRequestParkedConnections: 1.5,
+        }),
+      /zeroPriorRequestParkedConnections must be at least 1/,
+    );
+  });
+
+  test("SYN-R2-01: validateScenarioBCausality rejects missing or invalid armedHandshakeDelta", () => {
+    assert.throws(
+      () =>
+        validateScenarioBCausality({
+          ...validScenarioB,
+          armedHandshakeDelta: undefined,
+        }),
+      /armed handshake delta must be 0/,
+    );
+    assert.throws(
+      () =>
+        validateScenarioBCausality({
+          ...validScenarioB,
+          armedHandshakeDelta: 1,
+        }),
+      /armed handshake delta must be 0/,
+    );
+    assert.throws(
+      () =>
+        validateScenarioBCausality({
+          ...validScenarioB,
+          armedHandshakeDelta: 0.5,
+        }),
+      /armed handshake delta must be 0/,
+    );
+  });
 });
 
 describe("Independent Review Regressions (SYN-B01..SYN-B05)", () => {
@@ -958,6 +1021,7 @@ describe("Independent Review Regressions (SYN-B01..SYN-B05)", () => {
         env: {
           ...process.env,
           RUN_ID: VALID_RUN_ID,
+          CONTAINER_LABEL: `gwrk.fixture.run=${VALID_RUN_ID}`,
           SYN_GATE_DIR: tempDir,
           IPTABLES_CMD: fakeCmd,
           PROC_UPTIME_PATH: uptime,
@@ -1004,6 +1068,7 @@ describe("Independent Review Regressions (SYN-B01..SYN-B05)", () => {
         env: {
           ...process.env,
           RUN_ID: VALID_RUN_ID,
+          CONTAINER_LABEL: `gwrk.fixture.run=${VALID_RUN_ID}`,
           SYN_GATE_DIR: tempDir,
           IPTABLES_CMD: fakeCmd,
           PROC_UPTIME_PATH: uptime,
@@ -1042,6 +1107,7 @@ describe("Independent Review Regressions (SYN-B01..SYN-B05)", () => {
       } = {
         ...process.env,
         RUN_ID: VALID_RUN_ID,
+        CONTAINER_LABEL: `gwrk.fixture.run=${VALID_RUN_ID}`,
         SYN_GATE_DIR: tempDir,
       };
       assert.throws(() =>
@@ -1077,6 +1143,7 @@ describe("Independent Review Regressions (SYN-B01..SYN-B05)", () => {
         env: {
           ...process.env,
           RUN_ID: VALID_RUN_ID,
+          CONTAINER_LABEL: `gwrk.fixture.run=${VALID_RUN_ID}`,
           SYN_GATE_DIR: tempDir,
           IPTABLES_CMD: fake.scriptPath,
           PROC_UPTIME_PATH: uptime,
@@ -1110,10 +1177,176 @@ describe("Independent Review Regressions (SYN-B01..SYN-B05)", () => {
         zeroPriorParkedFlowId: "flow-parked-B",
         lastZeroPriorReusedFlowId: "flow-parked-B",
         zeroPriorRequestReusedConnections: 1,
+        zeroPriorRequestParkedConnections: 1,
+        armedHandshakeDelta: 0,
         unusedDialObserved: true,
         armedOriginHttpAttempts: 0,
         armedProxyDelta: 0,
       }),
     );
+  });
+});
+
+describe("Independent Review 2 Regressions (SYN-R2-01..SYN-R2-04)", () => {
+  test("SYN-R2-02: helper exits non-zero if CONTAINER_LABEL is omitted or invalid", () => {
+    const tempDir = createTempDir("syn-gate-label-");
+    try {
+      const {
+        CONTAINER_LABEL: _unusedLabel,
+        GWRK_CONTAINER_LABEL: _unusedGwrkLabel,
+        FIXTURE_LABEL: _unusedFixtureLabel,
+        GWRK_FIXTURE_RUN: _unusedRun,
+        ...env
+      } = {
+        ...process.env,
+        RUN_ID: VALID_RUN_ID,
+        SYN_GATE_DIR: tempDir,
+        HOST_NETNS_INODE: "1",
+        OUTER_NETNS_INODE: "2",
+      };
+      assert.throws(() =>
+        execFileSync("bash", [HELPER_SCRIPT_PATH], { env, stdio: "pipe" }),
+      );
+      assert.throws(() =>
+        execFileSync("bash", [HELPER_SCRIPT_PATH], {
+          env: { ...env, CONTAINER_LABEL: "invalid-label" },
+          stdio: "pipe",
+        }),
+      );
+    } finally {
+      rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  test("SYN-R2-03: helper rejects malformed arm.json with garbage wrapper and fractional numbers", async () => {
+    const tempDir = createTempDir("syn-gate-malformed-");
+    const fake = createFakeIptables(tempDir);
+    const uptime = join(tempDir, "proc-uptime");
+    writeFileSync(uptime, "100.00 0.00\n", "utf8");
+    try {
+      const proc = spawn("bash", [HELPER_SCRIPT_PATH], {
+        env: {
+          ...process.env,
+          RUN_ID: VALID_RUN_ID,
+          CONTAINER_LABEL: `gwrk.fixture.run=${VALID_RUN_ID}`,
+          SYN_GATE_DIR: tempDir,
+          IPTABLES_CMD: fake.scriptPath,
+          PROC_UPTIME_PATH: uptime,
+          HOST_NETNS_INODE: "1",
+          OUTER_NETNS_INODE: "2",
+        },
+        stdio: ["pipe", "pipe", "pipe"],
+      });
+      const malformedArm = `NOT_JSON {"version":1.9,"runId":"${VALID_RUN_ID}","opId":1.5,"ttlMs":500.99} GARBAGE\n`;
+      writeFileSync(join(tempDir, "arm.json"), malformedArm, { mode: 0o600 });
+
+      const code = await new Promise((r) => {
+        const timer = setTimeout(() => {
+          proc.stdin.end("STOP\n");
+        }, 500);
+        proc.on("exit", (c) => {
+          clearTimeout(timer);
+          r(c);
+        });
+      });
+      assert.notEqual(code, 0, "malformed arm.json must exit non-zero");
+      const client = createSynGateClient({
+        synGateDir: tempDir,
+        runId: VALID_RUN_ID,
+        requireRootOwnership: false,
+      });
+      const status = client.readStatusSafe();
+      assert.ok(
+        !status || status.state !== SYN_GATE_STATE.ARMED,
+        "must not arm on malformed arm.json",
+      );
+    } finally {
+      rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  test("SYN-R2-03: helper rejects unknown keys, duplicate keys, and glob characters in arm.json", async () => {
+    const tempDir = createTempDir("syn-gate-keys-");
+    const fake = createFakeIptables(tempDir);
+    const uptime = join(tempDir, "proc-uptime");
+    writeFileSync(uptime, "100.00 0.00\n", "utf8");
+    try {
+      const proc = spawn("bash", [HELPER_SCRIPT_PATH], {
+        env: {
+          ...process.env,
+          RUN_ID: VALID_RUN_ID,
+          CONTAINER_LABEL: `gwrk.fixture.run=${VALID_RUN_ID}`,
+          SYN_GATE_DIR: tempDir,
+          IPTABLES_CMD: fake.scriptPath,
+          PROC_UPTIME_PATH: uptime,
+          HOST_NETNS_INODE: "1",
+          OUTER_NETNS_INODE: "2",
+        },
+        stdio: ["pipe", "pipe", "pipe"],
+      });
+      writeFileSync(
+        join(tempDir, "arm.json"),
+        JSON.stringify({
+          version: 1,
+          runId: VALID_RUN_ID,
+          opId: 1,
+          ttlMs: 500,
+          "extra*glob": 1,
+        }),
+        { mode: 0o600 },
+      );
+      const code = await new Promise((r) => proc.on("exit", r));
+      assert.notEqual(code, 0, "unknown/glob key must exit non-zero");
+    } finally {
+      rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  test("SYN-R2-04: helper slow install abort runs bounded cleanup() and fails closed when -D exits 4", async () => {
+    const tempDir = createTempDir("syn-gate-slow-abort-");
+    const binDir = join(tempDir, "bin");
+    mkdirSync(binDir, { recursive: true });
+    const fakeCmd = join(binDir, "iptables");
+    const logFile = join(tempDir, "iptables.log");
+    const uptime = join(tempDir, "proc-uptime");
+    writeFileSync(uptime, "100.00 0.00\n", "utf8");
+    writeFileSync(
+      fakeCmd,
+      `#!/usr/bin/env bash\necho "$@" >> "${logFile}"\nif [ "$1" = "-I" ]; then printf "100.60 0.00\\n" > "${uptime}"; exit 0; fi\nif [ "$1" = "-D" ]; then exit 4; fi\nif [ "$1" = "-C" ]; then exit 4; fi\nexit 0\n`,
+      { mode: 0o755 },
+    );
+    try {
+      const proc = spawn("bash", [HELPER_SCRIPT_PATH], {
+        env: {
+          ...process.env,
+          RUN_ID: VALID_RUN_ID,
+          CONTAINER_LABEL: `gwrk.fixture.run=${VALID_RUN_ID}`,
+          SYN_GATE_DIR: tempDir,
+          IPTABLES_CMD: fakeCmd,
+          PROC_UPTIME_PATH: uptime,
+          HOST_NETNS_INODE: "1",
+          OUTER_NETNS_INODE: "2",
+        },
+        stdio: ["pipe", "pipe", "pipe"],
+      });
+      const client = createSynGateClient({
+        synGateDir: tempDir,
+        runId: VALID_RUN_ID,
+        requireRootOwnership: false,
+      });
+      client.writeArmRequest({ ttlMs: 200 });
+      const code = await new Promise((r) => proc.on("exit", r));
+      assert.notEqual(code, 0, "slow install abort must exit non-zero");
+
+      const logContent = existsSync(logFile)
+        ? readFileSync(logFile, "utf8")
+        : "";
+      assert.ok(
+        logContent.includes("-C INPUT"),
+        "slow install abort must trigger cleanup() to verify rule removal with -C",
+      );
+    } finally {
+      rmSync(tempDir, { recursive: true, force: true });
+    }
   });
 });

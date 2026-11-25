@@ -287,6 +287,31 @@ test("matching host and outer PID namespaces fails despite empty PID mode", asyn
   );
 });
 
+test("SYN-R2-02: missing HostConfig.NetworkMode fails closed before case execution", async () => {
+  const f = fixture();
+  const baseCommand = f.effects.command;
+  f.effects.command = async (args, options) => {
+    const result = await baseCommand(args, options);
+    if (args[0] === "inspect") {
+      const metadata = JSON.parse(result.stdout);
+      metadata.HostConfig.NetworkMode = undefined;
+      return { ...result, stdout: JSON.stringify(metadata) };
+    }
+    return result;
+  };
+  await assert.rejects(
+    withOwnedNestedDaemon(f.input, f.effects),
+    /outer network mode must be 'none'/,
+  );
+  assert.equal(
+    f.events.some((event) => event[0] === "cases"),
+    false,
+  );
+  assert.ok(
+    f.events.some((event) => event[0] === "docker" && event[1] === "rm"),
+  );
+});
+
 test("removes the exact owned data child after Docker changes its mode to 0710", async () => {
   const f = fixture({ dockerDataModeAfterStart: 0o710 });
   await withOwnedNestedDaemon(f.input, f.effects);

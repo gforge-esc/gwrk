@@ -303,13 +303,11 @@ export async function withOwnedNestedDaemon(
         currentStage = "outer_namespace_verify";
         assert.equal(running.HostConfig.PidMode, "");
         assert.equal(running.HostConfig.IpcMode, "private");
-        if (running.HostConfig.NetworkMode !== undefined) {
-          assert.equal(
-            running.HostConfig.NetworkMode,
-            "none",
-            "outer network mode must be 'none'",
-          );
-        }
+        assert.equal(
+          running.HostConfig?.NetworkMode,
+          "none",
+          "outer network mode must be 'none'",
+        );
         assert.equal(
           running.Config?.Labels?.["gwrk.fixture.run"],
           runId,
