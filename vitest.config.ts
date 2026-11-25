@@ -27,7 +27,8 @@ export default defineConfig({
       "tests/hosted-pilot/gate-completeness.test.mjs",
       ...(process.env.CI === "true"
         ? [
-            "tests/hosted-pilot/fixtures/**",
+            "tests/hosted-pilot/fixtures/gateway-cases.test.mjs",
+            "tests/hosted-pilot/fixtures/legacy-offline-stage.test.mjs",
             "tests/hosted-pilot/gateway-startup.test.ts",
             "tests/hosted-pilot/tls-preflight.test.ts",
           ]
