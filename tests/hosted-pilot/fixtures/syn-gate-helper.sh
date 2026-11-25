@@ -201,10 +201,18 @@ DEADLINE_MS=0
 CLEANUP_RESERVE_MS=50
 REQ_TTL_MS=1000
 STATE="IDLE"
+STOP_REQUESTED=0
+STDIN_WATCHER_PID=""
+
+trap 'STOP_REQUESTED=1' USR1
 
 cleanup() {
   exit_code=$?
-  trap - EXIT TERM INT
+  trap - EXIT TERM INT USR1
+  if [ -n "$STDIN_WATCHER_PID" ]; then
+    kill "$STDIN_WATCHER_PID" 2>/dev/null || true
+    wait "$STDIN_WATCHER_PID" 2>/dev/null || true
+  fi
   if [ "$RULE_INSTALLED" -eq 1 ] && [ "$RULE_REMOVED_VERIFIED" -ne 1 ]; then
     if command -v timeout >/dev/null 2>&1; then
       run_iptables_remove_with_timeout 1 || true
@@ -232,6 +240,18 @@ cleanup() {
 }
 trap cleanup EXIT TERM INT
 
+PARENT_PID="$$"
+(
+  trap 'exit 0' TERM INT
+  while IFS= read -r line; do
+    if [ "$line" = "STOP" ]; then
+      break
+    fi
+  done
+  kill -USR1 "$PARENT_PID" 2>/dev/null || true
+) <&0 >/dev/null 2>&1 &
+STDIN_WATCHER_PID=$!
+
 START_WALL_SEC="$(date +%s)"
 
 while true; do
@@ -242,16 +262,9 @@ while true; do
     break
   fi
 
-  # Check stdin non-blocking: EOF or STOP causes clean exit in both bash and busybox ash
-  if read -r -t 0; then
-    if read -r -t 0.05 line; then
-      if [ "$line" = "STOP" ]; then
-        break
-      fi
-    else
-      # read -t 0 reported ready, so non-zero read status indicates EOF
-      break
-    fi
+  # Check POSIX stdin watcher USR1 signal: EOF or STOP causes clean exit in bash, dash, and busybox ash
+  if [ "$STOP_REQUESTED" -eq 1 ]; then
+    break
   fi
 
   CURRENT_MONO_MS="$(get_monotonic_ms)"

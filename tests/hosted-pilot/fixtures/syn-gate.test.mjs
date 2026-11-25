@@ -223,7 +223,7 @@ describe("CAP-02: Network Namespace Isolation", () => {
   test("syn-gate-helper exits non-zero if host and outer network namespaces are identical", () => {
     const tempDir = createTempDir("syn-gate-netns-");
     try {
-      const result = execFileSync("bash", [HELPER_SCRIPT_PATH], {
+      const result = execFileSync("sh", [HELPER_SCRIPT_PATH], {
         env: {
           ...process.env,
           RUN_ID: VALID_RUN_ID,
@@ -608,7 +608,7 @@ describe("CAP-04: Helper Lifecycle, Locks, Deadline Expiry, and Clean Drain", ()
     const mockUptimeFile = join(tempDir, "proc-uptime");
     writeFileSync(mockUptimeFile, "100.00 200.00\n", "utf8");
     try {
-      const helperProc = spawn("bash", [HELPER_SCRIPT_PATH], {
+      const helperProc = spawn("sh", [HELPER_SCRIPT_PATH], {
         env: {
           ...process.env,
           RUN_ID: VALID_RUN_ID,
@@ -680,7 +680,7 @@ describe("CAP-04: Helper Lifecycle, Locks, Deadline Expiry, and Clean Drain", ()
     writeFileSync(mockUptimeFile, "100.00 200.00\n", "utf8");
 
     try {
-      const helperProc = spawn("bash", [HELPER_SCRIPT_PATH], {
+      const helperProc = spawn("sh", [HELPER_SCRIPT_PATH], {
         env: {
           ...process.env,
           RUN_ID: VALID_RUN_ID,
@@ -761,7 +761,7 @@ describe("CAP-04: Helper Lifecycle, Locks, Deadline Expiry, and Clean Drain", ()
     writeFileSync(mockUptimeFile, "100.00 200.00\n", "utf8");
 
     try {
-      const helperProc = spawn("bash", [HELPER_SCRIPT_PATH], {
+      const helperProc = spawn("sh", [HELPER_SCRIPT_PATH], {
         env: {
           ...process.env,
           RUN_ID: VALID_RUN_ID,
@@ -824,7 +824,7 @@ describe("CAP-04: Helper Lifecycle, Locks, Deadline Expiry, and Clean Drain", ()
     writeFileSync(mockUptimeFile, "100.00 200.00\n", "utf8");
 
     try {
-      const helperProc = spawn("bash", [HELPER_SCRIPT_PATH], {
+      const helperProc = spawn("sh", [HELPER_SCRIPT_PATH], {
         env: {
           ...process.env,
           RUN_ID: VALID_RUN_ID,
@@ -876,7 +876,7 @@ describe("CAP-04: Helper Lifecycle, Locks, Deadline Expiry, and Clean Drain", ()
     writeFileSync(mockUptimeFile, "100.00 200.00\n", "utf8");
 
     try {
-      const helperProc = spawn("bash", [HELPER_SCRIPT_PATH], {
+      const helperProc = spawn("sh", [HELPER_SCRIPT_PATH], {
         env: {
           ...process.env,
           RUN_ID: VALID_RUN_ID,
@@ -1069,7 +1069,7 @@ describe("Independent Review Regressions (SYN-B01..SYN-B05)", () => {
     const uptime = join(tempDir, "proc-uptime");
     writeFileSync(uptime, "100.00 0.00\n", "utf8");
     try {
-      const proc = spawn("bash", [HELPER_SCRIPT_PATH], {
+      const proc = spawn("sh", [HELPER_SCRIPT_PATH], {
         env: {
           ...process.env,
           RUN_ID: VALID_RUN_ID,
@@ -1116,7 +1116,7 @@ describe("Independent Review Regressions (SYN-B01..SYN-B05)", () => {
       { mode: 0o755 },
     );
     try {
-      const proc = spawn("bash", [HELPER_SCRIPT_PATH], {
+      const proc = spawn("sh", [HELPER_SCRIPT_PATH], {
         env: {
           ...process.env,
           RUN_ID: VALID_RUN_ID,
@@ -1163,7 +1163,7 @@ describe("Independent Review Regressions (SYN-B01..SYN-B05)", () => {
         SYN_GATE_DIR: tempDir,
       };
       assert.throws(() =>
-        execFileSync("bash", [HELPER_SCRIPT_PATH], { env, stdio: "pipe" }),
+        execFileSync("sh", [HELPER_SCRIPT_PATH], { env, stdio: "pipe" }),
       );
     } finally {
       rmSync(tempDir, { recursive: true, force: true });
@@ -1191,7 +1191,7 @@ describe("Independent Review Regressions (SYN-B01..SYN-B05)", () => {
       const fake = createFakeIptables(tempDir);
       const uptime = join(tempDir, "proc-uptime");
       writeFileSync(uptime, "100.00 0.00\n", "utf8");
-      const proc = spawn("bash", [HELPER_SCRIPT_PATH], {
+      const proc = spawn("sh", [HELPER_SCRIPT_PATH], {
         env: {
           ...process.env,
           RUN_ID: VALID_RUN_ID,
@@ -1257,10 +1257,10 @@ describe("Independent Review 2 Regressions (SYN-R2-01..SYN-R2-04)", () => {
         OUTER_NETNS_INODE: "2",
       };
       assert.throws(() =>
-        execFileSync("bash", [HELPER_SCRIPT_PATH], { env, stdio: "pipe" }),
+        execFileSync("sh", [HELPER_SCRIPT_PATH], { env, stdio: "pipe" }),
       );
       assert.throws(() =>
-        execFileSync("bash", [HELPER_SCRIPT_PATH], {
+        execFileSync("sh", [HELPER_SCRIPT_PATH], {
           env: { ...env, CONTAINER_LABEL: "invalid-label" },
           stdio: "pipe",
         }),
@@ -1276,7 +1276,7 @@ describe("Independent Review 2 Regressions (SYN-R2-01..SYN-R2-04)", () => {
     const uptime = join(tempDir, "proc-uptime");
     writeFileSync(uptime, "100.00 0.00\n", "utf8");
     try {
-      const proc = spawn("bash", [HELPER_SCRIPT_PATH], {
+      const proc = spawn("sh", [HELPER_SCRIPT_PATH], {
         env: {
           ...process.env,
           RUN_ID: VALID_RUN_ID,
@@ -1323,7 +1323,7 @@ describe("Independent Review 2 Regressions (SYN-R2-01..SYN-R2-04)", () => {
     const uptime = join(tempDir, "proc-uptime");
     writeFileSync(uptime, "100.00 0.00\n", "utf8");
     try {
-      const proc = spawn("bash", [HELPER_SCRIPT_PATH], {
+      const proc = spawn("sh", [HELPER_SCRIPT_PATH], {
         env: {
           ...process.env,
           RUN_ID: VALID_RUN_ID,
@@ -1369,7 +1369,7 @@ describe("Independent Review 2 Regressions (SYN-R2-01..SYN-R2-04)", () => {
     );
     execFileSync(fakeCmd, ["--warmup"], { stdio: "ignore", timeout: 5000 });
     try {
-      const proc = spawn("bash", [HELPER_SCRIPT_PATH], {
+      const proc = spawn("sh", [HELPER_SCRIPT_PATH], {
         env: {
           ...process.env,
           RUN_ID: VALID_RUN_ID,
@@ -1414,7 +1414,7 @@ describe("Independent Review 2 Regressions (SYN-R2-01..SYN-R2-04)", () => {
     const uptime = join(tempDir, "proc-uptime");
     writeFileSync(uptime, "100.00 0.00\n", "utf8");
     try {
-      const proc = spawn("bash", [HELPER_SCRIPT_PATH], {
+      const proc = spawn("sh", [HELPER_SCRIPT_PATH], {
         env: {
           ...process.env,
           RUN_ID: VALID_RUN_ID,
@@ -1455,7 +1455,7 @@ describe("Independent Review 2 Regressions (SYN-R2-01..SYN-R2-04)", () => {
     const uptime = join(tempDir, "proc-uptime");
     writeFileSync(uptime, "100.00 0.00\n", "utf8");
     try {
-      const proc = spawn("bash", [HELPER_SCRIPT_PATH], {
+      const proc = spawn("sh", [HELPER_SCRIPT_PATH], {
         env: {
           ...process.env,
           RUN_ID: VALID_RUN_ID,
@@ -1506,7 +1506,7 @@ describe("Independent Review 2 Regressions (SYN-R2-01..SYN-R2-04)", () => {
     const uptime = join(tempDir, "proc-uptime");
     writeFileSync(uptime, "100.00 0.00\n", "utf8");
     try {
-      const proc = spawn("bash", [HELPER_SCRIPT_PATH], {
+      const proc = spawn("sh", [HELPER_SCRIPT_PATH], {
         env: {
           ...process.env,
           RUN_ID: VALID_RUN_ID,
@@ -1559,7 +1559,7 @@ describe("Independent Review 2 Regressions (SYN-R2-01..SYN-R2-04)", () => {
       const uptime = join(tempDir, "proc-uptime");
       writeFileSync(uptime, "100.00 0.00\n", "utf8");
       try {
-        const proc = spawn("bash", [HELPER_SCRIPT_PATH], {
+        const proc = spawn("sh", [HELPER_SCRIPT_PATH], {
           env: {
             ...process.env,
             RUN_ID: VALID_RUN_ID,
@@ -1627,7 +1627,7 @@ describe("Independent Review 2 Regressions (SYN-R2-01..SYN-R2-04)", () => {
       const uptime = join(tempDir, "proc-uptime");
       writeFileSync(uptime, "100.00 0.00\n", "utf8");
       try {
-        const proc = spawn("bash", [HELPER_SCRIPT_PATH], {
+        const proc = spawn("sh", [HELPER_SCRIPT_PATH], {
           env: {
             ...process.env,
             RUN_ID: VALID_RUN_ID,
@@ -1705,7 +1705,7 @@ describe("Scenario B Driver-to-Helper and Controller Integration", () => {
     let phase = "baseline";
 
     try {
-      const helperProc = spawn("bash", [HELPER_SCRIPT_PATH], {
+      const helperProc = spawn("sh", [HELPER_SCRIPT_PATH], {
         env: {
           ...process.env,
           RUN_ID: VALID_RUN_ID,
@@ -1993,5 +1993,56 @@ describe("Scenario B Driver-to-Helper and Controller Integration", () => {
     assert.equal(nativeResult.pilotProof.cases.length, 15);
     assert.equal(nativeResult.legacyProof.cleanupComplete, true);
     assert.equal(nativeResult.synGateReceipt.ruleRemovedVerified, true);
+  });
+
+  test("helper under POSIX sh drains cleanly on stdin STOP and on stdin EOF while idle or after arming on open pipe", async () => {
+    for (const drainMode of ["STOP", "EOF"]) {
+      const tempDir = createTempDir(`syn-gate-sh-drain-${drainMode}-`);
+      const fake = createFakeIptables(tempDir);
+      const uptime = join(tempDir, "proc-uptime");
+      writeFileSync(uptime, "100.00 0.00\n", "utf8");
+      try {
+        const helperProc = spawn("sh", [HELPER_SCRIPT_PATH], {
+          env: {
+            ...process.env,
+            RUN_ID: VALID_RUN_ID,
+            CONTAINER_LABEL: `gwrk.fixture.run=${VALID_RUN_ID}`,
+            SYN_GATE_DIR: tempDir,
+            IPTABLES_CMD: fake.scriptPath,
+            PROC_UPTIME_PATH: uptime,
+            HOST_NETNS_INODE: "1",
+            OUTER_NETNS_INODE: "2",
+          },
+          stdio: ["pipe", "pipe", "pipe"],
+        });
+        const readStderr = attachStderrCapture(helperProc);
+        const exitPromise = new Promise((resolve) => {
+          helperProc.once("exit", (code) => resolve(code));
+        });
+
+        await new Promise((r) => setTimeout(r, 80));
+        if (drainMode === "STOP") {
+          helperProc.stdin.write("STOP\n");
+          helperProc.stdin.end();
+        } else {
+          helperProc.stdin.end();
+        }
+
+        const exitCode = await Promise.race([
+          exitPromise,
+          new Promise((resolve) => setTimeout(() => resolve("timeout"), 1500)),
+        ]);
+        if (exitCode === "timeout") {
+          helperProc.kill("SIGKILL");
+        }
+        assert.equal(
+          exitCode,
+          0,
+          `POSIX sh helper must drain cleanly on ${drainMode} (stderr=${readStderr()})`,
+        );
+      } finally {
+        rmSync(tempDir, { recursive: true, force: true });
+      }
+    }
   });
 });
