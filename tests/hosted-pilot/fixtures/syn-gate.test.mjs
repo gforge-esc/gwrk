@@ -645,10 +645,21 @@ describe("CAP-04: Helper Lifecycle, Locks, Deadline Expiry, and Clean Drain", ()
         /status 4/,
         `busy lock stderr must report exit status 4 (stderr: ${readStderr()})`,
       );
+      const fakeIptablesLog = readFileSync(fake.logPath, "utf8");
       assert.match(
-        readFileSync(fake.logPath, "utf8"),
+        fakeIptablesLog,
         /-I INPUT 1/,
         "busy lock test must actually invoke iptables -I",
+      );
+      assert.doesNotMatch(
+        fakeIptablesLog,
+        /-D INPUT/,
+        "busy lock exit 4 must not execute iptables -D",
+      );
+      assert.doesNotMatch(
+        fakeIptablesLog,
+        /-C INPUT/,
+        "busy lock exit 4 must not execute iptables -C",
       );
 
       // Verify ruleInstalled is never true

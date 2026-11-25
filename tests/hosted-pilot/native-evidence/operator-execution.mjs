@@ -183,11 +183,17 @@ export async function executeOperatorNativeProof({
 
   const { manifestSha256 } = await computeManifest(repoRoot);
   if (
-    receipt.runtimeManifestSha256 &&
+    !receipt.runtimeManifestSha256 ||
+    typeof receipt.runtimeManifestSha256 !== "string" ||
     receipt.runtimeManifestSha256 !== manifestSha256
   ) {
     throw new Error(
       `Runtime manifest mismatch before native execution (checkpoint ${receipt.runtimeManifestSha256} vs current ${manifestSha256})`,
+    );
+  }
+  if (!receipt.nodeImageId || images.node !== receipt.nodeImageId) {
+    throw new Error(
+      `Node image ID mismatch before native execution (checkpoint ${receipt.nodeImageId} vs loaded ${images.node})`,
     );
   }
 
@@ -201,6 +207,11 @@ export async function executeOperatorNativeProof({
 
   const nativeResult = JSON.parse(
     files.readFileSync(`${root}/native-result.json`, "utf8"),
+  );
+  assert.equal(
+    nativeResult.runId,
+    expectedRunId,
+    `native-result runId mismatch: expected ${expectedRunId}, got ${nativeResult.runId}`,
   );
   assert.equal(
     nativeResult.nativeSuiteStatus,
@@ -217,6 +228,11 @@ export async function executeOperatorNativeProof({
     files.readFileSync(`${root}/native-cleanup.json`, "utf8"),
   );
   assert.equal(
+    cleanup.runId,
+    expectedRunId,
+    `native-cleanup runId mismatch: expected ${expectedRunId}, got ${cleanup.runId}`,
+  );
+  assert.equal(
     cleanup.cleanupComplete,
     true,
     "native cleanup receipt did not record cleanupComplete: true",
@@ -226,9 +242,19 @@ export async function executeOperatorNativeProof({
     true,
     "native cleanup receipt did not record childrenDrained: true",
   );
+  assert.equal(
+    cleanup.hostMountsUnderChild,
+    false,
+    "native cleanup receipt must record hostMountsUnderChild: false",
+  );
 
   const ownership = JSON.parse(
     files.readFileSync(`${root}/controller-ownership.json`, "utf8"),
+  );
+  assert.equal(
+    ownership.runId,
+    expectedRunId,
+    `controller-ownership runId mismatch: expected ${expectedRunId}, got ${ownership.runId}`,
   );
   assert.equal(
     ownership.nestedDaemonOnly,
@@ -328,7 +354,7 @@ export async function executeOperatorNativeProof({
       nestedDaemonOnly: true,
     },
     cleanupComplete: true,
-    hostMountsUnderChild: false,
+    hostMountsUnderChild: cleanup.hostMountsUnderChild,
     pilotProof: nativeResult.pilotProof,
     legacyProof: nativeResult.legacyProof,
   };
@@ -337,6 +363,26 @@ export async function executeOperatorNativeProof({
     pilotReceipt: pilotReceiptRaw,
     legacyReceipt: legacyReceiptRaw,
   };
+
+  const candidateTrustAnchorSha256 =
+    resolvedTrustAnchorSha256 ?? "0".repeat(64);
+  const candidateEnvelope = {
+    schemaVersion: "1.0.0",
+    nativeSuiteStatus: "passed",
+    livePilotAcceptance: false,
+    reviewedCommitSha: receipt.sourceCommit,
+    runtimeManifestSha256: manifestSha256,
+    legacy041ScriptSha256,
+    trustAnchorSha256: candidateTrustAnchorSha256,
+    buildProvenance,
+    executionProof,
+    rawReceipts,
+  };
+  validateEvidenceEnvelope(candidateEnvelope, {
+    expectedManifestSha256: manifestSha256,
+    expectedTrustAnchorSha256: candidateTrustAnchorSha256,
+  });
+  toCanonicalJson(candidateEnvelope);
 
   const unsignedBundle = {
     schemaVersion: "1.0.0",
@@ -360,20 +406,15 @@ export async function executeOperatorNativeProof({
   let canonicalEnvelopePath = null;
   let envelope = null;
   if (resolvedTrustAnchorSha256) {
-    const built = buildUnsignedEvidenceEnvelope({
-      reviewedCommitSha: receipt.sourceCommit,
-      runtimeManifestSha256: manifestSha256,
-      legacy041ScriptSha256,
-      trustAnchorSha256: resolvedTrustAnchorSha256,
-      buildProvenance,
-      executionProof,
-      rawReceipts,
-    });
-    envelope = built.envelope;
+    envelope = candidateEnvelope;
     canonicalEnvelopePath = `${root}/unsigned-evidence-envelope.json`;
-    files.writeFileSync(canonicalEnvelopePath, built.canonicalJson, {
-      mode: 0o600,
-    });
+    files.writeFileSync(
+      canonicalEnvelopePath,
+      `${toCanonicalJson(envelope)}\n`,
+      {
+        mode: 0o600,
+      },
+    );
   }
 
   return {

@@ -1059,6 +1059,7 @@ describe("native-evidence adapter regression controls", () => {
               runId: id,
               cleanupComplete: true,
               childrenDrained: true,
+              hostMountsUnderChild: false,
             }),
           );
           store.set(`${runRoot}/pilot-proof-result.json`, pilotReceiptRaw);
@@ -1164,6 +1165,364 @@ describe("native-evidence adapter regression controls", () => {
           rawReceipts: {} as never,
         }),
       ).toThrow();
+    });
+
+    function createOperatorFixtureState() {
+      const runId = "0123456789abcdef01234567";
+      const root = `/opt/gwrk-verification/${runId}`;
+      const checkpointPath = `${root}/execution-checkpoint.json`;
+
+      const store = new Map<string, string>();
+      const scriptContent = "console.log('fixture');\n";
+      const scriptSha = createHash("sha256")
+        .update(scriptContent)
+        .digest("hex");
+      const scriptManifestJson = JSON.stringify({ "bootstrap.mjs": scriptSha });
+      const scriptManifestSha = createHash("sha256")
+        .update(scriptManifestJson)
+        .digest("hex");
+      const archiveSha = "a".repeat(64);
+      const images = {
+        node: `sha256:${"1".repeat(64)}`,
+        traefik: `sha256:${"2".repeat(64)}`,
+        proxy: `sha256:${"3".repeat(64)}`,
+        nginx: `sha256:${"4".repeat(64)}`,
+        issuerNode: `sha256:${"5".repeat(64)}`,
+        rootfs: {
+          node: [`sha256:${"a".repeat(64)}`],
+          traefik: [`sha256:${"b".repeat(64)}`],
+          proxy: [`sha256:${"c".repeat(64)}`],
+          nginx: [`sha256:${"d".repeat(64)}`],
+          issuerNode: [`sha256:${"e".repeat(64)}`],
+        },
+      };
+      const checkpoint: Record<string, unknown> = {
+        runId,
+        approvedPrivilegedExecution: true,
+        purpose: "acceptance",
+        reviewedSource: true,
+        approvedPassiveNetRaw: true,
+        approvedScenarioBSynGate: true,
+        outerImage: `docker.io/library/docker:29.10.0-dind@sha256:${"6".repeat(64)}`,
+        daemonImageId: `sha256:${"7".repeat(64)}`,
+        nodeImageId: images.node,
+        sourceCommit: repo.commitSha,
+        runtimeManifestSha256: "WILL_BE_SET",
+        archiveSha256: archiveSha,
+        scriptManifestSha256: scriptManifestSha,
+      };
+      store.set(`${root}/input/script-manifest.json`, scriptManifestJson);
+      store.set(`${root}/input/fixtures/bootstrap.mjs`, scriptContent);
+      store.set(`${root}/input/loaded-images.json`, JSON.stringify(images));
+      store.set(
+        repo.legacyScriptPath,
+        readFileSync(repo.legacyScriptPath, "utf8"),
+      );
+
+      const mockFiles = {
+        existsSync: (p: string) => store.has(p) || p === trustAnchorPath,
+        lstatSync: () => ({
+          isFile: () => true,
+          isSymbolicLink: () => false,
+          uid: 0,
+          mode: 0o100600,
+        }),
+        readFileSync: (p: string, enc?: string) => {
+          if (store.has(p)) {
+            const val = store.get(p) ?? "";
+            return enc ? val : Buffer.from(val, "utf8");
+          }
+          return enc ? readFileSync(p, enc as BufferEncoding) : readFileSync(p);
+        },
+        writeFileSync: (p: string, val: string) => {
+          store.set(p, val);
+        },
+      };
+
+      const pilotReceiptRaw = JSON.stringify({
+        event: "gateway_native_suite_passed",
+        nativeSuiteStatus: "passed",
+        livePilotAcceptance: false,
+        runId,
+        cases: [...REQUIRED_PILOT_CASES],
+        captureDrops: 0,
+        captureFaults: 0,
+        leakedSecrets: 0,
+      });
+      const legacyReceiptRaw = "Hosted sign-in fixture passed\n";
+
+      const defaultRunNative = async ({
+        runId: id,
+        root: runRoot,
+      }: { runId: string; root: string }) => {
+        store.set(
+          `${runRoot}/controller-ownership.json`,
+          JSON.stringify({
+            runId: id,
+            name: `gwrk-051-controller-${id}`,
+            nestedDaemonOnly: true,
+          }),
+        );
+        store.set(
+          `${runRoot}/native-cleanup.json`,
+          JSON.stringify({
+            runId: id,
+            cleanupComplete: true,
+            childrenDrained: true,
+            hostMountsUnderChild: false,
+          }),
+        );
+        store.set(`${runRoot}/pilot-proof-result.json`, pilotReceiptRaw);
+        store.set(
+          `${runRoot}/legacy-proof-result.json`,
+          JSON.stringify({
+            exitCode: 0,
+            scriptSha256: repo.legacyScriptSha256,
+            successMarker: "Hosted sign-in fixture passed",
+            cleanupComplete: true,
+            rawReceipt: legacyReceiptRaw,
+          }),
+        );
+        store.set(
+          `${runRoot}/native-result.json`,
+          JSON.stringify({
+            runId: id,
+            nativeSuiteStatus: "passed",
+            livePilotAcceptance: false,
+            pilotProof: {
+              exitCode: 0,
+              cases: [...REQUIRED_PILOT_CASES],
+              captureDrops: 0,
+              captureFaults: 0,
+              leakedSecrets: 0,
+              rawReceiptSha256: createHash("sha256")
+                .update(pilotReceiptRaw, "utf8")
+                .digest("hex"),
+            },
+            legacyProof: {
+              exitCode: 0,
+              scriptSha256: repo.legacyScriptSha256,
+              successMarker: "Hosted sign-in fixture passed",
+              cleanupComplete: true,
+              rawReceiptSha256: createHash("sha256")
+                .update(legacyReceiptRaw, "utf8")
+                .digest("hex"),
+            },
+          }),
+        );
+      };
+
+      const hashFile = async (p: string) => {
+        if (p === `${root}/input/preload-images.tar`) return archiveSha;
+        return createHash("sha256")
+          .update(store.get(p) ?? "")
+          .digest("hex");
+      };
+
+      return {
+        runId,
+        root,
+        checkpointPath,
+        checkpoint,
+        store,
+        mockFiles,
+        archiveSha,
+        hashFile,
+        defaultRunNative,
+      };
+    }
+
+    it("operator execution rejects omitted runtimeManifestSha256 before runNative", async () => {
+      const state = createOperatorFixtureState();
+      state.checkpoint.runtimeManifestSha256 = undefined;
+      state.store.set(state.checkpointPath, JSON.stringify(state.checkpoint));
+
+      let runNativeCalled = false;
+      await expect(
+        executeOperatorNativeProof({
+          checkpointPath: state.checkpointPath,
+          repoRoot: repo.repoDir,
+          trustAnchorPath,
+          platform: "linux",
+          getuid: () => 0,
+          files: state.mockFiles as never,
+          hashFile: state.hashFile,
+          runNative: async () => {
+            runNativeCalled = true;
+          },
+        }),
+      ).rejects.toThrow(/Runtime manifest mismatch before native execution/i);
+      expect(runNativeCalled).toBe(false);
+    });
+
+    it("operator execution rejects mismatched images.node !== receipt.nodeImageId before runNative", async () => {
+      const state = createOperatorFixtureState();
+      const { manifestSha256 } = await computeRuntimeManifest(repo.repoDir);
+      state.checkpoint.runtimeManifestSha256 = manifestSha256;
+      state.checkpoint.nodeImageId = `sha256:${"9".repeat(64)}`;
+      state.store.set(state.checkpointPath, JSON.stringify(state.checkpoint));
+
+      let runNativeCalled = false;
+      await expect(
+        executeOperatorNativeProof({
+          checkpointPath: state.checkpointPath,
+          repoRoot: repo.repoDir,
+          trustAnchorPath,
+          platform: "linux",
+          getuid: () => 0,
+          files: state.mockFiles as never,
+          hashFile: state.hashFile,
+          runNative: async () => {
+            runNativeCalled = true;
+          },
+        }),
+      ).rejects.toThrow(/Node image ID mismatch before native execution/i);
+      expect(runNativeCalled).toBe(false);
+    });
+
+    it("operator execution rejects cleanup.hostMountsUnderChild !== false", async () => {
+      const state = createOperatorFixtureState();
+      const { manifestSha256 } = await computeRuntimeManifest(repo.repoDir);
+      state.checkpoint.runtimeManifestSha256 = manifestSha256;
+      state.store.set(state.checkpointPath, JSON.stringify(state.checkpoint));
+
+      await expect(
+        executeOperatorNativeProof({
+          checkpointPath: state.checkpointPath,
+          repoRoot: repo.repoDir,
+          trustAnchorPath,
+          platform: "linux",
+          getuid: () => 0,
+          files: state.mockFiles as never,
+          hashFile: state.hashFile,
+          runNative: async ({ runId: id, root: runRoot }) => {
+            await state.defaultRunNative({ runId: id, root: runRoot });
+            state.store.set(
+              `${runRoot}/native-cleanup.json`,
+              JSON.stringify({
+                runId: id,
+                cleanupComplete: true,
+                childrenDrained: true,
+                hostMountsUnderChild: true,
+              }),
+            );
+          },
+        }),
+      ).rejects.toThrow(/hostMountsUnderChild/i);
+    });
+
+    it("operator execution rejects mismatched runId across native-cleanup, controller-ownership, or native-result", async () => {
+      const state = createOperatorFixtureState();
+      const { manifestSha256 } = await computeRuntimeManifest(repo.repoDir);
+      state.checkpoint.runtimeManifestSha256 = manifestSha256;
+      state.store.set(state.checkpointPath, JSON.stringify(state.checkpoint));
+
+      // Mismatched runId in native-result.json
+      await expect(
+        executeOperatorNativeProof({
+          checkpointPath: state.checkpointPath,
+          repoRoot: repo.repoDir,
+          trustAnchorPath,
+          platform: "linux",
+          getuid: () => 0,
+          files: state.mockFiles as never,
+          hashFile: state.hashFile,
+          runNative: async ({ runId: id, root: runRoot }) => {
+            await state.defaultRunNative({ runId: id, root: runRoot });
+            const res = JSON.parse(
+              state.store.get(`${runRoot}/native-result.json`)!,
+            );
+            res.runId = "mismatched-run-id-1111111111";
+            state.store.set(
+              `${runRoot}/native-result.json`,
+              JSON.stringify(res),
+            );
+          },
+        }),
+      ).rejects.toThrow(/runId mismatch/i);
+
+      // Mismatched runId in native-cleanup.json
+      await expect(
+        executeOperatorNativeProof({
+          checkpointPath: state.checkpointPath,
+          repoRoot: repo.repoDir,
+          trustAnchorPath,
+          platform: "linux",
+          getuid: () => 0,
+          files: state.mockFiles as never,
+          hashFile: state.hashFile,
+          runNative: async ({ runId: id, root: runRoot }) => {
+            await state.defaultRunNative({ runId: id, root: runRoot });
+            const clean = JSON.parse(
+              state.store.get(`${runRoot}/native-cleanup.json`)!,
+            );
+            clean.runId = "mismatched-run-id-2222222222";
+            state.store.set(
+              `${runRoot}/native-cleanup.json`,
+              JSON.stringify(clean),
+            );
+          },
+        }),
+      ).rejects.toThrow(/runId mismatch/i);
+
+      // Mismatched runId in controller-ownership.json
+      await expect(
+        executeOperatorNativeProof({
+          checkpointPath: state.checkpointPath,
+          repoRoot: repo.repoDir,
+          trustAnchorPath,
+          platform: "linux",
+          getuid: () => 0,
+          files: state.mockFiles as never,
+          hashFile: state.hashFile,
+          runNative: async ({ runId: id, root: runRoot }) => {
+            await state.defaultRunNative({ runId: id, root: runRoot });
+            const own = JSON.parse(
+              state.store.get(`${runRoot}/controller-ownership.json`)!,
+            );
+            own.runId = "mismatched-run-id-3333333333";
+            state.store.set(
+              `${runRoot}/controller-ownership.json`,
+              JSON.stringify(own),
+            );
+          },
+        }),
+      ).rejects.toThrow(/runId mismatch/i);
+    });
+
+    it("operator execution validates non-anchor envelope fields unconditionally even when trustAnchorPath is absent", async () => {
+      const state = createOperatorFixtureState();
+      const { manifestSha256 } = await computeRuntimeManifest(repo.repoDir);
+      state.checkpoint.runtimeManifestSha256 = manifestSha256;
+      state.store.set(state.checkpointPath, JSON.stringify(state.checkpoint));
+
+      const nonAnchorFiles = {
+        ...state.mockFiles,
+        existsSync: (p: string) => p !== trustAnchorPath && state.store.has(p),
+      };
+
+      await expect(
+        executeOperatorNativeProof({
+          checkpointPath: state.checkpointPath,
+          repoRoot: repo.repoDir,
+          trustAnchorPath: "/non-existent/anchor.json",
+          platform: "linux",
+          getuid: () => 0,
+          files: nonAnchorFiles as never,
+          hashFile: state.hashFile,
+          runNative: async ({ runId: id, root: runRoot }) => {
+            await state.defaultRunNative({ runId: id, root: runRoot });
+            const res = JSON.parse(
+              state.store.get(`${runRoot}/native-result.json`)!,
+            );
+            res.pilotProof.cases = ["only_one_case"];
+            state.store.set(
+              `${runRoot}/native-result.json`,
+              JSON.stringify(res),
+            );
+          },
+        }),
+      ).rejects.toThrow(/Incomplete cases/i);
     });
   });
 });

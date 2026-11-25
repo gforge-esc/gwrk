@@ -97,13 +97,23 @@ export function sanitizeObserverSelftestResult(raw, expectedRunId) {
   return sanitized;
 }
 
-function defaultSpawnSynGateHelper({
+export function defaultSpawnSynGateHelper({
   containerId,
   runId,
   hostNetNamespace,
   outerNetNamespace,
+  root,
+  dockerConfig = root ? `${root}/docker-config` : "/root/docker-config",
+  spawnProcess = spawn,
 }) {
-  return spawn(
+  const env = {
+    PATH: "/usr/sbin:/usr/bin:/sbin:/bin",
+    HOME: "/root",
+    LANG: "C",
+    LC_ALL: "C",
+    DOCKER_CONFIG: dockerConfig,
+  };
+  const proc = spawnProcess(
     "/usr/bin/docker",
     [
       "--host",
@@ -126,12 +136,18 @@ function defaultSpawnSynGateHelper({
     ],
     {
       stdio: ["pipe", "pipe", "pipe"],
+      env,
     },
   );
+  proc.on?.("error", () => {});
+  proc.stdin?.on?.("error", () => {});
+  return proc;
 }
 
-async function stopAndDrainSynGateHelper(helperProc, timeoutMs = 3000) {
+export async function stopAndDrainSynGateHelper(helperProc, timeoutMs = 3000) {
   if (!helperProc) return { drained: true, exitCode: 0 };
+  helperProc.on?.("error", () => {});
+  helperProc.stdin?.on?.("error", () => {});
   let exited = helperProc.exitCode !== null || helperProc.signalCode !== null;
   let exitCode = helperProc.exitCode;
   const exitPromise = exited
@@ -348,95 +364,111 @@ export async function runNativeFixture({
             runId,
             hostNetNamespace: resolvedHostNetns,
             outerNetNamespace: resolvedOuterNetns,
+            root,
+            dockerConfig: `${root}/docker-config`,
           });
+          synGateHelper.on?.("error", () => {});
+          synGateHelper.stdin?.on?.("error", () => {});
           synGateHelper.stdout?.resume?.();
           synGateHelper.stderr?.resume?.();
         }
-        ensureActive();
-        const controller = `gwrk-051-controller-${runId}`;
-        files.writeFileSync(
-          `${root}/controller-ownership.json`,
-          JSON.stringify({
-            runId,
-            name: controller,
-            nestedDaemonOnly: true,
-            outerContainer: containerId,
-          }),
-          { mode: 0o600 },
-        );
-        caseStage = "controller_execution";
-        ensureActive();
-        const controllerArgs = [
-          "exec",
-          containerId,
-          "docker",
-          "run",
-          "--rm",
-          "--name",
-          controller,
-          "--label",
-          `gwrk.fixture.run=${runId}`,
-          "--pull",
-          "never",
-          "--network",
-          "host",
-          "--user",
-          "0:0",
-          "--cap-drop",
-          "ALL",
-          "--cap-add",
-          "CHOWN",
-          "--cap-add",
-          "DAC_OVERRIDE",
-          "--cap-add",
-          "FOWNER",
-        ];
-        if (receipt?.approvedPassiveNetRaw === true) {
-          controllerArgs.push("--cap-add", "NET_RAW");
-        }
-        controllerArgs.push(
-          "--security-opt",
-          "no-new-privileges",
-          "--tmpfs",
-          "/tmp:rw,noexec,nosuid,size=32m",
-          "--env",
-          "DOCKER_HOST=unix:///var/run/docker.sock",
-          "--env",
-          "GWRK_051_OWNED_CONTROLLER=1",
-          "--env",
-          `GWRK_051_RUN_ID=${runId}`,
-        );
-        if (isObserverSelftest) {
-          controllerArgs.push("--env", "GWRK_051_OBSERVER_SELFTEST_ONLY=1");
-        }
-        if (enableSynGate) {
-          controllerArgs.push(
-            "--env",
-            "GWRK_051_SYN_GATE_DIR=/fixture/syn-gate",
-          );
-        }
-        if (runLegacyProof) {
-          controllerArgs.push("--env", "GWRK_051_RUN_LEGACY_PROOF=1");
-        }
-        controllerArgs.push(
-          "--mount",
-          "type=bind,source=/input,target=/input,readonly",
-          "--mount",
-          "type=bind,source=/fixture,target=/fixture",
-          "--mount",
-          "type=bind,source=/etc/gwrk,target=/etc/gwrk",
-          // This is the owned outer daemon's socket. The AWS host socket is never mounted.
-          "--mount",
-          "type=bind,source=/var/run/docker.sock,target=/var/run/docker.sock",
-          images.node,
-          "node",
-          "/input/fixtures/bootstrap.mjs",
-        );
         let result;
         let synGateDrain = { drained: true, exitCode: 0 };
+        let helperAbortHandler = null;
+        if (signal && synGateHelper) {
+          helperAbortHandler = () => {
+            stopAndDrainSynGateHelper(synGateHelper).catch(() => {});
+          };
+          signal.addEventListener?.("abort", helperAbortHandler, {
+            once: true,
+          });
+        }
         try {
+          ensureActive();
+          const controller = `gwrk-051-controller-${runId}`;
+          files.writeFileSync(
+            `${root}/controller-ownership.json`,
+            JSON.stringify({
+              runId,
+              name: controller,
+              nestedDaemonOnly: true,
+              outerContainer: containerId,
+            }),
+            { mode: 0o600 },
+          );
+          caseStage = "controller_execution";
+          ensureActive();
+          const controllerArgs = [
+            "exec",
+            containerId,
+            "docker",
+            "run",
+            "--rm",
+            "--name",
+            controller,
+            "--label",
+            `gwrk.fixture.run=${runId}`,
+            "--pull",
+            "never",
+            "--network",
+            "host",
+            "--user",
+            "0:0",
+            "--cap-drop",
+            "ALL",
+            "--cap-add",
+            "CHOWN",
+            "--cap-add",
+            "DAC_OVERRIDE",
+            "--cap-add",
+            "FOWNER",
+          ];
+          if (receipt?.approvedPassiveNetRaw === true) {
+            controllerArgs.push("--cap-add", "NET_RAW");
+          }
+          controllerArgs.push(
+            "--security-opt",
+            "no-new-privileges",
+            "--tmpfs",
+            "/tmp:rw,noexec,nosuid,size=32m",
+            "--env",
+            "DOCKER_HOST=unix:///var/run/docker.sock",
+            "--env",
+            "GWRK_051_OWNED_CONTROLLER=1",
+            "--env",
+            `GWRK_051_RUN_ID=${runId}`,
+          );
+          if (isObserverSelftest) {
+            controllerArgs.push("--env", "GWRK_051_OBSERVER_SELFTEST_ONLY=1");
+          }
+          if (enableSynGate) {
+            controllerArgs.push(
+              "--env",
+              "GWRK_051_SYN_GATE_DIR=/fixture/syn-gate",
+            );
+          }
+          if (runLegacyProof) {
+            controllerArgs.push("--env", "GWRK_051_RUN_LEGACY_PROOF=1");
+          }
+          controllerArgs.push(
+            "--mount",
+            "type=bind,source=/input,target=/input,readonly",
+            "--mount",
+            "type=bind,source=/fixture,target=/fixture",
+            "--mount",
+            "type=bind,source=/etc/gwrk,target=/etc/gwrk",
+            // This is the owned outer daemon's socket. The AWS host socket is never mounted.
+            "--mount",
+            "type=bind,source=/var/run/docker.sock,target=/var/run/docker.sock",
+            images.node,
+            "node",
+            "/input/fixtures/bootstrap.mjs",
+          );
           result = await spawnDocker(controllerArgs, 360_000);
         } finally {
+          if (helperAbortHandler && signal) {
+            signal.removeEventListener?.("abort", helperAbortHandler);
+          }
           if (synGateHelper) {
             synGateDrain = await stopAndDrainSynGateHelper(synGateHelper);
           }

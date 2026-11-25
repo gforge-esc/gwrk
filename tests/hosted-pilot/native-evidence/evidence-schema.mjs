@@ -103,7 +103,7 @@ const ALLOWED_LEGACY_PROOF_KEYS = [
 
 const ALLOWED_SIGNATURE_KEYS = ["schemaVersion", "keyId", "signature"];
 
-export function validateEvidenceEnvelope(envelope) {
+export function validateEvidenceEnvelope(envelope, options = {}) {
   assertExactKeys(envelope, ALLOWED_ENVELOPE_KEYS, "Evidence envelope");
 
   const env = envelope;
@@ -145,6 +145,15 @@ export function validateEvidenceEnvelope(envelope) {
   }
 
   if (
+    options.expectedManifestSha256 &&
+    env.runtimeManifestSha256 !== options.expectedManifestSha256
+  ) {
+    throw new Error(
+      `runtimeManifestSha256 mismatch (expected ${options.expectedManifestSha256}, got ${env.runtimeManifestSha256})`,
+    );
+  }
+
+  if (
     typeof env.legacy041ScriptSha256 !== "string" ||
     !HEX_64_REGEX.test(env.legacy041ScriptSha256)
   ) {
@@ -159,6 +168,15 @@ export function validateEvidenceEnvelope(envelope) {
   ) {
     throw new Error(
       `Invalid trustAnchorSha256: ${String(env.trustAnchorSha256)}`,
+    );
+  }
+
+  if (
+    options.expectedTrustAnchorSha256 &&
+    env.trustAnchorSha256 !== options.expectedTrustAnchorSha256
+  ) {
+    throw new Error(
+      `trustAnchorSha256 mismatch (expected ${options.expectedTrustAnchorSha256}, got ${env.trustAnchorSha256})`,
     );
   }
 

@@ -13,8 +13,10 @@ import {
 import { FixtureLifecycleError } from "./nested-lifecycle.mjs";
 import { FixtureProcessError } from "./process-scope.mjs";
 import {
+  defaultSpawnSynGateHelper,
   runNativeFixture,
   sanitizeObserverSelftestResult,
+  stopAndDrainSynGateHelper,
 } from "./run-native.mjs";
 
 function makeFiles() {
@@ -1521,4 +1523,148 @@ test("REVIEW-NR3-01: executeObserverSelftest with default writeFile writes resul
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
+});
+
+test("runNativeFixture drains synGateHelper even when error/abort occurs between helper spawn and controller spawnDocker", async () => {
+  const runId = "d".repeat(24);
+  const root = `/opt/gwrk-verification/${runId}`;
+  const { files } = makeFiles();
+  let helperDrained = false;
+
+  const fakeHelperProc = new EventEmitter();
+  fakeHelperProc.exitCode = null;
+  fakeHelperProc.signalCode = null;
+  fakeHelperProc.stdin = new EventEmitter();
+  fakeHelperProc.stdin.destroyed = false;
+  fakeHelperProc.stdin.write = (chunk) => {
+    if (String(chunk).includes("STOP")) {
+      helperDrained = true;
+      fakeHelperProc.exitCode = 0;
+      fakeHelperProc.emit("close", 0, null);
+    }
+  };
+  fakeHelperProc.stdin.end = () => {};
+  fakeHelperProc.stdout = { resume: () => {} };
+  fakeHelperProc.stderr = { resume: () => {} };
+  fakeHelperProc.kill = () => {
+    helperDrained = true;
+    fakeHelperProc.exitCode = 0;
+    fakeHelperProc.emit("close", 0, null);
+  };
+
+  const originalWriteFileSync = files.writeFileSync;
+  files.writeFileSync = (p, val) => {
+    if (p.includes("controller-ownership.json")) {
+      throw new Error("simulated failure after syn-gate helper spawn");
+    }
+    return originalWriteFileSync(p, val);
+  };
+
+  await assert.rejects(
+    runNativeFixture({
+      runId,
+      root,
+      receipt: {
+        approvedPassiveNetRaw: true,
+        approvedScenarioBSynGate: true,
+      },
+      images: sampleImages,
+      files,
+      spawnSynGateHelper: () => fakeHelperProc,
+      withLifecycle: async ({ executeCases }) => {
+        await executeCases({
+          containerId: "c".repeat(64),
+          hostNetNamespace: "net:[10]",
+          outerNetNamespace: "net:[20]",
+          docker: async (args) => {
+            if (args.includes("inspect")) {
+              const target = args.at(-1);
+              const key = Object.entries(sampleImages).find(
+                ([, value]) => value === target,
+              )[0];
+              return JSON.stringify({
+                Id: target,
+                RootFS: { Layers: sampleImages.rootfs[key] },
+              });
+            }
+            if (args.includes("mkdir") || args.includes("chmod")) return "";
+            return "";
+          },
+          spawnDocker: async () => {
+            return { code: 0, stdout: "", stderr: "" };
+          },
+        });
+      },
+    }),
+    /simulated failure after syn-gate helper spawn/,
+  );
+
+  assert.equal(
+    helperDrained,
+    true,
+    "SYN-gate helper must be drained even if setup throws before spawnDocker",
+  );
+});
+
+test("stopAndDrainSynGateHelper handles async EPIPE and child error events without uncaught error", async () => {
+  const fakeProc = new EventEmitter();
+  fakeProc.exitCode = null;
+  fakeProc.signalCode = null;
+  fakeProc.stdin = new EventEmitter();
+  fakeProc.stdin.destroyed = false;
+  fakeProc.stdin.write = () => {
+    process.nextTick(() => {
+      const err = new Error("write EPIPE");
+      err.code = "EPIPE";
+      fakeProc.stdin.emit("error", err);
+    });
+  };
+  fakeProc.stdin.end = () => {};
+  fakeProc.kill = () => {};
+
+  setTimeout(() => {
+    fakeProc.exitCode = 0;
+    fakeProc.emit("close", 0, null);
+  }, 10);
+
+  const result = await stopAndDrainSynGateHelper(fakeProc, 500);
+  assert.equal(result.drained, true);
+  assert.equal(result.exitCode, 0);
+});
+
+test("defaultSpawnSynGateHelper uses isolated DOCKER_CONFIG and attaches error listeners", () => {
+  const root = "/opt/gwrk-verification/test-run-root";
+  let capturedOptions = null;
+  const fakeChild = new EventEmitter();
+  fakeChild.stdin = new EventEmitter();
+
+  const proc = defaultSpawnSynGateHelper({
+    containerId: "test-container-id",
+    runId: "test-run-id",
+    hostNetNamespace: "net:[100]",
+    outerNetNamespace: "net:[200]",
+    root,
+    spawnProcess: (_file, _args, options) => {
+      capturedOptions = options;
+      return fakeChild;
+    },
+  });
+
+  assert.ok(proc, "helper process must be returned");
+  assert.ok(capturedOptions?.env, "isolated env must be passed");
+  assert.equal(
+    capturedOptions.env.DOCKER_CONFIG,
+    `${root}/docker-config`,
+    "DOCKER_CONFIG must point to root/docker-config",
+  );
+  assert.equal(capturedOptions.env.HOME, "/root");
+  assert.equal(capturedOptions.env.LANG, "C");
+  assert.equal(capturedOptions.env.LC_ALL, "C");
+  assert.equal(capturedOptions.env.PATH, "/usr/sbin:/usr/bin:/sbin:/bin");
+
+  // Error events on proc and stdin must not throw unhandled exceptions
+  assert.doesNotThrow(() => {
+    proc.emit("error", new Error("simulated spawn error"));
+    proc.stdin?.emit("error", new Error("simulated stdin error"));
+  });
 });
