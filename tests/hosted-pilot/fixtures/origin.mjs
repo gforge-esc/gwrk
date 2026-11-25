@@ -109,12 +109,12 @@ execFileSync("git", ["init", "--template=", "--initial-branch=main"], {
 });
 execFileSync(
   "git",
-  ["remote", "add", "origin", "https://example.invalid/fixture/repo.git"],
+  ["remote", "add", "origin", "https://github.com/fixture/repo.git"],
   { cwd: repo, env: gitEnv, stdio: "ignore" },
 );
 const projectId = computeProjectId({
   projectRoot: repo,
-  remoteOriginUrl: "https://example.invalid/fixture/repo.git",
+  remoteOriginUrl: "https://github.com/fixture/repo.git",
   gitCommonDir: `${repo}/.git`,
 });
 const db = openDatabase({ dbPath: `${directory}/auth.db` });
