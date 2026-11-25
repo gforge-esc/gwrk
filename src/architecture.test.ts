@@ -16,6 +16,8 @@ import {
   extractFixLines,
   extractOpenTaskErrors,
 } from "./application/ship/index.js";
+import { checkIndex } from "./engine/adr-index.js";
+import { parseCorpus, parseRecord } from "./engine/adr-parser.js";
 
 function walkTsFiles(dir: string): string[] {
   const results: string[] = [];
@@ -481,5 +483,306 @@ describe("FR-006 durable operation boundaries", () => {
         }
       }
     }
+  });
+});
+
+describe("FR-015 hosted production auth boundaries", () => {
+  it("TR-020 TC-004 keeps src/domain/auth-policy.ts pure and exported from the domain barrel", async () => {
+    const policyPath = path.resolve("src/domain/auth-policy.ts");
+    expect(
+      fs.existsSync(policyPath),
+      "src/domain/auth-policy.ts must exist",
+    ).toBe(true);
+    const source = fs.readFileSync(policyPath, "utf-8");
+
+    expect(architectureViolations("domain/auth-policy.ts", source)).toEqual([]);
+    expect(
+      architectureViolations("domain/auth-policy.ts", `${source}\nDate.now();`),
+    ).toContain("domain/auth-policy.ts -> ambient:Date.now");
+    expect(
+      architectureViolations(
+        "domain/auth-policy.ts",
+        `${source}\nimport fs from "node:fs";`,
+      ),
+    ).toContain("domain/auth-policy.ts -> package:node:fs");
+    expect(
+      architectureViolations(
+        "domain/auth-policy.ts",
+        `${source}\nimport fastify from "fastify";`,
+      ),
+    ).toContain("domain/auth-policy.ts -> package:fastify");
+    expect(
+      architectureViolations(
+        "domain/auth-policy.ts",
+        `${source}\nimport Database from "better-sqlite3";`,
+      ),
+    ).toContain("domain/auth-policy.ts -> package:better-sqlite3");
+    expect(
+      architectureViolations(
+        "domain/auth-policy.ts",
+        `${source}\nimport { jwtVerify } from "jose";`,
+      ),
+    ).toContain("domain/auth-policy.ts -> package:jose");
+
+    const domain = await import("./domain/index.js");
+    expect(Object.keys(domain)).toEqual(
+      expect.arrayContaining([
+        "CANONICAL_GOOGLE_ISSUER",
+        "ALLOWED_GOOGLE_ISSUERS",
+        "ALLOWED_GOOGLE_ALGORITHMS",
+        "FORBIDDEN_PUBLIC_IDENTITY_HEADERS",
+        "FORBIDDEN_PUBLIC_IDENTITY_HEADER_PREFIX",
+        "DEFAULT_HOSTED_SECURITY_POLICY",
+        "HostedSecurityPolicySchema",
+        "validateHostedSecurityPolicy",
+        "normalizeGoogleIssuer",
+        "formatGooglePrincipalId",
+        "validateGoogleTokenHeader",
+        "validateAccountAllowlist",
+        "evaluateGoogleTokenClaims",
+        "computeBrowserSessionCap",
+        "evaluateGoogleSessionLifecycle",
+        "parseOpaqueApiCredential",
+        "validateApiCredentialExpiry",
+        "evaluateApiCredentialLifecycle",
+        "classifyHostedRoute",
+        "selectRequestCredentialMechanism",
+        "evaluateBrowserMutationPolicy",
+        "isForbiddenPublicIdentityHeader",
+        "evaluateOutboundCredentialTarget",
+        "redactAuthHeaders",
+        "redactAuthUrl",
+        "redactAuthText",
+      ]),
+    );
+  });
+
+  it("TR-020 TC-004 freezes VerifiedAuthContext and seven auth ports in src/ports/auth-port.ts with type-only domain imports", async () => {
+    const ts = await import("typescript");
+    const portFile = "ports/auth-port.ts";
+    const absPortPath = path.resolve("src", portFile);
+    expect(
+      fs.existsSync(absPortPath),
+      "src/ports/auth-port.ts must exist",
+    ).toBe(true);
+
+    const source = fs.readFileSync(absPortPath, "utf-8");
+    expect(architectureViolations(portFile, source)).toEqual([]);
+    expect(
+      architectureViolations(
+        portFile,
+        `${source}\nimport { classifyHostedRoute } from "../domain/auth-policy.js";`,
+      ),
+    ).toContain(
+      `${portFile} -> runtime-domain-dependency:domain/auth-policy.js`,
+    );
+    expect(
+      architectureViolations(
+        portFile,
+        `${source}\nimport type { FastifyRequest } from "fastify";`,
+      ),
+    ).toContain(`${portFile} -> package:fastify`);
+    expect(
+      architectureViolations(
+        portFile,
+        `${source}\nimport { jwtVerify } from "jose";`,
+      ),
+    ).toContain(`${portFile} -> package:jose`);
+
+    const portsIndexImports = inspectFileImports("src/ports/index.ts");
+    expect(portsIndexImports).toContainEqual({
+      kind: "re-export",
+      specifier: "./auth-port.js",
+      typeOnly: false,
+    });
+
+    const program = ts.createProgram([absPortPath], {
+      noEmit: true,
+      skipLibCheck: true,
+      strictNullChecks: true,
+    });
+    const checker = program.getTypeChecker();
+    const ast = program.getSourceFile(absPortPath);
+    expect(ast).toBeDefined();
+    if (!ast) throw new Error("Missing src/ports/auth-port.ts AST");
+
+    const requiredInterfaces: Record<string, string[]> = {
+      VerifiedAuthContext: [
+        "principalType",
+        "principalId",
+        "credentialId",
+        "expiresAt",
+        "authMethod",
+        "sessionDigest",
+      ],
+      GoogleIdentityVerifierPort: ["verifyIdToken"],
+      CredentialCryptoPort: [
+        "generateApiCredential",
+        "hashCredential",
+        "hashTokenDigest",
+        "verifySha256Equal",
+      ],
+      AuthStorePort: [
+        "findApiCredentialById",
+        "listApiCredentials",
+        "revokeApiCredential",
+        "observeGoogleSession",
+        "getGoogleSession",
+        "revokeGoogleSession",
+        "appendAuditEvent",
+        "close",
+      ],
+      CredentialGrantAdminPort: [
+        "createCredentialWithGrants",
+        "rotateCredential",
+      ],
+      BrowserCsrfPort: ["issueToken", "verifyToken", "clearCookieHeader"],
+      ProxySessionLogoutPort: ["clearProxySession"],
+      HttpClientCredentialPort: ["resolveBearerForUrl"],
+    };
+
+    const requiredMethodParams: Record<string, string[]> = {
+      "GoogleIdentityVerifierPort.verifyIdToken": ["token", "nowMs"],
+      "AuthStorePort.observeGoogleSession": [
+        "tokenDigestSha256",
+        "principalId",
+        "issuedAt",
+        "expiresAt",
+        "sessionCapAt",
+      ],
+      "CredentialGrantAdminPort.createCredentialWithGrants": [
+        "credentialId",
+        "verifierSha256",
+        "label",
+        "issuer",
+        "audienceOrigin",
+        "createdAt",
+        "expiresAt",
+        "grants",
+      ],
+      "CredentialGrantAdminPort.rotateCredential": [
+        "targetCredentialId",
+        "newCredentialId",
+        "newVerifierSha256",
+        "issuer",
+        "audienceOrigin",
+        "createdAt",
+        "expiresAt",
+        "reason",
+      ],
+      "BrowserCsrfPort.issueToken": ["sessionDigest", "expiresAt"],
+      "BrowserCsrfPort.verifyToken": [
+        "sessionDigest",
+        "headerToken",
+        "cookieValue",
+      ],
+      "HttpClientCredentialPort.resolveBearerForUrl": ["targetUrl"],
+    };
+
+    for (const [name, members] of Object.entries(requiredInterfaces)) {
+      const declaration = ast.statements.find(
+        (node) => ts.isInterfaceDeclaration(node) && node.name.text === name,
+      );
+      expect(declaration, `auth-port.ts must declare ${name}`).toBeDefined();
+      if (!declaration || !ts.isInterfaceDeclaration(declaration)) {
+        throw new Error(`Missing interface ${name}`);
+      }
+      const type = checker.getTypeAtLocation(declaration);
+      expect(type.getProperties().map((symbol) => symbol.name)).toEqual(
+        expect.arrayContaining(members),
+      );
+
+      if (name === "VerifiedAuthContext") {
+        for (const requiredField of [
+          "principalType",
+          "principalId",
+          "credentialId",
+          "expiresAt",
+          "authMethod",
+        ]) {
+          const prop = type.getProperty(requiredField);
+          expect(
+            prop && (prop.flags & ts.SymbolFlags.Optional) === 0,
+            `VerifiedAuthContext.${requiredField} must be required`,
+          ).toBe(true);
+        }
+        const sessionDigest = type.getProperty("sessionDigest");
+        expect(
+          sessionDigest &&
+            (sessionDigest.flags & ts.SymbolFlags.Optional) !== 0,
+          "VerifiedAuthContext.sessionDigest must be optional",
+        ).toBe(true);
+      }
+
+      for (const member of declaration.members) {
+        if (!ts.isMethodSignature(member) || !ts.isIdentifier(member.name)) {
+          continue;
+        }
+        const key = `${name}.${member.name.text}`;
+        const requiredFields = requiredMethodParams[key];
+        if (!requiredFields) continue;
+        const paramType = checker.getTypeAtLocation(member.parameters[0]);
+        for (const field of requiredFields) {
+          const prop = paramType.getProperty(field);
+          expect(
+            prop && (prop.flags & ts.SymbolFlags.Optional) === 0,
+            `${key} must require ${field}`,
+          ).toBe(true);
+        }
+        if (key === "CredentialGrantAdminPort.rotateCredential") {
+          const overlapUntil = paramType.getProperty("overlapUntil");
+          expect(
+            overlapUntil &&
+              (overlapUntil.flags & ts.SymbolFlags.Optional) !== 0,
+            "CredentialGrantAdminPort.rotateCredential.overlapUntil must be optional",
+          ).toBe(true);
+        }
+      }
+    }
+  });
+
+  it("TR-020 TC-011 records ratified ADR-014 as Decided and keeps .gwrk/decisions/index.md synchronized", async () => {
+    const adrPath = path.resolve(
+      "docs/decisions/ADR-014-hosted-production-auth.md",
+    );
+    expect(
+      fs.existsSync(adrPath),
+      "docs/decisions/ADR-014-hosted-production-auth.md must exist",
+    ).toBe(true);
+
+    const adrRaw = fs.readFileSync(adrPath, "utf-8");
+    const record = parseRecord(adrRaw, adrPath);
+    expect(record.id).toBe("ADR-014");
+    expect(record.header.status).toBe("Decided");
+    expect(adrRaw).toMatch(
+      /^>\s*\*\*Approved by:\*\*\s*David Gonzo Gonzalez on 2026-11-25$/m,
+    );
+    expect(record.header.decision.trim().length).toBeGreaterThan(0);
+    expect(record.header.scope?.trim().length ?? 0).toBeGreaterThan(0);
+    expect(record.header.constraint ?? "").toMatch(/\bMUST(?:\s+NOT)?\b/);
+
+    const corpus = await parseCorpus(path.resolve("docs/decisions"));
+    for (let num = 1; num <= 12; num++) {
+      const id = `ADR-${String(num).padStart(3, "0")}`;
+      const existing = corpus.find((entry) => entry.id === id);
+      expect(existing?.header.status, `${id} must remain Decided`).toBe(
+        "Decided",
+      );
+    }
+    const adr013 = corpus.find((entry) => entry.id === "ADR-013");
+    expect(adr013?.header.status).toBe("Proposed");
+
+    const indexCheck = await checkIndex(process.cwd(), corpus);
+    expect(indexCheck).toEqual({
+      ok: true,
+      divergent: [],
+      message: null,
+    });
+
+    const indexContent = fs.readFileSync(
+      path.resolve(".gwrk/decisions/index.md"),
+      "utf-8",
+    );
+    expect(indexContent).toMatch(/^\|\s*ADR-014\s*\|[^|]+\|\s*Decided\s*\|/m);
   });
 });

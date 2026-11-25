@@ -1,0 +1,31 @@
+{
+  "verdict": "GO",
+  "scope": "Phase6 test preparation only",
+  "testCommit": "a3eb91523473b0de4435c92e073b230fb2dfdf74",
+  "manifestCommit": "18ca0db90e07b2a731b448e24c78ac35cd229b85",
+  "candidatePath": "/Users/gonzo/Code/gwrk-worktrees/hosted-pilot-051-nov23",
+  "hashes": {
+    "src/commands/server.auth-startup.test.ts": "65aad00e3171fe1a25aef9af56de10f23d5342f99bbd4a29233797eacc3f48b6",
+    "src/commands/init.auth-purity.test.ts": "02f39dcab9387f0cfd5a57c8a80e6cb29f1568c0b34702387924c878b5caad75",
+    "src/server/auth-continuity.test.ts": "5176594a65914faa455e45decf95d45a11a53ce1d1d3d9b5bcec71f949a2e088",
+    "specs/051-hosted-aws-pilot/gap-matrix.md": "f700f18a8b77ca96551e889a598ceebba6dca5b3a3bce46996ce679aed801e98",
+    "specs/051-hosted-aws-pilot/plan.md": "228e6a05eeb547940adf68681ff58ce259e3d13b8de9e3b5e0bcbe5f8cf61060",
+    "specs/051-hosted-aws-pilot/contracts/deployment-boundary.md": "14f7c5f2626b15eaff727145d1ad7c460981c2cb8133e03ab28fea0c87bdb92a",
+    "specs/051-hosted-aws-pilot/contracts/production-auth.md": "4f88e04e727f5319ac6302f58ded7262a99239555168694875a1ee293b2f25e8"
+  },
+  "actualRed": {
+    "path": "/Users/gonzo/Code/gwrk/.runs/aws-hosted-pilot-nov23/phase6-caller-red.log",
+    "sha256": "1c44a499876040ddc4f76ff92508bee093cec7f926f98a5e697d5baaaa8ba4ab",
+    "failed": 10,
+    "passed": 2,
+    "suites": 3,
+    "durationSeconds": 3.71,
+    "suiteLoadErrors": 0,
+    "timeouts": 0
+  },
+  "heavyChecksRepeated": false,
+  "laterAssertionsNotYetReached": true,
+  "nonblocking": [
+    "stale mock-constructor comment in server.auth-startup.test.ts:407"
+  ]
+}

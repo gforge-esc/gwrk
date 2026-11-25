@@ -1,0 +1,550 @@
+{
+  "featureId": "051-hosted-aws-pilot",
+  "createdAt": "2026-11-24T01:05:58.700Z",
+  "generatedFrom": {
+    "plan": {
+      "hash": "498d5e1beca5bb3d50da1ceeaa5b4f4831e9a12a7638ae694e81e36bd4d43933",
+      "modifiedAt": "2026-11-24T01:04:30.335Z"
+    }
+  },
+  "phases": [
+    {
+      "id": "phase-01",
+      "title": "Auth ports and policy",
+      "tasks": [
+        {
+          "id": "T001",
+          "title": "Create auth-policy.ts",
+          "description": "NEW src/domain/auth-policy.ts. Pure route table and credential grammar plus issuer normalization and session cap and log redaction. Tests: src/domain/auth-policy.test.ts",
+          "status": "completed",
+          "gateScript": "bash specs/051-hosted-aws-pilot/gates/phase-01.sh",
+          "sp": 2
+        },
+        {
+          "id": "T002",
+          "title": "Modify index.ts",
+          "description": "MODIFY src/domain/index.ts. Export pure auth policy functions and schemas from domain barrel",
+          "status": "completed",
+          "gateScript": "bash specs/051-hosted-aws-pilot/gates/phase-01.sh",
+          "sp": 1
+        },
+        {
+          "id": "T003",
+          "title": "Create auth-port.ts",
+          "description": "NEW src/ports/auth-port.ts. Freeze `VerifiedAuthContext` and seven auth ports with type-only domain imports",
+          "status": "completed",
+          "gateScript": "bash specs/051-hosted-aws-pilot/gates/phase-01.sh",
+          "sp": 2
+        },
+        {
+          "id": "T004",
+          "title": "Modify index.ts",
+          "description": "MODIFY src/ports/index.ts. Re-export `auth-port.js` from ports barrel",
+          "status": "completed",
+          "gateScript": "bash specs/051-hosted-aws-pilot/gates/phase-01.sh",
+          "sp": 1
+        },
+        {
+          "id": "T005",
+          "title": "Create ADR-014-hosted-production-auth.md",
+          "description": "NEW docs/decisions/ADR-014-hosted-production-auth.md. Proposed ADR for hosted Google login and opaque API credentials",
+          "status": "completed",
+          "gateScript": "bash specs/051-hosted-aws-pilot/gates/phase-01.sh",
+          "sp": 2
+        },
+        {
+          "id": "T006",
+          "title": "Modify index.md",
+          "description": "MODIFY .gwrk/decisions/index.md. Regenerate derived decision index with `gwrk define adr --reindex`",
+          "status": "completed",
+          "gateScript": "bash specs/051-hosted-aws-pilot/gates/phase-01.sh",
+          "sp": 1
+        }
+      ],
+      "sp_estimate": 9,
+      "testTargets": [
+        "src/architecture.test.ts",
+        "src/domain/auth-policy.test.ts",
+        "src/domain/auth-policy.test.ts",
+        "src/domain/auth-policy.test.ts",
+        "src/domain/auth-policy.test.ts"
+      ]
+    },
+    {
+      "id": "phase-02",
+      "title": "API credentials and local CLI",
+      "tasks": [
+        {
+          "id": "T007",
+          "title": "Create 020-production-auth.sql",
+          "description": "NEW src/db/migrations/020-production-auth.sql. Add `api_credentials` and `google_sessions` plus `auth_audit_events` tables to `gwrk.db`\n\nDIAGNOSIS (iteration 2):\nFIX: src/db/operations.test.ts — In the `preserves execution and Slack receipt data across both migration 018 files` test (lines 194-201), add `\"020-production-auth.sql\"` after `\"019-outbox-metadata-uniqueness.sql\"` in the `.toEqual([...])` array for `SELECT name FROM _migrations WHERE name >= '015' ORDER BY id`.\nFIX: vitest.config.ts — Add `\"tests/hosted-pilot/gate-completeness.test.mjs\"` to the `test.exclude` array (lines 20-27) so Vitest does not collect the `node:test` script invoked directly by `node tests/hosted-pilot/gate-completeness.test.mjs` in `specs/051-hosted-aws-pilot/gates/phase-08.sh`.",
+          "status": "completed",
+          "gateScript": "bash specs/051-hosted-aws-pilot/gates/phase-02.sh",
+          "sp": 2
+        },
+        {
+          "id": "T008",
+          "title": "Create credential-crypto.ts",
+          "description": "NEW src/adapters/auth/credential-crypto.ts. Implement `CredentialCryptoPort` with 32-byte secrets and constant-time SHA-256 checks. Tests: src/adapters/auth/credential-crypto.test.ts\n\nDIAGNOSIS (iteration 2):\nFIX: src/db/operations.test.ts — In the `preserves execution and Slack receipt data across both migration 018 files` test (lines 194-201), add `\"020-production-auth.sql\"` after `\"019-outbox-metadata-uniqueness.sql\"` in the `.toEqual([...])` array for `SELECT name FROM _migrations WHERE name >= '015' ORDER BY id`.\nFIX: vitest.config.ts — Add `\"tests/hosted-pilot/gate-completeness.test.mjs\"` to the `test.exclude` array (lines 20-27) so Vitest does not collect the `node:test` script invoked directly by `node tests/hosted-pilot/gate-completeness.test.mjs` in `specs/051-hosted-aws-pilot/gates/phase-08.sh`.",
+          "status": "completed",
+          "gateScript": "bash specs/051-hosted-aws-pilot/gates/phase-02.sh",
+          "sp": 2
+        },
+        {
+          "id": "T009",
+          "title": "Create auth-store.ts",
+          "description": "NEW src/adapters/sqlite/auth-store.ts. Implement `AuthStorePort` and atomic `CredentialGrantAdminPort` with `project_role_bindings`. Tests: src/adapters/sqlite/auth-store.test.ts\n\nDIAGNOSIS (iteration 2):\nFIX: src/db/operations.test.ts — In the `preserves execution and Slack receipt data across both migration 018 files` test (lines 194-201), add `\"020-production-auth.sql\"` after `\"019-outbox-metadata-uniqueness.sql\"` in the `.toEqual([...])` array for `SELECT name FROM _migrations WHERE name >= '015' ORDER BY id`.\nFIX: vitest.config.ts — Add `\"tests/hosted-pilot/gate-completeness.test.mjs\"` to the `test.exclude` array (lines 20-27) so Vitest does not collect the `node:test` script invoked directly by `node tests/hosted-pilot/gate-completeness.test.mjs` in `specs/051-hosted-aws-pilot/gates/phase-08.sh`.",
+          "status": "completed",
+          "gateScript": "bash specs/051-hosted-aws-pilot/gates/phase-02.sh",
+          "sp": 2
+        },
+        {
+          "id": "T010",
+          "title": "Modify index.ts",
+          "description": "MODIFY src/adapters/sqlite/index.ts. Export SQLite auth store and grant admin adapter factories\n\nDIAGNOSIS (iteration 2):\nFIX: src/db/operations.test.ts — In the `preserves execution and Slack receipt data across both migration 018 files` test (lines 194-201), add `\"020-production-auth.sql\"` after `\"019-outbox-metadata-uniqueness.sql\"` in the `.toEqual([...])` array for `SELECT name FROM _migrations WHERE name >= '015' ORDER BY id`.\nFIX: vitest.config.ts — Add `\"tests/hosted-pilot/gate-completeness.test.mjs\"` to the `test.exclude` array (lines 20-27) so Vitest does not collect the `node:test` script invoked directly by `node tests/hosted-pilot/gate-completeness.test.mjs` in `specs/051-hosted-aws-pilot/gates/phase-08.sh`.",
+          "status": "completed",
+          "gateScript": "bash specs/051-hosted-aws-pilot/gates/phase-02.sh",
+          "sp": 1
+        },
+        {
+          "id": "T011",
+          "title": "Create manage-credentials.ts",
+          "description": "NEW src/application/auth/manage-credentials.ts. Use cases for key create and list plus revoke and atomic rotate\n\nDIAGNOSIS (iteration 2):\nFIX: src/db/operations.test.ts — In the `preserves execution and Slack receipt data across both migration 018 files` test (lines 194-201), add `\"020-production-auth.sql\"` after `\"019-outbox-metadata-uniqueness.sql\"` in the `.toEqual([...])` array for `SELECT name FROM _migrations WHERE name >= '015' ORDER BY id`.\nFIX: vitest.config.ts — Add `\"tests/hosted-pilot/gate-completeness.test.mjs\"` to the `test.exclude` array (lines 20-27) so Vitest does not collect the `node:test` script invoked directly by `node tests/hosted-pilot/gate-completeness.test.mjs` in `specs/051-hosted-aws-pilot/gates/phase-08.sh`.",
+          "status": "completed",
+          "gateScript": "bash specs/051-hosted-aws-pilot/gates/phase-02.sh",
+          "sp": 2
+        },
+        {
+          "id": "T012",
+          "title": "Create auth.ts",
+          "description": "NEW src/commands/auth.ts. Local `gwrk auth key` subcommands writing `0600` non-checkout secret files with `ADR-004` signals. Tests: src/adapters/auth/credential-crypto.test.ts\n\nDIAGNOSIS (iteration 2):\nFIX: src/db/operations.test.ts — In the `preserves execution and Slack receipt data across both migration 018 files` test (lines 194-201), add `\"020-production-auth.sql\"` after `\"019-outbox-metadata-uniqueness.sql\"` in the `.toEqual([...])` array for `SELECT name FROM _migrations WHERE name >= '015' ORDER BY id`.\nFIX: vitest.config.ts — Add `\"tests/hosted-pilot/gate-completeness.test.mjs\"` to the `test.exclude` array (lines 20-27) so Vitest does not collect the `node:test` script invoked directly by `node tests/hosted-pilot/gate-completeness.test.mjs` in `specs/051-hosted-aws-pilot/gates/phase-08.sh`.\n\nREVIEW FAIL (uat): US-004 local private-host key administration CLI (gwrk auth key list text output) — Expected: `gwrk auth key list` in default text mode displays full untruncated public credential IDs (29-char default `cred_<24-hex>` IDs and up to 64-char public IDs) so operators can pass listed IDs directly to `gwrk auth key revoke <id>` and `gwrk auth key rotate <id>`. Actual: `src/commands/auth.ts:521` slices `cred.credentialId.slice(0, 28)`, truncating the final character of every default-generated credential ID (e.g., `cred_215d7127a5cfd3c4c8ed2e46` renders as `cred_215d7127a5cfd3c4c8ed2e4`), so passing the listed ID to `revoke` or `rotate` fails with exit 1 (`not found`). Behavioral regression patch: `.runs/review-regressions-phase-02-uat-list-id.patch`. See spec.md > US-004, FR-006. Fix: Restore `.runs/review-regressions-phase-02-uat-list-id.patch` first and observe RED on `pnpm vitest run src/commands/auth.test.ts`; remove `.slice(0, 28)` truncation on `cred.credentialId` in `src/commands/auth.ts` (size the Credential ID column dynamically to fit the longest ID without truncation); rebuild and pass `bash specs/051-hosted-aws-pilot/gates/phase-02.sh`.\n\nREVIEW/GATE DIVERGENCE (T012, gate: bash specs/051-hosted-aws-pilot/gates/phase-02.sh, re-opened by review):\nThe review agent raised a finding on this task and its gate still passes, so the gate does not cover what review found. Add a test that fails on it, then fix, before completing.",
+          "status": "completed",
+          "gateScript": "bash specs/051-hosted-aws-pilot/gates/phase-02.sh",
+          "sp": 2
+        },
+        {
+          "id": "T013",
+          "title": "Modify cli.ts",
+          "description": "MODIFY src/cli.ts. Register `createAuthCommand` and exempt `gwrk auth key` from cwd config preflight\n\nDIAGNOSIS (iteration 2):\nFIX: src/db/operations.test.ts — In the `preserves execution and Slack receipt data across both migration 018 files` test (lines 194-201), add `\"020-production-auth.sql\"` after `\"019-outbox-metadata-uniqueness.sql\"` in the `.toEqual([...])` array for `SELECT name FROM _migrations WHERE name >= '015' ORDER BY id`.\nFIX: vitest.config.ts — Add `\"tests/hosted-pilot/gate-completeness.test.mjs\"` to the `test.exclude` array (lines 20-27) so Vitest does not collect the `node:test` script invoked directly by `node tests/hosted-pilot/gate-completeness.test.mjs` in `specs/051-hosted-aws-pilot/gates/phase-08.sh`.",
+          "status": "completed",
+          "gateScript": "bash specs/051-hosted-aws-pilot/gates/phase-02.sh",
+          "sp": 1
+        }
+      ],
+      "sp_estimate": 12,
+      "testTargets": [
+        "src/adapters/sqlite/auth-store.test.ts",
+        "src/commands/auth.test.ts",
+        "src/adapters/auth/credential-crypto.test.ts"
+      ]
+    },
+    {
+      "id": "phase-03",
+      "title": "Google JWT and sessions",
+      "tasks": [
+        {
+          "id": "T014",
+          "title": "Modify package.json",
+          "description": "MODIFY package.json. Pin exact `jose` release for Node.js 22",
+          "status": "completed",
+          "gateScript": "bash specs/051-hosted-aws-pilot/gates/phase-03.sh",
+          "sp": 1
+        },
+        {
+          "id": "T015",
+          "title": "Modify pnpm-lock.yaml",
+          "description": "MODIFY pnpm-lock.yaml. Record pinned `jose` lockfile entry",
+          "status": "completed",
+          "gateScript": "bash specs/051-hosted-aws-pilot/gates/phase-03.sh",
+          "sp": 1
+        },
+        {
+          "id": "T016",
+          "title": "Create google-id-token.ts",
+          "description": "NEW src/adapters/auth/google-id-token.ts. Implement `GoogleIdentityVerifierPort` with pinned `jose` and bounded JWKS cache plus live allowlist reload. Tests: src/adapters/auth/google-id-token.test.ts",
+          "status": "completed",
+          "gateScript": "bash specs/051-hosted-aws-pilot/gates/phase-03.sh",
+          "sp": 2
+        },
+        {
+          "id": "T017",
+          "title": "Create proxy-logout.ts",
+          "description": "NEW src/adapters/auth/proxy-logout.ts. Implement `ProxySessionLogoutPort` against fixed internal `/oauth2/sign_out` endpoint Tests: src/adapters/auth/proxy-logout.test.ts. Follow the frozen private logout contract and preserve multiple cookie-clearing headers without following redirects.",
+          "status": "completed",
+          "gateScript": "bash specs/051-hosted-aws-pilot/gates/phase-03.sh",
+          "sp": 2
+        },
+        {
+          "id": "T018",
+          "title": "Create authenticate-request.ts",
+          "description": "NEW src/application/auth/authenticate-request.ts. Orchestrate API key and Google ID token checks plus audience and session cap denials. Tests: src/application/auth/authenticate-request.test.ts",
+          "status": "completed",
+          "gateScript": "bash specs/051-hosted-aws-pilot/gates/phase-03.sh",
+          "sp": 2
+        },
+        {
+          "id": "T019",
+          "title": "Create browser-session.ts",
+          "description": "NEW src/application/auth/browser-session.ts. Orchestrate session reads and origin-first digest revocation before proxy sign-out",
+          "status": "completed",
+          "gateScript": "bash specs/051-hosted-aws-pilot/gates/phase-03.sh",
+          "sp": 2
+        },
+        {
+          "id": "T020",
+          "title": "Modify index.ts",
+          "description": "MODIFY src/application/index.ts. Export authentication and session plus credential-management services",
+          "status": "completed",
+          "gateScript": "bash specs/051-hosted-aws-pilot/gates/phase-03.sh",
+          "sp": 1
+        }
+      ],
+      "sp_estimate": 11,
+      "testTargets": [
+        "src/adapters/auth/google-id-token.test.ts",
+        "src/adapters/auth/google-id-token.test.ts",
+        "src/adapters/auth/google-id-token.test.ts",
+        "src/application/auth/authenticate-request.test.ts",
+        "src/adapters/auth/proxy-logout.test.ts"
+      ]
+    },
+    {
+      "id": "phase-04",
+      "title": "Origin guard and health",
+      "tasks": [
+        {
+          "id": "T021",
+          "title": "Modify package.json",
+          "description": "MODIFY package.json. Pin `@fastify/cookie` and `@fastify/csrf` plus `@fastify/rate-limit` for Fastify 5",
+          "status": "completed",
+          "gateScript": "bash specs/051-hosted-aws-pilot/gates/phase-04.sh",
+          "sp": 1
+        },
+        {
+          "id": "T022",
+          "title": "Modify pnpm-lock.yaml",
+          "description": "MODIFY pnpm-lock.yaml. Lock pinned Fastify security plugin releases",
+          "status": "completed",
+          "gateScript": "bash specs/051-hosted-aws-pilot/gates/phase-04.sh",
+          "sp": 1
+        },
+        {
+          "id": "T023",
+          "title": "Create browser-csrf.ts",
+          "description": "NEW src/adapters/auth/browser-csrf.ts. Implement `BrowserCsrfPort` with `@fastify/csrf` and `__Host-gwrk_csrf` cookie plus `x-gwrk-csrf-token` header Issue with required capped expiresAt and absolute Expires only. Use session-digest userInfo with the startup HMAC key. Tests: src/adapters/auth/browser-csrf.test.ts.",
+          "status": "completed",
+          "gateScript": "bash specs/051-hosted-aws-pilot/gates/phase-04.sh",
+          "sp": 2
+        },
+        {
+          "id": "T024",
+          "title": "Create auth-guard.ts",
+          "description": "NEW src/server/auth-guard.ts. Fastify async auth pre-handler and request decoration plus synchronous `resolvePrincipal` reader and default-deny guard Preserve src/server/auth-guard.account-denial.test.ts and its AUTH_ACCOUNT_DENIED HTTP 403 assertion.",
+          "status": "completed",
+          "gateScript": "bash specs/051-hosted-aws-pilot/gates/phase-04.sh",
+          "sp": 2
+        },
+        {
+          "id": "T025",
+          "title": "Create auth.ts",
+          "description": "NEW src/server/routes/auth.ts. Register `GET /` and `GET /api/auth/session` plus `POST /api/auth/logout` routes. Tests: src/server/auth-prehandler.test.ts",
+          "status": "completed",
+          "gateScript": "bash specs/051-hosted-aws-pilot/gates/phase-04.sh",
+          "sp": 2
+        },
+        {
+          "id": "T026",
+          "title": "Modify health.ts",
+          "description": "MODIFY src/server/routes/health.ts. Filter hosted `GET /api/health` to one authorized project and serve minimal private `GET /health`\n\nREVIEW FAIL (code): hosted-health-denial-request-id — FR-010.\n  WHERE: src/server/routes/health.ts:377-383\n  EXPECTED: Hosted GET /api/health JSON denials (HTTP 400/401/403/404) include `requestId: request.id` alongside `ok: false`, `code`, and `error` without credential values (per FR-010 and contracts/production-auth.md).\n  ACTUAL: `reply.status(httpStatusForDenial(decision.code)).send({ ok: false, code: decision.code, error: decision.message })` omits `requestId`. Observed RED in `src/server/auth-api-keys.test.ts` lines 838 and 860 (`expected { ok: false, ...(2) } to match object { ok: false, requestId: Any<String> }`).\n  FIX: Restore behavioral regression patch `.runs/review-regressions-phase-04-code-review.patch` first and observe RED; add `requestId: request.id` to the hosted `/api/health` denial payload in `src/server/routes/health.ts:378-382`; preserve all existing tests and pass `bash specs/051-hosted-aws-pilot/gates/phase-04.sh`.\n  GATE: specs/051-hosted-aws-pilot/gates/phase-04.sh (coverage hole: passed while requestId was missing on hosted /api/health denials)\n  REF: plan.md Phase 4 > src/server/routes/health.ts; spec.md > FR-010; contracts/production-auth.md > Route policy\n\nREVIEW/GATE DIVERGENCE (T026, gate: bash specs/051-hosted-aws-pilot/gates/phase-04.sh, REVIEW FAIL block appended, status left unchanged):\nThe review agent raised a finding on this task and its gate still passes, so the gate does not cover what review found. Add a test that fails on it, then fix, before completing.\n\nDIAGNOSIS (iteration 2):\nFIX: src/server/auth-api-keys.test.ts — Apply .runs/review-regressions-phase-04-code-review.patch first (lines 835-876) so hosted GET /api/health 403, missing-project, and unknown-project denials assert `{ ok: false, requestId: expect.any(String) }` and confirm RED before editing production files\nFIX: src/server/auth-prehandler.test.ts — Apply .runs/review-regressions-phase-04-code-review.patch first (after line 1242) to add the FR-007 FR-010 test proving caller-supplied `resolvePrincipal` cannot bypass hosted auth guard or hosted health scoping when `hostedAuth` is absent and confirm RED before editing production files\nFIX: src/server/routes/health.ts — Add `requestId: request.id` to the hosted GET /api/health denial payload at lines 378-382 so `reply.status(httpStatusForDenial(decision.code)).send(...)` sends `{ ok: false, code: decision.code, error: decision.message, requestId: request.id }`\nFIX: src/server/index.ts — Replace lines 664-666 with `const useHostedAuthGuard = effectiveTransport === \"hosted\";` so hosted `startServer` unconditionally registers `registerHostedAuthGuard` and default-deny `setNotFoundHandler`, wires `resolveVerifiedPrincipal` as `effectiveResolvePrincipal` for `statusRoutes`, `dispatchRoutes`, and `notifyRoutes`, and passes `transport: \"hosted\" as const` with `resolvePrincipal: resolveVerifiedPrincipal` to `healthRoutes`\nFIX: src/server/routes/dispatch.test.ts — In the hosted `startServer` test (lines 181-244), replace `options.resolvePrincipal` with `hostedAuth: { authenticate }` accepting an `Authorization: Bearer <token>` header as a `VerifiedAuthContext` (`{ principalType: \"google_sub\", principalId: \"iss:hosted-op\", credentialId: \"cred-hosted-op\", expiresAt: \"2026-12-31T00:00:00.000Z\", authMethod: \"api_key\" }`) and returning `{ ok: true, context: null, mechanism: \"none\" }` when absent, send `Authorization: Bearer` headers instead of `x-verified-test-sub` at lines 211 and 229, and update line 206 unauth denial code expectation from `\"REMOTE_AUTH_REQUIRED\"` to `\"AUTH_REQUIRED\"`\nFIX: src/server/two-repo-isolation.test.ts — In both hosted `startServer` setups (lines 394-411 and 937-954), replace `options.resolvePrincipal` with `hostedAuth: { authenticate }` mapping distinct `Authorization: Bearer` tokens to `VerifiedAuthContext` with `authMethod: \"api_key\"` for `principalId` `\"iss:alpha-op\"` and `\"iss:beta-op\"` (returning `{ ok: true, context: null, mechanism: \"none\" }` when absent), replace `x-verified-test-sub` headers with `Authorization: Bearer` headers at lines 435, 449, 479, 509, 517, 529, 961, 973, 986, and 991, update line 429 `unauthDispatch` code expectation from `\"REMOTE_AUTH_REQUIRED\"` to `\"AUTH_REQUIRED\"`, and update lines 546-561 to query authenticated project-scoped `GET /api/health?projectId=${alphaProject.projectId}` and `GET /api/health?projectId=${betaProject.projectId}` asserting `daemonLiveness: \"alive\"`, `projectReadiness: { status: \"ready\", readyCount: 1, totalCount: 1 }`, and `telegram: { enabled: false, reason: \"disabled_in_pilot\" }` for each project\nFIX: src/server/unattended-recovery.test.ts — In the four hosted `startServer` setups using `resolvePrincipal` (lines 258-263, 411-416, 631-636, and 796-801), replace `options.resolvePrincipal` with `hostedAuth: { authenticate }` mapping `Authorization: Bearer` tokens to `VerifiedAuthContext` with `authMethod: \"api_key\"` for `principalId` `\"iss:alpha-op\"` and `\"iss:beta-op\"` (returning `{ ok: true, context: null, mechanism: \"none\" }` when absent), replace `x-verified-test-sub` headers with `Authorization: Bearer` headers at lines 270 and 698, and update `GET /api/health` checks at lines 714-724 and 853-859 to call authenticated project-scoped `/api/health?projectId=...` for both `alphaProject` and `betaProject` asserting `outbox.uncertainCount: 1` per project before restart recovery and `status: \"ok\"`, `daemonLiveness: \"alive\"`, `outbox.status: \"ok\"`, and `harvest.status: \"ok\"` per project after recovery",
+          "status": "completed",
+          "gateScript": "bash specs/051-hosted-aws-pilot/gates/phase-04.sh",
+          "sp": 1
+        },
+        {
+          "id": "T027",
+          "title": "Modify index.ts",
+          "description": "MODIFY src/server/index.ts. Register auth pre-handler and CSRF plus auth routes and scoped health while keeping `trusted_local` separate\n\nREVIEW FAIL (code): hosted-auth-guard-bypass-via-resolvePrincipal — FR-007, FR-010.\n  WHERE: src/server/index.ts:664-738\n  EXPECTED: Whenever `effectiveTransport === \"hosted\"`, `startServer` MUST unconditionally register `registerHostedAuthGuard` and default-deny `setNotFoundHandler`, wire `resolveVerifiedPrincipal` as the sole principal reader for all operational routes (`healthRoutes`, `statusRoutes`, `dispatchRoutes`, `notifyRoutes`) so a caller-supplied `options.resolvePrincipal` can NEVER bypass the guard or replace guard-established context, and unconditionally pass `transport: \"hosted\"` to `healthRoutes` so `/health` serves minimal private liveness and `/api/health` requires project authorization.\n  ACTUAL: `const useHostedAuthGuard = effectiveTransport === \"hosted\" && (Boolean(options.hostedAuth) || !options.resolvePrincipal)` disables `registerHostedAuthGuard`, `setNotFoundHandler`, `resolveVerifiedPrincipal`, and hosted `healthRoutes` scoping whenever `options.resolvePrincipal` is supplied without `options.hostedAuth`. Observed RED in `src/server/auth-prehandler.test.ts:1269`: an unauthenticated `POST /api/dispatch` returned HTTP 201 (`AssertionError: expected [ 401, 503 ] to include 201`) and created an operation row, `GET /api/health` served unfiltered multi-project readiness without auth, and `GET /health` ran Git/provider probes and exposed project metadata.\n  FIX: Restore behavioral regression patch `.runs/review-regressions-phase-04-code-review.patch` first and observe RED; set `useHostedAuthGuard = effectiveTransport === \"hosted\"` unconditionally in `src/server/index.ts:664-666` (never allowing `options.resolvePrincipal` to disable the hosted guard, hosted health scoping, or guard-established context); update obsolete pre-051 hosted `startServer` test mocks in `src/server/routes/dispatch.test.ts`, `src/server/two-repo-isolation.test.ts`, and `src/server/unattended-recovery.test.ts` to inject `hostedAuth` and authenticated scoped `/api/health?projectId=...` calls while preserving their behavioral assertions; rebuild and verify `bash specs/051-hosted-aws-pilot/gates/phase-04.sh` plus those updated server test files pass.\n  GATE: specs/051-hosted-aws-pilot/gates/phase-04.sh (coverage hole: passed while caller-supplied resolvePrincipal bypassed hosted guard and hosted health)\n  REF: plan.md Phase 4 > src/server/index.ts; phase4-composition-plan.md; spec.md > FR-007, FR-010\n\nREVIEW/GATE DIVERGENCE (T027, gate: bash specs/051-hosted-aws-pilot/gates/phase-04.sh, REVIEW FAIL block appended, status left unchanged):\nThe review agent raised a finding on this task and its gate still passes, so the gate does not cover what review found. Add a test that fails on it, then fix, before completing.\n\nDIAGNOSIS (iteration 2):\nFIX: src/server/auth-api-keys.test.ts — Apply .runs/review-regressions-phase-04-code-review.patch first (lines 835-876) so hosted GET /api/health 403, missing-project, and unknown-project denials assert `{ ok: false, requestId: expect.any(String) }` and confirm RED before editing production files\nFIX: src/server/auth-prehandler.test.ts — Apply .runs/review-regressions-phase-04-code-review.patch first (after line 1242) to add the FR-007 FR-010 test proving caller-supplied `resolvePrincipal` cannot bypass hosted auth guard or hosted health scoping when `hostedAuth` is absent and confirm RED before editing production files\nFIX: src/server/routes/health.ts — Add `requestId: request.id` to the hosted GET /api/health denial payload at lines 378-382 so `reply.status(httpStatusForDenial(decision.code)).send(...)` sends `{ ok: false, code: decision.code, error: decision.message, requestId: request.id }`\nFIX: src/server/index.ts — Replace lines 664-666 with `const useHostedAuthGuard = effectiveTransport === \"hosted\";` so hosted `startServer` unconditionally registers `registerHostedAuthGuard` and default-deny `setNotFoundHandler`, wires `resolveVerifiedPrincipal` as `effectiveResolvePrincipal` for `statusRoutes`, `dispatchRoutes`, and `notifyRoutes`, and passes `transport: \"hosted\" as const` with `resolvePrincipal: resolveVerifiedPrincipal` to `healthRoutes`\nFIX: src/server/routes/dispatch.test.ts — In the hosted `startServer` test (lines 181-244), replace `options.resolvePrincipal` with `hostedAuth: { authenticate }` accepting an `Authorization: Bearer <token>` header as a `VerifiedAuthContext` (`{ principalType: \"google_sub\", principalId: \"iss:hosted-op\", credentialId: \"cred-hosted-op\", expiresAt: \"2026-12-31T00:00:00.000Z\", authMethod: \"api_key\" }`) and returning `{ ok: true, context: null, mechanism: \"none\" }` when absent, send `Authorization: Bearer` headers instead of `x-verified-test-sub` at lines 211 and 229, and update line 206 unauth denial code expectation from `\"REMOTE_AUTH_REQUIRED\"` to `\"AUTH_REQUIRED\"`\nFIX: src/server/two-repo-isolation.test.ts — In both hosted `startServer` setups (lines 394-411 and 937-954), replace `options.resolvePrincipal` with `hostedAuth: { authenticate }` mapping distinct `Authorization: Bearer` tokens to `VerifiedAuthContext` with `authMethod: \"api_key\"` for `principalId` `\"iss:alpha-op\"` and `\"iss:beta-op\"` (returning `{ ok: true, context: null, mechanism: \"none\" }` when absent), replace `x-verified-test-sub` headers with `Authorization: Bearer` headers at lines 435, 449, 479, 509, 517, 529, 961, 973, 986, and 991, update line 429 `unauthDispatch` code expectation from `\"REMOTE_AUTH_REQUIRED\"` to `\"AUTH_REQUIRED\"`, and update lines 546-561 to query authenticated project-scoped `GET /api/health?projectId=${alphaProject.projectId}` and `GET /api/health?projectId=${betaProject.projectId}` asserting `daemonLiveness: \"alive\"`, `projectReadiness: { status: \"ready\", readyCount: 1, totalCount: 1 }`, and `telegram: { enabled: false, reason: \"disabled_in_pilot\" }` for each project\nFIX: src/server/unattended-recovery.test.ts — In the four hosted `startServer` setups using `resolvePrincipal` (lines 258-263, 411-416, 631-636, and 796-801), replace `options.resolvePrincipal` with `hostedAuth: { authenticate }` mapping `Authorization: Bearer` tokens to `VerifiedAuthContext` with `authMethod: \"api_key\"` for `principalId` `\"iss:alpha-op\"` and `\"iss:beta-op\"` (returning `{ ok: true, context: null, mechanism: \"none\" }` when absent), replace `x-verified-test-sub` headers with `Authorization: Bearer` headers at lines 270 and 698, and update `GET /api/health` checks at lines 714-724 and 853-859 to call authenticated project-scoped `/api/health?projectId=...` for both `alphaProject` and `betaProject` asserting `outbox.uncertainCount: 1` per project before restart recovery and `status: \"ok\"`, `daemonLiveness: \"alive\"`, `outbox.status: \"ok\"`, and `harvest.status: \"ok\"` per project after recovery",
+          "status": "completed",
+          "gateScript": "bash specs/051-hosted-aws-pilot/gates/phase-04.sh",
+          "sp": 1
+        }
+      ],
+      "sp_estimate": 10,
+      "testTargets": [
+        "src/server/auth-prehandler.test.ts",
+        "src/server/auth-session.test.ts",
+        "src/server/auth-api-keys.test.ts",
+        "src/server/auth-api-keys.test.ts",
+        "src/server/auth-guard.account-denial.test.ts",
+        "src/adapters/auth/browser-csrf.test.ts"
+      ]
+    },
+    {
+      "id": "phase-05",
+      "title": "CSRF, bounds and redaction",
+      "tasks": [
+        {
+          "id": "T028",
+          "title": "Create auth-logging.ts",
+          "description": "NEW src/server/auth-logging.ts. Sanitized Fastify logger removing auth headers and cookies plus OAuth query params and error secrets. Tests: src/server/auth-logging.test.ts\n\nREVIEW FAIL (code): sanitized-logger-json-corruption-and-redaction-gaps — FR-013, US-008.\n  WHERE: src/server/auth-logging.ts:11-33, 35-73, 75-97, 122-163, 165-179\n  EXPECTED: Sanitized logger emits valid JSON lines even when Bearer tokens, cookies, or OAuth query params end a serialized field; redacts FORBIDDEN_PUBLIC_IDENTITY_HEADERS (x-forwarded-user, x-forwarded-email, x-forwarded-groups, x-forwarded-preferred-username) via domain auth-policy helpers; strips URL fragments (#code=..., #token=...) and credentials in serializeRequest; and handles cyclic err.cause/err.errors without crashing.\n  ACTUAL: SanitizingStream._write runs sanitizeText(raw) over already JSON-encoded Pino output, where redactAuthText regexes ([^\\s,;]+ and [^&#\\s]+) consume closing JSON quotes (producing SyntaxError on JSON.parse at src/server/auth-logging.test.ts:781); sanitizeHeaders omits forbidden public identity headers; serializeRequest only splits on \"?\" leaving # fragments unredacted; and serializeError recurses infinitely on cyclic err.cause (RangeError: Maximum call stack size exceeded at src/server/auth-logging.test.ts:798). Behavioral regression patch: .runs/review-regressions-phase-05-code-review.patch.\n  FIX: Restore .runs/review-regressions-phase-05-code-review.patch first and observe RED on pnpm exec vitest run src/server/auth-logging.test.ts; keep stream-level fallback regexes JSON-quote-safe (excluding \" and \\) or sanitize structured fields before serialization instead of running non-JSON-aware redactAuthText across serialized JSON bytes; reuse isForbiddenPublicIdentityHeader/redactAuthHeaders and redactAuthUrl from src/domain/auth-policy.ts while stripping query and fragment from logged request URLs; add a WeakSet cycle guard in serializeError; rebuild and pass bash specs/051-hosted-aws-pilot/gates/phase-05.sh.\n  GATE: specs/051-hosted-aws-pilot/gates/phase-05.sh (coverage hole: passed while JSON log lines broke on trailing Bearer/query secrets, cyclic causes crashed serializeError, and forbidden identity headers/URL fragments were unredacted)\n  REF: plan.md Phase 5 > src/server/auth-logging.ts; spec.md > FR-013; phase5-composition-plan.md\n\nPOST-FLIGHT GATE FAIL (T028, gate: bash specs/051-hosted-aws-pilot/gates/phase-05.sh):\nexit: 1\nRUN  v3.2.4 /Users/gonzo/Code/gwrk-worktrees/hosted-pilot-051-nov23/.runs/sandboxes/051-hosted-aws-pilot-ship-ca9adfd2\n\nstdout | src/server/auth-logging.test.ts > FR-013 US-008 TR-015 AUTH-15: sanitized Fastify logger and zero canary secret leaks > AUTH-15: emits real structured logs to the configured stream with zero canary secrets across success, denials, cookies, query params, and errors\ngwrk server listening on http://127.0.0.1:62917\n\n{\"level\":30,\"time\":1795509653292,\"pid\":84164,\"hostname\":\"\n\nDIAGNOSIS (iteration 2):\nFIX: src/server/auth-logging.ts — Import `isForbiddenPublicIdentityHeader` from `../domain/auth-policy.js` to redact forbidden identity headers in `sanitizeHeaders`. Strip query and fragment using `rawUrl.split(/[?#]/)[0]` in `serializeRequest`. Add a `WeakSet<object>` cycle guard to `serializeError`. Exclude quotes and backslashes from `sanitizeText` regexes to prevent corrupting JSON stream output.\nFIX: src/server/auth-bounds.ts — Restrict `isTrustedLoopback` to `127.0.0.1` and `::ffff:127.0.0.1`. Return HTTP 503 `TRUSTED_FORWARDING_INVALID` on present but blank `X-Forwarded-For`. Detect client abort only when `!request.raw.complete` or `!reply.raw.writableEnded`. Detach socket close listeners on settlement and `onResponse`. Settle unverified reservations in `onError` and `onRequestAbort`. Fail closed in `preHandler` when a protected API route lacks an unsettled reservation.\nFIX: src/server/index.ts — Pass `http: { maxHeaderSize: DEFAULT_HOSTED_SECURITY_POLICY.httpHeaderMaxBytes }` to `fastify`. Register a hosted `server.setErrorHandler` returning static JSON `{ ok: false, code, error, requestId: request.id }` without reflecting raw error messages. Replace hosted 5xx response error messages with static text in the `onSend` hook while ensuring 4xx responses include `ok: false` and `requestId` and omit `candidateSlugs`.\n\nPOST-FLIGHT GATE FAIL (T028, gate: bash specs/051-hosted-aws-pilot/gates/phase-05.sh):\nexit: 1\nRUN  v3.2.4 /Users/gonzo/Code/gwrk-worktrees/hosted-pilot-051-nov23/.runs/sandboxes/051-hosted-aws-pilot-ship-a02081a7\n\nstdout | src/server/github.test.ts > FR-H01/FR-H09/TC-H01: Webhook Handler > US-H01: Valid PR merge webhook triggers harvest\nNo phaseId provided for harvest on 011-harvest. Attempting to discover all phases from plan.md...\n\n{\"level\":30,\"time\":1795543887285,\"pid\":21605,\"hostname\":\"mbp.local\",\"msg\":\"Server listening at http://127.0.0.1:54201\"}\nstdout | src/server/auth-bounds.test\n\nDIAGNOSIS (iteration 2):\nFIX: src/server/auth-bounds.test.ts — In `sendLoopbackRequest` (lines 156-209), convert `input.body` to a `Buffer`, send bodies `<= 65_536` bytes with `req.end(bodyBuf)`, and for bodies `> 65_536` bytes call `req.flushHeaders()` first and defer chunked `65_536`-byte `req.write` calls by `50`ms via a timer cleared on `response`, `error`, and `close` (stopping writes once `responseStarted || settled || req.destroyed || req.writableEnded` and respecting `\"drain\"`) so Fastify's immediate `413` `Connection: close` rejection on oversized `Content-Length` completes without a loopback `write ECONNRESET` race while preserving all behavioral assertions in `AUTH-14: enforces real loopback parser limits for >16384 header bytes (431) and >1048576 body bytes (413)`.\n\nPOST-FLIGHT GATE FAIL (T028, gate: bash specs/051-hosted-aws-pilot/gates/phase-05.sh):\nexit: 1\nRUN  v3.2.4 /Users/gonzo/Code/gwrk-worktrees/hosted-pilot-051-nov23/.runs/sandboxes/051-hosted-aws-pilot-ship-a02081a7\n\nstdout | src/server/github.test.ts > FR-H01/FR-H09/TC-H01: Webhook Handler > US-H01: Valid PR merge webhook triggers harvest\nNo phaseId provided for harvest on 011-harvest. Attempting to discover all phases from plan.md...\n\n{\"level\":30,\"time\":1795545812743,\"pid\":83565,\"hostname\":\"mbp.local\",\"msg\":\"Server listening at http://127.0.0.1:58605\"}\nstdout | src/server/auth-route-polic",
+          "status": "completed",
+          "gateScript": "bash specs/051-hosted-aws-pilot/gates/phase-05.sh",
+          "sp": 2
+        },
+        {
+          "id": "T029",
+          "title": "Create auth-bounds.ts",
+          "description": "NEW src/server/auth-bounds.ts. Finite login and per-credential API rate limits plus header and body bounds with fail-closed denials. Tests: src/server/auth-bounds.test.ts Reuse the approved pure auth-rate-policy, rate-admission port and bounded adapter. Preserve generation, duplicate-finalization, capacity and fixed-expiry regressions.\n\nREVIEW FAIL (code): real-tcp-post-premature-408-abort-listener-leak-and-blank-xff — FR-013, US-008.\n  WHERE: src/server/auth-bounds.ts:38-46, 78-109, 221-267, 292-304\n  EXPECTED: Real loopback TCP POST requests with a body succeed (HTTP 201 on POST /api/dispatch) and complete verified admission once without triggering premature abort; keep-alive sockets detach per-request close listeners on settlement/response; missing or already-settled reservations on protected API routes fail closed in preHandler; early denials and error paths settle unverified reservations without relying only on onResponse; and explicit blank X-Forwarded-For headers from 127.0.0.1 fail closed with HTTP 503 TRUSTED_FORWARDING_INVALID (trusted gateway peer frozen to 127.0.0.1 / ::ffff:127.0.0.1, not ::1).\n  ACTUAL: request.raw.once(\"close\", onSocketClose) fires as soon as Fastify finishes reading a POST body in Node.js (setting request.raw.destroyed=true and state.aborted=true before preHandler), causing every real TCP POST /api/dispatch to return HTTP 408 REQUEST_ABORTED (observed RED at src/server/auth-bounds.test.ts:1744: expected 408 to be 201); request.raw.socket?.once(\"close\", onSocketClose) leaks listeners across keep-alive requests (MaxListenersExceededWarning: 11 close listeners added to [Socket]); preHandler lines 239 and 267 fail open when state is missing or already settled without abort; no onError/onRequestAbort/early-denial hook settles unverified reservations before onResponse; and extractTrustedClientIp lines 93-95 accept explicit blank \"X-Forwarded-For:   \" as 127.0.0.1 (HTTP 200 instead of 503). Behavioral regression patch: .runs/review-regressions-phase-05-code-review.patch.\n  FIX: Restore .runs/review-regressions-phase-05-code-review.patch first and observe RED on pnpm exec vitest run src/server/auth-bounds.test.ts; detect real client abort only via request.raw close when !request.raw.complete, reply.raw close when !reply.raw.writableEnded, Fastify onRequestAbort hook, or request.raw.socket?.destroyed/reply.raw.destroyed (never request.raw.destroyed after request.raw.complete); remove socket/response listeners in cleanup on settlement and onResponse; settle unverified reservations in onError, onRequestAbort, and early denial paths sharing one idempotent state; fail closed in preHandler when a protected API route lacks an unsettled reservation; reject present-but-blank X-Forwarded-For with HTTP 503 TRUSTED_FORWARDING_INVALID (falling back to 127.0.0.1 only when xffCount === 0) and restrict trusted peer check to 127.0.0.1 / ::ffff:127.0.0.1; rebuild and pass bash specs/051-hosted-aws-pilot/gates/phase-05.sh.\n  GATE: specs/051-hosted-aws-pilot/gates/phase-05.sh (coverage hole: passed because POST tests used server.inject instead of real TCP loopback and did not probe keep-alive listener cleanup or blank X-Forwarded-For)\n  REF: plan.md Phase 5 > src/server/auth-bounds.ts; contracts/rate-admission-boundary.md; contracts/login-admission-boundary.md; phase5-composition-plan.md\n\nPOST-FLIGHT GATE FAIL (T029, gate: bash specs/051-hosted-aws-pilot/gates/phase-05.sh):\nexit: 1\nRUN  v3.2.4 /Users/gonzo/Code/gwrk-worktrees/hosted-pilot-051-nov23/.runs/sandboxes/051-hosted-aws-pilot-ship-ca9adfd2\n\nstdout | src/server/auth-logging.test.ts > FR-013 US-008 TR-015 AUTH-15: sanitized Fastify logger and zero canary secret leaks > AUTH-15: emits real structured logs to the configured stream with zero canary secrets across success, denials, cookies, query params, and errors\ngwrk server listening on http://127.0.0.1:62917\n\n{\"level\":30,\"time\":1795509653292,\"pid\":84164,\"hostname\":\"\n\nDIAGNOSIS (iteration 2):\nFIX: src/server/auth-logging.ts — Import `isForbiddenPublicIdentityHeader` from `../domain/auth-policy.js` to redact forbidden identity headers in `sanitizeHeaders`. Strip query and fragment using `rawUrl.split(/[?#]/)[0]` in `serializeRequest`. Add a `WeakSet<object>` cycle guard to `serializeError`. Exclude quotes and backslashes from `sanitizeText` regexes to prevent corrupting JSON stream output.\nFIX: src/server/auth-bounds.ts — Restrict `isTrustedLoopback` to `127.0.0.1` and `::ffff:127.0.0.1`. Return HTTP 503 `TRUSTED_FORWARDING_INVALID` on present but blank `X-Forwarded-For`. Detect client abort only when `!request.raw.complete` or `!reply.raw.writableEnded`. Detach socket close listeners on settlement and `onResponse`. Settle unverified reservations in `onError` and `onRequestAbort`. Fail closed in `preHandler` when a protected API route lacks an unsettled reservation.\nFIX: src/server/index.ts — Pass `http: { maxHeaderSize: DEFAULT_HOSTED_SECURITY_POLICY.httpHeaderMaxBytes }` to `fastify`. Register a hosted `server.setErrorHandler` returning static JSON `{ ok: false, code, error, requestId: request.id }` without reflecting raw error messages. Replace hosted 5xx response error messages with static text in the `onSend` hook while ensuring 4xx responses include `ok: false` and `requestId` and omit `candidateSlugs`.\n\nPOST-FLIGHT GATE FAIL (T029, gate: bash specs/051-hosted-aws-pilot/gates/phase-05.sh):\nexit: 1\nRUN  v3.2.4 /Users/gonzo/Code/gwrk-worktrees/hosted-pilot-051-nov23/.runs/sandboxes/051-hosted-aws-pilot-ship-a02081a7\n\nstdout | src/server/github.test.ts > FR-H01/FR-H09/TC-H01: Webhook Handler > US-H01: Valid PR merge webhook triggers harvest\nNo phaseId provided for harvest on 011-harvest. Attempting to discover all phases from plan.md...\n\n{\"level\":30,\"time\":1795543887285,\"pid\":21605,\"hostname\":\"mbp.local\",\"msg\":\"Server listening at http://127.0.0.1:54201\"}\nstdout | src/server/auth-bounds.test\n\nDIAGNOSIS (iteration 2):\nFIX: src/server/auth-bounds.test.ts — In `sendLoopbackRequest` (lines 156-209), convert `input.body` to a `Buffer`, send bodies `<= 65_536` bytes with `req.end(bodyBuf)`, and for bodies `> 65_536` bytes call `req.flushHeaders()` first and defer chunked `65_536`-byte `req.write` calls by `50`ms via a timer cleared on `response`, `error`, and `close` (stopping writes once `responseStarted || settled || req.destroyed || req.writableEnded` and respecting `\"drain\"`) so Fastify's immediate `413` `Connection: close` rejection on oversized `Content-Length` completes without a loopback `write ECONNRESET` race while preserving all behavioral assertions in `AUTH-14: enforces real loopback parser limits for >16384 header bytes (431) and >1048576 body bytes (413)`.\n\nPOST-FLIGHT GATE FAIL (T029, gate: bash specs/051-hosted-aws-pilot/gates/phase-05.sh):\nexit: 1\nRUN  v3.2.4 /Users/gonzo/Code/gwrk-worktrees/hosted-pilot-051-nov23/.runs/sandboxes/051-hosted-aws-pilot-ship-a02081a7\n\nstdout | src/server/github.test.ts > FR-H01/FR-H09/TC-H01: Webhook Handler > US-H01: Valid PR merge webhook triggers harvest\nNo phaseId provided for harvest on 011-harvest. Attempting to discover all phases from plan.md...\n\n{\"level\":30,\"time\":1795545812743,\"pid\":83565,\"hostname\":\"mbp.local\",\"msg\":\"Server listening at http://127.0.0.1:58605\"}\nstdout | src/server/auth-route-polic",
+          "status": "completed",
+          "gateScript": "bash specs/051-hosted-aws-pilot/gates/phase-05.sh",
+          "sp": 2
+        },
+        {
+          "id": "T030",
+          "title": "Modify index.ts",
+          "description": "MODIFY src/server/index.ts. Replace default `logger: true` with sanitized logger and register request bounds before auth routes\n\nREVIEW FAIL (code): missing-max-header-size-and-raw-500-error-secret-leak — FR-010, FR-013.\n  WHERE: src/server/index.ts:375-380, 688-712 (and hosted 5xx/4xx error envelopes including src/server/routes/notify.ts:320-325 and src/server/routes/dispatch.ts:111,118,258)\n  EXPECTED: Hosted startServer explicitly passes http: { maxHeaderSize: DEFAULT_HOSTED_SECURITY_POLICY.httpHeaderMaxBytes } to fastify(...) so the 16384-byte header limit is enforced independent of process-wide NODE_OPTIONS defaults; hosted mode registers a setErrorHandler and normalizes 4xx/5xx error responses so uncaught handler errors, parser errors, and caught 500 dependency failures return bounded static JSON { ok: false, code, error, requestId } without reflecting raw dependency error text or credentials.\n  ACTUAL: fastify(...) at src/server/index.ts:375-380 omits http.maxHeaderSize (server.server.maxHeaderSize is undefined, observed RED at src/server/auth-bounds.test.ts:1790, and accepts 20KB headers with HTTP 200 under NODE_OPTIONS=--max-http-header-size=65536); hosted mode registers no setErrorHandler and its onSend hook only inspects JSON with parsed.ok === false, so uncaught 500 errors return Fastify default {\"statusCode\":500,\"error\":\"Internal Server Error\",\"message\":\"CANARY_UNCAUGHT_500_RAW Bearer ...\"} leaking raw error text and Bearer credentials without ok:false or requestId; and caught 500 errors on POST /api/notify reflect raw dependency error text (observed RED at src/server/auth-logging.test.ts:829: received \"Failed to dispatch notification: CANARY_RAW_UPSTREAM_NOTIFY_ERROR_XYZ\"). Behavioral regression patch: .runs/review-regressions-phase-05-code-review.patch.\n  FIX: Restore .runs/review-regressions-phase-05-code-review.patch first and observe RED on pnpm exec vitest run src/server/auth-bounds.test.ts src/server/auth-logging.test.ts; pass http: { maxHeaderSize: DEFAULT_HOSTED_SECURITY_POLICY.httpHeaderMaxBytes } to fastify(...) in src/server/index.ts; register a hosted server.setErrorHandler returning bounded static JSON { ok: false, code, error, requestId: request.id } (mapping 413 payload-too-large, 400 parse/validation errors, and static 500 internal errors with zero raw err.message reflection); sanitize/replace hosted 5xx response error messages with static text and ensure hosted 4xx error envelopes include ok:false and requestId while stripping candidateSlugs; rebuild and pass bash specs/051-hosted-aws-pilot/gates/phase-05.sh.\n  GATE: specs/051-hosted-aws-pilot/gates/phase-05.sh (coverage hole: passed because Node default max-http-header-size happened to equal 16384 and existing tests did not assert non-Bearer raw error suppression or uncaught 500 error handling)\n  REF: plan.md Phase 5 > src/server/index.ts; contracts/security-policy.md; spec.md > FR-010, FR-013; phase5-composition-plan.md\n\nPOST-FLIGHT GATE FAIL (T030, gate: bash specs/051-hosted-aws-pilot/gates/phase-05.sh):\nexit: 1\nRUN  v3.2.4 /Users/gonzo/Code/gwrk-worktrees/hosted-pilot-051-nov23/.runs/sandboxes/051-hosted-aws-pilot-ship-ca9adfd2\n\nstdout | src/server/auth-logging.test.ts > FR-013 US-008 TR-015 AUTH-15: sanitized Fastify logger and zero canary secret leaks > AUTH-15: emits real structured logs to the configured stream with zero canary secrets across success, denials, cookies, query params, and errors\ngwrk server listening on http://127.0.0.1:62917\n\n{\"level\":30,\"time\":1795509653292,\"pid\":84164,\"hostname\":\"\n\nDIAGNOSIS (iteration 2):\nFIX: src/server/auth-logging.ts — Import `isForbiddenPublicIdentityHeader` from `../domain/auth-policy.js` to redact forbidden identity headers in `sanitizeHeaders`. Strip query and fragment using `rawUrl.split(/[?#]/)[0]` in `serializeRequest`. Add a `WeakSet<object>` cycle guard to `serializeError`. Exclude quotes and backslashes from `sanitizeText` regexes to prevent corrupting JSON stream output.\nFIX: src/server/auth-bounds.ts — Restrict `isTrustedLoopback` to `127.0.0.1` and `::ffff:127.0.0.1`. Return HTTP 503 `TRUSTED_FORWARDING_INVALID` on present but blank `X-Forwarded-For`. Detect client abort only when `!request.raw.complete` or `!reply.raw.writableEnded`. Detach socket close listeners on settlement and `onResponse`. Settle unverified reservations in `onError` and `onRequestAbort`. Fail closed in `preHandler` when a protected API route lacks an unsettled reservation.\nFIX: src/server/index.ts — Pass `http: { maxHeaderSize: DEFAULT_HOSTED_SECURITY_POLICY.httpHeaderMaxBytes }` to `fastify`. Register a hosted `server.setErrorHandler` returning static JSON `{ ok: false, code, error, requestId: request.id }` without reflecting raw error messages. Replace hosted 5xx response error messages with static text in the `onSend` hook while ensuring 4xx responses include `ok: false` and `requestId` and omit `candidateSlugs`.\n\nPOST-FLIGHT GATE FAIL (T030, gate: bash specs/051-hosted-aws-pilot/gates/phase-05.sh):\nexit: 1\nRUN  v3.2.4 /Users/gonzo/Code/gwrk-worktrees/hosted-pilot-051-nov23/.runs/sandboxes/051-hosted-aws-pilot-ship-a02081a7\n\nstdout | src/server/github.test.ts > FR-H01/FR-H09/TC-H01: Webhook Handler > US-H01: Valid PR merge webhook triggers harvest\nNo phaseId provided for harvest on 011-harvest. Attempting to discover all phases from plan.md...\n\n{\"level\":30,\"time\":1795543887285,\"pid\":21605,\"hostname\":\"mbp.local\",\"msg\":\"Server listening at http://127.0.0.1:54201\"}\nstdout | src/server/auth-bounds.test\n\nDIAGNOSIS (iteration 2):\nFIX: src/server/auth-bounds.test.ts — In `sendLoopbackRequest` (lines 156-209), convert `input.body` to a `Buffer`, send bodies `<= 65_536` bytes with `req.end(bodyBuf)`, and for bodies `> 65_536` bytes call `req.flushHeaders()` first and defer chunked `65_536`-byte `req.write` calls by `50`ms via a timer cleared on `response`, `error`, and `close` (stopping writes once `responseStarted || settled || req.destroyed || req.writableEnded` and respecting `\"drain\"`) so Fastify's immediate `413` `Connection: close` rejection on oversized `Content-Length` completes without a loopback `write ECONNRESET` race while preserving all behavioral assertions in `AUTH-14: enforces real loopback parser limits for >16384 header bytes (431) and >1048576 body bytes (413)`.\n\nPOST-FLIGHT GATE FAIL (T030, gate: bash specs/051-hosted-aws-pilot/gates/phase-05.sh):\nexit: 1\nRUN  v3.2.4 /Users/gonzo/Code/gwrk-worktrees/hosted-pilot-051-nov23/.runs/sandboxes/051-hosted-aws-pilot-ship-a02081a7\n\nstdout | src/server/github.test.ts > FR-H01/FR-H09/TC-H01: Webhook Handler > US-H01: Valid PR merge webhook triggers harvest\nNo phaseId provided for harvest on 011-harvest. Attempting to discover all phases from plan.md...\n\n{\"level\":30,\"time\":1795545812743,\"pid\":83565,\"hostname\":\"mbp.local\",\"msg\":\"Server listening at http://127.0.0.1:58605\"}\nstdout | src/server/auth-route-polic",
+          "status": "completed",
+          "gateScript": "bash specs/051-hosted-aws-pilot/gates/phase-05.sh",
+          "sp": 1
+        }
+      ],
+      "sp_estimate": 5,
+      "testTargets": [
+        "src/server/auth-csrf.test.ts",
+        "src/server/routes/health.auth.test.ts",
+        "src/server/github.test.ts",
+        "src/server/auth-bounds.test.ts",
+        "src/server/auth-logging.test.ts",
+        "src/server/auth-route-policy.test.ts",
+        "src/domain/auth-rate-policy.test.ts",
+        "src/adapters/auth/rate-admission.test.ts"
+      ]
+    },
+    {
+      "id": "phase-06",
+      "title": "Hosted startup and CLI probes",
+      "tasks": [
+        {
+          "id": "T031",
+          "title": "Modify config.ts",
+          "description": "MODIFY src/utils/config.ts. Add fail-fast hosted auth config fields for origin and Google client plus allowlist and CSRF secret and transport",
+          "status": "completed",
+          "gateScript": "bash specs/051-hosted-aws-pilot/gates/phase-06.sh",
+          "sp": 1
+        },
+        {
+          "id": "T032",
+          "title": "Create hosted-auth-factory.ts",
+          "description": "NEW src/adapters/auth/hosted-auth-factory.ts. Lazy startup-only auth factory with zero import-time secret reads or network calls",
+          "status": "completed",
+          "gateScript": "bash specs/051-hosted-aws-pilot/gates/phase-06.sh",
+          "sp": 2
+        },
+        {
+          "id": "T033",
+          "title": "Create http-client-credential.ts",
+          "description": "NEW src/adapters/auth/http-client-credential.ts. Implement `HttpClientCredentialPort` reading `0600` origin-bound profiles with HTTPS and redirect-disabled fetch. Tests: src/adapters/auth/http-client-credential.test.ts",
+          "status": "completed",
+          "gateScript": "bash specs/051-hosted-aws-pilot/gates/phase-06.sh",
+          "sp": 2
+        },
+        {
+          "id": "T034",
+          "title": "Modify server.ts",
+          "description": "MODIFY src/commands/server.ts. Wire `hosted-auth-factory.ts` into `server start --foreground` and `_run` and separate local liveness in `server status`. Tests: src/commands/server.auth-startup.test.ts\n\nREVIEW FAIL (code): hosted-startup-nonloopback-fallback-db-lifecycle-and-registry-overlay — FR-008, FR-017, US-005.\n  WHERE: src/commands/server.ts:59-73, 96-146, 178-193, 244-259 (and src/server/index.ts:385-415 if sharing ownedDb/clock)\n  EXPECTED: (1) Non-loopback server bind (e.g. 0.0.0.0) without complete hosted auth configuration MUST fail closed before listening or enforce hosted deny-all guard and MUST NEVER pass transport: \"trusted_local\" to startServer. (2) Pure auth config validation (resolveHostedAuthConfig + hosted-runner/non-loopback checks) MUST run before opening gwrk.db so invalid/incomplete config creates zero DB files; hosted startup MUST NOT open/migrate gwrk.db before startServer checks isPrivateRunnerBind, instance/ledger locks, and .restore-pending; hosted auth and startServer MUST share one ledger/clock with guaranteed DB cleanup on both startup failure (e.g. EADDRINUSE) and shutdown. (3) loadServerConfig registry fallback MUST run validateTypedAuthSource(overlay) outside the malformed-JSON catch so valid JSON using unicode-escaped keys (e.g. \\u0061uth) cannot swallow auth denials into trusted_local defaults. (4) Startup auth failure stderr MUST name the static failing setting (authInit.error.field, e.g. csrfHmacKeyFile) without echoing secret values.\n  ACTUAL: (1) prepareServerAuth returns transport: \"trusted_local\" and passes it explicitly to startServer, overriding !isLoopbackListenHost(config.server.host) so server start --foreground / _run on 0.0.0.0 serves HTTP 200 to unauthenticated GET /api/status (observed RED at src/commands/server.auth-startup.test.ts:624). (2) prepareServerAuth opens a separate SQLite DB unconditionally at line 100 before config validation, locks, and .restore-pending checks, creating gwrk.db on incomplete hosted auth (observed RED at :641), opening gwrk.db before .restore-pending blocks startup (observed RED at :716), and leaking handle.open === true when startServer throws EADDRINUSE because startServer is not wrapped in try/catch calling auth.cleanup (observed RED at :675). (3) loadServerConfig wraps validateTypedAuthSource(overlay) inside catch and checks content.includes(\"auth\"), silently falling back to trusted_local on {\"server\":{\"\\u0061uth\":{\"mode\":\"...\"}}} (observed RED at :731). (4) prepareServerAuth throws only authInit.error.message, omitting authInit.error.field (observed RED at :752). Behavioral regression patch: .runs/review-regressions-phase-06-code-review.patch.\n  FIX: Restore .runs/review-regressions-phase-06-code-review.patch first and observe RED on pnpm exec vitest run src/commands/server.auth-startup.test.ts; (1) run pure resolveHostedAuthConfig + hostedRuntime/non-loopback checks before opening any database, failing closed on non-loopback bind without hosted auth and omitting transport: \"trusted_local\" override; (2) compose createHostedAuthFactory on the same shared DB and clock owned by startServer after locks/.restore-pending checks (or pass a lazy hostedAuth initializer into startServer so ownedDb/clock are shared and always closed in startServer's catch and onClose); (3) move validateTypedAuthSource(overlay) outside the JSON.parse catch in loadServerConfig; (4) include static authInit.error.field (and code) in the startup CommandError message without secret values; rebuild and pass bash specs/051-hosted-aws-pilot/gates/phase-06.sh.\n  GATE: specs/051-hosted-aws-pilot/gates/phase-06.sh (coverage hole: passed while 0.0.0.0 fell back to trusted_local, DB opened pre-auth/pre-restore-pending and leaked on EADDRINUSE, unicode-escaped auth bypassed registry fallback, and failing setting name was omitted)\n  REF: plan.md Phase 6 > src/commands/server.ts; spec.md > FR-008, FR-017; contracts/deployment-boundary.md; phase6-composition-plan.md; handoff.txt\n\nREVIEW/GATE DIVERGENCE (T034, gate: bash specs/051-hosted-aws-pilot/gates/phase-06.sh, REVIEW FAIL block appended, status left unchanged):\nThe review agent raised a finding on this task and its gate still passes, so the gate does not cover what review found. Add a test that fails on it, then fix, before completing.\n\nDIAGNOSIS (iteration 2):\nFIX: src/commands/server.ts — Validate auth config using `resolveHostedAuthConfig` before opening any database, fail closed on non-loopback host without complete hosted auth, omit `transport: \"trusted_local\"` override when calling `startServer`, wrap `startServer` in try/catch to call `auth.cleanup` on startup error, move `validateTypedAuthSource(overlay)` outside the `JSON.parse` try/catch in `loadServerConfig`, and include `authInit.error.field` in the `CommandError` message.\nFIX: src/commands/status.ts — In `loadStatusConfig`, throw `Configuration error: Authentication configuration denied` when malformed global JSON contains `\"auth\"`, and call `validateTypedAuthSource(overlay)` outside the `JSON.parse` try/catch before `deepMerge`.\n\nREVIEW FAIL (code): hosted-startup-init-auth-db-handle-leak — FR-008, FR-017, US-005.\n  WHERE: src/server/index.ts:400-448, 696-1053 (invoked from src/commands/server.ts:130-171)\n  EXPECTED: Resource ownership and SQLite ledger cleanup MUST survive hosted startup failures inside `startLockedServer` as well as shutdown. Whenever `options.initHostedAuth({ db: sharedDb, clock })` fails (for example `secretsRoot`, `serviceGroup`, `googleAllowlistFile`, or `csrfHmacKeyFile` rejection), any `ownedDb` opened by `startLockedServer` MUST be closed (`handle.open === false`) and `server.close()` MUST run before rethrowing.\n  ACTUAL: `startLockedServer` opens `ownedDb = openDatabase()` at `src/server/index.ts:411` (and `:444`) and awaits `options.initHostedAuth({ db: sharedDb, clock })` at `:447` outside the `try { ... } catch (err)` block (which does not begin until line 696). When `initHostedAuth` throws `CommandError`, execution bypasses both `server.addHook(\"onClose\", ...)` (line 659) and the `catch (err)` cleanup block (`if (ownedDb?.open) ownedDb.close()` at lines 1043-1049), leaking the SQLite handle open (`AssertionError: expected true to be false` observed RED at `src/commands/server.auth-startup.test.ts:787`). Behavioral regression patch: `.runs/review-regressions-phase-06-code-review-2.patch`.\n  FIX: Restore `.runs/review-regressions-phase-06-code-review-2.patch` first and observe RED on `pnpm exec vitest run src/commands/server.auth-startup.test.ts`; wrap `startLockedServer` setup from `ownedDb` creation through `initHostedAuth` (lines 400-695) inside the existing `try { ... } catch (err)` cleanup boundary (or close `ownedDb` and `server` on any error thrown before line 696 while preserving `!(err instanceof CommandError)` exit handling); optionally remove the unused `ClockPort` type import in `src/commands/server.ts:21`; rebuild and pass `bash specs/051-hosted-aws-pilot/gates/phase-06.sh` and `pnpm lint`.\n  GATE: specs/051-hosted-aws-pilot/gates/phase-06.sh (coverage hole: passed because prior EADDRINUSE handle-leak test threw at server.listen inside the line-696 try block, whereas initHostedAuth throws above line 696)\n  REF: plan.md Phase 6 > src/commands/server.ts; spec.md > FR-008, FR-017; phase6-composition-plan.md; handoff.txt line 37\n\nREVIEW/GATE DIVERGENCE (T034, gate: bash specs/051-hosted-aws-pilot/gates/phase-06.sh, REVIEW FAIL block appended, status left unchanged):\nThe review agent raised a finding on this task and its gate still passes, so the gate does not cover what review found. Add a test that fails on it, then fix, before completing.",
+          "status": "completed",
+          "gateScript": "bash specs/051-hosted-aws-pilot/gates/phase-06.sh",
+          "sp": 1
+        },
+        {
+          "id": "T035",
+          "title": "Modify status.ts",
+          "description": "MODIFY src/commands/status.ts. Attach origin-bound `HttpClientCredentialPort` on remote probes and drop keys on origin mismatch or redirect\n\nREVIEW FAIL (code): status-registry-fallback-auth-overlay-validation-and-redaction — FR-008, FR-014.\n  WHERE: src/commands/status.ts:217-236\n  EXPECTED: loadStatusConfig registry fallback validates global ~/.gwrk/config.json typed server.auth via validateTypedAuthSource(overlay) outside the JSON.parse catch (throwing static \"Configuration error: Authentication configuration denied\" without echoing invalid auth values) and rejects malformed global JSON containing auth instead of silently ignoring it.\n  ACTUAL: loadStatusConfig skips validateTypedAuthSource(overlay) so invalid server.auth in ~/.gwrk/config.json hits GwrkConfigSchema.parse(raw) and echoes the raw invalid auth value in Zod stderr output (observed RED at src/commands/status.auth.test.ts:626: received \"CANARY_STATUS_AUTH_SECRET\"), and its bare catch silently ignores malformed global JSON containing auth. Behavioral regression patch: .runs/review-regressions-phase-06-code-review.patch.\n  FIX: Restore .runs/review-regressions-phase-06-code-review.patch first and observe RED on pnpm exec vitest run src/commands/status.auth.test.ts; in src/commands/status.ts loadStatusConfig, reject malformed global JSON containing auth inside the JSON.parse catch with static \"Configuration error: Authentication configuration denied\" and call validateTypedAuthSource(overlay) outside that catch before deepMerge; rebuild and pass bash specs/051-hosted-aws-pilot/gates/phase-06.sh.\n  GATE: specs/051-hosted-aws-pilot/gates/phase-06.sh (coverage hole: passed because status registry fallback was not tested with invalid or malformed global auth overlays)\n  REF: plan.md Phase 6 > src/commands/status.ts; phase6-composition-plan.md; handoff.txt line 31\n\nREVIEW/GATE DIVERGENCE (T035, gate: bash specs/051-hosted-aws-pilot/gates/phase-06.sh, REVIEW FAIL block appended, status left unchanged):\nThe review agent raised a finding on this task and its gate still passes, so the gate does not cover what review found. Add a test that fails on it, then fix, before completing.\n\nDIAGNOSIS (iteration 2):\nFIX: src/commands/server.ts — Validate auth config using `resolveHostedAuthConfig` before opening any database, fail closed on non-loopback host without complete hosted auth, omit `transport: \"trusted_local\"` override when calling `startServer`, wrap `startServer` in try/catch to call `auth.cleanup` on startup error, move `validateTypedAuthSource(overlay)` outside the `JSON.parse` try/catch in `loadServerConfig`, and include `authInit.error.field` in the `CommandError` message.\nFIX: src/commands/status.ts — In `loadStatusConfig`, throw `Configuration error: Authentication configuration denied` when malformed global JSON contains `\"auth\"`, and call `validateTypedAuthSource(overlay)` outside the `JSON.parse` try/catch before `deepMerge`.",
+          "status": "completed",
+          "gateScript": "bash specs/051-hosted-aws-pilot/gates/phase-06.sh",
+          "sp": 1
+        }
+      ],
+      "sp_estimate": 7,
+      "testTargets": [
+        "src/adapters/auth/http-client-credential.test.ts",
+        "src/commands/server.auth-startup.test.ts",
+        "src/server/auth-continuity.test.ts",
+        "src/commands/init.test.ts",
+        "src/domain/hosted-auth-config.test.ts",
+        "src/adapters/auth/protected-hosted-auth-files.test.ts",
+        "src/adapters/auth/hosted-auth-factory.test.ts",
+        "src/commands/status.auth.test.ts",
+        "src/commands/init.auth-purity.test.ts",
+        "src/utils/config.auth.test.ts",
+        "src/utils/config.test.ts"
+      ]
+    },
+    {
+      "id": "phase-07",
+      "title": "Gateway and Linux runner",
+      "tasks": [
+        {
+          "id": "T036",
+          "title": "Create compose.yaml",
+          "description": "NEW deploy/hosted-pilot/compose.yaml. Digest-pinned Traefik and OAuth2 Proxy stack publishing ports `80` and `443` with loopback-only origin and sign-out Follow contracts/tls-boundary.md. NEW deploy/hosted-pilot/preflight-tls.sh and run.sh enforce protected preissued TLS before gateway startup. Tests: tests/hosted-pilot/tls-preflight.test.ts and gateway-startup.test.ts. No world-ingress ACME bootstrap or fallback certificate acceptance.",
+          "status": "completed",
+          "gateScript": "bash specs/051-hosted-aws-pilot/gates/phase-07.sh",
+          "sp": 2
+        },
+        {
+          "id": "T037",
+          "title": "Create dynamic.yaml",
+          "description": "NEW deploy/hosted-pilot/traefik/dynamic.yaml. Isolated browser and API plus webhook chains stripping forged headers and blocking public `/oauth2/sign_out` and `/health` Use strict default SNI and TLS 1.2 minimum with preissued certificate files. No production ACME resolver. Preserve the proof bundle.",
+          "status": "completed",
+          "gateScript": "bash specs/051-hosted-aws-pilot/gates/phase-07.sh",
+          "sp": 2
+        },
+        {
+          "id": "T038",
+          "title": "Create oauth2-proxy.cfg",
+          "description": "NEW deploy/hosted-pilot/oauth2-proxy/oauth2-proxy.cfg. Google OIDC PKCE `S256` with `insecure_oidc_skip_nonce = false` and `set_authorization_header = true` plus explicit allowlist",
+          "status": "completed",
+          "gateScript": "bash specs/051-hosted-aws-pilot/gates/phase-07.sh",
+          "sp": 2
+        },
+        {
+          "id": "T039",
+          "title": "Create .env.example",
+          "description": "NEW deploy/hosted-pilot/.env.example. Non-secret edge config template with zero assumed Google accounts",
+          "status": "completed",
+          "gateScript": "bash specs/051-hosted-aws-pilot/gates/phase-07.sh",
+          "sp": 2
+        },
+        {
+          "id": "T040",
+          "title": "Validate runner auth files and filter worker credentials",
+          "description": "MODIFY deploy/linux-runner/credentials.sh to validate origin auth files without exporting secret values. NEW src/domain/worker-auth-environment.ts pure inbound auth environment filter. MODIFY src/utils/agent.ts to apply filtering after inherited and explicit environments merge. NEW src/utils/agent.auth-env.test.ts proves an actual hermetic child receives outbound canaries and no inbound auth canaries. Follow contracts/deployment-boundary.md. Preserve existing command safety and provider discovery.",
+          "status": "completed",
+          "gateScript": "bash specs/051-hosted-aws-pilot/gates/phase-07.sh",
+          "sp": 1
+        },
+        {
+          "id": "T041",
+          "title": "Modify preflight.sh",
+          "description": "MODIFY deploy/linux-runner/preflight.sh. Fail closed on missing hosted auth secrets or loose modes or non-loopback bind or Telegram vars. Tests: tests/linux-runner/preflight-auth.test.ts",
+          "status": "completed",
+          "gateScript": "bash specs/051-hosted-aws-pilot/gates/phase-07.sh",
+          "sp": 1
+        },
+        {
+          "id": "T042",
+          "title": "Modify .env.example",
+          "description": "MODIFY deploy/linux-runner/.env.example. Document hosted origin auth paths and loopback bind without secrets",
+          "status": "completed",
+          "gateScript": "bash specs/051-hosted-aws-pilot/gates/phase-07.sh",
+          "sp": 1
+        },
+        {
+          "id": "T043",
+          "title": "Create compose.test.yaml",
+          "description": "NEW tests/hosted-pilot/compose.test.yaml. Loopback synthetic OIDC overlay connecting pinned Traefik and OAuth2 Proxy to a real `gwrk` origin",
+          "status": "completed",
+          "gateScript": "bash specs/051-hosted-aws-pilot/gates/phase-07.sh",
+          "sp": 2
+        },
+        {
+          "id": "T044",
+          "title": "Create gateway-production.mjs",
+          "description": "NEW tests/hosted-pilot/gateway-production.mjs. Synthetic OIDC edge suite for `AUTH-05` and ID-token proof plus API non-redirect and header forgery and canary logs\n\nREVIEW FAIL (code): biome-check-fails-on-canonical-native-evidence-json — TR-020, FR-012.\n  WHERE: biome.json:4-14 (flagging specs/051-hosted-aws-pilot/contracts/native-evidence-trust-anchor.json, specs/051-hosted-aws-pilot/evidence/native-evidence-envelope.json, specs/051-hosted-aws-pilot/evidence/native-evidence-envelope.sig.json)\n  EXPECTED: `pnpm lint` (`node scripts/lint.mjs`, running `biome check --files-ignore-unknown=true`) exits 0 with 0 errors while the three signed native-evidence attestation files remain exact single-line canonical JSON required by `parseAndVerifyCanonicalJson` in `tests/hosted-pilot/native-evidence/canonical-json.mjs`.\n  ACTUAL: `pnpm lint` exits 1 with 3 Biome format errors on `specs/051-hosted-aws-pilot/contracts/native-evidence-trust-anchor.json`, `specs/051-hosted-aws-pilot/evidence/native-evidence-envelope.json`, and `specs/051-hosted-aws-pilot/evidence/native-evidence-envelope.sig.json` introduced in commit `eb3dbfe2` (`Checked 566 files in 232ms. No fixes applied. Found 3 errors.`). No separate regression patch was created because `pnpm lint` directly reproduces RED without modifying any file under `CLOSED_RUNTIME_ROOTS`.\n  FIX: Do NOT format or modify the three canonical JSON files and do NOT modify or create any file under `CLOSED_RUNTIME_ROOTS` (doing so breaks `parseAndVerifyCanonicalJson`, `runtimeManifestSha256`, and the operator Ed25519 signature). Add the three exact paths (`\"specs/051-hosted-aws-pilot/contracts/native-evidence-trust-anchor.json\"`, `\"specs/051-hosted-aws-pilot/evidence/native-evidence-envelope.json\"`, `\"specs/051-hosted-aws-pilot/evidence/native-evidence-envelope.sig.json\"`) to `files.ignore` in `biome.json` (outside `CLOSED_RUNTIME_ROOTS`, alongside `\"specs/**/.gwrk/runs/*.json\"`), then confirm `pnpm lint` exits 0 and `bash specs/051-hosted-aws-pilot/gates/phase-07.sh` exits 0.\n  GATE: specs/051-hosted-aws-pilot/gates/phase-07.sh (coverage hole: passed because phase-07.sh does not run `pnpm lint`, whereas Code Review Step 4, phase-08.sh:102, and develop/main pre-commit require `pnpm lint` with 0 errors)\n  REF: plan.md Phase 7 > tests/hosted-pilot/gateway-production.mjs; biome.json; scripts/lint.mjs\n\nREVIEW/GATE DIVERGENCE (T044, gate: bash specs/051-hosted-aws-pilot/gates/phase-07.sh, REVIEW FAIL block appended, status left unchanged):\nThe review agent raised a finding on this task and its gate still passes, so the gate does not cover what review found. Add a test that fails on it, then fix, before completing.\n\nDIAGNOSIS (iteration 2):\nFIX: specs/051-hosted-aws-pilot/gates/phase-07.sh — Add `pnpm run lint` on the line after `pnpm run build` (line 33, before `pnpm exec vitest run \"${vitest_targets[@]}\"`) to cover Biome linting in the Phase 7 gate and observe RED before fixing `biome.json`.\nFIX: specs/051-hosted-aws-pilot/plan.md — Add `pnpm run lint` on the line after `pnpm run build` in the `### Phase 7: Gateway and Linux runner` `#### Done When` block (line 550) so `node tests/hosted-pilot/gate-completeness.test.mjs` matches `specs/051-hosted-aws-pilot/gates/phase-07.sh`.\nFIX: biome.json — Add `\"specs/051-hosted-aws-pilot/contracts/native-evidence-trust-anchor.json\"`, `\"specs/051-hosted-aws-pilot/evidence/native-evidence-envelope.json\"`, and `\"specs/051-hosted-aws-pilot/evidence/native-evidence-envelope.sig.json\"` to `files.ignore` after `\"specs/**/.gwrk/runs/*.json\"` (lines 4-14), leaving those three canonical JSON files and all paths under `CLOSED_RUNTIME_ROOTS` untouched.",
+          "status": "completed",
+          "gateScript": "bash specs/051-hosted-aws-pilot/gates/phase-07.sh",
+          "sp": 2
+        }
+      ],
+      "sp_estimate": 15,
+      "testTargets": [
+        "tests/hosted-pilot/gateway-production.mjs",
+        "tests/linux-runner/preflight-auth.test.ts",
+        "tests/hosted-auth-proof/gateway-proof.mjs",
+        "src/utils/agent.auth-env.test.ts",
+        "tests/hosted-pilot/tls-preflight.test.ts",
+        "tests/hosted-pilot/gateway-startup.test.ts"
+      ]
+    },
+    {
+      "id": "phase-08",
+      "title": "Combined verification and operator handoff",
+      "tasks": [
+        {
+          "id": "T045",
+          "title": "Create README.md",
+          "description": "NEW deploy/hosted-pilot/README.md. Operator runbook for secret separation and key rotation plus allowlist updates and restore and ingress closure",
+          "status": "completed",
+          "gateScript": "bash specs/051-hosted-aws-pilot/gates/phase-08.sh",
+          "sp": 2
+        },
+        {
+          "id": "T046",
+          "title": "Create live-acceptance.example.md",
+          "description": "NEW deploy/hosted-pilot/live-acceptance.example.md. Pending operator live acceptance template keeping live probes separate from synthetic tests",
+          "status": "completed",
+          "gateScript": "bash specs/051-hosted-aws-pilot/gates/phase-08.sh",
+          "sp": 2
+        },
+        {
+          "id": "T047",
+          "title": "Create live-acceptance-gate.mjs",
+          "description": "NEW tests/hosted-pilot/live-acceptance-gate.mjs. Operator-only live verifier exiting `1` without `GWRK_OPERATOR_LIVE_ACCEPTANCE=1` and real non-synthetic HTTPS probes",
+          "status": "completed",
+          "gateScript": "bash specs/051-hosted-aws-pilot/gates/phase-08.sh",
+          "sp": 2
+        },
+        {
+          "id": "T048",
+          "title": "Modify container-proof.sh",
+          "description": "MODIFY tests/linux-runner/container-proof.sh. Add hosted auth preflight and migration `020` restore plus rollback-check proofs to native Linux container run",
+          "status": "completed",
+          "gateScript": "bash specs/051-hosted-aws-pilot/gates/phase-08.sh",
+          "sp": 1
+        }
+      ],
+      "sp_estimate": 7,
+      "testTargets": [
+        "tests/linux-runner/backup-restore-rollback.test.ts",
+        "tests/hosted-pilot/rollout-gates.test.ts",
+        "tests/linux-runner/container-harness.mjs",
+        "src/architecture.test.ts",
+        "src/utils/agent.auth-env.test.ts",
+        "src/adapters/auth/proxy-logout.test.ts",
+        "src/server/auth-guard.account-denial.test.ts",
+        "src/adapters/auth/browser-csrf.test.ts",
+        "tests/hosted-pilot/tls-preflight.test.ts",
+        "tests/hosted-pilot/gateway-startup.test.ts",
+        "src/domain/auth-rate-policy.test.ts",
+        "src/adapters/auth/rate-admission.test.ts",
+        "src/domain/hosted-auth-config.test.ts",
+        "src/adapters/auth/protected-hosted-auth-files.test.ts",
+        "src/adapters/auth/hosted-auth-factory.test.ts",
+        "src/commands/status.auth.test.ts",
+        "src/commands/init.auth-purity.test.ts",
+        "tests/hosted-pilot/protected-auth-files-native.mjs",
+        "src/utils/config.auth.test.ts",
+        "src/utils/config.test.ts"
+      ]
+    },
+    {
+      "id": "phase-09",
+      "title": "Operator live security acceptance",
+      "tasks": [
+        {
+          "id": "T049",
+          "title": "Create live-acceptance.md",
+          "description": "NEW specs/051-hosted-aws-pilot/evidence/live-acceptance.md. Sanitized operator live acceptance record with zero secrets written after real probes pass",
+          "status": "open",
+          "gateScript": "bash specs/051-hosted-aws-pilot/gates/phase-09.sh",
+          "sp": 2
+        }
+      ],
+      "sp_estimate": 2,
+      "testTargets": [
+        "tests/hosted-pilot/live-acceptance-gate.mjs"
+      ]
+    }
+  ]
+}

@@ -184,11 +184,33 @@ describe("dispatch routes", () => {
             ledger: { db: priorFixture.db, projectId: enrolledId },
             registry,
             pid: { writePid: vi.fn(), removePid: vi.fn() },
-            resolvePrincipal: (req) => {
-              const sub = req.headers["x-verified-test-sub"];
-              return typeof sub === "string"
-                ? { principalType: "google_sub", principalId: sub }
-                : undefined;
+            hostedAuth: {
+              authenticate: async ({ authorizationHeader }) => {
+                if (authorizationHeader === "Bearer hosted-op-token") {
+                  return {
+                    ok: true as const,
+                    context: {
+                      principalType: "google_sub" as const,
+                      principalId: "iss:hosted-op",
+                      credentialId: "cred-hosted-op",
+                      expiresAt: "2026-12-31T00:00:00.000Z",
+                      authMethod: "api_key" as const,
+                    },
+                  };
+                }
+                if (!authorizationHeader) {
+                  return {
+                    ok: true as const,
+                    context: null,
+                    mechanism: "none" as const,
+                  };
+                }
+                return {
+                  ok: false as const,
+                  code: "AUTH_CREDENTIAL_REJECTED" as const,
+                  message: "Authentication denied",
+                };
+              },
             },
           });
           try {
@@ -203,12 +225,12 @@ describe("dispatch routes", () => {
               },
             });
             expect(unauth.statusCode).toBe(401);
-            expect(unauth.json().code).toBe("REMOTE_AUTH_REQUIRED");
+            expect(unauth.json().code).toBe("AUTH_REQUIRED");
 
             const response = await hostedApp.inject({
               method: "POST",
               url: "/api/dispatch",
-              headers: { "x-verified-test-sub": "iss:hosted-op" },
+              headers: { authorization: "Bearer hosted-op-token" },
               payload: {
                 projectId: enrolledId,
                 featureId: "feat-1",
@@ -226,7 +248,7 @@ describe("dispatch routes", () => {
             const queue = await hostedApp.inject({
               method: "GET",
               url: `/api/dispatch/queue?projectId=${enrolledId}`,
-              headers: { "x-verified-test-sub": "iss:hosted-op" },
+              headers: { authorization: "Bearer hosted-op-token" },
             });
             expect(queue.statusCode).toBe(200);
             const record = queue.json().queued[0];

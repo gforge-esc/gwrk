@@ -132,7 +132,7 @@ describe("TR-022: gwrk status liveness, reachability, readiness and Slack delive
       expect(parsed.daemonLiveness).toBe("stopped");
       expect(parsed.serverConfigured).toBe(true);
       expect(parsed.serverReachable).toBe(false);
-      expect(parsed.serverError).toContain("ECONNREFUSED");
+      expect(parsed.serverError).toBe("Server probe failed");
       expect(parsed.telegram).toEqual({
         enabled: false,
         reason: "disabled_in_pilot",

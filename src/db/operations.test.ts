@@ -198,6 +198,7 @@ describe("durable operations migration", () => {
         durableMigration,
         "018-slack-merge-receipt-target.sql",
         "019-outbox-metadata-uniqueness.sql",
+        "020-production-auth.sql",
       ]);
       const tables = upgraded
         .prepare("SELECT name FROM sqlite_master WHERE type = 'table'")

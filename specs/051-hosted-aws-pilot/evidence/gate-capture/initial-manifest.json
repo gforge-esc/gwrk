@@ -1,0 +1,81 @@
+{
+  "timestamp": "2026-11-24T12:07:00-07:00",
+  "reviewer": "Gemini 4 Neon (independent fresh context)",
+  "worktree": "/Users/gonzo/Code/gwrk-worktrees/gate-capture-review-nov24",
+  "commit": "ed39e5ccb04041c4553a7bddc4d5c032d44bd44b",
+  "base": "a4e4d79a55f4f26ebd125d091a9f3c9d5310595a",
+  "scope": "gate-capture-config (4 changed gate utility/test files only; component clearance only, not Phase 5 completion)",
+  "verdict": "NO_GO",
+  "reviewedSourceHashes": {
+    "src/utils/gate-runner.ts": "4aa29e543979c1e51ba8c3b1c3ab103344a6343d38ca750248ef9046de5527a3",
+    "src/utils/gate-exec.ts": "3f69455b55aa64912c3a8d60a3ec580a1bc1de72f3c6fd4bbc7f71d146252533",
+    "src/utils/gate-runner.test.ts": "23470c817d836ff9d55bbc0e9e967f9f6ad6f0d08b46c657d135ab0412e4905e",
+    "src/utils/gate-exec.test.ts": "e442fbbcdfc5caa1665fae1423670d47e357a3dbc7a6a7bdc10e4bf8b023bebf"
+  },
+  "verifiedUpstreamEvidence": {
+    "rootDiagnosis": {
+      "path": "/Users/gonzo/Code/gwrk/.runs/aws-hosted-pilot-nov23/phase5-default-buffer-diagnosis.json",
+      "verified": true
+    },
+    "authorManifest": {
+      "path": "/Users/gonzo/Code/gwrk-worktrees/gate-capture-config-nov24/.runs/gate-capture-prep/manifest.json",
+      "sourceHashesMatch": true
+    },
+    "authorRedLog": {
+      "path": "/Users/gonzo/Code/gwrk-worktrees/gate-capture-config-nov24/.runs/gate-capture-prep/red.log",
+      "sha256": "8093e88d121a8294697641771cea57531b20b6ae503b9c93863377c2970f606e",
+      "verified": true
+    },
+    "authorGreenLog": {
+      "path": "/Users/gonzo/Code/gwrk-worktrees/gate-capture-config-nov24/.runs/gate-capture-prep/green.log",
+      "sha256": "2adcac912d6b6ac62cf0b3688dc684c029f9ba0ca8ff3b89fee2711b6ac6ee59",
+      "verified": true
+    }
+  },
+  "blockingFindings": [
+    {
+      "id": "GC-001",
+      "title": "False-positive maxBuffer overflow classification on ordinary nonzero exits",
+      "where": "src/utils/gate-runner.ts:16-29 (called by src/utils/gate-runner.ts:102 and src/utils/gate-exec.ts:216)",
+      "expected": "Classify buffer overflow strictly from ERR_CHILD_PROCESS_STDIO_MAXBUFFER or ENOBUFS error codes; preserve raw output on ordinary nonzero exits.",
+      "actual": "isMaxBufferError falls back to err.message.includes('maxBuffer') || err.message.includes('ENOBUFS'), misclassifying ordinary nonzero exits whenever execFile stderr/path or execSync inline script text contains 'maxBuffer' or 'ENOBUFS'.",
+      "fix": "Remove the err.message substring fallback in src/utils/gate-runner.ts:25-27 and classify strictly by err.code === 'ERR_CHILD_PROCESS_STDIO_MAXBUFFER' || err.code === 'ENOBUFS'; add the 5 real child-process regression cases from false-positive-overflow-regression.patch.",
+      "regressionPatch": {
+        "path": ".runs/gate-capture-independent-review/false-positive-overflow-regression.patch",
+        "sha256": "27743cb0a03baeab2072ebe2c517246e47c16e51b0af8dcae5cb3c45ff2d2043",
+        "applyCheck": "OK"
+      },
+      "regressionRedLog": {
+        "path": ".runs/gate-capture-independent-review/false-positive-overflow-regression.red.log",
+        "sha256": "a90ff27024bd237fe605b674ba0ba327b731735724752c37088979c641497757",
+        "failedTests": 5,
+        "passedTests": 33,
+        "totalTests": 38
+      }
+    }
+  ],
+  "nonblockingImprovements": [
+    {
+      "where": "src/utils/gate-exec.test.ts:278-286",
+      "summary": "Add afterEach cleanup of tmpDir created by fs.mkdtempSync."
+    },
+    {
+      "where": "src/utils/gate-runner.ts:58, src/utils/gate-exec.ts:159",
+      "summary": "Guard optional maxBuffer override against non-finite or non-positive numbers (Infinity, NaN, <= 0)."
+    },
+    {
+      "where": "src/utils/gate-runner.ts:18",
+      "summary": "Remove unused name?: unknown from error type cast in isMaxBufferError."
+    },
+    {
+      "where": "src/utils/gate-exec.test.ts:34-78,316-329",
+      "summary": "Add unit assertion for runTaskGate forwarding explicit maxBuffer and behavioral runGate overflow test with timeoutMs and stderr."
+    }
+  ],
+  "reviewArtifacts": {
+    "reviewMd": ".runs/gate-capture-independent-review/review.md",
+    "manifestJson": ".runs/gate-capture-independent-review/manifest.json",
+    "regressionPatch": ".runs/gate-capture-independent-review/false-positive-overflow-regression.patch",
+    "regressionRedLog": ".runs/gate-capture-independent-review/false-positive-overflow-regression.red.log"
+  }
+}

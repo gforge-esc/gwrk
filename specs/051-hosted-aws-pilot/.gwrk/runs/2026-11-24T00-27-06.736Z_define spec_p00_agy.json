@@ -1,0 +1,22 @@
+{
+  "runId": "2026-11-24T00:27:06.736Z_define_p00",
+  "feature": "051-hosted-aws-pilot",
+  "phase": "p00",
+  "command": "define spec",
+  "agent": "agy",
+  "model": "unknown",
+  "requestedModel": "provider-default",
+  "observedModel": "gemini-4-neon-high",
+  "routeMode": "provider-default",
+  "startedAt": "2026-11-24T00:27:06.736Z",
+  "finishedAt": "2026-11-24T00:38:11.557Z",
+  "durationS": 665,
+  "exitCode": 0,
+  "attempt": 1,
+  "filesChanged": 2,
+  "linesAdded": 649,
+  "linesDeleted": 0,
+  "gitCommit": "235b9a4823a063805557b33345767120a12f07fe",
+  "gitBranch": "codex/hosted-pilot-051-nov23",
+  "digest": []
+}

@@ -22,13 +22,24 @@ probe=${GWRK_AGENT_PROBE:?Set GWRK_AGENT_PROBE.}
 probe_mode=$(stat -c '%a' -- "$probe")
 (( (8#$probe_mode & 8#022) == 0 )) || fail "The headless agent probe must be read-only to the service user."
 
+[[ -z "${TELEGRAM_BOT_TOKEN+x}${TELEGRAM_CHAT_ID+x}" ]] ||
+  fail "Remove Telegram variables from the hosted service."
+[[ -n "${GWRK_AUTH_MODE:-}" ]] || fail "Set GWRK_AUTH_MODE."
+[[ "${GWRK_AUTH_MODE}" == "hosted" ]] || fail "GWRK_AUTH_MODE must be hosted."
+[[ -n "${GWRK_AUTH_PUBLIC_ORIGIN:-}" ]] || fail "Set GWRK_AUTH_PUBLIC_ORIGIN."
+[[ -n "${GWRK_AUTH_GOOGLE_CLIENT_ID:-}" ]] || fail "Set GWRK_AUTH_GOOGLE_CLIENT_ID."
+[[ -n "${GWRK_AUTH_GOOGLE_ALLOWLIST_FILE:-}" ]] || fail "Set GWRK_AUTH_GOOGLE_ALLOWLIST_FILE."
+[[ -n "${GWRK_AUTH_CSRF_HMAC_FILE:-}" ]] || fail "Set GWRK_AUTH_CSRF_HMAC_FILE."
+[[ "${GWRK_LISTEN_HOST:-}" == "127.0.0.1" ]] || fail "Hosted runner requires loopback bind GWRK_LISTEN_HOST=127.0.0.1."
+
 for command in node git gh flock timeout; do
   command -v "$command" >/dev/null || fail "Install $command before starting the runner."
 done
+validate_origin_auth_files
 load_runner_credentials
 
 timeout --kill-after=2s 20s node --input-type=module - <<'NODE'
-import { realpathSync } from "node:fs";
+import { existsSync, readFileSync, realpathSync } from "node:fs";
 import { join, relative, isAbsolute } from "node:path";
 import { pathToFileURL } from "node:url";
 
@@ -52,12 +63,41 @@ try {
       (env.GWRK_DB_PATH && env.GWRK_DB_PATH !== join(stateRoot, "gwrk.db"))) {
     throw new Error("Keep the execution ledger in the configured state directory.");
   }
-  const fromRelease = (path) => pathToFileURL(join(active, "dist", path)).href;
+  const fromRelease = (relPath) => {
+    const fullPath = join(active, "dist", relPath);
+    if (!existsSync(fullPath)) throw new Error(`Missing release module: ${relPath}`);
+    return pathToFileURL(fullPath).href;
+  };
+  const { resolveHostedAuthConfig } = await import(fromRelease("domain/hosted-auth-config.js"));
   const { validateRunnerLayout } = await import(fromRelease("domain/release-packaging.js"));
   const { AgentBackendRegistry } = await import(fromRelease("plugins/agent-registry.js"));
   const { PluginLoader } = await import(fromRelease("plugins/loader.js"));
   const { loadConfig } = await import(fromRelease("utils/config.js"));
-  const config = loadConfig(repo);
+  for (const overlayPath of [join(repo, ".gwrkrc.local.json"), join(stateRoot, "config.json")]) {
+    if (existsSync(overlayPath)) {
+      try {
+        JSON.parse(readFileSync(overlayPath, "utf8"));
+      } catch {
+        throw new Error("Configuration error: invalid JSON in configuration overlay.");
+      }
+    }
+  }
+  let config;
+  try {
+    config = loadConfig(repo);
+  } catch {
+    throw new Error("Configuration error: invalid project configuration.");
+  }
+  const hostedAuth = resolveHostedAuthConfig({
+    environment: env,
+    auth: config.server.auth,
+  });
+  if (!hostedAuth.ok) {
+    throw new Error(`Hosted auth configuration denied (${hostedAuth.error.code}: ${hostedAuth.error.field}).`);
+  }
+  if (hostedAuth.value.mode !== "hosted") {
+    throw new Error("Hosted auth configuration denied (AUTH_CONFIG_INVALID: mode).");
+  }
   const names = ["pilot-git-credential", "agent-credential"];
   if (env.GWRK_SLACK_ENABLED === "1") names.push("slack-bot-token", "slack-app-token");
   const layout = validateRunnerLayout({
@@ -65,7 +105,11 @@ try {
     listenHost: config.server.host,
     listenPort: config.server.port,
     telegramEnabled: Boolean(env.TELEGRAM_BOT_TOKEN || env.TELEGRAM_CHAT_ID),
-    credentialPaths: names.map(name => realpathSync(join(secretsRoot, name))),
+    credentialPaths: [
+      ...names.map(name => realpathSync(join(secretsRoot, name))),
+      hostedAuth.value.googleAllowlistFile,
+      hostedAuth.value.csrfHmacKeyFile,
+    ],
   }, ["/root", "/home", "/Users"]);
   if (!layout.ok) throw new Error(layout.errors.join("\n"));
   if (config.server.host !== env.GWRK_LISTEN_HOST || config.server.port !== Number(env.GWRK_LISTEN_PORT)) {

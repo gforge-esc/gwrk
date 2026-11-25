@@ -3,7 +3,9 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { execFileSync, spawnSync } from "node:child_process";
+import { randomBytes } from "node:crypto";
 import {
+  chmodSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
@@ -174,6 +176,11 @@ exitCodeMap: {}
         "stat",
         `case "$2" in '%u') echo 0 ;; '%a') echo 755 ;; '%a:%u:%g') echo 640:0:1234 ;; *) exit 2 ;; esac`,
       );
+      writeFileSync(
+        join(bin, "realpath"),
+        `#!${process.execPath}\nconsole.log(require("node:fs").realpathSync(process.argv.at(-1)));\n`,
+        { mode: 0o755 },
+      );
       stub(bin, "flock", "exit 0");
       stub(
         bin,
@@ -219,34 +226,67 @@ fi`,
         `[[ "$1" == fixture && "$(< "$GWRK_AGENT_CREDENTIAL_FILE")" == agent-token ]]`,
       );
       writeFileSync(join(secrets, "agent-credential"), "agent-token\n");
+      const allowlistFile = join(secrets, "google-account-allowlist");
+      const csrfHmacFile = join(secrets, "csrf-hmac-key");
+      const csrfHmacCanary = randomBytes(32).toString("base64url");
+      writeFileSync(allowlistFile, "operator@gwrk.test\n", { mode: 0o640 });
+      chmodSync(allowlistFile, 0o640);
+      writeFileSync(csrfHmacFile, `${csrfHmacCanary}\n`, { mode: 0o640 });
+      chmodSync(csrfHmacFile, 0o640);
 
-      const preflight = (suffix: string, nodeVersion = "22.0.0") =>
-        spawnSync("bash", [`${root}/preflight.sh`], {
-          env: {
-            PATH: `${bin}:${process.env.PATH}`,
-            HOME: state,
-            GIT_EDITOR: "true",
-            EDITOR: "true",
-            GH_TOKEN: "inherited-token",
-            GWRK_HOME: state,
-            GWRK_RUNTIME_DIR: runtime,
-            GWRK_RELEASE_ROOT: releaseRoot,
-            GWRK_SECRETS_DIR: secrets,
-            GWRK_PILOT_REPO: repo,
-            GWRK_PILOT_REPO_URL: `https://github.com/fixture/pilot${suffix}`,
-            GWRK_APPROVED_AGENT: "fixture",
-            GWRK_AGENT_PROBE: join(bin, "agent-probe"),
-            GWRK_LISTEN_HOST: "127.0.0.1",
-            GWRK_LISTEN_PORT: "18790",
-            TRACE: trace,
-            FIXTURE_NODE_VERSION: nodeVersion,
-            FIXTURE_NODE_EXECUTABLE: process.execPath,
-            FIXTURE_NODE_VERSION_SHIM: versionShim,
-          },
+      const preflight = (
+        suffix: string,
+        nodeVersion = "22.0.0",
+        extraEnv: Record<string, string | undefined> = {},
+      ) => {
+        const env: NodeJS.ProcessEnv = {
+          PATH: `${bin}:${process.env.PATH}`,
+          HOME: state,
+          GIT_EDITOR: "true",
+          EDITOR: "true",
+          GH_TOKEN: "inherited-token",
+          GWRK_HOME: state,
+          GWRK_RUNTIME_DIR: runtime,
+          GWRK_RELEASE_ROOT: releaseRoot,
+          GWRK_SECRETS_DIR: secrets,
+          GWRK_PILOT_REPO: repo,
+          GWRK_PILOT_REPO_URL: `https://github.com/fixture/pilot${suffix}`,
+          GWRK_APPROVED_AGENT: "fixture",
+          GWRK_AGENT_PROBE: join(bin, "agent-probe"),
+          GWRK_LISTEN_HOST: "127.0.0.1",
+          GWRK_LISTEN_PORT: "18790",
+          GWRK_AUTH_MODE: "hosted",
+          GWRK_AUTH_PUBLIC_ORIGIN: "https://gwrk.gforge.ai",
+          GWRK_AUTH_GOOGLE_CLIENT_ID: "synthetic.apps.googleusercontent.com",
+          GWRK_AUTH_GOOGLE_ALLOWLIST_FILE: allowlistFile,
+          GWRK_AUTH_CSRF_HMAC_FILE: csrfHmacFile,
+          TRACE: trace,
+          FIXTURE_NODE_VERSION: nodeVersion,
+          FIXTURE_NODE_EXECUTABLE: process.execPath,
+          FIXTURE_NODE_VERSION_SHIM: versionShim,
+        };
+        for (const [key, value] of Object.entries(extraEnv)) {
+          if (value === undefined) delete env[key];
+          else env[key] = value;
+        }
+        return spawnSync("bash", [`${root}/preflight.sh`], {
+          env,
           encoding: "utf8",
           timeout: 5000,
         });
+      };
       writeFileSync(join(secrets, "pilot-git-credential"), "accepted\n");
+      writeFileSync(trace, "");
+      const missingAuthMode = preflight(".git", "22.0.0", {
+        GWRK_AUTH_MODE: undefined,
+      });
+      expect(missingAuthMode.status).toBe(1);
+      expect(missingAuthMode.stderr).toContain("Set GWRK_AUTH_MODE.");
+      expect(readFileSync(trace, "utf8").trim()).toBe("");
+      expect(missingAuthMode.stdout + missingAuthMode.stderr).not.toContain(
+        csrfHmacCanary,
+      );
+
       for (const version of ["18.0.0", "20.0.0"]) {
         writeFileSync(trace, "");
         const unsupported = preflight(".git", version);
