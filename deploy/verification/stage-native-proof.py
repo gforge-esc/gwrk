@@ -11,8 +11,8 @@ under the retention lock. Only then does it copy the source, install
 dependencies, build images or call Docker. `exec` runs the proof command with
 the run lease held and records the outcome. See README.md in this directory.
 
-The retention helper comes from a verified published gwrk package, so this
-driver never needs the build it guards.
+The retention helper comes from a digest-verified gwrk package archive, so
+this driver never installs or compiles the candidate to obtain the guard.
 """
 
 import argparse
@@ -184,10 +184,26 @@ def now() -> str:
 
 
 def run_cmd(args, **kwargs):
-    kwargs.setdefault("timeout", COMMAND_TIMEOUT_SECONDS)
+    timeout = kwargs.pop("timeout", COMMAND_TIMEOUT_SECONDS)
+    check = kwargs.pop("check", True)
     kwargs.setdefault("stdin", subprocess.DEVNULL)
     kwargs.setdefault("pass_fds", CHILD_LEASES)
-    return subprocess.run(args, check=True, text=True, capture_output=True, **kwargs)
+    kwargs.setdefault("stdout", subprocess.PIPE)
+    kwargs.setdefault("stderr", subprocess.PIPE)
+    child = subprocess.Popen(args, text=True, start_new_session=True, **kwargs)
+    try:
+        stdout, stderr = child.communicate(timeout=timeout)
+    except BaseException:
+        try:
+            os.killpg(child.pid, signal.SIGKILL)
+        except ProcessLookupError:
+            pass
+        child.communicate()
+        raise
+    result = subprocess.CompletedProcess(args, child.returncode, stdout, stderr)
+    if check:
+        result.check_returncode()
+    return result
 
 
 def sha256_file(path: Path) -> str:
@@ -425,14 +441,14 @@ def extract_bootstrap(lifecycle_archive: Path, target: Path) -> Path:
     return target / "package" / "dist" / "release" / "verification-lifecycle.js"
 
 
-def preflight(cfg: Config, run_id: str, lifecycle_archive: Path) -> None:
+def preflight(cfg: Config, run_id: str, lifecycle_archive: Path) -> int:
     """Retention and disk preflight under the retention lock. Lease is already held."""
     lock_fd = os.open(cfg.runs / RETENTION_LOCK, os.O_RDWR | os.O_CREAT | os.O_NOFOLLOW | os.O_CLOEXEC, 0o600)
     try:
         fcntl.flock(lock_fd, fcntl.LOCK_EX)
         with tempfile.TemporaryDirectory(prefix="gwrk-lifecycle-") as temporary:
             entry = extract_bootstrap(lifecycle_archive, Path(temporary))
-            result = subprocess.run(
+            result = run_cmd(
                 [
                     cfg.node, str(entry), "verification-preflight",
                     "--runs-root", str(cfg.runs),
@@ -443,7 +459,7 @@ def preflight(cfg: Config, run_id: str, lifecycle_archive: Path) -> None:
                     "--lock-fd", str(lock_fd),
                     "--root-path", cfg.root_path,
                 ],
-                pass_fds=(lock_fd,),
+                pass_fds=(*CHILD_LEASES, lock_fd),
                 stdin=subprocess.DEVNULL,
                 stdout=sys.stderr,
                 timeout=PREFLIGHT_TIMEOUT_SECONDS,
@@ -451,8 +467,10 @@ def preflight(cfg: Config, run_id: str, lifecycle_archive: Path) -> None:
             )
         if result.returncode != 0:
             raise StageError("Retention or disk preflight failed. Staging did not start.")
-    finally:
+        return lock_fd
+    except BaseException:
         os.close(lock_fd)
+        raise
 
 
 # Staging --------------------------------------------------------------------
@@ -489,6 +507,9 @@ def stage(args, cfg: Config) -> int:
         real_directory(cfg.data_parent)
         parent_identity = {"device": cfg.data_parent.lstat().st_dev, "inode": cfg.data_parent.lstat().st_ino}
 
+    if os.path.lexists(cfg.data_root / run_id):
+        raise StageError("Existing fixture data was left untouched. Use a new run ID.")
+
     run = cfg.runs / run_id
     if os.path.lexists(run):
         real_directory(run)
@@ -511,7 +532,7 @@ def stage(args, cfg: Config) -> int:
             "sourceSha256": args.source_sha256,
             "runtimeManifestSha256": args.runtime_manifest_sha256,
             "lifecycleSha256": args.lifecycle_sha256,
-            "heavy": list(HEAVY),
+            "heavy": [payload for payload in HEAVY if payload["root"] != "data-run"],
             "images": [
                 {"tag": f"{REPOSITORY}:{run_id}-build"},
                 {"tag": f"{REPOSITORY}:{run_id}-flat"},
@@ -521,8 +542,13 @@ def stage(args, cfg: Config) -> int:
             if not os.path.lexists(cfg.data_root):
                 make_dir(cfg, cfg.data_root, 0o700)
             real_directory(cfg.data_root)
-            preflight(cfg, run_id, lifecycle_archive)
-            summary = stage_heavy(cfg, args, run, identity, parent_identity, source_archive)
+            lock_fd = preflight(cfg, run_id, lifecycle_archive)
+            try:
+                CHILD_LEASES = (lease, lock_fd)
+                summary = stage_heavy(cfg, args, run, identity, parent_identity, source_archive)
+            finally:
+                CHILD_LEASES = (lease,)
+                os.close(lock_fd)
         except BaseException as error:
             update_owner(run, run_id, state="failed", completedAt=now(), error=str(error)[:2000])
             raise
@@ -554,10 +580,16 @@ def stage_heavy(cfg: Config, args, run: Path, identity, parent_identity, source_
     data_child = cfg.data_root / run_id
     labels = [f"{MANAGED_LABEL}=verification", f"{RUN_LABEL}={run_id}"]
 
+    if os.path.lexists(data_child):
+        raise StageError("Existing fixture data was left untouched. Use a new run ID.")
+    if any(os.path.lexists(path) for path in (input_dir, repo_dir, build_dir)):
+        raise StageError("Existing staging payload was left untouched. Use a new run ID.")
+
     # 1. Copy and recheck the source only after preflight passed.
     source_tar = run / "source.tar"
     partial = run / ".source.tar.partial"
-    shutil.copyfile(source_archive, partial)
+    with source_archive.open("rb") as source, partial.open("xb") as destination:
+        shutil.copyfileobj(source, destination)
     os.chmod(partial, 0o600)
     if sha256_file(partial) != args.source_sha256:
         partial.unlink()
@@ -567,20 +599,14 @@ def stage_heavy(cfg: Config, args, run: Path, identity, parent_identity, source_
     for directory in (input_dir, repo_dir, build_dir):
         make_dir(cfg, directory, 0o700)
     for directory in (fixtures_dir, bundle_dir, legacy_dir):
-        if os.path.lexists(directory):
-            shutil.rmtree(directory)
         make_dir(cfg, directory, 0o755)
-    if os.path.lexists(data_child):
-        shutil.rmtree(data_child)
+    data_child.mkdir(mode=0o700, exist_ok=False)
     child_identity = make_dir(cfg, data_child, 0o700)
+    marker = read_owner(run, run_id)
+    update_owner(run, run_id, heavy=[*marker["heavy"], {"root": "data-run"}], dataChildIdentity=child_identity)
 
     # 2. Extract the source safely.
     for target in (repo_dir, build_dir):
-        for child in target.iterdir():
-            if child.is_dir() and not child.is_symlink():
-                shutil.rmtree(child)
-            else:
-                child.unlink()
         with tarfile.open(source_tar, "r:*") as tar:
             for member in tar.getmembers():
                 if member.issym() or member.islnk() or ".." in Path(member.name).parts or member.name.startswith("/"):
@@ -666,7 +692,7 @@ def stage_heavy(cfg: Config, args, run: Path, identity, parent_identity, source_
     source_container = f"gwrk-verification-flatten-src-{run_id}"
     flat_container = f"gwrk-verification-flatten-dst-{run_id}"
     for name in (source_container, flat_container):
-        subprocess.run(["docker", "rm", "-f", name], capture_output=True, stdin=subprocess.DEVNULL, timeout=120, check=False)
+        run_cmd(["docker", "rm", "-f", name], timeout=120, check=False)
     export_tar = run / "original-rootfs.tar"
     flat_export_tar = run / "flattened-rootfs.tar"
     run_cmd(["docker", "create", "--name", source_container, *label_args, "--network", "none",
@@ -706,9 +732,9 @@ def stage_heavy(cfg: Config, args, run: Path, identity, parent_identity, source_
         export_tar.unlink(missing_ok=True)
         flat_export_tar.unlink(missing_ok=True)
         for name in (source_container, flat_container):
-            subprocess.run(["docker", "rm", "-f", name], capture_output=True, stdin=subprocess.DEVNULL, timeout=120, check=False)
+            run_cmd(["docker", "rm", "-f", name], timeout=120, check=False)
         # Untag only. Retention reclaims the owned image later if it remains.
-        subprocess.run(["docker", "image", "rm", build_tag], capture_output=True, stdin=subprocess.DEVNULL, timeout=300, check=False)
+        run_cmd(["docker", "image", "rm", build_tag], timeout=300, check=False)
 
     # 8. Tool checks in the flattened image and the DinD image.
     verify_cmd = (
@@ -924,6 +950,32 @@ def stage_heavy(cfg: Config, args, run: Path, identity, parent_identity, source_
 # Proof execution ------------------------------------------------------------
 
 
+def proof_disk_preflight(cfg: Config, run: Path, owner: dict) -> None:
+    checkpoint = run / "storage-checkpoint.json"
+    if not stat.S_ISREG(checkpoint.lstat().st_mode):
+        raise StageError("Proof storage checkpoint must be a regular file.")
+    record = json.loads(checkpoint.read_text(encoding="utf-8"))
+    if (record.get("runId") != run.name or record.get("sourceCommit") != owner.get("sourceCommit") or
+            record.get("runtimeManifestSha256") != owner.get("runtimeManifestSha256") or
+            not COMMIT_SHA_RE.fullmatch(str(record.get("sourceCommit", ""))) or
+            not SHA256_RE.fullmatch(str(record.get("runtimeManifestSha256", "")))):
+        raise StageError("Proof storage checkpoint does not match the owned source identity.")
+    estimate = record.get("estimatedDataBytes")
+    if type(estimate) is not int or estimate < 0 or estimate > cfg.data_budget:
+        raise StageError("Proof data estimate is invalid or exceeds the configured data budget.")
+    root = real_directory(Path(cfg.root_path))
+    data = real_directory(cfg.data_root)
+    root_stat, data_stat = os.statvfs(root), os.statvfs(data)
+    root_available = root_stat.f_bavail * root_stat.f_frsize
+    data_available = data_stat.f_bavail * data_stat.f_frsize
+    if root.stat().st_dev == data.stat().st_dev:
+        required = estimate + max(ROOT_FLOOR_BYTES, DATA_HEADROOM_BYTES)
+        if root_available < required:
+            raise StageError("Proof disk space is below the data estimate plus 8 GiB on the shared filesystem.")
+    elif root_available < ROOT_FLOOR_BYTES or data_available < estimate + DATA_HEADROOM_BYTES:
+        raise StageError("Proof disk space is below 8 GiB root or the data estimate plus 4 GiB.")
+
+
 def execute(args, cfg: Config) -> int:
     run_id = args.run_id
     if not RUN_ID_RE.match(run_id):
@@ -933,26 +985,23 @@ def execute(args, cfg: Config) -> int:
         command = command[1:]
     if not command:
         raise StageError("exec needs a proof command after --.")
+    real_directory(cfg.runs)
     run = real_directory(cfg.runs / run_id)
     lease = take_lease(run, run_id)
+    lock_fd = None
     try:
+        lock_fd = os.open(cfg.runs / RETENTION_LOCK, os.O_RDWR | os.O_CREAT | os.O_NOFOLLOW | os.O_CLOEXEC, 0o600)
+        if not stat.S_ISREG(os.fstat(lock_fd).st_mode):
+            raise StageError("Retention lock is not a regular file.")
+        fcntl.flock(lock_fd, fcntl.LOCK_EX)
         owner = read_owner(run, run_id)
         if owner.get("state") != "staged":
             raise StageError(f"Run {run_id} is {owner.get('state')}, not staged.")
+        proof_disk_preflight(cfg, run, owner)
         update_owner(run, run_id, state="executing", executingAt=now())
         try:
             # The child inherits the lease, so it stays held even if this driver dies.
-            child = subprocess.Popen(command, pass_fds=(lease,), stdin=subprocess.DEVNULL,
-                                     start_new_session=True)
-            try:
-                result = child.wait(timeout=COMMAND_TIMEOUT_SECONDS)
-            except BaseException:
-                try:
-                    os.killpg(child.pid, signal.SIGKILL)
-                except ProcessLookupError:
-                    pass
-                child.wait()
-                raise
+            result = run_cmd(command, pass_fds=(lease, lock_fd), stdout=None, stderr=None, check=False).returncode
             code = result if result >= 0 else 128 - result
         except BaseException as error:
             update_owner(run, run_id, state="failed", completedAt=now(), error=str(error)[:2000])
@@ -960,6 +1009,8 @@ def execute(args, cfg: Config) -> int:
         update_owner(run, run_id, state="completed" if code == 0 else "failed", completedAt=now(), exitCode=code)
         return code
     finally:
+        if lock_fd is not None:
+            os.close(lock_fd)
         os.close(lease)
 
 

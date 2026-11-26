@@ -7,8 +7,8 @@ import { closeSync, fstatSync, openSync } from "node:fs";
 import {
   chmod,
   copyFile,
-  mkdtemp,
   mkdir,
+  mkdtemp,
   readFile,
   rm,
   writeFile,
@@ -91,15 +91,33 @@ export async function buildRelease(outputDir, releaseTag) {
 async function buildGuardedRelease(outputDir, releaseTag) {
   const workspace = process.env.GWRK_BUILD_WORKSPACE;
   const leaseFd = Number(process.env.GWRK_BUILD_LEASE_FD);
+  const lockFd = Number(process.env.GWRK_BUILD_LOCK_FD);
   if (
     !workspace ||
     !Number.isInteger(leaseFd) ||
+    !Number.isInteger(lockFd) ||
     leaseFd < 3 ||
+    lockFd < 3 ||
     !fstatSync(leaseFd).isFile()
   )
     throw new Error(
       "Release build requires the preflight supervisor and inherited lease.",
     );
+  execFileSync(
+    "python3",
+    [
+      fileURLToPath(new URL("./build-preflight.py", import.meta.url)),
+      "--assert-guard",
+    ],
+    {
+      stdio: ["ignore", "inherit", "inherit", leaseFd, lockFd],
+      env: {
+        ...process.env,
+        GWRK_BUILD_LEASE_FD: "3",
+        GWRK_BUILD_LOCK_FD: "4",
+      },
+    },
+  );
   const nodeVersion = process.versions.node;
   if (process.platform !== "linux" || Number(nodeVersion.split(".")[0]) < 22) {
     throw new Error(

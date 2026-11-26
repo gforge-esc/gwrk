@@ -16,6 +16,14 @@ import { join, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
 describe("production release build preflight", () => {
+  it("preserves native data and budget exclusion while supervising descendant timeouts", () => {
+    const result = spawnSync(
+      "python3",
+      ["tests/verification/native-lifecycle.test.py"],
+      { encoding: "utf8" },
+    );
+    expect(result.status, result.stderr).toBe(0);
+  });
   it("preserves supervisor ownership, leases, retention receipts and filesystem budgets", () => {
     const result = spawnSync(
       "python3",

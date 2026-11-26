@@ -7,6 +7,7 @@ import os
 from pathlib import Path
 import tempfile
 import unittest
+from unittest.mock import patch
 
 SPEC = importlib.util.spec_from_file_location("guard", Path(__file__).parents[2] / "scripts/release/build-preflight.py")
 
@@ -85,6 +86,47 @@ class BuildGuardTest(unittest.TestCase):
             os.close(lease)
         self.guard.retain(runs)
         self.assertEqual(json.loads((run / "owner.json").read_text())["state"], "failed")
+
+    def test_worker_accepts_only_live_supervisor_session(self):
+        script = Path(SPEC.origin)
+        self.assertEqual(self.guard.supervise(self.root / "runs", self.root, self.root,
+                         ["python3", str(script), "--assert-guard"], 1, 1, 1,
+                         available=lambda p: 100 * 1024**3), 0)
+
+    def test_unlocked_matching_descriptor_cannot_authenticate_worker(self):
+        runs = self.root / "runs"
+        run = runs / ("a" * 24)
+        workspace = run / "payload"
+        workspace.mkdir(parents=True)
+        self.guard.write_owner(run, dict(schema=1, kind="gwrk-release-build", runId=run.name, state="building"))
+        (run / "preflight.json").write_text(json.dumps([dict(requiredBytes=8 * 1024**3, availableBytes=20 * 1024**3)]))
+        lease = os.open(run / ".lease", os.O_RDWR | os.O_CREAT, 0o600)
+        held = self.guard.lock(runs / ".retention.lock")
+        try:
+            with patch.dict(os.environ, GWRK_BUILD_WORKSPACE=str(workspace), GWRK_BUILD_LEASE_FD=str(lease), GWRK_BUILD_LOCK_FD=str(held)):
+                with self.assertRaisesRegex(RuntimeError, "not held"):
+                    self.guard.assert_guard()
+        finally:
+            os.close(lease)
+            os.close(held)
+
+    def test_borrowed_descriptor_does_not_authenticate_another_supervisors_lock(self):
+        runs = self.root / "runs"
+        run = runs / ("b" * 24)
+        workspace = run / "payload"
+        workspace.mkdir(parents=True)
+        self.guard.write_owner(run, dict(schema=1, kind="gwrk-release-build", runId=run.name, state="building"))
+        (run / "preflight.json").write_text(json.dumps([dict(requiredBytes=8 * 1024**3, availableBytes=20 * 1024**3)]))
+        held_lease = self.guard.lock(run / ".lease")
+        borrowed = os.open(run / ".lease", os.O_RDWR)
+        held_global = self.guard.lock(runs / ".retention.lock")
+        try:
+            with patch.dict(os.environ, GWRK_BUILD_WORKSPACE=str(workspace), GWRK_BUILD_LEASE_FD=str(borrowed), GWRK_BUILD_LOCK_FD=str(held_global)):
+                with self.assertRaisesRegex(RuntimeError, "does not own"):
+                    self.guard.assert_guard()
+        finally:
+            for fd in (borrowed, held_lease, held_global):
+                os.close(fd)
 
 
 if __name__ == "__main__":

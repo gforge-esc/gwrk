@@ -118,6 +118,49 @@ def available_bytes(path):
     return info.f_bavail * info.f_frsize
 
 
+def assert_guard():
+    workspace = real_directory(Path(os.environ["GWRK_BUILD_WORKSPACE"]))
+    run = real_directory(workspace.parent)
+    runs = real_directory(run.parent)
+    if workspace.name != "payload" or not re.fullmatch(r"[0-9a-f]{24}", run.name):
+        raise RuntimeError("Unowned build workspace")
+    record = run / "owner.json"
+    receipt = run / "preflight.json"
+    for path in (record, receipt):
+        if path.is_symlink() or not path.is_file():
+            raise RuntimeError(f"Missing build session record: {path}")
+    owner = json.loads(record.read_text())
+    if owner.get("schema") != 1 or owner.get("kind") != "gwrk-release-build" or owner.get("runId") != run.name or owner.get("state") != "building":
+        raise RuntimeError("Build session is not active and owned")
+    measurements = json.loads(receipt.read_text())
+    if not isinstance(measurements, list) or not measurements or any(
+        not isinstance(row.get("requiredBytes"), int) or row["requiredBytes"] < DATA_HEADROOM or
+        not isinstance(row.get("availableBytes"), int) or row["availableBytes"] < row["requiredBytes"]
+        for row in measurements
+    ):
+        raise RuntimeError("Build session has no successful preflight")
+    for variable, path in (("GWRK_BUILD_LEASE_FD", run / ".lease"),
+                           ("GWRK_BUILD_LOCK_FD", runs / ".retention.lock")):
+        fd = int(os.environ[variable])
+        expected = path.lstat()
+        inherited = os.fstat(fd)
+        if not stat.S_ISREG(expected.st_mode) or not stat.S_ISREG(inherited.st_mode) or (expected.st_dev, expected.st_ino) != (inherited.st_dev, inherited.st_ino):
+            raise RuntimeError(f"Inherited build lock identity differs: {path}")
+        probe = os.open(path, os.O_RDWR | os.O_NOFOLLOW)
+        try:
+            try:
+                fcntl.flock(probe, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except BlockingIOError:
+                try:
+                    fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                except BlockingIOError:
+                    raise RuntimeError(f"Inherited descriptor does not own the build lock: {path}") from None
+                continue
+            raise RuntimeError(f"Build session lock is not held: {path}")
+        finally:
+            os.close(probe)
+
+
 def supervise(runs, cache, output, command, workspace_bytes, cache_bytes, output_bytes, available=available_bytes):
     runs = Path(runs).absolute()
     real_directory(runs.parent)
@@ -149,7 +192,7 @@ def supervise(runs, cache, output, command, workspace_bytes, cache_bytes, output
         payload.mkdir(mode=0o700)
         # The shared lock covers reservation and all child writes on these filesystems.
         env = dict(os.environ, GWRK_BUILD_WORKSPACE=str(payload), GWRK_BUILD_LEASE=str(run / ".lease"),
-                   GWRK_BUILD_CACHE=str(cache), GWRK_BUILD_LEASE_FD=str(lease))
+                   GWRK_BUILD_CACHE=str(cache), GWRK_BUILD_LEASE_FD=str(lease), GWRK_BUILD_LOCK_FD=str(global_lock))
         child = subprocess.Popen(command, env=env, pass_fds=(lease, global_lock), stdin=subprocess.DEVNULL, start_new_session=True)
         try:
             code = child.wait(timeout=3600)
@@ -176,6 +219,13 @@ def supervise(runs, cache, output, command, workspace_bytes, cache_bytes, output
 
 
 def main():
+    if sys.argv[1:] == ["--assert-guard"]:
+        try:
+            assert_guard()
+            return 0
+        except (OSError, RuntimeError, ValueError, KeyError, TypeError) as error:
+            print(f"Release build session rejected: {error}", file=sys.stderr)
+            return 1
     parser = argparse.ArgumentParser()
     parser.add_argument("--runs-root", required=True)
     parser.add_argument("--cache", required=True)

@@ -188,11 +188,25 @@ function writeOwner(state: string, extra: Record<string, unknown> = {}) {
       runId: RUN,
       state,
       startedAt: "2026-11-26T16:00:00Z",
+      sourceCommit: COMMIT,
+      runtimeManifestSha256: MANIFEST,
       heavy: [],
       images: [],
       ...extra,
     }),
   );
+  if (state === "staged") {
+    mkdirSync(join(dataParent, "verification-fixtures"), { recursive: true });
+    writeFileSync(
+      join(runDir(), "storage-checkpoint.json"),
+      JSON.stringify({
+        runId: RUN,
+        sourceCommit: COMMIT,
+        runtimeManifestSha256: MANIFEST,
+        estimatedDataBytes: 0,
+      }),
+    );
+  }
 }
 
 beforeEach(() => {
@@ -256,7 +270,7 @@ describe("native staging driver", () => {
         "--lock-fd",
       ]),
     );
-    expect(event.heavy).toContainEqual({ root: "data-run" });
+    expect(event.heavy).not.toContainEqual({ root: "data-run" });
     expect(event.heavy).toContainEqual({ root: "run", path: "source.tar" });
     expect(event.images.map((i: { tag: string }) => i.tag).sort()).toEqual([
       `gwrk-verification:${RUN}-build`,
@@ -337,7 +351,7 @@ describe("native staging driver", () => {
       "0",
     ]);
     expect(result.status).toBe(0);
-    expect(readFileSync(out, "utf8")).toBe("busy free");
+    expect(readFileSync(out, "utf8")).toBe("busy busy");
     expect(owner()).toMatchObject({ state: "completed" });
   });
 
