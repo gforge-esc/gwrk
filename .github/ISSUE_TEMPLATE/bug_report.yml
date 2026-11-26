@@ -67,7 +67,7 @@ body:
         - **OS**: 
         - **Node.js version**: 
         - **gwrk version**: (`gwrk --version`)
-        - **Agent CLI(s)**: (e.g., claude, gemini, agy)
+        - **Agent CLI(s)**: (e.g., agy, claude, codex)
     validations:
       required: true
 

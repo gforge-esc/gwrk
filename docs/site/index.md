@@ -1,10 +1,8 @@
-# gwrk Documentation & Reference Architecture
+# gwrk Documentation and Reference Architecture
 
-> **You better gwrk!** *Truth → Clarity → Throughput → Value.*
->
-> *Sources:* [`docs/product/FOXTROT-CHARLIE.md`](https://github.com/gforge-esc/gwrk/blob/develop/docs/product/FOXTROT-CHARLIE.md) & [`docs/product/WHAT_IS_GWRK.md`](https://github.com/gforge-esc/gwrk/blob/develop/docs/product/WHAT_IS_GWRK.md)
+gwrk automates Foxtrot Charlie across discovery and definition plus shipping and delivery. Start with the [Human Consumer Guide](getting-started.md) for installation. Open the [Consumer-Agent Guide](agent-guide.md) when operating inside a target repository. Blocked: none.
 
-`gwrk` is the automation of **Foxtrot Charlie** (`Discovery → Definition → Shipping → Delivery → Back to Discovery`). It takes the architectural judgment you have already done and turns written commitments into autonomous shipped code.
+> Guide version: `1.6.0-beta.2`. Source repository: [github.com/gforge-esc/gwrk](https://github.com/gforge-esc/gwrk). Companion plugins: [github.com/gforge-esc/gwrk-plugins](https://github.com/gforge-esc/gwrk-plugins).
 
 ```{toctree}
 :maxdepth: 2
@@ -12,27 +10,46 @@
 
 foxtrot-charlie
 getting-started
+agent-guide
 cli-reference
 hosted-architecture
 api-reference
 ```
 
-## Mantra: Truth → Clarity → Throughput → Value
+## Quick Navigation
+
+| Guide | Audience | Purpose |
+|---|---|---|
+| [Human Consumer Guide](getting-started.md) | Developers and operators | Install gwrk, initialize projects, enroll hosted repos, run bounded ship loops |
+| [Consumer-Agent Guide](agent-guide.md) | AI agents in target projects | Verify setup, follow target ADRs, run dry-run and isolated phases |
+| [CLI Command Reference](cli-reference.md) | Humans and agents | Verify exact command syntax and operator-only admin boundaries |
+| [Hosted Reference Architecture](hosted-architecture.md) | Architects and reviewers | Review hexagonal target rules (`ADR-011`, `ADR-013`) and hosted auth (`ADR-014`) |
+| [HTTP API Reference](api-reference.md) | API clients and operators | Inspect route authorization policies and credential-safe request patterns |
+
+## Repository Links
+
+| Resource | URL |
+|---|---|
+| Source repository | [github.com/gforge-esc/gwrk](https://github.com/gforge-esc/gwrk) |
+| Releases | [github.com/gforge-esc/gwrk/releases](https://github.com/gforge-esc/gwrk/releases) |
+| Companion plugin registry | [github.com/gforge-esc/gwrk-plugins](https://github.com/gforge-esc/gwrk-plugins) |
+| Support and issue routing | [SUPPORT.md](https://github.com/gforge-esc/gwrk/blob/main/SUPPORT.md) |
+| Security policy | [SECURITY.md](https://github.com/gforge-esc/gwrk/blob/main/SECURITY.md) |
+
+## Mantra
 
 From [`docs/product/FOXTROT-CHARLIE.md`](https://github.com/gforge-esc/gwrk/blob/develop/docs/product/FOXTROT-CHARLIE.md#L124-L131):
 
-- **Discovery extracts truth.**
-- **Definition creates clarity.**
-- **Shipping creates throughput.**
-- **Delivery creates value.**
+- Discovery extracts truth.
+- Definition creates clarity.
+- Shipping creates throughput.
+- Delivery creates value.
 
-Alignment is the shadow cast by this healthy system—not its goal.
+## The Four Pillars
 
-## The Four Pillars (Verbatim from `docs/product/FOXTROT-CHARLIE.md`)
-
-| Pillar | Opening Line | Purpose | What It Answers |Closing Line |
-|---|---|---|---|---|
-| **Pillar 1: Discovery (Truth Extraction)** | *Extract truth. Don't wait for it.* | Actively extract, synthesize, and validate the truths that determine what must be built and why. | "What progress is the customer trying to make, and what's blocking it?" | **Discovery extracts truth. Everything else depends on it.** |
-| **Pillar 2: Definition (Clarity & Commitments)** | *Say exactly what we will do, and when.* | Translate extracted truth into buildable, testable commitments with crisp boundaries and explicit ownership. | "What exactly are we building, for whom, what is 'done', and when will it be completed?" | **Definition converts truth into commitments.** |
-| **Pillar 3: Shipping (Execution & Learning)** | *Learn fast, fix fast.* | Build and ship increments that generate learning and converge quickly toward customer value. | "How do we build and ship well, and learn fast?" | **Shipping creates throughput. Throughput reveals signal.** |
-| **Pillar 4: Delivery (Value Realization)** | *Prove value, not activity.* | Ensure shipped work produces measurable customer value and business outcomes. | "Did this create value in the real world, and how do we know?" | **Delivery creates value. Value becomes new truth.** |
+| Pillar | Opening Line | Purpose | Closing Line |
+|---|---|---|---|
+| Discovery (Truth Extraction) | Extract truth and do not wait for it | Extract and validate truths that determine what to build | Discovery extracts truth |
+| Definition (Clarity and Commitments) | Say what we will do and when | Translate truth into testable commitments with explicit ownership | Definition converts truth into commitments |
+| Shipping (Execution and Learning) | Learn fast and fix fast | Build and ship small increments that surface errors early | Shipping creates throughput |
+| Delivery (Value Realization) | Prove value rather than activity | Measure real-world adoption and customer outcomes | Delivery creates value |

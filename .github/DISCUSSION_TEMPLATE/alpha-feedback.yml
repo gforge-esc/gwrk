@@ -1,11 +1,11 @@
-title: "[Alpha feedback] "
+title: "[Beta feedback] "
 body:
   - type: markdown
     attributes:
       value: |
-        Thanks for kicking the tires on the gwrk alpha! 🦩
+        Thanks for testing the gwrk beta.
 
-        This is the place for **open-ended experience reports** — what worked, what was rough,
+        This is the place for open-ended experience reports: what worked, what was rough,
         and what you wish it did. No reproducible steps required.
 
         Found a reproducible defect? Open a
@@ -66,4 +66,4 @@ body:
     id: env
     attributes:
       label: Environment (optional)
-      description: OS, Node version, and which agent CLI(s) you're using (claude, gemini, codex, agy).
+      description: OS, Node version, and which agent CLI(s) you're using (agy, claude, codex).

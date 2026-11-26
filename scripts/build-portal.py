@@ -45,13 +45,15 @@ def extract_sphinx_body(page_name: str) -> str:
         "index",
         "foxtrot-charlie",
         "getting-started",
+        "agent-guide",
         "cli-reference",
         "hosted-architecture",
         "api-reference",
     ]:
-        body = body.replace(
-            f'href="{slug}.html"',
+        body = re.sub(
+            rf'href="{slug}\.html(?:#[^"]*)?"',
             f'href="#guide-{slug}" data-guide-target="{slug}"',
+            body,
         )
     return body
 
@@ -74,9 +76,10 @@ def main() -> None:
         "index": ("00_OVERVIEW.md", extract_sphinx_body("index.html")),
         "foxtrot-charlie": ("01_FOXTROT-CHARLIE.md", foxtrot_charlie_html),
         "getting-started": ("02_GETTING-STARTED.md", extract_sphinx_body("getting-started.html")),
-        "cli-reference": ("03_CLI-GRAMMAR.md", extract_sphinx_body("cli-reference.html")),
-        "hosted-architecture": ("04_ADR-014-SECURITY.md", extract_sphinx_body("hosted-architecture.html")),
-        "api-reference": ("05_HTTP-ROUTES.md", extract_sphinx_body("api-reference.html")),
+        "agent-guide": ("03_AGENT-GUIDE.md", extract_sphinx_body("agent-guide.html")),
+        "cli-reference": ("04_CLI-GRAMMAR.md", extract_sphinx_body("cli-reference.html")),
+        "hosted-architecture": ("05_ADR-014-SECURITY.md", extract_sphinx_body("hosted-architecture.html")),
+        "api-reference": ("06_HTTP-ROUTES.md", extract_sphinx_body("api-reference.html")),
     }
 
     guide_nav_buttons = []
@@ -1120,11 +1123,14 @@ def main() -> None:
             <a href="/oauth2/start" class="tui-btn tui-btn--primary" id="hero-signin-link">
               Sign in with Google
             </a>
-            <button type="button" class="tui-btn tui-btn--cyan" onclick="window.switchGwrkView('foxtrot')">
-              Read Foxtrot Charlie
-            </button>
-            <button type="button" class="tui-btn" onclick="window.switchGwrkView('guides')">
-              Sphinx Guides
+            <a href="#guide-getting-started" class="tui-btn tui-btn--cyan" data-guide-target="getting-started">
+              Install &amp; Human Guide
+            </a>
+            <a href="#guide-agent-guide" class="tui-btn" data-guide-target="agent-guide">
+              Consumer-Agent Guide
+            </a>
+            <button type="button" class="tui-btn" onclick="window.switchGwrkView('foxtrot')">
+              Foxtrot Charlie
             </button>
             <button type="button" class="tui-btn" onclick="window.switchGwrkView('api')">
               OpenAPI 3.1
@@ -1132,6 +1138,23 @@ def main() -> None:
             <button type="button" class="tui-btn" id="replay-splash-btn" title="Return to Splash">
               Splash
             </button>
+          </div>
+          <div class="hero-cta-row" aria-label="Repository and ecosystem links">
+            <a href="https://github.com/gforge-esc/gwrk" class="tui-btn" target="_blank" rel="noopener noreferrer">
+              GitHub Repository
+            </a>
+            <a href="https://github.com/gforge-esc/gwrk/releases" class="tui-btn" target="_blank" rel="noopener noreferrer">
+              Releases
+            </a>
+            <a href="https://github.com/gforge-esc/gwrk-plugins" class="tui-btn" target="_blank" rel="noopener noreferrer">
+              Plugin Registry
+            </a>
+            <a href="https://github.com/gforge-esc/gwrk/blob/main/SUPPORT.md" class="tui-btn" target="_blank" rel="noopener noreferrer">
+              Support
+            </a>
+            <a href="https://github.com/gforge-esc/gwrk/blob/main/SECURITY.md" class="tui-btn" target="_blank" rel="noopener noreferrer">
+              Security
+            </a>
           </div>
         </div>
 
@@ -1967,13 +1990,27 @@ def main() -> None:
 </body>
 </html>"""
 
-    secret_match = re.search(r"CANARY|gwrk_v1\.", html_doc)
+    secret_match = re.search(
+        r"CANARY|gwrk_ak_v1_|\bgwrk_v\d+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]{8,}\b",
+        html_doc,
+    )
     if secret_match:
-        raise RuntimeError(f"Secret or canary token remained in HTML: {secret_match.group(0)}")
-    if 'href="/oauth2/start"' not in html_doc:
-        raise RuntimeError('Missing required href="/oauth2/start" in HTML')
-    if "projectId" not in html_doc:
-        raise RuntimeError("Missing required API wire identifier projectId in HTML")
+        raise RuntimeError(f"Secret, legacy prefix, or canary token remained in HTML: {secret_match.group(0)}")
+    bad_html_link = re.search(r'href="(?!https?://)[^"]*\.html(?:[#?][^"]*)?"', html_doc)
+    if bad_html_link:
+        raise RuntimeError(f"Unserved relative .html href remained in portal HTML: {bad_html_link.group(0)}")
+    for required_token in [
+        'href="/oauth2/start"',
+        'href="https://github.com/gforge-esc/gwrk"',
+        'href="https://github.com/gforge-esc/gwrk/releases"',
+        'href="https://github.com/gforge-esc/gwrk-plugins"',
+        'href="https://github.com/gforge-esc/gwrk/blob/main/SUPPORT.md"',
+        'data-guide-target="getting-started"',
+        'data-guide-target="agent-guide"',
+        "projectId",
+    ]:
+        if required_token not in html_doc:
+            raise RuntimeError(f"Missing required token in portal HTML: {required_token}")
 
     STATIC_PREVIEW_OUT.write_text(html_doc, encoding="utf-8")
 
@@ -1981,7 +2018,7 @@ def main() -> None:
         "/* This Source Code Form is subject to the terms of the Mozilla Public\n"
         " * License, v. 2.0. If a copy of the MPL was not distributed with this\n"
         " * file, You can obtain one at https://mozilla.org/MPL/2.0/. */\n\n"
-        f"export const LOGIN_ENTRY = {json.dumps(html_doc)};\n"
+        f"export const LOGIN_ENTRY =\n  {json.dumps(html_doc)};\n"
     )
     PORTAL_TS_OUT.write_text(ts_content, encoding="utf-8")
     print(f"Generated {PORTAL_TS_OUT} ({len(html_doc)} bytes HTML)")

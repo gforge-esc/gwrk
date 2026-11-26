@@ -1,46 +1,73 @@
 # HTTP Control Plane API Reference
 
-The complete OpenAPI 3.1 specification is stored at `docs/openapi/gwrk-openapi.yaml` and rendered interactively in the root portal at `https://gwrk.gforge.ai/#api`.
+The hosted control plane at `https://gwrk.gforge.ai` accepts origin-verified Google sessions from browsers and scoped `gwrk_v1.<id>.<secret>` API credentials from automation. The OpenAPI 3.1 specification lives in `docs/openapi/gwrk-openapi.yaml` and renders in the portal at `https://gwrk.gforge.ai/#api`. Blocked: none.
 
-## Route Policy Table (`classifyHostedRoute`)
+## Route policy table
 
-| Route | Methods | Auth Policy | Required Access | Public Edge |
-|---|---|---|---|---|
-| `/` | `GET`, `HEAD` | `public_browser_entry` | `none` | Yes |
-| `/oauth2/start` | `GET`, `HEAD` | `public_oauth_start` | `none` | Yes |
-| `/oauth2/callback` | `GET`, `HEAD` | `public_oauth_callback` | `none` | Yes |
-| `/api/auth/session` | `GET`, `HEAD` | `google_session_only` | `own_session` | Yes (`no-store`) |
-| `/api/auth/logout` | `POST` | `google_session_only` | `own_session` + CSRF | Yes (`no-store`) |
-| `/api/status` | `GET`, `HEAD` | `google_or_api_key` | `read` | Yes |
-| `/api/health` | `GET`, `HEAD` | `google_or_api_key` | `read` | Yes |
-| `/api/dispatch` | `POST` | `google_or_api_key` | `operate` (+ CSRF if browser) | Yes |
-| `/api/dispatch/queue` | `GET`, `HEAD` | `google_or_api_key` | `read` | Yes |
-| `/api/dispatch/:feature/:phase` | `GET`, `HEAD` | `google_or_api_key` | `read` | Yes |
-| `/api/notify` | `POST` | `google_or_api_key` | `operate` (+ CSRF if browser) | Yes |
-| `/webhook/github` | `POST` | `provider_webhook` | `enrolled_repository` (HMAC) | Yes |
-| `/health` | `GET`, `HEAD` | `private_liveness_only` | Loopback only | No (`404` at edge) |
+| Route | Methods | Auth policy | Required access |
+|---|---|---|---|
+| `/` | `GET`, `HEAD` | `public_browser_entry` | Public |
+| `/oauth2/start` | `GET`, `HEAD` | `public_oauth_start` | Public |
+| `/oauth2/callback` | `GET`, `HEAD` | `public_oauth_callback` | Public |
+| `/api/auth/session` | `GET`, `HEAD` | `google_session_only` | Own session (`no-store`) |
+| `/api/auth/logout` | `POST` | `google_session_only` | Own session, same origin and CSRF |
+| `/api/status` | `GET`, `HEAD` | `google_or_api_key` | Project `read` |
+| `/api/health` | `GET`, `HEAD` | `google_or_api_key` | Project `read` |
+| `/api/dispatch` | `POST` | `google_or_api_key` | Project `operate`, CSRF for browsers |
+| `/api/dispatch/queue` | `GET`, `HEAD` | `google_or_api_key` | Project `read` |
+| `/api/dispatch/:feature/:phase` | `GET`, `HEAD` | `google_or_api_key` | Project `read` |
+| `/api/notify` | `POST` | `google_or_api_key` | Project `operate`, CSRF for browsers |
+| `/webhook/github` | `POST` | `provider_webhook` | Enrolled repository raw-body HMAC |
+| `/health` | `GET`, `HEAD` | `private_liveness_only` | Loopback only, HTTP 404 at the edge |
 
-## Quick cURL Examples
+The route classifier is `classifyHostedRoute`.
 
-### Check Google Session (Browser)
+## Browser authentication flow
+
+People sign in through the browser. Do not copy browser session cookies into scripts.
+
+1. Open `https://gwrk.gforge.ai/oauth2/start` and sign in with an allowlisted Google account.
+2. The portal calls `GET /api/auth/session` with `credentials: "same-origin"`. The response confirms the session and returns the session-bound `csrfToken`.
+3. Browser `POST` requests send `Origin: https://gwrk.gforge.ai` and `X-Gwrk-Csrf-Token: <csrfToken>`.
+4. Sign out with `POST /api/auth/logout`. The origin revokes the session digest before it clears proxy cookies.
+
+Google login alone grants no project access. An operator binds your `google_sub` principal to a project role (`viewer`, `operator` or `maintainer`) on the server host.
+
+## Automation requests
+
+Keep the operator-issued credential in a `0600` file owned by your user, outside every repository checkout. Never place the key in a command argument. Process listings and shell history expose arguments, including `$(cat file)` expansions.
+
+### Status through the CLI
+
+`gwrk status` reads the key from the file and binds it to the origin:
 
 ```bash
-curl -s https://gwrk.gforge.ai/api/auth/session \
-  -H "Cookie: __Host-gwrk_session=<cookie>"
+gwrk status \
+  --server-url https://gwrk.gforge.ai \
+  --credential-file "$GWRK_API_KEY_FILE" \
+  --credential-origin https://gwrk.gforge.ai \
+  --project my-project
 ```
 
-### Query Project Status with Operator API Key
+### Status through curl
+
+`curl -H @-` reads the header from standard input. The key never appears in an argument.
 
 ```bash
-curl -s "https://gwrk.gforge.ai/api/status?project=pilot-probe-a" \
-  -H "Authorization: Bearer $(cat /var/lib/gwrk/operator-keys/operator-pilot-probe-a.secret)"
+: "${GWRK_API_KEY_FILE:?Set GWRK_API_KEY_FILE to your private 0600 key file}"
+{ printf 'Authorization: Bearer '; cat "$GWRK_API_KEY_FILE"; } |
+  curl -sS -H @- "https://gwrk.gforge.ai/api/status?project=my-project"
 ```
 
-### Enqueue Phase Dispatch
+### Enqueue a phase dispatch
 
 ```bash
-curl -s -X POST "https://gwrk.gforge.ai/api/dispatch" \
-  -H "Authorization: Bearer $(cat /var/lib/gwrk/operator-keys/operator-pilot-probe-a.secret)" \
-  -H "Content-Type: application/json" \
-  -d '{"projectId":"pilot-probe-a","featureId":"051-hosted-aws-pilot","phaseId":"phase-08","backend":"agy"}'
+: "${GWRK_API_KEY_FILE:?Set GWRK_API_KEY_FILE to your private 0600 key file}"
+{ printf 'Authorization: Bearer '; cat "$GWRK_API_KEY_FILE"; } |
+  curl -sS -X POST "https://gwrk.gforge.ai/api/dispatch" \
+    -H @- \
+    -H "Content-Type: application/json" \
+    -d '{"projectId":"my-project","featureId":"001-my-feature","phaseId":"phase-01","backend":"agy"}'
 ```
+
+Replace `my-project` and `001-my-feature` with your enrolled project slug and feature ID. A dispatch needs the `operator` or `maintainer` role on the project. Never print the key or echo the assembled header.

@@ -1,79 +1,67 @@
 # Contributing to gwrk
 
-Thank you for your interest in contributing to gwrk! This guide will help you get set up and understand how the project operates.
+All pull requests target `develop` and follow conventional commits. Every PR must pass build, lint and Vitest on Node 20 and 22. Blocked: none.
 
-## ⚠️ Alpha Status
+## Status
 
-gwrk is in active alpha ([latest release](https://github.com/gforge-esc/gwrk/releases/latest)). Some core commands (`gwrk define`, `gwrk ship`) still reference workflow files that aren't yet bundled with the distribution (tracked in [R004](docs/research/R004-shareability-readiness/draft.md)). The plugin system's WorkflowRuntime (Layer 2.5) is under active development. Expect rough edges — your feedback helps us prioritize.
+gwrk is in beta. The current release line is `1.6.0-beta.2`. Core workflow prompts and enforcement skills ship bundled inside the package. Built-in agent adapters (`agy`, `claude` and `codex`) also ship bundled. See [README.md](README.md) for consumer setup and [gwrk.gforge.ai](https://gwrk.gforge.ai) for the hosted portal.
 
-## Getting Started
+## Prerequisites
 
-### Prerequisites
+- Node.js 20 or 22 for local development and CI. Linux release packaging requires Linux with Node.js 22.
+- pnpm 9.x (`9.15.9` on release and Linux runner hosts)
+- At least one supported agent CLI installed: `agy`, `claude` or `codex`
 
-- **Node.js** >= 20
-- **pnpm** >= 9
-- At least one AI agent CLI installed: `agy`, `claude`, or `codex`
-
-### Setup
+## Setup
 
 ```bash
 git clone https://github.com/gforge-esc/gwrk.git && cd gwrk
+git checkout develop
 pnpm install
 pnpm build
-pnpm link --global    # Makes `gwrk` available system-wide
+pnpm link --global
 ```
 
-### Pre-Commit Hook
-
-After cloning, install the version-controlled pre-commit hook:
+Install the version-controlled pre-commit hook after cloning:
 
 ```bash
 cp scripts/hooks/pre-commit .git/hooks/pre-commit && chmod +x .git/hooks/pre-commit
 ```
 
-This enforces:
+| Branch | Hook Checks | Approximate Time |
+|---|---|---|
+| Feature branches | `pnpm build` | 3s |
+| `develop` and `main` | `pnpm build`, `pnpm lint`, `pnpm test` | 25s |
 
-| Branch | Checks | Duration |
-|--------|--------|----------|
-| Feature branches | `pnpm build` | ~3s |
-| `develop` / `main` | `pnpm build` + `pnpm test` | ~25s |
+## Configuration Layering
 
-## Configuration
+gwrk merges configuration across project, local and global layers.
 
-gwrk uses a **three-layer config model** to separate project identity from personal preferences:
+| File | Tracked | Purpose |
+|---|---|---|
+| `.gwrkrc.json` | Yes | Project identity, stack, design target, loopback server defaults |
+| `.gwrkrc.local.json` | No | Personal agent backend selection and local registry |
+| `~/.gwrk/config.json` | No | Machine-wide tokens and global plugin preferences |
 
-| File | Tracked? | Purpose |
-|------|----------|---------|
-| `.gwrkrc.json` | ✅ Yes | Project identity — name, type, stack, layout, server defaults |
-| `.gwrkrc.local.json` | ❌ Gitignored | Personal agent preferences — which CLI to use, per-project overrides |
-| `~/.gwrk/config.json` | N/A | Machine-wide secrets — Slack tokens, webhook URLs, API keys |
-
-Each layer deep-merges over the previous one (later layers win).
-
-### Quick Setup
-
-After cloning, copy the example and customize:
+Copy the tracked template in this repository or run `gwrk init`:
 
 ```bash
 cp .gwrkrc.local.json.example .gwrkrc.local.json
-# Edit .gwrkrc.local.json to set your preferred agents
 ```
 
-Or run `gwrk init` which generates both files automatically.
+Do not copy gwrk's own `AGENTS.md` into consumer projects. Consumer projects generate their own managed context blocks with `gwrk init`.
 
 ## Branch Model
 
-```
-main ← develop ← feature branches
-```
+- `main`: approved release baseline and tagged releases
+- `develop`: integration branch for all pull requests
+- Feature branches: short-lived branches created from `develop`
 
-- **`main`** — stable releases, tagged versions
-- **`develop`** — integration branch, all PRs target here
-- **Feature branches** — named descriptively (e.g., `feat/config-layering`, `fix/webhook-cleanup`)
+David Gonzalez is the project owner. He approves merges to `develop` and `main`. He also approves release publication.
 
 ## Making Changes
 
-### 1. Create a Feature Branch
+1. Create a branch from `develop`:
 
 ```bash
 git checkout develop
@@ -81,71 +69,39 @@ git pull origin develop
 git checkout -b feat/my-change
 ```
 
-### 2. Write Code
-
-- TypeScript source lives in `src/`
-- Follow the existing patterns — Zod schemas, Commander.js commands, Vitest tests
-- Biome handles formatting and linting (`pnpm format` / `pnpm lint`)
-
-### 3. Test
+2. Read `.gwrk/architecture.md` and `.gwrk/decisions/index.md` before changing source code. Preserve existing `Decided` constraints (`ADR-001` through `ADR-014`).
+3. Keep dependencies pointing inward per `ADR-011`. `src/domain/` imports nothing outward. `src/ports/` and `src/application/` depend on the domain. `src/adapters/` implement ports.
+4. Verify locally before opening a pull request:
 
 ```bash
-pnpm test                          # Full suite
-pnpm test -- src/path/to/file      # Single file
+pnpm build
+pnpm lint
+node dist/cli.js define adr --check
+pnpm test
 ```
 
-### 4. Commit
+5. Commit with conventional commit prefixes such as `feat`, `fix` or `docs`. Use your own git author and committer identity. Never use `--no-verify`.
+6. Open a pull request against `develop`. CI verifies Node 20 and Node 22.
 
-We use **conventional commits**:
+## Companion Plugin Ecosystem
 
-```
-feat(scope): add new feature
-fix(scope): fix a bug
-chore(scope): maintenance task
-docs(scope): documentation change
-test(scope): test addition or fix
-```
-
-The pre-commit hook runs automatically — `pnpm build` on feature branches, `pnpm build` + `pnpm test` on develop/main.
-
-### 5. Open a Pull Request
-
-- Target `develop` (not `main`)
-- Fill out the PR template
-- CI must pass (build + test on Node 20 and 22)
+External agent backends and framework packs live in [gwrk-plugins](https://github.com/gforge-esc/gwrk-plugins). Review strategy plugins also live there. Keep plugin contract changes aligned with `ADR-012` and `src/plugins/manifest.ts`.
 
 ## Code Style
 
-- **TypeScript**: strict mode (`"strict": true` in tsconfig)
-- **Formatting**: Biome (2-space indent, organized imports)
-- **Linting**: Biome recommended rules, `noExplicitAny` is an error (use `// biome-ignore` with justification)
-- **Testing**: Vitest, co-located test files (`*.test.ts`)
-
-## Project Structure
-
-```
-src/
-  commands/       # CLI command implementations
-  server/         # Fastify build server (dispatch, sandbox, Slack)
-  engine/         # Core computation (pulse, compression, orchestrators)
-  plugins/        # Plugin system (loader, manifests, runtime)
-    builtins/     # Built-in plugins shipped with gwrk
-      agents/     # L1: Agent backend adapters (claude, codex)
-      workflows/  # L2.5: Core workflow plugins (specify, plan, implement, ...)
-  db/             # SQLite schema + migrations
-  utils/          # Shared utilities (config, git, agent dispatch)
-specs/            # Feature specifications and task state
-docs/             # Architecture, PRD, ADRs, research
-```
+- TypeScript strict mode (`"strict": true`) targeting ES2022 with ESM modules
+- Biome formatting and linting (`pnpm format` and `pnpm lint` with zero errors)
+- Vitest tests co-located as `*.test.ts` or under `tests/`
+- Prose follows `AGENTS.md` section 7 and the writing standard
 
 ## Opening Issues
 
-Please use the issue templates:
+Use the repository templates:
 
-- **Bug Report** — something isn't working
-- **Feature Request** — propose an enhancement
-- **Plugin Request** — request a new agent backend, workflow, or skill
+- Bug report for reproducible defects
+- Feature request for concrete enhancements
+- Plugin request for new agent backends or skills
 
 ## License
 
-By contributing, you agree that your contributions will be licensed under the [Mozilla Public License 2.0](LICENSE).
+Contributions are licensed under the [Mozilla Public License 2.0](LICENSE).

@@ -1,14 +1,14 @@
 openapi: 3.1.0
 info:
   title: gwrk Control Plane API
-  version: 1.6.0-beta.1
+  version: 1.6.0-beta.2
   summary: Principal Engineer operating system for autonomous spec-to-ship orchestration.
   description: |
     HTTP control plane for `gwrk`, the Foxtrot Charlie execution engine (`Truth -> Clarity -> Throughput -> Value`).
 
     ### Authentication Modes (`ADR-014`)
     - **Browser Google Session (`google_id_token`)**: Interactive operators sign in at `/oauth2/start`. Edge OAuth2 Proxy verifies the Google account against the host allowlist and forwards a signed Google ID token to the private loopback origin (`127.0.0.1:18790`). Mutating requests require `Origin: https://gwrk.gforge.ai` and `X-Gwrk-Csrf-Token` matching `__Host-gwrk_csrf`.
-    - **Scoped Operator API Key (`api_key`)**: Headless CLI and automation callers pass `Authorization: Bearer gwrk_ak_v1_<id>.<secret>`. Keys carry per-project role grants (`viewer`, `operator`, or `maintainer`).
+    - **Scoped API Key (`api_key`)**: Headless CLI and automation callers pass `Authorization: Bearer gwrk_v1.<id>.<secret>` loaded from a private mode `0600` file outside any repository checkout. Keys carry per-project role grants (`viewer`, `operator`, or `maintainer`).
     - **GitHub Webhook HMAC (`webhook`)**: GitHub deliveries to `/webhook/github` authenticate via `X-Hub-Signature-256` (`HMAC-SHA256`) and enrolled repository verification.
   license:
     name: MPL-2.0
@@ -30,13 +30,13 @@ components:
     OperatorApiKey:
       type: http
       scheme: bearer
-      bearerFormat: gwrk_ak_v1_<credentialId>.<secret>
-      description: Scoped operator API credential created with `gwrk auth key create`.
+      bearerFormat: gwrk_v1.<credentialId>.<secret>
+      description: Scoped opaque API credential created by a server operator with `gwrk auth key create --secret-out <path>`.
     GoogleSessionCookie:
       type: apiKey
       in: cookie
-      name: __Host-gwrk_session
-      description: Encrypted OAuth2 Proxy Google OIDC session cookie validated on every request.
+      name: oauth2_proxy_session
+      description: Browser-managed encrypted OAuth2 Proxy Google OIDC session cookie established through `/oauth2/start` (not a manual CLI curl token).
     BrowserCsrfHeader:
       type: apiKey
       in: header
@@ -362,7 +362,7 @@ components:
           example: phase-08
         backend:
           type: string
-          enum: [agy, claude, gemini, codex]
+          enum: [agy, claude, codex]
           example: agy
         recipient:
           type: object
