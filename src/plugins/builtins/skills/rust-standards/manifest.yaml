@@ -3,5 +3,5 @@ name: rust-standards
 version: 1.0.0
 description: Rust coding standards and toolchain compliance
 tier: enforcement
-scope: implementation
+scope: all
 language: Rust

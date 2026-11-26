@@ -1,0 +1,809 @@
+openapi: 3.1.0
+info:
+  title: gwrk Control Plane API
+  version: 1.6.0-beta.2
+  summary: Principal Engineer operating system for autonomous spec-to-ship orchestration.
+  description: |
+    HTTP control plane for `gwrk`, the Foxtrot Charlie execution engine (`Truth -> Clarity -> Throughput -> Value`).
+
+    ### Authentication Modes (`ADR-014`)
+    - **Browser Google Session (`google_id_token`)**: Interactive operators sign in at `/oauth2/start`. Edge OAuth2 Proxy verifies the Google account against the host allowlist and forwards a signed Google ID token to the private loopback origin (`127.0.0.1:18790`). Mutating requests require `Origin: https://gwrk.gforge.ai` and `X-Gwrk-Csrf-Token` matching `__Host-gwrk_csrf`.
+    - **Scoped API Key (`api_key`)**: Headless CLI and automation callers pass `Authorization: Bearer gwrk_v1.<id>.<secret>` loaded from a private mode `0600` file outside any repository checkout. Keys carry per-project role grants (`viewer`, `operator`, or `maintainer`).
+    - **GitHub Webhook HMAC (`webhook`)**: GitHub deliveries to `/webhook/github` authenticate via `X-Hub-Signature-256` (`HMAC-SHA256`) and enrolled repository verification.
+  license:
+    name: MPL-2.0
+    url: https://mozilla.org/MPL/2.0/
+servers:
+  - url: https://gwrk.gforge.ai
+    description: Hosted production control plane gateway
+tags:
+  - name: Browser Entry & Session
+    description: Public Solarized TUI landing page, Google OAuth entry, session inspection, and origin-first logout.
+  - name: System & Readiness
+    description: Project-scoped runtime telemetry, sandbox state, and durable operations health.
+  - name: Autonomous Dispatch
+    description: Enqueue and inspect autonomous phase implementation and review loops.
+  - name: Notifications & Webhooks
+    description: Slack control-plane notifications and GitHub PR merge harvest webhooks.
+components:
+  securitySchemes:
+    OperatorApiKey:
+      type: http
+      scheme: bearer
+      bearerFormat: gwrk_v1.<credentialId>.<secret>
+      description: Scoped opaque API credential created by a server operator with `gwrk auth key create --secret-out <path>`.
+    GoogleSessionCookie:
+      type: apiKey
+      in: cookie
+      name: oauth2_proxy_session
+      description: Browser-managed encrypted OAuth2 Proxy Google OIDC session cookie established through `/oauth2/start` (not a manual CLI curl token).
+    BrowserCsrfHeader:
+      type: apiKey
+      in: header
+      name: X-Gwrk-Csrf-Token
+      description: Double-submit HMAC CSRF token issued by `GET /api/auth/session` and paired with `__Host-gwrk_csrf`.
+    GitHubWebhookHmac:
+      type: apiKey
+      in: header
+      name: X-Hub-Signature-256
+      description: GitHub webhook `sha256=<hex>` HMAC signature computed over the raw request body.
+  parameters:
+    ProjectQuery:
+      name: project
+      in: query
+      required: false
+      description: Enrolled project slug or `projectId` (required in hosted mode when multiple projects exist).
+      schema:
+        type: string
+        example: pilot-probe-a
+    ProjectIdQuery:
+      name: projectId
+      in: query
+      required: false
+      description: Explicit enrolled project ID alias for `project`.
+      schema:
+        type: string
+        example: pilot-probe-a
+  schemas:
+    ErrorEnvelope:
+      type: object
+      required:
+        - ok
+        - code
+        - error
+      properties:
+        ok:
+          type: boolean
+          const: false
+        code:
+          type: string
+          examples:
+            - AUTH_REQUIRED
+            - AUTH_ACCOUNT_DENIED
+            - AUTH_SESSION_REVOKED
+            - AUTH_CSRF_INVALID
+            - UNAUTHORIZED_USER
+            - INSUFFICIENT_ROLE
+            - ROUTE_NOT_FOUND
+            - METHOD_NOT_ALLOWED
+            - RATE_LIMIT_EXCEEDED
+        error:
+          type: string
+          example: Request denied
+        requestId:
+          type: string
+          example: req-42
+    SessionResponse:
+      type: object
+      required:
+        - ok
+        - expiresAt
+        - csrfToken
+      properties:
+        ok:
+          type: boolean
+          const: true
+        expiresAt:
+          type: string
+          format: date-time
+          example: "2026-11-25T23:58:55.000Z"
+        csrfToken:
+          type: string
+          description: Bound CSRF token for browser `POST` mutations.
+    LogoutResponse:
+      type: object
+      required:
+        - ok
+        - proxyCleared
+      properties:
+        ok:
+          type: boolean
+          const: true
+        proxyCleared:
+          type: boolean
+          example: true
+    SystemStatusResponse:
+      type: object
+      required:
+        - server
+        - system
+        - network
+        - dispatch
+        - sandboxes
+      properties:
+        projectId:
+          type: string
+          example: pilot-probe-a
+        server:
+          type: object
+          required:
+            - status
+            - lifecycle
+            - pid
+            - uptime
+          properties:
+            status:
+              type: string
+              enum: [running]
+            lifecycle:
+              type: string
+              enum: [ready, degraded]
+            pid:
+              type: integer
+              example: 1960577
+            uptime:
+              type: integer
+              description: Server uptime in seconds.
+              example: 14820
+            port:
+              type: integer
+              example: 18790
+        system:
+          type: object
+          required:
+            - cpuPercent
+            - memPercent
+            - diskFreeGb
+          properties:
+            cpuPercent:
+              type: number
+              example: 6.4
+            memPercent:
+              type: number
+              example: 38.2
+            diskFreeGb:
+              type: number
+              example: 41.8
+        network:
+          type: object
+          required:
+            - status
+          properties:
+            status:
+              type: string
+              enum: [online, offline]
+        dispatch:
+          type: object
+          required:
+            - queueDepth
+            - activeCount
+            - completedCount
+            - failedCount
+            - paused
+          properties:
+            queueDepth:
+              type: integer
+              example: 0
+            activeCount:
+              type: integer
+              example: 1
+            completedCount:
+              type: integer
+              example: 14
+            failedCount:
+              type: integer
+              example: 0
+            paused:
+              type: boolean
+              example: false
+        sandboxes:
+          type: array
+          items:
+            type: object
+            required:
+              - workDir
+              - featureId
+              - taskId
+              - status
+              - startedAt
+            properties:
+              workDir:
+                type: string
+              featureId:
+                type: string
+                example: 051-hosted-aws-pilot
+              taskId:
+                type: string
+                example: T049
+              status:
+                type: string
+                enum: [running]
+              startedAt:
+                type: string
+                format: date-time
+    DurableHealthResponse:
+      type: object
+      required:
+        - status
+        - daemonLiveness
+        - projectReadiness
+        - slackDelivery
+        - telegram
+        - components
+      properties:
+        status:
+          type: string
+          enum: [ok, degraded]
+        daemonLiveness:
+          type: string
+          const: alive
+        projectReadiness:
+          type: object
+          required:
+            - status
+            - readyCount
+            - totalCount
+            - projects
+          properties:
+            status:
+              type: string
+              enum: [ready, degraded, unconfigured]
+            readyCount:
+              type: integer
+            totalCount:
+              type: integer
+            projects:
+              type: array
+              items:
+                type: object
+                required:
+                  - projectId
+                  - slug
+                  - trunkBranch
+                  - checkoutReady
+                  - runnerAllowed
+                  - slackBound
+                  - status
+                properties:
+                  projectId:
+                    type: string
+                  slug:
+                    type: string
+                  repoSlug:
+                    type: string
+                    nullable: true
+                  trunkBranch:
+                    type: string
+                  checkoutPath:
+                    type: string
+                    nullable: true
+                  checkoutReady:
+                    type: boolean
+                  runnerAllowed:
+                    type: boolean
+                  slackBound:
+                    type: boolean
+                  status:
+                    type: string
+                    enum: [ready, degraded, misconfigured]
+                  reason:
+                    type: string
+        slackDelivery:
+          type: object
+          required:
+            - mode
+            - connected
+          properties:
+            mode:
+              type: string
+              enum: [socket_connected, degraded, disabled]
+            connected:
+              type: boolean
+        telegram:
+          type: object
+          required:
+            - enabled
+          properties:
+            enabled:
+              type: boolean
+            reason:
+              type: string
+        components:
+          type: object
+          properties:
+            server:
+              type: object
+              properties:
+                status:
+                  type: string
+                  enum: [ok, degraded]
+            git:
+              type: object
+              properties:
+                status:
+                  type: string
+                  enum: [ok, unavailable]
+            network:
+              type: object
+              properties:
+                status:
+                  type: string
+                  enum: [ok, unavailable]
+            slack:
+              type: object
+              properties:
+                status:
+                  type: string
+                  enum: [ok, degraded, unavailable]
+    DispatchRequest:
+      type: object
+      required:
+        - featureId
+        - phaseId
+      properties:
+        projectId:
+          type: string
+          example: pilot-probe-a
+        featureId:
+          type: string
+          example: 051-hosted-aws-pilot
+        phaseId:
+          type: string
+          example: phase-08
+        backend:
+          type: string
+          enum: [agy, claude, codex]
+          example: agy
+        recipient:
+          type: object
+          nullable: true
+          properties:
+            surface:
+              type: string
+              enum: [slack, http]
+            projectId:
+              type: string
+            workspaceId:
+              type: string
+            channelId:
+              type: string
+            threadTs:
+              type: string
+            opsOnly:
+              type: boolean
+    DispatchReceipt:
+      type: object
+      required:
+        - id
+        - featureId
+        - phaseId
+        - status
+      properties:
+        id:
+          type: string
+          example: op_94f1c2e7
+        projectId:
+          type: string
+        featureId:
+          type: string
+        phaseId:
+          type: string
+        status:
+          type: string
+          enum: [queued, running, completed, failed]
+        deduplicated:
+          type: boolean
+    NotifyRequest:
+      type: object
+      required:
+        - type
+        - feature
+      properties:
+        projectId:
+          type: string
+        type:
+          type: string
+          enum:
+            - phase_start
+            - phase_complete
+            - phase_fail
+            - ci_result
+            - review_ready
+            - done_done
+            - pulse
+            - define_spec_ready
+            - define_plan_ready
+        feature:
+          type: string
+          example: 051-hosted-aws-pilot
+        phase:
+          type: string
+          example: phase-09
+        backend:
+          type: string
+          example: agy
+        prUrl:
+          type: string
+        prNumber:
+          type: integer
+        opsOnly:
+          type: boolean
+paths:
+  /:
+    get:
+      tags:
+        - Browser Entry & Session
+      summary: Solarized TUI & Flamingo root portal
+      description: |
+        Public landing page on `https://gwrk.gforge.ai/`. Serves the Solarized TUI + Flamingo Splash portal with Google OAuth sign-in, interactive session detection, Sphinx operator guides, and embedded OpenAPI reference.
+      responses:
+        "200":
+          description: Static HTML portal with zero identity or project leakage.
+          content:
+            text/html:
+              schema:
+                type: string
+        "429":
+          description: Login admission rate limit exceeded (60 checks / 120s per client IP).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+  /oauth2/start:
+    get:
+      tags:
+        - Browser Entry & Session
+      summary: Start Google OIDC sign-in flow
+      description: |
+        Checked by origin ForwardAuth rate admission before OAuth2 Proxy mints a per-request PKCE + nonce CSRF state cookie and redirects to Google OIDC (`accounts.google.com`).
+      parameters:
+        - name: rd
+          in: query
+          required: false
+          description: Relative post-login redirect path on `gwrk.gforge.ai`.
+          schema:
+            type: string
+            default: /
+      responses:
+        "302":
+          description: Redirect to Google OIDC authorization endpoint.
+        "429":
+          description: Login admission rate limit exceeded.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+  /api/auth/session:
+    get:
+      tags:
+        - Browser Entry & Session
+      summary: Verify Google session and issue bound CSRF token
+      description: |
+        Verifies the forwarded Google ID token against the live host allowlist and SQLite revocation table, then issues a `__Host-gwrk_csrf` cookie and returns the session expiry and CSRF header token.
+      security:
+        - GoogleSessionCookie: []
+      responses:
+        "200":
+          description: Active Google session verified.
+          headers:
+            Cache-Control:
+              schema:
+                type: string
+                example: no-store
+            Set-Cookie:
+              schema:
+                type: string
+                example: __Host-gwrk_csrf=<token>; Path=/; HttpOnly; Secure; SameSite=Lax
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SessionResponse"
+        "401":
+          description: Missing, expired, or revoked Google session.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Authenticated Google account is not in the live host allowlist (`AUTH_ACCOUNT_DENIED`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+  /api/auth/logout:
+    post:
+      tags:
+        - Browser Entry & Session
+      summary: Revoke Google session and clear proxy cookies
+      description: |
+        Origin-first logout (`ADR-014`). Requires `Origin: https://gwrk.gforge.ai` and a valid `X-Gwrk-Csrf-Token` header. Records durable session digest revocation in SQLite (`google_sessions`) so replayed cookies fail closed with `401 AUTH_SESSION_REVOKED`.
+      security:
+        - GoogleSessionCookie: []
+          BrowserCsrfHeader: []
+      responses:
+        "200":
+          description: Session revoked in SQLite and cleared in OAuth2 Proxy.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LogoutResponse"
+        "401":
+          description: Unauthenticated or already revoked session.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Missing or invalid CSRF token or cross-site `Origin` header.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+  /api/status:
+    get:
+      tags:
+        - System & Readiness
+      summary: Query project-scoped server, resource, and dispatch queue status
+      description: Requires `read` access (`viewer`, `operator`, or `maintainer`) on the target project.
+      security:
+        - OperatorApiKey: []
+        - GoogleSessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/ProjectQuery"
+        - $ref: "#/components/parameters/ProjectIdQuery"
+      responses:
+        "200":
+          description: Scoped status snapshot for the requested project.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SystemStatusResponse"
+        "401":
+          description: Missing or invalid credentials.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Principal lacks role binding on the requested project.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+  /api/health:
+    get:
+      tags:
+        - System & Readiness
+      summary: Query project-scoped readiness, outbox, and harvest health
+      description: Requires `read` access on the requested project. Private loopback `/health` is never routed publicly at the edge.
+      security:
+        - OperatorApiKey: []
+        - GoogleSessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/ProjectQuery"
+        - $ref: "#/components/parameters/ProjectIdQuery"
+      responses:
+        "200":
+          description: Durable readiness report for the authorized project.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DurableHealthResponse"
+        "401":
+          description: Missing or invalid credentials.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Principal lacks role binding on the requested project.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+  /api/dispatch:
+    post:
+      tags:
+        - Autonomous Dispatch
+      summary: Enqueue an autonomous feature phase dispatch
+      description: |
+        Requires `operate` access (`operator` or `maintainer`) on the target project. Browser callers must also provide `Origin` and `X-Gwrk-Csrf-Token`.
+      security:
+        - OperatorApiKey: []
+        - GoogleSessionCookie: []
+          BrowserCsrfHeader: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DispatchRequest"
+      responses:
+        "201":
+          description: Dispatch operation accepted and queued.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DispatchReceipt"
+        "200":
+          description: Idempotent duplicate dispatch returned existing receipt.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DispatchReceipt"
+        "401":
+          description: Missing or invalid credentials.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Principal lacks `operate` access or CSRF check failed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+  /api/dispatch/queue:
+    get:
+      tags:
+        - Autonomous Dispatch
+      summary: List active and queued dispatches for a project
+      description: Requires `read` access on the requested project.
+      security:
+        - OperatorApiKey: []
+        - GoogleSessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/ProjectQuery"
+        - $ref: "#/components/parameters/ProjectIdQuery"
+      responses:
+        "200":
+          description: Project queue snapshot.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  paused:
+                    type: boolean
+                  queued:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/DispatchReceipt"
+                  active:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/DispatchReceipt"
+        "401":
+          description: Missing or invalid credentials.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Principal lacks `read` access on the requested project.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+  /api/dispatch/{feature}/{phase}:
+    get:
+      tags:
+        - Autonomous Dispatch
+      summary: Inspect a specific feature phase dispatch operation
+      security:
+        - OperatorApiKey: []
+        - GoogleSessionCookie: []
+      parameters:
+        - name: feature
+          in: path
+          required: true
+          schema:
+            type: string
+            example: 051-hosted-aws-pilot
+        - name: phase
+          in: path
+          required: true
+          schema:
+            type: string
+            example: phase-08
+        - $ref: "#/components/parameters/ProjectQuery"
+        - $ref: "#/components/parameters/ProjectIdQuery"
+      responses:
+        "200":
+          description: Dispatch record details.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DispatchReceipt"
+        "404":
+          description: Dispatch operation not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+  /api/notify:
+    post:
+      tags:
+        - Notifications & Webhooks
+      summary: Emit a project-scoped Slack notification card
+      description: Requires `operate` access on the target project.
+      security:
+        - OperatorApiKey: []
+        - GoogleSessionCookie: []
+          BrowserCsrfHeader: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/NotifyRequest"
+      responses:
+        "200":
+          description: Notification delivered or queued in durable outbox.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                    const: true
+        "401":
+          description: Missing or invalid credentials.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Principal lacks `operate` role or thread project mismatch.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+  /webhook/github:
+    post:
+      tags:
+        - Notifications & Webhooks
+      summary: Receive signed GitHub webhook events for harvest and issue routing
+      description: |
+        Verifies `X-Hub-Signature-256` using the configured webhook secret before parsing JSON or touching SQLite. Triggers durable PR merge harvest and compression recording for enrolled repositories.
+      security:
+        - GitHubWebhookHmac: []
+      parameters:
+        - name: X-GitHub-Event
+          in: header
+          required: true
+          schema:
+            type: string
+            enum: [ping, pull_request, issues]
+        - name: X-GitHub-Delivery
+          in: header
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Webhook verified and processed.
+        "400":
+          description: Malformed payload or unenrolled repository.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Missing or invalid `X-Hub-Signature-256` digest.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"

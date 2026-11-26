@@ -3,44 +3,133 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import type { App } from "@slack/bolt";
+import { logCliError } from "../adapters/cli/output-scope.js";
+import { verifyEnrolledCheckout } from "../adapters/git/project-id.js";
 import type { PlanPhase } from "../db/plan.js";
+import type {
+  DeliveryRecipient,
+  EnrolledProject,
+} from "../domain/project-registry.js";
 import { DriftDetector, type DriftResult } from "../engine/drift-detector.js";
 import { PlanStore } from "../engine/plan-store.js";
+import type { NotificationPort } from "../ports/notification-port.js";
+import type { ProjectRegistryPort } from "../ports/store-port.js";
 import type { GwrkConfig } from "../utils/config.js";
 import { resolveProjectId } from "../utils/project-id.js";
+import type { DispatchLedgerScope } from "./dispatch.js";
+import { postSlackMessageWithSignal } from "./slack-channel.js";
+import { notifySlack } from "./slack-notify.js";
+
+export interface PlanHeartbeatOptions {
+  registry?: ProjectRegistryPort;
+  notifier?: NotificationPort;
+  createPlanStore?: (projectId: string) => PlanStore;
+}
+
+function resolveProjectCheckout(project: EnrolledProject): string | null {
+  return (
+    verifyEnrolledCheckout(project, "mirrorPath") ??
+    verifyEnrolledCheckout(project, "localRoot") ??
+    null
+  );
+}
 
 export class PlanHeartbeat {
   private interval: NodeJS.Timeout | null = null;
-  private store: PlanStore;
+  private inFlight?: Promise<void>;
+  private controller?: AbortController;
+  private store: PlanStore | null = null;
   private projectId: string;
 
   constructor(
     private config: GwrkConfig,
     private slackApp: App | null,
     private projectRoot: string = process.cwd(),
+    private ledger?: DispatchLedgerScope,
+    private options: PlanHeartbeatOptions = {},
   ) {
-    this.projectId = resolveProjectId(this.projectRoot);
-    this.store = new PlanStore(this.projectId);
+    this.projectId = ledger?.projectId ?? resolveProjectId(this.projectRoot);
+    if (!this.options.registry) {
+      this.store = this.options.createPlanStore
+        ? this.options.createPlanStore(this.projectId)
+        : new PlanStore(this.projectId, ledger?.db);
+    }
   }
 
   start() {
+    if (this.interval) return;
+    const controller = new AbortController();
+    this.controller = controller;
     const intervalMs = 4 * 60 * 60 * 1000; // 4 hours default
-    this.interval = setInterval(() => this.runCheck(), intervalMs);
-    // Also run once on start
-    this.runCheck().catch(console.error);
+    const check = () => {
+      this.inFlight ??= this.runCheck(controller.signal)
+        .catch(console.error)
+        .finally(() => {
+          this.inFlight = undefined;
+        });
+    };
+    this.interval = setInterval(check, intervalMs);
+    check();
   }
 
-  stop() {
+  stop(): void | Promise<void> {
     if (this.interval) {
       clearInterval(this.interval);
       this.interval = null;
     }
+    this.controller?.abort();
+    return this.inFlight;
   }
 
-  async runCheck() {
-    if (this.store.isEmpty()) return;
+  async runCheck(signal?: AbortSignal) {
+    if (signal?.aborted) return;
+    if (this.options.registry) {
+      for (const project of this.options.registry.listProjects()) {
+        if (signal?.aborted) return;
+        const checkout = resolveProjectCheckout(project);
+        if (!checkout) continue;
+        try {
+          const store = this.options.createPlanStore
+            ? this.options.createPlanStore(project.projectId)
+            : new PlanStore(project.projectId, this.ledger?.db);
+          await this.evaluateProject(
+            project.projectId,
+            checkout,
+            store,
+            project,
+            signal,
+          );
+        } catch (err) {
+          logCliError(
+            `Heartbeat: Failed to evaluate project ${project.slug} (${project.projectId}):`,
+            err,
+          );
+        }
+      }
+      return;
+    }
 
-    const status = this.store.getPlanStatus();
+    if (this.store) {
+      await this.evaluateProject(
+        this.projectId,
+        this.projectRoot,
+        this.store,
+        undefined,
+        signal,
+      );
+    }
+  }
+
+  private async evaluateProject(
+    projectId: string,
+    projectRoot: string,
+    store: PlanStore,
+    project?: EnrolledProject,
+    signal?: AbortSignal,
+  ) {
+    if (signal?.aborted || store.isEmpty()) return;
+
+    const status = store.getPlanStatus();
     const phases = status.features.flatMap((f) => f.phases);
 
     // 1. Detect Staleness
@@ -51,7 +140,7 @@ export class PlanHeartbeat {
       const lastUpdate = new Date(p.updated_at).getTime();
       const now = Date.now();
       const daysSinceUpdate = (now - lastUpdate) / (1000 * 60 * 60 * 24);
-      return daysSinceUpdate > 14; // Stale if no change in 14 days
+      return daysSinceUpdate > 14;
     });
 
     // 2. Detect Drift
@@ -59,13 +148,13 @@ export class PlanHeartbeat {
       features: status.features,
       phases: phases,
     });
-    const driftResults = detector.verify(this.projectRoot);
+    const driftResults = detector.verify(projectRoot);
     const drifted = driftResults.filter((r) => r.status === "DRIFTED");
 
     // 3. Detect Blocked
-    const solver = await this.store.getSolver();
+    const solver = await store.getSolver();
+    if (signal?.aborted) return;
     const ready = solver.getReadyQueue();
-    // (Simplified blocked detection: if no items are ready but project is not done)
     const isProjectDone = phases.every(
       (p) => p.status === "DONE" || p.status === "SHIPPED",
     );
@@ -81,35 +170,35 @@ export class PlanHeartbeat {
       else if (isStale) targetHealth = "YELLOW";
 
       if (p.health !== targetHealth) {
-        this.store.updatePhase(p.id, {
+        store.updatePhase(p.id, {
           health: targetHealth as "GREEN" | "YELLOW" | "RED",
         });
       }
     }
 
     // 5. Report to Slack
-    if (
-      this.slackApp &&
-      (stalePhases.length > 0 || drifted.length > 0 || isBlocked)
-    ) {
-      await this.reportToSlack(stalePhases, drifted, isBlocked);
+    if (stalePhases.length > 0 || drifted.length > 0 || isBlocked) {
+      await this.reportToSlack(
+        projectId,
+        stalePhases,
+        drifted,
+        isBlocked,
+        project,
+        signal,
+      );
     }
   }
 
-  private async reportToSlack(
+  private formatAlertText(
     stale: PlanPhase[],
     drifted: DriftResult[],
     isBlocked: boolean,
-  ) {
-    const channelId = this.config.project.slack?.channelId;
-    if (!channelId) {
-      console.error(
-        "Heartbeat: no slack.channelId configured — skipping Slack report",
-      );
-      return;
-    }
-
-    let text = "*🚨 Build Plan Health Report*\n";
+    project?: EnrolledProject,
+  ): string {
+    const header = project
+      ? `*🚨 Build Plan Health Report (${project.slug})*\n`
+      : "*🚨 Build Plan Health Report*\n";
+    let text = header;
     if (drifted.length > 0) {
       text += `\n*Drift Detected (${drifted.length}):*\n`;
       for (const d of drifted) {
@@ -126,14 +215,107 @@ export class PlanHeartbeat {
       text +=
         "\n*⚠️ Project Blocked:* No items are currently ready to work on, but the project is incomplete.\n";
     }
+    return text;
+  }
 
+  private async reportToSlack(
+    projectId: string,
+    stale: PlanPhase[],
+    drifted: DriftResult[],
+    isBlocked: boolean,
+    project?: EnrolledProject,
+    shutdownSignal?: AbortSignal,
+  ) {
+    if (shutdownSignal?.aborted) return;
+    const text = this.formatAlertText(stale, drifted, isBlocked, project);
+
+    if (project) {
+      const opsChannelId = project.slack?.opsChannelId;
+      if (!opsChannelId) {
+        return;
+      }
+
+      const recipient: DeliveryRecipient = {
+        projectId: project.projectId,
+        surface: "slack",
+        workspaceId: project.slack?.workspaceId,
+        channelId: opsChannelId,
+        opsOnly: true,
+      };
+
+      try {
+        if (this.options.notifier) {
+          await this.options.notifier.notify({
+            projectId: project.projectId,
+            recipient,
+            channel: opsChannelId,
+            opsOnly: true,
+            text,
+          });
+        } else {
+          await notifySlack(
+            {
+              channel: opsChannelId,
+              text,
+              blocks: [],
+            },
+            undefined,
+            {
+              projectId: project.projectId,
+              opsOnly: true,
+              recipient,
+              registry: this.options.registry,
+              signal: shutdownSignal,
+              transportTimeoutMs: 5_000,
+            },
+          );
+        }
+      } catch (err) {
+        logCliError("Failed to post heartbeat to Slack:", err);
+      }
+      return;
+    }
+
+    // Legacy single-project fallback when no ProjectRegistryPort is provided
+    if (this.options.notifier) {
+      const opsChannelId = this.config.project.slack?.opsChannelId;
+      if (!opsChannelId) return;
+      try {
+        await this.options.notifier.notify({
+          projectId,
+          channel: opsChannelId,
+          opsOnly: true,
+          text,
+        });
+      } catch (err) {
+        logCliError("Failed to post heartbeat to Slack:", err);
+      }
+      return;
+    }
+
+    if (!this.slackApp) return;
+
+    const channelId = this.config.project.slack?.opsChannelId;
+    if (!channelId) {
+      logCliError(
+        "Heartbeat: no slack.opsChannelId configured — skipping Slack report",
+      );
+      return;
+    }
+
+    const deadline = AbortSignal.timeout(5_000);
+    const signal = shutdownSignal
+      ? AbortSignal.any([shutdownSignal, deadline])
+      : deadline;
     try {
-      await this.slackApp?.client.chat.postMessage({
-        channel: channelId,
-        text,
-      });
+      await postSlackMessageWithSignal(
+        this.slackApp.client.token,
+        { channel: channelId, text },
+        signal,
+      );
     } catch (err) {
-      console.error("Failed to post heartbeat to Slack:", err);
+      if (!signal.aborted)
+        logCliError("Failed to post heartbeat to Slack:", err);
     }
   }
 }

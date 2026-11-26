@@ -3,10 +3,14 @@
   "files": {
     "ignore": [
       "dist",
+      "docs/site/_build",
       "coverage",
       ".gwrk",
       "node_modules",
       "specs/**/.gwrk/runs/*.json",
+      "specs/051-hosted-aws-pilot/contracts/native-evidence-trust-anchor.json",
+      "specs/051-hosted-aws-pilot/evidence/native-evidence-envelope.json",
+      "specs/051-hosted-aws-pilot/evidence/native-evidence-envelope.sig.json",
       "src/utils/*.test.ts",
       "src/engine/*.test.ts",
       "src/commands/*.test.ts",

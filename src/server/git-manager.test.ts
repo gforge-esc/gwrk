@@ -2,11 +2,11 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { execSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { fixtureGit } from "../../tests/helpers/server-fixture.js";
 import { GitManager } from "./git-manager.js";
 
 describe("GitManager", () => {
@@ -15,15 +15,14 @@ describe("GitManager", () => {
 
   beforeEach(() => {
     tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "gwrk-git-test-"));
-    execSync("git init", { cwd: tempDir, stdio: "ignore" });
+    fixtureGit(tempDir, "init", "--template=", "--initial-branch=develop");
+    fixtureGit(tempDir, "config", "user.name", "Gwrk Test");
+    fixtureGit(tempDir, "config", "user.email", "gwrk-test@example.invalid");
+    fixtureGit(tempDir, "config", "commit.gpgsign", "false");
     // Need a commit to have a branch
     fs.writeFileSync(path.join(tempDir, "README.md"), "# Test Repo");
-    execSync("git add README.md", { cwd: tempDir, stdio: "ignore" });
-    execSync('git commit -m "Initial commit"', {
-      cwd: tempDir,
-      stdio: "ignore",
-    });
-    // Rename main/master to something consistent if needed, but we'll create our feature branch
+    fixtureGit(tempDir, "add", "README.md");
+    fixtureGit(tempDir, "commit", "-m", "Initial commit");
 
     gitManager = new GitManager(tempDir);
   });
@@ -38,18 +37,12 @@ describe("GitManager", () => {
     const featureBranch = `feature/${featureId}-wip`;
     const phaseBranch = `phase/${featureId}-${phaseId}`;
 
-    execSync(`git checkout -b ${featureBranch}`, {
-      cwd: tempDir,
-      stdio: "ignore",
-    });
+    fixtureGit(tempDir, "checkout", "-b", featureBranch);
 
     const createdBranch = gitManager.createPhaseBranch(featureId, phaseId);
     expect(createdBranch).toBe(phaseBranch);
 
-    const branches = execSync("git branch", {
-      cwd: tempDir,
-      encoding: "utf-8",
-    });
+    const branches = fixtureGit(tempDir, "branch");
     expect(branches).toContain(phaseBranch);
   });
 
@@ -60,36 +53,24 @@ describe("GitManager", () => {
     const phaseBranch = `phase/${featureId}-${phaseId}`;
 
     // Setup feature branch with a file
-    execSync(`git checkout -b ${featureBranch}`, {
-      cwd: tempDir,
-      stdio: "ignore",
-    });
+    fixtureGit(tempDir, "checkout", "-b", featureBranch);
     fs.writeFileSync(path.join(tempDir, "conflict.txt"), "feature content");
-    execSync("git add conflict.txt", { cwd: tempDir, stdio: "ignore" });
-    execSync('git commit -m "Feature commit"', {
-      cwd: tempDir,
-      stdio: "ignore",
-    });
+    fixtureGit(tempDir, "add", "conflict.txt");
+    fixtureGit(tempDir, "commit", "-m", "Feature commit");
 
     // Create phase branch
     gitManager.createPhaseBranch(featureId, phaseId);
 
     // Modify file in feature branch
     fs.writeFileSync(path.join(tempDir, "conflict.txt"), "feature modified");
-    execSync("git add conflict.txt", { cwd: tempDir, stdio: "ignore" });
-    execSync('git commit -m "Feature modified"', {
-      cwd: tempDir,
-      stdio: "ignore",
-    });
+    fixtureGit(tempDir, "add", "conflict.txt");
+    fixtureGit(tempDir, "commit", "-m", "Feature modified");
 
     // Modify same file in phase branch
-    execSync(`git checkout ${phaseBranch}`, { cwd: tempDir, stdio: "ignore" });
+    fixtureGit(tempDir, "checkout", phaseBranch);
     fs.writeFileSync(path.join(tempDir, "conflict.txt"), "phase modified");
-    execSync("git add conflict.txt", { cwd: tempDir, stdio: "ignore" });
-    execSync('git commit -m "Phase modified"', {
-      cwd: tempDir,
-      stdio: "ignore",
-    });
+    fixtureGit(tempDir, "add", "conflict.txt");
+    fixtureGit(tempDir, "commit", "-m", "Phase modified");
 
     // Try to merge back - should fail with conflict
     expect(() => gitManager.mergePhaseBack(featureId, phaseId)).toThrow(
@@ -97,7 +78,7 @@ describe("GitManager", () => {
     );
 
     // Check we are back on the original branch or at least not in a merging state
-    const status = execSync("git status", { cwd: tempDir, encoding: "utf-8" });
+    const status = fixtureGit(tempDir, "status");
     expect(status).not.toContain("merge");
   });
 });

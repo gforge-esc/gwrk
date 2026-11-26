@@ -11,7 +11,7 @@ revision: 6
 **Created**: 2026-03-15
 **Status**: Draft
 **Input**: OpenClaw research, skills architecture analysis, manifest stress test, R006 (Pluginable Research), R007 (Project Perspective), ADR-009 (Domain Ontology), R011 (Obsidian Vault Integration)
-**Reference**: [skills-architecture.md](file:///Users/gonzo/Code/gwrk/docs/reference/skills-architecture.md), [plugin-architecture-plan.md](file:///Users/gonzo/Code/gwrk/docs/reference/plugin-architecture-plan.md)
+**Reference**: [skills-architecture.md](https://github.com/gforge-esc/gwrk/blob/cli-v1.6.0-beta.1/docs/archive/reference/skills-architecture.md), [plugin-architecture-plan.md](https://github.com/gforge-esc/gwrk/blob/cli-v1.6.0-beta.1/docs/archive/reference/plugin-architecture-plan.md)
 
 > **Positioning:** This is the plugin infrastructure spec. F008 (Agent Router), F012 (Knowledge Work), F016 (Domain Packs), and F017 (Channel Abstraction) depend on the manifest schema, plugin loader, and skill runtime established here. Research workflows (R006) and Domain Grounding (ADR-009) execute on top of this layer. Extension Plugins (Layer 3) enable integration with external knowledge sources like Obsidian vaults.
 

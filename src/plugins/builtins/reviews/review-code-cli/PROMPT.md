@@ -9,7 +9,11 @@
   from tasks you moved `completed` → `open`. A description without a status flip reads as GO, and your
   finding is discarded no matter what your prose or commit subject says.
 - Do NOT modify source code to fix issues. Document and re-open.
+
+[type: gwrk-native]
 - DO auto-fix deterministic lint errors (`biome lint --write`).
+[/type]
+
 - DO re-open failed tasks in tasks.json with structured remediation notes.
 - DO re-open the phase if any tasks fail.
 - DO post review summary as a PR comment.
@@ -17,6 +21,8 @@
 - ONLY re-open tasks in the CURRENT phase. Do NOT touch tasks from other phases.
 - ONLY run tests relevant to the current phase's files, not the full test suite.
 </scope_constraints>
+
+<!-- @include ../../personas/principal-engineer.md -->
 
 ## Inputs
 
@@ -39,6 +45,14 @@
 
 ### 1. Build & Load Context (MANDATORY)
 
+[type: generic]
+
+Read the host repository's verification instructions for the current phase.
+
+[/type]
+
+[type: gwrk-native]
+
 gwrk is a CLI tool. No Docker, no web server.
 
 ```bash
@@ -47,6 +61,8 @@ pnpm build
 
 > [!CAUTION]
 > If `pnpm build` fails, report as **BLOCKING** infrastructure issue. Cannot proceed.
+
+[/type]
 
 ```bash
 TASKS_FILE="{feature_dir}/.gwrk/tasks.json"
@@ -95,26 +111,35 @@ have reviewed and know which tasks carry findings.
 
 ### 3. Infrastructure Check
 
+Run the repository's documented build check when it defines one.
+
+[type: gwrk-native]
 ```bash
 pnpm build 2>&1
 ```
+[/type]
 
 - PASS: Build succeeds.
 - FAIL: Document as blocking finding. Continue with file review.
 
 ### 4. Lint Check
 
+Run the repository's documented lint check when it defines one.
+
+[type: gwrk-native]
 ```bash
 pnpm lint 2>&1
 ```
 
-- PASS: 0 errors.
-- AUTO-FIX: If errors are auto-fixable, apply them:
+- Apply deterministic lint fixes with Biome.
   ```bash
   pnpm exec biome lint --write .
   git add {feature_dir}/.gwrk/tasks.json && git commit -m "review: auto-fix lint errors"
   ```
-- REMAINING: Document non-auto-fixable errors as findings.
+[/type]
+
+- PASS: 0 errors.
+- Document remaining lint errors as findings.
 
 ### 5. Read Current Task State
 
@@ -144,19 +169,27 @@ b. **Spec Match**: Does code implement the acceptance criteria from `plan.md`?
    - PASS: Implementation matches plan's acceptance criteria.
    - FAIL: Record finding with specific deviation.
 
-c. **Type Safety**: No `any` types in non-test critical paths?
-   - PASS: Strict typing.
+c. **Type Safety**: Check the project's type safety standards.
+   - PASS: Project standards met.
    - FAIL: Record finding.
+
+[type: gwrk-native]
+
+Check for `any` types in non-test critical paths.
+
+[/type]
 
 ### 7. Test Verification
 
-Run ONLY phase-relevant tests, not the full suite:
+Use the repository's test command for the current phase's files.
 
+[type: gwrk-native]
 ```bash
 # Identify test files from this phase's tasks
 TEST_FILES=$(jq -r --arg pid "$PHASE_ID" '.phases[] | select(.id == $pid) | .tasks[].title' "$TASKS_FILE" | grep -oE 'src/[^ ]+\.ts' | sed 's/\.ts$/.test.ts/' | xargs -I{} sh -c 'test -f "{}" && echo "{}"')
 pnpm vitest run $TEST_FILES --reporter=verbose 2>&1
 ```
+[/type]
 
 - PASS: All phase tests pass.
 - FAIL: Document which tests fail and why. Only re-open tasks in THIS phase.
@@ -264,8 +297,7 @@ git diff --cached --quiet || git commit -m "review: code review Phase {phase_num
 | Task not implemented | Update status to open + append note | Task in ready queue with notes |
 | Task fails spec match | Update status to open + append note | Task in ready queue with remediation |
 | Defect the gate does not cover (gate green) | Update status to open + append note | Task in ready queue; orchestrator reports the gate coverage hole |
-| Auto-fixable lint | `biome lint --write` + commit | Clean lint (resolved) |
-| Non-fixable lint | Note on relevant task | Task in ready queue with lint details |
+| Remaining lint errors | Note on relevant task | Task in ready queue with lint details |
 | Test failures | Note on relevant task(s) | Task(s) in ready queue with test output |
 </closed_loop_contract>
 
@@ -308,7 +340,6 @@ REVIEW FAIL ({review_type}): {check_name} — {FR_REF}.
 - ❌ Write vague notes ("needs fix" — always include the specific remediation)
 - ❌ Running `git add -A` (scope commits to phase files and tasks.json only)
 - ❌ Re-opening tasks from OTHER phases (only touch tasks in the current phase)
-- ❌ Running `pnpm test` globally (run only phase-relevant test files)
 
 ## JSON Intent Format
 

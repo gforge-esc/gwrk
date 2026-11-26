@@ -4,14 +4,22 @@
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import * as gateRunner from "./gate-runner.js";
-import { runTaskGate, runInlineGate } from "./gate-exec.js";
+import { GATE_TIMEOUT_MS, runTaskGate, runInlineGate } from "./gate-exec.js";
 import { parsePlanMarkdown } from "../engine/plan-to-tasks.js";
 
 // runGate is the file-exec adapter; mock it so file-based strategies don't hit
 // the disk. Inline strategy runs real bash (like gate.test.ts) — do NOT mock
 // child_process.
-vi.mock("./gate-runner.js");
+vi.mock("./gate-runner.js", async () => {
+  const actual = await vi.importActual<typeof import("./gate-runner.js")>("./gate-runner.js");
+  return {
+    ...actual,
+    runGate: vi.fn(),
+  };
+});
 
 describe("runTaskGate — the shared gate execution port", () => {
   const featureDir = "/mock/specs/026-gate-runner-convergence";
@@ -42,7 +50,7 @@ describe("runTaskGate — the shared gate execution port", () => {
     expect(r.passed).toBe(true);
     expect(gateRunner.runGate).toHaveBeenCalledWith(
       `${featureDir}/gates/T001-gate.sh`,
-      { cwd },
+      { cwd, timeoutMs: GATE_TIMEOUT_MS },
     );
   });
 
@@ -65,7 +73,7 @@ describe("runTaskGate — the shared gate execution port", () => {
     expect(r.passed).toBe(false);
     expect(gateRunner.runGate).toHaveBeenCalledWith(
       `${featureDir}/run-all-gates.sh`,
-      { cwd },
+      { cwd, timeoutMs: GATE_TIMEOUT_MS },
     );
   });
 
@@ -213,5 +221,207 @@ describe("027 liveness: gate-invoked test command that runs 0 tests", () => {
   it("PASSES a gate with no test invocation regardless of output", () => {
     const r = runInlineGate("echo 'grep passed check'\ntrue", CWD);
     expect(r.passed).toBe(true);
+  });
+});
+
+describe("child-process gate output capture behavioral regression", () => {
+  const CWD = process.cwd();
+
+  describe("runInlineGate", () => {
+    it("captures stdout above 1MiB (1.2 MiB) with exit 0", () => {
+      const result = runInlineGate(
+        'node -e "process.stdout.write(\'x\'.repeat(1200000))"',
+        CWD,
+      );
+      expect(result.passed).toBe(true);
+      expect(result.exitCode).toBe(0);
+      expect(result.output.length).toBe(1200000);
+    });
+
+    it("captures stderr above 1MiB (1.2 MiB) with exit 0", () => {
+      const result = runInlineGate(
+        'node -e "process.stderr.write(\'y\'.repeat(1200000))"',
+        CWD,
+      );
+      expect(result.passed).toBe(true);
+      expect(result.exitCode).toBe(0);
+      expect(result.output.length).toBe(1200000);
+    });
+
+    it("classifies buffer overflow explicitly at start of output when finite cap is exceeded", () => {
+      const result = runInlineGate(
+        'node -e "process.stdout.write(\'x\'.repeat(100000))"',
+        CWD,
+        GATE_TIMEOUT_MS,
+        undefined,
+        undefined,
+        50000,
+      );
+      expect(result.passed).toBe(false);
+      expect(result.output).toMatch(
+        /^Gate output exceeded maximum buffer limit \(50000 bytes\)/,
+      );
+    });
+
+    it("preserves ordinary nonzero exit output without buffer overflow classification", () => {
+      const result = runInlineGate(
+        'echo "normal error message"; exit 2',
+        CWD,
+      );
+      expect(result.passed).toBe(false);
+      expect(result.exitCode).toBe(2);
+      expect(result.output).toBe("normal error message");
+      expect(result.output).not.toContain("Gate output exceeded maximum buffer limit");
+    });
+
+    it("does not misclassify ordinary nonzero exit as overflow when inline script mentions maxBuffer", () => {
+      const result = runInlineGate(
+        'echo "checking maxBuffer"; exit 2',
+        CWD,
+      );
+      expect(result.passed).toBe(false);
+      expect(result.exitCode).toBe(2);
+      expect(result.output).toBe("checking maxBuffer");
+      expect(result.output).not.toContain("Gate output exceeded maximum buffer limit");
+    });
+
+    it("does not misclassify ordinary nonzero exit as overflow when inline script mentions ENOBUFS", () => {
+      const result = runInlineGate(
+        'echo "assert ENOBUFS"; exit 2',
+        CWD,
+      );
+      expect(result.passed).toBe(false);
+      expect(result.exitCode).toBe(2);
+      expect(result.output).toBe("assert ENOBUFS");
+      expect(result.output).not.toContain("Gate output exceeded maximum buffer limit");
+    });
+  });
+
+  describe("runGate (actual child-process file execution)", () => {
+    let tmpDir: string;
+    let realRunGate: typeof import("./gate-runner.js").runGate;
+
+    beforeEach(async () => {
+      const gateRunnerMod = await vi.importActual<typeof import("./gate-runner.js")>("./gate-runner.js");
+      realRunGate = gateRunnerMod.runGate;
+      tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "gwrk-gate-behavioral-"));
+    });
+
+    it("captures stdout above 1MiB (1.2 MiB) with exit 0 in real script", async () => {
+      const scriptPath = path.join(tmpDir, "gate-stdout.sh");
+      fs.writeFileSync(
+        scriptPath,
+        '#!/bin/bash\nnode -e "process.stdout.write(\'x\'.repeat(1200000))"\n',
+        { mode: 0o755 },
+      );
+
+      const result = await realRunGate(scriptPath);
+      expect(result.passed).toBe(true);
+      expect(result.exitCode).toBe(0);
+      expect(result.output.length).toBe(1200000);
+    });
+
+    it("captures stderr above 1MiB (1.2 MiB) with exit 0 in real script", async () => {
+      const scriptPath = path.join(tmpDir, "gate-stderr.sh");
+      fs.writeFileSync(
+        scriptPath,
+        '#!/bin/bash\nnode -e "process.stderr.write(\'y\'.repeat(1200000))"\n',
+        { mode: 0o755 },
+      );
+
+      const result = await realRunGate(scriptPath);
+      expect(result.passed).toBe(true);
+      expect(result.exitCode).toBe(0);
+      expect(result.output.length).toBe(1200000);
+    });
+
+    it("classifies buffer overflow explicitly at start of output when finite cap is exceeded", async () => {
+      const scriptPath = path.join(tmpDir, "gate-overflow.sh");
+      fs.writeFileSync(
+        scriptPath,
+        '#!/bin/bash\nnode -e "process.stdout.write(\'x\'.repeat(100000))"\n',
+        { mode: 0o755 },
+      );
+
+      const result = await realRunGate(scriptPath, { maxBuffer: 50000 });
+      expect(result.passed).toBe(false);
+      expect(result.output).toMatch(
+        /^Gate output exceeded maximum buffer limit \(50000 bytes\)/,
+      );
+    });
+
+    it("preserves ordinary nonzero exit output without buffer overflow classification", async () => {
+      const scriptPath = path.join(tmpDir, "gate-fail.sh");
+      fs.writeFileSync(
+        scriptPath,
+        '#!/bin/bash\necho "ordinary failure"; exit 3\n',
+        { mode: 0o755 },
+      );
+
+      const result = await realRunGate(scriptPath);
+      expect(result.passed).toBe(false);
+      expect(result.exitCode).toBe(3);
+      expect(result.output).toBe("ordinary failure");
+      expect(result.output).not.toContain("Gate output exceeded maximum buffer limit");
+    });
+
+    it("does not misclassify ordinary nonzero exit as overflow when stderr mentions maxBuffer", async () => {
+      const scriptPath = path.join(tmpDir, "gate-stderr-maxbuffer.sh");
+      fs.writeFileSync(
+        scriptPath,
+        '#!/bin/bash\necho "AssertionError: expected maxBuffer to equal 10" >&2\nexit 1\n',
+        { mode: 0o755 },
+      );
+
+      const result = await realRunGate(scriptPath);
+      expect(result.passed).toBe(false);
+      expect(result.exitCode).toBe(1);
+      expect(result.output).toBe("AssertionError: expected maxBuffer to equal 10");
+      expect(result.output).not.toContain("Gate output exceeded maximum buffer limit");
+    });
+
+    it("does not misclassify ordinary nonzero exit as overflow when stderr mentions ENOBUFS", async () => {
+      const scriptPath = path.join(tmpDir, "gate-stderr-enobufs.sh");
+      fs.writeFileSync(
+        scriptPath,
+        '#!/bin/bash\necho "test case: ENOBUFS classification failed" >&2\nexit 1\n',
+        { mode: 0o755 },
+      );
+
+      const result = await realRunGate(scriptPath);
+      expect(result.passed).toBe(false);
+      expect(result.exitCode).toBe(1);
+      expect(result.output).toBe("test case: ENOBUFS classification failed");
+      expect(result.output).not.toContain("Gate output exceeded maximum buffer limit");
+    });
+
+    it("does not misclassify ordinary nonzero exit as overflow when script path mentions maxBuffer", async () => {
+      const scriptPath = path.join(tmpDir, "check-maxBuffer.sh");
+      fs.writeFileSync(
+        scriptPath,
+        '#!/bin/bash\necho "ordinary stdout failure"\nexit 1\n',
+        { mode: 0o755 },
+      );
+
+      const result = await realRunGate(scriptPath);
+      expect(result.passed).toBe(false);
+      expect(result.exitCode).toBe(1);
+      expect(result.output).toBe("ordinary stdout failure");
+      expect(result.output).not.toContain("Gate output exceeded maximum buffer limit");
+    });
+
+    it("preserves existing timeout semantics", async () => {
+      const scriptPath = path.join(tmpDir, "gate-timeout.sh");
+      fs.writeFileSync(
+        scriptPath,
+        '#!/bin/bash\nsleep 5\n',
+        { mode: 0o755 },
+      );
+
+      const result = await realRunGate(scriptPath, { timeoutMs: 100 });
+      expect(result.passed).toBe(false);
+      expect(result.output).toContain("Gate timed out after 100 ms");
+      expect(result.output).not.toContain("Gate output exceeded maximum buffer limit");
+    });
   });
 });

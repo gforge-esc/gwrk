@@ -1,0 +1,2 @@
+description = "Assess the current project against its declared architecture"
+prompt = """Use the gwrk-assess skill to assess the current project. Read .gwrk/architecture.md first. {{args}}"""

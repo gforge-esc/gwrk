@@ -5,6 +5,8 @@
 import fs from "node:fs";
 import path from "node:path";
 import { z } from "zod";
+import { warnCli } from "../adapters/cli/output-scope.js";
+import { assertNoSecretMaterial } from "../domain/model-qualification.js";
 
 export const ExecutionUsageSchema = z.object({
   inputTokens: z.number().optional(),
@@ -22,6 +24,11 @@ export const ExecutionManifestSchema = z.object({
   command: z.string(),
   agent: z.string(),
   model: z.string(),
+  requestedModel: z.string().optional(),
+  observedModel: z.string().optional(),
+  requestedEffort: z.string().optional(),
+  routeMode: z.enum(["pinned", "provider-default"]).optional(),
+  fallbackReason: z.string().optional(),
   deviceId: z.string().optional(),
   hostname: z.string().optional(),
   usage: ExecutionUsageSchema.optional(),
@@ -42,6 +49,38 @@ export const ExecutionManifestSchema = z.object({
 
 export type ExecutionManifest = z.infer<typeof ExecutionManifestSchema>;
 
+function activeSecretValues(): string[] {
+  return Object.entries(process.env)
+    .filter(
+      ([key, value]) =>
+        /(?:TOKEN|SECRET|PASSWORD|API_KEY|CREDENTIAL|AUTHORIZATION)/i.test(
+          key,
+        ) && Boolean(value),
+    )
+    .flatMap(([, value]) => (value ? [value] : []));
+}
+
+function normalizeManifestIdentity(
+  manifest: ExecutionManifest,
+): ExecutionManifest {
+  const requestedModel =
+    manifest.requestedModel?.trim() ||
+    (manifest.routeMode === "provider-default"
+      ? "provider-default"
+      : manifest.model);
+  const observedModel = manifest.observedModel?.trim() || "unknown";
+  const fallbackReason = manifest.fallbackReason?.trim() || undefined;
+  const requestedEffort = manifest.requestedEffort?.trim() || undefined;
+
+  return {
+    ...manifest,
+    requestedModel,
+    observedModel,
+    ...(requestedEffort ? { requestedEffort } : {}),
+    ...(fallbackReason ? { fallbackReason } : {}),
+  };
+}
+
 /**
  * Writes an execution manifest to specs/<feature>/.gwrk/runs/
  */
@@ -59,15 +98,18 @@ export function writeManifest(
     throw new Error(`Invalid execution manifest: ${result.error.message}`);
   }
 
+  const normalized = normalizeManifestIdentity(result.data);
+  assertNoSecretMaterial(normalized, activeSecretValues());
+
   // File naming: <ISO-timestamp>_<command>_<phase>_<agent>.json
   // Sanitize timestamp for filename (replace : with - if needed, though ISO 8601 might have :)
   // ADR-003 shows 2026-03-08T14:02:33Z_ship_p01.json (well, it just says the format)
   // Let's use a filesystem-safe version of the timestamp
-  const ts = manifest.startedAt.replace(/:/g, "-");
-  const fileName = `${ts}_${manifest.command}_${manifest.phase}_${manifest.agent}.json`;
+  const ts = normalized.startedAt.replace(/:/g, "-");
+  const fileName = `${ts}_${normalized.command}_${normalized.phase}_${normalized.agent}.json`;
   const filePath = path.join(runsDir, fileName);
 
-  fs.writeFileSync(filePath, JSON.stringify(manifest, null, 2), "utf-8");
+  fs.writeFileSync(filePath, JSON.stringify(normalized, null, 2), "utf-8");
   return filePath;
 }
 
@@ -93,12 +135,12 @@ export function loadManifests(featureDir: string): ExecutionManifest[] {
       if (result.success) {
         manifests.push(result.data);
       } else {
-        console.warn(
+        warnCli(
           `Skipping invalid manifest ${filePath}: ${result.error.message}`,
         );
       }
     } catch (error) {
-      console.warn(`Error reading manifest ${filePath}: ${error}`);
+      warnCli(`Error reading manifest ${filePath}: ${error}`);
     }
   }
 

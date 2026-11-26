@@ -4,12 +4,12 @@
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { getDb, getTestDb } from "../db/index.js";
-import type { AgentRegistry } from "./agent-registry.js";
+import type { AgentRegistry } from "../domain/agent-config.js";
+import { TaskClassification, TaskType } from "../domain/types.js";
 import { BackendSelector, type TaskContext } from "./backend-selector.js";
-import { TaskClassification, TaskType } from "./task-classifier.js";
 
 // Mock recordDecision to avoid DB side effects in non-db tests
-vi.mock("./routing-decisions.js", () => ({
+vi.mock("../adapters/sqlite/routing-decisions.js", () => ({
   recordDecision: vi.fn(),
 }));
 
@@ -29,6 +29,7 @@ describe("BackendSelector", () => {
 
   const context: TaskContext = {
     runId: "run-123",
+    projectId: "p1",
     feature: "feat-1",
     phase: "phase-1",
     taskType: TaskType.IMPLEMENT,
@@ -140,10 +141,10 @@ describe("BackendSelector", () => {
       "INSERT INTO projects (id, name, path) VALUES ('p1', 'p1', '/tmp')",
     ).run();
     db.prepare(
-      "INSERT INTO runs (feature_id, agent_backend, exit_code, command) VALUES ('f1', 'codex', 0, 'cmd')",
+      "INSERT INTO runs (project_id, feature_id, agent_backend, exit_code, command) VALUES ('p1', 'f1', 'codex', 0, 'cmd')",
     ).run();
     db.prepare(
-      "INSERT INTO runs (feature_id, agent_backend, exit_code, command) VALUES ('f1', 'gemini', 1, 'cmd')",
+      "INSERT INTO runs (project_id, feature_id, agent_backend, exit_code, command) VALUES ('p1', 'f1', 'gemini', 1, 'cmd')",
     ).run();
 
     const selection = await selector.selectBackend(context);
@@ -179,7 +180,7 @@ describe("BackendSelector", () => {
       taskType: TaskType.TEST,
     });
     expect(selection.backend).toBe("gemini");
-    expect(selection.model).toBe("gemini-pro");
+    expect(selection.model).toBe("pro");
     expect(selection.modelFailoverUsed).toBe(true);
   });
 

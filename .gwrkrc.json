@@ -8,7 +8,12 @@
     },
     "layout": "monorepo",
     "architecture": "Layered",
-    "conventions": "TDD"
+    "conventions": "TDD",
+    "design": {
+      "architecture": "hexagonal-functional",
+      "principles": ["functional-core", "clean-code", "tdd"],
+      "templateVersion": "1.0.0"
+    }
   },
   "server": {
     "port": 18790,

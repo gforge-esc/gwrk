@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { CodexAdapter } from "./adapter.js";
 
 describe("CodexAdapter", () => {
@@ -23,14 +23,42 @@ describe("CodexAdapter", () => {
 
     expect(result.command).toBe("codex");
     expect(result.args).toEqual([
+      "--ask-for-approval",
+      "never",
       "exec",
-      "--full-auto",
+      "--sandbox",
+      "workspace-write",
       "--model",
       "gpt-5-codex",
       "-",
     ]);
     expect(result.stdin).toContain("Line 1\nLine 2");
     expect(result.stdin).toContain("<command_safety>Rules</command_safety>");
+  });
+
+  it("only applies CODEX_MODEL supplied by the task", async () => {
+    vi.stubEnv("CODEX_MODEL", "fixture-ambient-model");
+    try {
+      const task = { agent: "codex" as const, prompt: "Fixture" };
+      expect((await adapter.dispatch(task)).args).toEqual([
+        "--ask-for-approval",
+        "never",
+        "exec",
+        "--sandbox",
+        "workspace-write",
+        "Fixture",
+      ]);
+      expect(
+        (
+          await adapter.dispatch({
+            ...task,
+            env: { CODEX_MODEL: "fixture-task-model" },
+          })
+        ).args,
+      ).toContain("fixture-task-model");
+    } finally {
+      vi.unstubAllEnvs();
+    }
   });
 
   it("normalizes exit codes in parseResult", () => {
@@ -42,5 +70,37 @@ describe("CodexAdapter", () => {
       exitCode: 0,
       unwrappedStdout: "done",
     });
+  });
+  it("normalizes JSON results and failed JSONL turns", () => {
+    const report = { summary: "GO", intents: [] };
+    expect(
+      adapter.parseResult(JSON.stringify(report, null, 2), "", 0),
+    ).toMatchObject({ status: "success", structuredOutput: report });
+
+    const message = JSON.stringify({
+      type: "item.completed",
+      item: { type: "agent_message", text: JSON.stringify(report) },
+    });
+    const terminal = JSON.stringify({ type: "turn.failed" });
+    expect(adapter.parseResult(`${message}\n${terminal}`, "", 0)).toMatchObject(
+      {
+        status: "failure",
+        exitCode: 1,
+        unwrappedStdout: JSON.stringify(report),
+      },
+    );
+  });
+  it("forwards typed effort and records the observed model separately", async () => {
+    const adapter = new CodexAdapter();
+    const dispatch = await adapter.dispatch({
+      effort: "high",
+      prompt: "Run checks",
+    });
+    const [flag, value] = ["-c", 'model_reasoning_effort="high"'];
+    const flagIndex = dispatch.args.indexOf(flag);
+    expect(flagIndex).toBeGreaterThanOrEqual(0);
+    expect(dispatch.args[flagIndex + 1]).toBe(value);
+    const stdout = "ok";
+    expect(adapter.parseResult(stdout, "", 0).observedModel).toBe("unknown");
   });
 });

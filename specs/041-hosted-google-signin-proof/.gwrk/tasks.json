@@ -1,0 +1,152 @@
+{
+  "featureId": "041-hosted-google-signin-proof",
+  "createdAt": "2026-11-11T16:25:13.889Z",
+  "generatedFrom": {
+    "plan": {
+      "hash": "db8091b4e4e600b7daf49d56dafa8841af795135912fcc2519e764d24e63aa9c",
+      "modifiedAt": "2026-11-11T16:24:18.225Z"
+    }
+  },
+  "phases": [
+    {
+      "id": "phase-01",
+      "title": "Deployment input validation",
+      "tasks": [
+        {
+          "id": "T001",
+          "title": "Create preflight.sh",
+          "description": "NEW deploy/hosted-auth-proof/preflight.sh. Reject missing credentials, placeholders and wildcard allowlist entries. Tests: tests/hosted-auth-proof/preflight.test.ts",
+          "status": "completed",
+          "gateScript": "gates/T001-gate.sh",
+          "sp": 2,
+          "completedAt": "2026-11-11T16:27:12.391Z"
+        },
+        {
+          "id": "T002",
+          "title": "Create .env.example",
+          "description": "NEW deploy/hosted-auth-proof/.env.example. Name the public host inputs",
+          "status": "completed",
+          "gateScript": "gates/T002-gate.sh",
+          "sp": 2,
+          "completedAt": "2026-11-11T16:27:13.680Z"
+        }
+      ],
+      "sp_estimate": 4,
+      "testTargets": [
+        "tests/hosted-auth-proof/preflight.test.ts"
+      ]
+    },
+    {
+      "id": "phase-02",
+      "title": "Isolated OpenID Connect fixture",
+      "tasks": [
+        {
+          "id": "T003",
+          "title": "Create oidc-issuer.mjs",
+          "description": "NEW tests/hosted-auth-proof/oidc-issuer.mjs. Issue signed identity tokens and verify the proof key for code exchange",
+          "status": "completed",
+          "gateScript": "gates/T003-gate.sh",
+          "sp": 2,
+          "completedAt": "2026-11-11T16:39:38.412Z"
+        },
+        {
+          "id": "T004",
+          "title": "Create gateway-proof.mjs",
+          "description": "NEW tests/hosted-auth-proof/gateway-proof.mjs. Run the real gateway and private origin on isolated networks",
+          "status": "completed",
+          "gateScript": "gates/T004-gate.sh",
+          "sp": 2,
+          "completedAt": "2026-11-11T16:39:59.229Z"
+        },
+        {
+          "id": "T005",
+          "title": "Create compose.test.yaml",
+          "description": "NEW tests/hosted-auth-proof/compose.test.yaml. Bind loopback test ports and select the synthetic issuer",
+          "status": "completed",
+          "gateScript": "gates/T005-gate.sh",
+          "sp": 2,
+          "completedAt": "2026-11-11T16:40:20.627Z"
+        }
+      ],
+      "sp_estimate": 6,
+      "testTargets": [
+        "tests/hosted-auth-proof/production-bundle.test.ts",
+        "tests/hosted-auth-proof/preflight.test.ts"
+      ]
+    },
+    {
+      "id": "phase-03",
+      "title": "Google gateway bundle",
+      "tasks": [
+        {
+          "id": "T006",
+          "title": "Create compose.yaml",
+          "description": "NEW deploy/hosted-auth-proof/compose.yaml. Pin images and publish the edge ports",
+          "status": "completed",
+          "gateScript": "gates/T006-gate.sh",
+          "sp": 2,
+          "completedAt": "2026-11-11T16:58:39.117Z"
+        },
+        {
+          "id": "T007",
+          "title": "Create dynamic.yaml",
+          "description": "NEW deploy/hosted-auth-proof/traefik/dynamic.yaml. Require an authenticated session before proxying status",
+          "status": "completed",
+          "gateScript": "gates/T007-gate.sh",
+          "sp": 2,
+          "completedAt": "2026-11-11T16:58:39.908Z"
+        },
+        {
+          "id": "T008",
+          "title": "Create oauth2-proxy.cfg",
+          "description": "NEW deploy/hosted-auth-proof/oauth2-proxy/oauth2-proxy.cfg. Require Google issuer, verified email and a secure cookie",
+          "status": "completed",
+          "gateScript": "gates/T008-gate.sh",
+          "sp": 2,
+          "completedAt": "2026-11-11T16:58:40.771Z"
+        },
+        {
+          "id": "T009",
+          "title": "Create default.conf",
+          "description": "NEW deploy/hosted-auth-proof/status/default.conf. Serve the fixed read-only response",
+          "status": "completed",
+          "gateScript": "gates/T009-gate.sh",
+          "sp": 2,
+          "completedAt": "2026-11-11T16:58:41.548Z"
+        }
+      ],
+      "sp_estimate": 8,
+      "testTargets": [
+        "tests/hosted-auth-proof/production-bundle.test.ts"
+      ]
+    },
+    {
+      "id": "phase-04",
+      "title": "Operations and live acceptance",
+      "tasks": [
+        {
+          "id": "T010",
+          "title": "Create README.md",
+          "description": "NEW deploy/hosted-auth-proof/README.md. Describe deployment, acceptance, allowlist revocation and teardown",
+          "status": "completed",
+          "gateScript": "gates/T010-gate.sh",
+          "sp": 2,
+          "completedAt": "2026-11-11T17:18:50.548Z"
+        },
+        {
+          "id": "T011",
+          "title": "Create live-acceptance.example.md",
+          "description": "NEW deploy/hosted-auth-proof/live-acceptance.example.md. Record the proof host and acceptance evidence",
+          "status": "completed",
+          "gateScript": "gates/T011-gate.sh",
+          "sp": 2,
+          "completedAt": "2026-11-11T17:18:51.765Z"
+        }
+      ],
+      "sp_estimate": 4,
+      "testTargets": [
+        "tests/hosted-auth-proof/production-bundle.test.ts"
+      ]
+    }
+  ]
+}

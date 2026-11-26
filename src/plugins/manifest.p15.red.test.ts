@@ -5,9 +5,7 @@
 import { describe, expect, it } from "vitest";
 import { SkillManifestSchema } from "./manifest.js";
 
-// Module does not exist yet (RED)
-
-describe("FR-014 / US-016: SkillManifestSchema Phase 15 RED", () => {
+describe("FR-014 / US-016: SkillManifestSchema Phase 15", () => {
   it("FR-014: accepts language and framework fields", () => {
     const manifest = {
       name: "react-ts-standards",

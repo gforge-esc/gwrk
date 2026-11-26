@@ -1,0 +1,26 @@
+{
+  "type": "workflow",
+  "name": "gwrk-architecture-assessment",
+  "version": "1.0.0",
+  "description": "Assess project architecture and propose ordered remediation features",
+  "outputSchema": {
+    "type": "object",
+    "required": [
+      "summary",
+      "intents",
+      "assessment"
+    ],
+    "properties": {
+      "summary": {
+        "type": "string"
+      },
+      "intents": {
+        "type": "array",
+        "maxItems": 0
+      },
+      "assessment": {
+        "type": "object"
+      }
+    }
+  }
+}

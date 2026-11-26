@@ -4,28 +4,27 @@
 
 import fs from "node:fs";
 import path from "node:path";
+import { dispatchNotification } from "../adapters/notifications/index.js";
 import type { IssueRecord } from "../db/issues.js";
-import {
-  type NotificationPort,
-  getNotificationPort,
-} from "../ports/notification-port.js";
+import type { NotificationPort } from "../ports/notification-port.js";
 
-export function associateIssueWithFeature(issue: {
-  title: string;
-  labels: string[];
-}): string | undefined {
+export function associateIssueWithFeature(
+  issue: { title: string; labels: string[] },
+  projectRoot = process.cwd(),
+): string | undefined {
   // 1. Label matching gwrk:<feature-id> (Priority: 1)
   const gwrkLabel = issue.labels.find((l) => l.startsWith("gwrk:"));
   if (gwrkLabel) {
     return gwrkLabel.replace("gwrk:", "");
   }
 
+  const specsDir = path.join(projectRoot, "specs");
+
   // 2. Title containing [<feature-number>] (Priority: 2)
   const bracketMatch = issue.title.match(/\[(\d{3})\]/);
   if (bracketMatch) {
     const num = bracketMatch[1];
     // Try to find the full feature ID in the specs directory
-    const specsDir = path.join(process.cwd(), "specs");
     if (fs.existsSync(specsDir)) {
       const files = fs.readdirSync(specsDir);
       const match = files.find((f) => f.startsWith(num));
@@ -41,7 +40,6 @@ export function associateIssueWithFeature(issue: {
     const matched = slugMatch[1];
     if (matched.length === 3) {
       // It's just a number, try to expand it
-      const specsDir = path.join(process.cwd(), "specs");
       if (fs.existsSync(specsDir)) {
         const files = fs.readdirSync(specsDir);
         const match = files.find((f) => f.startsWith(matched));
@@ -70,19 +68,5 @@ export async function notifyIssueOpened(
     },
   ];
 
-  const port = notifier ?? getNotificationPort();
-  if (port) {
-    await port.notify({ text, blocks });
-    return;
-  }
-
-  const { notifySlack } = await import("../server/slack-notify.js");
-  await notifySlack(
-    {
-      text,
-      blocks,
-    },
-    undefined,
-    {},
-  );
+  await dispatchNotification({ text, blocks }, notifier);
 }

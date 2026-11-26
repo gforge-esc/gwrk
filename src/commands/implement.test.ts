@@ -3,18 +3,22 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { loadConfig } from "../utils/config.js";
-import { run } from "../utils/exec.js";
+import * as routing from "../utils/resolve-agent.js";
 import { runGate } from "../utils/gate-runner.js";
 import { loadTaskState } from "../utils/state.js";
 import { implementAction } from "./implement.js";
 
-vi.mock("../utils/exec.js", () => ({
-  run: vi.fn().mockResolvedValue(undefined),
+const executeWorkflow = vi.hoisted(() => vi.fn());
+vi.mock("../plugins/workflow-runtime.js", () => ({
+  WorkflowRuntime: class {
+    executeWorkflow = executeWorkflow;
+  },
 }));
 
 vi.mock("../utils/gate-runner.js", () => ({
-  runGate: vi.fn().mockResolvedValue({ passed: false, exitCode: 1, output: "" }),
+  runGate: vi
+    .fn()
+    .mockResolvedValue({ passed: false, exitCode: 1, output: "" }),
 }));
 
 vi.mock("../utils/config.js", () => ({
@@ -51,6 +55,16 @@ vi.mock("../db/runs.js", () => ({
 vi.mock("node:fs", () => ({
   default: {
     existsSync: vi.fn().mockReturnValue(true),
+    lstatSync(file: string, options?: { throwIfNoEntry?: boolean }) {
+      const runner = process.env.GWRK_RUNNER_PROFILE || "local";
+      if (file.endsWith(`.gwrk/models/route-lock.${runner}.json`)) {
+        if (options?.throwIfNoEntry === false) return undefined;
+        throw Object.assign(new Error("No route lock in this fixture"), {
+          code: "ENOENT",
+        });
+      }
+      throw new Error(`Unexpected lstat in implement fixture: ${file}`);
+    },
   },
   existsSync: vi.fn().mockReturnValue(true),
 }));
@@ -72,23 +86,47 @@ describe("implementAction", () => {
     });
   });
 
-  it("iterates through tasks and calls agent-run.sh", async () => {
+  it("executes each open task and runs both gates in task order", async () => {
     await implementAction("004-ship-loop", "1", {});
 
     expect(loadTaskState).toHaveBeenCalled();
-    expect(run).toHaveBeenCalledTimes(2);
-    expect(run).toHaveBeenNthCalledWith(
-      1,
-      expect.stringContaining("agent-run.sh"),
-      ["implement", "004-ship-loop", "1", "T001"],
-      expect.any(Object),
-    );
-    expect(run).toHaveBeenNthCalledWith(
-      2,
-      expect.stringContaining("agent-run.sh"),
-      ["implement", "004-ship-loop", "1", "T002"],
-      expect.any(Object),
-    );
+    expect(executeWorkflow).toHaveBeenCalledTimes(2);
+    for (const [index, task] of ["T001", "T002"].entries()) {
+      expect(executeWorkflow).toHaveBeenNthCalledWith(
+        index + 1,
+        "gwrk-implement",
+        expect.stringMatching(new RegExp(`${task}.*004-ship-loop.*phase-01`)),
+        expect.objectContaining({ agent: "mock-backend" }),
+      );
+    }
+    expect(
+      vi.mocked(runGate).mock.calls.map(([gate]) => gate.split("/").pop()),
+    ).toEqual(["T001-gate.sh", "T001-gate.sh", "T002-gate.sh", "T002-gate.sh"]);
+  });
+
+  it("passes the qualified route to the workflow for each task", async () => {
+    const model = "qualified-implementation-model";
+    const selected = vi.spyOn(routing, "resolveAgent").mockReturnValue({
+      backend: "codex",
+      model,
+      effort: "high",
+      routeMode: "pinned",
+      role: "implement",
+    });
+    try {
+      await implementAction("004-ship-loop", "1", {});
+      expect(executeWorkflow).toHaveBeenCalledTimes(2);
+      for (const [, , options] of executeWorkflow.mock.calls) {
+        expect(options).toMatchObject({
+          agent: "codex",
+          model,
+          effort: "high",
+          routeMode: "pinned",
+        });
+      }
+    } finally {
+      selected.mockRestore();
+    }
   });
 
   it("skips tasks that already pass pre-flight gate", async () => {
@@ -103,10 +141,10 @@ describe("implementAction", () => {
 
     await implementAction("004-ship-loop", "1", {});
 
-    expect(run).toHaveBeenCalledTimes(1);
-    expect(run).toHaveBeenCalledWith(
-      expect.stringContaining("agent-run.sh"),
-      ["implement", "004-ship-loop", "1", "T002"],
+    expect(executeWorkflow).toHaveBeenCalledTimes(1);
+    expect(executeWorkflow).toHaveBeenCalledWith(
+      "gwrk-implement",
+      expect.stringContaining("T002"),
       expect.any(Object),
     );
   });
@@ -114,6 +152,8 @@ describe("implementAction", () => {
   it("respects dry-run flag", async () => {
     await implementAction("004-ship-loop", "1", { dryRun: true });
 
-    expect(run).not.toHaveBeenCalled();
+    expect(loadTaskState).toHaveBeenCalled();
+    expect(runGate).toHaveBeenCalledTimes(2);
+    expect(executeWorkflow).not.toHaveBeenCalled();
   });
 });

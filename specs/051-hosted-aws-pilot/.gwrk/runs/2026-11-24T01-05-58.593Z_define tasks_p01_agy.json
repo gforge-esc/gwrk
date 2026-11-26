@@ -1,0 +1,21 @@
+{
+  "runId": "2026-11-24T01:05:58.593Z_define_p01",
+  "feature": "051-hosted-aws-pilot",
+  "phase": "p01",
+  "command": "define tasks",
+  "agent": "agy",
+  "model": "unknown",
+  "startedAt": "2026-11-24T01:05:58.593Z",
+  "finishedAt": "2026-11-24T01:05:59.064Z",
+  "durationS": 0,
+  "exitCode": 0,
+  "attempt": 1,
+  "filesChanged": 19,
+  "linesAdded": 746,
+  "linesDeleted": 0,
+  "gitCommit": "f855d4b11b22ee37b6f51b0a7bd22dce66d454c4",
+  "gitBranch": "codex/hosted-pilot-051-nov23",
+  "digest": [],
+  "requestedModel": "unknown",
+  "observedModel": "unknown"
+}

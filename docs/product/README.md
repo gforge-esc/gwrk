@@ -10,9 +10,9 @@ Start here. Read in this order.
 
 | # | Document | What It Tells You |
 |---|---|---|
-| 1 | [what-is-gwrk.md](what-is-gwrk.md) | Brand, name, mascot, philosophy, product overview |
-| 2 | [foxtrot-charlie.md](foxtrot-charlie.md) | Operating model — the four pillars that drive everything |
-| 3 | [architecture.md](architecture.md) | Authoritative tech spec — project structure, stack, pipeline, coding standards |
+| 1 | [what-is-gwrk.md](WHAT_IS_GWRK.md) | Brand, name, mascot, philosophy, product overview |
+| 2 | [foxtrot-charlie.md](FOXTROT-CHARLIE.md) | Operating model — the four pillars that drive everything |
+| 3 | [architecture.md](../grounding/architecture.md) | Authoritative tech spec — project structure, stack, pipeline, coding standards |
 | 4 | [GWRK-PRD-PRFAQ.md](GWRK-PRD-PRFAQ.md) | Master PRD — exhaustive product definition (91KB, read sections as needed) |
 
 ---
@@ -33,33 +33,12 @@ Start here. Read in this order.
 ### `decisions/` — Architectural Decision Records
 | Document | Decision |
 |---|---|
-| [ADR-001-task-tracking.md](decisions/ADR-001-task-tracking.md) | Flat JSON/JSONL over Beads/Dolt for task tracking (superseded by ADR-002 for storage) |
-| [ADR-002-sqlite-execution-ledger.md](decisions/ADR-002-sqlite-execution-ledger.md) | Global SQLite execution ledger for tasks, runs, compression, learning |
+| [ADR-001-task-tracking.md](../decisions/ADR-001-task-tracking.md) | Flat JSON/JSONL over Beads/Dolt for task tracking (superseded by ADR-002 for storage) |
+| [ADR-002-sqlite-execution-ledger.md](../decisions/ADR-002-sqlite-execution-ledger.md) | Global SQLite execution ledger for tasks, runs, compression, learning |
 
-### `reference/` — Supporting Material
-| Document | Contents |
-|---|---|
-| [architecture-diagrams.md](reference/architecture-diagrams.md) | Mermaid visualizations — agent pipeline, system architecture, Done Done! protocol, git branching, App Home Tab |
-| [codex-cloud-research-report.md](reference/codex-cloud-research-report.md) | Codex Cloud platform reference — environments, container lifecycle, GitHub/Slack integration, gwrk Tier 3 architecture |
-| [extraction-manifest.md](reference/extraction-manifest.md) | Exhaustive inventory of the 78-file CodeRed workflow system being extracted into gwrk |
-| [reasoning-modes.md](reference/reasoning-modes.md) | Raw reasoning mode catalogue — 45 modes across 7 categories (source material) |
-| [reasoning-skills.md](reference/reasoning-skills.md) | **Compound reasoning skills** — 6 mode stacks purpose-built for gwrk definitional work |
+### Skills
 
-### `.agents/skills/` — Compound Reasoning Skills
-
-Six compound reasoning skills that stack modes from `reasoning-modes.md` into sequenced pass systems for gwrk's definitional workflows. See [reasoning-skills.md](reference/reasoning-skills.md) for full documentation.
-
-| Skill | Modes | gwrk Activity |
-|---|---|---|
-| **specify-sharpen** | Reductive + Interviewer + Audit | `/specify` — harden specs to executable assertions |
-| **decision-forge** | Adversarial + Steel-man + Calibration | Architecture choices, naming, prioritization |
-| **truth-extract** | Forensic + Socratic + Uncertainty | `/discover` — separate signal from noise |
-| **architecture-stress-test** | Analytical + Pre-mortem + Comparative | `/plan` review — kill bad plans before they kill you |
-| **naming-forge** | Dialectical + Aesthetic + Combinatorial | Product naming, CLI taxonomy, category definition |
-| **governance-audit** | Audit + Comparative + Integrative | `/analyze` — cross-artifact consistency |
-| **signal-cut** | Narrative + Subversive + Practitioner | Marketing content that converts technical skeptics |
-| **position-lock** | Reductive + Comparative + Aesthetic | Taglines, pitches, positioning — complex→clear |
-| **audience-model** | Modeling + Interviewer + Forensic | User personas, content strategy, demo planning |
+[gwrk-plugins](https://github.com/gforge-esc/gwrk-plugins) lists installable plugins. The [reasoning modes taxonomy](../archive/reference/reasoning-modes.md) supplies the seed command.
 
 ### `branding/` — Visual Assets
 | Asset | Description |

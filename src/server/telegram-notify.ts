@@ -3,9 +3,10 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import fs from "node:fs";
-import os from "node:os";
 import path from "node:path";
 import type { KnownBlock } from "@slack/types";
+import { warnCli } from "../adapters/cli/output-scope.js";
+import { gwrkHome, usesHostedRuntime } from "../adapters/config/paths.js";
 import type { SlackMessage } from "./slack-messages.js";
 
 export interface TelegramConfig {
@@ -30,6 +31,7 @@ function readJsonSafe(filePath: string): Record<string, any> | null {
 export function loadTelegramConfig(
   projectRoot: string = process.cwd(),
 ): TelegramConfig | null {
+  if (usesHostedRuntime()) return null;
   const envToken = process.env.TELEGRAM_BOT_TOKEN?.trim();
   const envChatId = process.env.TELEGRAM_CHAT_ID?.trim();
   if (envToken && envChatId) {
@@ -38,8 +40,7 @@ export function loadTelegramConfig(
 
   const localCfg = readJsonSafe(path.join(projectRoot, ".gwrkrc.local.json"));
   const localTg = localCfg?.project?.telegram ?? localCfg?.telegram;
-  const globalHome = process.env.GWRK_HOME || path.join(os.homedir(), ".gwrk");
-  const globalCfg = readJsonSafe(path.join(globalHome, "config.json"));
+  const globalCfg = readJsonSafe(path.join(gwrkHome(), "config.json"));
   const globalTg = globalCfg?.telegram ?? globalCfg?.project?.telegram;
 
   const botToken = envToken || localTg?.botToken || globalTg?.botToken;
@@ -107,7 +108,9 @@ export async function notifyTelegram(
     | SlackMessage
     | { text: string; blocks?: KnownBlock[]; chatId?: string },
   projectRoot: string = process.cwd(),
+  signal?: AbortSignal,
 ): Promise<boolean> {
+  if (signal?.aborted) return false;
   const cfg = loadTelegramConfig(projectRoot);
   if (!cfg) return false;
 
@@ -119,6 +122,7 @@ export async function notifyTelegram(
   try {
     const res = await fetch(url, {
       method: "POST",
+      signal,
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         chat_id: chatId,
@@ -128,8 +132,9 @@ export async function notifyTelegram(
     });
     return res.ok;
   } catch (err) {
+    if (signal?.aborted) return false;
     const msg = err instanceof Error ? err.message : String(err);
-    console.warn(`Failed to send Telegram notification: ${msg}`);
+    warnCli(`Failed to send Telegram notification: ${msg}`);
     return false;
   }
 }

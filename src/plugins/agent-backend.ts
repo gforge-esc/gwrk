@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import type { DiscoveredModel } from "../domain/model-qualification.js";
 import type {
   AgentTaskRequest as TaskDispatch,
   AgentTaskResult as TaskResult,
@@ -14,6 +15,16 @@ export interface QuotaStatus {
   backoffS?: number;
 }
 
+export class ModelDiscoveryError extends Error {
+  constructor(
+    readonly status: "auth_error" | "rate_limited",
+    message: string,
+  ) {
+    super(message);
+    this.name = "ModelDiscoveryError";
+  }
+}
+
 export interface ProbeResult {
   status: "available" | "rate_limited" | "auth_error" | "unavailable";
   latencyMs: number;
@@ -24,8 +35,9 @@ export interface AgentDispatch {
   command: string;
   args: string[];
   stdin: string;
-  env?: Record<string, string>;
+  env?: Record<string, string | undefined>;
   outputFormat?: "text" | "json" | "stream-json";
+  inputFormat?: "text" | "stream-json";
 }
 
 /**
@@ -37,6 +49,7 @@ export interface AgentBackend {
    */
   readonly name: string;
   readonly displayName?: string;
+  readonly supportsModelForwarding?: boolean;
 
   /**
    * When true, this agent writes files directly via its own tools rather than
@@ -66,12 +79,20 @@ export interface AgentBackend {
    */
   dispatch(task: TaskDispatch): Promise<AgentDispatch>;
 
+  resolveModel?(
+    task: Pick<TaskDispatch, "model" | "env">,
+    ambientEnv?: Readonly<NodeJS.ProcessEnv>,
+  ): string | undefined;
+
   /**
    * Returns true if the backend's required CLI or integration is available.
    */
-  isAvailable(): Promise<boolean>;
+  isAvailable(signal?: AbortSignal): Promise<boolean>;
 
-  checkQuota?(): Promise<QuotaStatus>;
+  discoverModels?(context?: { projectRoot: string }): Promise<
+    readonly DiscoveredModel[]
+  >;
+  checkQuota?(signal?: AbortSignal): Promise<QuotaStatus>;
   probe?(): Promise<ProbeResult>;
 
   /**

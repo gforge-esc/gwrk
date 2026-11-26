@@ -1,0 +1,19 @@
+{
+  "runId": "2026-11-11T18:30:14.598Z_define_p01",
+  "feature": "044-architecture-aware-policy",
+  "phase": "p01",
+  "command": "define tests",
+  "agent": "codex",
+  "model": "gpt-6-astra",
+  "startedAt": "2026-11-11T18:30:14.598Z",
+  "finishedAt": "2026-11-11T18:34:40.723Z",
+  "durationS": 266,
+  "exitCode": 0,
+  "attempt": 1,
+  "filesChanged": 5,
+  "linesAdded": 286,
+  "linesDeleted": 1,
+  "gitCommit": "591ad494b76140c317644070c39542a50aaa17eb",
+  "gitBranch": "codex/architecture-aware-policy-plan",
+  "digest": []
+}

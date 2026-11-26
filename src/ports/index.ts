@@ -7,3 +7,5 @@ export * from "./toolchain-port.js";
 export * from "./notification-port.js";
 export * from "./store-port.js";
 export * from "./vcs-port.js";
+export * from "./model-qualification-port.js";
+export * from "./auth-port.js";

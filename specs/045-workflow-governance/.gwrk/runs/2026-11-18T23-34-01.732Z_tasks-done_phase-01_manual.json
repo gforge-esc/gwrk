@@ -1,0 +1,19 @@
+{
+  "runId": "2026-11-18T23:34:01.732Z_tasks-done_T004",
+  "feature": "045-workflow-governance",
+  "phase": "phase-01",
+  "command": "tasks-done",
+  "agent": "manual",
+  "model": "none",
+  "startedAt": "2026-11-18T23:34:01.732Z",
+  "finishedAt": "2026-11-18T23:34:06.502Z",
+  "durationS": 5,
+  "exitCode": 0,
+  "attempt": 1,
+  "filesChanged": 1,
+  "linesAdded": 12,
+  "linesDeleted": 8,
+  "gitCommit": "805f87b4bd8456b4c994f9fda4b7fb29f8eec9a7",
+  "gitBranch": "feat/045-workflow-governance",
+  "digest": []
+}

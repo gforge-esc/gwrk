@@ -10,8 +10,14 @@ import { execSync } from "node:child_process";
 import { EventEmitter } from "node:events";
 import fs from "node:fs";
 import path from "node:path";
+import {
+  logCliError,
+  logCliOutput,
+  warnCli,
+} from "../adapters/cli/output-scope.js";
+import { isPolyglotTestFile } from "../domain/test-rules.js";
 import { WorkflowRuntime } from "../plugins/workflow-runtime.js";
-import { isPolyglotTestFile } from "../ports/toolchain-port.js";
+import type { AgentTaskRequest } from "../ports/agent-port.js";
 import { dryRun as dryRunFmt } from "../utils/format.js";
 import {
   type GateGenResult,
@@ -19,6 +25,7 @@ import {
   generateFilesystemGates,
   generateRunner,
 } from "../utils/gate-gen.js";
+import { commitPaths } from "../utils/git.js";
 import { readRefsContent } from "../utils/read-refs.js";
 import { loadTaskState } from "../utils/state.js";
 import {
@@ -30,13 +37,16 @@ import {
 import { planToTasks } from "./plan-to-tasks.js";
 import { detectProfile } from "./profile-detector.js";
 
+type RoutedDefineConfig = DefineRunConfig &
+  Pick<AgentTaskRequest, "effort" | "routeMode">;
+
 export class DefineOrchestrator extends EventEmitter {
-  private config: DefineRunConfig;
+  private config: RoutedDefineConfig;
   private state: DefineState;
   private runtime: WorkflowRuntime;
 
   constructor(
-    config: DefineRunConfig,
+    config: RoutedDefineConfig,
     state?: DefineState,
     runtime?: WorkflowRuntime,
   ) {
@@ -60,7 +70,7 @@ export class DefineOrchestrator extends EventEmitter {
         const content = fs.readFileSync(statePath, "utf-8");
         return JSON.parse(content) as DefineState;
       } catch (err) {
-        console.warn(
+        warnCli(
           `Warning: Could not load persisted state from ${statePath}: ${err}`,
         );
       }
@@ -170,10 +180,13 @@ export class DefineOrchestrator extends EventEmitter {
    */
   public async runLoop(
     initialInput?: string,
-    options: { stopAfterOne?: boolean } = {},
+    options: {
+      stopAfterOne?: boolean;
+      onSpecified?: (observedModel?: string) => void;
+    } = {},
   ): Promise<number> {
     if (!this.config.dryRun) {
-      console.log(
+      logCliOutput(
         `Starting Define Loop for ${this.config.featureId} at stage: ${this.state.stage}`,
       );
     }
@@ -189,7 +202,7 @@ export class DefineOrchestrator extends EventEmitter {
 
       switch (this.state.stage) {
         case DefineStage.SPECIFY:
-          result = await this.stageSpecify(currentInput);
+          result = await this.stageSpecify(currentInput, options.onSpecified);
           break;
         case DefineStage.PLAN:
           result = await this.stagePlan(currentInput);
@@ -216,7 +229,7 @@ export class DefineOrchestrator extends EventEmitter {
 
       if (!result.success) {
         if (!this.config.dryRun) {
-          console.error(`Stage ${this.state.stage} failed: ${result.error}`);
+          logCliError(`Stage ${this.state.stage} failed: ${result.error}`);
         }
         return result.exitCode;
       }
@@ -226,21 +239,32 @@ export class DefineOrchestrator extends EventEmitter {
       if (!this.config.dryRun) {
         // Auto-commit define artifacts after each successful stage
         try {
-          execSync("git add -A", { cwd: this.config.cwd });
           const stageName = this.state.stage.toLowerCase().replace(/_/g, "-");
-          execSync(
-            `git commit --author="$(git config user.name) <$(git config user.email)>" -m "chore(${this.config.featureId}): define ${stageName}"`,
-            {
-              cwd: this.config.cwd,
-              env: { ...process.env, GWRK_SHIP: "1" },
-              stdio: "ignore",
-            },
-          );
+          const message = `chore(${this.config.featureId}): define ${stageName}`;
+          if (this.state.stage === DefineStage.PLAN) {
+            const feature = path.join("specs", this.config.featureId);
+            const outputs = ["plan.md", "data-model.md", "contracts"]
+              .map((output) => path.join(feature, output))
+              .filter((output) =>
+                fs.existsSync(path.join(this.config.cwd, output)),
+              );
+            commitPaths(this.config.cwd, message, outputs);
+          } else {
+            execSync("git add -A", { cwd: this.config.cwd });
+            execSync(
+              `git commit --author="$(git config user.name) <$(git config user.email)>" -m "${message}"`,
+              {
+                cwd: this.config.cwd,
+                env: { ...process.env, GWRK_SHIP: "1" },
+                stdio: "ignore",
+              },
+            );
+          }
         } catch {
           // Non-fatal — nothing to commit or git not available
         }
 
-        console.log(`Transitioning: ${this.state.stage} -> ${next}`);
+        logCliOutput(`Transitioning: ${this.state.stage} -> ${next}`);
       }
 
       this.state.stage = next;
@@ -291,18 +315,21 @@ export class DefineOrchestrator extends EventEmitter {
         "CRITICAL: Use the reference document above as the authoritative source.",
       ].join("\n");
     } catch (err) {
-      console.warn(`Warning: Could not read refs file ${resolvedRefs}: ${err}`);
+      warnCli(`Warning: Could not read refs file ${resolvedRefs}: ${err}`);
       return "";
     }
   }
 
-  private async stageSpecify(input?: string): Promise<StageResult> {
+  private async stageSpecify(
+    input?: string,
+    onSpecified?: (observedModel?: string) => void,
+  ): Promise<StageResult> {
     if (this.config.dryRun) {
       dryRunFmt("gwrk-specify", this.config.backend);
       return { success: true, exitCode: 0 };
     }
 
-    console.log("Stage: SPECIFY");
+    logCliOutput("Stage: SPECIFY");
     try {
       const refs = this.getRefsContext();
       const prompt =
@@ -315,13 +342,16 @@ export class DefineOrchestrator extends EventEmitter {
         {
           agent: this.config.backend,
           model: this.config.model,
+          effort: this.config.effort,
+          routeMode: this.config.routeMode,
           projectRoot: this.config.cwd,
           quiet: this.config.quiet ?? true,
           tolerant: this.config.tolerant,
         },
       );
 
-      console.log(`  ${result.summary}`);
+      onSpecified?.(result.observedModel);
+      logCliOutput(`  ${result.summary}`);
       return { success: true, exitCode: 0 };
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -335,7 +365,7 @@ export class DefineOrchestrator extends EventEmitter {
       return { success: true, exitCode: 0 };
     }
 
-    console.log("Stage: PLAN");
+    logCliOutput("Stage: PLAN");
     try {
       const refs = this.getRefsContext();
       const prompt =
@@ -354,7 +384,7 @@ export class DefineOrchestrator extends EventEmitter {
         },
       );
 
-      console.log(`  ${result.summary}`);
+      logCliOutput(`  ${result.summary}`);
       return { success: true, exitCode: 0 };
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -368,7 +398,7 @@ export class DefineOrchestrator extends EventEmitter {
       return { success: true, exitCode: 0 };
     }
 
-    console.log("Stage: DEFINE_TESTS");
+    logCliOutput("Stage: DEFINE_TESTS");
     try {
       const refs = this.getRefsContext();
       const prompt =
@@ -387,7 +417,7 @@ export class DefineOrchestrator extends EventEmitter {
         },
       );
 
-      console.log(`  ${result.summary}`);
+      logCliOutput(`  ${result.summary}`);
       return { success: true, exitCode: 0 };
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -401,7 +431,7 @@ export class DefineOrchestrator extends EventEmitter {
       return { success: true, exitCode: 0 };
     }
 
-    console.log("Stage: PLAN_TO_TASKS");
+    logCliOutput("Stage: PLAN_TO_TASKS");
     try {
       const featureDir = path.join(
         this.config.cwd,
@@ -419,7 +449,7 @@ export class DefineOrchestrator extends EventEmitter {
         (sum, p) => sum + p.tasks.length,
         0,
       );
-      console.log(
+      logCliOutput(
         `  ✓ Generated ${state.phases.length} phase(s), ${taskCount} task(s) from plan.md (deterministic)`,
       );
 
@@ -456,10 +486,10 @@ export class DefineOrchestrator extends EventEmitter {
             }
           }
           if (cleaned > 0)
-            console.log(`  ✓ cleaned ${cleaned} stale ship state file(s)`);
+            logCliOutput(`  ✓ cleaned ${cleaned} stale ship state file(s)`);
         }
       } catch (cleanupErr) {
-        console.warn(`  ⚠ state cleanup failed: ${cleanupErr}`);
+        warnCli(`  ⚠ state cleanup failed: ${cleanupErr}`);
       }
 
       // ── Deterministic gate generation ──
@@ -468,7 +498,7 @@ export class DefineOrchestrator extends EventEmitter {
         let gateResult: GateGenResult;
 
         if (fs.existsSync(gapMatrixPath)) {
-          console.log("  ▸ generating deterministic gates from gap-matrix.md");
+          logCliOutput("  ▸ generating deterministic gates from gap-matrix.md");
           gateResult = generateDeterministicGates(
             featureDir,
             gapMatrixPath,
@@ -476,18 +506,20 @@ export class DefineOrchestrator extends EventEmitter {
             profile,
           );
         } else {
-          console.log("  ▸ generating vitest gates from filesystem convention");
+          logCliOutput(
+            "  ▸ generating vitest gates from filesystem convention",
+          );
           gateResult = generateFilesystemGates(featureDir, state.phases);
         }
 
         const gatesDir = path.join(featureDir, "gates");
         if (fs.existsSync(gatesDir)) generateRunner(gatesDir);
 
-        console.log(
+        logCliOutput(
           `  ✓ gates: ${gateResult.generated} generated, ${gateResult.skipped} skipped`,
         );
         if (gateResult.invalidGateIds.length > 0) {
-          console.warn(
+          warnCli(
             `  ⚠ gap-matrix Gate values matching no task id (no gate written): ${gateResult.invalidGateIds.join(", ")}`,
           );
         }
@@ -497,7 +529,7 @@ export class DefineOrchestrator extends EventEmitter {
         // no executable gates while define reports success.
         const msg =
           gateError instanceof Error ? gateError.message : String(gateError);
-        console.error(`  ✗ gate generation failed: ${msg}`);
+        logCliError(`  ✗ gate generation failed: ${msg}`);
         return {
           success: false,
           exitCode: 1,
@@ -518,7 +550,7 @@ export class DefineOrchestrator extends EventEmitter {
       return { success: true, exitCode: 0 };
     }
 
-    console.log("Stage: CHECKLIST");
+    logCliOutput("Stage: CHECKLIST");
     try {
       const result = await this.runtime.executeWorkflow(
         "gwrk-checklist",
@@ -532,11 +564,11 @@ export class DefineOrchestrator extends EventEmitter {
         },
       );
 
-      console.log(`  ${result.summary}`);
+      logCliOutput(`  ${result.summary}`);
       return { success: true, exitCode: 0 };
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
-      console.warn(`  Warning: CHECKLIST stage skipped or failed: ${msg}`);
+      warnCli(`  Warning: CHECKLIST stage skipped or failed: ${msg}`);
       return { success: true, exitCode: 0 };
     }
   }
@@ -547,7 +579,7 @@ export class DefineOrchestrator extends EventEmitter {
       return { success: true, exitCode: 0 };
     }
 
-    console.log("Stage: ANALYZE");
+    logCliOutput("Stage: ANALYZE");
     try {
       const result = await this.runtime.executeWorkflow(
         "gwrk-analyze",
@@ -561,11 +593,11 @@ export class DefineOrchestrator extends EventEmitter {
         },
       );
 
-      console.log(`  ${result.summary}`);
+      logCliOutput(`  ${result.summary}`);
       return { success: true, exitCode: 0 };
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
-      console.warn(`  Warning: ANALYZE stage skipped or failed: ${msg}`);
+      warnCli(`  Warning: ANALYZE stage skipped or failed: ${msg}`);
       return { success: true, exitCode: 0 };
     }
   }

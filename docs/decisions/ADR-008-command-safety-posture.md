@@ -199,7 +199,7 @@ These validate the posture. The ADR formalizes and extends them.
 
 ## 5. References
 
-- [Daily-Driver Audit: Section N, FM-5](../daily-driver-audit.md) — Corrected diagnosis of hung sub-commands.
+- [Daily-Driver Audit: Section N, FM-5](https://github.com/gforge-esc/gwrk/blob/cli-v1.6.0-beta.1/docs/daily-driver-audit.md) — Corrected diagnosis of hung sub-commands.
 - [R007: Project Perspective](../research/R007-project-perspective/brief.md) — Project-specific command safety via enforcement skills.
 - ADR-007: Single Dispatch Path — Establishes `WorkflowRuntime` as the injection point for prompt blocks.
 - F004 spec: Ship loop execution model.

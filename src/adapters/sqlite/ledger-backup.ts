@@ -1,0 +1,792 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
+import { createHash } from "node:crypto";
+import { constants } from "node:fs";
+import {
+  copyFile,
+  lstat,
+  mkdir,
+  mkdtemp,
+  open,
+  realpath,
+  rename,
+  rm,
+  writeFile,
+} from "node:fs/promises";
+import {
+  basename,
+  dirname,
+  isAbsolute,
+  join,
+  relative,
+  resolve,
+  sep,
+} from "node:path";
+import { isDeepStrictEqual } from "node:util";
+import Database from "better-sqlite3";
+import {
+  LedgerBackupManifestSchema,
+  type LedgerBackupMetadata,
+  LedgerBackupMetadataSchema,
+  type LedgerSummary,
+  PENDING_LEDGER_RESTORE,
+} from "../../domain/ledger-backup.js";
+import type { AppliedMigration } from "../../domain/release-packaging.js";
+import {
+  type LedgerBackupPort,
+  type LedgerBackupRequest,
+  MissingLedgerError,
+  PendingLedgerRestoreError,
+  type VerifiedLedgerBackup,
+} from "../../ports/release-ops-port.js";
+import { sha256 } from "../release/inventory.js";
+import { readRepositoryEvidence } from "../release/repository-evidence.js";
+import { instanceLockPath, ledgerLockPath } from "../server/instance-lock.js";
+
+const DB_FILE = "gwrk.db";
+const MAINTENANCE_DB_FILE = ".ledger-maintenance.db";
+const SQLITE_SIDECAR_SUFFIXES = ["-wal", "-shm", "-journal"];
+const RESERVED_MAINTENANCE_COMPONENTS = new Set([
+  MAINTENANCE_DB_FILE,
+  ...SQLITE_SIDECAR_SUFFIXES.map((suffix) => `${MAINTENANCE_DB_FILE}${suffix}`),
+]);
+const METADATA_FILE = "repo-metadata.json";
+const MANIFEST_FILE = "backup-manifest.json";
+const DEVICE_FILE = "device.json";
+const RESTORE_TRANSACTION_FILE = "restore-transaction.json";
+
+async function syncPath(path: string): Promise<void> {
+  const handle = await open(path, "r");
+  try {
+    await handle.sync();
+  } finally {
+    await handle.close();
+  }
+}
+
+export function readAppliedMigrations(dbPath: string): AppliedMigration[] {
+  return readLedger(dbPath, (db) => {
+    const hasDigest = db
+      .prepare(
+        "SELECT 1 FROM pragma_table_info('_migrations') WHERE name = 'sha256'",
+      )
+      .get();
+    return db
+      .prepare(
+        hasDigest
+          ? "SELECT name, sha256 FROM _migrations ORDER BY name"
+          : "SELECT name, NULL AS sha256 FROM _migrations ORDER BY name",
+      )
+      .all() as AppliedMigration[];
+  });
+}
+
+function appliedMigrations(db: Database.Database): string[] {
+  return db
+    .prepare("SELECT name FROM _migrations ORDER BY name")
+    .pluck()
+    .all() as string[];
+}
+
+type BackupProject = { id: string; path: string };
+
+function projectRows(db: Database.Database): BackupProject[] {
+  return db
+    .prepare("SELECT * FROM projects ORDER BY id")
+    .all() as BackupProject[];
+}
+
+function readLedger<T>(dbPath: string, read: (db: Database.Database) => T): T {
+  const db = new Database(dbPath, { readonly: true, fileMustExist: true });
+  try {
+    return db.transaction(() => read(db))();
+  } finally {
+    db.close();
+  }
+}
+
+function summarizeLedger(
+  db: Database.Database,
+  metadata: LedgerBackupMetadata,
+): LedgerSummary {
+  if (db.pragma("integrity_check", { simple: true }) !== "ok") {
+    throw new Error("Ledger integrity check failed.");
+  }
+  const foreignKeys = db.pragma("foreign_key_check") as unknown[];
+  if (foreignKeys.length > 0)
+    throw new Error("Ledger foreign key check failed.");
+
+  if (!isDeepStrictEqual(projectRows(db), metadata.projects)) {
+    throw new Error("Backup project metadata does not match the ledger.");
+  }
+  const projectIds = metadata.projects.map(({ id }) => id);
+  const projectPaths = new Map(
+    metadata.projects.map(({ id, path }) => [id, path]),
+  );
+  const repoIds = new Set(
+    metadata.repositories.map(({ projectId }) => projectId),
+  );
+  if (
+    repoIds.size !== metadata.repositories.length ||
+    [...repoIds].some((id) => !projectPaths.has(id))
+  ) {
+    throw new Error(
+      "Repository metadata has duplicate or unknown project IDs.",
+    );
+  }
+  for (const { projectId, root } of metadata.repositories) {
+    const path = projectPaths.get(projectId);
+    if (typeof path !== "string" || root !== resolve(path)) {
+      throw new Error(
+        `Repository metadata root does not match the ledger for ${projectId}.`,
+      );
+    }
+  }
+
+  return {
+    migrations: appliedMigrations(db),
+    projectIds,
+    completedRunIds: db
+      .prepare("SELECT id FROM runs WHERE finished_at IS NOT NULL ORDER BY id")
+      .pluck()
+      .all() as number[],
+    compressionCount: db
+      .prepare("SELECT count(*) FROM compression")
+      .pluck()
+      .get() as number,
+    historyCount: db
+      .prepare("SELECT count(*) FROM history")
+      .pluck()
+      .get() as number,
+    enrolledRepoDigests: Object.fromEntries(
+      metadata.repositories.map((repository) => [
+        repository.projectId,
+        createHash("sha256").update(JSON.stringify(repository)).digest("hex"),
+      ]),
+    ),
+  };
+}
+
+async function resolveLedgerPath(path: string, configuredDbPath: string) {
+  try {
+    return await realpath(path);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+      throw new MissingLedgerError(configuredDbPath);
+    }
+    throw error;
+  }
+}
+
+export const createLedgerBackup: LedgerBackupPort["createBackup"] = async (
+  input,
+) => {
+  const absolute = resolve(input.dbPath);
+  const state = await resolveLedgerPath(dirname(absolute), absolute);
+  return withMaintenanceLock(state, async () => {
+    const pending = join(state, PENDING_LEDGER_RESTORE);
+    if (await exists(pending)) throw new PendingLedgerRestoreError(pending);
+
+    const dbPath = await resolveLedgerPath(
+      join(state, basename(absolute)),
+      absolute,
+    );
+    if (dirname(dbPath) !== state) {
+      throw new Error(
+        `Ledger path must resolve within its state directory: ${absolute}`,
+      );
+    }
+    return captureLedgerBackup(input, dbPath);
+  });
+};
+
+async function withMaintenanceLock<T>(state: string, run: () => Promise<T>) {
+  // A separate database keeps the maintenance lock independent of server writes.
+  const lock = new Database(join(state, MAINTENANCE_DB_FILE), {
+    timeout: 0,
+  });
+  try {
+    try {
+      lock.exec("BEGIN IMMEDIATE");
+    } catch (error) {
+      if (
+        error instanceof Database.SqliteError &&
+        error.code === "SQLITE_BUSY"
+      ) {
+        throw new Error(
+          `A backup or restore is in progress at ${state}. Retry after it finishes.`,
+        );
+      }
+      throw error;
+    }
+    return await run();
+  } finally {
+    lock.close();
+  }
+}
+
+async function captureLedgerBackup(input: LedgerBackupRequest, dbPath: string) {
+  const suppliedPath = resolve(input.destination);
+  const suppliedEntry = await canonicalParentEntry(suppliedPath);
+  const provisionalDestination =
+    (await tryCanonicalPath(suppliedPath)) ?? suppliedEntry;
+  const configuredDbPath = resolve(input.dbPath);
+  for (const path of [provisionalDestination, suppliedEntry, suppliedPath]) {
+    rejectReservedComponents(path);
+    rejectSqliteSidecarPath(path, dbPath, configuredDbPath);
+    rejectPathAtOrBelow(
+      path,
+      ledgerLockPath(configuredDbPath),
+      "ledger lock path",
+    );
+    rejectPathAtOrBelow(path, ledgerLockPath(dbPath), "ledger lock path");
+  }
+  await rejectConfiguredPaths(suppliedPath, provisionalDestination, [
+    [configuredDbPath, "ledger path"],
+    [dbPath, "ledger path"],
+    [input.devicePath, "device path"],
+    [input.runtimeLockPath, "runtime lock path"],
+    [input.runtimePidPath, "runtime PID path"],
+  ]);
+  const destination = await canonicalPath(suppliedPath);
+  const parent = dirname(destination);
+  await mkdir(parent, { recursive: true, mode: 0o700 });
+  const staging = await mkdtemp(join(parent, `.${basename(destination)}-`));
+  let reserved = false;
+  try {
+    try {
+      await mkdir(destination, { mode: 0o700 });
+      reserved = true;
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "EEXIST") {
+        throw new Error(
+          `Backup destination already exists at ${destination}. Choose a new directory.`,
+        );
+      }
+      throw error;
+    }
+
+    const snapshot = join(staging, DB_FILE);
+    const source = new Database(dbPath, {
+      readonly: true,
+      fileMustExist: true,
+    });
+    try {
+      await source.backup(snapshot);
+    } finally {
+      source.close();
+    }
+    const standalone = new Database(snapshot, { fileMustExist: true });
+    let projects: BackupProject[];
+    try {
+      standalone.pragma("journal_mode = DELETE");
+      projects = projectRows(standalone);
+    } finally {
+      standalone.close();
+    }
+    const metadata = LedgerBackupMetadataSchema.parse({
+      device: input.collectDevice(),
+      projects,
+      repositories: input.collectRepositories(projects),
+    });
+    const metadataPath = join(staging, METADATA_FILE);
+    await writeFile(metadataPath, `${JSON.stringify(metadata, null, 2)}\n`, {
+      mode: 0o600,
+    });
+    const manifest = LedgerBackupManifestSchema.parse({
+      schemaVersion: 1,
+      createdAt: input.createdAt,
+      gwrkVersion: input.gwrkVersion,
+      dbSha256: await sha256(snapshot),
+      metadataSha256: await sha256(metadataPath),
+      summary: readLedger(snapshot, (db) => summarizeLedger(db, metadata)),
+    });
+    await writeFile(
+      join(staging, MANIFEST_FILE),
+      `${JSON.stringify(manifest, null, 2)}\n`,
+      { mode: 0o600 },
+    );
+
+    // The manifest commits the backup after both verified payload files exist.
+    for (const filename of [DB_FILE, METADATA_FILE, MANIFEST_FILE]) {
+      await syncPath(join(staging, filename));
+      await rename(join(staging, filename), join(destination, filename));
+    }
+    await syncPath(destination);
+    await syncPath(parent);
+    return manifest;
+  } catch (error) {
+    if (reserved) await rm(destination, { recursive: true, force: true });
+    throw error;
+  } finally {
+    await rm(staging, { recursive: true, force: true });
+  }
+}
+
+async function readRegularBackupFile(path: string): Promise<Buffer> {
+  const file = await open(
+    path,
+    constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK,
+  );
+  try {
+    if (!(await file.stat()).isFile()) {
+      throw new Error(`Backup payload must contain regular files: ${path}`);
+    }
+    return await file.readFile();
+  } finally {
+    await file.close();
+  }
+}
+
+async function readBackupContents(directory: string) {
+  const manifestPath = join(directory, MANIFEST_FILE);
+  const manifestBytes = await readRegularBackupFile(manifestPath).catch(
+    (error: NodeJS.ErrnoException) => {
+      if (error.code === "ENOENT") {
+        throw new Error(
+          `Backup manifest not found at ${manifestPath}. Run 'gwrk db backup --out <dir>'.`,
+        );
+      }
+      throw error;
+    },
+  );
+  const manifest = LedgerBackupManifestSchema.parse(
+    JSON.parse(manifestBytes.toString("utf8")),
+  );
+  const dbPath = join(directory, DB_FILE);
+  const metadataPath = join(directory, METADATA_FILE);
+  if (!(await lstat(dbPath)).isFile()) {
+    throw new Error("Backup payload must contain regular files.");
+  }
+  for (const suffix of ["-wal", "-shm", "-journal"]) {
+    if (await exists(dbPath + suffix))
+      throw new Error("Backup database has an unexpected journal.");
+  }
+  if ((await sha256(dbPath)) !== manifest.dbSha256)
+    throw new Error("Backup database digest mismatch.");
+  const metadataBytes = await readRegularBackupFile(metadataPath);
+  if (
+    createHash("sha256").update(metadataBytes).digest("hex") !==
+    manifest.metadataSha256
+  ) {
+    throw new Error("Backup metadata digest mismatch.");
+  }
+  const metadata = LedgerBackupMetadataSchema.parse(
+    JSON.parse(metadataBytes.toString("utf8")),
+  );
+  const summary = readLedger(dbPath, (db) => summarizeLedger(db, metadata));
+  if (!isDeepStrictEqual(summary, manifest.summary)) {
+    throw new Error("Backup ledger summary does not match the manifest.");
+  }
+  const manifestSha256 = createHash("sha256")
+    .update(manifestBytes)
+    .digest("hex");
+  return { manifest, metadata, manifestSha256 };
+}
+
+async function readVerifiedLedgerBackup(directory: string) {
+  try {
+    return await readBackupContents(directory);
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : String(error);
+    throw new Error(
+      `${detail} Recopy the complete backup directory or use another verified backup.`,
+      { cause: error },
+    );
+  }
+}
+
+export const verifyLedgerBackup: LedgerBackupPort["verifyBackup"] = async (
+  directory,
+) => {
+  const { manifest, metadata } = await readVerifiedLedgerBackup(directory);
+  return { manifest, metadata };
+};
+
+function acceptedWorkRows(db: Database.Database) {
+  return {
+    completedRuns: db
+      .prepare("SELECT * FROM runs WHERE finished_at IS NOT NULL ORDER BY id")
+      .safeIntegers()
+      .all(),
+    history: db
+      .prepare("SELECT * FROM history ORDER BY id")
+      .safeIntegers()
+      .all(),
+  };
+}
+
+export async function verifyLedgerAgainstBackup(
+  dbPath: string,
+  backupDirectory: string,
+): Promise<void> {
+  const directory = resolve(backupDirectory);
+  const { manifest, metadata } = await verifyLedgerBackup(directory);
+  const backupRows = readLedger(join(directory, DB_FILE), acceptedWorkRows);
+  const repoIds = new Set(
+    metadata.repositories.map(({ projectId }) => projectId),
+  );
+  const matches = readLedger(dbPath, (db) => {
+    const repositories = projectRows(db)
+      .filter(({ id }) => repoIds.has(id))
+      .map(({ id, path }) => readRepositoryEvidence(id, path));
+    return (
+      isDeepStrictEqual(
+        summarizeLedger(db, { ...metadata, repositories }),
+        manifest.summary,
+      ) && isDeepStrictEqual(acceptedWorkRows(db), backupRows)
+    );
+  });
+  if (!matches) {
+    throw new Error("Live ledger does not match the pre-rollback backup.");
+  }
+}
+
+async function statIfPresent(path: string) {
+  try {
+    return await lstat(path);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return undefined;
+    throw error;
+  }
+}
+
+async function exists(path: string): Promise<boolean> {
+  return Boolean(await statIfPresent(path));
+}
+
+async function canonicalPath(path: string): Promise<string> {
+  try {
+    return await realpath(path);
+  } catch (error) {
+    if (
+      (error as NodeJS.ErrnoException).code !== "ENOENT" ||
+      (await exists(path))
+    ) {
+      throw error;
+    }
+    return join(await canonicalPath(dirname(path)), basename(path));
+  }
+}
+
+async function canonicalParentEntry(path: string): Promise<string> {
+  const parent = dirname(path);
+  if (parent === path) return realpath(path);
+  const resolvedParent = await tryCanonicalPath(parent);
+  return join(resolvedParent ?? parent, basename(path));
+}
+
+async function tryCanonicalPath(path: string): Promise<string | undefined> {
+  try {
+    return await canonicalPath(path);
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException).code;
+    if (code === "ENOENT" || code === "ENOTDIR") return undefined;
+    throw error;
+  }
+}
+
+function rejectRestoreMarkerComponent(path: string): void {
+  const parts = path.split(sep);
+  const marker = parts.indexOf(PENDING_LEDGER_RESTORE);
+  if (marker !== -1) {
+    rejectPathAtOrBelow(
+      path,
+      parts.slice(0, marker + 1).join(sep),
+      "restore path",
+    );
+  }
+}
+
+function rejectReservedComponents(path: string): void {
+  rejectRestoreMarkerComponent(path);
+  const parts = path.split(sep);
+  const index = parts.findIndex((part) =>
+    RESERVED_MAINTENANCE_COMPONENTS.has(part),
+  );
+  if (index !== -1) {
+    rejectPathAtOrBelow(
+      path,
+      parts.slice(0, index + 1).join(sep),
+      "maintenance lock path",
+    );
+  }
+}
+
+function rejectReservedRestorePath(path: string, state: string): void {
+  rejectPathAtOrBelow(
+    path,
+    join(state, PENDING_LEDGER_RESTORE),
+    "restore path",
+  );
+}
+
+function rejectPathAtOrBelow(
+  path: string,
+  reserved: string,
+  label: string,
+): void {
+  const offset = relative(reserved, path);
+  if (
+    !isAbsolute(offset) &&
+    offset !== ".." &&
+    !offset.startsWith(`..${sep}`)
+  ) {
+    throw new Error(`Path ${path} uses the reserved ${label} ${reserved}.`);
+  }
+}
+
+function rejectSqliteSidecarPath(path: string, ...ledgers: string[]): void {
+  for (const ledger of ledgers) {
+    for (const suffix of SQLITE_SIDECAR_SUFFIXES) {
+      rejectPathAtOrBelow(path, `${ledger}${suffix}`, "SQLite sidecar");
+    }
+  }
+}
+
+async function rejectConfiguredPaths(
+  suppliedPath: string,
+  canonical: string,
+  paths: ReadonlyArray<readonly [string | undefined, string]>,
+): Promise<void> {
+  const suppliedEntry = await canonicalParentEntry(suppliedPath);
+  for (const [configuredPath, label] of paths) {
+    if (!configuredPath) continue;
+    const absolute = resolve(configuredPath);
+    const parentEntry = await canonicalParentEntry(absolute);
+    const resolved = await tryCanonicalPath(absolute);
+    for (const candidate of [canonical, suppliedEntry, suppliedPath]) {
+      if (resolved) rejectPathAtOrBelow(candidate, resolved, label);
+      rejectPathAtOrBelow(candidate, parentEntry, label);
+      rejectPathAtOrBelow(candidate, absolute, label);
+    }
+  }
+}
+
+export const resolveRestoreTarget: LedgerBackupPort["resolveRestoreTarget"] =
+  async (input) => {
+    const suppliedPath = resolve(input.stateDirectory);
+    const suppliedEntry = await canonicalParentEntry(suppliedPath);
+    const provisionalState =
+      (await tryCanonicalPath(suppliedPath)) ?? suppliedEntry;
+    for (const candidate of [provisionalState, suppliedEntry, suppliedPath]) {
+      rejectReservedComponents(candidate);
+    }
+    const configuredDbPath =
+      input.configuredDbPath && resolve(input.configuredDbPath);
+    const configuredDbEntry =
+      configuredDbPath && (await canonicalParentEntry(configuredDbPath));
+    const physicalDbPath =
+      configuredDbPath &&
+      ((await tryCanonicalPath(configuredDbPath)) ?? configuredDbEntry);
+    const configuredLedgers = [
+      physicalDbPath,
+      configuredDbEntry,
+      configuredDbPath,
+    ].filter((ledger): ledger is string => Boolean(ledger));
+    if (configuredLedgers.length > 0) {
+      for (const candidate of [provisionalState, suppliedEntry, suppliedPath]) {
+        rejectSqliteSidecarPath(candidate, ...configuredLedgers);
+      }
+    }
+    if (input.runtimeDirectory) {
+      const suppliedRuntime = resolve(input.runtimeDirectory);
+      const runtimeEntry = await canonicalParentEntry(suppliedRuntime);
+      const provisionalRuntime =
+        (await tryCanonicalPath(suppliedRuntime)) ?? runtimeEntry;
+      const targetLedgers = [
+        join(provisionalState, DB_FILE),
+        join(suppliedEntry, DB_FILE),
+        join(suppliedPath, DB_FILE),
+      ];
+      for (const candidate of [
+        provisionalRuntime,
+        runtimeEntry,
+        suppliedRuntime,
+      ]) {
+        rejectReservedComponents(candidate);
+        rejectSqliteSidecarPath(
+          candidate,
+          ...configuredLedgers,
+          ...targetLedgers,
+        );
+      }
+      await rejectConfiguredPaths(suppliedRuntime, provisionalRuntime, [
+        ...configuredLedgers.map((ledger) => [ledger, "ledger path"] as const),
+        ...configuredLedgers.map(
+          (ledger) => [ledgerLockPath(ledger), "ledger lock path"] as const,
+        ),
+        ...targetLedgers.map((ledger) => [ledger, "ledger path"] as const),
+        ...targetLedgers.map(
+          (ledger) => [ledgerLockPath(ledger), "ledger lock path"] as const,
+        ),
+        [input.devicePath, "device path"],
+        [join(provisionalState, DEVICE_FILE), "device path"],
+        [join(suppliedEntry, DEVICE_FILE), "device path"],
+        [join(suppliedPath, DEVICE_FILE), "device path"],
+      ]);
+      await canonicalPath(suppliedRuntime);
+    }
+    const runtimeLockPath =
+      input.runtimeLockPath ??
+      (input.runtimeDirectory && instanceLockPath(input.runtimeDirectory));
+    await rejectConfiguredPaths(suppliedPath, provisionalState, [
+      ...configuredLedgers.map((ledger) => [ledger, "ledger path"] as const),
+      ...configuredLedgers.map(
+        (ledger) => [ledgerLockPath(ledger), "ledger lock path"] as const,
+      ),
+      [input.devicePath, "device path"],
+      [runtimeLockPath, "runtime lock path"],
+      [input.runtimePidPath, "runtime PID path"],
+    ]);
+    const state = await canonicalPath(suppliedPath);
+    return { stateDirectory: state, dbPath: join(state, DB_FILE) };
+  };
+
+export const restoreLedgerBackup: LedgerBackupPort["restoreBackup"] = async (
+  input,
+) => {
+  const { stateDirectory: state } = await resolveRestoreTarget(input);
+  const suppliedPath = resolve(input.source);
+  rejectReservedRestorePath(suppliedPath, state);
+  const sourceDirectory = await canonicalPath(suppliedPath);
+  rejectReservedRestorePath(sourceDirectory, state);
+  const source = await readVerifiedLedgerBackup(sourceDirectory);
+  await mkdir(state, { recursive: true, mode: 0o700 });
+  return withMaintenanceLock(state, () =>
+    installLedgerBackup(state, sourceDirectory, source, input.force),
+  );
+};
+
+async function installLedgerBackup(
+  state: string,
+  sourceDirectory: string,
+  source: Awaited<ReturnType<typeof readVerifiedLedgerBackup>>,
+  force: boolean,
+) {
+  const pending = join(state, PENDING_LEDGER_RESTORE);
+  const pendingInfo = await statIfPresent(pending);
+  const transaction = {
+    schemaVersion: 1,
+    stateDirectory: state,
+    manifestSha256: source.manifestSha256,
+  };
+  const targets = [
+    DB_FILE,
+    ...SQLITE_SIDECAR_SUFFIXES.map((suffix) => `${DB_FILE}${suffix}`),
+    DEVICE_FILE,
+  ];
+  if (
+    !pendingInfo &&
+    !force &&
+    (await Promise.all(targets.map((file) => exists(join(state, file))))).some(
+      Boolean,
+    )
+  ) {
+    throw new Error(
+      `Target state at ${state} already contains ledger or device files. Choose a clean directory or pass '--force'.`,
+    );
+  }
+
+  for (const file of targets) {
+    const target = join(state, file);
+    const info = await statIfPresent(target);
+    if (info && !info.isFile()) {
+      throw new Error(`Restore target must be a regular file: ${target}`);
+    }
+  }
+
+  if (pendingInfo) {
+    if (!pendingInfo.isDirectory()) {
+      throw new Error(`Pending restore must be a directory: ${pending}`);
+    }
+    const record = await readRegularBackupFile(
+      join(pending, RESTORE_TRANSACTION_FILE),
+    )
+      .then((bytes) => JSON.parse(bytes.toString("utf8")) as unknown)
+      .catch((error: unknown) => {
+        throw new Error(`Cannot read restore transaction at ${pending}.`, {
+          cause: error,
+        });
+      });
+    if (!isDeepStrictEqual(record, transaction)) {
+      throw new Error(
+        `Restore transaction at ${pending} does not match the target and supplied backup. Retry with its original backup.`,
+      );
+    }
+  } else {
+    const staging = await mkdtemp(join(state, ".restore-stage-"));
+    try {
+      for (const file of [DB_FILE, METADATA_FILE, MANIFEST_FILE]) {
+        await copyFile(join(sourceDirectory, file), join(staging, file));
+        await syncPath(join(staging, file));
+      }
+      const staged = await readVerifiedLedgerBackup(staging);
+      if (!isDeepStrictEqual(staged, source))
+        throw new Error("Backup changed during restore staging.");
+      const recordPath = join(staging, RESTORE_TRANSACTION_FILE);
+      await writeFile(recordPath, `${JSON.stringify(transaction)}\n`, {
+        mode: 0o600,
+      });
+      await syncPath(recordPath);
+      await syncPath(staging);
+      await rename(staging, pending);
+      await syncPath(state);
+    } finally {
+      await rm(staging, { recursive: true, force: true });
+    }
+  }
+
+  const staged = await readVerifiedLedgerBackup(pending);
+  if (!isDeepStrictEqual(staged, source)) {
+    throw new Error(
+      `An unfinished restore exists at ${pending}. Retry with its original backup.`,
+    );
+  }
+  const { manifest, metadata } = staged;
+  const verified: VerifiedLedgerBackup = { manifest, metadata };
+
+  const stagedDb = join(pending, "install.db");
+  const stagedDevice = join(pending, DEVICE_FILE);
+  const installedDb = join(state, DB_FILE);
+  const installedDevice = join(state, DEVICE_FILE);
+  const { device } = verified.metadata;
+  await copyFile(join(pending, DB_FILE), stagedDb);
+  await syncPath(stagedDb);
+  if (device) {
+    await writeFile(stagedDevice, `${JSON.stringify(device, null, 2)}\n`, {
+      mode: 0o600,
+    });
+    await syncPath(stagedDevice);
+  }
+
+  for (const suffix of ["-wal", "-shm", "-journal"]) {
+    await rm(installedDb + suffix, { force: true });
+  }
+  await rename(stagedDb, installedDb);
+  if (device) {
+    await rename(stagedDevice, installedDevice);
+  } else {
+    await rm(installedDevice, { force: true });
+  }
+
+  if ((await sha256(installedDb)) !== verified.manifest.dbSha256) {
+    throw new Error("Installed ledger digest does not match the backup.");
+  }
+  if (
+    !isDeepStrictEqual(
+      readLedger(installedDb, (db) => summarizeLedger(db, verified.metadata)),
+      verified.manifest.summary,
+    )
+  ) {
+    throw new Error("Installed ledger summary does not match the backup.");
+  }
+  await syncPath(state);
+  const retired = await mkdtemp(join(state, ".restore-complete-"));
+  await rename(pending, join(retired, "transaction"));
+  await syncPath(state);
+  await rm(retired, { recursive: true, force: true });
+  return verified;
+}

@@ -4,6 +4,10 @@
 
 import * as fs from "node:fs";
 import * as path from "node:path";
+import {
+  scopedFeatureDirectory,
+  scopedFeaturePath,
+} from "../adapters/filesystem/scoped-feature.js";
 import { loadTaskState } from "./state.js";
 
 /**
@@ -18,18 +22,21 @@ export async function buildProjectContext(
   }
 
   const features = fs.readdirSync(specsDir).filter((f) => {
-    return fs.statSync(path.join(specsDir, f)).isDirectory();
+    return scopedFeatureDirectory(projectRoot, f) !== undefined;
   });
 
   let context = "# Project Context Summary\n\n";
   context += `Features found: ${features.length}\n\n`;
 
   for (const feature of features) {
-    const featureDir = path.join(specsDir, feature);
+    const featureDir = scopedFeatureDirectory(projectRoot, feature);
+    if (!featureDir) continue;
     context += `## ${feature}\n`;
 
     // Try to load task state
     try {
+      if (!scopedFeaturePath(featureDir, ".gwrk", "tasks.json"))
+        throw new Error("No scoped task state");
       const state = loadTaskState(featureDir);
       const total = state.phases.reduce((acc, p) => acc + p.tasks.length, 0);
       const completed = state.phases.reduce(
@@ -43,10 +50,10 @@ export async function buildProjectContext(
     }
 
     // Check for spec.md
-    if (fs.existsSync(path.join(featureDir, "spec.md"))) {
+    if (scopedFeaturePath(featureDir, "spec.md")) {
       context += "- Spec: spec.md available\n";
     }
-    if (fs.existsSync(path.join(featureDir, "plan.md"))) {
+    if (scopedFeaturePath(featureDir, "plan.md")) {
       context += "- Plan: plan.md available\n";
     }
     context += "\n";

@@ -1,0 +1,38 @@
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
+[Unit]
+Description=gwrk private build runner
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=gwrk
+Group=gwrk
+WorkingDirectory=/var/lib/gwrk
+EnvironmentFile=/etc/gwrk/runner.env
+Environment=HOME=/var/lib/gwrk
+ExecStartPre=/opt/gwrk/current/deploy/linux-runner/preflight.sh
+ExecStart=/opt/gwrk/current/deploy/linux-runner/run.sh
+Restart=on-failure
+RestartSec=5s
+TimeoutStartSec=90s
+TimeoutStopSec=45s
+KillMode=control-group
+RuntimeDirectory=gwrk
+RuntimeDirectoryMode=0750
+RuntimeDirectoryPreserve=yes
+StateDirectory=gwrk
+StateDirectoryMode=0750
+UMask=0027
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ReadWritePaths=/var/lib/gwrk /run/gwrk
+ReadOnlyPaths=/opt/gwrk /etc/gwrk/secrets
+
+[Install]
+WantedBy=multi-user.target

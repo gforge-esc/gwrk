@@ -4,6 +4,7 @@
 
 import { execSync } from "node:child_process";
 import fs from "node:fs";
+import os from "node:os";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { readPid } from "./pid.js";
 
@@ -13,6 +14,13 @@ vi.mock("node:fs");
 describe("FR-015: PID Authority", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.stubEnv("GWRK_RUNTIME_DIR", undefined);
+    vi.spyOn(os, "platform").mockReturnValue("darwin");
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+    vi.unstubAllEnvs();
   });
 
   it("prioritizes launchctl over PID file", () => {
@@ -25,12 +33,19 @@ describe("FR-015: PID Authority", () => {
 
     const pid = readPid();
 
-    // RED: Current implementation doesn't check launchctl, so it will return 12345
     expect(pid).toBe(99999);
     expect(execSync).toHaveBeenCalledWith(
       expect.stringContaining("launchctl list com.gwrk.server"),
       expect.any(Object),
     );
+  });
+
+  it("reads Linux PID state without consulting launchctl", () => {
+    vi.mocked(os.platform).mockReturnValue("linux");
+    vi.mocked(fs.existsSync).mockReturnValue(true);
+    vi.mocked(fs.readFileSync).mockReturnValue("12345");
+    expect(readPid()).toBe(12345);
+    expect(execSync).not.toHaveBeenCalled();
   });
 
   it("falls back to PID file if launchctl fails", () => {

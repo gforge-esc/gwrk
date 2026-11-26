@@ -3,7 +3,8 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import type { ShipOrchestrator } from "../engine/ship-orchestrator.js";
-import { getCurrentBranch } from "../utils/git.js";
+import { detectDefaultBranch, getCurrentBranch } from "../utils/git.js";
+import { resolveProjectId } from "../utils/project-id.js";
 import { MessageBuilder } from "./slack-messages.js";
 import { notifySlack } from "./slack-notify.js";
 import type { DispatchRecord } from "./types.js";
@@ -22,11 +23,14 @@ export class ShipBridge {
     // Initialize with partial data, will be fully populated on ship:start
     this.record = {
       id: "pending",
+      projectId: resolveProjectId(cwd),
       featureId: "unknown",
       phaseId: "unknown",
       backend: "agy",
       status: "running",
       branchName: getCurrentBranch(cwd),
+      projectRoot: cwd,
+      trunkBranch: detectDefaultBranch(cwd, "develop"),
       attempts: [],
       tasks: [],
       createdAt: startedAt,
@@ -63,8 +67,11 @@ export class ShipBridge {
     });
 
     orchestrator.on("ship:complete", (event) => {
+      const result = orchestrator.getResult?.();
       this.record.status = "completed";
       this.record.completedAt = new Date().toISOString();
+      this.record.prNumber = result?.prNumber;
+      this.record.prUrl = result?.prUrl;
 
       // Notify that it's ready for review (with blessing actions)
       // The phase_complete message is redundant if review_ready is sent

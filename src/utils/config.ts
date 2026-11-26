@@ -3,11 +3,14 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import * as fs from "node:fs";
-import * as os from "node:os";
 import * as path from "node:path";
 import { z } from "zod";
+import { logCliError } from "../adapters/cli/output-scope.js";
+import { gwrkHome } from "../adapters/config/paths.js";
 import { AgentBackendConfigSchema } from "../domain/agent-config.js";
+import { DesignSchema } from "../domain/architecture-context.js";
 import { DEFAULT_LOC_RATES, resolveRoleMultipliers } from "../domain/effort.js";
+import { HostedAuthConfigInputSchema } from "../domain/hosted-auth-config.js";
 
 const AgentBackendSchema = z.string();
 export type AgentBackendId = string;
@@ -86,6 +89,7 @@ export const GwrkConfigSchema = z.object({
         }),
       ])
       .optional(),
+    design: DesignSchema.optional(),
     architecture: z
       .union([
         z.string(),
@@ -131,6 +135,7 @@ export const GwrkConfigSchema = z.object({
       port: z.number().int().min(0).max(65535),
       host: z.string().min(1),
       githubWebhookSecret: z.string().optional(),
+      auth: HostedAuthConfigInputSchema.optional(),
       heartbeatIntervalMs: z.number().int().min(100).default(30000),
       networkCheckIntervalMs: z.number().int().min(100).default(60000),
       slack: z
@@ -250,6 +255,7 @@ export const GwrkConfigSchema = z.object({
           .optional(),
         layout: z.string().optional(),
         toolchain: ToolchainConfigSchema,
+        design: DesignSchema.optional(),
       }),
     )
     .optional(),
@@ -300,13 +306,35 @@ function tryReadJson(
   // biome-ignore lint/suspicious/noExplicitAny: JSON config parsing
 ): Record<string, any> | null {
   if (!fs.existsSync(filePath)) return null;
+  const content = fs.readFileSync(filePath, "utf-8");
   try {
-    return JSON.parse(fs.readFileSync(filePath, "utf-8"));
+    return JSON.parse(content);
   } catch (error) {
-    console.error(
+    if (content.includes("auth")) {
+      throw new Error(
+        "Configuration error: Authentication configuration denied",
+      );
+    }
+    logCliError(
       `Warning: invalid JSON in ${label} at ${filePath}, skipping overlay`,
     );
     return null;
+  }
+}
+
+export function validateTypedAuthSource(source: unknown): void {
+  if (source === null || typeof source !== "object") return;
+  const server = Reflect.get(source, "server");
+  if (
+    server === null ||
+    typeof server !== "object" ||
+    !Object.hasOwn(server, "auth")
+  )
+    return;
+  if (
+    !HostedAuthConfigInputSchema.safeParse(Reflect.get(server, "auth")).success
+  ) {
+    throw new Error("Configuration error: Authentication configuration denied");
   }
 }
 
@@ -343,19 +371,22 @@ export function loadConfig(projectRoot: string): GwrkConfig {
     throw new Error("Configuration error: invalid JSON in .gwrkrc.json");
   }
 
+  validateTypedAuthSource(raw);
+
   // Layer 2: Personal per-project overrides (optional)
   const localPath = path.join(projectRoot, ".gwrkrc.local.json");
   const localOverrides = tryReadJson(localPath, ".gwrkrc.local.json");
   if (localOverrides) {
+    validateTypedAuthSource(localOverrides);
     raw = deepMerge(raw, localOverrides);
   }
 
   // Layer 3: Machine-wide global config (optional)
   // GWRK_HOME overrides ~/.gwrk for testing and non-standard installations
-  const gwrkHome = process.env.GWRK_HOME || path.join(os.homedir(), ".gwrk");
-  const globalPath = path.join(gwrkHome, "config.json");
+  const globalPath = path.join(gwrkHome(), "config.json");
   const globalOverrides = tryReadJson(globalPath, "~/.gwrk/config.json");
   if (globalOverrides) {
+    validateTypedAuthSource(globalOverrides);
     raw = deepMerge(raw, globalOverrides);
   }
 

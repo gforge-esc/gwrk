@@ -5,8 +5,14 @@
 import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { detectProfile } from "./profile-detector.js";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  getLintCommand,
+  getTestCommand,
+  getTestExtension,
+  resolveBuildCommand,
+} from "../domain/toolchain.js";
+import { detectProfile, resolveWorkspaceProfile } from "./profile-detector.js";
 import { conditionPrompt } from "./prompt-conditioner.js";
 
 describe("profile-detector", () => {
@@ -65,12 +71,16 @@ describe("profile-detector", () => {
     expect(profile.stack.framework).toBe("Express");
   });
 
-  it("should detect gwrk-native via docs/architecture.md", async () => {
+  it("leaves the profile unknown when only docs/architecture.md is present", async () => {
     fs.mkdirSync(path.join(tmpDir, "docs"), { recursive: true });
-    fs.writeFileSync(path.join(tmpDir, "docs", "architecture.md"), "# Architecture");
-    
+    fs.writeFileSync(
+      path.join(tmpDir, "docs", "architecture.md"),
+      "# Architecture",
+    );
+
     const profile = await detectProfile(tmpDir);
-    expect(profile.type).toBe("gwrk-native");
+    expect(profile.type).toBe("unknown");
+    expect(profile.stack?.language).toBeUndefined();
   });
 
   it("should follow priority rules: Cargo.toml over package.json", async () => {
@@ -81,10 +91,11 @@ describe("profile-detector", () => {
     expect(profile.type).toBe("rust");
   });
 
-  it("TR-034: gwrk-native prompt assembly regression snapshot", async () => {
-    const profile = { type: "gwrk-native" };
+  it("TR-034: detected @gwrk/cli package renders the native prompt section", async () => {
+    fs.writeFileSync(path.join(tmpDir, "package.json"), '{"name":"@gwrk/cli"}');
+    const profile = await detectProfile(tmpDir);
     const prompt = "Gated: [type: gwrk-native]ADR-004[/type]";
-    
+
     const result = conditionPrompt(prompt, profile);
     expect(result).toContain("ADR-004");
     expect(result).not.toContain("[type: gwrk-native]");
@@ -152,6 +163,21 @@ describe("profile-detector", () => {
 });
 
 describe("FR-002: Workspace Detection via CWD (020-polyglot-monorepo)", () => {
+  it("preserves the legacy resolver shape for workspaces without a design", () => {
+    const root = path.resolve("fixture-project");
+    const workspace = path.join(root, "services", "api");
+    expect(
+      resolveWorkspaceProfile(workspace, root, {
+        project: { toolchain: { test: "vitest" } },
+        workspaces: { "services/api": { stack: { framework: "Django" } } },
+      }),
+    ).toStrictEqual({
+      type: "nodejs",
+      stack: { framework: "Django" },
+      layout: "flat",
+    });
+  });
+
   it("US-002: detects active workspace profile based on cwd in polyglot monorepo", async () => {
     const pd = await import("./profile-detector.js" as any);
     const mockConfig = {
@@ -228,6 +254,1658 @@ describe("TR-016: Toolchain Detection (Phase 16)", () => {
       fs.rmSync(pyDir, { recursive: true, force: true });
       fs.rmSync(goDir, { recursive: true, force: true });
       fs.rmSync(rsDir, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("FR-001: architecture-aware workspace profiles (044 phase p01)", () => {
+  let root: string;
+  const design = {
+    architecture: "hexagonal-functional",
+    principles: ["functional-core", "clean-code", "tdd"],
+    templateVersion: "1.0.0",
+  };
+  const write = (relative: string, content: string) => {
+    const target = path.join(root, relative);
+    fs.mkdirSync(path.dirname(target), { recursive: true });
+    fs.writeFileSync(target, content);
+  };
+  beforeEach(() => {
+    root = fs.mkdtempSync(path.join(os.tmpdir(), "gwrk-044-"));
+    write(".git", "gitdir: /unused/worktree-metadata\n");
+    write(".gwrkrc.json", JSON.stringify({
+      project: { name: "fixture", design },
+      workspaces: {
+        "apps/web": { toolchain: { test: "vitest" } },
+        "services/api": { stack: { framework: "FastAPI" }, toolchain: { build: null } },
+      },
+    }));
+    write("apps/web/package.json", JSON.stringify({ dependencies: { typescript: "5", react: "19" } }));
+    write("services/api/pyproject.toml", '[project]\ndependencies = ["fastapi", "pytest"]\n[tool.ruff]\n');
+  });
+  afterEach(() => fs.rmSync(root, { recursive: true, force: true }));
+
+  it.each([
+    ["apps/web", "TypeScript", "React", { test: "vitest" }],
+    ["services/api", "Python", "FastAPI", { primary: "ruff", test: "pytest", build: null }],
+  ])("TR-001: inherits design while detecting %s stack and toolchain", async (workspace, language, framework, toolchain) => {
+    const result = await detectProfile(path.join(root, workspace));
+    expect(result).toMatchObject({ design, stack: { language, framework }, toolchain });
+  });
+
+  it.each([
+    { kind: "architecture document", expected: { type: "unknown" } },
+    { kind: "GWRK package", expected: { type: "pnpm-monorepo", _isGwrk: true } },
+    { kind: "no manifest", expected: { type: "unknown" } },
+  ])("TR-001: attaches root design with $kind", async ({ kind, expected }) => {
+    if (kind === "architecture document") {
+      write("docs/architecture.md", "# Architecture");
+    }
+    if (kind === "GWRK package") {
+      write("package.json", JSON.stringify({ name: "@gwrk/cli" }));
+    }
+    const result = await detectProfile(root);
+    expect(result).toMatchObject({ design, ...expected });
+  });
+
+  it("TR-001: resolves the public two-argument workspace contract", async () => {
+    const module = await import("./profile-detector.js");
+    // Reflect exercises the new arity without changing the existing implementation signature.
+    const result = await Reflect.apply(module.resolveWorkspaceProfile, undefined, [root, "services/api"]);
+    expect(result).toMatchObject({ design, stack: { language: "Python", framework: "FastAPI" }, toolchain: { build: null } });
+  });
+
+  it("TR-001: uses the nearest config instead of a more distant ancestor", async () => {
+    const localDesign = { ...design, architecture: "layered", principles: [] };
+    write("services/.gwrkrc.json", JSON.stringify({ project: { name: "services", design: localDesign } }));
+    const result = await detectProfile(path.join(root, "services/api"));
+    expect(result).toMatchObject({ design: localDesign, stack: { language: "Python" } });
+  });
+
+  it.each(["file", "directory"])("stops workspace lookup at a nested .git %s", async (marker) => {
+    const workspaces = {
+      "services/api": { stack: { framework: "Django" }, toolchain: { build: null } },
+    };
+    const config = { project: { name: "fixture", design }, workspaces };
+    write(".gwrkrc.json", JSON.stringify(config));
+    if (marker === "file") {
+      write("services/.git", "gitdir: /unused/nested-worktree\n");
+    } else {
+      fs.mkdirSync(path.join(root, "services/.git"));
+    }
+
+    const workspace = path.join(root, "services/api");
+    const direct = await detectProfile(workspace);
+    expect(direct).toMatchObject({
+      stack: { language: "Python", framework: "FastAPI" },
+      toolchain: { primary: "ruff", test: "pytest" },
+    });
+    expect(direct.design).toBeUndefined();
+    expect.soft(await resolveWorkspaceProfile(root, "services/api")).toEqual(direct);
+    expect.soft(resolveWorkspaceProfile(workspace, root, config)).toBeUndefined();
+    expect(resolveWorkspaceProfile(workspace, root, { workspaces })).toStrictEqual({
+      type: "nodejs",
+      stack: { framework: "Django" },
+      layout: "flat",
+    });
+  });
+
+  it.each([
+    {
+      registration: "unregistered",
+      workspaces: { "apps/web": { toolchain: { test: "vitest" } } },
+    },
+    {
+      registration: "registered",
+      workspaces: { "services/api": { stack: { framework: "Django" } } },
+    },
+  ])(
+    "keeps FastAPI and pytest for the $registration Python workspace under a TypeScript root without design",
+    async ({ workspaces }) => {
+      write("pnpm-workspace.yaml", "");
+      write(
+        ".gwrkrc.json",
+        JSON.stringify({
+          project: {
+            name: "fixture",
+            stack: { language: "TypeScript" },
+            toolchain: { test: "vitest" },
+          },
+          workspaces,
+        }),
+      );
+
+      const result = await detectProfile(path.join(root, "services/api"));
+      expect(result).toMatchObject({
+        stack: { language: "Python", framework: "FastAPI" },
+        toolchain: { test: "pytest" },
+      });
+    },
+  );
+
+  it("applies the supplied root's design and workspace overrides when the local config only names the workspace", async () => {
+    write(
+      ".gwrkrc.json",
+      JSON.stringify({
+        project: { name: "fixture", design },
+        workspaces: {
+          "services/api": {
+            stack: { framework: "Django" },
+            toolchain: { build: null },
+          },
+        },
+      }),
+    );
+    write(
+      "services/api/.gwrkrc.json",
+      JSON.stringify({ project: { name: "api" } }),
+    );
+
+    const result = await resolveWorkspaceProfile(root, "services/api");
+    expect(result).toMatchObject({
+      design,
+      stack: { language: "Python", framework: "Django" },
+      toolchain: { build: null },
+    });
+  });
+
+  it.each([
+    { toolchain: undefined, command: "python -m pytest test_api.py" },
+    { toolchain: { test: "pytest" }, command: "pytest test_api.py -v" },
+    {
+      toolchain: { testCommand: "uv run pytest {files}" },
+      command: "uv run pytest test_api.py",
+    },
+    { toolchain: { test: null }, command: null },
+  ])(
+    "uses the workspace test selection over the root command",
+    async ({ toolchain, command }) => {
+      write("services/api/pyproject.toml", '[project]\nname = "fixture-api"\n');
+      write(
+        ".gwrkrc.json",
+        JSON.stringify({
+          project: {
+            name: "fixture",
+            design,
+            stack: { language: "Python" },
+            toolchain: { testCommand: "python -m pytest {files}" },
+          },
+          workspaces: { "services/api": { toolchain } },
+        }),
+      );
+
+      const result = await resolveWorkspaceProfile(root, "services/api");
+      expect(getTestCommand(result, ["test_api.py"])).toBe(command);
+    },
+  );
+
+  it("uses the detected workspace runner over the root command", async () => {
+    write("pnpm-workspace.yaml", "");
+    write(
+      ".gwrkrc.json",
+      JSON.stringify({
+        project: {
+          name: "fixture",
+          design,
+          toolchain: { testCommand: "pnpm exec vitest run {files}" },
+        },
+        workspaces: { "services/api": { toolchain: { build: null } } },
+      }),
+    );
+
+    const result = await detectProfile(path.join(root, "services/api"));
+    expect(result).toMatchObject({
+      design,
+      stack: { language: "Python" },
+      toolchain: { test: "pytest", build: null },
+    });
+    expect(getTestCommand(result, ["test_api.py"])).toBe("pytest test_api.py -v");
+  });
+
+  it("keeps the inferred test runner when only the workspace framework is set", async () => {
+    write("services/api/pyproject.toml", '[project]\nname = "fixture-api"\n');
+    write(
+      ".gwrkrc.json",
+      JSON.stringify({
+        project: { name: "fixture", toolchain: { test: "vitest" } },
+        workspaces: { "services/api": { stack: { framework: "Django" } } },
+      }),
+    );
+
+    const result = await resolveWorkspaceProfile(root, "services/api");
+    expect(result.stack?.framework).toBe("Django");
+    expect(getTestCommand(result, ["test_api.py"])).toBe("pytest test_api.py -v");
+  });
+
+  it("keeps the workspace-local runner under a TypeScript root with a design", async () => {
+    write(
+      ".gwrkrc.json",
+      JSON.stringify({
+        project: {
+          name: "fixture",
+          design,
+          stack: { language: "TypeScript" },
+          toolchain: { test: "vitest" },
+        },
+        workspaces: { "services/api": { toolchain: { build: null } } },
+      }),
+    );
+    write("services/api/pyproject.toml", '[project]\ndependencies = ["fastapi"]\n');
+    write(
+      "services/api/.gwrkrc.json",
+      JSON.stringify({ project: { name: "api", toolchain: { test: "pytest" } } }),
+    );
+
+    const result = await resolveWorkspaceProfile(root, "services/api");
+    expect(result).toMatchObject({
+      design,
+      stack: { language: "Python" },
+      toolchain: { test: "pytest", build: null },
+    });
+  });
+
+  it.each([
+    {
+      rootStack: undefined,
+      toolchain: { test: "vitest" },
+      setting: "Vitest runner",
+    },
+    {
+      rootStack: undefined,
+      toolchain: { testCommand: "pnpm exec vitest run {files}" },
+      setting: "custom command with detected root language",
+    },
+    {
+      rootStack: { language: "TypeScript" },
+      toolchain: { testCommand: "pnpm exec vitest run {files}" },
+      setting: "custom command with configured root language",
+    },
+  ])(
+    "uses the Python fallback through both workspace paths under a root $setting",
+    async ({ rootStack, toolchain }) => {
+      if (!rootStack) write("pnpm-workspace.yaml", "");
+      write("services/api/pyproject.toml", '[project]\ndependencies = ["django"]\n');
+      write(
+        ".gwrkrc.json",
+        JSON.stringify({
+          project: { name: "fixture", design, stack: rootStack, toolchain },
+          workspaces: { "services/api": { toolchain: { build: null } } },
+        }),
+      );
+
+      const profiles = await Promise.all([
+        detectProfile(path.join(root, "services/api")),
+        resolveWorkspaceProfile(root, "services/api"),
+      ]);
+      expect(profiles).toMatchObject([
+        { design, stack: { language: "Python", framework: "Django" }, toolchain: { build: null } },
+        { design, stack: { language: "Python", framework: "Django" }, toolchain: { build: null } },
+      ]);
+      expect(profiles.map((profile) => getTestCommand(profile, ["test_api.py"])))
+        .toEqual(["pytest test_api.py -v", "pytest test_api.py -v"]);
+    },
+  );
+
+  it("detects local architecture and language from a registered workspace root", async () => {
+    const config = {
+      project: { name: "fixture" },
+      workspaces: {
+        "services/api": {
+          stack: { framework: "Django" },
+          toolchain: { build: null },
+        },
+      },
+    };
+    write(".gwrkrc.json", JSON.stringify(config));
+    write(
+      "services/api/.gwrkrc.json",
+      JSON.stringify({ project: { name: "api", design } }),
+    );
+    write(
+      "services/api/pyproject.toml",
+      '[project]\ndependencies = ["fastapi"]\n',
+    );
+    write("services/api/src/api.py", "pass\n");
+    const nested = "services/api/src";
+    const profiles = [
+      await resolveWorkspaceProfile(root, nested),
+      resolveWorkspaceProfile(path.join(root, nested), root, config),
+    ];
+    for (const profile of profiles) {
+      expect.soft(profile).toMatchObject({
+        design,
+        type: "python",
+        stack: { language: "Python", framework: "Django" },
+        toolchain: { build: null },
+      });
+      if (!profile) throw new Error("Expected workspace profile");
+      expect.soft(getTestCommand(profile, ["test_api.py"])).toBe(
+        "pytest test_api.py -v",
+      );
+    }
+  });
+
+  it("uses workspace lint, build and discovery across all resolver paths", async () => {
+    const config = {
+      project: {
+        name: "fixture",
+        design,
+        toolchain: { primary: "biome", build: "pnpm build", testExtension: ".test.ts" },
+      },
+      workspaces: { "services/api": { stack: { language: "Python" } } },
+    };
+    write("pnpm-workspace.yaml", "");
+    write(".gwrkrc.json", JSON.stringify(config));
+    write("services/api/pyproject.toml", '[project]\ndependencies = ["django"]\n');
+    const workspace = path.join(root, "services/api");
+    const profiles = [
+      await detectProfile(workspace),
+      await resolveWorkspaceProfile(root, "services/api"),
+      resolveWorkspaceProfile(workspace, root, config),
+    ];
+    for (const profile of profiles) {
+      expect(profile).toMatchObject({ design, stack: { language: "Python" } });
+      if (!profile) throw new Error("Expected workspace profile");
+      expect.soft(getLintCommand(profile, ["api.py"])).toBe("ruff check api.py");
+      expect.soft(getTestExtension(profile)).toBe(".py");
+      expect.soft(profile.toolchain?.build).toBeUndefined();
+      expect.soft(resolveBuildCommand(profile)).toBeNull();
+    }
+  });
+
+  it.each([{ language: "python" }, { languages: ["Python", "JavaScript"] }])(
+    "inherits the polyglot root build command only for a compatible workspace with stack %j",
+    async (stack) => {
+      const config = {
+        project: {
+          name: "fixture",
+          design,
+          stack,
+          toolchain: { build: "uv build" },
+        },
+        workspaces: { "services/worker": {}, "services/package": {} },
+      };
+      write(".gwrkrc.json", JSON.stringify(config));
+      write("package.json", "{}");
+      write("pyproject.toml", "[project]\n");
+      write("uv.lock", "");
+      write("services/worker/requirements.txt", "django\n");
+      write("services/package/pyproject.toml", "[project]\n");
+      write("services/package/uv.lock", "");
+
+      const workspaces = [
+        { relative: "services/worker", buildSystem: "pip", command: null },
+        { relative: "services/package", buildSystem: "uv", command: "uv build" },
+      ];
+      for (const { relative, buildSystem, command } of workspaces) {
+        const workspace = path.join(root, relative);
+        const profiles = [
+          await detectProfile(workspace),
+          await resolveWorkspaceProfile(root, relative),
+          resolveWorkspaceProfile(workspace, root, config),
+        ];
+        for (const profile of profiles) {
+          expect(profile).toMatchObject({ design, stack: { buildSystem } });
+          if (!profile) throw new Error("Expected workspace profile");
+          expect.soft(resolveBuildCommand(profile)).toBe(command);
+        }
+      }
+    },
+  );
+
+  it.each([
+    { buildSystem: "yarn", workspaceLockfile: "yarn.lock" },
+    { buildSystem: "npm", workspaceLockfile: "package-lock.json" },
+  ])("inherits Yarn commands only for a compatible $buildSystem workspace", async ({
+    buildSystem,
+    workspaceLockfile,
+  }) => {
+    const workspacePath = "apps/web";
+    const workspace = path.join(root, workspacePath);
+    const inheritsCommands = buildSystem === "yarn";
+    const build = "yarn workspace web build:ci";
+    const testCommand = "yarn vitest run {files}";
+    const config = {
+      project: {
+        name: "fixture",
+        design,
+        ...(inheritsCommands && { stack: { buildSystem: "yarn" } }),
+        toolchain: { build, testCommand },
+      },
+      workspaces: { [workspacePath]: {} },
+    };
+    write(".gwrkrc.json", JSON.stringify(config));
+    write("package.json", "{}");
+    write("yarn.lock", "");
+    write(`${workspacePath}/package.json`, "{}");
+    write(`${workspacePath}/${workspaceLockfile}`, "");
+
+    const profiles = [
+      await detectProfile(workspace),
+      await resolveWorkspaceProfile(root, workspacePath),
+      resolveWorkspaceProfile(workspace, root, config),
+    ];
+    for (const profile of profiles) {
+      if (!profile) throw new Error("Expected a workspace profile");
+      expect.soft(profile).toMatchObject({ design, stack: { buildSystem } });
+      if (inheritsCommands) {
+        expect.soft(resolveBuildCommand(profile)).toBe(build);
+        expect.soft(getTestCommand(profile, ["app.test.js"])).toBe(
+          "yarn vitest run app.test.js",
+        );
+      } else {
+        expect.soft(profile.toolchain?.build).toBeUndefined();
+        expect.soft(profile.toolchain?.testCommand).toBeUndefined();
+      }
+    }
+
+    if (inheritsCommands) {
+      write(".gwrkrc.json", JSON.stringify({ project: { name: "fixture" } }));
+      expect((await detectProfile(workspace)).stack?.buildSystem).toBe("npm");
+    }
+  });
+
+  it("keeps the selected TypeScript runner and linter in a mixed workspace", async () => {
+    const config = {
+      project: { name: "fixture", design },
+      workspaces: { "apps/mixed": { stack: { language: "TypeScript" } } },
+    };
+    write(".gwrkrc.json", JSON.stringify(config));
+    write("apps/mixed/package.json", "{}");
+    write("apps/mixed/jest.config.js", "");
+    write("apps/mixed/eslint.config.js", "");
+    write("apps/mixed/pyproject.toml", "[project]\n");
+    write("apps/mixed/pytest.ini", "");
+    write("apps/mixed/ruff.toml", "");
+    write("apps/mixed/.gwrkrc.json", JSON.stringify({
+      project: {
+        name: "mixed",
+        stack: { language: "Python", framework: "Django", buildSystem: "uv" },
+        toolchain: { test: "pytest", primary: "ruff" },
+      },
+    }));
+    const workspace = path.join(root, "apps/mixed");
+    const profiles = [
+      await detectProfile(workspace),
+      await resolveWorkspaceProfile(root, "apps/mixed"),
+      resolveWorkspaceProfile(workspace, root, config),
+    ];
+    for (const profile of profiles) {
+      expect(profile).toBeDefined();
+      if (!profile) throw new Error("Expected a mixed workspace profile");
+      expect.soft(getTestCommand(profile, ["app.test.ts"])).toBe("npx jest app.test.ts");
+      expect.soft(getLintCommand(profile, ["app.ts"])).toBe("npx eslint app.ts");
+    }
+  });
+
+  it("uses the configured language to select tools in a mixed workspace", async () => {
+    const config = {
+      project: {
+        name: "fixture",
+        design,
+        stack: { language: "Python", buildSystem: "Poetry" },
+        toolchain: { build: "poetry build" },
+      },
+      workspaces: { "services/api": { stack: { language: "Python" } } },
+    };
+    write(".gwrkrc.json", JSON.stringify(config));
+    write(
+      "services/api/package.json",
+      JSON.stringify({ dependencies: { next: "1.0.0" } }),
+    );
+    write("services/api/pyproject.toml", '[project]\ndependencies = ["django"]\n');
+    write("services/api/uv.lock", "");
+    write("services/api/biome.json", "{}");
+    write("services/api/vitest.config.ts", "");
+
+    const workspace = path.join(root, "services/api");
+    const profiles = [
+      await detectProfile(workspace),
+      await resolveWorkspaceProfile(root, "services/api"),
+      resolveWorkspaceProfile(workspace, root, config),
+    ];
+    for (const profile of profiles) {
+      expect.soft(profile).toMatchObject({
+        design,
+        stack: { language: "Python", framework: "Django", buildSystem: "uv" },
+      });
+      if (!profile) throw new Error("Expected workspace profile");
+      expect.soft(getTestCommand(profile, ["test_api.py"])).toBe("pytest test_api.py -v");
+      expect.soft(getLintCommand(profile, ["api.py"])).toBe("ruff check api.py");
+      expect.soft(profile.toolchain?.build).toBeUndefined();
+    }
+  });
+
+  it("detects the selected Python runner from pyproject.toml alongside a Ruff config", async () => {
+    const config = {
+      project: {
+        name: "fixture",
+        design,
+        stack: { language: "Python", buildSystem: "uv" },
+        toolchain: { testCommand: "uv run pytest {files}" },
+      },
+      workspaces: { "services/api": { stack: { language: "Python" } } },
+    };
+    write(".gwrkrc.json", JSON.stringify(config));
+    write("services/api/package.json", "{}");
+    write("services/api/jest.config.js", "");
+    write("services/api/pyproject.toml", "[project]\n[tool.pytest.ini_options]\n");
+    write("services/api/ruff.toml", "");
+    write("services/api/requirements.txt", "");
+
+    const workspace = path.join(root, "services/api");
+    const profiles = [
+      await detectProfile(workspace),
+      await resolveWorkspaceProfile(root, "services/api"),
+      resolveWorkspaceProfile(workspace, root, config),
+    ];
+    for (const profile of profiles) {
+      if (!profile) throw new Error("Expected workspace profile");
+      expect.soft(profile).toMatchObject({ design, toolchain: { test: "pytest" } });
+      expect.soft(getTestCommand(profile, ["test_api.py"])).toBe("pytest test_api.py -v");
+    }
+  });
+
+  it("detects Black alongside Ruff only when a workspace design applies", async () => {
+    const config = {
+      project: { name: "fixture", design },
+      workspaces: { "services/api": {} },
+    };
+    write(".gwrkrc.json", JSON.stringify(config));
+    write("services/api/pyproject.toml", "[project]\n[tool.black]\n");
+    write("services/api/ruff.toml", "");
+
+    const workspace = path.join(root, "services/api");
+    const profiles = [
+      await detectProfile(workspace),
+      await resolveWorkspaceProfile(root, "services/api"),
+      resolveWorkspaceProfile(workspace, root, config),
+    ];
+    for (const profile of profiles) {
+      expect.soft(profile?.design).toEqual(design);
+      expect.soft(profile?.toolchain).toEqual({ primary: "ruff", formatter: "black" });
+    }
+
+    write(".gwrkrc.json", JSON.stringify({ project: { name: "fixture" } }));
+    expect((await detectProfile(workspace)).toolchain).toEqual({ primary: "ruff" });
+  });
+
+  it("keeps explicit workspace-local disablement while filtering incompatible tools", async () => {
+    write("services/api/package.json", "{}");
+    write("services/api/biome.json", "{}");
+    write("services/api/vitest.config.ts", "");
+    write(
+      ".gwrkrc.json",
+      JSON.stringify({
+        project: { name: "fixture", design },
+        workspaces: { "services/api": { stack: { language: "Python" } } },
+      }),
+    );
+    write(
+      "services/api/.gwrkrc.json",
+      JSON.stringify({
+        project: { name: "api", toolchain: { primary: "biome", test: null } },
+      }),
+    );
+
+    const profile = await resolveWorkspaceProfile(root, "services/api");
+    expect(profile).toMatchObject({
+      design,
+      stack: { language: "Python" },
+      toolchain: { test: null },
+    });
+    expect(profile.toolchain?.primary).toBe("ruff");
+    expect(profile.toolchain?.formatter).toBeUndefined();
+    expect(getTestCommand(profile, ["test_api.py"])).toBeNull();
+  });
+
+  it.each([false, true])("finds a nearer workspace config without a root config (nested Git boundary=%s)", async (boundary) => {
+    fs.rmSync(path.join(root, ".gwrkrc.json"));
+    const nearerDesign = { ...design, architecture: "layered", principles: ["clean-code"] };
+    write("services/.gwrkrc.json", JSON.stringify({
+      project: { name: "services", design: nearerDesign },
+      workspaces: {
+        api: { stack: { framework: "Django" }, toolchain: { build: null } },
+      },
+    }));
+    write("services/api/pyproject.toml", '[project]\ndependencies = ["fastapi"]\n');
+    write("services/api/uv.lock", "");
+    write("services/api/pytest.ini", "[pytest]\n");
+    if (boundary) write("services/api/.git", "gitdir: /unused/worktree\n");
+
+    const direct = await detectProfile(path.join(root, "services/api"));
+    const explicit = await resolveWorkspaceProfile(root, "services/api");
+    if (boundary) {
+      expect(explicit.design).toBeUndefined();
+      expect(explicit.stack?.framework).toBe("FastAPI");
+    } else {
+      expect.soft(explicit).toMatchObject({
+        design: nearerDesign,
+        stack: { framework: "Django" },
+        toolchain: { build: null },
+      });
+    }
+    expect(explicit).toEqual(direct);
+  });
+
+  it.each([
+    { localToolchain: undefined },
+    { localToolchain: { testCommand: "uv run pytest {files}" } },
+  ])("inherits an unregistered ancestor design with local tools $localToolchain", async ({ localToolchain }) => {
+    fs.rmSync(path.join(root, ".gwrkrc.json"));
+    const nearerDesign = { ...design, architecture: "layered", principles: ["clean-code"] };
+    write("services/.gwrkrc.json", JSON.stringify({
+      project: { name: "services", design: nearerDesign },
+    }));
+    write("services/api/.gwrkrc.json", JSON.stringify({
+      project: { name: "api", toolchain: localToolchain },
+    }));
+    const profiles = [
+      await detectProfile(path.join(root, "services/api")),
+      await resolveWorkspaceProfile(root, "services/api"),
+    ];
+    for (const profile of profiles) {
+      expect.soft(profile.design).toEqual(nearerDesign);
+      expect.soft(profile.stack).toMatchObject({ language: "Python", framework: "FastAPI" });
+      expect.soft(getTestCommand(profile, ["test_api.py"])).toBe(
+        localToolchain ? "uv run pytest test_api.py" : "pytest test_api.py -v",
+      );
+    }
+  });
+
+  it.each([true, false])("applies the nearest registered workspace with nearer registration %s", async (registered) => {
+    const nearerDesign = { ...design, architecture: "layered", principles: ["clean-code"] };
+    write("services/.gwrkrc.json", JSON.stringify({
+      project: { name: "services", design: nearerDesign },
+      workspaces: registered
+        ? { api: { stack: { framework: "Django" }, toolchain: { build: null } } }
+        : undefined,
+    }));
+    write(".gwrkrc.json", JSON.stringify({
+      project: { name: "fixture", design },
+      workspaces: {
+        "services/api": { stack: { framework: "Flask" }, toolchain: { build: "uv build" } },
+      },
+    }));
+    const profiles = [
+      await detectProfile(path.join(root, "services/api")),
+      await resolveWorkspaceProfile(root, "services/api"),
+    ];
+    for (const profile of profiles) {
+      expect.soft(profile).toMatchObject({
+        design: nearerDesign,
+        stack: { language: "Python", framework: registered ? "Django" : "Flask" },
+        toolchain: { build: registered ? null : "uv build" },
+      });
+    }
+  });
+
+  it("keeps workspace-local toolchain settings under an ancestor without design", async () => {
+    fs.rmSync(path.join(root, ".gwrkrc.json"));
+    write("services/.gwrkrc.json", JSON.stringify({ project: { name: "services" } }));
+    write("services/api/.gwrkrc.json", JSON.stringify({
+      project: { name: "api", stack: { framework: "Django" }, toolchain: { test: null } },
+    }));
+
+    const direct = await detectProfile(path.join(root, "services/api"));
+    const explicit = await resolveWorkspaceProfile(root, "services/api");
+    expect.soft(direct).toMatchObject({
+      stack: { framework: "Django" },
+      toolchain: { test: null },
+    });
+    expect(explicit).toEqual(direct);
+  });
+
+  it("inherits registered workspace policy through a workspace-only config", async () => {
+    const target = { ...design, architecture: "layered", principles: ["clean-code"] };
+    write(".gwrkrc.json", JSON.stringify({
+      project: { name: "fixture", design: target },
+      workspaces: { "services/api": { stack: { framework: "Django" }, toolchain: { build: null } } },
+    }));
+    write("services/api/.gwrkrc.json", JSON.stringify({ workspaces: { tests: {} } }));
+
+    const direct = await detectProfile(path.join(root, "services/api"));
+    const explicit = await resolveWorkspaceProfile(root, "services/api");
+    expect.soft(direct).toMatchObject({
+      design: target,
+      stack: { framework: "Django" },
+      toolchain: { build: null },
+    });
+    expect(explicit).toEqual(direct);
+  });
+
+  it("resolves a local architecture with the selected language toolchain", async () => {
+    fs.rmSync(path.join(root, ".gwrkrc.json"));
+    write("services/api/package.json", JSON.stringify({
+      devDependencies: { typescript: "5.0.0", vitest: "3.2.4" },
+    }));
+    write("services/api/vitest.config.ts", "");
+    write("services/api/pyproject.toml", '[project]\ndependencies = ["fastapi", "pytest"]\n');
+    write("services/api/uv.lock", "");
+    write("services/api/.gwrkrc.json", JSON.stringify({
+      project: { name: "api", design, stack: { language: "Python" } },
+    }));
+    const direct = await detectProfile(path.join(root, "services/api"));
+    const explicit = await resolveWorkspaceProfile(root, "services/api");
+    expect.soft(direct).toMatchObject({
+      design,
+      stack: { language: "Python", framework: "FastAPI", buildSystem: "uv" },
+      toolchain: { test: "pytest" },
+    });
+    expect(getTestCommand(direct, ["test_api.py"])).toBe("pytest test_api.py -v");
+    expect(explicit).toEqual(direct);
+  });
+
+  it.each(["matching", "unrelated", "absent"])(
+    "uses the nearer registered workspace in every resolver with an outer registration that is %s",
+    async (outerRegistration) => {
+      const nearerDesign = {
+        ...design,
+        architecture: "layered",
+        principles: ["clean-code"],
+      };
+      const outer = {
+        project: { name: "fixture", design },
+        workspaces:
+          outerRegistration === "absent"
+            ? undefined
+            : {
+                [outerRegistration === "matching" ? "services/api" : "apps/web"]: {
+                  stack: { framework: "Django" },
+                },
+              },
+      };
+      write(".gwrkrc.json", JSON.stringify(outer));
+      write("services/.gwrkrc.json", JSON.stringify({
+        project: { name: "services", design: nearerDesign },
+        workspaces: {
+          api: { stack: { framework: "FastAPI" }, toolchain: { build: null } },
+        },
+      }));
+      const cwd = path.join(root, "services/api");
+      const direct = await detectProfile(cwd);
+      expect.soft(direct).toMatchObject({
+        design: nearerDesign,
+        stack: { framework: "FastAPI" },
+        toolchain: { build: null },
+      });
+      expect(await resolveWorkspaceProfile(root, "services/api")).toEqual(direct);
+      expect(resolveWorkspaceProfile(cwd, root, outer)).toEqual(direct);
+    },
+  );
+
+  it("uses the nearer registration when only the outer project declares a design", async () => {
+    const outer = {
+      project: { name: "fixture", design },
+      workspaces: { "services/api": { stack: { framework: "Flask" } } },
+    };
+    write(".gwrkrc.json", JSON.stringify(outer));
+    write("services/.gwrkrc.json", JSON.stringify({
+      project: { name: "services" },
+      workspaces: {
+        api: {
+          stack: { framework: "Django" },
+          toolchain: { testCommand: "uv run pytest {files}" },
+        },
+      },
+    }));
+
+    const cwd = path.join(root, "services/api");
+    const profiles = {
+      direct: await detectProfile(cwd),
+      explicit: await resolveWorkspaceProfile(root, "services/api"),
+      configured: resolveWorkspaceProfile(cwd, root, outer),
+    };
+    for (const [entryPoint, profile] of Object.entries(profiles)) {
+      expect.soft(profile, entryPoint).toMatchObject({
+        design,
+        stack: { language: "Python", framework: "Django" },
+      });
+      expect.soft(getTestCommand(profile, ["test_api.py"]), entryPoint).toBe(
+        "uv run pytest test_api.py",
+      );
+    }
+  });
+
+  it.each([
+    { label: "without local defaults", stack: { language: "TypeScript" }, toolchain: undefined, expected: {} },
+    { label: "with empty local defaults", stack: { language: "TypeScript" }, toolchain: {}, expected: {} },
+    { label: "with incompatible Vitest", stack: { language: "TypeScript" }, toolchain: { test: "vitest", testCommand: "pnpm test {files}" }, expected: {} },
+    { label: "with compatible Black", stack: { language: "Python" }, toolchain: { formatter: "black" }, expected: { formatter: "black" } },
+    {
+      label: "with an incompatible pip command for the same runner",
+      stack: { language: "Python", buildSystem: "pip" },
+      toolchain: { test: "pytest", testCommand: "pipenv run pytest {files}" },
+      expected: {},
+    },
+    {
+      label: "with an explicit test skip",
+      stack: { language: "Python", buildSystem: "pip" },
+      toolchain: { test: null },
+      expected: {},
+      expectedTest: { test: null },
+      expectedCommand: null,
+    },
+    {
+      label: "with a compatible nearer command",
+      stack: { language: "Python", buildSystem: "uv" },
+      toolchain: { test: "pytest", testCommand: "uv run pytest -q {files}" },
+      expected: {},
+      expectedTest: { test: "pytest", testCommand: "uv run pytest -q {files}" },
+      expectedCommand: "uv run pytest -q test_api.py",
+    },
+    {
+      label: "with a runner-only override",
+      stack: { language: "Python", buildSystem: "uv" },
+      toolchain: { test: "pytest" },
+      expected: {},
+      expectedTest: { test: "pytest" },
+      expectedCommand: "pytest test_api.py -v",
+    },
+  ])("inherits compatible root tools through a nearer registration $label", async (nearer) => {
+    const layered = {
+      ...design,
+      architecture: "layered",
+      principles: ["clean-code"],
+    };
+    const inheritedTest = {
+      test: "pytest",
+      testCommand: "uv run pytest {files}",
+    };
+    const toolchain = { ...inheritedTest, build: null };
+    const config = {
+      project: { name: "fixture", design: layered, toolchain },
+    };
+    write(".git", "gitdir: /unused/worktree\n");
+    write(".gwrkrc.json", JSON.stringify(config));
+    write("pyproject.toml", "[project]\n");
+    write("uv.lock", "");
+    write(
+      "services/.gwrkrc.json",
+      JSON.stringify({
+        project: { name: "services", stack: nearer.stack, toolchain: nearer.toolchain },
+        workspaces: { api: { stack: { framework: "Django" } } },
+      }),
+    );
+    write("services/api/pyproject.toml", '[project]\ndependencies = ["fastapi"]\n');
+    write("services/api/uv.lock", "");
+
+    const cwd = path.join(root, "services/api");
+    const profiles = {
+      direct: await detectProfile(cwd),
+      explicit: await resolveWorkspaceProfile(root, "services/api"),
+      configured: resolveWorkspaceProfile(cwd, root, config),
+    };
+    for (const [entryPoint, profile] of Object.entries(profiles)) {
+      expect.soft(profile, entryPoint).toMatchObject({
+        design: layered,
+        stack: { language: "Python", framework: "Django", buildSystem: "uv" },
+      });
+      expect.soft(profile?.toolchain, entryPoint).toStrictEqual({
+        build: null,
+        ...("expectedTest" in nearer ? nearer.expectedTest : inheritedTest),
+        ...nearer.expected,
+      });
+      expect.soft(getTestCommand(profile, ["test_api.py"]), entryPoint).toBe(
+        "expectedCommand" in nearer ? nearer.expectedCommand : "uv run pytest test_api.py",
+      );
+      if (profile) {
+        expect.soft(resolveBuildCommand(profile, { hasCargoToml: true }), entryPoint).toBeNull();
+      }
+    }
+  });
+
+  it("inherits outer workspace design while retaining the nearest registered stack", async () => {
+    const layered = { ...design, architecture: "layered", principles: ["clean-code"] };
+    const outer = {
+      project: { name: "fixture" },
+      workspaces: { "services/api": { design: layered, stack: { framework: "Flask" } } },
+    };
+    write(".git", "gitdir: /unused/worktree\n");
+    write(".gwrkrc.json", JSON.stringify(outer));
+    write("services/.gwrkrc.json", JSON.stringify({
+      project: { name: "services" },
+      workspaces: { api: { stack: { framework: "Django" } } },
+    }));
+    const cwd = path.join(root, "services/api");
+    const profiles = [
+      await detectProfile(cwd),
+      await resolveWorkspaceProfile(root, "services/api"),
+      resolveWorkspaceProfile(cwd, root, outer),
+    ];
+    for (const profile of profiles) {
+      expect.soft(profile).toMatchObject({
+        design: layered,
+        stack: { language: "Python", framework: "Django" },
+      });
+    }
+    expect(profiles[0]).toEqual(profiles[1]);
+    expect(profiles[0]).toEqual(profiles[2]);
+  });
+
+  it("retains compatible ancestor tools when only local design overrides", async () => {
+    const localDesign = { ...design, architecture: "layered", principles: ["clean-code"] };
+    const toolchain = { test: "pytest", testCommand: "uv run pytest {files}", build: null };
+    write(".git", "gitdir: /unused/worktree\n");
+    write(".gwrkrc.json", JSON.stringify({
+      project: { name: "fixture", design, stack: { language: "Python", buildSystem: "uv" }, toolchain },
+    }));
+    write("services/api/pyproject.toml", '[project]\ndependencies = ["fastapi"]\n');
+    write("services/api/uv.lock", "");
+    write("services/api/.gwrkrc.json", JSON.stringify({
+      project: { name: "api", design: localDesign },
+    }));
+    const direct = await detectProfile(path.join(root, "services/api"));
+    const explicit = await resolveWorkspaceProfile(root, "services/api");
+    expect(direct).toEqual(explicit);
+    expect(direct).toMatchObject({ design: localDesign, toolchain });
+    expect(getTestCommand(direct, ["test_api.py"])).toBe("uv run pytest test_api.py");
+  });
+
+  it("uses detected language when the local stack is invalid", async () => {
+    write(".git", "gitdir: /unused/worktree\n");
+    write(".gwrkrc.json", JSON.stringify({ project: { name: "fixture", design } }));
+    write("services/api/.gwrkrc.json", JSON.stringify({
+      project: { name: "api", stack: { language: 42 }, toolchain: { build: null } },
+    }));
+    const direct = await detectProfile(path.join(root, "services/api"));
+    expect(direct).toEqual(await resolveWorkspaceProfile(root, "services/api"));
+    expect(direct).toMatchObject({
+      design,
+      stack: { language: "Python", framework: "FastAPI" },
+      toolchain: { build: null },
+    });
+  });
+
+  it("inherits the root design through an unregistered name-only config", async () => {
+    const layered = { ...design, architecture: "layered", principles: ["clean-code"] };
+    const toolchain = {
+      test: "pytest",
+      testCommand: "uv run pytest {files}",
+      build: null,
+    };
+    write(".git", "gitdir: /unused/worktree\n");
+    write(".gwrkrc.json", JSON.stringify({
+      project: {
+        name: "fixture",
+        design: layered,
+        stack: { language: "Python", buildSystem: "uv" },
+        toolchain,
+      },
+    }));
+    write("services/.gwrkrc.json", JSON.stringify({ project: { name: "services" } }));
+    write("services/api/pyproject.toml", '[project]\ndependencies = ["fastapi"]\n');
+    write("services/api/uv.lock", "");
+
+    const direct = await detectProfile(path.join(root, "services/api"));
+    const explicit = await resolveWorkspaceProfile(root, "services/api");
+    for (const [entryPoint, profile] of Object.entries({ direct, explicit })) {
+      expect.soft(profile, entryPoint).toMatchObject({
+        design: layered,
+        stack: { language: "Python", framework: "FastAPI", buildSystem: "uv" },
+      });
+      expect.soft(profile.toolchain, entryPoint).toStrictEqual(toolchain);
+      expect.soft(getTestCommand(profile, ["test_api.py"]), entryPoint).toBe(
+        "uv run pytest test_api.py",
+      );
+      expect.soft(resolveBuildCommand(profile), entryPoint).toBeNull();
+    }
+    expect(direct).toEqual(explicit);
+  });
+
+  it("uses a valid ancestor registration when local config is malformed", async () => {
+    const outer = {
+      project: { name: "fixture", design },
+      workspaces: {
+        "services/api": { stack: { framework: "Django" }, toolchain: { build: null } },
+      },
+    };
+    write(".git", "gitdir: /unused/worktree\n");
+    write(".gwrkrc.json", JSON.stringify(outer));
+    write("services/api/.gwrkrc.json", "{");
+    const cwd = path.join(root, "services/api");
+    const direct = await detectProfile(cwd);
+    expect(direct).toEqual(await resolveWorkspaceProfile(root, "services/api"));
+    expect(direct).toEqual(resolveWorkspaceProfile(cwd, root, outer));
+    expect(direct).toMatchObject({
+      design,
+      stack: { language: "Python", framework: "Django" },
+      toolchain: { build: null },
+    });
+  });
+
+  it("rejects an invalid supplied workspace registration", () => {
+    const config = {
+      project: { name: "fixture", design },
+      workspaces: { "services/api": { stack: { framework: 42 } } },
+    };
+    expect(
+      resolveWorkspaceProfile(path.join(root, "services/api"), root, config),
+    ).toBeUndefined();
+  });
+
+  it.each(["relative", "absolute"])("detects a sibling worktree from a %s path", async (pathKind) => {
+    const checkout = path.join(root, "checkout");
+    const sibling = path.join(root, "other");
+    write("checkout/.git", "gitdir: /unused/checkout\n");
+    write("checkout/.gwrkrc.json", JSON.stringify({ project: { design } }));
+    write("other/.git", "gitdir: /unused/other\n");
+    write("other/pyproject.toml", '[project]\ndependencies = ["fastapi", "pytest"]\n');
+
+    const direct = await detectProfile(sibling);
+    expect(direct.design).toBeUndefined();
+    const explicit = await resolveWorkspaceProfile(
+      checkout,
+      pathKind === "relative" ? "../other" : sibling,
+    );
+    expect.soft(explicit.design).toBeUndefined();
+    expect(explicit).toEqual(direct);
+  });
+
+  it.each([undefined, "pytest"] as const)(
+    "preserves an inherited test command with configured runner %s when detecting pytest",
+    async (runner) => {
+      const workspacePath = "services/api";
+      const cwd = path.join(root, workspacePath);
+      const config = {
+        project: {
+          design,
+          stack: { language: "Python", buildSystem: "uv" },
+          toolchain: { test: runner, testCommand: "uv run pytest -q {files}" },
+        },
+        workspaces: { [workspacePath]: { toolchain: { build: null } } },
+      };
+      write(".gwrkrc.json", JSON.stringify(config));
+      write(`${workspacePath}/pyproject.toml`, '[project]\ndependencies = ["fastapi"]\n');
+      write(`${workspacePath}/uv.lock`, "");
+
+      const resolveProfiles = async (rootConfig: unknown) => ({
+        direct: await detectProfile(cwd),
+        explicit: await resolveWorkspaceProfile(root, workspacePath),
+        configured: resolveWorkspaceProfile(cwd, root, rootConfig),
+      });
+      const before = await resolveProfiles(config);
+      write(`${workspacePath}/pytest.ini`, "");
+      const after = await resolveProfiles(config);
+      for (const [stage, profiles] of Object.entries({ before, after })) {
+        for (const [entryPoint, profile] of Object.entries(profiles)) {
+          expect.soft(profile, `${stage} ${entryPoint}`).toMatchObject({ design });
+          expect.soft(getTestCommand(profile, ["test_api.py"]), `${stage} ${entryPoint}`).toBe(
+            "uv run pytest -q test_api.py",
+          );
+        }
+      }
+
+      for (const [toolchain, command] of [
+        [{ test: "pytest" }, "pytest test_api.py -v"],
+        [{ testCommand: "uv run pytest {files}" }, "uv run pytest test_api.py"],
+        [{ test: null }, null],
+      ] as const) {
+        const overridden = { ...config, workspaces: { [workspacePath]: { toolchain } } };
+        write(".gwrkrc.json", JSON.stringify(overridden));
+        for (const [entryPoint, profile] of Object.entries(await resolveProfiles(overridden))) {
+          expect.soft(getTestCommand(profile, ["test_api.py"]), entryPoint).toBe(command);
+        }
+      }
+    },
+  );
+
+  it("matches a workspace registered by its same-worktree symlink", async () => {
+    const alias = path.join(root, "api-alias");
+    const layered = { ...design, architecture: "layered", principles: ["clean-code"] };
+    const workspaces = { "api-alias": { stack: { framework: "Django" } } };
+    const config = {
+      project: { design },
+      workspaces: { "api-alias": { ...workspaces["api-alias"], design: layered } },
+    };
+    write(".git", "gitdir: /unused/worktree\n");
+    write(".gwrkrc.json", JSON.stringify(config));
+    fs.symlinkSync("services/api", alias, "dir");
+
+    const profiles = {
+      direct: await detectProfile(alias),
+      explicit: await resolveWorkspaceProfile(root, "api-alias"),
+      configured: resolveWorkspaceProfile(alias, root, config),
+    };
+    for (const [entryPoint, profile] of Object.entries(profiles)) {
+      expect.soft(profile, entryPoint).toMatchObject({
+        design: layered,
+        stack: { language: "Python", framework: "Django" },
+      });
+    }
+
+    write(".gwrkrc.json", JSON.stringify({ workspaces }));
+    expect(resolveWorkspaceProfile(alias, root, { workspaces })).toStrictEqual({
+      type: "nodejs",
+      stack: { framework: "Django" },
+      layout: "flat",
+    });
+  });
+
+  it("prefers a registered alias when the physical target has its own registration", async () => {
+    const alias = path.join(root, "api-alias");
+    const target = path.join(root, "services/api");
+    const layered = { ...design, architecture: "layered" };
+    const clean = { ...design, architecture: "clean-architecture" };
+    const config = {
+      project: { design },
+      workspaces: { "api-alias": { design: layered, stack: { framework: "Django" } } },
+    };
+    write(".git", "gitdir: /unused/worktree\n");
+    write(".gwrkrc.json", JSON.stringify(config));
+    write("services/.gwrkrc.json", JSON.stringify({
+      workspaces: { api: { design: clean, stack: { framework: "Flask" } } },
+    }));
+    fs.symlinkSync("services/api", alias, "dir");
+
+    for (const [cwd, relativePath, architecture, framework] of [
+      [alias, "api-alias", layered, "Django"],
+      [target, "services/api", clean, "Flask"],
+    ] as const) {
+      const profiles = {
+        direct: await detectProfile(cwd),
+        explicit: await resolveWorkspaceProfile(root, relativePath),
+        configured: resolveWorkspaceProfile(cwd, root, config),
+      };
+      for (const [entryPoint, profile] of Object.entries(profiles)) {
+        expect.soft(profile, `${relativePath} ${entryPoint}`).toMatchObject({
+          design: architecture,
+          stack: { language: "Python", framework },
+        });
+      }
+    }
+  });
+
+  it("finds a same-worktree alias registration in the requested path's ancestors", async () => {
+    const workspacePath = "services/api-alias";
+    const alias = path.join(root, workspacePath);
+    const layered = { ...design, architecture: "layered", principles: ["clean-code"] };
+    const config = { project: { design } };
+    write(".git", "gitdir: /unused/worktree\n");
+    write(".gwrkrc.json", JSON.stringify(config));
+    write("services/.gwrkrc.json", JSON.stringify({
+      workspaces: { "api-alias": { design: layered, stack: { framework: "Django" } } },
+    }));
+    write("targets/api/pyproject.toml", '[project]\ndependencies = ["fastapi"]\n');
+    fs.symlinkSync("../targets/api", alias, "dir");
+
+    const profiles = {
+      direct: await detectProfile(alias),
+      explicit: await resolveWorkspaceProfile(root, workspacePath),
+      configured: resolveWorkspaceProfile(alias, root, config),
+    };
+    for (const [entryPoint, profile] of Object.entries(profiles)) {
+      expect.soft(profile, entryPoint).toMatchObject({
+        design: layered,
+        stack: { language: "Python", framework: "Django" },
+      });
+    }
+  });
+
+  it("uses the physical registration for an unregistered alias when design applies", async () => {
+    const alias = path.join(root, "api-alias");
+    const target = path.join(root, "services/api");
+    const layered = { ...design, architecture: "layered" };
+    const config = {
+      project: { design },
+      workspaces: {
+        "services/api": {
+          design: layered,
+          stack: { framework: "Django" },
+          toolchain: { build: null },
+        },
+      },
+    };
+    write(".git", "gitdir: /unused/worktree\n");
+    write(".gwrkrc.json", JSON.stringify(config));
+    fs.symlinkSync("services/api", alias, "dir");
+
+    const physical = await detectProfile(target);
+    expect(physical).toMatchObject({
+      design: layered,
+      stack: { language: "Python", framework: "Django" },
+      toolchain: { build: null },
+    });
+    const profiles = {
+      direct: await detectProfile(alias),
+      explicit: await resolveWorkspaceProfile(root, "api-alias"),
+      configured: resolveWorkspaceProfile(alias, root, config),
+    };
+    for (const [entryPoint, profile] of Object.entries(profiles)) {
+      expect.soft(profile, entryPoint).toStrictEqual(physical);
+    }
+  });
+
+  it("keeps an unregistered alias out of the legacy configured lookup", async () => {
+    const alias = path.join(root, "api-alias");
+    const workspaces = { "services/api": { stack: { framework: "Django" } } };
+    write(".gwrkrc.json", JSON.stringify({ workspaces }));
+    fs.symlinkSync("services/api", alias, "dir");
+
+    expect(resolveWorkspaceProfile(alias, root, { workspaces })).toBeUndefined();
+    expect(resolveWorkspaceProfile(path.join(root, "services/api"), root, { workspaces }))
+      .toMatchObject({ stack: { framework: "Django" } });
+    expect(await resolveWorkspaceProfile(root, "api-alias")).toMatchObject({
+      stack: { language: "Python", framework: "Django" },
+    });
+  });
+
+  it("falls back to the resolved path when realpathSync returns undefined", async () => {
+    const spy = vi.spyOn(fs, "realpathSync").mockReturnValue(undefined as never);
+    try {
+      const profile = await detectProfile(path.join(root, "services/api"));
+      expect(profile).toMatchObject({
+        type: "python",
+        stack: { language: "Python", framework: "FastAPI" },
+      });
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  it("uses the physical worktree when a workspace path follows a symlink", async () => {
+    const outer = path.join(root, "outer");
+    const physicalWorkspace = path.join(root, "other/services/api");
+    const workspaces = { "linked/api": { stack: { framework: "Django" } } };
+    const config = { project: { design }, workspaces };
+    write("outer/.git", "gitdir: /unused/outer\n");
+    write("outer/.gwrkrc.json", JSON.stringify(config));
+    write("other/.git", "gitdir: /unused/other\n");
+    write("other/services/api/pyproject.toml", '[project]\ndependencies = ["fastapi", "pytest"]\n');
+    fs.symlinkSync(path.join(root, "other/services"), path.join(outer, "linked"), "dir");
+
+    const linkedWorkspace = path.join(outer, "linked/api");
+    const physical = await detectProfile(physicalWorkspace);
+    expect(physical).toMatchObject({
+      stack: { language: "Python", framework: "FastAPI" },
+      toolchain: { test: "pytest" },
+    });
+    expect(physical.design).toBeUndefined();
+    expect.soft(await detectProfile(linkedWorkspace)).toEqual(physical);
+    expect.soft(await resolveWorkspaceProfile(outer, "linked/api")).toEqual(physical);
+    expect.soft(resolveWorkspaceProfile(linkedWorkspace, outer, config)).toBeUndefined();
+    expect(resolveWorkspaceProfile(linkedWorkspace, outer, { workspaces })).toStrictEqual({
+      type: "nodejs",
+      stack: { framework: "Django" },
+      layout: "flat",
+    });
+  });
+
+  it("keeps a nested worktree registration within its own worktree", async () => {
+    const nestedDesign = { ...design, architecture: "layered" };
+    const outer = {
+      project: { design },
+      workspaces: { "services/api": { stack: { framework: "Flask" } } },
+    };
+    write(".gwrkrc.json", JSON.stringify(outer));
+    write("services/.git", "gitdir: /unused/nested-worktree\n");
+    write("services/.gwrkrc.json", JSON.stringify({
+      project: { name: "services", design: nestedDesign },
+      workspaces: { api: { stack: { framework: "Django" } } },
+    }));
+
+    const cwd = path.join(root, "services/api");
+    const direct = await detectProfile(cwd);
+    expect(direct).toMatchObject({
+      design: nestedDesign,
+      stack: { language: "Python", framework: "Django" },
+    });
+    expect(await resolveWorkspaceProfile(root, "services/api")).toEqual(direct);
+    expect.soft(resolveWorkspaceProfile(cwd, root, outer)).toBeUndefined();
+    expect(resolveWorkspaceProfile(cwd, root, { workspaces: outer.workspaces })).toStrictEqual({
+      type: "nodejs",
+      stack: { framework: "Flask" },
+      layout: "flat",
+    });
+  });
+
+  it("uses the outer workspace entry when the nearer registration is invalid", async () => {
+    const nearerDesign = { ...design, architecture: "layered" };
+    const outer = {
+      project: { name: "fixture", design },
+      workspaces: {
+        "services/api": {
+          stack: { framework: "Django" },
+          toolchain: { build: null },
+        },
+      },
+    };
+    write(".gwrkrc.json", JSON.stringify(outer));
+    write("services/.gwrkrc.json", JSON.stringify({
+      project: { name: "services", design: nearerDesign },
+      workspaces: { api: { stack: { framework: 42 } } },
+    }));
+
+    const workspace = path.join(root, "services/api");
+    const profiles = [
+      await detectProfile(workspace),
+      await resolveWorkspaceProfile(root, "services/api"),
+      resolveWorkspaceProfile(workspace, root, outer),
+    ];
+    for (const profile of profiles) {
+      expect.soft(profile).toMatchObject({
+        design: nearerDesign,
+        stack: { language: "Python", framework: "Django" },
+        toolchain: { build: null },
+      });
+    }
+  });
+
+  it("finds the registered workspace under a nearer local design", async () => {
+    const localDesign = { ...design, architecture: "layered" };
+    const config = {
+      project: { name: "fixture", design },
+      workspaces: { "services/api": { toolchain: { build: null } } },
+    };
+    write(".gwrkrc.json", JSON.stringify(config));
+    write("services/api/pyproject.toml", '[project]\ndependencies = ["django"]\n');
+    write("services/api/uv.lock", "");
+    write("services/api/pytest.ini", "[pytest]\n");
+    write("services/api/src/api.py", "");
+    write("services/api/.gwrkrc.json", JSON.stringify({ project: { name: "api", design: localDesign } }));
+    const child = path.join(root, "services/api/src");
+    const profiles = [
+      await detectProfile(child),
+      await resolveWorkspaceProfile(root, "services/api/src"),
+      resolveWorkspaceProfile(child, root, config),
+    ];
+    for (const profile of profiles) {
+      expect.soft(profile).toMatchObject({
+        design: localDesign,
+        type: "python",
+        stack: { language: "Python", framework: "Django", buildSystem: "uv" },
+        toolchain: { test: "pytest", build: null },
+      });
+    }
+  });
+
+  it.each([
+    { scenario: "nearest valid design", entryDesign: undefined, boundary: false },
+    {
+      scenario: "entry design",
+      entryDesign: { ...design, architecture: "clean-architecture", principles: [] },
+      boundary: false,
+    },
+    { scenario: "worktree boundary", entryDesign: undefined, boundary: true },
+  ])("resolves a nested directory with $scenario", async ({ entryDesign, boundary }) => {
+    const nearerDesign = { ...design, architecture: "layered", principles: ["clean-code"] };
+    const config = {
+      project: { name: "fixture", design },
+      workspaces: { "services/api": { design: entryDesign, toolchain: { build: null } } },
+    };
+    write(".gwrkrc.json", JSON.stringify(config));
+    write("services/api/pyproject.toml", '[project]\ndependencies = ["django"]\n');
+    write("services/api/uv.lock", "");
+    write("services/api/pytest.ini", "[pytest]\n");
+    write("services/api/admin/.gwrkrc.json", JSON.stringify({
+      project: { name: "admin", design: nearerDesign },
+    }));
+    const relativePath = "services/api/admin/src";
+    const child = path.join(root, relativePath);
+    write(`${relativePath}/.gwrkrc.json`, JSON.stringify({
+      project: { name: "src" },
+    }));
+    if (boundary) {
+      write(`${relativePath}/.git`, "gitdir: /unused/nested-worktree\n");
+      write("services/api/.gwrkrc.json", JSON.stringify({
+        project: { name: "api", design: nearerDesign },
+      }));
+    }
+
+    const direct = await detectProfile(child);
+    const explicit = await resolveWorkspaceProfile(root, relativePath);
+    const configured = resolveWorkspaceProfile(child, root, config);
+    if (boundary) {
+      expect(direct.design).toBeUndefined();
+      expect.soft(explicit).toEqual(direct);
+      expect.soft(configured).toBeUndefined();
+      return;
+    }
+    const profiles = {
+      direct,
+      "two-argument resolver": explicit,
+      "three-argument resolver": configured,
+    };
+    for (const [entryPoint, profile] of Object.entries(profiles)) {
+      expect.soft(profile, entryPoint).toMatchObject({
+        design: entryDesign ?? nearerDesign,
+        type: "python",
+        stack: { language: "Python", framework: "Django", buildSystem: "uv" },
+        toolchain: { test: "pytest", build: null },
+      });
+    }
+  });
+
+  it("drops partial local JavaScript stack fields when the entry selects Python", async () => {
+    const config = {
+      project: { name: "fixture", design },
+      workspaces: { "apps/mixed": { stack: { language: "Python" } } },
+    };
+    write(".gwrkrc.json", JSON.stringify(config));
+    write("apps/mixed/package.json", '{}');
+    write("apps/mixed/pyproject.toml", '[project]\ndependencies = ["django"]\n');
+    write("apps/mixed/uv.lock", "");
+    write("apps/mixed/.gwrkrc.json", JSON.stringify({
+      project: { name: "mixed", stack: { framework: "Next.js", buildSystem: "pnpm" } },
+    }));
+    const workspace = path.join(root, "apps/mixed");
+    const profiles = [
+      await detectProfile(workspace),
+      await resolveWorkspaceProfile(root, "apps/mixed"),
+      resolveWorkspaceProfile(workspace, root, config),
+    ];
+    for (const profile of profiles) {
+      expect.soft(profile).toMatchObject({
+        design,
+        stack: { language: "Python", framework: "Django", buildSystem: "uv" },
+      });
+    }
+  });
+
+  it("preserves nested local stack and commands over the matched workspace defaults", async () => {
+    const config = {
+      project: { name: "fixture", design },
+      workspaces: { "services/api": { stack: { language: "Python", buildSystem: "uv" } } },
+    };
+    write(".gwrkrc.json", JSON.stringify(config));
+    write("services/api/pyproject.toml", '[project]\ndependencies = ["fastapi"]\n');
+    write("services/api/uv.lock", "");
+    write("services/api/.gwrkrc.json", JSON.stringify({ project: { name: "api" } }));
+    write("services/api/admin/.gwrkrc.json", JSON.stringify({
+      project: {
+        name: "admin",
+        stack: { framework: "Django" },
+        toolchain: { test: "pytest", testCommand: "uv run pytest {files}" },
+      },
+    }));
+    const child = path.join(root, "services/api/admin");
+    const profiles = [
+      await detectProfile(child),
+      await resolveWorkspaceProfile(root, "services/api/admin"),
+      resolveWorkspaceProfile(child, root, config),
+    ];
+    for (const profile of profiles) {
+      expect.soft(profile?.stack).toMatchObject({ language: "Python", framework: "Django", buildSystem: "uv" });
+      if (!profile) throw new Error("Expected a workspace profile");
+      expect.soft(getTestCommand(profile, ["test_api.py"])).toBe("uv run pytest test_api.py");
+    }
+  });
+
+  it("finds the registered workspace past its name-only config during nested detection", async () => {
+    const config = {
+      project: { name: "fixture", design },
+      workspaces: {
+        "services/api": {
+          stack: { language: "Python", buildSystem: "uv" },
+          toolchain: { build: null },
+        },
+      },
+    };
+    write(".gwrkrc.json", JSON.stringify(config));
+    write(
+      "services/api/.gwrkrc.json",
+      JSON.stringify({ project: { name: "api" } }),
+    );
+    write("services/api/uv.lock", "");
+    write("services/api/admin/test_api.py", "");
+
+    const nested = "services/api/admin";
+    const child = path.join(root, nested);
+    const profiles = [
+      await detectProfile(child),
+      await resolveWorkspaceProfile(root, nested),
+      resolveWorkspaceProfile(child, root, config),
+    ];
+    for (const profile of profiles) {
+      expect(profile).toMatchObject({
+        design,
+        type: "python",
+        stack: { language: "Python", framework: "FastAPI", buildSystem: "uv" },
+        toolchain: { build: null },
+      });
+    }
+
+    write(".gwrkrc.json", JSON.stringify({ project: config.project }));
+    expect((await detectProfile(child)).design).toEqual(design);
+
+    write(".gwrkrc.json", JSON.stringify({ project: { name: "fixture" } }));
+    expect((await detectProfile(child)).design).toBeUndefined();
+  });
+
+  it.each([false, true])("resolves a nested design in all entry points with entry override %s", async (override) => {
+    const childDesign = { ...design, architecture: "clean-architecture" };
+    const parentDesign = { ...design, architecture: "layered" };
+    const config = {
+      project: { name: "fixture" },
+      workspaces: { "apps/web": { ...(override && { design }), stack: { language: "TypeScript" } } },
+    };
+    write(".gwrkrc.json", JSON.stringify(config));
+    write("apps/web/.gwrkrc.json", JSON.stringify({ project: { name: "web", design: parentDesign } }));
+    write("apps/web/sub/.gwrkrc.json", JSON.stringify({ project: { name: "sub", design: childDesign } }));
+
+    const child = path.join(root, "apps/web/sub");
+    const profiles = [
+      await detectProfile(child),
+      await resolveWorkspaceProfile(root, "apps/web/sub"),
+      resolveWorkspaceProfile(child, root, config),
+    ];
+    for (const profile of profiles) {
+      expect.soft(profile?.design).toEqual(override ? design : childDesign);
+    }
+  });
+
+  it("detects the longest matching workspace directory for design-aware resolution", async () => {
+    const config = {
+      project: {
+        name: "fixture",
+        design,
+        stack: { language: "TypeScript" },
+        toolchain: { test: "vitest" },
+      },
+      workspaces: {
+        services: { stack: { language: "TypeScript" } },
+        "services/api": { stack: { framework: "Django" }, toolchain: { build: null } },
+        "services/api/sr": { stack: { language: "TypeScript" } },
+      },
+    };
+    write(".gwrkrc.json", JSON.stringify(config));
+    write("services/api/pyproject.toml", '[project]\ndependencies = ["fastapi"]\n');
+    write("services/api/src/api.py", "");
+
+    const workspace = path.join(root, "services/api");
+    const profiles = [
+      await detectProfile(path.join(workspace, "src")),
+      await resolveWorkspaceProfile(root, "services/api/src"),
+      resolveWorkspaceProfile(workspace, root, config),
+    ];
+    for (const profile of profiles) {
+      expect.soft(profile).toMatchObject({
+        design,
+        type: "python",
+        stack: { language: "Python", framework: "Django" },
+        toolchain: { build: null },
+      });
+      if (!profile) throw new Error("Expected workspace profile");
+      expect.soft(getTestCommand(profile, ["test_api.py"])).toBe("pytest test_api.py -v");
+    }
+  });
+
+  it("filters the root test runner through the configured workspace resolver", () => {
+    const workspace = path.join(root, "services/api");
+    const profile = resolveWorkspaceProfile(workspace, root, {
+      project: { design, stack: { language: "TypeScript" }, toolchain: { test: "vitest" } },
+      workspaces: { "services/api": { stack: { language: "Python" }, toolchain: { build: null } } },
+    });
+    expect(profile).toMatchObject({ design, toolchain: { build: null } });
+    if (!profile) throw new Error("Expected workspace profile");
+    expect(getTestCommand(profile, ["test_api.py"])).toBe("pytest test_api.py -v");
+  });
+
+  it("resolves a configured workspace when the root directory is unavailable", () => {
+    const missingRoot = path.join(root, "missing");
+    const profile = resolveWorkspaceProfile(
+      path.join(missingRoot, "services/api"),
+      missingRoot,
+      {
+        project: { design, toolchain: { test: "vitest" } },
+        workspaces: {
+          "services/api": {
+            stack: { language: "Python" },
+            toolchain: { build: null },
+          },
+        },
+      },
+    );
+
+    expect(profile).toMatchObject({ design, toolchain: { build: null } });
+    if (!profile) throw new Error("Expected workspace profile");
+    expect(getTestCommand(profile, ["test_api.py"])).toBe(
+      "pytest test_api.py -v",
+    );
+  });
+
+  it("keeps the detected workspace language when its framework is overridden", async () => {
+    const { resolveWorkspaceProfile } = await import("./profile-detector.js");
+    write(
+      ".gwrkrc.json",
+      JSON.stringify({
+        project: { name: "fixture", design, stack: { language: "TypeScript" } },
+        workspaces: { "services/api": { stack: { framework: "Django" } } },
+      }),
+    );
+    const result = await resolveWorkspaceProfile(root, "services/api");
+    expect(result).toMatchObject({
+      design,
+      stack: { language: "Python", framework: "Django" },
+      toolchain: { primary: "ruff", test: "pytest" },
+    });
+  });
+
+  it("TR-001: preserves explicit workspace design through config parsing", async () => {
+    const { GwrkConfigSchema } = await import("../utils/config.js");
+    const localDesign = { ...design, architecture: "clean", principles: [] };
+    const config = GwrkConfigSchema.parse({
+      project: { name: "fixture", design },
+      workspaces: { "services/api": { design: localDesign } },
+    });
+    expect(config.workspaces?.["services/api"]).toMatchObject({ design: localDesign });
+    write(".gwrkrc.json", JSON.stringify(config));
+    expect(await detectProfile(path.join(root, "services/api"))).toMatchObject({ design: localDesign });
+  });
+
+  it.each([
+    { architecture: "", principles: [] },
+    { architecture: "clean", principles: ["unknown-principle"] },
+    { architecture: "clean", templateVersion: "99.0.0" },
+  ])("TR-001: rejects invalid workspace design %j", async (invalid) => {
+    const { GwrkConfigSchema } = await import("../utils/config.js");
+    const parsed = GwrkConfigSchema.safeParse({
+      project: { name: "fixture", design },
+      workspaces: { "services/api": { design: invalid } },
+    });
+    expect(parsed.success).toBe(false);
+    if (!parsed.success) {
+      expect(parsed.error.issues.some((issue) => issue.path.slice(0, 3).join(".") === "workspaces.services/api.design")).toBe(true);
     }
   });
 });

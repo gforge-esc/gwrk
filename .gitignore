@@ -1,5 +1,6 @@
 node_modules
 dist
+docs/site/_build/
 .DS_Store
 *.log
 coverage/
@@ -33,7 +34,7 @@ scripts/dev/
 .gwrk/dispatches.jsonl
 
 .antigravitycli/
-.antigravitycli/
+/cache/
 
 # random files
 *.err

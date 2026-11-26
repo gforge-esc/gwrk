@@ -1,0 +1,40 @@
+{
+  "scope": "Phase6 AUTH18 fixture correction only",
+  "componentCommit": "39dddac65bc839f6328bde5eacdaff745a9eb469",
+  "parent": "3db449bcb22be9df36ef30dd8c2858c0f8f1e093",
+  "files": {
+    "src/server/auth-continuity.test.ts": "4ab4c916c19557a06cb83a2078bf96f23f7b377184630c68ac230b3aaf9fcd41"
+  },
+  "diff": {
+    "files": 1,
+    "insertions": 8,
+    "productionChanges": 0
+  },
+  "red": {
+    "log": "recipient-red.log",
+    "failed": 1
+  },
+  "green": {
+    "log": "after-recipient.log",
+    "passed": 1,
+    "wholeContinuityTestCompleted": true,
+    "laterAssertionsPreserved": true
+  },
+  "build": "build.log",
+  "lint": {
+    "log": "lint.log",
+    "checked": 504
+  },
+  "normalHooks": "commit.log",
+  "policyReferences": [
+    "src/server/routes/dispatch.ts:121-201",
+    "src/domain/slack-delivery.ts:222-315",
+    "specs/049-durable-dispatch-harvest/contracts/coordinators-routes-and-cli.md:115-129"
+  ],
+  "effects": "No production changes, live Slack, enrollment, cloud or task-state changes",
+  "independentReview": "Root GO after direct diff, canonical recipient policy and actual complete test receipt inspection. No production changes or weakened assertions.",
+  "logHashes": {
+    "recipient-red.log": "c85ef1e546f502f0a288bcc00221cc6c5dfba7d974d12deb549bcf9aa537d30f",
+    "after-recipient.log": "f4e1054273ea2bbc8820dd4a6652fff8d1e3cd6a7e94349d4b7c033da0e15a8c"
+  }
+}

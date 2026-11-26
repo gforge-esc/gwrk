@@ -1,0 +1,26 @@
+{
+  "runId": "2026-11-25T15:26:16.001Z_ship_p07",
+  "feature": "051-hosted-aws-pilot",
+  "phase": "phase-07",
+  "command": "ship",
+  "agent": "agy",
+  "model": "unknown",
+  "usage": {
+    "inputTokens": 880128,
+    "outputTokens": 56657,
+    "totalTokens": 936785
+  },
+  "startedAt": "2026-11-25T15:26:16.001Z",
+  "finishedAt": "2026-11-25T15:59:54.485Z",
+  "durationS": 2018,
+  "exitCode": 0,
+  "attempt": 1,
+  "gateResult": "PASS",
+  "reviewVerdict": "GO",
+  "filesChanged": 2,
+  "linesAdded": 27,
+  "linesDeleted": 1,
+  "gitCommit": "f02bb5ca2aa1fe62e4c5808008623c8424fb72b1",
+  "gitBranch": "feat/051-hosted-aws-pilot",
+  "digest": []
+}

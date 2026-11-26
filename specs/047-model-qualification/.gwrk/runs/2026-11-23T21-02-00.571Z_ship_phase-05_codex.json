@@ -1,0 +1,21 @@
+{
+  "runId": "2026-11-23T21:02:00.571Z_ship_p05",
+  "feature": "047-model-qualification",
+  "phase": "phase-05",
+  "command": "ship",
+  "agent": "codex",
+  "model": "gpt-6.2-astra",
+  "startedAt": "2026-11-23T21:02:00.571Z",
+  "finishedAt": "2026-11-23T21:33:01.527Z",
+  "durationS": 1861,
+  "exitCode": 1,
+  "attempt": 1,
+  "gateResult": "FAIL",
+  "reviewVerdict": "NO-GO",
+  "filesChanged": 5,
+  "linesAdded": 197,
+  "linesDeleted": 5,
+  "gitCommit": "140a7d97dcecd6aa3978527a40562f38a7c72eed",
+  "gitBranch": "feat/047-model-qualification",
+  "digest": []
+}

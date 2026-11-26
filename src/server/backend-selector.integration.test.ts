@@ -3,11 +3,12 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { QuotaProber } from "../adapters/agents/quota-prober.js";
+import { listRoutingDecisions } from "../adapters/sqlite/routing-decisions.js";
 import { getDb, getTestDb } from "../db/index.js";
-import type { AgentRegistry } from "./agent-registry.js";
+import type { AgentRegistry } from "../domain/agent-config.js";
+import { TaskClassification, TaskType } from "../domain/types.js";
 import { BackendSelector, type TaskContext } from "./backend-selector.js";
-import { QuotaProber } from "./quota-prober.js";
-import { TaskClassification, TaskType } from "./task-classifier.js";
 
 vi.mock("../db/index.js", async () => {
   const actual = (await vi.importActual("../db/index.js")) as any;
@@ -23,8 +24,9 @@ describe("BackendSelector Integration", () => {
   let prober: QuotaProber;
   let selector: BackendSelector;
 
-  const context: TaskContext = {
+  const context = {
     runId: "integration-run-123",
+    projectId: "alpha",
     feature: "feat-integration",
     phase: "phase-1",
     taskType: TaskType.IMPLEMENT,
@@ -78,7 +80,7 @@ describe("BackendSelector Integration", () => {
     const selection = await selector.selectBackend(context);
 
     expect(selection.backend).toBe("gemini");
-    expect(selection.model).toBe("gemini-flash");
+    expect(selection.model).toBe("flash");
     expect(selection.quotaPercent).toBe(85);
 
     // 2. Verify it was recorded in the database
@@ -88,11 +90,93 @@ describe("BackendSelector Integration", () => {
 
     expect(row).toBeDefined();
     expect(row.selected_backend).toBe("gemini");
-    expect(row.selected_model).toBe("gemini-flash");
+    expect(row.selected_model).toBe("flash");
     expect(row.task_classification).toBe(TaskClassification.FAST);
     expect(row.quota_percent).toBe(85);
     expect(row.probe_status).toBe("fresh");
     expect(row.run_id).toBe(context.runId);
+  });
+
+  it("scopes decisions for identical feature and nonnumeric run IDs", async () => {
+    await selector.selectBackend(context);
+    prober.markModelFailure("gemini", "gemini-flash");
+    await selector.selectBackend({ ...context, projectId: "beta" });
+
+    expect(listRoutingDecisions("alpha", context.runId, db)).toMatchObject([
+      { projectId: "alpha", selectedModel: "flash" },
+    ]);
+    expect(listRoutingDecisions("beta", context.runId, db)).toMatchObject([
+      { projectId: "beta", selectedModel: "pro" },
+    ]);
+    expect(listRoutingDecisions("legacy-local", context.runId, db)).toEqual([]);
+  });
+
+  it.each(["alpha", "alpha-legacy"])(
+    "uses only Alpha's canonical and legacy run history when routing for %s",
+    async (projectId) => {
+      mockRegistry.backends.alternate = {
+        ...mockRegistry.backends.gemini,
+        name: "alternate",
+      };
+      db.exec(`
+        INSERT INTO projects (id, name, path) VALUES
+          ('alpha', 'Alpha', ''), ('alpha-legacy', 'Legacy Alpha', ''),
+          ('beta', 'Beta', '');
+        INSERT INTO project_aliases (alias_id, project_id)
+          VALUES ('alpha-legacy', 'alpha');
+      `);
+      const insertRun = db.prepare(`
+        INSERT INTO runs (project_id, feature_id, command, agent_backend, exit_code)
+        VALUES (?, ?, 'ship', ?, ?)
+      `);
+      const addHistory = (owner: string, geminiExit: number, pairs: number) => {
+        for (let i = 0; i < pairs; i++) {
+          insertRun.run(owner, context.feature, "gemini", geminiExit);
+          insertRun.run(owner, context.feature, "alternate", 1 - geminiExit);
+        }
+      };
+
+      addHistory("alpha", 0, 1);
+      addHistory("alpha-legacy", 1, 2);
+      const before = await selector.selectBackend({ ...context, projectId });
+
+      addHistory("beta", 0, 4);
+      const after = await selector.selectBackend({ ...context, projectId });
+      const beta = await selector.selectBackend({
+        ...context,
+        projectId: "beta",
+      });
+
+      expect(before.backend).toBe("alternate");
+      expect(after.backend).toBe(before.backend);
+      expect(beta.backend).toBe("gemini");
+    },
+  );
+
+  it("skips history and decision writes when the ledger is unavailable", async () => {
+    mockRegistry.backends.alternate = {
+      ...mockRegistry.backends.gemini,
+      name: "alternate",
+    };
+    vi.mocked(getDb).mockClear();
+
+    const selection = await selector.selectBackend({
+      ...context,
+      ledgerAvailable: false,
+    });
+
+    expect(selection.backend).toBe("gemini");
+    expect(getDb).not.toHaveBeenCalled();
+    expect(listRoutingDecisions("alpha", context.runId, db)).toEqual([]);
+  });
+
+  it("returns the selected backend when recording the decision fails", async () => {
+    db.exec("DROP TABLE routing_decisions");
+
+    await expect(selector.selectBackend(context)).resolves.toMatchObject({
+      backend: "gemini",
+      model: "flash",
+    });
   });
 
   it("handles model failover and records it (TR-009)", async () => {
@@ -103,14 +187,14 @@ describe("BackendSelector Integration", () => {
     const selection = await selector.selectBackend(context);
 
     expect(selection.backend).toBe("gemini");
-    expect(selection.model).toBe("gemini-pro");
+    expect(selection.model).toBe("pro");
     expect(selection.modelFailoverUsed).toBe(true);
 
     // Verify record
     const row = db
       .prepare("SELECT * FROM routing_decisions WHERE run_id = ?")
       .get(context.runId) as any;
-    expect(row.selected_model).toBe("gemini-pro");
+    expect(row.selected_model).toBe("pro");
     expect(row.model_failover_used).toBe(1);
   });
 });

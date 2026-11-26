@@ -47,7 +47,7 @@ Without an ontology, you can't articulate the connection. You end up describing 
 
 ## Methodology: Five-Primitive Ontology Construction
 
-Using the methodology from [ontology-construction-prompt.hbs](../R007-project-perspective/references/ontology-construction-prompt.hbs) and the compound reasoning skill [specify-sharpen](../../archive/reference/reasoning-skills.md), applied to gwrk itself:
+Using the methodology from [ontology-construction-prompt.hbs](../R007-project-perspective/references/ontology-construction-prompt.hbs) and the compound reasoning skill [specify-sharpen](https://github.com/gforge-esc/gwrk/blob/cli-v1.6.0-beta.1/docs/archive/reference/reasoning-skills.md), applied to gwrk itself:
 
 ### Pass 1: Extract Classes (What kinds of things exist in gwrk?)
 
@@ -155,7 +155,7 @@ If any of those four are missing, the document fails.
 
 - [FOXTROT-CHARLIE.md](../../product/FOXTROT-CHARLIE.md) — the operating model
 - [ADR-009](../../decisions/ADR-009-domain-ontology-information-hierarchy-ux.md) — ontology injection architecture
-- [reasoning-skills.md](../../archive/reference/reasoning-skills.md) — compound reasoning methodology
+- [reasoning-skills.md](https://github.com/gforge-esc/gwrk/blob/cli-v1.6.0-beta.1/docs/archive/reference/reasoning-skills.md) — compound reasoning methodology
 - [ontology-construction-prompt.hbs](../R007-project-perspective/references/ontology-construction-prompt.hbs) — five-primitive ontology methodology
 - [R006 research brief v2](../R006-pluginable-research/references/gonzo-feature-research-brief-v2.md) — information hierarchy and domain boundary sections
 - [R007 project perspective](../R007-project-perspective/brief.md) — enforcement skills and project knowledge

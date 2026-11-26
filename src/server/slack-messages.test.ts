@@ -2,13 +2,16 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-/**
- * Module does not exist yet (RED)
- */
+import { EventEmitter } from "node:events";
 import type { ActionsBlock, HeaderBlock, SectionBlock } from "@slack/types";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+import type { ShipOrchestrator } from "../engine/ship-orchestrator.js";
+import { ShipBridge } from "./ship-bridge.js";
 import { MessageBuilder } from "./slack-messages.js";
+import { notifySlack } from "./slack-notify.js";
 import type { AgentBackend, DispatchStatus } from "./types.js";
+
+vi.mock("./slack-notify.js", () => ({ notifySlack: vi.fn() }));
 
 describe("MessageBuilder", () => {
   const mockDispatch = {
@@ -48,6 +51,99 @@ describe("MessageBuilder", () => {
       expect(firstElement.action_id).toBe("merge_pr");
     }
   });
+
+  it("shows and serializes the orchestrator's pull request on the review card", () => {
+    const prNumber = 101;
+    const prUrl = "https://github.com/org/alpha/pull/101";
+    const orchestrator = Object.assign(new EventEmitter(), {
+      getResult: () => ({ prNumber, prUrl }),
+    });
+    new ShipBridge(orchestrator as unknown as ShipOrchestrator, process.cwd());
+    const event = {
+      runId: mockDispatch.id,
+      featureId: mockDispatch.featureId,
+      phaseId: mockDispatch.phaseId,
+      backend: mockDispatch.backend,
+    };
+    orchestrator.emit("ship:start", event);
+    orchestrator.emit("ship:complete", event);
+
+    const [message] = vi.mocked(notifySlack).mock.lastCall!;
+    expect.soft(message.blocks).toContainEqual({
+      type: "section",
+      text: { type: "mrkdwn", text: `*Pull Request:* <${prUrl}|#${prNumber}>` },
+    });
+    const actions = message.blocks.find(
+      (block): block is ActionsBlock => block.type === "actions",
+    );
+    const merge = actions?.elements.find(
+      (element) =>
+        element.type === "button" && element.action_id === "merge_pr",
+    );
+    if (merge?.type !== "button" || !merge.value) {
+      throw new Error("Expected a merge button");
+    }
+    expect(JSON.parse(merge.value)).toMatchObject({
+      featureId: event.featureId,
+      phaseId: event.phaseId,
+      prNumber,
+    });
+  });
+
+  const routing = {
+    projectId: "project-a",
+    projectSlug: "alpha",
+    rootTs: "3.1",
+  };
+  const dispatch = { ...mockDispatch, ...routing };
+  it.each([
+    [
+      "reviewReady",
+      MessageBuilder.reviewReady(dispatch),
+      3,
+      { phaseId: dispatch.phaseId },
+    ],
+    [
+      "phaseFail",
+      MessageBuilder.phaseFail(dispatch),
+      2,
+      { phaseId: dispatch.phaseId },
+    ],
+    [
+      "specReady",
+      MessageBuilder.specReady(dispatch.featureId, "spec.md", routing),
+      2,
+      { specPath: "spec.md" },
+    ],
+    [
+      "planReady",
+      MessageBuilder.planReady(dispatch.featureId, "plan.md", 1, routing),
+      2,
+      { planPath: "plan.md" },
+    ],
+  ] as const)(
+    "%s shows the project and stamps its buttons",
+    (_name, message, count, details) => {
+      expect(message.blocks).toContainEqual({
+        type: "context",
+        elements: [{ type: "mrkdwn", text: "*Project:* `alpha`" }],
+      });
+      const actions = message.blocks.find(
+        (block): block is ActionsBlock => block.type === "actions",
+      );
+      expect(actions?.elements).toHaveLength(count);
+      for (const button of actions?.elements ?? []) {
+        if (button.type !== "button" || !button.value) {
+          throw new Error("Expected an interactive button");
+        }
+        expect(JSON.parse(button.value)).toMatchObject({
+          ...routing,
+          ...details,
+          featureId: dispatch.featureId,
+        });
+      }
+    },
+  );
 
   it("should build phaseFail message with error", () => {
     const msg = MessageBuilder.phaseFail(mockDispatch, "Build failed");

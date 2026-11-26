@@ -8,12 +8,12 @@
 
 import fs from "node:fs";
 import path from "node:path";
-import type { ProjectProfile } from "../domain/types.js";
 import {
   getColocatedTestCandidates,
   isPolyglotSourceFile,
   isPolyglotTestFile,
-} from "../ports/toolchain-port.js";
+} from "../domain/test-rules.js";
+import type { ProjectProfile } from "../domain/types.js";
 import { isHollowGate, isUnauthoredGate } from "./gate-quality.js";
 import type { Phase, Task } from "./state.js";
 import {

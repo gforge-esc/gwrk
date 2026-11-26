@@ -6,18 +6,39 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { spawn } from "node:child_process";
+import { execFileSync, spawn } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import readline from "node:readline";
+import { writeScopedStdout } from "../adapters/cli/output-scope.js";
 import { recordRoutingDecision } from "../db/plugins.js";
+import {
+  type ProjectDesign,
+  designRules,
+  lookupFrameworkGuidance,
+  lookupLanguageGuidance,
+  normalizeArchitecture,
+  normalizeFramework,
+} from "../domain/architecture-context.js";
+import {
+  composeEffectivePolicy,
+  resolveWorkflowPolicyScope,
+} from "../domain/policy-selection.js";
+import type { ProjectProfile } from "../domain/types.js";
+import { filterWorkerAuthEnvironment } from "../domain/worker-auth-environment.js";
+import {
+  detectProfile,
+  resolveWorkspacePolicyRoots,
+} from "../engine/profile-detector.js";
 import type { AgentBackend } from "../plugins/agent-backend.js";
 import { AgentBackendRegistry } from "../plugins/agent-registry.js";
 import { resolveExtensionContext } from "../plugins/extension-runtime.js";
 import { PluginLoader } from "../plugins/loader.js";
 import { resolveEnforcementSkills } from "../plugins/skill-runtime.js";
+import type { AgentTaskRequest, AgentTaskResult } from "../ports/agent-port.js";
 import { formatResultError, renderStreamStdoutLine } from "./agent-log.js";
 import { type AgentBackendId, loadConfig } from "./config.js";
+import { maskPromptExamples } from "./markdown-examples.js";
 import { startProgress } from "./progress.js";
 import { resolveProjectId } from "./project-id.js";
 
@@ -74,12 +95,14 @@ interface DispatchOptions {
   featureDir?: string;
   prompt?: string;
   model?: string;
-  env?: Record<string, string>;
+  env?: Record<string, string | undefined>;
   approvalMode?: "yolo" | "auto" | "plan";
   contextPath?: string;
   workDir?: string;
   stdin?: string;
   quiet?: boolean;
+  timeoutMs?: number;
+  logPath?: string;
   outputSchema?: Record<string, unknown>;
   /**
    * When true, the backend's stdout is a stream-json event stream: render it
@@ -162,6 +185,7 @@ async function dispatchAgent(opts: DispatchOptions): Promise<{
   logPath: string;
   stdout: string;
   stderr: string;
+  timedOut: boolean;
 }> {
   const projectRoot = process.cwd();
   const executionRoot = opts.workDir || projectRoot;
@@ -175,7 +199,12 @@ async function dispatchAgent(opts: DispatchOptions): Promise<{
     opts.prebuiltDispatch ?? (await buildCommand(opts, workflowContent));
 
   // Set up .runs/ log file
-  const runsDir = path.join(projectRoot, ".runs");
+  const requestedLog = opts.logPath
+    ? path.resolve(executionRoot, opts.logPath)
+    : undefined;
+  const runsDir = requestedLog
+    ? path.dirname(requestedLog)
+    : path.join(process.cwd(), ".runs");
   fs.mkdirSync(runsDir, { recursive: true });
   const ts = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
   // Use parent directory name for plugin workflows (PROMPT.md → parent dir name)
@@ -188,7 +217,8 @@ async function dispatchAgent(opts: DispatchOptions): Promise<{
     ? path.basename(opts.featureDir)
     : (opts.prompt ?? "unknown");
   const feature = rawFeature.replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 40);
-  const logPath = path.join(runsDir, `${ts}_${workflow}_${feature}.log`);
+  const logPath =
+    requestedLog ?? path.join(runsDir, `${ts}_${workflow}_${feature}.log`);
   const logStream = fs.createWriteStream(logPath, { flags: "a" });
 
   // Lossless raw event stream sidecar (stream-json backends only). The .log is
@@ -229,15 +259,19 @@ async function dispatchAgent(opts: DispatchOptions): Promise<{
     };
 
     // ADR-008 Layer 2: Hardened environment for agent sub-processes
+    const bounded = opts.timeoutMs !== undefined;
+    const ownProcessGroup = bounded && process.platform !== "win32";
+    const childEnv = filterWorkerAuthEnvironment({
+      ...process.env,
+      ...SAFE_AGENT_ENV,
+      ...(opts.env ?? {}),
+      ...(opts.contextPath ? { GWRK_CONTEXT: opts.contextPath } : {}),
+    });
     const child = spawn(command, args, {
       cwd: executionRoot,
-      env: {
-        ...process.env,
-        ...SAFE_AGENT_ENV,
-        ...(opts.env ?? {}),
-        ...(opts.contextPath ? { GWRK_CONTEXT: opts.contextPath } : {}),
-      },
+      env: childEnv,
       stdio: ["pipe", "pipe", "pipe"],
+      ...(ownProcessGroup ? { detached: true } : {}),
     });
 
     // Quiet mode: progress indicator instead of streaming output. Animates
@@ -245,13 +279,14 @@ async function dispatchAgent(opts: DispatchOptions): Promise<{
     const progress = opts.quiet
       ? startProgress({
           label: "agent running",
-          write: (chunk) => process.stdout.write(chunk),
+          write: (chunk) => writeScopedStdout(chunk),
           isTTY: process.stdout.isTTY === true,
           frameMs: 200,
         })
       : undefined;
 
     if (child.stdin) {
+      child.stdin.on("error", () => {});
       if (stdin) {
         child.stdin.write(stdin);
       }
@@ -276,7 +311,7 @@ async function dispatchAgent(opts: DispatchOptions): Promise<{
         const now = new Date();
         const elapsed = Math.floor((Date.now() - startEpoch) / 1000);
         const stamp = `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}:${String(now.getSeconds()).padStart(2, "0")} +${String(Math.floor(elapsed / 60)).padStart(2, "0")}:${String(elapsed % 60).padStart(2, "0")}`;
-        process.stdout.write(
+        writeScopedStdout(
           `${DIM}${stamp}${RESET}  ${YELLOW}⏳ 429 — Rate limited (attempt ${attempt}), retrying…${RESET}\n`,
         );
         logStream.write(`[429] Attempt ${attempt} — rate limited, retrying\n`);
@@ -341,9 +376,29 @@ async function dispatchAgent(opts: DispatchOptions): Promise<{
     }
 
     let resolved = false;
-    const finish = (code: number) => {
+    let timedOut = false;
+    const deadline = bounded
+      ? setTimeout(() => {
+          timedOut = true;
+          if (ownProcessGroup && child.pid) {
+            try {
+              process.kill(-child.pid, "SIGKILL");
+            } catch {
+              child.kill("SIGKILL");
+            }
+          } else {
+            child.kill("SIGKILL");
+          }
+          child.stdout?.destroy();
+          child.stderr?.destroy();
+          finish(124);
+        }, opts.timeoutMs)
+      : undefined;
+    const finish = (exitCode: number) => {
       if (resolved) return;
       resolved = true;
+      clearTimeout(deadline);
+      const code = timedOut ? 124 : exitCode;
 
       progress?.stop();
       const elapsed = Math.floor((Date.now() - startEpoch) / 1000);
@@ -358,7 +413,7 @@ async function dispatchAgent(opts: DispatchOptions): Promise<{
       if (opts.quiet) {
         const status = code === 0 ? "✓" : "✗";
         const relLogPath = path.relative(process.cwd(), logPath);
-        process.stdout.write(
+        writeScopedStdout(
           `  ${status} agent done (${mins}m ${secs}s) → ${relLogPath}\n`,
         );
         // Surface concise error context on failure (goal: helpful context, not
@@ -366,9 +421,9 @@ async function dispatchAgent(opts: DispatchOptions): Promise<{
         const errSummary = formatResultError(lastResultEvent);
         if (code !== 0 || errSummary) {
           if (errSummary) {
-            process.stdout.write(`  ${YELLOW}⚠ ${errSummary}${RESET}\n`);
+            writeScopedStdout(`  ${YELLOW}⚠ ${errSummary}${RESET}\n`);
           }
-          process.stdout.write(
+          writeScopedStdout(
             `  ${DIM}↳ full transcript: ${relLogPath}${RESET}\n`,
           );
         }
@@ -379,6 +434,7 @@ async function dispatchAgent(opts: DispatchOptions): Promise<{
         logPath,
         stdout: stdoutLines.join("\n"),
         stderr: stderrLines.join("\n"),
+        timedOut,
       });
     };
 
@@ -387,7 +443,7 @@ async function dispatchAgent(opts: DispatchOptions): Promise<{
 
     // Fallback: Node 25 readline holds FDs open after process exit.
     // If close hasn't fired within 30s of exit, force-resolve.
-    // No overall timeout — agents can run as long as needed.
+    // Explicit deadlines also cover this drain path.
     child.on("exit", (code) => {
       setTimeout(() => {
         if (!resolved) {
@@ -398,7 +454,7 @@ async function dispatchAgent(opts: DispatchOptions): Promise<{
           child.stderr?.destroy();
           finish(code ?? 1);
         }
-      }, 30_000);
+      }, 30_000).unref();
     });
 
     child.on("error", () => {
@@ -414,45 +470,17 @@ async function dispatchAgent(opts: DispatchOptions): Promise<{
  * FR-019: Input contract for dispatchToAgent().
  * Maps to ADR-006 AgentBackend.dispatch() input.
  */
-export interface TaskDispatch {
-  type?: string;
-  prompt?: string;
-  agent?: AgentBackendId | string;
-  model?: string;
+export interface TaskDispatch extends AgentTaskRequest {
+  promptParts?: { template: string; userInput: string };
+  profile?: ProjectProfile;
+  /** Project that selected the backend when execution uses a separate worktree. */
+  backendProjectRoot?: string;
   commandOverride?: string;
-  workDir?: string;
-  stdin?: string;
-  env?: Record<string, string>;
-  workflow?: string;
-  featureDir?: string;
-  quiet?: boolean;
   dryRun?: boolean;
-  /**
-   * JSON Schema for the expected output contract. Adapters whose CLI supports
-   * structured output (e.g. Claude's `--json-schema`) pass this through to
-   * force schema-conforming output; adapters that don't simply ignore it.
-   */
-  outputSchema?: Record<string, unknown>;
+  includeExternalContext?: boolean;
 }
 
-/**
- * FR-019: Output contract for dispatchToAgent().
- * Normalized result — proprietary exit codes mapped to gwrk standard.
- */
-export interface TaskResult {
-  exitCode: number;
-  rawExitCode?: number;
-  errorType?: string;
-  stdout: string;
-  unwrappedStdout?: string;
-  structuredOutput?: Record<string, unknown>;
-  usage?: {
-    tokensIn?: number;
-    tokensOut?: number;
-    costUsd?: number;
-  };
-  stderr: string;
-  durationS: number;
+export interface TaskResult extends AgentTaskResult {
   logPath?: string;
   /** True when the agent writes files directly via built-in tools. */
   nativeWriter?: boolean;
@@ -506,6 +534,291 @@ async function resolveWorkflowPath(workflowName: string): Promise<string> {
   return workflowName;
 }
 
+function resolvePrimaryCheckout(executionDir: string): string {
+  try {
+    const [firstField] = execFileSync(
+      "git",
+      ["worktree", "list", "--porcelain", "-z"],
+      {
+        cwd: executionDir,
+        encoding: "utf8",
+        stdio: ["ignore", "pipe", "pipe"],
+      },
+    ).split("\0", 1);
+    const prefix = "worktree ";
+    if (firstField.startsWith(prefix)) {
+      return firstField.slice(prefix.length) || executionDir;
+    }
+  } catch {
+    return executionDir;
+  }
+  return executionDir;
+}
+
+const ENFORCEMENT_MARKER = "{{enforcement}}";
+
+function withoutGeneratedPolicySections(
+  target: string,
+  selectedDesign?: ProjectDesign,
+): string {
+  const masked = maskPromptExamples(target);
+  const headings = Array.from(masked.matchAll(/^#{1,2}[ \t]+([^\r\n]*)/gm));
+  const selectionIndex = headings.findIndex(
+    (heading) =>
+      heading[0].startsWith("##") && heading[1].trim() === "Selection",
+  );
+  const selectionHeading = headings[selectionIndex];
+  const selectionBody = selectionHeading
+    ? masked.slice(
+        selectionHeading.index + selectionHeading[0].length,
+        headings[selectionIndex + 1]?.index ?? masked.length,
+      )
+    : "";
+  const selection = (name: string) =>
+    new RegExp(`^- ${name}: (.+)$`, "m").exec(selectionBody)?.[1]?.trim();
+  const language = selection("Language");
+  const languageIsUnset = !language || /^(?:none|unspecified)$/i.test(language);
+  const languageFallback =
+    "No bundled language binding. Assess language-specific boundaries explicitly.";
+  const generatedLanguageGuidance = languageIsUnset
+    ? [
+        languageFallback,
+        ...["TypeScript", "JavaScript", "Python", "Go", "Rust"]
+          .map(lookupLanguageGuidance)
+          .filter((guidance) => guidance !== undefined),
+      ]
+    : [lookupLanguageGuidance(language) ?? languageFallback];
+  const framework = selection("Framework");
+  const hasFramework = normalizeFramework(framework) !== undefined;
+  const architecture = selection("Architecture");
+  const policy = composeEffectivePolicy({
+    profile: {
+      type: "app",
+      stack: { language },
+      ...(architecture
+        ? {
+            design: {
+              architecture,
+              principles: ["functional-core", "clean-code", "tdd"],
+              templateVersion: "1.0.0" as const,
+            },
+          }
+        : {}),
+    },
+    candidates: [],
+  });
+  const selectedRules = selectedDesign
+    ? designRules({
+        ...selectedDesign,
+        architecture: normalizeArchitecture(selectedDesign.architecture),
+      })
+    : [];
+  const generated = new Map<string, string[]>([
+    [
+      "Rules",
+      selectedDesign
+        ? policy.architectureRules.filter(
+            (rule) => !selectedRules.includes(rule),
+          )
+        : [],
+    ],
+    ["Language guidance", generatedLanguageGuidance],
+    [
+      "Framework guidance",
+      hasFramework
+        ? [
+            "No bundled framework binding. Framework compatibility remains unassessed.",
+            lookupFrameworkGuidance(framework),
+          ].filter((guidance) => guidance !== undefined)
+        : ["No framework selected."],
+    ],
+    [
+      "Policy gaps",
+      [
+        ...policy.gaps.map(({ message }) => `- ${message}`),
+        ...(hasFramework
+          ? [
+              `- No compatible policy found for framework ${framework}.`,
+              `- No bundled framework binding or policy for ${framework}.`,
+            ]
+          : []),
+      ],
+    ],
+  ]);
+  let projected = "";
+  let start = 0;
+  for (const [index, heading] of headings.entries()) {
+    const section = heading[1].trim();
+    const content = generated.get(section);
+    if (!content || !heading[0].startsWith("##")) continue;
+    const bodyStart = heading.index + heading[0].length;
+    const end = headings[index + 1]?.index ?? target.length;
+    const original = target.slice(bodyStart, end);
+    const visible = masked.slice(bodyStart, end);
+    const lines = Array.from(visible.matchAll(/^([^\r\n]*)(?:\r?\n|$)/gm));
+    let body = "";
+    let keptFrom = 0;
+    for (const [lineIndex, line] of lines.entries()) {
+      const itemText =
+        section === "Rules"
+          ? (/^ {0,3}[-+*][ \t]+(.+)$/.exec(line[1])?.[1].trim() ?? "")
+          : line[1];
+      const generatedLanguageGap =
+        section === "Policy gaps" &&
+        /^- No bundled language binding or selected policy for .+\. Assess language-specific boundaries explicitly\.$/.test(
+          line[1],
+        );
+      if (!content.includes(itemText) && !generatedLanguageGap) continue;
+      const next = line.index + line[0].length;
+      const nextLine = lines[lineIndex + 1]?.[1];
+      if (section === "Rules" || section === "Policy gaps") {
+        const following = original.slice(next);
+        // A list item can continue after a blank line when the text is indented.
+        if (/^(?:[ \t]*\r?\n)*(?: {2}| *\t)[ \t]*[^ \t\r\n]/.test(following))
+          continue;
+        if (
+          nextLine?.trim() &&
+          !/^ {0,1}(?:[-+*]|\d{1,9}[.)])(?:[ \t]|$)/.test(nextLine)
+        )
+          continue;
+      } else if (lines[lineIndex - 1]?.[1].trim() || nextLine?.trim()) {
+        continue;
+      }
+      body += original.slice(keptFrom, line.index);
+      keptFrom = next;
+    }
+    body += original.slice(keptFrom);
+    projected += target.slice(start, heading.index);
+    if (keptFrom === 0 || body.trim())
+      projected += target.slice(heading.index, bodyStart) + body;
+    start = end;
+  }
+  return projected + target.slice(start);
+}
+
+function findEnforcementSlot(
+  template: string,
+  fallback: "empty-section" | "scoped-legacy",
+): RegExpMatchArray | undefined {
+  const masked = maskPromptExamples(template);
+  const sections = [
+    ...masked.matchAll(/<code_quality>([\s\S]*?)<\/code_quality>/g),
+  ];
+  const marked = sections.filter(([, body]) =>
+    body.includes(ENFORCEMENT_MARKER),
+  );
+  if (marked.length > 0) return marked.length === 1 ? marked[0] : undefined;
+
+  if (fallback === "scoped-legacy") {
+    const bareMarkers = [
+      ...masked.matchAll(/^\{\{enforcement\}\}(?=\r?\n|$)/gm),
+    ];
+    if (bareMarkers.length > 0) {
+      return bareMarkers.length === 1 ? bareMarkers[0] : undefined;
+    }
+    const emptyLines = [
+      ...masked.matchAll(
+        /^<code_quality>\s*<\/code_quality>(?=[ \t]*(?:\r?\n|$))/gm,
+      ),
+    ];
+    return emptyLines.length === 1 ? emptyLines[0] : undefined;
+  }
+
+  const emptySections = sections.filter(([, body]) => !body.trim());
+  return emptySections.length === 1 ? emptySections[0] : undefined;
+}
+
+const LEGACY_INPUT_OPENING = /^<user_input>(?=\r?\n|$)/;
+const LEGACY_INPUT_CLOSING = /(?<=^|\n)<\/user_input>(?=\r?\n|$)\s*$/;
+
+function findLegacyInputStart(stdin: string): number | undefined {
+  // The transport closer can follow an unclosed fence in the task text.
+  const closer = LEGACY_INPUT_CLOSING.exec(stdin);
+  if (!closer) return undefined;
+
+  const prefix = maskPromptExamples(stdin.slice(0, closer.index));
+  const tags = [...prefix.matchAll(/^<(\/?)user_input>(?=\r?\n|$)/gm)];
+  let depth = 1;
+  for (let index = tags.length - 1; index >= 0; index--) {
+    const tag = tags[index];
+    depth += tag[1] === "/" ? 1 : -1;
+    if (depth === 0) {
+      // An earlier unmasked tag makes the legacy input boundary ambiguous.
+      return index === 0 ? tag.index : undefined;
+    }
+  }
+  return undefined;
+}
+
+function legacyPromptSuffix(prompt: string, stdin: string): string | undefined {
+  if (!LEGACY_INPUT_CLOSING.test(stdin)) return undefined;
+
+  if (stdin.startsWith(prompt)) {
+    const suffix = stdin.slice(prompt.length);
+    const separator = /^\r?\n\r?\n/.exec(suffix)?.[0];
+    if (
+      separator &&
+      LEGACY_INPUT_OPENING.test(suffix.slice(separator.length))
+    ) {
+      return suffix;
+    }
+  }
+
+  if (LEGACY_INPUT_OPENING.test(stdin.trimStart())) return `\n\n${stdin}`;
+  return undefined;
+}
+
+function splitLegacyStdin(task: TaskDispatch) {
+  const { stdin, prompt, type, workflow } = task;
+  if (
+    !stdin ||
+    (stdin === prompt && findLegacyInputStart(stdin) !== undefined) ||
+    type?.startsWith("skill/") ||
+    workflow?.startsWith("skill/")
+  ) {
+    return undefined;
+  }
+
+  if (stdin === prompt) {
+    return {
+      template: prompt,
+      suffix: "",
+      slot: findEnforcementSlot(prompt, "scoped-legacy"),
+    };
+  }
+
+  const suffix = prompt ? legacyPromptSuffix(prompt, stdin) : undefined;
+  if (prompt && suffix) {
+    return {
+      template: prompt,
+      suffix,
+      includesPrompt: true,
+      slot: findEnforcementSlot(prompt, "scoped-legacy"),
+    };
+  }
+
+  if (LEGACY_INPUT_OPENING.test(stdin.trimStart())) return undefined;
+
+  const inputStart = findLegacyInputStart(stdin);
+  if (inputStart === undefined) {
+    const slot =
+      stdin.trim() === ENFORCEMENT_MARKER
+        ? /\{\{enforcement\}\}/.exec(stdin)
+        : findEnforcementSlot(stdin, "empty-section");
+    if (
+      slot?.index !== undefined &&
+      stdin.trim() === stdin.slice(slot.index, slot.index + slot[0].length)
+    ) {
+      return { template: stdin, suffix: "", slot };
+    }
+    return undefined;
+  }
+
+  const template = stdin.slice(0, inputStart);
+  const slot = findEnforcementSlot(template, "scoped-legacy");
+  return slot && { template, suffix: stdin.slice(inputStart), slot };
+}
+
 /**
  * FR-019: Dispatch agent work via a single facade.
  * FR-020: Normalizes exit codes — proprietary codes mapped to gwrk standard.
@@ -514,13 +827,24 @@ async function resolveWorkflowPath(workflowName: string): Promise<string> {
  * Internals are replaced by pluginRegistry.getAgentBackend().dispatch()
  */
 export async function dispatchToAgent(task: TaskDispatch): Promise<TaskResult> {
-  const projectRoot = process.cwd();
+  if (
+    task.timeoutMs !== undefined &&
+    (!Number.isInteger(task.timeoutMs) ||
+      task.timeoutMs < 1 ||
+      task.timeoutMs > 2_147_483_647)
+  ) {
+    throw new RangeError(
+      "Agent timeout must be a positive timer duration in milliseconds.",
+    );
+  }
+  const projectRoot = task.workDir ?? process.cwd();
   try {
-    const config = loadConfig(projectRoot);
+    const primaryCheckout = resolvePrimaryCheckout(projectRoot);
+    const config = loadConfig(primaryCheckout);
     const throttleMs = config.agents.throttleMs ?? 0;
 
     if (throttleMs > 0) {
-      const runsDir = path.join(projectRoot, ".runs");
+      const runsDir = path.join(primaryCheckout, ".runs");
       if (!fs.existsSync(runsDir)) {
         fs.mkdirSync(runsDir, { recursive: true });
       }
@@ -530,14 +854,17 @@ export async function dispatchToAgent(task: TaskDispatch): Promise<TaskResult> {
         lastDispatch =
           Number.parseInt(fs.readFileSync(statePath, "utf-8"), 10) || 0;
       }
-      const now = Date.now();
-      if (now - lastDispatch < throttleMs) {
-        const wait = throttleMs - (now - lastDispatch);
+      const throttleDeadline = lastDispatch + throttleMs;
+      let wait = throttleDeadline - Date.now();
+      if (wait > 0) {
         const waitSecs = Math.ceil(wait / 1000);
-        process.stdout.write(
+        writeScopedStdout(
           `\x1b[2m\x1b[33m⏳ Metering API limits (waiting ${waitSecs}s)...\x1b[0m\n`,
         );
-        await new Promise((resolve) => setTimeout(resolve, wait));
+        do {
+          await new Promise((resolve) => setTimeout(resolve, wait));
+          wait = throttleDeadline - Date.now();
+        } while (wait > 0);
       }
       fs.writeFileSync(statePath, Date.now().toString(), "utf-8");
     }
@@ -546,90 +873,159 @@ export async function dispatchToAgent(task: TaskDispatch): Promise<TaskResult> {
   }
 
   const agentName = (task.agent ?? "agy") as string;
-  const registry = new AgentBackendRegistry(new PluginLoader());
+  const { promptParts, backendProjectRoot, ...agentTask } = task;
+  const registry = new AgentBackendRegistry(
+    new PluginLoader({ projectDir: backendProjectRoot ?? projectRoot }),
+  );
   const adapter = await registry.getAgentBackend(agentName);
 
   const startTime = Date.now();
-  let stdinPayload = task.stdin ?? "";
-
-  // FR-014: Inject enforcement skills
-  const hasEnforcementPlaceholder = stdinPayload.includes("{{enforcement}}");
-  const hasCodeQualitySection = stdinPayload.includes("<code_quality>");
-
-  if (hasEnforcementPlaceholder || hasCodeQualitySection) {
-    const scope =
-      task.workflow?.includes("review") || task.type?.includes("review")
-        ? "review"
-        : "implementation";
-
-    // R007: Detect project profile for language-aware enforcement routing
-    const { detectProfile } = await import("../engine/profile-detector.js");
-    const profile = await detectProfile(task.workDir || projectRoot);
-
-    const enforcement = await resolveEnforcementSkills(
-      task.workDir || projectRoot,
-      scope as "implementation" | "review",
-      profile,
-    );
-
-    if (hasEnforcementPlaceholder) {
-      stdinPayload = stdinPayload.replace("{{enforcement}}", enforcement);
-    } else if (hasCodeQualitySection) {
-      stdinPayload = stdinPayload.replace(
-        /<code_quality>([\s\S]*?)<\/code_quality>/,
-        `<code_quality>\n${enforcement}\n</code_quality>`,
-      );
-    }
-  }
-
   // ADR-009: Inject project knowledge documents (grounding)
-  const workDir = task.workDir || projectRoot;
+  const workDir = projectRoot;
+  const { workspaceDir, ownerDir, policyDirs } =
+    resolveWorkspacePolicyRoots(workDir);
+  const groundingRoots = policyDirs;
   const groundingFiles = [
     {
-      path: path.join(workDir, ".gwrk/ontology/domain.md"),
+      relativePath: ".gwrk/architecture.md",
+      tag: "architecture_target",
+    },
+    {
+      relativePath: ".gwrk/ontology/domain.md",
       tag: "domain_ontology",
     },
     {
-      path: path.join(workDir, ".gwrk/perspective/hierarchy.md"),
+      relativePath: ".gwrk/perspective/hierarchy.md",
       tag: "information_hierarchy",
     },
     {
-      path: path.join(workDir, ".gwrk/perspective/ux-posture.md"),
+      relativePath: ".gwrk/perspective/ux-posture.md",
       tag: "ux_posture",
     },
     {
-      path: path.join(workDir, ".gwrk/decisions/index.md"),
+      relativePath: ".gwrk/decisions/index.md",
       tag: "architecture_decisions",
     },
   ];
 
+  let architectureTarget: { content: string; directory: string } | undefined;
   let grounding = "";
-  for (const { path: filePath, tag } of groundingFiles) {
-    if (fs.existsSync(filePath)) {
-      try {
-        const content = fs.readFileSync(filePath, "utf-8");
-        grounding += `<${tag}>\n${content}\n</${tag}>\n\n`;
-        if (!task.quiet) {
-          process.stdout.write(
-            `${DIM}  → Grounding: <${tag}> injected${RESET}\n`,
-          );
-        }
-      } catch (err) {
-        if (!task.quiet) {
-          process.stdout.write(
-            `${DIM}  ⚠ Grounding: <${tag}> unreadable (${err instanceof Error ? err.message : err})${RESET}\n`,
-          );
-        }
+  for (const { relativePath, tag } of groundingFiles) {
+    const directory = groundingRoots.find((root) =>
+      fs.existsSync(path.join(root, relativePath)),
+    );
+    if (directory === undefined) continue;
+    try {
+      const content = fs.readFileSync(
+        path.join(directory, relativePath),
+        "utf-8",
+      );
+      if (tag === "architecture_target")
+        architectureTarget = { content, directory };
+      grounding += `<${tag}>\n${content}\n</${tag}>\n\n`;
+      if (
+        tag === "architecture_decisions" &&
+        architectureTarget !== undefined
+      ) {
+        grounding +=
+          "<decision_authority>\nRead the complete applicable records and preserve every recorded status. Proposed targets require human ratification. They do not supersede Decided constraints. If a Proposed target conflicts with a Decided constraint, follow the Decided constraint and record the conflict in the plan. Resolve the conflict before implementation. Superseded records preserve history and lineage. Do not enforce their replaced constraints as current decisions.\n</decision_authority>\n\n";
+      }
+      if (!task.quiet) {
+        writeScopedStdout(`${DIM}  → Grounding: <${tag}> injected${RESET}\n`);
+      }
+    } catch (err) {
+      if (!task.quiet) {
+        writeScopedStdout(
+          `${DIM}  ⚠ Grounding: <${tag}> unreadable (${err instanceof Error ? err.message : err})${RESET}\n`,
+        );
       }
     }
   }
+
+  const legacyParts = promptParts ? undefined : splitLegacyStdin(task);
+  let template = promptParts?.template ?? legacyParts?.template ?? "";
+
+  // FR-014: Inject enforcement skills
+  const enforcementSlot = promptParts
+    ? findEnforcementSlot(template, "empty-section")
+    : legacyParts?.slot;
+  if (enforcementSlot?.index !== undefined) {
+    const scope = resolveWorkflowPolicyScope(task.workflow, task.type);
+
+    // R007: Detect project profile for language-aware enforcement routing
+    const profile = task.profile ?? (await detectProfile(workDir));
+
+    const projectedTarget =
+      architectureTarget === undefined
+        ? undefined
+        : withoutGeneratedPolicySections(
+            architectureTarget.content,
+            profile.design,
+          );
+    const resolvedPolicy = await resolveEnforcementSkills(
+      ownerDir,
+      scope,
+      profile,
+      {
+        architectureTarget: projectedTarget,
+        policyDirs,
+        ...(workspaceDir !== ownerDir && { workspaceDir }),
+      },
+    );
+    const enforcement = `<effective_policy>\n${resolvedPolicy}\n</effective_policy>`;
+    if (architectureTarget !== undefined && projectedTarget !== undefined) {
+      grounding = grounding.replace(
+        `<architecture_target>\n${architectureTarget.content}\n</architecture_target>`,
+        () =>
+          `<architecture_target>\n${projectedTarget}\n</architecture_target>`,
+      );
+    }
+
+    const start = enforcementSlot.index;
+    const [maskedSlot] = enforcementSlot;
+    const end = start + maskedSlot.length;
+    const originalSlot = template.slice(start, end);
+    const replacement = maskedSlot.includes(ENFORCEMENT_MARKER)
+      ? originalSlot.replaceAll(ENFORCEMENT_MARKER, (marker, offset: number) =>
+          maskedSlot.startsWith(marker, offset) ? enforcement : marker,
+        )
+      : `<code_quality>\n${enforcement}\n</code_quality>`;
+    template = template.slice(0, start) + replacement + template.slice(end);
+  }
+
+  const policyTemplate =
+    promptParts?.template ??
+    legacyParts?.template ??
+    task.prompt ??
+    task.stdin?.slice(
+      0,
+      findLegacyInputStart(task.stdin) ?? task.stdin.length,
+    ) ??
+    "";
+  const hasCommandSafety =
+    maskPromptExamples(policyTemplate).includes(COMMAND_SAFETY_BLOCK);
+  let stdinPayload = (
+    promptParts
+      ? [template, promptParts.userInput]
+      : [
+          task.prompt === task.stdin || legacyParts?.includesPrompt
+            ? undefined
+            : task.prompt,
+          legacyParts ? template + legacyParts.suffix : task.stdin,
+        ]
+  )
+    .filter(Boolean)
+    .join("\n\n");
 
   if (grounding) {
     stdinPayload = `${grounding}${stdinPayload}`;
   }
 
   // Layer 3: External Context Injection (Phase 21)
-  const rawKeywordSource = [task.featureDir ?? "", task.prompt ?? ""]
+  const rawKeywordSource = [
+    task.featureDir ?? "",
+    promptParts?.userInput ?? task.prompt ?? task.stdin ?? "",
+  ]
     .join(" ")
     .replace(/^specs\//, "")
     .replace(/^\d+-/, " ");
@@ -642,9 +1038,9 @@ export async function dispatchToAgent(task: TaskDispatch): Promise<TaskResult> {
     ),
   ).slice(0, 12);
   const extContext =
-    extKeywords.length > 0
-      ? await resolveExtensionContext(workDir, extKeywords)
-      : await resolveExtensionContext(workDir);
+    task.includeExternalContext === false
+      ? []
+      : await resolveExtensionContext(workDir, extKeywords);
   if (extContext.length > 0) {
     const contextContent = extContext
       .map((res) => `<${res.source}>\n${res.content}\n</${res.source}>`)
@@ -653,20 +1049,17 @@ export async function dispatchToAgent(task: TaskDispatch): Promise<TaskResult> {
   }
 
   // ADR-008 Layer 1: Inject <command_safety> block into prompt stdin
-  if (
-    (stdinPayload || task.prompt) &&
-    !stdinPayload.includes("<command_safety>")
-  ) {
-    stdinPayload = stdinPayload
-      ? `${COMMAND_SAFETY_BLOCK}\n\n${stdinPayload}`
-      : COMMAND_SAFETY_BLOCK;
+  if (stdinPayload && !hasCommandSafety) {
+    stdinPayload = `${COMMAND_SAFETY_BLOCK}\n\n${stdinPayload}`;
   }
 
   const dispatch = await adapter.dispatch({
-    ...task,
-    stdin: stdinPayload || task.stdin,
+    ...agentTask,
+    prompt: undefined,
+    stdin: stdinPayload || undefined,
   });
   if (
+    dispatch.inputFormat !== "stream-json" &&
     stdinPayload &&
     dispatch.stdin &&
     !dispatch.stdin.includes(stdinPayload)
@@ -695,6 +1088,8 @@ export async function dispatchToAgent(task: TaskDispatch): Promise<TaskResult> {
     env: dispatch.env ?? task.env,
     workDir: task.workDir,
     outputSchema: task.outputSchema,
+    timeoutMs: task.timeoutMs,
+    logPath: task.logPath,
     emitsStreamJson: adapter.emitsStreamJson,
     prebuiltDispatch: {
       command: dispatch.command,
@@ -708,14 +1103,19 @@ export async function dispatchToAgent(task: TaskDispatch): Promise<TaskResult> {
     logPath,
     stdout,
     stderr,
+    timedOut,
   } = await dispatchAgent({
     ...opts,
     stdin: dispatch.stdin,
     quiet: task.quiet,
   });
-  const durationS = Math.round((Date.now() - startTime) / 1000);
+  const durationMs = Date.now() - startTime;
+  const durationS = Math.round(durationMs / 1000);
 
-  const result = adapter.parseResult(stdout, stderr, rawExitCode);
+  const parsed = adapter.parseResult(stdout, stderr, rawExitCode);
+  const result = timedOut
+    ? { ...parsed, exitCode: 124, status: "failure" as const, timedOut: true }
+    : parsed;
 
   // Record routing decision for historical learning
   const taskType =
@@ -726,7 +1126,7 @@ export async function dispatchToAgent(task: TaskDispatch): Promise<TaskResult> {
       task_type: taskType,
       selected_backend: agentName,
       outcome: result.exitCode === 0 ? "success" : "failure",
-      duration_ms: durationS * 1000,
+      duration_ms: durationMs,
       error_message: result.errorType ?? undefined,
     },
     projectId,
@@ -735,6 +1135,7 @@ export async function dispatchToAgent(task: TaskDispatch): Promise<TaskResult> {
   return {
     ...result,
     durationS,
+    durationMs,
     logPath,
     nativeWriter: adapter.nativeWriter ?? false,
   };

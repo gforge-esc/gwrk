@@ -27,7 +27,8 @@ vi.mock("../plugins/skill-runtime.js", () => ({
 vi.mock("../plugins/extension-runtime.js", () => ({
   resolveExtensionContext: vi.fn().mockResolvedValue([]),
 }));
-vi.mock("../engine/profile-detector.js", () => ({
+vi.mock("../engine/profile-detector.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../engine/profile-detector.js")>()),
   detectProfile: vi.fn().mockResolvedValue({
     type: "nodejs",
     stack: { language: "TypeScript" },
@@ -100,7 +101,7 @@ async function assembledPrompt(
     quiet: true,
   });
   expect(result.exitCode).toBe(0);
-  return result.stdout;
+  return JSON.parse(result.stdout).message.content as string;
 }
 
 beforeEach(() => {
@@ -113,6 +114,14 @@ afterEach(() => {
 });
 
 describe("029 FR-013: every dispatch learns what it may not do (US-004)", () => {
+  it("039: every stage receives the selected target independently of enforcement placeholders", async () => {
+    mkdirSync(path.join(workDir, ".gwrk"), { recursive: true });
+    writeFileSync(path.join(workDir, ".gwrk/architecture.md"), "Target: pure domain. Conformance: unassessed.");
+    for (const workflow of ["gwrk-plan", "gwrk-implement", "review-code-cli"]) {
+      expect(await assembledPrompt(workDir, workflow)).toContain("<architecture_target>\nTarget: pure domain. Conformance: unassessed.");
+    }
+  });
+
   it("FR-013: injects architecture_decisions when the index exists", async () => {
     writeIndexFixture(workDir);
 
@@ -204,7 +213,7 @@ describe("029 FR-013: every dispatch learns what it may not do (US-004)", () => 
     expect(new Set(blocks).size).toBe(1);
   });
 
-  it("FR-013: the grounding array carries exactly four entries and no scope filter", async () => {
+  it("FR-013: the grounding array includes the derived target and decisions without a scope filter", async () => {
     // Asserted on the source so a scope or stage filter cannot be introduced
     // later without this failing (contract §4). `resolveEnforcementSkills`
     // takes (projectRoot, scope, profile); the grounding loop must not.
@@ -216,7 +225,8 @@ describe("029 FR-013: every dispatch learns what it may not do (US-004)", () => 
     expect(start).toBeGreaterThan(-1);
     const literal = source.slice(start, source.indexOf("];", start) + 2);
 
-    expect(literal.match(/\btag:/g)).toHaveLength(4);
+    expect(literal.match(/\btag:/g)).toHaveLength(5);
+    expect(literal).toContain("architecture_target");
     expect(literal).toContain("architecture_decisions");
     expect(literal).toContain(".gwrk/decisions/index.md");
     expect(literal).not.toMatch(/\bscope\b/);
@@ -238,5 +248,28 @@ describe("029 FR-013: every dispatch learns what it may not do (US-004)", () => 
     } finally {
       rmSync(other, { recursive: true, force: true });
     }
+  });
+});
+
+
+describe("decision status authority", () => {
+  it.each(["missing", "unreadable"])("preserves the decision index without shared target authority when the target is %s", async state => {
+    writeIndexFixture(workDir);
+    if (state === "unreadable") mkdirSync(path.join(workDir, ".gwrk/architecture.md"));
+    const prompt = await assembledPrompt(workDir);
+    expect(prompt).toContain(`<architecture_decisions>\n${INDEX_BODY}\n</architecture_decisions>`);
+    expect(prompt).not.toContain("<decision_authority>");
+  });
+  it("preserves mixed decision statuses and adds conflict guidance", async () => {
+    const index = INDEX_BODY + "\n| " + adr("998") + " | target | Decided | Preserve the adopted boundary. |\n| " + adr("997") + " | old boundary | Superseded | Retain for lineage. |\n";
+    writeIndexFixture(workDir, index);
+    writeFileSync(path.join(workDir, ".gwrk/architecture.md"), "# Target\nSelected architecture context.\n");
+    const prompt = await assembledPrompt(workDir);
+    expect(prompt).toContain(`<architecture_decisions>\n${index}\n</architecture_decisions>`);
+    const authority = prompt.match(/<decision_authority>([\s\S]*?)<\/decision_authority>/)?.[1];
+    expect(authority).toMatch(/Proposed[\s\S]*Decided/);
+    expect(authority).toMatch(/conflict[\s\S]*(?:stop|resolve)/i);
+    expect(authority).toMatch(/Superseded[\s\S]*(?:lineage|history)/);
+    expect(authority).toMatch(/ratif/i);
   });
 });
