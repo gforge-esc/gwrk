@@ -316,7 +316,11 @@ describe("browser authentication HTTP routes", () => {
     expect(first.headers["content-type"]).toContain("text/html");
     expect(first.body).toContain('href="/oauth2/start"');
     expect(second.body).toBe(first.body);
-    expect(first.body).not.toMatch(/CANARY|project|checkout|principal/i);
+    privateBody(first.body);
+    privateBody(second.body);
+    expect(first.body).not.toMatch(
+      /CANARY|CANARY_PROJECT|CANARY_CODE|CANARY_USER|TOKEN|PROXY_COOKIE|USER_EMAIL|USER_SUB|gwrk_v1\./,
+    );
     expect(f.records.size).toBe(0);
     expect(f.issue).not.toHaveBeenCalled();
     expect(f.read).not.toHaveBeenCalled();
@@ -830,6 +834,146 @@ describe("FR-003 FR-009 AUTH-06: full-server browser session and logout replay v
     );
     expect(cookies(getRes)[0]).not.toMatch(/Domain=|Max-Age=/i);
     privateBody(getRes.body);
+  });
+
+  it("AUTH-15: login admission subrequest serves bounded root response <= 4096 bytes while browser presentation receives full portal", async () => {
+    const f = await createFullServerSessionFixture();
+
+    // 1. Admission subrequest (exact admission header contract: X-Forwarded-Uri: /)
+    const admissionRes = await f.server.inject({
+      method: "GET",
+      url: "/",
+      headers: {
+        "x-forwarded-uri": "/",
+        "x-forwarded-method": "GET",
+      },
+    });
+    expect(admissionRes.statusCode).toBe(200);
+    expect(admissionRes.headers["content-type"]).toContain("text/html");
+    expect(admissionRes.body).toContain('href="/oauth2/start"');
+    // ForwardAuth maxResponseBodySize is 4096 bytes
+    expect(Buffer.byteLength(admissionRes.body)).toBeLessThanOrEqual(4096);
+
+    // Pinned ForwardAuth oversized body check: response > 4096 triggers built-in 401
+    const simulateForwardAuth = (res: { statusCode: number; body: string }) => {
+      if (res.statusCode >= 200 && res.statusCode < 300) {
+        if (Buffer.byteLength(res.body) > 4096) {
+          return {
+            status: 401,
+            admitted: false,
+            error: "oversized admission body",
+          };
+        }
+        return { status: 200, admitted: true };
+      }
+      return { status: res.statusCode, admitted: false };
+    };
+    const admissionGate = simulateForwardAuth(admissionRes);
+    expect(admissionGate.admitted).toBe(true);
+
+    // 2. Browser or CLI presentation request (without X-Forwarded-Uri: /)
+    const browserRes = await f.server.inject({
+      method: "GET",
+      url: "/",
+      headers: {
+        accept:
+          "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+      },
+    });
+    expect(browserRes.statusCode).toBe(200);
+    expect(browserRes.headers["content-type"]).toContain("text/html");
+    expect(browserRes.body).toContain('href="/oauth2/start"');
+    // Full portal content must be preserved (> 4096 bytes)
+    expect(Buffer.byteLength(browserRes.body)).toBeGreaterThan(4096);
+    expect(browserRes.body).toContain("Flamingo");
+
+    const curlRes = await f.server.inject({
+      method: "GET",
+      url: "/",
+    });
+    expect(curlRes.statusCode).toBe(200);
+    expect(Buffer.byteLength(curlRes.body)).toBeGreaterThan(4096);
+    expect(curlRes.body).toContain("Flamingo");
+
+    // 3. HEAD / must be bodyless and <= 4096 bytes
+    const headRes = await f.server.inject({
+      method: "HEAD",
+      url: "/",
+      headers: {
+        "x-forwarded-uri": "/",
+        "x-forwarded-method": "GET",
+      },
+    });
+    expect(headRes.statusCode).toBe(200);
+    expect(Buffer.byteLength(headRes.body)).toBe(0);
+
+    // 4. Denied / capacity paths on admission subrequests return bounded non-2xx JSON (<= 4096 bytes) and block proxy work
+    const exhaustedIp = "198.51.100.201";
+    for (let i = 0; i < 60; i++) {
+      const okSub = await f.server.inject({
+        method: "GET",
+        url: "/",
+        remoteAddress: "127.0.0.1",
+        headers: {
+          "x-forwarded-for": exhaustedIp,
+          "x-forwarded-uri": "/",
+          "x-forwarded-method": "GET",
+        },
+      });
+      expect(okSub.statusCode).toBe(200);
+      expect(Buffer.byteLength(okSub.body)).toBeLessThanOrEqual(4096);
+    }
+    const denied61Sub = await f.server.inject({
+      method: "GET",
+      url: "/",
+      remoteAddress: "127.0.0.1",
+      headers: {
+        "x-forwarded-for": exhaustedIp,
+        "x-forwarded-uri": "/",
+        "x-forwarded-method": "GET",
+      },
+    });
+    expect(denied61Sub.statusCode).toBe(429);
+    expect(Buffer.byteLength(denied61Sub.body)).toBeLessThanOrEqual(4096);
+    expect(simulateForwardAuth(denied61Sub)).toEqual({
+      status: 429,
+      admitted: false,
+    });
+
+    const malformedForwardSub = await f.server.inject({
+      method: "GET",
+      url: "/",
+      remoteAddress: "127.0.0.1",
+      headers: {
+        "x-forwarded-for": "198.51.100.1, 203.0.113.1",
+        "x-forwarded-uri": "/",
+        "x-forwarded-method": "GET",
+      },
+    });
+    expect(malformedForwardSub.statusCode).toBe(503);
+    expect(Buffer.byteLength(malformedForwardSub.body)).toBeLessThanOrEqual(
+      4096,
+    );
+    expect(simulateForwardAuth(malformedForwardSub)).toEqual({
+      status: 503,
+      admitted: false,
+    });
+
+    // 5. Invariant: root response never leaks cleanup headers, Location, or Set-Cookie
+    for (const res of [
+      admissionRes,
+      browserRes,
+      curlRes,
+      headRes,
+      denied61Sub,
+      malformedForwardSub,
+    ]) {
+      expect(res.headers).not.toHaveProperty("set-cookie");
+      expect(res.headers).not.toHaveProperty("location");
+      expect(res.headers).not.toHaveProperty("x-forwarded-for");
+      expect(res.headers).not.toHaveProperty("x-forwarded-uri");
+      expect(res.headers).not.toHaveProperty("x-forwarded-method");
+    }
   });
 
   it("AUTH-06: full hosted startServer logout commits SQLite digest revocation first, preserves separate Set-Cookie headers, and denies copied replay across all APIs", async () => {

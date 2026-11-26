@@ -1,0 +1,126 @@
+/* Solarized TUI + Flamingo theme for gwrk Sphinx Guides */
+:root {
+  color-scheme: light dark;
+  --sol-base03: #002b36;
+  --sol-base02: #073642;
+  --sol-base01: #586e75;
+  --sol-base00: #657b83;
+  --sol-base0: #839496;
+  --sol-base1: #93a1a1;
+  --sol-base2: #eee8d5;
+  --sol-base3: #fdf6e3;
+  --sol-yellow: #b58900;
+  --sol-orange: #cb4b16;
+  --sol-red: #dc322f;
+  --sol-magenta: #d33682;
+  --sol-flamingo: #ff2e88;
+  --sol-violet: #6c71c4;
+  --sol-blue: #268bd2;
+  --sol-cyan: #2aa198;
+  --sol-green: #859900;
+  --bg0: var(--sol-base03);
+  --bg1: var(--sol-base02);
+  --fg0: var(--sol-base2);
+  --fg1: var(--sol-base1);
+  --border: #195466;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Monaco,
+    Consolas, monospace;
+}
+
+body {
+  background-color: var(--bg0) !important;
+  color: var(--fg0) !important;
+  font-family: var(--font-mono) !important;
+  line-height: 1.55 !important;
+}
+
+div.document,
+div.bodywrapper,
+div.body {
+  background-color: var(--bg0) !important;
+  color: var(--fg0) !important;
+}
+
+div.sphinxsidebar {
+  background-color: var(--bg1) !important;
+  border-right: 2px solid var(--border) !important;
+  padding: 1.25rem !important;
+}
+
+div.sphinxsidebar h1.logo {
+  font-size: 1.25rem !important;
+  color: var(--sol-flamingo) !important;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+div.sphinxsidebar h3,
+div.sphinxsidebar p.caption {
+  color: var(--sol-cyan) !important;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-size: 0.82rem !important;
+}
+
+div.sphinxsidebar a,
+a {
+  color: var(--sol-cyan) !important;
+  text-decoration: underline;
+}
+
+a:hover {
+  color: var(--sol-flamingo) !important;
+}
+
+h1,
+h2,
+h3,
+h4 {
+  font-family: var(--font-mono) !important;
+  color: var(--sol-base3) !important;
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 0.35rem;
+}
+
+h1 {
+  color: var(--sol-flamingo) !important;
+  border-bottom: 2px solid var(--sol-magenta);
+}
+
+pre,
+code,
+div.highlight pre {
+  background-color: var(--bg1) !important;
+  color: var(--sol-base2) !important;
+  border: 1px solid var(--border) !important;
+  font-family: var(--font-mono) !important;
+  border-radius: 4px;
+}
+
+table.docutils {
+  border-collapse: collapse;
+  width: 100%;
+  margin: 1rem 0;
+  border: 2px solid var(--border) !important;
+}
+
+table.docutils th {
+  background-color: var(--bg1) !important;
+  color: var(--sol-cyan) !important;
+  border: 1px solid var(--border) !important;
+  padding: 0.5rem 0.75rem !important;
+  text-align: left;
+}
+
+table.docutils td {
+  background-color: var(--bg0) !important;
+  color: var(--fg0) !important;
+  border: 1px solid var(--border) !important;
+  padding: 0.5rem 0.75rem !important;
+}
+
+div.footer {
+  color: var(--sol-base01) !important;
+  border-top: 1px solid var(--border);
+  padding-top: 1rem;
+}
