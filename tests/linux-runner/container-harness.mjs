@@ -13,11 +13,13 @@ const temporary = mkdtempSync(join(tmpdir(), "gwrk-runner-harness-"));
 const source = join(temporary, "source");
 const artifacts = join(temporary, "artifacts");
 const fixtures = join(temporary, "fixtures");
+const workspace = join(temporary, "workspace");
 const run = (command, args) =>
   execFileSync(command, args, { stdio: "inherit" });
 
 try {
-  for (const directory of [source, artifacts, fixtures]) mkdirSync(directory);
+  for (const directory of [source, artifacts, fixtures, workspace])
+    mkdirSync(directory);
   run("git", ["-C", source, "init", "--quiet"]);
   run("git", [
     "-C",
@@ -79,6 +81,12 @@ try {
     `type=bind,source=${source},target=/source,readonly`,
     "--mount",
     `type=bind,source=${artifacts},target=/artifacts`,
+    "--mount",
+    `type=bind,source=${workspace},target=/workspace`,
+    "--env",
+    "GWRK_RELEASE_BUILDS_ROOT=/workspace/builds",
+    "--env",
+    "GWRK_RELEASE_CACHE=/workspace/cache",
     "--workdir",
     "/source",
     image,
