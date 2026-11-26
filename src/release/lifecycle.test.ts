@@ -7,6 +7,7 @@ import {
   mkdtempSync,
   readFileSync,
   readdirSync,
+  realpathSync,
   rmSync,
   symlinkSync,
   writeFileSync,
@@ -39,6 +40,15 @@ describe("install-release.sh lifecycle hook", () => {
     expect(hook).toBeLessThan(pnpm);
     expect(hook).toBeLessThan(activate);
     expect(installer.indexOf("flock -x 9")).toBeLessThan(hook);
+  });
+
+  it("passes the service unit and the held lock descriptor to the helper", () => {
+    const call = installer.slice(
+      installer.indexOf('dist/release/lifecycle.js" install-preflight'),
+    );
+    const line = call.slice(0, call.indexOf("||"));
+    expect(line).toMatch(/--lock-fd 9/);
+    expect(line).toMatch(/--service-unit "\$\{GWRK_SYSTEMD_UNIT:-gwrk-runner\.service\}"/);
   });
 
   it("extracts exactly the bootstrap files and fails when one is missing", () => {
@@ -80,6 +90,8 @@ describe("install-release.sh lifecycle hook", () => {
   });
 });
 
+const proven = { lockProof: () => ({ assertHeld: async () => {} }) };
+
 describe("lifecycle entry point", () => {
   let root: string;
   beforeEach(() => {
@@ -117,8 +129,12 @@ describe("lifecycle entry point", () => {
         "1.4.0",
         "--uncompressed-bytes",
         "1",
+        "--service-unit",
+        "none",
+        "--lock-fd",
+        "9",
       ],
-      { out: (t) => lines.push(t), err: (t) => lines.push(t) },
+      { ...proven, out: (t) => lines.push(t), err: (t) => lines.push(t) },
     );
     expect(code).toBe(0);
     expect(readdirSync(join(root, "releases")).sort()).toEqual([
@@ -141,11 +157,83 @@ describe("lifecycle entry point", () => {
         "1.4.0",
         "--uncompressed-bytes",
         String(2 ** 50),
+        "--service-unit",
+        "none",
+        "--lock-fd",
+        "9",
       ],
-      { out: () => {}, err: (t) => errors.push(t) },
+      { ...proven, out: () => {}, err: (t) => errors.push(t) },
     );
     expect(code).toBe(1);
     expect(errors.join("\n")).toMatch(/Not enough free space/);
+  });
+
+  const flags = (extra: string[] = []) => [
+    "install-preflight",
+    "--release-root",
+    root,
+    "--candidate",
+    "1.4.0",
+    "--uncompressed-bytes",
+    "1",
+    "--service-unit",
+    "gwrk-runner.service",
+    "--lock-fd",
+    "9",
+    ...extra,
+  ];
+
+  it("keeps the release the running service reports", async () => {
+    const code = await main(flags(), {
+      ...proven,
+      service: () => ({
+        discover: async () => ({ releases: ["1.1.0"], configuredPaths: [] }),
+      }),
+      out: () => {},
+      err: () => {},
+    });
+    expect(code).toBe(0);
+    expect(readdirSync(join(root, "releases")).sort()).toEqual([
+      "1.0.0",
+      "1.1.0",
+      "1.2.0",
+      "1.3.0",
+    ]);
+  });
+
+  it("stops without deleting when the lock is not proven", async () => {
+    const errors: string[] = [];
+    const code = await main(flags(), {
+      lockProof: () => ({
+        assertHeld: async () => {
+          throw new Error("Install lock is not held by this process.");
+        },
+      }),
+      service: () => ({
+        discover: async () => ({ releases: [], configuredPaths: [] }),
+      }),
+      out: () => {},
+      err: (t) => errors.push(t),
+    });
+    expect(code).toBe(1);
+    expect(errors.join("\n")).toMatch(/lock/);
+    expect(readdirSync(join(root, "releases"))).toHaveLength(4);
+  });
+
+  it("proves the lock against the release root install lock", async () => {
+    const seen: [number, string][] = [];
+    await main(flags(), {
+      lockProof: (fd, path) => {
+        seen.push([fd, path]);
+        return { assertHeld: async () => {} };
+      },
+      service: () => ({
+        discover: async () => ({ releases: [], configuredPaths: [] }),
+      }),
+      out: () => {},
+      err: () => {},
+    });
+    expect(seen).toEqual([[9, join(realpathSync(root), ".install.lock")]]);
   });
 
   it.each([

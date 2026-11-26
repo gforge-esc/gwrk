@@ -2,8 +2,13 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-// Docker image retention adapter. Lists only config IDs that an owned run
-// manifest names, checks labels, and removes without force. No prune.
+// Docker verification cache adapter. The removable class is narrow: images an
+// owned run record names, tagged only in that run's namespace, labelled for
+// that run and referenced by no container. Production, gateway and upstream
+// images never qualify, so no protected-image list exists. Deletion targets the
+// host image ID that `docker image inspect` reports. Docker 29 reports the OCI
+// manifest digest there, which differs from the archive config digest. The
+// archive config digest is proof evidence only and is never inspected or removed.
 
 import { createHash } from "node:crypto";
 import { lstat, readFile, readdir } from "node:fs/promises";
@@ -19,7 +24,22 @@ import type {
 } from "../../ports/retention-port.js";
 import { RUN_OWNER_FILE } from "./retention-verification.js";
 
-const CONFIG_ID = /^sha256:[a-f0-9]{64}$/;
+const HOST_ID = /^sha256:[a-f0-9]{64}$/;
+const RUN_ID = /^[a-f0-9]{24}$/;
+export const VERIFICATION_REPOSITORY = "gwrk-verification";
+export const MANAGED_LABEL = "org.gwrk.managed";
+export const RUN_LABEL = "org.gwrk.run";
+
+/** True only for `gwrk-verification:<runId>-<suffix>`. */
+export function isRunTag(tag: unknown, runId: string): tag is string {
+  return (
+    typeof tag === "string" &&
+    tag.startsWith(`${VERIFICATION_REPOSITORY}:${runId}-`) &&
+    /^[a-z0-9][a-z0-9-]{0,63}$/.test(
+      tag.slice(VERIFICATION_REPOSITORY.length + runId.length + 2),
+    )
+  );
+}
 
 export type DockerRunner = (
   args: readonly string[],
@@ -27,12 +47,11 @@ export type DockerRunner = (
 
 export interface DockerImageDeps {
   readonly docker: DockerRunner;
-  /** JSON array of protected config IDs, such as live gateway images. */
-  readonly protectedImagesFile: string;
 }
 
 interface ImageInfo {
   Id?: string;
+  RepoTags?: string[] | null;
   Size?: number;
   Config?: { Labels?: Record<string, string> | null };
 }
@@ -41,122 +60,131 @@ export function createDockerImageAdapter(
   runsRoot: string,
   deps: DockerImageDeps,
 ): RetentionInventoryPort & RetentionEffectsPort {
-  async function inspect(configId: string): Promise<ImageInfo | null> {
+  async function inspect(ref: string): Promise<ImageInfo | null> {
     const result = await deps.docker([
       "image",
       "inspect",
       "--format",
       "{{json .}}",
-      configId,
+      ref,
     ]);
     if (result.code !== 0) return null;
     return JSON.parse(result.stdout) as ImageInfo;
   }
 
-  async function describe(
-    configId: string,
-    runId: string,
-  ): Promise<InventoryItem | null> {
-    const info = await inspect(configId);
-    if (!info) return null;
-    const labels = info.Config?.Labels ?? {};
-    const base = {
-      kind: "docker-image" as const,
-      id: configId,
-      runId,
-      bytes: info.Size ?? 0,
-    };
-    // Docker 29 reports manifest digests that differ from config IDs. Trust only the config ID.
-    if (info.Id !== configId)
-      return {
-        ...base,
-        owned: false,
-        unknownReason: "config ID mismatch",
-        identity: "",
-      };
-    if (
-      labels["org.gwrk.managed"] !== "verification" ||
-      labels["org.gwrk.run"] !== runId
-    )
-      return {
-        ...base,
-        owned: false,
-        unknownReason: "foreign label",
-        identity: "",
-      };
-    const users = await deps.docker([
-      "ps",
-      "-a",
-      "-q",
-      "--no-trunc",
-      "--filter",
-      `ancestor=${configId}`,
+  /** Every image any container references, running or stopped. */
+  async function containerImages(): Promise<Set<string>> {
+    const listed = await deps.docker(["ps", "-a", "-q", "--no-trunc"]);
+    if (listed.code !== 0)
+      throw new Error("Could not list Docker containers. Retention stopped.");
+    const ids = listed.stdout.split("\n").map((line) => line.trim()).filter(Boolean);
+    if (ids.length === 0) return new Set();
+    const images = await deps.docker([
+      "container",
+      "inspect",
+      "--format",
+      "{{.Image}}",
+      ...ids,
     ]);
-    if (users.code !== 0)
-      throw new Error(`Could not list containers for ${configId}.`);
+    if (images.code !== 0)
+      throw new Error("Could not inspect Docker containers. Retention stopped.");
+    return new Set(images.stdout.split("\n").map((line) => line.trim()).filter(Boolean));
+  }
+
+  function unknown(id: string, runId: string, reason: string, bytes = 0): InventoryItem {
+    return { kind: "docker-image", id, runId, owned: false, unknownReason: reason, identity: "", bytes };
+  }
+
+  function judge(info: ImageInfo, runId: string, inUse: Set<string>): InventoryItem {
+    const hostId = info.Id ?? "";
+    const bytes = info.Size ?? 0;
+    if (!HOST_ID.test(hostId)) return unknown(hostId || "(no ID)", runId, "invalid host image ID", bytes);
+    const tags = [...(info.RepoTags ?? [])].sort();
+    if (tags.some((tag) => !isRunTag(tag, runId)))
+      return unknown(hostId, runId, "foreign tag", bytes);
+    const labels = info.Config?.Labels ?? {};
+    if (labels[MANAGED_LABEL] !== "verification" || labels[RUN_LABEL] !== runId)
+      return unknown(hostId, runId, "foreign label", bytes);
     return {
-      ...base,
+      kind: "docker-image",
+      id: hostId,
+      runId,
       owned: true,
-      inUse: users.stdout.trim() !== "",
-      identity: createHash("sha256")
-        .update(`${configId}\n${runId}`)
-        .digest("hex"),
+      inUse: inUse.has(hostId),
+      bytes,
+      identity: createHash("sha256").update(`${hostId}\n${runId}\n${tags.join(",")}`).digest("hex"),
     };
+  }
+
+  async function describe(
+    entry: { tag?: unknown; hostImageId?: unknown },
+    runId: string,
+    inUse: Set<string>,
+  ): Promise<InventoryItem | null> {
+    if (!isRunTag(entry.tag, runId))
+      return unknown(String(entry.tag ?? "(missing tag)"), runId, "tag outside run namespace");
+    const host = entry.hostImageId;
+    if (host !== undefined && (typeof host !== "string" || !HOST_ID.test(host)))
+      return unknown(entry.tag, runId, "invalid host image ID");
+    const info = await inspect(host ?? entry.tag);
+    if (!info) return null;
+    if (host !== undefined && info.Id !== host)
+      return unknown(entry.tag, runId, "host identity mismatch", info.Size ?? 0);
+    return judge(info, runId, inUse);
+  }
+
+  async function readRecord(runId: string): Promise<unknown[] | null> {
+    const marker = join(runsRoot, runId, RUN_OWNER_FILE);
+    try {
+      if (!(await lstat(join(runsRoot, runId))).isDirectory()) return null;
+      if (!(await lstat(marker)).isFile()) return null;
+      const parsed = JSON.parse(await readFile(marker, "utf8"));
+      return parsed.schema === 1 && parsed.runId === runId && Array.isArray(parsed.images)
+        ? parsed.images
+        : null;
+    } catch {
+      return null;
+    }
   }
 
   return {
     async inventory() {
+      const inUse = await containerImages();
       const items: InventoryItem[] = [];
+      const seen = new Set<string>();
       for (const runId of (await readdir(runsRoot)).sort()) {
-        const marker = join(runsRoot, runId, RUN_OWNER_FILE);
-        let parsed: { runId?: unknown; images?: unknown };
-        try {
-          if (!(await lstat(marker)).isFile()) continue;
-          parsed = JSON.parse(await readFile(marker, "utf8"));
-        } catch {
-          continue;
-        }
-        if (parsed.runId !== runId || !Array.isArray(parsed.images)) continue;
-        for (const image of parsed.images as { configId?: unknown }[]) {
-          if (
-            typeof image?.configId !== "string" ||
-            !CONFIG_ID.test(image.configId)
-          )
-            continue;
-          const item = await describe(image.configId, runId);
-          if (item) items.push(item);
+        if (!RUN_ID.test(runId)) continue;
+        const images = await readRecord(runId);
+        for (const image of images ?? []) {
+          if (!image || typeof image !== "object") continue;
+          const item = await describe(image as Record<string, unknown>, runId, inUse);
+          if (!item || seen.has(`${item.id}\n${item.unknownReason ?? ""}`)) continue;
+          seen.add(`${item.id}\n${item.unknownReason ?? ""}`);
+          items.push(item);
         }
       }
       return items;
     },
 
     async reidentify(item) {
-      if (!item.runId) return null;
-      const fresh = await describe(item.id, item.runId);
-      return fresh?.owned && !fresh.inUse ? fresh.identity : null;
+      if (!item.runId || !HOST_ID.test(item.id)) return null;
+      const info = await inspect(item.id);
+      if (!info || info.Id !== item.id) return null;
+      const fresh = judge(info, item.runId, await containerImages());
+      return fresh.owned && !fresh.inUse ? fresh.identity : null;
     },
 
     async readProtections(): Promise<Protections> {
-      const list = JSON.parse(await readFile(deps.protectedImagesFile, "utf8"));
-      if (
-        !Array.isArray(list) ||
-        !list.every((id) => typeof id === "string" && CONFIG_ID.test(id))
-      )
-        throw new Error(
-          `Protected image list ${deps.protectedImagesFile} is invalid.`,
-        );
-      return { releases: [], runs: [], images: [...list].sort() };
+      return { releases: [], runs: [], images: [...(await containerImages())].sort() };
     },
 
-    async sweepTrash() {
-      return [];
+    async recoverQuarantine() {
+      return { recovered: [], preserved: [] };
     },
 
     async apply(action: RetentionAction) {
-      if (action.action !== "delete-image")
-        throw new Error(
-          `Unsupported action ${action.action} for Docker images.`,
-        );
+      if (action.action !== "delete-image" || !HOST_ID.test(action.item.id))
+        throw new Error(`Unsupported action ${action.action} for Docker images.`);
       const result = await deps.docker(["image", "rm", action.item.id]);
       if (result.code !== 0)
         throw new Error(`docker image rm ${action.item.id} failed.`);
@@ -197,10 +225,15 @@ export function combineRetentionPorts(
       }
       return merged;
     },
-    async sweepTrash() {
-      const removed: string[] = [];
-      for (const part of parts) removed.push(...(await part.port.sweepTrash()));
-      return removed;
+    async recoverQuarantine() {
+      const recovered: string[] = [];
+      const preserved: { name: string; reason: string }[] = [];
+      for (const part of parts) {
+        const result = await part.port.recoverQuarantine();
+        recovered.push(...result.recovered);
+        preserved.push(...result.preserved);
+      }
+      return { recovered, preserved };
     },
     apply: (action) => owner(action.item.kind).apply(action),
   };

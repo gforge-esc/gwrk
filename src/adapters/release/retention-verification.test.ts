@@ -6,6 +6,7 @@ import {
   existsSync,
   mkdirSync,
   mkdtempSync,
+  readFileSync,
   rmSync,
   symlinkSync,
   writeFileSync,
@@ -17,6 +18,7 @@ import { runRetentionStep } from "../../application/release/retention.js";
 import { GIB } from "../../domain/retention-policy.js";
 import { createVerificationRootAdapter } from "./retention-verification.js";
 
+const NOW = "2026-11-26T16:40:00.000Z";
 let base: string;
 let runs: string;
 let data: string;
@@ -41,7 +43,8 @@ const stage = (
     JSON.stringify({
       schema: 1,
       runId: id,
-      state: completedAt ? "completed" : "running",
+      state: completedAt ? "completed" : "staging",
+      startedAt: completedAt ?? "2026-11-26T16:00:00Z",
       completedAt,
       heavy: [
         { root: "run", path: "source.tar" },
@@ -58,6 +61,7 @@ const step = () => {
   const adapter = createVerificationRootAdapter(runs, data, {
     leaseBusy: async (path) => busy.has(path),
     protectedRuns: [],
+    now: () => NOW,
   });
   return runRetentionStep({
     inventory: adapter,
@@ -67,6 +71,7 @@ const step = () => {
         paths.map((path) => ({ path, device: "d", availableBytes: 20 * GIB })),
     },
     receipts: adapter,
+    lock: { assertHeld: async () => {} },
     policy: { keepReleases: 2, keepRuns: 2 },
     requirements: [{ label: "root", path: runs, requiredBytes: 8 * GIB }],
     now: () => "2026-11-26T16:40:00.000Z",
@@ -111,6 +116,7 @@ describe("verification retention", () => {
     stage(runId("d"), "2026-01-04T00:00:00Z");
     stage(runId("e"), "2026-01-05T00:00:00Z");
     busy.add(join(runs, runId("a"), ".lease"));
+    busy.add(join(runs, runId("b"), ".lease"));
     const result = await step();
     expect(result.deleted.map((d) => d.id)).toEqual([runId("c")]);
     expect(existsSync(join(runs, runId("a"), "source.tar"))).toBe(true);
@@ -143,5 +149,101 @@ describe("verification retention", () => {
     expect(existsSync(join(runs, runId("1"), "source.tar"))).toBe(true);
     expect(existsSync(join(base, "victim"))).toBe(true);
     expect(result.deleted.map((d) => d.id)).toEqual([runId("c")]);
+  });
+
+  it("recovers an abandoned staging run whose lease is free", async () => {
+    stage(runId("a"), "2026-01-01T00:00:00Z");
+    stage(runId("b"), "2026-01-02T00:00:00Z");
+    stage(runId("c"), null, { startedAt: "2025-12-01T00:00:00Z" });
+    const result = await step();
+    expect(result.deleted.map((d) => d.id)).toEqual([runId("c")]);
+    expect(existsSync(join(runs, runId("c"), "source.tar"))).toBe(false);
+    expect(existsSync(join(runs, runId("c"), "gwrk-run-owner.json"))).toBe(
+      true,
+    );
+  });
+
+  it("protects a staged run until its handoff window expires", async () => {
+    stage(runId("a"), "2026-01-01T00:00:00Z");
+    stage(runId("b"), "2026-01-02T00:00:00Z");
+    stage(runId("d"), null, {
+      state: "staged",
+      startedAt: "2026-11-26T15:00:00Z",
+      stagedAt: "2026-11-26T15:40:00Z",
+    });
+    stage(runId("e"), null, {
+      state: "staged",
+      startedAt: "2025-12-01T00:00:00Z",
+      stagedAt: "2025-12-01T01:00:00Z",
+    });
+    const result = await step();
+    expect(result.deleted.map((d) => d.id)).toEqual([runId("e")]);
+    expect(existsSync(join(runs, runId("d"), "source.tar"))).toBe(true);
+    expect(result.retained).toContainEqual(
+      expect.objectContaining({ id: runId("d"), reason: "protected" }),
+    );
+  });
+
+  it("removes a whole run data directory declared as data-run", async () => {
+    stage(runId("a"), "2026-01-01T00:00:00Z", {
+      heavy: [{ root: "run", path: "source.tar" }, { root: "data-run" }],
+    });
+    stage(runId("b"), "2026-01-02T00:00:00Z");
+    stage(runId("c"), "2026-01-03T00:00:00Z");
+    await step();
+    expect(existsSync(join(data, runId("a")))).toBe(false);
+    expect(existsSync(join(data, runId("b")))).toBe(true);
+  });
+
+  it.each([
+    ["a proof directory", "proofs"],
+    ["a signed receipt", "native-receipt.sig.json"],
+    ["a nested proof inside an input directory", "input"],
+  ])("refuses a heavy declaration that names %s", async (_name, path) => {
+    stage(runId("a"), "2026-01-01T00:00:00Z", {
+      heavy: [
+        { root: "run", path: "source.tar" },
+        { root: "run", path },
+      ],
+    });
+    mkdirSync(join(runs, runId("a"), "proofs"));
+    mkdirSync(join(runs, runId("a"), "input"));
+    writeFileSync(
+      join(runs, runId("a"), "proofs/native-evidence-envelope.json"),
+      "proof",
+    );
+    writeFileSync(join(runs, runId("a"), "input/loaded-images.json"), "proof");
+    stage(runId("b"), "2026-01-02T00:00:00Z");
+    stage(runId("c"), "2026-01-03T00:00:00Z");
+    const result = await step();
+    expect(
+      readFileSync(
+        join(runs, runId("a"), "proofs/native-evidence-envelope.json"),
+        "utf8",
+      ),
+    ).toBe("proof");
+    expect(existsSync(join(runs, runId("a"), "native-receipt.sig.json"))).toBe(
+      true,
+    );
+    expect(existsSync(join(runs, runId("a"), "input/loaded-images.json"))).toBe(
+      true,
+    );
+    expect(existsSync(join(runs, runId("a"), "source.tar"))).toBe(true);
+    expect(result.deleted).toEqual([]);
+    expect(result.unknown).toContainEqual(
+      expect.objectContaining({
+        id: runId("a"),
+        reason: expect.stringMatching(/payload/),
+      }),
+    );
+  });
+
+  it("never deletes an unknown entry in the quarantine directory", async () => {
+    stage(runId("a"), "2026-01-01T00:00:00Z");
+    const stranger = join(runs, ".retention/trash/stranger");
+    mkdirSync(stranger, { recursive: true });
+    writeFileSync(join(stranger, "sentinel"), "keep");
+    await step();
+    expect(existsSync(join(stranger, "sentinel"))).toBe(true);
   });
 });

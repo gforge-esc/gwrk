@@ -3,26 +3,26 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 // Verification-run retention adapter. Deletes only heavy payloads that the
-// run owner manifest lists. Receipts, signatures and the manifest stay.
+// run owner record lists. Receipts, signatures and the record stay.
 
 import { createHash } from "node:crypto";
 import {
   lstat,
-  mkdir,
   readFile,
   readdir,
-  rename,
   rm,
   stat,
   statfs,
-  writeFile,
 } from "node:fs/promises";
 import { join } from "node:path";
-import type {
-  InventoryItem,
-  Protections,
-  RetentionAction,
-  SpaceSample,
+import {
+  type InventoryItem,
+  type Protections,
+  type RetentionAction,
+  type RunClass,
+  STAGED_TTL_MS,
+  type SpaceSample,
+  classifyRun,
 } from "../../domain/retention-policy.js";
 import type {
   DiskSpacePort,
@@ -31,32 +31,54 @@ import type {
   RetentionReceiptPort,
 } from "../../ports/retention-port.js";
 import { treeBytes } from "./retention-fs.js";
+import { createQuarantine, writeReceipt } from "./retention-quarantine.js";
 
 export const RUN_OWNER_FILE = "gwrk-run-owner.json";
+export const RUN_LEASE_FILE = ".lease";
 const RUN_ID = /^[a-f0-9]{24}$/;
-const TERMINAL = new Set(["completed", "failed"]);
 
-interface HeavyPath {
-  readonly root: "run" | "data";
-  readonly path: string;
-}
+/**
+ * The removable payload class. Retention removes only these exact paths.
+ * Proofs, receipts, manifests, checkpoints, signatures and the owner record
+ * live outside them, so no owner record can declare durable evidence heavy.
+ */
+export const RUN_PAYLOADS = [
+  "source.tar",
+  "repo",
+  "build-context",
+  "original-rootfs.tar",
+  "flattened-rootfs.tar",
+  "input/preload-images.tar",
+] as const;
+export const DATA_PAYLOADS = ["images.tar", "docker"] as const;
+
+/** `data-run` names the whole `<dataRoot>/<runId>` directory. */
+type HeavyPath =
+  | { readonly root: "run" | "data"; readonly path: string }
+  | { readonly root: "data-run" };
 
 export interface VerificationRootDeps {
   /** True when another process holds the run lease. Backed by flock in production. */
   readonly leaseBusy: (leasePath: string) => Promise<boolean>;
   /** Runs the caller is about to stage. Always protected. */
   readonly protectedRuns: readonly string[];
+  readonly now: () => string;
+  readonly stagedTtlMs?: number;
 }
 
 const isMissing = (error: unknown) =>
   (error as NodeJS.ErrnoException).code === "ENOENT";
 
-function safeRelative(path: unknown): path is string {
-  if (typeof path !== "string" || path === "" || path.startsWith("/"))
-    return false;
-  return path
-    .split("/")
-    .every((part) => part !== "" && part !== "." && part !== "..");
+function validHeavy(entry: unknown): entry is HeavyPath {
+  if (!entry || typeof entry !== "object") return false;
+  const value = entry as Record<string, unknown>;
+  if (value.root === "data-run") return Object.keys(value).length === 1;
+  if (Object.keys(value).length !== 2) return false;
+  if (value.root === "run")
+    return (RUN_PAYLOADS as readonly unknown[]).includes(value.path);
+  if (value.root === "data")
+    return (DATA_PAYLOADS as readonly unknown[]).includes(value.path);
+  return false;
 }
 
 export function createVerificationRootAdapter(
@@ -68,13 +90,12 @@ export function createVerificationRootAdapter(
   RetentionReceiptPort &
   DiskSpacePort {
   const control = join(runsRoot, ".retention");
-  const trash = join(control, "trash");
+  const quarantine = createQuarantine(control);
 
   const heavyLocation = (id: string, heavy: HeavyPath) =>
-    join(
-      heavy.root === "run" ? join(runsRoot, id) : join(dataRoot, id),
-      heavy.path,
-    );
+    heavy.root === "data-run"
+      ? join(dataRoot, id)
+      : join(heavy.root === "run" ? join(runsRoot, id) : join(dataRoot, id), heavy.path);
 
   async function lstatOrNull(path: string) {
     try {
@@ -91,9 +112,9 @@ export function createVerificationRootAdapter(
     const baseInfo = await lstatOrNull(base);
     if (baseInfo && (baseInfo.isSymbolicLink() || !baseInfo.isDirectory()))
       return false;
-    const parts = heavy.path.split("/");
+    if (heavy.root === "data-run") return true;
     let current = base;
-    for (const part of parts) {
+    for (const part of heavy.path.split("/")) {
       current = join(current, part);
       const info = await lstatOrNull(current);
       if (!info) return true;
@@ -106,7 +127,7 @@ export function createVerificationRootAdapter(
     | {
         owned: true;
         identity: string;
-        completedAt?: string;
+        run: RunClass & { kind: Exclude<RunClass["kind"], "invalid"> };
         heavy: HeavyPath[];
       }
     | { owned: false; reason: string }
@@ -118,44 +139,39 @@ export function createVerificationRootAdapter(
     if (!RUN_ID.test(id)) return { owned: false, reason: "not a run ID" };
     const markerInfo = await lstatOrNull(join(run, RUN_OWNER_FILE));
     if (!markerInfo?.isFile())
-      return { owned: false, reason: "no run owner manifest" };
+      return { owned: false, reason: "no run owner record" };
     const bytes = await readFile(join(run, RUN_OWNER_FILE));
     let marker: Record<string, unknown>;
     try {
       marker = JSON.parse(bytes.toString("utf8"));
     } catch {
-      return { owned: false, reason: "unreadable run owner manifest" };
+      return { owned: false, reason: "unreadable run owner record" };
     }
     if (marker.schema !== 1 || marker.runId !== id)
-      return { owned: false, reason: "run owner manifest mismatch" };
+      return { owned: false, reason: "run owner record mismatch" };
     const heavy = marker.heavy;
-    if (
-      !Array.isArray(heavy) ||
-      !heavy.every(
-        (entry) =>
-          entry &&
-          (entry.root === "run" || entry.root === "data") &&
-          safeRelative(entry.path) &&
-          entry.path !== RUN_OWNER_FILE,
-      )
-    )
-      return { owned: false, reason: "unsafe heavy path" };
-    for (const entry of heavy as HeavyPath[]) {
+    if (!Array.isArray(heavy) || !heavy.every(validHeavy))
+      return { owned: false, reason: "heavy path outside the removable payload class" };
+    for (const entry of heavy) {
       if (!(await realChain(id, entry)))
         return { owned: false, reason: "heavy path crosses a symlink" };
     }
-    const terminal =
-      typeof marker.state === "string" &&
-      TERMINAL.has(marker.state) &&
-      typeof marker.completedAt === "string" &&
-      !Number.isNaN(Date.parse(marker.completedAt));
+    const runClass = classifyRun({
+      state: marker.state,
+      startedAt: marker.startedAt,
+      stagedAt: marker.stagedAt,
+      completedAt: marker.completedAt,
+      leaseBusy: await deps.leaseBusy(join(run, RUN_LEASE_FILE)),
+      now: deps.now(),
+      stagedTtlMs: deps.stagedTtlMs ?? STAGED_TTL_MS,
+    });
+    if (runClass.kind === "invalid")
+      return { owned: false, reason: runClass.reason };
     return {
       owned: true,
       identity: createHash("sha256").update(bytes).digest("hex"),
-      completedAt: terminal
-        ? new Date(marker.completedAt as string).toISOString()
-        : undefined,
-      heavy: heavy as HeavyPath[],
+      run: runClass,
+      heavy,
     };
   }
 
@@ -168,11 +184,14 @@ export function createVerificationRootAdapter(
     return total;
   }
 
+  async function runNames(): Promise<string[]> {
+    return (await readdir(runsRoot)).filter((name) => !name.startsWith(".")).sort();
+  }
+
   return {
     async inventory() {
       const items: InventoryItem[] = [];
-      for (const name of (await readdir(runsRoot)).sort()) {
-        if (name.startsWith(".")) continue;
+      for (const name of await runNames()) {
         const path = join(runsRoot, name);
         const id = await identify(name);
         if (!id.owned) {
@@ -194,7 +213,7 @@ export function createVerificationRootAdapter(
           path,
           owned: true,
           identity: id.identity,
-          completedAt: id.completedAt,
+          completedAt: id.run.protected ? undefined : id.run.completedAt,
           bytes: await treeBytes(path),
           heavyBytes: await heavyBytes(name, id.heavy),
         });
@@ -206,30 +225,20 @@ export function createVerificationRootAdapter(
       const info = await lstatOrNull(join(runsRoot, item.id));
       if (!info) return null;
       const id = await identify(item.id);
-      return id.owned ? id.identity : null;
+      return id.owned && !id.run.protected ? id.identity : null;
     },
 
     async readProtections(): Promise<Protections> {
       const runs = new Set(deps.protectedRuns);
-      for (const name of await readdir(runsRoot)) {
-        if (name.startsWith(".")) continue;
-        if (await deps.leaseBusy(join(runsRoot, name, ".lease")))
-          runs.add(name);
+      for (const name of await runNames()) {
+        const id = await identify(name);
+        if (id.owned && id.run.protected) runs.add(name);
       }
       return { releases: [], runs: [...runs].sort(), images: [] };
     },
 
-    async sweepTrash() {
-      const info = await lstatOrNull(trash);
-      if (!info) return [];
-      if (!info.isDirectory() || info.isSymbolicLink())
-        throw new Error(`Retention trash ${trash} must be a directory.`);
-      const removed: string[] = [];
-      for (const name of await readdir(trash)) {
-        await rm(join(trash, name), { recursive: true, force: true });
-        removed.push(name);
-      }
-      return removed;
+    recoverQuarantine() {
+      return quarantine.recover(async (intent) => intent.key.startsWith("run:"));
     },
 
     async apply(action: RetentionAction) {
@@ -239,16 +248,19 @@ export function createVerificationRootAdapter(
         );
       const id = await identify(action.item.id);
       if (!id.owned) throw new Error(`${action.item.id} is no longer owned.`);
-      await mkdir(trash, { recursive: true, mode: 0o700 });
       for (const [index, entry] of id.heavy.entries()) {
         const path = heavyLocation(action.item.id, entry);
-        if (!(await lstatOrNull(path))) continue;
-        if (!(await realChain(action.item.id, entry)))
+        const info = await lstatOrNull(path);
+        if (!info) continue;
+        if (info.isSymbolicLink() || !(await realChain(action.item.id, entry)))
           throw new Error(`${path} crosses a symlink.`);
-        const parked = join(trash, `${action.item.id}-${index}-${process.pid}`);
         if (entry.root === "run") {
-          await rename(path, parked);
-          await rm(parked, { recursive: true, force: true });
+          const { token } = await quarantine.park({
+            key: `run:${action.item.id}:${index}`,
+            source: path,
+            identity: id.identity,
+          });
+          await quarantine.discard(token);
         } else {
           // The data root can be another filesystem. Remove in place without following links.
           await rm(path, { recursive: true, force: true });
@@ -257,15 +269,7 @@ export function createVerificationRootAdapter(
     },
 
     async write(name, receipt) {
-      const directory = join(control, "receipts");
-      await mkdir(directory, { recursive: true, mode: 0o700 });
-      const path = join(directory, `${name}.json`);
-      const temporary = `${path}.tmp-${process.pid}`;
-      await writeFile(temporary, `${JSON.stringify(receipt, null, 2)}\n`, {
-        mode: 0o600,
-      });
-      await rename(temporary, path);
-      return path;
+      return writeReceipt(control, name, receipt);
     },
 
     async sample(paths): Promise<SpaceSample[]> {

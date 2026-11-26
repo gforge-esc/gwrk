@@ -2,36 +2,55 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-// Verification staging entry point. `deploy/verification/stage-preflight.sh`
-// runs it under the retention lock while holding the run lease.
+// Verification staging entry point. Node standard library only.
+// `deploy/verification/stage-native-proof.py` extracts this file and its
+// relative imports from a verified gwrk package. The driver holds the run
+// lease, then the retention lock, and passes the lock descriptor here.
 
 import { execFile } from "node:child_process";
 import { realpathSync } from "node:fs";
 import { lstat, realpath } from "node:fs/promises";
+import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   type DockerRunner,
   combineRetentionPorts,
   createDockerImageAdapter,
 } from "../adapters/release/retention-docker.js";
+import { createFdLockProof } from "../adapters/release/retention-lock.js";
 import { createVerificationRootAdapter } from "../adapters/release/retention-verification.js";
 import { runRetentionStep } from "../application/release/retention.js";
 import {
   DEFAULT_RETENTION_POLICY,
   verificationRequirements,
 } from "../domain/retention-policy.js";
+import type { LockProofPort } from "../ports/retention-port.js";
+
+/** Relative to the package root. The staging driver extracts exactly these files. */
+export const VERIFICATION_BOOTSTRAP_FILES = [
+  "package.json",
+  "dist/release/verification-lifecycle.js",
+  "dist/application/release/retention.js",
+  "dist/adapters/release/retention-docker.js",
+  "dist/adapters/release/retention-fs.js",
+  "dist/adapters/release/retention-lock.js",
+  "dist/adapters/release/retention-quarantine.js",
+  "dist/adapters/release/retention-verification.js",
+  "dist/domain/retention-policy.js",
+  "dist/ports/retention-port.js",
+] as const;
 
 const USAGE =
-  "Usage: verification-lifecycle.js verification-preflight --runs-root DIR --data-root DIR --run-id ID --protected-images FILE --build-bytes N --data-bytes N [--root-path DIR]";
-const FLAGS = [
+  "Usage: verification-lifecycle.js verification-preflight --runs-root DIR --data-root DIR --run-id ID --build-bytes N --data-bytes N --lock-fd FD [--root-path DIR]";
+const REQUIRED = [
   "--runs-root",
   "--data-root",
   "--run-id",
-  "--protected-images",
   "--build-bytes",
   "--data-bytes",
-  "--root-path",
+  "--lock-fd",
 ];
+const FLAGS = [...REQUIRED, "--root-path"];
 
 const run = (command: string, args: readonly string[]) =>
   new Promise<{ code: number; stdout: string }>((resolve) => {
@@ -68,6 +87,7 @@ export async function main(
   deps: {
     docker?: DockerRunner;
     leaseBusy?: (path: string) => Promise<boolean>;
+    lockProof?: (fd: number, lockPath: string) => LockProofPort;
     now?: () => string;
     out?: (text: string) => void;
     err?: (text: string) => void;
@@ -85,22 +105,28 @@ export async function main(
       if (!FLAGS.includes(name) || flags.has(name)) throw new Error(USAGE);
       flags.set(name, rest[index + 1] ?? "");
     }
+    if (REQUIRED.some((flag) => !flags.get(flag))) throw new Error(USAGE);
     const runId = flags.get("--run-id") ?? "";
     const build = flags.get("--build-bytes") ?? "";
     const dataBytes = flags.get("--data-bytes") ?? "";
+    const fd = flags.get("--lock-fd") ?? "";
     if (
       !/^[a-f0-9]{24}$/.test(runId) ||
       !/^\d+$/.test(build) ||
-      !/^\d+$/.test(dataBytes)
+      !/^\d+$/.test(dataBytes) ||
+      !/^\d+$/.test(fd)
     )
       throw new Error(USAGE);
     const runsRoot = await realpath(flags.get("--runs-root") ?? "");
     const dataRoot = await realpath(flags.get("--data-root") ?? "");
-    const protectedImagesFile = flags.get("--protected-images");
-    if (!protectedImagesFile) throw new Error(USAGE);
+    const now = deps.now ?? (() => new Date().toISOString());
+    const lock = (
+      deps.lockProof ?? ((n, lockPath) => createFdLockProof({ fd: n, lockPath }))
+    )(Number(fd), join(runsRoot, ".retention.lock"));
     const verification = createVerificationRootAdapter(runsRoot, dataRoot, {
       leaseBusy: deps.leaseBusy ?? flockLeaseBusy,
       protectedRuns: [runId],
+      now,
     });
     const port = combineRetentionPorts([
       { kinds: ["verification-run"], port: verification },
@@ -108,7 +134,6 @@ export async function main(
         kinds: ["docker-image"],
         port: createDockerImageAdapter(runsRoot, {
           docker: deps.docker ?? ((args) => run("docker", args)),
-          protectedImagesFile,
         }),
       },
     ]);
@@ -117,6 +142,7 @@ export async function main(
       effects: port,
       disk: verification,
       receipts: verification,
+      lock,
       policy: DEFAULT_RETENTION_POLICY,
       requirements: verificationRequirements({
         rootPath: flags.get("--root-path") ?? "/",
@@ -125,9 +151,9 @@ export async function main(
         buildBytes: Number(build),
         dataBytes: Number(dataBytes),
       }),
-      now: deps.now ?? (() => new Date().toISOString()),
+      now,
     });
-    const summary = `deleted=${result.deleted.length} skipped=${result.skipped.length} failed=${result.failed.length} unknown=${result.unknown.length} receipt=${result.receiptPath}`;
+    const summary = `deleted=${result.deleted.length} skipped=${result.skipped.length} failed=${result.failed.length} unknown=${result.unknown.length} recovered=${result.quarantineRecovered.length} receipt=${result.receiptPath}`;
     if (!result.ok) {
       err(result.message);
       err(summary);

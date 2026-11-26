@@ -16,6 +16,8 @@ import {
 } from "../../domain/retention-policy.js";
 import type {
   DiskSpacePort,
+  LockProofPort,
+  QuarantineRecovery,
   RetentionEffectsPort,
   RetentionInventoryPort,
   RetentionReceiptPort,
@@ -26,6 +28,8 @@ export interface RetentionStepInput {
   readonly effects: RetentionEffectsPort;
   readonly disk: DiskSpacePort;
   readonly receipts: RetentionReceiptPort;
+  /** Proves the caller holds the root lock. Checked before any deletion. */
+  readonly lock: LockProofPort;
   readonly policy: RetentionPolicy;
   readonly requirements: readonly SpaceRequirement[];
   readonly now: () => string;
@@ -44,6 +48,8 @@ export interface RetentionStepResult {
   readonly failed: { id: string; action: RetentionActionKind; error: string }[];
   readonly unknown: { id: string; reason: string; bytes: number }[];
   readonly retained: { id: string; reason: string; bytes: number }[];
+  readonly quarantineRecovered: string[];
+  readonly quarantinePreserved: QuarantineRecovery["preserved"];
   readonly preflight: PreflightResult | null;
 }
 
@@ -68,6 +74,7 @@ export async function runRetentionStep(
   let unknown: RetentionStepResult["unknown"] = [];
   let retained: RetentionStepResult["retained"] = [];
   let preflight: PreflightResult | null = null;
+  let quarantine: QuarantineRecovery = { recovered: [], preserved: [] };
 
   const finish = async (ok: boolean, text: string) => {
     const result = {
@@ -78,6 +85,8 @@ export async function runRetentionStep(
       failed,
       unknown,
       retained,
+      quarantineRecovered: quarantine.recovered,
+      quarantinePreserved: quarantine.preserved,
       preflight,
     };
     const receiptPath = await input.receipts.write(receiptName, {
@@ -93,7 +102,8 @@ export async function runRetentionStep(
 
   let plan: ReturnType<typeof planRetention>;
   try {
-    await input.effects.sweepTrash();
+    await input.lock.assertHeld();
+    quarantine = await input.effects.recoverQuarantine();
     const [items, protections] = [
       await input.inventory.inventory(),
       await input.inventory.readProtections(),
@@ -123,6 +133,11 @@ export async function runRetentionStep(
   });
 
   for (const { action, item } of plan.actions) {
+    try {
+      await input.lock.assertHeld();
+    } catch (error) {
+      return finish(false, `Retention stopped: ${message(error)}`);
+    }
     try {
       const protections = await input.inventory.readProtections();
       if (isNowProtected(item, protections)) {

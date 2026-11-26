@@ -6,30 +6,39 @@ import {
   mkdirSync,
   mkdtempSync,
   readFileSync,
+  realpathSync,
   rmSync,
-  writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join, normalize } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { main } from "./verification-lifecycle.js";
+import { VERIFICATION_BOOTSTRAP_FILES, main } from "./verification-lifecycle.js";
 
-const wrapper = readFileSync("deploy/verification/stage-preflight.sh", "utf8");
-
-describe("stage-preflight.sh", () => {
-  it("holds the lease, runs preflight under the retention lock, then execs staging", () => {
-    const lease = wrapper.indexOf("flock -xn 7");
-    const lock = wrapper.indexOf("flock -x 8");
-    const preflight = wrapper.indexOf("verification-preflight");
-    const release = wrapper.indexOf("exec 8>&-");
-    const staging = wrapper.indexOf('exec "$@"');
-    expect(lease).toBeGreaterThan(0);
-    expect(lease).toBeLessThan(lock);
-    expect(lock).toBeLessThan(preflight);
-    expect(preflight).toBeLessThan(release);
-    expect(release).toBeLessThan(staging);
-    expect(wrapper).toMatch(/Staging did not start/);
-    expect(wrapper).not.toMatch(/docker (system|image) prune/);
+describe("verification-preflight bootstrap", () => {
+  it("lists every relative import closure and uses only the Node standard library", () => {
+    const seen = new Set<string>();
+    const visit = (source: string) => {
+      if (seen.has(source)) return;
+      seen.add(source);
+      const text = readFileSync(source, "utf8");
+      for (const [, specifier] of text.matchAll(/from\s+"([^"]+)"/g)) {
+        if (!specifier) continue;
+        if (specifier.startsWith(".")) {
+          visit(
+            normalize(join(dirname(source), specifier.replace(/\.js$/, ".ts"))),
+          );
+        } else {
+          expect(specifier, `${source} imports ${specifier}`).toMatch(/^node:/);
+        }
+      }
+    };
+    visit("src/release/verification-lifecycle.ts");
+    const expected = [...seen]
+      .map((source) => source.replace(/^src\//, "dist/").replace(/\.ts$/, ".js"))
+      .sort();
+    expect(
+      VERIFICATION_BOOTSTRAP_FILES.filter((file) => file.startsWith("dist/")).sort(),
+    ).toEqual(expected);
   });
 });
 
@@ -39,11 +48,10 @@ describe("verification-preflight entry point", () => {
     base = mkdtempSync(join(tmpdir(), "gwrk-verification-entry-"));
     mkdirSync(join(base, "runs"));
     mkdirSync(join(base, "data"));
-    writeFileSync(join(base, "protected.json"), "[]");
   });
   afterEach(() => rmSync(base, { recursive: true, force: true }));
 
-  const argv = (extra: string[] = []) => [
+  const argv = (extra: string[] = [], buildBytes = String(2 ** 52)) => [
     "verification-preflight",
     "--runs-root",
     join(base, "runs"),
@@ -51,22 +59,25 @@ describe("verification-preflight entry point", () => {
     join(base, "data"),
     "--run-id",
     "a".repeat(24),
-    "--protected-images",
-    join(base, "protected.json"),
     "--build-bytes",
-    String(2 ** 52),
+    buildBytes,
     "--data-bytes",
     "0",
     "--root-path",
     base,
+    "--lock-fd",
+    "9",
     ...extra,
   ];
+  const held = () => ({ assertHeld: async () => {} });
 
   it("fails before staging when the build cannot fit", async () => {
     const errors: string[] = [];
     const code = await main(argv(), {
-      docker: async () => ({ code: 1, stdout: "" }),
+      docker: async (args) =>
+        args[0] === "ps" ? { code: 0, stdout: "" } : { code: 1, stdout: "" },
       leaseBusy: async () => false,
+      lockProof: held,
       out: () => {},
       err: (t) => errors.push(t),
     });
@@ -74,9 +85,49 @@ describe("verification-preflight entry point", () => {
     expect(errors.join("\n")).toMatch(/root floor \+ build workspace/);
   });
 
-  it("rejects unknown flags", async () => {
-    expect(
-      await main(argv(["--force", "1"]), { out: () => {}, err: () => {} }),
-    ).toBe(2);
+  it("deletes nothing and fails when the retention lock cannot be proven", async () => {
+    const errors: string[] = [];
+    const code = await main(argv([], "1"), {
+      docker: async () => ({ code: 0, stdout: "" }),
+      leaseBusy: async () => false,
+      lockProof: () => ({
+        assertHeld: async () => {
+          throw new Error("Retention lock is not held by this process.");
+        },
+      }),
+      out: () => {},
+      err: (t) => errors.push(t),
+    });
+    expect(code).toBe(1);
+    expect(errors.join("\n")).toMatch(/lock/);
+  });
+
+  it("proves the lock against the runs root lock file", async () => {
+    const seen: [number, string][] = [];
+    await main(argv([], "1"), {
+      docker: async () => ({ code: 0, stdout: "" }),
+      leaseBusy: async () => false,
+      lockProof: (fd, path) => {
+        seen.push([fd, path]);
+        return held();
+      },
+      out: () => {},
+      err: () => {},
+    });
+    expect(seen).toEqual([
+      [9, join(realpathSync(base), "runs", ".retention.lock")],
+    ]);
+  });
+
+  it.each([
+    [["--protected-images", "/tmp/protected.json"]],
+    [["--force", "1"]],
+  ])("rejects removed or unknown flags %j", async (extra) => {
+    expect(await main(argv(extra), { out: () => {}, err: () => {} })).toBe(2);
+  });
+
+  it("requires a lock descriptor", async () => {
+    const args = argv().slice(0, -2);
+    expect(await main(args, { out: () => {}, err: () => {} })).toBe(2);
   });
 });

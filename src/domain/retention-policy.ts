@@ -309,3 +309,183 @@ export function parseReleasePointer(text: string): PointerResult {
 export function isReleaseName(name: string): boolean {
   return RELEASE_NAME.test(name) && !/^\.+$/.test(name);
 }
+
+/** True when `child` equals `parent` or lies below it. Both must be canonical. */
+export function pathInside(child: string, parent: string): boolean {
+  const base = parent.endsWith("/") ? parent.slice(0, -1) : parent;
+  return child === base || child.startsWith(`${base}/`);
+}
+
+// Verification run lifecycle. The staging driver writes the owner record
+// after it takes the run lease and before any heavy work.
+
+export const RUN_STATES = [
+  "staging",
+  "staged",
+  "executing",
+  "completed",
+  "failed",
+] as const;
+
+/** A staged run waits this long for its proof before it counts as abandoned. */
+export const STAGED_TTL_MS = 24 * 60 * 60 * 1000;
+
+export type RunClass =
+  | { readonly kind: "active" | "staged"; readonly protected: true }
+  | {
+      readonly kind: "terminal" | "abandoned";
+      readonly protected: false;
+      readonly completedAt: string;
+    }
+  | { readonly kind: "invalid"; readonly reason: string };
+
+const isoTime = (value: unknown): string | null =>
+  typeof value === "string" && !Number.isNaN(Date.parse(value))
+    ? new Date(value).toISOString()
+    : null;
+
+/**
+ * Classifies one owned run. A held lease always protects. A run left in a
+ * working state with a free lease lost its process and becomes abandoned.
+ */
+export function classifyRun(input: {
+  readonly state: unknown;
+  readonly startedAt: unknown;
+  readonly stagedAt: unknown;
+  readonly completedAt: unknown;
+  readonly leaseBusy: boolean;
+  readonly now: string;
+  readonly stagedTtlMs: number;
+}): RunClass {
+  const state = input.state;
+  if (
+    typeof state !== "string" ||
+    !(RUN_STATES as readonly string[]).includes(state)
+  )
+    return { kind: "invalid", reason: "unknown run state" };
+  if (input.leaseBusy) return { kind: "active", protected: true };
+  if (state === "completed" || state === "failed") {
+    const completedAt = isoTime(input.completedAt);
+    return completedAt
+      ? { kind: "terminal", protected: false, completedAt }
+      : { kind: "invalid", reason: "finished run has no completion time" };
+  }
+  if (state === "staged") {
+    const stagedAt = isoTime(input.stagedAt);
+    if (!stagedAt) return { kind: "invalid", reason: "staged run has no time" };
+    return Date.parse(input.now) - Date.parse(stagedAt) < input.stagedTtlMs
+      ? { kind: "staged", protected: true }
+      : { kind: "abandoned", protected: false, completedAt: stagedAt };
+  }
+  const startedAt = isoTime(input.startedAt);
+  return startedAt
+    ? { kind: "abandoned", protected: false, completedAt: startedAt }
+    : { kind: "invalid", reason: "working run has no start time" };
+}
+
+// Running service identity. Mirrors rollback-release.sh: the unit MainPID must
+// run `node RELEASE/dist/cli.js server start --foreground` from a canonical path.
+
+/** Unit states in which a service process should exist. */
+export const SERVICE_BUSY_STATES = [
+  "active",
+  "activating",
+  "reloading",
+  "refreshing",
+  "deactivating",
+] as const;
+
+/** Environment names whose values are configured paths. Every other name is ignored. */
+export const SERVICE_PATH_VARIABLES = [
+  "HOME",
+  "GWRK_HOME",
+  "GWRK_DIR",
+  "GWRK_DB_PATH",
+  "GWRK_RUNTIME_DIR",
+  "GWRK_SECRETS_DIR",
+  "GWRK_PILOT_REPO",
+  "GWRK_AGENT_CREDENTIAL_FILE",
+  "GWRK_AUTH_GOOGLE_ALLOWLIST_FILE",
+  "GWRK_AUTH_CSRF_HMAC_FILE",
+] as const;
+
+export function parseSystemdShow(text: string): Record<string, string> {
+  const fields: Record<string, string> = {};
+  for (const line of text.split("\n")) {
+    const separator = line.indexOf("=");
+    if (separator > 0)
+      fields[line.slice(0, separator)] = line.slice(separator + 1);
+  }
+  return fields;
+}
+
+/** Absolute paths a unit declares for its state, runtime, secrets and work. */
+export function unitConfiguredPaths(fields: Record<string, string>): string[] {
+  const paths: string[] = [];
+  const add = (raw: string) => {
+    const path = raw.replace(/^[-+!]+/, "").split(":")[0] ?? "";
+    if (path.startsWith("/")) paths.push(path);
+  };
+  add(fields.WorkingDirectory ?? "");
+  for (const key of ["ReadWritePaths", "ReadOnlyPaths"])
+    for (const entry of (fields[key] ?? "").split(/\s+/)) add(entry);
+  for (const [key, prefix] of [
+    ["StateDirectory", "/var/lib"],
+    ["RuntimeDirectory", "/run"],
+  ] as const)
+    for (const name of (fields[key] ?? "").split(/\s+/))
+      if (/^[A-Za-z0-9._-]+(\/[A-Za-z0-9._-]+)*$/.test(name))
+        paths.push(`${prefix}/${name}`);
+  return paths;
+}
+
+export function environmentPaths(entries: readonly string[]): string[] {
+  const paths: string[] = [];
+  for (const entry of entries) {
+    const separator = entry.indexOf("=");
+    if (separator <= 0) continue;
+    const name = entry.slice(0, separator);
+    const value = entry.slice(separator + 1);
+    if (
+      (SERVICE_PATH_VARIABLES as readonly string[]).includes(name) &&
+      value.startsWith("/")
+    )
+      paths.push(value);
+  }
+  return paths;
+}
+
+export type LaunchIdentity =
+  | { readonly ok: true; readonly version: string }
+  | { readonly ok: false };
+
+/** Never echoes the process arguments. They can carry secrets. */
+export function identifyLaunch(
+  argv: readonly string[],
+  cliRealpath: string | null,
+  releasesDir: string,
+): LaunchIdentity {
+  const [node, cli, server, start, foreground, ...rest] = argv;
+  if (
+    rest.length > 0 ||
+    !(node === "node" || node?.endsWith("/node")) ||
+    server !== "server" ||
+    start !== "start" ||
+    foreground !== "--foreground" ||
+    !cli ||
+    cli !== cliRealpath ||
+    !pathInside(cli, releasesDir)
+  )
+    return { ok: false };
+  const tail = cli.slice(releasesDir.length + 1).split("/");
+  const [version, dist, file] = tail;
+  if (
+    tail.length !== 3 ||
+    !version ||
+    !isReleaseName(version) ||
+    dist !== "dist" ||
+    file !== "cli.js"
+  )
+    return { ok: false };
+  return { ok: true, version };
+}

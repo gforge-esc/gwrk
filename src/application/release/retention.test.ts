@@ -22,6 +22,10 @@ import { runRetentionStep } from "./retention.js";
 
 let root: string;
 let outside: string;
+const noService = {
+  discover: async () => ({ releases: [], configuredPaths: [] }),
+};
+const held = { assertHeld: async () => {} };
 
 const install = (version: string, builtAt: string, bytes = 1000) => {
   const dir = join(root, "releases", version);
@@ -62,6 +66,7 @@ const step = (
   candidate = "9.9.9",
 ) => {
   const adapter = createReleaseRootAdapter(root, {
+    service: noService,
     candidate,
     onRemoved: (bytes) => {
       disk.freed += bytes;
@@ -72,6 +77,7 @@ const step = (
     effects: adapter,
     disk,
     receipts: adapter,
+    lock: held,
     policy: { keepReleases: 2, keepRuns: 2 },
     requirements: [{ label: "install", path: root, requiredBytes }],
     now: () => "2026-11-26T16:30:00.000Z",
@@ -223,7 +229,8 @@ describe("release retention step", () => {
       install(v, `2026-${m}-01T00:00:00Z`);
     point("current", "1.3.0");
     const disk = fakeDisk(10 * GIB);
-    const adapter = createReleaseRootAdapter(root, { candidate: "9.9.9" });
+    const adapter = createReleaseRootAdapter(root, {
+    service: noService, candidate: "9.9.9" });
     let reads = 0;
     const result = await runRetentionStep({
       inventory: {
@@ -239,6 +246,7 @@ describe("release retention step", () => {
       effects: adapter,
       disk,
       receipts: adapter,
+    lock: held,
       policy: { keepReleases: 2, keepRuns: 2 },
       requirements: [{ label: "install", path: root, requiredBytes: 1 }],
       now: () => "2026-11-26T16:30:00.000Z",
@@ -256,7 +264,8 @@ describe("release retention step", () => {
     ])
       install(v, `2026-${m}-01T00:00:00Z`);
     point("current", "1.3.0");
-    const adapter = createReleaseRootAdapter(root, { candidate: "9.9.9" });
+    const adapter = createReleaseRootAdapter(root, {
+    service: noService, candidate: "9.9.9" });
     const result = await runRetentionStep({
       inventory: {
         ...adapter,
@@ -276,6 +285,7 @@ describe("release retention step", () => {
       effects: adapter,
       disk: fakeDisk(10 * GIB),
       receipts: adapter,
+    lock: held,
       policy: { keepReleases: 2, keepRuns: 2 },
       requirements: [{ label: "install", path: root, requiredBytes: 1 }],
       now: () => "2026-11-26T16:30:00.000Z",
@@ -293,11 +303,12 @@ describe("release retention step", () => {
     ])
       install(v, `2026-${m}-01T00:00:00Z`);
     point("current", "1.3.0");
-    const adapter = createReleaseRootAdapter(root, { candidate: "9.9.9" });
+    const adapter = createReleaseRootAdapter(root, {
+    service: noService, candidate: "9.9.9" });
     const result = await runRetentionStep({
       inventory: adapter,
       effects: {
-        sweepTrash: () => adapter.sweepTrash(),
+        recoverQuarantine: () => adapter.recoverQuarantine(),
         apply: async (action) => {
           if (action.item.id === "1.0.0") throw new Error("EBUSY synthetic");
           return adapter.apply(action);
@@ -305,6 +316,7 @@ describe("release retention step", () => {
       },
       disk: fakeDisk(10 * GIB),
       receipts: adapter,
+    lock: held,
       policy: { keepReleases: 1, keepRuns: 2 },
       requirements: [{ label: "install", path: root, requiredBytes: 1 }],
       now: () => "2026-11-26T16:30:00.000Z",

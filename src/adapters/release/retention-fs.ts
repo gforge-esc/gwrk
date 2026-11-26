@@ -8,18 +8,14 @@
 import { createHash } from "node:crypto";
 import {
   lstat,
-  mkdir,
   readFile,
   readdir,
   readlink,
   realpath,
-  rename,
-  rm,
   stat,
   statfs,
-  writeFile,
 } from "node:fs/promises";
-import { join } from "node:path";
+import { basename, dirname, join, resolve } from "node:path";
 import {
   type InventoryItem,
   type Protections,
@@ -27,13 +23,20 @@ import {
   type SpaceSample,
   isReleaseName,
   parseReleasePointer,
+  pathInside,
 } from "../../domain/retention-policy.js";
 import type {
   DiskSpacePort,
   RetentionEffectsPort,
   RetentionInventoryPort,
   RetentionReceiptPort,
+  RunningServicePort,
 } from "../../ports/retention-port.js";
+import {
+  assertRealDirectory,
+  createQuarantine,
+  writeReceipt,
+} from "./retention-quarantine.js";
 
 const SHA256 = /^[a-f0-9]{64}$/;
 
@@ -61,23 +64,65 @@ async function readRegularFile(path: string): Promise<Buffer | null> {
   }
 }
 
+/** Resolves symlinks in the longest existing prefix of an absolute path. */
+export async function canonicalPath(path: string): Promise<string> {
+  const absolute = resolve(path);
+  try {
+    return await realpath(absolute);
+  } catch (error) {
+    if (!isMissing(error)) throw error;
+    const parent = dirname(absolute);
+    if (parent === absolute) return absolute;
+    return join(await canonicalPath(parent), basename(absolute));
+  }
+}
+
 export interface ReleaseRootOptions {
   /** Incoming version. Always protected. */
   readonly candidate?: string;
+  /** The running gwrk service. Its release is protected and its configured paths block deletion. */
+  readonly service: RunningServicePort;
   /** Called with bytes freed after each successful removal. */
   readonly onRemoved?: (bytes: number) => void;
 }
 
 export function createReleaseRootAdapter(
   root: string,
-  options: ReleaseRootOptions = {},
+  options: ReleaseRootOptions,
 ): RetentionInventoryPort &
   RetentionEffectsPort &
   RetentionReceiptPort &
   DiskSpacePort {
   const releases = join(root, "releases");
   const control = join(root, ".retention");
-  const trash = join(control, "trash");
+  const quarantine = createQuarantine(control);
+
+  /**
+   * The release tree beneath the approved root must be real directories. A
+   * symlinked `releases` or control path would redirect inventory, rename and
+   * removal outside the root, so every entry point checks before effects.
+   */
+  async function assertTree(): Promise<void> {
+    await assertRealDirectory(releases);
+    await assertRealDirectory(control, true);
+    for (const child of ["receipts", "trash", "intents"])
+      await assertRealDirectory(join(control, child), true);
+  }
+
+  async function manifestHash(directory: string): Promise<string | null> {
+    const bytes = await readRegularFile(join(directory, "release-manifest.json"));
+    return bytes ? createHash("sha256").update(bytes).digest("hex") : null;
+  }
+
+  /** The configured path a release directory contains, if any. */
+  async function holdsConfiguredPath(name: string): Promise<boolean> {
+    const { configuredPaths } = await options.service.discover();
+    const directory = join(await realpath(releases), name);
+    for (const path of configuredPaths) {
+      if (pathInside(await canonicalPath(path), directory)) return true;
+    }
+    return false;
+  }
 
   async function identify(
     name: string,
@@ -111,6 +156,8 @@ export function createReleaseRootAdapter(
       !SHA256.test(manifest.tarballSha256)
     )
       return { owned: false, reason: "manifest has no archive digest" };
+    if (await holdsConfiguredPath(name))
+      return { owned: false, reason: "holds a configured service path" };
     return {
       owned: true,
       identity: createHash("sha256").update(bytes).digest("hex"),
@@ -155,6 +202,7 @@ export function createReleaseRootAdapter(
 
   return {
     async inventory() {
+      await assertTree();
       const items: InventoryItem[] = [];
       for (const name of (await readdir(releases)).sort()) {
         if (name.startsWith(".")) continue; // Installer staging under the held lock.
@@ -187,6 +235,7 @@ export function createReleaseRootAdapter(
     },
 
     async reidentify(item) {
+      await assertTree();
       try {
         const id = await identify(item.id);
         return id.owned ? id.identity : null;
@@ -197,29 +246,28 @@ export function createReleaseRootAdapter(
     },
 
     async readProtections(): Promise<Protections> {
+      await assertTree();
+      const running = await options.service.discover();
       const protectedReleases = [
         await resolvePointer("current"),
         await resolvePointer("previous"),
         options.candidate ?? null,
+        ...running.releases,
       ].filter((version): version is string => version !== null);
-      return { releases: protectedReleases, runs: [], images: [] };
+      return {
+        releases: [...new Set(protectedReleases)].sort(),
+        runs: [],
+        images: [],
+      };
     },
 
-    async sweepTrash() {
-      try {
-        const info = await lstat(trash);
-        if (!info.isDirectory() || info.isSymbolicLink())
-          throw new Error(`Retention trash ${trash} must be a directory.`);
-      } catch (error) {
-        if (isMissing(error)) return [];
-        throw error;
-      }
-      const removed: string[] = [];
-      for (const name of await readdir(trash)) {
-        await rm(join(trash, name), { recursive: true, force: true });
-        removed.push(name);
-      }
-      return removed;
+    async recoverQuarantine() {
+      await assertTree();
+      return quarantine.recover(async (intent, parked) =>
+        intent.key.startsWith("release:")
+          ? (await manifestHash(parked)) === intent.identity
+          : false,
+      );
     },
 
     async apply(action: RetentionAction) {
@@ -227,31 +275,23 @@ export function createReleaseRootAdapter(
         throw new Error(
           `Unsupported action ${action.action} for a release root.`,
         );
+      await assertTree();
       const source = join(releases, action.item.id);
       const info = await lstat(source);
       if (!info.isDirectory() || info.isSymbolicLink())
         throw new Error(`${source} is no longer a release directory.`);
       const bytes = await treeBytes(source);
-      await mkdir(trash, { recursive: true, mode: 0o700 });
-      const parked = join(
-        trash,
-        `${action.item.id}-${process.pid}-${Date.now()}`,
-      );
-      await rename(source, parked);
-      await rm(parked, { recursive: true, force: true });
+      const { token } = await quarantine.park({
+        key: `release:${action.item.id}`,
+        source,
+        identity: action.item.identity,
+      });
+      await quarantine.discard(token);
       options.onRemoved?.(bytes);
     },
 
     async write(name, receipt) {
-      const directory = join(control, "receipts");
-      await mkdir(directory, { recursive: true, mode: 0o700 });
-      const path = join(directory, `${name}.json`);
-      const temporary = `${path}.tmp-${process.pid}`;
-      await writeFile(temporary, `${JSON.stringify(receipt, null, 2)}\n`, {
-        mode: 0o600,
-      });
-      await rename(temporary, path);
-      return path;
+      return writeReceipt(control, name, receipt);
     },
 
     async sample(paths): Promise<SpaceSample[]> {

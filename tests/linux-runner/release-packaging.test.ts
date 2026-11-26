@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import {
   copyFileSync,
   mkdirSync,
@@ -79,9 +79,12 @@ describe("Linux release archive", () => {
     }
   });
 
-  it("ships the retention helper so the installer can run it before pnpm install", async () => {
+  it("ships both retention helpers so they run from the archive before pnpm install", async () => {
     const { LIFECYCLE_BOOTSTRAP_FILES } = await import(
       "../../src/release/lifecycle.js"
+    );
+    const { VERIFICATION_BOOTSTRAP_FILES } = await import(
+      "../../src/release/verification-lifecycle.js"
     );
     const ts = await import("typescript");
     const root = mkdtempSync(join(tmpdir(), "gwrk-package-lifecycle-"));
@@ -91,7 +94,10 @@ describe("Linux release archive", () => {
       copyFileSync("package.json", join(source, "package.json"));
       copyFileSync("pnpm-lock.yaml", join(source, "pnpm-lock.yaml"));
       writeFileSync(join(source, "dist/cli.js"), "#!/usr/bin/env node\n");
-      for (const file of LIFECYCLE_BOOTSTRAP_FILES) {
+      const files = [
+        ...new Set([...LIFECYCLE_BOOTSTRAP_FILES, ...VERIFICATION_BOOTSTRAP_FILES]),
+      ];
+      for (const file of files) {
         if (!file.startsWith("dist/")) continue;
         const from = file.replace(/^dist\//, "src/").replace(/\.js$/, ".ts");
         const output = ts.transpileModule(readFileSync(from, "utf8"), {
@@ -117,34 +123,71 @@ describe("Linux release archive", () => {
         archive,
       ]);
 
-      // Mirror the installer: extract only the bootstrap files, with no node_modules.
-      const lifecycle = join(root, "lifecycle");
-      mkdirSync(lifecycle);
-      execFileSync("tar", [
-        "-xzf",
-        archive,
-        "-C",
-        lifecycle,
-        "--",
-        ...LIFECYCLE_BOOTSTRAP_FILES.map((file: string) => `package/${file}`),
-      ]);
+      // Mirror the installer and the staging driver: extract only the
+      // bootstrap files, with no node_modules. Every static import must load.
+      // Without a held lock descriptor each helper must refuse, not crash.
       const releaseRoot = join(root, "opt-gwrk");
-      mkdirSync(join(releaseRoot, "releases"), { recursive: true });
-      const output = execFileSync(
-        process.execPath,
+      const runsRoot = join(root, "runs");
+      const dataRoot = join(root, "data");
+      for (const dir of [join(releaseRoot, "releases"), runsRoot, dataRoot])
+        mkdirSync(dir, { recursive: true });
+      const cases: [readonly string[], string, string[]][] = [
         [
-          join(lifecycle, "package/dist/release/lifecycle.js"),
-          "install-preflight",
-          "--release-root",
-          releaseRoot,
-          "--candidate",
-          "1.6.0-beta.2",
-          "--uncompressed-bytes",
-          "1",
+          LIFECYCLE_BOOTSTRAP_FILES,
+          "package/dist/release/lifecycle.js",
+          [
+            "install-preflight",
+            "--release-root",
+            releaseRoot,
+            "--candidate",
+            "1.6.0-beta.2",
+            "--uncompressed-bytes",
+            "1",
+            "--service-unit",
+            "none",
+            "--lock-fd",
+            "9",
+          ],
         ],
-        { encoding: "utf8", env: { PATH: process.env.PATH ?? "" } },
-      );
-      expect(output).toMatch(/Retention and disk preflight passed/);
+        [
+          VERIFICATION_BOOTSTRAP_FILES,
+          "package/dist/release/verification-lifecycle.js",
+          [
+            "verification-preflight",
+            "--runs-root",
+            runsRoot,
+            "--data-root",
+            dataRoot,
+            "--run-id",
+            "a".repeat(24),
+            "--build-bytes",
+            "1",
+            "--data-bytes",
+            "0",
+            "--lock-fd",
+            "9",
+          ],
+        ],
+      ];
+      for (const [bootstrap, entry, args] of cases) {
+        const extracted = join(root, `extract-${bootstrap.length}`);
+        mkdirSync(extracted);
+        execFileSync("tar", [
+          "-xzf",
+          archive,
+          "-C",
+          extracted,
+          "--",
+          ...bootstrap.map((file: string) => `package/${file}`),
+        ]);
+        const result = spawnSync(process.execPath, [join(extracted, entry), ...args], {
+          encoding: "utf8",
+          env: { PATH: process.env.PATH ?? "" },
+        });
+        expect(result.stderr).not.toMatch(/ERR_MODULE_NOT_FOUND|Cannot find/);
+        expect(result.stderr).toMatch(/does not hold the exclusive lock/);
+        expect(result.status).toBe(1);
+      }
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
