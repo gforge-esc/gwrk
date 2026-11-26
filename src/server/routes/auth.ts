@@ -7,14 +7,12 @@ import type { AuthenticationDenialCode } from "../../application/auth/authentica
 import type { createBrowserSessionService } from "../../application/auth/browser-session.js";
 import type { BrowserCsrfPort } from "../../ports/auth-port.js";
 import { readVerifiedAuthContext } from "../auth-guard.js";
+import { LOGIN_ENTRY } from "./portal-html.js";
 
 export interface AuthRoutesOptions {
   readonly sessions: ReturnType<typeof createBrowserSessionService>;
   readonly csrf: BrowserCsrfPort;
 }
-
-const LOGIN_ENTRY =
-  '<!doctype html><html lang="en"><head><meta charset="utf-8"><title>gwrk</title></head><body><a href="/oauth2/start">Sign in with Google</a></body></html>';
 
 function deny(
   request: FastifyRequest,

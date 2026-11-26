@@ -3,6 +3,7 @@
   "files": {
     "ignore": [
       "dist",
+      "docs/site/_build",
       "coverage",
       ".gwrk",
       "node_modules",
