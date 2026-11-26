@@ -149,7 +149,7 @@ function client(name, command, allowFailure = false, scanOptions = {}) {
         input: JSON.stringify(command),
         encoding: "utf8",
         timeout: execTimeout,
-        maxBuffer: 131072,
+        maxBuffer: 2 * 1024 * 1024,
       },
     );
   } catch (error) {
@@ -346,6 +346,14 @@ try {
     path: "/?code=051_CALLBACK_CODE_CANARY&state=051_CALLBACK_STATE_CANARY",
   });
   assert.equal(rootGet.status, 200);
+  assert.ok(
+    Buffer.byteLength(rootGet.body ?? "", "utf8") > 4096,
+    "direct public root GET / did not serve the full portal presentation (> 4096 bytes)",
+  );
+  assert.ok(
+    (rootGet.body ?? "").includes('href="/oauth2/start"'),
+    "direct public root GET / omitted Google OAuth entry link",
+  );
   safeRoot(rootGet);
   const rootHead = client(clientA, { path: "/", method: "HEAD" });
   assert.equal(rootHead.status, 200);

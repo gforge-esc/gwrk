@@ -277,7 +277,7 @@ export async function rawHttps({
     });
     socket.on("data", (chunk) => {
       length += chunk.length;
-      if (length > 65536)
+      if (length > 1048576)
         socket.destroy(new Error("fixture response exceeds bound"));
       else chunks.push(chunk);
     });
