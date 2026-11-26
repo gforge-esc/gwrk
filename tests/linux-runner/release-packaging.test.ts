@@ -7,11 +7,12 @@ import {
   copyFileSync,
   mkdirSync,
   mkdtempSync,
+  readFileSync,
   rmSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { describe, expect, it } from "vitest";
 
@@ -73,6 +74,77 @@ describe("Linux release archive", () => {
           encoding: "utf8",
         }),
       ).toBe("fixture-cli-ready\n");
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("ships the retention helper so the installer can run it before pnpm install", async () => {
+    const { LIFECYCLE_BOOTSTRAP_FILES } = await import(
+      "../../src/release/lifecycle.js"
+    );
+    const ts = await import("typescript");
+    const root = mkdtempSync(join(tmpdir(), "gwrk-package-lifecycle-"));
+    try {
+      const source = join(root, "source");
+      mkdirSync(join(source, "dist"), { recursive: true });
+      copyFileSync("package.json", join(source, "package.json"));
+      copyFileSync("pnpm-lock.yaml", join(source, "pnpm-lock.yaml"));
+      writeFileSync(join(source, "dist/cli.js"), "#!/usr/bin/env node\n");
+      for (const file of LIFECYCLE_BOOTSTRAP_FILES) {
+        if (!file.startsWith("dist/")) continue;
+        const from = file.replace(/^dist\//, "src/").replace(/\.js$/, ".ts");
+        const output = ts.transpileModule(readFileSync(from, "utf8"), {
+          compilerOptions: {
+            module: ts.ModuleKind.ESNext,
+            target: ts.ScriptTarget.ES2022,
+          },
+          fileName: from,
+        }).outputText;
+        mkdirSync(dirname(join(source, file)), { recursive: true });
+        writeFileSync(join(source, file), output);
+      }
+      const archive = join(root, "release.tgz");
+      const builder = pathToFileURL(
+        resolve("scripts/release/build-linux-release.mjs"),
+      ).href;
+      execFileSync(process.execPath, [
+        "--input-type=module",
+        "-e",
+        "const { packRelease } = await import(process.argv[1]); await packRelease(process.argv[2], process.argv[3]);",
+        builder,
+        source,
+        archive,
+      ]);
+
+      // Mirror the installer: extract only the bootstrap files, with no node_modules.
+      const lifecycle = join(root, "lifecycle");
+      mkdirSync(lifecycle);
+      execFileSync("tar", [
+        "-xzf",
+        archive,
+        "-C",
+        lifecycle,
+        "--",
+        ...LIFECYCLE_BOOTSTRAP_FILES.map((file: string) => `package/${file}`),
+      ]);
+      const releaseRoot = join(root, "opt-gwrk");
+      mkdirSync(join(releaseRoot, "releases"), { recursive: true });
+      const output = execFileSync(
+        process.execPath,
+        [
+          join(lifecycle, "package/dist/release/lifecycle.js"),
+          "install-preflight",
+          "--release-root",
+          releaseRoot,
+          "--candidate",
+          "1.6.0-beta.2",
+          "--uncompressed-bytes",
+          "1",
+        ],
+        { encoding: "utf8", env: { PATH: process.env.PATH ?? "" } },
+      );
+      expect(output).toMatch(/Retention and disk preflight passed/);
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
