@@ -2,7 +2,7 @@
 
 gwrk is a beta command-line orchestrator and hosted control plane for spec-first engineering. Start at [gwrk.gforge.ai](https://gwrk.gforge.ai) for the hosted portal and embedded guides. Install the CLI from [GitHub Releases](https://github.com/gforge-esc/gwrk/releases) to run gwrk inside your own project. Blocked: none.
 
-> Release notice: install `cli-v1.6.0-beta.2` or later. The older `cli-v1.6.0-beta.1` release predates architecture context initialization, hosted Google authentication, the embedded portal and the verified Linux release manifest. See the [1.6.0-beta.2 release notes](docs/operations/release-1.6.0-beta.2-notes.md).
+> Release notice: install `cli-v1.6.0-beta.3` or later. The older `cli-v1.6.0-beta.1` release predates architecture context initialization, hosted Google authentication, the embedded portal and the verified Linux release manifest. See the [1.6.0-beta.3 release notes](docs/operations/release-1.6.0-beta.3-notes.md).
 
 ![gwrk flamingo mascot](docs/branding/gwrk-flamingo-flat.png)
 
@@ -39,7 +39,7 @@ Download the release archive and its checksum. Verify the checksum before you ex
 ```bash
 (
 set -e
-VERSION=1.6.0-beta.2
+VERSION=1.6.0-beta.3
 TAG="cli-v$VERSION"
 BASE="https://github.com/gforge-esc/gwrk/releases/download/$TAG"
 
@@ -129,7 +129,7 @@ Read [CONTRIBUTING.md](CONTRIBUTING.md) and [docs/DEVELOPMENT.md](docs/DEVELOPME
 
 ## CLI commands
 
-The table matches `gwrk --help` in `1.6.0-beta.2`. Run `gwrk <command> --help` for flags.
+The table matches `gwrk --help` in `1.6.0-beta.3`. Run `gwrk <command> --help` for flags.
 
 | Command | Group | Purpose |
 |---|---|---|

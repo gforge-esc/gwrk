@@ -143,7 +143,7 @@ describe("Linux release archive", () => {
             "--release-root",
             releaseRoot,
             "--candidate",
-            "1.6.0-beta.2",
+            "1.6.0-beta.3",
             "--uncompressed-bytes",
             "1",
             "--service-unit",

@@ -93,11 +93,16 @@ Never bypass the hook with `--no-verify` in automated sessions.
 Never hand-edit `src/server/routes/portal-html.ts`. Edit the canonical Markdown sources under `docs/site/` or `docs/openapi/gwrk-openapi.yaml`, then regenerate with Sphinx and `scripts/build-portal.py`:
 
 ```bash
-uvx --from sphinx --with myst-parser sphinx-build -b html docs/site docs/site/_build/html
-python3 scripts/build-portal.py
-pnpm exec biome format --write src/server/routes/portal-html.ts
+pnpm build:portal
+pnpm test:portal-links
+pnpm exec playwright install chromium
+pnpm test:portal
 pnpm exec vitest run src/server/routes/portal-html.test.ts
 ```
+
+The Python generator dependencies are pinned in `scripts/portal-requirements.txt`. To update them, edit `scripts/portal-requirements.in` and run `uv pip compile --universal --python-version 3.12 scripts/portal-requirements.in --output-file scripts/portal-requirements.txt`.
+
+The portal browser suite serves the packaged HTML at `/`. Its test origin returns HTTP 401 for the session probe and HTTP 404 for unknown paths. It checks guide tabs, nested contents links, document fragments, direct entry, reload and browser history. The required `ci (22)` job regenerates the artifact and rejects stale output. Browser binaries stay in the development cache and CI.
 
 Changing `package.json` or any file under `src/` (including `src/server/routes/portal-html.ts`) changes the closed runtime manifest hash used by the signed hosted-pilot native proof. Do not re-sign native evidence or deploy to production without independent review and operator authority.
 
@@ -116,4 +121,4 @@ External plugins live in `~/.gwrk/plugins/` (global) or `.gwrk/plugins/` (projec
 5. On merge, `release.yml` creates the tag and marks prerelease tags (`*-*`) as GitHub prereleases. It runs `scripts/release/build-linux-release.mjs` from the tag on Linux with Node 22 and pnpm `9.15.9`. It uploads the tarball and its SHA-256 checksum. It also uploads `release-manifest.json` and `install-release.sh`.
 6. Merge `main` back into `develop` and remove any `release-as` value in the same pull request.
 
-[release-1.6.0-beta.2-notes.md](operations/release-1.6.0-beta.2-notes.md) records the current release path.
+[release-1.6.0-beta.3-notes.md](operations/release-1.6.0-beta.3-notes.md) records the current release path.
