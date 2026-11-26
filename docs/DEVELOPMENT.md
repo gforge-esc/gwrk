@@ -104,6 +104,14 @@ The Python generator dependencies are pinned in `scripts/portal-requirements.txt
 
 The portal browser suite serves the packaged HTML at `/`. Its test origin returns HTTP 401 for the session probe and HTTP 404 for unknown paths. It checks guide tabs, nested contents links, document fragments, direct entry, reload and browser history. The required `ci (22)` job regenerates the artifact and rejects stale output. Browser binaries stay in the development cache and CI.
 
+To check a deployed public portal, run the same suite against its HTTPS origin:
+
+```bash
+GWRK_PORTAL_BASE_URL=https://gwrk.gforge.ai pnpm test:portal
+```
+
+Remote mode disables the fixture server and uses fresh browser contexts. It permits same-origin GET and HEAD requests only. It blocks external traffic and all mutations. The configured URL must be an HTTPS origin without credentials, a path, a query or a fragment. Navigation has a 15-second timeout. The complete suite has a five-minute timeout.
+
 Changing `package.json` or any file under `src/` (including `src/server/routes/portal-html.ts`) changes the closed runtime manifest hash used by the signed hosted-pilot native proof. Do not re-sign native evidence or deploy to production without independent review and operator authority.
 
 ## Plugin Development

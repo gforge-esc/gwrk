@@ -43,9 +43,19 @@ async function expectGuide(page: Page, slug: string, fragment = "") {
   }
 }
 
-test.beforeEach(async ({ page }) => {
-  await page.route("https://**", (route) => route.abort());
+test.beforeEach(async ({ page, baseURL }) => {
   const errors: string[] = [];
+  const origin = new URL(baseURL!).origin;
+  await page.route("**/*", (route) => {
+    const request = route.request();
+    const url = new URL(request.url());
+    if (url.origin !== origin) return route.abort();
+    if (!["GET", "HEAD"].includes(request.method())) {
+      errors.push(`Blocked mutation: ${request.method()} ${url.pathname}`);
+      return route.abort();
+    }
+    return route.continue();
+  });
   page.on("pageerror", (error) => errors.push(error.message));
   page.on("response", (response) => {
     if (
