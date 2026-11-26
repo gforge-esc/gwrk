@@ -69,3 +69,40 @@ jobs:
 
       - name: Lint
         run: pnpm lint
+
+
+      - name: Setup Python for portal verification
+        if: matrix.node-version == 22
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install portal test dependencies
+        if: matrix.node-version == 22
+        run: |
+          python -m pip install -r scripts/portal-requirements.txt
+          pnpm exec playwright install --with-deps chromium
+
+      - name: Check generator link contracts
+        if: matrix.node-version == 22
+        run: python tests/portal/test_link_integrity.py
+
+      - name: Rebuild packaged portal
+        if: matrix.node-version == 22
+        run: |
+          sphinx-build -b html docs/site docs/site/_build/html
+          python scripts/build-portal.py
+          pnpm exec biome format --write src/server/routes/portal-html.ts
+          git diff --exit-code -- src/server/routes/portal-html.ts
+
+      - name: Test public guide navigation in Chromium
+        if: matrix.node-version == 22
+        run: pnpm test:portal
+
+      - name: Preserve browser failure traces
+        if: matrix.node-version == 22 && failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: portal-browser-traces
+          path: test-results/
+          retention-days: 14

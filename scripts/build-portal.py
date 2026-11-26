@@ -16,8 +16,12 @@ from __future__ import annotations
 import base64
 import json
 import re
+from html import unescape
+from html.parser import HTMLParser
 from pathlib import Path
+from urllib.parse import quote, unquote, urlsplit
 
+import sphinx
 import yaml
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -41,21 +45,81 @@ def extract_sphinx_body(page_name: str) -> str:
         raise RuntimeError(f"Could not extract body from {page_name}")
     body = m.group(1).strip()
     body = re.sub(r'<a class="headerlink"[^>]*>.*?</a>', "", body)
-    for slug in [
-        "index",
-        "foxtrot-charlie",
-        "getting-started",
-        "agent-guide",
-        "cli-reference",
-        "hosted-architecture",
-        "api-reference",
-    ]:
-        body = re.sub(
-            rf'href="{slug}\.html(?:#[^"]*)?"',
-            f'href="#guide-{slug}" data-guide-target="{slug}"',
-            body,
-        )
-    return body
+    return rewrite_guide_links(body, Path(page_name).stem)
+
+
+GUIDE_SLUGS = (
+    "index", "foxtrot-charlie", "getting-started", "agent-guide",
+    "cli-reference", "hosted-architecture", "api-reference",
+)
+
+
+def rewrite_guide_links(body: str, current_slug: str) -> str:
+    def rewrite(match: re.Match) -> str:
+        href = unescape(match.group(1))
+        url = urlsplit(href)
+        if url.scheme or url.netloc:
+            return match.group(0)
+        if url.path.endswith(".html"):
+            slug = url.path.removesuffix(".html")
+            if slug not in GUIDE_SLUGS or url.query:
+                raise RuntimeError(f"Unmapped guide reference in {current_slug}: {href}")
+        elif not url.path and url.fragment:
+            slug = current_slug
+        else:
+            return match.group(0)
+        fragment = "/" + quote(unquote(url.fragment), safe="-_.~") if url.fragment else ""
+        return f'href="#guide-{slug}{fragment}" data-guide-target="{slug}"'
+
+    return re.sub(r'href="([^"]*)"', rewrite, body)
+
+
+class PortalLinks(HTMLParser):
+    def __init__(self) -> None:
+        super().__init__()
+        self.guides: dict[str, set[str]] = {}
+        self.links: list[str] = []
+        self.ids: set[str] = set()
+        self.current_guide: str | None = None
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        values = dict(attrs)
+        if values.get("id"):
+            self.ids.add(values["id"])
+        if tag == "article" and values.get("data-guide-panel"):
+            self.current_guide = values["data-guide-panel"]
+            self.guides[self.current_guide] = set()
+        if self.current_guide and values.get("id"):
+            self.guides[self.current_guide].add(values["id"])
+        if tag == "a" and values.get("href"):
+            self.links.append(values["href"])
+
+    def handle_endtag(self, tag: str) -> None:
+        if tag == "article":
+            self.current_guide = None
+
+
+def validate_portal_links(html_doc: str) -> None:
+    parsed = PortalLinks()
+    parsed.feed(html_doc)
+    for href in parsed.links:
+        url = urlsplit(href)
+        if url.scheme or url.netloc:
+            continue
+        if url.path.endswith(".html"):
+            raise RuntimeError(f"Unmapped guide reference: {href}")
+        if not href.startswith("#guide-"):
+            if url.path and url.path != "/oauth2/start":
+                raise RuntimeError(f"Unserved internal link: {href}")
+            if url.fragment and url.fragment not in parsed.ids and url.fragment not in ("home", "foxtrot", "guides", "api", "session"):
+                raise RuntimeError(f"Missing portal anchor: {href}")
+            continue
+        slug, _, fragment = href.removeprefix("#guide-").partition("/")
+        if slug not in parsed.guides:
+            raise RuntimeError(f"Missing guide document: {href}")
+        if fragment and unquote(fragment) not in parsed.guides[slug]:
+            raise RuntimeError(f"Missing guide anchor: {href}")
+
 
 
 def main() -> None:
@@ -1543,7 +1607,7 @@ def main() -> None:
     <section class="view-panel" id="view-guides" data-view-panel="guides" aria-label="Sphinx Documentation Guides">
       <div class="tui-box tui-box--cyan">
         <div class="section-header">
-          <span>SPHINX DOCUMENTATION // BUILT WITH SPHINX 9.1.1 &amp; MYST-PARSER</span>
+          <span>SPHINX DOCUMENTATION // BUILT WITH SPHINX {sphinx.__version__} &amp; MYST-PARSER</span>
           <button type="button" class="tui-btn" onclick="window.switchGwrkView('api')">OpenAPI 3.1 &rarr;</button>
         </div>
         <div class="guides-layout">
@@ -1667,14 +1731,19 @@ def main() -> None:
         if (updateHash !== false && history.replaceState) {{
           history.replaceState(null, "", "#" + viewName);
         }}
-        window.scrollTo({{ top: 0, behavior: "smooth" }});
+        window.scrollTo({{ top: 0, behavior: "instant" }});
       }}
-      window.switchGwrkView = switchView;
+      function navigateView(viewName) {{
+        if (window.location.hash !== "#" + viewName) history.pushState(null, "", "#" + viewName);
+        switchView(viewName, false);
+        if (viewName === "guides") switchGuide("index");
+      }}
+      window.switchGwrkView = navigateView;
 
       function enterFromSplash() {{
         if (!splashCurtain) return;
         splashCurtain.setAttribute("data-dismissed", "true");
-        switchView("home", true);
+        navigateView("home");
       }}
 
       function showSplash() {{
@@ -1704,7 +1773,7 @@ def main() -> None:
       if (brandHomeLink) {{
         brandHomeLink.addEventListener("click", function (ev) {{
           ev.preventDefault();
-          switchView("home", true);
+          navigateView("home");
         }});
       }}
 
@@ -1728,22 +1797,39 @@ def main() -> None:
 
       viewButtons.forEach(function (btn) {{
         btn.addEventListener("click", function () {{
-          switchView(btn.getAttribute("data-view-btn"), true);
+          navigateView(btn.getAttribute("data-view-btn"));
         }});
       }});
 
+      function navigateGuide(slug, fragment, updateHash) {{
+        var panel = Array.from(guidePanels).find(function (element) {{
+          return element.getAttribute("data-guide-panel") === slug;
+        }});
+        if (!panel) return;
+        switchView("guides", false);
+        switchGuide(slug);
+        var hash = "#guide-" + slug + (fragment ? "/" + encodeURIComponent(fragment) : "");
+        if (updateHash !== false && window.location.hash !== hash) history.pushState(null, "", hash);
+        if (fragment) {{
+          var anchor = Array.from(panel.querySelectorAll("[id]")).find(function (element) {{
+            return element.id === fragment;
+          }});
+          if (anchor) anchor.scrollIntoView({{ block: "start", behavior: "instant" }});
+        }}
+      }}
+
       guideButtons.forEach(function (btn) {{
         btn.addEventListener("click", function () {{
-          switchGuide(btn.getAttribute("data-guide-btn"));
+          navigateGuide(btn.getAttribute("data-guide-btn"), "", true);
         }});
       }});
 
       document.addEventListener("click", function (ev) {{
         var target = ev.target.closest("[data-guide-target]");
-        if (target) {{
+        if (target && !ev.ctrlKey && !ev.metaKey && !ev.shiftKey && !ev.altKey && ev.button === 0) {{
           ev.preventDefault();
-          switchView("guides", true);
-          switchGuide(target.getAttribute("data-guide-target"));
+          var route = target.getAttribute("href").slice(7).split("/");
+          navigateGuide(route[0], decodeURIComponent(route[1] || ""), true);
         }}
       }});
 
@@ -1784,21 +1870,26 @@ def main() -> None:
       }}
       updateThemeLabels();
 
-      // URL Hash routing:
-      // - Bare `/` (no hash): ALWAYS shows the full-screen Splash (`[Hit Enter]`).
-      // - `#home`, `#foxtrot`, `#guides`, `#api`, `#session`: opens that view directly.
-      var initialHash = (window.location.hash || "").replace(/^#/, "");
-      var explicitHash = false;
-      if (["home", "foxtrot", "guides", "api", "session"].indexOf(initialHash) !== -1) {{
-        explicitHash = true;
-        if (splashCurtain) splashCurtain.setAttribute("data-dismissed", "true");
-        switchView(initialHash, false);
-      }} else if (initialHash.indexOf("guide-") === 0) {{
-        explicitHash = true;
-        if (splashCurtain) splashCurtain.setAttribute("data-dismissed", "true");
-        switchView("guides", false);
-        switchGuide(initialHash.replace("guide-", ""));
+      function routeFromHash() {{
+        var hash = (window.location.hash || "").replace(/^#/, "");
+        if (["home", "foxtrot", "guides", "api", "session"].indexOf(hash) !== -1) {{
+          if (splashCurtain) splashCurtain.setAttribute("data-dismissed", "true");
+          switchView(hash, false);
+          if (hash === "guides") switchGuide("index");
+        }} else if (hash.indexOf("guide-") === 0) {{
+          var route = hash.slice(6).split("/");
+          if (splashCurtain) splashCurtain.setAttribute("data-dismissed", "true");
+          var fragment;
+          try {{ fragment = decodeURIComponent(route[1] || ""); }} catch (e) {{ fragment = ""; }}
+          navigateGuide(route[0], fragment, false);
+        }} else if (!hash && splashCurtain) {{
+          splashCurtain.setAttribute("data-dismissed", "false");
+        }}
       }}
+      var explicitHash = /^#(home$|foxtrot$|guides$|api$|session$|guide-)/.test(window.location.hash || "");
+      window.addEventListener("popstate", routeFromHash);
+      window.addEventListener("hashchange", routeFromHash);
+      routeFromHash();
 
       // Check `/api/auth/session`: if authenticated (e.g. returning from Google OAuth callback to `/`),
       // dismiss splash and show signed-in session state.
@@ -2012,6 +2103,7 @@ def main() -> None:
         if required_token not in html_doc:
             raise RuntimeError(f"Missing required token in portal HTML: {required_token}")
 
+    validate_portal_links(html_doc)
     STATIC_PREVIEW_OUT.write_text(html_doc, encoding="utf-8")
 
     ts_content = (

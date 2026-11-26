@@ -1,5 +1,33 @@
 # Changelog
 
+## [1.6.0-beta.2](https://github.com/gforge-esc/gwrk/compare/cli-v1.6.0-beta.1...cli-v1.6.0-beta.2) (2026-11-26)
+
+
+### Features
+
+* **051-hosted-aws-pilot:** hosted AWS pilot Phases 1 to 8 ([#241](https://github.com/gforge-esc/gwrk/issues/241)) ([3a110c6](https://github.com/gforge-esc/gwrk/commit/3a110c63c00e36db2ff10235c9a8dd247d89ac59))
+* **architecture-context:** deterministic gwrk init architecture targets, --context-only, nonconformance guardrails and gwrk assess ([b5256e3](https://github.com/gforge-esc/gwrk/commit/b5256e3dc81f87f388a7e4ce5d44d77af73c6311))
+* **durable-ops:** enrolled project registry, project role bindings, durable dispatch and harvest outbox and model qualification ([b5256e3](https://github.com/gforge-esc/gwrk/commit/b5256e3dc81f87f388a7e4ce5d44d77af73c6311))
+* **hosted-auth:** Google OIDC ID token verification, live allowlist reload, digest-only sessions, browser CSRF protection, origin-first logout and scoped gwrk_v1 API credentials (ADR-014) ([b5256e3](https://github.com/gforge-esc/gwrk/commit/b5256e3dc81f87f388a7e4ce5d44d77af73c6311))
+* **packaging:** Linux release builder, release-manifest.json inventory verification, frozen pnpm-lock.yaml and install-release.sh checksum verification ([b5256e3](https://github.com/gforge-esc/gwrk/commit/b5256e3dc81f87f388a7e4ce5d44d77af73c6311))
+* **portal:** hosted portal with embedded consumer guides, consumer-agent guide, reciprocal repository and plugin links and OpenAPI 3.1 explorer ([b5256e3](https://github.com/gforge-esc/gwrk/commit/b5256e3dc81f87f388a7e4ce5d44d77af73c6311))
+* **release-retention:** automatic retention and disk preflight protect releases and active jobs ([b5256e3](https://github.com/gforge-esc/gwrk/commit/b5256e3dc81f87f388a7e4ce5d44d77af73c6311))
+* **release:** gate native verification staging on retention preflight ([e3db530](https://github.com/gforge-esc/gwrk/commit/e3db530e287af05ccdb3c6675caebde3ccd822b5))
+* **release:** prepare beta 2 consumer and ecosystem handoff ([845da2f](https://github.com/gforge-esc/gwrk/commit/845da2fc8a01c785bbbd0c908068f4ff836bb713))
+* **release:** run retention and disk preflight before install ([4eec18e](https://github.com/gforge-esc/gwrk/commit/4eec18e1a463bd56e5045280679b9dfcd252a2fd))
+
+
+### Bug Fixes
+
+* **auth:** bounded 4096-byte login admission response and preserved session UI on failed logout ([b5256e3](https://github.com/gforge-esc/gwrk/commit/b5256e3dc81f87f388a7e4ce5d44d77af73c6311))
+* **auth:** portal login admission bounded response and full presentation separation ([#242](https://github.com/gforge-esc/gwrk/issues/242)) ([bb15497](https://github.com/gforge-esc/gwrk/commit/bb15497bfeff881e4597972438e586ca98100b56))
+* **release:** close retention review findings in adapters ([f739cc2](https://github.com/gforge-esc/gwrk/commit/f739cc2a612f8e7db39b703888dde5eb57c7bf12))
+* **release:** mark prerelease tags as GitHub prereleases ([b5256e3](https://github.com/gforge-esc/gwrk/commit/b5256e3dc81f87f388a7e4ce5d44d77af73c6311))
+* **release:** package an executable CLI entry point ([2f83893](https://github.com/gforge-esc/gwrk/commit/2f83893005d1d0638d58c936a1d2185108a6a48c))
+* **release:** preserve lifecycle protections through cleanup ([5fe1c1b](https://github.com/gforge-esc/gwrk/commit/5fe1c1b923b801a34442e2178ea44c1315b6d0bf))
+* **release:** recheck staged image protection with its retention window ([e89c228](https://github.com/gforge-esc/gwrk/commit/e89c228bfcae4c98049fbe92b5a8c5d9d707fbaa))
+* **webhooks:** fail closed on missing or blank GitHub webhook secrets ([b5256e3](https://github.com/gforge-esc/gwrk/commit/b5256e3dc81f87f388a7e4ce5d44d77af73c6311))
+
 ## [1.6.0-beta.1](https://github.com/gforge-esc/gwrk/compare/cli-v1.5.2-alpha.2...cli-v1.6.0-beta.1) (2026-11-06)
 
 
