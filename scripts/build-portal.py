@@ -61,7 +61,12 @@ def main() -> None:
     flamingo_b64 = base64.b64encode(FLAMINGO_IMG.read_bytes()).decode("ascii")
     favicon_b64 = base64.b64encode(FAVICON_IMG.read_bytes()).decode("ascii")
     openapi_spec = yaml.safe_load(OPENAPI_YAML.read_text(encoding="utf-8"))
-    openapi_yaml_raw = OPENAPI_YAML.read_text(encoding="utf-8")
+    openapi_yaml_raw = (
+        OPENAPI_YAML.read_text(encoding="utf-8")
+        .replace("&", "&amp;")
+        .replace("<", "&lt;")
+        .replace(">", "&gt;")
+    )
 
     foxtrot_charlie_html = extract_sphinx_body("foxtrot-charlie.html")
 
@@ -1170,48 +1175,51 @@ def main() -> None:
         </div>
 
         <div class="loop-svg-wrap" role="img" aria-label="Foxtrot Charlie Lead Diagram: Truth from Discovery -> Clarity from Definition -> Throughput from Shipping -> Value from Delivery -> back to Truth from Discovery.">
-          <svg class="loop-svg" viewBox="0 0 980 275" xmlns="http://www.w3.org/2000/svg">
+          <svg class="loop-svg" viewBox="0 0 980 280" xmlns="http://www.w3.org/2000/svg">
             <defs>
-              <linearGradient id="fc-card-grad" x1="0%" y1="0%" x2="100%" y2="100%">
-                <stop offset="0%" stop-color="#7aa8f8"/>
-                <stop offset="100%" stop-color="#c8ddfe"/>
+              <linearGradient id="fc-tui-box" x1="0%" y1="0%" x2="100%" y2="100%">
+                <stop offset="0%" stop-color="#0a404e"/>
+                <stop offset="100%" stop-color="#073642"/>
               </linearGradient>
-              <marker id="fc-arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+              <marker id="fc-arrow-pink" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+                <path d="M 0 1 L 10 5 L 0 9 z" fill="#ff2a85"/>
+              </marker>
+              <marker id="fc-arrow-cyan" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto">
                 <path d="M 0 1 L 10 5 L 0 9 z" fill="#2aa198"/>
               </marker>
             </defs>
 
             <!-- Curved Arch 1: Truth (top center 135, 125) -> Clarity (left center 255, 65) -->
-            <path d="M 135 125 C 135 72, 185 65, 247 65" fill="none" stroke="#2aa198" stroke-width="2.5" marker-end="url(#fc-arrow)"/>
+            <path d="M 135 125 C 135 72, 185 65, 247 65" fill="none" stroke="#ff2a85" stroke-width="2.5" marker-end="url(#fc-arrow-pink)"/>
 
             <!-- Straight Arrow 2: Clarity (right center 475, 65) -> Throughput (left center 515, 65) -->
-            <line x1="475" y1="65" x2="507" y2="65" stroke="#2aa198" stroke-width="2.5" marker-end="url(#fc-arrow)"/>
+            <line x1="475" y1="65" x2="507" y2="65" stroke="#2aa198" stroke-width="2.5" marker-end="url(#fc-arrow-cyan)"/>
 
             <!-- Curved Arch 3: Throughput (right center 735, 65) -> Value (top center 845, 125) -->
-            <path d="M 735 65 C 805 65, 845 72, 845 117" fill="none" stroke="#2aa198" stroke-width="2.5" marker-end="url(#fc-arrow)"/>
+            <path d="M 735 65 C 805 65, 845 72, 845 117" fill="none" stroke="#ff2a85" stroke-width="2.5" marker-end="url(#fc-arrow-pink)"/>
 
             <!-- Sweeping Bottom Return Curve 4: Value (bottom center 845, 215) -> Truth (bottom center 135, 215) -->
-            <path d="M 845 215 C 845 268, 135 268, 135 223" fill="none" stroke="#2aa198" stroke-width="2.5" marker-end="url(#fc-arrow)"/>
+            <path d="M 845 215 C 845 268, 135 268, 135 223" fill="none" stroke="#2aa198" stroke-width="2.5" marker-end="url(#fc-arrow-cyan)"/>
 
             <!-- BOX 1: Truth from Discovery -->
-            <rect x="25" y="125" width="220" height="90" rx="8" fill="url(#fc-card-grad)" stroke="#268bd2" stroke-width="2"/>
-            <text x="45" y="170" fill="#002b36" font-size="22" font-weight="800">Truth</text>
-            <text x="45" y="192" fill="#073642" font-size="14">from <tspan font-weight="800">Discovery</tspan></text>
+            <rect x="25" y="125" width="220" height="90" rx="8" fill="url(#fc-tui-box)" stroke="#ff2a85" stroke-width="2.2"/>
+            <text x="45" y="168" fill="#fdf6e3" font-size="22" font-weight="800">Truth</text>
+            <text x="45" y="192" fill="#93a1a1" font-size="14">from <tspan fill="#ff2a85" font-weight="800">Discovery</tspan></text>
 
             <!-- BOX 2: Clarity from Definition -->
-            <rect x="255" y="20" width="220" height="90" rx="8" fill="url(#fc-card-grad)" stroke="#268bd2" stroke-width="2"/>
-            <text x="275" y="65" fill="#002b36" font-size="22" font-weight="800">Clarity</text>
-            <text x="275" y="87" fill="#073642" font-size="14">from <tspan font-weight="800">Definition</tspan></text>
+            <rect x="255" y="20" width="220" height="90" rx="8" fill="url(#fc-tui-box)" stroke="#268bd2" stroke-width="2.2"/>
+            <text x="275" y="63" fill="#fdf6e3" font-size="22" font-weight="800">Clarity</text>
+            <text x="275" y="87" fill="#93a1a1" font-size="14">from <tspan fill="#268bd2" font-weight="800">Definition</tspan></text>
 
             <!-- BOX 3: Throughput from Shipping -->
-            <rect x="515" y="20" width="220" height="90" rx="8" fill="url(#fc-card-grad)" stroke="#268bd2" stroke-width="2"/>
-            <text x="535" y="65" fill="#002b36" font-size="22" font-weight="800">Throughput</text>
-            <text x="535" y="87" fill="#073642" font-size="14">from <tspan font-weight="800">Shipping</tspan></text>
+            <rect x="515" y="20" width="220" height="90" rx="8" fill="url(#fc-tui-box)" stroke="#b58900" stroke-width="2.2"/>
+            <text x="535" y="63" fill="#fdf6e3" font-size="22" font-weight="800">Throughput</text>
+            <text x="535" y="87" fill="#93a1a1" font-size="14">from <tspan fill="#b58900" font-weight="800">Shipping</tspan></text>
 
             <!-- BOX 4: Value from Delivery -->
-            <rect x="735" y="125" width="220" height="90" rx="8" fill="url(#fc-card-grad)" stroke="#268bd2" stroke-width="2"/>
-            <text x="755" y="170" fill="#002b36" font-size="22" font-weight="800">Value</text>
-            <text x="755" y="192" fill="#073642" font-size="14">from <tspan font-weight="800">Delivery</tspan></text>
+            <rect x="735" y="125" width="220" height="90" rx="8" fill="url(#fc-tui-box)" stroke="#859900" stroke-width="2.2"/>
+            <text x="755" y="168" fill="#fdf6e3" font-size="22" font-weight="800">Value</text>
+            <text x="755" y="192" fill="#93a1a1" font-size="14">from <tspan fill="#859900" font-weight="800">Delivery</tspan></text>
           </svg>
         </div>
 
@@ -1869,9 +1877,9 @@ def main() -> None:
               if (splashCurtain) splashCurtain.setAttribute("data-dismissed", "true");
               switchView("guides", true);
             }}
-          }} else if (!autoEnterIfLoggedIn) {{
+          }} else if (!autoEnterIfLoggedIn && (result.status === 401 || result.status === 403)) {{
             clearAuthenticatedUi(false);
-          }} else {{
+          }} else if (autoEnterIfLoggedIn) {{
             if (portalAuthBadge) portalAuthBadge.textContent = "UNAUTHENTICATED";
           }}
         }}).catch(function () {{}});

@@ -443,11 +443,12 @@ describe("generated portal client script behavior (LOGIN_ENTRY)", () => {
   });
 
   it.each([
-    { status: 500, code: "INTERNAL_ERROR" },
-    { status: 503, code: "AUTH_DEPENDENCY_UNAVAILABLE" },
+    { status: 500, body: { ok: false, code: "INTERNAL_ERROR" } },
+    { status: 503, body: { ok: false, code: "AUTH_DEPENDENCY_UNAVAILABLE" } },
+    { status: 503, body: { ok: true, proxyCleared: false } },
   ])(
-    "preserves authenticated UI and retryability when logout returns $status ($code)",
-    async ({ status, code }) => {
+    "preserves authenticated UI and retryability when logout returns $status ($body)",
+    async ({ status, body }) => {
       const portal = mountPortalScript(async (url, init) => {
         if (url === "/api/auth/session") {
           return makeResponse(200, {
@@ -457,7 +458,7 @@ describe("generated portal client script behavior (LOGIN_ENTRY)", () => {
           });
         }
         if (url === "/api/auth/logout" && init?.method === "POST") {
-          return makeResponse(status, { ok: false, code });
+          return makeResponse(status, body);
         }
         throw new Error(`Unexpected fetch: ${url}`);
       });
