@@ -867,7 +867,7 @@ describe("FR-003 FR-009 AUTH-06: full-server browser session and logout replay v
     const admissionGate = simulateForwardAuth(admissionRes);
     expect(admissionGate.admitted).toBe(true);
 
-    // 2. Browser presentation request (Accept: text/html without X-Forwarded-Uri)
+    // 2. Browser or CLI presentation request (without X-Forwarded-Uri: /)
     const browserRes = await f.server.inject({
       method: "GET",
       url: "/",
@@ -883,6 +883,14 @@ describe("FR-003 FR-009 AUTH-06: full-server browser session and logout replay v
     expect(Buffer.byteLength(browserRes.body)).toBeGreaterThan(4096);
     expect(browserRes.body).toContain("Flamingo");
 
+    const curlRes = await f.server.inject({
+      method: "GET",
+      url: "/",
+    });
+    expect(curlRes.statusCode).toBe(200);
+    expect(Buffer.byteLength(curlRes.body)).toBeGreaterThan(4096);
+    expect(curlRes.body).toContain("Flamingo");
+
     // 3. HEAD / must be bodyless and <= 4096 bytes
     const headRes = await f.server.inject({
       method: "HEAD",
@@ -895,8 +903,67 @@ describe("FR-003 FR-009 AUTH-06: full-server browser session and logout replay v
     expect(headRes.statusCode).toBe(200);
     expect(Buffer.byteLength(headRes.body)).toBe(0);
 
-    // 4. Invariant: root response never leaks cleanup headers, Location, or Set-Cookie
-    for (const res of [admissionRes, browserRes, headRes]) {
+    // 4. Denied / capacity paths on admission subrequests return bounded non-2xx JSON (<= 4096 bytes) and block proxy work
+    const exhaustedIp = "198.51.100.201";
+    for (let i = 0; i < 60; i++) {
+      const okSub = await f.server.inject({
+        method: "GET",
+        url: "/",
+        remoteAddress: "127.0.0.1",
+        headers: {
+          "x-forwarded-for": exhaustedIp,
+          "x-forwarded-uri": "/",
+          "x-forwarded-method": "GET",
+        },
+      });
+      expect(okSub.statusCode).toBe(200);
+      expect(Buffer.byteLength(okSub.body)).toBeLessThanOrEqual(4096);
+    }
+    const denied61Sub = await f.server.inject({
+      method: "GET",
+      url: "/",
+      remoteAddress: "127.0.0.1",
+      headers: {
+        "x-forwarded-for": exhaustedIp,
+        "x-forwarded-uri": "/",
+        "x-forwarded-method": "GET",
+      },
+    });
+    expect(denied61Sub.statusCode).toBe(429);
+    expect(Buffer.byteLength(denied61Sub.body)).toBeLessThanOrEqual(4096);
+    expect(simulateForwardAuth(denied61Sub)).toEqual({
+      status: 429,
+      admitted: false,
+    });
+
+    const malformedForwardSub = await f.server.inject({
+      method: "GET",
+      url: "/",
+      remoteAddress: "127.0.0.1",
+      headers: {
+        "x-forwarded-for": "198.51.100.1, 203.0.113.1",
+        "x-forwarded-uri": "/",
+        "x-forwarded-method": "GET",
+      },
+    });
+    expect(malformedForwardSub.statusCode).toBe(503);
+    expect(Buffer.byteLength(malformedForwardSub.body)).toBeLessThanOrEqual(
+      4096,
+    );
+    expect(simulateForwardAuth(malformedForwardSub)).toEqual({
+      status: 503,
+      admitted: false,
+    });
+
+    // 5. Invariant: root response never leaks cleanup headers, Location, or Set-Cookie
+    for (const res of [
+      admissionRes,
+      browserRes,
+      curlRes,
+      headRes,
+      denied61Sub,
+      malformedForwardSub,
+    ]) {
       expect(res.headers).not.toHaveProperty("set-cookie");
       expect(res.headers).not.toHaveProperty("location");
       expect(res.headers).not.toHaveProperty("x-forwarded-for");

@@ -13,10 +13,7 @@ export const BOUNDED_LOGIN_ENTRY =
   '<!doctype html><html lang="en"><head><meta charset="utf-8"><title>gwrk</title></head><body><a href="/oauth2/start">Sign in with Google</a></body></html>';
 
 function isAdmissionSubrequest(request: FastifyRequest): boolean {
-  return (
-    request.headers["x-forwarded-uri"] === "/" ||
-    !request.headers.accept?.includes("text/html")
-  );
+  return request.headers["x-forwarded-uri"] === "/";
 }
 
 export interface AuthRoutesOptions {
