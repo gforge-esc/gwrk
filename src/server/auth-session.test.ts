@@ -316,7 +316,11 @@ describe("browser authentication HTTP routes", () => {
     expect(first.headers["content-type"]).toContain("text/html");
     expect(first.body).toContain('href="/oauth2/start"');
     expect(second.body).toBe(first.body);
-    expect(first.body).not.toMatch(/CANARY|project|checkout|principal/i);
+    privateBody(first.body);
+    privateBody(second.body);
+    expect(first.body).not.toMatch(
+      /CANARY|CANARY_PROJECT|CANARY_CODE|CANARY_USER|TOKEN|PROXY_COOKIE|USER_EMAIL|USER_SUB|gwrk_v1\./,
+    );
     expect(f.records.size).toBe(0);
     expect(f.issue).not.toHaveBeenCalled();
     expect(f.read).not.toHaveBeenCalled();

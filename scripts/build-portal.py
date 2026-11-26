@@ -20,7 +20,7 @@ from pathlib import Path
 
 import yaml
 
-REPO_ROOT = Path("/Users/gonzo/Code/gwrk")
+REPO_ROOT = Path(__file__).resolve().parent.parent
 SPHINX_BUILD = REPO_ROOT / "docs/site/_build/html"
 OPENAPI_YAML = REPO_ROOT / "docs/openapi/gwrk-openapi.yaml"
 SPLASH_IMG = REPO_ROOT / "docs/site/_static/branding/gwrk-splash.jpg"
@@ -1461,7 +1461,7 @@ def main() -> None:
               </tr>
               <tr>
                 <td><code>CredentialGrantAdminPort</code></td>
-                <td>Atomically create or rotate credentials with workspace role bindings</td>
+                <td>Atomically create or rotate credentials with project role bindings</td>
                 <td><code>src/adapters/sqlite/auth-store.ts</code></td>
                 <td><span class="cite-tag">ADR-014 §2.2:37</span></td>
               </tr>
@@ -1779,45 +1779,98 @@ def main() -> None:
       var sessionOut = document.getElementById("session-json-out");
       var logoutOut = document.getElementById("logout-json-out");
 
+      var logoutInFlight = false;
+
+      function applyAuthenticatedUi(token) {{
+        csrfToken = token || null;
+        if (navSessionTab) navSessionTab.style.display = "inline-flex";
+        if (portalAuthBadge) portalAuthBadge.textContent = "AUTHENTICATED";
+        if (portalLogoutBtn) portalLogoutBtn.disabled = false;
+        if (statusUser) statusUser.textContent = "operator@gwrk";
+        if (headerSignin) {{
+          headerSignin.textContent = "Session";
+          headerSignin.setAttribute("href", "#session");
+          headerSignin.onclick = function (e) {{
+            e.preventDefault();
+            switchView("session", true);
+          }};
+        }}
+        if (heroSignin) {{
+          heroSignin.textContent = "Open Session";
+          heroSignin.setAttribute("href", "#session");
+          heroSignin.onclick = function (e) {{
+            e.preventDefault();
+            switchView("session", true);
+          }};
+        }}
+      }}
+
+      function clearAuthenticatedUi(switchToHome) {{
+        csrfToken = null;
+        if (navSessionTab) navSessionTab.style.display = "none";
+        if (portalAuthBadge) portalAuthBadge.textContent = "UNAUTHENTICATED";
+        if (portalLogoutBtn) portalLogoutBtn.disabled = true;
+        if (statusUser) statusUser.textContent = "guest@gwrk";
+        if (headerSignin) {{
+          headerSignin.textContent = "Sign in with Google";
+          headerSignin.setAttribute("href", "/oauth2/start");
+          headerSignin.onclick = null;
+        }}
+        if (heroSignin) {{
+          heroSignin.textContent = "Sign in with Google";
+          heroSignin.setAttribute("href", "/oauth2/start");
+          heroSignin.onclick = null;
+        }}
+        if (switchToHome) {{
+          switchView("home", true);
+        }}
+      }}
+
+      function readResponseBody(res) {{
+        if (typeof res.text === "function") {{
+          return res.text().then(function (raw) {{
+            var data = null;
+            if (raw) {{
+              try {{
+                data = JSON.parse(raw);
+              }} catch (e) {{
+                data = null;
+              }}
+            }}
+            return {{ status: res.status, data: data, raw: raw }};
+          }});
+        }}
+        return res.json().then(function (data) {{
+          return {{ status: res.status, data: data, raw: JSON.stringify(data) }};
+        }}).catch(function () {{
+          return {{ status: res.status, data: null, raw: "" }};
+        }});
+      }}
+
+      function formatResultBody(result) {{
+        if (result.data !== null) {{
+          return JSON.stringify(result.data, null, 2);
+        }}
+        return result.raw || "(empty response)";
+      }}
+
       function checkSession(autoEnterIfLoggedIn) {{
         fetch("/api/auth/session", {{
           method: "GET",
           credentials: "same-origin",
           headers: {{ "Accept": "application/json" }}
-        }}).then(function (res) {{
-          return res.json().then(function (data) {{
-            return {{ status: res.status, data: data }};
-          }});
-        }}).then(function (result) {{
+        }}).then(readResponseBody).then(function (result) {{
           if (sessionOut) {{
-            sessionOut.textContent = "HTTP " + result.status + "\\n" + JSON.stringify(result.data, null, 2);
+            sessionOut.textContent = "HTTP " + result.status + "\\n" + formatResultBody(result);
           }}
           if (result.status === 200 && result.data && result.data.ok) {{
-            csrfToken = result.data.csrfToken || null;
-            if (navSessionTab) navSessionTab.style.display = "inline-flex";
-            if (portalAuthBadge) portalAuthBadge.textContent = "AUTHENTICATED";
-            if (portalLogoutBtn) portalLogoutBtn.disabled = false;
-            if (statusUser) statusUser.textContent = "operator@gwrk";
-            if (headerSignin) {{
-              headerSignin.textContent = "Session";
-              headerSignin.setAttribute("href", "#session");
-              headerSignin.onclick = function (e) {{
-                e.preventDefault();
-                switchView("session", true);
-              }};
-            }}
-            if (heroSignin) {{
-              heroSignin.textContent = "Open Session";
-              heroSignin.setAttribute("href", "#session");
-              heroSignin.onclick = function (e) {{
-                e.preventDefault();
-                switchView("session", true);
-              }};
-            }}
+            applyAuthenticatedUi(result.data.csrfToken);
             if (autoEnterIfLoggedIn && !explicitHash) {{
               if (splashCurtain) splashCurtain.setAttribute("data-dismissed", "true");
               switchView("guides", true);
             }}
+          }} else if (!autoEnterIfLoggedIn) {{
+            clearAuthenticatedUi(false);
           }} else {{
             if (portalAuthBadge) portalAuthBadge.textContent = "UNAUTHENTICATED";
           }}
@@ -1825,36 +1878,68 @@ def main() -> None:
       }}
 
       function performLogout() {{
-        if (!csrfToken) return;
+        if (!csrfToken || logoutInFlight) return;
+        logoutInFlight = true;
+        if (portalLogoutBtn) portalLogoutBtn.disabled = true;
+        if (logoutOut) logoutOut.textContent = "Signing out...";
         fetch("/api/auth/logout", {{
           method: "POST",
           credentials: "same-origin",
           headers: {{
             "X-Gwrk-Csrf-Token": csrfToken
           }}
-        }}).then(function (res) {{
-          return res.json().then(function (data) {{
-            return {{ status: res.status, data: data }};
-          }});
-        }}).then(function (result) {{
+        }}).then(readResponseBody).then(function (result) {{
+          var bodyText = formatResultBody(result);
+          if (result.status === 200 && result.data && result.data.ok === true && result.data.proxyCleared !== false) {{
+            if (logoutOut) {{
+              logoutOut.textContent = "HTTP " + result.status + "\\n" + bodyText;
+            }}
+            clearAuthenticatedUi(true);
+            return;
+          }}
+          if (result.status === 401) {{
+            return fetch("/api/auth/session", {{
+              method: "GET",
+              credentials: "same-origin",
+              headers: {{ "Accept": "application/json" }}
+            }}).then(readResponseBody).then(function (sess) {{
+              if (sessionOut) {{
+                sessionOut.textContent = "HTTP " + sess.status + "\\n" + formatResultBody(sess);
+              }}
+              if (sess.status === 401) {{
+                if (logoutOut) {{
+                  logoutOut.textContent = "HTTP " + result.status + " (session confirmed inactive)\\n" + bodyText;
+                }}
+                clearAuthenticatedUi(true);
+              }} else if (sess.status === 200 && sess.data && sess.data.ok) {{
+                applyAuthenticatedUi(sess.data.csrfToken || csrfToken);
+                if (logoutOut) {{
+                  logoutOut.textContent = "Logout failed (HTTP " + result.status + "). Session remains active; please retry.\\n" + bodyText;
+                }}
+              }} else {{
+                if (portalLogoutBtn) portalLogoutBtn.disabled = false;
+                if (logoutOut) {{
+                  logoutOut.textContent = "Logout failed (HTTP " + result.status + "). Session check returned HTTP " + sess.status + "; please retry.\\n" + bodyText;
+                }}
+              }}
+            }}).catch(function (err) {{
+              if (portalLogoutBtn) portalLogoutBtn.disabled = false;
+              if (logoutOut) {{
+                logoutOut.textContent = "Logout failed (HTTP " + result.status + "). Could not verify session (" + (err && err.message ? err.message : "network error") + "); please retry.";
+              }}
+            }});
+          }}
+          if (portalLogoutBtn) portalLogoutBtn.disabled = false;
           if (logoutOut) {{
-            logoutOut.textContent = "HTTP " + result.status + "\\n" + JSON.stringify(result.data, null, 2);
+            logoutOut.textContent = "Logout failed (HTTP " + result.status + "). Session remains active; please retry.\\n" + bodyText;
           }}
-          csrfToken = null;
-          if (navSessionTab) navSessionTab.style.display = "none";
-          if (portalLogoutBtn) portalLogoutBtn.disabled = true;
-          if (statusUser) statusUser.textContent = "guest@gwrk";
-          if (headerSignin) {{
-            headerSignin.textContent = "Sign in with Google";
-            headerSignin.setAttribute("href", "/oauth2/start");
-            headerSignin.onclick = null;
+        }}).catch(function (err) {{
+          if (portalLogoutBtn) portalLogoutBtn.disabled = false;
+          if (logoutOut) {{
+            logoutOut.textContent = "Logout failed (" + (err && err.message ? err.message : "network error") + "). Session remains active; please retry.";
           }}
-          if (heroSignin) {{
-            heroSignin.textContent = "Sign in with Google";
-            heroSignin.setAttribute("href", "/oauth2/start");
-            heroSignin.onclick = null;
-          }}
-          switchView("home", true);
+        }}).then(function () {{
+          logoutInFlight = false;
         }});
       }}
 
@@ -1874,35 +1959,24 @@ def main() -> None:
 </body>
 </html>"""
 
-    def sanitize_forbidden_words(text: str) -> str:
-        out = text
-        out = re.sub(r"projects", "workspaces", out, flags=re.IGNORECASE)
-        out = re.sub(r"project", "workspace", out, flags=re.IGNORECASE)
-        out = re.sub(r"checkouts", "worktrees", out, flags=re.IGNORECASE)
-        out = re.sub(r"checkout", "worktree", out, flags=re.IGNORECASE)
-        out = re.sub(r"principals", "operators", out, flags=re.IGNORECASE)
-        out = re.sub(r"principal", "lead", out, flags=re.IGNORECASE)
-        out = re.sub(r"canary", "probe", out, flags=re.IGNORECASE)
-        return out
-
-    safe_html = sanitize_forbidden_words(html_doc)
-
-    forbidden_match = re.search(r"CANARY|project|checkout|principal", safe_html, re.IGNORECASE)
-    if forbidden_match:
-        raise RuntimeError(f"Forbidden token remained in HTML: {forbidden_match.group(0)}")
-    if 'href="/oauth2/start"' not in safe_html:
+    secret_match = re.search(r"CANARY|gwrk_v1\.", html_doc)
+    if secret_match:
+        raise RuntimeError(f"Secret or canary token remained in HTML: {secret_match.group(0)}")
+    if 'href="/oauth2/start"' not in html_doc:
         raise RuntimeError('Missing required href="/oauth2/start" in HTML')
+    if "projectId" not in html_doc:
+        raise RuntimeError("Missing required API wire identifier projectId in HTML")
 
-    STATIC_PREVIEW_OUT.write_text(safe_html, encoding="utf-8")
+    STATIC_PREVIEW_OUT.write_text(html_doc, encoding="utf-8")
 
     ts_content = (
         "/* This Source Code Form is subject to the terms of the Mozilla Public\n"
         " * License, v. 2.0. If a copy of the MPL was not distributed with this\n"
         " * file, You can obtain one at https://mozilla.org/MPL/2.0/. */\n\n"
-        f"export const LOGIN_ENTRY = {json.dumps(safe_html)};\n"
+        f"export const LOGIN_ENTRY = {json.dumps(html_doc)};\n"
     )
     PORTAL_TS_OUT.write_text(ts_content, encoding="utf-8")
-    print(f"Generated {PORTAL_TS_OUT} ({len(safe_html)} bytes HTML)")
+    print(f"Generated {PORTAL_TS_OUT} ({len(html_doc)} bytes HTML)")
 
 
 if __name__ == "__main__":
