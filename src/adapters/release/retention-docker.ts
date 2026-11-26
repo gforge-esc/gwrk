@@ -13,6 +13,7 @@
 import { createHash } from "node:crypto";
 import { lstat, readFile, readdir } from "node:fs/promises";
 import { join } from "node:path";
+import { classifyRun } from "../../domain/retention-policy.js";
 import type {
   InventoryItem,
   Protections,
@@ -22,6 +23,7 @@ import type {
   RetentionEffectsPort,
   RetentionInventoryPort,
 } from "../../ports/retention-port.js";
+import { acquireFlockLease } from "./retention-lock.js";
 import { RUN_OWNER_FILE } from "./retention-verification.js";
 
 const HOST_ID = /^sha256:[a-f0-9]{64}$/;
@@ -46,6 +48,10 @@ export type DockerRunner = (
 ) => Promise<{ code: number; stdout: string }>;
 
 export interface DockerImageDeps {
+  readonly acquireLease?: (
+    path: string,
+  ) => Promise<(() => Promise<void>) | null>;
+  readonly now?: () => string;
   readonly docker: DockerRunner;
 }
 
@@ -77,7 +83,10 @@ export function createDockerImageAdapter(
     const listed = await deps.docker(["ps", "-a", "-q", "--no-trunc"]);
     if (listed.code !== 0)
       throw new Error("Could not list Docker containers. Retention stopped.");
-    const ids = listed.stdout.split("\n").map((line) => line.trim()).filter(Boolean);
+    const ids = listed.stdout
+      .split("\n")
+      .map((line) => line.trim())
+      .filter(Boolean);
     if (ids.length === 0) return new Set();
     const images = await deps.docker([
       "container",
@@ -87,18 +96,48 @@ export function createDockerImageAdapter(
       ...ids,
     ]);
     if (images.code !== 0)
-      throw new Error("Could not inspect Docker containers. Retention stopped.");
-    return new Set(images.stdout.split("\n").map((line) => line.trim()).filter(Boolean));
+      throw new Error(
+        "Could not inspect Docker containers. Retention stopped.",
+      );
+    return new Set(
+      images.stdout
+        .split("\n")
+        .map((line) => line.trim())
+        .filter(Boolean),
+    );
   }
 
-  function unknown(id: string, runId: string, reason: string, bytes = 0): InventoryItem {
-    return { kind: "docker-image", id, runId, owned: false, unknownReason: reason, identity: "", bytes };
+  function unknown(
+    id: string,
+    runId: string,
+    reason: string,
+    bytes = 0,
+  ): InventoryItem {
+    return {
+      kind: "docker-image",
+      id,
+      runId,
+      owned: false,
+      unknownReason: reason,
+      identity: "",
+      bytes,
+    };
   }
 
-  function judge(info: ImageInfo, runId: string, inUse: Set<string>): InventoryItem {
+  function judge(
+    info: ImageInfo,
+    runId: string,
+    inUse: Set<string>,
+  ): InventoryItem {
     const hostId = info.Id ?? "";
     const bytes = info.Size ?? 0;
-    if (!HOST_ID.test(hostId)) return unknown(hostId || "(no ID)", runId, "invalid host image ID", bytes);
+    if (!HOST_ID.test(hostId))
+      return unknown(
+        hostId || "(no ID)",
+        runId,
+        "invalid host image ID",
+        bytes,
+      );
     const tags = [...(info.RepoTags ?? [])].sort();
     if (tags.some((tag) => !isRunTag(tag, runId)))
       return unknown(hostId, runId, "foreign tag", bytes);
@@ -112,7 +151,9 @@ export function createDockerImageAdapter(
       owned: true,
       inUse: inUse.has(hostId),
       bytes,
-      identity: createHash("sha256").update(`${hostId}\n${runId}\n${tags.join(",")}`).digest("hex"),
+      identity: createHash("sha256")
+        .update(`${hostId}\n${runId}\n${tags.join(",")}`)
+        .digest("hex"),
     };
   }
 
@@ -122,14 +163,23 @@ export function createDockerImageAdapter(
     inUse: Set<string>,
   ): Promise<InventoryItem | null> {
     if (!isRunTag(entry.tag, runId))
-      return unknown(String(entry.tag ?? "(missing tag)"), runId, "tag outside run namespace");
+      return unknown(
+        String(entry.tag ?? "(missing tag)"),
+        runId,
+        "tag outside run namespace",
+      );
     const host = entry.hostImageId;
     if (host !== undefined && (typeof host !== "string" || !HOST_ID.test(host)))
       return unknown(entry.tag, runId, "invalid host image ID");
     const info = await inspect(host ?? entry.tag);
     if (!info) return null;
     if (host !== undefined && info.Id !== host)
-      return unknown(entry.tag, runId, "host identity mismatch", info.Size ?? 0);
+      return unknown(
+        entry.tag,
+        runId,
+        "host identity mismatch",
+        info.Size ?? 0,
+      );
     return judge(info, runId, inUse);
   }
 
@@ -139,7 +189,9 @@ export function createDockerImageAdapter(
       if (!(await lstat(join(runsRoot, runId))).isDirectory()) return null;
       if (!(await lstat(marker)).isFile()) return null;
       const parsed = JSON.parse(await readFile(marker, "utf8"));
-      return parsed.schema === 1 && parsed.runId === runId && Array.isArray(parsed.images)
+      return parsed.schema === 1 &&
+        parsed.runId === runId &&
+        Array.isArray(parsed.images)
         ? parsed.images
         : null;
     } catch {
@@ -157,8 +209,13 @@ export function createDockerImageAdapter(
         const images = await readRecord(runId);
         for (const image of images ?? []) {
           if (!image || typeof image !== "object") continue;
-          const item = await describe(image as Record<string, unknown>, runId, inUse);
-          if (!item || seen.has(`${item.id}\n${item.unknownReason ?? ""}`)) continue;
+          const item = await describe(
+            image as Record<string, unknown>,
+            runId,
+            inUse,
+          );
+          if (!item || seen.has(`${item.id}\n${item.unknownReason ?? ""}`))
+            continue;
           seen.add(`${item.id}\n${item.unknownReason ?? ""}`);
           items.push(item);
         }
@@ -175,7 +232,11 @@ export function createDockerImageAdapter(
     },
 
     async readProtections(): Promise<Protections> {
-      return { releases: [], runs: [], images: [...(await containerImages())].sort() };
+      return {
+        releases: [],
+        runs: [],
+        images: [...(await containerImages())].sort(),
+      };
     },
 
     async recoverQuarantine() {
@@ -184,10 +245,59 @@ export function createDockerImageAdapter(
 
     async apply(action: RetentionAction) {
       if (action.action !== "delete-image" || !HOST_ID.test(action.item.id))
-        throw new Error(`Unsupported action ${action.action} for Docker images.`);
-      const result = await deps.docker(["image", "rm", action.item.id]);
-      if (result.code !== 0)
-        throw new Error(`docker image rm ${action.item.id} failed.`);
+        throw new Error(
+          `Unsupported action ${action.action} for Docker images.`,
+        );
+      const runId = action.item.runId;
+      if (!runId || !RUN_ID.test(runId))
+        throw new Error("Missing owned image run.");
+      const release = await (deps.acquireLease ?? acquireFlockLease)(
+        join(runsRoot, runId, ".lease"),
+      );
+      if (!release) throw new Error("Image run became active before cleanup.");
+      try {
+        const marker = join(runsRoot, runId, RUN_OWNER_FILE);
+        if (!(await lstat(marker)).isFile())
+          throw new Error("Image owner record changed.");
+        const record = JSON.parse(await readFile(marker, "utf8"));
+        const state = classifyRun({
+          ...record,
+          leaseBusy: false,
+          now: (deps.now ?? (() => new Date().toISOString()))(),
+        });
+        if (
+          record.schema !== 1 ||
+          record.runId !== runId ||
+          state.kind === "invalid" ||
+          state.protected
+        )
+          throw new Error("Image run is no longer eligible.");
+        const images = await readRecord(runId);
+        const info = await inspect(action.item.id);
+        const fresh = info ? judge(info, runId, await containerImages()) : null;
+        if (
+          !fresh?.owned ||
+          fresh.inUse ||
+          fresh.identity !== action.item.identity ||
+          !images?.some(
+            (entry) =>
+              entry &&
+              typeof entry === "object" &&
+              ((entry as Record<string, unknown>).hostImageId ===
+                action.item.id ||
+                info?.RepoTags?.includes(
+                  String((entry as Record<string, unknown>).tag),
+                )),
+          )
+        )
+          throw new Error(
+            "Image ownership or references changed before cleanup.",
+          );
+        const result = await deps.docker(["image", "rm", action.item.id]);
+        if (result.code !== 0) throw new Error("Owned image removal failed.");
+      } finally {
+        await release();
+      }
     },
   };
 }

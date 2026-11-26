@@ -66,3 +66,61 @@ export function createFdLockProof(input: {
     },
   };
 }
+
+/** A child holds flock until its stdin closes. Parent death releases it too. */
+export async function acquireFlockLease(
+  path: string,
+): Promise<(() => Promise<void>) | null> {
+  const { spawn } = await import("node:child_process");
+  const { open } = await import("node:fs/promises");
+  const { constants } = await import("node:fs");
+  const handle = await open(
+    path,
+    constants.O_CREAT | constants.O_RDWR | constants.O_NOFOLLOW,
+    0o600,
+  );
+  const child = spawn(
+    "sh",
+    ["-c", "flock -n -E 75 3 || exit $?; printf 'held\\n'; cat >/dev/null"],
+    { stdio: ["pipe", "pipe", "ignore", handle.fd] },
+  );
+  await handle.close();
+  const input = child.stdin;
+  const output = child.stdout;
+  if (!input || !output) {
+    child.kill();
+    throw new Error("Run lease pipes unavailable.");
+  }
+  const exited = new Promise<number | null>((resolve) =>
+    child.once("exit", resolve),
+  );
+  const held = await new Promise<boolean>((resolve, reject) => {
+    const timer = setTimeout(() => {
+      input.destroy();
+      child.kill();
+      reject(new Error("Run lease acquisition timed out."));
+    }, 5000);
+    child.once("error", () => {
+      clearTimeout(timer);
+      reject(new Error("Run lease could not be acquired."));
+    });
+    child.once("exit", (code) => {
+      clearTimeout(timer);
+      if (code === 75) resolve(false);
+      else reject(new Error("Run lease holder exited before acquisition."));
+    });
+    output.once("data", (data) => {
+      clearTimeout(timer);
+      if (String(data) === "held\n") resolve(true);
+      else {
+        child.kill();
+        reject(new Error("Invalid run lease handshake."));
+      }
+    });
+  });
+  if (!held) return null;
+  return async () => {
+    input.end();
+    await exited;
+  };
+}

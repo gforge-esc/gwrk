@@ -6,14 +6,7 @@
 // run owner record lists. Receipts, signatures and the record stay.
 
 import { createHash } from "node:crypto";
-import {
-  lstat,
-  readFile,
-  readdir,
-  rm,
-  stat,
-  statfs,
-} from "node:fs/promises";
+import { lstat, readFile, readdir, rm, stat, statfs } from "node:fs/promises";
 import { join } from "node:path";
 import {
   type InventoryItem,
@@ -31,6 +24,7 @@ import type {
   RetentionReceiptPort,
 } from "../../ports/retention-port.js";
 import { treeBytes } from "./retention-fs.js";
+import { acquireFlockLease } from "./retention-lock.js";
 import { createQuarantine, writeReceipt } from "./retention-quarantine.js";
 
 export const RUN_OWNER_FILE = "gwrk-run-owner.json";
@@ -58,6 +52,9 @@ type HeavyPath =
   | { readonly root: "data-run" };
 
 export interface VerificationRootDeps {
+  readonly acquireLease?: (
+    path: string,
+  ) => Promise<(() => Promise<void>) | null>;
   /** True when another process holds the run lease. Backed by flock in production. */
   readonly leaseBusy: (leasePath: string) => Promise<boolean>;
   /** Runs the caller is about to stage. Always protected. */
@@ -95,7 +92,10 @@ export function createVerificationRootAdapter(
   const heavyLocation = (id: string, heavy: HeavyPath) =>
     heavy.root === "data-run"
       ? join(dataRoot, id)
-      : join(heavy.root === "run" ? join(runsRoot, id) : join(dataRoot, id), heavy.path);
+      : join(
+          heavy.root === "run" ? join(runsRoot, id) : join(dataRoot, id),
+          heavy.path,
+        );
 
   async function lstatOrNull(path: string) {
     try {
@@ -123,7 +123,10 @@ export function createVerificationRootAdapter(
     return true;
   }
 
-  async function identify(id: string): Promise<
+  async function identify(
+    id: string,
+    leaseHeld = false,
+  ): Promise<
     | {
         owned: true;
         identity: string;
@@ -151,7 +154,10 @@ export function createVerificationRootAdapter(
       return { owned: false, reason: "run owner record mismatch" };
     const heavy = marker.heavy;
     if (!Array.isArray(heavy) || !heavy.every(validHeavy))
-      return { owned: false, reason: "heavy path outside the removable payload class" };
+      return {
+        owned: false,
+        reason: "heavy path outside the removable payload class",
+      };
     for (const entry of heavy) {
       if (!(await realChain(id, entry)))
         return { owned: false, reason: "heavy path crosses a symlink" };
@@ -161,7 +167,9 @@ export function createVerificationRootAdapter(
       startedAt: marker.startedAt,
       stagedAt: marker.stagedAt,
       completedAt: marker.completedAt,
-      leaseBusy: await deps.leaseBusy(join(run, RUN_LEASE_FILE)),
+      leaseBusy: leaseHeld
+        ? false
+        : await deps.leaseBusy(join(run, RUN_LEASE_FILE)),
       now: deps.now(),
       stagedTtlMs: deps.stagedTtlMs ?? STAGED_TTL_MS,
     });
@@ -185,7 +193,9 @@ export function createVerificationRootAdapter(
   }
 
   async function runNames(): Promise<string[]> {
-    return (await readdir(runsRoot)).filter((name) => !name.startsWith(".")).sort();
+    return (await readdir(runsRoot))
+      .filter((name) => !name.startsWith("."))
+      .sort();
   }
 
   return {
@@ -238,7 +248,39 @@ export function createVerificationRootAdapter(
     },
 
     recoverQuarantine() {
-      return quarantine.recover(async (intent) => intent.key.startsWith("run:"));
+      return quarantine.recover(async (intent) => {
+        const [, runId, index] = intent.key.split(":");
+        if (
+          !intent.key.startsWith("run:") ||
+          !runId ||
+          !RUN_ID.test(runId) ||
+          !/^\d+$/.test(index ?? "")
+        )
+          return false;
+        const release = await (deps.acquireLease ?? acquireFlockLease)(
+          join(runsRoot, runId, RUN_LEASE_FILE),
+        );
+        if (!release) return false;
+        try {
+          const id = await identify(runId, true);
+          const heavy = id.owned ? id.heavy[Number(index)] : undefined;
+          if (
+            !id.owned ||
+            id.run.protected ||
+            deps.protectedRuns.includes(runId) ||
+            id.identity !== intent.identity ||
+            !heavy ||
+            heavyLocation(runId, heavy) !== intent.source
+          ) {
+            await release();
+            return false;
+          }
+          return { action: "restore" as const, release };
+        } catch (error) {
+          await release();
+          throw error;
+        }
+      });
     },
 
     async apply(action: RetentionAction) {
@@ -246,25 +288,41 @@ export function createVerificationRootAdapter(
         throw new Error(
           `Unsupported action ${action.action} for verification runs.`,
         );
-      const id = await identify(action.item.id);
-      if (!id.owned) throw new Error(`${action.item.id} is no longer owned.`);
-      for (const [index, entry] of id.heavy.entries()) {
-        const path = heavyLocation(action.item.id, entry);
-        const info = await lstatOrNull(path);
-        if (!info) continue;
-        if (info.isSymbolicLink() || !(await realChain(action.item.id, entry)))
-          throw new Error(`${path} crosses a symlink.`);
-        if (entry.root === "run") {
-          const { token } = await quarantine.park({
-            key: `run:${action.item.id}:${index}`,
-            source: path,
-            identity: id.identity,
-          });
-          await quarantine.discard(token);
-        } else {
-          // The data root can be another filesystem. Remove in place without following links.
-          await rm(path, { recursive: true, force: true });
+      const leasePath = join(runsRoot, action.item.id, RUN_LEASE_FILE);
+      const release = await (deps.acquireLease ?? acquireFlockLease)(leasePath);
+      if (!release) throw new Error("Run became active before cleanup.");
+      try {
+        const id = await identify(action.item.id, true);
+        if (
+          !id.owned ||
+          id.run.protected ||
+          id.identity !== action.item.identity ||
+          deps.protectedRuns.includes(action.item.id)
+        )
+          throw new Error("Run identity or protection changed before cleanup.");
+        for (const [index, entry] of id.heavy.entries()) {
+          const path = heavyLocation(action.item.id, entry);
+          const info = await lstatOrNull(path);
+          if (!info) continue;
+          if (
+            info.isSymbolicLink() ||
+            !(await realChain(action.item.id, entry))
+          )
+            throw new Error(`${path} crosses a symlink.`);
+          if (entry.root === "run") {
+            const { token } = await quarantine.park({
+              key: `run:${action.item.id}:${index}`,
+              source: path,
+              identity: id.identity,
+            });
+            await quarantine.discard(token);
+          } else {
+            // The data root can be another filesystem. Remove in place without following links.
+            await rm(path, { recursive: true, force: true });
+          }
         }
+      } finally {
+        await release();
       }
     },
 

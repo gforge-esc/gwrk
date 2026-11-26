@@ -110,7 +110,9 @@ export function createReleaseRootAdapter(
   }
 
   async function manifestHash(directory: string): Promise<string | null> {
-    const bytes = await readRegularFile(join(directory, "release-manifest.json"));
+    const bytes = await readRegularFile(
+      join(directory, "release-manifest.json"),
+    );
     return bytes ? createHash("sha256").update(bytes).digest("hex") : null;
   }
 
@@ -263,11 +265,19 @@ export function createReleaseRootAdapter(
 
     async recoverQuarantine() {
       await assertTree();
-      return quarantine.recover(async (intent, parked) =>
-        intent.key.startsWith("release:")
-          ? (await manifestHash(parked)) === intent.identity
-          : false,
-      );
+      return quarantine.recover(async (intent, parked) => {
+        const version = intent.key.slice("release:".length);
+        if (
+          !intent.key.startsWith("release:") ||
+          !isReleaseName(version) ||
+          intent.source !== join(releases, version) ||
+          (await manifestHash(parked)) !== intent.identity
+        )
+          return false;
+        // Restore first. Fresh inventory and protection checks decide whether
+        // a prior deletion remains eligible under today's pointers/configuration.
+        return "restore";
+      });
     },
 
     async apply(action: RetentionAction) {

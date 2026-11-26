@@ -18,6 +18,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createReleaseRootAdapter } from "../../adapters/release/retention-fs.js";
+import { createQuarantine } from "../../adapters/release/retention-quarantine.js";
 import { GIB } from "../../domain/retention-policy.js";
 import type {
   LockProofPort,
@@ -49,9 +50,7 @@ const releases = () =>
     .filter((n) => !n.startsWith("."))
     .sort();
 
-const service = (
-  value: Partial<RunningService> = {},
-): RunningServicePort => ({
+const service = (value: Partial<RunningService> = {}): RunningServicePort => ({
   discover: async () => ({ releases: [], configuredPaths: [], ...value }),
 });
 const held: LockProofPort = { assertHeld: async () => {} };
@@ -129,9 +128,9 @@ describe("configured state inside a release", () => {
         configuredPaths: [join(root, "releases/1.0.0/state/gwrk.db")],
       }),
     });
-    expect(readFileSync(join(root, "releases/1.0.0/state/gwrk.db"), "utf8")).toBe(
-      "ledger",
-    );
+    expect(
+      readFileSync(join(root, "releases/1.0.0/state/gwrk.db"), "utf8"),
+    ).toBe("ledger");
     expect(result.unknown).toContainEqual(
       expect.objectContaining({
         id: "1.0.0",
@@ -153,6 +152,25 @@ describe("configured state inside a release", () => {
 });
 
 describe("quarantine ownership", () => {
+  it("preserves a parked rollback when its original pointer is now dangling", async () => {
+    const source = join(root, "releases/1.0.0");
+    const { createHash } = await import("node:crypto");
+    const identity = createHash("sha256")
+      .update(readFileSync(join(source, "release-manifest.json")))
+      .digest("hex");
+    const { parked } = await createQuarantine(join(root, ".retention")).park({
+      key: "release:1.0.0",
+      source,
+      identity,
+    });
+    rmSync(join(root, "previous"));
+    point("previous", "1.0.0");
+    const result = await step();
+    expect(result.ok).toBe(true);
+    expect(existsSync(join(source, "dist/payload.bin"))).toBe(true);
+    expect(existsSync(parked)).toBe(false);
+  });
+
   it("never deletes an unknown entry left in the quarantine directory", async () => {
     const stranger = join(root, ".retention/trash/stranger");
     mkdirSync(stranger, { recursive: true });

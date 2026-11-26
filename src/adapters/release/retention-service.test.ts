@@ -4,7 +4,10 @@
 
 import { describe, expect, it } from "vitest";
 import { createFdLockProof, parseFdinfoLock } from "./retention-lock.js";
-import { type ServiceProbe, createSystemdServicePort } from "./retention-service.js";
+import {
+  type ServiceProbe,
+  createSystemdServicePort,
+} from "./retention-service.js";
 
 const ROOT = "/opt/gwrk";
 const show = (fields: Record<string, string>) =>
@@ -37,6 +40,7 @@ const probe = (
   const calls: string[][] = [];
   return {
     calls,
+    effectiveEnvironment: async () => [],
     async systemctl(args) {
       calls.push([...args]);
       if (options.missing)
@@ -77,6 +81,19 @@ const port = (p: ServiceProbe, unit = "gwrk-runner.service") =>
   createSystemdServicePort({ unit, releaseRoot: ROOT, probe: p });
 
 describe("running service discovery", () => {
+  it("protects effective configured paths when the loaded service is stopped", async () => {
+    const p = probe({ show: show({ ActiveState: "inactive" }) });
+    const result = await port({
+      ...p,
+      effectiveEnvironment: async () => [
+        "GWRK_DB_PATH=/opt/gwrk/releases/1.0.0/state/gwrk.db",
+      ],
+    } as ServiceProbe).discover();
+    expect(result.configuredPaths).toContain(
+      "/opt/gwrk/releases/1.0.0/state/gwrk.db",
+    );
+  });
+
   it("reports no release when the unit is not installed", async () => {
     const result = await port(
       probe({ show: "LoadState=not-found\nActiveState=inactive\nMainPID=0\n" }),
@@ -128,23 +145,33 @@ describe("running service discovery", () => {
   });
 
   it.each([
-    ["an unexpected command", launch("/opt/gwrk/releases/1.2.0/dist/cli.js", "--token=hunter2")],
+    [
+      "an unexpected command",
+      launch("/opt/gwrk/releases/1.2.0/dist/cli.js", "--token=hunter2"),
+    ],
     ["a non-canonical launch path", launch("/opt/gwrk/current/dist/cli.js")],
     ["a path outside the release root", launch("/tmp/hunter2/dist/cli.js")],
-  ])("fails closed on %s without echoing the process arguments", async (_name, argv) => {
-    const p = probe({
-      show: show({ MainPID: "4242" }),
-      cmdline: argv,
-      realpath: {
-        "/opt/gwrk/current/dist/cli.js": "/opt/gwrk/releases/1.3.0/dist/cli.js",
-      },
-    });
-    const failure = await port(p)
-      .discover()
-      .then(() => null, (error: Error) => error);
-    expect(failure?.message).toMatch(/running service/i);
-    expect(failure?.message).not.toMatch(/hunter2|--token|current\/dist/);
-  });
+  ])(
+    "fails closed on %s without echoing the process arguments",
+    async (_name, argv) => {
+      const p = probe({
+        show: show({ MainPID: "4242" }),
+        cmdline: argv,
+        realpath: {
+          "/opt/gwrk/current/dist/cli.js":
+            "/opt/gwrk/releases/1.3.0/dist/cli.js",
+        },
+      });
+      const failure = await port(p)
+        .discover()
+        .then(
+          () => null,
+          (error: Error) => error,
+        );
+      expect(failure?.message).toMatch(/running service/i);
+      expect(failure?.message).not.toMatch(/hunter2|--token|current\/dist/);
+    },
+  );
 
   it("fails closed when the process environment cannot be read", async () => {
     await expect(
@@ -210,7 +237,11 @@ describe("lock proof", () => {
 
   it("accepts an inherited exclusive flock on the lock file", async () => {
     await expect(
-      createFdLockProof({ fd: 9, lockPath: "/opt/gwrk/.install.lock", probe: lockProbe({}) }).assertHeld(),
+      createFdLockProof({
+        fd: 9,
+        lockPath: "/opt/gwrk/.install.lock",
+        probe: lockProbe({}),
+      }).assertHeld(),
     ).resolves.toBeUndefined();
   });
 
@@ -220,7 +251,11 @@ describe("lock proof", () => {
     ["no procfs", { fdinfo: null }],
   ])("rejects %s", async (_name, options) => {
     await expect(
-      createFdLockProof({ fd: 9, lockPath: "/opt/gwrk/.install.lock", probe: lockProbe(options) }).assertHeld(),
+      createFdLockProof({
+        fd: 9,
+        lockPath: "/opt/gwrk/.install.lock",
+        probe: lockProbe(options),
+      }).assertHeld(),
     ).rejects.toThrow(/lock/i);
   });
 });

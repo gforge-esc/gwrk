@@ -57,14 +57,30 @@ const stage = (
   );
 };
 
-const step = () => {
+const step = (race = false) => {
   const adapter = createVerificationRootAdapter(runs, data, {
     leaseBusy: async (path) => busy.has(path),
+    acquireLease: async (path) => {
+      if (busy.has(path)) return null;
+      busy.add(path);
+      return async () => {
+        busy.delete(path);
+      };
+    },
     protectedRuns: [],
     now: () => NOW,
   });
   return runRetentionStep({
-    inventory: adapter,
+    inventory: race
+      ? {
+          ...adapter,
+          reidentify: async (item) => {
+            const identity = await adapter.reidentify(item);
+            busy.add(join(runs, item.id, ".lease"));
+            return identity;
+          },
+        }
+      : adapter,
     effects: adapter,
     disk: {
       sample: async (paths) =>
@@ -89,6 +105,14 @@ beforeEach(() => {
 afterEach(() => rmSync(base, { recursive: true, force: true }));
 
 describe("verification retention", () => {
+  it("does not delete when a job acquires its lease after the final identity probe", async () => {
+    stage(runId("a"), "2026-01-01T00:00:00Z");
+    stage(runId("b"), "2026-01-02T00:00:00Z");
+    stage(runId("c"), "2026-01-03T00:00:00Z");
+    await step(true);
+    expect(existsSync(join(runs, runId("a"), "source.tar"))).toBe(true);
+  });
+
   it("prunes heavy payloads past two runs and keeps receipts", async () => {
     stage(runId("a"), "2026-01-01T00:00:00Z");
     stage(runId("b"), "2026-01-02T00:00:00Z");

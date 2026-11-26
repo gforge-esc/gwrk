@@ -110,6 +110,7 @@ const completed = (r: string, day: string, images: Record<string, string>[]) =>
 const step = () => {
   const verification = createVerificationRootAdapter(runs, data, {
     leaseBusy: async () => false,
+    acquireLease: async () => async () => {},
     protectedRuns: [],
     now: () => "2026-11-26T16:45:00.000Z",
   });
@@ -117,7 +118,10 @@ const step = () => {
     { kinds: ["verification-run"], port: verification },
     {
       kinds: ["docker-image"],
-      port: createDockerImageAdapter(runs, { docker }),
+      port: createDockerImageAdapter(runs, {
+        docker,
+        acquireLease: async () => async () => {},
+      }),
     },
   ]);
   return runRetentionStep({

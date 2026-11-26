@@ -7,11 +7,12 @@
 // MainPID command line, working directory and listed path variables. Errors
 // never include process arguments or environment values.
 
-import { execFile } from "node:child_process";
+import { execFile, execFileSync } from "node:child_process";
 import { readFile, readlink, realpath } from "node:fs/promises";
 import { join } from "node:path";
 import {
   SERVICE_BUSY_STATES,
+  SERVICE_PATH_VARIABLES,
   environmentPaths,
   identifyLaunch,
   parseSystemdShow,
@@ -23,6 +24,11 @@ import type {
 } from "../../ports/retention-port.js";
 
 export interface ServiceProbe {
+  effectiveEnvironment?(
+    unit: string,
+    user: string,
+    group: string,
+  ): Promise<string[]>;
   systemctl(args: readonly string[]): Promise<{ code: number; stdout: string }>;
   readProc(path: string): Promise<Buffer>;
   readlink(path: string): Promise<string>;
@@ -30,6 +36,8 @@ export interface ServiceProbe {
 }
 
 const PROPERTIES = [
+  "User",
+  "Group",
   "LoadState",
   "ActiveState",
   "MainPID",
@@ -43,15 +51,106 @@ const PROPERTIES = [
 const UNIT = /^[a-zA-Z0-9@_.-]+\.service$/;
 
 export const nodeServiceProbe: ServiceProbe = {
+  async effectiveEnvironment(unit, user, group) {
+    const manager = "org.freedesktop.systemd1";
+    const bus = (...args: string[]) =>
+      execFileSync(
+        "busctl",
+        [
+          "--system",
+          "--json=short",
+          "--no-pager",
+          "--allow-interactive-authorization=no",
+          "--timeout=5s",
+          ...args,
+        ],
+        {
+          encoding: "utf8",
+          stdio: ["ignore", "pipe", "ignore"],
+          timeout: 6000,
+        },
+      );
+    const [unitPath] = JSON.parse(
+      bus(
+        "call",
+        manager,
+        "/org/freedesktop/systemd1",
+        `${manager}.Manager`,
+        "GetUnit",
+        "s",
+        unit,
+      ),
+    ).data;
+    const [environment, files, pass, unset] = bus(
+      "get-property",
+      manager,
+      unitPath,
+      `${manager}.Service`,
+      "Environment",
+      "EnvironmentFiles",
+      "PassEnvironment",
+      "UnsetEnvironment",
+    )
+      .trim()
+      .split("\n")
+      .map((line: string) => JSON.parse(line).data);
+    const affectsPath = (entry: string) =>
+      (SERVICE_PATH_VARIABLES as readonly string[]).includes(
+        entry.split("=", 1)[0] ?? "",
+      );
+    // systemd applies file syntax, overrides and precedence. Never log its output.
+    const output = execFileSync(
+      "systemd-run",
+      [
+        "--system",
+        "--pipe",
+        "--wait",
+        "--collect",
+        "--quiet",
+        "--no-ask-password",
+        "--property=RuntimeMaxSec=10s",
+        `--uid=${user}`,
+        `--gid=${group}`,
+        ...environment
+          .filter(affectsPath)
+          .map((entry: string) => `--setenv=${entry}`),
+        ...files.map(
+          ([file, optional]: [string, boolean]) =>
+            `--property=EnvironmentFile=${optional ? "-" : ""}${file}`,
+        ),
+        ...pass
+          .filter(affectsPath)
+          .map((name: string) => `--property=PassEnvironment=${name}`),
+        ...unset
+          .filter(affectsPath)
+          .map(
+            (entry: string) =>
+              `--property=UnsetEnvironment=${JSON.stringify(entry)}`,
+          ),
+        "--",
+        "/usr/bin/env",
+        "-0",
+      ],
+      { stdio: ["ignore", "pipe", "ignore"], timeout: 15000 },
+    );
+    return output.toString("utf8").split("\0").filter(affectsPath);
+  },
   systemctl: (args) =>
     new Promise((resolve, reject) => {
       execFile(
         "systemctl",
         [...args],
-        { timeout: 15_000, maxBuffer: 1024 * 1024, env: { LC_ALL: "C", PATH: process.env.PATH ?? "" } },
+        {
+          timeout: 15_000,
+          maxBuffer: 1024 * 1024,
+          env: { LC_ALL: "C", PATH: process.env.PATH ?? "" },
+        },
         (error, stdout) => {
           if (error && typeof error.code !== "number") return reject(error);
-          resolve({ code: error ? Number(error.code) : 0, stdout: String(stdout) });
+          resolve({
+            code: error ? Number(error.code) : 0,
+            stdout: String(stdout),
+          });
         },
       );
     }),
@@ -99,10 +198,30 @@ export function createSystemdServicePort(input: {
       if (fields.LoadState === "not-found")
         return { releases: [], configuredPaths: [] };
       if (fields.LoadState !== "loaded")
-        throw unidentified(`unit load state is ${fields.LoadState ?? "unknown"}`);
+        throw unidentified(
+          `unit load state is ${fields.LoadState ?? "unknown"}`,
+        );
       const pid = fields.MainPID ?? "";
       if (!/^(0|[1-9]\d*)$/.test(pid)) throw unidentified("invalid MainPID");
       const paths = new Set(unitConfiguredPaths(fields));
+      try {
+        if (!probe.effectiveEnvironment) throw new Error("unavailable");
+        const configured = await probe.effectiveEnvironment(
+          unit,
+          fields.User || "root",
+          fields.Group || fields.User || "root",
+        );
+        if (
+          configured.some((entry) => {
+            const value = entry.slice(entry.indexOf("=") + 1);
+            return value !== "" && !value.startsWith("/");
+          })
+        )
+          throw new Error("relative path");
+        for (const path of environmentPaths(configured)) paths.add(path);
+      } catch {
+        throw unidentified("effective configured paths could not be resolved");
+      }
       const state = fields.ActiveState ?? "";
       if (pid === "0") {
         if ((SERVICE_BUSY_STATES as readonly string[]).includes(state))

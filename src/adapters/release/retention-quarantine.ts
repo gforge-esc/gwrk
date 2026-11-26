@@ -172,11 +172,19 @@ export function createQuarantine(control: string, deps: QuarantineDeps = {}) {
     },
 
     async recover(
-      verify: (intent: QuarantineIntent, parked: string) => Promise<boolean>,
+      verify: (
+        intent: QuarantineIntent,
+        parked: string,
+      ) => Promise<
+        | boolean
+        | "restore"
+        | { action: "restore"; release: () => Promise<void> }
+      >,
     ): Promise<QuarantineRecovery> {
       const recovered: string[] = [];
       const preserved: { name: string; reason: string }[] = [];
-      if (!(await realDirectory(control, false))) return { recovered, preserved };
+      if (!(await realDirectory(control, false)))
+        return { recovered, preserved };
       const entries = (await realDirectory(trash, false))
         ? (await readdir(trash)).sort()
         : [];
@@ -192,17 +200,38 @@ export function createQuarantine(control: string, deps: QuarantineDeps = {}) {
           preserved.push({ name, reason: "quarantined entry is a symlink" });
           continue;
         }
-        if (String(info.dev) !== intent.dev || String(info.ino) !== intent.ino) {
+        if (
+          String(info.dev) !== intent.dev ||
+          String(info.ino) !== intent.ino
+        ) {
           preserved.push({ name, reason: "quarantined identity changed" });
           continue;
         }
-        if (!(await verify(intent, parked))) {
-          preserved.push({ name, reason: "owner rejected quarantined identity" });
+        const decision = await verify(intent, parked);
+        if (!decision) {
+          preserved.push({
+            name,
+            reason: "owner rejected quarantined identity",
+          });
           continue;
         }
-        await rm(parked, { recursive: true, force: true });
-        await rm(intentPath(name), { force: true });
-        recovered.push(name);
+        const release =
+          typeof decision === "object" ? decision.release : undefined;
+        try {
+          if (decision === "restore" || typeof decision === "object") {
+            if (await lstatOrNull(intent.source)) {
+              preserved.push({ name, reason: "original path already exists" });
+              continue;
+            }
+            await rename(parked, intent.source);
+          } else {
+            await rm(parked, { recursive: true, force: true });
+          }
+          await rm(intentPath(name), { force: true });
+          recovered.push(name);
+        } finally {
+          await release?.();
+        }
       }
       // An intent with no trash entry either never moved its item or already
       // removed it. Neither leaves anything to delete.

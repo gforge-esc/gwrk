@@ -174,6 +174,11 @@ export async function runRetentionStep(
       `Disk preflight could not measure space: ${message(error)}`,
     );
   }
+  if (failed.length > 0)
+    return finish(
+      false,
+      "Retention had failed actions. Heavy work did not start.",
+    );
   if (preflight.ok) return finish(true, "Retention and disk preflight passed.");
 
   const short = preflight.shortfalls
@@ -213,5 +218,10 @@ function isNowProtected(
       : item.kind === "verification-run"
         ? protections.runs
         : protections.images;
-  return list.includes(item.id);
+  return (
+    list.includes(item.id) ||
+    (item.kind === "docker-image" &&
+      !!item.runId &&
+      protections.runs.includes(item.runId))
+  );
 }
