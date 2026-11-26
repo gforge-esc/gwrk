@@ -48,7 +48,9 @@ describe("install-release.sh lifecycle hook", () => {
     );
     const line = call.slice(0, call.indexOf("||"));
     expect(line).toMatch(/--lock-fd 9/);
-    expect(line).toMatch(/--service-unit "\$\{GWRK_SYSTEMD_UNIT:-gwrk-runner\.service\}"/);
+    expect(line).toMatch(
+      /--service-unit "\$\{GWRK_SYSTEMD_UNIT:-gwrk-runner\.service\}"/,
+    );
   });
 
   it("extracts exactly the bootstrap files and fails when one is missing", () => {

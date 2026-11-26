@@ -88,15 +88,21 @@ export async function main(
       throw new Error(USAGE);
     if (!isReleaseName(candidate))
       throw new Error("Invalid candidate version.");
-    const releaseRoot = realpathSync(resolve(flags.get("--release-root") ?? ""));
+    const releaseRoot = realpathSync(
+      resolve(flags.get("--release-root") ?? ""),
+    );
     const service = (
       io.service ??
-      ((name, root) => createSystemdServicePort({ unit: name, releaseRoot: root }))
+      ((name, root) =>
+        createSystemdServicePort({ unit: name, releaseRoot: root }))
     )(unit, releaseRoot);
     const lock = (
       io.lockProof ?? ((fd, lockPath) => createFdLockProof({ fd, lockPath }))
     )(Number(fdText), join(releaseRoot, ".install.lock"));
-    const adapter = createReleaseRootAdapter(releaseRoot, { candidate, service });
+    const adapter = createReleaseRootAdapter(releaseRoot, {
+      candidate,
+      service,
+    });
     const result = await runRetentionStep({
       inventory: adapter,
       effects: adapter,

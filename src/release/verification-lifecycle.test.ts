@@ -12,7 +12,10 @@ import {
 import { tmpdir } from "node:os";
 import { dirname, join, normalize } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { VERIFICATION_BOOTSTRAP_FILES, main } from "./verification-lifecycle.js";
+import {
+  VERIFICATION_BOOTSTRAP_FILES,
+  main,
+} from "./verification-lifecycle.js";
 
 describe("verification-preflight bootstrap", () => {
   it("lists every relative import closure and uses only the Node standard library", () => {
@@ -34,10 +37,14 @@ describe("verification-preflight bootstrap", () => {
     };
     visit("src/release/verification-lifecycle.ts");
     const expected = [...seen]
-      .map((source) => source.replace(/^src\//, "dist/").replace(/\.ts$/, ".js"))
+      .map((source) =>
+        source.replace(/^src\//, "dist/").replace(/\.ts$/, ".js"),
+      )
       .sort();
     expect(
-      VERIFICATION_BOOTSTRAP_FILES.filter((file) => file.startsWith("dist/")).sort(),
+      VERIFICATION_BOOTSTRAP_FILES.filter((file) =>
+        file.startsWith("dist/"),
+      ).sort(),
     ).toEqual(expected);
   });
 });

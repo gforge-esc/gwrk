@@ -121,7 +121,8 @@ export async function main(
     const dataRoot = await realpath(flags.get("--data-root") ?? "");
     const now = deps.now ?? (() => new Date().toISOString());
     const lock = (
-      deps.lockProof ?? ((n, lockPath) => createFdLockProof({ fd: n, lockPath }))
+      deps.lockProof ??
+      ((n, lockPath) => createFdLockProof({ fd: n, lockPath }))
     )(Number(fd), join(runsRoot, ".retention.lock"));
     const verification = createVerificationRootAdapter(runsRoot, dataRoot, {
       leaseBusy: deps.leaseBusy ?? flockLeaseBusy,

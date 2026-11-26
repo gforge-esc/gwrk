@@ -95,7 +95,10 @@ describe("Linux release archive", () => {
       copyFileSync("pnpm-lock.yaml", join(source, "pnpm-lock.yaml"));
       writeFileSync(join(source, "dist/cli.js"), "#!/usr/bin/env node\n");
       const files = [
-        ...new Set([...LIFECYCLE_BOOTSTRAP_FILES, ...VERIFICATION_BOOTSTRAP_FILES]),
+        ...new Set([
+          ...LIFECYCLE_BOOTSTRAP_FILES,
+          ...VERIFICATION_BOOTSTRAP_FILES,
+        ]),
       ];
       for (const file of files) {
         if (!file.startsWith("dist/")) continue;
@@ -180,10 +183,14 @@ describe("Linux release archive", () => {
           "--",
           ...bootstrap.map((file: string) => `package/${file}`),
         ]);
-        const result = spawnSync(process.execPath, [join(extracted, entry), ...args], {
-          encoding: "utf8",
-          env: { PATH: process.env.PATH ?? "" },
-        });
+        const result = spawnSync(
+          process.execPath,
+          [join(extracted, entry), ...args],
+          {
+            encoding: "utf8",
+            env: { PATH: process.env.PATH ?? "" },
+          },
+        );
         expect(result.stderr).not.toMatch(/ERR_MODULE_NOT_FOUND|Cannot find/);
         expect(result.stderr).toMatch(/does not hold the exclusive lock/);
         expect(result.status).toBe(1);
