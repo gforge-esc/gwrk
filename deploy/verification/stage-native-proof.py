@@ -976,6 +976,26 @@ def proof_disk_preflight(cfg: Config, run: Path, owner: dict) -> None:
         raise StageError("Proof disk space is below 8 GiB root or the data estimate plus 4 GiB.")
 
 
+def preserve_failed_attempt(run: Path, owner: dict) -> str:
+    history = run / "proof-attempts"
+    history.mkdir(mode=0o700, exist_ok=True)
+    real_directory(history)
+    receipt = history / f"failed-{os.urandom(16).hex()}.json"
+    fd = os.open(receipt, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
+    with os.fdopen(fd, "w", encoding="utf-8") as handle:
+        json.dump({"schema": 1, "runId": run.name, "preservedAt": now(), "owner": owner}, handle, indent=2)
+        handle.write("\n")
+        handle.flush()
+        os.fsync(handle.fileno())
+    for directory in (history, run):
+        directory_fd = os.open(directory, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+        try:
+            os.fsync(directory_fd)
+        finally:
+            os.close(directory_fd)
+    return str(receipt.relative_to(run))
+
+
 def execute(args, cfg: Config) -> int:
     run_id = args.run_id
     if not RUN_ID_RE.match(run_id):
@@ -995,10 +1015,16 @@ def execute(args, cfg: Config) -> int:
             raise StageError("Retention lock is not a regular file.")
         fcntl.flock(lock_fd, fcntl.LOCK_EX)
         owner = read_owner(run, run_id)
-        if owner.get("state") != "staged":
+        retry = owner.get("state") == "failed" and getattr(args, "retry_failed", False)
+        if owner.get("state") != "staged" and not retry:
             raise StageError(f"Run {run_id} is {owner.get('state')}, not staged.")
         proof_disk_preflight(cfg, run, owner)
-        update_owner(run, run_id, state="executing", executingAt=now())
+        executing = {**owner, "state": "executing", "executingAt": now()}
+        if retry:
+            executing["retryOf"] = preserve_failed_attempt(run, owner)
+        for field in ("completedAt", "exitCode", "error"):
+            executing.pop(field, None)
+        write_owner(run, executing)
         try:
             # The child inherits the lease, so it stays held even if this driver dies.
             result = run_cmd(command, pass_fds=(lease, lock_fd), stdout=None, stderr=None, check=False).returncode
@@ -1026,6 +1052,7 @@ def parse(argv):
     exec_parser = commands.add_parser("exec")
     exec_parser.add_argument("--config", required=True)
     exec_parser.add_argument("--run-id", required=True)
+    exec_parser.add_argument("--retry-failed", action="store_true")
     exec_parser.add_argument("command", nargs=argparse.REMAINDER)
     return parser.parse_args(argv)
 
