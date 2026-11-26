@@ -16,7 +16,7 @@ import { pathToFileURL } from "node:url";
 import { describe, expect, it } from "vitest";
 
 describe("Linux release archive", () => {
-  it("ships the frozen lockfile with the CLI and excludes local configuration", () => {
+  it("ships an executable CLI and frozen lockfile without local configuration", () => {
     const root = mkdtempSync(join(tmpdir(), "gwrk-package-test-"));
     try {
       const source = join(root, "source");
@@ -25,7 +25,11 @@ describe("Linux release archive", () => {
       mkdirSync(join(source, "deploy/linux-runner"), { recursive: true });
       copyFileSync("package.json", join(source, "package.json"));
       copyFileSync("pnpm-lock.yaml", join(source, "pnpm-lock.yaml"));
-      writeFileSync(join(source, "dist/cli.js"), "// fixture");
+      writeFileSync(
+        join(source, "dist/cli.js"),
+        '#!/usr/bin/env node\nprocess.stdout.write("fixture-cli-ready\\n");\n',
+        { mode: 0o644 },
+      );
       copyFileSync(
         "deploy/linux-runner/install-release.sh",
         join(source, "deploy/linux-runner/install-release.sh"),
@@ -61,6 +65,14 @@ describe("Linux release archive", () => {
       expect(files).not.toContain("package/.gwrkrc.local.json");
       expect(files).not.toContain("package/.env");
       expect(files).not.toContain("package/.gwrk/config.json");
+      const installed = join(root, "installed");
+      mkdirSync(installed);
+      execFileSync("tar", ["-xzf", archive, "-C", installed]);
+      expect(
+        execFileSync(join(installed, "package/dist/cli.js"), [], {
+          encoding: "utf8",
+        }),
+      ).toBe("fixture-cli-ready\n");
     } finally {
       rmSync(root, { recursive: true, force: true });
     }

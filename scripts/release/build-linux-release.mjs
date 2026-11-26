@@ -4,7 +4,14 @@
 
 import { execFileSync } from "node:child_process";
 import { closeSync, openSync } from "node:fs";
-import { copyFile, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import {
+  chmod,
+  copyFile,
+  mkdtemp,
+  readFile,
+  rm,
+  writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -31,6 +38,8 @@ export async function packRelease(sourceDir, outputFile) {
       join(sourceDir, "pnpm-lock.yaml"),
       join(staging, "package/pnpm-lock.yaml"),
     );
+    // TypeScript emits the CLI without execute bits. Preserve a runnable package bin.
+    await chmod(join(staging, "package/dist/cli.js"), 0o755);
     execFileSync("tar", ["-czf", outputFile, "-C", staging, "package"]);
   } finally {
     await rm(staging, { recursive: true, force: true });
