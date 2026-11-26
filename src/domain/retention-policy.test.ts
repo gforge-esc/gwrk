@@ -11,6 +11,7 @@ import {
   parseReleasePointer,
   planPreflight,
   planRetention,
+  verificationRequirements,
 } from "./retention-policy.js";
 
 const release = (
@@ -230,6 +231,32 @@ describe("planPreflight", () => {
 
   it("sizes installs from the uncompressed archive", () => {
     expect(installRequiredBytes(GIB)).toBe(5 * GIB);
+  });
+
+  it("keeps the 8 GiB root floor on top of build bytes on a shared root", () => {
+    const requirements = verificationRequirements({
+      rootPath: "/",
+      runsRoot: "/opt/gwrk-verification",
+      dataRoot: "/var/lib/gwrk/verification-fixtures",
+      buildBytes: 3 * GIB,
+      dataBytes: 6 * GIB,
+    });
+    const result = planPreflight(requirements, [
+      { path: "/", device: "root", availableBytes: 10 * GIB },
+      {
+        path: "/opt/gwrk-verification",
+        device: "root",
+        availableBytes: 10 * GIB,
+      },
+      {
+        path: "/var/lib/gwrk/verification-fixtures",
+        device: "data",
+        availableBytes: 10 * GIB,
+      },
+    ]);
+    expect(result.shortfalls.map((s) => [s.device, s.missingBytes])).toEqual([
+      ["root", 1 * GIB],
+    ]);
   });
 });
 

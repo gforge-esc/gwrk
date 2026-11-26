@@ -256,6 +256,37 @@ export function installRequiredBytes(uncompressedBytes: number): number {
   return 3 * uncompressedBytes + 2 * GIB;
 }
 
+/** Root floor from the native staging guard. Never lower it. */
+export const VERIFICATION_ROOT_FLOOR_BYTES = 8 * GIB;
+/** Data headroom from the native staging guard. */
+export const VERIFICATION_DATA_HEADROOM_BYTES = 4 * GIB;
+
+export function verificationRequirements(input: {
+  rootPath: string;
+  runsRoot: string;
+  dataRoot: string;
+  buildBytes: number;
+  dataBytes: number;
+}): SpaceRequirement[] {
+  return [
+    {
+      label: "root floor",
+      path: input.rootPath,
+      requiredBytes: VERIFICATION_ROOT_FLOOR_BYTES,
+    },
+    {
+      label: "build workspace",
+      path: input.runsRoot,
+      requiredBytes: input.buildBytes,
+    },
+    {
+      label: "fixture data",
+      path: input.dataRoot,
+      requiredBytes: input.dataBytes + VERIFICATION_DATA_HEADROOM_BYTES,
+    },
+  ];
+}
+
 const RELEASE_NAME = /^[A-Za-z0-9.+-]+$/;
 
 export type PointerResult =
