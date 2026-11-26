@@ -19,7 +19,7 @@ export interface RetentionInventoryPort {
 }
 
 export interface QuarantineRecovery {
-  /** Interrupted quarantines that matched their intent and identity, then were removed. */
+  /** Interrupted quarantines recovered after intent and identity checks. */
   readonly recovered: string[];
   /** Entries left in place, such as unknown names or changed identities. */
   readonly preserved: { name: string; reason: string }[];

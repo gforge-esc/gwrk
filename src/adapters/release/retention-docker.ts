@@ -13,7 +13,7 @@
 import { createHash } from "node:crypto";
 import { lstat, readFile, readdir } from "node:fs/promises";
 import { join } from "node:path";
-import { classifyRun } from "../../domain/retention-policy.js";
+import { STAGED_TTL_MS, classifyRun } from "../../domain/retention-policy.js";
 import type {
   InventoryItem,
   Protections,
@@ -261,7 +261,11 @@ export function createDockerImageAdapter(
           throw new Error("Image owner record changed.");
         const record = JSON.parse(await readFile(marker, "utf8"));
         const state = classifyRun({
-          ...record,
+          state: record.state,
+          startedAt: record.startedAt,
+          stagedAt: record.stagedAt,
+          completedAt: record.completedAt,
+          stagedTtlMs: STAGED_TTL_MS,
           leaseBusy: false,
           now: (deps.now ?? (() => new Date().toISOString()))(),
         });

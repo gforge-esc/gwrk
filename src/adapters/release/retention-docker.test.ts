@@ -179,6 +179,31 @@ const inspected = () =>
     .map((c) => c[c.length - 1]);
 
 describe("Docker verification cache retention", () => {
+  it("keeps an image when its run becomes newly staged after planning", async () => {
+    const adapter = createDockerImageAdapter(runs, {
+      docker,
+      acquireLease: async () => async () => {},
+      now: () => "2026-11-26T16:45:00Z",
+    });
+    const item = (await adapter.inventory()).find(
+      (item) => item.id === id("1"),
+    );
+    expect(item).toBeDefined();
+    record(
+      run("a"),
+      {
+        state: "staged",
+        startedAt: "2026-11-26T16:40:00Z",
+        stagedAt: "2026-11-26T16:44:00Z",
+      },
+      [{ tag: tag(run("a"), "flat"), hostImageId: id("1") }],
+    );
+    await expect(
+      adapter.apply({ action: "delete-image", item: item! }),
+    ).rejects.toThrow(/eligible/);
+    expect(removed()).toEqual([]);
+  });
+
   it("removes an owned image by its inspected host identity and never by its archive config ID", async () => {
     const result = await step();
     expect(result.ok).toBe(true);
