@@ -6,6 +6,8 @@ Run this source-controlled driver on the verification host. Python 3.12 or newer
 
 Create a private configuration file with canonical absolute paths. Create `runsRoot` and `dataParent` before staging. The driver creates `dataRoot` as a direct child of `dataParent`.
 
+Read the existing parent ownership with `stat -c "%u %g %a" /var/lib/gwrk`. Set `dataParentOwner` to that owner and mode. The driver rejects mismatches and leaves parent ownership unchanged.
+
 ```json
 {
   "runsRoot": "/opt/gwrk-verification",
