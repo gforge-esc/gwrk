@@ -457,6 +457,7 @@ export async function registerSlackActions(app: App, context: CommandContext) {
     const runTx = context.queue.runInTransaction
       ? <T>(fn: () => T) => context.queue.runInTransaction(fn)
       : <T>(fn: () => T) => fn();
+    const hasMultiProjectQueue = typeof context.queue?.accept === "function";
 
     // Claim the authorized Slack action and persist DispatchReceipt in one
     // SQLite transaction strictly BEFORE calling Slack ack().
@@ -476,7 +477,12 @@ export async function registerSlackActions(app: App, context: CommandContext) {
         requiredAccess,
         nowIso,
         resolveCheckout: (project) => {
-          const checkout = resolveSlackCheckout(project, context.projectRoot);
+          const queueRoot =
+            !hasMultiProjectQueue ||
+            project.projectId === context.queueProjectId
+              ? context.projectRoot
+              : undefined;
+          const checkout = resolveSlackCheckout(project, queueRoot);
           if (
             !checkout ||
             !scopedFeatureDirectory(checkout, featureId, { exactId: true })
@@ -485,7 +491,9 @@ export async function registerSlackActions(app: App, context: CommandContext) {
           }
           return checkout;
         },
-        requiredProjectId: context.queueProjectId ?? null,
+        requiredProjectId: hasMultiProjectQueue
+          ? undefined
+          : (context.queueProjectId ?? null),
       });
 
       if (!decision.ok) {

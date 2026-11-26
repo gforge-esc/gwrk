@@ -678,5 +678,147 @@ describe("slack-home", () => {
       );
       expect(sectionTexts.some((t) => t.includes("Pulse Summary"))).toBe(false);
     });
+
+    it("supports interactive project selection in App Home and scopes status to the authorized selected project", async () => {
+      const { alpha, beta } = createHomeCheckouts();
+      const event = vi.fn();
+      const action = vi.fn();
+      const publish = vi.fn();
+      const multiAccessRoles = [
+        ...SYNTHETIC_ROLES,
+        {
+          projectId: beta.projectId,
+          principalType: "slack_user" as const,
+          principalId: `${SYNTHETIC_WORKSPACE_ID}:${SYNTHETIC_USER_VIEWER}`,
+          role: "viewer" as const,
+        },
+      ];
+      const registry = homeRegistry(alpha, beta, multiAccessRoles);
+
+      vi.mocked(getStatusData).mockImplementation(
+        async (_m, _q, _s, _l, _n, _f, opts) => ({
+          ...mockStatus,
+          ...(opts?.projectId ? { projectId: opts.projectId } : {}),
+          dispatch: {
+            ...mockStatus.dispatch,
+            queueDepth: opts?.projectId === beta.projectId ? 4 : 1,
+          },
+          sandboxes: [
+            {
+              ...mockStatus.sandboxes[0],
+              featureId:
+                opts?.projectId === beta.projectId
+                  ? "052-beta-feature"
+                  : "001-cli-core",
+            },
+          ],
+        }),
+      );
+
+      await registerSlackHomeHandler(
+        { event, action } as unknown as App,
+        {
+          config: mockConfig,
+          projectRoot: alpha.localRoot,
+          registry,
+          queueProjectId: alpha.projectId,
+        } as Parameters<typeof registerSlackHomeHandler>[1],
+      );
+
+      expect(action).toHaveBeenCalledWith(
+        "select_home_project",
+        expect.any(Function),
+      );
+      const selectHandler = action.mock.calls[0][1];
+      const ack = vi.fn();
+
+      // Viewer authorized for both alpha and beta selects beta in App Home
+      await selectHandler({
+        ack,
+        body: {
+          team: { id: SYNTHETIC_WORKSPACE_ID },
+          user: { id: SYNTHETIC_USER_VIEWER },
+          actions: [
+            {
+              value: JSON.stringify({
+                projectId: beta.projectId,
+                projectSlug: beta.slug,
+              }),
+            },
+          ],
+        },
+        context: { teamId: SYNTHETIC_WORKSPACE_ID },
+        client: { views: { publish } },
+        logger: { error: vi.fn() },
+      });
+
+      expect(ack).toHaveBeenCalledOnce();
+      expect(publish).toHaveBeenCalledOnce();
+      const selectedBlocks = JSON.stringify(
+        publish.mock.calls[0][0].view.blocks,
+      );
+      expect(selectedBlocks).toContain(
+        `*${beta.name}* (\`${beta.slug}\`) · *Selected*`,
+      );
+      expect(selectedBlocks).toContain("052-beta-feature");
+      expect(selectedBlocks).toContain("*Queue Depth:* 4");
+
+      // Subsequent app_home_opened preserves the authorized selection for that user
+      publish.mockClear();
+      await event.mock.calls[0][1]({
+        event: {
+          type: "app_home_opened",
+          tab: "home",
+          user: SYNTHETIC_USER_VIEWER,
+        },
+        body: { team_id: SYNTHETIC_WORKSPACE_ID },
+        context: {},
+        client: { views: { publish } },
+        logger: { error: vi.fn() },
+      });
+      expect(publish).toHaveBeenCalledOnce();
+      const reopenedBlocks = JSON.stringify(
+        publish.mock.calls[0][0].view.blocks,
+      );
+      expect(reopenedBlocks).toContain(
+        `*${beta.name}* (\`${beta.slug}\`) · *Selected*`,
+      );
+      expect(reopenedBlocks).toContain("052-beta-feature");
+
+      // User without role on beta cannot select beta
+      publish.mockClear();
+      const alphaOnlyRegistry = homeRegistry(alpha, beta, SYNTHETIC_ROLES);
+      const actionAlphaOnly = vi.fn();
+      await registerSlackHomeHandler(
+        { event: vi.fn(), action: actionAlphaOnly } as unknown as App,
+        {
+          config: mockConfig,
+          projectRoot: alpha.localRoot,
+          registry: alphaOnlyRegistry,
+          queueProjectId: alpha.projectId,
+        } as Parameters<typeof registerSlackHomeHandler>[1],
+      );
+      await actionAlphaOnly.mock.calls[0][1]({
+        ack: vi.fn(),
+        body: {
+          team: { id: SYNTHETIC_WORKSPACE_ID },
+          user: { id: SYNTHETIC_USER_VIEWER },
+          actions: [
+            {
+              value: JSON.stringify({
+                projectId: beta.projectId,
+                projectSlug: beta.slug,
+              }),
+            },
+          ],
+        },
+        context: { teamId: SYNTHETIC_WORKSPACE_ID },
+        client: { views: { publish } },
+        logger: { error: vi.fn() },
+      });
+      const deniedBlocks = JSON.stringify(publish.mock.calls[0][0].view.blocks);
+      expect(deniedBlocks).not.toContain("052-beta-feature");
+      expect(deniedBlocks).not.toContain(`*${beta.name}*`);
+    });
   });
 });

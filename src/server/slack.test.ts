@@ -763,4 +763,158 @@ describe("Slack Server Integration", () => {
     "persists /gwrk %s receipt before ack() and launches worker only after ack()",
     verifySlashAck,
   );
+
+  it("supports scoped status and durable dispatch across three enrolled projects on a shared durable queue", async () => {
+    vi.mocked(slackClient.loadSlackConfig).mockReturnValue({
+      botToken: "xoxb-test",
+      appToken: "xapp-test",
+    });
+    const featureId = "052-rollout-smoke";
+    const root = mkdtempSync(join(tmpdir(), "gwrk-slack-three-proj-"));
+    onTestFinished(() => rmSync(root, { recursive: true, force: true }));
+
+    const alpha = initCheckout(
+      SYNTHETIC_PROJECT_ALPHA,
+      join(root, "gwrk"),
+      featureId,
+    );
+    const beta = initCheckout(
+      {
+        ...SYNTHETIC_PROJECT_BETA,
+        slug: "right-side-up",
+        name: "Right Side Up!",
+        repoSlug: "gforge-esc/right-side-up",
+        slack: {
+          workspaceId: SYNTHETIC_WORKSPACE_ID,
+          channelId: "C_SHARED_ROLLOUT",
+          sharedChannel: true,
+        },
+      },
+      join(root, "right-side-up"),
+      featureId,
+    );
+    const gamma = initCheckout(
+      {
+        ...SYNTHETIC_PROJECT_BETA,
+        projectId: "proj-gamma-placeholder",
+        slug: "aftermath-afterglow",
+        name: "Aftermath, Afterglow",
+        repoSlug: "dgonzo/aftermath-afterglow",
+        trunkBranch: "main",
+        slack: {
+          workspaceId: SYNTHETIC_WORKSPACE_ID,
+          channelId: "C_SHARED_ROLLOUT",
+          sharedChannel: true,
+        },
+      },
+      join(root, "aftermath-afterglow"),
+      featureId,
+    );
+
+    const { openDatabase } =
+      await vi.importActual<typeof import("../db/index.js")>("../db/index.js");
+    const sqlite = await vi.importActual<
+      typeof import("../adapters/sqlite/index.js")
+    >("../adapters/sqlite/index.js");
+    const { DispatchQueue } =
+      await vi.importActual<typeof import("./dispatch.js")>("./dispatch.js");
+    const { GwrkConfigSchema } =
+      await vi.importActual<typeof import("../utils/config.js")>(
+        "../utils/config.js",
+      );
+
+    const db = openDatabase({ dbPath: join(root, "gwrk.db") });
+    onTestFinished(() => db.close());
+    const registry = sqlite.createSqliteProjectRegistryAdapter({ db });
+    const store = sqlite.createSqliteOperationsStoreAdapter({ db });
+
+    for (const proj of [alpha, beta, gamma]) {
+      registry.enrollProject({ ...proj, legacyProjectIds: [] });
+      registry.setRoleBinding({
+        projectId: proj.projectId,
+        principalType: "slack_user",
+        principalId: `${SYNTHETIC_WORKSPACE_ID}:${SYNTHETIC_USER_MAINTAINER}`,
+        role: "maintainer",
+      });
+    }
+
+    const config = GwrkConfigSchema.parse({
+      project: { name: "gwrk" },
+      agents: { implement: "agy" },
+    });
+    const queue = new DispatchQueue(
+      config,
+      { isThrottled: () => true } as unknown as SystemMonitor,
+      mockDeps.sandbox,
+      alpha.localRoot,
+      { db, projectId: alpha.projectId },
+      undefined,
+      undefined,
+      {
+        store,
+        registry,
+        worker: {
+          inspectRecoveredWork: vi.fn(),
+          launchPhaseShip: vi.fn(async () => ({ exitCode: 0, stderr: "" })),
+          cleanupStaleSandbox: vi.fn(),
+        },
+        heartbeatIntervalMs: null,
+      },
+    );
+    onTestFinished(() => queue.close());
+
+    await startSlackApp({
+      ...mockDeps,
+      queue,
+      projectRoot: alpha.localRoot,
+      config,
+      registry,
+    });
+    const handler = vi.mocked(getSlackApp()!.command).mock.calls[0][1];
+
+    for (const proj of [beta, gamma]) {
+      const statusRespond = vi.fn();
+      await handler({
+        command: {
+          command: "/gwrk",
+          text: `status --project ${proj.slug}`,
+          channel_id: "C_SHARED_ROLLOUT",
+          user_id: SYNTHETIC_USER_MAINTAINER,
+          team_id: SYNTHETIC_WORKSPACE_ID,
+        },
+        ack: vi.fn(),
+        respond: statusRespond,
+        client: { chat: { postEphemeral: vi.fn() } },
+      } as Parameters<typeof handler>[0]);
+      expect(statusRespond).toHaveBeenCalledOnce();
+      const statusBlocks = JSON.stringify(
+        statusRespond.mock.calls[0][0].blocks,
+      );
+      expect(statusBlocks).toContain(`*Project:* \`${proj.slug}\``);
+
+      const dispatchRespond = vi.fn();
+      await handler({
+        command: {
+          command: "/gwrk",
+          text: `dispatch ${featureId} 1 --project ${proj.slug}`,
+          channel_id: "C_SHARED_ROLLOUT",
+          user_id: SYNTHETIC_USER_MAINTAINER,
+          team_id: SYNTHETIC_WORKSPACE_ID,
+        },
+        ack: vi.fn(),
+        respond: dispatchRespond,
+        client: { chat: { postEphemeral: vi.fn() } },
+      } as Parameters<typeof handler>[0]);
+      expect(dispatchRespond).toHaveBeenCalledOnce();
+      const op = store.getDispatchOperation({
+        projectId: proj.projectId,
+        featureId,
+        phaseId: "phase-01",
+      });
+      expect(op).not.toBeNull();
+      expect(JSON.stringify(dispatchRespond.mock.calls[0][0].blocks)).toContain(
+        op?.operationId ?? "",
+      );
+    }
+  });
 });

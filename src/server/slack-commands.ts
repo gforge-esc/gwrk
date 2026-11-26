@@ -107,15 +107,18 @@ const handlers: Record<string, SlashCommandHandler> = {
     const resources = context.monitor.getResources();
     const projectId =
       context.projectId ?? resolveProjectId(context.projectRoot);
+    const hasMultiProjectQueue = typeof context.queue?.accept === "function";
     const ownsQueue =
-      !context.routingService || context.queueProjectId === projectId;
+      !context.routingService ||
+      hasMultiProjectQueue ||
+      context.queueProjectId === projectId;
 
     const blocks: KnownBlock[] = [
       {
         type: "section",
         text: {
           type: "mrkdwn",
-          text: `*System Resources:* CPU ${resources.cpuPercent.toFixed(1)}%, MEM ${resources.memPercent.toFixed(1)}%`,
+          text: `*System Resources:* CPU ${resources.cpuPercent.toFixed(1)}%, MEM ${resources.memPercent.toFixed(1)}%${context.projectSlug ? `\n*Project:* \`${context.projectSlug}\`` : ""}`,
         },
       },
     ];
@@ -123,7 +126,12 @@ const handlers: Record<string, SlashCommandHandler> = {
     if (featureId) {
       // Check in-memory queue first (live dispatches)
       const featureDispatch = ownsQueue
-        ? context.queue.getDispatch(featureId, "")
+        ? context.queue.getDispatch(
+            featureId,
+            "",
+            undefined,
+            hasMultiProjectQueue ? projectId : undefined,
+          )
         : undefined;
       if (featureDispatch) {
         blocks.push({
@@ -262,7 +270,12 @@ const handlers: Record<string, SlashCommandHandler> = {
       }
 
       // 3. Active dispatches
-      const activeDispatches = ownsQueue ? context.queue.getQueue().active : [];
+      const activeDispatches = ownsQueue
+        ? (hasMultiProjectQueue
+            ? context.queue.getQueue(projectId)
+            : context.queue.getQueue()
+          ).active
+        : [];
       if (activeDispatches.length > 0) {
         let text = `*🔧 Active Dispatches:* ${activeDispatches.length}`;
         for (const d of activeDispatches as DispatchRecord[]) {
@@ -1271,6 +1284,7 @@ export async function handleSlashCommand(
               "*Mentions*",
               "  `@gwrk <command>` — same commands, in-channel with threaded replies",
               "  `@gwrk what's the status?` — freeform → project summary",
+              "  `/gwrk <command> --project <slug>` — select an enrolled project in shared channels or DMs",
             ].join("\n"),
           },
         },
@@ -1349,9 +1363,13 @@ export async function handleSlashCommand(
     };
   }
 
+  const hasMultiProjectQueue = typeof context.queue?.accept === "function";
+  const isStartupQueueProject =
+    context.queueProjectId === decision.project.projectId;
   const queueUnavailable =
     queueCommands.has(subcommand) &&
-    context.queueProjectId !== decision.project.projectId;
+    !isStartupQueueProject &&
+    !hasMultiProjectQueue;
   let threadTs = queueUnavailable
     ? undefined
     : (decision.recipient.threadTs ?? context.threadTs);
@@ -1367,7 +1385,8 @@ export async function handleSlashCommand(
       ? resolveSlackCheckout(
           decision.project,
           (subcommand === "dispatch" || subcommand === "ship") &&
-            !queueUnavailable
+            !queueUnavailable &&
+            isStartupQueueProject
             ? context.projectRoot
             : undefined,
         )
