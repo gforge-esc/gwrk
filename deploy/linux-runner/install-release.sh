@@ -70,6 +70,31 @@ while IFS= read -r path; do
   esac
 done < "$staging/archive.paths"
 
+# Retention and disk preflight are mandatory. The helper comes from the archive
+# whose digest matched the manifest above, and it runs under the install lock
+# before extraction, dependency install or pointer activation.
+lifecycle="$staging/lifecycle"
+mkdir -- "$lifecycle"
+tar -xzf "$staging/package.tgz" --no-same-owner --no-same-permissions -C "$lifecycle" -- \
+  package/package.json \
+  package/dist/release/lifecycle.js \
+  package/dist/application/release/retention.js \
+  package/dist/adapters/release/retention-fs.js \
+  package/dist/adapters/release/retention-lock.js \
+  package/dist/adapters/release/retention-quarantine.js \
+  package/dist/adapters/release/retention-service.js \
+  package/dist/domain/retention-policy.js \
+  package/dist/ports/retention-port.js ||
+  fail "Release archive is missing the retention helper."
+uncompressed=$(awk '{ total += $3 } END { printf "%d", total }' "$staging/archive.types")
+# The helper proves it holds the install lock through descriptor 9. It protects
+# the release the service unit runs now and stops when that identity is
+# ambiguous. GWRK_SYSTEMD_UNIT=none declares that no service runs from this root.
+node "$lifecycle/package/dist/release/lifecycle.js" install-preflight \
+  --release-root "$release_root" --candidate "$version" --uncompressed-bytes "$uncompressed" \
+  --service-unit "${GWRK_SYSTEMD_UNIT:-gwrk-runner.service}" --lock-fd 9 ||
+  fail "Retention or disk preflight failed. Nothing was extracted or activated."
+
 release="$release_root/releases/$version"
 staged_release="$staging/release"
 current="$release_root/current"

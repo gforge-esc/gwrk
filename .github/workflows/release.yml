@@ -67,6 +67,9 @@ jobs:
           # then upload idempotently so re-runs don't fail on an existing asset.
           for attempt in $(seq 1 6); do
             if gh release view "$tag" >/dev/null 2>&1; then
+              if [[ "$tag" == *-* ]]; then
+                gh release edit "$tag" --prerelease
+              fi
               gh release upload "$tag" "$file" "${file}.sha256" release-manifest.json install-release.sh --clobber
               echo "Uploaded ${file} to release ${tag}"
               exit 0

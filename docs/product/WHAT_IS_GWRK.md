@@ -237,7 +237,7 @@ The **precision of GNU tooling** meets the **audacity of the runway**. Utilitari
 
 | Status | Capability |
 |--------|-----------|
-| ✅ Shipped | Define pipeline (`spec → plan → tests → tasks`), ship loop (autonomous implement → review → PR), compression engine (LOC-derived SP + effort forecast), harvest (auto-records on PR merge), plugin system (skills, workflows, enforcement), profile detection, gate scripts, execution ledger (SQLite), agent router (Gemini/Claude backend selection), research scaffolding |
+| ✅ Shipped | Define pipeline (`spec → plan → tests → tasks`), ship loop (autonomous implement → review → PR), compression engine (LOC-derived SP + effort forecast), harvest (auto-records on PR merge), plugin system (skills, workflows, enforcement), profile detection, gate scripts, execution ledger (SQLite), agent router (`agy`, `claude`, `codex` backend selection), research scaffolding, hosted production auth and portal |
 | 🔧 In Progress | Slack control plane (Socket Mode wired, DUT conversation not shipped), effort profiles (role-based LOC rates) |
 | 📋 Planned | Parallel dispatch (multi-phase concurrent shipping), Obsidian integration, build plan DAG visualization |
 | 🗄️ Deferred | Docker sandboxes, Codex Cloud integration, App Home Tab |

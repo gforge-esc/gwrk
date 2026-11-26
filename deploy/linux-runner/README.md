@@ -64,6 +64,16 @@ Install the approved provider CLI and its operator-owned wrapper on the host. Th
 
 Revoke a GitHub token or agent credential at its provider. Replace the credential file and restart the service to run preflight again. Revoke Slack credentials in the Slack app settings.
 
+## Automatic retention
+
+The installer runs retention and a disk preflight before extraction, dependency installation or activation. It holds the same lock as rollback throughout installation.
+
+Retention protects the running release plus `current` and `previous`. The incoming version also stays protected. It also keeps two recent unprotected releases. A release containing configured state or credentials cannot expire. Unknown files remain untouched. Interrupted cleanup restores owned parked releases before applying the current protection policy.
+
+The installer records cleanup and disk results under `/opt/gwrk/.retention/receipts`. If cleanup fails or space remains short, installation stops before activation. The active release stays available.
+
+[Native verification and release builds](../verification/README.md) use mandatory guards too. They retain two completed disposable payloads and preserve proof receipts. Kernel leases protect work in progress. Routine retention runs with the operation and needs no manual cleanup step.
+
 ## Backup and rollback
 
 Use a root shell for backup and restore so `runuser` can switch to `gwrk`.

@@ -1,137 +1,119 @@
 # Development Guide
 
+Clone the repository on `develop` and install dependencies with pnpm 9 on Node 20 or 22. Run `pnpm build`, `pnpm lint` and `pnpm test` before opening a pull request. Blocked: none.
+
 ## Prerequisites
 
-- **Node.js** >= 20
-- **pnpm** >= 9
-- At least one agent CLI installed: `gemini`, `claude`, or `codex`
+- Node.js 20 or 22 locally. Linux release builds require Linux with Node.js 22.
+- pnpm 9.x (`9.15.9` on Linux runner and release builds)
+- At least one supported agent CLI installed: `agy`, `claude` or `codex`
 
 ## Setup
 
 ```bash
-git clone <repo-url> && cd gwrk
+git clone https://github.com/gforge-esc/gwrk.git && cd gwrk
+git checkout develop
 pnpm install
 pnpm build
-pnpm link --global    # Makes `gwrk` available system-wide
+pnpm link --global
 ```
 
 ## Commands
 
 | Command | Purpose |
-|---------|---------|
-| `pnpm build` | TypeScript compilation |
-| `pnpm test` | Run Vitest suite |
-| `pnpm lint` | Biome lint + format check |
+|---|---|
+| `pnpm build` | Compile TypeScript and copy bundled SQL migrations and builtin plugins into `dist/` |
+| `pnpm test` | Run Vitest test suite |
+| `pnpm lint` | Run Biome check across tracked and workspace files |
+| `pnpm format` | Format source files with Biome |
+| `node dist/cli.js define adr --check` | Verify ADR headers, index freshness, and citations |
 
 ## Project Structure
 
-```
+```text
 src/
-  commands/       # CLI command implementations
-  server/         # Fastify build server (dispatch, sandbox, Slack)
-  engine/         # Core computation (pulse, compression, orchestrators)
-  plugins/        # Plugin system (loader, manifests, runtime)
-    builtins/     # Built-in plugins shipped with gwrk
-      agents/     # L1: Agent backend adapters (claude, codex, gemini)
-      workflows/  # L2.5: Core workflow plugins (specify, plan, implement, ...)
-  db/             # SQLite schema + migrations
-  utils/          # Shared utilities (config, git, agent dispatch)
-specs/            # Feature specifications and task state
-docs/             # Architecture, PRD, ADRs, research
+  domain/         # Pure domain types, policies, parsers (zero external I/O)
+  ports/          # Inbound and outbound port interfaces
+  application/    # Use-case services and orchestrators
+  adapters/       # Infrastructure adapters (auth, cli, git, github, models, release, sqlite)
+  commands/       # Commander CLI commands
+  server/         # Fastify control-plane server and generated portal-html.ts
+  engine/         # Core pipelines (define, ship, harvest, compression, ADR tooling)
+  plugins/        # Plugin loader, manifests, WorkflowRuntime
+    builtins/     # Built-in agents (agy, claude, codex), workflows, skills
+  db/             # SQLite schema and migrations
+  utils/          # Shared config, git, and signal helpers
+deploy/           # Linux runner and hosted-pilot deployment bundles
+docs/             # Guides (docs/site/), OpenAPI, ADRs, product docs, operations
+scripts/          # Build, lint, portal generator (build-portal.py), release packaging
+specs/            # Feature specs, plans, tasks, and gates
+tests/            # Integration, Linux runner, and hosted-pilot suites
 ```
 
 ## Configuration
 
-gwrk uses a three-layer config model. Each layer deep-merges over the previous one:
+gwrk merges three configuration layers in order. `.gwrkrc.json` tracks project identity. `.gwrkrc.local.json` stores gitignored personal agent selection. `~/.gwrk/config.json` stores machine-wide tokens.
 
-| File | Tracked? | Purpose |
-|------|----------|---------|
-| `.gwrkrc.json` | ✅ Yes | Project identity — name, type, stack, layout, server defaults |
-| `.gwrkrc.local.json` | ❌ Gitignored | Personal agent preferences — define/implement agents, registry |
-| `~/.gwrk/config.json` | N/A | Machine-wide secrets — Slack tokens, webhook URLs, API keys |
-
-### Quick Setup
+Copy the template or run `gwrk init`:
 
 ```bash
 cp .gwrkrc.local.json.example .gwrkrc.local.json
-# Edit to set your preferred agents
 ```
 
-Or run `gwrk init` which generates both files automatically.
+Example `.gwrkrc.local.json`:
 
-### Example `.gwrkrc.json` (tracked)
-
-```jsonc
-{
-  "project": { "name": "my-project", "type": "nodejs" },
-  "server": { "port": 18790, "host": "localhost" }
-}
-```
-
-### Example `.gwrkrc.local.json` (gitignored)
-
-```jsonc
+```json
 {
   "agents": {
-    "define": "claude",       // Your preferred agent for define workflows
-    "implement": "agy",       // Your preferred agent for ship/implement
-    "registry": { /* ... */ },
-    "fallbackOrder": ["agy", "claude"]
+    "define": "claude",
+    "implement": "agy",
+    "registry": {},
+    "fallbackOrder": ["agy", "claude", "codex"]
   }
 }
 ```
 
 ## Pre-Commit Hook
 
-Install from the version-controlled copy (required after clone):
+Install the version-controlled hook after cloning:
 
 ```bash
 cp scripts/hooks/pre-commit .git/hooks/pre-commit && chmod +x .git/hooks/pre-commit
 ```
 
-A branch-aware, TDD-aware pre-commit hook:
+| Branch | Checks | Approximate Time |
+|---|---|---|
+| Feature branches | `pnpm build` | 3s |
+| `develop` and `main` | `pnpm build`, `pnpm lint`, `pnpm test` | 25s |
 
-| Branch | Checks | Duration |
-|--------|--------|----------|
-| Feature branches | `pnpm build` | ~3s |
-| `develop` / `main` | `pnpm build` + `pnpm test` | ~25s |
+Never bypass the hook with `--no-verify` in automated sessions.
 
-**TDD support**: RED test files (containing `// @ts-ignore - Module does not exist yet (RED)`) are auto-excluded from the test run. Once `/implement` makes them green and removes the marker, they rejoin the gate automatically.
+## Regenerating the Portal
 
-Bypass with `git commit --no-verify` (escape hatch — human-only, intentional).
+Never hand-edit `src/server/routes/portal-html.ts`. Edit the canonical Markdown sources under `docs/site/` or `docs/openapi/gwrk-openapi.yaml`, then regenerate with Sphinx and `scripts/build-portal.py`:
+
+```bash
+uvx --from sphinx --with myst-parser sphinx-build -b html docs/site docs/site/_build/html
+python3 scripts/build-portal.py
+pnpm exec biome format --write src/server/routes/portal-html.ts
+pnpm exec vitest run src/server/routes/portal-html.test.ts
+```
+
+Changing `package.json` or any file under `src/` (including `src/server/routes/portal-html.ts`) changes the closed runtime manifest hash used by the signed hosted-pilot native proof. Do not re-sign native evidence or deploy to production without independent review and operator authority.
 
 ## Plugin Development
 
-Plugins live in `~/.gwrk/plugins/` (global) or `.gwrk/plugins/` (project-local).
-
-Each plugin is a directory containing:
-- `manifest.yaml` — Identity, type, interface declarations
-- `PROMPT.md` — Workflow prompt (for workflow plugins)
-- `SKILL.md` — Reasoning program (for skill plugins)
-
-Types: `agent-backend`, `workflow`, `skill`
-
-## Testing
-
-```bash
-pnpm test                          # Full suite
-pnpm test -- src/path/to/file      # Single file
-gwrk test <feature>                # Feature-scoped tests
-gwrk gate <feature>                # Run gate scripts
-```
-
-## Governance
-
-- **Spec-First**: No implementation without approved `spec.md` + `plan.md`
-- **Hard Gates**: `gwrk tasks done` enforces gate scripts before state transitions
-- **TDD**: Tests are written before implementation; `GATE_STUB` blocks completion
-- **RAGB**: 🔴 RED (at risk) · 🟡 AMBER (in progress) · 🟢 GREEN (done done) · ⚫ BLACK (stopped)
+External plugins live in `~/.gwrk/plugins/` (global) or `.gwrk/plugins/` (project-local) and follow [ADR-012](decisions/ADR-012-plugin-registry-and-framework-packs.md). See [gwrk-plugins](https://github.com/gforge-esc/gwrk-plugins) for published external agent backends and framework packs.
 
 ## Releasing
 
-gwrk uses Google's `release-please` to automate version bumping, changelog generation, and GitHub Releases based on conventional commits.
+`.github/workflows/release.yml` runs `release-please-action@v4` on pushes to `main`. Release-please owns `.release-please-manifest.json` and `CHANGELOG.md`. It also creates the tag and the GitHub release.
 
-- Merging code into `main` will trigger a **Release PR**.
-- Merging the Release PR will automatically cut a GitHub Release and attach the npm tarball.
+1. Merge reviewed work into `develop` with passing CI on Node 20 and Node 22.
+2. If the next version needs an explicit number, set `release-as` in `.release-please-config.json` in a reviewed pull request. Bump `package.json` to the same value. Do not edit `.release-please-manifest.json` or add a `CHANGELOG.md` section by hand.
+3. Promote `develop` to `main` with a reviewed squash pull request. Put a `BEGIN_COMMIT_OVERRIDE` block in its body to curate the changelog.
+4. Review and merge the release pull request that release-please opens on `main`.
+5. On merge, `release.yml` creates the tag and marks prerelease tags (`*-*`) as GitHub prereleases. It runs `scripts/release/build-linux-release.mjs` from the tag on Linux with Node 22 and pnpm `9.15.9`. It uploads the tarball and its SHA-256 checksum. It also uploads `release-manifest.json` and `install-release.sh`.
+6. Merge `main` back into `develop` and remove any `release-as` value in the same pull request.
 
-> **TODO (GA Release)**: The repository is currently locked to the `-beta` prerelease sequence. When ready for General Availability (1.0.0), remove the `prerelease` and `prerelease-type` fields from `.release-please-config.json`.
+[release-1.6.0-beta.2-notes.md](operations/release-1.6.0-beta.2-notes.md) records the current release path.

@@ -319,7 +319,7 @@ describe("browser authentication HTTP routes", () => {
     privateBody(first.body);
     privateBody(second.body);
     expect(first.body).not.toMatch(
-      /CANARY|CANARY_PROJECT|CANARY_CODE|CANARY_USER|TOKEN|PROXY_COOKIE|USER_EMAIL|USER_SUB|gwrk_v1\./,
+      /CANARY|CANARY_PROJECT|CANARY_CODE|CANARY_USER|TOKEN|PROXY_COOKIE|USER_EMAIL|USER_SUB|gwrk_ak_v1_|\bgwrk_v\d+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]{8,}\b/,
     );
     expect(f.records.size).toBe(0);
     expect(f.issue).not.toHaveBeenCalled();

@@ -1,8 +1,8 @@
 blank_issues_enabled: false
 contact_links:
-  - name: "🧪 Alpha Feedback (what worked / what was rough)"
+  - name: "Beta Feedback (what worked and what was rough)"
     url: "https://github.com/gforge-esc/gwrk/discussions/categories/alpha-feedback"
-    about: "Open-ended experience reports on the alpha — no reproducible steps required."
+    about: "Open-ended experience reports on the beta. No reproducible steps required."
   - name: "💡 Ideas (what you'd like to see)"
     url: "https://github.com/gforge-esc/gwrk/discussions/categories/ideas"
     about: "Propose and upvote directions for gwrk. Outcome-led, not feature-led."

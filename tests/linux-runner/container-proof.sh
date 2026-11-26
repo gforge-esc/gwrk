@@ -10,7 +10,8 @@ npm install -g pnpm@9.15.9 --no-fund --no-audit
 cd /artifacts
 version=$(node -p 'require("./release-manifest.json").version')
 archive="/artifacts/gwrk-$version.tgz"
-bash ./install-release.sh "$archive" /artifacts/release-manifest.json /opt/gwrk
+# No gwrk service exists in the container yet. Declare it so retention does not guess.
+GWRK_SYSTEMD_UNIT=none bash ./install-release.sh "$archive" /artifacts/release-manifest.json /opt/gwrk
 release=/opt/gwrk/current
 
 groupadd gwrk

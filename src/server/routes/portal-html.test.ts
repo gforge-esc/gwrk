@@ -739,14 +739,14 @@ describe("generated portal HTML API wire-contract integrity (LOGIN_ENTRY)", () =
       path.resolve("docs/site/api-reference.md"),
       "utf-8",
     );
-    expect(apiRef).toContain('"projectId":"pilot-probe-a"');
+    expect(apiRef).toContain('"projectId":"my-project"');
 
     // Strip Sphinx Pygments spans to verify rendered text matches the documented curl JSON payload
     const plainText = LOGIN_ENTRY.replace(/<[^>]+>/g, "");
     expect(plainText).toContain(
-      '{"projectId":"pilot-probe-a","featureId":"051-hosted-aws-pilot","phaseId":"phase-08","backend":"agy"}',
+      '{"projectId":"my-project","featureId":"001-my-feature","phaseId":"phase-01","backend":"agy"}',
     );
-    expect(plainText).not.toContain('"workspaceId":"pilot-probe-a"');
+    expect(plainText).not.toContain('"workspaceId":"my-project"');
   });
 
   it("preserves exact OpenAPI wire identifiers without substituting workspaceId for projectId", () => {
@@ -796,8 +796,27 @@ describe("generated portal HTML API wire-contract integrity (LOGIN_ENTRY)", () =
     );
   });
 
-  it("includes Google OAuth login entry link and excludes test canaries and secret prefixes", () => {
+  it("includes Google OAuth login entry, reciprocal ecosystem links, and excludes real secrets, legacy prefixes, and unserved .html routes", () => {
     expect(LOGIN_ENTRY).toContain('href="/oauth2/start"');
-    expect(LOGIN_ENTRY).not.toMatch(/CANARY|gwrk_v1\./);
+    expect(LOGIN_ENTRY).toContain('href="https://github.com/gforge-esc/gwrk"');
+    expect(LOGIN_ENTRY).toContain(
+      'href="https://github.com/gforge-esc/gwrk/releases"',
+    );
+    expect(LOGIN_ENTRY).toContain(
+      'href="https://github.com/gforge-esc/gwrk-plugins"',
+    );
+    expect(LOGIN_ENTRY).toContain(
+      'href="https://github.com/gforge-esc/gwrk/blob/main/SUPPORT.md"',
+    );
+    expect(LOGIN_ENTRY).toContain('data-guide-target="getting-started"');
+    expect(LOGIN_ENTRY).toContain('data-guide-target="agent-guide"');
+    expect(LOGIN_ENTRY).not.toMatch(
+      /CANARY|gwrk_ak_v1_|\bgwrk_v\d+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]{8,}\b/,
+    );
+    expect(LOGIN_ENTRY).not.toMatch(
+      /href="(?!https?:\/\/)[^"]*\.html(?:[#?][^"]*)?"/,
+    );
+    expect(LOGIN_ENTRY).not.toContain("/var/lib/gwrk/operator-keys/");
+    expect(LOGIN_ENTRY).not.toContain("Cookie: __Host-gwrk_session");
   });
 });
