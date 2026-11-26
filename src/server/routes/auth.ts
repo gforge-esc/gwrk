@@ -9,6 +9,16 @@ import type { BrowserCsrfPort } from "../../ports/auth-port.js";
 import { readVerifiedAuthContext } from "../auth-guard.js";
 import { LOGIN_ENTRY } from "./portal-html.js";
 
+export const BOUNDED_LOGIN_ENTRY =
+  '<!doctype html><html lang="en"><head><meta charset="utf-8"><title>gwrk</title></head><body><a href="/oauth2/start">Sign in with Google</a></body></html>';
+
+function isAdmissionSubrequest(request: FastifyRequest): boolean {
+  return (
+    request.headers["x-forwarded-uri"] === "/" ||
+    !request.headers.accept?.includes("text/html")
+  );
+}
+
 export interface AuthRoutesOptions {
   readonly sessions: ReturnType<typeof createBrowserSessionService>;
   readonly csrf: BrowserCsrfPort;
@@ -43,9 +53,15 @@ export function registerAuthRoutes(
   server: FastifyInstance,
   options: AuthRoutesOptions,
 ): void {
-  server.get("/", async (_request, reply) =>
-    reply.type("text/html; charset=utf-8").send(LOGIN_ENTRY),
-  );
+  server.get("/", async (request, reply) => {
+    if (request.method === "HEAD") {
+      return reply.type("text/html; charset=utf-8").send("");
+    }
+    const body = isAdmissionSubrequest(request)
+      ? BOUNDED_LOGIN_ENTRY
+      : LOGIN_ENTRY;
+    return reply.type("text/html; charset=utf-8").send(body);
+  });
 
   server.get("/api/auth/session", async (request, reply) => {
     reply.header("cache-control", "no-store");

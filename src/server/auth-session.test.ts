@@ -832,6 +832,79 @@ describe("FR-003 FR-009 AUTH-06: full-server browser session and logout replay v
     privateBody(getRes.body);
   });
 
+  it("AUTH-15: login admission subrequest serves bounded root response <= 4096 bytes while browser presentation receives full portal", async () => {
+    const f = await createFullServerSessionFixture();
+
+    // 1. Admission subrequest (exact admission header contract: X-Forwarded-Uri: /)
+    const admissionRes = await f.server.inject({
+      method: "GET",
+      url: "/",
+      headers: {
+        "x-forwarded-uri": "/",
+        "x-forwarded-method": "GET",
+      },
+    });
+    expect(admissionRes.statusCode).toBe(200);
+    expect(admissionRes.headers["content-type"]).toContain("text/html");
+    expect(admissionRes.body).toContain('href="/oauth2/start"');
+    // ForwardAuth maxResponseBodySize is 4096 bytes
+    expect(Buffer.byteLength(admissionRes.body)).toBeLessThanOrEqual(4096);
+
+    // Pinned ForwardAuth oversized body check: response > 4096 triggers built-in 401
+    const simulateForwardAuth = (res: { statusCode: number; body: string }) => {
+      if (res.statusCode >= 200 && res.statusCode < 300) {
+        if (Buffer.byteLength(res.body) > 4096) {
+          return {
+            status: 401,
+            admitted: false,
+            error: "oversized admission body",
+          };
+        }
+        return { status: 200, admitted: true };
+      }
+      return { status: res.statusCode, admitted: false };
+    };
+    const admissionGate = simulateForwardAuth(admissionRes);
+    expect(admissionGate.admitted).toBe(true);
+
+    // 2. Browser presentation request (Accept: text/html without X-Forwarded-Uri)
+    const browserRes = await f.server.inject({
+      method: "GET",
+      url: "/",
+      headers: {
+        accept:
+          "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+      },
+    });
+    expect(browserRes.statusCode).toBe(200);
+    expect(browserRes.headers["content-type"]).toContain("text/html");
+    expect(browserRes.body).toContain('href="/oauth2/start"');
+    // Full portal content must be preserved (> 4096 bytes)
+    expect(Buffer.byteLength(browserRes.body)).toBeGreaterThan(4096);
+    expect(browserRes.body).toContain("Flamingo");
+
+    // 3. HEAD / must be bodyless and <= 4096 bytes
+    const headRes = await f.server.inject({
+      method: "HEAD",
+      url: "/",
+      headers: {
+        "x-forwarded-uri": "/",
+        "x-forwarded-method": "GET",
+      },
+    });
+    expect(headRes.statusCode).toBe(200);
+    expect(Buffer.byteLength(headRes.body)).toBe(0);
+
+    // 4. Invariant: root response never leaks cleanup headers, Location, or Set-Cookie
+    for (const res of [admissionRes, browserRes, headRes]) {
+      expect(res.headers).not.toHaveProperty("set-cookie");
+      expect(res.headers).not.toHaveProperty("location");
+      expect(res.headers).not.toHaveProperty("x-forwarded-for");
+      expect(res.headers).not.toHaveProperty("x-forwarded-uri");
+      expect(res.headers).not.toHaveProperty("x-forwarded-method");
+    }
+  });
+
   it("AUTH-06: full hosted startServer logout commits SQLite digest revocation first, preserves separate Set-Cookie headers, and denies copied replay across all APIs", async () => {
     const f = await createFullServerSessionFixture();
 
