@@ -51,6 +51,16 @@ Only the constrained heavy payload paths and positively owned verification image
 
 A failed stage can retry only before it creates staging payloads or fixture data. Existing payloads require a new run ID and remain untouched. An unowned existing directory prevents staging. Interrupted runs become eligible for automatic retention after their leases become free. A proof interrupted after staging requires review of its retained receipts before another run.
 
+Review the prior failure before retrying a failed proof. Add `--retry-failed` to `exec` after that review. The driver preserves the failed owner record under `proof-attempts/` before starting another attempt. It repeats the checkpoint identity checks and disk checks under both locks. Existing proofs and checkpoints remain unchanged. Completed runs cannot retry.
+
+```sh
+python3 deploy/verification/stage-native-proof.py exec \
+  --config /etc/gwrk/native-stage.json \
+  --run-id "$RUN_ID" \
+  --retry-failed \
+  -- node "$PROOF_ENTRYPOINT" "$PROOF_CONFIG"
+```
+
 # Release builds
 
 `node scripts/release/build-linux-release.mjs OUTPUT_DIR [RELEASE_TAG]` invokes the Python standard-library supervisor before Git archive creation, dependency installation or compilation. No candidate build or dependency installation supplies this guard.

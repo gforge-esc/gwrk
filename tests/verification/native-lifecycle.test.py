@@ -155,6 +155,59 @@ class NativeLifecycleTest(unittest.TestCase):
             self.d.execute(args, cfg)
         self.assertFalse(marker.exists())
 
+    def failed_proof_fixture(self):
+        marker = self.root / "retry-child"
+        cfg, args = self.proof_fixture([sys.executable, "-c", f"open({str(marker)!r},'w').write('started')"])
+        run = cfg.runs / args.run_id
+        self.d.update_owner(run, args.run_id, state="failed", completedAt="2026-11-26T16:00:00Z", exitCode=7, error="prior proof failed")
+        return cfg, args, marker
+
+    def test_failed_proof_requires_explicit_retry_flag(self):
+        cfg, args, marker = self.failed_proof_fixture()
+        with self.assertRaisesRegex(Exception, "failed"):
+            self.d.execute(args, cfg)
+        self.assertFalse(marker.exists())
+        self.assertEqual(self.d.read_owner(cfg.runs / args.run_id, args.run_id)["exitCode"], 7)
+
+    def test_explicit_failed_retry_preserves_attempt_before_running_under_both_locks(self):
+        cfg, args, marker = self.failed_proof_fixture()
+        run = cfg.runs / args.run_id
+        code = "import fcntl,json,pathlib,sys; run=pathlib.Path(sys.argv[1]); receipts=list((run/'proof-attempts').glob('*.json')); assert len(receipts)==1; prior=json.loads(receipts[0].read_text())['owner']; assert prior['state']=='failed' and prior['exitCode']==7 and prior['error']=='prior proof failed'; current=json.loads((run/'gwrk-run-owner.json').read_text()); assert current['state']=='executing' and 'completedAt' not in current and 'exitCode' not in current and 'error' not in current\nfor path in (run/'.lease',run.parent/'.retention.lock'):\n f=open(path,'a')\n try: fcntl.flock(f,fcntl.LOCK_EX|fcntl.LOCK_NB); raise AssertionError('lock free')\n except BlockingIOError: pass\npathlib.Path(sys.argv[2]).write_text('started')"
+        args = self.d.parse(["exec", "--config", "unused", "--run-id", args.run_id, "--retry-failed", "--",
+                             sys.executable, "-c", code, str(run), str(marker)])
+        with patch.object(self.d.os, "statvfs", return_value=types.SimpleNamespace(f_bavail=100 * 1024**3, f_frsize=1)):
+            self.assertEqual(self.d.execute(args, cfg), 0)
+        self.assertTrue(marker.exists())
+        self.assertEqual(self.d.read_owner(run, args.run_id)["state"], "completed")
+
+    def test_failed_retry_with_changed_checkpoint_never_starts_child(self):
+        cfg, args, marker = self.failed_proof_fixture()
+        args.retry_failed = True
+        checkpoint = cfg.runs / args.run_id / "storage-checkpoint.json"
+        record = json.loads(checkpoint.read_text())
+        record["sourceCommit"] = "d" * 40
+        checkpoint.write_text(json.dumps(record))
+        with self.assertRaisesRegex(Exception, "source identity"):
+            self.d.execute(args, cfg)
+        self.assertFalse(marker.exists())
+
+    def test_failed_retry_with_low_space_never_starts_child(self):
+        cfg, args, marker = self.failed_proof_fixture()
+        args.retry_failed = True
+        with patch.object(self.d.os, "statvfs", return_value=types.SimpleNamespace(f_bavail=0, f_frsize=1)):
+            with self.assertRaisesRegex(Exception, "space|GiB"):
+                self.d.execute(args, cfg)
+        self.assertFalse(marker.exists())
+        self.assertEqual(self.d.read_owner(cfg.runs / args.run_id, args.run_id)["exitCode"], 7)
+
+    def test_retry_flag_cannot_reexecute_completed_run(self):
+        cfg, args, marker = self.failed_proof_fixture()
+        args.retry_failed = True
+        self.d.update_owner(cfg.runs / args.run_id, args.run_id, state="completed")
+        with self.assertRaisesRegex(Exception, "completed"):
+            self.d.execute(args, cfg)
+        self.assertFalse(marker.exists())
+
 
 if __name__ == "__main__":
     unittest.main()
