@@ -679,6 +679,327 @@ describe("slack-home", () => {
       expect(sectionTexts.some((t) => t.includes("Pulse Summary"))).toBe(false);
     });
 
+    it.each(["opened", "select-startup"])(
+      "isolates startup project status from other projects when Home is %s",
+      async (trigger) => {
+        const { alpha, beta } = createHomeCheckouts();
+        const actual =
+          await vi.importActual<typeof import("./routes/status.js")>(
+            "./routes/status.js",
+          );
+        vi.mocked(getStatusData).mockImplementation(actual.getStatusData);
+        const event = vi.fn();
+        const action = vi.fn();
+        const publish = vi.fn();
+        const agents = [
+          {
+            ...mockStatus.sandboxes[0],
+            projectId: alpha.projectId,
+            featureId: "001-alpha-visible",
+            workDir: alpha.localRoot,
+          },
+          {
+            ...mockStatus.sandboxes[0],
+            projectId: beta.projectId,
+            featureId: "052-beta-private",
+            workDir: beta.localRoot,
+          },
+        ];
+        const records = agents.map((agent) => ({
+          projectId: agent.projectId,
+          workDir: agent.workDir,
+          projectRoot: agent.workDir,
+        }));
+        await registerSlackHomeHandler(
+          { event, action } as unknown as App,
+          {
+            config: mockConfig,
+            projectRoot: alpha.localRoot,
+            registry: homeRegistry(alpha, beta, SYNTHETIC_ROLES),
+            queueProjectId: alpha.projectId,
+            monitor: { getResources: () => mockStatus.system },
+            queue: {
+              getQueue: (id?: string) => ({
+                active: records.filter((r) => !id || r.projectId === id),
+                queued: [],
+                paused: false,
+              }),
+              getQueueDepth: (id?: string) => (id === alpha.projectId ? 1 : 77),
+              getActiveCount: (id?: string) => (id === alpha.projectId ? 1 : 2),
+              getCompletedCount: () => 0,
+              getFailedCount: () => 0,
+            },
+            sandbox: { listSandboxes: async () => agents },
+            lifecycle: { getStatus: () => mockStatus.server.lifecycle },
+            network: { getStatus: () => mockStatus.network.status },
+          } as unknown as Parameters<typeof registerSlackHomeHandler>[1],
+        );
+        const context = {
+          body: {
+            team_id: SYNTHETIC_WORKSPACE_ID,
+            team: { id: SYNTHETIC_WORKSPACE_ID },
+            user: { id: SYNTHETIC_USER_VIEWER },
+            actions: [
+              { value: JSON.stringify({ projectId: alpha.projectId }) },
+            ],
+          },
+          event: {
+            type: "app_home_opened",
+            tab: "home",
+            user: SYNTHETIC_USER_VIEWER,
+          },
+          context: {},
+          ack: vi.fn(),
+          client: { views: { publish } },
+          logger: { error: vi.fn() },
+        };
+        if (trigger === "opened") await event.mock.calls[0][1](context);
+        else await action.mock.calls[0][1](context);
+        expect(publish).toHaveBeenCalledOnce();
+        const blocks = JSON.stringify(publish.mock.calls[0][0].view.blocks);
+        expect(blocks).toContain("001-alpha-visible");
+        expect(blocks).not.toContain("052-beta-private");
+        expect(blocks).toContain("*Queue Depth:* 1");
+        expect(blocks).not.toContain("*Queue Depth:* 77");
+      },
+    );
+
+    it("handles switching back to startup project, reopening, and revoked selection safely", async () => {
+      const { alpha, beta } = createHomeCheckouts();
+      const actual =
+        await vi.importActual<typeof import("./routes/status.js")>(
+          "./routes/status.js",
+        );
+      vi.mocked(getStatusData).mockImplementation(actual.getStatusData);
+      const event = vi.fn();
+      const action = vi.fn();
+      const publish = vi.fn();
+      const agents = [
+        {
+          ...mockStatus.sandboxes[0],
+          projectId: alpha.projectId,
+          featureId: "001-alpha-visible",
+          workDir: alpha.localRoot,
+        },
+        {
+          ...mockStatus.sandboxes[0],
+          projectId: beta.projectId,
+          featureId: "052-beta-private",
+          workDir: beta.localRoot,
+        },
+      ];
+      const records = agents.map((agent) => ({
+        projectId: agent.projectId,
+        workDir: agent.workDir,
+        projectRoot: agent.workDir,
+      }));
+      let userRoles = [
+        {
+          projectId: alpha.projectId,
+          principalType: "slack_user" as const,
+          principalId: `${SYNTHETIC_WORKSPACE_ID}:${SYNTHETIC_USER_VIEWER}`,
+          role: "viewer" as const,
+        },
+        {
+          projectId: beta.projectId,
+          principalType: "slack_user" as const,
+          principalId: `${SYNTHETIC_WORKSPACE_ID}:${SYNTHETIC_USER_VIEWER}`,
+          role: "viewer" as const,
+        },
+      ];
+      const registry = {
+        ...homeRegistry(alpha, beta),
+        listRoleBindings: (projectId: string) =>
+          userRoles.filter((r) => r.projectId === projectId),
+      };
+      await registerSlackHomeHandler(
+        { event, action } as unknown as App,
+        {
+          config: mockConfig,
+          projectRoot: alpha.localRoot,
+          registry,
+          queueProjectId: alpha.projectId,
+          monitor: { getResources: () => mockStatus.system },
+          queue: {
+            getQueue: (id?: string) => ({
+              active: records.filter((r) => !id || r.projectId === id),
+              queued: [],
+              paused: false,
+            }),
+            getQueueDepth: (id?: string) =>
+              id === alpha.projectId ? 1 : id === beta.projectId ? 2 : 77,
+            getActiveCount: (id?: string) => (id ? 1 : 2),
+            getCompletedCount: () => 0,
+            getFailedCount: () => 0,
+          },
+          sandbox: { listSandboxes: async () => agents },
+          lifecycle: { getStatus: () => mockStatus.server.lifecycle },
+          network: { getStatus: () => mockStatus.network.status },
+        } as unknown as Parameters<typeof registerSlackHomeHandler>[1],
+      );
+
+      const selectAction = action.mock.calls[0][1];
+      const openEvent = event.mock.calls[0][1];
+
+      // 1. Select Beta: scopes to Beta
+      await selectAction({
+        ack: vi.fn(),
+        body: {
+          team: { id: SYNTHETIC_WORKSPACE_ID },
+          user: { id: SYNTHETIC_USER_VIEWER },
+          actions: [{ value: JSON.stringify({ projectId: beta.projectId }) }],
+        },
+        context: {},
+        client: { views: { publish } },
+        logger: { error: vi.fn() },
+      });
+      let blocks = JSON.stringify(publish.mock.calls.at(-1)[0].view.blocks);
+      expect(blocks).toContain("052-beta-private");
+      expect(blocks).not.toContain("001-alpha-visible");
+      expect(blocks).toContain("*Queue Depth:* 2");
+
+      // 2. Switch back to Alpha: scopes to Alpha
+      await selectAction({
+        ack: vi.fn(),
+        body: {
+          team: { id: SYNTHETIC_WORKSPACE_ID },
+          user: { id: SYNTHETIC_USER_VIEWER },
+          actions: [{ value: JSON.stringify({ projectId: alpha.projectId }) }],
+        },
+        context: {},
+        client: { views: { publish } },
+        logger: { error: vi.fn() },
+      });
+      blocks = JSON.stringify(publish.mock.calls.at(-1)[0].view.blocks);
+      expect(blocks).toContain("001-alpha-visible");
+      expect(blocks).not.toContain("052-beta-private");
+      expect(blocks).toContain("*Queue Depth:* 1");
+      expect(blocks).not.toContain("*Queue Depth:* 77");
+
+      // 3. Reopening preserves Alpha selection
+      await openEvent({
+        event: {
+          type: "app_home_opened",
+          tab: "home",
+          user: SYNTHETIC_USER_VIEWER,
+        },
+        body: { team_id: SYNTHETIC_WORKSPACE_ID },
+        context: {},
+        client: { views: { publish } },
+        logger: { error: vi.fn() },
+      });
+      blocks = JSON.stringify(publish.mock.calls.at(-1)[0].view.blocks);
+      expect(blocks).toContain("001-alpha-visible");
+      expect(blocks).not.toContain("052-beta-private");
+      expect(blocks).toContain("*Queue Depth:* 1");
+
+      // 4. Select Beta again, then revoke Beta role -> reopening fails closed
+      await selectAction({
+        ack: vi.fn(),
+        body: {
+          team: { id: SYNTHETIC_WORKSPACE_ID },
+          user: { id: SYNTHETIC_USER_VIEWER },
+          actions: [{ value: JSON.stringify({ projectId: beta.projectId }) }],
+        },
+        context: {},
+        client: { views: { publish } },
+        logger: { error: vi.fn() },
+      });
+      userRoles = userRoles.filter((r) => r.projectId !== beta.projectId);
+      await openEvent({
+        event: {
+          type: "app_home_opened",
+          tab: "home",
+          user: SYNTHETIC_USER_VIEWER,
+        },
+        body: { team_id: SYNTHETIC_WORKSPACE_ID },
+        context: {},
+        client: { views: { publish } },
+        logger: { error: vi.fn() },
+      });
+      blocks = JSON.stringify(publish.mock.calls.at(-1)[0].view.blocks);
+      expect(blocks).not.toContain("052-beta-private");
+      expect(blocks).not.toContain("001-alpha-visible");
+      expect(blocks).not.toContain("Active Agents");
+      expect(blocks).not.toContain("Dispatch Queue");
+    });
+
+    it("fails closed on reopening when the selected checkout path is replaced", async () => {
+      const { alpha, beta } = createHomeCheckouts();
+      const actual =
+        await vi.importActual<typeof import("./routes/status.js")>(
+          "./routes/status.js",
+        );
+      vi.mocked(getStatusData).mockImplementation(actual.getStatusData);
+      const event = vi.fn();
+      const action = vi.fn();
+      const publish = vi.fn();
+      const agents = [
+        {
+          ...mockStatus.sandboxes[0],
+          projectId: alpha.projectId,
+          featureId: "001-alpha-visible",
+          workDir: alpha.localRoot,
+        },
+      ];
+      await registerSlackHomeHandler(
+        { event, action } as unknown as App,
+        {
+          config: mockConfig,
+          projectRoot: alpha.localRoot,
+          registry: homeRegistry(alpha, beta),
+          queueProjectId: alpha.projectId,
+          monitor: { getResources: () => mockStatus.system },
+          queue: {
+            getQueue: () => ({ active: [], queued: [], paused: false }),
+            getQueueDepth: () => 1,
+            getActiveCount: () => 1,
+            getCompletedCount: () => 0,
+            getFailedCount: () => 0,
+          },
+          sandbox: { listSandboxes: async () => agents },
+          lifecycle: { getStatus: () => mockStatus.server.lifecycle },
+          network: { getStatus: () => mockStatus.network.status },
+        } as unknown as Parameters<typeof registerSlackHomeHandler>[1],
+      );
+
+      // Startup selection made
+      await action.mock.calls[0][1]({
+        ack: vi.fn(),
+        body: {
+          team: { id: SYNTHETIC_WORKSPACE_ID },
+          user: { id: SYNTHETIC_USER_VIEWER },
+          actions: [{ value: JSON.stringify({ projectId: alpha.projectId }) }],
+        },
+        context: {},
+        client: { views: { publish } },
+        logger: { error: vi.fn() },
+      });
+      let blocks = JSON.stringify(publish.mock.calls.at(-1)[0].view.blocks);
+      expect(blocks).toContain("001-alpha-visible");
+
+      // Replace checkout with a foreign folder
+      renameSync(alpha.localRoot, `${alpha.localRoot}-backup`);
+      mkdirSync(alpha.localRoot);
+
+      // Reopening fails closed
+      await event.mock.calls[0][1]({
+        event: {
+          type: "app_home_opened",
+          tab: "home",
+          user: SYNTHETIC_USER_VIEWER,
+        },
+        body: { team_id: SYNTHETIC_WORKSPACE_ID },
+        context: {},
+        client: { views: { publish } },
+        logger: { error: vi.fn() },
+      });
+      blocks = JSON.stringify(publish.mock.calls.at(-1)[0].view.blocks);
+      expect(blocks).not.toContain("001-alpha-visible");
+      expect(blocks).not.toContain("Active Agents");
+      expect(blocks).not.toContain("Dispatch Queue");
+    });
+
     it("supports interactive project selection in App Home and scopes status to the authorized selected project", async () => {
       const { alpha, beta } = createHomeCheckouts();
       const event = vi.fn();

@@ -133,7 +133,9 @@ export async function buildHomeTab(
       requestedProject.projectId === startupProject?.projectId);
   const activeProject = requestedProjectVerified
     ? requestedProject
-    : startupProject;
+    : options?.selectedProjectId !== undefined
+      ? undefined
+      : startupProject;
 
   if (activeProject) {
     // 1. Active Agents (Sandboxes)
@@ -459,10 +461,11 @@ export async function registerSlackHomeHandler(
   async function loadHomeStatus(
     selected?: EnrolledProject,
   ): Promise<SystemStatus> {
-    if (selected && selected.projectId !== queueProjectId) {
-      const projectRoots = [selected.mirrorPath, selected.localRoot].filter(
-        (root): root is string => Boolean(root),
-      );
+    if (selected) {
+      const projectRoots = [
+        verifyEnrolledCheckout(selected, "localRoot"),
+        verifyEnrolledCheckout(selected, "mirrorPath"),
+      ].filter((root): root is string => Boolean(root));
       const scoped = await getStatusData(
         deps.monitor,
         deps.queue,
@@ -498,15 +501,19 @@ export async function registerSlackHomeHandler(
           context?.teamId ??
           (event.view as { team_id?: string } | undefined)?.team_id ??
           deps.workspaceId;
-        const storedSelection =
+        const userKey =
           workspaceId && event.user
-            ? selectedProjectByUser.get(`${workspaceId}:${event.user}`)
+            ? `${workspaceId}:${event.user}`
             : undefined;
-        const selected = resolveAuthorizedProject(
-          workspaceId,
-          event.user,
-          storedSelection,
-        );
+        const hasStoredSelection =
+          userKey !== undefined && selectedProjectByUser.has(userKey);
+        const storedSelection =
+          hasStoredSelection && userKey
+            ? selectedProjectByUser.get(userKey)
+            : undefined;
+        const selected = hasStoredSelection
+          ? resolveAuthorizedProject(workspaceId, event.user, storedSelection)
+          : resolveAuthorizedProject(workspaceId, event.user, queueProjectId);
         const status = await loadHomeStatus(selected);
 
         const homeView = await buildHomeTab(
@@ -518,7 +525,7 @@ export async function registerSlackHomeHandler(
             workspaceId,
             registry: deps.registry,
             queueProjectId,
-            selectedProjectId: selected?.projectId,
+            selectedProjectId: selected ? selected.projectId : null,
           },
         );
 
@@ -545,6 +552,8 @@ export async function registerSlackHomeHandler(
             body?.team_id ??
             context?.teamId ??
             deps.workspaceId;
+          const userKey =
+            workspaceId && userId ? `${workspaceId}:${userId}` : undefined;
           const rawValue: string | undefined = body?.actions?.[0]?.value;
           let requestedId: string | undefined;
           if (rawValue) {
@@ -563,20 +572,15 @@ export async function registerSlackHomeHandler(
             userId,
             requestedId,
           );
-          if (selected && workspaceId && userId) {
-            selectedProjectByUser.set(
-              `${workspaceId}:${userId}`,
-              selected.projectId,
-            );
+          if (selected && userKey) {
+            selectedProjectByUser.set(userKey, selected.projectId);
           }
           const activeSelection =
             selected ??
             resolveAuthorizedProject(
               workspaceId,
               userId,
-              workspaceId && userId
-                ? selectedProjectByUser.get(`${workspaceId}:${userId}`)
-                : undefined,
+              userKey ? selectedProjectByUser.get(userKey) : undefined,
             );
           const status = await loadHomeStatus(activeSelection);
           const homeView = await buildHomeTab(
@@ -588,7 +592,9 @@ export async function registerSlackHomeHandler(
               workspaceId,
               registry: deps.registry,
               queueProjectId,
-              selectedProjectId: activeSelection?.projectId,
+              selectedProjectId: activeSelection
+                ? activeSelection.projectId
+                : null,
             },
           );
           if (userId) {
