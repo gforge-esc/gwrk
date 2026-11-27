@@ -2186,5 +2186,302 @@ describe("slack-actions (FR-007, US-004, US-005)", () => {
         ).toBeNull();
       },
     );
+
+    it.each(["retry_phase", "request_changes"] as const)(
+      "denies %s on Beta with a registry-backed real DispatchQueue without operationsStore instead of falling back to startup Alpha",
+      async (actionId) => {
+        const { DispatchQueue } = await import("./dispatch.js");
+        const { GwrkConfigSchema } = await import("../utils/config.js");
+
+        const root = mkdtempSync(
+          join(tmpdir(), "gwrk-action-real-nondurable-"),
+        );
+        onTestFinished(() => rmSync(root, { recursive: true, force: true }));
+
+        const initRepo = (dir: string, repoSlug: string) => {
+          mkdirSync(join(dir, "specs", actionValue.featureId), {
+            recursive: true,
+          });
+          const real = realpathSync(dir);
+          const opts = { cwd: real, stdio: "ignore" as const, timeout: 5_000 };
+          execFileSync("git", ["init", "--quiet"], opts);
+          execFileSync(
+            "git",
+            ["remote", "add", "origin", `https://github.com/${repoSlug}.git`],
+            opts,
+          );
+          return real;
+        };
+
+        const alphaRoot = initRepo(join(root, "alpha"), "org/alpha");
+        const betaRoot = initRepo(join(root, "beta"), "org/beta");
+        const alpha = {
+          ...SYNTHETIC_PROJECT_ALPHA,
+          projectId: resolveProjectId(alphaRoot),
+          localRoot: alphaRoot,
+          legacyProjectIds: [],
+        };
+        const beta = {
+          ...SYNTHETIC_PROJECT_BETA,
+          projectId: resolveProjectId(betaRoot),
+          localRoot: betaRoot,
+          legacyProjectIds: [],
+        };
+        const betaOnlyOperator = "U_BETA_ONLY_ACTION_OP";
+        const betaThread = {
+          ...SYNTHETIC_THREAD_ALPHA,
+          projectId: beta.projectId,
+          channelId: SYNTHETIC_CHANNEL_BETA,
+          rootTs: "1731320010.000100",
+        };
+        const registry = createSyntheticRegistry({
+          projects: [alpha, beta],
+          roles: [
+            {
+              projectId: beta.projectId,
+              principalType: "slack_user",
+              principalId: `${SYNTHETIC_WORKSPACE_ID}:${betaOnlyOperator}`,
+              role: "operator",
+            },
+          ],
+          threads: [betaThread],
+        });
+
+        const config = GwrkConfigSchema.parse({
+          project: { name: "alpha" },
+          agents: { implement: "agy" },
+        });
+        const queue = new DispatchQueue(
+          config,
+          { isThrottled: () => true } as unknown as SystemMonitor,
+          {} as never,
+          alpha.localRoot,
+          undefined,
+          undefined,
+          undefined,
+          registry,
+        );
+        onTestFinished(() => queue.close());
+
+        const claim = vi.spyOn(registry, "claimActionReceipt");
+        await registerSlackActions(mockApp as App, {
+          ...mockContext,
+          queue,
+          projectRoot: alpha.localRoot,
+          queueProjectId: alpha.projectId,
+          routingService: createProjectRoutingService({ registry }),
+        });
+
+        const click = clickArgs(actionId, beta.projectId, betaOnlyOperator);
+        click.body.channel.id = SYNTHETIC_CHANNEL_BETA;
+        click.body.message.thread_ts = betaThread.rootTs;
+        click.body.actions[0].value = JSON.stringify({
+          ...actionValue,
+          projectId: beta.projectId,
+          rootTs: betaThread.rootTs,
+        });
+
+        await actionHandlers[actionId](click);
+
+        expect(click.ack).toHaveBeenCalledOnce();
+        expect(click.client.chat.postMessage).not.toHaveBeenCalled();
+        expect(click.client.chat.postEphemeral).toHaveBeenCalledExactlyOnceWith(
+          {
+            channel: SYNTHETIC_CHANNEL_BETA,
+            user: betaOnlyOperator,
+            thread_ts: betaThread.rootTs,
+            text: expect.stringContaining(
+              "The dispatch queue is unavailable for this project.",
+            ),
+          },
+        );
+        expect(claim).not.toHaveBeenCalled();
+        expect(queue.getQueue().active).toHaveLength(0);
+        expect(queue.getQueue().queued).toHaveLength(0);
+      },
+    );
+
+    it.each([
+      { actionId: "retry_phase" as const, withLedgerDb: false },
+      { actionId: "request_changes" as const, withLedgerDb: true },
+    ])(
+      "acknowledges $actionId once, settles receipt to failed, and skips fallback enqueue when real DispatchQueue.accept throws DispatchIntakeError (withLedgerDb=$withLedgerDb)",
+      async ({ actionId, withLedgerDb }) => {
+        const { openDatabase } = await import("../db/index.js");
+        const { createSqliteOperationsStoreAdapter } = await import(
+          "../adapters/sqlite/index.js"
+        );
+        const { DispatchQueue } = await import("./dispatch.js");
+        const { GwrkConfigSchema } = await import("../utils/config.js");
+
+        const root = mkdtempSync(join(tmpdir(), "gwrk-action-intake-err-"));
+        const db = openDatabase({ dbPath: join(root, "gwrk.db") });
+        onTestFinished(() => {
+          db.close();
+          rmSync(root, { recursive: true, force: true });
+        });
+
+        const initRepo = (dir: string, repoSlug: string) => {
+          mkdirSync(join(dir, "specs", actionValue.featureId), {
+            recursive: true,
+          });
+          const real = realpathSync(dir);
+          const opts = { cwd: real, stdio: "ignore" as const, timeout: 5_000 };
+          execFileSync("git", ["init", "--quiet"], opts);
+          execFileSync(
+            "git",
+            ["remote", "add", "origin", `https://github.com/${repoSlug}.git`],
+            opts,
+          );
+          return real;
+        };
+
+        const alphaRoot = initRepo(join(root, "alpha"), "org/alpha");
+        const betaRoot = initRepo(join(root, "beta"), "org/beta");
+        const alphaId = resolveProjectId(alphaRoot);
+        const betaId = resolveProjectId(betaRoot);
+
+        const registry = createSqliteProjectRegistryAdapter({ db });
+        const store = createSqliteOperationsStoreAdapter({ db });
+        const alpha = registry.enrollProject({
+          ...SYNTHETIC_PROJECT_ALPHA,
+          projectId: alphaId,
+          localRoot: alphaRoot,
+          legacyProjectIds: [],
+        });
+        const beta = registry.enrollProject({
+          ...SYNTHETIC_PROJECT_BETA,
+          projectId: betaId,
+          localRoot: betaRoot,
+          legacyProjectIds: [],
+        });
+        const betaOnlyOp = "U_BETA_ACTION_ERR_OP";
+        registry.setRoleBinding({
+          projectId: beta.projectId,
+          principalType: "slack_user",
+          principalId: `${SYNTHETIC_WORKSPACE_ID}:${betaOnlyOp}`,
+          role: "operator",
+        });
+        const betaThread = {
+          ...SYNTHETIC_THREAD_ALPHA,
+          projectId: beta.projectId,
+          channelId: SYNTHETIC_CHANNEL_BETA,
+          rootTs: "1731320010.000100",
+        };
+        registry.bindFeatureThread(betaThread);
+
+        const config = GwrkConfigSchema.parse({
+          project: { name: "alpha" },
+          agents: { implement: "agy" },
+        });
+        const queue = new DispatchQueue(
+          config,
+          { isThrottled: () => true } as unknown as SystemMonitor,
+          {} as never,
+          alpha.localRoot,
+          withLedgerDb ? { db, projectId: alpha.projectId } : undefined,
+          undefined,
+          undefined,
+          {
+            store,
+            registry,
+            worker: {
+              inspectRecoveredWork: vi.fn(),
+              launchPhaseShip: vi.fn(async () => ({ exitCode: 0, stderr: "" })),
+              cleanupStaleSandbox: vi.fn(),
+            },
+            notifier: { notify: vi.fn() } as never,
+            heartbeatIntervalMs: null,
+          },
+        );
+        onTestFinished(() => queue.close());
+
+        // Simulate channel binding drift right before queue.accept validates recipient
+        const realAccept = queue.accept.bind(queue);
+        vi.spyOn(queue, "accept").mockImplementationOnce((req, opts) => {
+          registry.enrollProject({
+            ...beta,
+            slack: { ...beta.slack!, channelId: "C_MOVED_AWAY" },
+          });
+          return realAccept(req, opts);
+        });
+
+        await registerSlackActions(mockApp as App, {
+          ...mockContext,
+          queue,
+          projectRoot: alpha.localRoot,
+          queueProjectId: alpha.projectId,
+          routingService: createProjectRoutingService({ registry }),
+        });
+
+        const click = clickArgs(actionId, beta.projectId, betaOnlyOp);
+        click.body.channel.id = SYNTHETIC_CHANNEL_BETA;
+        click.body.message.thread_ts = betaThread.rootTs;
+        click.body.actions[0].value = JSON.stringify({
+          ...actionValue,
+          projectId: beta.projectId,
+          rootTs: betaThread.rootTs,
+        });
+
+        await actionHandlers[actionId](click);
+
+        expect(click.ack).toHaveBeenCalledOnce();
+        expect(click.client.chat.postMessage).not.toHaveBeenCalled();
+        expect(click.client.chat.postEphemeral).toHaveBeenCalledExactlyOnceWith(
+          {
+            channel: SYNTHETIC_CHANNEL_BETA,
+            user: betaOnlyOp,
+            thread_ts: betaThread.rootTs,
+            text: expect.stringContaining(
+              "Recipient channel does not match authorized project.",
+            ),
+          },
+        );
+
+        const receiptKey = buildActionReceiptKey({
+          projectId: beta.projectId,
+          workspaceId: SYNTHETIC_WORKSPACE_ID,
+          channelId: SYNTHETIC_CHANNEL_BETA,
+          messageTs,
+          actionId,
+          featureId: actionValue.featureId,
+          phaseId: actionValue.phaseId,
+        });
+        // Receipt must be settled to failed (never stuck in claimed)
+        expect(registry.getActionReceipt(receiptKey)?.outcome).toBe("failed");
+
+        // Restore channel binding and verify replay click is rejected idempotently
+        registry.enrollProject(beta);
+        const replayClick = clickArgs(actionId, beta.projectId, betaOnlyOp);
+        replayClick.body.channel.id = SYNTHETIC_CHANNEL_BETA;
+        replayClick.body.message.thread_ts = betaThread.rootTs;
+        replayClick.body.actions[0].value = click.body.actions[0].value;
+        await actionHandlers[actionId](replayClick);
+        expect(replayClick.ack).toHaveBeenCalledOnce();
+        expect(replayClick.client.chat.postEphemeral).toHaveBeenCalledWith(
+          expect.objectContaining({
+            text: expect.stringContaining("already has a receipt"),
+          }),
+        );
+
+        // Zero side effects on Alpha or Beta
+        expect(
+          store.getDispatchOperation({
+            projectId: alpha.projectId,
+            featureId: actionValue.featureId,
+            phaseId: actionValue.phaseId,
+          }),
+        ).toBeNull();
+        expect(
+          store.getDispatchOperation({
+            projectId: beta.projectId,
+            featureId: actionValue.featureId,
+            phaseId: actionValue.phaseId,
+          }),
+        ).toBeNull();
+        expect(queue.getQueue().active).toHaveLength(0);
+        expect(queue.getQueue().queued).toHaveLength(0);
+      },
+    );
   });
 });
