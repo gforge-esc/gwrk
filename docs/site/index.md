@@ -2,10 +2,10 @@
 
 gwrk automates Foxtrot Charlie across discovery and definition plus shipping and delivery. Start with the [Human Consumer Guide](getting-started.md) for installation. Open the [Consumer-Agent Guide](agent-guide.md) when operating inside a target repository. Blocked: none.
 
-> Guide version: `1.6.0-beta.2`. Source repository: [github.com/gforge-esc/gwrk](https://github.com/gforge-esc/gwrk). Companion plugins: [github.com/gforge-esc/gwrk-plugins](https://github.com/gforge-esc/gwrk-plugins).
+> Guide version: `1.6.0-beta.3`. Source repository: [github.com/gforge-esc/gwrk](https://github.com/gforge-esc/gwrk). Companion plugins: [github.com/gforge-esc/gwrk-plugins](https://github.com/gforge-esc/gwrk-plugins).
 
 ```{toctree}
-:maxdepth: 2
+:maxdepth: 3
 :caption: Guides & Reference
 
 foxtrot-charlie

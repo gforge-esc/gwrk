@@ -1,8 +1,8 @@
-# Human Consumer Guide (v1.6.0-beta.2)
+# Human Consumer Guide (v1.6.0-beta.3)
 
 Install gwrk from a verified release archive and initialize your own repository. Then ship one bounded phase at a time. The human owner keeps final merge authority. Blocked: none.
 
-> Release note: install `cli-v1.6.0-beta.2` or later. `cli-v1.6.0-beta.1` predates architecture context setup, hosted Google authentication, the embedded portal and the Linux release manifest.
+> Release note: install `cli-v1.6.0-beta.3` or later. `cli-v1.6.0-beta.1` predates architecture context setup, hosted Google authentication, the embedded portal and the Linux release manifest.
 
 ## Runtime support
 
@@ -21,7 +21,7 @@ Each release publishes `gwrk-cli-v<version>.tgz` and a matching `.sha256` file. 
 ```bash
 (
 set -e
-VERSION=1.6.0-beta.2
+VERSION=1.6.0-beta.3
 TAG="cli-v$VERSION"
 BASE="https://github.com/gforge-esc/gwrk/releases/download/$TAG"
 
@@ -45,7 +45,7 @@ gwrk --version
 
 1. If `shasum -a 256 -c` does not print `OK`, delete the download and stop.
 2. Add the `export PATH` line to your shell profile.
-3. Confirm `gwrk --version` prints `1.6.0-beta.2`.
+3. Confirm `gwrk --version` prints `1.6.0-beta.3`.
 
 Do not use the legacy `scripts/install.sh` helper. It skips checksum and manifest verification.
 
@@ -62,7 +62,7 @@ The hosted runner installer is `install-release.sh` from the same release. Its a
 | Checksum file | `TARBALL.sha256` beside the tarball |
 
 ```bash
-TAG=cli-v1.6.0-beta.2
+TAG=cli-v1.6.0-beta.3
 BASE="https://github.com/gforge-esc/gwrk/releases/download/$TAG"
 curl -fsSLO "$BASE/gwrk-$TAG.tgz"
 curl -fsSLO "$BASE/gwrk-$TAG.tgz.sha256"
@@ -89,9 +89,11 @@ gwrk plugin doctor
 
 ## 3. Initialize your target project
 
-Run initialization from the root of your target repository. Never run it inside the gwrk source repository. Do not copy gwrk's own `AGENTS.md` into your project.
+Run initialization from the root of your target repository. Use the [configuration layers](#configuration-layering) below. Never run it inside the gwrk source repository. Do not copy gwrk's own `AGENTS.md` into your project.
 
-### Configuration layers
+### Configuration Layering
+
+<span id="configuration-layers"></span>
 
 | Layer | File | Tracked | Contents |
 |---|---|---|---|

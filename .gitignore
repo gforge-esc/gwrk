@@ -41,3 +41,7 @@ scripts/dev/
 *.out
 # agent worktrees / local session state
 .claude/
+
+# Browser regression evidence
+playwright-report/
+test-results/

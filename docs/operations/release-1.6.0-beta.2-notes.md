@@ -12,6 +12,7 @@ The published `cli-v1.6.0-beta.1` release stays unchanged. It points at `3fba0bf
 | Hosted Google OIDC auth and `gwrk_v1.<id>.<secret>` API keys | Absent | Included |
 | Embedded portal, Human Consumer Guide and Consumer-Agent Guide | Absent | Included |
 | Frozen `pnpm-lock.yaml`, `release-manifest.json` and `install-release.sh` | Absent | Included |
+| Automatic retention and disk preflight | Absent | Included |
 | GitHub prerelease flag | Not set | Set |
 
 ## Runtime support
@@ -41,7 +42,7 @@ Release-please computes the next version from the last release tag. Without `rel
 ```mermaid
 flowchart TD
     A["Release PR on develop"] -->|"CI, review, approval"| B["develop"]
-    B -->|"promotion PR, squash"| C["main"]
+    B -->|"promotion PR, merge commit"| C["main"]
     C -->|"release-please opens"| D["Release PR on main"]
     D -->|"merge"| E["Tag cli-v1.6.0-beta.2"]
     E -->|"release.yml builds"| F["Prerelease assets"]
@@ -50,14 +51,14 @@ flowchart TD
 ```
 
 1. Merge this pull request into `develop` after final-head CI (`ci (20)` and `ci (22)`), independent review and David's approval.
-2. Open a promotion pull request from `develop` to `main`. Paste the commit override block below into its body. Squash-merge it after CI passes.
+2. Open a promotion pull request from `develop` to `main`. Paste the commit override block below into its body. Choose **Create a merge commit** after CI passes. This preserves the ancestry checked by the signed native evidence.
 3. `release.yml` runs `release-please-action@v4` on `main`. It opens `chore(main): release cli 1.6.0-beta.2`.
 4. Confirm that the release pull request changes only `CHANGELOG.md` and `.release-please-manifest.json`. Confirm that the runtime manifest digest of its head equals the digest in the fresh native proof. Merge it.
 5. `release.yml` tags the merge commit `cli-v1.6.0-beta.2`. Release-please marks it a prerelease. The upload step repeats `gh release edit --prerelease` for any tag with a hyphen. The job builds from the tag on Linux with Node 22 and pnpm `9.15.9`. It uploads the tarball `gwrk-cli-v1.6.0-beta.2.tgz` and its `.sha256` file. It also uploads `release-manifest.json` and `install-release.sh`.
 6. Verify publication. `release-manifest.json` `commitSha` must equal the tag commit. Its `tarballSha256` must match the `.sha256` file. Follow the README install steps on a clean workstation. Run `install-release.sh` into an owned test root on Linux.
 7. Open a pull request that merges `main` back into `develop` and removes `release-as` from `.release-please-config.json`.
 
-David's single final approval authorizes steps 1 through 7 and the hosted documentation rollout. No separate deployment approval is required.
+David retains final merge approval for the promotion and release pull requests. Verify published assets before the hosted rollout.
 
 ## Commit override for the promotion pull request
 
@@ -70,6 +71,7 @@ feat(hosted-auth): Google OIDC ID token verification, live allowlist reload, dig
 feat(portal): hosted portal with embedded consumer guides, consumer-agent guide, reciprocal repository and plugin links and OpenAPI 3.1 explorer
 feat(durable-ops): enrolled project registry, project role bindings, durable dispatch and harvest outbox and model qualification
 feat(packaging): Linux release builder, release-manifest.json inventory verification, frozen pnpm-lock.yaml and install-release.sh checksum verification
+feat(release-retention): automatic retention and disk preflight protect releases and active jobs
 fix(auth): bounded 4096-byte login admission response and preserved session UI on failed logout
 fix(webhooks): fail closed on missing or blank GitHub webhook secrets
 fix(release): mark prerelease tags as GitHub prereleases
@@ -84,6 +86,12 @@ This release changes `package.json` and regenerates `src/server/routes/portal-ht
 | Proof | Runtime manifest | Covers beta.2 |
 |---|---|---|
 | Signed envelope for deployed `bb15497b` | `ce871c6ad859ff5acade2e19525e4fefbfffc15674bb370be353424f76c1efa1` | No |
-| Fresh proof for the reviewed beta.2 head | Recorded at native verification | Required |
+| Signed beta.2 proof for reviewed source `236b57d6` | `d50b4dbaaa38fcaffb613bbea2084f1a6703f323a579b88ebb2eac954ed4d73f` | Yes |
 
-The existing signed envelope stays in history. Codex signs fresh evidence after native Linux verification and independent review. The hosted service receives `1.6.0-beta.2` only through `install-release.sh` after that signature.
+The signed beta.2 envelope and signature are committed in the merged candidate. Native verification and independent review passed. Confirm the same runtime binding before promotion and publication.
+
+```sh
+node tests/hosted-pilot/gateway-production.mjs
+```
+
+The hosted service receives `1.6.0-beta.2` through `install-release.sh` after publication and artifact verification. The installer runs retention and disk preflight before activation. It preserves the running release and rollback release.
