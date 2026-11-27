@@ -269,6 +269,7 @@ function mountPortalScript(fetchHandler: FetchHandler) {
     location: locationObj,
     matchMedia: () => ({ matches: false, addEventListener: () => {} }),
     scrollTo: () => {},
+    addEventListener: () => {},
   };
 
   const documentObj = {
@@ -291,6 +292,9 @@ function mountPortalScript(fetchHandler: FetchHandler) {
     window: windowObj,
     document: documentObj,
     history: {
+      pushState: (_s: unknown, _t: string, url: string) => {
+        locationObj.hash = url;
+      },
       replaceState: (_s: unknown, _t: string, url: string) => {
         if (url.startsWith("#")) {
           locationObj.hash = url;

@@ -4,7 +4,7 @@ All pull requests target `develop` and follow conventional commits. Every PR mus
 
 ## Status
 
-gwrk is in beta. The current release line is `1.6.0-beta.2`. Core workflow prompts and enforcement skills ship bundled inside the package. Built-in agent adapters (`agy`, `claude` and `codex`) also ship bundled. See [README.md](README.md) for consumer setup and [gwrk.gforge.ai](https://gwrk.gforge.ai) for the hosted portal.
+gwrk is in beta. The current release line is `1.6.0-beta.3`. Core workflow prompts and enforcement skills ship bundled inside the package. Built-in agent adapters (`agy`, `claude` and `codex`) also ship bundled. See [README.md](README.md) for consumer setup and [gwrk.gforge.ai](https://gwrk.gforge.ai) for the hosted portal.
 
 ## Prerequisites
 

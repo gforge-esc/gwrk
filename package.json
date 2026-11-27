@@ -1,6 +1,6 @@
 {
   "name": "@gwrk/cli",
-  "version": "1.6.0-beta.2",
+  "version": "1.6.0-beta.3",
   "type": "module",
   "bin": {
     "gwrk": "./dist/cli.js"
@@ -36,7 +36,10 @@
     "test:watch": "vitest watch",
     "test:report": "tsx scripts/dev/test-report.ts",
     "lint": "node scripts/lint.mjs",
-    "format": "biome format --write"
+    "format": "biome format --write",
+    "test:portal": "playwright test",
+    "build:portal": "uv run --with-requirements scripts/portal-requirements.txt sphinx-build -b html docs/site docs/site/_build/html && uv run --with-requirements scripts/portal-requirements.txt python scripts/build-portal.py && biome format --write src/server/routes/portal-html.ts",
+    "test:portal-links": "uv run --with-requirements scripts/portal-requirements.txt python tests/portal/test_link_integrity.py"
   },
   "dependencies": {
     "@fastify/cookie": "11.1.0",
@@ -60,6 +63,7 @@
   },
   "devDependencies": {
     "@biomejs/biome": "^1.9.4",
+    "@playwright/test": "1.65.1",
     "@slack/types": "^2.20.0",
     "@types/better-sqlite3": "^7.6.13",
     "@types/dockerode": "^4.0.1",

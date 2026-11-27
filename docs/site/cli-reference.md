@@ -1,6 +1,6 @@
 # CLI Command Grammar and Reference
 
-Every command below matches `gwrk <command> --help` in `1.6.0-beta.2`. Run `gwrk <command> --help` for all options. Blocked: none.
+Every command below matches `gwrk <command> --help` in `1.6.0-beta.3`. Run `gwrk <command> --help` for all options. Blocked: none.
 
 ```text
 gwrk <verb> [subverb] <feature> [phase] [--options]

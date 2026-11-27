@@ -5,7 +5,7 @@
 project = "gwrk"
 copyright = "2026, David Gonzo Gonzalez (gforge.ai)"
 author = "David Gonzo Gonzalez"
-release = "1.6.0-beta.2"
+release = "1.6.0-beta.3"
 
 extensions = [
     "myst_parser",
@@ -22,7 +22,7 @@ templates_path = ["_templates"]
 exclude_patterns = ["_build", "Thumbs.db", ".DS_Store"]
 
 html_theme = "alabaster"
-html_title = "gwrk 1.6.0-beta.2 — Consumer, Operator & Architecture Guides"
+html_title = "gwrk 1.6.0-beta.3 — Consumer, Operator & Architecture Guides"
 html_static_path = ["_static"]
 html_css_files = ["solarized-tui.css"]
 

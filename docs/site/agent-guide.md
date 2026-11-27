@@ -1,4 +1,4 @@
-# Consumer-Agent Guide (v1.6.0-beta.2)
+# Consumer-Agent Guide (v1.6.0-beta.3)
 
 Work only inside the assigned target project checkout. Verify context and decision records before you change code. Ship one bounded phase in a worktree, then stop at human merge authority. Blocked: none.
 
