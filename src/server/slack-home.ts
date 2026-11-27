@@ -129,8 +129,7 @@ export async function buildHomeTab(
     (requestedProject.projectId === options?.queueProjectId
       ? resolveSlackCheckout(requestedProject, projectRoot) !== undefined
       : resolveSlackCheckout(requestedProject) !== undefined) &&
-    (status.projectId === requestedProject.projectId ||
-      requestedProject.projectId === startupProject?.projectId);
+    status.projectId === requestedProject.projectId;
   const activeProject = requestedProjectVerified
     ? requestedProject
     : options?.selectedProjectId !== undefined
@@ -478,10 +477,17 @@ export async function registerSlackHomeHandler(
           projectRoots,
         },
       );
-      return {
-        ...scoped,
-        projectId: scoped.projectId ?? selected.projectId,
-      };
+      const currentRoots = [
+        verifyEnrolledCheckout(selected, "localRoot"),
+        verifyEnrolledCheckout(selected, "mirrorPath"),
+      ].filter((root): root is string => Boolean(root));
+      if (
+        projectRoots.length === 0 ||
+        projectRoots.some((root) => !currentRoots.includes(root))
+      ) {
+        return { ...scoped, projectId: undefined };
+      }
+      return scoped;
     }
     return getStatusData(
       deps.monitor,

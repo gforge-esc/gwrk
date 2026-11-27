@@ -6,6 +6,7 @@ import { execFileSync } from "node:child_process";
 import {
   mkdirSync,
   mkdtempSync,
+  realpathSync,
   renameSync,
   rmSync,
   symlinkSync,
@@ -285,7 +286,20 @@ describe("slack-home", () => {
         const { alpha, beta } = createHomeCheckouts();
         const event = vi.fn();
         const publish = vi.fn();
-        vi.mocked(getStatusData).mockResolvedValue(mockStatus);
+        vi.mocked(getStatusData).mockImplementation(
+          async (
+            _monitor,
+            _queue,
+            _sandbox,
+            _lifecycle,
+            _network,
+            _server,
+            scope,
+          ) => ({
+            ...mockStatus,
+            ...(scope?.projectId ? { projectId: scope.projectId } : {}),
+          }),
+        );
         await registerSlackHomeHandler(
           { event } as unknown as App,
           {
@@ -1141,5 +1155,169 @@ describe("slack-home", () => {
       expect(deniedBlocks).not.toContain("052-beta-feature");
       expect(deniedBlocks).not.toContain(`*${beta.name}*`);
     });
+  });
+
+  it.each([false, true])(
+    "excludes replaced scope roots during async Home loading with startup selection %s",
+    async (startup) => {
+      const { alpha, beta } = createHomeCheckouts();
+      const selected = startup ? alpha : beta;
+      const mirror = initCheckout(
+        startup ? SYNTHETIC_PROJECT_ALPHA : SYNTHETIC_PROJECT_BETA,
+        join(selected.localRoot, "..", "verified-mirror"),
+      );
+      const selectedProject = { ...selected, mirrorPath: mirror.localRoot };
+      const replacedRoot = startup ? mirror.localRoot : beta.localRoot;
+      const canonicalRoot = realpathSync(replacedRoot);
+      const actual =
+        await vi.importActual<typeof import("./routes/status.js")>(
+          "./routes/status.js",
+        );
+      vi.mocked(getStatusData).mockImplementation(actual.getStatusData);
+      const event = vi.fn();
+      const action = vi.fn();
+      const publish = vi.fn();
+      const roles = [
+        ...SYNTHETIC_ROLES,
+        {
+          projectId: beta.projectId,
+          principalType: "slack_user" as const,
+          principalId: `${SYNTHETIC_WORKSPACE_ID}:${SYNTHETIC_USER_VIEWER}`,
+          role: "viewer" as const,
+        },
+      ];
+      await registerSlackHomeHandler(
+        { event, action } as unknown as App,
+        {
+          config: mockConfig,
+          projectRoot: alpha.localRoot,
+          registry: homeRegistry(
+            startup ? selectedProject : alpha,
+            startup ? beta : selectedProject,
+            roles,
+          ),
+          queueProjectId: alpha.projectId,
+          monitor: { getResources: () => mockStatus.system },
+          queue: {
+            getQueue: () => ({ active: [], queued: [], paused: false }),
+            getQueueDepth: () => 0,
+            getActiveCount: () => 0,
+            getCompletedCount: () => 0,
+            getFailedCount: () => 0,
+          },
+          sandbox: {
+            listSandboxes: async () => {
+              renameSync(replacedRoot, `${replacedRoot}-original`);
+              mkdirSync(replacedRoot);
+              return [
+                {
+                  ...mockStatus.sandboxes[0],
+                  projectId: undefined,
+                  workDir: join(canonicalRoot, "foreign-checkout"),
+                  featureId: "FOREIGN-REPLACEMENT-PRIVATE",
+                },
+              ];
+            },
+          },
+          lifecycle: { getStatus: () => mockStatus.server.lifecycle },
+          network: { getStatus: () => mockStatus.network.status },
+        } as unknown as Parameters<typeof registerSlackHomeHandler>[1],
+      );
+      await action.mock.calls[0][1]({
+        ack: vi.fn(),
+        body: {
+          team: { id: SYNTHETIC_WORKSPACE_ID },
+          user: { id: SYNTHETIC_USER_VIEWER },
+          actions: [
+            { value: JSON.stringify({ projectId: selected.projectId }) },
+          ],
+        },
+        context: {},
+        client: { views: { publish } },
+        logger: { error: vi.fn() },
+      });
+      expect(publish).toHaveBeenCalledOnce();
+      const blocks = JSON.stringify(publish.mock.calls[0][0].view.blocks);
+      expect(blocks).toContain(`*${selectedProject.name}*`);
+      expect(blocks).not.toContain("FOREIGN-REPLACEMENT-PRIVATE");
+    },
+  );
+
+  it("independent: hides selected project when its role is revoked during async status load", async () => {
+    const { alpha, beta } = createHomeCheckouts();
+    const actual =
+      await vi.importActual<typeof import("./routes/status.js")>(
+        "./routes/status.js",
+      );
+    vi.mocked(getStatusData).mockImplementation(actual.getStatusData);
+    const event = vi.fn();
+    const action = vi.fn();
+    const publish = vi.fn();
+    const roles = [
+      ...SYNTHETIC_ROLES,
+      {
+        projectId: beta.projectId,
+        principalType: "slack_user" as const,
+        principalId: `${SYNTHETIC_WORKSPACE_ID}:${SYNTHETIC_USER_VIEWER}`,
+        role: "viewer" as const,
+      },
+    ];
+    const baseRegistry = homeRegistry(alpha, beta, roles);
+    let revoked = false;
+    const registry = {
+      ...baseRegistry,
+      listRoleBindings: (id: string) =>
+        revoked && id === beta.projectId
+          ? []
+          : baseRegistry.listRoleBindings(id),
+    };
+    await registerSlackHomeHandler(
+      { event, action } as unknown as App,
+      {
+        config: mockConfig,
+        projectRoot: alpha.localRoot,
+        registry,
+        queueProjectId: alpha.projectId,
+        monitor: { getResources: () => mockStatus.system },
+        queue: {
+          getQueue: () => ({ active: [], queued: [], paused: false }),
+          getQueueDepth: () => 0,
+          getActiveCount: () => 0,
+          getCompletedCount: () => 0,
+          getFailedCount: () => 0,
+        },
+        sandbox: {
+          listSandboxes: async () => {
+            revoked = true;
+            return [
+              {
+                ...mockStatus.sandboxes[0],
+                projectId: beta.projectId,
+                workDir: beta.localRoot,
+                featureId: "BETA-REVOKED-DURING-LOAD",
+              },
+            ];
+          },
+        },
+        lifecycle: { getStatus: () => mockStatus.server.lifecycle },
+        network: { getStatus: () => mockStatus.network.status },
+      } as unknown as Parameters<typeof registerSlackHomeHandler>[1],
+    );
+    await action.mock.calls[0][1]({
+      ack: vi.fn(),
+      body: {
+        team: { id: SYNTHETIC_WORKSPACE_ID },
+        user: { id: SYNTHETIC_USER_VIEWER },
+        actions: [{ value: JSON.stringify({ projectId: beta.projectId }) }],
+      },
+      context: {},
+      client: { views: { publish } },
+      logger: { error: vi.fn() },
+    });
+    expect(publish).toHaveBeenCalledOnce();
+    const blocks = JSON.stringify(publish.mock.calls[0][0].view.blocks);
+    expect(blocks).not.toContain("BETA-REVOKED-DURING-LOAD");
+    expect(blocks).not.toContain("Active Agents");
+    expect(blocks).not.toContain("Dispatch Queue");
   });
 });
