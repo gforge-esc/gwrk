@@ -19,13 +19,18 @@ import type {
   DeliveryRecipient,
   EnrolledProject,
 } from "../domain/project-registry.js";
+import { resolveProjectSlackRecipient } from "../domain/slack-delivery.js";
 import {
   parseProjectSelector,
   requiredAccessForSlackCommand,
 } from "../domain/slack-routing.js";
 import type { VcsProjectPort } from "../ports/vcs-port.js";
 import { resolveProjectId } from "../utils/project-id.js";
-import type { DeferDispatchDrain, DispatchQueue } from "./dispatch.js";
+import {
+  type DeferDispatchDrain,
+  DispatchIntakeError,
+  type DispatchQueue,
+} from "./dispatch.js";
 import type { GitManager } from "./git-manager.js";
 import type { SystemMonitor } from "./monitor.js";
 import { launchDetachedGwrk } from "./slack-launch.js";
@@ -54,9 +59,243 @@ export interface CommandContext {
   projectId?: string;
   projectSlug?: string;
   projectRepository?: string;
+  enrolledProject?: EnrolledProject;
   recipient?: DeliveryRecipient;
   routingService?: ProjectRoutingService;
   vcs?: VcsProjectPort;
+}
+
+export function supportsMultiProjectDispatch(
+  queue: Pick<DispatchQueue, "supportsMultiProjectDispatch"> | undefined,
+): boolean {
+  return queue?.supportsMultiProjectDispatch?.() === true;
+}
+
+function isSharedMultiProjectQueue(
+  queue:
+    | Pick<
+        DispatchQueue,
+        | "isSharedMultiProjectQueue"
+        | "supportsMultiProjectDispatch"
+        | "getRegistry"
+      >
+    | undefined,
+): boolean {
+  if (typeof queue?.isSharedMultiProjectQueue === "function") {
+    return queue.isSharedMultiProjectQueue();
+  }
+  return (
+    supportsMultiProjectDispatch(queue) &&
+    (queue?.getRegistry?.()?.listProjects().length ?? 0) > 1
+  );
+}
+
+function ephemeralWarning(text: string): SlackBlockKit {
+  return {
+    response_type: "ephemeral",
+    blocks: [
+      {
+        type: "section",
+        text: {
+          type: "mrkdwn",
+          text,
+        },
+      },
+    ],
+  };
+}
+
+function resolveDispatchCommandRecipient(
+  featureId: string,
+  context: CommandContext,
+):
+  | { ok: true; recipient?: DeliveryRecipient }
+  | { ok: false; response: SlackBlockKit } {
+  if (!context.routingService) {
+    return { ok: true, recipient: context.recipient };
+  }
+  if (!context.projectId) {
+    return {
+      ok: false,
+      response: ephemeralWarning(
+        ":warning: Authorized project identity is required before dispatching.",
+      ),
+    };
+  }
+
+  const isDirectMessage = Boolean(context.channelId?.startsWith("D"));
+  const enrolled = context.enrolledProject;
+  const enrolledProjects = context.queue?.getRegistry?.()?.listProjects();
+
+  if (isDirectMessage) {
+    const slackBinding = enrolled?.slack;
+    if (
+      !enrolled ||
+      !slackBinding?.channelId ||
+      !context.workspaceId ||
+      slackBinding.workspaceId !== context.workspaceId
+    ) {
+      return {
+        ok: false,
+        response: ephemeralWarning(
+          ":warning: This project has no bound Slack channel for dispatch notifications. Run the command in the project's bound Slack channel.",
+        ),
+      };
+    }
+    const storedThread = context.routingService.getFeatureThread(
+      context.projectId,
+      featureId,
+    );
+    const check = resolveProjectSlackRecipient({
+      project: enrolled,
+      enrolledProjects,
+      storedThread,
+      recipient: {
+        projectId: context.projectId,
+        surface: "slack",
+        workspaceId: context.workspaceId,
+        channelId: slackBinding.channelId,
+        actorUserId: context.userId,
+      },
+    });
+    if (!check.ok || !check.recipient) {
+      return {
+        ok: false,
+        response: ephemeralWarning(
+          `:warning: ${!check.ok ? check.message : "Could not resolve the project Slack channel."}`,
+        ),
+      };
+    }
+    return { ok: true, recipient: check.recipient };
+  }
+
+  if (
+    !context.recipient ||
+    context.recipient.projectId !== context.projectId ||
+    !context.recipient.channelId
+  ) {
+    return {
+      ok: false,
+      response: ephemeralWarning(
+        ":warning: Delivery recipient does not match the authorized project.",
+      ),
+    };
+  }
+
+  if (enrolled) {
+    const storedThread = !context.recipient.opsOnly
+      ? context.routingService.getFeatureThread(context.projectId, featureId)
+      : null;
+    const check = resolveProjectSlackRecipient({
+      project: enrolled,
+      enrolledProjects,
+      storedThread,
+      recipient: context.recipient,
+      opsOnly: Boolean(context.recipient.opsOnly),
+    });
+    if (!check.ok) {
+      return {
+        ok: false,
+        response: ephemeralWarning(`:warning: ${check.message}`),
+      };
+    }
+    return { ok: true, recipient: check.recipient ?? context.recipient };
+  }
+
+  return { ok: true, recipient: context.recipient };
+}
+
+function submitCommandDispatch(
+  featureId: string,
+  phaseId: string,
+  context: CommandContext,
+):
+  | {
+      ok: true;
+      operationId?: string;
+      deduplicated?: boolean;
+      status?: string;
+      notificationChannelId?: string;
+    }
+  | { ok: false; response: SlackBlockKit } {
+  const recipientResolution = resolveDispatchCommandRecipient(
+    featureId,
+    context,
+  );
+  if (!recipientResolution.ok) {
+    return recipientResolution;
+  }
+
+  const hasMultiProjectQueue = supportsMultiProjectDispatch(context.queue);
+  const isStartupQueueProject =
+    !context.routingService ||
+    (Boolean(context.projectId) &&
+      context.projectId === context.queueProjectId);
+
+  if (hasMultiProjectQueue) {
+    try {
+      const receipt = context.queue.accept(
+        {
+          projectId: context.projectId,
+          featureId,
+          phaseId,
+          recipient: recipientResolution.recipient,
+        },
+        { deferDrain: context.deferDispatchDrain },
+      );
+      if (!receipt) {
+        return {
+          ok: false,
+          response: ephemeralWarning(
+            ":warning: The dispatch queue is unavailable for this project.",
+          ),
+        };
+      }
+      return {
+        ok: true,
+        operationId: receipt.operationId,
+        deduplicated: receipt.deduplicated,
+        status: receipt.status,
+        notificationChannelId: recipientResolution.recipient?.channelId,
+      };
+    } catch (error) {
+      if (error instanceof DispatchIntakeError) {
+        return {
+          ok: false,
+          response: ephemeralWarning(`:warning: ${error.message}`),
+        };
+      }
+      throw error;
+    }
+  }
+
+  if (!isStartupQueueProject) {
+    return {
+      ok: false,
+      response: ephemeralWarning(
+        ":warning: The dispatch queue is unavailable for this project.",
+      ),
+    };
+  }
+
+  try {
+    const record = context.queue.enqueue({ featureId, phaseId });
+    return {
+      ok: true,
+      operationId: record?.operationId ?? record?.id,
+      deduplicated: record?.deduplicated,
+      status: record?.status,
+      notificationChannelId: recipientResolution.recipient?.channelId,
+    };
+  } catch (error) {
+    if (error instanceof DispatchIntakeError) {
+      return {
+        ok: false,
+        response: ephemeralWarning(`:warning: ${error.message}`),
+      };
+    }
+    throw error;
+  }
 }
 
 export type SlashCommandHandler = (
@@ -107,40 +346,73 @@ const handlers: Record<string, SlashCommandHandler> = {
     const resources = context.monitor.getResources();
     const projectId =
       context.projectId ?? resolveProjectId(context.projectRoot);
+    const hasMultiProjectQueue = supportsMultiProjectDispatch(context.queue);
     const ownsQueue =
-      !context.routingService || context.queueProjectId === projectId;
+      !context.routingService ||
+      hasMultiProjectQueue ||
+      context.queueProjectId === projectId;
 
     const blocks: KnownBlock[] = [
       {
         type: "section",
         text: {
           type: "mrkdwn",
-          text: `*System Resources:* CPU ${resources.cpuPercent.toFixed(1)}%, MEM ${resources.memPercent.toFixed(1)}%`,
+          text: `*System Resources:* CPU ${resources.cpuPercent.toFixed(1)}%, MEM ${resources.memPercent.toFixed(1)}%${context.projectSlug ? `\n*Project:* \`${context.projectSlug}\`` : ""}`,
         },
       },
     ];
 
     if (featureId) {
-      // Check in-memory queue first (live dispatches)
-      const featureDispatch = ownsQueue
-        ? context.queue.getDispatch(featureId, "")
+      const checkout = context.routingService
+        ? context.verifiedCheckoutRoot
+        : context.projectRoot;
+      const scopedFeatureEntry = checkout
+        ? resolveScopedSlackFeature(checkout, featureId)
         : undefined;
+      const lookupFeatureId = scopedFeatureEntry?.featureId ?? featureId;
+      const scopedQueueProjectId = context.routingService
+        ? projectId
+        : undefined;
+
+      // Check in-memory and durable queue first (live dispatches)
+      let featureDispatch: DispatchRecord | null | undefined;
+      if (ownsQueue) {
+        if (typeof context.queue.getFeatureDispatch === "function") {
+          featureDispatch = context.queue.getFeatureDispatch(
+            lookupFeatureId,
+            scopedQueueProjectId,
+          );
+        } else {
+          const snapshot = scopedQueueProjectId
+            ? context.queue.getQueue(scopedQueueProjectId)
+            : context.queue.getQueue();
+          featureDispatch =
+            snapshot.active.find((r) => r.featureId === lookupFeatureId) ??
+            snapshot.queued.find((r) => r.featureId === lookupFeatureId) ??
+            context.queue.getDispatch(
+              lookupFeatureId,
+              "",
+              undefined,
+              scopedQueueProjectId,
+            );
+        }
+      }
       if (featureDispatch) {
         blocks.push({
           type: "section",
           text: {
             type: "mrkdwn",
-            text: `*Feature ${featureId}:* ${featureDispatch.status} (${featureDispatch.phaseId})`,
+            text: `*Feature ${lookupFeatureId}:* ${featureDispatch.status} (${featureDispatch.phaseId})`,
           },
         });
       }
 
       // Always query SQLite for run history
       try {
-        const runs = listRuns(featureId, projectId);
+        const runs = listRuns(lookupFeatureId, projectId);
         if (runs.length > 0) {
           const recent = runs.slice(0, 5);
-          let text = `*Recent runs for ${featureId}:*`;
+          let text = `*Recent runs for ${lookupFeatureId}:*`;
           for (const r of recent) {
             const status =
               r.exit_code === 0 ? "✅" : r.exit_code === null ? "🔄" : "❌";
@@ -159,7 +431,7 @@ const handlers: Record<string, SlashCommandHandler> = {
             type: "section",
             text: {
               type: "mrkdwn",
-              text: `*Feature ${featureId}:* No dispatch runs found.`,
+              text: `*Feature ${lookupFeatureId}:* No dispatch runs found.`,
             },
           });
         }
@@ -172,12 +444,7 @@ const handlers: Record<string, SlashCommandHandler> = {
       // add a query here: SELECT phase, completed, total FROM task_state WHERE feature_id = ?
 
       // Also check for spec-local ship runs
-      const checkout = context.routingService
-        ? context.verifiedCheckoutRoot
-        : context.projectRoot;
-      const scopedFeature = checkout
-        ? resolveScopedSlackFeature(checkout, featureId)?.directory
-        : undefined;
+      const scopedFeature = scopedFeatureEntry?.directory;
       const runsDir = scopedFeature
         ? scopedFeaturePath(scopedFeature, ".gwrk", "runs")
         : undefined;
@@ -262,7 +529,12 @@ const handlers: Record<string, SlashCommandHandler> = {
       }
 
       // 3. Active dispatches
-      const activeDispatches = ownsQueue ? context.queue.getQueue().active : [];
+      const activeDispatches = ownsQueue
+        ? (hasMultiProjectQueue
+            ? context.queue.getQueue(projectId)
+            : context.queue.getQueue()
+          ).active
+        : [];
       if (activeDispatches.length > 0) {
         let text = `*🔧 Active Dispatches:* ${activeDispatches.length}`;
         for (const d of activeDispatches as DispatchRecord[]) {
@@ -323,39 +595,14 @@ const handlers: Record<string, SlashCommandHandler> = {
         : `phase-${phaseArg.padStart(2, "0")}`
       : "phase-01";
 
-    const receipt =
-      typeof context.queue.accept === "function"
-        ? context.queue.accept(
-            {
-              projectId: context.projectId,
-              featureId: resolved,
-              phaseId,
-              recipient: context.recipient,
-            },
-            { deferDrain: context.deferDispatchDrain },
-          )
-        : null;
-
-    if (receipt) {
-      const text = receipt.deduplicated
-        ? `🚀 Dispatch already active for *${resolved}* phase *${phaseId}* (operation \`${receipt.operationId}\`, status: \`${receipt.status}\`).`
-        : `🚀 Dispatching feature *${resolved}* phase *${phaseId}* (operation \`${receipt.operationId}\`)...`;
-      return {
-        response_type: "in_channel",
-        blocks: [
-          {
-            type: "section",
-            text: {
-              type: "mrkdwn",
-              text,
-            },
-          },
-        ],
-      };
+    const submission = submitCommandDispatch(resolved, phaseId, context);
+    if (!submission.ok) {
+      return submission.response;
     }
 
-    const record = context.queue.enqueue({ featureId: resolved, phaseId });
-    const operationId = record?.operationId ?? record?.id;
+    const text = submission.deduplicated
+      ? `🚀 Dispatch already active for *${resolved}* phase *${phaseId}* (operation \`${submission.operationId}\`, status: \`${submission.status}\`).`
+      : `🚀 Dispatching feature *${resolved}* phase *${phaseId}*${submission.operationId ? ` (operation \`${submission.operationId}\`)` : ""}...`;
 
     return {
       response_type: "in_channel",
@@ -364,7 +611,7 @@ const handlers: Record<string, SlashCommandHandler> = {
           type: "section",
           text: {
             type: "mrkdwn",
-            text: `🚀 Dispatching feature *${resolved}* phase *${phaseId}*${operationId ? ` (operation \`${operationId}\`)` : ""}...`,
+            text,
           },
         },
       ],
@@ -506,6 +753,11 @@ const handlers: Record<string, SlashCommandHandler> = {
   pause: async (args, context) => {
     const featureId = args[0];
     if (!featureId) {
+      if (isSharedMultiProjectQueue(context.queue)) {
+        return ephemeralWarning(
+          ":warning: Global queue pause is disabled on shared multi-project queues because project roles cannot pause other enrolled projects. Stop or drain the daemon from the host instead.",
+        );
+      }
       context.queue.pause();
       return {
         response_type: "ephemeral",
@@ -680,39 +932,20 @@ const handlers: Record<string, SlashCommandHandler> = {
       ? phaseArg
       : `phase-${phaseArg.padStart(2, "0")}`;
 
-    const receipt =
-      typeof context.queue.accept === "function"
-        ? context.queue.accept(
-            {
-              projectId: context.projectId,
-              featureId: resolved,
-              phaseId,
-              recipient: context.recipient,
-            },
-            { deferDrain: context.deferDispatchDrain },
-          )
-        : null;
-
-    if (receipt) {
-      const text = receipt.deduplicated
-        ? `🚀 Ship already active for *${resolved}* phase *${phaseId}* (operation \`${receipt.operationId}\`, status: \`${receipt.status}\`).`
-        : `🚀 Dispatching *${resolved}* phase *${phaseId}* (operation \`${receipt.operationId}\`)... Progress will be posted here.`;
-      return {
-        response_type: "in_channel",
-        blocks: [
-          {
-            type: "section",
-            text: {
-              type: "mrkdwn",
-              text,
-            },
-          },
-        ],
-      };
+    const submission = submitCommandDispatch(resolved, phaseId, context);
+    if (!submission.ok) {
+      return submission.response;
     }
 
-    const record = context.queue.enqueue({ featureId: resolved, phaseId });
-    const operationId = record?.operationId ?? record?.id;
+    const progressNotice =
+      context.channelId?.startsWith("D") &&
+      submission.notificationChannelId &&
+      submission.notificationChannelId !== context.channelId
+        ? `Progress will be posted in <#${submission.notificationChannelId}>.`
+        : "Progress will be posted here.";
+    const text = submission.deduplicated
+      ? `🚀 Ship already active for *${resolved}* phase *${phaseId}* (operation \`${submission.operationId}\`, status: \`${submission.status}\`).`
+      : `🚀 Dispatching *${resolved}* phase *${phaseId}*${submission.operationId ? ` (operation \`${submission.operationId}\`)` : ""}... ${progressNotice}`;
 
     return {
       response_type: "in_channel",
@@ -721,7 +954,7 @@ const handlers: Record<string, SlashCommandHandler> = {
           type: "section",
           text: {
             type: "mrkdwn",
-            text: `🚀 Dispatching *${resolved}* phase *${phaseId}*${operationId ? ` (operation \`${operationId}\`)` : ""}... Progress will be posted here.`,
+            text,
           },
         },
       ],
@@ -1271,6 +1504,7 @@ export async function handleSlashCommand(
               "*Mentions*",
               "  `@gwrk <command>` — same commands, in-channel with threaded replies",
               "  `@gwrk what's the status?` — freeform → project summary",
+              "  `/gwrk <command> --project <slug>` — select an enrolled project in shared channels or DMs",
             ].join("\n"),
           },
         },
@@ -1349,9 +1583,13 @@ export async function handleSlashCommand(
     };
   }
 
+  const hasMultiProjectQueue = supportsMultiProjectDispatch(context.queue);
+  const isStartupQueueProject =
+    context.queueProjectId === decision.project.projectId;
   const queueUnavailable =
     queueCommands.has(subcommand) &&
-    context.queueProjectId !== decision.project.projectId;
+    !isStartupQueueProject &&
+    !hasMultiProjectQueue;
   let threadTs = queueUnavailable
     ? undefined
     : (decision.recipient.threadTs ?? context.threadTs);
@@ -1367,7 +1605,9 @@ export async function handleSlashCommand(
       ? resolveSlackCheckout(
           decision.project,
           (subcommand === "dispatch" || subcommand === "ship") &&
-            !queueUnavailable
+            !queueUnavailable &&
+            !hasMultiProjectQueue &&
+            isStartupQueueProject
             ? context.projectRoot
             : undefined,
         )
@@ -1434,6 +1674,7 @@ export async function handleSlashCommand(
     verifiedCheckoutRoot: checkout,
     projectId: decision.project.projectId,
     projectSlug: decision.project.slug,
+    enrolledProject: decision.project,
     projectRepository: decision.project.repoSlug
       ? (() => {
           const slug = normalizeGitRemoteSlug(decision.project.repoSlug);
@@ -1450,7 +1691,7 @@ export async function handleSlashCommand(
   };
 
   const result = await handler(args, projectContext);
-  if (threadTs && !result.thread_ts) {
+  if (threadTs?.trim() && !result.thread_ts) {
     result.thread_ts = threadTs;
   }
   return result;

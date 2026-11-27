@@ -532,7 +532,7 @@ test("regression (F-05): Fastify login fault hook intercepts oversized and timeo
   assert.equal(typeof rawHttpsHelpers.wrapLoginFaultResponse, "function");
   let activeFault = "oversized";
   let cancelledCount = 0;
-  const app = fastify({ logger: false });
+  const app = fastify({ logger: false, forceCloseConnections: true });
   app.get("/", async (_req, reply) =>
     reply.type("text/html; charset=utf-8").send("<!doctype html>ok"),
   );
@@ -579,7 +579,24 @@ test("regression (F-05): Fastify login fault hook intercepts oversized and timeo
     await new Promise((resolve) => setTimeout(resolve, 40));
     assert.ok(cancelledCount > 0, "expected in-flight cancellation callback");
   } finally {
-    await app.close();
+    let cleanupTimer;
+    try {
+      await Promise.race([
+        app.close(),
+        new Promise((_, reject) => {
+          cleanupTimer = setTimeout(() => {
+            reject(
+              new Error(
+                "login fault fixture retained a connection after cancellation",
+              ),
+            );
+          }, 1000);
+        }),
+      ]);
+    } finally {
+      clearTimeout(cleanupTimer);
+      app.server.closeAllConnections();
+    }
   }
 });
 

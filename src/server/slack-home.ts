@@ -64,6 +64,7 @@ export async function buildHomeTab(
     workspaceId?: string;
     registry?: ProjectRegistryPort;
     queueProjectId?: string | null;
+    selectedProjectId?: string | null;
   },
 ): Promise<HomeView> {
   const blocks: KnownBlock[] = [
@@ -116,7 +117,26 @@ export async function buildHomeTab(
       ? startupProjects[0]
       : undefined;
 
-  if (startupProject) {
+  const requestedProject = options?.selectedProjectId
+    ? visibleProjects.find(
+        (project) =>
+          project.projectId === options.selectedProjectId ||
+          project.slug === options.selectedProjectId,
+      )
+    : undefined;
+  const requestedProjectVerified =
+    requestedProject !== undefined &&
+    (requestedProject.projectId === options?.queueProjectId
+      ? resolveSlackCheckout(requestedProject, projectRoot) !== undefined
+      : resolveSlackCheckout(requestedProject) !== undefined) &&
+    status.projectId === requestedProject.projectId;
+  const activeProject = requestedProjectVerified
+    ? requestedProject
+    : options?.selectedProjectId !== undefined
+      ? undefined
+      : startupProject;
+
+  if (activeProject) {
     // 1. Active Agents (Sandboxes)
     blocks.push({
       type: "section",
@@ -194,7 +214,7 @@ export async function buildHomeTab(
     ],
   });
 
-  if (startupProject) {
+  if (activeProject) {
     // 4. Build Plan (from Plan DAG)
     blocks.push({ type: "divider" });
     blocks.push({
@@ -204,7 +224,7 @@ export async function buildHomeTab(
 
     try {
       const { PlanStore } = await import("../engine/plan-store.js");
-      const store = new PlanStore(startupProject.projectId);
+      const store = new PlanStore(activeProject.projectId);
       if (!store.isEmpty()) {
         const planStatus = store.getPlanStatus();
 
@@ -301,11 +321,24 @@ export async function buildHomeTab(
       });
     } else {
       for (const p of visibleProjects) {
+        const isSelected = activeProject?.projectId === p.projectId;
         blocks.push({
           type: "section",
           text: {
             type: "mrkdwn",
-            text: `*${p.name}* (\`${p.slug}\`)\nTrunk: \`${p.trunkBranch}\` · Channel: <#${p.slack?.channelId || "unbound"}>`,
+            text: `*${p.name}* (\`${p.slug}\`)${isSelected ? " · *Selected*" : ""}\nTrunk: \`${p.trunkBranch}\` · Channel: <#${p.slack?.channelId || "unbound"}>`,
+          },
+          accessory: {
+            type: "button",
+            text: {
+              type: "plain_text",
+              text: isSelected ? "Selected" : "Select",
+            },
+            action_id: "select_home_project",
+            value: JSON.stringify({
+              projectId: p.projectId,
+              projectSlug: p.slug,
+            }),
           },
         });
       }
@@ -390,17 +423,104 @@ export async function registerSlackHomeHandler(
       deps.queueProjectId === startupProjects[0].projectId)
       ? startupProjects[0].projectId
       : undefined;
+  const selectedProjectByUser = new Map<string, string>();
+
+  function resolveAuthorizedProject(
+    workspaceId: string | undefined,
+    userId: string | undefined,
+    requestedProjectId: string | undefined,
+  ): EnrolledProject | undefined {
+    if (!deps.registry || !workspaceId || !userId || !requestedProjectId) {
+      return undefined;
+    }
+    const targetPrincipal = `${workspaceId}:${userId}`;
+    const candidate = deps.registry
+      .listProjects()
+      .find(
+        (project) =>
+          project.slack?.workspaceId === workspaceId &&
+          (project.projectId === requestedProjectId ||
+            project.slug === requestedProjectId) &&
+          deps.registry
+            ?.listRoleBindings(project.projectId)
+            .some(
+              (r) =>
+                r.principalType === "slack_user" &&
+                r.principalId === targetPrincipal,
+            ),
+      );
+    if (!candidate) return undefined;
+    const checkout =
+      candidate.projectId === queueProjectId
+        ? resolveSlackCheckout(candidate, deps.projectRoot)
+        : resolveSlackCheckout(candidate);
+    return checkout ? candidate : undefined;
+  }
+
+  async function loadHomeStatus(
+    selected?: EnrolledProject,
+  ): Promise<SystemStatus> {
+    if (selected) {
+      const projectRoots = [
+        verifyEnrolledCheckout(selected, "localRoot"),
+        verifyEnrolledCheckout(selected, "mirrorPath"),
+      ].filter((root): root is string => Boolean(root));
+      const scoped = await getStatusData(
+        deps.monitor,
+        deps.queue,
+        deps.sandbox,
+        deps.lifecycle,
+        deps.network,
+        undefined,
+        {
+          projectId: selected.projectId,
+          projectRoots,
+        },
+      );
+      const currentRoots = [
+        verifyEnrolledCheckout(selected, "localRoot"),
+        verifyEnrolledCheckout(selected, "mirrorPath"),
+      ].filter((root): root is string => Boolean(root));
+      if (
+        projectRoots.length === 0 ||
+        projectRoots.some((root) => !currentRoots.includes(root))
+      ) {
+        return { ...scoped, projectId: undefined };
+      }
+      return scoped;
+    }
+    return getStatusData(
+      deps.monitor,
+      deps.queue,
+      deps.sandbox,
+      deps.lifecycle,
+      deps.network,
+    );
+  }
+
   slackApp.event(
     "app_home_opened",
     async ({ event, body, context, client, logger }) => {
       try {
-        const status = await getStatusData(
-          deps.monitor,
-          deps.queue,
-          deps.sandbox,
-          deps.lifecycle,
-          deps.network,
-        );
+        const workspaceId =
+          body?.team_id ??
+          context?.teamId ??
+          (event.view as { team_id?: string } | undefined)?.team_id ??
+          deps.workspaceId;
+        const userKey =
+          workspaceId && event.user
+            ? `${workspaceId}:${event.user}`
+            : undefined;
+        const hasStoredSelection =
+          userKey !== undefined && selectedProjectByUser.has(userKey);
+        const storedSelection =
+          hasStoredSelection && userKey
+            ? selectedProjectByUser.get(userKey)
+            : undefined;
+        const selected = hasStoredSelection
+          ? resolveAuthorizedProject(workspaceId, event.user, storedSelection)
+          : resolveAuthorizedProject(workspaceId, event.user, queueProjectId);
+        const status = await loadHomeStatus(selected);
 
         const homeView = await buildHomeTab(
           status,
@@ -408,13 +528,10 @@ export async function registerSlackHomeHandler(
           deps.projectRoot,
           {
             userId: event.user,
-            workspaceId:
-              body?.team_id ??
-              context?.teamId ??
-              (event.view as { team_id?: string } | undefined)?.team_id ??
-              deps.workspaceId,
+            workspaceId,
             registry: deps.registry,
             queueProjectId,
+            selectedProjectId: selected ? selected.projectId : null,
           },
         );
 
@@ -427,4 +544,75 @@ export async function registerSlackHomeHandler(
       }
     },
   );
+
+  if (typeof slackApp.action === "function") {
+    slackApp.action(
+      "select_home_project",
+      // biome-ignore lint/suspicious/noExplicitAny: Slack action payload structure
+      async ({ ack, body, context, client, logger }: any) => {
+        await ack();
+        try {
+          const userId: string | undefined = body?.user?.id;
+          const workspaceId: string | undefined =
+            body?.team?.id ??
+            body?.team_id ??
+            context?.teamId ??
+            deps.workspaceId;
+          const userKey =
+            workspaceId && userId ? `${workspaceId}:${userId}` : undefined;
+          const rawValue: string | undefined = body?.actions?.[0]?.value;
+          let requestedId: string | undefined;
+          if (rawValue) {
+            try {
+              const parsed = JSON.parse(rawValue) as {
+                projectId?: string;
+                projectSlug?: string;
+              };
+              requestedId = parsed.projectId ?? parsed.projectSlug;
+            } catch {
+              requestedId = rawValue;
+            }
+          }
+          const selected = resolveAuthorizedProject(
+            workspaceId,
+            userId,
+            requestedId,
+          );
+          if (selected && userKey) {
+            selectedProjectByUser.set(userKey, selected.projectId);
+          }
+          const activeSelection =
+            selected ??
+            resolveAuthorizedProject(
+              workspaceId,
+              userId,
+              userKey ? selectedProjectByUser.get(userKey) : undefined,
+            );
+          const status = await loadHomeStatus(activeSelection);
+          const homeView = await buildHomeTab(
+            status,
+            deps.config,
+            deps.projectRoot,
+            {
+              userId,
+              workspaceId,
+              registry: deps.registry,
+              queueProjectId,
+              selectedProjectId: activeSelection
+                ? activeSelection.projectId
+                : null,
+            },
+          );
+          if (userId) {
+            await client.views.publish({
+              user_id: userId,
+              view: homeView,
+            });
+          }
+        } catch (error) {
+          logger?.error?.("Error updating selected home project: ", error);
+        }
+      },
+    );
+  }
 }

@@ -69,6 +69,59 @@ describe("durable notification adapter composition", () => {
     );
     expect(manifest.oauth_config.scopes.bot).toContain("channels:history");
   });
+  it("maintains manifest parity with registered Socket Mode events, DM tab, and slash subcommands", () => {
+    const manifest = parse(
+      readFileSync(
+        new URL("../../slack-manifest.yml", import.meta.url),
+        "utf8",
+      ),
+    );
+    expect(manifest.features.app_home).toMatchObject({
+      home_tab_enabled: true,
+      messages_tab_enabled: true,
+      messages_tab_read_only_enabled: false,
+    });
+    expect(manifest.oauth_config.scopes.bot).toEqual(
+      expect.arrayContaining([
+        "app_mentions:read",
+        "channels:history",
+        "channels:join",
+        "channels:manage",
+        "channels:read",
+        "chat:write",
+        "commands",
+        "im:history",
+        "reactions:read",
+        "users:read",
+      ]),
+    );
+    expect(manifest.settings.event_subscriptions.bot_events).toEqual(
+      expect.arrayContaining([
+        "app_home_opened",
+        "app_mention",
+        "message.im",
+        "reaction_added",
+      ]),
+    );
+    const usageHint = manifest.features.slash_commands[0]?.usage_hint ?? "";
+    for (const token of [
+      "status",
+      "dispatch",
+      "approve",
+      "reject",
+      "pause",
+      "pulse",
+      "effort",
+      "logs",
+      "ship",
+      "define",
+      "research",
+      "adr",
+      "--project",
+    ]) {
+      expect(usageHint).toContain(token);
+    }
+  });
 });
 
 it.each([
