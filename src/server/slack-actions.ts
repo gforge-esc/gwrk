@@ -19,10 +19,12 @@ import { requiredAccessForSlackAction } from "../domain/slack-routing.js";
 import { PlanStore } from "../engine/plan-store.js";
 import { MergePreflightError } from "../ports/vcs-port.js";
 import { resolveProjectId } from "../utils/project-id.js";
+import { DispatchIntakeError } from "./dispatch.js";
 import {
   type CommandContext,
   buildSlackLogResponse,
   resolveSlackCheckout,
+  supportsMultiProjectDispatch,
 } from "./slack-commands.js";
 import { launchDetachedGwrk } from "./slack-launch.js";
 import type { DispatchRecord } from "./types.js";
@@ -457,7 +459,7 @@ export async function registerSlackActions(app: App, context: CommandContext) {
     const runTx = context.queue.runInTransaction
       ? <T>(fn: () => T) => context.queue.runInTransaction(fn)
       : <T>(fn: () => T) => fn();
-    const hasMultiProjectQueue = typeof context.queue?.accept === "function";
+    const hasMultiProjectQueue = supportsMultiProjectDispatch(context.queue);
 
     // Claim the authorized Slack action and persist DispatchReceipt in one
     // SQLite transaction strictly BEFORE calling Slack ack().
@@ -478,7 +480,7 @@ export async function registerSlackActions(app: App, context: CommandContext) {
         nowIso,
         resolveCheckout: (project) => {
           const queueRoot =
-            !hasMultiProjectQueue ||
+            !hasMultiProjectQueue &&
             project.projectId === context.queueProjectId
               ? context.projectRoot
               : undefined;
@@ -536,22 +538,32 @@ export async function registerSlackActions(app: App, context: CommandContext) {
         actorUserId,
       };
 
-      if (typeof context.queue.accept === "function") {
-        let releaseDispatch: (() => void) | undefined;
-        const receipt = context.queue.accept(
-          {
-            projectId: decision.project.projectId,
-            featureId,
-            phaseId: phaseId ?? "",
-            recipient,
-          },
-          {
-            deferDrain: (release) => {
-              releaseDispatch = release;
+      if (hasMultiProjectQueue) {
+        try {
+          let releaseDispatch: (() => void) | undefined;
+          const receipt = context.queue.accept(
+            {
+              projectId: decision.project.projectId,
+              featureId,
+              phaseId: phaseId ?? "",
+              recipient,
             },
-          },
-        );
-        if (receipt) {
+            {
+              deferDrain: (release) => {
+                releaseDispatch = release;
+              },
+            },
+          );
+          if (!receipt) {
+            completeReceipt(context, decision.receiptKey, "failed");
+            return {
+              ok: false,
+              kind: "legacy_enqueue_failed",
+              threadTs: decision.recipient.threadTs,
+              errorMessage:
+                "The dispatch queue is unavailable for this project.",
+            };
+          }
           completeReceipt(context, decision.receiptKey, "executed");
           return {
             ok: true,
@@ -560,7 +572,28 @@ export async function registerSlackActions(app: App, context: CommandContext) {
             receiptKey: decision.receiptKey,
             releaseDispatch,
           };
+        } catch (error) {
+          if (error instanceof DispatchIntakeError) {
+            completeReceipt(context, decision.receiptKey, "failed");
+            return {
+              ok: false,
+              kind: "legacy_enqueue_failed",
+              threadTs: decision.recipient.threadTs,
+              errorMessage: error.message,
+            };
+          }
+          throw error;
         }
+      }
+
+      if (decision.project.projectId !== context.queueProjectId) {
+        completeReceipt(context, decision.receiptKey, "failed");
+        return {
+          ok: false,
+          kind: "legacy_enqueue_failed",
+          threadTs: decision.recipient.threadTs,
+          errorMessage: "The dispatch queue is unavailable for this project.",
+        };
       }
 
       try {

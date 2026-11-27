@@ -799,6 +799,17 @@ export class DispatchQueue {
     return this.registry;
   }
 
+  supportsMultiProjectDispatch(): boolean {
+    return Boolean(this.durableService);
+  }
+
+  isSharedMultiProjectQueue(): boolean {
+    return (
+      this.supportsMultiProjectDispatch() &&
+      (this.registry?.listProjects().length ?? 0) > 1
+    );
+  }
+
   accept(
     request: DispatchRequest,
     options?: {
@@ -1556,6 +1567,22 @@ export class DispatchQueue {
       }
     }
     return null;
+  }
+
+  getFeatureDispatch(
+    featureId: string,
+    projectId?: string,
+  ): DispatchRecord | null {
+    const effectiveProjectId =
+      projectId ??
+      this.registry?.findByLocalRoot(this.projectRoot)?.projectId ??
+      this.ledger?.projectId;
+    const snapshot = this.getQueue(effectiveProjectId);
+    return (
+      snapshot.active.find((record) => record.featureId === featureId) ??
+      snapshot.queued.find((record) => record.featureId === featureId) ??
+      null
+    );
   }
 
   getQueueDepth(projectId?: string): number {
