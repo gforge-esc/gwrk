@@ -1,5 +1,15 @@
 # Changelog
 
+## [1.6.0-beta.3](https://github.com/gforge-esc/gwrk/compare/cli-v1.6.0-beta.2...cli-v1.6.0-beta.3) (2026-11-27)
+
+
+### Bug Fixes
+
+* **portal:** preserve guide document and section URLs through clicks, reload and browser history ([7658c01](https://github.com/gforge-esc/gwrk/commit/7658c01540f45acde5ef2b4be0bedc5be5533dca))
+* **portal:** preserve guide document and section URLs through clicks, reload and browser history ([66f1aad](https://github.com/gforge-esc/gwrk/commit/66f1aad09ab17a1715b2aecca7c11414e0064f43))
+* **portal:** preserve guide sections and verify browser navigation ([8d1152f](https://github.com/gforge-esc/gwrk/commit/8d1152f13af45143ec4e61f947d686ff9cad939e))
+* **portal:** preserve guide sections and verify browser navigation ([48d8fe3](https://github.com/gforge-esc/gwrk/commit/48d8fe3dfba4039f6a1964bc194f43d918f95360))
+
 ## [1.6.0-beta.2](https://github.com/gforge-esc/gwrk/compare/cli-v1.6.0-beta.1...cli-v1.6.0-beta.2) (2026-11-26)
 
 
